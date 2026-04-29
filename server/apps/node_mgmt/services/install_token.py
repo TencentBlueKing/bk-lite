@@ -9,7 +9,15 @@ class InstallTokenService:
 
     @staticmethod
     def generate_install_token(
-        node_id: str, ip: str, user: str, os: str, package_id: str, cloud_region_id: str, organizations: list, node_name: str
+        node_id: str,
+        ip: str,
+        user: str,
+        os: str,
+        package_id: str,
+        cloud_region_id: str,
+        organizations: list,
+        node_name: str,
+        cpu_architecture: str = "",
     ) -> str:
         """
         生成安装令牌（30分钟有效，最多使用5次）
@@ -39,6 +47,7 @@ class InstallTokenService:
                 "cloud_region_id": cloud_region_id,
                 "organizations": organizations,
                 "node_name": node_name,
+                "cpu_architecture": cpu_architecture,
                 "usage_count": 0,
                 "max_usage": InstallerConstants.INSTALL_TOKEN_MAX_USAGE,
             },
@@ -86,6 +95,7 @@ class InstallTokenService:
             "cloud_region_id": data["cloud_region_id"],
             "organizations": data["organizations"],
             "node_name": data["node_name"],
+            "cpu_architecture": data.get("cpu_architecture", ""),
             "remaining_usage": max_usage - data["usage_count"],
         }
 

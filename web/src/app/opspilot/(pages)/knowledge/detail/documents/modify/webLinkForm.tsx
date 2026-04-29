@@ -89,12 +89,12 @@ const WebLinkForm = forwardRef<FormInstance, WebLinkFormProps>(({ onFormChange, 
         initialValues={formData} // 设置初始表单值
       >
         <Form.Item
-          label={t('knowledge.form.name')}
+          label={t('common.name')}
           name="name"
           rules={[{ required: true, message: t('common.inputRequired') }]}
         >
           <Input
-            placeholder={`${t('common.inputMsg')}${t('knowledge.form.name')}`}
+            placeholder={`${t('common.inputMsg')}${t('common.name')}`}
             value={formData.name}
             onChange={(e) => handleInputChange('name', e.target.value)}
           />

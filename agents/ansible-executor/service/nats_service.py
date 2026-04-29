@@ -4,7 +4,7 @@ import json
 import ssl
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import nats.errors
@@ -16,13 +16,14 @@ from service.ansible_runner import (
     build_playbook_winrm_preflight_command,
     cleanup_workspace,
     parse_ansible_output_per_host,
+    parse_playbook_recap,
     prepare_adhoc_execution,
     prepare_playbook_execution,
     run_command,
     to_adhoc_request,
     to_playbook_request,
 )
-from service.task_store import TaskStore
+from service.task_store import TERMINAL_TASK_STATUSES, TaskStore
 
 # logging.basicConfig(
 #     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -78,6 +79,49 @@ class AnsibleNATSService:
             },
             ensure_ascii=False,
         ).encode("utf-8")
+
+    def _effective_ack_deadline_seconds(self) -> float:
+        if self.config.js_backoff:
+            return max(1.0, float(self.config.js_backoff[0]))
+        return max(1.0, float(self.config.js_ack_wait))
+
+    def _heartbeat_interval_seconds(self) -> float:
+        return max(1.0, min(30.0, self._effective_ack_deadline_seconds() * 0.4))
+
+    def _lease_expiry_iso(self, now: datetime | None = None) -> str:
+        current = now or datetime.now(UTC)
+        lease_window = max(self._effective_ack_deadline_seconds() * 1.5, self._heartbeat_interval_seconds() + 1.0)
+        return (current + timedelta(seconds=lease_window)).isoformat()
+
+    async def _keep_message_in_progress(self, msg, task_id: str, owner_id: str):
+        interval = self._heartbeat_interval_seconds()
+        while True:
+            await asyncio.sleep(interval)
+            now = datetime.now(UTC)
+            lease_expires_at = self._lease_expiry_iso(now)
+            renewed = self.task_store.renew_lease(task_id, owner_id, lease_expires_at, now.isoformat())
+            if not renewed:
+                logger.warning("stop ack keepalive without active lease: task_id=%s owner_id=%s", task_id, owner_id)
+                return
+            await msg.in_progress()
+            logger.info(
+                "ack keepalive sent: task_id=%s owner_id=%s interval=%.2fs lease_expires_at=%s",
+                task_id,
+                owner_id,
+                interval,
+                lease_expires_at,
+            )
+
+    async def _run_task_with_ack_progress(self, msg, task: "QueuedTask", owner_id: str) -> dict[str, Any]:
+        keepalive_task = asyncio.create_task(self._keep_message_in_progress(msg, task.task_id, owner_id))
+        try:
+            return await self._run_task(task, owner_id)
+        finally:
+            keepalive_task.cancel()
+            try:
+                await keepalive_task
+            except asyncio.CancelledError:
+                pass
 
     async def _ensure_stream_and_consumer(self):
         subject_pattern = f"{self.config.js_subject_prefix}.>"
@@ -276,14 +320,13 @@ class AnsibleNATSService:
             json.dumps(retry_payload, ensure_ascii=False).encode("utf-8"),
         )
 
-    async def _run_task(self, task: "QueuedTask") -> dict[str, Any]:
+    async def _run_task(self, task: "QueuedTask", owner_id: str) -> dict[str, Any]:
         workspace = None
         code = -1
         output = ""
         error = ""
         callback = task.callback
         started_at = self._now_iso()
-        self.task_store.update_status(task.task_id, "running", {"started_at": started_at}, self._now_iso())
 
         try:
             if task.task_type == "adhoc":
@@ -308,6 +351,8 @@ class AnsibleNATSService:
             error = f"ansible {task.task_type} failed with exit code {code}"
 
         parsed_results = parse_ansible_output_per_host(output) if output else []
+        if not parsed_results and output:
+            parsed_results = parse_playbook_recap(output)
 
         result = {
             "task_id": task.task_id,
@@ -322,17 +367,23 @@ class AnsibleNATSService:
             "error": error,
             "started_at": started_at,
             "finished_at": self._now_iso(),
+            "owner_id": owner_id,
         }
         final_status = "success" if success else "failed"
-        self.task_store.update_status(task.task_id, final_status, result, self._now_iso())
+        persisted = self.task_store.update_execution_result(task.task_id, final_status, result, self._now_iso(), owner_id=owner_id)
+        if not persisted:
+            raise RuntimeError(f"task lease lost before final update: {task.task_id}")
 
         if callback:
             try:
                 await self._invoke_callback(callback, result)
+                self.task_store.update_callback_status(task.task_id, "sent", result, self._now_iso(), preserve_status=final_status)
             except Exception as callback_err:
                 result["callback_error"] = str(callback_err)
-                self.task_store.update_status(task.task_id, "callback_failed", result, self._now_iso())
+                self.task_store.update_callback_status(task.task_id, "failed", result, self._now_iso(), preserve_status=final_status)
                 await self._enqueue_callback_retry(callback, result, str(callback_err))
+        else:
+            self.task_store.update_callback_status(task.task_id, "none", result, self._now_iso(), preserve_status=final_status)
 
         return result
 
@@ -352,11 +403,43 @@ class AnsibleNATSService:
                 data = json.loads(msg.data.decode("utf-8"))
                 task = QueuedTask.from_json(data)
                 status = self.task_store.get_status(task.task_id)
-                if status in {"success", "failed", "callback_failed"}:
+                if status in TERMINAL_TASK_STATUSES:
                     await msg.ack()
                     continue
 
-                await self._run_task(task)
+                owner_id = f"{self.config.nats_instance_id}-worker-{worker_id}-{uuid.uuid4().hex[:8]}"
+                claim = self.task_store.claim_task(
+                    task.task_id,
+                    owner_id,
+                    self._lease_expiry_iso(),
+                    self._now_iso(),
+                )
+                if not claim.get("claimed"):
+                    reason = claim.get("reason")
+                    if reason == "terminal":
+                        await msg.ack()
+                    elif reason == "leased":
+                        logger.warning(
+                            "skip duplicate delivery for leased task: task_id=%s owner_id=%s active_owner=%s lease_expires_at=%s",
+                            task.task_id,
+                            owner_id,
+                            claim.get("lease_owner"),
+                            claim.get("lease_expires_at"),
+                        )
+                        await msg.in_progress()
+                    else:
+                        await msg.nak()
+                    continue
+
+                logger.info(
+                    "claimed task execution: task_id=%s owner_id=%s execution_attempt=%s effective_ack_deadline=%.2fs heartbeat_interval=%.2fs",
+                    task.task_id,
+                    owner_id,
+                    claim.get("execution_attempt"),
+                    self._effective_ack_deadline_seconds(),
+                    self._heartbeat_interval_seconds(),
+                )
+                await self._run_task_with_ack_progress(msg, task, owner_id)
                 await msg.ack()
             except Exception as err:
                 logger.exception("worker task failed worker=%s error=%s", worker_id, err)
@@ -394,12 +477,8 @@ class AnsibleNATSService:
                 payload = data.get("payload") or {}
                 task_id = str(data.get("task_id", ""))
                 await self._invoke_callback(callback, payload)
-                self.task_store.update_status(
-                    task_id,
-                    "success",
-                    payload,
-                    self._now_iso(),
-                )
+                final_status = "success" if payload.get("success") else "failed"
+                self.task_store.update_callback_status(task_id, "sent", payload, self._now_iso(), preserve_status=final_status)
                 await msg.ack()
             except Exception as err:
                 meta = msg.metadata

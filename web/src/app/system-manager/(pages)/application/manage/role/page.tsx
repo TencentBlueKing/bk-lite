@@ -201,10 +201,10 @@ const RoleManagement: React.FC = () => {
         <Form form={roleForm}>
           <Form.Item
             name="roleName"
-            label={t('system.role.name')}
-            rules={[{ required: true, message: `${t('common.inputMsg')}${t('system.role.name')}` }]}
+            label={t('common.name')}
+            rules={[{ required: true, message: `${t('common.inputMsg')}${t('common.name')}` }]}
           >
-            <Input placeholder={`${t('common.inputMsg')}${t('system.role.name')}`} />
+            <Input placeholder={`${t('common.inputMsg')}${t('common.name')}`} />
           </Form.Item>
         </Form>
       </OperateModal>

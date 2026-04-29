@@ -179,10 +179,10 @@ const OperationLogsPage: React.FC = () => {
             allowClear
             className="w-48"
             options={[
-              { label: t('system.security.actionTypeCreate'), value: 'create' },
-              { label: t('system.security.actionTypeUpdate'), value: 'update' },
-              { label: t('system.security.actionTypeDelete'), value: 'delete' },
-              { label: t('system.security.actionTypeExecute'), value: 'execute' },
+              { label: t('common.create'), value: 'create' },
+              { label: t('common.update'), value: 'update' },
+              { label: t('common.delete'), value: 'delete' },
+              { label: t('common.execute'), value: 'execute' },
             ]}
           />
           <TimeSelector

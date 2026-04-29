@@ -144,6 +144,8 @@ export interface OperationGuidanceProps {
 
 export interface InstallerArtifactMetadata {
   os: string;
+  cpu_architecture?: string;
+  architecture?: string;
   filename: string;
   version: string;
   object_key: string;
@@ -153,5 +155,5 @@ export interface InstallerArtifactMetadata {
 
 export interface InstallerManifest {
   default_version: string;
-  artifacts: Record<string, InstallerArtifactMetadata>;
+  artifacts: Record<string, Record<string, InstallerArtifactMetadata>>;
 }

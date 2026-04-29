@@ -488,6 +488,7 @@
       "searchError": "Log grouping cannot be empty"
     },
     "analysis": {
+      "selectInstance": "Please select an instance",
       "packetbeat": {
         "destinationPort": "Destination Port",
         "sourceIP": "Source IP",

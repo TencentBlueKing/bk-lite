@@ -149,8 +149,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     const list = deepClone(attrList);
     const values: any = {};
 
-      list.forEach((group: any) => {
-        (group.attrs || []).forEach((item: any) => {
+    list.forEach((group: any) => {
+      (group.attrs || []).forEach((item: any) => {
         if (item.editable) {
           item.isEdit = nextState;
           if (nextState) {

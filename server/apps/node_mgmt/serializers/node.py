@@ -15,6 +15,7 @@ class NodeSerializer(serializers.ModelSerializer):
             "name",
             "ip",
             "operating_system",
+            "cpu_architecture",
             "status",
             "cloud_region",
             "updated_at",
@@ -37,9 +38,7 @@ class NodeSerializer(serializers.ModelSerializer):
             "nodeorganization_set",
             Prefetch(
                 "component_versions",
-                queryset=NodeComponentVersion.objects.filter(
-                    component_type="controller"
-                ).order_by("-last_check_at"),
+                queryset=NodeComponentVersion.objects.filter(component_type="controller").order_by("-last_check_at"),
             ),
         )
         return queryset
@@ -51,9 +50,7 @@ class NodeSerializer(serializers.ModelSerializer):
     def get_versions(self, obj):
         """获取节点关联的控制器版本信息（直接读取已计算好的升级状态）"""
         versions = []
-        component_versions = [
-            v for v in obj.component_versions.all() if v.component_type == "controller"
-        ]
+        component_versions = [v for v in obj.component_versions.all() if v.component_type == "controller"]
 
         for version_info in component_versions:
             versions.append(
@@ -79,20 +76,14 @@ class BatchBindingNodeConfigurationSerializer(serializers.Serializer):
 class BatchOperateNodeCollectorSerializer(serializers.Serializer):
     node_ids = serializers.ListField(child=serializers.CharField(), required=True)
     collector_id = serializers.CharField(required=True)
-    operation = serializers.ChoiceField(
-        choices=["start", "restart", "stop"], required=True
-    )
+    operation = serializers.ChoiceField(choices=["start", "restart", "stop"], required=True)
 
 
 class TaskNodesQuerySerializer(serializers.Serializer):
     page = serializers.IntegerField(required=False, default=1, min_value=1)
-    page_size = serializers.IntegerField(
-        required=False, default=20, min_value=1, max_value=500
-    )
+    page_size = serializers.IntegerField(required=False, default=20, min_value=1, max_value=500)
     status = serializers.ListField(
-        child=serializers.ChoiceField(
-            choices=["waiting", "running", "success", "error"]
-        ),
+        child=serializers.ChoiceField(choices=["waiting", "running", "success", "error"]),
         required=False,
         allow_empty=False,
     )

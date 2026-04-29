@@ -54,6 +54,12 @@ const useDetailColumns = ({
       key: 'version'
     },
     {
+      title: 'CPU架构',
+      dataIndex: 'cpu_architecture',
+      key: 'cpu_architecture',
+      render: (value: any) => (value === 'arm64' ? 'ARM64' : value || '--')
+    },
+    {
       title: t('common.createdBy'),
       dataIndex: 'created_by',
       key: 'created_by'

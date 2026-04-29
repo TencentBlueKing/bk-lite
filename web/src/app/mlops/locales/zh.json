@@ -44,6 +44,8 @@
     "archiveConfirm": "确认归档",
     "archivingMsg": "归档后该版本将标记为旧版本",
     "deleteConfirm": "确认删除",
+    "deleteRunConfirm": "确认删除运行记录？",
+    "deleteRunConfirmContent": "删除后该训练记录将无法恢复。",
     "fileDelDes": "该文件将被删除",
     "inputVersionMsg": "请输入版本号",
     "versionIptMsg": "请输入语义化版本号，例如: v1.0.0",

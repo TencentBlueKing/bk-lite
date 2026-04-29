@@ -289,7 +289,7 @@ const KnowledgeGraphPage: React.FC<KnowledgeGraphPageProps> = ({ knowledgeBaseId
           disabled={!canClickSettings()}
           className="shadow-lg"
         >
-          {t('knowledge.knowledgeGraph.settings')}
+          {t('common.settings')}
         </Button>
       </div>
 

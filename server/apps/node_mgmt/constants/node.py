@@ -19,6 +19,17 @@ class NodeConstants:
     LINUX_OS = "linux"
     WINDOWS_OS = "windows"
 
+    X86_64_ARCH = "x86_64"
+    ARM64_ARCH = "arm64"
+    UNKNOWN_ARCH = ""
+
+    CPU_ARCH_ALIASES = {
+        "x86_64": X86_64_ARCH,
+        "amd64": X86_64_ARCH,
+        "arm64": ARM64_ARCH,
+        "aarch64": ARM64_ARCH,
+    }
+
     # 操作系统显示名称
     LINUX_OS_DISPLAY = "Linux"
     WINDOWS_OS_DISPLAY = "Windows"

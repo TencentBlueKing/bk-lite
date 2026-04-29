@@ -191,7 +191,7 @@ export const getDocumentColumns = (
     },
   },
   {
-    title: t('knowledge.documents.actions'),
+    title: t('common.actions'),
     key: 'action',
     width: 170,
     render: (_: unknown, record: TableData) => (
@@ -223,7 +223,7 @@ export const getQAPairColumns = (
   exportLoadingMap: { [key: number]: boolean }
 ): TableColumnsType<QAPairData> => [
   {
-    title: t('knowledge.qaPairs.name'),
+    title: t('common.name'),
     dataIndex: 'name',
     key: 'name',
     render: (text: string, record: QAPairData) => {
@@ -326,7 +326,7 @@ export const getQAPairColumns = (
     },
   },
   {
-    title: t('knowledge.documents.actions'),
+    title: t('common.actions'),
     key: 'action',
     render: (_: unknown, record: QAPairData) => {
       const isProcessing = record.status === 'pending' || record.status === 'generating';

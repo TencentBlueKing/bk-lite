@@ -3,30 +3,34 @@ from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.installer import InstallerConstants
 from config.components.nats import NATS_NAMESPACE
 from apps.node_mgmt.constants.node import NodeConstants
-from apps.node_mgmt.models import PackageVersion, SidecarEnv
+from apps.node_mgmt.models import SidecarEnv
 from apps.node_mgmt.services.install_token import InstallTokenService
 from apps.node_mgmt.services.package import PackageService
+from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.token_auth import generate_node_token
 
 
 class InstallerSessionService:
     @staticmethod
-    def installer_artifact(os_name: str) -> dict:
+    def installer_artifact(os_name: str, cpu_architecture: str = "") -> dict:
+        normalized_arch = normalize_cpu_architecture(cpu_architecture) or "generic"
         if os_name == NodeConstants.WINDOWS_OS:
             return {
                 "filename": InstallerConstants.WINDOWS_INSTALLER_FILENAME,
-                "object_key": InstallerConstants.WINDOWS_INSTALLER_S3_PATH,
-                "download_url": "/api/proxy/node_mgmt/api/installer/windows/download/",
-                "alias_object_key": InstallerConstants.WINDOWS_INSTALLER_S3_PATH,
+                "object_key": InstallerConstants.build_latest_alias_path(NodeConstants.WINDOWS_OS, normalized_arch),
+                "download_url": f"/api/proxy/node_mgmt/api/installer/windows/download/?arch={normalized_arch}",
+                "alias_object_key": InstallerConstants.build_latest_alias_path(NodeConstants.WINDOWS_OS, normalized_arch),
                 "version": InstallerConstants.DEFAULT_INSTALLER_VERSION,
+                "architecture": normalized_arch,
             }
         if os_name == NodeConstants.LINUX_OS:
             return {
                 "filename": InstallerConstants.LINUX_INSTALLER_FILENAME,
-                "object_key": InstallerConstants.LINUX_INSTALLER_S3_PATH,
-                "download_url": "/api/proxy/node_mgmt/api/installer/linux/download/",
-                "alias_object_key": InstallerConstants.LINUX_INSTALLER_S3_PATH,
+                "object_key": InstallerConstants.build_latest_alias_path(NodeConstants.LINUX_OS, normalized_arch),
+                "download_url": f"/api/proxy/node_mgmt/api/installer/linux/download/?arch={normalized_arch}",
+                "alias_object_key": InstallerConstants.build_latest_alias_path(NodeConstants.LINUX_OS, normalized_arch),
                 "version": InstallerConstants.DEFAULT_INSTALLER_VERSION,
+                "architecture": normalized_arch,
             }
         raise BaseAppException(f"Unsupported operating system: {os_name}")
 
@@ -43,10 +47,15 @@ class InstallerSessionService:
         return result
 
     @staticmethod
-    def build_session_config(token: str):
+    def build_session_config(token: str, cpu_architecture: str = ""):
         token_data = InstallTokenService.validate_and_get_token_data(token)
 
-        package_obj = PackageVersion.objects.filter(pk=token_data["package_id"]).first()
+        resolved_arch = normalize_cpu_architecture(cpu_architecture or token_data.get("cpu_architecture", ""))
+
+        package_obj = PackageService.resolve_package_by_architecture(
+            token_data["package_id"],
+            resolved_arch,
+        )
         if not package_obj:
             raise BaseAppException("Package not found")
 
@@ -84,6 +93,7 @@ class InstallerSessionService:
             "node_id": token_data["node_id"],
             "node_name": token_data["node_name"],
             "os": token_data["os"],
+            "cpu_architecture": resolved_arch,
             "remaining_usage": token_data["remaining_usage"],
             "server_url": f"{server_url.rstrip('/')}/api/v1/node_mgmt/open_api/node",
             "storage": {
@@ -98,5 +108,8 @@ class InstallerSessionService:
             },
             "zone_id": str(token_data["cloud_region_id"]),
         }
-        config["installer"] = InstallerSessionService.installer_artifact(token_data["os"])
+        config["installer"] = InstallerSessionService.installer_artifact(
+            token_data["os"],
+            resolved_arch,
+        )
         return config

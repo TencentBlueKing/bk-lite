@@ -195,7 +195,7 @@ const UserLoginLogs: React.FC = () => {
       }
 
       setExportProgress(100);
-      message.success(t('system.security.exportSuccess'));
+      message.success(t('common.exportSuccess'));
       setExportModalVisible(false);
     } catch (error) {
       console.error('Export failed:', error);
@@ -341,7 +341,7 @@ const UserLoginLogs: React.FC = () => {
         open={exportModalVisible}
         onOk={handleExportConfirm}
         onCancel={handleExportCancel}
-        okText={t('system.security.export')}
+        okText={t('common.export')}
         cancelText={t('common.cancel')}
         confirmLoading={exporting}
       >

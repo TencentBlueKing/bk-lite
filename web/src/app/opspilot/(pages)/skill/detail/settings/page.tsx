@@ -354,10 +354,10 @@ const SkillSettingsPage: React.FC = () => {
                     wrapperCol={{ flex: '1' }}
                     initialValues={{ temperature: 0.7, show_think: true }}
                   >
-                    <Form.Item label={t('skill.form.name')} name="name" rules={[{ required: true, message: `${t('common.input')} ${t('skill.form.name')}` }]}>
+                    <Form.Item label={t('common.name')} name="name" rules={[{ required: true, message: `${t('common.input')} ${t('common.name')}` }]}>
                       <Input />
                     </Form.Item>
-                    <Form.Item label={t('skill.form.group')} name="group" rules={[{ required: true, message: `${t('common.input')} ${t('skill.form.group')}` }]}>
+                    <Form.Item label={t('common.organization')} name="group" rules={[{ required: true, message: `${t('common.input')} ${t('common.organization')}` }]}>
                       <Select mode="multiple">
                         {groups.map(group => (
                           <Option key={group.id} value={group.id}>{group.name}</Option>

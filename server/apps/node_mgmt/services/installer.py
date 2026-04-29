@@ -5,7 +5,7 @@ from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.database import DatabaseConstants
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
-from apps.node_mgmt.models import SidecarEnv, Node
+from apps.node_mgmt.models import SidecarEnv, Node, PackageVersion
 from apps.node_mgmt.models.installer import (
     ControllerTask,
     ControllerTaskNode,
@@ -14,6 +14,8 @@ from apps.node_mgmt.models.installer import (
 )
 from apps.node_mgmt.services.install_token import InstallTokenService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
+from apps.node_mgmt.services.package import PackageService
+from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.s3 import download_file_by_s3
 from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read
 
@@ -23,18 +25,40 @@ class InstallerService:
     MANUAL_INSTALL_MODE = "manual"
 
     @staticmethod
-    def installer_metadata(target_os: str) -> dict:
+    def resolve_package_by_architecture(package_seed_id: int, cpu_architecture: str) -> PackageVersion:
+        package_obj = PackageService.resolve_package_by_architecture(package_seed_id, cpu_architecture)
+        if not package_obj:
+            raise BaseAppException("Package version not found")
+        normalized_arch = normalize_cpu_architecture(cpu_architecture)
+        if package_obj.cpu_architecture == normalized_arch or not normalized_arch:
+            return package_obj
+        raise BaseAppException(
+            f"No package found for os={package_obj.os}, object={package_obj.object}, version={package_obj.version}, arch={normalized_arch}"
+        )
+
+    @staticmethod
+    def installer_metadata(target_os: str, cpu_architecture: str = "") -> dict:
         if target_os not in {NodeConstants.WINDOWS_OS, NodeConstants.LINUX_OS}:
             raise BaseAppException(f"Unsupported operating system: {target_os}")
-        return {"os": target_os, **InstallerSessionService.installer_artifact(target_os)}
+        normalized_arch = normalize_cpu_architecture(cpu_architecture)
+        return {
+            "os": target_os,
+            "cpu_architecture": normalized_arch,
+            **InstallerSessionService.installer_artifact(target_os, normalized_arch),
+        }
 
     @staticmethod
     def installer_manifest() -> dict:
         return {
             "default_version": InstallerConstants.DEFAULT_INSTALLER_VERSION,
             "artifacts": {
-                NodeConstants.WINDOWS_OS: InstallerService.installer_metadata(NodeConstants.WINDOWS_OS),
-                NodeConstants.LINUX_OS: InstallerService.installer_metadata(NodeConstants.LINUX_OS),
+                NodeConstants.WINDOWS_OS: {
+                    NodeConstants.X86_64_ARCH: InstallerService.installer_metadata(NodeConstants.WINDOWS_OS, NodeConstants.X86_64_ARCH)
+                },
+                NodeConstants.LINUX_OS: {
+                    NodeConstants.X86_64_ARCH: InstallerService.installer_metadata(NodeConstants.LINUX_OS, NodeConstants.X86_64_ARCH),
+                    NodeConstants.ARM64_ARCH: InstallerService.installer_metadata(NodeConstants.LINUX_OS, NodeConstants.ARM64_ARCH),
+                },
             },
         }
 
@@ -49,6 +73,7 @@ class InstallerService:
         organizations,
         node_name,
         install_mode=MANUAL_INSTALL_MODE,
+        cpu_architecture: str = "",
     ):
         """
         获取安装命令（生成包含临时 token 的 curl 命令）
@@ -84,6 +109,7 @@ class InstallerService:
             cloud_region_id=cloud_region_id,
             organizations=organizations,
             node_name=node_name,
+            cpu_architecture=cpu_architecture,
         )
 
         # 根据操作系统生成不同的安装命令
@@ -124,6 +150,7 @@ class InstallerService:
                     ip=node["ip"],
                     node_name=node["node_name"],
                     os=node["os"],
+                    cpu_architecture=node.get("cpu_architecture", ""),
                     organizations=node["organizations"],
                     port=node["port"],
                     username=node["username"],
@@ -177,6 +204,7 @@ class InstallerService:
                     task_id=task_obj.id,
                     ip=node["ip"],
                     os=node["os"],
+                    cpu_architecture=node.get("cpu_architecture", ""),
                     port=node["port"],
                     username=node["username"],
                     password=password,
@@ -199,6 +227,7 @@ class InstallerService:
                     task_node_id=task_node.id,
                     ip=task_node.ip,
                     os=task_node.os,
+                    cpu_architecture=task_node.cpu_architecture,
                     node_name=task_node.node_name,
                     organizations=task_node.organizations,
                     username=task_node.username,
@@ -248,12 +277,14 @@ class InstallerService:
         return result
 
     @staticmethod
-    def download_windows_installer():
-        return async_to_sync(download_file_by_s3)(InstallerConstants.WINDOWS_INSTALLER_S3_PATH)
+    def download_windows_installer(cpu_architecture: str = ""):
+        installer = InstallerSessionService.installer_artifact(NodeConstants.WINDOWS_OS, cpu_architecture)
+        return async_to_sync(download_file_by_s3)(installer["object_key"])
 
     @staticmethod
-    def download_linux_installer():
-        return async_to_sync(download_file_by_s3)(InstallerConstants.LINUX_INSTALLER_S3_PATH)
+    def download_linux_installer(cpu_architecture: str = ""):
+        installer = InstallerSessionService.installer_artifact(NodeConstants.LINUX_OS, cpu_architecture)
+        return async_to_sync(download_file_by_s3)(installer["object_key"])
 
     @staticmethod
     def get_linux_bootstrap_command(token: str, install_mode: str = MANUAL_INSTALL_MODE) -> str:

@@ -19,7 +19,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
   chart,
   data = [],
   colors = randomColorForLegend(),
-  onToggleSelect,
+  onToggleSelect
 }) => {
   const { t } = useTranslation();
   const [selectedLegend, setSelectedLegend] = useState<string[]>([]);
@@ -83,7 +83,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
       items.forEach((item) => {
         chart.dispatchAction({
           type: flag ? 'legendSelect' : 'legendUnSelect',
-          name: item,
+          name: item
         });
       });
     } else {
@@ -91,7 +91,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
       legendData.forEach((item) => {
         chart.dispatchAction({
           type: flag ? 'legendSelect' : 'legendUnSelect',
-          name: item,
+          name: item
         });
       });
     }
@@ -120,7 +120,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
           </thead>
         </table>
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto min-h-0">
         <table className="chart-legend-table w-full border-collapse">
           <tbody>
             {legendData.map((item, index) => (
@@ -135,21 +135,21 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
                 onClick={() => handleLegend(item)}
               >
                 <td className="px-2 py-1">
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 min-w-0">
                     <div
                       className="w-4 h-1 flex-shrink-0"
                       style={{
                         backgroundColor: isActive(item)
                           ? colors[index % colors.length]
-                          : '#d1d5db',
+                          : '#d1d5db'
                       }}
                     />
-                    <span className="text-xs text-gray-700 truncate leading-relaxed">
+                    <div className="flex-1 min-w-0">
                       <EllipsisWithTooltip
-                        className="max-w-[120px] whitespace-nowrap overflow-hidden text-ellipsis"
+                        className="max-w-[106px] text-xs text-gray-700 leading-relaxed whitespace-nowrap overflow-hidden text-ellipsis"
                         text={item || '--'}
                       />
-                    </span>
+                    </div>
                   </div>
                 </td>
               </tr>

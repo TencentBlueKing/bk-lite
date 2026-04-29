@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"nats-executor/local"
 	"nats-executor/logger"
 	"nats-executor/utils"
+	"nats-executor/utils/downloaderr"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -68,6 +70,8 @@ var (
 	executeLocalSCPCommand          = local.Execute
 	parsePrivateKeyFn               = ssh.ParsePrivateKey
 	parsePrivateKeyWithPassphraseFn = ssh.ParsePrivateKeyWithPassphrase
+	mkdirTempDir                    = os.MkdirTemp
+	removeAllPath                   = os.RemoveAll
 	sshDialFn                       = func(network, addr string, config *ssh.ClientConfig) (sshClient, error) {
 		client, err := ssh.Dial(network, addr, config)
 		if err != nil {
@@ -76,6 +80,8 @@ var (
 		return realSSHClient{client: client}, nil
 	}
 )
+
+const sshConnectTimeout = 30 * time.Second
 
 func (c realSSHClient) NewSession() (sshSession, error) {
 	session, err := c.client.NewSession()
@@ -200,25 +206,46 @@ func handleDownloadToRemoteMessage(data []byte, instanceId string, nc sshConn) (
 	if err := json.Unmarshal(incoming.Args[0], &downloadRequest); err != nil {
 		return utils.NewErrorExecuteResponse(instanceId, utils.ErrorCodeInvalidRequest, "invalid request payload"), true
 	}
-
-	localTargetPath := downloadRequest.LocalPath
-	if localTargetPath == "" {
-		localTargetPath = "/tmp"
+	if errMsg := validateTransferTimeout(downloadRequest.ExecuteTimeout); errMsg != "" {
+		return utils.NewErrorExecuteResponse(instanceId, utils.ErrorCodeInvalidRequest, errMsg), true
 	}
+
+	deadline := time.Now().Add(time.Duration(downloadRequest.ExecuteTimeout) * time.Second)
+
+	stagingBasePath := downloadRequest.LocalPath
+	if stagingBasePath == "" {
+		stagingBasePath = os.TempDir()
+	}
+	stagingDir, err := mkdirTempDir(stagingBasePath, "nats-executor-*")
+	if err != nil {
+		return utils.NewErrorExecuteResponse(instanceId, utils.ErrorCodeExecutionFailure, fmt.Sprintf("Failed to prepare local staging path: %v", err)), true
+	}
+	defer func() {
+		if err := removeAllPath(stagingDir); err != nil {
+			logger.Warnf("[SCP Transfer] Instance: %s, failed to clean staging dir %s: %v", instanceId, stagingDir, err)
+		}
+	}()
 
 	localdownloadRequest := utils.DownloadFileRequest{
 		BucketName:     downloadRequest.BucketName,
 		FileKey:        downloadRequest.FileKey,
 		FileName:       downloadRequest.FileName,
-		TargetPath:     localTargetPath,
-		ExecuteTimeout: downloadRequest.ExecuteTimeout,
+		TargetPath:     stagingDir,
+		ExecuteTimeout: remainingBudgetSeconds(deadline),
 	}
 
 	if err := downloadFromObjectStore(localdownloadRequest, nc); err != nil {
-		return utils.NewErrorExecuteResponse(instanceId, utils.ErrorCodeDependencyFailure, fmt.Sprintf("Failed to download file: %v", err)), true
+		code := utils.ErrorCodeDependencyFailure
+		switch {
+		case downloaderr.KindOf(err) == downloaderr.KindTimeout || errors.Is(err, context.DeadlineExceeded):
+			code = utils.ErrorCodeTimeout
+		case downloaderr.KindOf(err) == downloaderr.KindIO:
+			code = utils.ErrorCodeExecutionFailure
+		}
+		return utils.NewErrorExecuteResponse(instanceId, code, fmt.Sprintf("Failed to download file: %v", err)), true
 	}
 
-	sourcePath := fmt.Sprintf("%s/%s", localdownloadRequest.TargetPath, localdownloadRequest.FileName)
+	sourcePath := filepath.Join(localdownloadRequest.TargetPath, localdownloadRequest.FileName)
 	scpCommand, cleanup, err := buildSCPCommandFn(
 		downloadRequest.User,
 		downloadRequest.Host,
@@ -246,7 +273,7 @@ func handleDownloadToRemoteMessage(data []byte, instanceId string, nc sshConn) (
 		Command:        scpCommand,
 		LogCommand:     redactSensitiveCommand(scpCommand),
 		LogContext:     logContext,
-		ExecuteTimeout: downloadRequest.ExecuteTimeout,
+		ExecuteTimeout: remainingBudgetSeconds(deadline),
 	}
 
 	responseData := executeSCPCommand(instanceId, localExecuteRequest)
@@ -268,6 +295,11 @@ func handleUploadToRemoteMessage(data []byte, instanceId string) ([]byte, bool) 
 	if err := json.Unmarshal(incoming.Args[0], &uploadRequest); err != nil {
 		return utils.NewErrorExecuteResponse(instanceId, utils.ErrorCodeInvalidRequest, "invalid request payload"), true
 	}
+	if errMsg := validateTransferTimeout(uploadRequest.ExecuteTimeout); errMsg != "" {
+		return utils.NewErrorExecuteResponse(instanceId, utils.ErrorCodeInvalidRequest, errMsg), true
+	}
+
+	deadline := time.Now().Add(time.Duration(uploadRequest.ExecuteTimeout) * time.Second)
 
 	scpCommand, cleanup, err := buildSCPCommandFn(
 		uploadRequest.User,
@@ -296,7 +328,7 @@ func handleUploadToRemoteMessage(data []byte, instanceId string) ([]byte, bool) 
 		Command:        scpCommand,
 		LogCommand:     redactSensitiveCommand(scpCommand),
 		LogContext:     logContext,
-		ExecuteTimeout: uploadRequest.ExecuteTimeout,
+		ExecuteTimeout: remainingBudgetSeconds(deadline),
 	}
 
 	responseData := executeSCPCommand(instanceId, localExecuteRequest)
@@ -379,6 +411,11 @@ func buildSCPCommand(user, host, password, privateKey string, port uint, sourceP
 }
 
 func executeSCPWithFallback(instanceId string, request local.ExecuteRequest) local.ExecuteResponse {
+	deadline := time.Now().Add(time.Duration(request.ExecuteTimeout) * time.Second)
+	request.ExecuteTimeout = remainingBudgetSeconds(deadline)
+	if request.ExecuteTimeout <= 0 {
+		return localTimeoutResponse(instanceId, fmt.Sprintf("SCP transfer timed out before execution (timeout budget exhausted): %s", request.LogContext))
+	}
 	logger.Debugf("[SCP] Instance: %s, attempt | profile=modern | %s", instanceId, request.LogContext)
 	response := executeLocalSCPCommand(request, instanceId)
 	if response.Success {
@@ -398,6 +435,10 @@ func executeSCPWithFallback(instanceId string, request local.ExecuteRequest) loc
 	legacyRequest := request
 	legacyRequest.Command = legacyCommand
 	legacyRequest.LogCommand = redactSensitiveCommand(legacyCommand)
+	legacyRequest.ExecuteTimeout = remainingBudgetSeconds(deadline)
+	if legacyRequest.ExecuteTimeout <= 0 {
+		return localTimeoutResponse(instanceId, fmt.Sprintf("SCP transfer timed out before legacy retry (timeout budget exhausted): %s", request.LogContext))
+	}
 
 	legacyResponse := executeLocalSCPCommand(legacyRequest, instanceId)
 	if legacyResponse.Success {
@@ -539,6 +580,61 @@ func validateExecuteRequest(req ExecuteRequest) string {
 	}
 }
 
+func validateTransferTimeout(timeout int) string {
+	if timeout <= 0 {
+		return "execute timeout must be greater than 0"
+	}
+	return ""
+}
+
+func remainingBudget(deadline time.Time) time.Duration {
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return 0
+	}
+	return remaining
+}
+
+func remainingBudgetSeconds(deadline time.Time) int {
+	remaining := remainingBudget(deadline)
+	if remaining <= 0 {
+		return 0
+	}
+	seconds := int((remaining + time.Second - 1) / time.Second)
+	if seconds < 1 {
+		return 1
+	}
+	return seconds
+}
+
+func timeoutResponse(instanceId, output, message string) ExecuteResponse {
+	return ExecuteResponse{
+		Output:     output,
+		InstanceId: instanceId,
+		Success:    false,
+		Code:       utils.ErrorCodeTimeout,
+		Error:      message,
+	}
+}
+
+func localTimeoutResponse(instanceId, message string) local.ExecuteResponse {
+	return local.ExecuteResponse{
+		Output:     message,
+		InstanceId: instanceId,
+		Success:    false,
+		Code:       utils.ErrorCodeTimeout,
+		Error:      message,
+	}
+}
+
+func isLikelyTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "timeout") || strings.Contains(lower, "deadline exceeded")
+}
+
 func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	return executeWithConn(req, instanceId, nil)
 }
@@ -547,6 +643,8 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 	if validationErr := validateExecuteRequest(req); validationErr != "" {
 		return invalidSSHExecuteResponse(instanceId, validationErr)
 	}
+
+	deadline := time.Now().Add(time.Duration(req.ExecuteTimeout) * time.Second)
 
 	logger.Debugf("[SSH Execute] Instance: %s, Starting SSH connection to %s@%s:%d", instanceId, req.User, req.Host, req.Port)
 	logger.Debugf("[SSH Execute] Instance: %s, Command: %s, Timeout: %ds", instanceId, req.Command, req.ExecuteTimeout)
@@ -595,10 +693,15 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 		}
 	}
 
+	remaining := remainingBudget(deadline)
+	if remaining <= 0 {
+		return timeoutResponse(instanceId, "", fmt.Sprintf("SSH execution timed out before dialing (timeout: %ds)", req.ExecuteTimeout))
+	}
+
 	sshConfig := &ssh.ClientConfig{
 		User:              req.User,
 		Auth:              authMethods,
-		Timeout:           30 * time.Second,
+		Timeout:           minDuration(sshConnectTimeout, remaining),
 		HostKeyCallback:   ssh.InsecureIgnoreHostKey(),
 		HostKeyAlgorithms: hostKeyAlgorithmsForProfile(profileModern),
 	}
@@ -607,6 +710,12 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 	client, err := sshDialFn("tcp", addr, sshConfig)
 	if err != nil {
 		if shouldRetryWithLegacy(err.Error()) {
+			remaining = remainingBudget(deadline)
+			if remaining <= 0 {
+				errMsg := fmt.Sprintf("SSH dial timed out after %ds before legacy retry", req.ExecuteTimeout)
+				logger.Warnf("[SSH Execute] Instance: %s, %s", instanceId, errMsg)
+				return timeoutResponse(instanceId, "", errMsg)
+			}
 			logger.Warnf("[SSH Execute] Instance: %s, modern profile dial failed, retrying legacy profile for %s@%s:%d - Error: %v", instanceId, req.User, req.Host, req.Port, err)
 
 			legacyAuthMethods := make([]ssh.AuthMethod, 0, len(authMethods))
@@ -634,7 +743,7 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 			legacyConfig := &ssh.ClientConfig{
 				User:              req.User,
 				Auth:              legacyAuthMethods,
-				Timeout:           30 * time.Second,
+				Timeout:           minDuration(sshConnectTimeout, remaining),
 				HostKeyCallback:   ssh.InsecureIgnoreHostKey(),
 				HostKeyAlgorithms: hostKeyAlgorithmsForProfile(profileLegacy),
 			}
@@ -646,6 +755,11 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 		}
 
 		if err != nil {
+			if remainingBudget(deadline) <= 0 || isLikelyTimeoutError(err) {
+				errMsg := fmt.Sprintf("SSH dial timed out after %ds", req.ExecuteTimeout)
+				logger.Warnf("[SSH Execute] Instance: %s, %s", instanceId, errMsg)
+				return timeoutResponse(instanceId, "", errMsg)
+			}
 			errMsg := fmt.Sprintf("Failed to create SSH client: %v", err)
 			logger.Errorf("[SSH Execute] Instance: %s, Failed to create SSH client for %s@%s:%d - Error: %v", instanceId, req.User, req.Host, req.Port, err)
 			return ExecuteResponse{
@@ -666,6 +780,11 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 
 	session, err := client.NewSession()
 	if err != nil {
+		if remainingBudget(deadline) <= 0 {
+			errMsg := fmt.Sprintf("SSH session setup timed out after %ds", req.ExecuteTimeout)
+			logger.Warnf("[SSH Execute] Instance: %s, %s", instanceId, errMsg)
+			return timeoutResponse(instanceId, "", errMsg)
+		}
 		errMsg := fmt.Sprintf("Failed to create SSH session: %v", err)
 		logger.Errorf("[SSH Execute] Instance: %s, Failed to create SSH session - Error: %v", instanceId, err)
 		return ExecuteResponse{
@@ -692,7 +811,7 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 	session.SetStdout(stdoutWriter)
 	session.SetStderr(stderrWriter)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(req.ExecuteTimeout)*time.Second)
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 
 	logger.Debugf("[SSH Execute] Instance: %s, Executing command...", instanceId)
@@ -706,7 +825,7 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 	select {
 	case <-ctx.Done():
 		duration := time.Since(startTime)
-		errMsg := fmt.Sprintf("Command timed out after %v (timeout: %ds)", duration, req.ExecuteTimeout)
+		errMsg := fmt.Sprintf("SSH execution timed out after %v (timeout: %ds)", duration, req.ExecuteTimeout)
 		logger.Warnf("[SSH Execute] Instance: %s, %s", instanceId, errMsg)
 		session.Signal(ssh.SIGKILL)
 		if stdoutStreamWriter != nil {
@@ -715,13 +834,7 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 		if stderrStreamWriter != nil {
 			stderrStreamWriter.Flush()
 		}
-		return ExecuteResponse{
-			Output:     stdout.String() + stderr.String(),
-			InstanceId: instanceId,
-			Success:    false,
-			Code:       utils.ErrorCodeTimeout,
-			Error:      errMsg,
-		}
+		return timeoutResponse(instanceId, stdout.String()+stderr.String(), errMsg)
 	case err := <-errChan:
 		duration := time.Since(startTime)
 		if stdoutStreamWriter != nil {
@@ -757,6 +870,13 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 			Success:    true,
 		}
 	}
+}
+
+func minDuration(a, b time.Duration) time.Duration {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func buildPublicKeyAuthMethod(signer ssh.Signer, profile sshCompatibilityProfile) ssh.AuthMethod {

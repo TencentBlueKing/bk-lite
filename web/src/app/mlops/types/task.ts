@@ -42,20 +42,15 @@ interface AlgorithmParam {
 }
 
 interface TrainTaskHistory {
-  id: number;
-  job_id: number;
-  tenant_id: number;
-  train_data_id: number;
-  user_id: string;
-  parameters: string;
+  run_id: string;
+  run_name: string;
   status: string;
-  created_at?: string;
-  started_at?: string;
-  updated_at?: string;
-  completed_at?: string;
-  anomaly_detection_train_jobs: {
-    name: string;
-  }
+  start_time?: string | null;
+  end_time?: string | null;
+  duration_minutes: number;
+  is_latest_run?: boolean;
+  can_delete_run?: boolean;
+  delete_block_reason?: string | null;
 }
 
 // ========== API 参数类型 ==========

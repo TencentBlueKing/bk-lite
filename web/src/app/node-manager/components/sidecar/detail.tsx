@@ -31,6 +31,7 @@ const Collectordetail = () => {
       name: searchParams.get('name') || '',
       introduction: searchParams.get('introduction') || '',
       system: searchParams.get('system') || 'linux',
+      architecture: searchParams.get('architecture') || '',
       icon: searchParams.get('icon') || 'caijiqizongshu'
     };
   };
@@ -56,6 +57,7 @@ const Collectordetail = () => {
       const param = {
         object: urlParams.name,
         os: urlParams.system,
+        cpu_architecture: urlParams.architecture,
         page: pagination.current,
         page_size: pagination.pageSize
       };
@@ -97,6 +99,7 @@ const Collectordetail = () => {
       description: urlParams.introduction,
       originalTags: [urlParams.system],
       os: urlParams.system,
+      cpu_architecture: urlParams.architecture,
       icon: urlParams.icon,
       executable_path: '',
       execute_parameters: ''

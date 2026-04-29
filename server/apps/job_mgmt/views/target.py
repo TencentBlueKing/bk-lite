@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import job_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.constants import OSType, SSHCredentialType
@@ -14,6 +15,7 @@ from apps.job_mgmt.serializers.target import TargetBatchDeleteSerializer, Target
 from apps.node_mgmt.models import CloudRegion
 from apps.rpc.executor import Executor
 from apps.rpc.node_mgmt import NodeMgmt
+from apps.rpc.system_mgmt import SystemMgmt
 
 
 def _get_executor_node(cloud_region_id: int) -> str:
@@ -58,6 +60,25 @@ def _parse_ssh_test_result(result) -> tuple[bool, str, str]:
         return success, str(stdout), str(error)
 
     return False, str(result), f"未知返回类型: {type(result).__name__}"
+
+
+def _build_actor_context(request):
+    current_team = request.COOKIES.get("current_team")
+    if current_team in (None, ""):
+        raise BaseAppException("缺少 current_team 参数")
+
+    try:
+        current_team = int(current_team)
+    except (TypeError, ValueError):
+        raise BaseAppException("current_team 参数非法")
+
+    return {
+        "username": request.user.username,
+        "domain": request.user.domain,
+        "current_team": current_team,
+        "include_children": request.COOKIES.get("include_children", "0") == "1",
+        "is_superuser": request.user.is_superuser,
+    }
 
 
 class TargetViewSet(AuthViewSet):
@@ -148,12 +169,20 @@ class TargetViewSet(AuthViewSet):
         if os_type:
             query_data["os"] = os_type
 
-        # 组织权限过滤
-        current_team = int(request.COOKIES.get("current_team") or "0")
-        if current_team:
-            query_data["organization_ids"] = [current_team]
-
         try:
+            actor_context = _build_actor_context(request)
+            include_children = actor_context["include_children"]
+            scope_result = SystemMgmt().get_authorized_groups_scoped(actor_context, include_children=include_children)
+            query_data["organization_ids"] = scope_result.get("data", [])
+
+            if not request.user.is_superuser:
+                query_data["permission_data"] = {
+                    "username": request.user.username,
+                    "domain": request.user.domain,
+                    "current_team": actor_context["current_team"],
+                    "include_children": include_children,
+                }
+
             node_mgmt = NodeMgmt()
             result = node_mgmt.node_list(query_data)
 
@@ -186,6 +215,11 @@ class TargetViewSet(AuthViewSet):
                         "items": unified_items,
                     },
                 }
+            )
+        except BaseAppException as e:
+            return Response(
+                {"result": False, "message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
         except Exception as e:
             logger.exception(f"[query_nodes] 查询节点失败: {e}")

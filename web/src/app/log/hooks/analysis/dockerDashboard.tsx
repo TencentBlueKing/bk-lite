@@ -101,6 +101,7 @@ export const useDockerDashboard = () => {
         valueConfig: {
           chartType: 'single',
           dataSource: 1,
+          color: 'var(--color-fail)',
           displayMaps: {
             type: 'single',
             key: 'errcount',

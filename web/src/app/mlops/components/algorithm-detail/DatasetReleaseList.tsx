@@ -340,6 +340,11 @@ const DatasetReleaseList: React.FC<DatasetReleaseListProps> = ({ datasetType }) 
         title={t(`datasets.datasetsRelease`)}
         footer={
           <div className='flex justify-end'>
+            <PermissionWrapper requiredPermissions={['View']}>
+              <Button type="default" disabled={loading} className='mr-2' onClick={() => fetchReleases()}>
+                {t(`mlops-common.refreshList`)}
+              </Button>
+            </PermissionWrapper>
             <PermissionWrapper requiredPermissions={['Add']}>
               <Button type="primary" onClick={handleRelease}>
                 {t(`common.publish`)}

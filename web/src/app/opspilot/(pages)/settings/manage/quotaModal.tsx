@@ -95,11 +95,11 @@ const QuotaModal: React.FC<QuotaModalProps> = ({ visible, onConfirm, onCancel, m
     >
       <Form form={form} layout="vertical" name="quota_form">
         <Form.Item
-          label={t('settings.manageQuota.form.name')}
+          label={t('common.name')}
           name="name"
-          rules={[{ required: true, message: `${t('common.inputMsg')}${t('settings.manageQuota.form.name')}!` }]}
+          rules={[{ required: true, message: `${t('common.inputMsg')}${t('common.name')}!` }]}
         >
-          <Input placeholder={`${t('common.inputMsg')}${t('settings.manageQuota.form.name')}`} />
+          <Input placeholder={`${t('common.inputMsg')}${t('common.name')}`} />
         </Form.Item>
         <Form.Item label={t('settings.manageQuota.form.target')} required>
           <Input.Group compact>

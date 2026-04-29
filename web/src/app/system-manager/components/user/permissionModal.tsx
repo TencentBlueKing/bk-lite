@@ -182,7 +182,7 @@ const PermissionModal: React.FC<PermissionModalProps> = ({ visible, rules = {}, 
       >
         <Form.Item
           name="groupName"
-          label={t('system.permission.group')}
+          label={t('common.organization')}
           rules={[{ required: true, message: t('system.permission.pleaseInputGroupName') }]}
         >
           <Input disabled />

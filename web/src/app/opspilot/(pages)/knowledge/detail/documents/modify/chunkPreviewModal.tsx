@@ -127,7 +127,7 @@ const ChunkPreviewModal: React.FC<ChunkPreviewModalProps> = ({
 
   return (
     <Drawer
-      title={`${t('knowledge.qaPairs.preview')} - ${t('knowledge.qaPairs.selectedChunks')}`}
+      title={`${t('common.preview')} - ${t('knowledge.qaPairs.selectedChunks')}`}
       placement="right"
       width={1000}
       onClose={handleClose}

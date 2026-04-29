@@ -7,6 +7,7 @@ from apps.node_mgmt.filters.package import PackageVersionFilter
 from apps.node_mgmt.models.package import PackageVersion
 from apps.node_mgmt.serializers.package import PackageVersionSerializer
 from apps.node_mgmt.services.package import PackageService
+from apps.node_mgmt.constants.node import NodeConstants
 from config.drf.pagination import CustomPageNumberPagination
 
 
@@ -37,17 +38,16 @@ class PackageMgmtView(
 
         package_type = request.data.get("type")  # collector 或 controller
         os_type = request.data.get("os")  # linux 或 windows
+        cpu_architecture = request.data.get("cpu_architecture") or NodeConstants.X86_64_ARCH
         object_name = request.data.get("object")  # 采集器/控制器名称
 
         # 校验必填参数
         if not all([package_type, os_type, object_name]):
-            return WebUtils.response_error(
-                error_message="请填写完整的包类型、操作系统和对象名称"
-            )
+            return WebUtils.response_error(error_message="请填写完整的包类型、操作系统和对象名称")
 
         # 校验包并自动识别版本
         is_valid, error_message, parsed_info = PackageService.validate_package(
-            uploaded_file.name, package_type, os_type, object_name
+            uploaded_file.name, package_type, os_type, object_name, cpu_architecture
         )
 
         if not is_valid:
@@ -56,6 +56,7 @@ class PackageMgmtView(
         # 使用自动识别的版本号和去掉版本号的文件名
         data = dict(
             os=os_type,
+            cpu_architecture=PackageService.normalize_upload_cpu_architecture(cpu_architecture),
             type=package_type,
             object=object_name,
             version=parsed_info["version"],  # 自动识别的版本号
@@ -68,16 +69,10 @@ class PackageMgmtView(
         existing_package = parsed_info.get("existing_package")
         if existing_package:
             PackageService.upload_file(uploaded_file, data)
-            existing_package.description = data.get(
-                "description", existing_package.description
-            )
+            existing_package.description = data.get("description", existing_package.description)
             existing_package.updated_by = request.user.username
-            existing_package.save(
-                update_fields=["description", "updated_by", "updated_at"]
-            )
-            return WebUtils.response_success(
-                PackageVersionSerializer(existing_package).data
-            )
+            existing_package.save(update_fields=["description", "updated_by", "updated_at"])
+            return WebUtils.response_success(PackageVersionSerializer(existing_package).data)
 
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)

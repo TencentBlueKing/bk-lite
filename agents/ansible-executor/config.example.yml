@@ -21,6 +21,7 @@ jetstream:
   # durable: ansible-executor-default
   max_deliver: 5
   ack_wait: 300
+  # 注意：配置 backoff 后，JetStream 的实际 ack deadline 取 backoff[0]
   backoff: [5, 15, 30, 60]
   dlq_subject: bk.ans_exec.tasks.dlq
 

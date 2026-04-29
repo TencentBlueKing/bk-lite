@@ -176,16 +176,16 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
               <div className="pt-2">
                 <Form form={form} labelCol={{ flex: '0 0 60px' }} wrapperCol={{ flex: '1' }}>
                   <Form.Item
-                    label={t('studio.form.name')}
+                    label={t('common.name')}
                     name="name"
-                    rules={[{ required: true, message: `${t('common.inputMsg')}${t('studio.form.name')}` }]}
+                    rules={[{ required: true, message: `${t('common.inputMsg')}${t('common.name')}` }]}
                   >
                     <Input />
                   </Form.Item>
                   <Form.Item
-                    label={t('studio.form.group')}
+                    label={t('common.organization')}
                     name="group"
-                    rules={[{ required: true, message: `${t('common.inputMsg')}${t('studio.form.group')}` }]}
+                    rules={[{ required: true, message: `${t('common.inputMsg')}${t('common.organization')}` }]}
                   >
                     <Select mode="multiple">
                       {groups.map((group) => (

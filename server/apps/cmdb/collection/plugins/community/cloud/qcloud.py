@@ -21,7 +21,7 @@ class QCloudCollectionPlugin(AutoRegisterCollectionPluginMixin, QCloudCollectMet
         "qcloud_mongodb_info_gauge",
         "qcloud_mysql_info_gauge",
         "qcloud_pgsql_info_gauge",
-        "qcloud_pulsar_cluster_info_gauge",
+        "qcloud_plusar_cluster_info_gauge",
         "qcloud_redis_info_gauge",
         "qcloud_rocketmq_info_gauge",
     ]
@@ -193,7 +193,7 @@ class QCloudCollectionPlugin(AutoRegisterCollectionPluginMixin, QCloudCollectMet
             "volume_mb": "volume_mb",
             "charge_type": "charge_type",
         },
-        "qcloud_pulsar_cluster": {
+        "qcloud_plusar_cluster": {
             "inst_name": QCloudCollectMetrics.set_instance_inst_name,
             "assos": QCloudCollectMetrics.set_asso_instances,
             "resource_name": "resource_name",

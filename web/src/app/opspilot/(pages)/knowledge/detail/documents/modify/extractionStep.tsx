@@ -246,7 +246,7 @@ const ExtractionStep: React.FC<{
       key: 'method',
     },
     {
-      title: t('knowledge.documents.actions'),
+      title: t('common.actions'),
       key: 'actions',
       render: (_: unknown, record: any, index: number) => (
         <Button

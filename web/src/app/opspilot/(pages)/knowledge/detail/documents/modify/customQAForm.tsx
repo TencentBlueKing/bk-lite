@@ -211,7 +211,7 @@ const CustomQAForm = forwardRef<any, CustomQAFormProps>(({
           ]}
         >
           <Input 
-            placeholder={t('common.inputMsg') + t('knowledge.qaPairs.name')} 
+            placeholder={t('common.inputMsg') + t('common.name')} 
             size="large"
             onChange={validateAndNotify}
           />

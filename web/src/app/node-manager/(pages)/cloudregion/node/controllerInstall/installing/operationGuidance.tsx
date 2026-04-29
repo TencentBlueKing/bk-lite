@@ -66,7 +66,9 @@ const OperationGuidance = forwardRef<ModalRef>(({}, ref) => {
     if (!os) return;
     try {
       const manifest = await getInstallerManifest();
-      const result = manifest?.artifacts?.[os] || null;
+      const osArtifacts = manifest?.artifacts?.[os] || {};
+      const defaultArch = os === 'linux' ? 'x86_64' : 'x86_64';
+      const result = osArtifacts?.[defaultArch] || Object.values(osArtifacts)[0] || null;
       setInstallerManifest(manifest || null);
       setNodeInfo((prev) => ({
         ...prev,

@@ -161,7 +161,7 @@ const SkillRules: React.FC = () => {
       ),
     },
     {
-      title: t('skill.rules.table.actions'),
+      title: t('common.actions'),
       key: 'actions',
       render: (text: any, record: SkillRule) => (
         <>

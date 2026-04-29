@@ -1,11 +1,13 @@
 """Job Management NATS API - 用于数据权限规则"""
 
+from asgiref.sync import async_to_sync
 from django.utils import timezone
 
 import nats_client
 from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import ExecutionStatus
 from apps.job_mgmt.models import DangerousPath, DangerousRule, JobExecution, Playbook, ScheduledTask, Script, Target
+from apps.node_mgmt.utils.s3 import delete_s3_file
 
 
 @nats_client.register
@@ -195,4 +197,15 @@ def ansible_task_callback(data: dict):
     )
 
     logger.info(f"[ansible_task_callback] 任务完成: task_id={task_id}, status={execution.status}")
+
+    # 清理 Playbook 执行中转到 NATS OS 的临时文件
+    if execution.playbook_id:
+        nats_file_key = f"job-playbooks/{task_id}/{execution.playbook.file_name}" if execution.playbook else None
+        if nats_file_key:
+            try:
+                async_to_sync(delete_s3_file)(nats_file_key)
+                logger.info(f"[ansible_task_callback] 已清理 NATS OS 中转文件: {nats_file_key}")
+            except Exception as e:
+                logger.warning(f"[ansible_task_callback] 清理 NATS OS 中转文件失败: {nats_file_key}, error={e}")
+
     return {"success": True, "message": "回调处理成功"}

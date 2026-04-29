@@ -1,6 +1,6 @@
 {
   "plugin": "Etcd",
-  "plugin_desc": "通过 Pull 方式采集 etcd 关键监控指标，覆盖集群状态、存储容量、磁盘时延、一致性提案、请求流量以及监听压缩等核心运维场景。",
+  "plugin_desc": "由 Telegraf Pull 采集器通过 Prometheus 指标端点采集 etcd 关键监控指标，覆盖集群状态、存储容量、磁盘时延、一致性提案、请求流量以及监听压缩等核心运维场景。",
   "status_query": "any({instance_type='etcd', collect_type='bkpull'}) by (instance_id)",
   "name": "Etcd",
   "icon": "mm-middleware_中间件",
@@ -45,7 +45,7 @@
       "display_name": "活跃节点连接数",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "count",
+      "unit": "counts",
       "dimensions": [],
       "description": "当前可用的节点间连接数。",
       "query": "sum(etcd_network_active_peers_gauge{__$labels__}) by (instance_id)"
@@ -122,7 +122,7 @@
       "display_name": "后端存储使用率",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "%",
+      "unit": "percent",
       "dimensions": [],
       "description": "后端已分配空间占总配额的比例。",
       "query": "clamp_min(etcd_mvcc_db_total_size_in_bytes_gauge{__$labels__} / etcd_server_quota_backend_bytes_gauge{__$labels__} * 100, 0)"
@@ -144,7 +144,7 @@
       "display_name": "后端碎片率",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "%",
+      "unit": "percent",
       "dimensions": [],
       "description": "后端已分配空间与实际使用空间之间的碎片比例。",
       "query": "clamp_min((etcd_mvcc_db_total_size_in_bytes_gauge{__$labels__} - etcd_mvcc_db_total_size_in_use_in_bytes_gauge{__$labels__}) / clamp_min(etcd_mvcc_db_total_size_in_bytes_gauge{__$labels__}, 1) * 100, 0)"
@@ -166,7 +166,7 @@
       "display_name": "键数量",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "count",
+      "unit": "counts",
       "dimensions": [],
       "description": "当前存储中的键总数。",
       "query": "etcd_debugging_mvcc_keys_total_gauge{__$labels__}"
@@ -221,7 +221,7 @@
       "display_name": "提案积压数",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "count",
+      "unit": "counts",
       "dimensions": [],
       "description": "当前等待提交的提案数量。",
       "query": "etcd_server_proposals_pending_gauge{__$labels__}"
@@ -265,7 +265,7 @@
       "display_name": "提案应用落后数",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "count",
+      "unit": "counts",
       "dimensions": [],
       "description": "已提交提案与已应用提案之间的差值。",
       "query": "clamp_min(etcd_server_proposals_committed_total_gauge{__$labels__} - etcd_server_proposals_applied_total_gauge{__$labels__}, 0)"
@@ -342,7 +342,7 @@
       "display_name": "客户端入站流量",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "Bps",
+      "unit": "byteps",
       "dimensions": [],
       "description": "最近 5 分钟来自客户端 gRPC 请求的入站流量。",
       "query": "sum(rate(etcd_network_client_grpc_received_bytes_total_counter{__$labels__}[5m])) by (instance_id)"
@@ -353,7 +353,7 @@
       "display_name": "客户端出站流量",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "Bps",
+      "unit": "byteps",
       "dimensions": [],
       "description": "最近 5 分钟发送给客户端 gRPC 请求的出站流量。",
       "query": "sum(rate(etcd_network_client_grpc_sent_bytes_total_counter{__$labels__}[5m])) by (instance_id)"
@@ -364,7 +364,7 @@
       "display_name": "节点间入站流量",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "Bps",
+      "unit": "byteps",
       "dimensions": [],
       "description": "最近 5 分钟来自对等节点的入站流量。",
       "query": "sum(rate(etcd_network_peer_received_bytes_total_counter{__$labels__}[5m])) by (instance_id)"
@@ -375,7 +375,7 @@
       "display_name": "节点间出站流量",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "Bps",
+      "unit": "byteps",
       "dimensions": [],
       "description": "最近 5 分钟发送给对等节点的出站流量。",
       "query": "sum(rate(etcd_network_peer_sent_bytes_total_counter{__$labels__}[5m])) by (instance_id)"
@@ -397,7 +397,7 @@
       "display_name": "监听器数量",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "count",
+      "unit": "counts",
       "dimensions": [],
       "description": "当前监听器数量。",
       "query": "etcd_debugging_mvcc_watcher_total_gauge{__$labels__}"
@@ -408,7 +408,7 @@
       "display_name": "活跃监听流",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "count",
+      "unit": "counts",
       "dimensions": [],
       "description": "根据已建立和已结束的流式 RPC 推算出的当前活跃监听流数量。",
       "query": "sum(grpc_server_started_total_counter{grpc_service=\"etcdserverpb.Watch\", grpc_type=\"bidi_stream\", instance_type=\"etcd\", __$labels__}) by (instance_id) - sum(grpc_server_handled_total_counter{grpc_service=\"etcdserverpb.Watch\", grpc_type=\"bidi_stream\", instance_type=\"etcd\", __$labels__}) by (instance_id)"

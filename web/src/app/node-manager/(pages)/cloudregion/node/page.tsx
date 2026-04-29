@@ -330,6 +330,11 @@ const Node = () => {
             nodeStateEnum?.install_method?.[installMethodValue] ||
             installMethodValue;
           const isAutoInstall = installMethodValue === 'auto';
+          const cpuArchitectureValue = record.cpu_architecture;
+          const cpuArchitectureLabel =
+            cpuArchitectureValue === 'arm64'
+              ? 'ARM64'
+              : cpuArchitectureValue || '--';
 
           // 获取节点类型映射
           const nodeTypeValue = record.node_type;
@@ -388,6 +393,11 @@ const Node = () => {
                       cursor: 'pointer'
                     }}
                   />
+                </div>
+              </Tooltip>
+              <Tooltip title={`CPU架构: ${cpuArchitectureLabel}`}>
+                <div className="flex items-center text-[12px] min-w-[52px] text-[var(--color-text-2)] cursor-pointer">
+                  {cpuArchitectureLabel}
                 </div>
               </Tooltip>
             </div>

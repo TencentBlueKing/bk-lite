@@ -28,8 +28,13 @@ def adapters():
         from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
         from apps.alerts.common.source_adapter.restful import RestFulAdapter
         from apps.alerts.common.source_adapter.nats import NatsAdapter
+        from apps.alerts.common.source_adapter.prometheus import PrometheusAdapter
+        from apps.alerts.common.source_adapter.zabbix import ZabbixAdapter
+
         AlertSourceAdapterFactory.register_adapter('restful', RestFulAdapter)
         AlertSourceAdapterFactory.register_adapter("nats", NatsAdapter)
+        AlertSourceAdapterFactory.register_adapter("prometheus", PrometheusAdapter)
+        AlertSourceAdapterFactory.register_adapter("zabbix", ZabbixAdapter)
     except Exception as e:
         logger.error(f"Failed to register alert source adapter: {e}", exc_info=True)
         raise

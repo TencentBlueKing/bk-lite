@@ -200,7 +200,7 @@ const EntityCard: React.FC<EntityCardProps> = ({
                 </div>
                 <div className="flex items-end justify-end text-(--color-text-4) font-mini w-full text-right overflow-hidden">
                   <EllipsisWithTooltip
-                    text={`${t('skill.form.group')}: ${Array.isArray(team_name) ? team_name.join(',') : '--'} | ${t('skill.form.owner')}: ${created_by}`}
+                    text={`${t('common.organization')}: ${Array.isArray(team_name) ? team_name.join(',') : '--'} | ${t('skill.form.owner')}: ${created_by}`}
                     className="overflow-hidden whitespace-nowrap text-ellipsis"
                   />
                 </div>

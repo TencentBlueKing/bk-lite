@@ -50,19 +50,19 @@ const formatDateTime = (value: string) => {
   }).format(date);
 };
 
-type DiffRow = {
+interface DiffRow {
   key: string;
   leftNumber: number | null;
   rightNumber: number | null;
   leftText: string;
   rightText: string;
   status: 'same' | 'changed' | 'added' | 'removed';
-};
+}
 
-type DiffSegment = {
+interface DiffSegment {
   text: string;
   changed: boolean;
-};
+}
 
 const buildSideBySideDiffRows = (leftContent: string, rightContent: string): DiffRow[] => {
   const leftLines = leftContent.split(/\r?\n/);

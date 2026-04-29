@@ -137,7 +137,7 @@ const VendorBasicInfo: React.FC<VendorBasicInfoProps> = ({ vendorId, onUpdated }
         <div className="grid grid-cols-1 gap-x-4 xl:grid-cols-2">
           <Form.Item
             name="name"
-            label={t('provider.vendor.name')}
+            label={t('common.name')}
             rules={[{ required: true, message: t('provider.vendor.nameRequired') }]}
           >
             <Input placeholder={t('provider.vendor.namePlaceholder')} />
@@ -192,7 +192,7 @@ const VendorBasicInfo: React.FC<VendorBasicInfoProps> = ({ vendorId, onUpdated }
 
         <Form.Item
           name="team"
-          label={t('provider.vendor.group')}
+          label={t('common.organization')}
           rules={[{ required: true, message: t('provider.vendor.groupRequired') }]}
         >
           <GroupTreeSelect

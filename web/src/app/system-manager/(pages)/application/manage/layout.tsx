@@ -34,7 +34,7 @@ const AppManageLayout = ({ children }: { children: React.ReactNode }) => {
 
   const fetchClientDetail = async () => {
     const client = await getClientDetail({ params: { name: id } });
-    setClientName(client.name);
+    setClientName(client.display_name || client.name);
     setClientDescription(client.description);
   };
 

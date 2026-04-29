@@ -12,6 +12,35 @@ import ComSingle from '../widgets/comSingle';
 import ComSankey from '../widgets/comSankey';
 import { SearchParams } from '@/app/log/types/search';
 
+const buildInstanceFilterQuery = (
+  queryText: string,
+  instanceIds?: Array<string | number>
+) => {
+  if (!instanceIds?.length) {
+    return queryText;
+  }
+
+  const instanceFilter =
+    instanceIds.length === 1
+      ? `instance_id:"${String(instanceIds[0])}"`
+      : `(${instanceIds.map((id) => `instance_id:"${String(id)}"`).join(' OR ')})`;
+
+  const separatorIndex = queryText.indexOf('|');
+  const baseFilter =
+    separatorIndex >= 0
+      ? queryText.slice(0, separatorIndex).trim()
+      : queryText.trim();
+  const pipeline =
+    separatorIndex >= 0 ? queryText.slice(separatorIndex).trimStart() : '';
+
+  const mergedFilter =
+    !baseFilter || baseFilter === '*'
+      ? instanceFilter
+      : `(${baseFilter}) AND ${instanceFilter}`;
+
+  return pipeline ? `${mergedFilter} ${pipeline}` : mergedFilter;
+};
+
 // 根据时间跨度计算时间间隔
 const calculateTimeInterval = (startTime: string, endTime: string): string => {
   const start = new Date(startTime);
@@ -95,6 +124,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     otherConfig.frequence,
     config,
     otherConfig.groupIds,
+    otherConfig.instanceIds,
     otherConfig.timeRange,
     refreshKey
   ]);
@@ -106,6 +136,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   }, [
     config,
     otherConfig.groupIds,
+    otherConfig.instanceIds,
     otherConfig.timeRange,
     refreshKey,
     isLoading
@@ -160,6 +191,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       const timeInterval = calculateTimeInterval(startTime, endTime);
       query = query.replace(/\$\{_time\}/g, timeInterval);
     }
+    query = buildInstanceFilterQuery(query, otherConfig.instanceIds);
 
     const params: SearchParams = {
       start_time: startTime,

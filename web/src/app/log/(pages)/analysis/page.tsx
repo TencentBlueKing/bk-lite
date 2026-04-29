@@ -26,6 +26,11 @@ const Analysis: React.FC = () => {
   const [dashboardId, setDashboardId] = useState<string>(
     menuItems[0]?.id || ''
   );
+  const [dashboardCollectTypeIdMap, setDashboardCollectTypeIdMap] = useState<
+    Record<string, React.Key>
+  >({});
+  const [selectedCollectTypeId, setSelectedCollectTypeId] =
+    useState<React.Key | null>(null);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [treeLoading, setTreeLoading] = useState<boolean>(true);
 
@@ -57,6 +62,8 @@ const Analysis: React.FC = () => {
         {}
       );
 
+      const collectTypeIdMap: Record<string, React.Key> = {};
+
       // 按 display_category 分组，仅包含有对应仪表盘的 collectType
       const groupedData = collectTypes.reduce(
         (acc, item) => {
@@ -64,6 +71,7 @@ const Analysis: React.FC = () => {
           const dashboard = dashboardMap[item.name];
           // 没有仪表盘的节点隐藏
           if (!dashboard) return acc;
+          collectTypeIdMap[dashboard.id] = item.id;
           if (!acc[category]) {
             acc[category] = {
               title: categoryMap[category] || category,
@@ -81,6 +89,8 @@ const Analysis: React.FC = () => {
         },
         {} as Record<string, TreeItem>
       );
+
+      setDashboardCollectTypeIdMap(collectTypeIdMap);
 
       // 按 categoryEnum 顺序排列，仅展示有子节点的分类
       return categoryEnum
@@ -106,6 +116,10 @@ const Analysis: React.FC = () => {
     };
     fetchTreeData();
   }, [isLoading]);
+
+  useEffect(() => {
+    setSelectedCollectTypeId(dashboardCollectTypeIdMap[dashboardId] || null);
+  }, [dashboardCollectTypeIdMap, dashboardId]);
 
   const handleNodeSelect = (key: string) => {
     setDashboardId(key);
@@ -153,6 +167,7 @@ const Analysis: React.FC = () => {
         <Dashboard
           ref={dashboardRef}
           selectedDashboard={selectedDashboard}
+          selectedCollectTypeId={selectedCollectTypeId}
           editable={false}
         />
       </div>

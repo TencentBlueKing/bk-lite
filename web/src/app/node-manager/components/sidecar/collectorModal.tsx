@@ -23,6 +23,7 @@ const { Dragger } = Upload;
 const initData = {
   name: '',
   system: '',
+  cpu_architecture: 'x86_64',
   description: '',
   service_type: '',
   executable_path: '',
@@ -65,6 +66,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         setTitle(title as string);
         setVisible(true);
         info.system = info.os || 'linux';
+        info.cpu_architecture = info.cpu_architecture || 'x86_64';
         info.appTag = appTag; // 保存 appTag 到 formData
         if (is_pre && type === 'edit') {
           info.name = display_name;
@@ -148,6 +150,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       const params = {
         name: file.name,
         os: formData.system,
+        cpu_architecture: formData.cpu_architecture || '',
         type: key,
         object: formData.original_name || formData.name,
         file: file.originFileObj
@@ -283,6 +286,22 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
             )}
             {type === 'upload' && (
               <>
+                <Form.Item
+                  label="CPU架构"
+                  name="cpu_architecture"
+                  rules={[
+                    { required: true, message: t('common.selectMsg') }
+                  ]}
+                  initialValue="x86_64"
+                >
+                  <Select
+                    options={[
+                      { value: 'x86_64', label: 'x86_64' },
+                      { value: 'arm64', label: 'ARM64' }
+                    ]}
+                    placeholder={t('common.selectMsg')}
+                  />
+                </Form.Item>
                 <Form.Item
                   label={t('node-manager.packetManage.importFile')}
                   name="upload"

@@ -3,6 +3,7 @@ import { TableDataItem } from '@/app/monitor/types';
 import { useHardwareConfig } from './objects/hardwareDevice/hardware';
 import { useOracleConfig } from './objects/database/oracle';
 import { useElasticSearchConfig } from './objects/database/elasticSearch';
+import { useInfluxDBConfig } from './objects/database/influxdb';
 import { useMongoDBConfig } from './objects/database/mongoDB';
 import { useMysqlConfig } from './objects/database/mysql';
 import { useRedisConfig } from './objects/database/redis';
@@ -68,6 +69,7 @@ export const useMonitorConfig = () => {
   const hardwareConfig = useHardwareConfig();
   const oracleConfig = useOracleConfig();
   const elasticSearchConfig = useElasticSearchConfig();
+  const influxDBConfig = useInfluxDBConfig();
   const mongoDBConfig = useMongoDBConfig();
   const mysqlDBConfig = useMysqlConfig();
   const redisConfig = useRedisConfig();
@@ -123,6 +125,7 @@ export const useMonitorConfig = () => {
       'Hardware Server': hardwareConfig,
       Oracle: oracleConfig,
       ElasticSearch: elasticSearchConfig,
+      InfluxDB: influxDBConfig,
       MongoDB: mongoDBConfig,
       Mysql: mysqlDBConfig,
       Redis: redisConfig,

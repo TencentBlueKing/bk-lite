@@ -1,5 +1,6 @@
 from copy import deepcopy
 from pathlib import Path
+import uuid
 
 import yaml
 from django.apps import apps
@@ -22,6 +23,7 @@ class Command(BaseCommand):
         self._validate_request(request_data)
 
         service_data = deepcopy(request_data)
+        self._fill_missing_instance_ids(service_data)
         try:
             InstanceConfigService.create_monitor_instance_by_node_mgmt(service_data)
         except BaseAppException as error:
@@ -76,11 +78,23 @@ class Command(BaseCommand):
         for index, instance in enumerate(data["instances"]):
             if not isinstance(instance, dict):
                 raise CommandError(f"instances[{index}] 必须是对象")
-            for field in ["instance_id", "instance_name", "group_ids"]:
+            for field in ["instance_name", "group_ids"]:
                 if field not in instance or instance[field] in [None, ""]:
                     raise CommandError(f"instances[{index}].{field} 必填")
             if not isinstance(instance["group_ids"], list):
                 raise CommandError(f"instances[{index}].group_ids 必须是数组")
+
+    def _fill_missing_instance_ids(self, data):
+        for instance in data.get("instances", []):
+            if instance.get("instance_id") not in [None, ""]:
+                continue
+            instance["instance_id"] = self._generate_instance_id(instance)
+
+    def _generate_instance_id(self, instance):
+        instance_name = str(instance.get("instance_name", "")).strip()
+        if instance_name:
+            return f"cmd_{uuid.uuid5(uuid.NAMESPACE_DNS, instance_name).hex}"
+        return f"cmd_{uuid.uuid4().hex}"
 
     def _build_instances_output(self, service_data):
         monitor_instance_model = apps.get_model("monitor", "MonitorInstance")

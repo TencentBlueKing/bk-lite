@@ -68,6 +68,7 @@ export interface CardItem {
   description: string;
   icon: string;
   os: string;
+  cpu_architecture?: string;
   tagList: string[];
 }
 

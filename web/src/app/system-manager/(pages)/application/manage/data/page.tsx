@@ -65,7 +65,7 @@ const DataManagement: React.FC = () => {
 
   const columns = useMemo(() => [
     {
-      title: t('system.data.name'),
+      title: t('common.name'),
       dataIndex: 'name',
       key: 'name',
     },
@@ -114,9 +114,9 @@ const DataManagement: React.FC = () => {
     {
       name: 'name',
       type: 'input',
-      label: t('system.data.name'),
-      placeholder: `${t('common.inputMsg')}${t('system.data.name')}`,
-      rules: [{ required: true, message: `${t('common.inputMsg')}${t('system.data.name')}` }],
+      label: t('common.name'),
+      placeholder: `${t('common.inputMsg')}${t('common.name')}`,
+      rules: [{ required: true, message: `${t('common.inputMsg')}${t('common.name')}` }],
     },
     {
       name: 'description',

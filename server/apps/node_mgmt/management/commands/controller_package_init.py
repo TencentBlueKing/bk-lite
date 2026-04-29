@@ -1,6 +1,7 @@
 from django.core.management import BaseCommand
 from apps.node_mgmt.management.utils import package_version_upload
 from apps.core.logger import node_logger as logger
+from apps.node_mgmt.constants.node import NodeConstants
 
 
 class Command(BaseCommand):
@@ -30,6 +31,13 @@ class Command(BaseCommand):
             type=str,
             help="文件路径",
             default="",
+        )
+        parser.add_argument(
+            "--cpu_architecture",
+            type=str,
+            choices=[NodeConstants.X86_64_ARCH, NodeConstants.ARM64_ARCH],
+            default=NodeConstants.X86_64_ARCH,
+            help="CPU架构",
         )
 
     def handle(self, *args, **options):

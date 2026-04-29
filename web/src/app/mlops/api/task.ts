@@ -137,6 +137,11 @@ const useMlopsTaskApi = () => {
     return await del(`/mlops/${TRAINJOB_MAP[key]}/${id}/`);
   };
 
+  // 删除单条训练运行记录
+  const deleteTrainRun = async (trainJobId: string | number, runId: string, key: DatasetType) => {
+    return await del(`/mlops/${TRAINJOB_MAP[key]}/${trainJobId}/runs/${runId}/`);
+  };
+
   // 创建数据集版本发布（标准方式，从数据集管理页面）
   const createDatasetRelease = async (
     key: DatasetType,
@@ -211,6 +216,7 @@ const useMlopsTaskApi = () => {
     updateImageClassificationTrainTask,
     updateObjectDetectionTrainTask,
     deleteTrainTask,
+    deleteTrainRun,
     createDatasetRelease,
     getDatasetReleases,
     archiveDatasetRelease,

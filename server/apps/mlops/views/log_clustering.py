@@ -354,6 +354,9 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
                     logger.warning(f"解析 run 数据失败: {e}")
                     continue
 
+            # 标注 run 删除资格
+            self.annotate_run_delete_eligibility(run_datas, train_job.status)
+
             # 分页处理
             total_count = len(run_datas)
             if use_pagination:
@@ -377,6 +380,42 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
             logger.error(f"获取训练记录列表失败: {str(e)}", exc_info=True)
             return Response(
                 {"error": f"获取训练记录失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["delete"], url_path="runs/(?P<run_id>[^/]+)")
+    @HasPermission("log_clustering-Delete")
+    def delete_run(self, request, pk=None, run_id=None):
+        """软删除指定 MLflow run"""
+        try:
+            train_job = self.get_object()
+
+            allowed, reason = self.check_run_delete_eligibility(run_id, train_job)
+            if not allowed:
+                return Response(
+                    {
+                        "error": "未找到对应的训练运行记录" if reason == "run_not_found" else "当前训练运行记录不允许删除",
+                        "code": reason,
+                        "run_id": run_id,
+                    },
+                    status=status.HTTP_404_NOT_FOUND if reason == "run_not_found" else status.HTTP_400_BAD_REQUEST,
+                )
+
+            mlflow_service.delete_run(run_id)
+
+            return Response(
+                {
+                    "result": True,
+                    "run_id": run_id,
+                    "train_job_id": train_job.id,
+                    "deleted": True,
+                    "deletion_type": "mlflow_soft_delete",
+                }
+            )
+        except Exception as e:
+            logger.error(f"删除 run 失败: {str(e)}", exc_info=True)
+            return Response(
+                {"result": False, "message": f"删除 run 失败: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

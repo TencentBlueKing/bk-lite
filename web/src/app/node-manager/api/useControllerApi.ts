@@ -71,9 +71,12 @@ const useControllerApi = () => {
   };
 
   const getInstallerMetadata = async (
-    os: string
+    os: string,
+    arch?: string
   ): Promise<InstallerArtifactMetadata> => {
-    return await get(`/node_mgmt/api/installer/metadata/${os}/`);
+    return await get(`/node_mgmt/api/installer/metadata/${os}/`, {
+      params: arch ? { arch } : undefined
+    });
   };
 
   return {

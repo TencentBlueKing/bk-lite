@@ -44,6 +44,8 @@
     "archiveConfirm": "Confirm Archive",
     "archivingMsg": "After archiving, this version will be marked as obsolete.",
     "deleteConfirm": "Confirm Delete",
+    "deleteRunConfirm": "Confirm delete this training run?",
+    "deleteRunConfirmContent": "This training run record cannot be recovered after deletion.",
     "fileDelDes": "This file will be deleted.",
     "inputVersionMsg": "Enter the version number",
     "versionIptMsg": "Please enter a semantic version number, e.g., v1.0.0",

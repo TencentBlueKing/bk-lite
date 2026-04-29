@@ -100,9 +100,7 @@ def get_experiment_by_name(experiment_name: str) -> Optional[object]:
     """
     try:
         mlflow.set_tracking_uri(MLFLOW_TRACKER_URL)
-        experiments = mlflow.search_experiments(
-            filter_string=f"name = '{experiment_name}'"
-        )
+        experiments = mlflow.search_experiments(filter_string=f"name = '{experiment_name}'")
         result = experiments[0] if experiments else None
 
         if not result:
@@ -115,9 +113,7 @@ def get_experiment_by_name(experiment_name: str) -> Optional[object]:
         raise
 
 
-def get_experiment_runs(
-    experiment_id: str, order_by: str = "start_time DESC"
-) -> pd.DataFrame:
+def get_experiment_runs(experiment_id: str, order_by: str = "start_time DESC") -> pd.DataFrame:
     """
     获取实验的所有运行记录
 
@@ -138,9 +134,7 @@ def get_experiment_runs(
         return runs
 
     except Exception as e:
-        logger.error(
-            f"查询实验运行记录失败 [实验ID: {experiment_id}]: {e}", exc_info=True
-        )
+        logger.error(f"查询实验运行记录失败 [实验ID: {experiment_id}]: {e}", exc_info=True)
         raise
 
 
@@ -402,9 +396,7 @@ def download_model_artifact(run_id: str, artifact_path: str = "model") -> BytesI
         # 下载 artifact 到临时目录
         with tempfile.TemporaryDirectory() as temp_dir:
             logger.info(f"开始下载模型 [run_id: {run_id}, artifact: {artifact_path}]")
-            local_path = client.download_artifacts(
-                run_id, artifact_path, dst_path=temp_dir
-            )
+            local_path = client.download_artifacts(run_id, artifact_path, dst_path=temp_dir)
             model_dir = Path(local_path)
 
             if not model_dir.exists():
@@ -491,14 +483,30 @@ def delete_experiment_and_model(experiment_name: str, model_name: str) -> None:
         if deleted_resources:
             logger.info(f"成功删除 MLflow 资源: {', '.join(deleted_resources)}")
         else:
-            logger.info(
-                f"未找到需要删除的 MLflow 资源: "
-                f"experiment={experiment_name}, model={model_name}"
-            )
+            logger.info(f"未找到需要删除的 MLflow 资源: experiment={experiment_name}, model={model_name}")
 
     except Exception as e:
         logger.error(
             f"删除 MLflow 资源失败: experiment={experiment_name}, model={model_name}, error={e}",
             exc_info=True,
         )
+        raise
+
+
+def delete_run(run_id: str) -> None:
+    """
+    软删除单个 MLflow run（移至回收站）
+
+    Args:
+        run_id: 运行 ID
+
+    Raises:
+        Exception: MLflow 删除失败时抛出
+    """
+    try:
+        client = get_mlflow_client()
+        client.delete_run(run_id)
+        logger.info(f"已软删除 MLflow run: {run_id}")
+    except Exception as e:
+        logger.error(f"删除 MLflow run 失败 [run_id: {run_id}]: {e}", exc_info=True)
         raise

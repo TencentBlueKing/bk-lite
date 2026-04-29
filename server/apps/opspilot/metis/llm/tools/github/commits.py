@@ -31,12 +31,12 @@ def _validate_github_url(url: str) -> bool:
         parsed = urlparse(url)
 
         # 检查协议
-        if parsed.scheme != 'https':
-            raise ValueError(f"GitHub API仅支持HTTPS协议")
+        if parsed.scheme != "https":
+            raise ValueError("GitHub API仅支持HTTPS协议")
 
         # 检查域名
-        if parsed.netloc != 'api.github.com':
-            raise ValueError(f"仅支持GitHub官方API域名")
+        if parsed.netloc != "api.github.com":
+            raise ValueError("仅支持GitHub官方API域名")
 
         return True
 
@@ -59,10 +59,10 @@ def _validate_datetime_format(date_str: str) -> bool:
     """
     try:
         # 尝试解析ISO 8601格式
-        datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+        datetime.fromisoformat(date_str.replace("Z", "+00:00"))
         return True
     except ValueError:
-        raise ValueError(f"日期格式错误，应为ISO 8601格式，如: 2025-09-08T00:00:00Z")
+        raise ValueError("日期格式错误，应为ISO 8601格式，如: 2025-09-08T00:00:00Z")
 
 
 def _process_commits_data(commits: List[Dict]) -> Dict:
@@ -92,22 +92,19 @@ def _process_commits_data(commits: List[Dict]) -> Dict:
     for commit in commits:
         try:
             # 提取所需字段
-            commit_info = commit.get('commit', {})
-            author_info = commit_info.get('author', {})
+            commit_info = commit.get("commit", {})
+            author_info = commit_info.get("author", {})
 
-            author_name = author_info.get('name', 'Unknown')
-            commit_message = commit_info.get('message', '')
-            commit_date = author_info.get('date', '')
+            author_name = author_info.get("name", "Unknown")
+            commit_message = commit_info.get("message", "")
+            commit_date = author_info.get("date", "")
 
             # 初始化用户列表
             if author_name not in user_commits:
                 user_commits[author_name] = []
 
             # 添加commit记录
-            user_commits[author_name].append({
-                'message': commit_message,
-                'date': commit_date
-            })
+            user_commits[author_name].append({"message": commit_message, "date": commit_date})
 
         except Exception as e:
             logger.warning(f"处理commit数据时出错: {e}")
@@ -115,20 +112,13 @@ def _process_commits_data(commits: List[Dict]) -> Dict:
 
     # 按时间排序（从新到旧）
     for author_name in user_commits:
-        user_commits[author_name].sort(
-            key=lambda x: x['date'],
-            reverse=True
-        )
+        user_commits[author_name].sort(key=lambda x: x["date"], reverse=True)
 
     logger.info(f"成功处理 {len(user_commits)} 个用户的commits数据")
     return user_commits
 
 
-@retry(
-    stop=stop_after_attempt(MAX_RETRIES),
-    wait=wait_exponential(multiplier=1, min=4, max=10),
-    reraise=True
-)
+@retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential(multiplier=1, min=4, max=10), reraise=True)
 def _fetch_github_commits(url: str, headers: Dict) -> List[Dict]:
     """
     获取GitHub commits数据，支持重试机制
@@ -146,12 +136,7 @@ def _fetch_github_commits(url: str, headers: Dict) -> List[Dict]:
     logger.info(f"开始获取GitHub commits数据: {url}")
 
     try:
-        response = requests.get(
-            url,
-            headers=headers,
-            timeout=DEFAULT_TIMEOUT,
-            verify=True
-        )
+        response = requests.get(url, headers=headers, timeout=DEFAULT_TIMEOUT, verify=True)
 
         # 检查响应状态
         if response.status_code == 401:
@@ -161,8 +146,7 @@ def _fetch_github_commits(url: str, headers: Dict) -> List[Dict]:
         elif response.status_code == 404:
             raise ValueError("GitHub仓库不存在或无访问权限")
         elif response.status_code >= 400:
-            logger.error(
-                f"GitHub API返回错误状态: {response.status_code}, 响应: {response.text[:500]}")
+            logger.error(f"GitHub API返回错误状态: {response.status_code}, 响应: {response.text[:500]}")
             raise ValueError(f"GitHub API请求失败，状态码: {response.status_code}")
 
         commits_data = response.json()
@@ -192,13 +176,7 @@ def _fetch_github_commits(url: str, headers: Dict) -> List[Dict]:
 
 
 @tool()
-def get_github_commits(
-    owner: str,
-    repo: str,
-    since: str,
-    until: str,
-    token: Optional[str] = None
-) -> str:
+def get_github_commits(owner: str, repo: str, since: str, until: str, token: Optional[str] = None) -> str:
     """
     获取指定GitHub仓库在指定时间范围内的commits记录，并按用户分组处理。请根据用户指定的时间进行查询，不要猜测
 
@@ -206,7 +184,7 @@ def get_github_commits(
         owner (str): GitHub仓库所有者用户名或组织名
         repo (str): GitHub仓库名称
         since (str): 开始时间，ISO 8601格式，如: 2025-09-08T00:00:00Z
-        until (str): 结束时间，ISO 8601格式，如: 2025-09-15T00:00:00Z  
+        until (str): 结束时间，ISO 8601格式，如: 2025-09-15T00:00:00Z
         token (str, optional): GitHub Personal Access Token，用于提高API限制和访问私有仓库
 
     Returns:
@@ -242,11 +220,6 @@ def get_github_commits(
 
     # 构建API URL
     api_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/commits"
-    params = {
-        'since': since,
-        'until': until,
-        'per_page': 100  # 每页最大记录数
-    }
 
     # 构建完整URL
     full_url = f"{api_url}?since={since}&until={until}&per_page=100"
@@ -255,28 +228,25 @@ def get_github_commits(
     _validate_github_url(full_url)
 
     # 构建请求头
-    headers = {
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'Metis-GitHub-Tools/1.0'
-    }
+    headers = {"Accept": "application/vnd.github.v3+json", "User-Agent": "Metis-GitHub-Tools/1.0"}
 
     # 如果提供了token，添加认证头
     if token:
-        headers['Authorization'] = f'token {token}'
-        logger.info(f"使用GitHub token进行认证")
+        headers["Authorization"] = f"token {token}"
+        logger.info("使用GitHub token进行认证")
     else:
-        logger.warning(f"未提供GitHub token，将使用未认证的请求（有速率限制）")
+        logger.warning("未提供GitHub token，将使用未认证的请求（有速率限制）")
 
     # 记录请求信息（脱敏）
     logger.info(
-        f"获取GitHub commits",
+        "获取GitHub commits",
         extra={
             "owner": owner,
             "repo": repo,
             "since": since,
             "until": until,
-            "has_token": bool(token)
-        }
+            "has_token": bool(token),
+        },
     )
 
     try:
@@ -290,40 +260,33 @@ def get_github_commits(
         result_json = json.dumps(processed_data, ensure_ascii=False, indent=2)
 
         logger.info(
-            f"成功获取并处理GitHub commits数据",
+            "成功获取并处理GitHub commits数据",
             extra={
                 "owner": owner,
                 "repo": repo,
                 "users_count": len(processed_data),
-                "total_commits": sum(len(commits) for commits in processed_data.values())
-            }
+                "total_commits": sum(len(commits) for commits in processed_data.values()),
+            },
         )
 
         return result_json
 
     except Exception as e:
         logger.error(
-            f"获取GitHub commits失败",
+            "获取GitHub commits失败",
             extra={
                 "owner": owner,
                 "repo": repo,
                 "since": since,
                 "until": until,
-                "error": str(e)
-            }
+                "error": str(e),
+            },
         )
         raise
 
 
 @tool()
-def get_github_commits_with_pagination(
-    owner: str,
-    repo: str,
-    since: str,
-    until: str,
-    token: Optional[str] = None,
-    max_pages: int = 10
-) -> str:
+def get_github_commits_with_pagination(owner: str, repo: str, since: str, until: str, token: Optional[str] = None, max_pages: int = 10) -> str:
     """
     获取指定GitHub仓库在指定时间范围内的commits记录（支持分页），并按用户分组处理。
 
@@ -342,7 +305,7 @@ def get_github_commits_with_pagination(
             {
                 "用户名": [
                     {
-                        "message": "commit消息", 
+                        "message": "commit消息",
                         "date": "提交日期"
                     }
                 ]
@@ -372,27 +335,24 @@ def get_github_commits_with_pagination(
     _validate_datetime_format(until)
 
     # 构建请求头
-    headers = {
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'Metis-GitHub-Tools/1.0'
-    }
+    headers = {"Accept": "application/vnd.github.v3+json", "User-Agent": "Metis-GitHub-Tools/1.0"}
 
     if token:
-        headers['Authorization'] = f'token {token}'
-        logger.info(f"使用GitHub token进行认证")
+        headers["Authorization"] = f"token {token}"
+        logger.info("使用GitHub token进行认证")
     else:
-        logger.warning(f"未提供GitHub token，将使用未认证的请求（有速率限制）")
+        logger.warning("未提供GitHub token，将使用未认证的请求（有速率限制）")
 
     logger.info(
-        f"开始分页获取GitHub commits",
+        "开始分页获取GitHub commits",
         extra={
             "owner": owner,
             "repo": repo,
             "since": since,
             "until": until,
             "max_pages": max_pages,
-            "has_token": bool(token)
-        }
+            "has_token": bool(token),
+        },
     )
 
     all_commits = []
@@ -436,28 +396,79 @@ def get_github_commits_with_pagination(
         result_json = json.dumps(processed_data, ensure_ascii=False, indent=2)
 
         logger.info(
-            f"成功获取并处理GitHub commits数据（分页）",
+            "成功获取并处理GitHub commits数据（分页）",
             extra={
                 "owner": owner,
                 "repo": repo,
                 "pages_fetched": page - 1,
                 "users_count": len(processed_data),
-                "total_commits": sum(len(commits) for commits in processed_data.values())
-            }
+                "total_commits": sum(len(commits) for commits in processed_data.values()),
+            },
         )
 
         return result_json
 
     except Exception as e:
         logger.error(
-            f"分页获取GitHub commits失败",
+            "分页获取GitHub commits失败",
             extra={
                 "owner": owner,
                 "repo": repo,
                 "since": since,
                 "until": until,
                 "page": page,
-                "error": str(e)
-            }
+                "error": str(e),
+            },
         )
         raise
+
+
+@tool()
+def get_github_commits_batch(
+    repos: List[Dict],
+    since: str,
+    until: str,
+    token: Optional[str] = None,
+) -> str:
+    """批量获取多个 GitHub 仓库在指定时间范围内的 commits，单个仓库失败不中断其他查询。
+
+    Args:
+        repos: 仓库列表，每项为 {"owner": "...", "repo": "..."} 格式
+        since: 开始时间，ISO 8601格式，如: 2025-09-08T00:00:00Z
+        until: 结束时间，ISO 8601格式，如: 2025-09-15T00:00:00Z
+        token: GitHub Personal Access Token（可选）
+    """
+    _validate_datetime_format(since)
+    _validate_datetime_format(until)
+
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "Metis-GitHub-Tools/1.0",
+    }
+    if token:
+        headers["Authorization"] = f"token {token}"
+
+    results = []
+    succeeded = 0
+    failed = 0
+
+    for repo_item in repos:
+        owner = repo_item.get("owner", "")
+        repo = repo_item.get("repo", "")
+        key = f"{owner}/{repo}"
+        try:
+            full_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/commits?since={since}&until={until}&per_page=100"
+            _validate_github_url(full_url)
+            commits_data = _fetch_github_commits(full_url, headers)
+            processed = _process_commits_data(commits_data)
+            results.append({"input": key, "ok": True, "data": processed})
+            succeeded += 1
+        except Exception as e:
+            results.append({"input": key, "ok": False, "error": str(e)})
+            failed += 1
+
+    return json.dumps(
+        {"total": len(repos), "succeeded": succeeded, "failed": failed, "results": results},
+        ensure_ascii=False,
+        indent=2,
+    )

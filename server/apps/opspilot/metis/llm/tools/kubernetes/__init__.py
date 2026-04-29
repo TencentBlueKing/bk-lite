@@ -77,7 +77,18 @@ from apps.opspilot.metis.llm.tools.kubernetes.tracing import (
 from apps.opspilot.metis.llm.tools.kubernetes.utils import format_bytes, parse_resource_quantity, prepare_context
 
 CONSTRUCTOR_PARAMS = [
-    {"name": "kubeconfig_data", "type": "textarea", "required": False, "description": "Kubernetes配置文件内容，默认使用 ~/.kube/config 或集群内配置"}
+    {
+        "name": "kubernetes_instances",
+        "type": "string",
+        "required": False,
+        "description": "Kubernetes多实例JSON配置",
+    },
+    {
+        "name": "kubernetes_default_instance_id",
+        "type": "string",
+        "required": False,
+        "description": "默认Kubernetes实例ID",
+    },
 ]
 
 

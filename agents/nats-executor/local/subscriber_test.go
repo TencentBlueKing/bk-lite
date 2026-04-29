@@ -1,6 +1,7 @@
 package local
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"nats-executor/utils"
+	"nats-executor/utils/downloaderr"
 )
 
 type stubResponseMsg struct {
@@ -229,6 +231,50 @@ func TestHandleDownloadToLocalMessageReturnsDownloadError(t *testing.T) {
 	}
 	if result.Code != utils.ErrorCodeDependencyFailure {
 		t.Fatalf("unexpected error code: %+v", result)
+	}
+}
+
+func TestHandleDownloadToLocalMessageMapsTimeoutErrorCode(t *testing.T) {
+	original := downloadToLocalFile
+	downloadToLocalFile = func(req utils.DownloadFileRequest, _ downloadConn) error {
+		return downloaderr.New(downloaderr.KindTimeout, context.DeadlineExceeded)
+	}
+	defer func() { downloadToLocalFile = original }()
+
+	payload := []byte(`{"args":[{"bucket_name":"bucket","file_key":"file-key","file_name":"demo.txt","target_path":"/tmp","execute_timeout":3}],"kwargs":{}}`)
+	response, ok := handleDownloadToLocalMessage(payload, "instance-1", nil)
+	if !ok {
+		t.Fatal("expected download handler to return response")
+	}
+
+	var result ExecuteResponse
+	if err := json.Unmarshal(response, &result); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if result.Success || result.Code != utils.ErrorCodeTimeout {
+		t.Fatalf("unexpected response: %+v", result)
+	}
+}
+
+func TestHandleDownloadToLocalMessageMapsIOErrorCode(t *testing.T) {
+	original := downloadToLocalFile
+	downloadToLocalFile = func(req utils.DownloadFileRequest, _ downloadConn) error {
+		return downloaderr.New(downloaderr.KindIO, errors.New("rename failed"))
+	}
+	defer func() { downloadToLocalFile = original }()
+
+	payload := []byte(`{"args":[{"bucket_name":"bucket","file_key":"file-key","file_name":"demo.txt","target_path":"/tmp","execute_timeout":3}],"kwargs":{}}`)
+	response, ok := handleDownloadToLocalMessage(payload, "instance-1", nil)
+	if !ok {
+		t.Fatal("expected download handler to return response")
+	}
+
+	var result ExecuteResponse
+	if err := json.Unmarshal(response, &result); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if result.Success || result.Code != utils.ErrorCodeExecutionFailure {
+		t.Fatalf("unexpected response: %+v", result)
 	}
 }
 

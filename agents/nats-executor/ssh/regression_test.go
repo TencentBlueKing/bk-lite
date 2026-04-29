@@ -3,6 +3,7 @@ package ssh
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -59,22 +60,34 @@ func TestRegressionUploadHandlerTempKeyLifecycle(t *testing.T) {
 func TestRegressionDownloadToRemoteComposedContract(t *testing.T) {
 	origDownload := downloadFromObjectStore
 	origExec := executeSCPCommand
+	origMkdirTemp := mkdirTempDir
+	origRemoveAll := removeAllPath
 	defer func() {
 		downloadFromObjectStore = origDownload
 		executeSCPCommand = origExec
+		mkdirTempDir = origMkdirTemp
+		removeAllPath = origRemoveAll
 	}()
 
 	steps := make([]string, 0, 2)
+	stagingDir := "/tmp/composed/stage-1"
 	downloadFromObjectStore = func(req utils.DownloadFileRequest, _ sshConn) error {
 		steps = append(steps, "download")
-		if req.TargetPath != "/tmp/composed" || req.FileName != "demo.txt" {
+		if req.TargetPath != stagingDir || req.FileName != "demo.txt" {
 			t.Fatalf("unexpected download request: %+v", req)
 		}
 		return nil
 	}
+	mkdirTempDir = func(dir, pattern string) (string, error) {
+		if dir != "/tmp/composed" {
+			t.Fatalf("unexpected staging base dir: %s", dir)
+		}
+		return stagingDir, nil
+	}
+	removeAllPath = func(path string) error { return nil }
 	executeSCPCommand = func(instanceId string, req local.ExecuteRequest) local.ExecuteResponse {
 		steps = append(steps, "execute")
-		if !strings.Contains(req.Command, "/tmp/composed/demo.txt") {
+		if !strings.Contains(req.Command, filepath.Join(stagingDir, "demo.txt")) {
 			t.Fatalf("expected composed command to include downloaded file path, got %s", req.Command)
 		}
 		if !strings.Contains(req.LogCommand, "sshpass -p '***'") {

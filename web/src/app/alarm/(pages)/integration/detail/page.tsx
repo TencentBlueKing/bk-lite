@@ -4,11 +4,12 @@ import React, { useState, useEffect, FC } from 'react';
 import dayjs from 'dayjs';
 import SearchFilter from '@/app/alarm/components/searchFilter';
 import EventTable from '@/app/alarm/components/eventTable';
+import K8sGuide from '@/app/alarm/components/k8sGuide';
 import CustomBreadcrumb from '@/app/alarm/components/customBreadcrumb';
 import { CopyOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
-import { SourceItem } from '@/app/alarm/types/integration';
+import { K8sMeta, SourceItem } from '@/app/alarm/types/integration';
 import { useAlarmApi } from '@/app/alarm/api/alarms';
 import { EventItem } from '@/app/alarm/types/alarms';
 import { useSourceApi } from '@/app/alarm/api/integration';
@@ -17,10 +18,12 @@ import { Empty, Descriptions, message, Tabs, DatePicker, Spin } from 'antd';
 const IntegrationDetail: FC = () => {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const { getAlertSourcesDetail } = useSourceApi();
+  const { getAlertSourcesDetail, getK8sMeta, downloadK8sFile } = useSourceApi();
   const { getEventList } = useAlarmApi();
   const [loading, setLoading] = useState<boolean>(false);
   const [source, setSource] = useState<SourceItem>();
+  const [k8sMeta, setK8sMeta] = useState<K8sMeta>();
+  const [k8sMetaLoading, setK8sMetaLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>('event');
   const [eventList, setEventList] = useState<EventItem[]>([]);
   const [eventLoading, setEventLoading] = useState<boolean>(false);
@@ -34,6 +37,8 @@ const IntegrationDetail: FC = () => {
     field: string;
     value: string;
   } | null>(null);
+
+  const isK8sSource = source?.source_id === 'k8s';
 
   const sourceItemId = searchParams.get('sourceItemId');
 
@@ -57,6 +62,20 @@ const IntegrationDetail: FC = () => {
     }
   };
 
+  const getK8sGuideMeta = async () => {
+    setK8sMetaLoading(true);
+    try {
+      const res = await getK8sMeta();
+      if (res) {
+        setK8sMeta(res);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setK8sMetaLoading(false);
+    }
+  };
+
   const copySecret = (text: string = '') => {
     navigator.clipboard.writeText(text);
     message.success(t('alarmCommon.copied'));
@@ -73,7 +92,11 @@ const IntegrationDetail: FC = () => {
         received_at_after: timeRange?.[0]?.toISOString(),
       };
       if (searchCondition) {
-        params[searchCondition.field] = searchCondition.value;
+        if (isK8sSource && searchCondition.field === 'push_source_id') {
+          params.push_source_id = searchCondition.value;
+        } else {
+          params[searchCondition.field] = searchCondition.value;
+        }
       }
       const res = await getEventList(params);
       setEventList(res.items || []);
@@ -96,6 +119,12 @@ const IntegrationDetail: FC = () => {
     timeRange,
   ]);
 
+  useEffect(() => {
+    if (activeTab === 'guide' && isK8sSource && !k8sMeta && !k8sMetaLoading) {
+      getK8sGuideMeta();
+    }
+  }, [activeTab, isK8sSource, k8sMeta, k8sMetaLoading]);
+
   const onFilterSearch = (condition: { field: string; value: string }) => {
     setSearchCondition(condition);
     setPagination((prev) => ({ ...prev, current: 1 }));
@@ -104,7 +133,23 @@ const IntegrationDetail: FC = () => {
   const eventAttrList = [
     { attr_id: 'title', attr_name: '标题', attr_type: 'str', option: [] },
     { attr_id: 'description', attr_name: '内容', attr_type: 'str', option: [] },
+    ...(isK8sSource
+      ? [{ attr_id: 'push_source_id', attr_name: t('integration.pushSourceId'), attr_type: 'str', option: [] }]
+      : []),
   ];
+
+  const handleK8sDownload = async (fileKey: string, fileName: string, params: any) => {
+    const blob = await downloadK8sFile(fileKey, params);
+    const url = window.URL.createObjectURL(blob as Blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    message.success(t('common.successfullyExported'));
+  };
 
   const IntegrationHeader = () => (
     <div className="flex items-center">
@@ -268,7 +313,16 @@ const IntegrationDetail: FC = () => {
                   />
                 </Tabs.TabPane>
                 <Tabs.TabPane key="guide" tab={t('integration.guideTab')}>
-                  {renderGuideTab()}
+                  {isK8sSource ? (
+                    <K8sGuide
+                      source={source}
+                      meta={k8sMeta}
+                      loading={k8sMetaLoading}
+                      onDownload={handleK8sDownload}
+                    />
+                  ) : (
+                    renderGuideTab()
+                  )}
                 </Tabs.TabPane>
               </Tabs>
             </div>

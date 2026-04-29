@@ -174,17 +174,18 @@ class InstallerViewSet(ViewSet):
             request.data.get("organizations", []),
             request.data.get("node_name", ""),
             install_mode=InstallerService.MANUAL_INSTALL_MODE,
+            cpu_architecture=request.data.get("cpu_architecture", ""),
         )
         return WebUtils.response_success(data)
 
     @action(detail=False, methods=["GET"], url_path="windows/download")
     def windows_download(self, request):
-        file, _ = InstallerService.download_windows_installer()
+        file, _ = InstallerService.download_windows_installer(request.query_params.get("arch", ""))
         return WebUtils.response_file(file, InstallerConstants.WINDOWS_INSTALLER_FILENAME)
 
     @action(detail=False, methods=["GET"], url_path="linux/download")
     def linux_download(self, request):
-        file, _ = InstallerService.download_linux_installer()
+        file, _ = InstallerService.download_linux_installer(request.query_params.get("arch", ""))
         return WebUtils.response_file(file, InstallerConstants.LINUX_INSTALLER_FILENAME)
 
     @action(detail=False, methods=["GET"], url_path="manifest")
@@ -193,4 +194,4 @@ class InstallerViewSet(ViewSet):
 
     @action(detail=False, methods=["GET"], url_path="metadata/(?P<target_os>[^/.]+)")
     def metadata(self, request, target_os):
-        return WebUtils.response_success(InstallerService.installer_metadata(target_os))
+        return WebUtils.response_success(InstallerService.installer_metadata(target_os, request.query_params.get("arch", "")))

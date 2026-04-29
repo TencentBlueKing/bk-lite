@@ -51,7 +51,14 @@ class Command(BaseCommand):
 
 
 def get_install_apps() -> set[str]:
-    return {item.strip() for item in os.getenv("INSTALL_APPS", "").split(",") if item.strip()}
+    apps = {item.strip() for item in os.getenv("INSTALL_APPS", "").split(",") if item.strip()}
+    # 企业版：如果 apps/license_mgmt 目录存在，强制加入
+    from django.conf import settings
+
+    license_mgmt_path = os.path.join(settings.BASE_DIR, "apps", "license_mgmt")
+    if os.path.isdir(license_mgmt_path):
+        apps.add("license_mgmt")
+    return apps
 
 
 def extend_menus_by_install_apps(menu_data: dict, install_apps: set[str]) -> dict:

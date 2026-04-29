@@ -2,15 +2,19 @@ package ssh
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	gossh "golang.org/x/crypto/ssh"
 	"nats-executor/local"
 	"nats-executor/utils"
+	"nats-executor/utils/downloaderr"
 )
 
 type stubResponseMsg struct {
@@ -150,16 +154,33 @@ func TestHandleDownloadToRemoteMessageUsesDefaultLocalPath(t *testing.T) {
 	origDownload := downloadFromObjectStore
 	origBuild := buildSCPCommandFn
 	origExec := executeSCPCommand
+	origMkdirTemp := mkdirTempDir
+	origRemoveAll := removeAllPath
 
 	var downloadedReq utils.DownloadFileRequest
 	var executedReq local.ExecuteRequest
+	var stagingDir string
 
 	downloadFromObjectStore = func(req utils.DownloadFileRequest, _ sshConn) error {
 		downloadedReq = req
 		return nil
 	}
+	mkdirTempDir = func(dir, pattern string) (string, error) {
+		if dir != os.TempDir() {
+			t.Fatalf("expected default staging base %s, got %s", os.TempDir(), dir)
+		}
+		path := filepath.Join(dir, "nats-executor-test-default")
+		stagingDir = path
+		return path, nil
+	}
+	removeAllPath = func(path string) error {
+		if path != stagingDir {
+			t.Fatalf("unexpected cleanup path: %s", path)
+		}
+		return nil
+	}
 	buildSCPCommandFn = func(user, host, password, privateKey string, port uint, sourcePath, targetPath string, isUpload bool, profile sshCompatibilityProfile) (string, func(), error) {
-		if sourcePath != "/tmp/demo.txt" {
+		if sourcePath != filepath.Join(stagingDir, "demo.txt") {
 			t.Fatalf("expected default local path source, got %s", sourcePath)
 		}
 		if targetPath != "/remote/path" || !isUpload {
@@ -175,6 +196,8 @@ func TestHandleDownloadToRemoteMessageUsesDefaultLocalPath(t *testing.T) {
 		downloadFromObjectStore = origDownload
 		buildSCPCommandFn = origBuild
 		executeSCPCommand = origExec
+		mkdirTempDir = origMkdirTemp
+		removeAllPath = origRemoveAll
 	}()
 
 	payload := []byte(`{"args":[{"bucket_name":"bucket","file_key":"key","file_name":"demo.txt","target_path":"/remote/path","host":"10.0.0.1","port":22,"user":"root","password":"secret","execute_timeout":5}],"kwargs":{}}`)
@@ -183,8 +206,8 @@ func TestHandleDownloadToRemoteMessageUsesDefaultLocalPath(t *testing.T) {
 		t.Fatal("expected response")
 	}
 
-	if downloadedReq.TargetPath != "/tmp" {
-		t.Fatalf("expected default local path /tmp, got %+v", downloadedReq)
+	if downloadedReq.TargetPath != stagingDir {
+		t.Fatalf("expected staging path %s, got %+v", stagingDir, downloadedReq)
 	}
 	if executedReq.Command != "scp command" || executedReq.LogCommand == "" {
 		t.Fatalf("expected SCP execution request with redacted log command, got %+v", executedReq)
@@ -209,8 +232,18 @@ func TestHandleDownloadToRemoteMessageReturnsBuildErrorResponse(t *testing.T) {
 	origDownload := downloadFromObjectStore
 	origBuild := buildSCPCommandFn
 	origExec := executeSCPCommand
+	origMkdirTemp := mkdirTempDir
+	origRemoveAll := removeAllPath
+	stagingDir := "/tmp/staging-build"
 
 	downloadFromObjectStore = func(req utils.DownloadFileRequest, _ sshConn) error { return nil }
+	mkdirTempDir = func(dir, pattern string) (string, error) { return stagingDir, nil }
+	removeAllPath = func(path string) error {
+		if path != stagingDir {
+			t.Fatalf("unexpected cleanup path: %s", path)
+		}
+		return nil
+	}
 	buildSCPCommandFn = func(user, host, password, privateKey string, port uint, sourcePath, targetPath string, isUpload bool, profile sshCompatibilityProfile) (string, func(), error) {
 		return "", nil, errors.New("bad scp")
 	}
@@ -222,6 +255,8 @@ func TestHandleDownloadToRemoteMessageReturnsBuildErrorResponse(t *testing.T) {
 		downloadFromObjectStore = origDownload
 		buildSCPCommandFn = origBuild
 		executeSCPCommand = origExec
+		mkdirTempDir = origMkdirTemp
+		removeAllPath = origRemoveAll
 	}()
 
 	payload := []byte(`{"args":[{"bucket_name":"bucket","file_key":"key","file_name":"demo.txt","target_path":"/remote/path","host":"10.0.0.1","port":22,"user":"root","password":"secret","execute_timeout":5}],"kwargs":{}}`)
@@ -265,9 +300,19 @@ func TestHandleDownloadToRemoteMessageReturnsDownloadFailureResponse(t *testing.
 	origDownload := downloadFromObjectStore
 	origBuild := buildSCPCommandFn
 	origExec := executeSCPCommand
+	origMkdirTemp := mkdirTempDir
+	origRemoveAll := removeAllPath
+	stagingDir := "/tmp/staging-download-fail"
 
 	downloadFromObjectStore = func(req utils.DownloadFileRequest, _ sshConn) error {
 		return errors.New("store unavailable")
+	}
+	mkdirTempDir = func(dir, pattern string) (string, error) { return stagingDir, nil }
+	removeAllPath = func(path string) error {
+		if path != stagingDir {
+			t.Fatalf("unexpected cleanup path: %s", path)
+		}
+		return nil
 	}
 	buildSCPCommandFn = func(user, host, password, privateKey string, port uint, sourcePath, targetPath string, isUpload bool, profile sshCompatibilityProfile) (string, func(), error) {
 		t.Fatal("should not build scp command when download fails")
@@ -281,6 +326,8 @@ func TestHandleDownloadToRemoteMessageReturnsDownloadFailureResponse(t *testing.
 		downloadFromObjectStore = origDownload
 		buildSCPCommandFn = origBuild
 		executeSCPCommand = origExec
+		mkdirTempDir = origMkdirTemp
+		removeAllPath = origRemoveAll
 	}()
 
 	payload := []byte(`{"args":[{"bucket_name":"bucket","file_key":"key","file_name":"demo.txt","target_path":"/remote/path","host":"10.0.0.1","port":22,"user":"root","password":"secret","execute_timeout":5}],"kwargs":{}}`)
@@ -298,6 +345,94 @@ func TestHandleDownloadToRemoteMessageReturnsDownloadFailureResponse(t *testing.
 	}
 	if result.Code != utils.ErrorCodeDependencyFailure {
 		t.Fatalf("unexpected error code: %+v", result)
+	}
+}
+
+func TestHandleDownloadToRemoteMessageMapsTimeoutDownloadFailureResponse(t *testing.T) {
+	origDownload := downloadFromObjectStore
+	origBuild := buildSCPCommandFn
+	origExec := executeSCPCommand
+	origMkdirTemp := mkdirTempDir
+	origRemoveAll := removeAllPath
+	stagingDir := "/tmp/staging-timeout"
+
+	downloadFromObjectStore = func(req utils.DownloadFileRequest, _ sshConn) error {
+		return downloaderr.New(downloaderr.KindTimeout, context.DeadlineExceeded)
+	}
+	mkdirTempDir = func(dir, pattern string) (string, error) { return stagingDir, nil }
+	removeAllPath = func(path string) error { return nil }
+	buildSCPCommandFn = func(user, host, password, privateKey string, port uint, sourcePath, targetPath string, isUpload bool, profile sshCompatibilityProfile) (string, func(), error) {
+		t.Fatal("should not build scp command when download fails")
+		return "", nil, nil
+	}
+	executeSCPCommand = func(instanceId string, req local.ExecuteRequest) local.ExecuteResponse {
+		t.Fatal("should not execute scp when download fails")
+		return local.ExecuteResponse{}
+	}
+	defer func() {
+		downloadFromObjectStore = origDownload
+		buildSCPCommandFn = origBuild
+		executeSCPCommand = origExec
+		mkdirTempDir = origMkdirTemp
+		removeAllPath = origRemoveAll
+	}()
+
+	payload := []byte(`{"args":[{"bucket_name":"bucket","file_key":"key","file_name":"demo.txt","target_path":"/remote/path","host":"10.0.0.1","port":22,"user":"root","password":"secret","execute_timeout":5}],"kwargs":{}}`)
+	response, ok := handleDownloadToRemoteMessage(payload, "instance-1", nil)
+	if !ok {
+		t.Fatal("expected download failure response")
+	}
+
+	var result local.ExecuteResponse
+	if err := json.Unmarshal(response, &result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if result.Success || result.Code != utils.ErrorCodeTimeout {
+		t.Fatalf("unexpected response: %+v", result)
+	}
+}
+
+func TestHandleDownloadToRemoteMessageMapsIOFailureResponse(t *testing.T) {
+	origDownload := downloadFromObjectStore
+	origBuild := buildSCPCommandFn
+	origExec := executeSCPCommand
+	origMkdirTemp := mkdirTempDir
+	origRemoveAll := removeAllPath
+	stagingDir := "/tmp/staging-io"
+
+	downloadFromObjectStore = func(req utils.DownloadFileRequest, _ sshConn) error {
+		return downloaderr.New(downloaderr.KindIO, errors.New("rename failed"))
+	}
+	mkdirTempDir = func(dir, pattern string) (string, error) { return stagingDir, nil }
+	removeAllPath = func(path string) error { return nil }
+	buildSCPCommandFn = func(user, host, password, privateKey string, port uint, sourcePath, targetPath string, isUpload bool, profile sshCompatibilityProfile) (string, func(), error) {
+		t.Fatal("should not build scp command when download fails")
+		return "", nil, nil
+	}
+	executeSCPCommand = func(instanceId string, req local.ExecuteRequest) local.ExecuteResponse {
+		t.Fatal("should not execute scp when download fails")
+		return local.ExecuteResponse{}
+	}
+	defer func() {
+		downloadFromObjectStore = origDownload
+		buildSCPCommandFn = origBuild
+		executeSCPCommand = origExec
+		mkdirTempDir = origMkdirTemp
+		removeAllPath = origRemoveAll
+	}()
+
+	payload := []byte(`{"args":[{"bucket_name":"bucket","file_key":"key","file_name":"demo.txt","target_path":"/remote/path","host":"10.0.0.1","port":22,"user":"root","password":"secret","execute_timeout":5}],"kwargs":{}}`)
+	response, ok := handleDownloadToRemoteMessage(payload, "instance-1", nil)
+	if !ok {
+		t.Fatal("expected download failure response")
+	}
+
+	var result local.ExecuteResponse
+	if err := json.Unmarshal(response, &result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if result.Success || result.Code != utils.ErrorCodeExecutionFailure {
+		t.Fatalf("unexpected response: %+v", result)
 	}
 }
 
@@ -497,10 +632,25 @@ func TestExecuteReturnsDependencyFailureWhenLegacyRetryAlsoFails(t *testing.T) {
 func TestHandleDownloadToRemoteMessageIntegrationPath(t *testing.T) {
 	origDownload := downloadFromObjectStore
 	origExec := executeSCPCommand
+	origMkdirTemp := mkdirTempDir
+	origRemoveAll := removeAllPath
+	stagingDir := "/tmp/integration/stage-123"
 
 	downloadFromObjectStore = func(req utils.DownloadFileRequest, _ sshConn) error { return nil }
+	mkdirTempDir = func(dir, pattern string) (string, error) {
+		if dir != "/tmp/integration" {
+			t.Fatalf("expected local path base dir, got %s", dir)
+		}
+		return stagingDir, nil
+	}
+	removeAllPath = func(path string) error {
+		if path != stagingDir {
+			t.Fatalf("unexpected cleanup path: %s", path)
+		}
+		return nil
+	}
 	executeSCPCommand = func(instanceId string, req local.ExecuteRequest) local.ExecuteResponse {
-		if !strings.Contains(req.Command, "/tmp/integration/demo.txt") {
+		if !strings.Contains(req.Command, filepath.Join(stagingDir, "demo.txt")) {
 			t.Fatalf("expected composed command to include downloaded file path, got %s", req.Command)
 		}
 		if req.LogCommand == "" {
@@ -511,6 +661,8 @@ func TestHandleDownloadToRemoteMessageIntegrationPath(t *testing.T) {
 	defer func() {
 		downloadFromObjectStore = origDownload
 		executeSCPCommand = origExec
+		mkdirTempDir = origMkdirTemp
+		removeAllPath = origRemoveAll
 	}()
 
 	payload := []byte(`{"args":[{"bucket_name":"bucket","file_key":"key","file_name":"demo.txt","target_path":"/remote/path","local_path":"/tmp/integration","host":"10.0.0.1","port":22,"user":"root","password":"secret","execute_timeout":5}],"kwargs":{}}`)
@@ -531,14 +683,21 @@ func TestHandleDownloadToRemoteMessageIntegrationPath(t *testing.T) {
 func TestHandleDownloadToRemoteMessageIntegrationFailureFromExecutor(t *testing.T) {
 	origDownload := downloadFromObjectStore
 	origExec := executeSCPCommand
+	origMkdirTemp := mkdirTempDir
+	origRemoveAll := removeAllPath
+	stagingDir := "/tmp/integration/stage-456"
 
 	downloadFromObjectStore = func(req utils.DownloadFileRequest, _ sshConn) error { return nil }
+	mkdirTempDir = func(dir, pattern string) (string, error) { return stagingDir, nil }
+	removeAllPath = func(path string) error { return nil }
 	executeSCPCommand = func(instanceId string, req local.ExecuteRequest) local.ExecuteResponse {
 		return local.ExecuteResponse{Success: false, Error: "scp failed", Code: utils.ErrorCodeExecutionFailure, InstanceId: instanceId}
 	}
 	defer func() {
 		downloadFromObjectStore = origDownload
 		executeSCPCommand = origExec
+		mkdirTempDir = origMkdirTemp
+		removeAllPath = origRemoveAll
 	}()
 
 	payload := []byte(`{"args":[{"bucket_name":"bucket","file_key":"key","file_name":"demo.txt","target_path":"/remote/path","local_path":"/tmp/integration","host":"10.0.0.1","port":22,"user":"root","password":"secret","execute_timeout":5}],"kwargs":{}}`)
@@ -553,5 +712,41 @@ func TestHandleDownloadToRemoteMessageIntegrationFailureFromExecutor(t *testing.
 	}
 	if result.Success || result.Code != utils.ErrorCodeExecutionFailure || result.Error != "scp failed" {
 		t.Fatalf("unexpected response: %+v", result)
+	}
+}
+
+func TestHandleDownloadToRemoteMessageCleansStagingDirAfterExecutorFailure(t *testing.T) {
+	origDownload := downloadFromObjectStore
+	origExec := executeSCPCommand
+	origMkdirTemp := mkdirTempDir
+	origRemoveAll := removeAllPath
+	stagingDir := "/tmp/staging-cleanup"
+	cleaned := false
+
+	downloadFromObjectStore = func(req utils.DownloadFileRequest, _ sshConn) error { return nil }
+	mkdirTempDir = func(dir, pattern string) (string, error) { return stagingDir, nil }
+	removeAllPath = func(path string) error {
+		if path == stagingDir {
+			cleaned = true
+		}
+		return nil
+	}
+	executeSCPCommand = func(instanceId string, req local.ExecuteRequest) local.ExecuteResponse {
+		return local.ExecuteResponse{Success: false, Error: "scp failed", Code: utils.ErrorCodeExecutionFailure, InstanceId: instanceId}
+	}
+	defer func() {
+		downloadFromObjectStore = origDownload
+		executeSCPCommand = origExec
+		mkdirTempDir = origMkdirTemp
+		removeAllPath = origRemoveAll
+	}()
+
+	payload := []byte(`{"args":[{"bucket_name":"bucket","file_key":"key","file_name":"demo.txt","target_path":"/remote/path","local_path":"/tmp/integration","host":"10.0.0.1","port":22,"user":"root","password":"secret","execute_timeout":5}],"kwargs":{}}`)
+	_, ok := handleDownloadToRemoteMessage(payload, "instance-1", nil)
+	if !ok {
+		t.Fatal("expected response")
+	}
+	if !cleaned {
+		t.Fatal("expected staging dir cleanup")
 	}
 }

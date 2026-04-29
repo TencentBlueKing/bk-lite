@@ -80,7 +80,7 @@ const LayoutContent: React.FC<KnowledgeDetailLayoutProps> = ({ children }) => {
       case '/opspilot/knowledge/detail/settings':
         return (
           <TopSection
-            title={t('knowledge.settings.title')}
+            title={t('common.settings')}
             content={t('knowledge.testing.description')}
           />
         );

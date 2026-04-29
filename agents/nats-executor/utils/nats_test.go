@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"sync"
@@ -8,18 +9,20 @@ import (
 	"testing"
 	"time"
 
+	"nats-executor/utils/downloaderr"
+
 	"github.com/nats-io/nats.go"
 )
 
 type stubDownloader struct {
-	download func(fileKey, targetPath, fileName string) error
+	download func(ctx context.Context, fileKey, targetPath, fileName string) error
 }
 
-func (s stubDownloader) DownloadToFile(fileKey, targetPath, fileName string) error {
+func (s stubDownloader) DownloadToFile(ctx context.Context, fileKey, targetPath, fileName string) error {
 	if s.download == nil {
 		return nil
 	}
-	return s.download(fileKey, targetPath, fileName)
+	return s.download(ctx, fileKey, targetPath, fileName)
 }
 
 func withStubDownloader(tb testing.TB, factory func(nc *nats.Conn, bucketName string) (fileDownloader, error)) {
@@ -135,13 +138,13 @@ func TestDownloadFilePropagatesClientCreationError(t *testing.T) {
 	}
 }
 
-func TestDownloadFilePropagatesDownloadError(t *testing.T) {
+func TestDownloadFilePropagatesDependencyError(t *testing.T) {
 	withStubDownloader(t, func(nc *nats.Conn, bucketName string) (fileDownloader, error) {
-		return stubDownloader{download: func(fileKey, targetPath, fileName string) error {
+		return stubDownloader{download: func(ctx context.Context, fileKey, targetPath, fileName string) error {
 			if bucketName != "bucket" || fileKey != "key" || targetPath != "/tmp" || fileName != "file.txt" {
 				t.Fatalf("unexpected download args: bucket=%s key=%s target=%s file=%s", bucketName, fileKey, targetPath, fileName)
 			}
-			return errors.New("download failed")
+			return downloaderr.New(downloaderr.KindDependency, errors.New("download failed"))
 		}}, nil
 	})
 
@@ -157,16 +160,21 @@ func TestDownloadFilePropagatesDownloadError(t *testing.T) {
 		t.Fatal("expected download error")
 	}
 
-	if !strings.Contains(err.Error(), "failed to download file: download failed") {
+	if !strings.Contains(err.Error(), "failed to download file") || !strings.Contains(err.Error(), "download failed") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if downloaderr.KindOf(err) != downloaderr.KindDependency {
+		t.Fatalf("expected dependency error kind, got %s", downloaderr.KindOf(err))
 	}
 }
 
-func TestDownloadFileTimesOutWhenDownloaderBlocks(t *testing.T) {
+func TestDownloadFileTimesOutWhenDownloaderObservesContext(t *testing.T) {
+	var observedContextDone atomic.Bool
 	withStubDownloader(t, func(nc *nats.Conn, bucketName string) (fileDownloader, error) {
-		return stubDownloader{download: func(fileKey, targetPath, fileName string) error {
-			time.Sleep(1500 * time.Millisecond)
-			return nil
+		return stubDownloader{download: func(ctx context.Context, fileKey, targetPath, fileName string) error {
+			<-ctx.Done()
+			observedContextDone.Store(true)
+			return downloaderr.New(downloaderr.KindTimeout, ctx.Err())
 		}}, nil
 	})
 
@@ -183,13 +191,43 @@ func TestDownloadFileTimesOutWhenDownloaderBlocks(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
-
 	if !strings.Contains(err.Error(), "download operation timed out") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
+	if downloaderr.KindOf(err) != downloaderr.KindTimeout {
+		t.Fatalf("expected timeout error kind, got %s", downloaderr.KindOf(err))
+	}
 	if elapsed > 1200*time.Millisecond {
 		t.Fatalf("timeout should return promptly, took %v", elapsed)
+	}
+	if !observedContextDone.Load() {
+		t.Fatal("expected downloader to observe context cancellation")
+	}
+}
+
+func TestDownloadFilePropagatesIOErrorKind(t *testing.T) {
+	withStubDownloader(t, func(nc *nats.Conn, bucketName string) (fileDownloader, error) {
+		return stubDownloader{download: func(ctx context.Context, fileKey, targetPath, fileName string) error {
+			return downloaderr.New(downloaderr.KindIO, errors.New("rename failed"))
+		}}, nil
+	})
+
+	err := DownloadFile(DownloadFileRequest{
+		BucketName:     "bucket",
+		FileKey:        "key",
+		FileName:       "file.txt",
+		TargetPath:     "/tmp",
+		ExecuteTimeout: 1,
+	}, nil)
+
+	if err == nil {
+		t.Fatal("expected io error")
+	}
+	if !strings.Contains(err.Error(), "failed to finalize downloaded file") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if downloaderr.KindOf(err) != downloaderr.KindIO {
+		t.Fatalf("expected io error kind, got %s", downloaderr.KindOf(err))
 	}
 }
 
@@ -199,7 +237,7 @@ func TestDownloadFileSucceeds(t *testing.T) {
 		if bucketName != "bucket" {
 			t.Fatalf("unexpected bucket name: %s", bucketName)
 		}
-		return stubDownloader{download: func(fileKey, targetPath, fileName string) error {
+		return stubDownloader{download: func(ctx context.Context, fileKey, targetPath, fileName string) error {
 			called = true
 			if fileKey != "key" || targetPath != "/tmp" || fileName != "file.txt" {
 				t.Fatalf("unexpected download args: key=%s target=%s file=%s", fileKey, targetPath, fileName)
@@ -230,7 +268,7 @@ func TestDownloadFileSupportsConcurrentRequests(t *testing.T) {
 	var downloadCalls atomic.Int32
 	withStubDownloader(t, func(nc *nats.Conn, bucketName string) (fileDownloader, error) {
 		clientCreations.Add(1)
-		return stubDownloader{download: func(fileKey, targetPath, fileName string) error {
+		return stubDownloader{download: func(ctx context.Context, fileKey, targetPath, fileName string) error {
 			downloadCalls.Add(1)
 			return nil
 		}}, nil
@@ -265,7 +303,7 @@ func TestDownloadFileSupportsConcurrentRequests(t *testing.T) {
 
 func TestDownloadFileSupportsLargeTimeoutWithoutWaiting(t *testing.T) {
 	withStubDownloader(t, func(nc *nats.Conn, bucketName string) (fileDownloader, error) {
-		return stubDownloader{download: func(fileKey, targetPath, fileName string) error {
+		return stubDownloader{download: func(ctx context.Context, fileKey, targetPath, fileName string) error {
 			return nil
 		}}, nil
 	})
@@ -289,7 +327,7 @@ func TestDownloadFileSupportsLargeTimeoutWithoutWaiting(t *testing.T) {
 
 func BenchmarkDownloadFile(b *testing.B) {
 	withStubDownloader(b, func(nc *nats.Conn, bucketName string) (fileDownloader, error) {
-		return stubDownloader{download: func(fileKey, targetPath, fileName string) error {
+		return stubDownloader{download: func(ctx context.Context, fileKey, targetPath, fileName string) error {
 			return nil
 		}}, nil
 	})

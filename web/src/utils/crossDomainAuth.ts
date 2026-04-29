@@ -13,47 +13,28 @@ interface AuthData {
   wechatWorkId?: string;
 }
 
-const AUTH_EXPIRY_HOURS = 24;
-
 /**
- * Set cookie
+ * Save authentication token.
+ * The bklite_token cookie is now set by the backend via Set-Cookie header (HttpOnly + Secure).
+ * This function is retained for call-site compatibility but no longer writes to document.cookie.
  */
-function setCookie(name: string, value: string, hours: number = AUTH_EXPIRY_HOURS): void {
-  const expires = new Date();
-  expires.setTime(expires.getTime() + (hours * 60 * 60 * 1000));
-  
-  const cookieOptions = `expires=${expires.toUTCString()}; path=/; SameSite=Lax`;
-  document.cookie = `${name}=${value}; ${cookieOptions}`;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function saveAuthToken(_userData: AuthData): void {
+  // Cookie is now set server-side with HttpOnly; no client-side action needed.
 }
 
 /**
- * Delete cookie
- */
-function deleteCookie(name: string): void {
-  const pastDate = 'Thu, 01 Jan 1970 00:00:00 UTC';
-  document.cookie = `${name}=; expires=${pastDate}; path=/`;
-}
-
-/**
- * Save authentication token to cookie
- */
-export function saveAuthToken(userData: AuthData): void {
-  try {
-    setCookie('bklite_token', userData.token, AUTH_EXPIRY_HOURS);
-    console.log('Auth token saved successfully');
-  } catch (error) {
-    console.error('Failed to save auth token:', error);
-  }
-}
-
-/**
- * Clear authentication token from cookie
+ * Clear authentication token from cookie.
+ * The backend logout endpoint clears the HttpOnly cookie via Set-Cookie.
+ * This function attempts a client-side delete as a fallback for non-HttpOnly cookies
+ * that may still exist during the transition period.
  */
 export function clearAuthToken(): void {
   try {
-    deleteCookie('bklite_token');
-    console.log('Auth token cleared successfully');
-  } catch (error) {
-    console.error('Failed to clear auth token:', error);
+    // Fallback: clear any legacy non-HttpOnly bklite_token cookie
+    const pastDate = 'Thu, 01 Jan 1970 00:00:00 UTC';
+    document.cookie = `bklite_token=; expires=${pastDate}; path=/`;
+  } catch {
+    // Silent fail: cookie clearing is best-effort
   }
 }

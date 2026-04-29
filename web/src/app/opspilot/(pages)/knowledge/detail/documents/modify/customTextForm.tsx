@@ -47,10 +47,10 @@ const CustomTextForm: React.FC<CustomTextFormProps> = ({ onFormChange, onFormDat
         }}
         initialValues={formData}
       >
-        <Form.Item label={t('knowledge.form.name')}>
+        <Form.Item label={t('common.name')}>
           <Input
             value={formData.name}
-            placeholder={`${t('common.inputMsg')}${t('knowledge.form.name')}`}
+            placeholder={`${t('common.inputMsg')}${t('common.name')}`}
             onChange={(e) => handleInputChange('name', e.target.value)}
           />
         </Form.Item>

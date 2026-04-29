@@ -2,6 +2,7 @@ import json
 import logging
 import os
 
+from django.conf import settings as django_settings
 from django.http import JsonResponse
 from django.shortcuts import render
 from rest_framework.decorators import api_view
@@ -130,7 +131,29 @@ def login(request):
                 res["data"]["redirect_url"] = c_url
                 logger.info(f"Login successful for user: {username}, redirect to: {c_url}")
 
-        return JsonResponse(res)
+        response = JsonResponse(res)
+
+        # Set bklite_token cookie with secure attributes on successful login
+        if res.get("result") and res.get("data", {}).get("token"):
+            token = res["data"]["token"]
+            login_expired_time = 3600 * 24  # default 24h
+            try:
+                setting = SystemSettings.objects.filter(key="login_expired_time").first()
+                if setting:
+                    login_expired_time = int(float(setting.value) * 3600)
+            except Exception:
+                pass
+            response.set_cookie(
+                "bklite_token",
+                token,
+                max_age=login_expired_time,
+                path="/",
+                secure=not django_settings.DEBUG,
+                httponly=True,
+                samesite="Lax",
+            )
+
+        return response
     except Exception as e:
         logger.error(f"Login error: {e}")
         # 记录系统错误导致的登录失败
@@ -147,6 +170,31 @@ def login(request):
                 "message": _get_loader(request).get("error.system_error", "System error occurred"),
             }
         )
+
+
+@api_exempt
+def logout(request):
+    """撤销 token 并清除 bklite_token cookie。"""
+    if request.method != "POST":
+        return JsonResponse({"result": False, "message": "Method not allowed"}, status=405)
+    try:
+        # Read token from both cookie (HttpOnly) and body (API call from Next.js server-side)
+        token = request.COOKIES.get("bklite_token", "")
+        if not token:
+            data = _parse_request_data(request)
+            token = data.get("token", "")
+        if token:
+            client = SystemMgmt()
+            client.revoke_token(token)
+
+        response = JsonResponse({"result": True, "message": "Logout successful"})
+        response.delete_cookie("bklite_token", path="/", samesite="Lax")
+        return response
+    except Exception as e:
+        logger.error(f"Logout error: {e}")
+        response = JsonResponse({"result": True, "message": "Logout completed with errors"})
+        response.delete_cookie("bklite_token", path="/", samesite="Lax")
+        return response
 
 
 @api_exempt
@@ -432,6 +480,13 @@ def get_client_detail(request):
     try:
         client = _create_system_mgmt_client()
         return_data = client.get_client_detail(client_id=client_name)
+        if return_data.get("result") and return_data.get("data"):
+            data = return_data["data"]
+            locale = getattr(getattr(request, "user", None), "locale", None) or "en"
+            loader = LanguageLoader(app="system_mgmt", default_lang=locale)
+            desc_key = data.get("description", "")
+            translated = loader.get(desc_key) if desc_key else ""
+            data["description"] = translated or desc_key
         return JsonResponse(return_data)
     except Exception as e:
         logger.error(f"Error retrieving client detail for {client_name}: {e}")
@@ -496,12 +551,12 @@ def bk_lite_login(username, password, domain):
     system_client = SystemMgmt()
     res = system_client.get_namespace_by_domain(domain)
     if not res["result"]:
-        return JsonResponse(res)
+        return res
     namespace = res["data"]
     client = RpcClient(namespace)
     res = client.request("login", username=username, password=password)
     if not res["result"]:
-        return JsonResponse(res)
+        return res
     login_res = system_client.bk_lite_user_login(res["data"]["username"], domain)
     return login_res
 

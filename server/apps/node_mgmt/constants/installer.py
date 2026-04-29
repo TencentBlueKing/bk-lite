@@ -5,8 +5,8 @@ def _installer_filename(target_os: str) -> str:
     return "bklite-controller-installer.exe" if target_os == "windows" else "bklite-controller-installer"
 
 
-def _installer_alias_path(target_os: str) -> str:
-    return f"installer/{target_os}/{_installer_filename(target_os)}"
+def _installer_alias_path(target_os: str, architecture: str = "generic") -> str:
+    return f"installer/{target_os}/{architecture}/{_installer_filename(target_os)}"
 
 
 class InstallerConstants:
@@ -100,15 +100,15 @@ class InstallerConstants:
     LINUX_INSTALL_DEFAULT_DIR = "/opt/fusion-collectors"
 
     @classmethod
-    def build_versioned_installer_path(cls, target_os: str, version: str | None = None) -> str:
+    def build_versioned_installer_path(cls, target_os: str, architecture: str = "generic", version: str | None = None) -> str:
         installer_version = version or cls.DEFAULT_INSTALLER_VERSION
         filename = cls.WINDOWS_INSTALLER_FILENAME if target_os == "windows" else cls.LINUX_INSTALLER_FILENAME
-        return f"installer/{target_os}/{installer_version}/{filename}"
+        return f"installer/{target_os}/{architecture}/{installer_version}/{filename}"
 
     @classmethod
-    def build_latest_alias_path(cls, target_os: str) -> str:
+    def build_latest_alias_path(cls, target_os: str, architecture: str = "generic") -> str:
         filename = cls.WINDOWS_INSTALLER_FILENAME if target_os == "windows" else cls.LINUX_INSTALLER_FILENAME
-        return f"installer/{target_os}/{filename}"
+        return f"installer/{target_os}/{architecture}/{filename}"
 
     WINDOWS_INSTALLER_S3_PATH = _installer_alias_path("windows")
     LINUX_INSTALLER_S3_PATH = _installer_alias_path("linux")

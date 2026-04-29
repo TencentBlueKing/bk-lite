@@ -208,10 +208,10 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
       footer={
         <div className="flex justify-end gap-2">
           <Button danger icon={<DeleteOutlined />} onClick={handleDelete}>
-            {t('chatflow.nodeConfig.deleteNode')}
+            {t('common.delete')}
           </Button>
-          <Button onClick={onClose}>{t('chatflow.nodeConfig.cancel')}</Button>
-          <Button type="primary" onClick={handleSave}>{t('chatflow.nodeConfig.confirm')}</Button>
+          <Button onClick={onClose}>{t('common.cancel')}</Button>
+          <Button type="primary" onClick={handleSave}>{t('common.confirm')}</Button>
         </div>
       }
     >

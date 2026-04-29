@@ -8,7 +8,7 @@ class MonitorObjConstants:
     DEFAULT_OBJ_ORDER = [
         {"name_list": ["Host"], "type": "OS"},
         {"name_list": ["Website", "Ping"], "type": "Web"},
-        {"name_list": ["ElasticSearch", "Mongodb", "Mysql", "Postgres", "Redis", "Oracle"], "type": "Database"},
+        {"name_list": ["ElasticSearch", "InfluxDB", "Mongodb", "Mysql", "Postgres", "Redis", "Oracle"], "type": "Database"},
         {
             "name_list": [
                 "RabbitMQ",

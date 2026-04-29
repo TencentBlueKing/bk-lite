@@ -151,7 +151,15 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   // 根据选中的操作系统过滤版本列表
   const filteredSidecarVersionList = useMemo(() => {
     if (!os) return sidecarVersionList;
-    return sidecarVersionList.filter((item) => item.os === os);
+    const filtered = sidecarVersionList.filter((item) => item.os === os);
+    const deduped = new Map();
+    filtered.forEach((item) => {
+      const key = `${item.os}-${item.version}`;
+      if (!deduped.has(key)) {
+        deduped.set(key, item);
+      }
+    });
+    return Array.from(deduped.values());
   }, [os, sidecarVersionList]);
 
   useEffect(() => {

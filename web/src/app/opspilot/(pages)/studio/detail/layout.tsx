@@ -82,7 +82,7 @@ const LayoutContent = ({ children }: { children: React.ReactNode }) => {
       case '/opspilot/studio/detail/settings':
         return (
           <TopSection
-            title={t('studio.settings.title')}
+            title={t('common.settings')}
             content={t('studio.settings.description')}
           />
         );
@@ -110,7 +110,7 @@ const LayoutContent = ({ children }: { children: React.ReactNode }) => {
       default:
         return (
           <TopSection
-            title={t('studio.settings.title')}
+            title={t('common.settings')}
             content={t('studio.settings.description')}
           />
         );

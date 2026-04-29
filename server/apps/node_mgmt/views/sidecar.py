@@ -16,6 +16,7 @@ from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
 from apps.node_mgmt.constants.installer import InstallerConstants
+from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 
 
 class OpenSidecarViewSet(OpenAPIViewSet):
@@ -545,7 +546,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         if not token:
             raise BaseAppException("Missing token parameter")
 
-        config = InstallerSessionService.build_session_config(token)
+        config = InstallerSessionService.build_session_config(token, request.query_params.get("arch", ""))
 
         response = JsonResponse(config)
         response["X-Token-Remaining-Usage"] = str(config["remaining_usage"])
@@ -561,7 +562,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         if token_data["os"] != NodeConstants.LINUX_OS:
             raise BaseAppException("Token operating system does not match Linux installer")
 
-        file, _ = InstallerService.download_linux_installer()
+        file, _ = InstallerService.download_linux_installer(request.query_params.get("arch", "") or token_data.get("cpu_architecture", ""))
         return WebUtils.response_file(file, InstallerConstants.LINUX_INSTALLER_FILENAME)
 
     @action(detail=False, methods=["GET"], url_path="installer/windows_config")
@@ -574,12 +575,14 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         if not token:
             raise BaseAppException("Missing token parameter")
 
-        config = InstallerSessionService.build_session_config(token)
+        token_data = InstallTokenService.validate_and_get_token_data(token)
+        requested_arch = normalize_cpu_architecture(token_data.get("cpu_architecture", ""))
+        config = InstallerSessionService.build_session_config(token, requested_arch)
         installer = config["installer"]
         install_dir = config["install_dir"]
         server_base_url = config["server_url"].replace("/api/v1/node_mgmt/open_api/node", "")
-        installer_url = f"{server_base_url}/api/v1/node_mgmt/open_api/installer/linux/download?token={token}"
-        config_url = f"{server_base_url}/api/v1/node_mgmt/open_api/installer/session?token={token}"
+        installer_url = f"{server_base_url}/api/v1/node_mgmt/open_api/installer/linux/download?token={token}&arch=$DETECTED_ARCH"
+        config_url = f"{server_base_url}/api/v1/node_mgmt/open_api/installer/session?token={token}&arch=$DETECTED_ARCH"
 
         script = f'''#!/bin/bash
 set -euo pipefail
@@ -588,6 +591,20 @@ INSTALL_DIR="{install_dir}"
 INSTALLER_NAME="{installer["filename"]}"
 TMP_DIR="$(mktemp -d)"
 INSTALLER_PATH="$TMP_DIR/$INSTALLER_NAME"
+DETECTED_ARCH="$(uname -m | tr '[:upper:]' '[:lower:]')"
+
+if [ "$DETECTED_ARCH" = "amd64" ]; then
+  DETECTED_ARCH="x86_64"
+elif [ "$DETECTED_ARCH" = "aarch64" ]; then
+  DETECTED_ARCH="arm64"
+fi
+
+EXPECTED_ARCH="{requested_arch}"
+
+if [ -n "$EXPECTED_ARCH" ] && [ "$DETECTED_ARCH" != "$EXPECTED_ARCH" ]; then
+  echo "Error: target architecture $DETECTED_ARCH does not match expected architecture $EXPECTED_ARCH"
+  exit 1
+fi
 
 cleanup() {{
   rm -rf "$TMP_DIR"

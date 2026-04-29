@@ -569,7 +569,7 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
                 }}
                 addonAfter={
                   <span className="text-gray-500 whitespace-nowrap">
-                    {t('knowledge.qaPairs.totalQAPairsPrefix')} {totalQAPairs} {t('knowledge.qaPairs.totalQAPairsSuffix')}
+                    {t('common.total')} {totalQAPairs} {t('knowledge.qaPairs.totalQAPairsSuffix')}
                   </span>
                 }
               />
@@ -643,14 +643,14 @@ const QAPairForm = forwardRef<any, QAPairFormProps>(({
       <div className="w-1/2 flex flex-col">
         <div className="flex-1 flex flex-col">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-medium m-0">{t('knowledge.qaPairs.preview')}</h3>
+            <h3 className="font-medium m-0">{t('common.preview')}</h3>
             <Button
               type="primary"
               onClick={handleOpenPreview}
               disabled={selectedDocuments.length === 0}
               loading={previewLoading}
             >
-              {t('knowledge.qaPairs.preview')} {totalSelectedChunks > 0 && `(${totalSelectedChunks})`}
+              {t('common.preview')} {totalSelectedChunks > 0 && `(${totalSelectedChunks})`}
             </Button>
           </div>
 

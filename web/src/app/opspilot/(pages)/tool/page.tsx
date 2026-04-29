@@ -103,9 +103,9 @@ const ToolListPage: React.FC = () => {
     {
       name: 'name',
       type: 'input',
-      label: t('tool.name'),
-      placeholder: `${t('common.inputMsg')}${t('tool.name')}`,
-      rules: [{ required: true, message: `${t('common.inputMsg')}${t('tool.name')}` }],
+      label: t('common.name'),
+      placeholder: `${t('common.inputMsg')}${t('common.name')}`,
+      rules: [{ required: true, message: `${t('common.inputMsg')}${t('common.name')}` }],
       disabled: isBuiltIn,
     },
     {
@@ -114,7 +114,7 @@ const ToolListPage: React.FC = () => {
       label: t('tool.label'),
       placeholder: `${t('common.selectMsg')}${t('tool.label')}`,
       options: [
-        { value: 'search', label: `${t('tool.search')} ${t('tool.title')}` },
+        { value: 'search', label: `${t('common.search')} ${t('tool.title')}` },
         { value: 'general', label: `${t('tool.general')} ${t('tool.title')}` },
         { value: 'maintenance', label: `${t('tool.maintenance')} ${t('tool.title')}` },
         { value: 'media', label: `${t('tool.media')} ${t('tool.title')}` },
@@ -438,7 +438,7 @@ const ToolListPage: React.FC = () => {
               <span className="font-semibold text-base">{t('tool.availableTools')}</span>
               {availableTools.length > 0 && (
                 <span className="text-xs text-gray-500 bg-[var(--color-fill-1)] px-2 py-1 rounded">
-                  {t('tool.total')} {availableTools.length} {t('tool.items')}
+                  {t('common.total')} {availableTools.length} {t('tool.items')}
                 </span>
               )}
             </div>
@@ -496,7 +496,7 @@ const ToolListPage: React.FC = () => {
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-[var(--text-color-1)]">{t('tool.availableTools')}</h3>
                   <span className="text-xs text-gray-500 bg-[var(--color-fill-1)] px-2 py-1 rounded">
-                    {t('tool.total')} {selectedToolForDetail.tools.length} {t('tool.items')}
+                    {t('common.total')} {selectedToolForDetail.tools.length} {t('tool.items')}
                   </span>
                 </div>
                 <div className="space-y-3">

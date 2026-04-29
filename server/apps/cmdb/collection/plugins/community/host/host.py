@@ -6,8 +6,9 @@ class HostCollectionPlugin(BaseHostCollectionPlugin):
     supported_model_id = "host"
     metric_names = ("host_info_gauge", "host_proc_usage_info_gauge")
     field_mapping = {
-        "inst_name": HostCollectMetrics.set_inst_name,
-        "ip_addr": HostCollectMetrics.set_inst_name,
+        "inst_name": HostCollectMetrics.set_display_inst_name,
+        "ip_addr": HostCollectMetrics.set_ip_addr,
+        "cloud": HostCollectMetrics.set_cloud,
         "hostname": "hostname",
         "os_type": HostCollectMetrics.set_os_type,
         "os_name": "os_name",

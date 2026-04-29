@@ -15,7 +15,6 @@
       "readWrite": "Read Write",
       "actions": "Actions",
       "data": "Data",
-      "group": "Organization",
       "permissions": "Permissions",
       "fullPermission": "Full Permission",
       "allData": "All Data",
@@ -55,7 +54,6 @@
     },
     "menu": {
       "items": "items",
-      "copy": "Copy",
       "copySuccess": "Menu copied successfully",
       "newGroup": "New Group",
       "loadFailed": "Failed to load menus",
@@ -72,7 +70,6 @@
       "menuNameRequired": "Menu name cannot be empty",
       "selectPages": "Please select pages from the left tree first",
       "menuStructure": "Menu Structure",
-      "delete": "Delete",
       "addSelected": "Add Selected",
       "sourceMenus": "Source Menu Tree",
       "menuName": "Menu Name",
@@ -90,7 +87,6 @@
       "disableSuccess": "Menu disabled successfully",
       "disable": "Disable",
       "functionList": "Function List",
-      "addSuccess": "Added successfully",
       "updatedAt": "Updated At",
       "deleteConfirm": "Are you sure you want to delete this menu?",
       "name": "Menu Name"
@@ -151,7 +147,6 @@
       "groupPermission": "Organization Permission Grant",
       "form": {
         "administrator": "Administrator",
-        "group": "Organization",
         "locale": "Locale",
         "zoneinfo": "zoneInfo",
         "normalusers": "Normal Users",
@@ -169,6 +164,8 @@
         "lastName": "Name",
         "passwordMismatch": "Passwords do not match",
         "normalUser": "Normal User",
+        "groupSelectionRequired": "Please select at least one organization",
+        "normalGroupRequired": "Please select at least one normal organization",
         "tempTooltip": "If enabled, the user must change the password on next login"
       },
       "admin": {
@@ -176,7 +173,6 @@
         "desc2": "2.Have the highest privileges in other apps, possessing access to all data and the ability to perform all functionality operations.",
         "title": "The administrator has the following permissions:"
       },
-      "search": "Search",
       "normal": {
         "desc3": "3. In other apps, have only operational permissions for using pages, with management pages having view-only access.",
         "desc2": "2. In other apps, have data access rights only for their own organization.",
@@ -204,7 +200,6 @@
       "fiveTimes": "5 Times",
       "selectFormat": "Select Export Format",
       "days": "days",
-      "actionTypeUpdate": "Update",
       "loginHost": "Login Host",
       "oneMonth": "1 Month",
       "operationModule": "Application",
@@ -225,7 +220,6 @@
       "loginAttempts": "Password Retry Limit",
       "errorModule": "Module",
       "syncOnce": "scheduled sync once",
-      "actionTypeExecute": "Execute",
       "authSourceName": "Authentication Source Name",
       "passwordSettings": "Password Settings",
       "passwordComplexity": "Password Complexity Requirements",
@@ -241,7 +235,6 @@
       "operationLogs": "Operation Logs",
       "requireUppercase": "Uppercase Letters",
       "loginStatusFailed": "Failed",
-      "actionTypeDelete": "Delete",
       "loginStatus": "Login Status",
       "domain": "Domain",
       "passwordLengthRange": "Password Length Range",
@@ -251,7 +244,6 @@
       "errorModulePlaceholder": "Please enter module name",
       "operationTime": "Time",
       "operationType": "Action Type",
-      "export": "Export",
       "exportFailed": "Export failed",
       "sourceIp": "Source IP",
       "loginExpiredTime": "Login Expiration Time",
@@ -268,15 +260,12 @@
       "hours": "hours",
       "appId": "App ID",
       "loginLocation": "Login Location",
-      "exportSuccess": "Export successful",
       "redirectUriTip": "The page to redirect to after successful login. Format example (to return to the console): https://authorized-callback-domain/ops-console/home",
       "everyday": "Every day",
       "browser": "Browser",
       "authSources": "Authentication Sources",
-      "enabled": "Enabled",
       "userLogs": "User Logs",
       "permanent": "Permanent",
-      "actionTypeCreate": "Create",
       "exportTitle": "Export Login Logs",
       "threeMonths": "3 Months",
       "seconds": "seconds"
@@ -286,6 +275,19 @@
         "key": "Keys",
         "portal": "Portal",
         "license": "License"
+      },
+      "secret": {
+        "title": "API Secret Keys",
+        "createdAt": "Created",
+        "key": "Secret Key",
+        "group": "Organization",
+        "content": "To prevent API abuse, protect your API key.",
+        "deleteConfirm": "Are you sure you want to delete this secret key?",
+        "create": "Create new secret key",
+        "createSuccessTitle": "Secret Key Created Successfully",
+        "createSuccessDesc": "Please save this secret key immediately. You will not be able to view the full key again once you close this window.",
+        "confirmSave": "I have securely saved this secret key",
+        "savedAction": "I have saved it"
       },
       "license": {
         "title": "License Management",
@@ -425,10 +427,8 @@
           "logDesc": "Supports compliant log retention and fast retrieval, providing reliable evidence for troubleshooting and audit tracing.",
           "alerts": "Alert Center",
           "alertsDesc": "Aggregates multi-source alerts with intelligent noise reduction, accelerating response through precise dispatching to ensure quick closure.",
-          "performance": "Performance Analysis",
-          "performanceDesc": "In-depth analysis of traces, metrics, and anomalies to quickly locate performance bottlenecks and improve core business stability.",
-          "itsm": "ITSM",
-          "itsmDesc": "Orchestrate process services, approvals, and trigger rules with unified automation design to improve cross-team collaboration.",
+          "job": "Job Management",
+          "jobDesc": "Batch execution of scripts and commands with scheduled task orchestration and execution history tracking to improve operations automation.",
           "operation_analysis": "Ops Analysis",
           "operation_analysisDesc": "Integrates multi-source operations data, transforming operational insights into business value and decision support through intelligent analysis.",
           "node_mgmt": "Node Manager",
@@ -496,13 +496,11 @@
       "settings": {
         "editChannel": "Edit Channel",
         "smtp_usetls": "Use TLS",
-        "name": "Name",
         "addChannel": "Add Channel",
         "smtp_pwd": "Smtp Password",
         "smtp_usessl": "Use SSL",
         "smtp_server": "Smtp Server",
         "description": "Description",
-        "team": "Organization",
         "webhook_url": "Webhook URL",
         "mail_sender": "Mail Sender",
         "port": "Port",
@@ -524,7 +522,9 @@
         "subTypeCustom": "Custom",
         "test": "Test",
         "testFailed": "Test send failed",
-        "testSuccess": "The test message has been sent. Please confirm whether it was received successfully"
+        "testSuccess": "The test message has been sent. Please confirm whether it was received successfully",
+        "name": "Name",
+        "team": "Organization"
       },
       "table": {
         "description": "DESCRIPTION",
@@ -534,7 +534,6 @@
       "emailDesc": "The email channel supports sending email notifications via SMTP service.",
       "template": {
         "context": "CONTEXT",
-        "detail": "Detail",
         "app": "APP",
         "name": "NAME"
       },
@@ -551,7 +550,6 @@
     "modules": {
       "llm_model": "LLM Model",
       "rerank_model": "Reranking Model",
-      "provider": "Model",
       "ocr_model": "OCR Model",
       "skill": "Agent",
       "knowledge": "Knowledge Base",
@@ -565,7 +563,6 @@
       "deleteWithChildrenWarning": "Deleting this organization will also delete all its sub-organizations and users. Are you sure you want to delete?",
       "addSubGroups": "Add Sub-Organizations",
       "editGroup": "Edit Organization",
-      "title": "Organization",
       "desc": "Display all information.You can maintain user information and assign roles.",
       "rename": "Rename",
       "renameSuccess": "Rename Success",
@@ -585,7 +582,6 @@
       },
       "organizationName": "Organization Name",
       "addRole": "Add Role",
-      "name": "Name",
       "personalRole": "Personal Role",
       "organizationRole": "Organization Role",
       "inheritedRole": "Inherited Role",
@@ -598,7 +594,6 @@
       "updateRole": "Update Role"
     },
     "data": {
-      "name": "Name",
       "group": "Organization",
       "deleteConfirm": "Are you sure you want to delete this data?",
       "description": "Description"
@@ -611,9 +606,6 @@
       "selectedusers": "Selected Users",
       "modifyrole": "Modify Role",
       "english": "English",
-      "confirm": "Confirm",
-      "cancel": "Cancel",
-      "copySuccess": "Copied successfully",
       "copyFailed": "Copy failed",
       "fetchFailed": "Failed to fetch data",
       "saveFailed": "Save failed"

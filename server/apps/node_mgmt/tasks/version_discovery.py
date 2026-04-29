@@ -4,6 +4,8 @@ from apps.core.logger import logger
 from apps.node_mgmt.models import Node, NodeComponentVersion, Controller
 from apps.rpc.executor import Executor
 from apps.node_mgmt.services.version_upgrade import VersionUpgradeService
+from apps.node_mgmt.constants.node import NodeConstants
+from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.version_utils import VersionUtils
 
 
@@ -16,7 +18,7 @@ def discover_node_versions():
     logger.info("开始执行节点控制器版本发现任务")
 
     # 一次性获取所有最新版本映射（只查询一次）
-    latest_versions_map = VersionUpgradeService.get_latest_versions_map(component_type='controller')
+    latest_versions_map = VersionUpgradeService.get_latest_versions_map(component_type="controller")
 
     nodes = Node.objects.all()
     success_count = 0
@@ -31,11 +33,7 @@ def discover_node_versions():
             logger.error(f"节点 {node.name}({node.ip}) 控制器版本发现失败: {str(e)}")
 
     logger.info(f"节点控制器版本发现任务完成，成功: {success_count}, 失败: {failed_count}")
-    return {
-        "success_count": success_count,
-        "failed_count": failed_count,
-        "total": nodes.count()
-    }
+    return {"success_count": success_count, "failed_count": failed_count, "total": nodes.count()}
 
 
 def _discover_controller_version(node: Node, latest_versions_map: dict):
@@ -44,7 +42,20 @@ def _discover_controller_version(node: Node, latest_versions_map: dict):
     从 Controller 模型中读取配置的 version_command
     """
     # 根据节点操作系统查询对应的控制器配置
-    controller = Controller.objects.filter(os=node.operating_system, name="Controller").first()
+    node_arch = normalize_cpu_architecture(getattr(node, "cpu_architecture", ""))
+    controller = Controller.objects.filter(
+        os=node.operating_system,
+        cpu_architecture=node_arch,
+        name="Controller",
+    ).first()
+    if not controller:
+        controller = Controller.objects.filter(
+            os=node.operating_system,
+            cpu_architecture=NodeConstants.X86_64_ARCH,
+            name="Controller",
+        ).first()
+    if not controller:
+        controller = Controller.objects.filter(os=node.operating_system, name="Controller").first()
 
     if not controller:
         logger.warning(f"节点 {node.name} 操作系统 {node.operating_system} 未找到对应的控制器配置")
@@ -58,7 +69,7 @@ def _discover_controller_version(node: Node, latest_versions_map: dict):
                 "latest_version": "",
                 "upgradeable": False,
                 "message": f"未找到操作系统 {node.operating_system} 对应的控制器配置",
-            }
+            },
         )
         return
 
@@ -80,7 +91,7 @@ def _discover_controller_version(node: Node, latest_versions_map: dict):
                     "latest_version": "",
                     "upgradeable": False,
                     "message": "控制器未配置版本命令",
-                }
+                },
             )
             return
 
@@ -99,7 +110,8 @@ def _discover_controller_version(node: Node, latest_versions_map: dict):
                     current_version=version,
                     component_name=component_name,
                     os_type=node.operating_system,
-                    latest_versions_map=latest_versions_map
+                    cpu_architecture=node_arch,
+                    latest_versions_map=latest_versions_map,
                 )
 
                 # 更新或创建控制器版本信息（使用 component_id 作为唯一标识）
@@ -112,7 +124,7 @@ def _discover_controller_version(node: Node, latest_versions_map: dict):
                         "latest_version": latest_version,
                         "upgradeable": upgradeable,
                         "message": "版本获取成功",
-                    }
+                    },
                 )
                 logger.info(f"节点 {node.name} 控制器版本: {version}, 最新版本: {latest_version}, 可升级: {upgradeable}")
             else:
@@ -126,7 +138,7 @@ def _discover_controller_version(node: Node, latest_versions_map: dict):
                         "latest_version": "",
                         "upgradeable": False,
                         "message": "命令执行成功但返回了空结果",
-                    }
+                    },
                 )
                 logger.warning(f"节点 {node.name} 控制器版本命令返回空结果")
         else:
@@ -141,7 +153,7 @@ def _discover_controller_version(node: Node, latest_versions_map: dict):
                     "latest_version": "",
                     "upgradeable": False,
                     "message": error_msg,
-                }
+                },
             )
             logger.warning(f"节点 {node.name} 控制器版本获取失败: {error_msg}")
 
@@ -159,13 +171,13 @@ def _discover_controller_version(node: Node, latest_versions_map: dict):
                     "latest_version": "",
                     "upgradeable": False,
                     "message": error_message,
-                }
+                },
             )
         except Exception as db_error:
             logger.error(f"保存版本信息异常记录失败: {str(db_error)}")
 
 
-def _calculate_upgrade_info(current_version: str, component_name: str, os_type: str, latest_versions_map: dict) -> tuple:
+def _calculate_upgrade_info(current_version: str, component_name: str, os_type: str, cpu_architecture: str, latest_versions_map: dict) -> tuple:
     """
     计算升级信息
 
@@ -180,13 +192,13 @@ def _calculate_upgrade_info(current_version: str, component_name: str, os_type: 
     """
     # 获取该操作系统的最新版本映射
     os_latest_versions = latest_versions_map.get(os_type, {})
-    # 使用 component_name 查询最新版本
-    latest_version = os_latest_versions.get(component_name, '')
+    component_versions = os_latest_versions.get(component_name, {})
+    latest_version = component_versions.get(cpu_architecture, "") or component_versions.get("", "")
 
     # 检查当前版本是否包含特殊标签
-    current_is_latest = current_version and 'latest' in current_version.lower()
-    current_is_unknown = current_version and 'unknown' in current_version.lower()
-    latest_is_latest = latest_version and 'latest' in latest_version.lower()
+    current_is_latest = current_version and "latest" in current_version.lower()
+    current_is_unknown = current_version and "unknown" in current_version.lower()
+    latest_is_latest = latest_version and "latest" in latest_version.lower()
 
     # 升级逻辑：
     # 1. 当前版本是 unknown → 不升级

@@ -1,0 +1,71 @@
+version: 1
+
+defaults:
+  group_ids: [1]
+  interval: 10
+  oa:
+    enabled: false
+    target_directory_id: 1
+    datasource_name: "查询时间范围内的指标数据"
+    datasource_rest_api: "monitor/mm_query_range"
+    created_by: "admin"
+
+registrations:
+  - key: host-10.11.27.147-shared
+    collector: Telegraf
+    collect_type: host
+    plugin_name: Host
+    monitor_object_name: Host
+    configs:
+      - type: cpu
+      - type: mem
+    operation_analysis:
+      enabled: true
+      dashboard_key: host-mysql-shared
+      target_directory_id: 1
+      dashboard_name: "主机与 MySQL 联合画布"
+      dashboard_desc: "Host + MySQL shared dashboard"
+      query_metric: "cpu_usage_user"
+      query_step: "5m"
+      query_time_range: 10080
+      widget_id: "host-cpu-widget"
+      widget_title: "主机 CPU 趋势"
+      widget_x: 0
+      widget_y: 0
+      widget_w: 6
+      widget_h: 4
+    instances:
+      - instance_name: host-10.11.27.147
+        host: 10.11.27.147
+        node_ip: 10.11.27.147
+
+  - key: mysql-10.11.24.61-3306-shared
+    collector: Telegraf
+    collect_type: database
+    plugin_name: Mysql
+    monitor_object_name: Mysql
+    configs:
+      - type: mysql
+    operation_analysis:
+      enabled: true
+      dashboard_key: host-mysql-shared
+      target_directory_id: 1
+      dashboard_name: "主机与 MySQL 联合画布"
+      dashboard_desc: "Host + MySQL shared dashboard"
+      query_metric: "mysql_threads_connected"
+      query_step: "5m"
+      query_time_range: 10080
+      widget_id: "mysql-threads-widget"
+      widget_title: "MySQL 连接数趋势"
+      widget_x: 6
+      widget_y: 0
+      widget_w: 6
+      widget_h: 4
+    instances:
+      - instance_name: mysql-10.11.24.61:3306
+        instance_type: mysql
+        host: 10.11.24.61
+        port: 3306
+        username: root
+        ENV_PASSWORD: "EmTmZ2l48qbt"
+        node_ip: 10.11.27.147

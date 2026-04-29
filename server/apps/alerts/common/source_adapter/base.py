@@ -5,6 +5,7 @@
 import datetime
 import uuid
 import hashlib
+import json
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List
 
@@ -62,6 +63,31 @@ class AlertSourceAdapter(ABC):
     def fetch_alerts(self) -> List[Dict[str, Any]]:
         """从告警源获取告警数据"""
         pass
+
+    def normalize_payload(self, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """将上游原始 payload 规范化为标准事件列表"""
+        events = payload.get("events", [])
+        if not isinstance(events, list) or not events:
+            raise ValueError("Missing events.")
+        return events
+
+    def get_integration_guide(self, base_url: str) -> Dict[str, Any]:
+        """返回源类型对接说明与模板"""
+        return {
+            "source_type": self.alert_source.source_type,
+            "source_id": self.alert_source.source_id,
+            "webhook_url": f"{base_url}/api/v1/alerts/api/receiver_data/",
+            "headers": {"SECRET": self.alert_source.secret},
+            "description": "通用事件接收入口",
+        }
+
+    @staticmethod
+    def build_external_id_from_fields(data: Dict[str, Any], fields: List[str]) -> str:
+        fingerprint_data = {}
+        for field in fields:
+            value = data.get(field)
+            fingerprint_data[field] = str(value).strip() if value is not None and str(value).strip() else "unknown"
+        return hashlib.md5(json.dumps(fingerprint_data, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
     def mapping_fields_to_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """将告警字段映射到事件字段"""

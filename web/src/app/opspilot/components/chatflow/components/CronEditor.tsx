@@ -100,7 +100,7 @@ const CronEditor: React.FC<CronEditorProps> = ({
           disabled={disabled}
           className="text-[var(--color-primary)] p-0"
         >
-          {t('chatflow.nodeConfig.previewSchedule')}
+          {t('common.preview')}
         </Button>
       </div>
 

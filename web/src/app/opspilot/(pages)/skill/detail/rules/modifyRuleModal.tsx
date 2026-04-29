@@ -147,7 +147,7 @@ const ModifyRuleModal: React.FC<ModifyRuleModalProps> = ({ visible, onCancel, on
       >
         <Form.Item
           name="name"
-          label={t('skill.rules.name')}
+          label={t('common.name')}
           rules={[{ required: true, message: t('common.inputRequired') }]}
         >
           <Input />

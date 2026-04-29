@@ -2,9 +2,11 @@ package utils
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"nats-executor/jetstream"
 	"nats-executor/logger"
+	"nats-executor/utils/downloaderr"
 	"path/filepath"
 	"strings"
 	"time"
@@ -13,7 +15,7 @@ import (
 )
 
 type fileDownloader interface {
-	DownloadToFile(fileKey, targetPath, fileName string) error
+	DownloadToFile(ctx context.Context, fileKey, targetPath, fileName string) error
 }
 
 var newJetStreamClient = func(nc *nats.Conn, bucketName string) (fileDownloader, error) {
@@ -50,20 +52,24 @@ func DownloadFile(req DownloadFileRequest, nc *nats.Conn) error {
 		return fmt.Errorf("failed to create JetStream client: %w", err)
 	}
 
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- client.DownloadToFile(req.FileKey, req.TargetPath, req.FileName)
-	}()
-
-	select {
-	case <-ctx.Done():
-		if ctx.Err() == context.DeadlineExceeded {
-			return fmt.Errorf("download operation timed out")
-		}
-		return fmt.Errorf("download operation canceled: %w", ctx.Err())
-	case err := <-errCh:
-		if err != nil {
-			return fmt.Errorf("failed to download file: %w", err)
+	if err := client.DownloadToFile(ctx, req.FileKey, req.TargetPath, req.FileName); err != nil {
+		switch downloaderr.KindOf(err) {
+		case downloaderr.KindTimeout:
+			return downloaderr.New(downloaderr.KindTimeout, fmt.Errorf("download operation timed out: %w", err))
+		case downloaderr.KindCanceled:
+			return downloaderr.New(downloaderr.KindCanceled, fmt.Errorf("download operation canceled: %w", err))
+		case downloaderr.KindIO:
+			return downloaderr.New(downloaderr.KindIO, fmt.Errorf("failed to finalize downloaded file: %w", err))
+		case downloaderr.KindDependency:
+			return downloaderr.New(downloaderr.KindDependency, fmt.Errorf("failed to download file: %w", err))
+		default:
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, nats.ErrTimeout) {
+				return downloaderr.New(downloaderr.KindTimeout, fmt.Errorf("download operation timed out: %w", err))
+			}
+			if errors.Is(err, context.Canceled) {
+				return downloaderr.New(downloaderr.KindCanceled, fmt.Errorf("download operation canceled: %w", err))
+			}
+			return downloaderr.New(downloaderr.KindDependency, fmt.Errorf("failed to download file: %w", err))
 		}
 	}
 

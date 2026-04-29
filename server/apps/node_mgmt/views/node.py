@@ -1,4 +1,3 @@
-from django.core.cache import cache
 from typing import Any, cast
 from rest_framework import mixins
 from rest_framework.decorators import action
@@ -330,10 +329,6 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
         collector_configuration_id = serializer.validated_data["collector_configuration_id"]
         result, message = NodeService.batch_binding_node_configuration(node_ids, collector_configuration_id)
 
-        # 清除cache中的etag
-        for node_id in node_ids:
-            cache.delete(f"node_etag_{node_id}")
-
         if result:
             return WebUtils.response_success(message)
         else:
@@ -354,10 +349,6 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
             domain=getattr(request.user, "domain", "domain.com"),
             updated_by_domain=getattr(request.user, "domain", "domain.com"),
         )
-
-        # 清除cache中的etag
-        for node_id in node_ids:
-            cache.delete(f"node_etag_{node_id}")
 
         return WebUtils.response_success(dict(task_id=task_id))
 

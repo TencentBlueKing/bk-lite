@@ -37,7 +37,7 @@ const Controller = () => {
 
   const navigateToCollectorDetail = (item: CardItem) => {
     router.push(`
-      /node-manager/controller/detail?id=${item.id}&name=${item.original_name}&displayName=${item.name}&introduction=${item.description}&system=${item.os}`);
+      /node-manager/controller/detail?id=${item.id}&name=${item.original_name}&displayName=${item.name}&introduction=${item.description}&system=${item.os}&architecture=${item.cpu_architecture || ''}`);
   };
 
   const filterBySelected = (data: any[], selectedTags: string[]) => {
@@ -68,7 +68,9 @@ const Controller = () => {
     const tempdata = (res || []).map((item: any) => {
       const system = item.node_operating_system || item.os || 'linux';
       const systemDisplayName = getOSDisplayName(system);
-      const tagList = [systemDisplayName];
+      const architectureDisplay = item.architecture_display ||
+        (item.cpu_architecture === 'arm64' ? 'ARM64' : item.cpu_architecture || '');
+      const tagList = [systemDisplayName, architectureDisplay].filter(Boolean);
       tagList.forEach((tag) => {
         if (tag) {
           tagSet.add(tag);
@@ -87,6 +89,7 @@ const Controller = () => {
         icon: 'caijiqizongshu',
         tagList,
         os: system,
+        cpu_architecture: item.cpu_architecture,
         originalTags: [system],
       };
     });

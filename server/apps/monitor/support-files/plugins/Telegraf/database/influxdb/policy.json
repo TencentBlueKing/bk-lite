@@ -1,0 +1,144 @@
+{
+  "object": "InfluxDB",
+  "plugin": "InfluxDB",
+  "templates": [
+    {
+      "name": "数据库序列数过高",
+      "alert_name": "InfluxDB 实例 ${resource_name} 序列数过高",
+      "description": "监控单个数据库的序列数，过高会带来严重基数压力，影响内存和查询性能。",
+      "metric_name": "influxdb_database_numSeries",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 5000000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 1000000,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 500000,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "HTTP认证失败速率过高",
+      "alert_name": "InfluxDB 实例 ${resource_name} HTTP认证失败速率过高",
+      "description": "监控 HTTP 认证失败速率，持续升高可能表明配置错误或异常尝试。",
+      "metric_name": "influxdb_httpd_authFail_rate",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0.5,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 0.1667,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "HTTP 4XX 错误速率过高",
+      "alert_name": "InfluxDB 实例 ${resource_name} HTTP 4XX 错误速率过高",
+      "description": "监控 HTTP 4XX 错误速率，持续升高通常意味着上游请求参数错误或接口调用方式异常。",
+      "metric_name": "influxdb_httpd_clientError_rate",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1.6667,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 0.3333,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "HTTP 5XX 错误速率过高",
+      "alert_name": "InfluxDB 实例 ${resource_name} HTTP 5XX 错误速率过高",
+      "description": "监控 HTTP 5XX 错误速率，持续升高通常意味着实例内部处理异常或服务端压力问题。",
+      "metric_name": "influxdb_httpd_serverError_rate",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0.3333,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 0.0833,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "写入接口丢点速率过高",
+      "alert_name": "InfluxDB 实例 ${resource_name} 写入接口丢点速率过高",
+      "description": "监控写入接口丢点速率，持续升高说明数据写入链路异常。",
+      "metric_name": "influxdb_httpd_pointsWrittenDropped_rate",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1.6667,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 0.1667,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "写入持久化失败速率过高",
+      "alert_name": "InfluxDB 实例 ${resource_name} 写入持久化失败速率过高",
+      "description": "监控已接受但未能持久化的数据点速率，持续升高需要检查磁盘或存储引擎状态。",
+      "metric_name": "influxdb_httpd_pointsWrittenFail_rate",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1.6667,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 0.1667,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "堆内存占用过高",
+      "alert_name": "InfluxDB 实例 ${resource_name} 堆内存占用过高",
+      "description": "监控 Go runtime 堆内存分配量，持续升高会导致 GC 压力和进程内存膨胀。",
+      "metric_name": "influxdb_runtime_HeapAlloc",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 4294967296,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 2147483648,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}

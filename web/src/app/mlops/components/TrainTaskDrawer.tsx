@@ -6,6 +6,8 @@ import TrainTaskHistory from "./TrainTaskHistory";
 import TrainTaskDetail from "./TrainTaskDetail";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { TRAINJOB_MAP } from "@/app/mlops/constants";
+import { isValidAlgorithmType } from "@/app/mlops/types";
+import type { TrainTaskHistory as TrainTaskHistoryItem } from "@/app/mlops/types";
 import styles from './traintask.module.scss'
 
 const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
@@ -17,12 +19,13 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
   }) => {
   const { t } = useTranslation();
   const authContext = useAuth();
-  const { getTrainTaskState } = useMlopsTaskApi();
+  const { getTrainTaskState, deleteTrainRun } = useMlopsTaskApi();
   const [showList, setShowList] = useState<boolean>(true);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
-  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [historyData, setHistoryData] = useState<TrainTaskHistoryItem[]>([]);
   const [activeRunID, setActiveRunID] = useState<string>('');
-  const [key] = activeTag;
+  const [rawKey] = activeTag;
+  const key = isValidAlgorithmType(rawKey) ? rawKey : undefined;
 
   // 分页状态
   const [pagination, setPagination] = useState({
@@ -32,7 +35,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
   });
 
   const currentDetail = useMemo(() => {
-    return historyData?.find((item: any) => item.run_id === activeRunID);
+    return historyData?.find((item) => item.run_id === activeRunID);
   }, [activeRunID, historyData]);
 
   useEffect(() => {
@@ -51,7 +54,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
   }, [pagination.current, pagination.pageSize]);
 
   const getStateData = useCallback(async (page: number = pagination.current, pageSize: number = pagination.pageSize) => {
-    if (!selectId) return;
+    if (!selectId || !key) return;
     setTableLoading(true);
     try {
       const { items, count } = await getTrainTaskState({
@@ -78,12 +81,29 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
     setPagination(value);
   };
 
-  const openDetail = (record: any) => {
+  const openDetail = (record: TrainTaskHistoryItem) => {
     setActiveRunID(record?.run_id);
     setShowList(false);
   };
 
-  const downloadModel = async (record: any) => {
+  const handleDeleteRun = async (record: TrainTaskHistoryItem) => {
+    if (!selectId || !key) return;
+    try {
+      await deleteTrainRun(selectId, record.run_id, key);
+      message.success(t('common.delSuccess'));
+      const isLastItemOnPage = historyData.length === 1 && pagination.current > 1;
+      const nextPage = isLastItemOnPage ? pagination.current - 1 : pagination.current;
+      if (isLastItemOnPage) {
+        setPagination(prev => ({ ...prev, current: nextPage }));
+      }
+      await getStateData(nextPage, pagination.pageSize);
+    } catch (error) {
+      console.error(error);
+      message.error(t('common.delFailed'));
+    }
+  };
+
+  const downloadModel = async (record: TrainTaskHistoryItem) => {
     const [tagName] = activeTag;
     try {
       message.info(t(`mlops-common.downloadStart`));
@@ -167,6 +187,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
             onChange={handlePaginationChange}
             openDetail={openDetail}
             downloadModel={downloadModel}
+            deleteRun={handleDeleteRun}
           /> :
           <TrainTaskDetail activeKey={key} backToList={() => setShowList(true)} metricData={currentDetail} />}
       </div>

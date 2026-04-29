@@ -579,6 +579,34 @@ func TestExecuteReturnsDependencyFailureCodeWhenDialFails(t *testing.T) {
 	}
 }
 
+func TestExecuteReturnsTimeoutCodeWhenDialTimeoutOccurs(t *testing.T) {
+	originalDial := sshDialFn
+	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+		if config.Timeout > sshConnectTimeout {
+			t.Fatalf("expected dial timeout to be capped by connect timeout, got %v", config.Timeout)
+		}
+		time.Sleep(1100 * time.Millisecond)
+		return nil, errors.New("i/o timeout")
+	}
+	defer func() { sshDialFn = originalDial }()
+
+	response := Execute(ExecuteRequest{
+		Command:        "uptime",
+		ExecuteTimeout: 1,
+		Host:           "10.0.0.1",
+		Port:           22,
+		User:           "root",
+		Password:       "secret",
+	}, "instance-1")
+
+	if response.Success {
+		t.Fatal("expected dial timeout")
+	}
+	if response.Code != utils.ErrorCodeTimeout {
+		t.Fatalf("unexpected code: %+v", response)
+	}
+}
+
 func TestExecuteReturnsDependencyFailureCodeWhenSessionCreationFails(t *testing.T) {
 	originalDial := sshDialFn
 	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
@@ -853,6 +881,73 @@ func TestExecuteSCPWithFallbackRetriesWithLegacyOptions(t *testing.T) {
 	}
 	if !strings.Contains(commands[1], "PubkeyAcceptedAlgorithms=+ssh-rsa") || !strings.Contains(commands[1], "HostKeyAlgorithms=+ssh-rsa") {
 		t.Fatalf("expected legacy options on retry, got: %s", commands[1])
+	}
+}
+
+func TestExecuteSCPWithFallbackUsesRemainingBudgetForRetry(t *testing.T) {
+	original := executeLocalSCPCommand
+	callCount := 0
+	budgets := make([]int, 0, 2)
+	executeLocalSCPCommand = func(req local.ExecuteRequest, instanceId string) local.ExecuteResponse {
+		callCount++
+		budgets = append(budgets, req.ExecuteTimeout)
+		if callCount == 1 {
+			time.Sleep(1100 * time.Millisecond)
+			return local.ExecuteResponse{
+				Success:    false,
+				Output:     "no matching host key type found",
+				Error:      "no matching host key type found",
+				InstanceId: instanceId,
+			}
+		}
+		return local.ExecuteResponse{Success: true, Output: "done", InstanceId: instanceId}
+	}
+	defer func() { executeLocalSCPCommand = original }()
+
+	response := executeSCPWithFallback("instance-1", local.ExecuteRequest{
+		Command:        "scp -o StrictHostKeyChecking=no -P 22 -r /src user@host:/dst",
+		ExecuteTimeout: 2,
+	})
+
+	if !response.Success {
+		t.Fatalf("expected retry to succeed, got %+v", response)
+	}
+	if len(budgets) != 2 {
+		t.Fatalf("expected two attempts, got %d", len(budgets))
+	}
+	if budgets[1] >= budgets[0] {
+		t.Fatalf("expected retry budget to shrink, got first=%d second=%d", budgets[0], budgets[1])
+	}
+}
+
+func TestExecuteSCPWithFallbackFailsWhenBudgetExhaustedBeforeRetry(t *testing.T) {
+	original := executeLocalSCPCommand
+	callCount := 0
+	executeLocalSCPCommand = func(req local.ExecuteRequest, instanceId string) local.ExecuteResponse {
+		callCount++
+		time.Sleep(1100 * time.Millisecond)
+		return local.ExecuteResponse{
+			Success:    false,
+			Output:     "no matching host key type found",
+			Error:      "no matching host key type found",
+			InstanceId: instanceId,
+		}
+	}
+	defer func() { executeLocalSCPCommand = original }()
+
+	response := executeSCPWithFallback("instance-1", local.ExecuteRequest{
+		Command:        "scp -o StrictHostKeyChecking=no -P 22 -r /src user@host:/dst",
+		ExecuteTimeout: 1,
+	})
+
+	if response.Success {
+		t.Fatalf("expected failure when budget is exhausted, got %+v", response)
+	}
+	if response.Code != utils.ErrorCodeTimeout {
+		t.Fatalf("expected timeout code, got %+v", response)
+	}
+	if callCount != 1 {
+		t.Fatalf("expected no retry after budget exhaustion, got %d calls", callCount)
 	}
 }
 

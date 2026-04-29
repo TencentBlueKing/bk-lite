@@ -2,16 +2,18 @@ import CustomTable from "@/components/custom-table"
 import { ColumnItem } from "@/types";
 import { useTranslation } from "@/utils/i18n";
 import { useLocalizedTime } from "@/hooks/useLocalizedTime";
-import { Button, Tag } from "antd";
+import { Button, Popconfirm, Tag } from "antd";
 import PermissionWrapper from '@/components/permission';
+import type { TrainTaskHistory as TrainTaskHistoryItem } from "@/app/mlops/types";
 
 interface TrainTaskHistoryProps {
-  data: any[],
+  data: TrainTaskHistoryItem[],
   loading: boolean,
   pagination: { current: number; total: number; pageSize: number },
   onChange: (value: { current: number; pageSize: number; total: number }) => void,
-  openDetail: (record: any) => void,
-  downloadModel: (record: any) => void,
+  openDetail: (record: TrainTaskHistoryItem) => void,
+  downloadModel: (record: TrainTaskHistoryItem) => void,
+  deleteRun: (record: TrainTaskHistoryItem) => void,
 }
 
 const RUN_STATUS_MAP: Record<string, string> = {
@@ -34,7 +36,8 @@ const TrainTaskHistory = ({
   pagination,
   onChange,
   openDetail,
-  downloadModel
+  downloadModel,
+  deleteRun
 }: TrainTaskHistoryProps) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -88,7 +91,19 @@ const TrainTaskHistory = ({
             <Button type="link" onClick={() => openDetail(record)} className="mr-2">{t(`common.detail`)}</Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['View']}>
-            <Button type="link" disabled={record.status !== 'FINISHED'} onClick={() => downloadModel(record)}>{t(`common.download`)}</Button>
+            <Button type="link" disabled={record.status !== 'FINISHED'} onClick={() => downloadModel(record)} className="mr-2">{t(`common.download`)}</Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Delete']}>
+            <Popconfirm
+              title={t('mlops-common.deleteRunConfirm')}
+              description={t('mlops-common.deleteRunConfirmContent')}
+              okText={t('common.confirm')}
+              cancelText={t('common.cancel')}
+              onConfirm={() => deleteRun(record)}
+              disabled={!record.can_delete_run}
+            >
+              <Button type="link" danger disabled={!record.can_delete_run}>{t(`common.delete`)}</Button>
+            </Popconfirm>
           </PermissionWrapper>
         </>
       )

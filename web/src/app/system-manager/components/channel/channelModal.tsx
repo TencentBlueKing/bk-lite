@@ -291,9 +291,9 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       {
         name: 'name',
         type: 'input',
-        label: t('system.channel.settings.name'),
-        placeholder: `${t('common.inputMsg')}${t('system.channel.settings.name')}`,
-        rules: [{ required: true, message: `${t('common.inputMsg')}${t('system.channel.settings.name')}` }],
+        label: t('common.name'),
+        placeholder: `${t('common.inputMsg')}${t('common.name')}`,
+        rules: [{ required: true, message: `${t('common.inputMsg')}${t('common.name')}` }],
       },
       {
         name: 'description',
@@ -306,9 +306,9 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       {
         name: 'team',
         type: 'groupTreeSelect',
-        label: t('system.channel.settings.team'),
-        placeholder: `${t('common.selectMsg')}${t('system.channel.settings.team')}`,
-        rules: [{ required: true, message: `${t('common.selectMsg')}${t('system.channel.settings.team')}` }],
+        label: t('common.organization'),
+        placeholder: `${t('common.selectMsg')}${t('common.organization')}`,
+        rules: [{ required: true, message: `${t('common.selectMsg')}${t('common.organization')}` }],
       },
     ];
 

@@ -6,4 +6,4 @@ from apps.node_mgmt.models import Controller
 class ControllerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Controller
-        fields = ['id', 'name', 'os', 'description']
+        fields = ["id", "name", "os", "cpu_architecture", "description"]

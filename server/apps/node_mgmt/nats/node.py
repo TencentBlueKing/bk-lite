@@ -1,4 +1,3 @@
-from django.core.cache import cache
 from django.db import transaction
 
 import nats_client
@@ -15,6 +14,10 @@ from apps.node_mgmt.models import (
     Collector,
     Node,
     NodeCollectorConfiguration,
+)
+from apps.node_mgmt.services.sidecar_cache import (
+    invalidate_bulk_child_config_etags,
+    invalidate_bulk_config_node_etags,
 )
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 
@@ -130,6 +133,8 @@ class NatsService:
                 ignore_conflicts=True,
             )
 
+        invalidate_bulk_config_node_etags(configs)
+
     @transaction.atomic
     def batch_create_configs(self, configs: list):
         """
@@ -184,6 +189,8 @@ class NatsService:
         if node_objs:
             ChildConfig.objects.bulk_create(node_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
+        invalidate_bulk_child_config_etags([{"collector_config_id": config.collector_config_id} for config in node_objs])
+
     @transaction.atomic
     def batch_create_child_configs(self, configs: list):
         """
@@ -230,8 +237,6 @@ class NatsService:
         if not child_config:
             raise BaseAppException("Child config not found.")
 
-        cache.delete(f"configuration_etag_{child_config.collector_config_id}")
-
         if content:
             child_config.content = content
 
@@ -251,8 +256,6 @@ class NatsService:
         config = CollectorConfiguration.objects.filter(id=id).first()
         if not config:
             raise BaseAppException("Configuration not found.")
-
-        cache.delete(f"configuration_etag_{config.id}")
 
         if content:
             config.config_template = content

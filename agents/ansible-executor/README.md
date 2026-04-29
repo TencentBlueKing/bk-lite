@@ -125,6 +125,13 @@ jetstream:
 
 兼容的环境变量模式仍保留，便于迁移，但不再推荐作为主配置方式。
 
+## 任务执行可靠性
+
+- JetStream 开启 `backoff` 时，服务会以 `backoff[0]` 作为实际 ack deadline，并据此计算 `in_progress()` 心跳频率
+- 本地任务状态会记录 `execution_status`、`callback_status`、`lease_owner`、`lease_expires_at`、`heartbeat_at`、`execution_attempt`
+- 当消息重复投递但旧 worker 的 lease 仍有效时，新 worker 不会重复执行同一 `task_id`
+- callback 重试状态与执行状态分离，避免 callback 失败把原始执行结果错误覆盖
+
 ## Docker（可选）
 
 ```bash

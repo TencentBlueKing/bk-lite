@@ -488,6 +488,7 @@
       "searchError": "日志分组不能为空"
     },
     "analysis": {
+      "selectInstance": "请选择实例",
       "packetbeat": {
         "destinationPort": "Destination Port",
         "sourceIP": "Source IP",

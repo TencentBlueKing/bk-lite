@@ -57,6 +57,113 @@ class HostCollectMetrics(CollectBase):
         ]
         return result
 
+    @staticmethod
+    def _extract_ip_from_instance_id(instance_id):
+        instance_id = str(instance_id or "").strip()
+        if instance_id and "_" in instance_id:
+            parts = instance_id.split("_", 1)
+            if len(parts) == 2:
+                return parts[1].strip()
+        return ""
+
+    @staticmethod
+    def _extract_ip_from_inst_name(inst_name):
+        inst_name = str(inst_name or "").strip()
+        if not inst_name:
+            return ""
+        return inst_name.split("[", 1)[0].strip()
+
+    def set_ip_addr(self, data, *args, **kwargs):
+        host = str(data.get("host") or "").strip()
+        if host:
+            return host
+
+        instance_id_ip = self._extract_ip_from_instance_id(data.get("instance_id"))
+        if instance_id_ip:
+            return instance_id_ip
+
+        inst_name_ip = self._extract_ip_from_inst_name(self.inst_name)
+        if inst_name_ip:
+            return inst_name_ip
+
+        return host or "unknown"
+
+    def _get_matched_instance_snapshot(self, raw_ip=""):
+        task = self.get_collect_inst()
+        instances = task.instances if isinstance(task.instances, list) else []
+
+        if raw_ip:
+            for instance_item in instances:
+                if not isinstance(instance_item, dict):
+                    continue
+                instance_ip = str(instance_item.get("ip_addr") or instance_item.get("host") or "").strip()
+                if not instance_ip:
+                    instance_ip = self._extract_ip_from_inst_name(instance_item.get("inst_name"))
+                if instance_ip == raw_ip:
+                    return instance_item
+
+        return self._get_default_instance_snapshot(instances)
+
+    def set_cloud(self, data, *args, **kwargs):
+        raw_ip = self.set_ip_addr(data, *args, **kwargs)
+        task = self.get_collect_inst()
+        params = task.params if isinstance(task.params, dict) else {}
+        matched_instance = self._get_matched_instance_snapshot(raw_ip=raw_ip)
+        default_instance = self._get_default_instance_snapshot(task.instances if isinstance(task.instances, list) else [])
+
+        for source in (matched_instance, params, default_instance):
+            if not isinstance(source, dict):
+                continue
+            cloud = source.get("cloud")
+            if cloud not in (None, ""):
+                return cloud
+            cloud_id = source.get("cloud_id")
+            if cloud_id not in (None, ""):
+                return cloud_id
+
+        return ""
+
+    def _get_cloud_label(self, raw_ip=""):
+        task = self.get_collect_inst()
+        params = task.params if isinstance(task.params, dict) else {}
+        instances = task.instances if isinstance(task.instances, list) else []
+
+        matched_instance = self._get_matched_instance_snapshot(raw_ip=raw_ip)
+
+        for source in (matched_instance, params, self._get_default_instance_snapshot(instances)):
+            if not isinstance(source, dict):
+                continue
+            cloud_name = str(source.get("cloud_name") or "").strip()
+            if cloud_name:
+                return cloud_name
+
+        for source in (matched_instance, params, self._get_default_instance_snapshot(instances)):
+            if not isinstance(source, dict):
+                continue
+            cloud = str(source.get("cloud") or source.get("cloud_id") or "").strip()
+            if cloud:
+                return cloud
+
+        return ""
+
+    @staticmethod
+    def _get_default_instance_snapshot(instances):
+        if isinstance(instances, list) and instances:
+            first_instance = instances[0]
+            if isinstance(first_instance, dict):
+                return first_instance
+        return {}
+
+    def set_display_inst_name(self, data, *args, **kwargs):
+        raw_ip = self.set_ip_addr(data, *args, **kwargs)
+        if not raw_ip or raw_ip == "unknown":
+            return self.inst_name or data.get("host", "unknown")
+
+        cloud_label = self._get_cloud_label(raw_ip=raw_ip)
+        if cloud_label:
+            return f"{raw_ip}[{cloud_label}]"
+        return raw_ip
+
     def set_inst_name(self, data, *args, **kwargs):
         """设置实例名称"""
         if self.inst_name:
@@ -178,7 +285,7 @@ class HostCollectMetrics(CollectBase):
             # 解析result字段中的JSON数据
             # VictoriaMetrics返回的JSON字符串包含转义字符（如\n），需要先反转义再解析
             result_data = {}
-            if index_data["metric"].get("collect_status", 'success') == 'failed':
+            if index_data["metric"].get("collect_status", 'failed') == 'failed':
                 continue
             index_dict = dict(
                 index_key=metric_name,

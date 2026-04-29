@@ -22,6 +22,8 @@ from apps.core.utils.web_utils import WebUtils
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.stargazer import Stargazer
 from apps.cmdb.tasks.celery_tasks import sync_collect_task
+from apps.node_mgmt.models.cloud_region import CloudRegion
+from apps.node_mgmt.models.sidecar import Node
 
 
 class CollectModelService(object):
@@ -85,6 +87,151 @@ class CollectModelService(object):
             params["scan_cycle"] = scan_cycle
 
         return params, is_interval, scan_cycle
+
+    @staticmethod
+    def _get_snapshot_item(snapshot):
+        if isinstance(snapshot, dict):
+            return snapshot
+        if isinstance(snapshot, list) and snapshot:
+            item = snapshot[0]
+            if isinstance(item, dict):
+                return item
+        return {}
+
+    @staticmethod
+    def _get_cloud_region_id_by_node(node_id):
+        if node_id in (None, ""):
+            return None
+        node = Node.objects.filter(id=str(node_id)).only("cloud_region_id").first()
+        return getattr(node, "cloud_region_id", None)
+
+    @staticmethod
+    def _get_cloud_region_name(cloud_id):
+        if cloud_id in (None, ""):
+            return ""
+        cloud_name = CloudRegion.objects.filter(id=cloud_id).values_list("name", flat=True).first()
+        return str(cloud_name or "").strip()
+
+    @classmethod
+    def _resolve_host_cloud_meta(cls, params=None, access_point=None, instances=None, prefer_access_point=False):
+        params = params if isinstance(params, dict) else {}
+        access_point_item = cls._get_snapshot_item(access_point)
+        instance_item = cls._get_snapshot_item(instances)
+
+        access_point_cloud = (
+            access_point_item.get("cloud")
+            or access_point_item.get("cloud_id")
+            or access_point_item.get("cloud_region")
+        )
+        access_point_cloud_name = access_point_item.get("cloud_name") or access_point_item.get("cloud_region_name")
+
+        task_cloud = params.get("cloud") or instance_item.get("cloud") or instance_item.get("cloud_id")
+        task_cloud_name = params.get("cloud_name") or instance_item.get("cloud_name")
+
+        if prefer_access_point:
+            if access_point_cloud not in (None, ""):
+                cloud = access_point_cloud
+                cloud_name = access_point_cloud_name or ""
+            else:
+                cloud = task_cloud
+                cloud_name = task_cloud_name
+        else:
+            cloud = task_cloud or access_point_cloud
+            cloud_name = task_cloud_name or access_point_cloud_name
+
+        if cloud in (None, ""):
+            node_id = access_point_item.get("id") or access_point_item.get("node_id")
+            cloud = cls._get_cloud_region_id_by_node(node_id)
+
+        if not cloud_name:
+            cloud_name = cls._get_cloud_region_name(cloud)
+
+        return cloud, cloud_name
+
+    @classmethod
+    def enrich_host_cloud_snapshot_payload(cls, data):
+        if not isinstance(data, dict) or data.get("task_type") != CollectPluginTypes.HOST:
+            return False
+
+        params = data.get("params")
+        if not isinstance(params, dict):
+            params = {}
+
+        instances = data.get("instances")
+        if not isinstance(instances, list):
+            instances = []
+
+        cloud, cloud_name = cls._resolve_host_cloud_meta(
+            params=params,
+            access_point=data.get("access_point"),
+            instances=instances,
+            prefer_access_point=True,
+        )
+
+        changed = False
+        if cloud not in (None, "") and params.get("cloud") != cloud:
+            params["cloud"] = cloud
+            changed = True
+        if cloud_name and params.get("cloud_name") != cloud_name:
+            params["cloud_name"] = cloud_name
+            changed = True
+
+        for instance_item in instances:
+            if not isinstance(instance_item, dict):
+                continue
+            if cloud not in (None, "") and instance_item.get("cloud") != cloud:
+                instance_item["cloud"] = cloud
+                changed = True
+            if cloud_name and instance_item.get("cloud_name") != cloud_name:
+                instance_item["cloud_name"] = cloud_name
+                changed = True
+
+        data["params"] = params
+        data["instances"] = instances
+        return changed
+
+    @classmethod
+    def repair_host_cloud_snapshot(cls, instance, persist=True):
+        if not instance or not instance.is_host:
+            return False
+
+        payload = {
+            "task_type": instance.task_type,
+            "access_point": copy.deepcopy(instance.access_point),
+            "instances": copy.deepcopy(instance.instances),
+            "params": copy.deepcopy(instance.params),
+        }
+        changed = cls.enrich_host_cloud_snapshot_payload(payload)
+        if not changed:
+            cloud, cloud_name = cls._resolve_host_cloud_meta(
+                params=payload["params"],
+                access_point=payload["access_point"],
+                instances=payload["instances"],
+                prefer_access_point=False,
+            )
+            if cloud not in (None, "") and payload["params"].get("cloud") != cloud:
+                payload["params"]["cloud"] = cloud
+                changed = True
+            if cloud_name and payload["params"].get("cloud_name") != cloud_name:
+                payload["params"]["cloud_name"] = cloud_name
+                changed = True
+            for instance_item in payload["instances"]:
+                if not isinstance(instance_item, dict):
+                    continue
+                if cloud not in (None, "") and instance_item.get("cloud") != cloud:
+                    instance_item["cloud"] = cloud
+                    changed = True
+                if cloud_name and instance_item.get("cloud_name") != cloud_name:
+                    instance_item["cloud_name"] = cloud_name
+                    changed = True
+            if not changed:
+                return False
+
+        instance.params = payload["params"]
+        instance.instances = payload["instances"]
+        if persist:
+            instance.save(update_fields=["params", "instances"])
+        return True
 
     @staticmethod
     def format_update_credential(instance, data):
@@ -190,6 +337,7 @@ class CollectModelService(object):
     @classmethod
     def create(cls, request, view_self):
         create_data, is_interval, scan_cycle = cls.format_params(request.data)
+        cls.enrich_host_cloud_snapshot_payload(create_data)
 
         # 使用数据库事务保证原子性：DB + 外部操作要么全成功，要么全失败
         with transaction.atomic():
@@ -239,6 +387,7 @@ class CollectModelService(object):
         cls.has_permission(request, instance, view_self)
         update_data, is_interval, scan_cycle = cls.format_params(request.data)
         cls.format_update_credential(instance, update_data)
+        cls.enrich_host_cloud_snapshot_payload(update_data)
         # 使用数据库事务保证原子性
         with transaction.atomic():
             serializer = view_self.get_serializer(instance, data=update_data, partial=True)
@@ -326,13 +475,33 @@ class CollectModelService(object):
         return instance_id
 
     @classmethod
+    def _normalize_cloud_regions(cls, model_id, regions):
+        if model_id != "qcloud":
+            return regions
+        return [
+            {
+                **region,
+                "resource_name": region.get("resource_name") or region.get("RegionName") or region.get("Region") or "",
+                "resource_id": region.get("resource_id") or region.get("Region") or region.get("RegionName") or "",
+            }
+            for region in regions
+        ]
+
+    @classmethod
     def list_regions(cls, credential, cloud_name):
         instance_id = f"{cloud_name}_stargazer"
         stargazer = Stargazer(instance_id=instance_id)
         result = stargazer.list_regions(credential)
-        if result["success"]:
-            result = result["regions"].get("result", [])
-        return result
+        regions = result.get("regions", {}) if isinstance(result, dict) else {}
+        if result.get("success") and regions.get("success"):
+            region_result = cls._normalize_cloud_regions(credential.get("model_id"), regions.get("result", []))
+            return {"success": True, "result": region_result, "message": ""}
+        regions = result.get("regions", {})
+        return {
+            "success": False,
+            "result": regions.get("result", []),
+            "message": regions.get("message", "获取区域失败"),
+        }
 
     @classmethod
     def exec_task(cls, instance, request, view_self):
@@ -344,6 +513,7 @@ class CollectModelService(object):
         if instance.exec_status == CollectRunStatusType.RUNNING:
             return WebUtils.response_error(error_message="任务正在执行中!无法重复执行！", status_code=400)
 
+        cls.repair_host_cloud_snapshot(instance)
         instance.exec_time = now()
         instance.exec_status = CollectRunStatusType.RUNNING
         instance.format_data = {}

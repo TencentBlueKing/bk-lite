@@ -107,14 +107,14 @@ const SettingsPage: React.FC = () => {
         >
           <Form.Item
             name="name"
-            label={t('knowledge.form.name')}
-            rules={[{ required: true, message: `${t('common.inputMsg')}${t('knowledge.form.name')}!` }]}
+            label={t('common.name')}
+            rules={[{ required: true, message: `${t('common.inputMsg')}${t('common.name')}!` }]}
           >
             <Input placeholder={t('common.input')} />
           </Form.Item>
           <Form.Item
             name="team"
-            label={t('knowledge.form.group')}
+            label={t('common.organization')}
             rules={[{ required: true, message: `${t('common.selectMsg')}${t('knowledge.form.introduction')}!` }]}
           >
             <Select mode="multiple" placeholder={t('common.select')}>

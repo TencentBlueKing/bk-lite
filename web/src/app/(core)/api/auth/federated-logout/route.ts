@@ -5,26 +5,43 @@ import { NextRequest, NextResponse } from 'next/server';
 // Handle the actual logout API
 export const POST = async (req: NextRequest) => {
   try {
-    console.log('Received POST request for logout.');
-
     // Attempt to get the JWT from the request
     const token = await getToken({ req });
     if (!token) {
-      console.warn('No token found in the session.');
       return NextResponse.json(
         { message: 'No session found', error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    // Additional server-side cleanup logic can be added here
-    // For example: notify other services about user logout, log events, etc.
+    // Revoke the backend token via the logout API
+    const bkliteToken = (token as Record<string, unknown>).token as string | undefined;
+    const apiUrl = process.env.NEXTAPI_URL;
+    if (bkliteToken && apiUrl) {
+      try {
+        const url = new URL('/api/v1/core/api/logout/', apiUrl);
+        await fetch(url.toString(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: bkliteToken }),
+        });
+      } catch (revokeError) {
+        console.error('Token revocation failed (non-blocking):', revokeError);
+      }
+    }
 
-    // Return success
-    return NextResponse.json({ 
+    // Return success with Set-Cookie to clear bklite_token
+    const response = NextResponse.json({ 
       success: true, 
       message: 'Logout successful'
     }, { status: 200 });
+
+    response.cookies.delete({
+      name: 'bklite_token',
+      path: '/',
+    });
+
+    return response;
   } catch (error) {
     console.error('Logout error:', error);
     return NextResponse.json(

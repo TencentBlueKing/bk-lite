@@ -1,9 +1,8 @@
 import axios, { AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
-import { useEffect, useCallback, useState, useRef } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useAuth } from '@/context/auth';
 import { message } from 'antd';
 import { useSession } from 'next-auth/react';
-import { useTranslation } from '@/utils/i18n';
 import {
   createSessionExpiredRequestError,
   emitSessionExpired,
@@ -20,19 +19,63 @@ const apiClient = axios.create({
   },
 });
 
-const handleResponse = (response: AxiosResponse, onError?: () => void) => {
+// Module-level token ref — updated by useApiClient via setToken()
+const tokenRef: { current: string | null } = { current: null };
+
+const setToken = (token: string | null) => {
+  tokenRef.current = token;
+};
+
+const handleResponse = (response: AxiosResponse) => {
   const { result, message: msg, data } = response.data;
   if (!result) {
-    if (msg) {
-      message.error(msg);
-    }
-    if (onError) {
-      onError();
-    }
     throw new Error(msg);
   }
   return data;
 };
+
+// Register interceptors once at module level
+apiClient.interceptors.request.use(
+  (config: InternalAxiosRequestConfig) => {
+    if (isSessionExpiredState()) {
+      return Promise.reject(createSessionExpiredRequestError());
+    }
+
+    if (!tokenRef.current) {
+      return Promise.reject(new Error('No token available'));
+    }
+
+    config.headers.Authorization = `Bearer ${tokenRef.current}`;
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+apiClient.interceptors.response.use(
+  (response: AxiosResponse) => response,
+  (error) => {
+    if (error.response) {
+      const { status } = error.response;
+      const messageText = error.response?.data?.message;
+      if (status === 460) {
+        void forceLogoutAndRedirect();
+        return Promise.reject(error);
+      } else if (status === 401) {
+        emitSessionExpired({ reason: 'api-session-expired', status });
+        return Promise.reject(error);
+      } else if ([400, 403].includes(status)) {
+        message.error(messageText);
+        return Promise.reject(new Error(messageText));
+      } else if (status === 500) {
+        message.error(messageText);
+        return Promise.reject(new Error(messageText || 'Internal Server Error'));
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const isSilentRequestError = (error: unknown) => {
   if (axios.isAxiosError(error)) {
@@ -47,112 +90,66 @@ export const isSilentRequestError = (error: unknown) => {
 };
 
 const useApiClient = () => {
-  const { t } = useTranslation();
   const authContext = useAuth();
   const { data: session } = useSession();
   const token = (session?.user as any)?.token || authContext?.token || null;
-  const tokenRef = useRef(token);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    tokenRef.current = token;
+    setToken(token);
     if (token) {
       setIsLoading(false);
     }
   }, [token]);
 
-  useEffect(() => {
-    const requestInterceptor = apiClient.interceptors.request.use(
-      (config: InternalAxiosRequestConfig) => {
-        if (isSessionExpiredState()) {
-          return Promise.reject(createSessionExpiredRequestError());
-        }
-
-        if (!tokenRef.current) {
-          return Promise.reject(new Error('No token available'));
-        }
-
-        config.headers.Authorization = `Bearer ${tokenRef.current}`;
-        return config;
-      },
-      (error) => {
-        return Promise.reject(error);
-      }
-    );
-
-    const responseInterceptor = apiClient.interceptors.response.use(
-      (response: AxiosResponse) => response,
-      (error) => {
-        if (error.response) {
-          const { status } = error.response;
-          const messageText = error.response?.data?.message;
-          if (status === 460) {
-            void forceLogoutAndRedirect();
-            return Promise.reject(error);
-          } else if (status === 401) {
-            emitSessionExpired({ reason: 'api-session-expired', status });
-            return Promise.reject(error);
-          } else if ([400, 403].includes(status)) {
-            message.error(messageText);
-            return Promise.reject(new Error(messageText));
-          } else if (status === 500) {
-            message.error(messageText);
-            return Promise.reject(new Error(t('common.serverError')));
-          }
-        }
-        return Promise.reject(error);
-      }
-    );
-
-    return () => {
-      apiClient.interceptors.request.eject(requestInterceptor);
-      apiClient.interceptors.response.eject(responseInterceptor);
-    };
+  const get = useCallback(async <T = any>(url: string, config?: AxiosRequestConfig): Promise<T> => {
+    const response = await apiClient.get<T>(url, config);
+    return config?.responseType === 'blob' ? response.data : handleResponse(response);
   }, []);
 
-  const get = useCallback(async <T = any>(url: string, config?: AxiosRequestConfig, onError?: () => void): Promise<T> => {
+  const post = useCallback(async <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> => {
     try {
-      const response = await apiClient.get<T>(url, config);
+      const response = await apiClient.post<T>(url, data, config);
       if (config?.responseType === 'blob') {
         return response.data;
       }
-      return handleResponse(response, onError);
+      return handleResponse(response);
     } catch (error) {
       throw error;
     }
   }, []);
 
-  const post = useCallback(async <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig, onError?: () => void): Promise<T> => {
-    try {
-      const response = await apiClient.post<T>(url, data, config);
-      return handleResponse(response, onError);
-    } catch (error) {
-      throw error;
-    }
-  }, []);
-
-  const put = useCallback(async <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig, onError?: () => void): Promise<T> => {
+  const put = useCallback(async <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> => {
     try {
       const response = await apiClient.put<T>(url, data, config);
-      return handleResponse(response, onError);
+      if (config?.responseType === 'blob') {
+        return response.data;
+      }
+      return handleResponse(response);
     } catch (error) {
       throw error;
     }
   }, []);
 
-  const del = useCallback(async <T = any>(url: string, config?: AxiosRequestConfig, onError?: () => void): Promise<T> => {
+  const del = useCallback(async <T = any>(url: string, config?: AxiosRequestConfig): Promise<T> => {
     try {
       const response = await apiClient.delete<T>(url, config);
-      return handleResponse(response, onError);
+      if (config?.responseType === 'blob') {
+        return response.data;
+      }
+      return handleResponse(response);
     } catch (error) {
       throw error;
     }
   }, []);
 
-  const patch = useCallback(async <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig, onError?: () => void): Promise<T> => {
+  const patch = useCallback(async <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> => {
     try {
       const response = await apiClient.patch<T>(url, data, config);
-      return handleResponse(response, onError);
+      if (config?.responseType === 'blob') {
+        return response.data;
+      }
+      return handleResponse(response);
     } catch (error) {
       throw error;
     }

@@ -3,6 +3,7 @@ import useApiClient from '@/utils/request';
 // 包管理相关类型和接口
 export interface PackageParams {
   os: string;
+  cpu_architecture?: string;
   type: string;
   name: string;
   version?: string;
@@ -21,6 +22,7 @@ const usePackageApi = () => {
   const getPackageList = async (params: {
     object?: string;
     os?: string;
+    cpu_architecture?: string;
     page?: number;
     page_size?: number;
   }) => {

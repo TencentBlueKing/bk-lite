@@ -3,6 +3,8 @@
 # @Time: 2025/5/14 13:49
 # @Author: windyzhao
 
+from copy import deepcopy
+
 DEFAULT_SOURCE_CONFIG = {
     "url": "/api/v1/alerts/api/receiver_data/",
     "headers": {"SECRET": "your_source_secret"},
@@ -131,3 +133,148 @@ DEFAULT_SOURCE_CONFIG = {
         "resource_type": "资源类型 | 类型: string | 必填: 否",
     },
 }
+
+
+def build_prometheus_source_config(source_id):
+    config = deepcopy(DEFAULT_SOURCE_CONFIG)
+    config.update(
+        {
+  "url": f"/api/v1/alerts/api/source/{source_id}/webhook/",
+            "headers": {"SECRET": "your_source_secret"},
+            "params": {
+                "receiver": "bk-lite-prometheus",
+                "status": "firing",
+                "commonLabels": {"alertname": "HighCPUUsage", "severity": "critical"},
+                "commonAnnotations": {"summary": "CPU too high"},
+                "alerts": [],
+            },
+            "examples": {
+                "CURL": f"""
+        curl --location --request POST '{{url}}/api/v1/alerts/api/source/{source_id}/webhook/' \n
+        --header 'SECRET: {{SECRET}}' \n
+        --header 'Content-Type: application/json' \n
+        --data-raw '{{
+          "receiver": "bk-lite-prometheus",
+          "status": "firing",
+          "commonLabels": {{
+            "alertname": "HighCPUUsage",
+            "severity": "critical"
+          }},
+          "commonAnnotations": {{
+            "summary": "CPU too high"
+          }},
+          "alerts": [
+            {{
+              "status": "firing",
+              "labels": {{
+                "instance": "node-1",
+                "job": "node-exporter"
+              }},
+              "annotations": {{
+                "description": "node-1 cpu usage > 90%"
+              }},
+              "startsAt": "2026-04-22T08:00:00Z",
+              "endsAt": "2026-04-22T09:00:00Z"
+            }}
+          ]
+        }}'
+        """,
+                "Python": f"""
+        import json
+        import requests
+
+        url = "{{url}}/api/v1/alerts/api/source/{source_id}/webhook/"
+        payload = {{
+            "receiver": "bk-lite-prometheus",
+            "status": "firing",
+            "commonLabels": {{"alertname": "HighCPUUsage", "severity": "critical"}},
+            "commonAnnotations": {{"summary": "CPU too high"}},
+            "alerts": [
+                {{
+                    "status": "firing",
+                    "labels": {{"instance": "node-1", "job": "node-exporter"}},
+                    "annotations": {{"description": "node-1 cpu usage > 90%"}},
+                    "startsAt": "2026-04-22T08:00:00Z",
+                    "endsAt": "2026-04-22T09:00:00Z"
+                }}
+            ]
+        }}
+        headers = {{"SECRET": "{{SECRET}}", "Content-Type": "application/json"}}
+        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        print(response.text)
+        """,
+            },
+            "accept_default_payload": True,
+            "accept_custom_payload": True,
+            "send_resolved_required": True,
+        }
+    )
+    return config
+
+
+def build_zabbix_source_config(source_id):
+    config = deepcopy(DEFAULT_SOURCE_CONFIG)
+    config.update(
+        {
+  "url": f"/api/v1/alerts/api/source/{source_id}/webhook/",
+            "headers": {"SECRET": "your_source_secret"},
+            "params": {
+                "Subject": "Zabbix CPU High",
+                "Message": "cpu usage > 90%",
+                "Severity": "3",
+                "TriggerName": "system.cpu.util",
+                "ProblemId": "10002",
+                "EventId": "20002",
+                "TriggerId": "30002",
+                "HostId": "40002",
+                "HostName": "host-2",
+                "EventValue": "1",
+            },
+            "examples": {
+                "CURL": f"""
+        curl --location --request POST '{{url}}/api/v1/alerts/api/source/{source_id}/webhook/' \n
+        --header 'SECRET: {{SECRET}}' \n
+        --header 'Content-Type: application/json' \n
+        --data-raw '{{
+          "Subject": "Zabbix CPU High",
+          "Message": "cpu usage > 90%",
+          "Severity": "3",
+          "TriggerName": "system.cpu.util",
+          "ProblemId": "10002",
+          "EventId": "20002",
+          "TriggerId": "30002",
+          "HostId": "40002",
+          "HostName": "host-2",
+          "EventValue": "1"
+        }}'
+        """,
+                "Python": f"""
+        import json
+        import requests
+
+        url = "{{url}}/api/v1/alerts/api/source/{source_id}/webhook/"
+        payload = {{
+            "Subject": "Zabbix CPU High",
+            "Message": "cpu usage > 90%",
+            "Severity": "3",
+            "TriggerName": "system.cpu.util",
+            "ProblemId": "10002",
+            "EventId": "20002",
+            "TriggerId": "30002",
+            "HostId": "40002",
+            "HostName": "host-2",
+            "EventValue": "1"
+        }}
+        headers = {{"SECRET": "{{SECRET}}", "Content-Type": "application/json"}}
+        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        print(response.text)
+        """,
+            },
+            "accept_problem": True,
+            "accept_recovery": True,
+            "accept_update": False,
+            "external_id_mode": "problem_id",
+            "recovery_policy": "problem_id_match",
+        }
+    )
+    return config

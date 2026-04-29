@@ -11,13 +11,14 @@ class EventModelFilter(FilterSet):
     event_id = CharFilter(field_name="event_id", lookup_expr="exact", label="事件ID")
     alert_id = CharFilter(method="filter_alert_id", label="告警ID")
     source_id = CharFilter(field_name="source__source_id", lookup_expr="exact", label="告警源ID")
+    push_source_id = CharFilter(field_name="push_source_id", lookup_expr="exact", label="事件推送来源")
     received_at_after = CharFilter(field_name="received_at", lookup_expr="gte", label="接收时间（起始）")
     received_at_before = CharFilter(field_name="received_at", lookup_expr="lte", label="接收时间（结束）")
 
     class Meta:
         model = Event
-        fields = ["title", "description", "event_id", "alert_id", "source_id", "received_at_after",
-                  "received_at_before"]
+        fields = ["title", "description", "event_id", "alert_id", "source_id", "push_source_id", "received_at_after",
+                   "received_at_before"]
 
     @staticmethod
     def filter_alert_id(qs, field_name, value):

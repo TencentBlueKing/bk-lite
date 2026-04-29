@@ -16,7 +16,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
   rawData,
   loading = false,
   config,
-  onReady,
+  onReady
 }) => {
   const [isDataReady, setIsDataReady] = useState(false);
   const [chartInstance, setChartInstance] = useState<any>(null);
@@ -53,19 +53,19 @@ const TrendLine: React.FC<TrendLineProps> = ({
     calculable: true,
     title: { show: false },
     legend: {
-      show: false,
+      show: false
     },
     toolbox: { show: false },
     tooltip: {
       trigger: 'axis',
       axisPointer: {
-        type: 'cross',
+        type: 'cross'
       },
       enterable: true,
       confine: true,
       extraCssText: 'box-shadow: 0 0 3px rgba(150,150,150, 0.7);',
       textStyle: {
-        fontSize: 12,
+        fontSize: 12
       },
       formatter: function (params: any) {
         if (!params || params.length === 0) return '';
@@ -88,14 +88,14 @@ const TrendLine: React.FC<TrendLineProps> = ({
 
         content += '</div>';
         return content;
-      },
+      }
     },
     grid: {
       top: 14,
       left: 18,
       right: 24,
       bottom: 20,
-      containLabel: true,
+      containLabel: true
     },
     xAxis: {
       type: 'category',
@@ -105,37 +105,37 @@ const TrendLine: React.FC<TrendLineProps> = ({
         margin: 15,
         textStyle: {
           color: '#7f92a7',
-          fontSize: 11,
+          fontSize: 11
         },
         rotate: 0,
         interval: 'auto',
         formatter: function (value: string) {
           return value;
-        },
+        }
       },
       axisLine: {
         lineStyle: {
-          color: '#e8e8e8',
-        },
+          color: '#e8e8e8'
+        }
       },
       axisTick: {
-        show: false,
+        show: false
       },
       splitLine: {
         show: false,
         lineStyle: {
-          color: '#f0f0f0',
-        },
-      },
+          color: '#f0f0f0'
+        }
+      }
     },
     yAxis: {
       type: 'value',
       minInterval: 1,
       axisTick: {
-        show: false,
+        show: false
       },
       axisLine: {
-        show: false,
+        show: false
       },
       axisLabel: {
         formatter: function (value: number) {
@@ -145,17 +145,17 @@ const TrendLine: React.FC<TrendLineProps> = ({
           return value.toString();
         },
         textStyle: {
-          color: '#7f92a7',
-        },
+          color: '#7f92a7'
+        }
       },
       splitLine: {
         show: true,
         lineStyle: {
           color: '#f0f0f0',
-          type: 'solid',
-        },
-      },
-    },
+          type: 'solid'
+        }
+      }
+    }
   };
 
   // 根据数据类型设置 series
@@ -167,7 +167,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
       smooth: true,
       symbol: 'none',
       lineStyle: {
-        width: 1,
+        width: 1
       },
       areaStyle: {
         opacity: 0.1,
@@ -180,18 +180,18 @@ const TrendLine: React.FC<TrendLineProps> = ({
           colorStops: [
             {
               offset: 0,
-              color: chartColors[index % chartColors.length] || '#1890ff',
+              color: chartColors[index % chartColors.length] || '#1890ff'
             },
             {
               offset: 1,
-              color: 'rgba(255, 255, 255, 0)',
-            },
-          ],
-        },
+              color: 'rgba(255, 255, 255, 0)'
+            }
+          ]
+        }
       },
       emphasis: {
-        focus: 'series',
-      },
+        focus: 'series'
+      }
     }));
   } else {
     option.series = [
@@ -202,7 +202,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
         smooth: true,
         symbol: 'none',
         lineStyle: {
-          width: 1,
+          width: 1
         },
         areaStyle: {
           opacity: 0.1,
@@ -215,19 +215,19 @@ const TrendLine: React.FC<TrendLineProps> = ({
             colorStops: [
               {
                 offset: 0,
-                color: chartColors[0] || '#1890ff',
+                color: chartColors[0] || '#1890ff'
               },
               {
                 offset: 1,
-                color: 'rgba(255, 255, 255, 0)',
-              },
-            ],
-          },
+                color: 'rgba(255, 255, 255, 0)'
+              }
+            ]
+          }
         },
         emphasis: {
-          focus: 'series',
-        },
-      },
+          focus: 'series'
+        }
+      }
     ];
   }
 
@@ -248,9 +248,9 @@ const TrendLine: React.FC<TrendLineProps> = ({
   }
 
   return (
-    <div className="h-full flex">
+    <div className="h-full flex w-full">
       {/* 图表区域 */}
-      <div className="flex-1">
+      <div className="flex-1 w-full">
         <ReactEcharts
           ref={chartRef}
           option={option}

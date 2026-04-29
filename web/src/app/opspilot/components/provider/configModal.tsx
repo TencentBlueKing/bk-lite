@@ -151,10 +151,10 @@ const ProviderModal: React.FC<ProviderModalProps> = ({
         <Form form={form} layout="vertical">
           <Form.Item
             name="name"
-            label={t('provider.form.name')}
-            rules={[{ required: true, message: `${t('common.input')}${t('provider.form.name')}` }]}
+            label={t('common.name')}
+            rules={[{ required: true, message: `${t('common.input')}${t('common.name')}` }]}
           >
-            <AntdInput placeholder={`${t('common.input')}${t('provider.form.name')}`} />
+            <AntdInput placeholder={`${t('common.input')}${t('common.name')}`} />
           </Form.Item>
 
           <Form.Item
@@ -227,7 +227,7 @@ const ProviderModal: React.FC<ProviderModalProps> = ({
           </Form.Item>
           <Form.Item
             name="enabled"
-            label={t('provider.form.enabled')}
+            label={t('common.enable')}
             valuePropName="checked"
           >
             <Switch size="small" />

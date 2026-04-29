@@ -15,7 +15,6 @@
       "readWrite": "读写",
       "actions": "操作",
       "data": "数据",
-      "group": "组织",
       "permissions": "权限",
       "fullPermission": "全权限",
       "allData": "所有数据",
@@ -55,7 +54,6 @@
     },
     "menu": {
       "items": "项",
-      "copy": "复制",
       "copySuccess": "菜单复制成功",
       "newGroup": "新目录",
       "loadFailed": "加载菜单失败",
@@ -72,7 +70,6 @@
       "menuNameRequired": "菜单名称不能为空",
       "selectPages": "请先在左侧勾选要添加的页面",
       "menuStructure": "菜单结构",
-      "delete": "删除",
       "addSelected": "添加已选",
       "sourceMenus": "源菜单树",
       "menuName": "菜单名称",
@@ -90,7 +87,6 @@
       "disableSuccess": "菜单已停用",
       "disable": "停用",
       "functionList": "功能列表",
-      "addSuccess": "添加成功",
       "updatedAt": "更新时间",
       "deleteConfirm": "确定要删除此菜单吗？",
       "name": "菜单名称"
@@ -151,7 +147,6 @@
       "groupPermission": "组织权限授予",
       "form": {
         "administrator": "管理员",
-        "group": "组织",
         "locale": "语言环境",
         "zoneinfo": "时区",
         "normalusers": "普通用户",
@@ -169,6 +164,8 @@
         "lastName": "姓名",
         "passwordMismatch": "两次密码不一致",
         "normalUser": "普通用户",
+        "groupSelectionRequired": "请至少选择一个组织",
+        "normalGroupRequired": "请至少选择一个普通组织",
         "tempTooltip": "如果开启，用户必须在下一次登录的时候改变密码"
       },
       "admin": {
@@ -176,7 +173,6 @@
         "desc2": "2. 在其它应用中拥有最高权限，能访问所有数据并执行所有功能操作。",
         "title": "管理员具有以下权限："
       },
-      "search": "搜索",
       "normal": {
         "desc3": "3. 在其他应用中仅有使用页面的操作权限，管理页面只能进行查看。",
         "desc2": "2. 在其他应用中只能访问其所属组织的数据。",
@@ -204,7 +200,6 @@
       "fiveTimes": "5次",
       "selectFormat": "选择导出格式",
       "days": "天",
-      "actionTypeUpdate": "更新",
       "loginHost": "登录主机",
       "oneMonth": "一个月",
       "operationModule": "应用",
@@ -225,7 +220,6 @@
       "loginAttempts": "密码试错次数",
       "errorModule": "模块",
       "syncOnce": "定时同步一次",
-      "actionTypeExecute": "执行",
       "authSourceName": "认证源名称",
       "passwordSettings": "密码设置",
       "passwordComplexity": "密码复杂度要求",
@@ -241,7 +235,6 @@
       "operationLogs": "操作日志",
       "requireUppercase": "大写字母",
       "loginStatusFailed": "失败",
-      "actionTypeDelete": "删除",
       "loginStatus": "登录状态",
       "domain": "域",
       "passwordLengthRange": "密码长度范围",
@@ -251,7 +244,6 @@
       "errorModulePlaceholder": "请输入模块名称",
       "operationTime": "时间",
       "operationType": "工作类型",
-      "export": "导出",
       "exportFailed": "导出失败",
       "sourceIp": "源IP",
       "loginExpiredTime": "登录过期时间",
@@ -268,15 +260,12 @@
       "hours": "小时",
       "appId": "应用 ID",
       "loginLocation": "登录地点",
-      "exportSuccess": "导出成功",
       "redirectUriTip": "登录成功之后跳转的页面。格式参考（以回到工作台为例）：https://授权回调域名/ops-console/home",
       "everyday": "每天",
       "browser": "浏览器",
       "authSources": "认证源",
-      "enabled": "启用",
       "userLogs": "用户日志",
       "permanent": "永久",
-      "actionTypeCreate": "创建",
       "exportTitle": "导出登录日志",
       "threeMonths": "三个月",
       "seconds": "秒"
@@ -286,6 +275,19 @@
         "key": "密钥",
         "portal": "门户",
         "license": "许可"
+      },
+      "secret": {
+        "title": "API密钥",
+        "createdAt": "创建时间",
+        "key": "密钥",
+        "group": "组织",
+        "content": "为了防止 API 滥用，请保护你的 API 密钥。",
+        "deleteConfirm": "你确定要删除选中的密钥吗？",
+        "create": "创建新密钥",
+        "createSuccessTitle": "密钥创建成功",
+        "createSuccessDesc": "请立即保存此密钥。关闭此窗口后，您将无法再次查看完整的密钥。",
+        "confirmSave": "我已经安全地保存了此密钥",
+        "savedAction": "我已保存"
       },
       "license": {
         "title": "许可管理",
@@ -425,10 +427,8 @@
           "logDesc": "支持日志的合规留存与快速检索，为故障排查与审计追溯提供可靠依据。",
           "alerts": "告警中心",
           "alertsDesc": "汇聚多源告警并智能降噪，通过精准分派加速响应，确保问题快速闭环。",
-          "performance": "性能分析",
-          "performanceDesc": "深入剖析链路、指标与异常波动，快速定位性能瓶颈，提升核心业务稳定性。",
-          "itsm": "ITSM",
-          "itsmDesc": "编排流程服务、审批与触发规则，统一自动化流程设计，提升跨团队协同效率。",
+          "job": "作业管理",
+          "jobDesc": "批量执行脚本与命令，支持定时任务编排与执行历史追溯，提升运维自动化效率。",
           "operation_analysis": "运营分析",
           "operation_analysisDesc": "融合多源运维数据，通过智能分析将运维洞察转化为业务价值与决策依据。",
           "node_mgmt": "节点管理",
@@ -496,13 +496,11 @@
       "settings": {
         "editChannel": "编辑通知渠道",
         "smtp_usetls": "是否使用 TLS",
-        "name": "名称",
         "addChannel": "新增通知渠道",
         "smtp_pwd": "Smtp 密码",
         "smtp_usessl": "是否使用 SSL",
         "smtp_server": "Smtp 服务器地址",
         "description": "描述",
-        "team": "组织",
         "webhook_url": "Webhook地址",
         "mail_sender": "邮件发送者",
         "port": "端口",
@@ -524,7 +522,9 @@
         "subTypeCustom": "其他",
         "test": "测试",
         "testFailed": "测试发送失败",
-        "testSuccess": "测试消息已发送，请确认是否已成功接收"
+        "testSuccess": "测试消息已发送，请确认是否已成功接收",
+        "name": "名称",
+        "team": "组织"
       },
       "table": {
         "description": "描述",
@@ -534,7 +534,6 @@
       "emailDesc": "电子邮件渠道支持通过SMTP服务发送邮件通知。",
       "template": {
         "context": "通知内容",
-        "detail": "详情",
         "app": "应用",
         "name": "标题"
       },
@@ -551,7 +550,6 @@
     "modules": {
       "llm_model": "LLM 模型",
       "rerank_model": "重排序模型",
-      "provider": "模型",
       "ocr_model": "OCR 模型",
       "skill": "智能体",
       "knowledge": "知识库",
@@ -565,7 +563,6 @@
       "deleteWithChildrenWarning": "删除该组织将同时删除其所有子组织和用户，您确定要删除吗？",
       "addSubGroups": "添加子组织",
       "editGroup": "编辑组织",
-      "title": "组织",
       "desc": "显示所有信息。您可以维护用户信息并分配角色。",
       "rename": "重命名",
       "renameSuccess": "重命名成功",
@@ -585,7 +582,6 @@
       },
       "organizationName": "组织名称",
       "addRole": "添加角色",
-      "name": "名称",
       "personalRole": "个人角色",
       "organizationRole": "组织角色",
       "inheritedRole": "继承角色",
@@ -598,7 +594,6 @@
       "updateRole": "更新角色"
     },
     "data": {
-      "name": "名称",
       "group": "所属组织",
       "deleteConfirm": "确定要删除该数据吗？",
       "description": "描述"
@@ -611,9 +606,6 @@
       "selectedusers": "选定的用户",
       "modifyrole": "批量修改角色",
       "english": "英文",
-      "confirm": "确认",
-      "cancel": "取消",
-      "copySuccess": "复制成功",
       "copyFailed": "复制失败",
       "fetchFailed": "获取数据失败",
       "saveFailed": "保存失败"

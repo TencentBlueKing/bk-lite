@@ -1,5 +1,5 @@
 from django.contrib import admin
-from django.urls import include, path, re_path
+from django.urls import re_path
 from rest_framework import routers
 
 from apps.core.views import index_view
@@ -24,6 +24,7 @@ urlpatterns = [
     re_path(r"api/get_client_detail/", index_view.get_client_detail),
     re_path(r"api/get_user_menus/", index_view.get_user_menus),
     re_path(r"api/get_all_groups/", index_view.get_all_groups),
+    re_path(r"api/logout/$", index_view.logout),
 ]
 
 public_router.register(r"api/user_group", UserGroupViewSet, basename="user_group")

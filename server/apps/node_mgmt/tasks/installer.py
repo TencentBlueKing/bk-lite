@@ -33,6 +33,7 @@ from apps.node_mgmt.utils.installer import (
     unzip_file,
 )
 from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.step_tracker import (
     advance_step,
     append_step,
@@ -478,22 +479,68 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
             passphrase = aes_obj.decode(node_obj.passphrase)
 
         try:
+            resolved_package = package_obj
+            resolved_arch = normalize_cpu_architecture(node_obj.cpu_architecture)
+            if package_obj.os == NodeConstants.LINUX_OS and not resolved_arch:
+                _update_step_status_by_action(
+                    node_obj,
+                    "run",
+                    "running",
+                    "Detect target CPU architecture",
+                    details={"cpu_architecture": "detecting"},
+                )
+                detect_output = exec_command_to_remote(
+                    task_obj.work_node,
+                    node_obj.ip,
+                    node_obj.username,
+                    password,
+                    "uname -m",
+                    node_obj.port,
+                    private_key=private_key,
+                    passphrase=passphrase,
+                )
+                resolved_arch = normalize_cpu_architecture(str(detect_output).strip())
+                if not resolved_arch:
+                    raise BaseAppException("Failed to detect target CPU architecture")
+                node_obj.cpu_architecture = resolved_arch
+                node_obj.save(update_fields=["cpu_architecture"])
+
+            if resolved_arch:
+                resolved_package = InstallerService.resolve_package_by_architecture(
+                    task_obj.package_version_id,
+                    resolved_arch,
+                )
+                node_obj.resolved_package_version_id = resolved_package.id
+                node_obj.save(update_fields=["resolved_package_version_id"])
+
+            _update_step_status_by_action(
+                node_obj,
+                "run",
+                "running",
+                "Run installer",
+                details={
+                    "cpu_architecture": resolved_arch or "",
+                    "resolved_package_version_id": node_obj.resolved_package_version_id or resolved_package.id,
+                },
+            )
+
             install_command = InstallerService.get_install_command(
                 task_obj.created_by,
                 node_obj.ip,
                 uuid.uuid4().hex,
-                package_obj.os,
-                task_obj.package_version_id,
+                resolved_package.os,
+                resolved_package.id,
                 task_obj.cloud_region_id,
                 node_obj.organizations,
                 node_obj.node_name,
                 install_mode=InstallerService.AUTO_INSTALL_MODE,
+                cpu_architecture=resolved_arch,
             )
 
-            if package_obj.os == NodeConstants.LINUX_OS:
+            if resolved_package.os == NodeConstants.LINUX_OS:
                 install_command = f'sh -lc "{install_command}"'
             exec_result = None
-            if package_obj.os == NodeConstants.LINUX_OS:
+            if resolved_package.os == NodeConstants.LINUX_OS:
                 execution_id = uuid.uuid4().hex
                 stream_log_topic = f"executor.stream.{execution_id}"
                 stop_event = threading.Event()

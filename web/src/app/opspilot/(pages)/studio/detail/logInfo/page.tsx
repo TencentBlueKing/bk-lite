@@ -617,7 +617,7 @@ const StudioLogsPage: React.FC = () => {
       key: 'count',
     },
     {
-      title: t('studio.logs.table.actions'),
+      title: t('common.actions'),
       key: 'actions',
       render: (text: any, record: LogRecord) => (
         <Button type="link" onClick={() => handleDetailClick(record)}>
@@ -689,7 +689,7 @@ const StudioLogsPage: React.FC = () => {
       render: (duration) => `${duration || 0}ms`,
     },
     {
-      title: t('studio.logs.table.actions'),
+      title: t('common.actions'),
       key: 'actions',
       render: (text: any, record: WorkflowTaskResult) => (
         <Button type="link" onClick={() => handleWorkflowDetailClick(record)}>

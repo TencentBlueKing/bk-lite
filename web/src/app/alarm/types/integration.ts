@@ -17,6 +17,33 @@ interface Config {
   event_fields_mapping: Record<string, string>;
   event_fields_desc_mapping: Record<string, string>;
 }
+
+export interface K8sDownloadFile {
+  key: string;
+  file_name: string;
+  display_name: string;
+}
+
+export interface K8sMeta {
+  source_id: string;
+  name: string;
+  description: string;
+  receiver_url: string;
+  method: string;
+  headers: Record<string, string>;
+  push_source_id_default: string;
+  push_source_id_configurable: boolean;
+  image_reference: string;
+  download_files: K8sDownloadFile[];
+  notes: string[];
+}
+
+export interface K8sRenderParams {
+  server_url: string;
+  cluster_name: string;
+  push_source_id?: string;
+}
+
 export interface SourceItem {
   id: number;
   event_count: number | null | undefined | string;

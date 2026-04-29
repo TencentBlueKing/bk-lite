@@ -1,9 +1,12 @@
 package jetstream
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"nats-executor/logger"
+	"nats-executor/utils/downloaderr"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +18,13 @@ type objectStoreGetter interface {
 	Get(name string, opts ...nats.GetObjectOpt) (nats.ObjectResult, error)
 }
 
-var createDownloadFile = os.Create
+var (
+	createTempDownloadFile = func(dir, pattern string) (*os.File, error) {
+		return os.CreateTemp(dir, pattern)
+	}
+	renameDownloadFile = os.Rename
+	removeDownloadFile = os.Remove
+)
 
 type JetStreamClient struct {
 	nc          *nats.Conn
@@ -45,28 +54,68 @@ func NewJetStreamClient(nc *nats.Conn, bucketName string) (*JetStreamClient, err
 	return &JetStreamClient{nc: nc, js: js, objectStore: store}, nil
 }
 
-func (jsc *JetStreamClient) DownloadToFile(fileKey, targetPath, fileName string) error {
+func (jsc *JetStreamClient) DownloadToFile(ctx context.Context, fileKey, targetPath, fileName string) error {
 	if err := validateTargetFileName(fileName); err != nil {
 		return err
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
-	obj, err := jsc.objectStore.Get(fileKey)
+	obj, err := jsc.objectStore.Get(fileKey, nats.Context(ctx))
 	if err != nil {
-		return fmt.Errorf("failed to get object from store with key %s: %v", fileKey, err)
+		kind := downloaderr.KindDependency
+		if errors.Is(err, context.Canceled) {
+			kind = downloaderr.KindCanceled
+		} else if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, nats.ErrTimeout) {
+			kind = downloaderr.KindTimeout
+		}
+		return downloaderr.New(kind, fmt.Errorf("failed to get object from store with key %s: %w", fileKey, err))
 	}
 	defer obj.Close()
 
 	fullPath := filepath.Join(targetPath, fileName)
-
-	file, err := createDownloadFile(fullPath)
+	tempFile, err := createTempDownloadFile(targetPath, fileName+".tmp-*")
 	if err != nil {
-		return fmt.Errorf("failed to create file at %s: %v", fullPath, err)
+		return downloaderr.New(downloaderr.KindIO, fmt.Errorf("failed to create temporary file in %s: %w", targetPath, err))
 	}
-	defer file.Close()
+	tempPath := tempFile.Name()
+	tempClosed := false
+	cleanupTemp := func() {
+		if !tempClosed {
+			_ = tempFile.Close()
+			tempClosed = true
+		}
+		_ = removeDownloadFile(tempPath)
+	}
 
-	written, err := io.Copy(file, obj)
+	written, err := io.Copy(tempFile, obj)
 	if err != nil {
-		return fmt.Errorf("failed to write file: %v", err)
+		cleanupTemp()
+		kind := downloaderr.KindDependency
+		if errors.Is(err, context.Canceled) {
+			kind = downloaderr.KindCanceled
+		} else if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, nats.ErrTimeout) {
+			kind = downloaderr.KindTimeout
+		}
+		return downloaderr.New(kind, fmt.Errorf("failed to write file: %w", err))
+	}
+
+	if err := tempFile.Sync(); err != nil {
+		cleanupTemp()
+		return downloaderr.New(downloaderr.KindIO, fmt.Errorf("failed to sync temporary file %s: %w", tempPath, err))
+	}
+
+	if err := tempFile.Close(); err != nil {
+		tempClosed = true
+		_ = removeDownloadFile(tempPath)
+		return downloaderr.New(downloaderr.KindIO, fmt.Errorf("failed to close temporary file %s: %w", tempPath, err))
+	}
+	tempClosed = true
+
+	if err := renameDownloadFile(tempPath, fullPath); err != nil {
+		_ = removeDownloadFile(tempPath)
+		return downloaderr.New(downloaderr.KindIO, fmt.Errorf("failed to finalize download to %s: %w", fullPath, err))
 	}
 
 	logger.Debugf("[JetStream] File successfully downloaded to %s (%d bytes)", fullPath, written)

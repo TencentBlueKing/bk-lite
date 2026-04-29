@@ -1,21 +1,15 @@
 """MySQL动态SQL查询工具 - 安全的动态查询生成和执行"""
 
 import re
+from typing import List
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from mysql.connector import Error
 
 from apps.opspilot.metis.llm.tools.common.credentials import execute_with_credentials
-from apps.opspilot.metis.llm.tools.mysql.connection import (
-    build_mysql_normalized_from_runnable,
-    get_mysql_connection_from_item,
-)
-from apps.opspilot.metis.llm.tools.mysql.utils import (
-    execute_readonly_query,
-    safe_json_dumps,
-    validate_sql_safety,
-)
+from apps.opspilot.metis.llm.tools.mysql.connection import build_mysql_normalized_from_runnable, get_mysql_connection_from_item
+from apps.opspilot.metis.llm.tools.mysql.utils import execute_readonly_query, safe_json_dumps, validate_sql_safety
 
 SENSITIVE_COLUMNS = {
     "password",
@@ -191,7 +185,7 @@ def execute_safe_select(
                 db = rows[0]["db"] if rows and rows[0]["db"] else None
 
             if db:
-                execute_readonly_query(conn, f"SELECT 1")  # keep session
+                execute_readonly_query(conn, "SELECT 1")  # keep session
                 cursor = conn.cursor()
                 cursor.execute(f"USE `{db}`")
                 cursor.close()
@@ -330,3 +324,71 @@ def get_sample_data(
             conn.close()
 
     return safe_json_dumps(execute_with_credentials(normalized, _executor))
+
+
+@tool()
+def execute_safe_select_batch(
+    queries: List[str],
+    database: str = None,
+    instance_name: str = None,
+    instance_id: str = None,
+    config: RunnableConfig = None,
+) -> str:
+    """批量执行多条安全的 SELECT 查询，每条独立校验安全性，单条失败不中断其他查询。"""
+    normalized = build_mysql_normalized_from_runnable(config, instance_name, instance_id)
+
+    results = []
+    succeeded = 0
+    failed = 0
+
+    for query in queries:
+        # 独立安全检查
+        is_safe, error_msg = validate_sql_safety(query)
+        if not is_safe:
+            results.append({"input": query, "ok": False, "error": f"SQL安全检查失败: {error_msg}"})
+            failed += 1
+            continue
+
+        sql_normalized = " ".join(query.lower().split())
+        if re.search(r"\bselect\s+\*\s+from\b", sql_normalized):
+            results.append({"input": query, "ok": False, "error": "安全限制: 禁止使用SELECT *"})
+            failed += 1
+            continue
+
+        def _executor(item, _query=query):
+            conn = get_mysql_connection_from_item(item)
+            try:
+                db = database
+                if not db:
+                    rows = execute_readonly_query(conn, "SELECT DATABASE() AS db")
+                    db = rows[0]["db"] if rows and rows[0]["db"] else None
+
+                if db:
+                    cursor = conn.cursor()
+                    cursor.execute(f"USE `{db}`")
+                    cursor.close()
+
+                sql = _query.rstrip().rstrip(";")
+                if "limit" not in sql.lower():
+                    sql = sql + " LIMIT 100"
+
+                rows = execute_readonly_query(conn, sql)
+                if rows:
+                    keys_to_remove = [k for k in rows[0] if k.lower() in SENSITIVE_COLUMNS]
+                    if keys_to_remove:
+                        rows = [{k: v for k, v in row.items() if k not in keys_to_remove} for row in rows]
+                return {"success": True, "row_count": len(rows), "sql": sql, "data": rows[:100]}
+            except Error as e:
+                return {"error": str(e)}
+            finally:
+                conn.close()
+
+        try:
+            data = execute_with_credentials(normalized, _executor)
+            results.append({"input": query, "ok": True, "data": data})
+            succeeded += 1
+        except Exception as e:
+            results.append({"input": query, "ok": False, "error": str(e)})
+            failed += 1
+
+    return safe_json_dumps({"total": len(queries), "succeeded": succeeded, "failed": failed, "results": results})

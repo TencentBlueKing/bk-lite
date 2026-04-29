@@ -7,6 +7,7 @@ Alerts Views
 
 # 告警源
 from .alert_source import AlertSourceModelViewSet
+from .open_api_k8s import K8sOpenAPIViewSet
 
 # 告警
 from .alert import AlertModelViewSet
@@ -36,11 +37,16 @@ from .operator_log import SystemLogModelViewSet
 from .strategy import AlarmStrategyModelViewSet
 
 # 接收器
-from .receiver import receiver_data, request_test
+from .receiver import (
+    receiver_data,
+    receiver_source_data,
+    request_test,
+)
 
 __all__ = [
     # 告警源
     "AlertSourceModelViewSet",
+    "K8sOpenAPIViewSet",
     # 告警
     "AlertModelViewSet",
     # 事件
@@ -60,6 +66,7 @@ __all__ = [
     "AlarmStrategyModelViewSet",
     # 接收器
     "receiver_data",
+    "receiver_source_data",
     "request_test",
 ]
 

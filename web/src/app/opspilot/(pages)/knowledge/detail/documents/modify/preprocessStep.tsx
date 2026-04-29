@@ -277,7 +277,7 @@ const PreprocessStep: React.FC<{
 
         <div className="flex-1 w-0">
           <div className="flex justify-between">
-            <h2 className="text-sm font-semibold mb-3">{t('knowledge.documents.preview')}</h2>
+            <h2 className="text-sm font-semibold mb-3">{t('common.preview')}</h2>
             <Button type="primary" size="small" onClick={handlePreviewClick} loading={loadingPreview}>
               {t('knowledge.documents.viewChunk')}
             </Button>

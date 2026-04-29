@@ -9,6 +9,7 @@ from apps.core.logger import node_logger as logger
 def package_version_upload(_type, options):
     _os = options["os"]
     _object = options["object"]
+    cpu_architecture = options.get("cpu_architecture", "")
     version = options["pk_version"]
     file_path = options["file_path"]
 
@@ -21,6 +22,7 @@ def package_version_upload(_type, options):
 
     data = dict(
         os=_os,
+        cpu_architecture=cpu_architecture,
         type=_type,
         object=_object,
         version=version,
@@ -30,9 +32,7 @@ def package_version_upload(_type, options):
         updated_by="system",
     )
 
-    pk_v = PackageVersion.objects.filter(
-        os=_os, object=_object, version=version
-    ).first()
+    pk_v = PackageVersion.objects.filter(os=_os, cpu_architecture=cpu_architecture, object=_object, version=version).first()
     if pk_v:
         if version != PackageConstants.VERSION_LATEST:
             logger.warning(f"{_type} 包版本已存在!")

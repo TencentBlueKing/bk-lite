@@ -1,8 +1,9 @@
-.PHONY: all build icons worker linux-worker nsis clean check-deps install-deps
+.PHONY: all build icons worker linux-worker linux-worker-arm64 linux-worker-amd64 release-artifacts nsis clean check-deps install-deps
 
 WORKER = setup-worker.exe
 INSTALLER = bklite-controller-installer.exe
 LINUX_INSTALLER = bklite-controller-installer
+DIST_DIR = dist
 VENV_DIR = .venv
 
 all: build
@@ -89,6 +90,21 @@ worker:
 linux-worker:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(LINUX_INSTALLER) setup-worker.go
 	@ls -lh $(LINUX_INSTALLER)
+
+linux-worker-amd64:
+	@mkdir -p $(DIST_DIR)/linux/x86_64
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(DIST_DIR)/linux/x86_64/$(LINUX_INSTALLER) setup-worker.go
+	@ls -lh $(DIST_DIR)/linux/x86_64/$(LINUX_INSTALLER)
+
+linux-worker-arm64:
+	@mkdir -p $(DIST_DIR)/linux/arm64
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(DIST_DIR)/linux/arm64/$(LINUX_INSTALLER) setup-worker.go
+	@ls -lh $(DIST_DIR)/linux/arm64/$(LINUX_INSTALLER)
+
+release-artifacts: worker linux-worker-amd64 linux-worker-arm64 nsis
+	@mkdir -p $(DIST_DIR)/windows/x86_64
+	@cp $(INSTALLER) $(DIST_DIR)/windows/x86_64/$(INSTALLER)
+	@ls -lh $(DIST_DIR)/windows/x86_64/$(INSTALLER)
 
 nsis:
 	makensis -V2 setup.nsi

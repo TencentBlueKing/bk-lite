@@ -22,11 +22,20 @@ export const forceLogoutAndRedirect = async () => {
 
   try {
     resetSessionExpiredState();
+
+    // Best-effort: call federated-logout to revoke backend token
+    try {
+      await fetch('/api/auth/federated-logout', { method: 'POST' });
+    } catch {
+      // Non-blocking: proceed with logout even if revocation fails
+    }
+
     clearAuthToken();
     await signOut({ redirect: false });
   } catch (error) {
     console.error('Force logout failed:', error);
   } finally {
+    forceLogoutInProgress = false;
     window.location.replace(buildLoginUrl());
   }
 };

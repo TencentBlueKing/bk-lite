@@ -119,7 +119,7 @@ const CustomMenuPage = () => {
             },
             {
               key: 'copy',
-              label: t('system.menu.copy'),
+              label: t('common.copy'),
               onClick: () => handleCopyMenu(record),
               permission: 'Edit',
             },
@@ -136,7 +136,7 @@ const CustomMenuPage = () => {
             },
             {
               key: 'delete',
-              label: t('system.menu.delete'),
+              label: t('common.delete'),
               onClick: () => handleDeleteMenu(record),
               permission: 'Delete',
               danger: true,

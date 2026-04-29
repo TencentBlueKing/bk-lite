@@ -13,12 +13,47 @@ from asgiref.sync import async_to_sync
 from apps.node_mgmt.models.package import PackageVersion
 from apps.node_mgmt.models.sidecar import Collector
 from apps.node_mgmt.constants.package import PackageConstants
+from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 
 
 class PackageService:
     @staticmethod
+    def normalize_upload_cpu_architecture(cpu_architecture: str | None) -> str:
+        normalized = normalize_cpu_architecture(cpu_architecture)
+        return normalized or "x86_64"
+
+    @staticmethod
+    def resolve_package_by_architecture(package_seed_id: int, cpu_architecture: str):
+        package_obj = PackageVersion.objects.filter(id=package_seed_id).first()
+        if not package_obj:
+            return None
+
+        normalized_arch = normalize_cpu_architecture(cpu_architecture)
+        if not normalized_arch:
+            return package_obj
+
+        resolved = PackageVersion.objects.filter(
+            type=package_obj.type,
+            os=package_obj.os,
+            object=package_obj.object,
+            version=package_obj.version,
+            cpu_architecture=normalized_arch,
+        ).first()
+        if resolved:
+            return resolved
+
+        return PackageVersion.objects.filter(
+            type=package_obj.type,
+            os=package_obj.os,
+            object=package_obj.object,
+            version=package_obj.version,
+            cpu_architecture="",
+        ).first()
+
+    @staticmethod
     def build_file_path(package_obj) -> str:
-        return f"{package_obj.os}/{package_obj.object}/{package_obj.version}/{package_obj.name}"
+        arch = getattr(package_obj, "cpu_architecture", "") or "generic"
+        return f"{package_obj.os}/{arch}/{package_obj.object}/{package_obj.version}/{package_obj.name}"
 
     @staticmethod
     def parse_package_info(filename: str):
@@ -51,7 +86,7 @@ class PackageService:
         }
 
     @staticmethod
-    def validate_package(filename: str, expected_type: str, expected_os: str, expected_object: str):
+    def validate_package(filename: str, expected_type: str, expected_os: str, expected_object: str, expected_arch: str = ""):
         """校验上传的包是否合格"""
         # 解析文件名
         parsed_info = PackageService.parse_package_info(filename)
@@ -80,7 +115,13 @@ class PackageService:
             return False, error_msg, None
 
         # 检查版本是否已存在
-        existing_package = PackageVersion.objects.filter(os=expected_os, object=expected_object, version=parsed_info["version"]).first()
+        normalized_arch = PackageService.normalize_upload_cpu_architecture(expected_arch)
+        existing_package = PackageVersion.objects.filter(
+            os=expected_os,
+            cpu_architecture=normalized_arch,
+            object=expected_object,
+            version=parsed_info["version"],
+        ).first()
 
         if existing_package:
             if parsed_info["version"] == PackageConstants.VERSION_LATEST:
@@ -93,7 +134,8 @@ class PackageService:
 
     @staticmethod
     def upload_file(file: ContentFile, data):
-        s3_file_path = f"{data['os']}/{data['object']}/{data['version']}/{data['name']}"
+        arch = data.get("cpu_architecture") or "generic"
+        s3_file_path = f"{data['os']}/{arch}/{data['object']}/{data['version']}/{data['name']}"
         async_to_sync(upload_file_to_s3)(file, s3_file_path)
 
     @staticmethod

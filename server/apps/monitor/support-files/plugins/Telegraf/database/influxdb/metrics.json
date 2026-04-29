@@ -1,0 +1,160 @@
+{
+  "plugin": "InfluxDB",
+  "plugin_desc": "由 Telegraf 采集器通过 InfluxDB v1 的 /debug/vars 接口采集关键指标，重点关注序列规模、HTTP 服务质量、写入异常、查询压力和运行时内存。",
+  "status_query": "any({instance_type='influxdb', collect_type='database'}) by (host, instance_role)",
+  "name": "InfluxDB",
+  "icon": "mm-db_数据库",
+  "type": "Database",
+  "description": "",
+  "default_metric": "any({instance_type='influxdb'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [
+    "influxdb_database_numSeries",
+    "influxdb_httpd_writeReq_rate",
+    "influxdb_httpd_queryReq_rate",
+    "influxdb_httpd_pointsWrittenFail_rate",
+    "influxdb_httpd_pointsWrittenDropped_rate",
+    "influxdb_runtime_HeapAlloc"
+  ],
+  "metrics": [
+    {
+      "metric_group": "数据库",
+      "name": "influxdb_database_numSeries",
+      "display_name": "序列数",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "database",
+          "description": "数据库名称"
+        }
+      ],
+      "description": "单个 InfluxDB 数据库中的序列总数，是判断高基数风险最重要的指标之一。",
+      "query": "influxdb_database_numSeries{__$labels__}"
+    },
+    {
+      "metric_group": "请求与错误",
+      "name": "influxdb_httpd_authFail_rate",
+      "display_name": "HTTP 认证失败速率",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "bind",
+          "description": "监听地址"
+        }
+      ],
+      "description": "最近 5 分钟 HTTP 接口认证失败的平均速率。",
+      "query": "sum(rate(influxdb_httpd_authFail{__$labels__}[5m])) by (instance_id, bind)"
+    },
+    {
+      "metric_group": "请求与错误",
+      "name": "influxdb_httpd_clientError_rate",
+      "display_name": "HTTP 4XX 错误速率",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "bind",
+          "description": "监听地址"
+        }
+      ],
+      "description": "最近 5 分钟 HTTP 接口返回 4XX 错误的平均速率。",
+      "query": "sum(rate(influxdb_httpd_clientError{__$labels__}[5m])) by (instance_id, bind)"
+    },
+    {
+      "metric_group": "请求与错误",
+      "name": "influxdb_httpd_serverError_rate",
+      "display_name": "HTTP 5XX 错误速率",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "bind",
+          "description": "监听地址"
+        }
+      ],
+      "description": "最近 5 分钟 HTTP 接口返回 5XX 错误的平均速率。",
+      "query": "sum(rate(influxdb_httpd_serverError{__$labels__}[5m])) by (instance_id, bind)"
+    },
+    {
+      "metric_group": "写入稳定性",
+      "name": "influxdb_httpd_pointsWrittenDropped_rate",
+      "display_name": "写点丢弃速率",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "bind",
+          "description": "监听地址"
+        }
+      ],
+      "description": "最近 5 分钟写入接口已接收但在持久化前被丢弃的数据点平均速率。",
+      "query": "sum(rate(influxdb_httpd_pointsWrittenDropped{__$labels__}[5m])) by (instance_id, bind)"
+    },
+    {
+      "metric_group": "写入稳定性",
+      "name": "influxdb_httpd_pointsWrittenFail_rate",
+      "display_name": "写入持久化失败速率",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "bind",
+          "description": "监听地址"
+        }
+      ],
+      "description": "最近 5 分钟写入接口已接收但持久化失败的数据点平均速率。",
+      "query": "sum(rate(influxdb_httpd_pointsWrittenFail{__$labels__}[5m])) by (instance_id, bind)"
+    },
+    {
+      "metric_group": "请求与错误",
+      "name": "influxdb_httpd_writeReq_rate",
+      "display_name": "写入请求速率",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "bind",
+          "description": "监听地址"
+        }
+      ],
+      "description": "最近 5 分钟写入请求的平均速率。",
+      "query": "sum(rate(influxdb_httpd_writeReq{__$labels__}[5m])) by (instance_id, bind)"
+    },
+    {
+      "metric_group": "请求与错误",
+      "name": "influxdb_httpd_queryReq_rate",
+      "display_name": "查询请求速率",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "bind",
+          "description": "监听地址"
+        }
+      ],
+      "description": "最近 5 分钟查询请求的平均速率。",
+      "query": "sum(rate(influxdb_httpd_queryReq{__$labels__}[5m])) by (instance_id, bind)"
+    },
+    {
+      "metric_group": "运行时",
+      "name": "influxdb_runtime_HeapAlloc",
+      "display_name": "运行时堆内存分配",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "description": "当前 Go 运行时堆上已分配且正在使用的内存大小。",
+      "query": "influxdb_runtime_HeapAlloc{__$labels__}"
+    }
+  ]
+}

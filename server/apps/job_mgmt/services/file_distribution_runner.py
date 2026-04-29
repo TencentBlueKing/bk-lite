@@ -289,10 +289,6 @@ class FileDistributionRunner(ExecutionTaskBaseService):
         if not has_password and not has_private_key:
             raise ValueError("目标缺少认证信息，需要密码或私钥")
 
-        rpc_timeout = min(timeout, DEFAULT_RPC_TIMEOUT)
-        if rpc_timeout <= 0:
-            rpc_timeout = DEFAULT_RPC_TIMEOUT
-
         executor = Executor(instance_id)
         return executor.download_to_remote(
             bucket_name=NATS_NAMESPACE,
@@ -304,7 +300,6 @@ class FileDistributionRunner(ExecutionTaskBaseService):
             password=ssh_creds["password"],
             private_key=ssh_creds["private_key"],
             timeout=timeout,
-            rpc_timeout=rpc_timeout,
             port=ssh_creds["port"],
             overwrite=overwrite,
         )

@@ -7,14 +7,14 @@ from apps.node_mgmt.constants.language import LanguageConstants
 from apps.node_mgmt.filters.controller import ControllerFilter
 from apps.node_mgmt.models import Controller
 from apps.node_mgmt.serializers.controller import ControllerSerializer
+from apps.node_mgmt.utils.architecture import display_cpu_architecture
 
 
-class ControllerViewSet(mixins.ListModelMixin,
-                       GenericViewSet):
+class ControllerViewSet(mixins.ListModelMixin, GenericViewSet):
     queryset = Controller.objects.all()
     serializer_class = ControllerSerializer
     filterset_class = ControllerFilter
-    search_fields = ['id', 'name', 'introduction']
+    search_fields = ["id", "name", "introduction"]
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -27,9 +27,16 @@ class ControllerViewSet(mixins.ListModelMixin,
             # 获取控制器的翻译名称和描述
             name_key = f"{LanguageConstants.CONTROLLER}.{result['os']}.name"
             desc_key = f"{LanguageConstants.CONTROLLER}.{result['os']}.description"
+            arch = result.get("cpu_architecture") or ""
+            arch_display = display_cpu_architecture(arch)
 
-            result["display_name"] = lan.get(name_key) or result["name"]
+            base_display_name = lan.get(name_key) or result["name"]
+            if result["os"] == "linux" and arch_display != "--":
+                result["display_name"] = f"{base_display_name}（{arch_display}）"
+            else:
+                result["display_name"] = base_display_name
             result["display_description"] = lan.get(desc_key) or result.get("description", "")
+            result["architecture_display"] = arch_display
 
         page = self.paginate_queryset(results)
         if page is not None:

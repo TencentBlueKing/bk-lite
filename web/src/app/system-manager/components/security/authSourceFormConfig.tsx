@@ -118,7 +118,7 @@ export const getNewAuthSourceFormFields = ({
   {
     name: 'enabled',
     type: 'switch',
-    label: t('system.security.enabled'),
+    label: t('common.enable'),
     size: 'small',
     initialValue: true,
     disabled: isBuiltIn
@@ -207,7 +207,7 @@ export const getBluekingFormFields = ({
   {
     name: 'enabled',
     type: 'switch',
-    label: t('system.security.enabled'),
+    label: t('common.enable'),
     size: 'small',
     initialValue: true,
     disabled: isBuiltIn
@@ -250,7 +250,7 @@ export const getWeChatFormFields = ({
   {
     name: 'enabled',
     type: 'switch',
-    label: t('system.security.enabled'),
+    label: t('common.enable'),
     initialValue: true,
     size: 'small'
   }

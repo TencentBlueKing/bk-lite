@@ -16,7 +16,6 @@ from apps.node_mgmt.filters.collector_configuration import CollectorConfiguratio
 from apps.node_mgmt.services.collector_configuration import (
     CollectorConfigurationService,
 )
-from django.core.cache import cache
 
 
 class CollectorConfigurationViewSet(ModelViewSet):
@@ -28,13 +27,9 @@ class CollectorConfigurationViewSet(ModelViewSet):
     def list(self, request, *args, **kwargs):
         response = super().list(request, *args, **kwargs)
         if isinstance(response.data, dict) and "items" in response.data:
-            response.data["items"] = CollectorConfigurationService.calculate_node_count(
-                response.data["items"]
-            )
+            response.data["items"] = CollectorConfigurationService.calculate_node_count(response.data["items"])
         else:
-            response.data = CollectorConfigurationService.calculate_node_count(
-                response.data
-            )
+            response.data = CollectorConfigurationService.calculate_node_count(response.data)
         return response
 
     @action(detail=False, methods=["post"], url_path="config_node_asso")
@@ -100,16 +95,10 @@ class CollectorConfigurationViewSet(ModelViewSet):
         return WebUtils.response_success(result)
 
     def create(self, request, *args, **kwargs):
-        # 清除cache中的etag
-        pk = kwargs.get("pk")
-        cache.delete(f"configuration_etag_{pk}")
         self.serializer_class = CollectorConfigurationCreateSerializer
         return super().create(request, *args, **kwargs)
 
     def partial_update(self, request, *args, **kwargs):
-        # 清除cache中的etag
-        pk = kwargs.get("pk")
-        cache.delete(f"configuration_etag_{pk}")
         self.serializer_class = CollectorConfigurationUpdateSerializer
         return super().partial_update(request, *args, **kwargs)
 
@@ -136,9 +125,7 @@ class CollectorConfigurationViewSet(ModelViewSet):
         for item in request.data:
             collector_configuration_id = item["collector_configuration_id"]
             node_id = item["node_id"]
-            success, message = CollectorConfigurationService.apply_to_node(
-                node_id, collector_configuration_id
-            )
+            success, message = CollectorConfigurationService.apply_to_node(node_id, collector_configuration_id)
             result.append(
                 {
                     "node_id": node_id,

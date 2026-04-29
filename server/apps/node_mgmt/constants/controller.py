@@ -10,12 +10,21 @@ class ControllerConstants:
     CONTROLLER = [
         {
             "os": "linux",
+            "cpu_architecture": NodeConstants.X86_64_ARCH,
+            "name": "Controller",
+            "description": "The Controller is primarily used to manage various types of collectors, composed of Sidecarand NAS Executor, enabling automated deployment, resource coordination, and task execution on servers.",
+            "version_command": "cat /opt/fusion-collectors/VERSION",
+        },
+        {
+            "os": "linux",
+            "cpu_architecture": NodeConstants.ARM64_ARCH,
             "name": "Controller",
             "description": "The Controller is primarily used to manage various types of collectors, composed of Sidecarand NAS Executor, enabling automated deployment, resource coordination, and task execution on servers.",
             "version_command": "cat /opt/fusion-collectors/VERSION",
         },
         {
             "os": "windows",
+            "cpu_architecture": NodeConstants.X86_64_ARCH,
             "name": "Controller",
             "description": "The Controller is primarily used to manage various types of collectors, composed of Sidecarand NAS Executor, enabling automated deployment, resource coordination, and task execution on servers.",
             "version_command": f"type {WINDOWS_INSTALL_DIR}\\VERSION",

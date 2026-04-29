@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import ChartLegend from '../components/chartLegend';
 import { Spin, Empty } from 'antd';
@@ -19,8 +19,26 @@ const OsPie: React.FC<OsPieProps> = ({
   onReady
 }) => {
   const [isDataReady, setIsDataReady] = useState(false);
-  const chartRef = useRef<any>(null);
+  const [chartInstance, setChartInstance] = useState<any>(null);
+  const [showLegend, setShowLegend] = useState(true);
+  const containerRef = useRef<HTMLDivElement>(null);
   const chartColors = randomColorForLegend();
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setShowLegend(entry.contentRect.width >= 360);
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const onChartReady = useCallback((instance: any) => {
+    setChartInstance(instance);
+  }, []);
 
   const transformData = (rawData: any) => {
     // 如果有 displayMaps 配置，先将原始数据映射为 {name, value} 格式
@@ -40,6 +58,7 @@ const OsPie: React.FC<OsPieProps> = ({
   };
 
   const chartData = transformData(rawData);
+  const useBarChart = chartData && chartData.length > 5;
 
   useEffect(() => {
     if (!loading) {
@@ -50,7 +69,70 @@ const OsPie: React.FC<OsPieProps> = ({
       }
     }
   }, [chartData, loading, onReady]);
-  const option: any = {
+
+  // Sort data descending for bar chart display
+  const sortedBarData = useBarChart
+    ? [...chartData].sort((a: any, b: any) => a.value - b.value)
+    : [];
+
+  const barOption: any = useBarChart
+    ? {
+      color: chartColors,
+      animation: true,
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        confine: true,
+        textStyle: { fontSize: 12 }
+      },
+      grid: {
+        left: 12,
+        right: 48,
+        top: 8,
+        bottom: 8,
+        containLabel: true
+      },
+      xAxis: {
+        type: 'value',
+        axisLabel: { fontSize: 11, color: '#999' },
+        splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+      },
+      yAxis: {
+        type: 'category',
+        data: sortedBarData.map((d: any) => d.name),
+        axisLabel: {
+          fontSize: 11,
+          color: '#666',
+          width: 100,
+          overflow: 'truncate',
+          ellipsis: '...'
+        },
+        axisTick: { show: false },
+        axisLine: { show: false }
+      },
+      series: [
+        {
+          type: 'bar',
+          data: sortedBarData.map((d: any, i: number) => ({
+            value: d.value,
+            itemStyle: {
+              color: chartColors[i % chartColors.length],
+              borderRadius: [0, 2, 2, 0]
+            }
+          })),
+          barMaxWidth: 20,
+          label: {
+            show: true,
+            position: 'right',
+            fontSize: 11,
+            color: '#666'
+          }
+        }
+      ]
+    }
+    : null;
+
+  const pieOption: any = {
     color: chartColors,
     animation: true,
     calculable: true,
@@ -137,6 +219,8 @@ const OsPie: React.FC<OsPieProps> = ({
     ]
   };
 
+  const option = useBarChart ? barOption : pieOption;
+
   if (loading) {
     return (
       <div className="h-full flex flex-col items-center justify-center">
@@ -154,21 +238,21 @@ const OsPie: React.FC<OsPieProps> = ({
   }
 
   return (
-    <div className="h-full flex">
+    <div className="h-full flex" ref={containerRef}>
       {/* 图表区域 */}
-      <div className="flex-1">
+      <div className={useBarChart ? 'w-full' : 'flex-1 min-w-[200px]'}>
         <ReactEcharts
-          ref={chartRef}
           option={option}
           style={{ height: '100%', width: '100%' }}
+          onChartReady={onChartReady}
         />
       </div>
 
-      {/* 图例区域 */}
-      {chartData && chartData.length > 1 && (
-        <div className="w-34 flex-shrink-0 h-full">
+      {/* 图例区域 - only for pie/donut */}
+      {!useBarChart && showLegend && chartData && chartData.length > 1 && (
+        <div className="w-40 flex-shrink-0 h-full">
           <ChartLegend
-            chart={chartRef.current?.getEchartsInstance()}
+            chart={chartInstance}
             data={chartData.map((item: any) => ({ name: item.name }))}
             colors={chartColors}
           />

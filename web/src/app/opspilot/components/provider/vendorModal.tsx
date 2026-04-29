@@ -247,7 +247,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
 
         <Form.Item
           name="name"
-          label={t('provider.vendor.name')}
+          label={t('common.name')}
           rules={[{ required: true, message: t('provider.vendor.nameRequired') }]}
           extra={<span className="text-xs">{t('provider.vendor.nameHelp')}</span>}
           className="mb-5"
@@ -291,7 +291,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
 
         <Form.Item
           name="team"
-          label={t('provider.vendor.group')}
+          label={t('common.organization')}
           rules={[{ required: true, message: t('provider.vendor.groupRequired') }]}
           className="mb-5"
         >
@@ -303,7 +303,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
           />
         </Form.Item>
 
-        <Form.Item name="enabled" label={t('provider.vendor.enabled')} valuePropName="checked" className="mb-5">
+        <Form.Item name="enabled" label={t('common.enable')} valuePropName="checked" className="mb-5">
           <Switch size="small" />
         </Form.Item>
 

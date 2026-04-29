@@ -1,4 +1,8 @@
+import importlib.util
 import logging
+import sys
+import types
+from pathlib import Path
 
 import pytest
 from django.contrib.auth.hashers import make_password
@@ -10,10 +14,87 @@ from apps.job_mgmt.nats_api import ansible_task_callback
 from apps.job_mgmt.services.file_distribution_runner import FileDistributionRunner
 from apps.job_mgmt.services.script_execution_runner import ScriptExecutionRunner
 from apps.rpc.ansible import AnsibleExecutor
+from apps.system_mgmt import nats_api
 from apps.system_mgmt.models import User
-from apps.system_mgmt.nats_api import get_all_users
+from apps.system_mgmt.nats_api import get_all_users, get_authorized_groups_scoped
 
 logger = logging.getLogger(__name__)
+
+
+def _install_module(monkeypatch, name, **attrs):
+    module = types.ModuleType(name)
+    for key, value in attrs.items():
+        setattr(module, key, value)
+    monkeypatch.setitem(sys.modules, name, module)
+    return module
+
+
+def _load_module(module_name, file_path):
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec is not None and spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_target_view(monkeypatch):
+    class AuthViewSet:
+        pass
+
+    class Response:
+        def __init__(self, data, status=None):
+            self.data = data
+            self.status_code = status
+
+    class BaseAppException(Exception):
+        pass
+
+    def action(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
+    def has_permission(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
+    class _TargetManager:
+        @staticmethod
+        def all():
+            return []
+
+    class _Target:
+        objects = _TargetManager()
+
+    _install_module(monkeypatch, "rest_framework", status=types.SimpleNamespace(HTTP_400_BAD_REQUEST=400, HTTP_500_INTERNAL_SERVER_ERROR=500))
+    _install_module(monkeypatch, "rest_framework.decorators", action=action)
+    _install_module(monkeypatch, "rest_framework.response", Response=Response)
+    _install_module(monkeypatch, "apps.core.decorators.api_permission", HasPermission=has_permission)
+    _install_module(monkeypatch, "apps.core.exceptions.base_app_exception", BaseAppException=BaseAppException)
+    _install_module(monkeypatch, "apps.core.logger", job_logger=types.SimpleNamespace(exception=lambda *args, **kwargs: None))
+    _install_module(monkeypatch, "apps.core.utils.viewset_utils", AuthViewSet=AuthViewSet)
+    _install_module(monkeypatch, "apps.job_mgmt.constants", OSType=object(), SSHCredentialType=object())
+    _install_module(monkeypatch, "apps.job_mgmt.filters.target", TargetFilter=object)
+    _install_module(monkeypatch, "apps.job_mgmt.models", Target=_Target)
+    _install_module(
+        monkeypatch,
+        "apps.job_mgmt.serializers.target",
+        TargetBatchDeleteSerializer=object,
+        TargetSerializer=object,
+        TargetTestConnectionSerializer=object,
+    )
+    _install_module(monkeypatch, "apps.node_mgmt.models", CloudRegion=object)
+    _install_module(monkeypatch, "apps.rpc.executor", Executor=object)
+    _install_module(monkeypatch, "apps.rpc.node_mgmt", NodeMgmt=object)
+    _install_module(monkeypatch, "apps.rpc.system_mgmt", SystemMgmt=object)
+
+    return _load_module(
+        "job_target_view_test_module",
+        Path(__file__).resolve().parents[2] / "job_mgmt" / "views" / "target.py",
+    )
 
 
 def create_test_users():
@@ -61,6 +142,184 @@ def test_get_all_users():
     usernames = [user["username"] for user in result["data"]]
     assert "test_user1" in usernames
     assert "test_user2" in usernames
+
+
+def test_get_authorized_groups_scoped_rejects_forged_current_team(monkeypatch):
+    user = types.SimpleNamespace(username="scope-user", domain="domain.com", group_list=[1])
+
+    class _UserQuerySet:
+        @staticmethod
+        def first():
+            return user
+
+    class _UserManager:
+        @staticmethod
+        def filter(**kwargs):
+            return _UserQuerySet()
+
+    monkeypatch.setattr(nats_api.User, "objects", _UserManager())
+
+    result = get_authorized_groups_scoped(
+        {
+            "username": "scope-user",
+            "domain": "domain.com",
+            "current_team": 2,
+            "is_superuser": False,
+        },
+        include_children=True,
+    )
+
+    assert result == {"result": True, "data": []}
+
+
+def test_get_authorized_groups_scoped_keeps_include_children(monkeypatch):
+    user = types.SimpleNamespace(username="scope-children-user", domain="domain.com", group_list=[1])
+
+    class _UserQuerySet:
+        @staticmethod
+        def first():
+            return user
+
+    class _UserManager:
+        @staticmethod
+        def filter(**kwargs):
+            return _UserQuerySet()
+
+    monkeypatch.setattr(nats_api.User, "objects", _UserManager())
+
+    captured = {}
+
+    def fake_get_user_authorized_child_groups(user_group_list, target_group_id, include_children=False):
+        captured["user_group_list"] = user_group_list
+        captured["target_group_id"] = target_group_id
+        captured["include_children"] = include_children
+        return [1, 11]
+
+    monkeypatch.setattr(nats_api.GroupUtils, "get_user_authorized_child_groups", fake_get_user_authorized_child_groups)
+
+    result = get_authorized_groups_scoped(
+        {
+            "username": "scope-children-user",
+            "domain": "domain.com",
+            "current_team": 1,
+            "is_superuser": False,
+        },
+        include_children=True,
+    )
+
+    assert result == {"result": True, "data": [1, 11]}
+    assert captured == {
+        "user_group_list": [1],
+        "target_group_id": 1,
+        "include_children": True,
+    }
+
+
+def test_get_authorized_groups_scoped_rejects_invalid_current_team(monkeypatch):
+    user = types.SimpleNamespace(username="scope-invalid-user", domain="domain.com", group_list=[1])
+
+    class _UserQuerySet:
+        @staticmethod
+        def first():
+            return user
+
+    class _UserManager:
+        @staticmethod
+        def filter(**kwargs):
+            return _UserQuerySet()
+
+    monkeypatch.setattr(nats_api.User, "objects", _UserManager())
+
+    result = get_authorized_groups_scoped(
+        {
+            "username": "scope-invalid-user",
+            "domain": "domain.com",
+            "current_team": "abc",
+            "is_superuser": False,
+        },
+        include_children=False,
+    )
+
+    assert result == {"result": True, "data": []}
+
+
+def test_target_query_nodes_propagates_authorized_scope_and_include_children(monkeypatch):
+    captured = {}
+
+    class NodeMgmt:
+        def node_list(self, payload):
+            captured["payload"] = payload
+            return {"count": 0, "nodes": []}
+
+    class SystemMgmt:
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            captured["actor_context"] = actor_context
+            captured["include_children"] = include_children
+            return {"result": True, "data": [3, 5]}
+
+    class CloudRegionQuerySetStub:
+        def values(self, *args):
+            return []
+
+    class CloudRegionManagerStub:
+        def all(self):
+            return CloudRegionQuerySetStub()
+
+    class CloudRegionStub:
+        objects = CloudRegionManagerStub()
+
+    module = _load_target_view(monkeypatch)
+    module.NodeMgmt = NodeMgmt
+    module.SystemMgmt = SystemMgmt
+    module.CloudRegion = CloudRegionStub
+
+    request = types.SimpleNamespace(
+        query_params={"page": "1", "page_size": "20"},
+        COOKIES={"current_team": "3", "include_children": "1"},
+        user=types.SimpleNamespace(
+            username="job-user",
+            domain="domain.com",
+            is_superuser=False,
+        ),
+    )
+
+    response = module.TargetViewSet().query_nodes(request)
+
+    assert response.data["result"] is True
+    assert captured["actor_context"] == {
+        "username": "job-user",
+        "domain": "domain.com",
+        "current_team": 3,
+        "include_children": True,
+        "is_superuser": False,
+    }
+    assert captured["include_children"] is True
+    assert captured["payload"]["organization_ids"] == [3, 5]
+    assert captured["payload"]["permission_data"] == {
+        "username": "job-user",
+        "domain": "domain.com",
+        "current_team": 3,
+        "include_children": True,
+    }
+
+
+def test_target_query_nodes_rejects_invalid_current_team_cookie(monkeypatch):
+    module = _load_target_view(monkeypatch)
+
+    request = types.SimpleNamespace(
+        query_params={"page": "1", "page_size": "20"},
+        COOKIES={"current_team": "abc"},
+        user=types.SimpleNamespace(
+            username="job-user",
+            domain="domain.com",
+            is_superuser=False,
+        ),
+    )
+
+    response = module.TargetViewSet().query_nodes(request)
+
+    assert response.status_code == 400
+    assert response.data == {"result": False, "message": "current_team 参数非法"}
 
 
 def parse_data(data):

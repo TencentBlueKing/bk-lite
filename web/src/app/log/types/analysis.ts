@@ -15,12 +15,15 @@ export interface WidgetConfig {
   dataSource?: string | number;
   params?: { [key: string]: any };
   dataSourceParams?: any[];
+  color?: string;
+  [key: string]: any;
 }
 
 export interface DirItem {
   id: string;
   name: string;
   desc?: string;
+  collectTypeName?: string;
   filters?: Record<string, any>;
   other?: Record<string, any>;
   view_sets?: Array<any>;

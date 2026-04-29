@@ -23,7 +23,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({ message, onCopy, onRege
         <RedoOutlined className='mr-2' /> {t('chat.regenerate')}
       </Menu.Item>
       <Menu.Item key='copy' onClick={() => onCopy(msg.content)}>
-        <CopyOutlined className='mr-2' /> {t('chat.copy')}
+        <CopyOutlined className='mr-2' /> {t('common.copy')}
       </Menu.Item>
       {message.role === 'bot' && (<PermissionWrapper className="flex" requiredPermissions={['Mark']}>
         <Menu.Item key="mark" onClick={() => onMark(message)}>
@@ -47,7 +47,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({ message, onCopy, onRege
           <Tooltip title={t('chat.regenerate')}>
             <RedoOutlined className={styles.icon} onClick={() => onRegenerate(message.id)} />
           </Tooltip>
-          <Tooltip title={t('chat.copy')}>
+          <Tooltip title={t('common.copy')}>
             <CopyOutlined className={styles.icon} onClick={() => onCopy(message.content)} />
           </Tooltip>
           {message.role === 'bot' ? (<PermissionWrapper
@@ -64,7 +64,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({ message, onCopy, onRege
             </Tooltip>
           </PermissionWrapper>) : null}
           <Dropdown overlay={getMenu(message)} trigger={['click']}>
-            <Tooltip title={t('chat.more')}>
+            <Tooltip title={t('common.more')}>
               <EllipsisOutlined className={styles.icon} />
             </Tooltip>
           </Dropdown>

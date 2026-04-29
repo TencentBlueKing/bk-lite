@@ -71,9 +71,7 @@ class TimeSeriesPredictDatasetViewSet(TeamModelViewSet):
 
 
 class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
-    queryset = TimeSeriesPredictTrainJob.objects.select_related(
-        "dataset_version", "dataset_version__dataset"
-    ).all()
+    queryset = TimeSeriesPredictTrainJob.objects.select_related("dataset_version", "dataset_version__dataset").all()
     serializer_class = TimeSeriesPredictTrainJobSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = TimeSeriesPredictTrainJobFilter
@@ -113,9 +111,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
 
             # 检查任务状态
             if train_job.status == TrainJobStatus.RUNNING:
-                return Response(
-                    {"error": "训练任务已在运行中"}, status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"error": "训练任务已在运行中"}, status=status.HTTP_400_BAD_REQUEST)
 
             # 获取环境变量配置
             try:
@@ -128,18 +124,11 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
                 )
 
             # 检查必要字段
-            if (
-                not train_job.dataset_version
-                or not train_job.dataset_version.dataset_file
-            ):
-                return Response(
-                    {"error": "数据集文件不存在"}, status=status.HTTP_400_BAD_REQUEST
-                )
+            if not train_job.dataset_version or not train_job.dataset_version.dataset_file:
+                return Response({"error": "数据集文件不存在"}, status=status.HTTP_400_BAD_REQUEST)
 
             if not train_job.config_url:
-                return Response(
-                    {"error": "训练配置文件不存在"}, status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"error": "训练配置文件不存在"}, status=status.HTTP_400_BAD_REQUEST)
 
             # 构建训练任务标识
             job_id = mlflow_service.build_job_id(
@@ -168,10 +157,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
                     current_run_count = len(runs) if not runs.empty else 0
                 expected_run_count = current_run_count + 1
             except Exception:
-                logger.warning(
-                    f"查询 MLflow run 数量失败，降级 expected_run_count=0, "
-                    f"TrainJob ID={train_job.id}"
-                )
+                logger.warning(f"查询 MLflow run 数量失败，降级 expected_run_count=0, TrainJob ID={train_job.id}")
 
             # 启动前清理可能残留的旧训练容器
             try:
@@ -198,13 +184,8 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
             train_job.save(update_fields=["status"])
 
             # 启动异步轮询训练状态
-            logger.info(
-                f"触发轮询任务: TrainJob ID={train_job.id}, "
-                f"预期 run 数量: {expected_run_count}"
-            )
-            poll_train_job_status.delay(
-                train_job.id, self.MLFLOW_PREFIX, expected_run_count
-            )
+            logger.info(f"触发轮询任务: TrainJob ID={train_job.id}, 预期 run 数量: {expected_run_count}")
+            poll_train_job_status.delay(train_job.id, self.MLFLOW_PREFIX, expected_run_count)
 
             return Response(
                 {
@@ -215,18 +196,12 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
             )
 
         except WebhookTimeoutError as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             logger.error(f"启动训练任务失败: {e}")
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"启动训练任务失败: {str(e)}", exc_info=True)
             return Response(
@@ -245,9 +220,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
 
             # 检查任务状态
             if train_job.status != TrainJobStatus.RUNNING:
-                return Response(
-                    {"error": "训练任务未在运行中"}, status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"error": "训练任务未在运行中"}, status=status.HTTP_400_BAD_REQUEST)
 
             # 构建训练任务标识
             job_id = mlflow_service.build_job_id(
@@ -273,18 +246,12 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
             )
 
         except WebhookTimeoutError as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             logger.error(f"停止训练任务失败: {e}")
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"停止训练任务失败: {str(e)}", exc_info=True)
             return Response(
@@ -362,9 +329,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
                         else:
                             # 运行中：使用当前时间计算已运行时长
                             current_time = pd.Timestamp.now(tz=start_time.tz)
-                            duration_seconds = (
-                                current_time - start_time
-                            ).total_seconds()
+                            duration_seconds = (current_time - start_time).total_seconds()
                         duration_minutes = duration_seconds / 60
                     else:
                         duration_minutes = 0
@@ -381,21 +346,18 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
                         "run_id": str(row["run_id"]),
                         "run_name": str(run_name),
                         "status": str(run_status),  # RUNNING/FINISHED/FAILED/KILLED
-                        "start_time": start_time.isoformat()
-                        if pd.notna(start_time)
-                        else None,
-                        "end_time": end_time.isoformat()
-                        if pd.notna(end_time)
-                        else None,
-                        "duration_minutes": float(duration_minutes)
-                        if np.isfinite(duration_minutes)
-                        else 0,
+                        "start_time": start_time.isoformat() if pd.notna(start_time) else None,
+                        "end_time": end_time.isoformat() if pd.notna(end_time) else None,
+                        "duration_minutes": float(duration_minutes) if np.isfinite(duration_minutes) else 0,
                     }
                     run_datas.append(run_data)
 
                 except Exception as e:
                     logger.warning(f"解析 run 数据失败: {e}")
                     continue
+
+            # 标注 run 删除资格
+            self.annotate_run_delete_eligibility(run_datas, train_job.status)
 
             # 分页处理
             total_count = len(run_datas)
@@ -411,7 +373,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
                     "train_job_id": train_job.id,
                     "train_job_name": train_job.name,
                     "algorithm": train_job.algorithm,
-                    "job_status": train_job.status,  # 返回当前 TrainJob 状态
+                    "job_status": train_job.status,
                     "total_runs": total_count,
                     "count": total_count,
                     "items": paginated_data,
@@ -425,6 +387,42 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @action(detail=True, methods=["delete"], url_path="runs/(?P<run_id>[^/]+)")
+    @HasPermission("timeseries_predict-Delete")
+    def delete_run(self, request, pk=None, run_id=None):
+        """软删除指定 MLflow run"""
+        try:
+            train_job = self.get_object()
+
+            allowed, reason = self.check_run_delete_eligibility(run_id, train_job)
+            if not allowed:
+                return Response(
+                    {
+                        "error": "未找到对应的训练运行记录" if reason == "run_not_found" else "当前训练运行记录不允许删除",
+                        "code": reason,
+                        "run_id": run_id,
+                    },
+                    status=status.HTTP_404_NOT_FOUND if reason == "run_not_found" else status.HTTP_400_BAD_REQUEST,
+                )
+
+            mlflow_service.delete_run(run_id)
+
+            return Response(
+                {
+                    "result": True,
+                    "run_id": run_id,
+                    "train_job_id": train_job.id,
+                    "deleted": True,
+                    "deletion_type": "mlflow_soft_delete",
+                }
+            )
+        except Exception as e:
+            logger.error(f"删除 run 失败: {str(e)}", exc_info=True)
+            return Response(
+                {"result": False, "message": f"删除 run 失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
     @action(detail=False, methods=["get"], url_path="runs_metrics_list/(?P<run_id>.+?)")
     @HasPermission("timeseries_predict-View")
     def get_runs_metrics_list(self, request, run_id: str):
@@ -433,9 +431,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
         """
         try:
             # 获取运行的指标列表（过滤系统指标）
-            model_metrics = mlflow_service.get_run_metrics(
-                run_id=run_id, filter_system=True
-            )
+            model_metrics = mlflow_service.get_run_metrics(run_id=run_id, filter_system=True)
 
             return Response({"run_id": run_id, "metrics": model_metrics})
 
@@ -508,12 +504,8 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
                     "run_id": run_id,
                     "run_name": run_name,
                     "status": run_status,
-                    "start_time": pd.Timestamp(start_time, unit="ms").isoformat()
-                    if start_time
-                    else None,
-                    "end_time": pd.Timestamp(end_time, unit="ms").isoformat()
-                    if end_time
-                    else None,
+                    "start_time": pd.Timestamp(start_time, unit="ms").isoformat() if start_time else None,
+                    "end_time": pd.Timestamp(end_time, unit="ms").isoformat() if end_time else None,
                     "params": params,
                 }
             )
@@ -579,9 +571,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
             zip_buffer = mlflow_service.download_model_artifact(run_id)
 
             # 构造文件名
-            safe_run_name = "".join(
-                c if c.isalnum() or c in ("-", "_") else "_" for c in run_name
-            )
+            safe_run_name = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in run_name)
             filename = f"mlflow_model_{safe_run_name}_{run_id[:8]}.zip"
 
             # 返回文件响应
@@ -612,9 +602,7 @@ class TimeSeriesPredictTrainDataViewSet(ModelViewSet):
     permission_key = "dataset.timeseries_predict_train_data"
 
     def get_queryset(self):
-        return filter_queryset_by_parent_team(
-            super().get_queryset(), self.request, "dataset__team"
-        )
+        return filter_queryset_by_parent_team(super().get_queryset(), self.request, "dataset__team")
 
     @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):
@@ -638,9 +626,7 @@ class TimeSeriesPredictTrainDataViewSet(ModelViewSet):
 
 
 class TimeSeriesPredictServingViewSet(TeamModelViewSet):
-    queryset = TimeSeriesPredictServing.objects.select_related(
-        "train_job", "train_job__dataset_version", "train_job__dataset_version__dataset"
-    ).all()
+    queryset = TimeSeriesPredictServing.objects.select_related("train_job", "train_job__dataset_version", "train_job__dataset_version__dataset").all()
     serializer_class = TimeSeriesPredictServingSerializer
     pagination_class = CustomPageNumberPagination
     filterset_class = TimeSeriesPredictServingFilter
@@ -671,9 +657,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
             # 批量获取所有需要更新的对象（避免N+1查询）
             serving_id_list = [s["id"] for s in servings]
-            serving_objs = TimeSeriesPredictServing.objects.filter(
-                id__in=serving_id_list
-            )
+            serving_objs = TimeSeriesPredictServing.objects.filter(id__in=serving_id_list)
             serving_obj_map = {obj.id: obj for obj in serving_objs}
 
             updates = []
@@ -699,9 +683,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     }
 
             if updates:
-                TimeSeriesPredictServing.objects.bulk_update(
-                    updates, ["container_info"]
-                )
+                TimeSeriesPredictServing.objects.bulk_update(updates, ["container_info"])
 
         except WebhookError as e:
             logger.error(f"查询容器状态失败: {e}")
@@ -733,9 +715,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 response.data["container_info"] = container_info
 
                 # 更新数据库
-                TimeSeriesPredictServing.objects.filter(id=response.data["id"]).update(
-                    container_info=container_info
-                )
+                TimeSeriesPredictServing.objects.filter(id=response.data["id"]).update(container_info=container_info)
             else:
                 # webhookd 没返回状态
                 response.data["container_info"] = {
@@ -811,16 +791,12 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image=get_image_by_prefix(
-                        self.MLFLOW_PREFIX, serving.train_job.algorithm
-                    ),
+                    train_image=get_image_by_prefix(self.MLFLOW_PREFIX, serving.train_job.algorithm),
                 )
 
                 # 启动成功，仅更新容器信息
                 serving.container_info = result
-                serving.port = (
-                    int(result.get("port", 0)) if result.get("port") else serving.port
-                )
+                serving.port = int(result.get("port", 0)) if result.get("port") else serving.port
                 serving.save(update_fields=["container_info", "port"])
 
                 # 更新返回数据（status 由用户控制，不修改）
@@ -850,9 +826,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                         serving.save(update_fields=["container_info"])
 
                         response.data["container_info"] = container_info
-                        response.data["message"] = (
-                            "服务已创建，检测到容器已存在并同步容器状态"
-                        )
+                        response.data["message"] = "服务已创建，检测到容器已存在并同步容器状态"
                         response.data["warning"] = "容器已存在，已同步容器信息"
                     except WebhookError:
                         serving.container_info = {
@@ -897,13 +871,8 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         old_train_job_id = instance.train_job.id
 
         # 检测是否更新了影响容器的字段（基于请求数据与旧值对比）
-        model_version_changed = "model_version" in request.data and str(
-            request.data["model_version"]
-        ) != str(old_model_version)
-        train_job_changed = (
-            "train_job" in request.data
-            and int(request.data["train_job"]) != old_train_job_id
-        )
+        model_version_changed = "model_version" in request.data and str(request.data["model_version"]) != str(old_model_version)
+        train_job_changed = "train_job" in request.data and int(request.data["train_job"]) != old_train_job_id
         port_changed = "port" in request.data and request.data.get("port") != old_port
 
         container_id = f"TimeseriesPredict_Serving_{instance.id}"
@@ -966,16 +935,12 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=instance.port,
-                    train_image=get_image_by_prefix(
-                        self.MLFLOW_PREFIX, instance.train_job.algorithm
-                    ),
+                    train_image=get_image_by_prefix(self.MLFLOW_PREFIX, instance.train_job.algorithm),
                 )
 
                 # 更新容器信息（status 由用户控制，不修改）
                 instance.container_info = result
-                instance.port = (
-                    int(result.get("port", 0)) if result.get("port") else instance.port
-                )
+                instance.port = int(result.get("port", 0)) if result.get("port") else instance.port
                 instance.save(update_fields=["container_info", "port"])
 
                 # 更新返回数据
@@ -1032,16 +997,12 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     mlflow_tracking_uri,
                     model_uri,
                     port=serving.port,
-                    train_image=get_image_by_prefix(
-                        self.MLFLOW_PREFIX, serving.train_job.algorithm
-                    ),
+                    train_image=get_image_by_prefix(self.MLFLOW_PREFIX, serving.train_job.algorithm),
                 )
 
                 # 正常启动成功，更新容器信息
                 serving.container_info = result
-                serving.port = (
-                    int(result.get("port", 0)) if result.get("port") else serving.port
-                )
+                serving.port = int(result.get("port", 0)) if result.get("port") else serving.port
                 serving.save(update_fields=["container_info", "port"])
 
                 return Response(
@@ -1097,13 +1058,9 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     )
 
         except WebhookTimeoutError as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"启动 serving 服务失败: {str(e)}", exc_info=True)
             return Response(
@@ -1135,18 +1092,12 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             )
 
         except WebhookTimeoutError as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             logger.error(f"停止 serving 失败: {e}")
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"停止 serving 服务失败: {str(e)}", exc_info=True)
             return Response(
@@ -1187,18 +1138,12 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             )
 
         except WebhookTimeoutError as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             logger.error(f"删除容器失败: {e}")
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"删除 serving 容器失败: {str(e)}", exc_info=True)
             return Response(
@@ -1232,14 +1177,10 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
             # 参数校验
             if not data:
-                return Response(
-                    {"error": "data 参数不能为空"}, status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"error": "data 参数不能为空"}, status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(data, list):
-                return Response(
-                    {"error": "data 必须是数组格式"}, status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"error": "data 必须是数组格式"}, status=status.HTTP_400_BAD_REQUEST)
 
             try:
                 predict_url = build_predict_url(
@@ -1274,9 +1215,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     error_code = error_info.get("code", "UNKNOWN")
                     error_message = error_info.get("message", "预测失败")
 
-                    logger.error(
-                        f"预测服务返回失败: serving_id={serving.id}, code={error_code}, message={error_message}"
-                    )
+                    logger.error(f"预测服务返回失败: serving_id={serving.id}, code={error_code}, message={error_message}")
                     return Response(
                         {
                             "error": error_message,
@@ -1298,36 +1237,22 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     error_msg = f"{error_msg} - {response.text[:200]}"
 
                 logger.error(f"预测失败: {error_msg}")
-                return Response(
-                    {"error": error_msg}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+                return Response({"error": error_msg}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         except requests.exceptions.Timeout:
             error_msg = f"预测请求超时（超过 60 秒）"
             logger.error(f"预测超时: serving_id={serving.id}, url={predict_url}")
-            return Response(
-                {"error": error_msg}, status=status.HTTP_504_GATEWAY_TIMEOUT
-            )
+            return Response({"error": error_msg}, status=status.HTTP_504_GATEWAY_TIMEOUT)
         except requests.exceptions.ConnectionError as e:
             error_msg = f"无法连接预测服务: {str(e)}"
-            logger.error(
-                f"预测连接失败: serving_id={serving.id}, url={predict_url}, error={e}"
-            )
-            return Response(
-                {"error": error_msg}, status=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
+            logger.error(f"预测连接失败: serving_id={serving.id}, url={predict_url}, error={e}")
+            return Response({"error": error_msg}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         except requests.exceptions.RequestException as e:
             error_msg = f"预测请求异常: {str(e)}"
-            logger.error(
-                f"预测请求异常: serving_id={serving.id}, error={e}", exc_info=True
-            )
-            return Response(
-                {"error": error_msg}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            logger.error(f"预测请求异常: serving_id={serving.id}, error={e}", exc_info=True)
+            return Response({"error": error_msg}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
-            logger.error(
-                f"预测失败: serving_id={serving.id}, error={str(e)}", exc_info=True
-            )
+            logger.error(f"预测失败: serving_id={serving.id}, error={str(e)}", exc_info=True)
             return Response(
                 {"error": f"预测失败: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1365,9 +1290,7 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
     permission_key = "dataset.timeseries_predict_dataset_release"
 
     def get_queryset(self):
-        return filter_queryset_by_parent_team(
-            super().get_queryset(), self.request, "dataset__team"
-        )
+        return filter_queryset_by_parent_team(super().get_queryset(), self.request, "dataset__team")
 
     @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):
@@ -1401,9 +1324,7 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
             release = self.get_object()
 
             if not release.dataset_file or not release.dataset_file.name:
-                return Response(
-                    {"error": "数据集文件不存在"}, status=status.HTTP_404_NOT_FOUND
-                )
+                return Response({"error": "数据集文件不存在"}, status=status.HTTP_404_NOT_FOUND)
 
             # 获取文件
             file = release.dataset_file.open("rb")
@@ -1499,13 +1420,7 @@ class TimeSeriesPredictAlgorithmConfigViewSet(ModelViewSet):
     permission_key = "algorithm.timeseries_predict_algorithm_config"
 
     def get_serializer_class(self):
-        if (
-            self.action == "list"
-            and not self.request.query_params.get(
-                "include_form_config", "false"
-            ).lower()
-            == "true"
-        ):
+        if self.action == "list" and not self.request.query_params.get("include_form_config", "false").lower() == "true":
             return AlgorithmConfigListSerializer
         return AlgorithmConfigSerializer
 
@@ -1531,9 +1446,7 @@ class TimeSeriesPredictAlgorithmConfigViewSet(ModelViewSet):
         instance = self.get_object()
         is_active_new = request.data.get("is_active")
         if instance.is_active and is_active_new is False:
-            task_count = TimeSeriesPredictTrainJob.objects.filter(
-                algorithm=instance.name
-            ).count()
+            task_count = TimeSeriesPredictTrainJob.objects.filter(algorithm=instance.name).count()
             if task_count > 0:
                 return Response(
                     {
@@ -1547,9 +1460,7 @@ class TimeSeriesPredictAlgorithmConfigViewSet(ModelViewSet):
     @HasPermission("timeseries_predict-Delete")
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        task_count = TimeSeriesPredictTrainJob.objects.filter(
-            algorithm=instance.name
-        ).count()
+        task_count = TimeSeriesPredictTrainJob.objects.filter(algorithm=instance.name).count()
         if task_count > 0:
             return Response(
                 {
@@ -1574,11 +1485,7 @@ class TimeSeriesPredictAlgorithmConfigViewSet(ModelViewSet):
         if not name:
             return Response({"error": "name 参数必填"}, status=400)
         try:
-            config = AlgorithmConfig.objects.get(
-                algorithm_type="timeseries_predict", name=name, is_active=True
-            )
+            config = AlgorithmConfig.objects.get(algorithm_type="timeseries_predict", name=name, is_active=True)
             return Response({"image": config.image})
         except AlgorithmConfig.DoesNotExist:
-            return Response(
-                {"error": f"未找到算法配置: timeseries_predict/{name}"}, status=404
-            )
+            return Response({"error": f"未找到算法配置: timeseries_predict/{name}"}, status=404)
