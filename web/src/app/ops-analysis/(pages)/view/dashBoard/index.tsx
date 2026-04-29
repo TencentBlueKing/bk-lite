@@ -2,6 +2,7 @@ import React, {
   useState,
   useEffect,
   useMemo,
+  useRef,
   forwardRef,
   useImperativeHandle,
 } from 'react';
@@ -43,6 +44,7 @@ import {
   EditOutlined,
   ReloadOutlined,
   SettingOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons';
 import { useDashBoardApi } from '@/app/ops-analysis/api/dashBoard';
 import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
@@ -58,6 +60,7 @@ import {
   buildDefaultFilterBindings,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { collectNamespaceOptions } from '@/app/ops-analysis/utils/namespaceFilter';
+import { exportDashboardToPdf } from '@/app/ops-analysis/utils/exportPdf';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
@@ -96,6 +99,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [filterConfigModalVisible, setFilterConfigModalVisible] =
       useState(false);
     const [selectedNamespaceId, setSelectedNamespaceId] = useState<number | undefined>(undefined);
+    const contentRef = useRef<HTMLDivElement>(null);
+    const [exporting, setExporting] = useState(false);
 
     const {
       definitions,
@@ -422,6 +427,23 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setRefreshKey((prev) => prev + 1);
     };
 
+    const handleExportPdf = async () => {
+      if (!contentRef.current) return;
+      setExporting(true);
+      try {
+        await exportDashboardToPdf(
+          contentRef.current,
+          selectedDashboard?.name || 'dashboard'
+        );
+        message.success(t('dashboard.exportPdfSuccess'));
+      } catch (err) {
+        console.error('Export PDF failed:', err);
+        message.error(t('dashboard.exportPdfFailed'));
+      } finally {
+        setExporting(false);
+      }
+    };
+
     const onLayoutChange = (newLayout: LayoutChangeItem[]) => {
       setLayout((prevLayout) => {
         return prevLayout.map((item) => {
@@ -656,6 +678,17 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               />
             </Tooltip>
 
+            {!isEditMode && (
+              <Tooltip title={t('dashboard.exportPdf')}>
+                <Button
+                  type="text"
+                  icon={<DownloadOutlined style={{ fontSize: 16 }} />}
+                  loading={exporting}
+                  onClick={handleExportPdf}
+                />
+              </Tooltip>
+            )}
+
             {isEditMode && (
               <>
                 <PermissionWrapper requiredPermissions={['EditChart']}>
@@ -714,7 +747,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           </div>
         </div>
 
-        <div className="flex-1 bg-(--color-fill-1) rounded-lg overflow-hidden flex flex-col">
+        <div ref={contentRef} className="flex-1 bg-(--color-fill-1) rounded-lg overflow-hidden flex flex-col">
           {(definitions.length > 0 || namespaceSelectorElement) && (
             <div className="shrink-0">
               <UnifiedFilterBar
