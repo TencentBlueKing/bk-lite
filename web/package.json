@@ -30,6 +30,7 @@
     "dompurify": "^3.3.1",
     "exceljs": "^4.4.0",
     "github-markdown-css": "^5.8.1",
+    "html-to-image": "^1.11.13",
     "html2canvas": "^1.4.1",
     "intl-messageformat": "^10.7.7",
     "js-cookie": "^3.0.5",
