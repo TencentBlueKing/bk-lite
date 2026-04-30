@@ -13,6 +13,7 @@ from apps.node_mgmt.constants.node import NodeConstants
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.models import CloudRegion, Collector, CollectorConfiguration, Controller, Node, PackageVersion, SidecarEnv
+from apps.node_mgmt.models.installer import ControllerTask, ControllerTaskNode
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
 from apps.node_mgmt.services.sidecar import Sidecar
@@ -437,6 +438,114 @@ def test_update_node_client_persists_normalized_cpu_architecture(monkeypatch):
     assert response.status_code == 202
     assert node.cpu_architecture == NodeConstants.ARM64_ARCH
     assert node.operating_system == NodeConstants.LINUX_OS
+
+
+@pytest.mark.django_db
+def test_update_node_client_falls_back_to_install_task_cpu_architecture(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-fallback-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    monkeypatch.setattr(Sidecar, "create_default_config", lambda *args, **kwargs: None)
+    monkeypatch.setattr(Sidecar, "trigger_converge_tasks_if_needed", lambda *args, **kwargs: None)
+
+    install_task = ControllerTask.objects.create(
+        type="install",
+        package_version_id=1,
+        status="success",
+        cloud_region=cloud_region,
+        work_node="worker-1",
+        created_by="tester",
+        updated_by="tester",
+    )
+    ControllerTaskNode.objects.create(
+        task=install_task,
+        ip="10.0.0.33",
+        os=NodeConstants.LINUX_OS,
+        port=22,
+        username="tester",
+        password="",
+        private_key="",
+        passphrase="",
+        status="success",
+        result={},
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+    )
+
+    request = SimpleNamespace(
+        headers={},
+        META={},
+        data={
+            "node_name": "node-fallback-arch",
+            "node_details": {
+                "ip": "10.0.0.33",
+                "operating_system": "Linux",
+                "collector_configuration_directory": "/etc/collector",
+                "metrics": {},
+                "status": {},
+                "tags": [f"zone:{cloud_region.id}"],
+                "log_file_list": [],
+            },
+        },
+    )
+
+    response = Sidecar.update_node_client(request, "node-sidecar-fallback-arch")
+    node = Node.objects.get(id="node-sidecar-fallback-arch")
+
+    assert response.status_code == 202
+    assert node.cpu_architecture == NodeConstants.X86_64_ARCH
+
+
+@pytest.mark.django_db
+def test_update_node_client_does_not_overwrite_existing_cpu_architecture_with_empty_value(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-keep-arch-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    monkeypatch.setattr(Sidecar, "trigger_converge_tasks_if_needed", lambda *args, **kwargs: None)
+
+    Node.objects.create(
+        id="node-sidecar-keep-arch",
+        name="node-sidecar-keep-arch",
+        ip="10.0.0.34",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    request = SimpleNamespace(
+        headers={},
+        META={},
+        data={
+            "node_name": "node-sidecar-keep-arch",
+            "node_details": {
+                "ip": "10.0.0.34",
+                "operating_system": "Linux",
+                "collector_configuration_directory": "/etc/collector",
+                "metrics": {},
+                "status": {},
+                "tags": [f"zone:{cloud_region.id}"],
+                "log_file_list": [],
+            },
+        },
+    )
+
+    response = Sidecar.update_node_client(request, "node-sidecar-keep-arch")
+    node = Node.objects.get(id="node-sidecar-keep-arch")
+
+    assert response.status_code == 202
+    assert node.cpu_architecture == NodeConstants.X86_64_ARCH
 
 
 @pytest.mark.django_db
