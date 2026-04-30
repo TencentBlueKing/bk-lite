@@ -13,7 +13,10 @@ import { TableDataItem } from '@/app/node-manager/types';
 import { ControllerInstallFields } from '@/app/node-manager/types/cloudregion';
 import { ManualInstallController } from '@/app/node-manager/types/controller';
 import { useSearchParams } from 'next/navigation';
-import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
+import {
+  CPU_ARCHITECTURE_OPTIONS,
+  OPERATE_SYSTEMS
+} from '@/app/node-manager/constants/cloudregion';
 import CustomTable from '@/components/custom-table';
 import BatchEditModal from './batchEditModal';
 import ExcelImportModal from './excelImportModal';
@@ -72,6 +75,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const [versionLoading, setVersionLoading] = useState<boolean>(false);
   const [installMethod, setInstallMethod] = useState<string>('remoteInstall');
   const [os, setOs] = useState<string>('linux');
+  const [cpuArchitecture, setCpuArchitecture] = useState<string>('x86_64');
   const [sidecarVersionList, setSidecarVersionList] = useState<TableDataItem[]>(
     []
   );
@@ -148,19 +152,25 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     return installWays;
   }, [os, installWays]);
 
-  // 根据选中的操作系统过滤版本列表
+  const architectureOptions = useMemo(() => {
+    return CPU_ARCHITECTURE_OPTIONS[os] || CPU_ARCHITECTURE_OPTIONS.linux;
+  }, [os]);
+
+  // 根据选中的操作系统和 CPU 架构过滤版本列表
   const filteredSidecarVersionList = useMemo(() => {
     if (!os) return sidecarVersionList;
-    const filtered = sidecarVersionList.filter((item) => item.os === os);
+    const filtered = sidecarVersionList.filter(
+      (item) => item.os === os && item.cpu_architecture === cpuArchitecture
+    );
     const deduped = new Map();
     filtered.forEach((item) => {
-      const key = `${item.os}-${item.version}`;
+      const key = `${item.os}-${item.cpu_architecture}-${item.version}`;
       if (!deduped.has(key)) {
         deduped.set(key, item);
       }
     });
     return Array.from(deduped.values());
-  }, [os, sidecarVersionList]);
+  }, [cpuArchitecture, os, sidecarVersionList]);
 
   useEffect(() => {
     if (!isLoading) {
@@ -170,7 +180,11 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
   useEffect(() => {
     if (os) {
+      const nextCpuArchitecture =
+        CPU_ARCHITECTURE_OPTIONS[os]?.[0]?.value || 'x86_64';
+      setCpuArchitecture(nextCpuArchitecture);
       form.setFieldsValue({
+        cpu_architecture: nextCpuArchitecture,
         sidecar_package: null
       });
       // Windows 系统自动切换到手动安装
@@ -184,7 +198,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
       setTableData([{ ...INFO_ITEM, key: uuidv4() }]);
       setSelectedRowKeys([]);
     }
-  }, [os, INFO_ITEM]);
+  }, [form, os, INFO_ITEM]);
 
   useEffect(() => {
     form.resetFields();
@@ -374,12 +388,14 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
       const params: any = {
         cloud_region_id: cloudId,
         work_node: name,
-        package_id: values.sidecar_package || ''
+        package_id: values.sidecar_package || '',
+        cpu_architecture: values.cpu_architecture
       };
       if (isRemote) {
         params.nodes = tableData.map((item) => ({
           ip: item.ip,
           os: os,
+          cpu_architecture: values.cpu_architecture,
           organizations: item.organizations,
           port: item.port,
           username: item.username,
@@ -404,18 +420,21 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
         const manualParams: ManualInstallController = {
           cloud_region_id: cloudId,
           os: os,
+          cpu_architecture: values.cpu_architecture,
           package_id: values.sidecar_package || '',
           nodes: tableData.map((item) => ({
             ip: item.ip,
             node_name: item.node_name,
             organizations: item.organizations,
-            node_id: item.key as string
+            node_id: item.key as string,
+            cpu_architecture: values.cpu_architecture
           }))
         };
         result = await manualInstallController(manualParams);
         manualTaskList = (result || []).map((item: any) => ({
           ...item,
-          os
+          os,
+          cpu_architecture: values.cpu_architecture
         }));
       }
       message.success(t('common.operationSuccessful'));
@@ -425,6 +444,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           : manualTaskList.map((item: TableDataItem) => item.node_id),
         installMethod,
         os,
+        cpu_architecture: values.cpu_architecture,
         nodes,
         manualTaskList, // 手动安装时传递任务列表
         packageId: values.sidecar_package || ''
@@ -443,6 +463,23 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           label={t('node-manager.cloudregion.Configuration.system')}
         >
           <Segmented options={OPERATE_SYSTEMS} value={os} onChange={setOs} />
+        </Form.Item>
+        <Form.Item<ControllerInstallFields>
+          name="cpu_architecture"
+          required
+          label={t('node-manager.cloudregion.node.cpuArchitecture')}
+          rules={[{ required: true, message: t('common.required') }]}
+        >
+          <Segmented
+            options={architectureOptions}
+            disabled={architectureOptions.length === 1}
+            value={cpuArchitecture}
+            onChange={(value) => {
+              setCpuArchitecture(value);
+              form.setFieldValue('cpu_architecture', value);
+              form.setFieldValue('sidecar_package', null);
+            }}
+          />
         </Form.Item>
         <Form.Item<ControllerInstallFields>
           required
@@ -490,7 +527,9 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
             />
           </Form.Item>
           <div className="mt-[8px] text-[12px] text-[var(--color-text-3)]">
-            {t('node-manager.cloudregion.node.sidecarVersionDes')}
+            {t('node-manager.cloudregion.node.sidecarVersionDes', undefined, {
+              architecture: cpuArchitecture === 'arm64' ? 'ARM64' : cpuArchitecture
+            })}
           </div>
         </Form.Item>
         <div className="flex items-center justify-between mb-[10px]">

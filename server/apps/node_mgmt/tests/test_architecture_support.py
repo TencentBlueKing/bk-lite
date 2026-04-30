@@ -847,6 +847,106 @@ def test_get_install_command_view_passes_cpu_architecture(monkeypatch):
     assert captured["kwargs"]["cpu_architecture"] == NodeConstants.ARM64_ARCH
 
 
+@pytest.mark.django_db
+def test_controller_manual_install_includes_normalized_cpu_architecture():
+    factory = APIRequestFactory()
+    view = InstallerViewSet.as_view({"post": "controller_manual_install"})
+    request = factory.post(
+        "/node_mgmt/api/installer/controller/manual_install/",
+        {
+            "cloud_region_id": 1,
+            "os": NodeConstants.LINUX_OS,
+            "cpu_architecture": "aarch64",
+            "package_id": 1,
+            "nodes": [
+                {
+                    "ip": "10.0.0.11",
+                    "node_id": "node-11",
+                    "node_name": "linux-arm-node",
+                    "organizations": [1],
+                }
+            ],
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_build_admin_user())
+
+    response = view(request)
+
+    assert response.status_code == 200
+    payload = _json_response_data(response)["data"]
+    assert payload[0]["cpu_architecture"] == NodeConstants.ARM64_ARCH
+
+
+@pytest.mark.django_db
+def test_controller_manual_install_rejects_missing_cpu_architecture():
+    factory = APIRequestFactory()
+    view = InstallerViewSet.as_view({"post": "controller_manual_install"})
+    request = factory.post(
+        "/node_mgmt/api/installer/controller/manual_install/",
+        {
+            "cloud_region_id": 1,
+            "os": NodeConstants.LINUX_OS,
+            "cpu_architecture": "",
+            "package_id": 1,
+            "nodes": [
+                {
+                    "ip": "10.0.0.12",
+                    "node_id": "node-12",
+                    "node_name": "linux-node",
+                    "organizations": [1],
+                }
+            ],
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_build_admin_user())
+
+    with pytest.raises(BaseAppException, match="Missing or unsupported CPU architecture"):
+        view(request)
+
+
+@pytest.mark.django_db
+def test_install_controller_requires_cpu_architecture():
+    cloud_region = CloudRegion.objects.create(
+        name="installer-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Controller",
+        version="1.0.0",
+        name="fusion-collectors.tar.gz",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    with pytest.raises(BaseAppException, match="Missing or unsupported CPU architecture"):
+        InstallerService.install_controller(
+            cloud_region.id,
+            "work-node",
+            package.id,
+            [
+                {
+                    "ip": "10.0.0.13",
+                    "node_name": "linux-node",
+                    "os": NodeConstants.LINUX_OS,
+                    "organizations": [1],
+                    "port": 22,
+                    "username": "root",
+                    "password": "secret",
+                    "private_key": "",
+                    "passphrase": "",
+                }
+            ],
+            "",
+        )
+
+
 def test_installer_init_command_supports_cpu_architecture(tmp_path, monkeypatch):
     uploaded = {}
     file_path = tmp_path / "bklite-controller-installer"

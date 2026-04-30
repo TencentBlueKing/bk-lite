@@ -26,6 +26,7 @@ class InstallerViewSet(ViewSet):
             request.data["work_node"],
             request.data["package_id"],
             request.data["nodes"],
+            request.data["cpu_architecture"],
         )
         install_controller.delay(task_id)
         timeout_controller_install_task.apply_async(
@@ -58,12 +59,17 @@ class InstallerViewSet(ViewSet):
     # 控制器手动安装
     @action(detail=False, methods=["post"], url_path="controller/manual_install")
     def controller_manual_install(self, request):
+        cpu_architecture = InstallerService.normalize_required_cpu_architecture(
+            request.data["os"],
+            request.data["cpu_architecture"],
+        )
         result = []
         for node in request.data["nodes"]:
             result.append(
                 {
                     "cloud_region_id": request.data["cloud_region_id"],
                     "os": request.data["os"],
+                    "cpu_architecture": cpu_architecture,
                     "package_id": request.data["package_id"],
                     "ip": node["ip"],
                     "node_id": node["node_id"],
@@ -174,7 +180,7 @@ class InstallerViewSet(ViewSet):
             request.data.get("organizations", []),
             request.data.get("node_name", ""),
             install_mode=InstallerService.MANUAL_INSTALL_MODE,
-            cpu_architecture=request.data.get("cpu_architecture", ""),
+            cpu_architecture=request.data["cpu_architecture"],
         )
         return WebUtils.response_success(data)
 

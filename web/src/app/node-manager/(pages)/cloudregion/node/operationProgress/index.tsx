@@ -668,12 +668,14 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         }
       }
 
-      const newTableData = normalizeControllerInstallRows(
-        data.map((item, index: number) => ({
-          ...item,
-          id: item.id ?? index
-        }))
-      );
+        const newTableData = normalizeControllerInstallRows(
+          data.map((item, index: number) => ({
+            ...item,
+            cpu_architecture:
+              item.cpu_architecture || item.nodeData?.cpu_architecture || '',
+            id: item.id ?? index
+          }))
+        );
       setTableData(newTableData);
 
       if (refreshType === 'timer' || refreshType === 'refresh') {

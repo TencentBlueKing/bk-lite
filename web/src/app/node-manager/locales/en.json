@@ -45,7 +45,7 @@
       "node": {
         "installCollector": "Install Component",
         "node": "Node",
-        "sidecarVersionDes": "Please select the Controller version for remote installation.",
+        "sidecarVersionDes": "Please select the Controller version for the selected operating system and CPU architecture ({architecture}).",
         "ruleinputinfo": "Please input your IP address!",
         "collectorDetails": "Component Details",
         "installed": "Installed",
@@ -54,6 +54,7 @@
         "uninstalling": "Uninstalling",
         "updataconfig": "Update Configuration",
         "installationMethod": "Installation Method",
+        "cpuArchitecture": "CPU Architecture",
         "viewGuide": "View guidance",
         "loginAccount": "Login Account",
         "authType": "Authentication Type",
