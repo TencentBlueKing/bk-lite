@@ -35,6 +35,7 @@ from apps.opspilot.services.builtin_tools import (
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.mcp_cache import get_cached_mcp_tools, set_cached_mcp_tools
 from apps.opspilot.utils.mcp_client import MCPClient
+from apps.opspilot.utils.skill_execution_params import resolve_request_tools
 from apps.opspilot.utils.sse_chat import stream_chat
 
 
@@ -294,7 +295,7 @@ class LLMViewSet(AuthViewSet):
                 current_ip = request.META.get("REMOTE_ADDR", "")
                 # 这里可以添加具体的配额检查逻辑
             params["skill_type"] = skill_obj.skill_type
-            params["tools"] = params.get("tools", [])
+            params["tools"] = resolve_request_tools(params.get("tools"), skill_obj.tools)
             params["group"] = params["group"] if params.get("group") else skill_obj.team[0]
             params["enable_km_route"] = params["enable_km_route"] if params.get("enable_km_route") else skill_obj.enable_km_route
             params["km_llm_model"] = params["km_llm_model"] if params.get("km_llm_model") else skill_obj.km_llm_model
@@ -368,7 +369,7 @@ class LLMViewSet(AuthViewSet):
                 current_ip = request.META.get("REMOTE_ADDR", "")
 
             params["skill_type"] = skill_obj.skill_type
-            params["tools"] = params.get("tools", [])
+            params["tools"] = resolve_request_tools(params.get("tools"), skill_obj.tools)
             params["group"] = params["group"] if params.get("group") else skill_obj.team[0]
             params["enable_km_route"] = params["enable_km_route"] if params.get("enable_km_route") else skill_obj.enable_km_route
             params["km_llm_model"] = params["km_llm_model"] if params.get("km_llm_model") else skill_obj.km_llm_model

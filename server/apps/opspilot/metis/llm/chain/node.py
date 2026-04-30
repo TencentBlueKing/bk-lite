@@ -13,7 +13,8 @@ from langgraph.prebuilt import ToolNode
 from loguru import logger
 from pydantic import BaseModel
 
-from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
+from apps.opspilot.metis.llm.chain.compaction import CompactionConfig, compact_messages
+from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, PrepareStepContext, PrepareStepResult
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
 from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
@@ -613,7 +614,7 @@ class ToolsNodes(BasicNode):
 
     # ========== 使用 LangGraph 标准 ReAct Agent 实现 ==========
 
-    async def build_react_nodes(
+    async def build_react_nodes(  # noqa: C901
         self,
         graph_builder: StateGraph,
         composite_node_name: str = "react_agent",
@@ -644,6 +645,7 @@ class ToolsNodes(BasicNode):
         # 保存引用供闭包使用
         tools = self.tools
         get_llm_client = self.get_llm_client
+        step_counter = {"count": 0}  # 步数计数器（闭包可变引用）
 
         # ========== Agent 节点：调用 LLM 并决定是否使用工具 ==========
         async def agent_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
@@ -657,13 +659,6 @@ class ToolsNodes(BasicNode):
                 {"user_system_message": graph_request.system_message_prompt, "additional_system_prompt": additional_system_prompt or ""},
             )
 
-            # 获取 LLM 并绑定工具
-            llm = get_llm_client(graph_request)
-            if tools:
-                llm_with_tools = llm.bind_tools(tools)
-            else:
-                llm_with_tools = llm
-
             # 准备消息列表
             messages = state.get("messages", [])
 
@@ -671,12 +666,84 @@ class ToolsNodes(BasicNode):
             if not any(isinstance(m, SystemMessage) for m in messages):
                 messages = [SystemMessage(content=final_system_prompt)] + list(messages)
 
+            # 上下文 Compaction：检测 token 是否超限，自动压缩历史消息
+            if graph_request.compaction_enabled and tools:
+                compaction_config = CompactionConfig(
+                    enabled=graph_request.compaction_enabled,
+                    max_token_threshold=graph_request.compaction_max_token_threshold,
+                    keep_recent_messages=graph_request.compaction_keep_recent_messages,
+                    summary_max_tokens=graph_request.compaction_summary_max_tokens,
+                )
+                # 使用 isolated LLM 生成摘要（不被 LangGraph 流捕获）
+                compaction_llm = get_llm_client(graph_request, disable_stream=True, isolated=True)
+                messages = await compact_messages(
+                    messages=messages,
+                    llm=compaction_llm,
+                    config=compaction_config,
+                    model_name=graph_request.model,
+                )
+
             logger.info(
                 f"[{trace_id}] ReAct agent_node 准备调用 LLM, model={graph_request.model!r}, "
                 f"bound_tool_count={len(tools)}, bound_tool_names={[tool.name for tool in tools]}, "
                 f"message_count={len(messages)}, message_types={[type(m).__name__ for m in messages]}, "
                 f"last_message_preview={str(getattr(messages[-1], 'content', ''))[:200]!r}"
             )
+
+            # ========== prepareStep 钩子：每步前允许修改 tools/messages ==========
+            step_counter["count"] += 1
+            current_tools = list(tools)  # 本轮使用的工具（可被钩子修改）
+            extra_system_prompt_override = None
+
+            if graph_request.prepare_step_hooks:
+                ctx = PrepareStepContext(
+                    step_number=step_counter["count"],
+                    messages=messages,
+                    tools=current_tools,
+                    model=graph_request.model,
+                )
+                for hook in graph_request.prepare_step_hooks:
+                    try:
+                        import inspect
+
+                        if inspect.iscoroutinefunction(hook):
+                            result = await hook(ctx)
+                        else:
+                            result = hook(ctx)
+
+                        if isinstance(result, PrepareStepResult):
+                            if result.stop:
+                                logger.info(f"[{trace_id}] prepareStep 钩子请求终止循环 (step={step_counter['count']})")
+                                return {"messages": [AIMessage(content=result.metadata.get("stop_message", "任务已被 prepareStep 钩子终止"))]}
+                            if result.messages is not None:
+                                messages = result.messages
+                            if result.tools is not None:
+                                current_tools = result.tools
+                            if result.additional_system_prompt is not None:
+                                extra_system_prompt_override = result.additional_system_prompt
+                            ctx.metadata.update(result.metadata)
+                    except Exception as e:
+                        logger.warning(f"[{trace_id}] prepareStep 钩子执行失败: {e}")
+
+            if extra_system_prompt_override is not None:
+                step_system_prompt = TemplateLoader.render_template(
+                    "prompts/graph/react_agent_system_message",
+                    {
+                        "user_system_message": graph_request.system_message_prompt,
+                        "additional_system_prompt": extra_system_prompt_override,
+                    },
+                )
+                if messages and isinstance(messages[0], SystemMessage):
+                    messages = [SystemMessage(content=step_system_prompt)] + list(messages[1:])
+                else:
+                    messages = [SystemMessage(content=step_system_prompt)] + list(messages)
+
+            # 获取 LLM 并绑定工具
+            llm = get_llm_client(graph_request)
+            if current_tools:
+                llm_with_tools = llm.bind_tools(current_tools)
+            else:
+                llm_with_tools = llm
 
             # 调用 LLM
             try:

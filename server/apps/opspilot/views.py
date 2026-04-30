@@ -236,6 +236,11 @@ def invoke_chat(params, skill_obj, kwargs, current_ip, user_message, history_log
 def format_knowledge_sources(content, skill_obj, doc_map=None, title_map=None):
     """Format and append knowledge source references if enabled"""
     if skill_obj.enable_rag_knowledge_source:
+        stripped_content = content.strip()
+        if (stripped_content.startswith("{") and stripped_content.endswith("}")) or (
+            stripped_content.startswith("[") and stripped_content.endswith("]")
+        ):
+            return content
         doc_map = doc_map or {}
         title_map = title_map or {}
         knowledge_titles = sorted({doc_map.get(k, {}).get("name") for k in title_map.keys() if doc_map.get(k, {}).get("name")})

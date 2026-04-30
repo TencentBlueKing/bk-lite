@@ -1,8 +1,40 @@
-from typing import List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from apps.opspilot.metis.llm.rag.naive_rag_entity import DocumentRetrieverRequest
+
+
+class PrepareStepContext(BaseModel):
+    """prepareStep 钩子接收的上下文"""
+
+    step_number: int = 0
+    messages: List[Any] = []
+    tools: List[Any] = []
+    model: str = ""
+    metadata: Dict[str, Any] = {}
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
+class PrepareStepResult(BaseModel):
+    """prepareStep 钩子返回的修改指令"""
+
+    # None 表示不修改该字段
+    messages: Optional[List[Any]] = None
+    tools: Optional[List[Any]] = None
+    additional_system_prompt: Optional[str] = None
+    stop: bool = False  # 是否强制终止循环
+    metadata: Dict[str, Any] = {}
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
+# prepareStep 钩子类型: 接收 PrepareStepContext，返回 PrepareStepResult
+# 签名: async def hook(ctx: PrepareStepContext) -> PrepareStepResult
+PrepareStepHook = Callable[[PrepareStepContext], Any]
 
 
 class BasicLLMResponse(BaseModel):
@@ -57,3 +89,12 @@ class BasicLLMRequest(BaseModel):
     tools_servers: List[ToolsServer] = []
 
     locale: str = "en"  # 用户语言设置，用于 browser-use 输出国际化
+
+    # prepareStep 钩子列表（运行时注入，不序列化）
+    prepare_step_hooks: List[Any] = Field(default_factory=list, description="每步执行前的回调钩子列表", exclude=True)
+
+    # 上下文 Compaction 配置
+    compaction_enabled: bool = Field(default=True, description="是否启用上下文压缩")
+    compaction_max_token_threshold: int = Field(default=80000, description="触发压缩的 token 阈值")
+    compaction_keep_recent_messages: int = Field(default=12, description="压缩时保留最近的消息数量")
+    compaction_summary_max_tokens: int = Field(default=2000, description="摘要的最大 token 数")
