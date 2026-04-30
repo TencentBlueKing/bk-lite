@@ -61,15 +61,13 @@ def parse_kubernetes_instances(raw_instances: Any) -> list[Dict[str, Any]]:
 
 def get_kubernetes_instances_from_configurable(
     configurable: Dict[str, Any],
-) -> tuple[list[Dict[str, Any]], str]:
+) -> list[Dict[str, Any]]:
     instances = parse_kubernetes_instances(configurable.get("kubernetes_instances"))
-    default_instance_id = _normalize_text(configurable.get("kubernetes_default_instance_id"))
-    return instances, default_instance_id
+    return instances
 
 
 def resolve_kubernetes_instance(
     instances: list[Dict[str, Any]],
-    default_instance_id: str = "",
     instance_name: Optional[str] = None,
     instance_id: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -87,11 +85,6 @@ def resolve_kubernetes_instance(
             if instance.get("name") == instance_name:
                 return instance
         raise ValueError(f"Kubernetes instance not found: {instance_name}")
-
-    if default_instance_id:
-        for instance in instances:
-            if instance.get("id") == default_instance_id:
-                return instance
 
     return instances[0]
 
@@ -147,13 +140,12 @@ def build_kubernetes_normalized_from_runnable(
     instance_id: Optional[str] = None,
 ) -> NormalizedCredentials:
     configurable = config.get("configurable", {}) if config else {}
-    instances, default_instance_id = get_kubernetes_instances_from_configurable(configurable)
+    instances = get_kubernetes_instances_from_configurable(configurable)
 
     if instances:
         if instance_name or instance_id:
             instance = resolve_kubernetes_instance(
                 instances,
-                default_instance_id,
                 instance_name=instance_name,
                 instance_id=instance_id,
             )
@@ -219,19 +211,15 @@ def test_kubernetes_instance(instance: Dict[str, Any]) -> bool:
 
 
 def get_kubernetes_instances_prompt(configurable: Dict[str, Any]) -> str:
-    instances, default_instance_id = get_kubernetes_instances_from_configurable(configurable)
+    instances = get_kubernetes_instances_from_configurable(configurable)
     if not instances:
         return ""
 
-    default_instance = resolve_kubernetes_instance(
-        instances,
-        default_instance_id,
-    )
     available_instances = ", ".join(instance["name"] for instance in instances if instance.get("name"))
     return (
         f"已配置 {len(instances)} 个 Kubernetes 实例，"
         f"可用实例: {available_instances}。"
-        f"默认实例为「{default_instance['name']}」。"
-        "当用户未指定实例时，直接使用默认实例执行工具调用，无需向用户询问。"
-        "仅当用户明确要求切换实例时，才在工具调用中传入 instance_name 或 instance_id 参数。"
+        "当用户明确指定某个实例名称或 ID 时，只对该实例执行。"
+        "当用户未指定实例时，默认对全部实例执行采集或汇总。"
+        "仅当用户明确要求某个实例时，才在工具调用中传入 instance_name 或 instance_id 参数。"
     )

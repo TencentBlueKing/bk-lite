@@ -2,6 +2,7 @@ from __future__ import absolute_import, unicode_literals
 
 import json
 import os
+import sys
 
 from celery import Celery
 from celery.schedules import crontab
@@ -17,6 +18,9 @@ app.autodiscover_tasks()
 def setup_periodic_tasks(sender, **kwargs):
     """将 CELERY_BEAT_SCHEDULE 同步到 django_celery_beat 数据库表"""
     from django.conf import settings
+
+    if "pytest" in sys.modules:
+        return
 
     if not getattr(settings, "IS_USE_CELERY", False):
         return

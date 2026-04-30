@@ -28,6 +28,12 @@ from apps.opspilot.metis.llm.tools.kubernetes.cluster import (
     list_kubernetes_api_resources,
     verify_kubernetes_connection,
 )
+from apps.opspilot.metis.llm.tools.kubernetes.data_collection import (
+    build_incident_evidence_package,
+    collect_k8s_context_by_target_type,
+    normalize_alert_event,
+    resolve_k8s_target_from_alert,
+)
 from apps.opspilot.metis.llm.tools.kubernetes.diagnostics import (
     diagnose_kubernetes_pod_issues,
     get_failed_kubernetes_pods,
@@ -41,6 +47,7 @@ from apps.opspilot.metis.llm.tools.kubernetes.diagnostics_advanced import (
     check_pvc_capacity,
     diagnose_pending_pod_issues,
 )
+from apps.opspilot.metis.llm.tools.kubernetes.node_diagnostics import diagnose_node_issues
 from apps.opspilot.metis.llm.tools.kubernetes.optimization import (
     check_pod_distribution,
     check_scaling_capacity,
@@ -59,6 +66,7 @@ from apps.opspilot.metis.llm.tools.kubernetes.remediation import (
 from apps.opspilot.metis.llm.tools.kubernetes.resources import (
     get_kubernetes_namespaces,
     get_kubernetes_pod_logs,
+    get_kubernetes_previous_pod_logs,
     get_kubernetes_resource_yaml,
     list_kubernetes_deployments,
     list_kubernetes_events,
@@ -79,15 +87,9 @@ from apps.opspilot.metis.llm.tools.kubernetes.utils import format_bytes, parse_r
 CONSTRUCTOR_PARAMS = [
     {
         "name": "kubernetes_instances",
-        "type": "string",
+        "type": "array",
         "required": False,
-        "description": "Kubernetes多实例JSON配置",
-    },
-    {
-        "name": "kubernetes_default_instance_id",
-        "type": "string",
-        "required": False,
-        "description": "默认Kubernetes实例ID",
+        "description": "Kubernetes 实例列表，每个实例包含 id、name、kubeconfig_data",
     },
 ]
 
@@ -104,6 +106,7 @@ __all__ = [
     "list_kubernetes_events",
     "get_kubernetes_resource_yaml",
     "get_kubernetes_pod_logs",
+    "get_kubernetes_previous_pod_logs",
     # 故障诊断和监控工具
     "get_failed_kubernetes_pods",
     "get_pending_kubernetes_pods",
@@ -111,6 +114,7 @@ __all__ = [
     "get_kubernetes_node_capacity",
     "get_kubernetes_orphaned_resources",
     "diagnose_kubernetes_pod_issues",
+    "diagnose_node_issues",
     # 配置分析和策略检查工具
     "check_kubernetes_resource_quotas",
     "check_kubernetes_network_policies",
@@ -157,6 +161,11 @@ __all__ = [
     "batch_restart_pods",
     "find_configmap_consumers",
     "cleanup_failed_pods",
+    # 告警驱动采集编排工具
+    "normalize_alert_event",
+    "resolve_k8s_target_from_alert",
+    "collect_k8s_context_by_target_type",
+    "build_incident_evidence_package",
     # 通用工具函数
     "prepare_context",
     "format_bytes",

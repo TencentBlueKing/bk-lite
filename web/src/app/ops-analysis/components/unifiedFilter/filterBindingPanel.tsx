@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { Switch, Empty, Tag, Tooltip } from 'antd';
+import { Switch, Tag, Tooltip } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import type {
   UnifiedFilterDefinition,
   FilterBindings,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
+import CompactEmptyState from '@/app/ops-analysis/components/compactEmptyState';
 import {
   getFilterDefinitionId,
   getBindableFilterParams,
@@ -64,10 +65,7 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
 
   if (bindableParams.length === 0) {
     return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={t('dashboard.noUnifiedFilters')}
-      />
+      <CompactEmptyState description={t('dashboard.noUnifiedFilters')} />
     );
   }
 
