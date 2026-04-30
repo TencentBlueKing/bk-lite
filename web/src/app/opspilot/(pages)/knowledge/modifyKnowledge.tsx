@@ -2,7 +2,7 @@ import React, { useEffect, useState, ReactNode } from 'react';
 import { Form, Button } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
-import CommonForm from '@/app/opspilot/components/knowledge/commonForm';
+import KnowledgeForm from '@/app/opspilot/components/knowledge/forms/KnowledgeForm';
 import { ModifyKnowledgeModalProps, ModelOption } from '@/app/opspilot/types/knowledge';
 import { useKnowledgeApi } from '@/app/opspilot/api/knowledge';
 
@@ -124,11 +124,10 @@ const ModifyKnowledgeModal: React.FC<ModifyKnowledgeModalProps> = ({
         onOk={handleConfirm}
         confirmLoading={confirmLoading}
       >
-        <CommonForm
+        <KnowledgeForm
           form={form}
           modelOptions={modelOptions}
           isTraining={isTraining}
-          formType="knowledge"
           visible={visible}
         />
       </OperateModal>
