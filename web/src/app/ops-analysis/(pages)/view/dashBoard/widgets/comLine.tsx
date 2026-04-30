@@ -172,8 +172,8 @@ const TrendLine: React.FC<TrendLineProps> = ({
     },
     grid: {
       top: 14,
-      left: 18,
-      right: 18,
+      left: 24,
+      right: 24,
       bottom: 20,
       containLabel: true,
     },

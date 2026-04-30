@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import dayjs from 'dayjs';
+import Image from 'next/image';
 import styles from './index.module.scss';
 import K8sTask from './components/k8sTask';
 import VMTask from './components/vmTask';
@@ -12,6 +13,7 @@ import HostTask from './components/hostTask';
 import IPMITask from './components/ipmiTask';
 import ConfigFileTask from './components/configFileTask';
 import TaskDetail from './components/taskDetail';
+import { getCollectionIconSrc } from './collectionIcons';
 import MarkdownRenderer from '@/components/markdown';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
@@ -22,17 +24,7 @@ import type { ColumnType } from 'antd/es/table';
 import type { FilterValue } from 'antd/es/table/interface';
 import { Modal } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import {
-  Input,
-  Button,
-  Spin,
-  Tag,
-  Drawer,
-  message,
-  Tabs,
-  Card,
-  Tooltip,
-} from 'antd';
+import { Input, Button, Spin, Tag, Drawer, message, Tabs, Tooltip } from 'antd';
 import {
   getExecStatusConfig,
   EXEC_STATUS,
@@ -56,6 +48,28 @@ type ExtendedColumnItem = ColumnType<CollectTask> & {
 interface PluginCardProps {
   tab: TreeNode;
 }
+
+interface ExpandableTextProps {
+  text?: string;
+  collapsedLines?: 2 | 3;
+}
+
+const ExpandableText: React.FC<ExpandableTextProps> = ({
+  text,
+  collapsedLines = 3,
+}) => {
+  if (!text) {
+    return null;
+  }
+
+  return (
+    <div
+      className={`mt-1.5 text-xs leading-5 text-slate-500 ${collapsedLines === 3 ? 'line-clamp-3' : 'line-clamp-2'}`}
+    >
+      {text}
+    </div>
+  );
+};
 
 const ProfessionalCollection: React.FC = () => {
   const { t } = useTranslation();
@@ -930,6 +944,7 @@ const ProfessionalCollection: React.FC = () => {
     const isActive = selectedPluginId === tab.id;
     const tags = tab.tag || [];
     const description = tab.desc || '';
+    const iconSrc = getCollectionIconSrc(tab);
 
     const taskStats = taskStatus[tab.model_id || tab.id] || {
       running: 0,
@@ -939,66 +954,87 @@ const ProfessionalCollection: React.FC = () => {
 
     const statusItems = [
       {
-        color: 'bg-blue-500',
+        dotClass: 'bg-blue-500',
         label: t('Collection.statusLabel.running'),
         value: taskStats.running,
       },
       {
-        color: 'bg-green-500',
+        dotClass: 'bg-green-500',
         label: t('Collection.statusLabel.syncSuccess'),
         value: taskStats.success,
       },
       {
-        color: 'bg-red-500',
+        dotClass: 'bg-rose-500',
         label: t('Collection.statusLabel.syncFailed'),
         value: taskStats.failed,
       },
     ];
 
     return (
-      <Card
+      <div
         key={tab.id}
-        hoverable
-        className={`cursor-pointer transition-all ${isActive
-          ? 'border-blue-500 shadow-md bg-blue-50'
-          : 'border-gray-200 hover:border-blue-300'
-          }`}
-        styles={{ body: { padding: '12px' } }}
+        role="button"
+        tabIndex={0}
+        className={`group relative w-full shrink-0 cursor-pointer overflow-hidden rounded-2xl border transition-all duration-200 ${
+          isActive
+            ? 'border-blue-300 bg-linear-to-br from-blue-50 via-white to-sky-50 shadow-[0_14px_28px_rgba(59,130,246,0.14)]'
+            : 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)]'
+        } p-3 text-left`}
         onClick={() => handlePluginCardClick(tab.id)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            handlePluginCardClick(tab.id);
+          }
+        }}
       >
-        <div className="flex items-center gap-3 mb-2">
+        <div
+          className={`absolute inset-x-0 top-0 h-1 transition-opacity ${isActive ? 'bg-linear-to-r from-blue-500 via-sky-400 to-cyan-300 opacity-100' : 'bg-linear-to-r from-slate-200 via-slate-100 to-white opacity-0 group-hover:opacity-100'}`}
+        />
+
+        <div className="flex items-start gap-2.5">
           <div
-            className={`w-10 h-10 rounded flex items-center justify-center text-lg font-semibold flex-shrink-0 ${isActive ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-600'}`}
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-sm transition-colors ${
+              isActive
+                ? 'border-blue-100 bg-blue-50'
+                : 'border-slate-200 bg-slate-50 group-hover:border-blue-100 group-hover:bg-blue-50'
+            }`}
           >
-            {tab.name?.charAt(0)}
+            <Image
+              src={iconSrc}
+              alt={tab.name}
+              width={24}
+              height={24}
+              className={`${isActive ? 'opacity-100' : 'opacity-80 group-hover:opacity-100'}`}
+            />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-gray-700 mb-2 leading-relaxed">
-              <span
-                className={`font-semibold ${isActive ? 'text-blue-600' : 'text-gray-900'}`}
-              >
-                {tab.name}
-              </span>
-              {description && (
-                <span className="text-gray-500 ml-1">{description}</span>
-              )}
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div
+                  className={`text-sm font-semibold leading-5 tracking-[0.01em] wrap-break-word ${isActive ? 'text-blue-700' : 'text-slate-900'}`}
+                >
+                  {tab.name}
+                </div>
+                <ExpandableText text={description} collapsedLines={2} />
+              </div>
+              <div
+                className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${isActive ? 'bg-blue-500 shadow-[0_0_0_4px_rgba(59,130,246,0.12)]' : 'bg-slate-200 group-hover:bg-blue-300'}`}
+              />
             </div>
+
             {tags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
+              <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[11px] leading-4 text-slate-500">
                 {tags.map((tag: string) => (
-                  <Tag
+                  <span
                     key={tag}
-                    color="blue"
-                    style={{
-                      fontSize: '10px',
-                      padding: '0 4px',
-                      lineHeight: '16px',
-                      margin: 0,
-                      borderRadius: '2px',
-                    }}
+                    className={`inline-flex items-center wrap-break-word ${isActive ? 'text-blue-700/85' : 'text-slate-500'}`}
                   >
-                    {tag}
-                  </Tag>
+                    <span
+                      className={`mr-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${isActive ? 'bg-blue-300' : 'bg-slate-300'}`}
+                    />
+                    <span className="break-keep">{tag}</span>
+                  </span>
                 ))}
               </div>
             )}
@@ -1008,10 +1044,15 @@ const ProfessionalCollection: React.FC = () => {
         <Tooltip
           placement="left"
           title={
-            <div className="flex flex-col gap-1">
-              {statusItems.map(({ label, value, color }) => (
-                <div key={label} className="flex items-center gap-2 text-xs">
-                  <div className={`w-2 h-2 rounded-full ${color}`} />
+            <div className="flex flex-col gap-1.5">
+              {statusItems.map(({ dotClass, value, label }) => (
+                <div
+                  key={label}
+                  className="flex items-center gap-2 text-xs text-white/95"
+                >
+                  <div
+                    className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`}
+                  />
                   <span>
                     {label}：{value}
                   </span>
@@ -1021,21 +1062,33 @@ const ProfessionalCollection: React.FC = () => {
           }
         >
           <div
-            className="flex items-center justify-around pt-2 mt-3 border-t"
+            className="mt-3 border-t pt-2"
             style={{ borderColor: 'var(--color-border-2)' }}
             onClick={(e) => e.stopPropagation()}
           >
-            {statusItems.map(({ color, value }, index) => (
-              <div key={index} className="flex items-center gap-1.5">
+            <div className="flex items-center">
+              {statusItems.map(({ dotClass, value, label }, index) => (
                 <div
-                  className={`w-2 h-2 rounded-full ${color} ring-2 ring-white shadow-sm`}
-                />
-                <span className="text-sm font-medium">{value}</span>
-              </div>
-            ))}
+                  key={label}
+                  className={`flex flex-1 items-center justify-center ${index < statusItems.length - 1 ? 'border-r border-slate-200/70' : ''}`}
+                >
+                  <div
+                    className={`flex min-w-10.5 items-center justify-center gap-1.5 rounded-lg px-1.5 py-0.5 transition-colors ${isActive ? 'hover:bg-blue-50/80' : 'hover:bg-slate-100/80'}`}
+                    aria-label={`${label}：${value}`}
+                  >
+                    <div
+                      className={`h-2 w-2 shrink-0 rounded-full ${dotClass} ring-2 ring-white shadow-sm`}
+                    />
+                    <span className="text-sm font-semibold leading-none tabular-nums text-slate-800">
+                      {value}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </Tooltip>
-      </Card>
+      </div>
     );
   };
 
@@ -1060,14 +1113,14 @@ const ProfessionalCollection: React.FC = () => {
         )}
       </div>
 
-      <div className="flex flex-1 overflow-hidden pt-4">
-        <div className="w-60 flex-shrink-0 h-full">
+      <div className="flex min-h-0 flex-1 overflow-hidden pt-4">
+        <div className="flex min-h-0 w-64 shrink-0 flex-col self-stretch">
           {categoryLoading ? (
             <div className="flex items-center justify-center py-4">
               <Spin size="small" />
             </div>
           ) : (
-            <div className="flex flex-col gap-3 px-2 py-1 overflow-auto h-full">
+            <div className="min-h-0 flex-1 overflow-auto px-2 py-1 space-y-3">
               {selectedCategoryRef.current.category?.tabItems?.map((tab) => (
                 <PluginCard key={tab.id} tab={tab} />
               ))}
@@ -1076,12 +1129,12 @@ const ProfessionalCollection: React.FC = () => {
         </div>
 
         <div
-          className="w-px flex-shrink-0 mr-2"
+          className="w-px shrink-0 mr-2"
           style={{ backgroundColor: 'var(--color-border-2)' }}
         ></div>
 
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex flex-col flex-1 overflow-hidden bg-white rounded shadow-sm border border-gray-200">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
               <span className="text-base font-semibold text-gray-900">
                 {currentPlugin?.name || ''}
@@ -1138,7 +1191,7 @@ const ProfessionalCollection: React.FC = () => {
                   displayFieldKeys,
                   choosableFields: allColumns.filter(
                     (item): item is ColumnItem =>
-                      item.key !== 'action' && 'dataIndex' in item
+                      item.key !== 'action' && 'dataIndex' in item,
                   ),
                 }}
               />
@@ -1167,8 +1220,7 @@ const ProfessionalCollection: React.FC = () => {
             >
               {taskDocDrawerVisible
                 ? t('Collection.closeDoc')
-                : t('Collection.viewDoc')
-              }
+                : t('Collection.viewDoc')}
             </Button>
           </div>
         }
