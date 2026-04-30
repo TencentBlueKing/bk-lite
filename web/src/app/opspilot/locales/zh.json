@@ -341,10 +341,11 @@
       "instanceName": "实例名称",
       "instanceNamePlaceholder": "请输入实例名称",
       "kubeconfigData": "kubeconfig 内容",
-      "kubeconfigDataPlaceholder": "请粘贴 kubeconfig 文件内容，留空则使用默认 ~/.kube/config",
+      "kubeconfigDataPlaceholder": "请粘贴 kubeconfig 文件内容",
       "testConnection": "测试连接",
       "instanceNameRequired": "请输入实例名称",
       "duplicateInstanceName": "Kubernetes 实例名称不能重复",
+      "kubeconfigDataRequired": "请填写 kubeconfig 内容",
       "status": {
         "untested": "未测试",
         "success": "测试成功",

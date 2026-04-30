@@ -1,0 +1,39 @@
+场景名称: 同入口不同消息的意图路由测试 (Same Entry Different Messages Routing)
+
+描述:
+  验证从同一个入口节点发送不同的用户消息时，意图分类器根据消息内容
+  返回不同的意图，从而路由到不同的下游智能体节点。
+  模拟真实使用场景：用户在同一个聊天入口发送不同需求的消息。
+
+前置条件:
+  - 数据库中存在一个 online 状态的 Bot
+  - BotWorkFlow 使用从生产环境导出的 flow_json (flow_json_id4.json)
+  - IntentClassifierNode 的 LLM 调用被 mock，根据输入消息动态返回不同意图
+  - AgentNode 使用 RecordingAgentExecutor 记录调用信息
+
+固定入口节点: openai-1777450801989
+
+消息 → 意图 → 智能体映射:
+  - "帮我写一个Python监控脚本" → generate_script → agents-1773989553282
+  - "总结一下这个工单的内容" → summary_ticket → agents-1773989974128
+  - "从日志中提取错误信息" → ai_log_extraction → agents-1773989998398
+  - "检查这个脚本有没有问题" → scripts_check → agents-1773990036863
+  - "参考这个模板写一篇文档" → write_by_example → agents-1773990058488
+  - "整理一下这段内容的格式" → tidy_content → agents-1773990420050
+  - "把这段话改成正式的语气" → change_tone → agents-1773990895494
+  - "调整一下这篇文章的结构" → essay_adjust_content → agents-1773990915824
+  - "分析一下这段错误日志" → wrong_log_analysis → agents-1773990933233
+  - "检查一下这份日志有没有异常" → ai_log_check → agents-1773990964763
+
+测试用例:
+  TestSameEntryDifferentMessages (10 cases):
+    1-10. 同一入口发送不同消息，每条消息路由到不同的智能体
+
+  TestSequentialDifferentIntents (1 case):
+    1. 同一入口连续发送两条不同消息，分别路由到各自对应的智能体
+
+  TestMessagePassthrough (1 case):
+    1. 下游智能体接收的是对应的原始用户消息，而非其他消息或意图标签
+
+关联测试文件: cases/test_workflow_same_entry_diff_message.py
+流程数据: scenarios/flow_json_id4.json

@@ -341,10 +341,11 @@
       "instanceName": "Instance Name",
       "instanceNamePlaceholder": "Enter instance name",
       "kubeconfigData": "kubeconfig Content",
-      "kubeconfigDataPlaceholder": "Paste kubeconfig file content here. Leave blank to use default ~/.kube/config",
+      "kubeconfigDataPlaceholder": "Paste kubeconfig file content here",
       "testConnection": "Test Connection",
       "instanceNameRequired": "Please enter an instance name",
       "duplicateInstanceName": "Kubernetes instance names must be unique",
+      "kubeconfigDataRequired": "Please enter kubeconfig content",
       "status": {
         "untested": "Untested",
         "success": "Test Succeeded",

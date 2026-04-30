@@ -770,9 +770,8 @@ const isJenkinsTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name
 
 // ── Kubernetes ────────────────────────────────────────────────────────────────
 
-const KUBERNETES_TOOL_NAME = 'kubernetes';
+const KUBERNETES_TOOL_NAMES = new Set(['kubernetes', 'kubernetes_data_collection']);
 const KUBERNETES_INSTANCES_KEY = 'kubernetes_instances';
-const KUBERNETES_DEFAULT_INSTANCE_ID_KEY = 'kubernetes_default_instance_id';
 const KUBERNETES_AUTO_NAME_PREFIX = 'Kubernetes - ';
 
 const createKubernetesInstanceId = () => `kubernetes-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -837,13 +836,20 @@ const serializeKubernetesToolConfig = (instances: KubernetesInstanceFormValue[])
     delete copy.testStatus;
     return copy;
   });
-  return [
-    { key: KUBERNETES_INSTANCES_KEY, value: JSON.stringify(normalized) },
-    { key: KUBERNETES_DEFAULT_INSTANCE_ID_KEY, value: normalized[0]?.id || '' },
-  ];
+  return [{ key: KUBERNETES_INSTANCES_KEY, value: JSON.stringify(normalized) }];
 };
 
-const isKubernetesTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === KUBERNETES_TOOL_NAME;
+const isKubernetesTool = (tool?: SelectTool | null) => {
+  const toolName = tool?.rawName || tool?.name;
+  return toolName ? KUBERNETES_TOOL_NAMES.has(toolName) : false;
+};
+
+const isSameToolVariant = (tool?: SelectTool | null, defaultTool?: SelectTool | null) => {
+  if (!tool || !defaultTool) {
+    return false;
+  }
+  return (tool.rawName || tool.name) === (defaultTool.rawName || defaultTool.name);
+};
 
 interface ToolSelectorProps {
   defaultTools: SelectTool[];
@@ -922,9 +928,25 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
       setTools(fetchedTools);
 
       const initialSelectedTools = fetchedTools
-        .filter((tool) => defaultToolMap.has(tool.id) || (isRedisTool(tool) && !!defaultRedisTool) || (isMysqlTool(tool) && !!defaultMysqlTool) || (isOracleTool(tool) && !!defaultOracleTool) || (isMssqlTool(tool) && !!defaultMssqlTool) || (isPostgresTool(tool) && !!defaultPostgresTool) || (isEsTool(tool) && !!defaultEsTool) || (isJenkinsTool(tool) && !!defaultJenkinsTool) || (isKubernetesTool(tool) && !!defaultKubernetesTool))
+        .filter((tool) => defaultToolMap.has(tool.id)
+          || (isRedisTool(tool) && !!defaultRedisTool)
+          || (isMysqlTool(tool) && !!defaultMysqlTool)
+          || (isOracleTool(tool) && !!defaultOracleTool)
+          || (isMssqlTool(tool) && !!defaultMssqlTool)
+          || (isPostgresTool(tool) && !!defaultPostgresTool)
+          || (isEsTool(tool) && !!defaultEsTool)
+          || (isJenkinsTool(tool) && !!defaultJenkinsTool)
+          || (isKubernetesTool(tool) && !!defaultKubernetesTool && isSameToolVariant(tool, defaultKubernetesTool)))
         .map((tool) => {
-          const matchedDefaultTool = defaultToolMap.get(tool.id) || (isRedisTool(tool) ? defaultRedisTool : undefined) || (isMysqlTool(tool) ? defaultMysqlTool : undefined) || (isOracleTool(tool) ? defaultOracleTool : undefined) || (isMssqlTool(tool) ? defaultMssqlTool : undefined) || (isPostgresTool(tool) ? defaultPostgresTool : undefined) || (isEsTool(tool) ? defaultEsTool : undefined) || (isJenkinsTool(tool) ? defaultJenkinsTool : undefined) || (isKubernetesTool(tool) ? defaultKubernetesTool : undefined);
+          const matchedDefaultTool = defaultToolMap.get(tool.id)
+            || (isRedisTool(tool) ? defaultRedisTool : undefined)
+            || (isMysqlTool(tool) ? defaultMysqlTool : undefined)
+            || (isOracleTool(tool) ? defaultOracleTool : undefined)
+            || (isMssqlTool(tool) ? defaultMssqlTool : undefined)
+            || (isPostgresTool(tool) ? defaultPostgresTool : undefined)
+            || (isEsTool(tool) ? defaultEsTool : undefined)
+            || (isJenkinsTool(tool) ? defaultJenkinsTool : undefined)
+            || (isKubernetesTool(tool) && isSameToolVariant(tool, defaultKubernetesTool) ? defaultKubernetesTool : undefined);
           if (!matchedDefaultTool) {
             return tool;
           }
@@ -1244,10 +1266,18 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
         message.error(t('tool.kubernetes.duplicateInstanceName'));
         return;
       }
+      if (kubernetesInstances.some((instance) => !instance.kubeconfig_data.trim())) {
+        message.error(t('tool.kubernetes.kubeconfigDataRequired'));
+        return;
+      }
       if (editingTool) {
         const updatedTool = {
           ...editingTool,
-          kwargs: serializeKubernetesToolConfig(kubernetesInstances.map((instance) => ({ ...instance, name: instance.name.trim() }))),
+          kwargs: serializeKubernetesToolConfig(kubernetesInstances.map((instance) => ({
+            ...instance,
+            name: instance.name.trim(),
+            kubeconfig_data: instance.kubeconfig_data.trim(),
+          }))),
         };
         const updatedSelectedTools = selectedTools.map((tool) => (tool.id === editingTool.id ? updatedTool : tool));
         setSelectedTools(updatedSelectedTools);
