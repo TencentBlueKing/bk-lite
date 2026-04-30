@@ -14,6 +14,7 @@ export const useDockerDashboard = () => {
     filters: {},
     other: {},
     view_sets: [
+      // Row 0-2: 概览 KPI + 总量趋势
       {
         h: 3,
         w: 3,
@@ -93,6 +94,7 @@ export const useDockerDashboard = () => {
           }
         }
       },
+      // Row 3-5: 错误趋势 + 日志流分布
       {
         h: 3,
         w: 8,
@@ -124,31 +126,6 @@ export const useDockerDashboard = () => {
         x: 8,
         y: 3,
         i: uuidv4(),
-        name: t('log.analysis.docker.containerDistribution'),
-        moved: false,
-        static: false,
-        description: t('log.analysis.docker.containerDistributionDesc'),
-        valueConfig: {
-          chartType: 'pie',
-          dataSource: 1,
-          displayMaps: {
-            type: 'single',
-            key: 'container_name',
-            value: 'logcount',
-            tooltipField: 'container_name'
-          },
-          dataSourceParams: {
-            query:
-              'collect_type:"docker" | stats by (container_name) count() as logcount | sort by (logcount desc)'
-          }
-        }
-      },
-      {
-        h: 3,
-        w: 4,
-        x: 0,
-        y: 6,
-        i: uuidv4(),
         name: t('log.analysis.docker.streamDistribution'),
         moved: false,
         static: false,
@@ -168,11 +145,66 @@ export const useDockerDashboard = () => {
           }
         }
       },
+      // Row 6-9: 深度分析 — 热力图 + 构成趋势并排
+      {
+        h: 4,
+        w: 6,
+        x: 0,
+        y: 6,
+        i: uuidv4(),
+        name: t('log.analysis.docker.errorHeatmap'),
+        moved: false,
+        static: false,
+        description: t('log.analysis.docker.errorHeatmapDesc'),
+        valueConfig: {
+          chartType: 'heatmap',
+          dataSource: 1,
+          limit: 8,
+          displayMaps: {
+            time: '_time',
+            category: 'container_name',
+            value: 'errcount'
+          },
+          dataSourceParams: {
+            query:
+              'collect_type:"docker" stream:"stderr" | stats by (_time:${_time},container_name) count() as errcount | sort by (errcount desc)'
+          }
+        }
+      },
+      {
+        h: 4,
+        w: 6,
+        x: 6,
+        y: 6,
+        i: uuidv4(),
+        name: t('log.analysis.docker.containerVolumeStackLineCompare'),
+        moved: false,
+        static: false,
+        description: t(
+          'log.analysis.docker.containerVolumeStackLineCompareDesc'
+        ),
+        valueConfig: {
+          chartType: 'line',
+          dataSource: 1,
+          displayMaps: {
+            type: 'multiple',
+            key: 'container_name',
+            value: 'logcount',
+            tooltipField: 'logcount',
+            stack: 'total'
+          },
+          dataSourceParams: {
+            query:
+              'collect_type:"docker" | stats by (_time:${_time},container_name) count() as logcount | sort by (logcount desc)'
+          }
+        }
+      },
+      // Row 10-12: Top 排行三栏并排
       {
         h: 3,
         w: 4,
-        x: 4,
-        y: 6,
+        x: 0,
+        y: 10,
         i: uuidv4(),
         name: t('log.analysis.docker.topContainers'),
         moved: false,
@@ -203,8 +235,8 @@ export const useDockerDashboard = () => {
       {
         h: 3,
         w: 4,
-        x: 8,
-        y: 6,
+        x: 4,
+        y: 10,
         i: uuidv4(),
         name: t('log.analysis.docker.topImages'),
         moved: false,
@@ -233,10 +265,10 @@ export const useDockerDashboard = () => {
         }
       },
       {
-        h: 4,
-        w: 12,
-        x: 0,
-        y: 9,
+        h: 3,
+        w: 4,
+        x: 8,
+        y: 10,
         i: uuidv4(),
         name: t('log.analysis.docker.topHosts'),
         moved: false,

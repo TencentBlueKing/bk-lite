@@ -107,9 +107,9 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
   };
 
   return (
-    <div className="chart-legend h-full flex flex-col overflow-hidden">
+    <div className="chart-legend h-full min-w-0 flex flex-col overflow-hidden">
       <div className="flex-shrink-0">
-        <table className="chart-legend-table w-full border-collapse">
+        <table className="chart-legend-table w-full table-fixed border-collapse">
           <thead>
             <tr>
               <th className="text-left px-2 py-1.5 text-xs text-gray-600 border-b border-gray-200 bg-gray-50">
@@ -120,8 +120,8 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
           </thead>
         </table>
       </div>
-      <div className="flex-1 overflow-y-auto min-h-0">
-        <table className="chart-legend-table w-full border-collapse">
+      <div className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto pr-1">
+        <table className="chart-legend-table w-full table-fixed border-collapse">
           <tbody>
             {legendData.map((item, index) => (
               <tr
@@ -134,8 +134,8 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
                 `}
                 onClick={() => handleLegend(item)}
               >
-                <td className="px-2 py-1">
-                  <div className="flex items-center space-x-2 min-w-0">
+                <td className="w-full max-w-0 px-2 py-1">
+                  <div className="flex w-full min-w-0 items-center gap-2">
                     <div
                       className="w-4 h-1 flex-shrink-0"
                       style={{
@@ -144,9 +144,9 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
                           : '#d1d5db'
                       }}
                     />
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 max-w-full">
                       <EllipsisWithTooltip
-                        className="max-w-[106px] text-xs text-gray-700 leading-relaxed whitespace-nowrap overflow-hidden text-ellipsis"
+                        className="block w-full min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs leading-relaxed text-gray-700"
                         text={item || '--'}
                       />
                     </div>
