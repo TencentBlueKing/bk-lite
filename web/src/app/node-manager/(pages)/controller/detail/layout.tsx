@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import type { ControllerCardProps } from '@/app/node-manager/types/controller';
 
 const ControllerLayout = ({ children }: { children: React.ReactNode }) => {
@@ -14,7 +15,7 @@ const ControllerLayout = ({ children }: { children: React.ReactNode }) => {
     id: '',
     name: '',
     introduction: '',
-    icon: '',
+    icon: ''
   });
 
   useEffect(() => {
@@ -23,7 +24,7 @@ const ControllerLayout = ({ children }: { children: React.ReactNode }) => {
       id: searchParams.get('id') || '',
       name: searchParams.get('displayName') || '',
       introduction: searchParams.get('introduction') || '',
-      icon: searchParams.get('icon') || 'caijiqizongshu',
+      icon: searchParams.get('icon') || 'caijiqizongshu'
     };
     setDetaildata(info);
   }, [pathname]);
@@ -33,7 +34,7 @@ const ControllerLayout = ({ children }: { children: React.ReactNode }) => {
     return (
       <div className="flex flex-col h-[90px] p-4 overflow-hidden">
         <h1 className="text-lg">{t('node-manager.packetManage.title')}</h1>
-        <p className="text-sm overflow-hidden w-full min-w-[1000px] mt-[8px]">
+        <p className="text-sm overflow-hidden w-full mt-[8px]">
           {detaildata.introduction}
         </p>
       </div>
@@ -50,7 +51,10 @@ const ControllerLayout = ({ children }: { children: React.ReactNode }) => {
           ></Icon>
         </div>
         <div className="flex justify-center">
-          <div>{detaildata.name}</div>
+          <EllipsisWithTooltip
+            className="overflow-hidden text-ellipsis whitespace-nowrap max-w-full text-center"
+            text={detaildata.name}
+          />
         </div>
       </div>
     );
