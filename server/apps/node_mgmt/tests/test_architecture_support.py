@@ -798,9 +798,24 @@ def test_open_api_installer_session_uses_arch_query_param(monkeypatch):
     view = OpenSidecarViewSet.as_view({"get": "installer_session"})
 
     monkeypatch.setattr(
+        "apps.node_mgmt.views.sidecar.InstallTokenService.validate_and_get_token_data",
+        lambda token: {
+            "node_id": "node-1",
+            "ip": "10.0.0.1",
+            "user": "tester",
+            "os": NodeConstants.LINUX_OS,
+            "package_id": "1",
+            "cloud_region_id": "1",
+            "organizations": [1],
+            "node_name": "node-1",
+            "cpu_architecture": NodeConstants.ARM64_ARCH,
+            "remaining_usage": 3,
+        },
+    )
+    monkeypatch.setattr(
         InstallerSessionService,
         "build_session_config",
-        lambda token, arch="": {
+        lambda token, arch="", token_data=None: {
             "node_id": "node-1",
             "remaining_usage": 3,
             "cpu_architecture": arch,
@@ -814,6 +829,50 @@ def test_open_api_installer_session_uses_arch_query_param(monkeypatch):
     assert response.status_code == 200
     assert json.loads(response.content)["cpu_architecture"] == NodeConstants.ARM64_ARCH
     assert response["X-Token-Remaining-Usage"] == "3"
+
+
+@pytest.mark.django_db
+def test_open_api_installer_session_consumes_token_once(monkeypatch):
+    factory = APIRequestFactory()
+    view = OpenSidecarViewSet.as_view({"get": "installer_session"})
+    calls = {"count": 0}
+
+    def fake_validate(token):
+        calls["count"] += 1
+        return {
+            "node_id": "node-1",
+            "ip": "10.0.0.1",
+            "user": "tester",
+            "os": NodeConstants.LINUX_OS,
+            "package_id": "1",
+            "cloud_region_id": "1",
+            "organizations": [1],
+            "node_name": "node-1",
+            "cpu_architecture": NodeConstants.ARM64_ARCH,
+            "remaining_usage": 4,
+        }
+
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.sidecar.InstallTokenService.validate_and_get_token_data",
+        fake_validate,
+    )
+    monkeypatch.setattr(
+        InstallerSessionService,
+        "build_session_config",
+        lambda token, arch="", token_data=None: {
+            "node_id": token_data["node_id"],
+            "remaining_usage": token_data["remaining_usage"],
+            "cpu_architecture": arch or token_data["cpu_architecture"],
+            "installer": {"architecture": arch or token_data["cpu_architecture"]},
+        },
+    )
+
+    request = factory.get("/node_mgmt/open_api/installer/session", {"token": "abc", "arch": "arm64"})
+
+    response = view(request)
+
+    assert response.status_code == 200
+    assert calls["count"] == 1
 
 
 @pytest.mark.django_db

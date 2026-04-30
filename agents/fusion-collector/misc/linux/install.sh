@@ -80,13 +80,13 @@ main() {
         NODE_NAME=$5
     fi
 
-    if [ $# -eq 6 ]; then
+    if [ $# -ge 6 ]; then
         NODE_ID=$6
         echo "$NODE_ID" > ./node-id
         echo "Node ID 已写入到 ./node-id 文件"
     fi
 
-    if [ $# -eq 7 ]; then
+    if [ $# -ge 7 ]; then
         CPU_ARCHITECTURE=$7
     fi
 

@@ -47,8 +47,8 @@ class InstallerSessionService:
         return result
 
     @staticmethod
-    def build_session_config(token: str, cpu_architecture: str = ""):
-        token_data = InstallTokenService.validate_and_get_token_data(token)
+    def build_session_config(token: str, cpu_architecture: str = "", token_data: dict | None = None):
+        token_data = token_data or InstallTokenService.validate_and_get_token_data(token)
 
         resolved_arch = normalize_cpu_architecture(cpu_architecture or token_data.get("cpu_architecture", ""))
 

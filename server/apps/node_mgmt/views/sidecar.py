@@ -547,11 +547,10 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         if not token:
             raise BaseAppException("Missing token parameter")
 
-        serializer = InstallerArtifactQuerySerializer(
-            data=request.query_params, context={"target_os": token and InstallTokenService.validate_and_get_token_data(token).get("os", "linux")}
-        )
+        token_data = InstallTokenService.validate_and_get_token_data(token)
+        serializer = InstallerArtifactQuerySerializer(data=request.query_params, context={"target_os": token_data.get("os", "linux")})
         serializer.is_valid(raise_exception=True)
-        config = InstallerSessionService.build_session_config(token, serializer.validated_data.get("arch", ""))
+        config = InstallerSessionService.build_session_config(token, serializer.validated_data.get("arch", ""), token_data=token_data)
 
         response = JsonResponse(config)
         response["X-Token-Remaining-Usage"] = str(config["remaining_usage"])
