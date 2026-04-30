@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Form } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
-import CommonForm from '@/app/opspilot/components/knowledge/commonForm';
+import SkillForm from '@/app/opspilot/components/knowledge/forms/SkillForm';
+import StudioForm from '@/app/opspilot/components/knowledge/forms/StudioForm';
 
 interface GenericModifyModalProps {
   visible: boolean;
@@ -19,18 +20,6 @@ const GenericModifyModal: React.FC<GenericModifyModalProps> = ({ visible, onCanc
   const [form] = Form.useForm();
   const [confirmLoading, setConfirmLoading] = useState(false);
 
-  useEffect(() => {
-    if (!visible) return;
-
-    Promise.resolve().then(() => {
-      if (initialValues) {
-        form.setFieldsValue(initialValues);
-      } else {
-        form.resetFields();
-      }
-    });
-  }, [initialValues, form, visible]);
-
   const handleConfirm = async () => {
     try {
       setConfirmLoading(true);
@@ -41,6 +30,16 @@ const GenericModifyModal: React.FC<GenericModifyModalProps> = ({ visible, onCanc
     } catch {
       setConfirmLoading(false);
     }
+  };
+
+  const renderForm = () => {
+    if (formType === 'skill') {
+      return <SkillForm form={form} initialValues={initialValues} visible={visible} />;
+    }
+    if (formType === 'studio') {
+      return <StudioForm form={form} initialValues={initialValues} visible={visible} />;
+    }
+    return null;
   };
 
   return (
@@ -54,12 +53,7 @@ const GenericModifyModal: React.FC<GenericModifyModalProps> = ({ visible, onCanc
       onOk={handleConfirm}
       confirmLoading={confirmLoading}
     >
-      <CommonForm 
-        form={form} 
-        initialValues={initialValues}
-        formType={formType} 
-        visible={visible} 
-      />
+      {renderForm()}
     </OperateModal>
   );
 };
