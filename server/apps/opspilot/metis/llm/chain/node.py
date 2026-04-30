@@ -2,11 +2,20 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
 import json_repair
+
+# ---------------------------------------------------------------------------
+# DeepSeek thinking mode fix: langchain-openai does not serialize
+# reasoning_content from AIMessage.additional_kwargs back to the API request.
+# DeepSeek requires this field to be passed back in multi-turn conversations.
+# We monkey-patch the conversion function to include it.
+# ---------------------------------------------------------------------------
+import langchain_openai.chat_models.base as _lc_openai_base  # noqa: E402
 from deepagents import create_deep_agent
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
+from langchain_openai.chat_models.base import _convert_message_to_dict as _original_convert_message_to_dict
 from langgraph.constants import END
 from langgraph.graph import StateGraph
 from langgraph.prebuilt import ToolNode
@@ -20,6 +29,17 @@ from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import Graphiti
 from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
+
+
+def _patched_convert_message_to_dict(message, *args, **kwargs):
+    """Wrap the original converter to inject reasoning_content for DeepSeek."""
+    result = _original_convert_message_to_dict(message, *args, **kwargs)
+    if isinstance(message, AIMessage) and result.get("role") == "assistant" and "reasoning_content" in message.additional_kwargs:
+        result["reasoning_content"] = message.additional_kwargs["reasoning_content"]
+    return result
+
+
+_lc_openai_base._convert_message_to_dict = _patched_convert_message_to_dict
 
 
 class BasicNode:
