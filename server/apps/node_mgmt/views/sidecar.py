@@ -583,7 +583,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
 
         token_data = InstallTokenService.validate_and_get_token_data(token)
         requested_arch = normalize_cpu_architecture(token_data.get("cpu_architecture", ""))
-        config = InstallerSessionService.build_session_config(token, requested_arch)
+        config = InstallerSessionService.build_session_config(token, requested_arch, token_data=token_data)
         installer = config["installer"]
         install_dir = config["install_dir"]
         server_base_url = config["server_url"].replace("/api/v1/node_mgmt/open_api/node", "")

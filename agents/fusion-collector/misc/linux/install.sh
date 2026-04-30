@@ -38,15 +38,26 @@ check_args() {
 install_service() {
     echo "开始安装 Fusion Collector Sidecar 服务..."
 
+    escape_sed_replacement() {
+        printf '%s' "$1" | sed -e 's/[&|\\]/\\&/g'
+    }
+
+    ESCAPED_SERVER_URL=$(escape_sed_replacement "$SERVER_URL")
+    ESCAPED_SERVER_API_TOKEN=$(escape_sed_replacement "$SERVER_API_TOKEN")
+    ESCAPED_ZONE=$(escape_sed_replacement "$ZONE")
+    ESCAPED_TEAMS=$(escape_sed_replacement "$TEAMS")
+    ESCAPED_NODE_NAME=$(escape_sed_replacement "$NODE_NAME")
+    ESCAPED_CPU_ARCHITECTURE=$(escape_sed_replacement "$CPU_ARCHITECTURE")
+
     # 替换配置文件中的占位符
-    sed -i "s|__SERVER__URL__|$SERVER_URL|g" /opt/fusion-collectors/sidecar.yml
-    sed -i "s|__SERVER__API__TOKEN__|$SERVER_API_TOKEN|g" /opt/fusion-collectors/sidecar.yml
-    TAGS="\"zone:$ZONE\", \"group:$TEAMS\""
+    sed -i "s|__SERVER__URL__|$ESCAPED_SERVER_URL|g" /opt/fusion-collectors/sidecar.yml
+    sed -i "s|__SERVER__API__TOKEN__|$ESCAPED_SERVER_API_TOKEN|g" /opt/fusion-collectors/sidecar.yml
+    TAGS="\"zone:$ESCAPED_ZONE\", \"group:$ESCAPED_TEAMS\""
     if [ -n "$CPU_ARCHITECTURE" ]; then
-        TAGS="$TAGS, \"cpu_architecture:$CPU_ARCHITECTURE\""
+        TAGS="$TAGS, \"cpu_architecture:$ESCAPED_CPU_ARCHITECTURE\""
     fi
     sed -i "s|__TAGS__|$TAGS|g" /opt/fusion-collectors/sidecar.yml
-    sed -i "s|__NODE__NAME__|$NODE_NAME|g" /opt/fusion-collectors/sidecar.yml
+    sed -i "s|__NODE__NAME__|$ESCAPED_NODE_NAME|g" /opt/fusion-collectors/sidecar.yml
 
     # 拷贝服务文件并启用
     cp -f "./sidecar.service" /etc/systemd/system/

@@ -911,7 +911,7 @@ def test_open_api_linux_bootstrap_contains_arch_detection_and_routed_urls(monkey
     monkeypatch.setattr(
         InstallerSessionService,
         "build_session_config",
-        lambda token, arch="": {
+        lambda token, arch="", token_data=None: {
             "installer": {"filename": "bklite-controller-installer"},
             "install_dir": "/opt/fusion-collectors",
             "server_url": "https://example.com/api/v1/node_mgmt/open_api/node",
@@ -927,6 +927,38 @@ def test_open_api_linux_bootstrap_contains_arch_detection_and_routed_urls(monkey
     assert 'EXPECTED_ARCH="arm64"' in content
     assert "installer/linux/download?token=abc&arch=$DETECTED_ARCH" in content
     assert "installer/session?token=abc&arch=$DETECTED_ARCH" in content
+
+
+@pytest.mark.django_db
+def test_open_api_linux_bootstrap_consumes_token_once(monkeypatch):
+    factory = APIRequestFactory()
+    view = OpenSidecarViewSet.as_view({"get": "linux_bootstrap"})
+    calls = {"count": 0}
+
+    def fake_validate(token):
+        calls["count"] += 1
+        return {"cpu_architecture": NodeConstants.ARM64_ARCH}
+
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.sidecar.InstallTokenService.validate_and_get_token_data",
+        fake_validate,
+    )
+    monkeypatch.setattr(
+        InstallerSessionService,
+        "build_session_config",
+        lambda token, arch="", token_data=None: {
+            "installer": {"filename": "bklite-controller-installer"},
+            "install_dir": "/opt/fusion-collectors",
+            "server_url": "https://example.com/api/v1/node_mgmt/open_api/node",
+        },
+    )
+
+    request = factory.get("/node_mgmt/open_api/installer/linux_bootstrap", {"token": "abc"})
+
+    response = view(request)
+
+    assert response.status_code == 200
+    assert calls["count"] == 1
 
 
 @pytest.mark.django_db
