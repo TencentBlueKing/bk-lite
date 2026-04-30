@@ -55,6 +55,8 @@
         "updataconfig": "更新配置",
         "installationMethod": "安装方式",
         "cpuArchitecture": "CPU架构",
+        "noControllerVersionTitle": "没有匹配的控制器版本",
+        "noControllerVersionDesc": "当前所选操作系统（{os}）和 CPU 架构（{architecture}）暂无可用控制器安装包，请先上传匹配的安装包。",
         "viewGuide": "查看指引",
         "loginAccount": "登录账号",
         "authType": "验证方式",

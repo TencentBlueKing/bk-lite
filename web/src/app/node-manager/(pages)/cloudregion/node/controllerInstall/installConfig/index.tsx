@@ -6,7 +6,7 @@ import React, {
   useCallback,
   useMemo
 } from 'react';
-import { Button, Form, Select, Segmented } from 'antd';
+import { Alert, Button, Form, Select, Segmented } from 'antd';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { TableDataItem } from '@/app/node-manager/types';
@@ -171,6 +171,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     });
     return Array.from(deduped.values());
   }, [cpuArchitecture, os, sidecarVersionList]);
+
+  const noVersionAvailable = useMemo(() => {
+    return !versionLoading && filteredSidecarVersionList.length === 0;
+  }, [filteredSidecarVersionList.length, versionLoading]);
 
   useEffect(() => {
     if (!isLoading) {
@@ -368,7 +372,12 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const getSidecarList = async () => {
     setVersionLoading(true);
     try {
-      const data = await getPackages({ os: '', object: 'Controller' });
+      const data = await getPackages({
+        os,
+        cpu_architecture: cpuArchitecture,
+        type: 'controller',
+        object: 'Controller'
+      });
       setSidecarVersionList(data);
     } finally {
       setVersionLoading(false);
@@ -531,6 +540,19 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
               architecture: cpuArchitecture === 'arm64' ? 'ARM64' : cpuArchitecture
             })}
           </div>
+          {noVersionAvailable && (
+            <div className="mt-[8px] max-w-[420px]">
+              <Alert
+                type="warning"
+                showIcon
+                message={t('node-manager.cloudregion.node.noControllerVersionTitle')}
+                description={t('node-manager.cloudregion.node.noControllerVersionDesc', undefined, {
+                  architecture: cpuArchitecture === 'arm64' ? 'ARM64' : cpuArchitecture,
+                  os: os === 'windows' ? 'Windows' : 'Linux'
+                })}
+              />
+            </div>
+          )}
         </Form.Item>
         <div className="flex items-center justify-between mb-[10px]">
           <span className="text-[14px]">
@@ -592,6 +614,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           type="primary"
           className="mr-[10px]"
           loading={confirmLoading}
+          disabled={noVersionAvailable}
           onClick={handleCreate}
         >
           {`${t('node-manager.cloudregion.node.toInstall')} (${

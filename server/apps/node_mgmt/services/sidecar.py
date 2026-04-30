@@ -37,6 +37,8 @@ from apps.core.logger import node_logger as logger
 
 class Sidecar:
     CONVERGE_DEBOUNCE_SECONDS = 5
+    CPU_ARCHITECTURE_TAG = "cpu_architecture"
+    INSTALL_TASK_NODE_TAG = "install_task_node"
 
     @staticmethod
     def generate_etag(data):
@@ -195,9 +197,22 @@ class Sidecar:
 
     @staticmethod
     def _fallback_cpu_architecture(node_id: str, request_data: dict) -> str:
+        cpu_architecture = normalize_cpu_architecture(request_data.get("cpu_architecture"))
+        if cpu_architecture:
+            return cpu_architecture
+
         cpu_architecture = normalize_cpu_architecture(request_data.get("architecture"))
         if cpu_architecture:
             return cpu_architecture
+
+        tags = request_data.get("tags", [])
+        if tags:
+            tag_data = format_tags_dynamic(tags, [Sidecar.CPU_ARCHITECTURE_TAG])
+            cpu_architectures = tag_data.get(Sidecar.CPU_ARCHITECTURE_TAG, [])
+            if cpu_architectures:
+                normalized_tag_arch = normalize_cpu_architecture(cpu_architectures[0])
+                if normalized_tag_arch:
+                    return normalized_tag_arch
 
         operating_system = str(request_data.get("operating_system", "")).lower()
         node_ip = request_data.get("ip", "")
@@ -268,8 +283,14 @@ class Sidecar:
             ControllerConstants.CLOUD_TAG,
             ControllerConstants.INSTALL_METHOD_TAG,
             ControllerConstants.NODE_TYPE_TAG,
+            Sidecar.CPU_ARCHITECTURE_TAG,
+            Sidecar.INSTALL_TASK_NODE_TAG,
         ]
         tags_data = format_tags_dynamic(request_data.get("tags", []), allowed_prefixes)
+
+        cpu_architecture_tags = tags_data.get(Sidecar.CPU_ARCHITECTURE_TAG, [])
+        if cpu_architecture_tags and not request_data.get("cpu_architecture"):
+            request_data.update(cpu_architecture=normalize_cpu_architecture(cpu_architecture_tags[0]))
 
         # 补充云区域关联
         clouds = tags_data.get(ControllerConstants.CLOUD_TAG, [])

@@ -5,6 +5,12 @@ from typing import Any, cast
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.models.installer import CollectorTask, CollectorTaskNode
+from apps.node_mgmt.serializers.installer import (
+    ControllerInstallRequestSerializer,
+    ControllerManualInstallRequestSerializer,
+    InstallCommandRequestSerializer,
+    InstallerArtifactQuerySerializer,
+)
 from apps.node_mgmt.serializers.node import TaskNodesQuerySerializer
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.tasks.installer import (
@@ -21,12 +27,15 @@ from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_re
 class InstallerViewSet(ViewSet):
     @action(detail=False, methods=["post"], url_path="controller/install")
     def controller_install(self, request):
+        serializer = ControllerInstallRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = cast(dict[str, Any], serializer.validated_data)
         task_id = InstallerService.install_controller(
-            request.data["cloud_region_id"],
-            request.data["work_node"],
-            request.data["package_id"],
-            request.data["nodes"],
-            request.data["cpu_architecture"],
+            data["cloud_region_id"],
+            data["work_node"],
+            data["package_id"],
+            data["nodes"],
+            data["cpu_architecture"],
         )
         install_controller.delay(task_id)
         timeout_controller_install_task.apply_async(
@@ -59,18 +68,18 @@ class InstallerViewSet(ViewSet):
     # 控制器手动安装
     @action(detail=False, methods=["post"], url_path="controller/manual_install")
     def controller_manual_install(self, request):
-        cpu_architecture = InstallerService.normalize_required_cpu_architecture(
-            request.data["os"],
-            request.data["cpu_architecture"],
-        )
+        serializer = ControllerManualInstallRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = cast(dict[str, Any], serializer.validated_data)
+        cpu_architecture = data["cpu_architecture"]
         result = []
-        for node in request.data["nodes"]:
+        for node in data["nodes"]:
             result.append(
                 {
-                    "cloud_region_id": request.data["cloud_region_id"],
-                    "os": request.data["os"],
+                    "cloud_region_id": data["cloud_region_id"],
+                    "os": data["os"],
                     "cpu_architecture": cpu_architecture,
-                    "package_id": request.data["package_id"],
+                    "package_id": data["package_id"],
                     "ip": node["ip"],
                     "node_id": node["node_id"],
                     "node_name": node.get("node_name", ""),
@@ -170,28 +179,35 @@ class InstallerViewSet(ViewSet):
     # 获取安装命令
     @action(detail=False, methods=["post"], url_path="get_install_command")
     def get_install_command(self, request):
+        serializer = InstallCommandRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = cast(dict[str, Any], serializer.validated_data)
         data = InstallerService.get_install_command(
             request.user.username,
-            request.data["ip"],
-            request.data["node_id"],
-            request.data["os"],
-            request.data["package_id"],
-            request.data["cloud_region_id"],
-            request.data.get("organizations", []),
-            request.data.get("node_name", ""),
+            data["ip"],
+            data["node_id"],
+            data["os"],
+            data["package_id"],
+            data["cloud_region_id"],
+            data.get("organizations", []),
+            data.get("node_name", ""),
             install_mode=InstallerService.MANUAL_INSTALL_MODE,
-            cpu_architecture=request.data["cpu_architecture"],
+            cpu_architecture=data["cpu_architecture"],
         )
         return WebUtils.response_success(data)
 
     @action(detail=False, methods=["GET"], url_path="windows/download")
     def windows_download(self, request):
-        file, _ = InstallerService.download_windows_installer(request.query_params.get("arch", ""))
+        serializer = InstallerArtifactQuerySerializer(data=request.query_params, context={"target_os": "windows"})
+        serializer.is_valid(raise_exception=True)
+        file, _ = InstallerService.download_windows_installer(serializer.validated_data.get("arch", ""))
         return WebUtils.response_file(file, InstallerConstants.WINDOWS_INSTALLER_FILENAME)
 
     @action(detail=False, methods=["GET"], url_path="linux/download")
     def linux_download(self, request):
-        file, _ = InstallerService.download_linux_installer(request.query_params.get("arch", ""))
+        serializer = InstallerArtifactQuerySerializer(data=request.query_params, context={"target_os": "linux"})
+        serializer.is_valid(raise_exception=True)
+        file, _ = InstallerService.download_linux_installer(serializer.validated_data.get("arch", ""))
         return WebUtils.response_file(file, InstallerConstants.LINUX_INSTALLER_FILENAME)
 
     @action(detail=False, methods=["GET"], url_path="manifest")
@@ -200,4 +216,6 @@ class InstallerViewSet(ViewSet):
 
     @action(detail=False, methods=["GET"], url_path="metadata/(?P<target_os>[^/.]+)")
     def metadata(self, request, target_os):
-        return WebUtils.response_success(InstallerService.installer_metadata(target_os, request.query_params.get("arch", "")))
+        serializer = InstallerArtifactQuerySerializer(data=request.query_params, context={"target_os": target_os})
+        serializer.is_valid(raise_exception=True)
+        return WebUtils.response_success(InstallerService.installer_metadata(target_os, serializer.validated_data.get("arch", "")))

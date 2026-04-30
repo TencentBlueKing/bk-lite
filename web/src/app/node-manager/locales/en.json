@@ -55,6 +55,8 @@
         "updataconfig": "Update Configuration",
         "installationMethod": "Installation Method",
         "cpuArchitecture": "CPU Architecture",
+        "noControllerVersionTitle": "No matching controller version",
+        "noControllerVersionDesc": "No controller package is available for the selected operating system ({os}) and CPU architecture ({architecture}). Upload a matching package first.",
         "viewGuide": "View guidance",
         "loginAccount": "Login Account",
         "authType": "Authentication Type",
