@@ -439,6 +439,7 @@ func runLinuxInstaller(cfg *Config) error {
 		cfg.GroupID,
 		cfg.NodeName,
 		cfg.NodeID,
+		cfg.Package.CPUArchitecture,
 	)
 	cmd.Dir = cfg.InstallDir
 	cmd.Stdout = os.Stdout
@@ -756,7 +757,7 @@ send_status: true
 cache_path: "%s\\cache"
 log_path: "%s\\logs"
 collector_configuration_directory: "%s\\generated"
-tags: ["zone:%s", "group:%s"]
+tags: ["zone:%s", "group:%s", "cpu_architecture:%s"]
 collector_binaries_accesslist:
   - "%s\\bin\\*"
 `,
@@ -765,7 +766,7 @@ collector_binaries_accesslist:
 		cfg.NodeID,
 		cfg.NodeName,
 		installDir, installDir, installDir,
-		cfg.ZoneID, cfg.GroupID,
+		cfg.ZoneID, cfg.GroupID, cfg.Package.CPUArchitecture,
 		installDir,
 	)
 

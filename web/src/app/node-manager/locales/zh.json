@@ -45,7 +45,7 @@
       "node": {
         "installCollector": "安装组件",
         "node": "节点",
-        "sidecarVersionDes": "请选择远程安装的控制器版本。",
+        "sidecarVersionDes": "请选择当前操作系统和 CPU 架构（{architecture}）对应的控制器版本。",
         "ruleinputinfo": "请输入你的IP地址!",
         "collectorDetails": "组件详情",
         "installed": "已安装",
@@ -54,6 +54,9 @@
         "uninstalling": "卸载中",
         "updataconfig": "更新配置",
         "installationMethod": "安装方式",
+        "cpuArchitecture": "CPU架构",
+        "noControllerVersionTitle": "没有匹配的控制器版本",
+        "noControllerVersionDesc": "当前所选操作系统（{os}）和 CPU 架构（{architecture}）暂无可用控制器安装包，请先上传匹配的安装包。",
         "viewGuide": "查看指引",
         "loginAccount": "登录账号",
         "authType": "验证方式",

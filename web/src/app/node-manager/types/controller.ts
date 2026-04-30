@@ -107,6 +107,7 @@ export interface ControllerInstallProgressRow {
   node_id?: string | number;
   task_node_id?: string | number;
   os?: string;
+  cpu_architecture?: string;
   organizations?: string[];
   status?: InstallerTaskStatus | null;
   result?: OperationTaskResult | null;
@@ -146,10 +147,12 @@ export interface NodeItem {
   node_name: string;
   organizations: React.Key[];
   node_id: string;
+  cpu_architecture?: string;
 }
 export interface ManualInstallController {
   cloud_region_id?: React.Key;
   os?: string;
+  cpu_architecture?: string;
   package_id?: React.Key;
   nodes?: NodeItem[];
 }
@@ -159,6 +162,7 @@ export interface OperationGuidanceProps {
   nodeName: string;
   installerSession?: string;
   os?: string;
+  cpu_architecture?: string;
   installerVersion?: string;
   defaultInstallerVersion?: string;
   nodeData?: any;

@@ -18,6 +18,7 @@ from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
 from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.services.package import PackageService
+from apps.node_mgmt.filters.package import PackageVersionFilter
 from apps.node_mgmt.services.version_upgrade import VersionUpgradeService
 from apps.node_mgmt.tasks import installer as installer_tasks
 from apps.node_mgmt.tasks.version_discovery import _calculate_upgrade_info
@@ -499,6 +500,64 @@ def test_update_node_client_falls_back_to_install_task_cpu_architecture(monkeypa
 
 
 @pytest.mark.django_db
+def test_update_node_client_uses_cpu_architecture_tag_before_task_fallback(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-tag-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    monkeypatch.setattr(Sidecar, "create_default_config", lambda *args, **kwargs: None)
+    monkeypatch.setattr(Sidecar, "trigger_converge_tasks_if_needed", lambda *args, **kwargs: None)
+
+    install_task = ControllerTask.objects.create(
+        type="install",
+        package_version_id=1,
+        status="success",
+        cloud_region=cloud_region,
+        work_node="worker-1",
+        created_by="tester",
+        updated_by="tester",
+    )
+    ControllerTaskNode.objects.create(
+        task=install_task,
+        ip="10.0.0.35",
+        os=NodeConstants.LINUX_OS,
+        port=22,
+        username="tester",
+        password="",
+        private_key="",
+        passphrase="",
+        status="success",
+        result={},
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+    )
+
+    request = SimpleNamespace(
+        headers={},
+        META={},
+        data={
+            "node_name": "node-tag-arch",
+            "node_details": {
+                "ip": "10.0.0.35",
+                "operating_system": "Linux",
+                "collector_configuration_directory": "/etc/collector",
+                "metrics": {},
+                "status": {},
+                "tags": [f"zone:{cloud_region.id}", "cpu_architecture:arm64"],
+                "log_file_list": [],
+            },
+        },
+    )
+
+    response = Sidecar.update_node_client(request, "node-sidecar-tag-arch")
+    node = Node.objects.get(id="node-sidecar-tag-arch")
+
+    assert response.status_code == 202
+    assert node.cpu_architecture == NodeConstants.ARM64_ARCH
+
+
+@pytest.mark.django_db
 def test_update_node_client_does_not_overwrite_existing_cpu_architecture_with_empty_value(monkeypatch):
     cloud_region = CloudRegion.objects.create(
         name="sidecar-keep-arch-region",
@@ -845,6 +904,177 @@ def test_get_install_command_view_passes_cpu_architecture(monkeypatch):
     assert response.status_code == 200
     assert _json_response_data(response)["data"] == "curl command"
     assert captured["kwargs"]["cpu_architecture"] == NodeConstants.ARM64_ARCH
+
+
+@pytest.mark.django_db
+def test_controller_manual_install_includes_normalized_cpu_architecture():
+    factory = APIRequestFactory()
+    view = InstallerViewSet.as_view({"post": "controller_manual_install"})
+    request = factory.post(
+        "/node_mgmt/api/installer/controller/manual_install/",
+        {
+            "cloud_region_id": 1,
+            "os": NodeConstants.LINUX_OS,
+            "cpu_architecture": "aarch64",
+            "package_id": 1,
+            "nodes": [
+                {
+                    "ip": "10.0.0.11",
+                    "node_id": "node-11",
+                    "node_name": "linux-arm-node",
+                    "organizations": [1],
+                }
+            ],
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_build_admin_user())
+
+    response = view(request)
+
+    assert response.status_code == 200
+    payload = _json_response_data(response)["data"]
+    assert payload[0]["cpu_architecture"] == NodeConstants.ARM64_ARCH
+
+
+@pytest.mark.django_db
+def test_controller_manual_install_rejects_missing_cpu_architecture():
+    factory = APIRequestFactory()
+    view = InstallerViewSet.as_view({"post": "controller_manual_install"})
+    request = factory.post(
+        "/node_mgmt/api/installer/controller/manual_install/",
+        {
+            "cloud_region_id": 1,
+            "os": NodeConstants.LINUX_OS,
+            "cpu_architecture": "",
+            "package_id": 1,
+            "nodes": [
+                {
+                    "ip": "10.0.0.12",
+                    "node_id": "node-12",
+                    "node_name": "linux-node",
+                    "organizations": [1],
+                }
+            ],
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_build_admin_user())
+
+    response = view(request)
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_controller_install_view_rejects_windows_arm64_payload():
+    factory = APIRequestFactory()
+    view = InstallerViewSet.as_view({"post": "controller_install"})
+    request = factory.post(
+        "/node_mgmt/api/installer/controller/install/",
+        {
+            "cloud_region_id": 1,
+            "work_node": "worker-1",
+            "package_id": 1,
+            "cpu_architecture": "arm64",
+            "nodes": [
+                {
+                    "ip": "10.0.0.40",
+                    "node_name": "windows-arm",
+                    "os": NodeConstants.WINDOWS_OS,
+                    "organizations": [1],
+                    "port": 22,
+                    "username": "root",
+                    "password": "secret",
+                    "private_key": "",
+                    "passphrase": "",
+                }
+            ],
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_build_admin_user())
+
+    with pytest.raises(BaseAppException, match="Unsupported CPU architecture for os=windows"):
+        view(request)
+
+
+@pytest.mark.django_db
+def test_package_list_filters_controller_versions_by_exact_architecture():
+    PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Controller",
+        version="1.0.0",
+        name="controller-x86_64.tar.gz",
+        created_by="tester",
+        updated_by="tester",
+    )
+    arm_package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        object="Controller",
+        version="1.0.0",
+        name="controller-arm64.tar.gz",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    queryset = PackageVersion.objects.filter(type="controller", object="Controller", os=NodeConstants.LINUX_OS)
+    filtered = PackageVersionFilter(
+        data={
+            "type": "controller",
+            "object": "Controller",
+            "os": NodeConstants.LINUX_OS,
+            "cpu_architecture": "aarch64",
+        },
+        queryset=queryset,
+    ).qs
+
+    assert list(filtered.values_list("id", flat=True)) == [arm_package.id]
+
+
+@pytest.mark.django_db
+def test_install_controller_requires_cpu_architecture():
+    cloud_region = CloudRegion.objects.create(
+        name="installer-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Controller",
+        version="1.0.0",
+        name="fusion-collectors.tar.gz",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    with pytest.raises(BaseAppException, match="Missing or unsupported CPU architecture"):
+        InstallerService.install_controller(
+            cloud_region.id,
+            "work-node",
+            package.id,
+            [
+                {
+                    "ip": "10.0.0.13",
+                    "node_name": "linux-node",
+                    "os": NodeConstants.LINUX_OS,
+                    "organizations": [1],
+                    "port": 22,
+                    "username": "root",
+                    "password": "secret",
+                    "private_key": "",
+                    "passphrase": "",
+                }
+            ],
+            "",
+        )
 
 
 def test_installer_init_command_supports_cpu_architecture(tmp_path, monkeypatch):

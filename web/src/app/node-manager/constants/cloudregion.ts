@@ -11,6 +11,25 @@ const OPERATE_SYSTEMS: SegmentedItem[] = [
   },
 ];
 
+const CPU_ARCHITECTURE_OPTIONS: Record<string, SegmentedItem[]> = {
+  linux: [
+    {
+      label: 'x86_64',
+      value: 'x86_64'
+    },
+    {
+      label: 'ARM64',
+      value: 'arm64'
+    }
+  ],
+  windows: [
+    {
+      label: 'x86_64',
+      value: 'x86_64'
+    }
+  ]
+};
+
 const BATCH_FIELD_MAPS: Record<string, string> = {
   os: 'operateSystem',
   organizations: 'organization',
@@ -35,6 +54,7 @@ const STATUS_CODE_PRIORITY: Record<number, number> = {
 
 export {
   OPERATE_SYSTEMS,
+  CPU_ARCHITECTURE_OPTIONS,
   BATCH_FIELD_MAPS,
   DISPLAY_PLUGINS_COUNT,
   STATUS_CODE_PRIORITY,
