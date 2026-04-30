@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import json
 from io import BytesIO
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
@@ -11,7 +12,7 @@ from apps.base.models import User
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.node_mgmt.models import CloudRegion, Collector, Controller, Node, PackageVersion, SidecarEnv
+from apps.node_mgmt.models import CloudRegion, Collector, CollectorConfiguration, Controller, Node, PackageVersion, SidecarEnv
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
 from apps.node_mgmt.services.sidecar import Sidecar
@@ -436,6 +437,140 @@ def test_update_node_client_persists_normalized_cpu_architecture(monkeypatch):
     assert response.status_code == 202
     assert node.cpu_architecture == NodeConstants.ARM64_ARCH
     assert node.operating_system == NodeConstants.LINUX_OS
+
+
+@pytest.mark.django_db
+def test_create_default_config_for_empty_architecture_skips_arm64_collectors(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-empty-arch-default-config",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-empty-arch-default-config",
+        name="node-empty-arch-default-config",
+        ip="10.0.0.31",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    monkeypatch.setattr(Sidecar, "get_cloud_region_envconfig", lambda _node: {"SIDECAR_INPUT_MODE": "nats"})
+
+    Collector.objects.create(
+        id="telegraf_linux_default_generic",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={"nats": "[[inputs.cpu]]"},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    Collector.objects.create(
+        id="filebeat_linux_default_x86",
+        name="Filebeat",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        executable_path="/opt/filebeat",
+        execute_parameters="-c %s",
+        introduction="x86_64",
+        icon="filebeat",
+        controller_default_run=True,
+        default_config={"nats": "filebeat.inputs: []"},
+        tags=[],
+        package_name="filebeat",
+        created_by="tester",
+        updated_by="tester",
+    )
+    Collector.objects.create(
+        id="vector_linux_default_arm64",
+        name="Vector",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        executable_path="/opt/vector",
+        execute_parameters="--config %s",
+        introduction="arm64",
+        icon="vector",
+        controller_default_run=True,
+        default_config={"nats": "sources: {}"},
+        tags=[],
+        package_name="vector",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    Sidecar.create_default_config(node, [])
+
+    collector_ids = set(CollectorConfiguration.objects.filter(nodes=node).values_list("collector_id", flat=True))
+    assert "telegraf_linux_default_generic" in collector_ids
+    assert "filebeat_linux_default_x86" in collector_ids
+    assert "vector_linux_default_arm64" not in collector_ids
+
+
+@pytest.mark.django_db
+def test_create_default_config_for_arm64_node_keeps_arm64_collectors(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-arm64-default-config",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-arm64-default-config",
+        name="node-arm64-default-config",
+        ip="10.0.0.32",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    monkeypatch.setattr(Sidecar, "get_cloud_region_envconfig", lambda _node: {"SIDECAR_INPUT_MODE": "nats"})
+
+    Collector.objects.create(
+        id="telegraf_linux_arm64_default",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        executable_path="/opt/telegraf-arm64",
+        execute_parameters="--config %s",
+        introduction="arm64",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={"nats": "[[inputs.cpu]]"},
+        tags=[],
+        package_name="telegraf-arm64",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    Sidecar.create_default_config(node, [])
+
+    collector_ids = set(CollectorConfiguration.objects.filter(nodes=node).values_list("collector_id", flat=True))
+    assert "telegraf_linux_arm64_default" in collector_ids
 
 
 @pytest.mark.django_db
@@ -1161,6 +1296,683 @@ def test_nats_batch_create_child_configs_falls_back_to_generic_collector_configu
 
     child = generic_config.childconfig_set.get(id="child-arm-telegraf")
     assert child.collector_config_id == generic_config.id
+
+
+@pytest.mark.django_db
+def test_nats_batch_create_child_configs_prefers_exact_architecture_collector_configuration():
+    cloud_region = CloudRegion.objects.create(
+        name="region-nats-child-exact",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-arm-child-exact",
+        name="node-arm-child-exact",
+        ip="10.0.0.23",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    generic_collector = Collector.objects.create(
+        id="telegraf_linux_exact_generic",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    arm_collector = Collector.objects.create(
+        id="telegraf_linux_exact_arm64",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        executable_path="/opt/telegraf-arm64",
+        execute_parameters="--config %s",
+        introduction="arm64",
+        icon="telegraf",
+        default_config={},
+        tags=[],
+        package_name="telegraf-arm64",
+        created_by="tester",
+        updated_by="tester",
+    )
+    generic_config = generic_collector.collectorconfiguration_set.create(
+        id="cfg-generic-telegraf-exact",
+        name="cfg-generic-telegraf-exact",
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    generic_config.nodes.add(node)
+    arm_config = arm_collector.collectorconfiguration_set.create(
+        id="cfg-arm-telegraf-exact",
+        name="cfg-arm-telegraf-exact",
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    arm_config.nodes.add(node)
+
+    NatsService().batch_create_child_configs(
+        [
+            {
+                "id": "child-arm-telegraf-exact",
+                "collect_type": "metrics",
+                "type": "input",
+                "content": "[[inputs.mem]]",
+                "node_id": node.id,
+                "collector_name": "Telegraf",
+                "env_config": {},
+            }
+        ]
+    )
+
+    child = arm_config.childconfig_set.get(id="child-arm-telegraf-exact")
+    assert child.collector_config_id == arm_config.id
+
+
+@pytest.mark.django_db
+def test_nats_batch_create_child_configs_uses_generic_for_unknown_node_architecture():
+    cloud_region = CloudRegion.objects.create(
+        name="region-nats-child-unknown",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-unknown-child",
+        name="node-unknown-child",
+        ip="10.0.0.24",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    generic_collector = Collector.objects.create(
+        id="telegraf_linux_unknown_generic",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    arm_collector = Collector.objects.create(
+        id="telegraf_linux_unknown_arm64",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        executable_path="/opt/telegraf-arm64",
+        execute_parameters="--config %s",
+        introduction="arm64",
+        icon="telegraf",
+        default_config={},
+        tags=[],
+        package_name="telegraf-arm64",
+        created_by="tester",
+        updated_by="tester",
+    )
+    generic_config = generic_collector.collectorconfiguration_set.create(
+        id="cfg-generic-telegraf-unknown",
+        name="cfg-generic-telegraf-unknown",
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    generic_config.nodes.add(node)
+    arm_config = arm_collector.collectorconfiguration_set.create(
+        id="cfg-arm-telegraf-unknown",
+        name="cfg-arm-telegraf-unknown",
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    arm_config.nodes.add(node)
+
+    NatsService().batch_create_child_configs(
+        [
+            {
+                "id": "child-unknown-telegraf",
+                "collect_type": "metrics",
+                "type": "input",
+                "content": "[[inputs.mem]]",
+                "node_id": node.id,
+                "collector_name": "Telegraf",
+                "env_config": {},
+            }
+        ]
+    )
+
+    child = generic_config.childconfig_set.get(id="child-unknown-telegraf")
+    assert child.collector_config_id == generic_config.id
+
+
+@pytest.mark.django_db
+def test_nats_batch_create_child_configs_uses_unique_arch_parent_for_unknown_node_architecture():
+    cloud_region = CloudRegion.objects.create(
+        name="region-nats-child-unknown-unique-arch",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-unknown-child-unique-arch",
+        name="node-unknown-child-unique-arch",
+        ip="10.0.0.29",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    arm_collector = Collector.objects.create(
+        id="telegraf_linux_unknown_unique_arm64",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        executable_path="/opt/telegraf-arm64",
+        execute_parameters="--config %s",
+        introduction="arm64",
+        icon="telegraf",
+        default_config={},
+        tags=[],
+        package_name="telegraf-arm64",
+        created_by="tester",
+        updated_by="tester",
+    )
+    arm_config = arm_collector.collectorconfiguration_set.create(
+        id="cfg-arm-telegraf-unknown-unique",
+        name="cfg-arm-telegraf-unknown-unique",
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    arm_config.nodes.add(node)
+
+    NatsService().batch_create_child_configs(
+        [
+            {
+                "id": "child-unknown-telegraf-unique-arch",
+                "collect_type": "metrics",
+                "type": "input",
+                "content": "[[inputs.mem]]",
+                "node_id": node.id,
+                "collector_name": "Telegraf",
+                "env_config": {},
+            }
+        ]
+    )
+
+    child = arm_config.childconfig_set.get(id="child-unknown-telegraf-unique-arch")
+    assert child.collector_config_id == arm_config.id
+
+
+@pytest.mark.django_db
+def test_nats_batch_create_child_configs_rejects_multiple_arch_parents_for_unknown_node_architecture():
+    cloud_region = CloudRegion.objects.create(
+        name="region-nats-child-unknown-multi-arch",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-unknown-child-multi-arch",
+        name="node-unknown-child-multi-arch",
+        ip="10.0.0.30",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    arm_collector = Collector.objects.create(
+        id="telegraf_linux_unknown_multi_arm64",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        executable_path="/opt/telegraf-arm64",
+        execute_parameters="--config %s",
+        introduction="arm64",
+        icon="telegraf",
+        default_config={},
+        tags=[],
+        package_name="telegraf-arm64",
+        created_by="tester",
+        updated_by="tester",
+    )
+    x86_collector = Collector.objects.create(
+        id="telegraf_linux_unknown_multi_x86",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        executable_path="/opt/telegraf-x86",
+        execute_parameters="--config %s",
+        introduction="x86_64",
+        icon="telegraf",
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    arm_config = arm_collector.collectorconfiguration_set.create(
+        id="cfg-arm-telegraf-unknown-multi",
+        name="cfg-arm-telegraf-unknown-multi",
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    x86_config = x86_collector.collectorconfiguration_set.create(
+        id="cfg-x86-telegraf-unknown-multi",
+        name="cfg-x86-telegraf-unknown-multi",
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    arm_config.nodes.add(node)
+    x86_config.nodes.add(node)
+
+    with pytest.raises(BaseAppException, match="multiple architecture-specific matches"):
+        NatsService().batch_create_child_configs(
+            [
+                {
+                    "id": "child-unknown-telegraf-multi-arch",
+                    "collect_type": "metrics",
+                    "type": "input",
+                    "content": "[[inputs.mem]]",
+                    "node_id": node.id,
+                    "collector_name": "Telegraf",
+                    "env_config": {},
+                }
+            ]
+        )
+
+
+@pytest.mark.django_db
+def test_nats_batch_create_child_configs_rejects_ambiguous_generic_collector_configurations():
+    cloud_region = CloudRegion.objects.create(
+        name="region-nats-child-ambiguous",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-ambiguous-child",
+        name="node-ambiguous-child",
+        ip="10.0.0.25",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    generic_collector = Collector.objects.create(
+        id="telegraf_linux_ambiguous_generic",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    first_config = generic_collector.collectorconfiguration_set.create(
+        id="cfg-generic-telegraf-ambiguous-a",
+        name="cfg-generic-telegraf-ambiguous-a",
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    second_config = generic_collector.collectorconfiguration_set.create(
+        id="cfg-generic-telegraf-ambiguous-b",
+        name="cfg-generic-telegraf-ambiguous-b",
+        config_template="[[inputs.mem]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    first_config.nodes.add(node)
+    second_config.nodes.add(node)
+
+    with pytest.raises(BaseAppException):
+        NatsService().batch_create_child_configs(
+            [
+                {
+                    "id": "child-ambiguous-telegraf",
+                    "collect_type": "metrics",
+                    "type": "input",
+                    "content": "[[inputs.disk]]",
+                    "node_id": node.id,
+                    "collector_name": "Telegraf",
+                    "env_config": {},
+                }
+            ]
+        )
+
+
+@pytest.mark.django_db
+def test_nats_batch_create_child_configs_auto_creates_missing_default_parent_configuration():
+    cloud_region = CloudRegion.objects.create(
+        name="region-nats-child-autocreate",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    SidecarEnv.objects.create(
+        cloud_region=cloud_region,
+        key="SIDECAR_INPUT_MODE",
+        value="nats",
+        type="text",
+    )
+    node = Node.objects.create(
+        id="node-child-autocreate",
+        name="node-child-autocreate",
+        ip="10.0.0.26",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    Collector.objects.create(
+        id="telegraf_linux_autocreate",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={"nats": "[[inputs.cpu]]\n  interval = '10s'"},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    NatsService().batch_create_child_configs(
+        [
+            {
+                "id": "child-autocreate-telegraf",
+                "collect_type": "host",
+                "type": "cpu",
+                "content": "[[inputs.cpu]]",
+                "node_id": node.id,
+                "collector_name": "Telegraf",
+                "env_config": {},
+            }
+        ]
+    )
+
+    parent_config = CollectorConfiguration.objects.get(nodes=node, collector__name="Telegraf")
+    child = parent_config.childconfig_set.get(id="child-autocreate-telegraf")
+    assert parent_config.is_pre is True
+    assert child.collector_config_id == parent_config.id
+
+
+@pytest.mark.django_db
+def test_nats_batch_create_child_configs_reports_missing_default_config_for_parent_creation():
+    cloud_region = CloudRegion.objects.create(
+        name="region-nats-child-missing-default",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-child-missing-default",
+        name="node-child-missing-default",
+        ip="10.0.0.27",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    Collector.objects.create(
+        id="telegraf_linux_missing_default",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    with pytest.raises(BaseAppException, match="缺少 default_config"):
+        NatsService().batch_create_child_configs(
+            [
+                {
+                    "id": "child-missing-default-telegraf",
+                    "collect_type": "host",
+                    "type": "cpu",
+                    "content": "[[inputs.cpu]]",
+                    "node_id": node.id,
+                    "collector_name": "Telegraf",
+                    "env_config": {},
+                }
+            ]
+        )
+
+
+@pytest.mark.django_db
+def test_nats_batch_create_child_configs_reports_bulk_create_failures():
+    cloud_region = CloudRegion.objects.create(
+        name="region-nats-child-bulk-failure",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-child-bulk-failure",
+        name="node-child-bulk-failure",
+        ip="10.0.0.28",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    collector = Collector.objects.create(
+        id="telegraf_linux_bulk_failure",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    parent_config = collector.collectorconfiguration_set.create(
+        id="cfg-bulk-failure",
+        name="cfg-bulk-failure",
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    parent_config.nodes.add(node)
+
+    with patch("apps.node_mgmt.nats.node.ChildConfig.objects.bulk_create", side_effect=Exception("db write failed")):
+        with pytest.raises(BaseAppException, match="批量创建子配置失败"):
+            NatsService().batch_create_child_configs(
+                [
+                    {
+                        "id": "child-bulk-failure-telegraf",
+                        "collect_type": "host",
+                        "type": "cpu",
+                        "content": "[[inputs.cpu]]",
+                        "node_id": node.id,
+                        "collector_name": "Telegraf",
+                        "env_config": {},
+                    }
+                ]
+            )
+
+
+@pytest.mark.django_db
+def test_nats_client_request_includes_error_message_from_nats_response(monkeypatch):
+    from nats_client.clients import request
+    from nats_client.exceptions import NatsClientException
+
+    class _FakeResponse:
+        data = json.dumps(
+            {
+                "success": False,
+                "error": "BaseAppException",
+                "message": "Collector configuration not found for node node-1 and collector Telegraf",
+            }
+        ).encode()
+
+    class _FakeNc:
+        async def request(self, *args, **kwargs):
+            return _FakeResponse()
+
+        async def close(self):
+            return None
+
+    async def _fake_get_nc_client(*args, **kwargs):
+        return _FakeNc()
+
+    monkeypatch.setattr("nats_client.clients.get_nc_client", _fake_get_nc_client)
+
+    with pytest.raises(NatsClientException, match="BaseAppException: Collector configuration not found"):
+        import asyncio
+
+        asyncio.run(request("apps.node_mgmt.nats.node", "batch_create_configs_and_child_configs"))
+
+
+@pytest.mark.django_db
+def test_nats_client_request_falls_back_to_pickled_base_app_exception_message(monkeypatch):
+    from nats_client.clients import request
+    from nats_client.exceptions import NatsClientException
+    import jsonpickle
+
+    class _FakeResponse:
+        data = json.dumps(
+            {
+                "success": False,
+                "error": "BaseAppException",
+                "pickled_exc": jsonpickle.encode(BaseAppException("collector default config missing")),
+            }
+        ).encode()
+
+    class _FakeNc:
+        async def request(self, *args, **kwargs):
+            return _FakeResponse()
+
+        async def close(self):
+            return None
+
+    async def _fake_get_nc_client(*args, **kwargs):
+        return _FakeNc()
+
+    monkeypatch.setattr("nats_client.clients.get_nc_client", _fake_get_nc_client)
+
+    with pytest.raises(NatsClientException, match="BaseAppException: collector default config missing"):
+        import asyncio
+
+        asyncio.run(request("apps.node_mgmt.nats.node", "batch_create_configs_and_child_configs"))
+
+
+@pytest.mark.django_db
+def test_base_app_exception_str_uses_message():
+    exc = BaseAppException("collector config missing")
+
+    assert str(exc) == "collector config missing"
 
 
 @pytest.mark.django_db

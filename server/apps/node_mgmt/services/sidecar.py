@@ -615,6 +615,8 @@ class Sidecar:
         )
         if getattr(node, "cpu_architecture", ""):
             collector_objs = collector_objs.filter(cpu_architecture__in=[node.cpu_architecture, ""])
+        else:
+            collector_objs = collector_objs.filter(cpu_architecture__in=["", NodeConstants.X86_64_ARCH])
         variables = Sidecar.get_cloud_region_envconfig(node)
         default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
 

@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db import IntegrityError
 
 import nats_client
 from apps.core.logger import node_logger as logger
@@ -24,6 +25,113 @@ from apps.core.utils.crypto.aes_crypto import AESCryptor
 
 
 class NatsService:
+    @staticmethod
+    def _resolve_collector_for_node(node: Node, collector_name: str):
+        node_arch = normalize_cpu_architecture(getattr(node, "cpu_architecture", ""))
+        collector = Collector.objects.filter(
+            name=collector_name,
+            node_operating_system=node.operating_system,
+            cpu_architecture=node_arch,
+        ).first()
+        if collector:
+            return collector
+
+        return Collector.objects.filter(
+            name=collector_name,
+            node_operating_system=node.operating_system,
+            cpu_architecture="",
+        ).first()
+
+    def _ensure_parent_configs_for_child_configs(self, configs: list):
+        if not configs:
+            return
+
+        required_pairs = {(config["node_id"], config["collector_name"]) for config in configs}
+        node_ids = [node_id for node_id, _ in required_pairs]
+        collector_names = [collector_name for _, collector_name in required_pairs]
+        existing_pairs = set(
+            CollectorConfiguration.objects.filter(nodes__id__in=node_ids, collector__name__in=collector_names)
+            .values_list("nodes__id", "collector__name")
+            .distinct()
+        )
+        missing_pairs = required_pairs - existing_pairs
+        if not missing_pairs:
+            return
+
+        node_map = {node.id: node for node in Node.objects.filter(id__in=node_ids).select_related("cloud_region")}
+
+        for node_id, collector_name in missing_pairs:
+            node = node_map.get(node_id)
+            if not node:
+                raise BaseAppException(f"节点 {node_id} 不存在，无法为采集器 {collector_name} 创建父配置")
+
+            collector = self._resolve_collector_for_node(node, collector_name)
+            if not collector:
+                raise BaseAppException(
+                    "节点 %s 的采集器 %s 不存在（%s/%s）"
+                    % (
+                        node_id,
+                        collector_name,
+                        node.operating_system,
+                        normalize_cpu_architecture(getattr(node, "cpu_architecture", "")) or "generic",
+                    )
+                )
+
+            if not collector.controller_default_run:
+                raise BaseAppException(f"节点 {node_id} 的采集器 {collector_name} 未启用默认父配置创建(controller_default_run=False)")
+
+            if not collector.default_config:
+                raise BaseAppException(f"节点 {node_id} 的采集器 {collector_name} 缺少 default_config，无法创建父配置")
+
+            NodeService._create_collector_default_config(node, collector)
+
+            if not CollectorConfiguration.objects.filter(nodes__id=node_id, collector__name=collector_name).exists():
+                raise BaseAppException(
+                    f"节点 {node_id} 的采集器 {collector_name} 父配置自动创建失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量"
+                )
+
+    @staticmethod
+    def _resolve_child_parent_config_id(base_configs: list[dict], node_id: str, collector_name: str, node_arch: str) -> str:
+        exact_matches = []
+        generic_matches = []
+        arch_specific_matches = []
+
+        for item in base_configs:
+            if item["nodes__id"] != node_id or item["collector__name"] != collector_name:
+                continue
+
+            collector_arch = normalize_cpu_architecture(item.get("collector__cpu_architecture"))
+            if collector_arch:
+                if node_arch and collector_arch == node_arch:
+                    exact_matches.append(item["id"])
+                else:
+                    arch_specific_matches.append(item["id"])
+                continue
+
+            generic_matches.append(item["id"])
+
+        if len(exact_matches) > 1:
+            raise BaseAppException(
+                f"Ambiguous collector configuration for node {node_id} and collector {collector_name}: multiple exact architecture matches"
+            )
+        if exact_matches:
+            return exact_matches[0]
+
+        if len(generic_matches) > 1:
+            raise BaseAppException(f"Ambiguous collector configuration for node {node_id} and collector {collector_name}: multiple generic matches")
+        if generic_matches:
+            return generic_matches[0]
+
+        if not node_arch:
+            if len(arch_specific_matches) > 1:
+                raise BaseAppException(
+                    f"Ambiguous collector configuration for node {node_id} and collector {collector_name}: multiple architecture-specific matches for unknown node architecture"
+                )
+            if arch_specific_matches:
+                return arch_specific_matches[0]
+
+        raise BaseAppException(f"Collector configuration not found for node {node_id} and collector {collector_name}")
+
     @staticmethod
     def _encrypt_password_fields(env_config: dict) -> dict:
         """加密包含password的环境变量字段"""
@@ -179,7 +287,9 @@ class NatsService:
             - sort_order: 排序（可选）
         """
 
-        base_configs = (
+        self._ensure_parent_configs_for_child_configs(configs)
+
+        base_configs = list(
             CollectorConfiguration.objects.filter(
                 nodes__id__in=[config["node_id"] for config in configs],
                 collector__name__in=[config["collector_name"] for config in configs],
@@ -192,24 +302,16 @@ class NatsService:
             item["id"]: normalize_cpu_architecture(item.get("cpu_architecture"))
             for item in Node.objects.filter(id__in=[config["node_id"] for config in configs]).values("id", "cpu_architecture")
         }
-        exact_base_config_map = {}
-        generic_base_config_map = {}
-        for item in base_configs:
-            key = (item["nodes__id"], item["collector__name"])
-            collector_arch = normalize_cpu_architecture(item.get("collector__cpu_architecture"))
-            if collector_arch:
-                exact_base_config_map[(item["nodes__id"], item["collector__name"], collector_arch)] = item["id"]
-            else:
-                generic_base_config_map[key] = item["id"]
 
         node_objs = []
         for config in configs:
             node_arch = node_arch_map.get(config["node_id"], "")
-            collector_config_id = exact_base_config_map.get((config["node_id"], config["collector_name"], node_arch)) or generic_base_config_map.get(
-                (config["node_id"], config["collector_name"])
+            collector_config_id = self._resolve_child_parent_config_id(
+                base_configs=base_configs,
+                node_id=config["node_id"],
+                collector_name=config["collector_name"],
+                node_arch=node_arch,
             )
-            if not collector_config_id:
-                raise BaseAppException(f"Collector configuration not found for node {config['node_id']} and collector {config['collector_name']}")
 
             # 加密包含password的环境变量
             encrypted_env_config = self._encrypt_password_fields(config.get("env_config", {}))
@@ -228,7 +330,16 @@ class NatsService:
             )
 
         if node_objs:
-            ChildConfig.objects.bulk_create(node_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+            try:
+                ChildConfig.objects.bulk_create(node_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+            except IntegrityError as e:
+                sample_ids = [config.id for config in node_objs[:3]]
+                raise BaseAppException(
+                    f"批量创建子配置失败，可能存在重复子配置ID或无效父配置关联: count={len(node_objs)}, sample_ids={sample_ids}, error={e}"
+                ) from e
+            except Exception as e:
+                sample_ids = [config.id for config in node_objs[:3]]
+                raise BaseAppException(f"批量创建子配置失败: count={len(node_objs)}, sample_ids={sample_ids}, error={e}") from e
 
         invalidate_bulk_child_config_etags([{"collector_config_id": config.collector_config_id} for config in node_objs])
 
