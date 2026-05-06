@@ -1,4 +1,5 @@
 from apps.node_mgmt.models import Controller
+from apps.node_mgmt.constants.node import NodeConstants
 from apps.core.logger import node_logger as logger
 from apps.node_mgmt.management.services.node_init.definition_loader import load_definition_records
 
@@ -22,7 +23,7 @@ def controller_init():
             create_info = {k: v for k, v in controller_info.items() if not k.startswith("_") and k != "id"}
             key = (
                 controller_info["os"],
-                controller_info.get("cpu_architecture", ""),
+                controller_info.get("cpu_architecture", NodeConstants.X86_64_ARCH),
                 controller_info["name"],
             )
 
@@ -30,7 +31,7 @@ def controller_init():
                 obj = old_controller_map[key]
                 obj.description = controller_info["description"]
                 obj.version_command = controller_info["version_command"]
-                obj.cpu_architecture = controller_info.get("cpu_architecture", "")
+                obj.cpu_architecture = controller_info.get("cpu_architecture", NodeConstants.X86_64_ARCH)
                 update_controllers.append(obj)
             else:
                 create_controllers.append(create_info)
