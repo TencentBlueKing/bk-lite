@@ -9,6 +9,7 @@ import pytest
 from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 
 from apps.base.models import User
+from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -2595,6 +2596,199 @@ def test_collector_retrieve_exposes_architecture_display(monkeypatch):
     assert response.data["cpu_architecture"] == NodeConstants.ARM64_ARCH
     assert response.data["architecture_display"] == "ARM64"
     assert response.data["display_name"] == "Vector（ARM64）"
+
+
+@pytest.mark.django_db
+def test_trigger_converge_tasks_if_needed_schedules_legacy_install_task_without_install_node_id(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="legacy-converge-trigger-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.77",
+        node_name="legacy-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={
+            InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING,
+            "steps": [{"action": "connectivity_check", "status": "running", "message": "Wait for node connection"}],
+        },
+    )
+    called = []
+
+    monkeypatch.setattr(Sidecar, "_is_debounce_elapsed", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.sidecar.converge_controller_install_connectivity_for_node.delay",
+        lambda node_id: called.append(node_id),
+    )
+
+    Sidecar.trigger_converge_tasks_if_needed("legacy-install-node", "10.0.0.77", {})
+
+    assert called == ["legacy-install-node"]
+
+
+@pytest.mark.django_db
+def test_converge_controller_install_connectivity_for_node_prefers_install_node_id_with_shared_ip():
+    cloud_region = CloudRegion.objects.create(
+        name="shared-ip-converge-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    stale_task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    current_task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    common_result = {
+        InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING,
+        "steps": [{"action": "connectivity_check", "status": "running", "message": "Wait for node connection"}],
+    }
+    stale_task_node = ControllerTaskNode.objects.create(
+        task=stale_task,
+        ip="10.0.0.88",
+        node_name="stale-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={**common_result, InstallerConstants.INSTALL_NODE_ID_KEY: "stale-install-node"},
+    )
+    current_task_node = ControllerTaskNode.objects.create(
+        task=current_task,
+        ip="10.0.0.88",
+        node_name="current-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={**common_result, InstallerConstants.INSTALL_NODE_ID_KEY: "current-install-node"},
+    )
+    Node.objects.create(
+        id="current-install-node",
+        name="current-node",
+        ip="10.0.0.88",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/tmp/config",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    installer_tasks.converge_controller_install_connectivity_for_node("current-install-node")
+
+    stale_task_node.refresh_from_db()
+    current_task_node.refresh_from_db()
+    assert stale_task_node.status == InstallerConstants.STEP_STATUS_RUNNING
+    assert current_task_node.status == InstallerConstants.STEP_STATUS_SUCCESS
+
+
+@pytest.mark.django_db
+def test_converge_controller_install_connectivity_for_node_falls_back_for_legacy_task_without_install_node_id():
+    cloud_region = CloudRegion.objects.create(
+        name="legacy-converge-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    legacy_task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    mismatched_task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    common_result = {
+        InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING,
+        "steps": [{"action": "connectivity_check", "status": "running", "message": "Wait for node connection"}],
+    }
+    legacy_task_node = ControllerTaskNode.objects.create(
+        task=legacy_task,
+        ip="10.0.0.89",
+        node_name="legacy-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result=common_result,
+    )
+    mismatched_task_node = ControllerTaskNode.objects.create(
+        task=mismatched_task,
+        ip="10.0.0.89",
+        node_name="other-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={**common_result, InstallerConstants.INSTALL_NODE_ID_KEY: "other-install-node"},
+    )
+    Node.objects.create(
+        id="legacy-install-node",
+        name="legacy-node",
+        ip="10.0.0.89",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/tmp/config",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    installer_tasks.converge_controller_install_connectivity_for_node("legacy-install-node")
+
+    legacy_task_node.refresh_from_db()
+    mismatched_task_node.refresh_from_db()
+    assert legacy_task_node.status == InstallerConstants.STEP_STATUS_SUCCESS
+    assert mismatched_task_node.status == InstallerConstants.STEP_STATUS_RUNNING
 
 
 @pytest.mark.django_db

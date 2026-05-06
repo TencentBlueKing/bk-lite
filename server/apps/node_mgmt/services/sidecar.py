@@ -24,6 +24,7 @@ from apps.node_mgmt.models.installer import ControllerTaskNode
 from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
 from apps.node_mgmt.tasks.installer import (
     converge_controller_install_connectivity_for_node,
+    _matches_install_connectivity_target,
 )
 from apps.node_mgmt.utils.step_tracker import build_step, now_iso, update_step_by_action
 from apps.node_mgmt.utils.task_result_schema import apply_result_envelope, normalize_task_details
@@ -159,11 +160,14 @@ class Sidecar:
 
         install_running_exists = False
         if node_ip:
-            install_running_exists = ControllerTaskNode.objects.filter(
-                ip=node_ip,
-                status="running",
-                task__type="install",
-            ).exists()
+            install_running_exists = any(
+                _matches_install_connectivity_target(task_node, node_id, node_ip)
+                for task_node in ControllerTaskNode.objects.filter(
+                    ip=node_ip,
+                    status="running",
+                    task__type="install",
+                )
+            )
 
         if not action_running_exists and not install_running_exists:
             return

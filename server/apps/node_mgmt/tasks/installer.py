@@ -143,6 +143,14 @@ def _get_execution_attempt(node_obj) -> int:
     return 1
 
 
+def _matches_install_connectivity_target(task_node, node_id: str, node_ip: str | None = None) -> bool:
+    result = task_node.result or {}
+    install_node_id = result.get(InstallerConstants.INSTALL_NODE_ID_KEY)
+    if install_node_id:
+        return install_node_id == node_id
+    return bool(node_ip) and task_node.ip == node_ip
+
+
 def _add_step(node_obj, action, status, message, timestamp=None, details=None):
     """添加执行步骤记录并立即持久化"""
     result = node_obj.result or {}
@@ -554,10 +562,16 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                 },
             )
 
+            install_node_id = uuid.uuid4().hex
+            result = node_obj.result or {}
+            result[InstallerConstants.INSTALL_NODE_ID_KEY] = install_node_id
+            node_obj.result = result
+            node_obj.save(update_fields=["result"])
+
             install_command = InstallerService.get_install_command(
                 task_obj.created_by,
                 node_obj.ip,
-                uuid.uuid4().hex,
+                install_node_id,
                 resolved_package.os,
                 resolved_package.id,
                 task_obj.cloud_region_id,
@@ -718,6 +732,9 @@ def converge_controller_install_connectivity_for_node(node_id):
     affected_task_ids = set()
 
     for task_node in running_task_nodes:
+        if not _matches_install_connectivity_target(task_node, node_id, node.ip):
+            continue
+
         if _get_execution_phase(task_node) != InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING:
             continue
 
