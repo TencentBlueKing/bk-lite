@@ -34,6 +34,7 @@ from apps.node_mgmt.management.services.node_init.collector_init import import_c
 from apps.node_mgmt.management.services.node_init.controller_init import controller_init
 from apps.node_mgmt.nats.node import NatsService
 from apps.node_mgmt.serializers.collector import CollectorSerializer
+from apps.node_mgmt.serializers.package import PackageVersionSerializer
 from apps.node_mgmt.views.collector import CollectorViewSet
 from apps.node_mgmt.views.installer import InstallerViewSet
 from apps.node_mgmt.views.sidecar import OpenSidecarViewSet
@@ -1125,6 +1126,79 @@ def test_package_list_filters_controller_versions_by_exact_architecture():
     ).qs
 
     assert list(filtered.values_list("id", flat=True)) == [arm_package.id]
+
+
+@pytest.mark.django_db
+def test_package_list_treats_legacy_empty_arch_controller_as_x86_64():
+    legacy_package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        object="Controller",
+        version="0.9.0",
+        name="controller-legacy.zip",
+        created_by="tester",
+        updated_by="tester",
+    )
+    x86_package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Controller",
+        version="1.0.0",
+        name="controller-x86_64.tar.gz",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    queryset = PackageVersion.objects.filter(type="controller", object="Controller", os=NodeConstants.LINUX_OS)
+    filtered = PackageVersionFilter(
+        data={
+            "type": "controller",
+            "object": "Controller",
+            "os": NodeConstants.LINUX_OS,
+            "cpu_architecture": NodeConstants.X86_64_ARCH,
+        },
+        queryset=queryset,
+    ).qs
+
+    assert set(filtered.values_list("id", flat=True)) == {x86_package.id, legacy_package.id}
+
+
+@pytest.mark.django_db
+def test_package_version_serializer_exposes_normalized_cpu_architecture():
+    package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.LINUX_OS,
+        cpu_architecture="amd64",
+        object="Controller",
+        version="1.0.1",
+        name="fusion-collectors-linux-amd64.zip",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    data = PackageVersionSerializer(package).data
+
+    assert data["cpu_architecture"] == NodeConstants.X86_64_ARCH
+
+
+@pytest.mark.django_db
+def test_package_version_serializer_treats_legacy_empty_arch_controller_as_x86_64():
+    package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        object="Controller",
+        version="1.0.1",
+        name="fusion-collectors-linux-legacy.zip",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    data = PackageVersionSerializer(package).data
+
+    assert data["cpu_architecture"] == NodeConstants.X86_64_ARCH
 
 
 @pytest.mark.django_db

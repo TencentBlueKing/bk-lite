@@ -156,31 +156,27 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     return CPU_ARCHITECTURE_OPTIONS[os] || CPU_ARCHITECTURE_OPTIONS.linux;
   }, [os]);
 
-  // 根据选中的操作系统和 CPU 架构过滤版本列表
+  // 对当前查询结果做去重，接口已按操作系统和 CPU 架构精确过滤
   const filteredSidecarVersionList = useMemo(() => {
-    if (!os) return sidecarVersionList;
-    const filtered = sidecarVersionList.filter(
-      (item) => item.os === os && item.cpu_architecture === cpuArchitecture
-    );
     const deduped = new Map();
-    filtered.forEach((item) => {
+    sidecarVersionList.forEach((item) => {
       const key = `${item.os}-${item.cpu_architecture}-${item.version}`;
       if (!deduped.has(key)) {
         deduped.set(key, item);
       }
     });
     return Array.from(deduped.values());
-  }, [cpuArchitecture, os, sidecarVersionList]);
+  }, [sidecarVersionList]);
 
   const noVersionAvailable = useMemo(() => {
     return !versionLoading && filteredSidecarVersionList.length === 0;
   }, [filteredSidecarVersionList.length, versionLoading]);
 
   useEffect(() => {
-    if (!isLoading) {
+    if (!isLoading && os && cpuArchitecture) {
       getSidecarList();
     }
-  }, [isLoading]);
+  }, [isLoading, os, cpuArchitecture]);
 
   useEffect(() => {
     if (os) {
