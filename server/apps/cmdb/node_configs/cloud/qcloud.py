@@ -27,7 +27,7 @@ class QCloudNodeParams(BaseNodeParams):
         }
 
     def env_config(self, *args, **kwargs):
-        secret_value = self.credential.get("accessSecret") or self.credential.get("secretSecret", "")
+        secret_value = self.credential.get("accessSecret") or self.credential.get("access_secret", "")
         env_config = {
             f"PASSWORD_secret_id_{self._instance_id}": self.credential.get("accessKey", ""),
             f"PASSWORD_secret_key_{self._instance_id}": secret_value,
