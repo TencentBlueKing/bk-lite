@@ -5,13 +5,8 @@ from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.database import DatabaseConstants
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
-from apps.node_mgmt.models import SidecarEnv, Node, PackageVersion
-from apps.node_mgmt.models.installer import (
-    ControllerTask,
-    ControllerTaskNode,
-    CollectorTaskNode,
-    CollectorTask,
-)
+from apps.node_mgmt.models import Node, PackageVersion, SidecarEnv
+from apps.node_mgmt.models.installer import CollectorTask, CollectorTaskNode, ControllerTask, ControllerTaskNode
 from apps.node_mgmt.services.install_token import InstallTokenService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
 from apps.node_mgmt.services.package import PackageService
@@ -41,7 +36,13 @@ class InstallerService:
         if not package_obj:
             raise BaseAppException("Package version not found")
         normalized_arch = normalize_cpu_architecture(cpu_architecture)
-        if package_obj.cpu_architecture == normalized_arch or not normalized_arch:
+        is_legacy_x86_controller = (
+            not package_obj.cpu_architecture
+            and normalized_arch == NodeConstants.X86_64_ARCH
+            and package_obj.type == "controller"
+            and package_obj.object == "Controller"
+        )
+        if package_obj.cpu_architecture == normalized_arch or not normalized_arch or is_legacy_x86_controller:
             return package_obj
         raise BaseAppException(
             f"No package found for os={package_obj.os}, object={package_obj.object}, version={package_obj.version}, arch={normalized_arch}"
