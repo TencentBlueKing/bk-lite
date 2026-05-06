@@ -314,7 +314,7 @@ class EventAlertManager:
             start_time = str(int(event.event_time.timestamp())) if event.event_time else None
             alert_events.append(
                 {
-                    "external_id": event.id,
+                    "external_id": str(event.alert_id),
                     "rule_id": str(event.policy_id),
                     "title": event.content,
                     "description": event.content,
