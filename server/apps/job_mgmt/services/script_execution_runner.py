@@ -148,6 +148,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                     private_key=ssh_creds["private_key"],
                     timeout=timeout,
                     port=ssh_creds["port"],
+                    fast_fail=True,
                 )
 
             if isinstance(exec_result, str):
@@ -157,7 +158,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                 result["status"] = ExecutionStatus.SUCCESS
             elif isinstance(exec_result, dict):
                 result["stdout"] = exec_result.get("stdout", exec_result.get("result", ""))
-                result["stderr"] = exec_result.get("stderr", "")
+                result["stderr"] = self.normalize_executor_error(exec_result, exec_result.get("stderr", ""))
                 result["exit_code"] = exec_result.get("exit_code", exec_result.get("code", 0))
                 result["status"] = ExecutionStatus.SUCCESS if result["exit_code"] == 0 else ExecutionStatus.FAILED
             else:

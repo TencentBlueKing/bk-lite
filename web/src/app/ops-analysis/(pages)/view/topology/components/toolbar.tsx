@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Tooltip } from 'antd';
+import { Button, Tooltip, Tag } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { ToolbarProps } from '@/app/ops-analysis/types/topology';
 import TimeSelector from '@/components/time-selector';
@@ -46,6 +46,9 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
           <div className="p-1 pt-0">
             <h2 className="text-lg font-semibold mb-1 text-[var(--color-text-1)]">
               {selectedTopology.name}
+              {selectedTopology.is_build_in && (
+                <Tag color="blue" className="ml-2 text-xs align-middle">{t('common.builtIn')}</Tag>
+              )}
             </h2>
             <p className="text-sm text-[var(--color-text-2)]">
               {selectedTopology.desc}
@@ -158,6 +161,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
                   type="text"
                   icon={<EditOutlined style={{ fontSize: 16 }} />}
                   onClick={onEdit}
+                  disabled={selectedTopology?.is_build_in}
                 />
               </Tooltip>
             )}

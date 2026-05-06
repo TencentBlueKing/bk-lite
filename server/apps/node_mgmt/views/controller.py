@@ -31,7 +31,7 @@ class ControllerViewSet(mixins.ListModelMixin, GenericViewSet):
             arch_display = display_cpu_architecture(arch)
 
             base_display_name = lan.get(name_key) or result["name"]
-            if result["os"] == "linux" and arch_display != "--":
+            if arch_display != "--":
                 result["display_name"] = f"{base_display_name}（{arch_display}）"
             else:
                 result["display_name"] = base_display_name

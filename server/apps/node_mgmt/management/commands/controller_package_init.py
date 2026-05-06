@@ -39,6 +39,7 @@ class Command(BaseCommand):
             default=NodeConstants.X86_64_ARCH,
             help="CPU架构",
         )
+        parser.add_argument("--force-upload", action="store_true", help="即使版本记录已存在也重新上传对象")
 
     def handle(self, *args, **options):
         logger.info("controller 文件初始化开始！")

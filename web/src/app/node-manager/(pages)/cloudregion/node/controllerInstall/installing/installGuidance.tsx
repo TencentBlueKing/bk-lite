@@ -15,6 +15,7 @@ import {
   StatusConfig
 } from '@/app/node-manager/types/controller';
 import {
+  getInstallerFailureGuidance,
   getInstallerFailureSuggestion,
   getInstallerProgressPercent,
   getInstallerProgressText,
@@ -159,6 +160,9 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
                   t,
                   log.details?.raw_step || log.action
                 );
+                const failureGuidance = getInstallerFailureGuidance(t, {
+                  steps: [log]
+                });
                 return {
                   status: statusConfig.stepStatus,
                   icon: statusConfig.icon,
@@ -217,18 +221,30 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
                             />
                           </div>
                         )}
-                        {log.details?.error && (
+                        {failureGuidance.reason && (
                           <div className="mt-[8px] text-[12px] text-[var(--color-error)]">
                             {t('node-manager.cloudregion.node.failureReason')}:
                             {' '}
-                            {log.details.error}
+                            {failureGuidance.reason}
+                          </div>
+                        )}
+                        {!!failureGuidance.context?.length && (
+                          <div className="mt-[4px] text-[12px] text-[var(--color-text-3)]">
+                            <div className="mb-[2px]">
+                              {t('node-manager.cloudregion.node.failureContext')}:
+                            </div>
+                            <div className="space-y-[2px]">
+                              {failureGuidance.context.map((entry) => (
+                                <div key={entry}>{entry}</div>
+                              ))}
+                            </div>
                           </div>
                         )}
                         {['error', 'timeout'].includes(log.status) && (
                           <div className="mt-[4px] text-[12px] text-[var(--color-text-2)]">
                             {t('node-manager.cloudregion.node.nextAction')}:
                             {' '}
-                            {failureSuggestion}
+                            {failureGuidance.suggestion || failureSuggestion}
                           </div>
                         )}
                       </div>

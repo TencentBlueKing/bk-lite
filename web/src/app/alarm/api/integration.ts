@@ -1,5 +1,5 @@
 import useApiClient from '@/utils/request';
-import { K8sRenderParams } from '@/app/alarm/types/integration';
+import { K8sRenderParams, SnmpTrapNodeListResponse } from '@/app/alarm/types/integration';
 
 export const useSourceApi = () => {
   const { get, post } = useApiClient();
@@ -11,10 +11,24 @@ export const useSourceApi = () => {
 
   const getK8sMeta = async () => get('/alerts/api/alert_source/k8s_meta/');
 
+  const getAlertSnmpTrapNodeList = async (data: {
+    cloud_region_id?: number;
+    page?: number;
+    page_size?: number;
+    is_active?: boolean;
+    is_container?: boolean;
+  }): Promise<SnmpTrapNodeListResponse> => post('/alerts/api/alert_source/snmp_trap_nodes/', data);
+
   const downloadK8sFile = async (fileKey: string, params: K8sRenderParams) =>
     post(`/alerts/api/alert_source/k8s_download/${fileKey}/`, params, {
       responseType: 'blob',
     });
 
-  return { getAlertSources, getAlertSourcesDetail, getK8sMeta, downloadK8sFile };
+  return {
+    getAlertSources,
+    getAlertSourcesDetail,
+    getK8sMeta,
+    getAlertSnmpTrapNodeList,
+    downloadK8sFile,
+  };
 };

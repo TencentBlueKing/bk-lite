@@ -9,6 +9,7 @@ type ExecuteRequest struct {
 	Password       string `json:"password"`    // 密码认证（可选）
 	PrivateKey     string `json:"private_key"` // PEM 格式私钥内容（可选）
 	Passphrase     string `json:"passphrase"`  // 私钥密码短语（可选）
+	ConnectionTest bool   `json:"connection_test,omitempty"`
 	ExecutionID    string `json:"execution_id,omitempty"`
 	StreamLogs     bool   `json:"stream_logs,omitempty"`
 	StreamLogTopic string `json:"stream_log_topic,omitempty"`
@@ -20,6 +21,8 @@ type ExecuteResponse struct {
 	Success    bool   `json:"success"`
 	Code       string `json:"code,omitempty"`
 	Error      string `json:"error,omitempty"` // 添加错误字段
+	Stage      string `json:"stage,omitempty"`
+	Category   string `json:"category,omitempty"`
 }
 
 type DownloadFileRequest struct {
@@ -34,6 +37,7 @@ type DownloadFileRequest struct {
 	Password       string `json:"password"`    // 密码认证（可选）
 	PrivateKey     string `json:"private_key"` // PEM 格式私钥内容（可选）
 	Passphrase     string `json:"passphrase"`  // 私钥密码短语（可选）
+	FastFail       bool   `json:"fast_fail,omitempty"`
 	ExecuteTimeout int    `json:"execute_timeout"`
 }
 

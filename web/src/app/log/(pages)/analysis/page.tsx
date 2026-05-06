@@ -29,6 +29,9 @@ const Analysis: React.FC = () => {
   const [dashboardCollectTypeIdMap, setDashboardCollectTypeIdMap] = useState<
     Record<string, React.Key>
   >({});
+  const [dashboardTitleMap, setDashboardTitleMap] = useState<
+    Record<string, string>
+  >({});
   const [selectedCollectTypeId, setSelectedCollectTypeId] =
     useState<React.Key | null>(null);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
@@ -63,15 +66,18 @@ const Analysis: React.FC = () => {
       );
 
       const collectTypeIdMap: Record<string, React.Key> = {};
+      const titleMap: Record<string, string> = {};
 
       // 按 display_category 分组，仅包含有对应仪表盘的 collectType
       const groupedData = collectTypes.reduce(
         (acc, item) => {
           const category = item.display_category || 'other';
           const dashboard = dashboardMap[item.name];
+          const nodeLabel = item.display_name || item.name || '--';
           // 没有仪表盘的节点隐藏
           if (!dashboard) return acc;
           collectTypeIdMap[dashboard.id] = item.id;
+          titleMap[dashboard.id] = nodeLabel;
           if (!acc[category]) {
             acc[category] = {
               title: categoryMap[category] || category,
@@ -80,8 +86,8 @@ const Analysis: React.FC = () => {
             };
           }
           acc[category].children.push({
-            title: item.display_name || item.name,
-            label: item.display_name || item.name || '--',
+            title: nodeLabel,
+            label: nodeLabel,
             key: dashboard.id,
             children: []
           });
@@ -91,6 +97,7 @@ const Analysis: React.FC = () => {
       );
 
       setDashboardCollectTypeIdMap(collectTypeIdMap);
+      setDashboardTitleMap(titleMap);
 
       // 按 categoryEnum 顺序排列，仅展示有子节点的分类
       return categoryEnum
@@ -167,6 +174,7 @@ const Analysis: React.FC = () => {
         <Dashboard
           ref={dashboardRef}
           selectedDashboard={selectedDashboard}
+          selectedDashboardTitle={dashboardTitleMap[dashboardId] || ''}
           selectedCollectTypeId={selectedCollectTypeId}
           editable={false}
         />

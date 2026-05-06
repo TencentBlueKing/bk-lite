@@ -117,7 +117,7 @@ class FileDistributionRunner(ExecutionTaskBaseService):
                         success = False
 
                 except Exception as e:
-                    file_result["error"] = str(e)
+                    file_result["error"] = self.normalize_executor_error(str(e), "文件分发失败")
                     success = False
                     logger.exception(f"文件 {file_item.get('name')} 分发到 {target_name} 失败")
 
@@ -125,7 +125,7 @@ class FileDistributionRunner(ExecutionTaskBaseService):
 
         except Exception as e:
             success = False
-            result["error_message"] = f"分发异常: {str(e)}"
+            result["error_message"] = f"分发异常: {self.normalize_executor_error(str(e), '文件分发失败')}"
             logger.exception(f"目标 {target_name}({target_ip}) 文件分发失败")
 
         self.summarize_distribution_result(result, success, files, target_path)
@@ -302,12 +302,14 @@ class FileDistributionRunner(ExecutionTaskBaseService):
             timeout=timeout,
             port=ssh_creds["port"],
             overwrite=overwrite,
+            fast_fail=True,
         )
 
     @staticmethod
     def summarize_distribution_result(result: dict, success: bool, files: list, target_path: str) -> None:
         errors = [f"{fr['file_name']}: {fr['error']}" for fr in result["file_results"] if not fr["success"]]
-        error_message = "\n".join(errors) if errors else result.get("error_message", "")
+        raw_error_message = "\n".join(errors) if errors else result.get("error_message", "")
+        error_message = FileDistributionRunner.normalize_executor_error(raw_error_message, "文件分发失败") if raw_error_message else ""
         stdout_message = f"分发 {len(files)} 个文件到 {target_path}"
         if not success and error_message:
             stdout_message = f"NATS接口调用超时: {error_message}" if "RPC request timeout" in error_message else error_message
@@ -324,7 +326,7 @@ class FileDistributionRunner(ExecutionTaskBaseService):
         if isinstance(exec_result, str):
             if "successfully" in exec_result.lower() or "success" in exec_result.lower() or exec_result == "":
                 return True, ""
-            return False, exec_result
+            return False, FileDistributionRunner.normalize_executor_error(exec_result, "文件分发失败")
 
         if isinstance(exec_result, dict):
             success_flag = exec_result.get("success")
@@ -334,11 +336,11 @@ class FileDistributionRunner(ExecutionTaskBaseService):
             if success_flag is True:
                 return True, ""
             if code is not None and code != 0:
-                return False, str(error_info or f"执行失败，code={code}")
+                return False, FileDistributionRunner.normalize_executor_error(exec_result, f"文件分发失败，code={code}")
             if success_flag is False and error_info:
-                return False, str(error_info)
+                return False, FileDistributionRunner.normalize_executor_error(exec_result, "文件分发失败")
             if "failed" in result_text or "error" in result_text:
-                return False, str(exec_result.get("result", "执行失败"))
+                return False, FileDistributionRunner.normalize_executor_error(exec_result, "文件分发失败")
             return True, ""
 
         return False, f"未知响应类型: {type(exec_result)}"

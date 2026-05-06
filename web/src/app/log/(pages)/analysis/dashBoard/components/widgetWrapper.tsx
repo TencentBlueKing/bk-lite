@@ -10,6 +10,7 @@ import ComTable from '../widgets/comTable';
 import Msgtable from '../widgets/msgTable';
 import ComSingle from '../widgets/comSingle';
 import ComSankey from '../widgets/comSankey';
+import ComHeatmap from '../widgets/comHeatmap';
 import { SearchParams } from '@/app/log/types/search';
 
 const buildInstanceFilterQuery = (
@@ -65,7 +66,8 @@ const componentMap: Record<string, React.ComponentType<any>> = {
   table: ComTable,
   message: Msgtable,
   single: ComSingle,
-  sankey: ComSankey
+  sankey: ComSankey,
+  heatmap: ComHeatmap
 };
 
 interface WidgetWrapperProps extends BaseWidgetProps {

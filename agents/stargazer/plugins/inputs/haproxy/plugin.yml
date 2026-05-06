@@ -1,0 +1,24 @@
+name: haproxy
+version: "2.0.0"
+category: middleware
+
+metadata:
+  display_name: "HAProxy 负载均衡"
+  description: "HAProxy 采集插件，支持脚本方式采集"
+  author: "WeOps"
+  tags: [middleware, haproxy]
+  cloud_protocol: false
+  model_id: haproxy
+
+executors:
+  job:
+    type: job
+    timeout: 60
+    scripts:
+      linux: plugins/inputs/haproxy/haproxy_default_discover.sh
+    collector:
+      module: plugins.script_executor
+      class: SSHPlugin
+    default_script: linux
+
+default_executor: job

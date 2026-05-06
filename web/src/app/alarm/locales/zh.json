@@ -120,6 +120,7 @@
         "eventTab": "事件",
         "guideTab": "指南",
         "timeRange": "时间范围",
+        "node": "节点",
         "pushSourceId": "推送来源",
         "receiverUrl": "接收地址",
         "method": "请求方法",
@@ -147,7 +148,16 @@
         "verifyResult": "验证结果",
         "verifyResultHelp": "执行 apply 后，回到当前 K8s 集成的事件页查看是否已经收到新的 Kubernetes Event。",
         "clusterNameHelp": "填写当前 Kubernetes 集群名称，用于区分事件来源。",
-        "sourceIdFixed": "该值已固定，不建议修改"
+        "sourceIdFixed": "该值已固定，不建议修改",
+        "snmpTrapNodeDes": "请选择已托管 snmptrapd 程序的节点",
+        "snmpTrapAccessGuide": "接入指引",
+        "snmpTrapStep1": "配置 Trap 目标地址",
+        "snmpTrapStep1Des": "在设备上配置以下目标地址发送 Trap 消息",
+        "snmpTrapTargetIp": "目标IP",
+        "snmpTrapTargetPort": "目标端口",
+        "snmpTrapStep2": "配置 MIB 文件",
+        "snmpTrapStep2Des": "从设备官方获取 MIB 文件，放至节点以下目录",
+        "snmpTrapMibPath": "MIB 文件路径"
     },
     "settings": {
         "alertAssign": "告警分派",

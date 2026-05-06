@@ -10,6 +10,7 @@ from apps.node_mgmt.services.install_token import InstallTokenService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.package import PackageService
+from apps.node_mgmt.serializers.installer import InstallerArtifactQuerySerializer
 from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.utils.token_auth import check_token_auth, generate_node_token
 from apps.node_mgmt.constants.node import NodeConstants
@@ -546,7 +547,10 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         if not token:
             raise BaseAppException("Missing token parameter")
 
-        config = InstallerSessionService.build_session_config(token, request.query_params.get("arch", ""))
+        token_data = InstallTokenService.validate_and_get_token_data(token)
+        serializer = InstallerArtifactQuerySerializer(data=request.query_params, context={"target_os": token_data.get("os", "linux")})
+        serializer.is_valid(raise_exception=True)
+        config = InstallerSessionService.build_session_config(token, serializer.validated_data.get("arch", ""), token_data=token_data)
 
         response = JsonResponse(config)
         response["X-Token-Remaining-Usage"] = str(config["remaining_usage"])
@@ -562,7 +566,9 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         if token_data["os"] != NodeConstants.LINUX_OS:
             raise BaseAppException("Token operating system does not match Linux installer")
 
-        file, _ = InstallerService.download_linux_installer(request.query_params.get("arch", "") or token_data.get("cpu_architecture", ""))
+        serializer = InstallerArtifactQuerySerializer(data=request.query_params, context={"target_os": NodeConstants.LINUX_OS})
+        serializer.is_valid(raise_exception=True)
+        file, _ = InstallerService.download_linux_installer(serializer.validated_data.get("arch", "") or token_data.get("cpu_architecture", ""))
         return WebUtils.response_file(file, InstallerConstants.LINUX_INSTALLER_FILENAME)
 
     @action(detail=False, methods=["GET"], url_path="installer/windows_config")
@@ -577,7 +583,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
 
         token_data = InstallTokenService.validate_and_get_token_data(token)
         requested_arch = normalize_cpu_architecture(token_data.get("cpu_architecture", ""))
-        config = InstallerSessionService.build_session_config(token, requested_arch)
+        config = InstallerSessionService.build_session_config(token, requested_arch, token_data=token_data)
         installer = config["installer"]
         install_dir = config["install_dir"]
         server_base_url = config["server_url"].replace("/api/v1/node_mgmt/open_api/node", "")

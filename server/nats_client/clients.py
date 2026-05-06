@@ -105,9 +105,24 @@ async def request(namespace: str, method_name: str, *args, _timeout: Optional[fl
         return parsed
 
     if not parsed["success"]:
+
+        def _decode_pickled_exception_message() -> Optional[str]:
+            try:
+                decoded_exc = jsonpickle.decode(parsed["pickled_exc"])
+                decoded_message = str(decoded_exc)
+                return decoded_message or None
+            except (TypeError, KeyError):
+                return None
+
         # 优先使用新的error字段（Go服务的规范化错误格式）
         if "error" in parsed and parsed["error"]:
             error_message = parsed["error"]
+            if "message" in parsed and parsed["message"]:
+                error_message += f": {parsed['message']}"
+            elif error_message == "BaseAppException":
+                decoded_message = _decode_pickled_exception_message()
+                if decoded_message:
+                    error_message += f": {decoded_message}"
             # 如果有result字段，将其作为详细信息添加
             if "result" in parsed and parsed["result"]:
                 error_message += f" | Output: {parsed['result']}"
@@ -117,10 +132,10 @@ async def request(namespace: str, method_name: str, *args, _timeout: Optional[fl
             exc = NatsClientException(str(parsed["result"]))
         else:
             # 向后兼容：尝试使用旧的pickled_exc格式
-            try:
-                decoded_exc = jsonpickle.decode(parsed["pickled_exc"])
-                exc = NatsClientException(str(decoded_exc))
-            except (TypeError, KeyError):
+            decoded_message = _decode_pickled_exception_message()
+            if decoded_message:
+                exc = NatsClientException(decoded_message)
+            else:
                 # 最后的降级方案：打印完整响应便于排查
                 logger.error(f"NATS error response missing error details, full response: {parsed}")
                 fallback_message = parsed.get("message", "Unknown error occurred")
@@ -161,9 +176,24 @@ async def request_v2(
         return parsed
 
     if not parsed["success"]:
+
+        def _decode_pickled_exception_message() -> Optional[str]:
+            try:
+                decoded_exc = jsonpickle.decode(parsed["pickled_exc"])
+                decoded_message = str(decoded_exc)
+                return decoded_message or None
+            except (TypeError, KeyError):
+                return None
+
         # 优先使用新的error字段（Go服务的规范化错误格式）
         if "error" in parsed and parsed["error"]:
             error_message = parsed["error"]
+            if "message" in parsed and parsed["message"]:
+                error_message += f": {parsed['message']}"
+            elif error_message == "BaseAppException":
+                decoded_message = _decode_pickled_exception_message()
+                if decoded_message:
+                    error_message += f": {decoded_message}"
             # 如果有result字段，将其作为详细信息添加
             if "result" in parsed and parsed["result"]:
                 error_message += f" | Output: {parsed['result']}"
@@ -173,10 +203,10 @@ async def request_v2(
             exc = NatsClientException(str(parsed["result"]))
         else:
             # 向后兼容：尝试使用旧的pickled_exc格式
-            try:
-                decoded_exc = jsonpickle.decode(parsed["pickled_exc"])
-                exc = NatsClientException(str(decoded_exc))
-            except (TypeError, KeyError):
+            decoded_message = _decode_pickled_exception_message()
+            if decoded_message:
+                exc = NatsClientException(decoded_message)
+            else:
                 # 最后的降级方案：打印完整响应便于排查
                 logger.error(f"NATS error response missing error details, full response: {parsed}")
                 fallback_message = parsed.get("message", "Unknown error occurred")
