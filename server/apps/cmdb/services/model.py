@@ -1589,7 +1589,7 @@ class ModelManage(object):
                 previous_context = seen_model_asst_ids.get(model_asst_id)
                 if previous_context:
                     raise BaseAppException(
-                        f"{context} ({model_asst_id}) 与 {previous_context} 重复定义了自动关联规则"
+                        f"定义了重复的关联规则：{context} 【{model_asst_id}】 与 【{previous_context}】"
                     )
                 seen_model_asst_ids[model_asst_id] = context
 
