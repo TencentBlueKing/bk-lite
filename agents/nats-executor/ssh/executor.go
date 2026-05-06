@@ -931,16 +931,16 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 	}
 	defer session.Close()
 
-	var stdout, stderr bytes.Buffer
-	stdoutWriter := io.Writer(&stdout)
-	stderrWriter := io.Writer(&stderr)
+	outputCapture := utils.NewSharedOutputCapture(utils.CommandOutputLimitBytes)
+	stdoutWriter := outputCapture.StdoutWriter()
+	stderrWriter := outputCapture.StderrWriter()
 	var stdoutStreamWriter *streamLogWriter
 	var stderrStreamWriter *streamLogWriter
 	if req.StreamLogs && req.StreamLogTopic != "" && nc != nil {
 		stdoutStreamWriter = newStreamLogWriter(nc, req.StreamLogTopic, req.ExecutionID, "stdout")
 		stderrStreamWriter = newStreamLogWriter(nc, req.StreamLogTopic, req.ExecutionID, "stderr")
-		stdoutWriter = io.MultiWriter(&stdout, stdoutStreamWriter)
-		stderrWriter = io.MultiWriter(&stderr, stderrStreamWriter)
+		stdoutWriter = io.MultiWriter(outputCapture.StdoutWriter(), stdoutStreamWriter)
+		stderrWriter = io.MultiWriter(outputCapture.StderrWriter(), stderrStreamWriter)
 	}
 	session.SetStdout(stdoutWriter)
 	session.SetStderr(stderrWriter)
@@ -968,7 +968,12 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 		if stderrStreamWriter != nil {
 			stderrStreamWriter.Flush()
 		}
-		return timeoutStageResponse(instanceId, stdout.String()+stderr.String(), errMsg, sshStageCommandRun, sshCategoryRemoteTimeout)
+		snapshot := outputCapture.Snapshot()
+		output := utils.FormatCapturedOutput(string(snapshot.Stdout), string(snapshot.Stderr), snapshot)
+		if snapshot.Truncated {
+			logger.Warnf("[SSH Execute] Instance: %s, Output exceeded shared capture limit and was truncated (stdout_dropped=%dB stderr_dropped=%dB total_written=%dB)", instanceId, snapshot.StdoutDropped, snapshot.StderrDropped, snapshot.TotalWritten)
+		}
+		return timeoutStageResponse(instanceId, output, errMsg, sshStageCommandRun, sshCategoryRemoteTimeout)
 	case err := <-errChan:
 		duration := time.Since(startTime)
 		if stdoutStreamWriter != nil {
@@ -977,15 +982,16 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 		if stderrStreamWriter != nil {
 			stderrStreamWriter.Flush()
 		}
-		output := stdout.String()
-		if stderr.Len() > 0 {
-			output += stderr.String()
-		}
+		snapshot := outputCapture.Snapshot()
+		output := utils.FormatCapturedOutput(string(snapshot.Stdout), string(snapshot.Stderr), snapshot)
 
 		if err != nil {
 			errMsg := fmt.Sprintf("Command execution failed: %v", err)
 			logger.Warnf("[SSH Execute] Instance: %s, Command execution failed after %v - Error: %v", instanceId, duration, err)
 			logger.Debugf("[SSH Execute] Instance: %s, Output: %s", instanceId, output)
+			if snapshot.Truncated {
+				logger.Warnf("[SSH Execute] Instance: %s, Output exceeded shared capture limit and was truncated (stdout_dropped=%dB stderr_dropped=%dB total_written=%dB)", instanceId, snapshot.StdoutDropped, snapshot.StderrDropped, snapshot.TotalWritten)
+			}
 			return ExecuteResponse{
 				Output:     output,
 				InstanceId: instanceId,
@@ -999,6 +1005,9 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 
 		logger.Debugf("[SSH Execute] Instance: %s, Command executed successfully in %v", instanceId, duration)
 		logger.Debugf("[SSH Execute] Instance: %s, Output length: %d bytes", instanceId, len(output))
+		if snapshot.Truncated {
+			logger.Warnf("[SSH Execute] Instance: %s, Output exceeded shared capture limit and was truncated (stdout_dropped=%dB stderr_dropped=%dB total_written=%dB)", instanceId, snapshot.StdoutDropped, snapshot.StderrDropped, snapshot.TotalWritten)
+		}
 
 		return ExecuteResponse{
 			Output:     output,
