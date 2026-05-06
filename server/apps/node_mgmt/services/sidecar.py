@@ -9,6 +9,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.database import DatabaseConstants
+from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.services.cloudregion import RegionService
 from apps.node_mgmt.utils.crypto_helper import EncryptedJsonResponse
@@ -157,13 +158,11 @@ class Sidecar:
             status="running",
         ).exists()
 
-        install_running_exists = False
-        if node_ip:
-            install_running_exists = ControllerTaskNode.objects.filter(
-                ip=node_ip,
-                status="running",
-                task__type="install",
-            ).exists()
+        install_running_exists = ControllerTaskNode.objects.filter(
+            **{f"result__{InstallerConstants.INSTALL_NODE_ID_KEY}": node_id},
+            status="running",
+            task__type="install",
+        ).exists()
 
         if not action_running_exists and not install_running_exists:
             return
@@ -716,7 +715,8 @@ class Sidecar:
                 # 如果已经存在关联的自定义配置则跳过，避免覆盖用户配置
                 if CollectorConfiguration.objects.filter(collector=collector_obj, nodes=node).exists():
                     logger.info(
-                        f"Node {node.id} already has a custom configuration for collector {collector_obj.name}, skipping default configuration creation."
+                        f"Node {node.id} already has a custom configuration for collector {collector_obj.name}, "
+                        "skipping default configuration creation."
                     )
                     continue
 

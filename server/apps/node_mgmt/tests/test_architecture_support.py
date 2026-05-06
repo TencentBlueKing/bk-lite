@@ -1,17 +1,16 @@
 from queue import Queue
 from types import SimpleNamespace
 import json
-from io import BytesIO
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.base.models import User
-from apps.node_mgmt.constants.node import NodeConstants
-from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.node_mgmt.constants.installer import InstallerConstants
+from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import CloudRegion, Collector, CollectorConfiguration, Controller, Node, PackageVersion, SidecarEnv
 from apps.node_mgmt.models.installer import ControllerTask, ControllerTaskNode
 from apps.node_mgmt.services.installer import InstallerService
@@ -1520,7 +1519,8 @@ def test_backfill_package_storage_paths_dry_run_reports_legacy_copy(monkeypatch,
     output = capsys.readouterr().out
 
     assert (
-        f"[dry-run] {package_obj.id}: copy linux/Controller/1.0.1/fusion-collectors-linux-amd64.zip -> linux/x86_64/Controller/1.0.1/fusion-collectors-linux-amd64.zip"
+        f"[dry-run] {package_obj.id}: copy linux/Controller/1.0.1/fusion-collectors-linux-amd64.zip -> "
+        "linux/x86_64/Controller/1.0.1/fusion-collectors-linux-amd64.zip"
         in output
     )
 
@@ -2595,6 +2595,80 @@ def test_collector_retrieve_exposes_architecture_display(monkeypatch):
     assert response.data["cpu_architecture"] == NodeConstants.ARM64_ARCH
     assert response.data["architecture_display"] == "ARM64"
     assert response.data["display_name"] == "Vector（ARM64）"
+
+
+@pytest.mark.django_db
+def test_install_connectivity_converge_matches_generated_node_id_not_ip():
+    cloud_region = CloudRegion.objects.create(
+        name="connectivity-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    stale_task = ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    current_task = ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    common_result = {
+        InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING,
+        "steps": [{"action": "connectivity_check", "status": "running", "message": "Wait for node connection"}],
+    }
+    stale_task_node = ControllerTaskNode.objects.create(
+        task=stale_task,
+        ip="10.0.0.88",
+        node_name="stale-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={**common_result, InstallerConstants.INSTALL_NODE_ID_KEY: "stale-install-node"},
+    )
+    current_task_node = ControllerTaskNode.objects.create(
+        task=current_task,
+        ip="10.0.0.88",
+        node_name="current-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={**common_result, InstallerConstants.INSTALL_NODE_ID_KEY: "current-install-node"},
+    )
+    Node.objects.create(
+        id="current-install-node",
+        name="current-node",
+        ip="10.0.0.88",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/tmp/config",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    installer_tasks.converge_controller_install_connectivity_for_node("current-install-node")
+
+    stale_task_node.refresh_from_db()
+    current_task_node.refresh_from_db()
+    assert stale_task_node.status == InstallerConstants.STEP_STATUS_RUNNING
+    assert current_task_node.status == InstallerConstants.STEP_STATUS_SUCCESS
 
 
 @pytest.mark.django_db
