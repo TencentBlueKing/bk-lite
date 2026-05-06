@@ -2,6 +2,7 @@ import toml
 import yaml
 from rest_framework.decorators import action
 from rest_framework.viewsets import ModelViewSet, ViewSet
+from django.db.models import Q
 
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import (
@@ -179,6 +180,7 @@ class CollectTypeViewSet(ModelViewSet):
 
 class CollectInstanceViewSet(ViewSet):
     OPERATE_PERMISSION = "Operate"
+    PAGE_SIZE_MAX = 500
 
     @staticmethod
     def _normalize_ids(values):
@@ -201,6 +203,20 @@ class CollectInstanceViewSet(ViewSet):
             except (TypeError, ValueError):
                 continue
         return orgs
+
+    @classmethod
+    def _normalize_page_params(cls, request_data):
+        try:
+            page = int(request_data.get("page", 1))
+            page_size = int(request_data.get("page_size", 10))
+        except (TypeError, ValueError):
+            raise ValueError("page and page_size must be integers")
+
+        if page < 1:
+            raise ValueError("page must be greater than or equal to 1")
+        if page_size < 1 or page_size > cls.PAGE_SIZE_MAX:
+            raise ValueError(f"page_size must be between 1 and {cls.PAGE_SIZE_MAX}")
+        return page, page_size
 
     def _get_permission_context(self, request):
         include_children = request.COOKIES.get("include_children", "0") == "1"
@@ -280,6 +296,39 @@ class CollectInstanceViewSet(ViewSet):
             organizations |= self._normalize_orgs(instance.get("group_ids", []))
         return list(organizations)
 
+    def _build_all_collect_type_scope(self, permission_data, current_teams):
+        admin_cur_team = self._normalize_orgs(permission_data.get("all", {}).get("team", []))
+        if admin_cur_team:
+            return (
+                CollectInstance.objects.filter(collectinstanceorganization__organization__in=admin_cur_team).distinct(),
+                {},
+            )
+
+        current_team_ids = self._normalize_orgs(current_teams)
+        instance_ids = []
+        scope_query = Q(collectinstanceorganization__organization__in=current_team_ids)
+
+        for collect_type_id, type_permission in permission_data.items():
+            if collect_type_id == "all" or not isinstance(type_permission, dict):
+                continue
+
+            team_ids = self._normalize_orgs(type_permission.get("team", []))
+            if team_ids:
+                scope_query |= Q(
+                    collect_type_id=collect_type_id,
+                    collectinstanceorganization__organization__in=team_ids,
+                )
+
+            for instance_permission in type_permission.get("instance", []):
+                if isinstance(instance_permission, dict) and instance_permission.get("id") is not None:
+                    instance_ids.append(instance_permission["id"])
+
+        if instance_ids:
+            scope_query |= Q(id__in=instance_ids)
+
+        queryset = CollectInstance.objects.filter(scope_query).distinct()
+        return queryset, {}
+
     @action(methods=["post"], detail=False, url_path="search")
     def search(self, request):
         """
@@ -289,8 +338,10 @@ class CollectInstanceViewSet(ViewSet):
         """
         collect_type_id = request.data.get("collect_type_id")
         name = request.data.get("name")
-        page = int(request.data.get("page", 1))
-        page_size = int(request.data.get("page_size", 10))
+        try:
+            page, page_size = self._normalize_page_params(request.data)
+        except ValueError as exc:
+            return WebUtils.response_error(error_message=str(exc))
 
         # 获取当前用户选择的组织（必填）
         current_team = request.COOKIES.get("current_team")
@@ -333,33 +384,7 @@ class CollectInstanceViewSet(ViewSet):
             )
             permission_data = instance_res.get("data", {}) if isinstance(instance_res, dict) else {}
             current_teams = instance_res.get("team", []) if isinstance(instance_res, dict) else []
-            # 超管权限检查
-            admin_cur_team = permission_data.get("all", {}).get("team")
-            if admin_cur_team:
-                qs = CollectInstance.objects.filter(collectinstanceorganization__organization__in=admin_cur_team)
-                inst_permission_map = {}
-            else:
-                objs = CollectInstance.objects.prefetch_related("collectinstanceorganization_set").all()
-                result = []
-                for instance in objs:
-                    organizations = {org.organization for org in instance.collectinstanceorganization_set.all()}
-                    result.append(
-                        {
-                            "instance_id": instance.id,
-                            "organizations": organizations,
-                            "collect_type_id": instance.collect_type_id,
-                        }
-                    )
-
-                # 使用新的优雅权限过滤方法
-                inst_permission_map = filter_instances_with_permissions(result, permission_data, current_teams)
-                # 获取有权限的实例ID列表
-                authorized_instance_ids = list(inst_permission_map.keys())
-                if not authorized_instance_ids:
-                    # 如果没有任何权限，返回空结果
-                    return WebUtils.response_success({"count": 0, "items": []})
-                # 重新查询数据库，获取有权限的实例完整信息
-                qs = CollectInstance.objects.filter(id__in=authorized_instance_ids)
+            qs, inst_permission_map = self._build_all_collect_type_scope(permission_data, current_teams)
             # 使用统一的服务层方法
             data = CollectTypeService.search_instance_with_permission(
                 collect_type_id=None,
@@ -368,6 +393,16 @@ class CollectInstanceViewSet(ViewSet):
                 page_size=page_size,
                 queryset=qs,
             )
+            if inst_permission_map == {}:
+                scoped_items = [
+                    {
+                        "instance_id": item["id"],
+                        "organizations": item.get("organization", []),
+                        "collect_type_id": item.get("collect_type_id"),
+                    }
+                    for item in data["items"]
+                ]
+                inst_permission_map = filter_instances_with_permissions(scoped_items, permission_data, current_teams)
 
         for instance_info in data["items"]:
             if instance_info["id"] in inst_permission_map:

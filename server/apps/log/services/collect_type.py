@@ -310,7 +310,7 @@ class CollectTypeService:
         end = start + page_size
 
         # 获取当前页的数据
-        page_data = queryset[start:end]
+        page_data = list(queryset[start:end])
 
         # 获取实例ID列表用于补充额外信息
         instance_ids = [instance.id for instance in page_data]

@@ -6,6 +6,9 @@ from apps.log.views.collect_config import CollectConfigViewSet, CollectInstanceV
 
 
 class FakeQuerySet(list):
+    def distinct(self):
+        return self
+
     def select_related(self, *args):
         return self
 
@@ -301,9 +304,59 @@ def test_search_all_collect_types_respects_admin_scope_from_permission_data(monk
     response = CollectInstanceViewSet().search(make_request({"page": 1, "page_size": 10}))
 
     assert response.status_code == 200
-    collect_instance_filter.assert_called_once_with(collectinstanceorganization__organization__in=[2])
+    collect_instance_filter.assert_called_once_with(collectinstanceorganization__organization__in={2})
     payload = json.loads(response.content)
     assert payload["data"]["items"][0]["permission"] == ["View", "Operate"]
+
+
+def test_search_all_collect_types_uses_database_scope_before_pagination(monkeypatch):
+    instance = make_instance(organizations=[2])
+    from apps.log.views import collect_config
+
+    search_result = {
+        "count": 1,
+        "items": [
+            {
+                "id": instance.id,
+                "collect_type_id": instance.collect_type_id,
+                "organization": [2],
+            }
+        ],
+    }
+    collect_instance_filter = Mock(return_value=FakeQuerySet([instance]))
+    service_search = Mock(return_value=search_result)
+
+    monkeypatch.setattr(
+        collect_config,
+        "get_permissions_rules",
+        Mock(
+            return_value={
+                "data": {
+                    str(instance.collect_type_id): {
+                        "team": [2],
+                        "instance": [{"id": instance.id, "permission": ["View"]}],
+                    }
+                },
+                "team": [1],
+            }
+        ),
+    )
+    monkeypatch.setattr(collect_config.CollectInstance.objects, "filter", collect_instance_filter)
+    monkeypatch.setattr(collect_config.CollectTypeService, "search_instance_with_permission", service_search)
+
+    response = CollectInstanceViewSet().search(make_request({"page": 1, "page_size": 10}))
+
+    assert response.status_code == 200
+    collect_instance_filter.assert_called_once()
+    service_search.assert_called_once()
+    payload = json.loads(response.content)
+    assert payload["data"]["items"][0]["permission"] == ["View"]
+
+
+def test_search_rejects_unbounded_page_size():
+    response = CollectInstanceViewSet().search(make_request({"page": 1, "page_size": 100000}))
+
+    assert response.status_code == 400
 
 
 def test_search_single_collect_type_merges_duplicate_instance_permissions(monkeypatch):
