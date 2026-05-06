@@ -475,9 +475,77 @@ def test_alert_center_notification_result_is_persisted(monkeypatch):
 
     assert len(send_calls) == 1
     assert send_calls[0][0] == 9
-    assert send_calls[0][2]["events"][0]["external_id"] == "evt-1"
+    assert send_calls[0][2]["events"][0]["external_id"] == "77"
     assert event.notice_result == [send_result]
     assert bulk_update_calls == [([event], ["notice_result"], 100)]
+
+
+def test_alert_center_created_event_uses_alert_id_as_recovery_external_id(monkeypatch):
+    send_calls = []
+
+    _install_module(
+        monkeypatch,
+        "apps.monitor.constants.alert_policy",
+        AlertConstants=types.SimpleNamespace(),
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.constants.database",
+        DatabaseConstants=types.SimpleNamespace(BULK_UPDATE_BATCH_SIZE=100),
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.models",
+        MonitorAlert=object,
+        MonitorEvent=types.SimpleNamespace(
+            objects=types.SimpleNamespace(bulk_update=lambda *args, **kwargs: None)
+        ),
+        MonitorEventRawData=object,
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.utils.dimension",
+        format_dimension_str=lambda dimensions: "",
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.utils.system_mgmt_api",
+        SystemMgmtUtils=types.SimpleNamespace(
+            send_msg_with_channel=lambda *args: send_calls.append(args)
+            or {"result": True}
+        ),
+    )
+    _install_module(monkeypatch, "apps.system_mgmt.models", Channel=object)
+    _install_module(monkeypatch, "apps.core.logger", celery_logger=_Logger())
+
+    module = _load_module(
+        "monitor_policy_event_alert_manager_external_id_test_module",
+        Path(__file__).resolve().parents[1] / "tasks" / "services" / "policy_scan" / "event_alert_manager.py",
+    )
+
+    manager = object.__new__(module.EventAlertManager)
+    manager.policy = types.SimpleNamespace(id=1010, name="alert-center-policy", notice_type_id=9)
+    manager.instances_map = {"host-1": "Host 1"}
+
+    event = types.SimpleNamespace(
+        id="evt-created-1",
+        level="critical",
+        policy_id=1010,
+        content="cpu critical",
+        event_time=datetime(2026, 4, 21, 8, 0, tzinfo=timezone.utc),
+        value=95.0,
+        monitor_instance_id="host-1",
+        dimensions={"instance_id": "host-1"},
+        metric_instance_id="('host-1',)",
+        alert_id=88,
+        notice_result=None,
+    )
+
+    manager._push_to_alert_center([event])
+
+    payload_event = send_calls[0][2]["events"][0]
+    assert payload_event["external_id"] == "88"
+    assert payload_event["labels"]["alert_id"] == 88
 
 
 def test_alert_center_notification_reuses_same_batch_result_for_each_event(monkeypatch):
