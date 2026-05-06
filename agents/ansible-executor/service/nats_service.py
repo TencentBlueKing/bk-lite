@@ -304,8 +304,28 @@ class AnsibleNATSService:
         timeout = int(callback.get("timeout", self.config.callback_timeout))
         request_payload = json.dumps({"args": [payload], "kwargs": {}}, ensure_ascii=False).encode("utf-8")
 
-        await self.nc.request(subject, request_payload, timeout=timeout)
+        response = await self.nc.request(subject, request_payload, timeout=timeout)
+        self._ensure_callback_accepted(response.data)
         logger.info("callback sent: subject=%s task_id=%s", subject, payload.get("task_id"))
+
+    @staticmethod
+    def _ensure_callback_accepted(response_data: bytes):
+        try:
+            response = json.loads(response_data.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("callback returned invalid JSON response") from exc
+
+        if not isinstance(response, dict):
+            raise ValueError("callback returned non-object response")
+
+        if response.get("success") is not True:
+            message = response.get("message") or response.get("error") or response.get("result") or "callback request rejected"
+            raise RuntimeError(str(message))
+
+        result = response.get("result")
+        if isinstance(result, dict) and result.get("success") is False:
+            message = result.get("message") or result.get("error") or "callback handler rejected result"
+            raise RuntimeError(str(message))
 
     async def _enqueue_callback_retry(self, callback: dict[str, Any], payload: dict[str, Any], reason: str):
         retry_payload = {

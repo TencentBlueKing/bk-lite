@@ -734,7 +734,7 @@ async def prepare_playbook_execution(
                 with zipfile.ZipFile(local_path, "r") as zf:
                     namelist = zf.namelist()
                     logger.info("[prepare_playbook] ZIP 内容 (%d 个文件): %s", len(namelist), namelist)
-                    zf.extractall(workspace)
+                    _safe_extract_zip(zf, workspace)
                 logger.info("[prepare_playbook] ZIP 已解压到: %s", workspace)
                 # 列出解压后的 workspace 内容
                 all_files = [str(p.relative_to(workspace)) for p in workspace.rglob("*") if p.is_file()]
