@@ -235,6 +235,53 @@ class Sidecar:
         return ""
 
     @staticmethod
+    def _default_collector_priority(collector_cpu_architecture: str, node_cpu_architecture: str) -> int:
+        collector_arch = normalize_cpu_architecture(collector_cpu_architecture)
+        node_arch = normalize_cpu_architecture(node_cpu_architecture)
+
+        if node_arch == NodeConstants.ARM64_ARCH:
+            if collector_arch == NodeConstants.ARM64_ARCH:
+                return 2
+            return 0
+
+        if node_arch == NodeConstants.X86_64_ARCH:
+            if collector_arch == NodeConstants.X86_64_ARCH:
+                return 2
+            if not collector_arch:
+                return 1
+            return 0
+
+        if not collector_arch:
+            return 2
+        if collector_arch == NodeConstants.X86_64_ARCH:
+            return 1
+        return 0
+
+    @classmethod
+    def _get_default_collectors_for_node(cls, node):
+        node_arch = normalize_cpu_architecture(getattr(node, "cpu_architecture", ""))
+        if node_arch == NodeConstants.ARM64_ARCH:
+            allowed_architectures = [NodeConstants.ARM64_ARCH]
+        elif node_arch == NodeConstants.X86_64_ARCH:
+            allowed_architectures = [NodeConstants.X86_64_ARCH, ""]
+        else:
+            allowed_architectures = ["", NodeConstants.X86_64_ARCH]
+        collector_objs = Collector.objects.filter(
+            controller_default_run=True,
+            node_operating_system=node.operating_system,
+            cpu_architecture__in=allowed_architectures,
+        ).order_by("name", "cpu_architecture", "id")
+
+        selected_collectors = {}
+        for collector_obj in collector_objs:
+            priority = cls._default_collector_priority(collector_obj.cpu_architecture, node_arch)
+            current = selected_collectors.get(collector_obj.name)
+            if current is None or priority > current[0]:
+                selected_collectors[collector_obj.name] = (priority, collector_obj)
+
+        return {name: collector for name, (_, collector) in selected_collectors.items()}
+
+    @staticmethod
     def update_node_client(request, node_id):
         """更新sidecar客户端信息"""
 
@@ -658,14 +705,7 @@ class Sidecar:
 
     @staticmethod
     def create_default_config(node, node_types):
-        collector_objs = Collector.objects.filter(
-            controller_default_run=True,
-            node_operating_system=node.operating_system,
-        )
-        if getattr(node, "cpu_architecture", ""):
-            collector_objs = collector_objs.filter(cpu_architecture__in=[node.cpu_architecture, ""])
-        else:
-            collector_objs = collector_objs.filter(cpu_architecture__in=["", NodeConstants.X86_64_ARCH])
+        collector_objs = Sidecar._get_default_collectors_for_node(node).values()
         variables = Sidecar.get_cloud_region_envconfig(node)
         default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
 
