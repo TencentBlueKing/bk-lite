@@ -468,7 +468,7 @@ COLLECT_OBJ_TREE = [
                 "type": CollectDriverTypes.PROTOCOL,
                 "tag": ["SDK"],
                 "desc": "采集腾讯云账户下CVM、VPC、云数据库等资产清单",
-                "encrypted_fields": ["accessKey", "secretSecret"],
+                "encrypted_fields": ["accessKey", "accessSecret"],
             },
         ],
     },
