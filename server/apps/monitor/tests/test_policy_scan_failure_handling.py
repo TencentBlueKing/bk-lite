@@ -158,6 +158,257 @@ def test_scan_policy_task_persists_watermark_after_successful_scan(monkeypatch):
     assert result["success"] is True
 
 
+def _install_monitor_policy_view_dependencies(monkeypatch):
+    class ModelViewSet:
+        pass
+
+    def action(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
+    beat_models = _install_module(
+        monkeypatch,
+        "django_celery_beat.models",
+        PeriodicTask=object,
+        CrontabSchedule=object,
+    )
+    _install_module(monkeypatch, "django_celery_beat", models=beat_models)
+    rest_viewsets = _install_module(monkeypatch, "rest_framework.viewsets", ModelViewSet=ModelViewSet)
+    rest_decorators = _install_module(monkeypatch, "rest_framework.decorators", action=action)
+    _install_module(monkeypatch, "rest_framework", viewsets=rest_viewsets, decorators=rest_decorators)
+    _install_module(monkeypatch, "apps.core.exceptions.base_app_exception", BaseAppException=Exception)
+    _install_module(
+        monkeypatch,
+        "apps.core.utils.permission_utils",
+        get_permission_rules=lambda *args, **kwargs: {},
+        permission_filter=lambda *args, **kwargs: [],
+    )
+    _install_module(monkeypatch, "apps.core.utils.web_utils", WebUtils=object)
+    _install_module(
+        monkeypatch,
+        "apps.monitor.constants.alert_policy",
+        AlertConstants=types.SimpleNamespace(NO_DATA="no_data"),
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.constants.database",
+        DatabaseConstants=types.SimpleNamespace(BULK_CREATE_BATCH_SIZE=100, BULK_UPDATE_BATCH_SIZE=100),
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.constants.permission",
+        PermissionConstants=types.SimpleNamespace(POLICY_MODULE="policy", DEFAULT_PERMISSION=[]),
+    )
+    _install_module(monkeypatch, "apps.monitor.filters.monitor_policy", MonitorPolicyFilter=object)
+
+    class _ImportQuerySet:
+        def all(self):
+            return []
+
+    class _ImportMonitorPolicy:
+        objects = _ImportQuerySet()
+
+    _install_module(monkeypatch, "apps.monitor.models", PolicyOrganization=object, MonitorAlert=object)
+    _install_module(monkeypatch, "apps.monitor.models.monitor_policy", MonitorPolicy=_ImportMonitorPolicy)
+    _install_module(monkeypatch, "apps.monitor.serializers.monitor_policy", MonitorPolicySerializer=object)
+    _install_module(monkeypatch, "apps.monitor.services.alert_lifecycle_notify", AlertLifecycleNotifier=object)
+    _install_module(monkeypatch, "apps.monitor.services.policy", PolicyService=object)
+    _install_module(monkeypatch, "apps.monitor.services.policy_baseline", PolicyBaselineService=object)
+    _install_module(monkeypatch, "apps.monitor.utils.pagination", parse_page_params=lambda *args, **kwargs: (1, 10))
+    _install_module(monkeypatch, "config.drf.pagination", CustomPageNumberPagination=object)
+
+
+def test_monitor_policy_baseline_refreshes_when_grouping_contract_changes(monkeypatch):
+    _install_monitor_policy_view_dependencies(monkeypatch)
+    module = _load_module(
+        "monitor_policy_view_baseline_test_module",
+        Path(__file__).resolve().parents[1] / "views" / "monitor_policy.py",
+    )
+
+    view = module.MonitorPolicyViewSet()
+    old_policy = types.SimpleNamespace(
+        source={"type": "instance", "values": ["('host-1',)"]},
+        group_by=["instance_id", "mountpoint"],
+        query_condition={"metric_id": 10},
+        monitor_object_id=3,
+        collect_type="host",
+        enable_alerts=["threshold", "no_data"],
+    )
+    updated_policy = types.SimpleNamespace(
+        source={"type": "instance", "values": ["('host-1',)"]},
+        group_by=["instance_id"],
+        query_condition={"metric_id": 10},
+        monitor_object_id=3,
+        collect_type="host",
+        enable_alerts=["threshold", "no_data"],
+    )
+
+    old_state = view.get_baseline_state(old_policy)
+
+    assert view.should_update_policy_baselines(old_policy, old_state, updated_policy) is True
+    assert view.baseline_state_changed(old_state, updated_policy) is True
+
+
+def test_monitor_policy_baseline_ignores_source_value_reordering(monkeypatch):
+    _install_monitor_policy_view_dependencies(monkeypatch)
+    module = _load_module(
+        "monitor_policy_view_source_reorder_test_module",
+        Path(__file__).resolve().parents[1] / "views" / "monitor_policy.py",
+    )
+
+    view = module.MonitorPolicyViewSet()
+    old_policy = types.SimpleNamespace(
+        source={"type": "organization", "values": [3, 1, 2]},
+        group_by=["instance_id"],
+        query_condition={"metric_id": 10, "filter": [{"key": "mountpoint", "value": "/data"}]},
+        monitor_object_id=3,
+        collect_type="host",
+        enable_alerts=["no_data"],
+    )
+    updated_policy = types.SimpleNamespace(
+        source={"type": "organization", "values": [2, 3, 1]},
+        group_by=["instance_id"],
+        query_condition={"metric_id": 10, "filter": [{"key": "mountpoint", "value": "/data"}]},
+        monitor_object_id=3,
+        collect_type="host",
+        enable_alerts=["no_data"],
+    )
+
+    old_state = view.get_baseline_state(old_policy)
+
+    assert view.baseline_state_changed(old_state, updated_policy) is False
+    assert view.should_update_policy_baselines(old_policy, old_state, updated_policy) is False
+
+
+def test_monitor_policy_enable_alert_toggle_updates_baselines_without_request_key_dependency(monkeypatch):
+    _install_monitor_policy_view_dependencies(monkeypatch)
+    module = _load_module(
+        "monitor_policy_view_enable_toggle_test_module",
+        Path(__file__).resolve().parents[1] / "views" / "monitor_policy.py",
+    )
+
+    view = module.MonitorPolicyViewSet()
+    old_policy = types.SimpleNamespace(
+        source={"type": "instance", "values": ["('host-1',)"]},
+        group_by=["instance_id"],
+        query_condition={"metric_id": 10},
+        monitor_object_id=3,
+        collect_type="host",
+        enable_alerts=["threshold", "no_data"],
+    )
+    updated_policy = types.SimpleNamespace(
+        source={"type": "instance", "values": ["('host-1',)"]},
+        group_by=["instance_id"],
+        query_condition={"metric_id": 10},
+        monitor_object_id=3,
+        collect_type="host",
+        enable_alerts=["threshold"],
+    )
+
+    old_state = view.get_baseline_state(old_policy)
+
+    assert view.should_update_policy_baselines(old_policy, old_state, updated_policy) is True
+    assert view.baseline_state_changed(old_state, updated_policy) is False
+
+
+def test_monitor_policy_disabling_no_data_closes_only_active_no_data_alerts(monkeypatch):
+    _install_monitor_policy_view_dependencies(monkeypatch)
+    module = _load_module(
+        "monitor_policy_view_disable_no_data_test_module",
+        Path(__file__).resolve().parents[1] / "views" / "monitor_policy.py",
+    )
+
+    policy = types.SimpleNamespace(id=42)
+    active_no_data_alert = types.SimpleNamespace(
+        status="new",
+        alert_type="no_data",
+        end_event_time=None,
+        operator="",
+        operation_logs=[],
+    )
+    recovered_no_data_alert = types.SimpleNamespace(
+        status="recovered",
+        alert_type="no_data",
+        end_event_time=None,
+        operator="",
+        operation_logs=[],
+    )
+    active_threshold_alert = types.SimpleNamespace(
+        status="new",
+        alert_type="alert",
+        end_event_time=None,
+        operator="",
+        operation_logs=[],
+    )
+    bulk_updates = []
+    lifecycle_calls = []
+    baseline_calls = []
+    filter_calls = []
+
+    class PolicyQuerySet:
+        def first(self):
+            return policy
+
+    class MonitorPolicy:
+        class objects:
+            @staticmethod
+            def filter(**kwargs):
+                return PolicyQuerySet()
+
+    class AlertQuerySet(list):
+        pass
+
+    class MonitorAlert:
+        class objects:
+            @staticmethod
+            def filter(**kwargs):
+                filter_calls.append(kwargs)
+                return AlertQuerySet([active_no_data_alert])
+
+            @staticmethod
+            def bulk_update(alerts, fields):
+                bulk_updates.append((alerts, fields))
+
+    class PolicyBaselineService:
+        def __init__(self, policy_obj):
+            self.policy_obj = policy_obj
+
+        def clear(self):
+            baseline_calls.append(("clear", self.policy_obj.id))
+
+    class AlertLifecycleNotifier:
+        def __init__(self, policy_obj):
+            self.policy_obj = policy_obj
+
+        def notify_alerts(self, alerts, action, operator="", reason=""):
+            lifecycle_calls.append((alerts, action, operator, reason))
+
+    module.MonitorPolicy = MonitorPolicy
+    module.MonitorAlert = MonitorAlert
+    module.PolicyBaselineService = PolicyBaselineService
+    module.AlertLifecycleNotifier = AlertLifecycleNotifier
+    module.datetime = _FrozenDateTime
+
+    module.MonitorPolicyViewSet().update_policy_baselines(
+        policy_id=policy.id,
+        enable_alerts=["threshold"],
+        operator="alice",
+    )
+
+    assert filter_calls == [{"policy_id": policy.id, "alert_type": "no_data", "status": "new"}]
+    assert active_no_data_alert.status == "closed"
+    assert active_no_data_alert.end_event_time == _FrozenDateTime.fixed_now
+    assert active_no_data_alert.operator == "alice"
+    assert active_no_data_alert.operation_logs[-1]["reason"] == "no_data_disabled"
+    assert recovered_no_data_alert.status == "recovered"
+    assert active_threshold_alert.status == "new"
+    assert bulk_updates == [([active_no_data_alert], ["status", "end_event_time", "operator", "operation_logs"])]
+    assert lifecycle_calls == [([active_no_data_alert], "closed", "alice", "no_data_disabled")]
+    assert baseline_calls == [("clear", policy.id)]
+
+
 def _install_scanner_dependencies(monkeypatch):
     alert_constants = types.SimpleNamespace(THRESHOLD="threshold", NO_DATA="no_data")
 
