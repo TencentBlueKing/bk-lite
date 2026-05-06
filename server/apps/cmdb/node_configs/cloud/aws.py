@@ -30,7 +30,7 @@ class AWSNodeParams(BaseNodeParams):
     def env_config(self, *args, **kwargs):
         env_config = {
             f"PASSWORD_access_key_id_{self._instance_id}": self.credential.get("accessKey", ""),
-            f"PASSWORD_secret_access_key_{self._instance_id}": self.credential.get("secretSecret", ""),
+            f"PASSWORD_secret_access_key_{self._instance_id}": self.credential.get("accessSecret", ""),
         }
         return env_config
 
