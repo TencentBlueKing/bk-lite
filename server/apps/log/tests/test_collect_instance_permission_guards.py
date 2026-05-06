@@ -2,6 +2,10 @@ import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.log.services.collect_type import CollectTypeService
 from apps.log.views.collect_config import CollectConfigViewSet, CollectInstanceViewSet
 
 
@@ -22,6 +26,14 @@ class FakeQuerySet(list):
 class FakeOrganizations(list):
     def all(self):
         return self
+
+
+class FakeFirstResult:
+    def __init__(self, value):
+        self.value = value
+
+    def first(self):
+        return self.value
 
 
 def make_request(data):
