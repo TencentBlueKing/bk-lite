@@ -1,10 +1,12 @@
 import json
 
 import pytest
+from django.utils import timezone
 from rest_framework import status
 
-from apps.log.utils.query_log import VictoriaMetricsAPI
 from apps.log.models.log_group import LogGroup, LogGroupOrganization, SearchCondition
+from apps.log.models.policy import Alert, AlertSnapshot, Event, EventRawData, Policy, PolicyOrganization
+from apps.log.utils.query_log import VictoriaMetricsAPI
 
 
 class DummyResponse:
@@ -79,6 +81,59 @@ def _mock_group_permission(mocker, teams=None, instance_ids=None, instance_permi
         "apps.log.services.access_scope.get_permission_rules",
         return_value=mocked_permission,
     )
+
+
+def _mock_policy_permission(mocker, policy_id=None, organization=1):
+    instance_permissions = []
+    if policy_id is not None:
+        instance_permissions.append({"id": policy_id, "permission": ["View", "Operate"]})
+
+    mocker.patch(
+        "apps.log.views.policy.get_permissions_rules",
+        return_value={
+            "data": {
+                "None": {
+                    "instance": instance_permissions,
+                }
+            },
+            "team": [organization],
+        },
+    )
+
+
+def _create_policy(name, organization):
+    policy = Policy.objects.create(
+        name=name,
+        alert_type="keyword",
+        alert_name=name,
+        alert_level="warning",
+        alert_condition={"query": "error"},
+        schedule={"type": "min", "value": 5},
+        period={"type": "min", "value": 5},
+    )
+    PolicyOrganization.objects.create(policy=policy, organization=organization)
+    return policy
+
+
+def _create_alert_with_event(policy, alert_id, event_id):
+    alert = Alert.objects.create(
+        id=alert_id,
+        policy=policy,
+        source_id=f"source-{alert_id}",
+        level="warning",
+        content="raw log alert",
+        start_event_time=timezone.now(),
+    )
+    event = Event.objects.create(
+        id=event_id,
+        policy=policy,
+        alert=alert,
+        source_id=alert.source_id,
+        event_time=timezone.now(),
+        level="warning",
+        content="raw event content",
+    )
+    return alert, event
 
 
 @pytest.mark.django_db
@@ -261,3 +316,121 @@ def test_search_condition_retrieve_returns_404_for_inaccessible_saved_condition(
     response = api_client.get(f"/api/v1/log/search_conditions/{condition.id}/")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_alert_retrieve_hides_unauthorized_policy_alert(api_client, authenticated_user, mocker):
+    policy = _create_policy("denied-policy", organization=2)
+    alert, _ = _create_alert_with_event(policy, "alert-denied", "event-denied")
+    _mock_policy_permission(mocker, organization=1)
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.get(f"/api/v1/log/alert/{alert.id}/")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_alert_closed_hides_unauthorized_policy_alert(api_client, authenticated_user, mocker):
+    policy = _create_policy("denied-policy-closed", organization=2)
+    alert, _ = _create_alert_with_event(policy, "alert-closed-denied", "event-closed-denied")
+    _mock_policy_permission(mocker, organization=1)
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(f"/api/v1/log/alert/{alert.id}/closed/")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_event_retrieve_hides_unauthorized_policy_event(api_client, authenticated_user, mocker):
+    policy = _create_policy("denied-policy-event", organization=2)
+    _, event = _create_alert_with_event(policy, "alert-event-denied", "event-denied")
+    _mock_policy_permission(mocker, organization=1)
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.get(f"/api/v1/log/event/{event.id}/")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_event_raw_data_retrieve_hides_unauthorized_policy_event(api_client, authenticated_user, mocker):
+    policy = _create_policy("denied-policy-raw-detail", organization=2)
+    _, event = _create_alert_with_event(policy, "alert-raw-detail-denied", "event-raw-detail-denied")
+    raw = EventRawData.objects.create(event=event, data={"message": "raw"})
+    _mock_policy_permission(mocker, organization=1)
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.get(f"/api/v1/log/event_raw_data/{raw.id}/")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_last_event_returns_404_without_policy_permission(api_client, authenticated_user, mocker):
+    policy = _create_policy("denied-policy-last-event", organization=2)
+    alert, _ = _create_alert_with_event(policy, "alert-last-event-denied", "event-last-event-denied")
+    _mock_policy_permission(mocker, organization=1)
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.get(f"/api/v1/log/alert/last_event/?alert_id={alert.id}")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["result"] is False
+
+
+@pytest.mark.django_db
+def test_event_raw_data_by_event_id_returns_404_without_policy_permission(api_client, authenticated_user, mocker):
+    policy = _create_policy("denied-policy-raw", organization=2)
+    _, event = _create_alert_with_event(policy, "alert-raw-denied", "event-raw-denied")
+    EventRawData.objects.create(event=event, data={"message": "raw"})
+    _mock_policy_permission(mocker, organization=1)
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.get(f"/api/v1/log/event_raw_data/by_event_id/?event_id={event.id}")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["result"] is False
+
+
+@pytest.mark.django_db
+def test_alert_snapshots_hides_unauthorized_policy_alert(api_client, authenticated_user, mocker):
+    policy = _create_policy("denied-policy-snapshot", organization=2)
+    alert, _ = _create_alert_with_event(policy, "alert-snapshot-denied", "event-snapshot-denied")
+    AlertSnapshot.objects.create(alert=alert, policy=policy, source_id=alert.source_id, snapshots=[])
+    _mock_policy_permission(mocker, organization=1)
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.get(f"/api/v1/log/alert/snapshots/{alert.id}/")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["result"] is False
+
+
+@pytest.mark.django_db
+def test_event_retrieve_allows_authorized_policy_event(api_client, authenticated_user, mocker):
+    policy = _create_policy("allowed-policy-event", organization=1)
+    _, event = _create_alert_with_event(policy, "alert-allowed", "event-allowed")
+    _mock_policy_permission(mocker, policy_id=policy.id, organization=1)
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.get(f"/api/v1/log/event/{event.id}/")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["data"]["id"] == event.id
+
+
+@pytest.mark.django_db
+def test_alert_snapshots_returns_data_for_authorized_policy(api_client, authenticated_user, mocker):
+    policy = _create_policy("allowed-policy-snapshot", organization=1)
+    alert, _ = _create_alert_with_event(policy, "alert-snapshot-allowed", "event-snapshot-allowed")
+    AlertSnapshot.objects.create(alert=alert, policy=policy, source_id=alert.source_id, snapshots=[{"type": "event"}])
+    _mock_policy_permission(mocker, policy_id=policy.id, organization=1)
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.get(f"/api/v1/log/alert/snapshots/{alert.id}/")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["data"]["alert_info"]["id"] == alert.id
+    assert response.json()["data"]["snapshot_info"]["snapshot_count"] == 1
