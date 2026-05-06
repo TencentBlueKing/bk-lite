@@ -10,6 +10,7 @@ from apps.base.models import User
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.filters.package import PackageVersionFilter
 from apps.node_mgmt.management.commands.backfill_node_cpu_architecture import Command as BackfillNodeCpuArchitectureCommand
@@ -33,15 +34,17 @@ from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.services.version_upgrade import VersionUpgradeService
 from apps.node_mgmt.tasks import installer as installer_tasks
 from apps.node_mgmt.tasks.version_discovery import _calculate_upgrade_info
+from apps.node_mgmt.utils import permission as node_permission
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
+from apps.node_mgmt.views import collector_configuration, node as node_view
 from apps.node_mgmt.views.collector import CollectorViewSet
 from apps.node_mgmt.views.installer import InstallerViewSet
 from apps.node_mgmt.views.sidecar import OpenSidecarViewSet
 
 
 def _build_admin_user():
-    return User.objects.create(
-        username=f"installer-test-user-{User.objects.count() + 1}",
+    return User(
+        username="installer-test-user",
         domain="domain.com",
         locale="en",
         is_superuser=True,
@@ -52,6 +55,80 @@ def _build_admin_user():
 
 def _json_response_data(response):
     return json.loads(response.content)
+
+
+class _FakeOrganizations(list):
+    def all(self):
+        return self
+
+
+class _FakeNode:
+    def __init__(self, node_id="node-1", organizations=None):
+        self.id = node_id
+        self.name = f"name-{node_id}"
+        self.ip = "127.0.0.1"
+        self.operating_system = "linux"
+        self.install_method = "manual"
+        self.nodeorganization_set = _FakeOrganizations([SimpleNamespace(organization=org) for org in (organizations or [2])])
+        self.saved = False
+
+    def save(self):
+        self.saved = True
+
+
+class _FakeNodeQuerySet(list):
+    def filter(self, **kwargs):
+        if "id__in" in kwargs:
+            ids = {str(value) for value in kwargs["id__in"]}
+            return _FakeNodeQuerySet([node for node in self if str(node.id) in ids])
+        if "cloud_region_id" in kwargs:
+            return self
+        return self
+
+    def prefetch_related(self, *args):
+        return self
+
+    def distinct(self):
+        return self
+
+    def values_list(self, field, flat=False):
+        if field == "id" and flat:
+            return [node.id for node in self]
+        return []
+
+
+class _FakeConfigQuerySet(list):
+    def select_related(self, *args):
+        return self
+
+    def prefetch_related(self, *args):
+        return self
+
+    def filter(self, **kwargs):
+        return self
+
+
+class _FakeConfig:
+    id = "cfg-1"
+    name = "cfg"
+    config_template = "x"
+    collector_id = "collector-1"
+    cloud_region_id = 1
+    is_pre = False
+    collector = SimpleNamespace(node_operating_system="linux")
+
+    def __init__(self, nodes):
+        self.nodes = _FakeOrganizations(nodes)
+
+
+def _make_node_request(data=None, method="post"):
+    factory = APIRequestFactory()
+    request_factory = getattr(factory, method)
+    request = request_factory("/node-mgmt/test", data=data or {}, format="json")
+    request.COOKIES["current_team"] = "1"
+    request.COOKIES["include_children"] = "0"
+    force_authenticate(request, user=_build_admin_user())
+    return request
 
 
 @pytest.mark.parametrize(
@@ -68,6 +145,117 @@ def _json_response_data(response):
 )
 def test_normalize_cpu_architecture(raw_value, expected):
     assert normalize_cpu_architecture(raw_value) == expected
+
+
+def test_authorize_node_ids_requires_operate_permission(monkeypatch):
+    node = _FakeNode()
+    monkeypatch.setattr(node_permission.Node.objects, "filter", lambda **kwargs: _FakeNodeQuerySet([node]))
+    monkeypatch.setattr(
+        node_permission,
+        "get_node_permission",
+        lambda request: {"instance": [{"id": node.id, "permission": ["View"]}], "team": []},
+    )
+
+    nodes, response = node_permission.authorize_node_ids(_make_node_request(), [node.id])
+
+    assert nodes is None
+    assert response.status_code == 403
+
+
+def test_authorize_target_organizations_allows_existing_org_for_instance_permission(monkeypatch):
+    node = _FakeNode(organizations=[2])
+    monkeypatch.setattr(
+        node_permission,
+        "get_node_permission",
+        lambda request: {"instance": [{"id": node.id, "permission": ["Operate"]}], "team": []},
+    )
+
+    response = node_permission.authorize_target_organizations(_make_node_request(), node, [2])
+
+    assert response is None
+
+
+def test_authorize_target_organizations_rejects_new_out_of_scope_org(monkeypatch):
+    node = _FakeNode(organizations=[2])
+    monkeypatch.setattr(
+        node_permission,
+        "get_node_permission",
+        lambda request: {"instance": [{"id": node.id, "permission": ["Operate"]}], "team": []},
+    )
+
+    response = node_permission.authorize_target_organizations(_make_node_request(), node, [2, 3])
+
+    assert response.status_code == 403
+
+
+def test_batch_operate_node_collector_requires_node_permission(monkeypatch):
+    monkeypatch.setattr(node_view, "authorize_node_ids", lambda request, node_ids: (None, WebUtils.response_403("denied")))
+    called = {"value": False}
+    monkeypatch.setattr(
+        node_view.NodeService,
+        "batch_operate_node_collector",
+        lambda *args, **kwargs: called.__setitem__("value", True),
+    )
+
+    response = node_view.NodeViewSet.as_view({"post": "batch_operate_node_collector"})(
+        _make_node_request({"node_ids": ["node-1"], "collector_id": "collector-1", "operation": "restart"})
+    )
+
+    assert response.status_code == 403
+    assert called["value"] is False
+
+
+def test_config_node_asso_hides_unauthorized_nodes(monkeypatch):
+    allowed = _FakeNode("node-allowed")
+    denied = _FakeNode("node-denied")
+    monkeypatch.setattr(
+        collector_configuration,
+        "get_authorized_node_queryset",
+        lambda request: _FakeNodeQuerySet([allowed]),
+    )
+    monkeypatch.setattr(
+        collector_configuration.CollectorConfiguration.objects,
+        "select_related",
+        lambda *args: _FakeConfigQuerySet([_FakeConfig([allowed, denied])]),
+    )
+
+    response = collector_configuration.CollectorConfigurationViewSet.as_view({"post": "get_config_node_asso"})(_make_node_request({}))
+    payload = _json_response_data(response)
+
+    assert payload["data"][0]["nodes"] == [
+        {
+            "id": "node-allowed",
+            "name": "name-node-allowed",
+            "ip": "127.0.0.1",
+            "operating_system": "linux",
+        }
+    ]
+
+
+def test_apply_to_node_prevalidates_permissions_before_mutation(monkeypatch):
+    monkeypatch.setattr(
+        collector_configuration,
+        "authorize_node_ids",
+        lambda request, node_ids: (None, WebUtils.response_403("denied")),
+    )
+    called = {"value": False}
+    monkeypatch.setattr(
+        collector_configuration.CollectorConfigurationService,
+        "apply_to_node",
+        lambda *args, **kwargs: called.__setitem__("value", True),
+    )
+
+    response = collector_configuration.CollectorConfigurationViewSet.as_view({"post": "apply_to_node"})(
+        _make_node_request(
+            [
+                {"node_id": "node-1", "collector_configuration_id": "cfg-1"},
+                {"node_id": "node-2", "collector_configuration_id": "cfg-1"},
+            ]
+        )
+    )
+
+    assert response.status_code == 403
+    assert called["value"] is False
 
 
 @pytest.mark.django_db
