@@ -1,8 +1,9 @@
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from django.db.models import Q
 
-from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.logger import monitor_logger as logger
+from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
+from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.permission import PermissionConstants
@@ -18,6 +19,103 @@ from apps.monitor.services.policy_source_cleanup import cleanup_policy_sources
 from apps.monitor.services.metrics import Metrics as MetricsService
 from apps.monitor.utils.pagination import parse_page_params
 from apps.rpc.node_mgmt import NodeMgmt
+from apps.system_mgmt.utils.group_utils import GroupUtils
+
+
+def _build_actor_context(request):
+    current_team = request.COOKIES.get("current_team")
+    if current_team in (None, ""):
+        raise BaseAppException("缺少 current_team 参数")
+
+    try:
+        current_team = int(current_team)
+    except (TypeError, ValueError):
+        raise BaseAppException("current_team 参数非法")
+
+    return {
+        "current_team": current_team,
+        "include_children": request.COOKIES.get("include_children", "0") == "1",
+        "is_superuser": request.user.is_superuser,
+        "group_list": normalize_user_group_ids(getattr(request.user, "group_list", [])),
+    }
+
+
+def _normalize_id_list(values):
+    return [str(value) for value in values if value not in (None, "")]
+
+
+def _get_authorized_scope_groups(actor_context):
+    if actor_context["is_superuser"]:
+        return None
+
+    groups = GroupUtils.get_user_authorized_child_groups(
+        actor_context["group_list"],
+        actor_context["current_team"],
+        include_children=actor_context["include_children"],
+    )
+    if not groups:
+        raise UnauthorizedException("当前组织无可用权限范围")
+    return set(groups)
+
+
+def _ensure_target_organizations(organizations, actor_context):
+    try:
+        normalized_orgs = {int(org) for org in organizations if org not in (None, "")}
+    except (TypeError, ValueError):
+        raise BaseAppException("组织参数非法")
+    if not normalized_orgs or actor_context["is_superuser"]:
+        return
+
+    allowed_groups = _get_authorized_scope_groups(actor_context)
+    unauthorized_orgs = normalized_orgs - allowed_groups
+    if unauthorized_orgs:
+        raise UnauthorizedException("无权限关联指定组织")
+
+
+def _ensure_operate_instances(request, instance_ids):
+    normalized_ids = _normalize_id_list(instance_ids)
+    if not normalized_ids:
+        return []
+
+    actor_context = _build_actor_context(request)
+    instances = list(
+        MonitorInstance.objects.filter(id__in=normalized_ids).values(
+            "id",
+            "monitor_object_id",
+        )
+    )
+    found_ids = {instance["id"] for instance in instances}
+    if found_ids != set(normalized_ids):
+        raise BaseAppException("监控实例不存在")
+
+    if actor_context["is_superuser"]:
+        return normalized_ids
+
+    for monitor_object_id in {instance["monitor_object_id"] for instance in instances}:
+        permission = get_permission_rules(
+            request.user,
+            actor_context["current_team"],
+            "monitor",
+            f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
+            include_children=actor_context["include_children"],
+        )
+        team_ids = permission.get("team", [])
+        operate_instance_ids = [
+            item["id"]
+            for item in permission.get("instance", [])
+            if isinstance(item, dict) and "id" in item and "Operate" in item.get("permission", [])
+        ]
+        allowed_ids = set(
+            MonitorInstance.objects.filter(id__in=normalized_ids, monitor_object_id=monitor_object_id)
+            .filter(Q(monitorinstanceorganization__organization__in=team_ids) | Q(id__in=operate_instance_ids))
+            .distinct()
+            .values_list("id", flat=True)
+        )
+        requested_ids = {instance["id"] for instance in instances if instance["monitor_object_id"] == monitor_object_id}
+        if requested_ids - allowed_ids:
+            raise UnauthorizedException("无权限操作指定监控实例")
+
+    return normalized_ids
 
 
 class MonitorInstanceViewSet(viewsets.ViewSet):
@@ -221,7 +319,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
 
     @action(methods=["post"], detail=False, url_path="remove_monitor_instance")
     def remove_monitor_instance(self, request):
-        instance_ids = request.data.get("instance_ids", [])
+        instance_ids = _ensure_operate_instances(request, request.data.get("instance_ids", []))
         MonitorInstance.objects.filter(id__in=instance_ids).update(is_deleted=True)
         if request.data.get("clean_child_config"):
             config_objs = CollectConfig.objects.filter(
@@ -250,6 +348,9 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
 
     @action(methods=["post"], detail=False, url_path="update_monitor_instance")
     def update_monitor_instance(self, request):
+        actor_context = _build_actor_context(request)
+        _ensure_operate_instances(request, [request.data.get("instance_id")])
+        _ensure_target_organizations(request.data.get("organizations", []), actor_context)
         MonitorObjectService.update_instance(
             request.data.get("instance_id"),
             request.data.get("name"),
@@ -260,23 +361,29 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
     @action(methods=["post"], detail=False, url_path="instances_remove_organizations")
     def instances_remove_organizations(self, request):
         """删除监控对象实例组织"""
-        instance_ids = request.data.get("instance_ids", [])
+        actor_context = _build_actor_context(request)
+        instance_ids = _ensure_operate_instances(request, request.data.get("instance_ids", []))
         organizations = request.data.get("organizations", [])
+        _ensure_target_organizations(organizations, actor_context)
         MonitorObjectService.remove_instances_organizations(instance_ids, organizations)
         return WebUtils.response_success()
 
     @action(methods=["post"], detail=False, url_path="instances_add_organizations")
     def instances_add_organizations(self, request):
         """添加监控对象实例组织"""
-        instance_ids = request.data.get("instance_ids", [])
+        actor_context = _build_actor_context(request)
+        instance_ids = _ensure_operate_instances(request, request.data.get("instance_ids", []))
         organizations = request.data.get("organizations", [])
+        _ensure_target_organizations(organizations, actor_context)
         MonitorObjectService.add_instances_organizations(instance_ids, organizations)
         return WebUtils.response_success()
 
     @action(methods=["post"], detail=False, url_path="set_instances_organizations")
     def set_instances_organizations(self, request):
         """设置监控对象实例组织"""
-        instance_ids = request.data.get("instance_ids", [])
+        actor_context = _build_actor_context(request)
+        instance_ids = _ensure_operate_instances(request, request.data.get("instance_ids", []))
         organizations = request.data.get("organizations", [])
+        _ensure_target_organizations(organizations, actor_context)
         MonitorObjectService.set_instances_organizations(instance_ids, organizations)
         return WebUtils.response_success()
