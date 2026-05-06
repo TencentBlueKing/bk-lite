@@ -1,0 +1,33 @@
+场景名称: 循环内反思测试
+
+对应计划: Phase 1 — #6 循环内反思
+
+功能描述:
+  检测 ReAct 循环陷入死循环（连续调用相同工具、重复失败）时，
+  触发反思/replan 逻辑，改变执行方向。
+
+当前状态: 未实现
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py: agent_node 中（待新增反思逻辑）
+
+测试用例:
+
+  TestReflectionOnRepeatToolCalls:
+    1. 连续 3 次调用相同工具+相同参数: 触发反思，注入反思 prompt 或切换方向
+    2. 连续调用不同工具: 不触发反思
+
+  TestReflectionOnConsecutiveFailures:
+    3. 连续 3 次工具调用失败: 触发反思提示
+    4. 间隔失败（成功-失败-成功-失败）: 不触发连续失败反思
+
+  TestReflectionPromptInjection:
+    5. 反思触发时注入 system message: "你似乎在重复相同的操作，请重新审视..."
+    6. 反思后 LLM 改变策略: 验证下一步调用了不同的工具
+
+  TestReflectionConfigurable:
+    7. 可配置反思阈值: repeat_threshold=5 时需要 5 次重复才触发
+    8. 可禁用反思: reflection_enabled=False
+
+关联测试文件: cases/test_reflection.py
+状态: RED（功能未实现，测试应全部 FAIL）

@@ -1,0 +1,26 @@
+场景名称: 取消与优雅终止测试
+
+对应计划: Phase 2 — #20 取消与优雅终止
+
+功能描述:
+  用户可中途取消正在执行的 agent 任务，agent 优雅退出并输出中间结果。
+
+当前状态: 未实现
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py（待新增 abort signal 机制）
+  - server/apps/opspilot/metis/llm/chain/graph.py（待新增流式取消）
+
+测试用例:
+
+  TestAbortSignal:
+    1. 设置 abort signal 后 agent 在下一步前终止
+    2. 取消时返回已收集的中间结果
+    3. 取消时正在执行的工具调用等待完成后再终止（不强制中断工具）
+
+  TestGracefulShutdown:
+    4. 取消后生成摘要消息: 告知用户已执行的步骤和中间结果
+    5. 取消后数据库记录状态为 INTERRUPTED（非 FAIL）
+
+关联测试文件: cases/test_abort_cancel.py
+状态: RED（功能未实现）

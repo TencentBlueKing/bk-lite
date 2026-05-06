@@ -1,0 +1,29 @@
+场景名称: 工具失败自适应重试测试
+
+对应计划: Phase 1 — #25 自适应重试
+
+功能描述:
+  工具执行失败后自动重试，支持换参数、换工具、退避策略。
+
+当前状态: 未实现（仅有 handle_tool_errors=True 捕获错误）
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py: logged_tool_node（待新增重试逻辑）
+
+测试用例:
+
+  TestToolRetryBasic:
+    1. 工具第一次失败第二次成功: 自动重试一次后成功
+    2. 工具连续失败超过重试上限: 放弃重试，返回错误信息给 LLM
+    3. 工具成功不重试: 正常返回结果
+
+  TestToolRetryStrategy:
+    4. 退避重试间隔: 第 1 次重试等 1s，第 2 次等 2s
+    5. 可配置重试次数: max_retries=3
+
+  TestToolRetryFallback:
+    6. 重试全部失败后 LLM 选择替代工具: 错误信息传回 LLM，LLM 改用其他工具
+    7. 重试全部失败后 LLM 放弃: 不再调用工具，输出最终回答
+
+关联测试文件: cases/test_adaptive_retry.py
+状态: RED（功能未实现，测试应全部 FAIL）

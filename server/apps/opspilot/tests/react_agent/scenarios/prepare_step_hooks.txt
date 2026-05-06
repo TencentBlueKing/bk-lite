@@ -1,0 +1,40 @@
+场景名称: prepareStep 钩子机制测试
+
+对应计划: Phase 1 — #1 prepareStep
+
+功能描述:
+  每步 LLM 调用前执行钩子函数，可动态修改 tools/messages/system_prompt，
+  或请求终止循环。支持同步和异步钩子，多钩子按顺序执行。
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py: agent_node 中 prepare_step_hooks 调用逻辑
+  - server/apps/opspilot/metis/llm/chain/entity.py: PrepareStepContext, PrepareStepResult
+
+测试用例:
+
+  TestPrepareStepBasic:
+    1. 无钩子时正常执行: 不注册任何钩子，agent 正常完成 tool_call 循环
+    2. 钩子接收正确的上下文: step_number 递增，messages 包含当前消息列表，tools 包含当前工具集
+    3. step_number 每步递增: 多轮 tool_call 后 step_number = 实际步数
+
+  TestPrepareStepModifyTools:
+    4. 钩子修改工具集: 第 2 步移除某工具，验证后续 bind_tools 不含该工具
+    5. 钩子添加新工具: 第 2 步加入新工具，验证后续 LLM 可调用
+    6. 钩子返回空工具集: 移除所有工具后 LLM 无法调用工具，循环自然结束
+
+  TestPrepareStepModifyMessages:
+    7. 钩子修改 messages: 截取最近 N 条消息，验证 LLM 收到的 messages 数量减少
+    8. 钩子注入额外 system message: 在 messages 前插入提示，验证 LLM 收到
+
+  TestPrepareStepStop:
+    9. 钩子请求停止: 返回 PrepareStepResult(stop=True)，agent 立即终止不再调用 LLM
+    10. 停止时附加消息: stop=True + metadata["stop_message"]，返回的 AIMessage 包含该消息
+
+  TestPrepareStepMultipleHooks:
+    11. 多钩子按顺序执行: hook_A 修改 tools，hook_B 读到 hook_A 修改后的 tools
+    12. 钩子异常不中断执行: hook_A 抛异常，hook_B 和 agent_node 正常执行
+
+  TestPrepareStepAsync:
+    13. 异步钩子正常执行: async def hook 被正确 await
+
+关联测试文件: cases/test_prepare_step.py

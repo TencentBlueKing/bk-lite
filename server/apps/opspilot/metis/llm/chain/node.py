@@ -23,7 +23,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from apps.opspilot.metis.llm.chain.compaction import CompactionConfig, compact_messages
-from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, PrepareStepContext, PrepareStepResult
+from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, PrepareStepContext, PrepareStepResult, StopConditionContext, StopConditionResult
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
 from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
@@ -666,6 +666,7 @@ class ToolsNodes(BasicNode):
         tools = self.tools
         get_llm_client = self.get_llm_client
         step_counter = {"count": 0}  # 步数计数器（闭包可变引用）
+        token_counter = {"total": 0}  # 累计 token 计数器
 
         # ========== Agent 节点：调用 LLM 并决定是否使用工具 ==========
         async def agent_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
@@ -777,6 +778,12 @@ class ToolsNodes(BasicNode):
                 return {"messages": []}
 
             tool_calls = getattr(response, "tool_calls", None) or []
+
+            # 累计 token 统计
+            usage_metadata = getattr(response, "usage_metadata", None) or {}
+            if isinstance(usage_metadata, dict):
+                token_counter["total"] += usage_metadata.get("total_tokens", 0)
+
             logger.info(
                 f"[{trace_id}] ReAct agent_node 返回: message_type={type(response).__name__}, "
                 f"tool_call_count={len(tool_calls)}, content_preview={str(getattr(response, 'content', ''))[:200]!r}"
@@ -790,14 +797,76 @@ class ToolsNodes(BasicNode):
         tool_node = tools_node if tools_node else ToolNode(tools, handle_tool_errors=True)
 
         async def logged_tool_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
-            """带日志的工具节点包装器。"""
+            """带日志和自适应重试的工具节点包装器。"""
+            import asyncio
+
             trace_id = config["configurable"].get("trace_id", "unknown")
+            graph_request = config["configurable"]["graph_request"]
+            retry_cfg = graph_request.retry_config
+
             messages = state.get("messages", [])
             last_message = messages[-1] if messages else None
             tool_calls = getattr(last_message, "tool_calls", None) or []
             logger.info(f"[{trace_id}] ReAct tools_node 开始执行, tool_call_count={len(tool_calls)}, tool_calls={tool_calls}")
+
             result = await tool_node.ainvoke(state, config=config)
             result_messages = result.get("messages", []) if isinstance(result, dict) else []
+
+            # ========== 自适应重试：检测工具错误并重试 ==========
+            if retry_cfg.enabled and result_messages:
+                from langchain_core.messages import ToolMessage
+
+                retried_any = False
+                for idx, msg in enumerate(result_messages):
+                    if not isinstance(msg, ToolMessage):
+                        continue
+                    content_str = str(getattr(msg, "content", ""))
+                    # 检查是否为错误响应（ToolNode handle_tool_errors 将异常写入 content）
+                    is_error = content_str.startswith("Error:") or content_str.startswith("Traceback")
+                    if not is_error:
+                        # 检查关键词匹配
+                        content_lower = content_str.lower()
+                        is_error = any(kw in content_lower for kw in retry_cfg.retry_on_error_keywords)
+
+                    if is_error and retry_cfg.max_retries_per_tool > 0:
+                        tool_call_id = getattr(msg, "tool_call_id", "")
+                        for attempt in range(1, retry_cfg.max_retries_per_tool + 1):
+                            wait_time = retry_cfg.backoff_seconds * (2 ** (attempt - 1))
+                            logger.info(
+                                f"[{trace_id}] 工具重试 (attempt={attempt}/{retry_cfg.max_retries_per_tool}, "
+                                f"tool_call_id={tool_call_id}, wait={wait_time}s): {content_str[:100]}"
+                            )
+                            await asyncio.sleep(wait_time)
+
+                            retry_result = await tool_node.ainvoke(state, config=config)
+                            retry_messages = retry_result.get("messages", []) if isinstance(retry_result, dict) else []
+
+                            # 找到对应 tool_call_id 的结果
+                            retry_msg = None
+                            for rm in retry_messages:
+                                if isinstance(rm, ToolMessage) and getattr(rm, "tool_call_id", "") == tool_call_id:
+                                    retry_msg = rm
+                                    break
+
+                            if retry_msg:
+                                retry_content = str(getattr(retry_msg, "content", ""))
+                                retry_is_error = retry_content.startswith("Error:") or retry_content.startswith("Traceback")
+                                if not retry_is_error:
+                                    retry_content_lower = retry_content.lower()
+                                    retry_is_error = any(kw in retry_content_lower for kw in retry_cfg.retry_on_error_keywords)
+
+                                if not retry_is_error:
+                                    # 重试成功，替换结果
+                                    result_messages[idx] = retry_msg
+                                    retried_any = True
+                                    logger.info(f"[{trace_id}] 工具重试成功 (attempt={attempt}, tool_call_id={tool_call_id})")
+                                    break
+                        else:
+                            logger.warning(f"[{trace_id}] 工具重试耗尽 (tool_call_id={tool_call_id})，保留原始错误")
+
+                if retried_any:
+                    result = {"messages": result_messages}
+
             logger.info(
                 f"[{trace_id}] ReAct tools_node 执行结束, result_message_count={len(result_messages)}, "
                 f"result_types={[type(msg).__name__ for msg in result_messages]}"
@@ -805,25 +874,54 @@ class ToolsNodes(BasicNode):
             return result
 
         # ========== 条件函数：判断是否继续调用工具 ==========
-        def should_continue(state: Dict[str, Any]) -> str:
-            """判断是否需要继续执行工具调用"""
+        def should_continue(state: Dict[str, Any], config: RunnableConfig) -> str:
+            """判断是否需要继续执行工具调用（支持可配置停止条件链）"""
             messages = state.get("messages", [])
             if not messages:
                 return "end"
 
             last_message = messages[-1]
 
-            # 如果最后一条消息有工具调用，继续执行工具
-            if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-                logger.info(f"ReAct should_continue: 检测到 tool_calls，进入 tools 节点: {last_message.tool_calls}")
-                return "continue"
+            # 如果 LLM 没有发起工具调用，自然结束
+            if not (hasattr(last_message, "tool_calls") and last_message.tool_calls):
+                logger.info(
+                    "ReAct should_continue: 未检测到 tool_calls，结束循环, "
+                    f"last_message_type={type(last_message).__name__}, content_preview={str(getattr(last_message, 'content', ''))[:200]!r}"
+                )
+                return "end"
 
-            # 否则结束
-            logger.info(
-                "ReAct should_continue: 未检测到 tool_calls，结束循环, "
-                f"last_message_type={type(last_message).__name__}, content_preview={str(getattr(last_message, 'content', ''))[:200]!r}"
-            )
-            return "end"
+            # ========== stopWhen 条件链评估 ==========
+            graph_request = config["configurable"]["graph_request"]
+
+            # 内置条件 1: 最大步数
+            if graph_request.max_steps > 0 and step_counter["count"] >= graph_request.max_steps:
+                logger.warning(f"ReAct should_continue: 达到最大步数限制 ({step_counter['count']}/{graph_request.max_steps})，强制终止")
+                return "end"
+
+            # 内置条件 2: token 预算
+            if graph_request.max_tokens_budget > 0 and token_counter["total"] >= graph_request.max_tokens_budget:
+                logger.warning(f"ReAct should_continue: 达到 token 预算上限 ({token_counter['total']}/{graph_request.max_tokens_budget})，强制终止")
+                return "end"
+
+            # 自定义条件链
+            if graph_request.stop_when_conditions:
+                ctx = StopConditionContext(
+                    step_number=step_counter["count"],
+                    total_tokens=token_counter["total"],
+                    messages=messages,
+                    last_tool_calls=getattr(last_message, "tool_calls", []),
+                )
+                for condition in graph_request.stop_when_conditions:
+                    try:
+                        result = condition(ctx)
+                        if isinstance(result, StopConditionResult) and result.should_stop:
+                            logger.warning(f"ReAct should_continue: 自定义条件触发停止 — {result.reason}")
+                            return "end"
+                    except Exception as e:
+                        logger.warning(f"ReAct should_continue: 自定义条件执行失败: {e}")
+
+            logger.info(f"ReAct should_continue: 检测到 tool_calls，进入 tools 节点 (step={step_counter['count']}): {last_message.tool_calls}")
+            return "continue"
 
         # ========== Wrapper 节点：入口点，兼容现有 API ==========
         async def wrapper_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:

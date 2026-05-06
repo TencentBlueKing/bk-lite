@@ -37,6 +37,44 @@ class PrepareStepResult(BaseModel):
 PrepareStepHook = Callable[[PrepareStepContext], Any]
 
 
+class StopConditionContext(BaseModel):
+    """stopWhen 条件判断时的上下文"""
+
+    step_number: int = 0
+    total_tokens: int = 0
+    messages: List[Any] = []
+    last_tool_calls: List[Any] = []
+    metadata: Dict[str, Any] = {}
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
+class StopConditionResult(BaseModel):
+    """stopWhen 条件的判断结果"""
+
+    should_stop: bool = False
+    reason: str = ""
+    summary_message: str = ""  # 强制停止时附加给用户的说明
+
+
+# stopWhen 条件类型: 接收 StopConditionContext，返回 StopConditionResult
+# 签名: def condition(ctx: StopConditionContext) -> StopConditionResult
+StopWhenCondition = Callable[[StopConditionContext], Any]
+
+
+class RetryConfig(BaseModel):
+    """自适应重试配置"""
+
+    enabled: bool = True
+    max_retries_per_tool: int = 2  # 单个工具调用最大重试次数
+    retry_on_error_keywords: List[str] = Field(
+        default_factory=lambda: ["timeout", "connection", "rate_limit", "500", "502", "503", "504"],
+        description="触发重试的错误关键词（不区分大小写）",
+    )
+    backoff_seconds: float = 1.0  # 重试间隔基数（指数退避: base * 2^attempt）
+
+
 class BasicLLMResponse(BaseModel):
     message: str
     total_tokens: int = 0
@@ -92,6 +130,14 @@ class BasicLLMRequest(BaseModel):
 
     # prepareStep 钩子列表（运行时注入，不序列化）
     prepare_step_hooks: List[Any] = Field(default_factory=list, description="每步执行前的回调钩子列表", exclude=True)
+
+    # stopWhen 灵活停止配置
+    max_steps: int = Field(default=50, description="最大步数限制（0=不限制，由 recursion_limit 兜底）")
+    max_tokens_budget: int = Field(default=0, description="累计 token 预算上限（0=不限制）")
+    stop_when_conditions: List[Any] = Field(default_factory=list, description="自定义停止条件列表", exclude=True)
+
+    # 自适应重试配置
+    retry_config: RetryConfig = Field(default_factory=RetryConfig, description="工具调用自适应重试配置")
 
     # 上下文 Compaction 配置
     compaction_enabled: bool = Field(default=True, description="是否启用上下文压缩")

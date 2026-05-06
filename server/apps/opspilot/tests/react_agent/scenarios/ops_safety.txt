@@ -1,0 +1,31 @@
+场景名称: 运维安全（人工审批、执行验证、回滚）测试
+
+对应计划: Phase 4 — #22 人工审批, #23 执行后验证, #24 回滚能力
+
+功能描述:
+  危险操作需人工审批确认，变更操作执行后自动验证是否生效，
+  失败时可回滚到操作前状态。
+
+当前状态: 未实现
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py（待新增审批暂停机制）
+  - server/apps/opspilot/metis/llm/tools/（待在工具上标记 needs_approval）
+
+测试用例:
+
+  TestHumanApproval:
+    1. 危险工具调用时暂停等待审批: agent 暂停，返回审批请求
+    2. 审批通过后继续执行: 工具正常调用
+    3. 审批拒绝后跳过工具: agent 收到拒绝信息，选择替代方案
+
+  TestPostExecutionVerification:
+    4. 变更操作后自动触发验证工具: 重启 pod 后检查是否恢复
+    5. 验证失败触发重试或回滚
+
+  TestRollback:
+    6. 变更前记录状态快照
+    7. 变更失败后回滚到快照状态
+
+关联测试文件: cases/test_ops_safety.py
+状态: RED（功能未实现）

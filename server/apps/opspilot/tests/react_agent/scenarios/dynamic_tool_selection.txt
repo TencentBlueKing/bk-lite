@@ -1,0 +1,30 @@
+场景名称: 动态工具选择测试
+
+对应计划: Phase 1 — #3 动态工具选择
+
+功能描述:
+  通过 prepareStep 钩子实现运行时按需切换可用工具集。
+  agent_node 每轮从 current_tools 获取工具列表并 bind_tools。
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py: agent_node 中 prepareStep 修改 current_tools，bind_tools 使用 current_tools
+
+测试用例:
+
+  TestDynamicToolSwitch:
+    1. 第一步使用工具集 A，第二步切换为工具集 B: hook 根据 step_number 返回不同 tools
+    2. 分阶段工具策略: step 1-2 只有诊断工具，step 3+ 加入修复工具
+    3. 按 LLM 返回内容决定工具: hook 检查 messages 中最后一条 AIMessage 内容，动态调整工具
+
+  TestDynamicToolRemoval:
+    4. 移除已完成的工具: 某工具调用成功后，hook 将其移除避免重复调用
+    5. 移除失败的工具: 某工具连续失败后，hook 将其移除
+
+  TestDynamicToolAddition:
+    6. 运行时加入新工具: 初始只有查询工具，发现问题后 hook 加入修复工具
+    7. 加入的新工具可被 LLM 调用: 验证 bind_tools 包含新工具
+
+  TestToolSetIntegrity:
+    8. 工具切换不影响已有 tool_call 结果: 上一轮 tool_call 的 ToolMessage 仍在 messages 中
+
+关联测试文件: cases/test_dynamic_tools.py

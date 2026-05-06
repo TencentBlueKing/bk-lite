@@ -1,0 +1,38 @@
+场景名称: stopWhen 灵活停止条件测试
+
+对应计划: Phase 1 — #2 stopWhen
+
+功能描述:
+  should_continue 从简单的 tool_calls 判断扩展为可配置条件链，
+  支持最大步数、token 预算上限、自定义停止条件。
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py: should_continue 函数
+  - server/apps/opspilot/metis/llm/chain/entity.py: StopConditionContext, StopConditionResult, BasicLLMRequest.max_steps/max_tokens_budget/stop_when_conditions
+
+测试用例:
+
+  TestStopWhenMaxSteps:
+    1. 默认 max_steps=50: 在第 50 步强制终止（构造 mock LLM 永远返回 tool_calls）
+    2. 自定义 max_steps=3: 在第 3 步终止
+    3. max_steps=0 不限制步数: 由 recursion_limit 或 LLM 自然停止
+
+  TestStopWhenTokenBudget:
+    4. token 超预算终止: 设置 max_tokens_budget=1000，mock LLM 每次返回 usage_metadata.total_tokens=600，第 2 步后累计 1200 > 1000，终止
+    5. max_tokens_budget=0 不限制: 不管累计多少 token 都不触发
+    6. LLM 不返回 usage_metadata: token_counter 不增长，不触发预算限制
+
+  TestStopWhenCustomConditions:
+    7. 自定义条件触发停止: 注入条件 "当 step_number >= 2 时停止"
+    8. 自定义条件不触发: 条件始终返回 should_stop=False，循环正常继续
+    9. 多个条件中第一个触发即停止: condition_A 不触发，condition_B 触发
+    10. 条件异常不影响执行: 条件函数抛异常，循环正常继续
+
+  TestStopWhenContextAccuracy:
+    11. StopConditionContext 包含正确值: step_number、total_tokens、messages、last_tool_calls 均准确
+
+  TestStopWhenNaturalEnd:
+    12. LLM 无 tool_calls 时自然结束: 不进入 stopWhen 检查，直接返回 "end"
+    13. messages 为空时返回 "end"
+
+关联测试文件: cases/test_stop_when.py

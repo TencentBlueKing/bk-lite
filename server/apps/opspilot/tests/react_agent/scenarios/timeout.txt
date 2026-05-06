@@ -1,0 +1,24 @@
+场景名称: 超时熔断测试
+
+对应计划: Phase 2 — #21 超时熔断
+
+功能描述:
+  支持单步超时和总执行时间限制，避免单个工具阻塞整个 agent。
+
+当前状态: 未实现（仅有 LLM HTTP 超时 timeout=3000）
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py（待新增超时机制）
+
+测试用例:
+
+  TestPerStepTimeout:
+    1. 单步超时: 工具执行超过 step_timeout 秒后中断并返回超时错误
+    2. LLM 调用超时: ainvoke 超过 step_timeout 后中断
+
+  TestTotalTimeout:
+    3. 总时间超限: 多步执行累计超过 total_timeout 后强制终止
+    4. 超时后返回中间结果
+
+关联测试文件: cases/test_timeout.py
+状态: RED（功能未实现）

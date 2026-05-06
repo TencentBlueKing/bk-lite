@@ -1,0 +1,29 @@
+场景名称: 子 Agent 独立上下文与结果摘要测试
+
+对应计划: Phase 3 — #13 子 Agent 独立上下文, #14 子 Agent 结果摘要
+
+功能描述:
+  Supervisor 下的子 Agent 使用独立 context window，
+  执行完毕后通过 toModelOutput 机制返回摘要给主 Agent。
+
+当前状态: 未实现
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/agent/supervisor_multi_agent.py（待改造）
+
+测试用例:
+
+  TestSubAgentIsolation:
+    1. 子 Agent 不继承主 Agent 全部 history: 子 Agent 收到的 messages 只含任务描述
+    2. 子 Agent 执行不污染主 Agent 上下文: 子 Agent 的中间 tool_call 消息不回灌主 Agent
+
+  TestSubAgentSummary:
+    3. 子 Agent 返回摘要而非全部消息: toModelOutput 生成简短结果
+    4. 摘要包含关键结果: 工具调用结果的核心数据保留
+
+  TestParallelSubAgents:
+    5. 多子 Agent 并行执行: 同时查 K8s + DB，wall-clock 时间小于串行
+    6. 某子 Agent 失败不影响其他: 其他子 Agent 结果正常返回
+
+关联测试文件: cases/test_sub_agent.py
+状态: RED（功能未实现）
