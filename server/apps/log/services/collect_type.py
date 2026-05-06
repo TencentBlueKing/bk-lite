@@ -27,6 +27,22 @@ class CollectTypeService:
         return content
 
     @staticmethod
+    def _get_instance_config(config_info: dict, config_type: str, instance_id: str, is_child: bool):
+        config_id = config_info.get("id") if isinstance(config_info, dict) else None
+        if not config_id:
+            raise BaseAppException(f"{config_type}.id is required")
+
+        config_obj = CollectConfig.objects.filter(
+            id=config_id,
+            collect_instance_id=instance_id,
+            is_child=is_child,
+        ).first()
+        if not config_obj:
+            raise BaseAppException(f"{config_type} config does not belong to instance")
+
+        return config_obj
+
+    @staticmethod
     def get_collect_type(collect_type: str) -> str:
         """
         Get the collect type based on the provided string.
@@ -231,21 +247,28 @@ class CollectTypeService:
             )
 
         if base_info:
-            config_obj = CollectConfig.objects.filter(id=base_info["id"]).first()
-            if config_obj:
-                base_content = CollectTypeService._extract_update_payload(
-                    base_info, "base"
-                )
-                content = build_content(config_obj, "base", base_content)
-                env_config = base_info.get("env_config")
-                if env_config:
-                    child_env = {k: v for k, v in env_config.items()}
-                NodeMgmt().update_config_content(base_info["id"], content, env_config)
+            config_obj = CollectTypeService._get_instance_config(
+                base_info,
+                "base",
+                instance_id,
+                is_child=False,
+            )
+            base_content = CollectTypeService._extract_update_payload(
+                base_info, "base"
+            )
+            content = build_content(config_obj, "base", base_content)
+            env_config = base_info.get("env_config")
+            if env_config:
+                child_env = {k: v for k, v in env_config.items()}
+            NodeMgmt().update_config_content(base_info["id"], content, env_config)
 
         if child_info or child_env:
-            config_obj = CollectConfig.objects.filter(id=child_info["id"]).first()
-            if not config_obj:
-                return
+            config_obj = CollectTypeService._get_instance_config(
+                child_info,
+                "child",
+                instance_id,
+                is_child=True,
+            )
             child_content = CollectTypeService._extract_update_payload(
                 child_info, "child"
             )

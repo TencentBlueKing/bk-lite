@@ -2,6 +2,10 @@ import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.log.services.collect_type import CollectTypeService
 from apps.log.views.collect_config import CollectConfigViewSet, CollectInstanceViewSet
 
 
@@ -21,6 +25,14 @@ class FakeOrganizations(list):
         return self
 
 
+class FakeFirstResult:
+    def __init__(self, value):
+        self.value = value
+
+    def first(self):
+        return self.value
+
+
 def make_request(data):
     return SimpleNamespace(
         user=SimpleNamespace(username="alice", domain="default"),
@@ -33,6 +45,7 @@ def make_instance(instance_id="inst-1", collect_type_id=7, organizations=None):
     return SimpleNamespace(
         id=instance_id,
         collect_type_id=collect_type_id,
+        node_id="node-1",
         collectinstanceorganization_set=FakeOrganizations([SimpleNamespace(organization=org) for org in organizations or [2]]),
     )
 
@@ -464,3 +477,65 @@ def test_update_instance_collect_config_allows_authorized_instance(monkeypatch):
 
     assert response.status_code == 200
     update_config.assert_called_once_with(None, {"content": "key: value"}, instance.id, instance.collect_type_id)
+
+
+def test_update_instance_config_rejects_config_from_other_instance(monkeypatch):
+    from apps.log.services import collect_type
+
+    instance = make_instance()
+    collect_type_obj = SimpleNamespace(collector="Vector", name="file")
+    node_mgmt = Mock()
+
+    monkeypatch.setattr(collect_type.CollectType.objects, "filter", Mock(return_value=FakeFirstResult(collect_type_obj)))
+    monkeypatch.setattr(collect_type.CollectInstance.objects, "filter", Mock(return_value=FakeFirstResult(instance)))
+    monkeypatch.setattr(collect_type.CollectConfig.objects, "filter", Mock(return_value=FakeFirstResult(None)))
+    monkeypatch.setattr(collect_type.Controller, "has_template_for_config_type", Mock(return_value=False))
+    monkeypatch.setattr(collect_type, "NodeMgmt", node_mgmt)
+
+    with pytest.raises(BaseAppException, match="base config does not belong to instance"):
+        CollectTypeService.update_instance_config_v2(
+            child_info=None,
+            base_info={"id": "foreign-cfg", "content": {"sinks": {}}},
+            instance_id=instance.id,
+            collect_type_id=instance.collect_type_id,
+        )
+
+    collect_type.CollectConfig.objects.filter.assert_called_once_with(
+        id="foreign-cfg",
+        collect_instance_id=instance.id,
+        is_child=False,
+    )
+    node_mgmt.assert_not_called()
+
+
+def test_update_instance_config_updates_only_owned_config(monkeypatch):
+    from apps.log.services import collect_type
+
+    instance = make_instance()
+    collect_type_obj = SimpleNamespace(collector="Vector", name="file")
+    config = SimpleNamespace(id="base-cfg", collect_instance_id=instance.id, file_type="yaml", is_child=False)
+    node_mgmt = Mock()
+
+    monkeypatch.setattr(collect_type.CollectType.objects, "filter", Mock(return_value=FakeFirstResult(collect_type_obj)))
+    monkeypatch.setattr(collect_type.CollectInstance.objects, "filter", Mock(return_value=FakeFirstResult(instance)))
+    monkeypatch.setattr(collect_type.CollectConfig.objects, "filter", Mock(return_value=FakeFirstResult(config)))
+    monkeypatch.setattr(collect_type.Controller, "has_template_for_config_type", Mock(return_value=False))
+    monkeypatch.setattr(collect_type, "NodeMgmt", node_mgmt)
+
+    CollectTypeService.update_instance_config_v2(
+        child_info=None,
+        base_info={"id": config.id, "content": {"sinks": {"nats": {"subject": "vector"}}}},
+        instance_id=instance.id,
+        collect_type_id=instance.collect_type_id,
+    )
+
+    collect_type.CollectConfig.objects.filter.assert_called_once_with(
+        id=config.id,
+        collect_instance_id=instance.id,
+        is_child=False,
+    )
+    node_mgmt.return_value.update_config_content.assert_called_once()
+    update_id, content, env_config = node_mgmt.return_value.update_config_content.call_args.args
+    assert update_id == config.id
+    assert "subject: vector" in content
+    assert env_config is None
