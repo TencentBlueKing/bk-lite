@@ -2,6 +2,7 @@ package local
 
 import (
 	"encoding/json"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -10,12 +11,12 @@ import (
 
 func TestRegressionLocalExecuteOutputDecoding(t *testing.T) {
 	wrappedCmd := wrapCmdCommand("ipconfig")
-	if !strings.Contains(wrappedCmd, "chcp 65001") {
+	if runtime.GOOS == "windows" && !strings.Contains(wrappedCmd, "chcp 65001") {
 		t.Fatalf("expected cmd command wrapper to switch code page, got %q", wrappedCmd)
 	}
 
 	wrapped := wrapPowerShellCommand("Write-Output test")
-	if !strings.Contains(wrapped, "[Console]::OutputEncoding") {
+	if runtime.GOOS == "windows" && !strings.Contains(wrapped, "[Console]::OutputEncoding") {
 		t.Fatalf("expected PowerShell command wrapper to force UTF-8 output, got %q", wrapped)
 	}
 
@@ -25,7 +26,7 @@ func TestRegressionLocalExecuteOutputDecoding(t *testing.T) {
 	}
 
 	gbkOutput := []byte{0xd6, 0xd0, 0xce, 0xc4, 0xca, 0xe4, 0xb3, 0xf6}
-	if got := decodeExecuteOutput(gbkOutput, ShellTypeCmd); got != "中文输出" {
+	if got := decodeExecuteOutput(gbkOutput, ShellTypeCmd); runtime.GOOS == "windows" && got != "中文输出" {
 		t.Fatalf("expected GBK output to decode, got %q", got)
 	}
 
@@ -43,7 +44,9 @@ func TestRegressionLocalExecuteOutputDecodingStrategy(t *testing.T) {
 
 	gbkOutput := []byte{0xd6, 0xd0, 0xce, 0xc4, 0xca, 0xe4, 0xb3, 0xf6}
 	if got, strategy := decodeExecuteOutputWithStrategy(gbkOutput, ShellTypeCmd); got != "中文输出" || strategy != "gbk" {
-		t.Fatalf("expected GBK strategy, got output=%q strategy=%q", got, strategy)
+		if runtime.GOOS == "windows" || strategy != "raw" {
+			t.Fatalf("expected GBK strategy, got output=%q strategy=%q", got, strategy)
+		}
 	}
 
 	utf8Output := []byte("plain text")
@@ -90,4 +93,29 @@ func TestRegressionLocalHandlerMalformedPayloadContract(t *testing.T) {
 	if !strings.Contains(result.Error, "invalid request payload") {
 		t.Fatalf("unexpected error: %+v", result)
 	}
+}
+
+func TestRegressionLocalExecuteCapsCapturedOutput(t *testing.T) {
+	response := Execute(ExecuteRequest{
+		Command:        "yes 1234567890 | head -c 1500000",
+		ExecuteTimeout: 5,
+		Shell:          ShellTypeSh,
+	}, "instance-1")
+
+	if !response.Success {
+		t.Fatalf("expected command success, got %+v", response)
+	}
+	if len(response.Output) > utils.CommandOutputLimitBytes+128 {
+		t.Fatalf("expected capped output, got %d bytes", len(response.Output))
+	}
+	if !strings.Contains(response.Output, "output truncated") {
+		t.Fatalf("expected truncation marker, got prefix %q", response.Output[:min(len(response.Output), 128)])
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

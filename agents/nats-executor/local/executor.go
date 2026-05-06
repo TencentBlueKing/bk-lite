@@ -260,17 +260,17 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	}
 
 	startTime := time.Now()
-	var stdoutBuf bytes.Buffer
-	var stderrBuf bytes.Buffer
-	stdoutWriter := io.MultiWriter(&stdoutBuf)
-	stderrWriter := io.MultiWriter(&stderrBuf)
+	stdoutBuf := utils.NewBoundedBuffer(utils.CommandOutputLimitBytes)
+	stderrBuf := utils.NewBoundedBuffer(utils.CommandOutputLimitBytes)
+	stdoutWriter := io.MultiWriter(stdoutBuf)
+	stderrWriter := io.MultiWriter(stderrBuf)
 	var stdoutStreamWriter *scpStreamLogWriter
 	var stderrStreamWriter *scpStreamLogWriter
 	if isSCPCommand {
 		stdoutStreamWriter = newSCPStreamLogWriter(instanceId, "stdout", shell, formatSCPLogContext(logContext))
 		stderrStreamWriter = newSCPStreamLogWriter(instanceId, "stderr", shell, formatSCPLogContext(logContext))
-		stdoutWriter = io.MultiWriter(&stdoutBuf, stdoutStreamWriter)
-		stderrWriter = io.MultiWriter(&stderrBuf, stderrStreamWriter)
+		stdoutWriter = io.MultiWriter(stdoutBuf, stdoutStreamWriter)
+		stderrWriter = io.MultiWriter(stderrBuf, stderrStreamWriter)
 	}
 	cmd.Stdout = stdoutWriter
 	cmd.Stderr = stderrWriter
@@ -310,7 +310,7 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 				goto commandFinished
 			case <-ticker.C:
 				elapsed := time.Since(startTime).Round(time.Second)
-				bytesSoFar := stdoutBuf.Len() + stderrBuf.Len()
+				bytesSoFar := stdoutBuf.TotalLen() + stderrBuf.TotalLen()
 				currentOutput := decodeExecuteOutput(append(stdoutBuf.Bytes(), stderrBuf.Bytes()...), shell)
 				excerpt := outputExcerpt(currentOutput)
 				logger.Infof("[SCP] Instance: %s, running | %s | elapsed=%s | output=%dB | last=%q", instanceId, formatSCPLogContext(logContext), elapsed, bytesSoFar, excerpt)
@@ -374,6 +374,9 @@ commandFinished:
 	} else {
 		logger.Debugf("[Local Execute] Instance: %s, Command executed successfully in %v", instanceId, duration)
 		logger.Debugf("[Local Execute] Instance: %s, Output length: %d bytes", instanceId, len(output))
+		if stdoutBuf.Truncated() || stderrBuf.Truncated() {
+			logger.Warnf("[Local Execute] Instance: %s, Output exceeded capture limit and was truncated", instanceId)
+		}
 		if len(output) > 0 {
 			logger.Debugf("[Local Execute] Instance: %s, Output: %s", instanceId, decodedOutput)
 		}

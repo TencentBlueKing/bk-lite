@@ -824,6 +824,42 @@ func TestExecuteReturnsExecutionFailureCodeWhenRemoteCommandFails(t *testing.T) 
 	}
 }
 
+func TestExecuteCapsCapturedRemoteOutput(t *testing.T) {
+	originalDial := sshDialFn
+	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+		return stubSSHClient{newSession: func() (sshSession, error) {
+			session := &stubSSHSession{}
+			session.run = func(cmd string) error {
+				if session.stdout != nil {
+					_, _ = session.stdout.Write([]byte(strings.Repeat("x", utils.CommandOutputLimitBytes+4096)))
+				}
+				return nil
+			}
+			return session, nil
+		}}, nil
+	}
+	defer func() { sshDialFn = originalDial }()
+
+	response := Execute(ExecuteRequest{
+		Command:        "large-output",
+		ExecuteTimeout: 5,
+		Host:           "10.0.0.1",
+		Port:           22,
+		User:           "root",
+		Password:       "secret",
+	}, "instance-1")
+
+	if !response.Success {
+		t.Fatalf("expected success, got %+v", response)
+	}
+	if len(response.Output) > utils.CommandOutputLimitBytes+128 {
+		t.Fatalf("expected capped output, got %d bytes", len(response.Output))
+	}
+	if !strings.Contains(response.Output, "output truncated") {
+		t.Fatalf("expected truncation marker")
+	}
+}
+
 func TestExecuteReturnsTimeoutCodeWhenRemoteCommandBlocks(t *testing.T) {
 	originalDial := sshDialFn
 	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {

@@ -931,16 +931,17 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 	}
 	defer session.Close()
 
-	var stdout, stderr bytes.Buffer
-	stdoutWriter := io.Writer(&stdout)
-	stderrWriter := io.Writer(&stderr)
+	stdout := utils.NewBoundedBuffer(utils.CommandOutputLimitBytes)
+	stderr := utils.NewBoundedBuffer(utils.CommandOutputLimitBytes)
+	stdoutWriter := io.Writer(stdout)
+	stderrWriter := io.Writer(stderr)
 	var stdoutStreamWriter *streamLogWriter
 	var stderrStreamWriter *streamLogWriter
 	if req.StreamLogs && req.StreamLogTopic != "" && nc != nil {
 		stdoutStreamWriter = newStreamLogWriter(nc, req.StreamLogTopic, req.ExecutionID, "stdout")
 		stderrStreamWriter = newStreamLogWriter(nc, req.StreamLogTopic, req.ExecutionID, "stderr")
-		stdoutWriter = io.MultiWriter(&stdout, stdoutStreamWriter)
-		stderrWriter = io.MultiWriter(&stderr, stderrStreamWriter)
+		stdoutWriter = io.MultiWriter(stdout, stdoutStreamWriter)
+		stderrWriter = io.MultiWriter(stderr, stderrStreamWriter)
 	}
 	session.SetStdout(stdoutWriter)
 	session.SetStderr(stderrWriter)
@@ -999,6 +1000,9 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 
 		logger.Debugf("[SSH Execute] Instance: %s, Command executed successfully in %v", instanceId, duration)
 		logger.Debugf("[SSH Execute] Instance: %s, Output length: %d bytes", instanceId, len(output))
+		if stdout.Truncated() || stderr.Truncated() {
+			logger.Warnf("[SSH Execute] Instance: %s, Output exceeded capture limit and was truncated", instanceId)
+		}
 
 		return ExecuteResponse{
 			Output:     output,
