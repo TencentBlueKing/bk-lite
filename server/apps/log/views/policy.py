@@ -1,36 +1,60 @@
 import json
 from datetime import datetime, timedelta, timezone
 
-from django_celery_beat.models import PeriodicTask, CrontabSchedule
+from django.db import models
+from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from django.db import models
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.permission_utils import (
+    check_instance_permission,
+    filter_instances_with_permissions,
     get_permission_rules,
     get_permissions_rules,
     permission_filter,
-    check_instance_permission,
-    filter_instances_with_permissions,
 )
 from apps.core.utils.web_utils import WebUtils
-from apps.log.constants.permission import PermissionConstants
 from apps.log.constants.alert_policy import AlertConstants
-from apps.log.filters.policy import (
-    PolicyFilter,
-    AlertFilter,
-    EventFilter,
-    EventRawDataFilter,
-)
-from apps.log.models.policy import Policy, Alert, Event, EventRawData
-from apps.log.serializers.policy import (
-    PolicySerializer,
-    AlertSerializer,
-    EventSerializer,
-    EventRawDataSerializer,
-)
+from apps.log.constants.permission import PermissionConstants
+from apps.log.filters.policy import AlertFilter, EventFilter, EventRawDataFilter, PolicyFilter
+from apps.log.models.policy import Alert, Event, EventRawData, Policy
+from apps.log.serializers.policy import AlertSerializer, EventRawDataSerializer, EventSerializer, PolicySerializer
 from config.drf.pagination import CustomPageNumberPagination
+
+
+def get_accessible_log_policy_ids(request, collect_type_id=None):
+    current_team = request.COOKIES.get("current_team")
+    if not current_team:
+        return []
+
+    include_children = request.COOKIES.get("include_children", "0") == "1"
+    permissions_result = get_permissions_rules(
+        request.user,
+        current_team,
+        "log",
+        PermissionConstants.POLICY_MODULE,
+        include_children=include_children,
+    )
+    if not isinstance(permissions_result, dict):
+        permissions_result = {}
+
+    policy_permissions = permissions_result.get("data", {})
+    current_teams = permissions_result.get("team", [])
+    if not policy_permissions:
+        return []
+
+    queryset = Policy.objects.select_related("collect_type").prefetch_related("policyorganization_set").all()
+    if collect_type_id:
+        queryset = queryset.filter(collect_type_id=collect_type_id)
+
+    accessible_policy_ids = []
+    for policy_obj in queryset:
+        teams = {org.organization for org in policy_obj.policyorganization_set.all()}
+        if check_instance_permission(policy_obj.collect_type_id, policy_obj.id, teams, policy_permissions, current_teams):
+            accessible_policy_ids.append(policy_obj.id)
+
+    return accessible_policy_ids
 
 
 class PolicyViewSet(viewsets.ModelViewSet):
@@ -298,50 +322,18 @@ class AlertViewSet(viewsets.ModelViewSet):
     pagination_class = CustomPageNumberPagination
 
     def _get_all_accessible_policy_ids(self, request):
-        """
-        获取当前用户所有有权限的策略ID
-        优化版本：参考监控模块的权限判断逻辑，减少SQL查询次数
-        """
-        current_team = request.COOKIES.get("current_team")
-        if not current_team:
-            return []
+        return get_accessible_log_policy_ids(request)
 
-        include_children = request.COOKIES.get("include_children", "0") == "1"
-        # 获取所有采集类型下policy模块的权限规则
-        permissions_result = get_permissions_rules(
-            request.user,
-            current_team,
-            "log",
-            PermissionConstants.POLICY_MODULE,
-            include_children=include_children,
-        )
-        if not isinstance(permissions_result, dict):
-            permissions_result = {}
+    def get_queryset(self):
+        request = getattr(self, "request", None)
+        if request is None:
+            return Alert.objects.none()
 
-        policy_permissions = permissions_result.get("data", {})
-        cur_team = permissions_result.get("team", [])
+        policy_ids = self._get_all_accessible_policy_ids(request)
+        if not policy_ids:
+            return Alert.objects.none()
 
-        if not policy_permissions:
-            return []
-
-        # 一次性获取所有策略及其关联组织，减少SQL查询
-        all_policies = Policy.objects.select_related("collect_type").prefetch_related("policyorganization_set").all()
-
-        accessible_policy_ids = []
-
-        # 遍历所有策略，在内存中进行权限检查（使用通用权限检查函数）
-        for policy_obj in all_policies:
-            collect_type_id = str(policy_obj.collect_type_id)
-            policy_id = policy_obj.id
-
-            # 获取策略关联的组织
-            teams = {org.organization for org in policy_obj.policyorganization_set.all()}
-
-            # 使用通用权限检查函数
-            if check_instance_permission(collect_type_id, policy_id, teams, policy_permissions, cur_team):
-                accessible_policy_ids.append(policy_id)
-
-        return accessible_policy_ids
+        return Alert.objects.select_related("policy", "collect_type").filter(policy_id__in=policy_ids).order_by("-created_at")
 
     def list(self, request, *args, **kwargs):
         """
@@ -462,7 +454,8 @@ class AlertViewSet(viewsets.ModelViewSet):
         if not alert_id:
             return WebUtils.response_error("缺少告警ID参数")
 
-        event = Event.objects.filter(alert_id=alert_id).order_by("-event_time").first()
+        accessible_policy_ids = self._get_all_accessible_policy_ids(request)
+        event = Event.objects.filter(alert_id=alert_id, policy_id__in=accessible_policy_ids).order_by("-event_time").first()
         if not event:
             return WebUtils.response_error("未找到相关事件")
 
@@ -644,8 +637,8 @@ class AlertViewSet(viewsets.ModelViewSet):
                 ]
             }
         """
-        from apps.log.models.policy import AlertSnapshot
         from apps.core.logger import logger
+        from apps.log.models.policy import AlertSnapshot
 
         try:
             # 1. 根据告警ID获取告警对象
@@ -655,31 +648,9 @@ class AlertViewSet(viewsets.ModelViewSet):
 
         # 2. 权限校验 - 验证用户是否有权限访问该告警所属的策略
         try:
-            if alert_obj.collect_type_id is None:
-                accessible_policy_ids = self._get_all_accessible_policy_ids(request)
-                if alert_obj.policy_id not in accessible_policy_ids:
-                    return WebUtils.response_error("无权限访问该告警", status_code=403)
-            else:
-                collect_type_id = str(alert_obj.collect_type_id)
-                include_children = request.COOKIES.get("include_children", "0") == "1"
-                permission = get_permission_rules(
-                    request.user,
-                    request.COOKIES.get("current_team"),
-                    "log",
-                    f"{PermissionConstants.POLICY_MODULE}.{collect_type_id}",
-                    include_children=include_children,
-                )
-
-                # 检查是否有权限访问该策略
-                policy_qs = permission_filter(
-                    Policy,
-                    permission,
-                    team_key="policyorganization__organization__in",
-                    id_key="id__in",
-                )
-
-                if not policy_qs.filter(id=alert_obj.policy_id).exists():
-                    return WebUtils.response_error("无权限访问该告警", status_code=403)
+            accessible_policy_ids = self._get_all_accessible_policy_ids(request)
+            if alert_obj.policy_id not in accessible_policy_ids:
+                return WebUtils.response_error("无权限访问该告警", status_code=403)
 
         except Exception as e:
             logger.error(f"Permission check failed for alert {alert_id}: {e}")
@@ -750,7 +721,15 @@ class EventViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
-        return Event.objects.select_related("policy", "alert").order_by("-event_time")
+        request = getattr(self, "request", None)
+        if request is None:
+            return Event.objects.none()
+
+        policy_ids = get_accessible_log_policy_ids(request)
+        if not policy_ids:
+            return Event.objects.none()
+
+        return Event.objects.select_related("policy", "alert").filter(policy_id__in=policy_ids).order_by("-event_time")
 
 
 class EventRawDataViewSet(viewsets.ReadOnlyModelViewSet):
@@ -760,7 +739,15 @@ class EventRawDataViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
-        return EventRawData.objects.select_related("event").order_by("-event__event_time", "-id")
+        request = getattr(self, "request", None)
+        if request is None:
+            return EventRawData.objects.none()
+
+        policy_ids = get_accessible_log_policy_ids(request)
+        if not policy_ids:
+            return EventRawData.objects.none()
+
+        return EventRawData.objects.select_related("event").filter(event__policy_id__in=policy_ids).order_by("-event__event_time", "-id")
 
     @action(methods=["get"], detail=False, url_path="by_event_id")
     def rawdata_list_by_event_id(self, request):
@@ -777,7 +764,7 @@ class EventRawDataViewSet(viewsets.ReadOnlyModelViewSet):
 
         try:
             # 直接获取对应的原始数据记录
-            event_raw_data = EventRawData.objects.select_related("event").get(event_id=event_id)
+            event_raw_data = self.get_queryset().get(event_id=event_id)
             serializer = self.get_serializer(event_raw_data)
             return WebUtils.response_success(serializer.data)
         except EventRawData.DoesNotExist:
