@@ -330,6 +330,7 @@ class EventAlertManager:
                         "policy_name": self.policy.name,
                         "metric_instance_id": event.metric_instance_id,
                         "alert_id": event.alert_id,
+                        "event_id": event.id,
                     },
                 }
             )
