@@ -1,0 +1,59 @@
+场景名称: Agent 上下文 Compaction 测试
+
+描述:
+  验证 Agent 对话过程中，当消息列表 token 总量超过阈值时，
+  自动将历史消息压缩为摘要，保留 SystemMessage 和最近 N 条消息，
+  确保不会切断 tool_call/tool_result 配对。
+
+核心模块: apps/opspilot/metis/llm/chain/compaction.py
+
+功能点:
+  1. count_message_tokens: 计算消息列表的 token 总量
+  2. _find_safe_split_point: 找到安全分割点，不切断 tool_call/tool_result 配对
+  3. _format_messages_for_summary: 将待压缩消息格式化为摘要输入文本
+  4. generate_summary: 调用 LLM 生成摘要（失败时回退到截断）
+  5. compact_messages: 主入口，检测阈值 → 分割 → 生成摘要 → 重新组装
+
+测试用例:
+
+  TestCountMessageTokens:
+    1. 空消息列表返回 0
+    2. 纯文本消息正确计算 token 数
+    3. 含 tool_calls 的 AIMessage 会计入工具参数 token
+    4. 多模态消息（list content）正确计算文本部分 token
+    5. 未知模型名回退到 cl100k_base 编码器
+
+  TestFindSafeSplitPoint:
+    1. 消息数 <= keep_recent 时返回 0（无需压缩）
+    2. 正常情况下返回 len - keep_recent
+    3. split 处为 ToolMessage 时向前调整到非 ToolMessage
+    4. split 处为含 tool_calls 的 AIMessage 时再向前调整
+    5. 连续多个 ToolMessage 全部向前跳过
+
+  TestFormatMessagesForSummary:
+    1. HumanMessage/AIMessage 格式为 [Human]/[AI]
+    2. 含 tool_calls 的 AIMessage 输出 "called tools: ..." 格式
+    3. 超长消息（>3000 字符）自动截断并标注 (truncated)
+    4. list content 拼接为一个字符串
+
+  TestGenerateSummary:
+    1. 正常调用 LLM 返回摘要文本
+    2. LLM 调用失败时回退到截断策略
+
+  TestCompactMessages:
+    1. disabled 时原样返回消息列表
+    2. token 数未超阈值时原样返回
+    3. token 数超阈值时触发压缩:
+       - SystemMessage 保留在最前面
+       - 保留最近 N 条消息不变
+       - 中间消息被替换为摘要 SystemMessage
+    4. 压缩后消息结构: [原 SystemMsg] + [摘要 SystemMsg] + [最近 N 条]
+    5. tool_call/tool_result 配对不被切断（在保留区间内保持完整）
+    6. 全部是 SystemMessage 时不压缩（非 system 消息为空）
+    7. split_idx=0 时不压缩（消息太少）
+
+  TestCompactionIntegration:
+    1. 模拟长对话（构造超过阈值的消息列表），验证端到端压缩流程
+    2. 压缩率合理（压缩后 token 数 < 原 token 数）
+
+关联测试文件: cases/test_compaction.py

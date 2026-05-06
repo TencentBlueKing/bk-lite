@@ -329,3 +329,40 @@ class ExecutionTaskBaseService(object):
         if hints:
             return f"执行过程出错: {error_type} ({', '.join(hints)})"
         return f"执行过程出错: {error_type} - {error_str[:200]}" if len(error_str) > 200 else f"执行过程出错: {error_type} - {error_str}"
+
+    @staticmethod
+    def normalize_executor_error(exec_result, default_message: str = "执行失败") -> str:
+        """将执行器返回的错误统一映射为更友好的中文文案"""
+        if isinstance(exec_result, str):
+            raw_message = exec_result
+            code = ""
+            stage = ""
+            category = ""
+        elif isinstance(exec_result, dict):
+            raw_message = str(exec_result.get("error") or exec_result.get("stderr") or exec_result.get("message") or exec_result.get("result") or "")
+            code = str(exec_result.get("code") or "")
+            stage = str(exec_result.get("stage") or "")
+            category = str(exec_result.get("category") or "")
+        else:
+            return default_message
+
+        message = raw_message.strip()
+        if stage == "tcp_connect":
+            return f"目标地址或端口不可达，请检查网络连通性和端口是否开放：{message or default_message}"
+        if stage == "ssh_dial" and category == "network":
+            return f"SSH连接超时或网络异常，请检查目标主机网络和端口连通性：{message or default_message}"
+        if stage == "ssh_dial" and category == "auth":
+            return f"SSH认证失败，请检查用户名、密码或私钥是否正确：{message or default_message}"
+        if stage == "legacy_retry" and category == "compatibility":
+            return f"SSH协议兼容性失败，请检查目标主机SSH算法配置：{message or default_message}"
+        if stage == "session_create":
+            return f"SSH会话创建失败，请检查目标主机SSH服务状态：{message or default_message}"
+        if stage == "command_run" and category == "remote_timeout":
+            return f"远程命令执行超时：{message or default_message}"
+        if stage == "command_run" and category == "remote_exit":
+            return f"远程命令执行失败：{message or default_message}"
+        if code == "timeout":
+            return f"执行超时：{message or default_message}"
+        if message:
+            return message
+        return default_message

@@ -15,6 +15,9 @@ interface CredentialConfig {
   [key: string]: string | ((value: any) => any);
 }
 
+export const trimFormString = (value: any) =>
+  typeof value === 'string' ? value.trim() : value;
+
 /**
  * 格式化任务表单的公共字段
  * 只处理所有任务类型都有的字段，实例相关逻辑由各任务自行处理
@@ -66,12 +69,12 @@ export const buildCredential = (
 
   Object.entries(credentialMap).forEach(([targetKey, sourceConfig]) => {
     if (typeof sourceConfig === 'function') {
-      const result = sourceConfig(values);
+      const result = trimFormString(sourceConfig(values));
       if (result !== undefined) {
         credential[targetKey] = result;
       }
     } else {
-      const value = values[sourceConfig];
+      const value = trimFormString(values[sourceConfig]);
 
       if (value && value !== PASSWORD_PLACEHOLDER) {
         credential[targetKey] = value;

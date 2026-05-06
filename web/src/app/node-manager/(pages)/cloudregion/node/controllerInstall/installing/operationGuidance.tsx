@@ -22,7 +22,8 @@ import {
 const OperationGuidance = forwardRef<ModalRef>(({}, ref) => {
   const { t } = useTranslation();
   const { handleCopy } = useHandleCopy();
-  const { getInstallCommand, getInstallerManifest } = useControllerApi();
+  const { getInstallCommand, getInstallerManifest, getInstallerMetadata } =
+    useControllerApi();
   const authContext = useAuth();
   const token = authContext?.token || null;
   const [visible, setVisible] = useState<boolean>(false);
@@ -49,6 +50,7 @@ const OperationGuidance = forwardRef<ModalRef>(({}, ref) => {
         ip: form?.ip || '',
         nodeName: form?.node_name || '',
         os: form?.os || '',
+        cpu_architecture: form?.cpu_architecture || '',
         installerVersion: '',
         defaultInstallerVersion: '',
         installerSession: '',
@@ -56,26 +58,29 @@ const OperationGuidance = forwardRef<ModalRef>(({}, ref) => {
       };
       setNodeInfo(newNodeInfo);
       if (form) {
-        fetchInstallerManifest(form?.os || 'windows');
+        fetchInstallerManifest(
+          form?.os || 'windows',
+          form?.cpu_architecture || ''
+        );
         fetchInstallCommand(form);
       }
     }
   }));
 
-  const fetchInstallerManifest = async (os: string) => {
+  const fetchInstallerManifest = async (os: string, arch: string) => {
     if (!os) return;
     try {
-      const manifest = await getInstallerManifest();
-      const osArtifacts = manifest?.artifacts?.[os] || {};
-      const defaultArch = os === 'linux' ? 'x86_64' : 'x86_64';
-      const result = osArtifacts?.[defaultArch] || Object.values(osArtifacts)[0] || null;
+      const [manifest, metadata] = await Promise.all([
+        getInstallerManifest(),
+        getInstallerMetadata(os, arch)
+      ]);
       setInstallerManifest(manifest || null);
       setNodeInfo((prev) => ({
         ...prev,
-        installerVersion: result?.version || '',
+        installerVersion: metadata?.version || '',
         defaultInstallerVersion: manifest?.default_version || ''
       }));
-      setInstallerMetadata(result || null);
+      setInstallerMetadata(metadata || null);
     } catch {
       setInstallerManifest(null);
       setInstallerMetadata(null);
@@ -181,6 +186,14 @@ const OperationGuidance = forwardRef<ModalRef>(({}, ref) => {
             {t('node-manager.cloudregion.node.nodeName')}：
           </span>
           <span className="text-[12px]">{nodeInfo.nodeName || '--'}</span>
+          <span className="text-[12px] text-[var(--color-text-3)] ml-[16px]">
+            {t('node-manager.cloudregion.node.cpuArchitecture')}：
+          </span>
+          <span className="text-[12px]">
+            {nodeInfo.cpu_architecture === 'arm64'
+              ? 'ARM64'
+              : nodeInfo.cpu_architecture || '--'}
+          </span>
           <span className="text-[12px] text-[var(--color-text-3)] ml-[16px]">
             {t('node-manager.cloudregion.node.installerVersion')}：
           </span>

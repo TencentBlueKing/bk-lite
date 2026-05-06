@@ -66,12 +66,6 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     }),
   }), [filteredTreeData, showModal]);
 
-  const handleSuperuserChange = (value: boolean) => {
-    setIsSuperuser(value);
-    formRef.current?.setFieldsValue({ is_superuser: value });
-  };
-
-
   return (
     <OperateModal
       title={type === 'add' ? t('common.add') : t('common.edit')}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, cast
 
 from apps.node_mgmt.constants.installer import InstallerConstants
@@ -18,6 +19,31 @@ INSTALLER_ACTION_MESSAGES = {
     "configure_runtime": "Configure runtime",
     "installer": "Run installer",
 }
+
+
+FAILURE_SUMMARY_MAP = {
+    "object_missing": "Required installation package was not found in object storage",
+    "bucket_missing": "Object storage bucket is missing or not initialized",
+    "connection": "Failed to connect to the required service during installation",
+    "timeout": "The installation step timed out before completion",
+    "auth": "Authentication failed while accessing the required resource",
+    "permission": "Insufficient permissions blocked the installation step",
+    "file_busy": "A running process is blocking the target file from being replaced",
+    "disk": "The target host does not have enough disk space for installation",
+    "package_invalid": "The downloaded package is invalid or corrupted",
+    "arch_mismatch": "The package architecture does not match the target host",
+    "unknown": "The installation step failed with an unexpected error",
+}
+
+FAILURE_CONTEXT_FIELDS = (
+    "bucket",
+    "file_key",
+    "package_name",
+    "cpu_architecture",
+    "install_dir",
+    "target_path",
+    "exit_code",
+)
 
 
 def _coerce_number(value: Any) -> float | None:
@@ -47,6 +73,104 @@ def _clean_text(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _extract_target_path(message: str | None) -> str | None:
+    normalized_message = _clean_text(message)
+    if not normalized_message:
+        return None
+
+    path_patterns = [
+        r"open\s+(?P<path>/\S+):\s+text file busy",
+        r"(?P<path>/\S+):\s+permission denied",
+        r"(?P<path>/\S+):\s+no such file or directory",
+    ]
+    for pattern in path_patterns:
+        match = re.search(pattern, normalized_message, flags=re.IGNORECASE)
+        if match:
+            return _clean_text(match.group("path"))
+    return None
+
+
+def _extract_failure_context(details: dict[str, Any] | None, message: str | None, error: str | None) -> dict[str, Any] | None:
+    prepared_details = details if isinstance(details, dict) else {}
+    context: dict[str, Any] = {}
+
+    for field_name in FAILURE_CONTEXT_FIELDS:
+        if field_name in prepared_details and prepared_details.get(field_name) not in (None, ""):
+            context[field_name] = prepared_details.get(field_name)
+
+    file_key = _clean_text(prepared_details.get("package_file_key"))
+    if file_key and "file_key" not in context:
+        context["file_key"] = file_key
+
+    bucket = _clean_text(prepared_details.get("storage_bucket"))
+    if bucket and "bucket" not in context:
+        context["bucket"] = bucket
+
+    package_name = _clean_text(prepared_details.get("file_name"))
+    if package_name and "package_name" not in context:
+        context["package_name"] = package_name
+
+    target_path = _extract_target_path(message) or _extract_target_path(error)
+    if target_path and "target_path" not in context:
+        context["target_path"] = target_path
+
+    return context or None
+
+
+def _infer_failure_type(message: str | None, error: str | None, details: dict[str, Any] | None) -> str:
+    prepared_details = details if isinstance(details, dict) else {}
+    explicit_error_type = _clean_text(prepared_details.get("error_type"))
+    normalized_text = " ".join(filter(None, [_clean_text(message), _clean_text(error), _clean_text(prepared_details.get("service_error"))]))
+    normalized_text = normalized_text.lower()
+
+    if explicit_error_type == "timeout" or prepared_details.get("timeout"):
+        return "timeout"
+
+    if "text file busy" in normalized_text:
+        return "file_busy"
+    if "object not found" in normalized_text or "get object failed" in normalized_text:
+        return "object_missing"
+    if "bucket" in normalized_text and "not found" in normalized_text:
+        return "bucket_missing"
+    if explicit_error_type == "connection" or any(
+        marker in normalized_text for marker in ["connection refused", "connection reset", "no route to host", "network is unreachable", "ssh client"]
+    ):
+        return "connection"
+    if any(
+        marker in normalized_text
+        for marker in ["authentication failed", "authorization violation", "access denied", "invalid credentials", "permission violation"]
+    ):
+        return "auth"
+    if any(marker in normalized_text for marker in ["permission denied", "operation not permitted", "read-only file system"]):
+        return "permission"
+    if any(marker in normalized_text for marker in ["no space left on device", "disk quota exceeded", "not enough space"]):
+        return "disk"
+    if any(
+        marker in normalized_text
+        for marker in [
+            "exec format error",
+            "does not match expected architecture",
+            "architecture mismatch",
+            "wrong architecture",
+        ]
+    ):
+        return "arch_mismatch"
+    if any(
+        marker in normalized_text
+        for marker in [
+            "unexpected eof",
+            "not in gzip format",
+            "invalid tar",
+            "archive/tar",
+            "checksum mismatch",
+            "corrupt",
+        ]
+    ):
+        return "package_invalid"
+
+    return explicit_error_type if explicit_error_type in {"connection", "timeout"} else "unknown"
 
 
 def normalize_installer_action(raw_step: Any) -> str:
@@ -119,12 +243,15 @@ def normalize_failure(message=None, error=None, details=None) -> dict | None:
     if not failure_message:
         return None
 
-    failure_type = _clean_text(prepared_details.get("error_type")) or "execution"
+    failure_type = _infer_failure_type(message, error, prepared_details)
     failure_code = prepared_details.get("exit_code")
+    failure_context = _extract_failure_context(prepared_details, message, error)
     return {
         "message": failure_message,
         "type": failure_type,
         "code": failure_code,
+        "summary": FAILURE_SUMMARY_MAP.get(failure_type, FAILURE_SUMMARY_MAP["unknown"]),
+        "context": failure_context,
         "retriable": failure_type in {"timeout", "connection"},
         "raw_error": _clean_text(error),
     }
@@ -147,8 +274,9 @@ def build_installer_event_details(event: dict[str, Any]) -> dict:
     failure = normalize_failure(
         message=event.get("message"),
         error=event.get("error"),
+        details=event,
     )
-    return {
+    details = {
         "installer_event": True,
         "raw_step": _clean_text(event.get("step")),
         "raw_status": _clean_text(event.get("status")),
@@ -160,6 +288,21 @@ def build_installer_event_details(event: dict[str, Any]) -> dict:
         "installer_message": _clean_text(event.get("message")),
         "failure": failure,
     }
+    for field_name in (
+        "error_type",
+        "bucket",
+        "file_key",
+        "file_name",
+        "package_name",
+        "cpu_architecture",
+        "install_dir",
+        "target_path",
+        "exit_code",
+    ):
+        normalized_value = event.get(field_name)
+        if normalized_value not in (None, ""):
+            details[field_name] = normalized_value
+    return details
 
 
 def build_installer_event_record(event: dict[str, Any]) -> dict:

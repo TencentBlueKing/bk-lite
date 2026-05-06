@@ -101,7 +101,7 @@ class DatasourceItem(BaseModel):
     rest_api: str
     desc: str = Field(default="")
     is_active: bool = Field(default=True)
-    params: dict | list | None = Field(default_factory=dict)
+    params: dict | list | None = Field(default_factory=list)
     tags: list = Field(default_factory=list)
     chart_type: list = Field(default_factory=list)
     field_schema: list = Field(default_factory=list)

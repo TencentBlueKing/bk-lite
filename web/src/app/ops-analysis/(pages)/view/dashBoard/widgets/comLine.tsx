@@ -5,6 +5,10 @@ import { Spin, Empty } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
 
+interface EChartsInstance {
+  dispatchAction: (payload: Record<string, any>) => void;
+}
+
 interface TrendLineProps {
   rawData: any;
   loading?: boolean;
@@ -19,6 +23,9 @@ const TrendLine: React.FC<TrendLineProps> = ({
   const chartRef = useRef<any>(null);
   const chartColors = randomColorForLegend();
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
+  const [zoomRange, setZoomRange] = useState<{ start: number; end: number }>({ start: 0, end: 100 });
+
+  const isZoomed = zoomRange.start !== 0 || zoomRange.end !== 100;
 
   const handleLegendChange = useCallback((selected: Record<string, boolean>) => {
     setLegendSelected(selected);
@@ -39,6 +46,64 @@ const TrendLine: React.FC<TrendLineProps> = ({
     }
   }, [isDataReady, loading, onReady]);
 
+  useEffect(() => {
+    setZoomRange({ start: 0, end: 100 });
+  }, [rawData]);
+
+  const activateDataZoomSelect = useCallback(() => {
+    const instance = chartRef.current?.getEchartsInstance() as EChartsInstance | undefined;
+    if (instance) {
+      instance.dispatchAction({
+        type: 'takeGlobalCursor',
+        key: 'dataZoomSelect',
+        dataZoomSelectActive: true,
+      });
+    }
+  }, []);
+
+  const scheduleActivateDataZoomSelect = useCallback(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        activateDataZoomSelect();
+      });
+    });
+  }, [activateDataZoomSelect]);
+
+  useEffect(() => {
+    if (!isDataReady) return;
+    scheduleActivateDataZoomSelect();
+  }, [legendSelected, rawData, zoomRange, isDataReady, scheduleActivateDataZoomSelect]);
+
+  const handleDataZoom = useCallback(() => {
+    const instance = chartRef.current?.getEchartsInstance();
+    if (!instance) return;
+    const opt = instance.getOption?.();
+    const dz = opt?.dataZoom;
+    if (dz && Array.isArray(dz) && dz.length > 0) {
+      const { start, end } = dz[0] as { start: number; end: number };
+      if (start !== undefined && end !== undefined) {
+        if (start !== zoomRange.start || end !== zoomRange.end) {
+          setZoomRange({ start, end });
+        }
+      }
+    }
+  }, [zoomRange]);
+
+  const handleResetZoom = useCallback(() => {
+    setZoomRange({ start: 0, end: 100 });
+  }, []);
+
+  const handleDblClick = useCallback(() => {
+    if (isZoomed) {
+      setZoomRange({ start: 0, end: 100 });
+    }
+  }, [isZoomed]);
+
+  const handleChartReady = useCallback(() => {
+    if (!isDataReady) return;
+    scheduleActivateDataZoomSelect();
+  }, [isDataReady, scheduleActivateDataZoomSelect]);
+
   const option: any = {
     color: chartColors,
     animation: false,
@@ -48,7 +113,35 @@ const TrendLine: React.FC<TrendLineProps> = ({
       show: false,
       selected: legendSelected,
     },
-    toolbox: { show: false },
+    toolbox: {
+      show: true,
+      feature: {
+        dataZoom: {
+          show: true,
+          yAxisIndex: 'none',
+          title: { zoom: '', back: '' },
+          icon: { zoom: 'none', back: 'none' },
+          brushStyle: {
+            borderWidth: 2,
+            color: 'rgba(24, 144, 255, 0.25)',
+            borderColor: 'rgba(24, 144, 255, 0.8)',
+          },
+        },
+      },
+      itemSize: 0,
+      top: -9999,
+    },
+    dataZoom: [
+      {
+        type: 'inside',
+        xAxisIndex: 0,
+        start: zoomRange.start,
+        end: zoomRange.end,
+        zoomOnMouseWheel: false,
+        moveOnMouseMove: false,
+        moveOnMouseWheel: false,
+      },
+    ],
     tooltip: {
       trigger: 'axis',
       axisPointer: {
@@ -79,8 +172,8 @@ const TrendLine: React.FC<TrendLineProps> = ({
     },
     grid: {
       top: 14,
-      left: 18,
-      right: 18,
+      left: 24,
+      right: 24,
       bottom: 20,
       containLabel: true,
     },
@@ -197,12 +290,22 @@ const TrendLine: React.FC<TrendLineProps> = ({
   return (
     <div className="h-full flex">
       {/* 图表区域 */}
-      <div className="flex-1">
+      <div className="flex-1 relative">
+        {isZoomed && (
+          <button
+            onClick={handleResetZoom}
+            className="absolute top-0 right-1 z-10 px-1.5 py-0.5 text-[10px] leading-tight bg-white border border-gray-300 rounded shadow-sm text-gray-600 hover:bg-gray-50 hover:text-blue-600 hover:border-blue-300 transition-colors cursor-pointer"
+          >
+            恢复
+          </button>
+        )}
         <ReactEcharts
           ref={chartRef}
           option={option}
           notMerge={true}
           style={{ height: '100%', width: '100%' }}
+          onChartReady={handleChartReady}
+          onEvents={{ datazoom: handleDataZoom, dblclick: handleDblClick }}
         />
       </div>
 
