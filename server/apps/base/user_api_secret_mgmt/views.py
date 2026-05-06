@@ -3,8 +3,8 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.base.models import UserAPISecret
-from apps.base.user_api_secret_mgmt.serializers import UserAPISecretSerializer
+from apps.base.models.user import UserAPISecret
+from apps.base.user_api_secret_mgmt.serializers import UserAPISecretCreateSerializer, UserAPISecretSerializer
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.loader import LanguageLoader
 
@@ -61,7 +61,9 @@ class UserAPISecretViewSet(viewsets.ModelViewSet):
 
     @HasPermission("api_secret_key-View", "opspilot")
     def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
 
     @action(detail=False, methods=["POST"])
     @HasPermission("api_secret_key-Add", "opspilot")
@@ -89,11 +91,12 @@ class UserAPISecretViewSet(viewsets.ModelViewSet):
             "domain": request.user.domain,
             "team": current_team,
         }
-        serializer = self.get_serializer(data=additional_data)
+        serializer = UserAPISecretCreateSerializer(data=additional_data, context=self.get_serializer_context())
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        response_serializer = UserAPISecretCreateSerializer(serializer.instance, context=self.get_serializer_context())
+        headers = self.get_success_headers(response_serializer.data)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def update(self, request, *args, **kwargs):
         return JsonResponse({"result": False, "message": "API密钥不支持修改"})

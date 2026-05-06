@@ -25,6 +25,17 @@ class InstallerService:
     MANUAL_INSTALL_MODE = "manual"
 
     @staticmethod
+    def normalize_required_cpu_architecture(os_name: str, cpu_architecture: str) -> str:
+        normalized_arch = normalize_cpu_architecture(cpu_architecture)
+        if not normalized_arch:
+            raise BaseAppException(f"Missing or unsupported CPU architecture for os={os_name}")
+
+        if os_name == NodeConstants.WINDOWS_OS and normalized_arch != NodeConstants.X86_64_ARCH:
+            raise BaseAppException(f"Unsupported CPU architecture for os={os_name}: {normalized_arch}")
+
+        return normalized_arch
+
+    @staticmethod
     def resolve_package_by_architecture(package_seed_id: int, cpu_architecture: str) -> PackageVersion:
         package_obj = PackageService.resolve_package_by_architecture(package_seed_id, cpu_architecture)
         if not package_obj:
@@ -89,6 +100,8 @@ class InstallerService:
         :return: curl 命令字符串
         """
         # 从云区域环境变量中获取服务器地址
+        normalized_arch = InstallerService.normalize_required_cpu_architecture(os, cpu_architecture)
+
         objs = SidecarEnv.objects.filter(cloud_region=cloud_region_id)
         server_url = None
         for obj in objs:
@@ -109,7 +122,7 @@ class InstallerService:
             cloud_region_id=cloud_region_id,
             organizations=organizations,
             node_name=node_name,
-            cpu_architecture=cpu_architecture,
+            cpu_architecture=normalized_arch,
         )
 
         # 根据操作系统生成不同的安装命令
@@ -125,7 +138,7 @@ class InstallerService:
         return install_command
 
     @staticmethod
-    def install_controller(cloud_region_id, work_node, package_version_id, nodes):
+    def install_controller(cloud_region_id, work_node, package_version_id, nodes, cpu_architecture: str):
         """安装控制器"""
         task_obj = ControllerTask.objects.create(
             cloud_region_id=cloud_region_id,
@@ -137,6 +150,10 @@ class InstallerService:
         creates = []
         aes_obj = AESCryptor()
         for node in nodes:
+            normalized_arch = InstallerService.normalize_required_cpu_architecture(
+                node["os"],
+                node.get("cpu_architecture") or cpu_architecture,
+            )
             # 加密密码（如果有）
             password = aes_obj.encode(node["password"]) if node.get("password") else ""
             # 加密私钥（如果有）
@@ -150,7 +167,7 @@ class InstallerService:
                     ip=node["ip"],
                     node_name=node["node_name"],
                     os=node["os"],
-                    cpu_architecture=node.get("cpu_architecture", ""),
+                    cpu_architecture=normalized_arch,
                     organizations=node["organizations"],
                     port=node["port"],
                     username=node["username"],

@@ -1,6 +1,13 @@
 from apps.rpc.base import RpcClient
 
 
+RPC_TIMEOUT_GRACE_SECONDS = 1
+
+
+def _resolve_rpc_timeout(timeout):
+    return timeout + RPC_TIMEOUT_GRACE_SECONDS
+
+
 class ExecutorRpcClient(RpcClient):
     def __init__(self, namespace):
         self.namespace = namespace
@@ -55,6 +62,8 @@ class Executor(object):
         passphrase=None,
         timeout=60,
         port=22,
+        connection_test=False,
+        fast_fail=False,
     ):
         """
         通过SSH执行远程命令
@@ -83,8 +92,12 @@ class Executor(object):
             request_data["private_key"] = private_key
         if passphrase:
             request_data["passphrase"] = passphrase
+        if connection_test:
+            request_data["connection_test"] = True
+        if fast_fail:
+            request_data["connection_test"] = True
 
-        return_data = self.ssh_client.run(self.instance_id, request_data, _timeout=timeout)
+        return_data = self.ssh_client.run(self.instance_id, request_data, _timeout=_resolve_rpc_timeout(timeout))
         return return_data
 
     def execute_ssh_stream(
@@ -99,6 +112,7 @@ class Executor(object):
         port=22,
         execution_id=None,
         stream_log_topic=None,
+        fast_fail=False,
     ):
         request_data = {
             "command": command,
@@ -119,8 +133,10 @@ class Executor(object):
             request_data["execution_id"] = execution_id
         if stream_log_topic:
             request_data["stream_log_topic"] = stream_log_topic
+        if fast_fail:
+            request_data["connection_test"] = True
 
-        return self.ssh_client.run(self.instance_id, request_data, _timeout=timeout)
+        return self.ssh_client.run(self.instance_id, request_data, _timeout=_resolve_rpc_timeout(timeout))
 
     def download_to_local(self, bucket_name, file_key, file_name, target_path, timeout=60, overwrite=True):
         """
@@ -156,10 +172,10 @@ class Executor(object):
         private_key=None,
         passphrase=None,
         timeout=60,
-        rpc_timeout=None,
         port=22,
         overwrite=True,
         local_path="/tmp",
+        fast_fail=False,
     ):
         """
         下载文件到远程
@@ -197,10 +213,12 @@ class Executor(object):
             request_data["private_key"] = private_key
         if passphrase:
             request_data["passphrase"] = passphrase
+        if fast_fail:
+            request_data["fast_fail"] = True
         return_data = self.download_to_remote_client.run(
             self.instance_id,
             request_data,
-            _timeout=rpc_timeout if rpc_timeout is not None else timeout,
+            _timeout=_resolve_rpc_timeout(timeout),
         )
         return return_data
 
@@ -219,7 +237,16 @@ class Executor(object):
         return return_data
 
     def transfer_file_to_remote(
-        self, source_path, target_path, host, username, password=None, private_key=None, passphrase=None, timeout=60, port=22
+        self,
+        source_path,
+        target_path,
+        host,
+        username,
+        password=None,
+        private_key=None,
+        passphrase=None,
+        timeout=60,
+        port=22,
     ):
         """
         传递文件到远程主机
@@ -249,5 +276,9 @@ class Executor(object):
             request_data["private_key"] = private_key
         if passphrase:
             request_data["passphrase"] = passphrase
-        return_data = self.transfer_file_to_remote_client.run(self.instance_id, request_data, _timeout=timeout)
+        return_data = self.transfer_file_to_remote_client.run(
+            self.instance_id,
+            request_data,
+            _timeout=_resolve_rpc_timeout(timeout),
+        )
         return return_data

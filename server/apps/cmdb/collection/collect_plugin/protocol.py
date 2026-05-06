@@ -41,7 +41,7 @@ class ProtocolCollectMetrics(CollectBase):
                 else:
                     self.timestamp_gt = True
             result_data = {}
-            if index_data["metric"].get("collect_status", 'success') == 'failed':
+            if index_data["metric"].get("collect_status", 'failed') == 'failed':
                 continue
             index_dict = dict(
                 index_key=metric_name,
@@ -68,4 +68,3 @@ class ProtocolCollectMetrics(CollectBase):
                 if data:
                     result.append(data)
             self.result[self.model_id] = result
-

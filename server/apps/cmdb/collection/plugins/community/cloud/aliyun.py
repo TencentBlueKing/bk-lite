@@ -13,7 +13,7 @@ class AliyunAccountCollectionPlugin(AutoRegisterCollectionPluginMixin, AliyunCol
         "aliyun_bucket_info_gauge",
         "aliyun_clb_info_gauge",
         "aliyun_ecs_info_gauge",
-        "aliyun_kafka_info_gauge",
+        "aliyun_kafka_inst_info_gauge",
         "aliyun_mongodb_info_gauge",
         "aliyun_mysql_info_gauge",
         "aliyun_pgsql_info_gauge",

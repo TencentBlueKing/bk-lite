@@ -10,6 +10,7 @@ import { useGroupApi } from '@/app/system-manager/api/group/index';
 import { useClientData } from '@/context/client';
 import {
   type GroupRules,
+  type TreeSelectNode,
   type UserDetailResponse,
   processRoleTreeData,
   extractGroupIds,
@@ -17,6 +18,7 @@ import {
   buildGroupRulesFromUserDetail,
   buildFormValuesFromUserDetail,
   buildUserPayload,
+  hasNormalGroupSelection,
   mergeRoles,
 } from '@/app/system-manager/utils/userFormUtils';
 
@@ -24,6 +26,7 @@ interface ModalConfig {
   type: 'add' | 'edit';
   userId?: string;
   groupKeys?: React.Key[];
+  groupTreeData?: TreeSelectNode[];
 }
 
 interface UseUserModalDataReturn {
@@ -45,6 +48,7 @@ interface UseUserModalDataReturn {
   setSelectedGroups: (groups: React.Key[]) => void;
   setSelectedRoles: (roles: number[]) => void;
   handleRoleChange: (newRoleIds: React.Key[]) => void;
+  handleSuperuserChange: (value: boolean) => void;
   setGroupRules: (rules: GroupRules) => void;
   setIsSuperuser: (value: boolean) => void;
   showModal: (config: ModalConfig) => void;
@@ -73,6 +77,7 @@ export function useUserModalData(): UseUserModalDataReturn {
   const [organizationRoleIds, setOrganizationRoleIds] = useState<number[]>([]);
   const [organizationRoleSourceMap, setOrganizationRoleSourceMap] = useState<Record<string, string>>({});
   const [isSuperuser, setIsSuperuser] = useState<boolean>(false);
+  const [groupTreeData, setGroupTreeData] = useState<TreeSelectNode[]>([]);
 
   const { addUser, editUser, getUserDetail, getRoleList } = useUserApi();
   const { getGroupDetailWithRoles } = useGroupApi();
@@ -172,9 +177,10 @@ export function useUserModalData(): UseUserModalDataReturn {
   );
 
   const showModal = useCallback(
-    ({ type: modalType, userId, groupKeys = [] }: ModalConfig) => {
+    ({ type: modalType, userId, groupKeys = [], groupTreeData: nextGroupTreeData = [] }: ModalConfig) => {
       setVisible(true);
       setType(modalType);
+      setGroupTreeData(nextGroupTreeData);
       formRef.current?.resetFields();
       setIsSuperuser(false);
 
@@ -224,7 +230,12 @@ export function useUserModalData(): UseUserModalDataReturn {
         const formData = await formRef.current?.validateFields();
 
         if (!isSuperuser && selectedGroups.length === 0) {
-          message.error(t('common.inputRequired'));
+          message.error(t('system.user.form.groupSelectionRequired'));
+          return;
+        }
+
+        if (!isSuperuser && !hasNormalGroupSelection(selectedGroups, groupTreeData)) {
+          message.error(t('system.user.form.normalGroupRequired'));
           return;
         }
 
@@ -281,6 +292,22 @@ export function useUserModalData(): UseUserModalDataReturn {
     [organizationRoleIds]
   );
 
+  const handleSuperuserChange = useCallback(
+    (value: boolean) => {
+      setIsSuperuser(value);
+      setPersonalRoleIds([]);
+
+      const nextSelectedRoles = value ? [] : organizationRoleIds;
+      setSelectedRoles(nextSelectedRoles);
+
+      formRef.current?.setFieldsValue({
+        is_superuser: value,
+        roles: nextSelectedRoles,
+      });
+    },
+    [organizationRoleIds]
+  );
+
   const handleGroupChange = useCallback(
     async (newGroupIds: React.Key[]) => {
       setSelectedGroups(newGroupIds);
@@ -325,6 +352,7 @@ export function useUserModalData(): UseUserModalDataReturn {
     setSelectedGroups,
     setSelectedRoles,
     handleRoleChange,
+    handleSuperuserChange,
     setGroupRules,
     setIsSuperuser,
     showModal,

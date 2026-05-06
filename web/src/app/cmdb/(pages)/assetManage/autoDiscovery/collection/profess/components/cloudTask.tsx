@@ -15,7 +15,7 @@ import {
   CLOUD_FORM_INITIAL_VALUES,
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
-import { formatTaskValues } from '../hooks/formatTaskValues';
+import { formatTaskValues, trimFormString } from '../hooks/formatTaskValues';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 
 interface RegionItem {
@@ -76,6 +76,8 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
     onSuccess,
     onClose,
     formatValues: (values) => {
+      const accessKey = trimFormString(values.accessKey);
+      const accessSecret = trimFormString(values.accessSecret);
       const regionItem = regions.find(
         (item: any) => item.resource_id === values.regionId
       );
@@ -97,12 +99,12 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
         regions: regionItem,
       };
 
-      if (values.accessKey && values.accessKey !== PASSWORD_PLACEHOLDER) {
-        credential.accessKey = values.accessKey;
+      if (accessKey && accessKey !== PASSWORD_PLACEHOLDER) {
+        credential.accessKey = accessKey;
       }
 
-      if (values.accessSecret && values.accessSecret !== PASSWORD_PLACEHOLDER) {
-        credential.accessSecret = values.accessSecret;
+      if (accessSecret && accessSecret !== PASSWORD_PLACEHOLDER) {
+        credential.accessSecret = accessSecret;
       }
 
       return {
@@ -172,12 +174,37 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
   };
 
   const handleRefreshRegions = async (refreshFlag = false) => {
-    const values = form.getFieldsValue([
+    const rawValues = form.getFieldsValue([
       'accessKey',
       'accessSecret',
       'accessPointId',
     ]);
-    if (!values.accessKey || !values.accessSecret) {
+    const values = {
+      ...rawValues,
+      accessKey: trimFormString(rawValues.accessKey),
+      accessSecret: trimFormString(rawValues.accessSecret),
+    };
+
+    form.setFieldsValue({
+      accessKey: values.accessKey,
+      accessSecret: values.accessSecret,
+    });
+
+    const isAccessKeyPlaceholder = values.accessKey === PASSWORD_PLACEHOLDER;
+    const isAccessSecretPlaceholder = values.accessSecret === PASSWORD_PLACEHOLDER;
+    const isCredentialUnchanged =
+      isAccessKeyPlaceholder && isAccessSecretPlaceholder;
+    const hasMixedCredentialState =
+      isAccessKeyPlaceholder !== isAccessSecretPlaceholder;
+
+    if (hasMixedCredentialState) {
+      message.error(
+        `${t('common.inputMsg')}${t('Collection.cloudTask.accessKey')} / ${t('Collection.cloudTask.accessSecret')}`
+      );
+      return;
+    }
+
+    if ((!values.accessKey || !values.accessSecret) && !isCredentialUnchanged) {
       const msg = !values.accessKey
         ? t('Collection.cloudTask.accessKey')
         : t('Collection.cloudTask.accessSecret');

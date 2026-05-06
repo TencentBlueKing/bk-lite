@@ -1,0 +1,22 @@
+场景名称: 两节点工作流端到端测试 (Two-Node Workflow E2E)
+
+描述:
+  验证最简工作流（入口节点 → 智能体节点）的完整执行路径。
+  覆盖 HTTP 请求到引擎执行再到数据库记录的全链路。
+
+前置条件:
+  - 数据库中存在一个 online 状态的 Bot
+  - BotWorkFlow 包含两个节点: entry_node(openai) → agent_node(agents)
+  - AgentNode 使用 FakeAgentExecutor 替代真实 LLM 调用
+
+测试用例:
+  1. 成功执行: 入口节点传入消息，智能体节点处理后返回 last_message
+  2. 失败执行: 智能体节点抛出异常，引擎捕获并记录失败状态
+  3. TaskResult 记录: 成功执行后 WorkFlowTaskResult 状态为 SUCCESS
+  4. TaskResult 失败记录: 失败执行后 WorkFlowTaskResult 状态为 FAIL
+  5. NodeResult 记录: 执行后每个节点都有对应的 WorkFlowTaskNodeResult
+  6. ConversationHistory 记录: 执行后生成对话历史记录
+  7. Summary 生成: 执行结果包含摘要信息
+
+关联测试文件: cases/test_workflow_e2e.py
+流程数据: 通过 conftest.py 中的 build_two_node_flow() 动态构建

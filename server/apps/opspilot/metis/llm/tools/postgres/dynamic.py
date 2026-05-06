@@ -1,7 +1,7 @@
 """PostgreSQL动态SQL查询工具 - 安全的动态查询生成和执行"""
 
 import re
-from typing import Optional
+from typing import List, Optional
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -717,3 +717,68 @@ def get_sample_data(
 
     except Exception as e:
         return safe_json_dumps({"error": f"获取示例数据失败: {str(e)}", "table": f"{schema_name}.{table_name}"})
+
+
+@tool()
+def execute_safe_select_batch(
+    queries: List[str],
+    instance_name: str = None,
+    instance_id: str = None,
+    config: RunnableConfig = None,
+) -> str:
+    """批量执行多条安全的 PostgreSQL SELECT 查询，每条独立校验安全性，单条失败不中断其他查询。"""
+    from apps.opspilot.metis.llm.tools.common.credentials import execute_with_credentials
+    from apps.opspilot.metis.llm.tools.postgres.connection import build_postgres_normalized_from_runnable, get_postgres_connection_from_item
+
+    normalized = build_postgres_normalized_from_runnable(config, instance_name, instance_id)
+
+    SENSITIVE_COLUMNS = {"password", "passwd", "pwd", "secret", "token", "api_key", "apikey", "access_key", "private_key", "credential", "auth"}
+
+    results = []
+    succeeded = 0
+    failed = 0
+
+    for query in queries:
+        is_safe, error_msg = validate_sql_safety(query)
+        if not is_safe:
+            results.append({"input": query, "ok": False, "error": f"SQL安全检查失败: {error_msg}"})
+            failed += 1
+            continue
+
+        sql_normalized = " ".join(query.lower().split())
+        if re.search(r"\bselect\s+\*\s+from\b", sql_normalized):
+            results.append({"input": query, "ok": False, "error": "安全限制: 禁止使用SELECT *"})
+            failed += 1
+            continue
+
+        def _executor(item, _query=query):
+            conn = get_postgres_connection_from_item(item)
+            try:
+                sql = _query.rstrip().rstrip(";")
+                if "limit" not in sql.lower():
+                    sql = f"{sql} LIMIT 100"
+                with conn.cursor() as cur:
+                    cur.execute("SET TRANSACTION READ ONLY")
+                    cur.execute(sql)
+                    columns = [desc[0] for desc in cur.description]
+                    rows = cur.fetchmany(100)
+                    row_dicts = [dict(zip(columns, row)) for row in rows]
+
+                if row_dicts:
+                    row_dicts = [{k: v for k, v in row.items() if k.lower() not in SENSITIVE_COLUMNS} for row in row_dicts]
+
+                return {"success": True, "row_count": len(row_dicts), "sql": sql, "data": row_dicts}
+            except Exception as e:
+                return {"error": str(e)}
+            finally:
+                conn.close()
+
+        try:
+            data = execute_with_credentials(normalized, _executor)
+            results.append({"input": query, "ok": True, "data": data})
+            succeeded += 1
+        except Exception as e:
+            results.append({"input": query, "ok": False, "error": str(e)})
+            failed += 1
+
+    return safe_json_dumps({"total": len(queries), "succeeded": succeeded, "failed": failed, "results": results})

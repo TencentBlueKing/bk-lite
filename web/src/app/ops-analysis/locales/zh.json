@@ -314,7 +314,10 @@
     "unifiedFilterBindingTip": "开启后，此组件将响应仪表盘顶部的统一筛选条件。同名同类型的参数将自动绑定。",
     "filterDisabled": "未启用",
     "filterDisabledTip": "该筛选项在统一筛选配置中未启用",
-    "namespaceNotSupported": "当前组件未关联所选命名空间"
+    "namespaceNotSupported": "当前组件未关联所选命名空间",
+    "exportPdf": "导出 PDF",
+    "exportPdfSuccess": "导出成功",
+    "exportPdfFailed": "导出失败"
   },
   "opsAnalysisSidebar": {
     "addArch": "添加架构图",

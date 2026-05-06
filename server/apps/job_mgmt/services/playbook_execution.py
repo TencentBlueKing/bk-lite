@@ -1,4 +1,5 @@
 import io
+import json
 import shlex
 
 from asgiref.sync import async_to_sync
@@ -187,9 +188,9 @@ class PlaybookExecution(ExecutionTaskBaseService):
         """
         从执行记录的 params 字符串和 Playbook 参数定义还原 extra_vars 字典
 
-        execution.params 存储的是空格分隔的值字符串（如 "value1 value2"），
-        playbook.params 存储的是参数定义列表（如 [{name, default, ...}]）。
-        按顺序将值映射回参数名。
+        params_str 有两种格式：
+        1. JSON 字符串（新格式）：直接 json.loads 还原为 dict
+        2. 空格分隔的值字符串（旧格式/脚本模式）：按顺序映射回参数名
 
         Args:
             params_str: 执行记录的参数字符串
@@ -198,7 +199,19 @@ class PlaybookExecution(ExecutionTaskBaseService):
         Returns:
             dict: {param_name: param_value}
         """
-        if not params_str or not playbook_params:
+        if not params_str:
+            return {}
+
+        # 优先尝试 JSON 解析（新格式）
+        try:
+            parsed = json.loads(params_str)
+            if isinstance(parsed, dict):
+                return parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # 旧格式兼容：空格分隔的值字符串，按顺序映射回参数名
+        if not playbook_params:
             return {}
 
         try:

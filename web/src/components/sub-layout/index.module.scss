@@ -44,3 +44,7 @@
 .segmented :global(.sub-layout-segmented .ant-segmented-item-selected) {
   color: var(--color-primary);
 }
+
+.segmentedNav {
+  padding-bottom: 10px;
+}

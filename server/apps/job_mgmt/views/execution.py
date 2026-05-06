@@ -1,5 +1,7 @@
 """作业执行视图"""
 
+import json
+
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -89,14 +91,15 @@ class JobExecutionViewSet(AuthViewSet):
         params_str = ScriptParamsService.params_to_string(resolved_params)
         # 根据模式创建执行记录
         if data.get("playbook_id"):
-            # Playbook 模式
+            # Playbook 模式：params 存为 JSON 字符串，保留完整 key-value 关系
             playbook = Playbook.objects.get(id=data["playbook_id"])
+            playbook_params_dict = ScriptParamsService.params_to_dict(resolved_params)
             execution = JobExecution.objects.create(
                 name=name,
                 job_type=JobType.PLAYBOOK,
                 status=ExecutionStatus.PENDING,
                 playbook=playbook,
-                params=params_str,
+                params=json.dumps(playbook_params_dict, ensure_ascii=False),
                 timeout=timeout,
                 total_count=len(target_list),
                 target_source=target_source,

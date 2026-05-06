@@ -5,6 +5,11 @@ import { Spin, Empty } from 'antd';
 import { randomColorForLegend } from '@/app/log/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/log/utils/chartDataTransform';
 
+const LEGEND_WIDTH_CLASS = 'w-40';
+const LEGEND_WIDTH_PX = 160;
+const LEGEND_GAP_PX = 8;
+const CHART_MIN_WIDTH_PX = 150;
+
 interface OsPieProps {
   rawData: any;
   loading?: boolean;
@@ -22,18 +27,33 @@ const OsPie: React.FC<OsPieProps> = ({
   const [chartInstance, setChartInstance] = useState<any>(null);
   const [showLegend, setShowLegend] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<ResizeObserver | null>(null);
   const chartColors = randomColorForLegend();
 
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+  const containerCallbackRef = useCallback((node: HTMLDivElement | null) => {
+    // 清理旧的 observer
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+    containerRef.current = node;
+    if (!node) return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setShowLegend(entry.contentRect.width >= 360);
+        const containerWidth = entry.contentRect.width;
+        setShowLegend(
+          containerWidth >= CHART_MIN_WIDTH_PX + LEGEND_WIDTH_PX + LEGEND_GAP_PX
+        );
       }
     });
-    observer.observe(el);
-    return () => observer.disconnect();
+    observer.observe(node);
+    observerRef.current = observer;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      observerRef.current?.disconnect();
+    };
   }, []);
 
   const onChartReady = useCallback((instance: any) => {
@@ -58,6 +78,7 @@ const OsPie: React.FC<OsPieProps> = ({
   };
 
   const chartData = transformData(rawData);
+  const useBarChart = chartData && chartData.length > 5;
 
   useEffect(() => {
     if (!loading) {
@@ -68,7 +89,72 @@ const OsPie: React.FC<OsPieProps> = ({
       }
     }
   }, [chartData, loading, onReady]);
-  const option: any = {
+
+  // Sort data descending for bar chart display
+  const sortedBarData = useBarChart
+    ? [...chartData].sort((a: any, b: any) => a.value - b.value)
+    : [];
+
+  let barOption: any = null;
+
+  if (useBarChart) {
+    barOption = {
+      color: chartColors,
+      animation: true,
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        confine: true,
+        textStyle: { fontSize: 12 }
+      },
+      grid: {
+        left: 12,
+        right: 48,
+        top: 8,
+        bottom: 8,
+        containLabel: true
+      },
+      xAxis: {
+        type: 'value',
+        axisLabel: { fontSize: 11, color: '#999' },
+        splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+      },
+      yAxis: {
+        type: 'category',
+        data: sortedBarData.map((d: any) => d.name),
+        axisLabel: {
+          fontSize: 11,
+          color: '#666',
+          width: 100,
+          overflow: 'truncate',
+          ellipsis: '...'
+        },
+        axisTick: { show: false },
+        axisLine: { show: false }
+      },
+      series: [
+        {
+          type: 'bar',
+          data: sortedBarData.map((d: any, i: number) => ({
+            value: d.value,
+            itemStyle: {
+              color: chartColors[i % chartColors.length],
+              borderRadius: [0, 2, 2, 0]
+            }
+          })),
+          barMaxWidth: 20,
+          label: {
+            show: true,
+            position: 'right',
+            fontSize: 11,
+            color: '#666'
+          }
+        }
+      ]
+    };
+  }
+
+  const pieOption: any = {
     color: chartColors,
     animation: true,
     calculable: true,
@@ -155,6 +241,8 @@ const OsPie: React.FC<OsPieProps> = ({
     ]
   };
 
+  const option = useBarChart ? barOption : pieOption;
+
   if (loading) {
     return (
       <div className="h-full flex flex-col items-center justify-center">
@@ -172,9 +260,12 @@ const OsPie: React.FC<OsPieProps> = ({
   }
 
   return (
-    <div className="h-full flex" ref={containerRef}>
+    <div
+      className="h-full flex w-full overflow-hidden"
+      ref={containerCallbackRef}
+    >
       {/* 图表区域 */}
-      <div className="flex-1 min-w-[200px]">
+      <div className={useBarChart ? 'w-full' : 'flex-1 min-w-[150px]'}>
         <ReactEcharts
           option={option}
           style={{ height: '100%', width: '100%' }}
@@ -182,9 +273,9 @@ const OsPie: React.FC<OsPieProps> = ({
         />
       </div>
 
-      {/* 图例区域 */}
-      {showLegend && chartData && chartData.length > 1 && (
-        <div className="w-40 flex-shrink-0 h-full">
+      {/* 图例区域 - only for pie/donut */}
+      {!useBarChart && showLegend && chartData && chartData.length > 1 && (
+        <div className={`ml-2 ${LEGEND_WIDTH_CLASS} flex-shrink-0 h-full`}>
           <ChartLegend
             chart={chartInstance}
             data={chartData.map((item: any) => ({ name: item.name }))}

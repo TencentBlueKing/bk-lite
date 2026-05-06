@@ -1,4 +1,6 @@
 # -- coding: utf-8 --
+from copy import deepcopy
+
 from rest_framework import serializers
 
 from apps.alerts.models.alert_source import AlertSource

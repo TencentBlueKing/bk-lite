@@ -5,25 +5,20 @@
 
 # 工具集构造参数元数据
 from apps.opspilot.metis.llm.tools.jenkins.build import list_jenkins_jobs, trigger_jenkins_build
+
 CONSTRUCTOR_PARAMS = [
     {
-        "name": "jenkins_url",
+        "name": "jenkins_instances",
         "type": "string",
-        "required": True,
-        "description": "Jenkins服务器URL地址"
+        "required": False,
+        "description": "Jenkins多实例JSON配置",
     },
     {
-        "name": "jenkins_username",
+        "name": "jenkins_default_instance_id",
         "type": "string",
-        "required": True,
-        "description": "Jenkins用户名"
+        "required": False,
+        "description": "默认Jenkins实例ID",
     },
-    {
-        "name": "jenkins_password",
-        "type": "string",
-        "required": True,
-        "description": "Jenkins用户密码或API Token"
-    }
 ]
 
 # 导入所有工具函数，保持向后兼容性

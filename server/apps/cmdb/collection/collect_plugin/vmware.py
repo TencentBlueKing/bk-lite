@@ -110,7 +110,7 @@ class CollectVmwareMetrics(CollectBase):
         for index_data in data["result"]:
             metric_name = index_data["metric"]["__name__"]
             value = index_data["value"]
-            if index_data["metric"].get("collect_status", 'success') == 'failed':
+            if index_data["metric"].get("collect_status", 'failed') == 'failed':
                 continue
             _time, value = value[0], value[1]
             if not self.timestamp_gt:

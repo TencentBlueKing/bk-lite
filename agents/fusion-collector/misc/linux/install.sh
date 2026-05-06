@@ -6,7 +6,7 @@
 
 # 显示使用方法
 show_usage() {
-    echo "用法: $0 {server_url} {server_api_token} {zone} {teams} [node_name] [node_id]"
+    echo "用法: $0 {server_url} {server_api_token} {zone} {teams} [node_name] [node_id] [cpu_architecture]"
     echo ""
     echo "参数说明:"
     echo "  server_url       - 服务器URL"
@@ -15,6 +15,7 @@ show_usage() {
     echo "  teams           - 分组信息"
     echo "  node_name        - 节点名称 (可选)"
     echo "  node_id          - 节点ID (可选)"
+    echo "  cpu_architecture - CPU架构 (可选)"
     exit 1
 }
 
@@ -28,7 +29,7 @@ check_root() {
 
 # 检查参数数量
 check_args() {
-    if [ $# -lt 4 ] || [ $# -gt 6 ]; then
+    if [ $# -lt 4 ] || [ $# -gt 7 ]; then
         show_usage
     fi
 }
@@ -37,11 +38,26 @@ check_args() {
 install_service() {
     echo "开始安装 Fusion Collector Sidecar 服务..."
 
+    escape_sed_replacement() {
+        printf '%s' "$1" | sed -e 's/[&|\\]/\\&/g'
+    }
+
+    ESCAPED_SERVER_URL=$(escape_sed_replacement "$SERVER_URL")
+    ESCAPED_SERVER_API_TOKEN=$(escape_sed_replacement "$SERVER_API_TOKEN")
+    ESCAPED_ZONE=$(escape_sed_replacement "$ZONE")
+    ESCAPED_TEAMS=$(escape_sed_replacement "$TEAMS")
+    ESCAPED_NODE_NAME=$(escape_sed_replacement "$NODE_NAME")
+    ESCAPED_CPU_ARCHITECTURE=$(escape_sed_replacement "$CPU_ARCHITECTURE")
+
     # 替换配置文件中的占位符
-    sed -i "s|__SERVER__URL__|$SERVER_URL|g" /opt/fusion-collectors/sidecar.yml
-    sed -i "s|__SERVER__API__TOKEN__|$SERVER_API_TOKEN|g" /opt/fusion-collectors/sidecar.yml
-    sed -i "s|__TAGS__|\"zone:$ZONE\", \"group:$TEAMS\"|g" /opt/fusion-collectors/sidecar.yml
-    sed -i "s|__NODE__NAME__|$NODE_NAME|g" /opt/fusion-collectors/sidecar.yml
+    sed -i "s|__SERVER__URL__|$ESCAPED_SERVER_URL|g" /opt/fusion-collectors/sidecar.yml
+    sed -i "s|__SERVER__API__TOKEN__|$ESCAPED_SERVER_API_TOKEN|g" /opt/fusion-collectors/sidecar.yml
+    TAGS="\"zone:$ESCAPED_ZONE\", \"group:$ESCAPED_TEAMS\""
+    if [ -n "$CPU_ARCHITECTURE" ]; then
+        TAGS="$TAGS, \"cpu_architecture:$ESCAPED_CPU_ARCHITECTURE\""
+    fi
+    sed -i "s|__TAGS__|$TAGS|g" /opt/fusion-collectors/sidecar.yml
+    sed -i "s|__NODE__NAME__|$ESCAPED_NODE_NAME|g" /opt/fusion-collectors/sidecar.yml
 
     # 拷贝服务文件并启用
     cp -f "./sidecar.service" /etc/systemd/system/
@@ -68,16 +84,21 @@ main() {
     TEAMS=$4
     NODE_NAME=""
     NODE_ID=""
+    CPU_ARCHITECTURE=""
 
     # 处理可选参数
     if [ $# -ge 5 ]; then
         NODE_NAME=$5
     fi
 
-    if [ $# -eq 6 ]; then
+    if [ $# -ge 6 ]; then
         NODE_ID=$6
         echo "$NODE_ID" > ./node-id
         echo "Node ID 已写入到 ./node-id 文件"
+    fi
+
+    if [ $# -ge 7 ]; then
+        CPU_ARCHITECTURE=$7
     fi
 
     # 安装服务

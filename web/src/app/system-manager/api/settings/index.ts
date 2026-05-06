@@ -1,6 +1,28 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 
+export interface UserApiSecretListItem {
+  id: number;
+  username: string;
+  domain: string;
+  team: number;
+  team_name?: string;
+  created_at: string;
+  updated_at: string;
+  api_secret_preview: string;
+}
+
+export interface UserApiSecretCreateResponse {
+  id: number;
+  username: string;
+  domain: string;
+  team: number;
+  team_name?: string;
+  created_at: string;
+  updated_at: string;
+  api_secret: string;
+}
+
 export const useSettingsApi = () => {
   const { get, post, del } = useApiClient();
 
@@ -27,7 +49,7 @@ export const useSettingsApi = () => {
   /**
    * Fetches user API secrets.
    */
-  const fetchUserApiSecrets = useCallback(async (): Promise<any[]> => {
+  const fetchUserApiSecrets = useCallback(async (): Promise<UserApiSecretListItem[]> => {
     return get('/base/user_api_secret/');
   }, [get]);
 
@@ -49,8 +71,8 @@ export const useSettingsApi = () => {
   /**
    * Creates a new user API secret.
    */
-  const createUserApiSecret = useCallback(async (): Promise<void> => {
-    await post('/base/user_api_secret/');
+  const createUserApiSecret = useCallback(async (): Promise<UserApiSecretCreateResponse> => {
+    return post('/base/user_api_secret/');
   }, [post]);
 
   return {

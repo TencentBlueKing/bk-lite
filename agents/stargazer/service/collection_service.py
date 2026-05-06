@@ -291,7 +291,7 @@ class CollectionService:
         注意：此方法主要用于云平台插件
         """
         if not self.model_id:
-            return {"result": [], "success": False}
+            return {"result": [], "success": False, "message": "model_id is required"}
 
         try:
             resolved_executor = self.yaml_reader.get_executor_config_with_resolution(
@@ -304,7 +304,11 @@ class CollectionService:
                 logger.warning(
                     f"list_regions not supported for executor type: {executor_config.executor_type}"
                 )
-                return {"result": [], "success": False}
+                return {
+                    "result": [],
+                    "success": False,
+                    "message": f"list_regions not supported for executor type: {executor_config.executor_type}",
+                }
 
             # 加载采集器
             collector_info = executor_config.get_collector_info()
@@ -315,9 +319,17 @@ class CollectionService:
             plugin_instance = plugin_class(self.params or {})
             result = plugin_instance.list_regions()
 
+            if isinstance(result, list):
+                return {
+                    "result": result,
+                    "success": True,
+                    "message": "",
+                }
+
             return {
                 "result": result.get("data", []),
                 "success": result.get("result", False),
+                "message": result.get("message", ""),
             }
 
         except Exception as e:  # noqa
@@ -326,7 +338,7 @@ class CollectionService:
             logger.error(
                 f"Error list_regions for {self.plugin_name or self.model_id}: {traceback.format_exc()}"
             )
-            return {"result": [], "success": False}
+            return {"result": [], "success": False, "message": str(e)}
 
     async def set_node_info(self):
         """查询单个节点信息"""

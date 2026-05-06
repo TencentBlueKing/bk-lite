@@ -118,6 +118,7 @@
         "eventTab": "Event",
         "guideTab": "Guide",
         "timeRange": "Time Range",
+        "node": "Node",
         "pushSourceId": "Push Source",
         "receiverUrl": "Receiver URL",
         "method": "Method",
@@ -145,7 +146,16 @@
         "verifyResult": "Verify Result",
         "verifyResultHelp": "After running apply, return to the current K8s integration event page to confirm new Kubernetes events are received.",
         "clusterNameHelp": "Set the current Kubernetes cluster name so the event source can be identified.",
-        "sourceIdFixed": "This value is fixed and should usually not be changed"
+        "sourceIdFixed": "This value is fixed and should usually not be changed",
+        "snmpTrapNodeDes": "Please select the node that has been hosting the snmptrapd program",
+        "snmpTrapAccessGuide": "Access Guide",
+        "snmpTrapStep1": "Configure Trap Target Address",
+        "snmpTrapStep1Des": "Configure the following target address on the device to send Trap messages",
+        "snmpTrapTargetIp": "Target IP",
+        "snmpTrapTargetPort": "Target Port",
+        "snmpTrapStep2": "Configure MIB Files",
+        "snmpTrapStep2Des": "Obtain the MIB files from the device vendor and place them in the following directory on the node",
+        "snmpTrapMibPath": "MIB File Path"
     },
     "settings": {
         "alertAssign": "Alert Assignment",

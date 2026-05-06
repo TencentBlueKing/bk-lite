@@ -1,6 +1,9 @@
+import json
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
+from django.test import Client
 from django.test import TestCase
 from django.utils import timezone
 
@@ -20,6 +23,7 @@ from apps.alerts.constants import (
     LevelType,
 )
 from apps.alerts.models import Alert, AlertSource, AlarmStrategy, Event, Level
+from apps.alerts.serializers.alert_source import AlertSourceModelSerializer
 from apps.alerts.serializers.strategy import AlarmStrategySerializer
 
 
@@ -425,3 +429,356 @@ class MissingDetectionProcessorTestCase(TestCase):
             strategy.params["last_heartbeat_time"],
             Event.objects.get(event_id="EVENT-RECOVERY").received_at.isoformat(),
         )
+
+
+class AlertSourceIngressTestCase(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = get_user_model().objects.create_user(
+            username="alerts-admin",
+            password="test-pass-123",
+            domain="default.local",
+        )
+        self.client.force_login(self.user)
+        Level.objects.create(
+            level_id=3,
+            level_name="info",
+            level_display_name="提醒",
+            color="#1677FF",
+            icon="",
+            description="",
+            level_type=LevelType.EVENT,
+        )
+
+    def test_prometheus_serializer_populates_default_config(self):
+        serializer = AlertSourceModelSerializer(
+            data={
+                "name": "Prometheus Prod",
+                "source_id": "prometheus-prod",
+                "source_type": AlertsSourceTypes.PROMETHEUS,
+                "config": {},
+            }
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        config = serializer.validated_data["config"]
+        self.assertTrue(config["accept_default_payload"])
+        self.assertTrue(config["accept_custom_payload"])
+        self.assertTrue(config["send_resolved_required"])
+        self.assertTrue(config["url"].endswith("/api/v1/alerts/api/source/{source_id}/webhook/"))
+        self.assertNotIn("external_id_labels", config)
+        self.assertNotIn("severity_mapping", config)
+        self.assertIn("event_fields_mapping", config)
+
+    def test_prometheus_webhook_accepts_events_for_matching_source_type(self):
+        source = AlertSource.objects.create(
+            name="Prometheus Prod",
+            source_id="prometheus-prod",
+            source_type=AlertsSourceTypes.PROMETHEUS,
+            secret="prom-secret",
+            config={
+                "event_fields_mapping": {
+                    "title": "title",
+                    "description": "description",
+                    "level": "level",
+                    "item": "item",
+                    "start_time": "start_time",
+                    "labels": "labels",
+                    "external_id": "external_id",
+                    "resource_name": "resource_name",
+                    "action": "action",
+                }
+            },
+        )
+        payload = {
+            "events": [
+                {
+                    "title": "HighCPUUsage",
+                    "description": "cpu > 90%",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "labels": {"alertname": "HighCPUUsage", "instance": "node-1"},
+                    "external_id": "prom-node-1-highcpu",
+                    "resource_name": "node-1",
+                    "action": "created",
+                }
+            ]
+        }
+
+        response = self.client.post(
+            f"/api/v1/alerts/api/source/{source.source_id}/webhook/",
+            data=json.dumps(payload),
+            content_type="application/json",
+            HTTP_SECRET="prom-secret",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "success")
+        self.assertEqual(Event.objects.count(), 1)
+        self.assertEqual(Event.objects.first().source.source_id, source.source_id)
+
+    def test_zabbix_webhook_normalizes_single_event_payload(self):
+        source = AlertSource.objects.create(
+            name="Zabbix Prod",
+            source_id="zabbix-prod",
+            source_type=AlertsSourceTypes.ZABBIX,
+            secret="zbx-secret",
+            config={
+                "event_fields_mapping": {
+                    "title": "title",
+                    "description": "description",
+                    "level": "level",
+                    "item": "item",
+                    "start_time": "start_time",
+                    "labels": "labels",
+                    "rule_id": "rule_id",
+                    "external_id": "external_id",
+                    "resource_id": "resource_id",
+                    "resource_name": "resource_name",
+                    "resource_type": "resource_type",
+                    "action": "action",
+                    "service": "service",
+                    "tags": "tags",
+                    "location": "location",
+                }
+            },
+        )
+        payload = {
+            "event": {
+                "title": "Zabbix CPU High",
+                "description": "cpu usage > 90%",
+                "level": "3",
+                "item": "system.cpu.util",
+                "start_time": str(int(timezone.now().timestamp())),
+                "labels": {"problem_id": "10001", "event_id": "20001"},
+                "rule_id": "30001",
+                "resource_id": "40001",
+                "resource_name": "host-1",
+                "action": "created",
+            }
+        }
+
+        response = self.client.post(
+            f"/api/v1/alerts/api/source/{source.source_id}/webhook/",
+            data=json.dumps(payload),
+            content_type="application/json",
+            HTTP_SECRET="zbx-secret",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        event = Event.objects.get(source=source)
+        self.assertEqual(event.external_id, "10001")
+        self.assertEqual(event.resource_name, "host-1")
+        self.assertEqual(event.action, EventAction.CREATED)
+
+    def test_zabbix_webhook_builds_event_from_official_template_fields(self):
+        source = AlertSource.objects.create(
+            name="Zabbix Prod",
+            source_id="zabbix-prod",
+            source_type=AlertsSourceTypes.ZABBIX,
+            secret="zbx-secret",
+            config={
+                "event_fields_mapping": {
+                    "title": "title",
+                    "description": "description",
+                    "level": "level",
+                    "item": "item",
+                    "start_time": "start_time",
+                    "labels": "labels",
+                    "rule_id": "rule_id",
+                    "external_id": "external_id",
+                    "resource_id": "resource_id",
+                    "resource_name": "resource_name",
+                    "resource_type": "resource_type",
+                    "action": "action",
+                    "service": "service",
+                    "tags": "tags",
+                    "location": "location",
+                }
+            },
+        )
+
+        response = self.client.post(
+            f"/api/v1/alerts/api/source/{source.source_id}/webhook/",
+            data=json.dumps(
+                {
+                    "Subject": "Zabbix CPU High",
+                    "Message": "cpu usage > 90%",
+                    "Severity": "3",
+                    "TriggerName": "system.cpu.util",
+                    "ProblemId": "10002",
+                    "EventId": "20002",
+                    "TriggerId": "30002",
+                    "HostId": "40002",
+                    "HostName": "host-2",
+                    "EventValue": "0",
+                }
+            ),
+            content_type="application/json",
+            HTTP_SECRET="zbx-secret",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        event = Event.objects.get(source=source)
+        self.assertEqual(event.external_id, "10002")
+        self.assertEqual(event.action, EventAction.RECOVERY)
+        self.assertEqual(event.resource_name, "host-2")
+
+    def test_prometheus_webhook_normalizes_default_alertmanager_payload(self):
+        source = AlertSource.objects.create(
+            name="Prometheus Prod",
+            source_id="prometheus-prod",
+            source_type=AlertsSourceTypes.PROMETHEUS,
+            secret="prom-secret",
+            config={
+                "event_fields_mapping": {
+                    "title": "title",
+                    "description": "description",
+                    "level": "level",
+                    "item": "item",
+                    "start_time": "start_time",
+                    "end_time": "end_time",
+                    "labels": "labels",
+                    "rule_id": "rule_id",
+                    "external_id": "external_id",
+                    "push_source_id": "push_source_id",
+                    "resource_id": "resource_id",
+                    "resource_name": "resource_name",
+                    "resource_type": "resource_type",
+                    "action": "action",
+                    "service": "service",
+                    "tags": "tags",
+                    "location": "location",
+                },
+            },
+        )
+        payload = {
+            "receiver": "bk-lite-prometheus",
+            "status": "firing",
+            "commonLabels": {"alertname": "HighCPUUsage", "severity": "critical"},
+            "commonAnnotations": {"summary": "CPU too high"},
+            "alerts": [
+                {
+                    "status": "firing",
+                    "labels": {"instance": "node-1", "job": "node-exporter"},
+                    "annotations": {"description": "node-1 cpu usage > 90%"},
+                    "startsAt": "2026-04-22T08:00:00Z",
+                    "endsAt": "2026-04-22T09:00:00Z",
+                }
+            ],
+        }
+
+        response = self.client.post(
+            f"/api/v1/alerts/api/source/{source.source_id}/webhook/",
+            data=json.dumps(payload),
+            content_type="application/json",
+            HTTP_SECRET="prom-secret",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        event = Event.objects.get(source=source)
+        self.assertEqual(event.action, EventAction.CREATED)
+        self.assertEqual(event.item, "HighCPUUsage")
+        self.assertEqual(event.resource_name, "node-1")
+        self.assertEqual(event.service, "node-exporter")
+        self.assertEqual(event.raw_data["push_source_id"], "bk-lite-prometheus")
+        self.assertTrue(event.external_id)
+
+    def test_prometheus_webhook_uses_same_external_id_for_firing_and_resolved(self):
+        source = AlertSource.objects.create(
+            name="Prometheus Prod",
+            source_id="prometheus-prod",
+            source_type=AlertsSourceTypes.PROMETHEUS,
+            secret="prom-secret",
+            config={
+                "event_fields_mapping": {
+                    "title": "title",
+                    "description": "description",
+                    "level": "level",
+                    "item": "item",
+                    "start_time": "start_time",
+                    "end_time": "end_time",
+                    "labels": "labels",
+                    "rule_id": "rule_id",
+                    "external_id": "external_id",
+                    "push_source_id": "push_source_id",
+                    "resource_id": "resource_id",
+                    "resource_name": "resource_name",
+                    "resource_type": "resource_type",
+                    "action": "action",
+                    "service": "service",
+                    "tags": "tags",
+                    "location": "location",
+                },
+            },
+        )
+
+        def send_payload(status):
+            return self.client.post(
+                f"/api/v1/alerts/api/source/{source.source_id}/webhook/",
+                data=json.dumps(
+                    {
+                        "receiver": "bk-lite-prometheus",
+                        "status": status,
+                        "commonLabels": {"alertname": "HighCPUUsage"},
+                        "alerts": [
+                            {
+                                "status": status,
+                                "labels": {"instance": "node-1"},
+                                "annotations": {"summary": "CPU too high"},
+                                "startsAt": "2026-04-22T08:00:00Z",
+                                "endsAt": "2026-04-22T09:00:00Z",
+                            }
+                        ],
+                    }
+                ),
+                content_type="application/json",
+                HTTP_SECRET="prom-secret",
+            )
+
+        firing_response = send_payload("firing")
+        resolved_response = send_payload("resolved")
+
+        self.assertEqual(firing_response.status_code, 200)
+        self.assertEqual(resolved_response.status_code, 200)
+
+        events = list(Event.objects.filter(source=source).order_by("received_at"))
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0].external_id, events[1].external_id)
+        self.assertEqual(events[0].action, EventAction.CREATED)
+        self.assertEqual(events[1].action, EventAction.RECOVERY)
+
+    def test_integration_guide_returns_prometheus_template(self):
+        source = AlertSource.objects.create(
+            name="Prometheus Prod",
+            source_id="prometheus-prod",
+            source_type=AlertsSourceTypes.PROMETHEUS,
+            secret="prom-secret",
+            config={},
+        )
+
+        response = self.client.get(f"/api/v1/alerts/api/alert_source/{source.id}/integration-guide/")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["data"]
+        self.assertEqual(payload["source_type"], AlertsSourceTypes.PROMETHEUS)
+        self.assertIn(f"/api/v1/alerts/api/source/{source.source_id}/webhook/", payload["webhook_url"])
+        self.assertIn("alertmanager_default_config", payload)
+
+    def test_integration_guide_returns_zabbix_template(self):
+        source = AlertSource.objects.create(
+            name="Zabbix Prod",
+            source_id="zabbix-prod",
+            source_type=AlertsSourceTypes.ZABBIX,
+            secret="zbx-secret",
+            config={},
+        )
+
+        response = self.client.get(f"/api/v1/alerts/api/alert_source/{source.id}/integration-guide/")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["data"]
+        self.assertEqual(payload["source_type"], AlertsSourceTypes.ZABBIX)
+        self.assertIn(f"/api/v1/alerts/api/source/{source.source_id}/webhook/", payload["webhook_url"])
+        self.assertIn("script_template", payload)

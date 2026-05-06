@@ -56,6 +56,7 @@ class ManualCollectService:
         创建手动采集实例
         """
         organizations = data.pop("organizations", [])
+        data["auto"] = False
         MonitorObjectService.validate_new_instance_name_unique(data.get("monitor_object_id"), data.get("name"))
         instance_id = str(tuple([data["id"]]))
         data.update(id=instance_id)

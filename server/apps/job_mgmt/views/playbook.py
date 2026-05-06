@@ -164,19 +164,19 @@ class PlaybookViewSet(AuthViewSet):
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
             zip_file.writestr(
                 "playbook-template/playbook.yml",
-                "---\n- name: Example Playbook\n  hosts: localhost\n  connection: local\n  gather_facts: false\n\n  roles:\n    - example\n",
+                "---\n- name: Example Playbook\n  hosts: all\n  gather_facts: false\n\n  roles:\n    - example\n",
             )
             zip_file.writestr(
                 "playbook-template/README.md",
                 "# Playbook 模板示例\n\n"
                 "这是一个可直接运行的 Playbook 模板。\n\n"
                 "## 目录说明\n\n"
-                "- `playbook.yml`：Playbook 入口文件\n"
+                "- `playbook.yml`：Playbook 入口文件（`hosts: all`，由系统自动注入目标主机）\n"
                 "- `README.md`：Playbook 说明文档\n"
                 "- `roles/example/tasks/main.yml`：任务示例\n"
                 "- `roles/example/vars/main.yml`：变量示例\n\n"
                 "## 执行说明\n\n"
-                "该模板使用本地连接方式执行，默认会输出一条调试信息。\n\n"
+                "上传后在「快速执行」中选择目标主机即可运行，系统会自动生成 inventory。\n\n"
                 "## 自定义建议\n\n"
                 "1. 按业务需要修改 `roles/example/tasks/main.yml`\n"
                 "2. 在 `vars/main.yml` 中补充变量\n"

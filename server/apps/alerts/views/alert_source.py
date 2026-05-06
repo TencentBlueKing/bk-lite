@@ -1,4 +1,7 @@
 # -- coding: utf-8 --
+from rest_framework.response import Response
+
+from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
 from pathlib import Path
 import subprocess
 import tempfile
@@ -6,15 +9,16 @@ import tempfile
 from rest_framework.decorators import action
 from rest_framework import status
 
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.alerts.filters import AlertSourceModelFilter
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.serializers import AlertSourceModelSerializer
 from apps.alerts.service.k8s_install import K8sInstallService
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
+from apps.rpc.node_mgmt import NodeMgmt
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
-
 
 K8S_SOURCE_ID = "k8s"
 K8S_IMAGE_REFERENCE = "ghcr.io/resmoio/kubernetes-event-exporter:latest"
@@ -33,6 +37,17 @@ K8S_DOWNLOAD_FILES = {
 }
 
 
+def _get_valid_current_team(request):
+    current_team = request.COOKIES.get("current_team")
+    if current_team in (None, ""):
+        raise BaseAppException("缺少 current_team 参数")
+
+    try:
+        return int(current_team)
+    except (TypeError, ValueError):
+        raise BaseAppException("current_team 参数非法")
+
+
 class AlertSourceModelViewSet(ModelViewSet):
     """
     告警源
@@ -44,6 +59,14 @@ class AlertSourceModelViewSet(ModelViewSet):
     filterset_class = AlertSourceModelFilter
     pagination_class = CustomPageNumberPagination
 
+    @action(detail=True, methods=["get"], url_path="integration-guide")
+    def integration_guide(self, request, pk=None):
+        alert_source = self.get_object()
+        adapter_class = AlertSourceAdapterFactory.get_adapter(alert_source)
+        adapter = adapter_class(alert_source=alert_source)
+        base_url = request.build_absolute_uri("/").rstrip("/")
+        return Response(adapter.get_integration_guide(base_url))
+
     @staticmethod
     def _get_k8s_source():
         return AlertSource.objects.filter(source_id=K8S_SOURCE_ID).first()
@@ -53,9 +76,11 @@ class AlertSourceModelViewSet(ModelViewSet):
         secret_template = (K8S_SUPPORT_DIR / "secret.yaml.template").read_text(encoding="utf-8").strip()
         exporter_template = (K8S_SUPPORT_DIR / "bk-lite-k8s-event-exporter.yaml").read_text(encoding="utf-8").strip()
         secret_template = secret_template.replace("your-k8s-cluster", cluster_name)
-        secret_template = secret_template.replace("http://bk-lite-server:8001/api/v1/alerts/api/receiver_data/", receiver_url)
+        secret_template = secret_template.replace("http://bk-lite-server:8001/api/v1/alerts/api/receiver_data/",
+                                                  receiver_url)
         secret_template = secret_template.replace("your-alert-source-secret", secret)
-        secret_template = secret_template.replace("BK_LITE_PUSH_SOURCE_ID: k8s", f"BK_LITE_PUSH_SOURCE_ID: {push_source_id}")
+        secret_template = secret_template.replace("BK_LITE_PUSH_SOURCE_ID: k8s",
+                                                  f"BK_LITE_PUSH_SOURCE_ID: {push_source_id}")
         guide_header = "\n".join(
             [
                 "# BK-Lite K8s Event Exporter Deployment Template",
@@ -124,6 +149,36 @@ class AlertSourceModelViewSet(ModelViewSet):
         return WebUtils.response_success(data)
 
     @HasPermission("Integration-View")
+    @action(methods=["post"], detail=False, url_path="snmp_trap_nodes")
+    def snmp_trap_nodes(self, request):
+        current_team = _get_valid_current_team(request)
+        organization_ids = [] if request.user.is_superuser else [i["id"] for i in getattr(request.user, "group_list", [])]
+        query_data = {
+            "cloud_region_id": request.data.get("cloud_region_id"),
+            "organization_ids": organization_ids,
+            "name": request.data.get("name"),
+            "ip": request.data.get("ip"),
+            "os": request.data.get("os"),
+            "page": request.data.get("page", 1),
+            "page_size": request.data.get("page_size", 10),
+            "is_active": request.data.get("is_active"),
+            "is_manual": request.data.get("is_manual"),
+            "is_container": request.data.get("is_container"),
+            "permission_data": {
+                "username": request.user.username,
+                "domain": request.user.domain,
+                "current_team": current_team,
+            },
+        }
+        data = NodeMgmt().node_list(query_data)
+        if not isinstance(data, dict):
+            data = {}
+        return WebUtils.response_success({
+            "count": data.get("count", 0),
+            "nodes": data.get("nodes", []),
+        })
+
+    @HasPermission("Integration-View")
     @action(methods=["post"], detail=False, url_path="k8s_render")
     def k8s_render(self, request):
         source = self._get_k8s_source()
@@ -170,7 +225,8 @@ class AlertSourceModelViewSet(ModelViewSet):
             try:
                 return WebUtils.response_file(self._build_k8s_image_tar_file(), file_meta["file_name"])
             except RuntimeError as error:
-                return WebUtils.response_error(error_message=str(error), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return WebUtils.response_error(error_message=str(error),
+                                               status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
         source = self._get_k8s_source()
         if not source:
             return WebUtils.response_error(

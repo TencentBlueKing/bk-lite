@@ -164,6 +164,8 @@
         "lastName": "姓名",
         "passwordMismatch": "两次密码不一致",
         "normalUser": "普通用户",
+        "groupSelectionRequired": "请至少选择一个组织",
+        "normalGroupRequired": "请至少选择一个普通组织",
         "tempTooltip": "如果开启，用户必须在下一次登录的时候改变密码"
       },
       "admin": {
@@ -273,6 +275,19 @@
         "key": "密钥",
         "portal": "门户",
         "license": "许可"
+      },
+      "secret": {
+        "title": "API密钥",
+        "createdAt": "创建时间",
+        "key": "密钥",
+        "group": "组织",
+        "content": "为了防止 API 滥用，请保护你的 API 密钥。",
+        "deleteConfirm": "你确定要删除选中的密钥吗？",
+        "create": "创建新密钥",
+        "createSuccessTitle": "密钥创建成功",
+        "createSuccessDesc": "请立即保存此密钥。关闭此窗口后，您将无法再次查看完整的密钥。",
+        "confirmSave": "我已经安全地保存了此密钥",
+        "savedAction": "我已保存"
       },
       "license": {
         "title": "许可管理",

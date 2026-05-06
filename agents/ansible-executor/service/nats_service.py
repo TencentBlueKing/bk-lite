@@ -16,6 +16,7 @@ from service.ansible_runner import (
     build_playbook_winrm_preflight_command,
     cleanup_workspace,
     parse_ansible_output_per_host,
+    parse_playbook_recap,
     prepare_adhoc_execution,
     prepare_playbook_execution,
     run_command,
@@ -350,6 +351,8 @@ class AnsibleNATSService:
             error = f"ansible {task.task_type} failed with exit code {code}"
 
         parsed_results = parse_ansible_output_per_host(output) if output else []
+        if not parsed_results and output:
+            parsed_results = parse_playbook_recap(output)
 
         result = {
             "task_id": task.task_id,

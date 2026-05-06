@@ -3,7 +3,7 @@ from django.test import RequestFactory
 
 from apps.base.models import UserAPISecret
 from apps.base.tests.factories import UserAPISecretFactory, UserFactory
-from apps.base.user_api_secret_mgmt.serializers import UserAPISecretSerializer
+from apps.base.user_api_secret_mgmt.serializers import UserAPISecretCreateSerializer, UserAPISecretSerializer
 
 
 @pytest.mark.unit
@@ -57,6 +57,21 @@ class TestUserAPISecretSerializer:
         data = serializer.data
         assert "id" in data
         assert "username" in data
-        assert "api_secret" in data
+        assert "api_secret_preview" in data
+        assert data["api_secret_preview"] == f"{secret.api_secret[:4]}********"
+        assert "api_secret" not in data
         assert "team" in data
         assert "team_name" in data
+
+    def test_create_serializer_includes_full_api_secret(self):
+        user = UserFactory(
+            username="erin",
+            group_list=[{"id": 1, "name": "Team Alpha"}],
+        )
+        secret = UserAPISecretFactory(username="erin", domain=user.domain, team=1)
+        request = self._make_request(user)
+        serializer = UserAPISecretCreateSerializer(secret, context={"request": request})
+        data = serializer.data
+
+        assert data["api_secret"] == secret.api_secret
+        assert "api_secret_preview" not in data

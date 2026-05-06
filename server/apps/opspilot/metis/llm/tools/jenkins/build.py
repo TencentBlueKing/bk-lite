@@ -1,16 +1,29 @@
-from typing import Optional
+from typing import List, Optional
 
 import jenkins
-
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 
-def get_client(config: RunnableConfig):
-    client = jenkins.Jenkins(config['configurable']['jenkins_url'],
-                             username=config['configurable']['jenkins_username'],
-                             password=config['configurable']['jenkins_password'])
-    return client
+def get_client(
+    config: RunnableConfig,
+    instance_name=None,
+    instance_id=None,
+):
+    from apps.opspilot.metis.llm.tools.jenkins.connection import build_jenkins_normalized_from_runnable
+
+    normalized = build_jenkins_normalized_from_runnable(
+        config,
+        instance_name=instance_name,
+        instance_id=instance_id,
+    )
+    item = normalized["items"][0]
+    cfg = item["config"]
+    return jenkins.Jenkins(
+        cfg["jenkins_url"],
+        username=cfg["jenkins_username"],
+        password=cfg["jenkins_password"],
+    )
 
 
 @tool()
@@ -24,7 +37,11 @@ def list_jenkins_jobs(config: RunnableConfig):
 
 
 @tool(parse_docstring=True)
-def trigger_jenkins_build(job_name: str, parameters: Optional[dict], config: RunnableConfig):
+def trigger_jenkins_build(
+    job_name: str,
+    parameters: Optional[dict],
+    config: RunnableConfig,
+):
     """
     这个工具用于触发Jenkins构建任务.
         要求:
@@ -33,7 +50,8 @@ def trigger_jenkins_build(job_name: str, parameters: Optional[dict], config: Run
 
     Args:
         job_name: Name of the job to build
-        parameters: Optional build parameters as a dictionary (e.g. {"param1": "value1"})
+        parameters: Optional build parameters as a dictionary,
+            for example key-value pairs like param1=value1
 
     Returns:
         Dictionary containing build information including the build number
@@ -41,9 +59,7 @@ def trigger_jenkins_build(job_name: str, parameters: Optional[dict], config: Run
     if not isinstance(job_name, str):
         raise ValueError(f"job_name must be a string, got {type(job_name)}")
     if parameters is not None and not isinstance(parameters, dict):
-        raise ValueError(
-            f"parameters must be a dictionary or None, got {type(parameters)}"
-        )
+        raise ValueError(f"parameters must be a dictionary or None, got {type(parameters)}")
 
     client = get_client(config)
 
@@ -56,7 +72,7 @@ def trigger_jenkins_build(job_name: str, parameters: Optional[dict], config: Run
 
     try:
         # Get the next build number before triggering
-        next_build_number = job_info['nextBuildNumber']
+        next_build_number = job_info["nextBuildNumber"]
 
         # Trigger the build
         queue_id = client.build_job(job_name, parameters=parameters)
@@ -67,7 +83,36 @@ def trigger_jenkins_build(job_name: str, parameters: Optional[dict], config: Run
             "queue_id": queue_id,
             "build_number": next_build_number,
             "job_url": job_info["url"],
-            "build_url": f"{job_info['url']}{next_build_number}/"
+            "build_url": f"{job_info['url']}{next_build_number}/",
         }
     except Exception as e:
         raise ValueError(f"Error triggering build for {job_name}: {str(e)}")
+
+
+@tool()
+def get_jenkins_job_info_batch(
+    job_names: List[str],
+    config: RunnableConfig = None,
+) -> dict:
+    """批量获取多个 Jenkins Job 的信息，单条失败不中断其他查询。"""
+    client = get_client(config)
+
+    results = []
+    succeeded = 0
+    failed = 0
+
+    for job_name in job_names:
+        try:
+            info = client.get_job_info(job_name)
+            results.append({"input": job_name, "ok": True, "data": info})
+            succeeded += 1
+        except Exception as e:
+            results.append({"input": job_name, "ok": False, "error": str(e)})
+            failed += 1
+
+    return {
+        "total": len(job_names),
+        "succeeded": succeeded,
+        "failed": failed,
+        "results": results,
+    }

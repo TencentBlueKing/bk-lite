@@ -18,6 +18,8 @@ class TestUserAPISecretList:
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) == 1
         assert response.data[0]["username"] == user_with_permissions.username
+        assert response.data[0]["api_secret_preview"] == f"{user_api_secret.api_secret[:4]}********"
+        assert "api_secret" not in response.data[0]
 
     def test_user_cannot_see_other_users_secrets(self, api_client_with_team, user_with_permissions):
         # Create secret for a different user
@@ -74,8 +76,22 @@ class TestUserAPISecretCreate:
         response = api_client_with_team.post(BASE_URL, data={})
         assert response.status_code == status.HTTP_201_CREATED
         assert "api_secret" in response.data
+        assert "api_secret_preview" not in response.data
         assert response.data["username"] == user_with_permissions.username
         assert response.data["team"] == 1
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+class TestUserAPISecretRetrieve:
+    def test_retrieve_returns_preview_only(self, api_client_with_team, user_api_secret):
+        url = f"{BASE_URL}{user_api_secret.pk}/"
+        response = api_client_with_team.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["id"] == user_api_secret.pk
+        assert response.data["api_secret_preview"] == f"{user_api_secret.api_secret[:4]}********"
+        assert "api_secret" not in response.data
 
     def test_duplicate_create_rejected(self, api_client_with_team, user_with_permissions, user_api_secret):
         response = api_client_with_team.post(BASE_URL, data={})

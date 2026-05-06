@@ -203,7 +203,11 @@ class InstanceConfigService:
 
     @staticmethod
     def _sync_existing_instance_attrs(existing_instances, deleted_ids):
-        """同步复用/恢复实例的可变属性（除主键外）"""
+        """同步复用/恢复实例的可变属性（除主键外）
+
+        通过页面接入链路复用或恢复的实例，都应视为手动接入实例，
+        不再受自动发现任务生命周期管理影响，因此需要统一纠正为 auto=False。
+        """
         if not existing_instances:
             return 0
 
@@ -213,12 +217,13 @@ class InstanceConfigService:
                 MonitorInstance(
                     id=instance["instance_id"],
                     name=instance.get("instance_name", ""),
+                    auto=False,
                     is_deleted=False,
                     is_active=True,
                 )
             )
 
-        fields = ["name", "is_active"]
+        fields = ["name", "auto", "is_active"]
         if deleted_ids:
             fields.append("is_deleted")
 
