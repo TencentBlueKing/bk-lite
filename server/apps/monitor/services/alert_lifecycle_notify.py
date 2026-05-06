@@ -10,9 +10,11 @@ class AlertLifecycleNotifier:
 
     def notify_alerts(self, alerts, action, operator="", reason=""):
         if not alerts or not self._should_notify() or not self._is_alert_center:
+            logger.warning(f"Lifecycle notify skipped for policy {self.policy.id}: should_notify={self._should_notify()}, is_alert_center={self._is_alert_center}")
             return
 
         try:
+            logger.info("Lifecycle alert notify")
             self._push_to_alert_center(alerts, action, operator, reason)
         except Exception as e:
             logger.error(
