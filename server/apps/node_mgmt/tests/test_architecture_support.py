@@ -1,39 +1,38 @@
+import json
 from queue import Queue
 from types import SimpleNamespace
-import json
-from io import BytesIO
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.base.models import User
-from apps.node_mgmt.constants.node import NodeConstants
-from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.node_mgmt.constants.node import NodeConstants
+from apps.node_mgmt.filters.package import PackageVersionFilter
+from apps.node_mgmt.management.commands.backfill_node_cpu_architecture import Command as BackfillNodeCpuArchitectureCommand
+from apps.node_mgmt.management.commands.backfill_package_storage_paths import Command as BackfillPackageStoragePathsCommand
+from apps.node_mgmt.management.commands.collector_package_init import Command as CollectorPackageInitCommand
+from apps.node_mgmt.management.commands.controller_package_init import Command as ControllerPackageInitCommand
+from apps.node_mgmt.management.commands.installer_init import Command as InstallerInitCommand
+from apps.node_mgmt.management.commands.verify_architecture_rollout import Command as VerifyArchitectureRolloutCommand
+from apps.node_mgmt.management.services.node_init.collector_init import import_collector
+from apps.node_mgmt.management.services.node_init.controller_init import controller_init
+from apps.node_mgmt.management.services.node_init.definition_loader import load_definition_records
 from apps.node_mgmt.models import CloudRegion, Collector, CollectorConfiguration, Controller, Node, PackageVersion, SidecarEnv
 from apps.node_mgmt.models.installer import ControllerTask, ControllerTaskNode
+from apps.node_mgmt.nats.node import NatsService
+from apps.node_mgmt.serializers.collector import CollectorSerializer
+from apps.node_mgmt.serializers.package import PackageVersionSerializer
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
-from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.services.package import PackageService
-from apps.node_mgmt.filters.package import PackageVersionFilter
+from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.services.version_upgrade import VersionUpgradeService
 from apps.node_mgmt.tasks import installer as installer_tasks
 from apps.node_mgmt.tasks.version_discovery import _calculate_upgrade_info
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
-from apps.node_mgmt.management.commands.collector_package_init import Command as CollectorPackageInitCommand
-from apps.node_mgmt.management.commands.backfill_node_cpu_architecture import Command as BackfillNodeCpuArchitectureCommand
-from apps.node_mgmt.management.commands.backfill_package_storage_paths import Command as BackfillPackageStoragePathsCommand
-from apps.node_mgmt.management.commands.controller_package_init import Command as ControllerPackageInitCommand
-from apps.node_mgmt.management.commands.installer_init import Command as InstallerInitCommand
-from apps.node_mgmt.management.commands.verify_architecture_rollout import Command as VerifyArchitectureRolloutCommand
-from apps.node_mgmt.management.services.node_init.definition_loader import load_definition_records
-from apps.node_mgmt.management.services.node_init.collector_init import import_collector
-from apps.node_mgmt.management.services.node_init.controller_init import controller_init
-from apps.node_mgmt.nats.node import NatsService
-from apps.node_mgmt.serializers.collector import CollectorSerializer
 from apps.node_mgmt.views.collector import CollectorViewSet
 from apps.node_mgmt.views.installer import InstallerViewSet
 from apps.node_mgmt.views.sidecar import OpenSidecarViewSet
@@ -127,6 +126,41 @@ def test_installer_service_raises_when_arch_specific_package_missing():
         object="Controller",
         version="3.0.0",
         name="fusion-collectors-x86_64.tar.gz",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    with pytest.raises(BaseAppException):
+        InstallerService.resolve_package_by_architecture(seed.id, "arm64")
+
+
+@pytest.mark.django_db
+def test_installer_service_accepts_legacy_empty_arch_controller_as_x86_64():
+    seed = PackageVersion.objects.create(
+        type="controller",
+        os="linux",
+        cpu_architecture="",
+        object="Controller",
+        version="3.1.0",
+        name="fusion-collectors-legacy.tar.gz",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    resolved = InstallerService.resolve_package_by_architecture(seed.id, "x86_64")
+
+    assert resolved.id == seed.id
+
+
+@pytest.mark.django_db
+def test_installer_service_rejects_legacy_empty_arch_controller_for_arm64():
+    seed = PackageVersion.objects.create(
+        type="controller",
+        os="linux",
+        cpu_architecture="",
+        object="Controller",
+        version="3.1.1",
+        name="fusion-collectors-legacy.tar.gz",
         created_by="tester",
         updated_by="tester",
     )
@@ -1128,6 +1162,79 @@ def test_package_list_filters_controller_versions_by_exact_architecture():
 
 
 @pytest.mark.django_db
+def test_package_list_treats_legacy_empty_arch_controller_as_x86_64():
+    legacy_package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        object="Controller",
+        version="0.9.0",
+        name="controller-legacy.zip",
+        created_by="tester",
+        updated_by="tester",
+    )
+    x86_package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Controller",
+        version="1.0.0",
+        name="controller-x86_64.tar.gz",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    queryset = PackageVersion.objects.filter(type="controller", object="Controller", os=NodeConstants.LINUX_OS)
+    filtered = PackageVersionFilter(
+        data={
+            "type": "controller",
+            "object": "Controller",
+            "os": NodeConstants.LINUX_OS,
+            "cpu_architecture": NodeConstants.X86_64_ARCH,
+        },
+        queryset=queryset,
+    ).qs
+
+    assert set(filtered.values_list("id", flat=True)) == {x86_package.id, legacy_package.id}
+
+
+@pytest.mark.django_db
+def test_package_version_serializer_exposes_normalized_cpu_architecture():
+    package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.LINUX_OS,
+        cpu_architecture="amd64",
+        object="Controller",
+        version="1.0.1",
+        name="fusion-collectors-linux-amd64.zip",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    data = PackageVersionSerializer(package).data
+
+    assert data["cpu_architecture"] == NodeConstants.X86_64_ARCH
+
+
+@pytest.mark.django_db
+def test_package_version_serializer_treats_legacy_empty_arch_controller_as_x86_64():
+    package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        object="Controller",
+        version="1.0.1",
+        name="fusion-collectors-linux-legacy.zip",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    data = PackageVersionSerializer(package).data
+
+    assert data["cpu_architecture"] == NodeConstants.X86_64_ARCH
+
+
+@pytest.mark.django_db
 def test_install_controller_requires_cpu_architecture():
     cloud_region = CloudRegion.objects.create(
         name="installer-region",
@@ -1445,10 +1552,11 @@ def test_backfill_package_storage_paths_dry_run_reports_legacy_copy(monkeypatch,
     )
     output = capsys.readouterr().out
 
-    assert (
-        f"[dry-run] {package_obj.id}: copy linux/Controller/1.0.1/fusion-collectors-linux-amd64.zip -> linux/x86_64/Controller/1.0.1/fusion-collectors-linux-amd64.zip"
-        in output
+    expected_output = (
+        f"[dry-run] {package_obj.id}: copy linux/Controller/1.0.1/fusion-collectors-linux-amd64.zip "
+        "-> linux/x86_64/Controller/1.0.1/fusion-collectors-linux-amd64.zip"
     )
+    assert expected_output in output
 
 
 @pytest.mark.django_db
@@ -2367,9 +2475,10 @@ def test_nats_client_request_includes_error_message_from_nats_response(monkeypat
 
 @pytest.mark.django_db
 def test_nats_client_request_falls_back_to_pickled_base_app_exception_message(monkeypatch):
+    import jsonpickle
+
     from nats_client.clients import request
     from nats_client.exceptions import NatsClientException
-    import jsonpickle
 
     class _FakeResponse:
         data = json.dumps(

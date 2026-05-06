@@ -1,4 +1,5 @@
 from django_filters import rest_framework as filters
+from django.db.models import Q
 
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models.package import PackageVersion
@@ -16,6 +17,10 @@ class PackageVersionFilter(filters.FilterSet):
     def filter_cpu_architecture(self, queryset, name, value):
         normalized_arch = normalize_cpu_architecture(value)
         if normalized_arch:
+            target_type = self.data.get("type")
+            target_object = self.data.get("object")
+            if normalized_arch == NodeConstants.X86_64_ARCH and target_type == "controller" and target_object == "Controller":
+                return queryset.filter(Q(cpu_architecture=normalized_arch) | Q(cpu_architecture=""))
             return queryset.filter(cpu_architecture=normalized_arch)
 
         target_os = self.data.get("os")
