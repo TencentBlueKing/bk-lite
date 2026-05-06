@@ -5,7 +5,6 @@ from rest_framework.viewsets import GenericViewSet
 from django.db.models import Q
 
 from apps.core.utils.loader import LanguageLoader
-from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
 from apps.node_mgmt.constants.collector import CollectorConstants
@@ -23,6 +22,13 @@ from apps.node_mgmt.serializers.node import (
 from apps.node_mgmt.services.node import NodeService
 from apps.node_mgmt.tasks.sidecar_config import sync_node_properties_to_sidecar
 from apps.node_mgmt.models.action import CollectorActionTaskNode, CollectorActionTask
+from apps.node_mgmt.utils.permission import (
+    add_node_permissions,
+    authorize_node_ids,
+    authorize_target_organizations,
+    get_authorized_node_queryset,
+    get_node_permission,
+)
 from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read
 
 
@@ -184,32 +190,12 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
     search_fields = ["id", "name", "ip", "cloud_region_id", "install_method"]
 
     def add_permission(self, permission, items):
-        node_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
-        for node_info in items:
-            if node_info["id"] in node_permission_map:
-                node_info["permission"] = node_permission_map[node_info["id"]]
-            else:
-                node_info["permission"] = NodeConstants.DEFAULT_PERMISSION
+        add_node_permissions(permission, items)
 
     @action(methods=["post"], detail=False, url_path=r"search")
     def search(self, request, *args, **kwargs):
-        # 获取权限规则
-        include_children = request.COOKIES.get("include_children", "0") == "1"
-        permission = get_permission_rules(
-            request.user,
-            request.COOKIES.get("current_team"),
-            "node_mgmt",
-            NodeConstants.MODULE,
-            include_children=include_children,
-        )
-
-        # 应用权限过滤
-        queryset = permission_filter(
-            Node,
-            permission,
-            team_key="nodeorganization__organization__in",
-            id_key="id__in",
-        )
+        permission = get_node_permission(request)
+        queryset = get_authorized_node_queryset(request, permission)
 
         # 应用自定义查询参数格式化（统一处理所有过滤条件）
         custom_filters = request.data.get("filters")
@@ -254,16 +240,25 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
         return WebUtils.response_success(processed_data)
 
     def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
+        nodes, error_response = authorize_node_ids(request, [kwargs.get("pk")])
+        if error_response:
+            return error_response
+        instance = nodes[0]
         self.perform_destroy(instance)
         return WebUtils.response_success()
 
     @action(methods=["patch"], detail=True, url_path="update")
     def update_node(self, request, pk=None):
-        node = self.get_object()
+        nodes, error_response = authorize_node_ids(request, [pk])
+        if error_response:
+            return error_response
+        node = nodes[0]
 
         name = request.data.get("name")
         organizations = request.data.get("organizations")
+        error_response = authorize_target_organizations(request, node, organizations)
+        if error_response:
+            return error_response
 
         if name is not None:
             node.name = name
@@ -327,6 +322,9 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
         serializer.is_valid(raise_exception=True)
         node_ids = serializer.validated_data["node_ids"]
         collector_configuration_id = serializer.validated_data["collector_configuration_id"]
+        _, error_response = authorize_node_ids(request, node_ids)
+        if error_response:
+            return error_response
         result, message = NodeService.batch_binding_node_configuration(node_ids, collector_configuration_id)
 
         if result:
@@ -341,6 +339,9 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
         node_ids = serializer.validated_data["node_ids"]
         collector_id = serializer.validated_data["collector_id"]
         operation = serializer.validated_data["operation"]
+        _, error_response = authorize_node_ids(request, node_ids)
+        if error_response:
+            return error_response
         task_id = NodeService.batch_operate_node_collector(
             node_ids,
             collector_id,
@@ -362,7 +363,12 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
         serializer.is_valid(raise_exception=True)
         validated_data = cast(dict[str, Any], serializer.validated_data)
 
-        queryset = CollectorActionTaskNode.objects.filter(task_id=task_id).select_related("node").prefetch_related("node__nodeorganization_set")
+        authorized_node_ids = list(get_authorized_node_queryset(request).distinct().values_list("id", flat=True))
+        queryset = (
+            CollectorActionTaskNode.objects.filter(task_id=task_id, node_id__in=authorized_node_ids)
+            .select_related("node")
+            .prefetch_related("node__nodeorganization_set")
+        )
         status_list = validated_data.get("status")
         if status_list:
             queryset = queryset.filter(status__in=status_list)
@@ -388,7 +394,7 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
             for obj in items
         ]
 
-        summary_queryset = CollectorActionTaskNode.objects.filter(task_id=task_id)
+        summary_queryset = CollectorActionTaskNode.objects.filter(task_id=task_id, node_id__in=authorized_node_ids)
         summary = {
             "total": summary_queryset.count(),
             "waiting": summary_queryset.filter(status="waiting").count(),
@@ -416,7 +422,11 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
 
     @action(detail=False, methods=["post"], url_path="node_config_asso")
     def get_node_config_asso(self, request):
-        nodes = Node.objects.prefetch_related("collectorconfiguration_set").filter(cloud_region_id=request.data["cloud_region_id"])
+        nodes = (
+            get_authorized_node_queryset(request)
+            .prefetch_related("collectorconfiguration_set")
+            .filter(cloud_region_id=request.data["cloud_region_id"])
+        )
         if request.data.get("ids"):
             nodes = nodes.filter(id__in=request.data["ids"])
 

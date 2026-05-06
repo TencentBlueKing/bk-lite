@@ -7,8 +7,10 @@ import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.base.models import User
+from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.filters.package import PackageVersionFilter
 from apps.node_mgmt.management.commands.backfill_node_cpu_architecture import Command as BackfillNodeCpuArchitectureCommand
@@ -32,15 +34,17 @@ from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.services.version_upgrade import VersionUpgradeService
 from apps.node_mgmt.tasks import installer as installer_tasks
 from apps.node_mgmt.tasks.version_discovery import _calculate_upgrade_info
+from apps.node_mgmt.utils import permission as node_permission
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
+from apps.node_mgmt.views import collector_configuration, node as node_view
 from apps.node_mgmt.views.collector import CollectorViewSet
 from apps.node_mgmt.views.installer import InstallerViewSet
 from apps.node_mgmt.views.sidecar import OpenSidecarViewSet
 
 
 def _build_admin_user():
-    return User.objects.create(
-        username=f"installer-test-user-{User.objects.count() + 1}",
+    return User(
+        username="installer-test-user",
         domain="domain.com",
         locale="en",
         is_superuser=True,
@@ -51,6 +55,80 @@ def _build_admin_user():
 
 def _json_response_data(response):
     return json.loads(response.content)
+
+
+class _FakeOrganizations(list):
+    def all(self):
+        return self
+
+
+class _FakeNode:
+    def __init__(self, node_id="node-1", organizations=None):
+        self.id = node_id
+        self.name = f"name-{node_id}"
+        self.ip = "127.0.0.1"
+        self.operating_system = "linux"
+        self.install_method = "manual"
+        self.nodeorganization_set = _FakeOrganizations([SimpleNamespace(organization=org) for org in (organizations or [2])])
+        self.saved = False
+
+    def save(self):
+        self.saved = True
+
+
+class _FakeNodeQuerySet(list):
+    def filter(self, **kwargs):
+        if "id__in" in kwargs:
+            ids = {str(value) for value in kwargs["id__in"]}
+            return _FakeNodeQuerySet([node for node in self if str(node.id) in ids])
+        if "cloud_region_id" in kwargs:
+            return self
+        return self
+
+    def prefetch_related(self, *args):
+        return self
+
+    def distinct(self):
+        return self
+
+    def values_list(self, field, flat=False):
+        if field == "id" and flat:
+            return [node.id for node in self]
+        return []
+
+
+class _FakeConfigQuerySet(list):
+    def select_related(self, *args):
+        return self
+
+    def prefetch_related(self, *args):
+        return self
+
+    def filter(self, **kwargs):
+        return self
+
+
+class _FakeConfig:
+    id = "cfg-1"
+    name = "cfg"
+    config_template = "x"
+    collector_id = "collector-1"
+    cloud_region_id = 1
+    is_pre = False
+    collector = SimpleNamespace(node_operating_system="linux")
+
+    def __init__(self, nodes):
+        self.nodes = _FakeOrganizations(nodes)
+
+
+def _make_node_request(data=None, method="post"):
+    factory = APIRequestFactory()
+    request_factory = getattr(factory, method)
+    request = request_factory("/node-mgmt/test", data=data or {}, format="json")
+    request.COOKIES["current_team"] = "1"
+    request.COOKIES["include_children"] = "0"
+    force_authenticate(request, user=_build_admin_user())
+    return request
 
 
 @pytest.mark.parametrize(
@@ -67,6 +145,117 @@ def _json_response_data(response):
 )
 def test_normalize_cpu_architecture(raw_value, expected):
     assert normalize_cpu_architecture(raw_value) == expected
+
+
+def test_authorize_node_ids_requires_operate_permission(monkeypatch):
+    node = _FakeNode()
+    monkeypatch.setattr(node_permission.Node.objects, "filter", lambda **kwargs: _FakeNodeQuerySet([node]))
+    monkeypatch.setattr(
+        node_permission,
+        "get_node_permission",
+        lambda request: {"instance": [{"id": node.id, "permission": ["View"]}], "team": []},
+    )
+
+    nodes, response = node_permission.authorize_node_ids(_make_node_request(), [node.id])
+
+    assert nodes is None
+    assert response.status_code == 403
+
+
+def test_authorize_target_organizations_allows_existing_org_for_instance_permission(monkeypatch):
+    node = _FakeNode(organizations=[2])
+    monkeypatch.setattr(
+        node_permission,
+        "get_node_permission",
+        lambda request: {"instance": [{"id": node.id, "permission": ["Operate"]}], "team": []},
+    )
+
+    response = node_permission.authorize_target_organizations(_make_node_request(), node, [2])
+
+    assert response is None
+
+
+def test_authorize_target_organizations_rejects_new_out_of_scope_org(monkeypatch):
+    node = _FakeNode(organizations=[2])
+    monkeypatch.setattr(
+        node_permission,
+        "get_node_permission",
+        lambda request: {"instance": [{"id": node.id, "permission": ["Operate"]}], "team": []},
+    )
+
+    response = node_permission.authorize_target_organizations(_make_node_request(), node, [2, 3])
+
+    assert response.status_code == 403
+
+
+def test_batch_operate_node_collector_requires_node_permission(monkeypatch):
+    monkeypatch.setattr(node_view, "authorize_node_ids", lambda request, node_ids: (None, WebUtils.response_403("denied")))
+    called = {"value": False}
+    monkeypatch.setattr(
+        node_view.NodeService,
+        "batch_operate_node_collector",
+        lambda *args, **kwargs: called.__setitem__("value", True),
+    )
+
+    response = node_view.NodeViewSet.as_view({"post": "batch_operate_node_collector"})(
+        _make_node_request({"node_ids": ["node-1"], "collector_id": "collector-1", "operation": "restart"})
+    )
+
+    assert response.status_code == 403
+    assert called["value"] is False
+
+
+def test_config_node_asso_hides_unauthorized_nodes(monkeypatch):
+    allowed = _FakeNode("node-allowed")
+    denied = _FakeNode("node-denied")
+    monkeypatch.setattr(
+        collector_configuration,
+        "get_authorized_node_queryset",
+        lambda request: _FakeNodeQuerySet([allowed]),
+    )
+    monkeypatch.setattr(
+        collector_configuration.CollectorConfiguration.objects,
+        "select_related",
+        lambda *args: _FakeConfigQuerySet([_FakeConfig([allowed, denied])]),
+    )
+
+    response = collector_configuration.CollectorConfigurationViewSet.as_view({"post": "get_config_node_asso"})(_make_node_request({}))
+    payload = _json_response_data(response)
+
+    assert payload["data"][0]["nodes"] == [
+        {
+            "id": "node-allowed",
+            "name": "name-node-allowed",
+            "ip": "127.0.0.1",
+            "operating_system": "linux",
+        }
+    ]
+
+
+def test_apply_to_node_prevalidates_permissions_before_mutation(monkeypatch):
+    monkeypatch.setattr(
+        collector_configuration,
+        "authorize_node_ids",
+        lambda request, node_ids: (None, WebUtils.response_403("denied")),
+    )
+    called = {"value": False}
+    monkeypatch.setattr(
+        collector_configuration.CollectorConfigurationService,
+        "apply_to_node",
+        lambda *args, **kwargs: called.__setitem__("value", True),
+    )
+
+    response = collector_configuration.CollectorConfigurationViewSet.as_view({"post": "apply_to_node"})(
+        _make_node_request(
+            [
+                {"node_id": "node-1", "collector_configuration_id": "cfg-1"},
+                {"node_id": "node-2", "collector_configuration_id": "cfg-1"},
+            ]
+        )
+    )
+
+    assert response.status_code == 403
+    assert called["value"] is False
 
 
 @pytest.mark.django_db
@@ -2630,6 +2819,199 @@ def test_collector_retrieve_exposes_architecture_display(monkeypatch):
     assert response.data["cpu_architecture"] == NodeConstants.ARM64_ARCH
     assert response.data["architecture_display"] == "ARM64"
     assert response.data["display_name"] == "Vector（ARM64）"
+
+
+@pytest.mark.django_db
+def test_trigger_converge_tasks_if_needed_schedules_legacy_install_task_without_install_node_id(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="legacy-converge-trigger-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.77",
+        node_name="legacy-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={
+            InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING,
+            "steps": [{"action": "connectivity_check", "status": "running", "message": "Wait for node connection"}],
+        },
+    )
+    called = []
+
+    monkeypatch.setattr(Sidecar, "_is_debounce_elapsed", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.sidecar.converge_controller_install_connectivity_for_node.delay",
+        lambda node_id: called.append(node_id),
+    )
+
+    Sidecar.trigger_converge_tasks_if_needed("legacy-install-node", "10.0.0.77", {})
+
+    assert called == ["legacy-install-node"]
+
+
+@pytest.mark.django_db
+def test_converge_controller_install_connectivity_for_node_prefers_install_node_id_with_shared_ip():
+    cloud_region = CloudRegion.objects.create(
+        name="shared-ip-converge-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    stale_task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    current_task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    common_result = {
+        InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING,
+        "steps": [{"action": "connectivity_check", "status": "running", "message": "Wait for node connection"}],
+    }
+    stale_task_node = ControllerTaskNode.objects.create(
+        task=stale_task,
+        ip="10.0.0.88",
+        node_name="stale-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={**common_result, InstallerConstants.INSTALL_NODE_ID_KEY: "stale-install-node"},
+    )
+    current_task_node = ControllerTaskNode.objects.create(
+        task=current_task,
+        ip="10.0.0.88",
+        node_name="current-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={**common_result, InstallerConstants.INSTALL_NODE_ID_KEY: "current-install-node"},
+    )
+    Node.objects.create(
+        id="current-install-node",
+        name="current-node",
+        ip="10.0.0.88",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/tmp/config",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    installer_tasks.converge_controller_install_connectivity_for_node("current-install-node")
+
+    stale_task_node.refresh_from_db()
+    current_task_node.refresh_from_db()
+    assert stale_task_node.status == InstallerConstants.STEP_STATUS_RUNNING
+    assert current_task_node.status == InstallerConstants.STEP_STATUS_SUCCESS
+
+
+@pytest.mark.django_db
+def test_converge_controller_install_connectivity_for_node_falls_back_for_legacy_task_without_install_node_id():
+    cloud_region = CloudRegion.objects.create(
+        name="legacy-converge-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    legacy_task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    mismatched_task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    common_result = {
+        InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING,
+        "steps": [{"action": "connectivity_check", "status": "running", "message": "Wait for node connection"}],
+    }
+    legacy_task_node = ControllerTaskNode.objects.create(
+        task=legacy_task,
+        ip="10.0.0.89",
+        node_name="legacy-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result=common_result,
+    )
+    mismatched_task_node = ControllerTaskNode.objects.create(
+        task=mismatched_task,
+        ip="10.0.0.89",
+        node_name="other-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={**common_result, InstallerConstants.INSTALL_NODE_ID_KEY: "other-install-node"},
+    )
+    Node.objects.create(
+        id="legacy-install-node",
+        name="legacy-node",
+        ip="10.0.0.89",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/tmp/config",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    installer_tasks.converge_controller_install_connectivity_for_node("legacy-install-node")
+
+    legacy_task_node.refresh_from_db()
+    mismatched_task_node.refresh_from_db()
+    assert legacy_task_node.status == InstallerConstants.STEP_STATUS_SUCCESS
+    assert mismatched_task_node.status == InstallerConstants.STEP_STATUS_RUNNING
 
 
 @pytest.mark.django_db

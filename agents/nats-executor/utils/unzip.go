@@ -74,23 +74,30 @@ func UnzipToDir(req UnzipRequest) (string, error) {
 			}
 		}
 
-		// 解压文件
-		inFile, err := f.Open()
-		if err != nil {
-			return "", fmt.Errorf("failed to open file in zip: %w", err)
-		}
-		defer inFile.Close()
-
-		outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
-		if err != nil {
-			return "", fmt.Errorf("failed to create output file: %w", err)
-		}
-		defer outFile.Close()
-
-		if _, err := io.Copy(outFile, inFile); err != nil {
-			return "", fmt.Errorf("failed to write file: %w", err)
+		if err := extractZipFile(f, fpath); err != nil {
+			return "", err
 		}
 	}
 
 	return parentDir, nil
+}
+
+func extractZipFile(f *zip.File, fpath string) error {
+	inFile, err := f.Open()
+	if err != nil {
+		return fmt.Errorf("failed to open file in zip: %w", err)
+	}
+	defer inFile.Close()
+
+	outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer outFile.Close()
+
+	if _, err := io.Copy(outFile, inFile); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return nil
 }
