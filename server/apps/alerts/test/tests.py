@@ -11,6 +11,7 @@ from apps.alerts.aggregation.builder.synthetic_alert_builder import (
     SyntheticAlertBuilder,
 )
 from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
+from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
 from apps.alerts.constants import (
     AlertStatus,
     AlarmStrategyType,
@@ -429,6 +430,91 @@ class MissingDetectionProcessorTestCase(TestCase):
             strategy.params["last_heartbeat_time"],
             Event.objects.get(event_id="EVENT-RECOVERY").received_at.isoformat(),
         )
+
+
+class RecoveryHandlerTestCase(TestCase):
+    def setUp(self):
+        self.source = AlertSource.objects.create(
+            name="test-source",
+            source_id="source-1",
+            source_type=AlertsSourceTypes.WEBHOOK,
+        )
+
+    def test_recovery_event_immediately_recovers_active_alert(self):
+        created_at = timezone.now() - timedelta(minutes=5)
+        created_event = Event.objects.create(
+            source=self.source,
+            push_source_id="default",
+            raw_data={},
+            title="cpu high",
+            description="cpu > 90%",
+            level="1",
+            service="svc",
+            event_type=EventType.ALERT,
+            tags={},
+            location="gz",
+            external_id="ext-1",
+            start_time=created_at,
+            labels={},
+            action=EventAction.CREATED,
+            event_id="EVENT-CREATED-1",
+            item="cpu",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+            status="received",
+            assignee=[],
+        )
+        Event.objects.filter(pk=created_event.pk).update(received_at=created_at)
+        created_event.refresh_from_db()
+
+        alert = Alert.objects.create(
+            alert_id="ALERT-1",
+            status=AlertStatus.UNASSIGNED,
+            level="1",
+            title="cpu high",
+            content="cpu > 90%",
+            labels={},
+            first_event_time=created_at,
+            last_event_time=created_at,
+            item="cpu",
+            resource_id="node-1",
+            resource_name="node-1",
+            resource_type="host",
+            source_name="test-source",
+            fingerprint="fp-1",
+        )
+        alert.events.add(created_event)
+
+        recovery_event = Event.objects.create(
+            source=self.source,
+            push_source_id="default",
+            raw_data={},
+            title="cpu high",
+            description="cpu recovered",
+            level="1",
+            service="svc",
+            event_type=EventType.ALERT,
+            tags={},
+            location="gz",
+            external_id="ext-1",
+            start_time=timezone.now(),
+            labels={},
+            action=EventAction.RECOVERY,
+            event_id="EVENT-RECOVERY-1",
+            item="cpu",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+            status="received",
+            assignee=[],
+        )
+
+        RecoveryHandler.handle_recovery_events([recovery_event])
+
+        alert.refresh_from_db()
+        self.assertEqual(alert.status, AlertStatus.AUTO_RECOVERY)
+        self.assertTrue(alert.events.filter(event_id="EVENT-RECOVERY-1").exists())
 
 
 class AlertSourceIngressTestCase(TestCase):

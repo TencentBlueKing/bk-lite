@@ -2,6 +2,7 @@
 from typing import List
 from collections import defaultdict
 
+from apps.alerts.aggregation.recovery.recovery_checker import AlertRecoveryChecker
 from apps.alerts.models.models import Alert, Event
 from apps.alerts.constants.constants import AlertStatus, EventAction
 from apps.core.logger import alert_logger as logger
@@ -88,6 +89,7 @@ class RecoveryHandler:
         # 4. 批量处理恢复事件关联
         total_added = 0
         total_skipped = 0
+        touched_alerts = {}
         
         for recovery_event in recovery_events:
             external_id = recovery_event.external_id
@@ -109,18 +111,26 @@ class RecoveryHandler:
                 # 检查是否已关联（使用预加载的数据，无额外查询）
                 if recovery_event.event_id not in alert_existing_events[alert.pk]:
                     alert.events.add(recovery_event)
+                    alert_existing_events[alert.pk].add(recovery_event.event_id)
                     total_added += 1
+                    touched_alerts[alert.pk] = alert
                     logger.debug(
                         f"恢复事件 {recovery_event.event_id} "
                         f"已关联到 Alert {alert.alert_id}"
                     )
                 else:
                     total_skipped += 1
-        
+
+        recovered_count = 0
+        for alert in touched_alerts.values():
+            if AlertRecoveryChecker.check_and_recover_alert(alert):
+                recovered_count += 1
+
         # 5. 汇总日志
         logger.info(
             f"恢复事件批量处理完成: "
             f"处理 {len(recovery_events)} 个恢复事件, "
             f"新增关联 {total_added} 个, "
-            f"跳过重复 {total_skipped} 个"
+            f"跳过重复 {total_skipped} 个, "
+            f"推进恢复 {recovered_count} 个"
         )
