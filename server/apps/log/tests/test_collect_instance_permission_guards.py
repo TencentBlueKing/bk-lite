@@ -2,10 +2,17 @@ import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.log.services.collect_type import CollectTypeService
 from apps.log.views.collect_config import CollectConfigViewSet, CollectInstanceViewSet
 
 
 class FakeQuerySet(list):
+    def distinct(self):
+        return self
+
     def select_related(self, *args):
         return self
 
@@ -19,6 +26,14 @@ class FakeQuerySet(list):
 class FakeOrganizations(list):
     def all(self):
         return self
+
+
+class FakeFirstResult:
+    def __init__(self, value):
+        self.value = value
+
+    def first(self):
+        return self.value
 
 
 def make_request(data):
@@ -304,6 +319,71 @@ def test_search_all_collect_types_respects_admin_scope_from_permission_data(monk
     collect_instance_filter.assert_called_once_with(collectinstanceorganization__organization__in=[2])
     payload = json.loads(response.content)
     assert payload["data"]["items"][0]["permission"] == ["View", "Operate"]
+
+
+def test_search_all_collect_types_excludes_current_team_scope_for_restricted_type(monkeypatch):
+    instance = make_instance(organizations=[1])
+    from apps.log.views import collect_config
+
+    collect_instance_filter = Mock(return_value=FakeQuerySet([instance]))
+    service_search = Mock(return_value={"count": 0, "items": []})
+
+    monkeypatch.setattr(
+        collect_config,
+        "get_permissions_rules",
+        Mock(
+            return_value={
+                "data": {
+                    str(instance.collect_type_id): {
+                        "team": [2],
+                    }
+                },
+                "team": [1],
+            }
+        ),
+    )
+    monkeypatch.setattr(collect_config.CollectInstance.objects, "filter", collect_instance_filter)
+    monkeypatch.setattr(collect_config.CollectTypeService, "search_instance_with_permission", service_search)
+
+    response = CollectInstanceViewSet().search(make_request({"page": 1, "page_size": 10}))
+
+    assert response.status_code == 200
+    collect_instance_filter.assert_called_once()
+    filter_expression = collect_instance_filter.call_args.args[0]
+    assert str(filter_expression) == "(AND: ('collect_type_id', '7'), ('collectinstanceorganization__organization__in', [2]))"
+    payload = json.loads(response.content)
+    assert payload["data"] == {"count": 0, "items": []}
+
+
+def test_search_all_collect_types_falls_back_to_current_team_for_unscoped_type(monkeypatch):
+    instance = make_instance(organizations=[1])
+    from apps.log.views import collect_config
+
+    search_result = {
+        "count": 1,
+        "items": [{"id": instance.id, "organization": [1], "collect_type_id": instance.collect_type_id}],
+    }
+
+    monkeypatch.setattr(
+        collect_config,
+        "get_permissions_rules",
+        Mock(return_value={"data": {"999": {"team": [2]}}, "team": [1]}),
+    )
+    monkeypatch.setattr(collect_config.CollectInstance.objects, "filter", Mock(return_value=FakeQuerySet([instance])))
+    monkeypatch.setattr(collect_config.CollectTypeService, "search_instance_with_permission", Mock(return_value=search_result))
+
+    response = CollectInstanceViewSet().search(make_request({"page": 1, "page_size": 10}))
+
+    assert response.status_code == 200
+    payload = json.loads(response.content)
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["permission"] == ["View", "Operate"]
+
+
+def test_search_rejects_page_size_above_limit():
+    response = CollectInstanceViewSet().search(make_request({"page": 1, "page_size": 501}))
+
+    assert response.status_code == 400
 
 
 def test_search_single_collect_type_merges_duplicate_instance_permissions(monkeypatch):

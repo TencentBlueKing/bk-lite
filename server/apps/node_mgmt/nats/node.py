@@ -4,6 +4,7 @@ from django.db import IntegrityError
 import nats_client
 from apps.core.logger import node_logger as logger
 from apps.node_mgmt.constants.database import DatabaseConstants, EnvVariableConstants
+from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
 from apps.node_mgmt.models import CloudRegion, SidecarEnv
 from apps.node_mgmt.services.node import NodeService
@@ -26,21 +27,34 @@ from apps.core.utils.crypto.aes_crypto import AESCryptor
 
 class NatsService:
     @staticmethod
+    def _allowed_architectures(node_arch: str) -> list[str]:
+        normalized_arch = normalize_cpu_architecture(node_arch)
+        if normalized_arch == NodeConstants.ARM64_ARCH:
+            return [NodeConstants.ARM64_ARCH]
+        if normalized_arch == NodeConstants.X86_64_ARCH:
+            return [NodeConstants.X86_64_ARCH, ""]
+        return ["", NodeConstants.X86_64_ARCH]
+
+    @staticmethod
     def _resolve_collector_for_node(node: Node, collector_name: str):
         node_arch = normalize_cpu_architecture(getattr(node, "cpu_architecture", ""))
-        collector = Collector.objects.filter(
-            name=collector_name,
-            node_operating_system=node.operating_system,
-            cpu_architecture=node_arch,
-        ).first()
-        if collector:
-            return collector
+        allowed_architectures = NatsService._allowed_architectures(node_arch)
+        collectors = list(
+            Collector.objects.filter(
+                name=collector_name,
+                node_operating_system=node.operating_system,
+                cpu_architecture__in=allowed_architectures,
+            ).order_by("cpu_architecture", "id")
+        )
+        if not collectors:
+            return None
 
-        return Collector.objects.filter(
-            name=collector_name,
-            node_operating_system=node.operating_system,
-            cpu_architecture="",
-        ).first()
+        if node_arch == NodeConstants.ARM64_ARCH:
+            return next((item for item in collectors if normalize_cpu_architecture(item.cpu_architecture) == NodeConstants.ARM64_ARCH), None)
+
+        x86_match = next((item for item in collectors if normalize_cpu_architecture(item.cpu_architecture) == NodeConstants.X86_64_ARCH), None)
+        legacy_x86_match = next((item for item in collectors if item.cpu_architecture == ""), None)
+        return x86_match or legacy_x86_match
 
     def _ensure_parent_configs_for_child_configs(self, configs: list):
         if not configs:
@@ -73,7 +87,7 @@ class NatsService:
                         node_id,
                         collector_name,
                         node.operating_system,
-                        normalize_cpu_architecture(getattr(node, "cpu_architecture", "")) or "generic",
+                        normalize_cpu_architecture(getattr(node, "cpu_architecture", "")) or NodeConstants.X86_64_ARCH,
                     )
                 )
 
@@ -93,22 +107,25 @@ class NatsService:
     @staticmethod
     def _resolve_child_parent_config_id(base_configs: list[dict], node_id: str, collector_name: str, node_arch: str) -> str:
         exact_matches = []
-        generic_matches = []
-        arch_specific_matches = []
+        x86_matches = []
+        legacy_x86_matches = []
+
+        normalized_node_arch = normalize_cpu_architecture(node_arch)
 
         for item in base_configs:
             if item["nodes__id"] != node_id or item["collector__name"] != collector_name:
                 continue
 
             collector_arch = normalize_cpu_architecture(item.get("collector__cpu_architecture"))
-            if collector_arch:
-                if node_arch and collector_arch == node_arch:
+            if normalized_node_arch == NodeConstants.ARM64_ARCH:
+                if collector_arch == NodeConstants.ARM64_ARCH:
                     exact_matches.append(item["id"])
-                else:
-                    arch_specific_matches.append(item["id"])
                 continue
 
-            generic_matches.append(item["id"])
+            if collector_arch == NodeConstants.X86_64_ARCH:
+                x86_matches.append(item["id"])
+            elif item.get("collector__cpu_architecture", "") == "":
+                legacy_x86_matches.append(item["id"])
 
         if len(exact_matches) > 1:
             raise BaseAppException(
@@ -117,18 +134,20 @@ class NatsService:
         if exact_matches:
             return exact_matches[0]
 
-        if len(generic_matches) > 1:
-            raise BaseAppException(f"Ambiguous collector configuration for node {node_id} and collector {collector_name}: multiple generic matches")
-        if generic_matches:
-            return generic_matches[0]
-
-        if not node_arch:
-            if len(arch_specific_matches) > 1:
+        if normalized_node_arch != NodeConstants.ARM64_ARCH:
+            if len(x86_matches) > 1:
                 raise BaseAppException(
-                    f"Ambiguous collector configuration for node {node_id} and collector {collector_name}: multiple architecture-specific matches for unknown node architecture"
+                    f"Ambiguous collector configuration for node {node_id} and collector {collector_name}: multiple x86_64 matches"
                 )
-            if arch_specific_matches:
-                return arch_specific_matches[0]
+            if x86_matches:
+                return x86_matches[0]
+
+            if len(legacy_x86_matches) > 1:
+                raise BaseAppException(
+                    f"Ambiguous collector configuration for node {node_id} and collector {collector_name}: multiple legacy x86-compatible matches"
+                )
+            if legacy_x86_matches:
+                return legacy_x86_matches[0]
 
         raise BaseAppException(f"Collector configuration not found for node {node_id} and collector {collector_name}")
 
@@ -233,11 +252,25 @@ class NatsService:
         conf_objs, node_config_assos = [], []
         for config in configs:
             cloud_region_id, operating_system, cpu_architecture = cloud_region_map[config["node_id"]]
-            collector_id = collector_map.get((config["collector_name"], operating_system, cpu_architecture)) or collector_map.get(
-                (config["collector_name"], operating_system, "")
-            )
+            normalized_arch = normalize_cpu_architecture(cpu_architecture)
+            if normalized_arch == NodeConstants.ARM64_ARCH:
+                candidate_keys = [(config["collector_name"], operating_system, NodeConstants.ARM64_ARCH)]
+            elif normalized_arch == NodeConstants.X86_64_ARCH:
+                candidate_keys = [
+                    (config["collector_name"], operating_system, NodeConstants.X86_64_ARCH),
+                    (config["collector_name"], operating_system, ""),
+                ]
+            else:
+                candidate_keys = [
+                    (config["collector_name"], operating_system, NodeConstants.X86_64_ARCH),
+                    (config["collector_name"], operating_system, ""),
+                ]
+
+            collector_id = next((collector_map.get(key) for key in candidate_keys if collector_map.get(key)), None)
             if not collector_id:
-                raise BaseAppException(f"Collector {config['collector_name']} not found for {operating_system}/{cpu_architecture or 'generic'}")
+                raise BaseAppException(
+                    f"Collector {config['collector_name']} not found for {operating_system}/{cpu_architecture or NodeConstants.X86_64_ARCH}"
+                )
 
             # 加密包含password的环境变量
             encrypted_env_config = self._encrypt_password_fields(config.get("env_config", {}))

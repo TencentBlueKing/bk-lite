@@ -314,7 +314,8 @@ class EventAlertManager:
             start_time = str(int(event.event_time.timestamp())) if event.event_time else None
             alert_events.append(
                 {
-                    "external_id": event.id,
+                    # 告警中心依赖 external_id 将 created 与 recovery/closed 生命周期事件关联到同一告警。
+                    "external_id": str(event.alert_id),
                     "rule_id": str(event.policy_id),
                     "title": event.content,
                     "description": event.content,
@@ -329,6 +330,7 @@ class EventAlertManager:
                         "policy_name": self.policy.name,
                         "metric_instance_id": event.metric_instance_id,
                         "alert_id": event.alert_id,
+                        "event_id": event.id,
                     },
                 }
             )

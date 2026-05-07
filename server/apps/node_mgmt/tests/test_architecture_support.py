@@ -1,14 +1,18 @@
 import json
+from io import StringIO
 from queue import Queue
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from django.core.management import call_command
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.base.models import User
+from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.filters.package import PackageVersionFilter
 from apps.node_mgmt.management.commands.backfill_node_cpu_architecture import Command as BackfillNodeCpuArchitectureCommand
@@ -32,15 +36,17 @@ from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.services.version_upgrade import VersionUpgradeService
 from apps.node_mgmt.tasks import installer as installer_tasks
 from apps.node_mgmt.tasks.version_discovery import _calculate_upgrade_info
+from apps.node_mgmt.utils import permission as node_permission
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
+from apps.node_mgmt.views import collector_configuration, node as node_view
 from apps.node_mgmt.views.collector import CollectorViewSet
 from apps.node_mgmt.views.installer import InstallerViewSet
 from apps.node_mgmt.views.sidecar import OpenSidecarViewSet
 
 
 def _build_admin_user():
-    return User.objects.create(
-        username=f"installer-test-user-{User.objects.count() + 1}",
+    return User(
+        username="installer-test-user",
         domain="domain.com",
         locale="en",
         is_superuser=True,
@@ -51,6 +57,80 @@ def _build_admin_user():
 
 def _json_response_data(response):
     return json.loads(response.content)
+
+
+class _FakeOrganizations(list):
+    def all(self):
+        return self
+
+
+class _FakeNode:
+    def __init__(self, node_id="node-1", organizations=None):
+        self.id = node_id
+        self.name = f"name-{node_id}"
+        self.ip = "127.0.0.1"
+        self.operating_system = "linux"
+        self.install_method = "manual"
+        self.nodeorganization_set = _FakeOrganizations([SimpleNamespace(organization=org) for org in (organizations or [2])])
+        self.saved = False
+
+    def save(self):
+        self.saved = True
+
+
+class _FakeNodeQuerySet(list):
+    def filter(self, **kwargs):
+        if "id__in" in kwargs:
+            ids = {str(value) for value in kwargs["id__in"]}
+            return _FakeNodeQuerySet([node for node in self if str(node.id) in ids])
+        if "cloud_region_id" in kwargs:
+            return self
+        return self
+
+    def prefetch_related(self, *args):
+        return self
+
+    def distinct(self):
+        return self
+
+    def values_list(self, field, flat=False):
+        if field == "id" and flat:
+            return [node.id for node in self]
+        return []
+
+
+class _FakeConfigQuerySet(list):
+    def select_related(self, *args):
+        return self
+
+    def prefetch_related(self, *args):
+        return self
+
+    def filter(self, **kwargs):
+        return self
+
+
+class _FakeConfig:
+    id = "cfg-1"
+    name = "cfg"
+    config_template = "x"
+    collector_id = "collector-1"
+    cloud_region_id = 1
+    is_pre = False
+    collector = SimpleNamespace(node_operating_system="linux")
+
+    def __init__(self, nodes):
+        self.nodes = _FakeOrganizations(nodes)
+
+
+def _make_node_request(data=None, method="post"):
+    factory = APIRequestFactory()
+    request_factory = getattr(factory, method)
+    request = request_factory("/node-mgmt/test", data=data or {}, format="json")
+    request.COOKIES["current_team"] = "1"
+    request.COOKIES["include_children"] = "0"
+    force_authenticate(request, user=_build_admin_user())
+    return request
 
 
 @pytest.mark.parametrize(
@@ -67,6 +147,117 @@ def _json_response_data(response):
 )
 def test_normalize_cpu_architecture(raw_value, expected):
     assert normalize_cpu_architecture(raw_value) == expected
+
+
+def test_authorize_node_ids_requires_operate_permission(monkeypatch):
+    node = _FakeNode()
+    monkeypatch.setattr(node_permission.Node.objects, "filter", lambda **kwargs: _FakeNodeQuerySet([node]))
+    monkeypatch.setattr(
+        node_permission,
+        "get_node_permission",
+        lambda request: {"instance": [{"id": node.id, "permission": ["View"]}], "team": []},
+    )
+
+    nodes, response = node_permission.authorize_node_ids(_make_node_request(), [node.id])
+
+    assert nodes is None
+    assert response.status_code == 403
+
+
+def test_authorize_target_organizations_allows_existing_org_for_instance_permission(monkeypatch):
+    node = _FakeNode(organizations=[2])
+    monkeypatch.setattr(
+        node_permission,
+        "get_node_permission",
+        lambda request: {"instance": [{"id": node.id, "permission": ["Operate"]}], "team": []},
+    )
+
+    response = node_permission.authorize_target_organizations(_make_node_request(), node, [2])
+
+    assert response is None
+
+
+def test_authorize_target_organizations_rejects_new_out_of_scope_org(monkeypatch):
+    node = _FakeNode(organizations=[2])
+    monkeypatch.setattr(
+        node_permission,
+        "get_node_permission",
+        lambda request: {"instance": [{"id": node.id, "permission": ["Operate"]}], "team": []},
+    )
+
+    response = node_permission.authorize_target_organizations(_make_node_request(), node, [2, 3])
+
+    assert response.status_code == 403
+
+
+def test_batch_operate_node_collector_requires_node_permission(monkeypatch):
+    monkeypatch.setattr(node_view, "authorize_node_ids", lambda request, node_ids: (None, WebUtils.response_403("denied")))
+    called = {"value": False}
+    monkeypatch.setattr(
+        node_view.NodeService,
+        "batch_operate_node_collector",
+        lambda *args, **kwargs: called.__setitem__("value", True),
+    )
+
+    response = node_view.NodeViewSet.as_view({"post": "batch_operate_node_collector"})(
+        _make_node_request({"node_ids": ["node-1"], "collector_id": "collector-1", "operation": "restart"})
+    )
+
+    assert response.status_code == 403
+    assert called["value"] is False
+
+
+def test_config_node_asso_hides_unauthorized_nodes(monkeypatch):
+    allowed = _FakeNode("node-allowed")
+    denied = _FakeNode("node-denied")
+    monkeypatch.setattr(
+        collector_configuration,
+        "get_authorized_node_queryset",
+        lambda request: _FakeNodeQuerySet([allowed]),
+    )
+    monkeypatch.setattr(
+        collector_configuration.CollectorConfiguration.objects,
+        "select_related",
+        lambda *args: _FakeConfigQuerySet([_FakeConfig([allowed, denied])]),
+    )
+
+    response = collector_configuration.CollectorConfigurationViewSet.as_view({"post": "get_config_node_asso"})(_make_node_request({}))
+    payload = _json_response_data(response)
+
+    assert payload["data"][0]["nodes"] == [
+        {
+            "id": "node-allowed",
+            "name": "name-node-allowed",
+            "ip": "127.0.0.1",
+            "operating_system": "linux",
+        }
+    ]
+
+
+def test_apply_to_node_prevalidates_permissions_before_mutation(monkeypatch):
+    monkeypatch.setattr(
+        collector_configuration,
+        "authorize_node_ids",
+        lambda request, node_ids: (None, WebUtils.response_403("denied")),
+    )
+    called = {"value": False}
+    monkeypatch.setattr(
+        collector_configuration.CollectorConfigurationService,
+        "apply_to_node",
+        lambda *args, **kwargs: called.__setitem__("value", True),
+    )
+
+    response = collector_configuration.CollectorConfigurationViewSet.as_view({"post": "apply_to_node"})(
+        _make_node_request(
+            [
+                {"node_id": "node-1", "collector_configuration_id": "cfg-1"},
+                {"node_id": "node-2", "collector_configuration_id": "cfg-1"},
+            ]
+        )
+    )
+
+    assert response.status_code == 403
+    assert called["value"] is False
 
 
 @pytest.mark.django_db
@@ -99,7 +290,7 @@ def test_resolve_package_by_architecture_prefers_exact_match():
 
 
 @pytest.mark.django_db
-def test_resolve_package_by_architecture_falls_back_to_generic_package():
+def test_resolve_package_by_architecture_accepts_legacy_empty_arch_for_x86_64():
     seed = PackageVersion.objects.create(
         type="controller",
         os="linux",
@@ -111,10 +302,77 @@ def test_resolve_package_by_architecture_falls_back_to_generic_package():
         updated_by="tester",
     )
 
-    resolved = PackageService.resolve_package_by_architecture(seed.id, "arm64")
+    resolved = PackageService.resolve_package_by_architecture(seed.id, "x86_64")
 
     assert resolved is not None
     assert resolved.id == seed.id
+
+
+@pytest.mark.django_db
+def test_resolve_package_by_architecture_rejects_legacy_empty_arch_for_arm64():
+    seed = PackageVersion.objects.create(
+        type="controller",
+        os="linux",
+        cpu_architecture="",
+        object="Controller",
+        version="2.0.1",
+        name="fusion-collectors-legacy.tar.gz",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    resolved = PackageService.resolve_package_by_architecture(seed.id, "arm64")
+
+    assert resolved is None
+
+
+@pytest.mark.django_db
+def test_resolve_collector_by_architecture_rejects_legacy_empty_arch_for_arm64():
+    Collector.objects.create(
+        id="telegraf_legacy_only",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="legacy x86",
+        icon="telegraf",
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    resolved = PackageService.resolve_collector_by_architecture(NodeConstants.LINUX_OS, "Telegraf", NodeConstants.ARM64_ARCH)
+
+    assert resolved is None
+
+
+@pytest.mark.django_db
+def test_resolve_collector_by_architecture_accepts_legacy_empty_arch_for_x86_64():
+    collector = Collector.objects.create(
+        id="telegraf_legacy_x86",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="legacy x86",
+        icon="telegraf",
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    resolved = PackageService.resolve_collector_by_architecture(NodeConstants.LINUX_OS, "Telegraf", NodeConstants.X86_64_ARCH)
+
+    assert resolved is not None
+    assert resolved.id == collector.id
 
 
 @pytest.mark.django_db
@@ -642,6 +900,107 @@ def test_update_node_client_does_not_overwrite_existing_cpu_architecture_with_em
 
 
 @pytest.mark.django_db
+def test_update_node_client_updates_architecture_without_rebinding_existing_default_configs(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-rebind-arch-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    monkeypatch.setattr(Sidecar, "trigger_converge_tasks_if_needed", lambda *args, **kwargs: None)
+
+    node = Node.objects.create(
+        id="node-sidecar-rebind-arch",
+        name="node-sidecar-rebind-arch",
+        ip="10.0.0.36",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    generic_telegraf = Collector.objects.create(
+        id="telegraf_linux_rebind_generic",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={"nats": "[[inputs.cpu]]"},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    Collector.objects.create(
+        id="telegraf_linux_rebind_arm64",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        executable_path="/opt/telegraf-arm64",
+        execute_parameters="--config %s",
+        introduction="arm64",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={"nats": "[[inputs.cpu]]\n  interval = '5s'"},
+        tags=[],
+        package_name="telegraf-arm64",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    telegraf_config = CollectorConfiguration.objects.create(
+        id="cfg-sidecar-rebind-telegraf",
+        name=f"Telegraf-{node.id}",
+        collector=generic_telegraf,
+        config_template="[[inputs.cpu]]",
+        is_pre=True,
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    telegraf_config.nodes.add(node)
+
+    request = SimpleNamespace(
+        headers={},
+        META={},
+        data={
+            "node_name": "node-sidecar-rebind-arch",
+            "node_details": {
+                "ip": "10.0.0.36",
+                "operating_system": "Linux",
+                "collector_configuration_directory": "/etc/collector",
+                "metrics": {},
+                "status": {},
+                "tags": [f"zone:{cloud_region.id}"],
+                "log_file_list": [],
+                "architecture": "arm64",
+            },
+        },
+    )
+
+    response = Sidecar.update_node_client(request, node.id)
+
+    node.refresh_from_db()
+    telegraf_config.refresh_from_db()
+
+    assert response.status_code == 202
+    assert node.cpu_architecture == NodeConstants.ARM64_ARCH
+    assert telegraf_config.collector_id == generic_telegraf.id
+
+
+@pytest.mark.django_db
 def test_create_default_config_for_empty_architecture_skips_arm64_collectors(monkeypatch):
     cloud_region = CloudRegion.objects.create(
         name="sidecar-empty-arch-default-config",
@@ -768,11 +1127,122 @@ def test_create_default_config_for_arm64_node_keeps_arm64_collectors(monkeypatch
         created_by="tester",
         updated_by="tester",
     )
+    Collector.objects.create(
+        id="telegraf_linux_legacy_x86_default",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="legacy x86",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={"nats": "[[inputs.cpu]]"},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
 
     Sidecar.create_default_config(node, [])
 
     collector_ids = set(CollectorConfiguration.objects.filter(nodes=node).values_list("collector_id", flat=True))
     assert "telegraf_linux_arm64_default" in collector_ids
+    assert "telegraf_linux_legacy_x86_default" not in collector_ids
+
+
+@pytest.mark.django_db
+def test_repair_node_config_rebinds_defaults_by_node_architecture(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="repair-node-config-arch-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    monkeypatch.setattr(Sidecar, "get_cloud_region_envconfig", lambda _node: {"SIDECAR_INPUT_MODE": "nats"})
+
+    queued_nodes = []
+
+    class _FakeDelay:
+        @staticmethod
+        def delay(node_id):
+            queued_nodes.append(node_id)
+
+    monkeypatch.setattr(
+        "apps.node_mgmt.management.commands.repair_node_config.converge_collector_action_task_for_node",
+        _FakeDelay,
+    )
+
+    node = Node.objects.create(
+        id="node-repair-arch-config",
+        name="node-repair-arch-config",
+        ip="10.0.0.37",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    x86_telegraf = Collector.objects.create(
+        id="telegraf_linux_repair_x86",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        executable_path="/opt/telegraf-x86",
+        execute_parameters="--config %s",
+        introduction="x86_64",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={"nats": "[[inputs.cpu]]"},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    arm_telegraf = Collector.objects.create(
+        id="telegraf_linux_repair_arm",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        executable_path="/opt/telegraf-arm64",
+        execute_parameters="--config %s",
+        introduction="arm64",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={"nats": "[[inputs.cpu]]\n  interval = '10s'"},
+        tags=[],
+        package_name="telegraf-arm64",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    config = CollectorConfiguration.objects.create(
+        id="cfg-repair-node-config-arch",
+        name=f"Telegraf-{node.id}",
+        collector=arm_telegraf,
+        config_template="[[inputs.cpu]]\n  interval = '10s'",
+        is_pre=True,
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    config.nodes.add(node)
+
+    out = StringIO()
+    call_command("repair_node_config", stdout=out)
+
+    config.refresh_from_db()
+    assert config.collector_id == x86_telegraf.id
+    assert queued_nodes == [node.id]
 
 
 @pytest.mark.django_db
@@ -1770,7 +2240,7 @@ def test_nats_batch_create_configs_prefers_architecture_specific_collector():
 
 
 @pytest.mark.django_db
-def test_nats_batch_create_child_configs_falls_back_to_generic_collector_configuration():
+def test_nats_batch_create_child_configs_rejects_legacy_x86_parent_for_arm64_node():
     cloud_region = CloudRegion.objects.create(
         name="region-nats-child",
         introduction="test",
@@ -1800,7 +2270,7 @@ def test_nats_batch_create_child_configs_falls_back_to_generic_collector_configu
         cpu_architecture="",
         executable_path="/opt/telegraf",
         execute_parameters="--config %s",
-        introduction="generic",
+        introduction="legacy x86",
         icon="telegraf",
         default_config={},
         tags=[],
@@ -1818,22 +2288,20 @@ def test_nats_batch_create_child_configs_falls_back_to_generic_collector_configu
     )
     generic_config.nodes.add(node)
 
-    NatsService().batch_create_child_configs(
-        [
-            {
-                "id": "child-arm-telegraf",
-                "collect_type": "metrics",
-                "type": "input",
-                "content": "[[inputs.mem]]",
-                "node_id": node.id,
-                "collector_name": "Telegraf",
-                "env_config": {},
-            }
-        ]
-    )
-
-    child = generic_config.childconfig_set.get(id="child-arm-telegraf")
-    assert child.collector_config_id == generic_config.id
+    with pytest.raises(BaseAppException, match="Collector configuration not found"):
+        NatsService().batch_create_child_configs(
+            [
+                {
+                    "id": "child-arm-telegraf",
+                    "collect_type": "metrics",
+                    "type": "input",
+                    "content": "[[inputs.mem]]",
+                    "node_id": node.id,
+                    "collector_name": "Telegraf",
+                    "env_config": {},
+                }
+            ]
+        )
 
 
 @pytest.mark.django_db
@@ -1929,7 +2397,7 @@ def test_nats_batch_create_child_configs_prefers_exact_architecture_collector_co
 
 
 @pytest.mark.django_db
-def test_nats_batch_create_child_configs_uses_generic_for_unknown_node_architecture():
+def test_nats_batch_create_child_configs_uses_x86_compatible_parent_for_unknown_node_architecture():
     cloud_region = CloudRegion.objects.create(
         name="region-nats-child-unknown",
         introduction="test",
@@ -1959,7 +2427,7 @@ def test_nats_batch_create_child_configs_uses_generic_for_unknown_node_architect
         cpu_architecture="",
         executable_path="/opt/telegraf",
         execute_parameters="--config %s",
-        introduction="generic",
+        introduction="legacy x86",
         icon="telegraf",
         default_config={},
         tags=[],
@@ -2021,7 +2489,7 @@ def test_nats_batch_create_child_configs_uses_generic_for_unknown_node_architect
 
 
 @pytest.mark.django_db
-def test_nats_batch_create_child_configs_uses_unique_arch_parent_for_unknown_node_architecture():
+def test_nats_batch_create_child_configs_uses_unique_x86_parent_for_unknown_node_architecture():
     cloud_region = CloudRegion.objects.create(
         name="region-nats-child-unknown-unique-arch",
         introduction="test",
@@ -2043,31 +2511,31 @@ def test_nats_batch_create_child_configs_uses_unique_arch_parent_for_unknown_nod
         created_by="tester",
         updated_by="tester",
     )
-    arm_collector = Collector.objects.create(
-        id="telegraf_linux_unknown_unique_arm64",
+    x86_collector = Collector.objects.create(
+        id="telegraf_linux_unknown_unique_x86",
         name="Telegraf",
         service_type="exec",
         node_operating_system=NodeConstants.LINUX_OS,
-        cpu_architecture=NodeConstants.ARM64_ARCH,
-        executable_path="/opt/telegraf-arm64",
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        executable_path="/opt/telegraf-x86",
         execute_parameters="--config %s",
-        introduction="arm64",
+        introduction="x86_64",
         icon="telegraf",
         default_config={},
         tags=[],
-        package_name="telegraf-arm64",
+        package_name="telegraf",
         created_by="tester",
         updated_by="tester",
     )
-    arm_config = arm_collector.collectorconfiguration_set.create(
-        id="cfg-arm-telegraf-unknown-unique",
-        name="cfg-arm-telegraf-unknown-unique",
+    x86_config = x86_collector.collectorconfiguration_set.create(
+        id="cfg-x86-telegraf-unknown-unique",
+        name="cfg-x86-telegraf-unknown-unique",
         config_template="[[inputs.cpu]]",
         cloud_region=cloud_region,
         created_by="tester",
         updated_by="tester",
     )
-    arm_config.nodes.add(node)
+    x86_config.nodes.add(node)
 
     NatsService().batch_create_child_configs(
         [
@@ -2083,12 +2551,12 @@ def test_nats_batch_create_child_configs_uses_unique_arch_parent_for_unknown_nod
         ]
     )
 
-    child = arm_config.childconfig_set.get(id="child-unknown-telegraf-unique-arch")
-    assert child.collector_config_id == arm_config.id
+    child = x86_config.childconfig_set.get(id="child-unknown-telegraf-unique-arch")
+    assert child.collector_config_id == x86_config.id
 
 
 @pytest.mark.django_db
-def test_nats_batch_create_child_configs_rejects_multiple_arch_parents_for_unknown_node_architecture():
+def test_nats_batch_create_child_configs_rejects_multiple_x86_compatible_parents_for_unknown_node_architecture():
     cloud_region = CloudRegion.objects.create(
         name="region-nats-child-unknown-multi-arch",
         introduction="test",
@@ -2110,31 +2578,15 @@ def test_nats_batch_create_child_configs_rejects_multiple_arch_parents_for_unkno
         created_by="tester",
         updated_by="tester",
     )
-    arm_collector = Collector.objects.create(
-        id="telegraf_linux_unknown_multi_arm64",
-        name="Telegraf",
-        service_type="exec",
-        node_operating_system=NodeConstants.LINUX_OS,
-        cpu_architecture=NodeConstants.ARM64_ARCH,
-        executable_path="/opt/telegraf-arm64",
-        execute_parameters="--config %s",
-        introduction="arm64",
-        icon="telegraf",
-        default_config={},
-        tags=[],
-        package_name="telegraf-arm64",
-        created_by="tester",
-        updated_by="tester",
-    )
     x86_collector = Collector.objects.create(
-        id="telegraf_linux_unknown_multi_x86",
+        id="telegraf_linux_unknown_multi_x86_a",
         name="Telegraf",
         service_type="exec",
         node_operating_system=NodeConstants.LINUX_OS,
         cpu_architecture=NodeConstants.X86_64_ARCH,
-        executable_path="/opt/telegraf-x86",
+        executable_path="/opt/telegraf-x86-a",
         execute_parameters="--config %s",
-        introduction="x86_64",
+        introduction="x86_64 a",
         icon="telegraf",
         default_config={},
         tags=[],
@@ -2142,26 +2594,26 @@ def test_nats_batch_create_child_configs_rejects_multiple_arch_parents_for_unkno
         created_by="tester",
         updated_by="tester",
     )
-    arm_config = arm_collector.collectorconfiguration_set.create(
-        id="cfg-arm-telegraf-unknown-multi",
-        name="cfg-arm-telegraf-unknown-multi",
-        config_template="[[inputs.cpu]]",
-        cloud_region=cloud_region,
-        created_by="tester",
-        updated_by="tester",
-    )
     x86_config = x86_collector.collectorconfiguration_set.create(
-        id="cfg-x86-telegraf-unknown-multi",
-        name="cfg-x86-telegraf-unknown-multi",
+        id="cfg-x86-telegraf-unknown-multi-a",
+        name="cfg-x86-telegraf-unknown-multi-a",
         config_template="[[inputs.cpu]]",
         cloud_region=cloud_region,
         created_by="tester",
         updated_by="tester",
     )
-    arm_config.nodes.add(node)
+    x86_config_b = x86_collector.collectorconfiguration_set.create(
+        id="cfg-x86-telegraf-unknown-multi-b",
+        name="cfg-x86-telegraf-unknown-multi-b",
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
     x86_config.nodes.add(node)
+    x86_config_b.nodes.add(node)
 
-    with pytest.raises(BaseAppException, match="multiple architecture-specific matches"):
+    with pytest.raises(BaseAppException, match="multiple x86_64 matches"):
         NatsService().batch_create_child_configs(
             [
                 {
@@ -2630,6 +3082,199 @@ def test_collector_retrieve_exposes_architecture_display(monkeypatch):
     assert response.data["cpu_architecture"] == NodeConstants.ARM64_ARCH
     assert response.data["architecture_display"] == "ARM64"
     assert response.data["display_name"] == "Vector（ARM64）"
+
+
+@pytest.mark.django_db
+def test_trigger_converge_tasks_if_needed_schedules_legacy_install_task_without_install_node_id(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="legacy-converge-trigger-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.77",
+        node_name="legacy-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={
+            InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING,
+            "steps": [{"action": "connectivity_check", "status": "running", "message": "Wait for node connection"}],
+        },
+    )
+    called = []
+
+    monkeypatch.setattr(Sidecar, "_is_debounce_elapsed", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.sidecar.converge_controller_install_connectivity_for_node.delay",
+        lambda node_id: called.append(node_id),
+    )
+
+    Sidecar.trigger_converge_tasks_if_needed("legacy-install-node", "10.0.0.77", {})
+
+    assert called == ["legacy-install-node"]
+
+
+@pytest.mark.django_db
+def test_converge_controller_install_connectivity_for_node_prefers_install_node_id_with_shared_ip():
+    cloud_region = CloudRegion.objects.create(
+        name="shared-ip-converge-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    stale_task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    current_task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    common_result = {
+        InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING,
+        "steps": [{"action": "connectivity_check", "status": "running", "message": "Wait for node connection"}],
+    }
+    stale_task_node = ControllerTaskNode.objects.create(
+        task=stale_task,
+        ip="10.0.0.88",
+        node_name="stale-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={**common_result, InstallerConstants.INSTALL_NODE_ID_KEY: "stale-install-node"},
+    )
+    current_task_node = ControllerTaskNode.objects.create(
+        task=current_task,
+        ip="10.0.0.88",
+        node_name="current-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={**common_result, InstallerConstants.INSTALL_NODE_ID_KEY: "current-install-node"},
+    )
+    Node.objects.create(
+        id="current-install-node",
+        name="current-node",
+        ip="10.0.0.88",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/tmp/config",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    installer_tasks.converge_controller_install_connectivity_for_node("current-install-node")
+
+    stale_task_node.refresh_from_db()
+    current_task_node.refresh_from_db()
+    assert stale_task_node.status == InstallerConstants.STEP_STATUS_RUNNING
+    assert current_task_node.status == InstallerConstants.STEP_STATUS_SUCCESS
+
+
+@pytest.mark.django_db
+def test_converge_controller_install_connectivity_for_node_falls_back_for_legacy_task_without_install_node_id():
+    cloud_region = CloudRegion.objects.create(
+        name="legacy-converge-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    legacy_task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    mismatched_task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    common_result = {
+        InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING,
+        "steps": [{"action": "connectivity_check", "status": "running", "message": "Wait for node connection"}],
+    }
+    legacy_task_node = ControllerTaskNode.objects.create(
+        task=legacy_task,
+        ip="10.0.0.89",
+        node_name="legacy-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result=common_result,
+    )
+    mismatched_task_node = ControllerTaskNode.objects.create(
+        task=mismatched_task,
+        ip="10.0.0.89",
+        node_name="other-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={**common_result, InstallerConstants.INSTALL_NODE_ID_KEY: "other-install-node"},
+    )
+    Node.objects.create(
+        id="legacy-install-node",
+        name="legacy-node",
+        ip="10.0.0.89",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/tmp/config",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    installer_tasks.converge_controller_install_connectivity_for_node("legacy-install-node")
+
+    legacy_task_node.refresh_from_db()
+    mismatched_task_node.refresh_from_db()
+    assert legacy_task_node.status == InstallerConstants.STEP_STATUS_SUCCESS
+    assert mismatched_task_node.status == InstallerConstants.STEP_STATUS_RUNNING
 
 
 @pytest.mark.django_db

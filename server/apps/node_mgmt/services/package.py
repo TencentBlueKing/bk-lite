@@ -14,6 +14,7 @@ from asgiref.sync import async_to_sync
 from apps.node_mgmt.models.package import PackageVersion
 from apps.node_mgmt.models.sidecar import Collector
 from apps.node_mgmt.constants.package import PackageConstants
+from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 
 
@@ -33,40 +34,36 @@ class PackageService:
         if not normalized_arch:
             return package_obj
 
-        resolved = PackageVersion.objects.filter(
+        queryset = PackageVersion.objects.filter(
             type=package_obj.type,
             os=package_obj.os,
             object=package_obj.object,
             version=package_obj.version,
-            cpu_architecture=normalized_arch,
-        ).first()
+        )
+        resolved = queryset.filter(cpu_architecture=normalized_arch).first()
         if resolved:
             return resolved
 
-        return PackageVersion.objects.filter(
-            type=package_obj.type,
-            os=package_obj.os,
-            object=package_obj.object,
-            version=package_obj.version,
-            cpu_architecture="",
-        ).first()
+        if normalized_arch == NodeConstants.X86_64_ARCH:
+            return queryset.filter(cpu_architecture="").first()
+
+        return None
 
     @staticmethod
     def resolve_collector_by_architecture(operating_system: str, collector_name: str, cpu_architecture: str):
         normalized_arch = normalize_cpu_architecture(cpu_architecture)
-        collector = Collector.objects.filter(
+        queryset = Collector.objects.filter(
             node_operating_system=operating_system,
-            cpu_architecture=normalized_arch,
             name=collector_name,
-        ).first()
+        )
+        collector = queryset.filter(cpu_architecture=normalized_arch).first()
         if collector:
             return collector
 
-        return Collector.objects.filter(
-            node_operating_system=operating_system,
-            cpu_architecture="",
-            name=collector_name,
-        ).first()
+        if normalized_arch == NodeConstants.ARM64_ARCH:
+            return None
+
+        return queryset.filter(cpu_architecture="").first() or queryset.filter(cpu_architecture=NodeConstants.X86_64_ARCH).first()
 
     @staticmethod
     def build_file_path(package_obj) -> str:
