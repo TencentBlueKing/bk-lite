@@ -278,7 +278,6 @@ def job_script_execute(data: dict):
     params_str = ScriptParamsService.params_to_string(params) if params else ""
 
     # 创建执行记录
-    from apps.job_mgmt.constants import JobType, TriggerSource
 
     execution = JobExecution.objects.create(
         name=name,
@@ -298,8 +297,8 @@ def job_script_execute(data: dict):
         updated_by="api",
     )
 
-    # 触发异步执行
-    execute_script_task(execution.id)
+    # 触发异步执行（Celery Worker）
+    execute_script_task.delay(execution.id)
 
     return {"result": True, "data": {"task_id": execution.id}}
 
@@ -383,8 +382,8 @@ def job_file_distribute(data: dict):
         updated_by="api",
     )
 
-    # 触发异步执行
-    distribute_files_task(execution.id)
+    # 触发异步执行（Celery Worker）
+    distribute_files_task.delay(execution.id)
 
     return {"result": True, "data": {"task_id": execution.id}}
 
