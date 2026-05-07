@@ -5,8 +5,12 @@ from django.utils import timezone
 
 import nats_client
 from apps.core.logger import job_logger as logger
-from apps.job_mgmt.constants import ExecutionStatus
-from apps.job_mgmt.models import DangerousPath, DangerousRule, JobExecution, Playbook, ScheduledTask, Script, Target
+from apps.job_mgmt.constants import ExecutionStatus, JobType, TriggerSource
+from apps.job_mgmt.models import DangerousPath, DangerousRule, DistributionFile, JobExecution, Playbook, ScheduledTask, Script, Target
+from apps.job_mgmt.services.callback_service import send_callback
+from apps.job_mgmt.services.dangerous_checker import DangerousChecker
+from apps.job_mgmt.services.script_params_service import ScriptParamsService
+from apps.job_mgmt.tasks import distribute_files_task, execute_script_task
 from apps.node_mgmt.utils.s3 import delete_s3_file
 
 
@@ -208,4 +212,313 @@ def ansible_task_callback(data: dict):
             except Exception as e:
                 logger.warning(f"[ansible_task_callback] 清理 NATS OS 中转文件失败: {nats_file_key}, error={e}")
 
+    # 回调通知（如有 callback_url）
+    send_callback(execution)
+
     return {"success": True, "message": "回调处理成功"}
+
+
+# ============================================================
+# 开放接口：供第三方 App（如补丁管理）通过 NATS 调用
+# ============================================================
+
+
+@nats_client.register
+def job_script_execute(data: dict):
+    """
+    脚本执行（NATS 开放接口）
+
+    Args:
+        data: 请求数据，包含：
+            - name: 作业名称（必填）
+            - target_source: 目标来源 node_mgmt|manual（必填）
+            - target_list: 目标列表（必填）
+            - script_type: 脚本类型 shell|python|powershell|bat（必填）
+            - script_content: 脚本内容（必填）
+            - params: 参数列表（可选）
+            - timeout: 超时秒数（可选，默认600）
+            - team: 团队ID列表（必填）
+            - callback_url: 回调地址（可选）
+
+    Returns:
+        {"result": True, "data": {"task_id": <int>}} 或 {"result": False, "message": "..."}
+    """
+
+    # 参数校验
+    name = data.get("name")
+    target_source = data.get("target_source")
+    target_list = data.get("target_list")
+    script_type = data.get("script_type")
+    script_content = data.get("script_content")
+    team = data.get("team", [])
+    timeout = data.get("timeout", 600)
+    params = data.get("params", [])
+    callback_url = data.get("callback_url")
+
+    if not name:
+        return {"result": False, "message": "name 不能为空"}
+    if target_source not in ("node_mgmt", "manual"):
+        return {"result": False, "message": "target_source 必须为 node_mgmt 或 manual"}
+    if not target_list:
+        return {"result": False, "message": "目标列表不能为空"}
+    if script_type not in ("shell", "python", "powershell", "bat"):
+        return {"result": False, "message": "script_type 必须为 shell/python/powershell/bat"}
+    if not script_content:
+        return {"result": False, "message": "script_content 不能为空"}
+    if not team:
+        return {"result": False, "message": "team 不能为空"}
+
+    # 高危命令检测
+    check_result = DangerousChecker.check_command(script_content, team)
+    if not check_result.can_execute:
+        forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
+        return {"result": False, "message": f"脚本包含高危命令，禁止执行: {', '.join(forbidden_rules)}"}
+
+    # 构建 params 字符串
+    params_str = ScriptParamsService.params_to_string(params) if params else ""
+
+    # 创建执行记录
+    from apps.job_mgmt.constants import JobType, TriggerSource
+
+    execution = JobExecution.objects.create(
+        name=name,
+        job_type=JobType.SCRIPT,
+        trigger_source=TriggerSource.API,
+        status=ExecutionStatus.PENDING,
+        script_type=script_type,
+        script_content=script_content,
+        params=params_str,
+        timeout=timeout,
+        total_count=len(target_list),
+        target_source=target_source,
+        target_list=target_list,
+        team=team,
+        callback_url=callback_url,
+        created_by="api",
+        updated_by="api",
+    )
+
+    # 触发异步执行
+    execute_script_task(execution.id)
+
+    return {"result": True, "data": {"task_id": execution.id}}
+
+
+@nats_client.register
+def job_file_distribute(data: dict):
+    """
+    文件分发（NATS 开放接口）
+
+    Args:
+        data: 请求数据，包含：
+            - name: 作业名称（必填）
+            - file_keys: 已上传文件的 file_key 列表（必填）
+            - target_source: 目标来源（必填）
+            - target_list: 目标列表（必填）
+            - target_path: 目标路径（必填）
+            - overwrite_strategy: 覆盖策略（可选，默认overwrite）
+            - timeout: 超时秒数（可选，默认600）
+            - team: 团队ID列表（必填）
+            - callback_url: 回调地址（可选）
+
+    Returns:
+        {"result": True, "data": {"task_id": <int>}} 或 {"result": False, "message": "..."}
+    """
+
+    name = data.get("name")
+    file_keys = data.get("file_keys", [])
+    target_source = data.get("target_source")
+    target_list = data.get("target_list")
+    target_path = data.get("target_path")
+    overwrite_strategy = data.get("overwrite_strategy", "overwrite")
+    timeout = data.get("timeout", 600)
+    team = data.get("team", [])
+    callback_url = data.get("callback_url")
+
+    if not name:
+        return {"result": False, "message": "name 不能为空"}
+    if not file_keys:
+        return {"result": False, "message": "file_keys 不能为空"}
+    if target_source not in ("node_mgmt", "manual"):
+        return {"result": False, "message": "target_source 必须为 node_mgmt 或 manual"}
+    if not target_list:
+        return {"result": False, "message": "目标列表不能为空"}
+    if not target_path:
+        return {"result": False, "message": "target_path 不能为空"}
+    if not team:
+        return {"result": False, "message": "team 不能为空"}
+
+    # 高危路径检测
+    check_result = DangerousChecker.check_path(target_path, team)
+    if not check_result.can_execute:
+        forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
+        return {"result": False, "message": f"目标路径为高危路径，禁止分发: {', '.join(forbidden_rules)}"}
+
+    # 验证文件存在
+    distribution_files = DistributionFile.objects.filter(file_key__in=file_keys)
+    found_keys = set(distribution_files.values_list("file_key", flat=True))
+    missing_keys = [k for k in file_keys if k not in found_keys]
+    if missing_keys:
+        return {"result": False, "message": f"部分文件不存在或已过期: {', '.join(missing_keys)}"}
+
+    # 构建文件信息
+    files_info = [{"name": df.original_name, "file_key": df.file_key} for df in distribution_files]
+
+    # 创建执行记录
+    execution = JobExecution.objects.create(
+        name=name,
+        job_type=JobType.FILE_DISTRIBUTION,
+        trigger_source=TriggerSource.API,
+        status=ExecutionStatus.PENDING,
+        files=files_info,
+        target_path=target_path,
+        overwrite_strategy=overwrite_strategy,
+        timeout=timeout,
+        total_count=len(target_list),
+        target_source=target_source,
+        target_list=target_list,
+        team=team,
+        callback_url=callback_url,
+        created_by="api",
+        updated_by="api",
+    )
+
+    # 触发异步执行
+    distribute_files_task(execution.id)
+
+    return {"result": True, "data": {"task_id": execution.id}}
+
+
+@nats_client.register
+def job_status_batch_query(data: dict):
+    """
+    批量查询作业状态（NATS 开放接口）
+
+    Args:
+        data: {"task_ids": [1, 2, 3]}
+
+    Returns:
+        {"result": True, "data": [{"task_id": 1, "status": "success", ...}, ...]}
+    """
+    task_ids = data.get("task_ids", [])
+    if not task_ids:
+        return {"result": False, "message": "task_ids 不能为空"}
+
+    executions = JobExecution.objects.filter(id__in=task_ids)
+    execution_map = {e.id: e for e in executions}
+
+    results = []
+    for task_id in task_ids:
+        execution = execution_map.get(task_id)
+        if execution:
+            results.append(
+                {
+                    "task_id": execution.id,
+                    "status": execution.status,
+                    "total_count": execution.total_count,
+                    "success_count": execution.success_count,
+                    "failed_count": execution.failed_count,
+                }
+            )
+        else:
+            results.append({"task_id": task_id, "status": "not_found"})
+
+    return {"result": True, "data": results}
+
+
+@nats_client.register
+def job_detail_query(data: dict):
+    """
+    查询单个作业详情（NATS 开放接口）
+
+    Args:
+        data: {"task_id": 123}
+
+    Returns:
+        {"result": True, "data": {...}} 或 {"result": False, "message": "..."}
+    """
+    task_id = data.get("task_id")
+    if not task_id:
+        return {"result": False, "message": "task_id 不能为空"}
+
+    try:
+        execution = JobExecution.objects.get(id=task_id)
+    except JobExecution.DoesNotExist:
+        return {"result": False, "message": "任务不存在"}
+
+    return {
+        "result": True,
+        "data": {
+            "task_id": execution.id,
+            "name": execution.name,
+            "job_type": execution.job_type,
+            "status": execution.status,
+            "script_type": execution.script_type,
+            "script_content": execution.script_content,
+            "timeout": execution.timeout,
+            "started_at": execution.started_at.isoformat() if execution.started_at else None,
+            "finished_at": execution.finished_at.isoformat() if execution.finished_at else None,
+            "total_count": execution.total_count,
+            "success_count": execution.success_count,
+            "failed_count": execution.failed_count,
+            "target_list": execution.target_list,
+            "execution_results": execution.execution_results,
+        },
+    }
+
+
+@nats_client.register
+def job_target_list(data: dict):
+    """
+    查询目标列表（NATS 开放接口）
+
+    供第三方 App 获取可用目标，用于构建 target_list 参数。
+
+    Args:
+        data: 请求数据，包含：
+            - name: 按名称模糊搜索（可选）
+            - ip: 按IP模糊搜索（可选）
+            - os_type: 按系统类型过滤 linux|windows（可选）
+            - page: 页码（可选，默认1）
+            - page_size: 每页数量（可选，默认20，传 -1 返回全部）
+
+    Returns:
+        {"result": True, "data": {"count": N, "items": [...]}}
+    """
+    name = data.get("name")
+    ip = data.get("ip")
+    os_type = data.get("os_type")
+    page = data.get("page", 1)
+    page_size = data.get("page_size", 20)
+
+    queryset = Target.objects.all()
+
+    if name:
+        queryset = queryset.filter(name__icontains=name)
+    if ip:
+        queryset = queryset.filter(ip__icontains=ip)
+    if os_type:
+        queryset = queryset.filter(os_type=os_type)
+
+    total_count = queryset.count()
+
+    if page_size == -1:
+        targets = queryset.order_by("-id")
+    else:
+        start = (page - 1) * page_size
+        end = start + page_size
+        targets = queryset.order_by("-id")[start:end]
+
+    items = []
+    for t in targets:
+        items.append(
+            {
+                "target_id": t.id,
+                "name": t.name,
+                "ip": str(t.ip),
+                "os_type": t.os_type,
+                "cloud_region_id": t.cloud_region_id,
+            }
+        )
+
+    return {"result": True, "data": {"count": total_count, "items": items}}

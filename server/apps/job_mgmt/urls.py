@@ -1,5 +1,6 @@
 """作业管理 URL 配置"""
 
+from django.urls import path
 from rest_framework import routers
 
 from apps.job_mgmt.views import (
@@ -12,7 +13,9 @@ from apps.job_mgmt.views import (
     ScheduledTaskViewSet,
     ScriptViewSet,
     TargetViewSet,
+    api_views,
 )
+from apps.job_mgmt.views.open_api import OpenFileDeleteView, OpenFileUploadView
 
 router = routers.DefaultRouter(trailing_slash=True)
 
@@ -43,4 +46,8 @@ router.register(r"api/dashboard", DashboardViewSet, basename="dashboard")
 # 分发文件
 router.register(r"api/distribution_file", DistributionFileViewSet, basename="distribution_file")
 
-urlpatterns = router.urls
+urlpatterns = router.urls + [
+    path("api/open/upload_file", OpenFileUploadView.as_view(), name="open_upload_file"),
+    path("api/open/delete_file", OpenFileDeleteView.as_view(), name="open_delete_file"),
+    path("callback_test/", api_views.callback_test),
+]
