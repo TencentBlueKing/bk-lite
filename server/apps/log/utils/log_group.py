@@ -81,8 +81,11 @@ class LogGroupQueryBuilder:
         if not log_group_ids:
             return user_query, []
 
+        normalized_ids = [str(group_id).strip() for group_id in log_group_ids if str(group_id).strip()]
+        has_default = "default" in normalized_ids
+
         # 获取有效的日志分组（非default情况）
-        valid_groups = LogGroupQueryBuilder._get_valid_groups(log_group_ids)
+        valid_groups = LogGroupQueryBuilder._get_valid_groups(normalized_ids)
 
         if not valid_groups:
             return LogGroupQueryBuilder.DENY_ALL_QUERY, []
@@ -99,6 +102,11 @@ class LogGroupQueryBuilder:
                     "status": invalid_group_status.get(group.id, "applied"),
                 }
             )
+
+        if has_default:
+            if not any(item.get("id") == "default" for item in group_info):
+                group_info.insert(0, {"id": "default", "name": "Default", "status": "empty_rule"})
+            return user_query.strip() if user_query else "*", group_info
 
         if not group_conditions:
             if valid_groups and all(item.get("status") == "empty_rule" for item in group_info):

@@ -138,11 +138,10 @@ def _create_alert_with_event(policy, alert_id, event_id):
 
 
 @pytest.mark.django_db
-def test_search_endpoint_expands_authorized_groups_when_log_groups_missing(api_client, authenticated_user, mocker):
+def test_search_endpoint_requires_log_groups(api_client, authenticated_user, mocker):
     LogGroup.objects.create(id="g-1", name="Group 1", rule={"mode": "AND", "conditions": [{"field": "app", "op": "==", "value": "demo"}]})
     LogGroupOrganization.objects.create(log_group_id="g-1", organization=1)
     _mock_group_permission(mocker, teams=[1])
-    search_mock = mocker.patch("apps.log.views.search.SearchService.search_logs", return_value=[])
 
     api_client.cookies["current_team"] = "1"
     response = api_client.post(
@@ -151,8 +150,8 @@ def test_search_endpoint_expands_authorized_groups_when_log_groups_missing(api_c
         format="json",
     )
 
-    assert response.status_code == status.HTTP_200_OK
-    search_mock.assert_called_once_with("level:error", "", "", 5, ["g-1"])
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["message"] == "log_groups:缺少日志分组"
 
 
 @pytest.mark.django_db
@@ -173,19 +172,65 @@ def test_search_endpoint_rejects_unauthorized_log_group(api_client, authenticate
 
 
 @pytest.mark.django_db
-def test_field_values_endpoint_uses_authorized_log_groups(api_client, authenticated_user, mocker):
+def test_field_values_endpoint_requires_log_groups(api_client, authenticated_user, mocker):
     LogGroup.objects.create(id="g-1", name="Group 1", rule={"mode": "AND", "conditions": [{"field": "app", "op": "==", "value": "demo"}]})
     LogGroupOrganization.objects.create(log_group_id="g-1", organization=1)
     _mock_group_permission(mocker, teams=[1])
-    field_values_mock = mocker.patch("apps.log.views.search.SearchService.field_values", return_value={"values": []})
 
     api_client.cookies["current_team"] = "1"
     response = api_client.get(
         "/api/v1/log/search/field_values/?filed=host&query=level:error",
     )
 
-    assert response.status_code == status.HTTP_200_OK
-    field_values_mock.assert_called_once_with("", "", "host", 100, query="level:error", log_groups=["g-1"])
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["message"] == "缺少日志分组"
+
+
+@pytest.mark.django_db
+def test_hits_endpoint_requires_log_groups(api_client, authenticated_user, mocker):
+    LogGroup.objects.create(id="g-1", name="Group 1", rule={"mode": "AND", "conditions": [{"field": "app", "op": "==", "value": "demo"}]})
+    LogGroupOrganization.objects.create(log_group_id="g-1", organization=1)
+    _mock_group_permission(mocker, teams=[1])
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/log/search/hits/",
+        data={"query": "*", "field": "_stream", "fields_limit": 5, "step": "5m"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["message"] == "log_groups:缺少日志分组"
+
+
+@pytest.mark.django_db
+def test_top_stats_endpoint_requires_log_groups(api_client, authenticated_user, mocker):
+    LogGroup.objects.create(id="g-1", name="Group 1", rule={"mode": "AND", "conditions": [{"field": "app", "op": "==", "value": "demo"}]})
+    LogGroupOrganization.objects.create(log_group_id="g-1", organization=1)
+    _mock_group_permission(mocker, teams=[1])
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/log/search/top_stats/",
+        data={"query": "*", "attr": "_stream", "top_num": 5},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["message"] == "log_groups:缺少日志分组"
+
+
+@pytest.mark.django_db
+def test_tail_endpoint_requires_log_groups(api_client, authenticated_user, mocker):
+    LogGroup.objects.create(id="g-1", name="Group 1", rule={"mode": "AND", "conditions": [{"field": "app", "op": "==", "value": "demo"}]})
+    LogGroupOrganization.objects.create(log_group_id="g-1", organization=1)
+    _mock_group_permission(mocker, teams=[1])
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.get("/api/v1/log/search/tail/?query=*")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["message"] == "缺少日志分组"
 
 
 @pytest.mark.django_db
@@ -309,6 +354,81 @@ def test_log_group_builder_keeps_user_query_when_only_default_group_has_empty_ru
 
     assert final_query == 'instance_id:"uuid"'
     assert group_info == [{"id": "default", "name": "Default", "status": "empty_rule"}]
+
+
+@pytest.mark.django_db
+def test_log_group_builder_keeps_base_query_when_default_is_selected_with_other_groups():
+    LogGroup.objects.create(id="default", name="Default", rule={})
+    LogGroup.objects.create(id="g-1", name="Group 1", rule={"mode": "AND", "conditions": [{"field": "app", "op": "==", "value": "demo"}]})
+
+    final_query, group_info = LogGroupQueryBuilder.build_query_with_groups("*", ["default", "g-1"])
+
+    assert final_query == "*"
+    assert group_info == [
+        {"id": "default", "name": "Default", "status": "empty_rule"},
+        {"id": "g-1", "name": "Group 1", "status": "applied"},
+    ]
+
+
+@pytest.mark.django_db
+def test_search_endpoint_with_specific_group_does_not_expand_to_other_accessible_groups(api_client, authenticated_user, mocker):
+    LogGroup.objects.create(id="default", name="Default", rule={})
+    LogGroup.objects.create(id="g-1", name="Group 1", rule={"mode": "AND", "conditions": [{"field": "app", "op": "==", "value": "demo"}]})
+    LogGroupOrganization.objects.create(log_group_id="default", organization=1)
+    LogGroupOrganization.objects.create(log_group_id="g-1", organization=1)
+    _mock_group_permission(mocker, teams=[1])
+
+    search_mock = mocker.patch("apps.log.views.search.SearchService.search_logs", return_value=[])
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/log/search/search/",
+        data={
+            "query": 'instance_id:"uuid"',
+            "start_time": "",
+            "end_time": "",
+            "limit": 10,
+            "log_groups": ["g-1"],
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    search_mock.assert_called_once_with('instance_id:"uuid"', "", "", 10, ["g-1"])
+
+
+@pytest.mark.django_db
+def test_field_values_endpoint_uses_explicit_log_groups(api_client, authenticated_user, mocker):
+    LogGroup.objects.create(id="g-1", name="Group 1", rule={"mode": "AND", "conditions": [{"field": "app", "op": "==", "value": "demo"}]})
+    LogGroupOrganization.objects.create(log_group_id="g-1", organization=1)
+    _mock_group_permission(mocker, teams=[1])
+    field_values_mock = mocker.patch("apps.log.views.search.SearchService.field_values", return_value={"values": []})
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.get(
+        "/api/v1/log/search/field_values/?filed=host&query=level:error&log_groups=g-1",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    field_values_mock.assert_called_once_with("", "", "host", 100, query="level:error", log_groups=["g-1"])
+
+
+@pytest.mark.django_db
+def test_hits_endpoint_uses_explicit_log_groups(api_client, authenticated_user, mocker):
+    LogGroup.objects.create(id="g-1", name="Group 1", rule={"mode": "AND", "conditions": [{"field": "app", "op": "==", "value": "demo"}]})
+    LogGroupOrganization.objects.create(log_group_id="g-1", organization=1)
+    _mock_group_permission(mocker, teams=[1])
+    hits_mock = mocker.patch("apps.log.views.search.SearchService.search_hits", return_value={"hits": []})
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/log/search/hits/",
+        data={"query": "*", "field": "_stream", "fields_limit": 5, "step": "5m", "log_groups": ["g-1"]},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    hits_mock.assert_called_once_with("*", "", "", "_stream", 5, "5m", ["g-1"])
 
 
 @pytest.mark.django_db
