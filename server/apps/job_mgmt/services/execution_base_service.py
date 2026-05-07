@@ -7,6 +7,7 @@ from apps.core.logger import job_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.job_mgmt.constants import ExecutionStatus, ExecutorDriver, OSType, ScriptType, SSHCredentialType, TargetSource
 from apps.job_mgmt.models import JobExecution, Target
+from apps.job_mgmt.services.callback_service import send_callback
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.node_mgmt import NodeMgmt
 from config.components.nats import NATS_NAMESPACE
@@ -93,6 +94,10 @@ class ExecutionTaskBaseService(object):
         final_status = ExecutionStatus.FAILED if execution.failed_count > 0 else ExecutionStatus.SUCCESS
         cls.update_execution_status(execution, final_status, finished_at=timezone.now())
         logger.info(f"[{task_name}] 任务完成: execution_id={execution.id}, status={final_status}")
+
+        # 回调通知（如有 callback_url）
+        execution.refresh_from_db()
+        send_callback(execution)
 
     @staticmethod
     def _should_use_ansible(target_source: str, target_list: list) -> bool:
