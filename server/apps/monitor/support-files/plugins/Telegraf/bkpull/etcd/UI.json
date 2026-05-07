@@ -4,88 +4,41 @@
   "collect_type": "bkpull",
   "config_type": ["etcd"],
   "collector": "Telegraf",
-  "instance_id": "{{cloud_region}}_{{host}}_{{port}}",
+  "instance_id": "{{cloud_region}}_{{instance_type}}_{{server_url}}",
   "form_fields": [
     {
-      "name": "scheme",
-      "label": "协议",
-      "type": "select",
-      "required": true,
-      "default_value": "http",
-      "description": "用于访问 etcd metrics 接口的协议",
-      "widget_props": {
-        "placeholder": "请选择协议",
-        "options": [
-          {
-            "label": "HTTP",
-            "value": "http"
-          },
-          {
-            "label": "HTTPS",
-            "value": "https"
-          }
-        ]
-      },
-      "transform_on_edit": {
-        "origin_path": "child.content.config.urls[0]",
-        "to_form": {
-          "regex": "^(https?)://"
-        }
-      }
-    },
-    {
-      "name": "host",
-      "label": "主机",
+      "name": "server_url",
+      "label": "URL",
       "type": "input",
       "required": true,
       "visible_in": "edit",
-      "editable": false,
-      "description": "与设备进行通信的主机",
+      "description": "etcd Prometheus 指标地址，填写完整 URL",
       "widget_props": {
-        "placeholder": "主机地址"
+        "placeholder": "http://127.0.0.1:2379/metrics"
       },
-      "transform_on_edit": {
-        "origin_path": "child.content.config.urls[0]",
-        "to_form": {
-          "regex": "https?://([^:/]+)"
+      "rules": [
+        {
+          "type": "pattern",
+          "pattern": "^(http|https)://.*",
+          "message": "URL必须以http://或https://开头",
+          "excel_formula": "OR(LEFT({{CELL}},7)=\"http://\",LEFT({{CELL}},8)=\"https://\")"
         }
+      ],
+      "transform_on_edit": {
+        "origin_path": "child.content.config.urls[0]"
       }
     },
     {
-      "name": "port",
-      "label": "端口",
-      "type": "inputNumber",
-      "required": true,
-      "visible_in": "edit",
-      "editable": false,
-      "description": "与设备进行通信的端口",
-      "widget_props": {
-        "min": 1,
-        "precision": 0,
-        "placeholder": "端口"
-      },
-      "transform_on_edit": {
-        "origin_path": "child.content.config.urls[0]",
-        "to_form": {
-          "regex": "https?://[^:]+:(\\d+)"
-        }
-      }
-    },
-    {
-      "name": "metrics_path",
-      "label": "指标路径",
+      "name": "tls_ca",
+      "label": "CA证书路径",
       "type": "input",
-      "required": true,
-      "default_value": "/metrics",
-      "description": "etcd 暴露 Prometheus 指标的路径",
+      "required": false,
+      "description": "HTTPS 访问时使用的 CA 证书路径",
       "widget_props": {
-        "placeholder": "/metrics"
+        "placeholder": "/etc/ssl/ca.pem"
       },
       "transform_on_edit": {
-        "origin_path": "child.content.config.urls[0]",
-        "to_form": {
-          "regex": "https?://[^/]+(/.*)$"
-        }
+        "origin_path": "child.content.config.tls_ca"
       }
     },
     {
@@ -112,25 +65,10 @@
       }
     },
     {
-      "name": "tls_ca",
-      "label": "CA证书路径",
-      "type": "input",
-      "required": false,
-      "editable": false,
-      "description": "HTTPS 访问时使用的 CA 证书路径",
-      "widget_props": {
-        "placeholder": "/etc/ssl/ca.pem"
-      },
-      "transform_on_edit": {
-        "origin_path": "child.content.config.tls_ca"
-      }
-    },
-    {
       "name": "tls_cert",
       "label": "客户端证书路径",
       "type": "input",
       "required": false,
-      "editable": false,
       "description": "HTTPS 双向认证时使用的客户端证书路径",
       "widget_props": {
         "placeholder": "/etc/ssl/client.pem"
@@ -144,7 +82,6 @@
       "label": "客户端密钥路径",
       "type": "input",
       "required": false,
-      "editable": false,
       "description": "HTTPS 双向认证时使用的客户端密钥路径",
       "widget_props": {
         "placeholder": "/etc/ssl/client-key.pem"
@@ -178,36 +115,27 @@
       "enable_row_filter": false
     },
     {
-      "name": "host",
-      "label": "主机",
+      "name": "server_url",
+      "label": "URL",
       "type": "input",
       "required": true,
       "widget_props": {
-        "placeholder": "主机"
+        "placeholder": "http://127.0.0.1:2379/metrics"
       },
+      "rules": [
+        {
+          "type": "pattern",
+          "pattern": "^(http|https)://.*",
+          "message": "URL必须以http://或https://开头",
+          "excel_formula": "OR(LEFT({{CELL}},7)=\"http://\",LEFT({{CELL}},8)=\"https://\")"
+        }
+      ],
       "change_handler": {
-        "type": "combine",
-        "source_fields": ["host", "port"],
-        "target_field": "instance_name",
-        "separator": ":"
-      }
-    },
-    {
-      "name": "port",
-      "label": "端口",
-      "type": "inputNumber",
-      "required": true,
-      "widget_props": {
-        "min": 1,
-        "precision": 0,
-        "placeholder": "端口"
+        "type": "simple",
+        "source_fields": ["server_url"],
+        "target_field": "instance_name"
       },
-      "change_handler": {
-        "type": "combine",
-        "source_fields": ["host", "port"],
-        "target_field": "instance_name",
-        "separator": ":"
-      }
+      "is_only": true
     },
     {
       "name": "instance_name",
