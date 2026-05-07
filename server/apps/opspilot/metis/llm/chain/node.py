@@ -768,6 +768,11 @@ class ToolsNodes(BasicNode):
         get_llm_client = self.get_llm_client
         step_counter = {"count": 0}  # 步数计数器（闭包可变引用）
         token_counter = {"total": 0}  # 累计 token 计数器
+        # 反思追踪器
+        reflection_tracker = {
+            "consecutive_failures": 0,  # 连续失败计数
+            "tool_call_history": [],  # 最近的工具调用名称列表
+        }
 
         # ========== Agent 节点：调用 LLM 并决定是否使用工具 ==========
         async def agent_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
@@ -859,6 +864,41 @@ class ToolsNodes(BasicNode):
                     messages = [SystemMessage(content=step_system_prompt)] + list(messages[1:])
                 else:
                     messages = [SystemMessage(content=step_system_prompt)] + list(messages)
+
+            # ========== 循环内反思：检测连续失败或重复调用 ==========
+            reflection_cfg = graph_request.reflection_config
+            if reflection_cfg.enabled and step_counter["count"] > 1:
+                trigger_reflection = False
+                reflection_reason = ""
+
+                # 条件 1: 连续失败超过阈值
+                if reflection_tracker["consecutive_failures"] >= reflection_cfg.consecutive_failures_threshold:
+                    trigger_reflection = True
+                    reflection_reason = f"连续 {reflection_tracker['consecutive_failures']} 次工具调用失败"
+
+                # 条件 2: 重复调用检测
+                if not trigger_reflection:
+                    history = reflection_tracker["tool_call_history"]
+                    window = history[-reflection_cfg.repetition_window :] if len(history) >= reflection_cfg.repetition_window else history
+                    if window:
+                        from collections import Counter
+
+                        counts = Counter(window)
+                        most_common_name, most_common_count = counts.most_common(1)[0]
+                        if most_common_count >= reflection_cfg.repetition_threshold:
+                            trigger_reflection = True
+                            reflection_reason = f"工具 '{most_common_name}' 在最近 {len(window)} 次调用中被重复调用 {most_common_count} 次"
+
+                if trigger_reflection:
+                    reflection_prompt = TemplateLoader.render_template(
+                        "prompts/graph/reflection_prompt",
+                        {"reason": reflection_reason, "step_number": step_counter["count"]},
+                    )
+                    messages = list(messages) + [HumanMessage(content=reflection_prompt)]
+                    logger.info(f"[{trace_id}] 触发循环内反思 (step={step_counter['count']}): {reflection_reason}")
+                    # 重置追踪器，给 agent 一次"重新来过"的机会
+                    reflection_tracker["consecutive_failures"] = 0
+                    reflection_tracker["tool_call_history"] = []
 
             # 获取 LLM 并绑定工具
             llm = get_llm_client(graph_request)
@@ -967,6 +1007,32 @@ class ToolsNodes(BasicNode):
 
                 if retried_any:
                     result = {"messages": result_messages}
+
+            # ========== 反思追踪：记录工具执行结果 ==========
+            from langchain_core.messages import ToolMessage
+
+            has_failure = False
+            for msg in result_messages:
+                if isinstance(msg, ToolMessage):
+                    content_str = str(getattr(msg, "content", ""))
+                    is_error = content_str.startswith("Error:") or content_str.startswith("Traceback")
+                    if not is_error:
+                        content_lower = content_str.lower()
+                        is_error = any(kw in content_lower for kw in ["error", "failed", "exception"])
+                    if is_error:
+                        has_failure = True
+
+            if has_failure:
+                reflection_tracker["consecutive_failures"] += 1
+            else:
+                reflection_tracker["consecutive_failures"] = 0
+
+            # 记录工具调用名称
+            for tc in tool_calls:
+                if isinstance(tc, dict):
+                    reflection_tracker["tool_call_history"].append(tc.get("name", ""))
+                else:
+                    reflection_tracker["tool_call_history"].append(getattr(tc, "name", ""))
 
             logger.info(
                 f"[{trace_id}] ReAct tools_node 执行结束, result_message_count={len(result_messages)}, "

@@ -75,6 +75,15 @@ class RetryConfig(BaseModel):
     backoff_seconds: float = 1.0  # 重试间隔基数（指数退避: base * 2^attempt）
 
 
+class ReflectionConfig(BaseModel):
+    """循环内反思配置"""
+
+    enabled: bool = True
+    consecutive_failures_threshold: int = 3  # 连续失败 N 次触发反思
+    repetition_window: int = 6  # 检测重复的窗口大小（最近 N 条工具调用）
+    repetition_threshold: int = 3  # 窗口内同一工具被调用 N 次以上视为循环
+
+
 class BasicLLMResponse(BaseModel):
     message: str
     total_tokens: int = 0
@@ -138,6 +147,9 @@ class BasicLLMRequest(BaseModel):
 
     # 自适应重试配置
     retry_config: RetryConfig = Field(default_factory=RetryConfig, description="工具调用自适应重试配置")
+
+    # 循环内反思配置
+    reflection_config: ReflectionConfig = Field(default_factory=ReflectionConfig, description="循环内反思配置")
 
     # 上下文 Compaction 配置
     compaction_enabled: bool = Field(default=True, description="是否启用上下文压缩")
