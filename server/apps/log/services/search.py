@@ -12,6 +12,26 @@ from apps.core.logger import log_logger as logger
 
 class SearchService:
     @staticmethod
+    def _compact_query(query, limit=300):
+        text = (query or "").strip()
+        if len(text) <= limit:
+            return text
+        return f"{text[:limit]}..."
+
+    @staticmethod
+    def _log_query_context(action, raw_query, final_query, log_groups=None, group_info=None, **extra):
+        logger.info(
+            f"日志查询上下文: {action}",
+            extra={
+                "raw_query": SearchService._compact_query(raw_query or "*"),
+                "final_query": SearchService._compact_query(final_query or "*"),
+                "log_groups": log_groups or [],
+                "group_info": group_info or [],
+                **extra,
+            },
+        )
+
+    @staticmethod
     def _append_filter(query, extra_filter):
         base_query = (query or "").strip()
         if not base_query or base_query == "*":
@@ -39,7 +59,16 @@ class SearchService:
     def field_values(start_time, end_time, field, limit=100, query="*", log_groups=None):
         """获取字段值列表"""
         value_filter_query = SearchService._append_filter(query, f"{field}:*")
-        final_query, _ = LogGroupQueryBuilder.build_query_with_groups(value_filter_query, log_groups)
+        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(value_filter_query, log_groups)
+        SearchService._log_query_context(
+            "field_values",
+            query,
+            final_query,
+            log_groups=log_groups,
+            group_info=group_info,
+            field=field,
+            limit=limit,
+        )
 
         # Create an instance of the VictoriaMetricsAPI
         vm_api = VictoriaMetricsAPI()
@@ -57,7 +86,14 @@ class SearchService:
     @staticmethod
     def all_field_names(query, start_time, end_time, log_groups=None):
         """根据当前搜索条件获取字段名列表"""
-        final_query, _ = LogGroupQueryBuilder.build_query_with_groups(query, log_groups)
+        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups)
+        SearchService._log_query_context(
+            "all_field_names",
+            query,
+            final_query,
+            log_groups=log_groups,
+            group_info=group_info,
+        )
 
         vm_api = VictoriaMetricsAPI()
         response = vm_api.all_field_names(final_query, start_time, end_time)
@@ -86,6 +122,14 @@ class SearchService:
         """
         # 处理日志分组规则
         final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups)
+        SearchService._log_query_context(
+            "search_logs",
+            query,
+            final_query,
+            log_groups=log_groups,
+            group_info=group_info,
+            limit=limit,
+        )
 
         # Create an instance of the VictoriaMetricsAPI
         vm_api = VictoriaMetricsAPI()
@@ -104,6 +148,16 @@ class SearchService:
         """搜索命中统计，支持日志分组过滤"""
         # 处理日志分组规则
         final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups)
+        SearchService._log_query_context(
+            "search_hits",
+            query,
+            final_query,
+            log_groups=log_groups,
+            group_info=group_info,
+            field=field,
+            fields_limit=fields_limit,
+            step=step,
+        )
 
         # Create an instance of the VictoriaMetricsAPI
         vm_api = VictoriaMetricsAPI()
@@ -122,6 +176,15 @@ class SearchService:
         """按字段返回 TopN 统计结果，支持日志分组过滤。"""
         value_filter_query = SearchService._append_filter(query, f"{attr}:*")
         final_filter_query, group_info = LogGroupQueryBuilder.build_query_with_groups(value_filter_query, log_groups)
+        SearchService._log_query_context(
+            "top_stats",
+            query,
+            final_filter_query,
+            log_groups=log_groups,
+            group_info=group_info,
+            attr=attr,
+            top_num=top_num,
+        )
 
         vm_api = VictoriaMetricsAPI()
 
@@ -160,6 +223,13 @@ class SearchService:
         """实时日志流，支持日志分组过滤 - ASGI兼容版本"""
         # 处理日志分组规则
         final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups)
+        SearchService._log_query_context(
+            "tail",
+            query,
+            final_query,
+            log_groups=log_groups,
+            group_info=group_info,
+        )
 
         async def async_event_stream() -> AsyncIterator[str]:
             """异步事件流生成器，与ASGI兼容"""

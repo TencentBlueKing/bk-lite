@@ -83,6 +83,29 @@ def test_vmlogs_query_clamps_oversized_limit(monkeypatch):
     assert captured["limit"] == VictoriaLogsConstants.QUERY_LIMIT_MAX
 
 
+def test_vmlogs_query_normalizes_wrapped_logsql_string(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self, decode_unicode=True):
+            return iter(())
+
+    def fake_post(url, params, **kwargs):
+        captured.update(params)
+        return FakeResponse()
+
+    monkeypatch.setattr("apps.log.utils.query_log.requests.post", fake_post)
+
+    api = VictoriaMetricsAPI()
+    api.host = "http://victorialogs.example"
+    api.query('"instance_id:\\"uuid\\""', "start", "end", 10)
+
+    assert captured["query"] == 'instance_id:"uuid"'
+
+
 def test_vmlogs_field_values_clamps_oversized_limit(monkeypatch):
     captured = {}
 
@@ -127,6 +150,52 @@ def test_vmlogs_hits_clamps_oversized_fields_limit(monkeypatch):
     api.hits("*", "start", "end", "_stream", VictoriaLogsConstants.HITS_FIELDS_LIMIT_MAX + 5)
 
     assert captured["fields_limit"] == VictoriaLogsConstants.HITS_FIELDS_LIMIT_MAX
+
+
+def test_vmlogs_hits_normalizes_wrapped_logsql_string(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"hits": []}
+
+    def fake_post(url, params, **kwargs):
+        captured.update(params)
+        return FakeResponse()
+
+    monkeypatch.setattr("apps.log.utils.query_log.requests.post", fake_post)
+
+    api = VictoriaMetricsAPI()
+    api.host = "http://victorialogs.example"
+    api.hits('"instance_id:\\"uuid\\""', "start", "end", "_stream", 5)
+
+    assert captured["query"] == 'instance_id:"uuid"'
+
+
+def test_vmlogs_field_values_normalizes_wrapped_logsql_string(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"values": []}
+
+    def fake_get(url, params, **kwargs):
+        captured.update(params)
+        return FakeResponse()
+
+    monkeypatch.setattr("apps.log.utils.query_log.requests.get", fake_get)
+
+    api = VictoriaMetricsAPI()
+    api.host = "http://victorialogs.example"
+    api.field_values("start", "end", "_stream", 100, '"instance_id:\\"uuid\\""')
+
+    assert captured["query"] == 'instance_id:"uuid"'
 
 
 class FakeAlertQuerySet:
