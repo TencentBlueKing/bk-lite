@@ -3,8 +3,11 @@ from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.db import connection
+from django.db.models import Count
 from django.test import Client
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from apps.alerts.aggregation.builder.synthetic_alert_builder import (
@@ -22,9 +25,12 @@ from apps.alerts.constants import (
     HeartbeatStatus,
     LevelType,
 )
-from apps.alerts.models import Alert, AlertSource, AlarmStrategy, Event, Level
+from apps.alerts.models import Alert, AlertSource, AlarmStrategy, Event, Level, Incident
 from apps.alerts.serializers.alert_source import AlertSourceModelSerializer
+from apps.alerts.serializers.event import EventModelSerializer
+from apps.alerts.serializers.incident import IncidentModelSerializer
 from apps.alerts.serializers.strategy import AlarmStrategySerializer
+from apps.system_mgmt.models.user import User
 
 
 class AlarmStrategySerializerTestCase(TestCase):
@@ -782,3 +788,124 @@ class AlertSourceIngressTestCase(TestCase):
         self.assertEqual(payload["source_type"], AlertsSourceTypes.ZABBIX)
         self.assertIn(f"/api/v1/alerts/api/source/{source.source_id}/webhook/", payload["webhook_url"])
         self.assertIn("script_template", payload)
+
+
+class AlertQueryPerformanceTestCase(TestCase):
+    def setUp(self):
+        self.source = AlertSource.objects.create(
+            name="perf-source",
+            source_id="perf-source",
+            source_type=AlertsSourceTypes.WEBHOOK,
+        )
+        self.user = User.objects.create(
+            username="perf-user",
+            display_name="性能用户",
+            email="perf@example.com",
+            password="test-pass",
+            domain="domain.com",
+        )
+
+    def create_event(self, suffix, **overrides):
+        return Event.objects.create(
+            source=self.source,
+            raw_data={},
+            title=overrides.pop("title", f"event-{suffix}"),
+            description=overrides.pop("description", "desc"),
+            level=overrides.pop("level", "1"),
+            service=overrides.pop("service", "svc"),
+            event_type=overrides.pop("event_type", EventType.ALERT),
+            tags=overrides.pop("tags", {}),
+            location=overrides.pop("location", "gz"),
+            external_id=overrides.pop("external_id", f"ext-{suffix}"),
+            start_time=overrides.pop("start_time", timezone.now()),
+            end_time=overrides.pop("end_time", None),
+            labels=overrides.pop("labels", {}),
+            action=overrides.pop("action", EventAction.CREATED),
+            rule_id=overrides.pop("rule_id", None),
+            event_id=overrides.pop("event_id", f"EVENT-PERF-{suffix}"),
+            item=overrides.pop("item", "cpu"),
+            resource_id=overrides.pop("resource_id", f"res-{suffix}"),
+            resource_type=overrides.pop("resource_type", "host"),
+            resource_name=overrides.pop("resource_name", f"host-{suffix}"),
+            status=overrides.pop("status", "received"),
+            assignee=overrides.pop("assignee", []),
+            value=overrides.pop("value", None),
+        )
+
+    def test_event_queryset_avoids_source_n_plus_one_in_serializer(self):
+        self.create_event("1")
+        self.create_event("2")
+
+        events = list(Event.objects.select_related("source").order_by("id"))
+        with CaptureQueriesContext(connection) as ctx:
+            data = EventModelSerializer(events, many=True).data
+
+        self.assertEqual(len(ctx), 0)
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]["source_name"], "perf-source")
+
+    def test_incident_queryset_prefetches_alert_event_sources_for_serializer(self):
+        event_1 = self.create_event("incident-1")
+        event_2 = self.create_event("incident-2")
+
+        alert_1 = Alert.objects.create(
+            alert_id="ALERT-PERF-1",
+            status=AlertStatus.UNASSIGNED,
+            level="1",
+            title="alert-1",
+            content="content-1",
+            fingerprint="fp-1",
+            operator=[self.user.username],
+        )
+        alert_1.events.add(event_1)
+
+        alert_2 = Alert.objects.create(
+            alert_id="ALERT-PERF-2",
+            status=AlertStatus.UNASSIGNED,
+            level="1",
+            title="alert-2",
+            content="content-2",
+            fingerprint="fp-2",
+            operator=[self.user.username],
+        )
+        alert_2.events.add(event_2)
+
+        incident = Incident.objects.create(
+            incident_id="INCIDENT-PERF-1",
+            status="pending",
+            level="1",
+            title="incident-1",
+            content="incident-content",
+            operator=[self.user.username],
+        )
+        incident.alert.add(alert_1, alert_2)
+
+        incidents = list(
+            Incident.objects.annotate(alert_count=Count("alert", distinct=True))
+            .prefetch_related("alert__events__source")
+            .order_by("id")
+        )
+        operator_user_map = {self.user.username: self.user.display_name}
+        with CaptureQueriesContext(connection) as ctx:
+            data = IncidentModelSerializer(
+                incidents,
+                many=True,
+                context={"operator_user_map": operator_user_map},
+            ).data
+
+        self.assertEqual(len(ctx), 0)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["sources"], "perf-source")
+        self.assertEqual(data[0]["operator_users"], "性能用户")
+
+    def test_alert_queryset_uses_distinct_event_count_annotation(self):
+        annotation = Alert.objects.annotate(
+            event_count_annotated=Count("events", distinct=True)
+        ).query.annotations["event_count_annotated"]
+        self.assertTrue(annotation.distinct)
+
+    def test_incident_queryset_uses_distinct_alert_count_annotation(self):
+        annotation = Incident.objects.annotate(
+            alert_count=Count("alert", distinct=True)
+        ).query.annotations["alert_count"]
+        self.assertTrue(annotation.distinct)

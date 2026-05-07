@@ -26,7 +26,7 @@ class AlertModelViewSet(ModelViewSet):
 
     def get_queryset(self):
         queryset = Alert.objects.annotate(
-            event_count_annotated=Count("events"),
+            event_count_annotated=Count("events", distinct=True),
         ).prefetch_related("events__source", "incident_set")
 
         # StringAgg 是 PostgreSQL 专属函数，其他数据库通过 serializer fallback 处理
@@ -34,7 +34,7 @@ class AlertModelViewSet(ModelViewSet):
             from django.contrib.postgres.aggregates import StringAgg
 
             queryset = Alert.objects.annotate(
-                event_count_annotated=Count("events"),
+                event_count_annotated=Count("events", distinct=True),
                 # 通过事件获取告警源名称（去重）
                 source_names_annotated=StringAgg("events__source__name", delimiter=", ", distinct=True),
                 incident_title_annotated=StringAgg("incident__title", delimiter=", ", distinct=True),

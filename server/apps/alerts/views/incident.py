@@ -2,6 +2,7 @@
 import uuid
 
 from django.db.models import Count
+from apps.system_mgmt.models.user import User
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -34,13 +35,59 @@ class IncidentModelViewSet(ModelViewSet):
 
     def get_queryset(self):
         queryset = Incident.objects.annotate(
-            alert_count=Count("alert")
-        ).prefetch_related("alert")
+            alert_count=Count("alert", distinct=True)
+        ).prefetch_related("alert__events__source")
         return queryset
+
+    @staticmethod
+    def _build_operator_user_map(incidents):
+        operator_usernames = set()
+        for incident in incidents:
+            if isinstance(incident.operator, list):
+                operator_usernames.update(incident.operator)
+        if not operator_usernames:
+            return {}
+        return dict(User.objects.filter(username__in=operator_usernames).values_list("username", "display_name"))
 
     @HasPermission("Incidents-View")
     def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            operator_user_map = self._build_operator_user_map(page)
+            serializer = self.get_serializer(
+                page,
+                many=True,
+                context={
+                    **self.get_serializer_context(),
+                    "operator_user_map": operator_user_map,
+                },
+            )
+            return self.get_paginated_response(serializer.data)
+
+        operator_user_map = self._build_operator_user_map(queryset)
+        serializer = self.get_serializer(
+            queryset,
+            many=True,
+            context={
+                **self.get_serializer_context(),
+                "operator_user_map": operator_user_map,
+            },
+        )
+        return WebUtils.response_success(serializer.data)
+
+    @HasPermission("Incidents-View")
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        operator_user_map = self._build_operator_user_map([instance])
+        serializer = self.get_serializer(
+            instance,
+            context={
+                **self.get_serializer_context(),
+                "operator_user_map": operator_user_map,
+            },
+        )
+        return Response(serializer.data)
 
     @HasPermission("Alarms-Edit")
     @transaction.atomic

@@ -11,12 +11,15 @@ class EventModelViewSet(ModelViewSet):
     """
     事件视图集
     """
-    queryset = Event.objects.all()
+    queryset = Event.objects.select_related("source")
     serializer_class = EventModelSerializer
     ordering_fields = ["received_at"]
     ordering = ["-received_at"]
     filterset_class = EventModelFilter
     pagination_class = CustomPageNumberPagination
+
+    def get_queryset(self):
+        return Event.objects.select_related("source")
 
     @HasPermission("Integration-View,Alarms-View")
     def list(self, request, *args, **kwargs):
