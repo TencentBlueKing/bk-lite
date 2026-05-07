@@ -129,6 +129,66 @@ def test_instance_association_instance_list_denies_user_without_object_permissio
     mock_association_list.assert_not_called()
 
 
+def test_instance_association_map_batches_graph_queries_by_direction():
+    from apps.cmdb.services.instance import InstanceManage
+
+    src_edges = [
+        {
+            "src_inst_id": 101,
+            "dst_inst_id": 201,
+            "src_model_id": "host",
+            "dst_model_id": "service",
+        },
+        {
+            "src_inst_id": 102,
+            "dst_inst_id": 202,
+            "src_model_id": "host",
+            "dst_model_id": "service",
+        },
+    ]
+    dst_edges = [
+        {
+            "src_inst_id": 301,
+            "dst_inst_id": 102,
+            "src_model_id": "service",
+            "dst_model_id": "host",
+        }
+    ]
+
+    graph_client = MagicMock()
+    graph_client.query_edge.side_effect = [src_edges, dst_edges]
+
+    graph_context = MagicMock()
+    graph_context.__enter__.return_value = graph_client
+    graph_context.__exit__.return_value = False
+
+    with patch(
+        "apps.cmdb.services.instance.GraphClient",
+        return_value=graph_context,
+    ):
+        relation_map = InstanceManage.instance_association_map(
+            model_id="host",
+            inst_ids=[101, 102],
+            related_model="service",
+        )
+
+    assert relation_map == {101: [201], 102: [202, 301]}
+    assert graph_client.query_edge.call_count == 2
+    src_call, dst_call = graph_client.query_edge.call_args_list
+    assert src_call.args[0] == "instance_association"
+    assert src_call.args[1] == [
+        {"field": "src_inst_id", "type": "int[]", "value": [101, 102]},
+        {"field": "src_model_id", "type": "str=", "value": "host"},
+        {"field": "dst_model_id", "type": "str=", "value": "service"},
+    ]
+    assert dst_call.args[0] == "instance_association"
+    assert dst_call.args[1] == [
+        {"field": "dst_inst_id", "type": "int[]", "value": [101, 102]},
+        {"field": "dst_model_id", "type": "str=", "value": "host"},
+        {"field": "src_model_id", "type": "str=", "value": "service"},
+    ]
+
+
 class CQLQueryTest:
     """
     用于测试和执行CQL查询的辅助类

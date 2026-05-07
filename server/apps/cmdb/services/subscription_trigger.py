@@ -230,23 +230,19 @@ class SubscriptionTriggerService:
             f"rule_id={self.rule.id}, related_model={related_model}, "
             f"instance_count={len(instance_ids)}"
         )
-        relation_map: dict[int, list[int]] = {}
-        for inst_id in instance_ids:
-            try:
-                rels = InstanceManage.instance_association(self.rule.model_id, inst_id)
-            except Exception as exc:
-                logger.error(
-                    f"[Subscription] query relation failed inst_id={inst_id}, error={exc}",
-                    exc_info=True,
-                )
-                continue
-            related_ids: list[int] = []
-            for rel in rels:
-                if rel.get("src_model_id") == related_model:
-                    related_ids.append(int(rel.get("src_inst_id")))
-                elif rel.get("dst_model_id") == related_model:
-                    related_ids.append(int(rel.get("dst_inst_id")))
-            relation_map[inst_id] = sorted(list(set(related_ids)))
+        try:
+            relation_map = InstanceManage.instance_association_map(
+                self.rule.model_id,
+                instance_ids,
+                related_model=related_model,
+            )
+        except Exception as exc:
+            logger.error(
+                "[Subscription] batch query relation failed "
+                f"rule_id={self.rule.id}, related_model={related_model}, error={exc}",
+                exc_info=True,
+            )
+            return {inst_id: [] for inst_id in instance_ids}
         logger.info(
             "[Subscription] 关联实例查询完成 "
             f"rule_id={self.rule.id}, relation_map_size={len(relation_map)}"
