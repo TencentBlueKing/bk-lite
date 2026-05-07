@@ -129,6 +129,87 @@ def test_instance_association_instance_list_denies_user_without_object_permissio
     mock_association_list.assert_not_called()
 
 
+def test_collect_model_viewset_scopes_detail_queryset_by_permission():
+    from apps.cmdb.views.collect import CollectModelViewSet
+
+    request = _make_cmdb_request()
+    view = CollectModelViewSet()
+    view.request = request
+    view.action = "info"
+
+    filtered_queryset = MagicMock(name="filtered_queryset")
+
+    with patch.object(
+        CollectModelViewSet,
+        "get_queryset_by_permission",
+        return_value=filtered_queryset,
+    ) as mock_get_queryset_by_permission:
+        result = view.get_queryset()
+
+    assert result is filtered_queryset
+    mock_get_queryset_by_permission.assert_called_once_with(request, view.queryset.all())
+
+
+def test_collect_model_instances_uses_permission_filtered_queryset():
+    from apps.cmdb.views.collect import CollectModelViewSet
+
+    request = _make_cmdb_request()
+    request.GET = SimpleNamespace(dict=lambda: {"task_type": "host"})
+    view = CollectModelViewSet()
+
+    authorized_queryset = MagicMock(name="authorized_queryset")
+    filtered_queryset = MagicMock(name="filtered_queryset")
+    authorized_queryset.filter.return_value = filtered_queryset
+    filtered_queryset.values_list.return_value = [
+        [{"_id": 1001, "inst_name": "host-a"}],
+    ]
+
+    with patch.object(
+        CollectModelViewSet,
+        "get_queryset_by_permission",
+        return_value=authorized_queryset,
+    ) as mock_get_queryset_by_permission:
+        response = view.model_instances(request)
+
+    payload = json.loads(response.content)
+    assert payload["result"] is True
+    assert payload["data"] == [{"id": 1001, "inst_name": "host-a"}]
+    mock_get_queryset_by_permission.assert_called_once_with(request, view.queryset.all())
+    authorized_queryset.filter.assert_called_once()
+
+
+def test_build_region_query_credential_uses_authorized_task_lookup():
+    from apps.cmdb.views.collect import CollectModelViewSet
+
+    request = _make_cmdb_request()
+    task = SimpleNamespace(
+        decrypt_credentials={"secret_key": "value"},
+        driver_type="qcloud",
+    )
+    params_cls = MagicMock()
+    params_cls.build_region_credential.return_value = {"region_secret": "ok"}
+    view = CollectModelViewSet()
+
+    with patch.object(
+        CollectModelViewSet,
+        "_get_authorized_task",
+        return_value=task,
+    ) as mock_get_authorized_task, patch(
+        "apps.cmdb.views.collect.NodeParamsFactory.get_params_class",
+        return_value=params_cls,
+    ) as mock_get_params_class:
+        credential = view._build_region_query_credential(
+            request,
+            {"model_id": "qcloud_account", "driver_type": "ignored"},
+            task_id=42,
+        )
+
+    assert credential["model_id"] == "qcloud"
+    assert credential["region_secret"] == "ok"
+    mock_get_authorized_task.assert_called_once_with(request, 42)
+    mock_get_params_class.assert_called_once_with("qcloud", "qcloud")
+
+
 class CQLQueryTest:
     """
     用于测试和执行CQL查询的辅助类

@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from django.conf import settings
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import action
@@ -39,6 +40,14 @@ class CollectModelViewSet(AuthViewSet):
     pagination_class = CustomPageNumberPagination
     permission_classes = [InstanceTaskPermission]
     permission_key = PERMISSION_TASK
+    permission_scoped_actions = {
+        "retrieve",
+        "update",
+        "partial_update",
+        "destroy",
+        "info",
+        "exec_task",
+    }
 
     @staticmethod
     def _parse_positive_int(value, field_name, default):
@@ -52,14 +61,26 @@ class CollectModelViewSet(AuthViewSet):
             raise ValueError(f"{field_name} 必须大于等于 1")
         return parsed
 
-    def _build_region_query_credential(self, params, task_id=None):
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        request = getattr(self, "request", None)
+        action = getattr(self, "action", None)
+        if request is not None and action in self.permission_scoped_actions:
+            return self.get_queryset_by_permission(request, queryset)
+        return queryset
+
+    def _get_authorized_task(self, request, task_id):
+        queryset = self.get_queryset_by_permission(request, self.queryset.all())
+        return get_object_or_404(queryset, id=task_id)
+
+    def _build_region_query_credential(self, request, params, task_id=None):
         credential = dict(params)
         model_id = (credential.get("model_id") or "").split("_account", 1)[0]
         credential["model_id"] = model_id
 
         driver_type = credential.get("driver_type")
         if task_id:
-            instance = self.queryset.get(id=task_id)
+            instance = self._get_authorized_task(request, task_id)
             raw_credential = instance.decrypt_credentials or {}
             driver_type = instance.driver_type
         else:
@@ -237,9 +258,13 @@ class CollectModelViewSet(AuthViewSet):
         """
         params = requests.GET.dict()
         task_type = params["task_type"]
+        queryset = self.get_queryset_by_permission(requests, self.queryset.all())
         # 云对象可以重复选择不做过滤
-        instances = CollectModels.objects.filter(~Q(instances=[]), ~Q(task_type=CollectPluginTypes.CLOUD),
-                                                 task_type=task_type).values_list("instances", flat=True)
+        instances = queryset.filter(
+            ~Q(instances=[]),
+            ~Q(task_type=CollectPluginTypes.CLOUD),
+            task_type=task_type,
+        ).values_list("instances", flat=True)
         result = []
         for instance in instances:
             if not isinstance(instance, list) or not instance:
@@ -270,7 +295,7 @@ class CollectModelViewSet(AuthViewSet):
         if not cloud_name:
             return WebUtils.response_error(error_message="cloud_id 不存在", status_code=400)
         task_id = params.pop("task_id", None)
-        credential = self._build_region_query_credential(params, task_id=task_id)
+        credential = self._build_region_query_credential(requests, params, task_id=task_id)
         result = CollectModelService.list_regions(credential, cloud_name=cloud_name)
         if result.get("success"):
             return WebUtils.response_success(result.get("result", []))
