@@ -8,6 +8,7 @@ from apps.alerts.filters import AlertModelFilter
 from apps.alerts.models.models import Alert
 from apps.alerts.serializers import AlertModelSerializer
 from apps.alerts.service.alter_operator import AlertOperator
+from apps.alerts.utils.permission_scope import filter_alert_queryset_for_request
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
 from apps.system_mgmt.models.user import User
@@ -25,7 +26,7 @@ class AlertModelViewSet(ModelViewSet):
     pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
-        queryset = Alert.objects.annotate(
+        queryset = Alert.objects.exclude(session_status__in=SessionStatus.NO_CONFIRMED).annotate(
             event_count_annotated=Count("events"),
         ).prefetch_related("events__source", "incident_set")
 
@@ -33,14 +34,17 @@ class AlertModelViewSet(ModelViewSet):
         if connection.vendor == "postgresql":
             from django.contrib.postgres.aggregates import StringAgg
 
-            queryset = Alert.objects.annotate(
+            queryset = Alert.objects.exclude(session_status__in=SessionStatus.NO_CONFIRMED).annotate(
                 event_count_annotated=Count("events"),
                 # 通过事件获取告警源名称（去重）
                 source_names_annotated=StringAgg("events__source__name", delimiter=", ", distinct=True),
                 incident_title_annotated=StringAgg("incident__title", delimiter=", ", distinct=True),
             ).prefetch_related("events__source")
 
-        return queryset
+        request = getattr(self, "request", None)
+        if request is None:
+            return queryset
+        return filter_alert_queryset_for_request(queryset, request)
 
     @staticmethod
     def _build_operator_user_map(page):
@@ -78,9 +82,21 @@ class AlertModelViewSet(ModelViewSet):
         )
         return WebUtils.response_success(serializer.data)
 
+    @HasPermission("Alarms-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("Alarms-Edit")
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
     @HasPermission("Alarms-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
+
+    @HasPermission("Alarms-Edit")
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
 
     @HasPermission("Alarms-Delete")
     def destroy(self, request, *args, **kwargs):
@@ -99,10 +115,18 @@ class AlertModelViewSet(ModelViewSet):
         Custom operator method to handle alert operations.
         """
         alert_id_list = request.data["alert_id"]
+        allowed_alert_ids = set(
+            self.filter_queryset(self.get_queryset()).filter(alert_id__in=alert_id_list).values_list("alert_id", flat=True)
+        )
         operator = AlertOperator(user=self.request.user.username)
         result_list = {}
         status_list = []
         for alert_id in alert_id_list:
+            if alert_id not in allowed_alert_ids:
+                result = {"result": False, "message": "您没有权限操作此告警", "data": {}}
+                result_list[alert_id] = result
+                status_list.append(False)
+                continue
             result = operator.operate(action=operator_action, alert_id=alert_id, data=request.data)
             result_list[alert_id] = result
             status_list.append(result["result"])

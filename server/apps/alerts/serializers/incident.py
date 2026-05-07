@@ -39,6 +39,12 @@ class IncidentModelSerializer(serializers.ModelSerializer):
             "alert": {"write_only": True},  # 多对多关系字段
         }
 
+    def __init__(self, instance=None, data=serializers.empty, **kwargs):
+        super().__init__(instance=instance, data=data, **kwargs)
+        allowed_alert_queryset = self.context.get("allowed_alert_queryset")
+        if allowed_alert_queryset is not None:
+            self.fields["alert"].queryset = allowed_alert_queryset
+
     def create(self, validated_data):
         """
         重写create方法来处理多对多关系

@@ -13,6 +13,10 @@ from apps.alerts.models.models import Alert, Incident
 from apps.alerts.models.operator_log import OperatorLog
 from apps.alerts.serializers import IncidentModelSerializer
 from apps.alerts.service.incident_operator import IncidentOperator
+from apps.alerts.utils.permission_scope import (
+    filter_alert_queryset_for_request,
+    filter_incident_queryset_for_request,
+)
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import alert_logger as logger
 from apps.core.utils.web_utils import WebUtils
@@ -36,11 +40,25 @@ class IncidentModelViewSet(ModelViewSet):
         queryset = Incident.objects.annotate(
             alert_count=Count("alert")
         ).prefetch_related("alert")
-        return queryset
+        request = getattr(self, "request", None)
+        if request is None:
+            return queryset
+        return filter_incident_queryset_for_request(queryset, request)
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        request = context.get("request")
+        if request is not None:
+            context["allowed_alert_queryset"] = filter_alert_queryset_for_request(Alert.objects.all(), request)
+        return context
 
     @HasPermission("Incidents-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @HasPermission("Incidents-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
 
     @HasPermission("Alarms-Edit")
     @transaction.atomic
@@ -120,6 +138,11 @@ class IncidentModelViewSet(ModelViewSet):
 
         return Response(serializer.data)
 
+    @HasPermission("Incidents-Edit")
+    @transaction.atomic
+    def partial_update(self, request, *args, **kwargs):
+        return self.update(request, *args, partial=True, **kwargs)
+
     @HasPermission("Incidents-Delete")
     @transaction.atomic
     def destroy(self, request, *args, **kwargs):
@@ -156,8 +179,16 @@ class IncidentModelViewSet(ModelViewSet):
         operator = IncidentOperator(user=self.request.user.username)
         result_list = {}
         status_list = []
+        allowed_incident_ids = set(
+            self.filter_queryset(self.get_queryset()).filter(incident_id__in=incident_id_list).values_list("incident_id", flat=True)
+        )
 
         for incident_id in incident_id_list:
+            if incident_id not in allowed_incident_ids:
+                result = {"result": False, "message": "您没有权限操作此事故", "data": {}}
+                result_list[incident_id] = result
+                status_list.append(False)
+                continue
             result = operator.operate(
                 action=operator_action, incident_id=incident_id, data=request.data
             )
