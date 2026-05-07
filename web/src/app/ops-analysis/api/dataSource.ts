@@ -1,4 +1,5 @@
 import useApiClient from '@/utils/request';
+import { buildRequestDedupKey, dedupeInFlightRequest } from './requestDedup';
 
 export const useDataSourceApi = () => {
   const { get, post, put, del } = useApiClient();
@@ -24,8 +25,11 @@ export const useDataSourceApi = () => {
   };
 
   const getSourceDataByApiId = async (id: number, params?: any) => {
-    return post(`/operation_analysis/api/data_source/get_source_data/${id}/`, params);
-  }
+    const dedupKey = buildRequestDedupKey(id, params);
+    return dedupeInFlightRequest(dedupKey, () =>
+      post(`/operation_analysis/api/data_source/get_source_data/${id}/`, params),
+    );
+  };
 
   return {
     getDataSourceList,
