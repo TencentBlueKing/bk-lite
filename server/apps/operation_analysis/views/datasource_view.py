@@ -4,6 +4,7 @@
 # @Author: windyzhao
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework import status
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
@@ -75,9 +76,28 @@ class DataSourceAPIModelViewSet(AuthViewSet):
     permission_key = "datasource"
     ORGANIZATION_FIELD = "groups"  # 使用 groups 字段作为组织字段
 
+    def _ensure_view_permission(self, request, instance):
+        user = getattr(request, "user", None)
+        if getattr(user, "is_superuser", False):
+            return None
+
+        current_team = request.COOKIES.get("current_team", "0")
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        has_permission = self.get_has_permission(user, instance, current_team, is_check=True, include_children=include_children)
+        if has_permission:
+            return None
+
+        message = self.loader.get("error.no_permission_view") if self.loader else "User does not have permission to view this instance"
+        return self.value_error(message)
+
+    @HasPermission("data_source-View")
     @action(detail=False, methods=["post"], url_path=r"get_source_data/(?P<pk>[^/.]+)")
     def get_source_data(self, request, *args, **kwargs):
         instance = self.get_object()
+        permission_response = self._ensure_view_permission(request, instance)
+        if permission_response is not None:
+            return permission_response
+
         params = dict(request.data)
         namespace_list = instance.namespaces.all()
         if "/" not in instance.rest_api:
@@ -88,9 +108,12 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         client = GetNatsData(namespace=namespace, path=path, params=params, namespace_list=namespace_list, request=request)
         try:
             result = client.get_data()
+        except ValueError as e:
+            logger.error("获取数据源数据参数非法: {}".format(e))
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.error("获取数据源数据失败: {}".format(e))
-            result = []
+            return Response({"detail": "获取数据源数据失败，请稍后重试"}, status=status.HTTP_502_BAD_GATEWAY)
 
         return Response(result)
 

@@ -38,10 +38,16 @@ class GetNatsData:
         :return:
         """
         username = self.request.user.username
-        team = int(self.request.COOKIES.get("current_team"))
+        try:
+            team = int(self.request.COOKIES.get("current_team"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("缺少合法的 current_team 上下文") from exc
+
+        include_children = self.request.COOKIES.get("include_children", "0") == "1"
         self.params[self.user_param_key] = {
             "team": team,
-            "user": username
+            "user": username,
+            "include_children": include_children,
         }
 
     def set_namespace_servers(self):
@@ -119,4 +125,4 @@ class GetNatsData:
             import traceback
 
             logger.error("==获取NATS数据源数据失败==: namespace={} error={}".format(namespace.name, traceback.format_exc()))
-            return []
+            raise RuntimeError(f"获取数据源数据失败: {namespace.name}") from e
