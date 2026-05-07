@@ -22,8 +22,8 @@ class TestJobScriptExecute:
         }
 
         with patch("apps.job_mgmt.services.dangerous_checker.DangerousChecker.check_command") as mock_check, patch(
-            "apps.job_mgmt.tasks.ScriptExecutionRunner"
-        ):
+            "apps.job_mgmt.tasks.current_app.send_task"
+        ) as mock_send_task:
             mock_result = MagicMock()
             mock_result.can_execute = True
             mock_result.forbidden = []
@@ -33,6 +33,10 @@ class TestJobScriptExecute:
 
         assert result["result"] is True
         assert "task_id" in result["data"]
+        mock_send_task.assert_called_once_with(
+            "apps.job_mgmt.tasks.execute_script_task",
+            args=[result["data"]["task_id"]],
+        )
 
     def test_empty_target_list(self):
         from apps.job_mgmt.nats_api import job_script_execute
@@ -82,6 +86,40 @@ class TestJobScriptExecute:
 @pytest.mark.unit
 @pytest.mark.django_db
 class TestJobFileDistribute:
+    def test_success_dispatches_async_task(self):
+        from apps.job_mgmt.models import DistributionFile
+        from apps.job_mgmt.nats_api import job_file_distribute
+
+        distribution_file = DistributionFile.objects.create(
+            original_name="patch.rpm",
+            file_key="job-files/2026/05/07/patch.rpm",
+        )
+        data = {
+            "name": "test",
+            "file_keys": [distribution_file.file_key],
+            "target_source": "node_mgmt",
+            "target_list": [{"node_id": "n1", "name": "h1", "ip": "1.1.1.1", "os": "linux", "cloud_region_id": "r1"}],
+            "target_path": "/tmp/",
+            "team": [1],
+        }
+
+        with patch("apps.job_mgmt.services.dangerous_checker.DangerousChecker.check_path") as mock_check, patch(
+            "apps.job_mgmt.tasks.current_app.send_task"
+        ) as mock_send_task:
+            mock_result = MagicMock()
+            mock_result.can_execute = True
+            mock_result.forbidden = []
+            mock_check.return_value = mock_result
+
+            result = job_file_distribute(data)
+
+        assert result["result"] is True
+        assert "task_id" in result["data"]
+        mock_send_task.assert_called_once_with(
+            "apps.job_mgmt.tasks.distribute_files_task",
+            args=[result["data"]["task_id"]],
+        )
+
     def test_empty_file_ids(self):
         from apps.job_mgmt.nats_api import job_file_distribute
 
@@ -186,7 +224,7 @@ class TestJobTargetList:
         from apps.job_mgmt.nats_api import job_target_list
 
         for i in range(5):
-            Target.objects.create(name=f"node-{i}", ip=f"10.0.0.{i+1}", os_type="linux", team=[1])
+            Target.objects.create(name=f"node-{i}", ip=f"10.0.0.{i + 1}", os_type="linux", team=[1])
 
         result = job_target_list({"page": 1, "page_size": 2})
         assert result["data"]["count"] == 5

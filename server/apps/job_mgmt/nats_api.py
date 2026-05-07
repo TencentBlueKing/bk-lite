@@ -10,7 +10,7 @@ from apps.job_mgmt.models import DangerousPath, DangerousRule, DistributionFile,
 from apps.job_mgmt.services.callback_service import send_callback
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
-from apps.job_mgmt.tasks import distribute_files_task, execute_script_task
+from apps.job_mgmt.tasks import _dispatch_execution_job
 from apps.node_mgmt.utils.s3 import delete_s3_file
 
 
@@ -299,7 +299,7 @@ def job_script_execute(data: dict):
     )
 
     # 触发异步执行
-    execute_script_task(execution.id)
+    _dispatch_execution_job(JobType.SCRIPT, execution.id)
 
     return {"result": True, "data": {"task_id": execution.id}}
 
@@ -384,7 +384,7 @@ def job_file_distribute(data: dict):
     )
 
     # 触发异步执行
-    distribute_files_task(execution.id)
+    _dispatch_execution_job(JobType.FILE_DISTRIBUTION, execution.id)
 
     return {"result": True, "data": {"task_id": execution.id}}
 
