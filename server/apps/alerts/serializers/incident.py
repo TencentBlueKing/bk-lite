@@ -118,8 +118,7 @@ class IncidentModelSerializer(serializers.ModelSerializer):
         # fallback: 直接计数
         return obj.alert.count() if obj.alert else 0
 
-    @staticmethod
-    def get_operator_users(obj):
+    def get_operator_users(self, obj):
         """
         获取操作员用户列表，从 JSONField 转换为字符串
         """
@@ -132,6 +131,9 @@ class IncidentModelSerializer(serializers.ModelSerializer):
 
         # 如果 operator 是列表，转换为逗号分隔的字符串
         if isinstance(obj.operator, list):
+            operator_user_map = self.context.get("operator_user_map")
+            if operator_user_map is not None:
+                return ", ".join(operator_user_map.get(u, u) for u in obj.operator)
             user_name_list = User.objects.filter(username__in=obj.operator).values_list("display_name", flat=True)
             return ", ".join(list(user_name_list))
 
