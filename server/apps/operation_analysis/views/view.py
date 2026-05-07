@@ -104,7 +104,7 @@ class DirectoryModelViewSet(BuiltinVisibleMixin, AuthViewSet):
         _raise_if_builtin(instance, "删除")
         return super(DirectoryModelViewSet, self).destroy(request, *args, **kwargs)
 
-    # @HasPermission("view-View")
+    @HasPermission("view-View")
     @action(detail=False, methods=["get"], url_path="tree")
     def tree(self, request, *args, **kwargs):
         result = DictDirectoryService.get_dict_trees(request)

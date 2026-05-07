@@ -32,6 +32,7 @@ from apps.operation_analysis.serializers.import_export_serializers import (
 from apps.operation_analysis.services.import_export.export_service import ExportService
 from apps.operation_analysis.services.import_export.precheck_service import PrecheckService
 from apps.operation_analysis.services.import_export.import_service import ImportService
+from apps.operation_analysis.services.access_control import build_authorized_queryset
 from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
 
 
@@ -48,6 +49,13 @@ class OpenImportExportViewSet(OpenAPIViewSet):
         请求头需包含有效的 API Token（由 APISecretMiddleware 验证）
         Header: Api-Authorization: <api_token>
     """
+
+    EXPORT_PERMISSION_KEY_MAP = {
+        ObjectType.DASHBOARD.value: "directory.dashboard",
+        ObjectType.TOPOLOGY.value: "directory.topology",
+        ObjectType.ARCHITECTURE.value: "directory.architecture",
+        ObjectType.DATASOURCE.value: "datasource",
+    }
 
     def _check_api_auth(self, request):
         if not getattr(request, "api_pass", False):
@@ -89,27 +97,43 @@ class OpenImportExportViewSet(OpenAPIViewSet):
             return request.user.username
         return "api_user"
 
-    def _convert_ids_to_keys(self, object_type: str, object_ids: list[int]) -> list[str]:
+    def _get_authorized_queryset(self, request, object_type: str):
         """将对象 ID 转换为业务键"""
         from apps.operation_analysis.models.models import Dashboard, Topology, Architecture
         from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
+        groups = self._require_groups(request)
+        current_team = groups[0]
+
+        if object_type == ObjectType.NAMESPACE.value:
+            datasource_queryset = build_authorized_queryset(DataSourceAPIModel.objects.all(), request.user, current_team, "datasource")
+            return NameSpace.objects.filter(data_sources__in=datasource_queryset).distinct()
+
+        model_map = {
+            ObjectType.DASHBOARD.value: Dashboard,
+            ObjectType.TOPOLOGY.value: Topology,
+            ObjectType.ARCHITECTURE.value: Architecture,
+            ObjectType.DATASOURCE.value: DataSourceAPIModel,
+        }
+        model = model_map[object_type]
+        permission_key = self.EXPORT_PERMISSION_KEY_MAP[object_type]
+        return build_authorized_queryset(model.objects.all(), request.user, current_team, permission_key)
+
+    def _convert_ids_to_keys(self, request, object_type: str, object_ids: list[int]) -> list[str]:
         from apps.operation_analysis.constants.import_export import BUSINESS_KEY_SEPARATOR
 
+        authorized_queryset = self._get_authorized_queryset(request, object_type).filter(id__in=object_ids)
+        if authorized_queryset.count() != len(set(object_ids)):
+            raise ValidationError("包含无权访问的导出对象")
+
         keys = []
-        if object_type == ObjectType.DASHBOARD.value:
-            for obj in Dashboard.objects.filter(id__in=object_ids):
-                keys.append(f"{object_type}{BUSINESS_KEY_SEPARATOR}{obj.name}")
-        elif object_type == ObjectType.TOPOLOGY.value:
-            for obj in Topology.objects.filter(id__in=object_ids):
-                keys.append(f"{object_type}{BUSINESS_KEY_SEPARATOR}{obj.name}")
-        elif object_type == ObjectType.ARCHITECTURE.value:
-            for obj in Architecture.objects.filter(id__in=object_ids):
+        if object_type in {ObjectType.DASHBOARD.value, ObjectType.TOPOLOGY.value, ObjectType.ARCHITECTURE.value}:
+            for obj in authorized_queryset:
                 keys.append(f"{object_type}{BUSINESS_KEY_SEPARATOR}{obj.name}")
         elif object_type == ObjectType.DATASOURCE.value:
-            for obj in DataSourceAPIModel.objects.filter(id__in=object_ids):
+            for obj in authorized_queryset:
                 keys.append(f"{obj.name}{BUSINESS_KEY_SEPARATOR}{obj.rest_api}")
         elif object_type == ObjectType.NAMESPACE.value:
-            for obj in NameSpace.objects.filter(id__in=object_ids):
+            for obj in authorized_queryset:
                 keys.append(obj.name)
         return keys
 
@@ -186,7 +210,7 @@ class OpenImportExportViewSet(OpenAPIViewSet):
         groups = self._require_groups(request)
         organization_id = groups[0]
 
-        object_keys = self._convert_ids_to_keys(object_type, object_ids)
+        object_keys = self._convert_ids_to_keys(request, object_type, object_ids)
 
         logger.info(
             "Open API export request: object_type=%s, object_ids=%s, organization_id=%s",
