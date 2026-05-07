@@ -116,8 +116,63 @@ class MiddlewareCollectMetrics(CollectBase):
             return router_id
         return self.get_inst_name(data)
 
+    @staticmethod
+    def _get_default_instance_snapshot(instances):
+        if isinstance(instances, list) and instances:
+            first_instance = instances[0]
+            if isinstance(first_instance, dict):
+                return first_instance
+        return {}
+
+    def _get_matched_instance_snapshot(self, raw_ip=""):
+        task = self.get_collect_inst()
+        instances = task.instances if isinstance(task.instances, list) else []
+
+        if raw_ip:
+            for instance_item in instances:
+                if not isinstance(instance_item, dict):
+                    continue
+                instance_ip = str(instance_item.get("ip_addr") or instance_item.get("host") or "").strip()
+                if instance_ip == raw_ip:
+                    return instance_item
+
+        return self._get_default_instance_snapshot(instances)
+
+    def _get_cloud_label(self, raw_ip=""):
+        task = self.get_collect_inst()
+        params = task.params if isinstance(task.params, dict) else {}
+        instances = task.instances if isinstance(task.instances, list) else []
+
+        matched_instance = self._get_matched_instance_snapshot(raw_ip=raw_ip)
+
+        for source in (matched_instance, params, self._get_default_instance_snapshot(instances)):
+            if not isinstance(source, dict):
+                continue
+            cloud_name = str(source.get("cloud_name") or "").strip()
+            if cloud_name:
+                return cloud_name
+
+        for source in (matched_instance, params, self._get_default_instance_snapshot(instances)):
+            if not isinstance(source, dict):
+                continue
+            cloud = str(source.get("cloud") or source.get("cloud_id") or "").strip()
+            if cloud:
+                return cloud
+
+        return ""
+
+    def _get_host_association_inst_name(self, data):
+        raw_ip = self.get_ip_addr(data)
+        if not raw_ip:
+            return ""
+
+        cloud_label = self._get_cloud_label(raw_ip=raw_ip)
+        if cloud_label:
+            return f"{raw_ip}[{cloud_label}]"
+        return raw_ip
+
     def get__host_assos(self, data):
-        host_inst_name = self.get_ip_addr(data)
+        host_inst_name = self._get_host_association_inst_name(data)
         if not host_inst_name:
             logger.warning(
                 "实例未解析到主机标识，跳过run关联创建 instance_id=%s node_name=%s",

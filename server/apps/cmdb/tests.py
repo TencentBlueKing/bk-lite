@@ -129,6 +129,60 @@ def test_instance_association_instance_list_denies_user_without_object_permissio
     mock_association_list.assert_not_called()
 
 
+def test_middleware_host_association_uses_cloud_aware_host_name():
+    from apps.cmdb.collection.collect_plugin.middleware import MiddlewareCollectMetrics
+
+    class _TestMiddlewareCollectMetrics(MiddlewareCollectMetrics):
+        @property
+        def _metrics(self):
+            return ["middleware_info_gauge"]
+
+    task_snapshot = SimpleNamespace(
+        instances=[{"ip_addr": "10.0.0.1", "cloud_name": "prod-region", "inst_name": "10.0.0.1[prod-region]"}],
+        params={"cloud_name": "fallback-region"},
+    )
+
+    with patch.object(_TestMiddlewareCollectMetrics, "get_collect_inst", return_value=task_snapshot):
+        plugin = _TestMiddlewareCollectMetrics(inst_name="middleware-a", inst_id="1", task_id="task-1")
+        assos = plugin.get__host_assos({"ip_addr": "10.0.0.1"})
+
+    assert assos == [
+        {
+            "model_id": "host",
+            "inst_name": "10.0.0.1[prod-region]",
+            "asst_id": "run",
+            "model_asst_id": "rabbitmq_run_host",
+        }
+    ]
+
+
+def test_middleware_host_association_falls_back_to_raw_ip_without_cloud_label():
+    from apps.cmdb.collection.collect_plugin.middleware import MiddlewareCollectMetrics
+
+    class _TestMiddlewareCollectMetrics(MiddlewareCollectMetrics):
+        @property
+        def _metrics(self):
+            return ["middleware_info_gauge"]
+
+    task_snapshot = SimpleNamespace(
+        instances=[{"ip_addr": "10.0.0.2", "inst_name": "10.0.0.2"}],
+        params={},
+    )
+
+    with patch.object(_TestMiddlewareCollectMetrics, "get_collect_inst", return_value=task_snapshot):
+        plugin = _TestMiddlewareCollectMetrics(inst_name="middleware-b", inst_id="2", task_id="task-2")
+        assos = plugin.get__host_assos({"ip_addr": "10.0.0.2"})
+
+    assert assos == [
+        {
+            "model_id": "host",
+            "inst_name": "10.0.0.2",
+            "asst_id": "run",
+            "model_asst_id": "rabbitmq_run_host",
+        }
+    ]
+
+
 class CQLQueryTest:
     """
     用于测试和执行CQL查询的辅助类
