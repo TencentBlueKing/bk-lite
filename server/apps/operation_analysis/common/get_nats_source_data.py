@@ -4,6 +4,7 @@
 # @Author: windyzhao
 from apps.operation_analysis.nats.nats_client import DefaultNastClient
 from apps.core.logger import operation_analysis_logger as logger
+from rest_framework.exceptions import ValidationError
 
 
 class GetNatsData:
@@ -81,12 +82,13 @@ class GetNatsData:
             try:
                 namespace_id = int(namespace_id)
             except (TypeError, ValueError):
-                namespace_id = None
+                raise ValidationError("namespace_id 非法")
 
         if namespace_id is not None:
             for ns in self.namespace_list:
                 if ns.id == namespace_id:
                     return ns
+            raise ValidationError("所选命名空间未绑定到当前数据源")
 
         # 未指定或未匹配到，返回第一个
         return self.namespace_list[0] if self.namespace_list else None
@@ -97,11 +99,11 @@ class GetNatsData:
         """
         namespace = self._get_target_namespace()
         if namespace is None:
-            return []
+            raise ValidationError("当前数据源没有可用命名空间")
 
         server_url = self.namespace_server_map.get(namespace.id)
         if not server_url:
-            return []
+            raise ValidationError("命名空间连接配置不完整")
 
         nats_namespace = getattr(namespace, "namespace", "bk_lite")
         nats_client = self._get_client(server=server_url, namespace=nats_namespace)
@@ -119,4 +121,4 @@ class GetNatsData:
             import traceback
 
             logger.error("==获取NATS数据源数据失败==: namespace={} error={}".format(namespace.name, traceback.format_exc()))
-            return []
+            raise RuntimeError("获取NATS数据源数据失败") from e
