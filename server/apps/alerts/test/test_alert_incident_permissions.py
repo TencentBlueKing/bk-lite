@@ -5,11 +5,21 @@ from django.contrib.auth.hashers import make_password
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.alerts.constants.constants import AlertStatus, AlertsSourceTypes, EventAction, EventType, IncidentStatus
-from apps.alerts.models import Alert, AlertSource, Event, Incident
+from apps.alerts.constants.constants import (
+    AlertStatus,
+    AlertsSourceTypes,
+    EventAction,
+    EventType,
+    IncidentStatus,
+    LogAction,
+    LogTargetType,
+)
+from apps.alerts.models import Alert, AlertSource, Event, Incident, OperatorLog
 from apps.alerts.views.alert import AlertModelViewSet
 from apps.alerts.views.incident import IncidentModelViewSet
-from apps.system_mgmt.models import User
+from apps.alerts.views.event import EventModelViewSet
+from apps.alerts.views.operator_log import SystemLogModelViewSet
+from apps.system_mgmt.models import Group, User
 
 
 def _build_user(username, group_list, alarm_permissions):
@@ -23,7 +33,13 @@ def _build_user(username, group_list, alarm_permissions):
     )
     user.permission = {"alarm": set(alarm_permissions)}
     user.is_superuser = False
+    user.is_authenticated = True
     return user
+
+
+def _ensure_groups(*group_ids):
+    for group_id in group_ids:
+        Group.objects.get_or_create(id=group_id, defaults={"name": f"group-{group_id}", "parent_id": 0})
 
 
 def _build_alert(team, operator, suffix):
@@ -82,6 +98,7 @@ def _build_alert(team, operator, suffix):
 
 @pytest.mark.django_db
 def test_alert_list_is_scoped_by_operator_and_authorized_team():
+    _ensure_groups(1, 2)
     user = _build_user("alert-owner", [1], ["Alarms-View"])
     team_alert = _build_alert([1], [], "team")
     assigned_alert = _build_alert([2], ["alert-owner"], "assigned")
@@ -103,6 +120,7 @@ def test_alert_list_is_scoped_by_operator_and_authorized_team():
 
 @pytest.mark.django_db
 def test_incident_retrieve_rejects_cross_team_access():
+    _ensure_groups(1, 2)
     user = _build_user("incident-reader", [1], ["Incidents-View"])
     foreign_alert = _build_alert([2], ["someone-else"], "foreign")
     incident = Incident.objects.create(
@@ -134,6 +152,7 @@ def test_incident_retrieve_rejects_cross_team_access():
 
 @pytest.mark.django_db
 def test_incident_create_rejects_unscoped_alert_ids():
+    _ensure_groups(1, 2)
     user = _build_user("incident-editor", [1], ["Alarms-Edit"])
     hidden_alert = _build_alert([2], ["someone-else"], "hidden-create")
 
@@ -162,6 +181,7 @@ def test_incident_create_rejects_unscoped_alert_ids():
 
 @pytest.mark.django_db
 def test_alert_operator_rejects_unscoped_alert_ids():
+    _ensure_groups(1, 2)
     user = _build_user("alert-editor", [1], ["Alarms-Edit"])
     hidden_alert = _build_alert([2], ["someone-else"], "hidden-operator")
 
@@ -182,3 +202,57 @@ def test_alert_operator_rejects_unscoped_alert_ids():
     assert payload["result"] is False
     assert payload["data"][hidden_alert.alert_id]["message"] == "您没有权限操作此告警"
     assert hidden_alert.status == AlertStatus.UNASSIGNED
+
+
+@pytest.mark.django_db
+def test_event_retrieve_rejects_cross_team_access():
+    _ensure_groups(1, 2)
+    user = _build_user("event-reader", [1], ["Alarms-View"])
+    hidden_alert = _build_alert([2], ["someone-else"], "hidden-event")
+    hidden_event = hidden_alert.events.first()
+
+    factory = APIRequestFactory()
+    request = factory.get(f"/api/events/{hidden_event.pk}/")
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=user)
+
+    response = EventModelViewSet.as_view({"get": "retrieve"})(request, pk=hidden_event.pk)
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_operator_log_list_hides_cross_team_alert_history():
+    _ensure_groups(1, 2)
+    user = _build_user("log-reader", [1], ["operation_log-View"])
+    visible_alert = _build_alert([1], [], "visible-log")
+    hidden_alert = _build_alert([2], ["someone-else"], "hidden-log")
+    OperatorLog.objects.create(
+        operator="system",
+        action=LogAction.MODIFY,
+        target_type=LogTargetType.ALERT,
+        operator_object="告警处理-关闭",
+        target_id=visible_alert.alert_id,
+        overview="visible log",
+    )
+    OperatorLog.objects.create(
+        operator="system",
+        action=LogAction.MODIFY,
+        target_type=LogTargetType.ALERT,
+        operator_object="告警处理-关闭",
+        target_id=hidden_alert.alert_id,
+        overview="hidden log",
+    )
+
+    factory = APIRequestFactory()
+    request = factory.get("/api/log/")
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=user)
+
+    response = SystemLogModelViewSet.as_view({"get": "list"})(request)
+    payload = response.data
+    rows = payload["data"] if isinstance(payload, dict) else payload
+    returned_overviews = {item["overview"] for item in rows}
+
+    assert "visible log" in returned_overviews
+    assert "hidden log" not in returned_overviews

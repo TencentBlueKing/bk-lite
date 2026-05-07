@@ -52,6 +52,14 @@ class IncidentModelViewSet(ModelViewSet):
             context["allowed_alert_queryset"] = filter_alert_queryset_for_request(Alert.objects.all(), request)
         return context
 
+    def _get_allowed_alert_ids(self):
+        request = getattr(self, "request", None)
+        if request is None:
+            return set()
+        return set(
+            filter_alert_queryset_for_request(Alert.objects.all(), request).values_list("id", flat=True)
+        )
+
     @HasPermission("Incidents-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -66,30 +74,39 @@ class IncidentModelViewSet(ModelViewSet):
         data = request.data
         incident_id = f"INCIDENT-{uuid.uuid4().hex}"
         data["incident_id"] = incident_id
-        if not data["alert"]:
+        alert_ids = list(data.get("alert", []))
+        if not alert_ids:
             return Response(
                 {"detail": "must provide at least one alert to create an incident."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        else:
-            has_incident_alert_ids = list(
-                Alert.objects.filter(
-                    id__in=data["alert"], incident__isnull=False
-                ).values_list("id", flat=True)
+
+        allowed_alert_ids = self._get_allowed_alert_ids()
+        unauthorized_alert_ids = set(alert_ids) - allowed_alert_ids
+        if unauthorized_alert_ids:
+            return Response(
+                {"detail": "Some alerts are out of your authorized scope."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-            not_incident_alert_ids = set(data["alert"]) - set(has_incident_alert_ids)
-            data["alert"] = list(not_incident_alert_ids)
-            if not not_incident_alert_ids:
-                logger.warning(
-                    f"Some alerts {has_incident_alert_ids} are already associated with an incident. "
-                    "They will not be included in the new incident."
-                )
-                return Response(
-                    {
-                        "detail": "Some alerts are already associated with an incident and will not be included."
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+
+        has_incident_alert_ids = list(
+            Alert.objects.filter(
+                id__in=alert_ids, incident__isnull=False
+            ).values_list("id", flat=True)
+        )
+        not_incident_alert_ids = set(alert_ids) - set(has_incident_alert_ids)
+        data["alert"] = list(not_incident_alert_ids)
+        if not not_incident_alert_ids:
+            logger.warning(
+                f"Some alerts {has_incident_alert_ids} are already associated with an incident. "
+                "They will not be included in the new incident."
+            )
+            return Response(
+                {
+                    "detail": "Some alerts are already associated with an incident and will not be included."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if not data["operator"]:
             data["operator"] = self.request.user.username
 
@@ -117,6 +134,14 @@ class IncidentModelViewSet(ModelViewSet):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
+        if "alert" in request.data:
+            requested_alert_ids = set(request.data.get("alert", []))
+            unauthorized_alert_ids = requested_alert_ids - self._get_allowed_alert_ids()
+            if unauthorized_alert_ids:
+                return Response(
+                    {"detail": "Some alerts are out of your authorized scope."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
