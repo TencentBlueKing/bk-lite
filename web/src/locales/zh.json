@@ -1,6 +1,7 @@
 {
   "common": {
     "edit": "编辑",
+    "builtIn": "内置",
     "delete": "删除",
     "export": "导出",
     "import": "导入",

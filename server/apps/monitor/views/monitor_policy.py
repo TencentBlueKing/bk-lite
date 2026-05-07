@@ -1,3 +1,4 @@
+import copy
 import json
 from datetime import datetime, timezone
 
@@ -79,20 +80,23 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         request.data["created_by"] = request.user.username
         response = super().create(request, *args, **kwargs)
         policy_id = response.data["id"]
+        policy = MonitorPolicy.objects.filter(id=policy_id).first()
         schedule = request.data.get("schedule")
         organizations = request.data.get("organizations", [])
         self.update_or_create_task(policy_id, schedule)
         self.update_policy_organizations(policy_id, organizations)
-        self.update_policy_baselines(policy_id, request.data.get("enable_alerts", []))
+        if self.is_no_data_alert_enabled(policy):
+            self.update_policy_baselines(policy_id, policy.enable_alerts)
         return response
 
     def update(self, request, *args, **kwargs):
         request.data["updated_by"] = request.user.username
         policy_id = kwargs["pk"]
 
-        # 获取策略变更前的 enable 状态
+        # 获取策略变更前的 enable 状态和无数据基准语义
         policy = MonitorPolicy.objects.filter(id=policy_id).first()
         old_enable = policy.enable if policy else None
+        old_baseline_state = self.get_baseline_state(policy)
 
         response = super().update(request, *args, **kwargs)
         updated_policy = MonitorPolicy.objects.filter(id=policy_id).first()
@@ -103,8 +107,13 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         organizations = request.data.get("organizations", [])
         if organizations:
             self.update_policy_organizations(policy_id, organizations)
-        if "enable_alerts" in request.data:
-            self.update_policy_baselines(policy_id, request.data.get("enable_alerts", []))
+        if self.should_update_policy_baselines(policy, old_baseline_state, updated_policy):
+            self.update_policy_baselines(
+                policy_id,
+                updated_policy.enable_alerts,
+                operator=request.user.username,
+                reset_active_no_data_alerts=self.baseline_state_changed(old_baseline_state, updated_policy),
+            )
 
         # 处理 enable 字段变更
         if "enable" in request.data and policy and updated_policy:
@@ -117,9 +126,10 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         request.data["updated_by"] = request.user.username
         policy_id = kwargs["pk"]
 
-        # 获取策略变更前的 enable 状态
+        # 获取策略变更前的 enable 状态和无数据基准语义
         policy = MonitorPolicy.objects.filter(id=policy_id).first()
         old_enable = policy.enable if policy else None
+        old_baseline_state = self.get_baseline_state(policy)
 
         response = super().partial_update(request, *args, **kwargs)
         updated_policy = MonitorPolicy.objects.filter(id=policy_id).first()
@@ -130,8 +140,13 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         organizations = request.data.get("organizations", [])
         if organizations:
             self.update_policy_organizations(policy_id, organizations)
-        if "enable_alerts" in request.data:
-            self.update_policy_baselines(policy_id, request.data.get("enable_alerts", []))
+        if self.should_update_policy_baselines(policy, old_baseline_state, updated_policy):
+            self.update_policy_baselines(
+                policy_id,
+                updated_policy.enable_alerts,
+                operator=request.user.username,
+                reset_active_no_data_alerts=self.baseline_state_changed(old_baseline_state, updated_policy),
+            )
 
         # 处理 enable 字段变更
         if "enable" in request.data and policy and updated_policy:
@@ -173,16 +188,104 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         PolicyOrganization.objects.filter(policy_id=policy_id).delete()
         return super().destroy(request, *args, **kwargs)
 
-    def update_policy_baselines(self, policy_id, enable_alerts):
+    def is_no_data_alert_enabled(self, policy):
+        return bool(policy and AlertConstants.NO_DATA in (policy.enable_alerts or []))
+
+    def _normalize_baseline_source(self, source):
+        normalized_source = copy.deepcopy(source) if source else {}
+        if not isinstance(normalized_source, dict):
+            return normalized_source
+
+        source_values = normalized_source.get("values")
+        if isinstance(source_values, list):
+            normalized_source["values"] = sorted(
+                source_values,
+                key=lambda item: json.dumps(item, sort_keys=True, ensure_ascii=False),
+            )
+
+        return normalized_source
+
+    def get_baseline_state(self, policy):
+        if not policy:
+            return {}
+        return {
+            "source": self._normalize_baseline_source(policy.source),
+            "group_by": copy.deepcopy(policy.group_by),
+            "query_condition": copy.deepcopy(policy.query_condition),
+            "monitor_object": policy.monitor_object_id,
+            "collect_type": policy.collect_type,
+        }
+
+    def baseline_state_changed(self, old_state, policy):
+        if not old_state or not policy:
+            return False
+        return old_state != self.get_baseline_state(policy)
+
+    def should_update_policy_baselines(self, old_policy, old_state, policy):
+        if not policy:
+            return False
+
+        old_no_data_enabled = self.is_no_data_alert_enabled(old_policy)
+        new_no_data_enabled = self.is_no_data_alert_enabled(policy)
+        if not old_no_data_enabled and not new_no_data_enabled:
+            return False
+        if old_no_data_enabled != new_no_data_enabled:
+            return True
+        return self.baseline_state_changed(old_state, policy)
+
+    def update_policy_baselines(
+        self,
+        policy_id,
+        enable_alerts,
+        operator="system",
+        reset_active_no_data_alerts=False,
+    ):
         policy = MonitorPolicy.objects.filter(id=policy_id).first()
         if not policy:
             return
 
         baseline_service = PolicyBaselineService(policy)
         if AlertConstants.NO_DATA in enable_alerts:
+            if reset_active_no_data_alerts:
+                self.close_active_no_data_alerts(policy, operator, "policy_baseline_changed")
             baseline_service.refresh()
         else:
+            self.close_active_no_data_alerts(policy, operator, "no_data_disabled")
             baseline_service.clear()
+
+    def close_active_no_data_alerts(self, policy, operator, reason):
+        now = datetime.now(timezone.utc)
+        alerts_to_close = list(
+            MonitorAlert.objects.filter(
+                policy_id=policy.id,
+                alert_type="no_data",
+                status="new",
+            )
+        )
+        if not alerts_to_close:
+            return
+
+        operation_log = {
+            "action": "closed",
+            "reason": reason,
+            "operator": operator,
+            "time": now.isoformat(),
+        }
+        for alert in alerts_to_close:
+            alert.status = "closed"
+            alert.end_event_time = now
+            alert.operator = operator
+            alert.operation_logs = (alert.operation_logs or []) + [operation_log]
+        MonitorAlert.objects.bulk_update(
+            alerts_to_close,
+            fields=["status", "end_event_time", "operator", "operation_logs"],
+        )
+        AlertLifecycleNotifier(policy).notify_alerts(
+            alerts_to_close,
+            action="closed",
+            operator=operator,
+            reason=reason,
+        )
 
     def handle_policy_enable_change(self, policy_id, old_enable, new_enable):
         if old_enable == new_enable:

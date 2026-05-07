@@ -9,12 +9,14 @@ import tempfile
 from rest_framework.decorators import action
 from rest_framework import status
 
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.alerts.filters import AlertSourceModelFilter
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.serializers import AlertSourceModelSerializer
 from apps.alerts.service.k8s_install import K8sInstallService
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
+from apps.rpc.node_mgmt import NodeMgmt
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
 
@@ -33,6 +35,17 @@ K8S_DOWNLOAD_FILES = {
         "display_name": "Offline Image Package",
     },
 }
+
+
+def _get_valid_current_team(request):
+    current_team = request.COOKIES.get("current_team")
+    if current_team in (None, ""):
+        raise BaseAppException("缺少 current_team 参数")
+
+    try:
+        return int(current_team)
+    except (TypeError, ValueError):
+        raise BaseAppException("current_team 参数非法")
 
 
 class AlertSourceModelViewSet(ModelViewSet):
@@ -134,6 +147,36 @@ class AlertSourceModelViewSet(ModelViewSet):
             ],
         }
         return WebUtils.response_success(data)
+
+    @HasPermission("Integration-View")
+    @action(methods=["post"], detail=False, url_path="snmp_trap_nodes")
+    def snmp_trap_nodes(self, request):
+        current_team = _get_valid_current_team(request)
+        organization_ids = [] if request.user.is_superuser else [i["id"] for i in getattr(request.user, "group_list", [])]
+        query_data = {
+            "cloud_region_id": request.data.get("cloud_region_id"),
+            "organization_ids": organization_ids,
+            "name": request.data.get("name"),
+            "ip": request.data.get("ip"),
+            "os": request.data.get("os"),
+            "page": request.data.get("page", 1),
+            "page_size": request.data.get("page_size", 10),
+            "is_active": request.data.get("is_active"),
+            "is_manual": request.data.get("is_manual"),
+            "is_container": request.data.get("is_container"),
+            "permission_data": {
+                "username": request.user.username,
+                "domain": request.user.domain,
+                "current_team": current_team,
+            },
+        }
+        data = NodeMgmt().node_list(query_data)
+        if not isinstance(data, dict):
+            data = {}
+        return WebUtils.response_success({
+            "count": data.get("count", 0),
+            "nodes": data.get("nodes", []),
+        })
 
     @HasPermission("Integration-View")
     @action(methods=["post"], detail=False, url_path="k8s_render")

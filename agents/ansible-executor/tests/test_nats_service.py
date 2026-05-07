@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import pytest
 
@@ -12,6 +13,22 @@ class DummyMessage:
 
     async def in_progress(self):
         self.in_progress_calls += 1
+
+
+class DummyNATSResponse:
+    def __init__(self, payload):
+        if isinstance(payload, bytes):
+            self.data = payload
+        else:
+            self.data = json.dumps(payload).encode("utf-8")
+
+
+class DummyNATSClient:
+    def __init__(self, payload):
+        self.payload = payload
+
+    async def request(self, subject, request_payload, timeout):
+        return DummyNATSResponse(self.payload)
 
 
 @pytest.mark.asyncio
@@ -95,3 +112,75 @@ async def test_run_task_with_ack_progress_cancels_keepalive(tmp_path, monkeypatc
 
     assert calls["run"] == 1
     assert result == {"task_id": "task-2", "owner_id": "owner-b"}
+
+
+@pytest.mark.asyncio
+async def test_invoke_callback_rejects_handler_failure(tmp_path):
+    service = AnsibleNATSService(
+        ServiceConfig(
+            nats_servers=["nats://127.0.0.1:4222"],
+            nats_instance_id="default",
+            js_stream="BK_ANS_EXEC_TASKS",
+            js_subject_prefix="bk.ans_exec.tasks",
+            js_durable="ansible-executor",
+            state_db_path=str(tmp_path / "task.db"),
+        )
+    )
+    service.nc = DummyNATSClient({"success": True, "result": {"success": False, "message": "invalid result"}})
+
+    with pytest.raises(RuntimeError, match="invalid result"):
+        await service._invoke_callback({"subject": "job.ansible_task_callback"}, {"task_id": "task-3"})
+
+
+@pytest.mark.asyncio
+async def test_invoke_callback_rejects_transport_failure(tmp_path):
+    service = AnsibleNATSService(
+        ServiceConfig(
+            nats_servers=["nats://127.0.0.1:4222"],
+            nats_instance_id="default",
+            js_stream="BK_ANS_EXEC_TASKS",
+            js_subject_prefix="bk.ans_exec.tasks",
+            js_durable="ansible-executor",
+            state_db_path=str(tmp_path / "task.db"),
+        )
+    )
+    service.nc = DummyNATSClient({"success": False, "message": "callback exception"})
+
+    with pytest.raises(RuntimeError, match="callback exception"):
+        await service._invoke_callback({"subject": "job.ansible_task_callback"}, {"task_id": "task-4"})
+
+
+@pytest.mark.asyncio
+async def test_invoke_callback_rejects_invalid_json_response(tmp_path):
+    service = AnsibleNATSService(
+        ServiceConfig(
+            nats_servers=["nats://127.0.0.1:4222"],
+            nats_instance_id="default",
+            js_stream="BK_ANS_EXEC_TASKS",
+            js_subject_prefix="bk.ans_exec.tasks",
+            js_durable="ansible-executor",
+            state_db_path=str(tmp_path / "task.db"),
+        )
+    )
+    service.nc = DummyNATSClient(b"not-json")
+
+    with pytest.raises(ValueError, match="invalid JSON"):
+        await service._invoke_callback({"subject": "job.ansible_task_callback"}, {"task_id": "task-5"})
+
+
+@pytest.mark.asyncio
+async def test_invoke_callback_rejects_non_object_response(tmp_path):
+    service = AnsibleNATSService(
+        ServiceConfig(
+            nats_servers=["nats://127.0.0.1:4222"],
+            nats_instance_id="default",
+            js_stream="BK_ANS_EXEC_TASKS",
+            js_subject_prefix="bk.ans_exec.tasks",
+            js_durable="ansible-executor",
+            state_db_path=str(tmp_path / "task.db"),
+        )
+    )
+    service.nc = DummyNATSClient(["ok"])
+
+    with pytest.raises(ValueError, match="non-object"):
+        await service._invoke_callback({"subject": "job.ansible_task_callback"}, {"task_id": "task-6"})

@@ -15,6 +15,7 @@ class InstallerConstants:
 
     EXECUTION_PHASE_KEY = "execution_phase"
     EXECUTION_ATTEMPT_KEY = "execution_attempt"
+    INSTALL_NODE_ID_KEY = "install_node_id"
     EXECUTION_PHASE_BOOTSTRAP_RUNNING = "bootstrap_running"
     EXECUTION_PHASE_CONNECTIVITY_WAITING = "connectivity_waiting"
     EXECUTION_PHASE_FINISHED = "finished"

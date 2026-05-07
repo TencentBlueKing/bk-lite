@@ -7,6 +7,7 @@ from apps.core.logger import job_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.job_mgmt.constants import ExecutionStatus, ExecutorDriver, OSType, ScriptType, SSHCredentialType, TargetSource
 from apps.job_mgmt.models import JobExecution, Target
+from apps.job_mgmt.services.callback_service import send_callback
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.node_mgmt import NodeMgmt
 from config.components.nats import NATS_NAMESPACE
@@ -93,6 +94,10 @@ class ExecutionTaskBaseService(object):
         final_status = ExecutionStatus.FAILED if execution.failed_count > 0 else ExecutionStatus.SUCCESS
         cls.update_execution_status(execution, final_status, finished_at=timezone.now())
         logger.info(f"[{task_name}] 任务完成: execution_id={execution.id}, status={final_status}")
+
+        # 回调通知（如有 callback_url）
+        execution.refresh_from_db()
+        send_callback(execution)
 
     @staticmethod
     def _should_use_ansible(target_source: str, target_list: list) -> bool:
@@ -329,3 +334,40 @@ class ExecutionTaskBaseService(object):
         if hints:
             return f"执行过程出错: {error_type} ({', '.join(hints)})"
         return f"执行过程出错: {error_type} - {error_str[:200]}" if len(error_str) > 200 else f"执行过程出错: {error_type} - {error_str}"
+
+    @staticmethod
+    def normalize_executor_error(exec_result, default_message: str = "执行失败") -> str:
+        """将执行器返回的错误统一映射为更友好的中文文案"""
+        if isinstance(exec_result, str):
+            raw_message = exec_result
+            code = ""
+            stage = ""
+            category = ""
+        elif isinstance(exec_result, dict):
+            raw_message = str(exec_result.get("error") or exec_result.get("stderr") or exec_result.get("message") or exec_result.get("result") or "")
+            code = str(exec_result.get("code") or "")
+            stage = str(exec_result.get("stage") or "")
+            category = str(exec_result.get("category") or "")
+        else:
+            return default_message
+
+        message = raw_message.strip()
+        if stage == "tcp_connect":
+            return f"目标地址或端口不可达，请检查网络连通性和端口是否开放：{message or default_message}"
+        if stage == "ssh_dial" and category == "network":
+            return f"SSH连接超时或网络异常，请检查目标主机网络和端口连通性：{message or default_message}"
+        if stage == "ssh_dial" and category == "auth":
+            return f"SSH认证失败，请检查用户名、密码或私钥是否正确：{message or default_message}"
+        if stage == "legacy_retry" and category == "compatibility":
+            return f"SSH协议兼容性失败，请检查目标主机SSH算法配置：{message or default_message}"
+        if stage == "session_create":
+            return f"SSH会话创建失败，请检查目标主机SSH服务状态：{message or default_message}"
+        if stage == "command_run" and category == "remote_timeout":
+            return f"远程命令执行超时：{message or default_message}"
+        if stage == "command_run" and category == "remote_exit":
+            return f"远程命令执行失败：{message or default_message}"
+        if code == "timeout":
+            return f"执行超时：{message or default_message}"
+        if message:
+            return message
+        return default_message

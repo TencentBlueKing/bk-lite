@@ -260,17 +260,16 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	}
 
 	startTime := time.Now()
-	var stdoutBuf bytes.Buffer
-	var stderrBuf bytes.Buffer
-	stdoutWriter := io.MultiWriter(&stdoutBuf)
-	stderrWriter := io.MultiWriter(&stderrBuf)
+	outputCapture := utils.NewSharedOutputCapture(utils.CommandOutputLimitBytes)
+	stdoutWriter := outputCapture.StdoutWriter()
+	stderrWriter := outputCapture.StderrWriter()
 	var stdoutStreamWriter *scpStreamLogWriter
 	var stderrStreamWriter *scpStreamLogWriter
 	if isSCPCommand {
 		stdoutStreamWriter = newSCPStreamLogWriter(instanceId, "stdout", shell, formatSCPLogContext(logContext))
 		stderrStreamWriter = newSCPStreamLogWriter(instanceId, "stderr", shell, formatSCPLogContext(logContext))
-		stdoutWriter = io.MultiWriter(&stdoutBuf, stdoutStreamWriter)
-		stderrWriter = io.MultiWriter(&stderrBuf, stderrStreamWriter)
+		stdoutWriter = io.MultiWriter(outputCapture.StdoutWriter(), stdoutStreamWriter)
+		stderrWriter = io.MultiWriter(outputCapture.StderrWriter(), stderrStreamWriter)
 	}
 	cmd.Stdout = stdoutWriter
 	cmd.Stderr = stderrWriter
@@ -310,8 +309,9 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 				goto commandFinished
 			case <-ticker.C:
 				elapsed := time.Since(startTime).Round(time.Second)
-				bytesSoFar := stdoutBuf.Len() + stderrBuf.Len()
-				currentOutput := decodeExecuteOutput(append(stdoutBuf.Bytes(), stderrBuf.Bytes()...), shell)
+				snapshot := outputCapture.Snapshot()
+				bytesSoFar := snapshot.TotalWritten
+				currentOutput := formatCapturedExecuteOutput(snapshot, shell)
 				excerpt := outputExcerpt(currentOutput)
 				logger.Infof("[SCP] Instance: %s, running | %s | elapsed=%s | output=%dB | last=%q", instanceId, formatSCPLogContext(logContext), elapsed, bytesSoFar, excerpt)
 			case <-ctx.Done():
@@ -334,8 +334,8 @@ commandFinished:
 	}
 
 	duration := time.Since(startTime)
-	output := append(stdoutBuf.Bytes(), stderrBuf.Bytes()...)
-	decodedOutput := decodeExecuteOutput(output, shell)
+	snapshot := outputCapture.Snapshot()
+	decodedOutput := formatCapturedExecuteOutput(snapshot, shell)
 
 	var exitCode int
 	if exitError, ok := err.(*exec.ExitError); ok {
@@ -373,12 +373,15 @@ commandFinished:
 		}
 	} else {
 		logger.Debugf("[Local Execute] Instance: %s, Command executed successfully in %v", instanceId, duration)
-		logger.Debugf("[Local Execute] Instance: %s, Output length: %d bytes", instanceId, len(output))
-		if len(output) > 0 {
+		logger.Debugf("[Local Execute] Instance: %s, Output length: %d bytes", instanceId, len(decodedOutput))
+		if snapshot.Truncated {
+			logger.Warnf("[Local Execute] Instance: %s, Output exceeded shared capture limit and was truncated (stdout_dropped=%dB stderr_dropped=%dB total_written=%dB)", instanceId, snapshot.StdoutDropped, snapshot.StderrDropped, snapshot.TotalWritten)
+		}
+		if len(decodedOutput) > 0 {
 			logger.Debugf("[Local Execute] Instance: %s, Output: %s", instanceId, decodedOutput)
 		}
 		if isSCPCommand {
-			logger.Infof("[SCP] Instance: %s, success | %s | duration=%s | output=%dB", instanceId, formatSCPLogContext(logContext), duration.Round(time.Second), len(output))
+			logger.Infof("[SCP] Instance: %s, success | %s | duration=%s | output=%dB", instanceId, formatSCPLogContext(logContext), duration.Round(time.Second), len(decodedOutput))
 		}
 	}
 
@@ -469,6 +472,12 @@ func outputExcerpt(value string) string {
 	trimmed = strings.ReplaceAll(trimmed, "\n", " | ")
 	trimmed = strings.ReplaceAll(trimmed, "\r", " ")
 	return truncateForLog(trimmed, 240)
+}
+
+func formatCapturedExecuteOutput(snapshot utils.OutputSnapshot, shell string) string {
+	stdout := decodeExecuteOutput(snapshot.Stdout, shell)
+	stderr := decodeExecuteOutput(snapshot.Stderr, shell)
+	return utils.FormatCapturedOutput(stdout, stderr, snapshot)
 }
 
 func formatSCPLogContext(logContext string) string {

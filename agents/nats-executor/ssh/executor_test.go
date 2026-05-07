@@ -1,9 +1,11 @@
 package ssh
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"nats-executor/local"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,17 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 	"nats-executor/utils"
 )
+
+type stubNetConn struct{}
+
+func (stubNetConn) Read(b []byte) (int, error)       { return 0, io.EOF }
+func (stubNetConn) Write(b []byte) (int, error)      { return len(b), nil }
+func (stubNetConn) Close() error                     { return nil }
+func (stubNetConn) LocalAddr() net.Addr              { return nil }
+func (stubNetConn) RemoteAddr() net.Addr             { return nil }
+func (stubNetConn) SetDeadline(time.Time) error      { return nil }
+func (stubNetConn) SetReadDeadline(time.Time) error  { return nil }
+func (stubNetConn) SetWriteDeadline(time.Time) error { return nil }
 
 type stubSSHClient struct {
 	newSession func() (sshSession, error)
@@ -605,6 +618,156 @@ func TestExecuteReturnsTimeoutCodeWhenDialTimeoutOccurs(t *testing.T) {
 	if response.Code != utils.ErrorCodeTimeout {
 		t.Fatalf("unexpected code: %+v", response)
 	}
+	if response.Stage != sshStageSSHDial || response.Category != sshCategoryNetwork {
+		t.Fatalf("unexpected timeout classification: %+v", response)
+	}
+}
+
+func TestExecuteConnectionTestReturnsFastFailureWhenTCPProbeFails(t *testing.T) {
+	originalProbe := tcpProbeFn
+	originalDial := sshDialFn
+	tcpProbeFn = func(addr string, timeout time.Duration) error {
+		return errors.New("connection refused")
+	}
+	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+		t.Fatal("sshDialFn should not run when TCP probe fails")
+		return nil, nil
+	}
+	defer func() {
+		tcpProbeFn = originalProbe
+		sshDialFn = originalDial
+	}()
+
+	response := Execute(ExecuteRequest{
+		Command:        "echo success",
+		ExecuteTimeout: 5,
+		Host:           "10.0.0.1",
+		Port:           22,
+		User:           "root",
+		Password:       "secret",
+		ConnectionTest: true,
+	}, "instance-1")
+
+	if response.Success {
+		t.Fatal("expected TCP probe failure")
+	}
+	if response.Code != utils.ErrorCodeDependencyFailure {
+		t.Fatalf("unexpected code: %+v", response)
+	}
+	if response.Stage != sshStageTCPConnect || response.Category != sshCategoryNetwork {
+		t.Fatalf("unexpected classification: %+v", response)
+	}
+}
+
+func TestExecuteConnectionTestRunsTCPProbeBeforeDial(t *testing.T) {
+	originalProbe := tcpProbeFn
+	originalDial := sshDialFn
+	probeCalled := false
+	tcpProbeFn = func(addr string, timeout time.Duration) error {
+		probeCalled = true
+		if timeout <= 0 {
+			t.Fatalf("expected positive probe timeout, got %v", timeout)
+		}
+		return nil
+	}
+	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+		if !probeCalled {
+			t.Fatal("expected TCP probe before SSH dial")
+		}
+		return stubSSHClient{newSession: func() (sshSession, error) {
+			return &stubSSHSession{run: func(cmd string) error { return nil }}, nil
+		}}, nil
+	}
+	defer func() {
+		tcpProbeFn = originalProbe
+		sshDialFn = originalDial
+	}()
+
+	response := Execute(ExecuteRequest{
+		Command:        "echo success",
+		ExecuteTimeout: 5,
+		Host:           "10.0.0.1",
+		Port:           22,
+		User:           "root",
+		Password:       "secret",
+		ConnectionTest: true,
+	}, "instance-1")
+
+	if !response.Success {
+		t.Fatalf("expected success, got %+v", response)
+	}
+	if !probeCalled {
+		t.Fatal("expected TCP probe to be called")
+	}
+}
+
+func TestExecuteConnectionTestClassifiesAuthFailure(t *testing.T) {
+	originalProbe := tcpProbeFn
+	originalDial := sshDialFn
+	tcpProbeFn = func(addr string, timeout time.Duration) error { return nil }
+	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+		return nil, errors.New("ssh: handshake failed: ssh: unable to authenticate, attempted methods [none password], no supported methods remain")
+	}
+	defer func() {
+		tcpProbeFn = originalProbe
+		sshDialFn = originalDial
+	}()
+
+	response := Execute(ExecuteRequest{
+		Command:        "echo success",
+		ExecuteTimeout: 5,
+		Host:           "10.0.0.1",
+		Port:           22,
+		User:           "root",
+		Password:       "secret",
+		ConnectionTest: true,
+	}, "instance-1")
+
+	if response.Success {
+		t.Fatal("expected auth failure")
+	}
+	if response.Stage != sshStageSSHDial || response.Category != sshCategoryAuth {
+		t.Fatalf("unexpected auth classification: %+v", response)
+	}
+}
+
+func TestHandleDownloadToRemoteMessageReturnsFastFailWhenTCPProbeFails(t *testing.T) {
+	originalProbe := tcpProbeFn
+	originalDownload := downloadFromObjectStore
+	originalExec := executeSCPCommand
+	tcpProbeFn = func(addr string, timeout time.Duration) error {
+		return errors.New("connection refused")
+	}
+	downloadFromObjectStore = func(req utils.DownloadFileRequest, _ sshConn) error {
+		t.Fatal("download should not start when TCP probe fails")
+		return nil
+	}
+	executeSCPCommand = func(instanceId string, req local.ExecuteRequest) local.ExecuteResponse {
+		t.Fatal("scp should not start when TCP probe fails")
+		return local.ExecuteResponse{}
+	}
+	defer func() {
+		tcpProbeFn = originalProbe
+		downloadFromObjectStore = originalDownload
+		executeSCPCommand = originalExec
+	}()
+
+	payload := []byte(`{"args":[{"bucket_name":"bucket","file_key":"key","file_name":"demo.txt","target_path":"/remote/path","host":"10.0.0.1","port":22,"user":"root","password":"secret","execute_timeout":5,"fast_fail":true}],"kwargs":{}}`)
+	response, ok := handleDownloadToRemoteMessage(payload, "instance-1", nil)
+	if !ok {
+		t.Fatal("expected response")
+	}
+
+	var result local.ExecuteResponse
+	if err := json.Unmarshal(response, &result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if result.Success || result.Code != utils.ErrorCodeDependencyFailure {
+		t.Fatalf("unexpected response: %+v", result)
+	}
+	if !strings.Contains(result.Error, "远程主机端口不可达") {
+		t.Fatalf("unexpected error: %+v", result)
+	}
 }
 
 func TestExecuteReturnsDependencyFailureCodeWhenSessionCreationFails(t *testing.T) {
@@ -658,6 +821,85 @@ func TestExecuteReturnsExecutionFailureCodeWhenRemoteCommandFails(t *testing.T) 
 	}
 	if response.Code != utils.ErrorCodeExecutionFailure {
 		t.Fatalf("unexpected code: %+v", response)
+	}
+}
+
+func TestExecuteCapsCapturedRemoteOutput(t *testing.T) {
+	originalDial := sshDialFn
+	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+		return stubSSHClient{newSession: func() (sshSession, error) {
+			session := &stubSSHSession{}
+			session.run = func(cmd string) error {
+				if session.stdout != nil {
+					_, _ = session.stdout.Write([]byte(strings.Repeat("x", utils.CommandOutputLimitBytes+4096)))
+				}
+				return nil
+			}
+			return session, nil
+		}}, nil
+	}
+	defer func() { sshDialFn = originalDial }()
+
+	response := Execute(ExecuteRequest{
+		Command:        "large-output",
+		ExecuteTimeout: 5,
+		Host:           "10.0.0.1",
+		Port:           22,
+		User:           "root",
+		Password:       "secret",
+	}, "instance-1")
+
+	if !response.Success {
+		t.Fatalf("expected success, got %+v", response)
+	}
+	if len(response.Output) > utils.CommandOutputLimitBytes {
+		t.Fatalf("expected capped output, got %d bytes", len(response.Output))
+	}
+	if !strings.Contains(response.Output, "output truncated") {
+		t.Fatalf("expected truncation marker")
+	}
+}
+
+func TestExecuteAppliesSharedCapAcrossRemoteStdoutAndStderr(t *testing.T) {
+	originalDial := sshDialFn
+	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+		return stubSSHClient{newSession: func() (sshSession, error) {
+			session := &stubSSHSession{}
+			session.run = func(cmd string) error {
+				half := utils.CommandOutputLimitBytes/2 + 4096
+				if session.stdout != nil {
+					_, _ = session.stdout.Write([]byte(strings.Repeat("o", half)))
+				}
+				if session.stderr != nil {
+					_, _ = session.stderr.Write([]byte(strings.Repeat("e", half)))
+				}
+				return nil
+			}
+			return session, nil
+		}}, nil
+	}
+	defer func() { sshDialFn = originalDial }()
+
+	response := Execute(ExecuteRequest{
+		Command:        "large-both-streams",
+		ExecuteTimeout: 5,
+		Host:           "10.0.0.1",
+		Port:           22,
+		User:           "root",
+		Password:       "secret",
+	}, "instance-1")
+
+	if !response.Success {
+		t.Fatalf("expected success, got %+v", response)
+	}
+	if len(response.Output) > utils.CommandOutputLimitBytes {
+		t.Fatalf("expected shared capped output, got %d bytes", len(response.Output))
+	}
+	if !strings.Contains(response.Output, "output truncated") {
+		t.Fatal("expected truncation marker for shared cap")
+	}
+	if !strings.Contains(response.Output, strings.Repeat("o", 64)) {
+		t.Fatal("expected stdout content to be present")
 	}
 }
 

@@ -1,9 +1,14 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import ChartLegend from '../components/chartLegend';
 import { Spin, Empty } from 'antd';
 import { randomColorForLegend } from '@/app/log/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/log/utils/chartDataTransform';
+
+const LEGEND_WIDTH_CLASS = 'w-40';
+const LEGEND_WIDTH_PX = 160; // w-40 = 10rem = 160px
+const LEGEND_GAP_PX = 8; // ml-2 = 0.5rem = 8px
+const CHART_MIN_WIDTH_PX = 200;
 
 interface TrendLineProps {
   rawData: any;
@@ -20,8 +25,36 @@ const TrendLine: React.FC<TrendLineProps> = ({
 }) => {
   const [isDataReady, setIsDataReady] = useState(false);
   const [chartInstance, setChartInstance] = useState<any>(null);
+  const [showLegend, setShowLegend] = useState(true);
   const chartRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<ResizeObserver | null>(null);
   const chartColors = randomColorForLegend();
+
+  const containerCallbackRef = useCallback((node: HTMLDivElement | null) => {
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+    containerRef.current = node;
+    if (!node) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const containerWidth = entry.contentRect.width;
+        setShowLegend(
+          containerWidth >= CHART_MIN_WIDTH_PX + LEGEND_WIDTH_PX + LEGEND_GAP_PX
+        );
+      }
+    });
+    observer.observe(node);
+    observerRef.current = observer;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      observerRef.current?.disconnect();
+    };
+  }, []);
 
   const transformData = (rawData: any) => {
     // 处理嵌套的配置结构
@@ -35,6 +68,17 @@ const TrendLine: React.FC<TrendLineProps> = ({
   const getTooltipFieldName = () => {
     const chartConfig = config?.displayMaps || config;
     return chartConfig?.tooltipField || '告警数';
+  };
+
+  const getSeriesOptions = () => {
+    const chartConfig = config?.displayMaps || config;
+    const isStacked = chartConfig?.stack === 'total';
+
+    return {
+      isStacked,
+      lineWidth: isStacked ? 1.5 : 1,
+      areaOpacity: isStacked ? 0.18 : 0.1
+    };
   };
 
   useEffect(() => {
@@ -158,19 +202,22 @@ const TrendLine: React.FC<TrendLineProps> = ({
     }
   };
 
+  const { isStacked, lineWidth, areaOpacity } = getSeriesOptions();
+
   // 根据数据类型设置 series
   if (chartData && chartData.series) {
     option.series = chartData.series.map((item: any, index: number) => ({
       name: item.name,
       type: 'line',
       data: item.data,
+      ...(isStacked ? { stack: 'total' } : {}),
       smooth: true,
       symbol: 'none',
       lineStyle: {
-        width: 1
+        width: lineWidth
       },
       areaStyle: {
-        opacity: 0.1,
+        opacity: areaOpacity,
         color: {
           type: 'linear',
           x: 0,
@@ -202,10 +249,10 @@ const TrendLine: React.FC<TrendLineProps> = ({
         smooth: true,
         symbol: 'none',
         lineStyle: {
-          width: 1
+          width: lineWidth
         },
         areaStyle: {
-          opacity: 0.1,
+          opacity: areaOpacity,
           color: {
             type: 'linear',
             x: 0,
@@ -248,9 +295,12 @@ const TrendLine: React.FC<TrendLineProps> = ({
   }
 
   return (
-    <div className="h-full flex w-full">
+    <div
+      className="h-full flex w-full overflow-hidden"
+      ref={containerCallbackRef}
+    >
       {/* 图表区域 */}
-      <div className="flex-1 w-full">
+      <div className="flex-1 min-w-[200px]">
         <ReactEcharts
           ref={chartRef}
           option={option}
@@ -261,8 +311,10 @@ const TrendLine: React.FC<TrendLineProps> = ({
         />
       </div>
 
-      {chartData?.series && chartData.series.length > 1 && (
-        <div className="w-32 ml-2 flex-shrink-0 h-full">
+      {showLegend && chartData?.series && chartData.series.length > 1 && (
+        <div
+          className={`ml-2 h-full ${LEGEND_WIDTH_CLASS} flex-shrink-0 min-w-0`}
+        >
           <ChartLegend
             chart={chartInstance}
             data={chartData.series}

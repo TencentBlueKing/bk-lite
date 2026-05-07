@@ -357,15 +357,15 @@ const UserInfo: React.FC = () => {
           onOpenChange={handleOpenChange}
         >
           <a
-            className='cursor-pointer flex items-center gap-2 rounded-xl px-2 py-1.5 transition-colors hover:bg-[var(--color-fill-1)]'
+            className='cursor-pointer flex items-center gap-2 rounded-xl px-2 py-1 transition-colors hover:bg-[var(--color-fill-1)]'
             onClick={(e) => e.preventDefault()}
           >
             <Avatar size={20} style={{ backgroundColor: 'var(--color-primary)', fontSize: '12px' }}>
               {username.charAt(0).toUpperCase()}
             </Avatar>
-            <span className="min-w-0 flex flex-col text-left leading-tight">
-              <span className="truncate text-sm font-medium text-[var(--color-text-1)]">{username}</span>
-              <span className="mt-0.5 max-w-[160px] truncate text-xs text-[var(--color-text-3)]">
+            <span className="min-w-0 flex flex-col text-left leading-none gap-[3px]">
+              <span className="truncate text-xs font-medium text-[var(--color-text-1)]">{username}</span>
+              <span className="max-w-[120px] truncate text-[10px] text-[var(--color-text-3)]">
                 {selectedGroup?.name || '--'}
               </span>
             </span>

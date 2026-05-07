@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Input, Select, Switch, Empty, Tooltip } from 'antd';
+import { Button, Input, Select, Switch, Tooltip } from 'antd';
 import {
   PlusCircleOutlined,
   MinusCircleOutlined,
@@ -8,6 +8,7 @@ import {
 import CustomTable from '@/components/custom-table';
 import type { TableFilterFieldConfig, TableColumnConfigItem } from '@/app/ops-analysis/types/dashBoard';
 import type { DisplayColumnRow } from '../utils/columnProbing';
+import CompactEmptyState from '@/app/ops-analysis/components/compactEmptyState';
 
 type FilterFieldRow = TableFilterFieldConfig & { id: string };
 
@@ -309,8 +310,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
             }
           />
         ) : (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          <CompactEmptyState
             description={
               t('dashboard.noDisplayColumns') || t('dashboard.displayColumns')
             }
@@ -350,10 +350,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
           </Button>
         </div>
         {filterFieldOptions.length === 0 ? (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={t('dashboard.noSchemaFields')}
-          />
+          <CompactEmptyState description={t('dashboard.noSchemaFields')} />
         ) : filterFields.length > 0 ? (
           <CustomTable
             rowKey="id"
@@ -363,10 +360,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
             scroll={{ y: 320 }}
           />
         ) : (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={t('dashboard.noFilterFields')}
-          />
+          <CompactEmptyState description={t('dashboard.noFilterFields')} />
         )}
       </div>
     </div>

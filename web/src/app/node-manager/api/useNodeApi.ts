@@ -50,6 +50,8 @@ const useNodeApi = () => {
   // 获取包列表
   const getPackages = async (params: {
     os?: string;
+    cpu_architecture?: string;
+    type?: string;
     object?: string;
     operating_system?: string;
   }) => {

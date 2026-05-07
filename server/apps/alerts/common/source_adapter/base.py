@@ -73,12 +73,16 @@ class AlertSourceAdapter(ABC):
 
     def get_integration_guide(self, base_url: str) -> Dict[str, Any]:
         """返回源类型对接说明与模板"""
+        # 对于 snmp_trap 这类内置 source，接入地址可能不是通用 receiver_data，
+        # 因此这里优先读取 source 自身配置的 url，避免说明文档和真实入口不一致。
+        webhook_path = self.alert_source.config.get("url") or "/api/v1/alerts/api/receiver_data/"
+        description = self.alert_source.config.get("description") or "通用事件接收入口"
         return {
             "source_type": self.alert_source.source_type,
             "source_id": self.alert_source.source_id,
-            "webhook_url": f"{base_url}/api/v1/alerts/api/receiver_data/",
+            "webhook_url": f"{base_url}{webhook_path}",
             "headers": {"SECRET": self.alert_source.secret},
-            "description": "通用事件接收入口",
+            "description": description,
         }
 
     @staticmethod

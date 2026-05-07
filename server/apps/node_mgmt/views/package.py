@@ -22,6 +22,9 @@ class PackageMgmtView(
     filterset_class = PackageVersionFilter
     pagination_class = CustomPageNumberPagination
 
+    def get_queryset(self):
+        return super().get_queryset().order_by("-id")
+
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
