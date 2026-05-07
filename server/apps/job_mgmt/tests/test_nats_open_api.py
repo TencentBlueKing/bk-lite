@@ -22,7 +22,7 @@ class TestJobScriptExecute:
         }
 
         with patch("apps.job_mgmt.services.dangerous_checker.DangerousChecker.check_command") as mock_check, patch(
-            "apps.job_mgmt.tasks.ScriptExecutionRunner"
+            "apps.job_mgmt.nats_api.execute_script_task.delay"
         ):
             mock_result = MagicMock()
             mock_result.can_execute = True
