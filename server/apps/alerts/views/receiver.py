@@ -34,7 +34,11 @@ def _receive_events(request, path_source_id=None, expected_source_type=None):
         if not source_id:
             return JsonResponse({"status": "error", "message": "Missing source_id."}, status=400)
 
-        event_source = AlertSource.objects.filter(source_id=source_id).first()
+        event_source = AlertSource.objects.filter(
+            source_id=source_id,
+            is_active=True,
+            is_effective=True,
+        ).first()
         if not event_source:
             return JsonResponse({"status": "error", "message": "Invalid source_id or source_type."}, status=400)
 
@@ -108,4 +112,3 @@ def request_test(requests):
     """
     logger.info("Processing request test: request=%s", requests)
     return WebUtils.response_success([])
-

@@ -11,6 +11,7 @@ from apps.alerts.aggregation.builder.synthetic_alert_builder import (
     SyntheticAlertBuilder,
 )
 from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
+from apps.alerts.nats.nats import receive_alert_events
 from apps.alerts.constants import (
     AlertStatus,
     AlarmStrategyType,
@@ -748,6 +749,129 @@ class AlertSourceIngressTestCase(TestCase):
         self.assertEqual(events[0].external_id, events[1].external_id)
         self.assertEqual(events[0].action, EventAction.CREATED)
         self.assertEqual(events[1].action, EventAction.RECOVERY)
+
+    def test_receiver_rejects_inactive_source(self):
+        source = AlertSource.objects.create(
+            name="RESTful Disabled",
+            source_id="rest-disabled",
+            source_type=AlertsSourceTypes.RESTFUL,
+            secret="rest-secret",
+            is_active=False,
+            config={
+                "event_fields_mapping": {
+                    "title": "title",
+                    "level": "level",
+                    "start_time": "start_time",
+                }
+            },
+        )
+
+        response = self.client.post(
+            f"/api/v1/alerts/api/source/{source.source_id}/webhook/",
+            data=json.dumps(
+                {
+                    "events": [
+                        {
+                            "title": "disabled-source-event",
+                            "level": "3",
+                            "start_time": str(int(timezone.now().timestamp())),
+                        }
+                    ]
+                }
+            ),
+            content_type="application/json",
+            HTTP_SECRET="rest-secret",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Event.objects.count(), 0)
+
+    def test_default_external_id_distinguishes_resource_identity(self):
+        source = AlertSource.objects.create(
+            name="RESTful Source",
+            source_id="rest-source",
+            source_type=AlertsSourceTypes.RESTFUL,
+            secret="rest-secret",
+            config={
+                "event_fields_mapping": {
+                    "title": "title",
+                    "description": "description",
+                    "level": "level",
+                    "item": "item",
+                    "start_time": "start_time",
+                    "resource_id": "resource_id",
+                    "resource_name": "resource_name",
+                    "resource_type": "resource_type",
+                    "action": "action",
+                }
+            },
+        )
+
+        payload = {
+            "events": [
+                {
+                    "title": "cpu high",
+                    "description": "cpu > 90%",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "resource_id": "service-1",
+                    "resource_name": "shared-name",
+                    "resource_type": "service",
+                    "action": "created",
+                },
+                {
+                    "title": "cpu high",
+                    "description": "cpu > 90%",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "resource_id": "service-2",
+                    "resource_name": "shared-name",
+                    "resource_type": "service",
+                    "action": "created",
+                },
+            ]
+        }
+
+        response = self.client.post(
+            f"/api/v1/alerts/api/source/{source.source_id}/webhook/",
+            data=json.dumps(payload),
+            content_type="application/json",
+            HTTP_SECRET="rest-secret",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        events = list(Event.objects.filter(source=source).order_by("resource_id"))
+        self.assertEqual(len(events), 2)
+        self.assertNotEqual(events[0].external_id, events[1].external_id)
+
+    def test_nats_ingress_rejects_non_nats_source(self):
+        source = AlertSource.objects.create(
+            name="Prometheus Source",
+            source_id="prometheus-prod",
+            source_type=AlertsSourceTypes.PROMETHEUS,
+            secret="prom-secret",
+            config={},
+        )
+
+        result = receive_alert_events(
+            source_id=source.source_id,
+            pusher="lite-monitor",
+            events=[
+                {
+                    "title": "forged",
+                    "description": "forged",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "action": "created",
+                }
+            ],
+        )
+
+        self.assertFalse(result["result"])
+        self.assertEqual(Event.objects.count(), 0)
 
     def test_integration_guide_returns_prometheus_template(self):
         source = AlertSource.objects.create(
