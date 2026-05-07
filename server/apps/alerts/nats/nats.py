@@ -20,7 +20,7 @@ from django.utils import timezone
 
 import nats_client
 from apps.alerts.models.models import Alert, Event, Incident, Level
-from apps.alerts.constants.constants import AlertStatus, EventLevel, LevelType
+from apps.alerts.constants.constants import AlertStatus, EventLevel, LevelType, AlertsSourceTypes
 from apps.core.logger import alert_logger as logger
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
@@ -249,7 +249,12 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
                 "message": "Missing pusher identifier.",
             }
 
-        event_source = AlertSource.objects.filter(source_id=source_id).first()
+        event_source = AlertSource.objects.filter(
+            source_id=source_id,
+            source_type=AlertsSourceTypes.NATS,
+            is_active=True,
+            is_effective=True,
+        ).first()
         if not event_source:
             logger.error(f"Invalid source_id: {source_id}, pusher: {pusher}")
             return {
