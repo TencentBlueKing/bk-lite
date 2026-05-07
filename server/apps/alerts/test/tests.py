@@ -11,6 +11,7 @@ from apps.alerts.aggregation.builder.synthetic_alert_builder import (
     SyntheticAlertBuilder,
 )
 from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
+from apps.alerts.aggregation.strategy.matcher import StrategyMatcher
 from apps.alerts.constants import (
     AlertStatus,
     AlarmStrategyType,
@@ -429,6 +430,40 @@ class MissingDetectionProcessorTestCase(TestCase):
             strategy.params["last_heartbeat_time"],
             Event.objects.get(event_id="EVENT-RECOVERY").received_at.isoformat(),
         )
+
+
+class StrategyMatcherTestCase(TestCase):
+    def setUp(self):
+        self.source = AlertSource.objects.create(
+            name="matcher-source",
+            source_id="matcher-source",
+            source_type=AlertsSourceTypes.WEBHOOK,
+        )
+        Event.objects.create(
+            source=self.source,
+            raw_data={},
+            title="cpu high",
+            description="cpu high",
+            level="1",
+            start_time=timezone.now(),
+            event_id="EVENT-strategy-matcher",
+        )
+
+    def test_invalid_in_rule_does_not_match_all_events(self):
+        matched = StrategyMatcher.match_events_to_strategy(
+            Event.objects.all(),
+            [[{"key": "title", "operator": "in", "value": "cpu high"}]],
+        )
+
+        self.assertFalse(matched.exists())
+
+    def test_invalid_regex_rule_does_not_match_all_events(self):
+        matched = StrategyMatcher.match_events_to_strategy(
+            Event.objects.all(),
+            [[{"key": "title", "operator": "regex", "value": "["}]],
+        )
+
+        self.assertFalse(matched.exists())
 
 
 class AlertSourceIngressTestCase(TestCase):
