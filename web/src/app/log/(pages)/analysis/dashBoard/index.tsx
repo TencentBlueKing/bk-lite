@@ -178,9 +178,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         }
         const instanceData = await getInstanceList(
           {
-            collect_type_id: collectTypeId,
-            page: 1,
-            page_size: 1000
+            collect_type_id: collectTypeId
           },
           { signal: abortController.signal }
         );
