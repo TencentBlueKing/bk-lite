@@ -226,10 +226,10 @@ const Asset = () => {
   ]);
 
   const viewLog = (row: TableDataItem) => {
-    const params = {
-      query: `instance_id:"${row.id}"`
-    };
-    const queryString = new URLSearchParams(params).toString();
+    const queryString = new URLSearchParams([
+      ['query', `instance_id:"${row.id}"`],
+      ['log_groups', 'default']
+    ]).toString();
     const url = `/log/search?${queryString}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };

@@ -101,6 +101,8 @@ class LogGroupQueryBuilder:
             )
 
         if not group_conditions:
+            if valid_groups and all(item.get("status") == "empty_rule" for item in group_info):
+                return user_query.strip() if user_query else "*", group_info
             return LogGroupQueryBuilder.DENY_ALL_QUERY, group_info
 
         # 组合最终查询

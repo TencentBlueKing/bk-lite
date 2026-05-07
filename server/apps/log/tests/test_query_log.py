@@ -5,6 +5,7 @@ from django.utils import timezone
 from rest_framework import status
 
 from apps.log.models.log_group import LogGroup, LogGroupOrganization, SearchCondition
+from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.log.models.policy import Alert, AlertSnapshot, Event, EventRawData, Policy, PolicyOrganization
 from apps.log.utils.query_log import VictoriaMetricsAPI
 
@@ -298,6 +299,16 @@ def test_search_condition_list_hides_inaccessible_saved_conditions(api_client, a
     payload = response.json()
     assert len(payload["data"]) == 1
     assert payload["data"][0]["name"] == "allowed"
+
+
+@pytest.mark.django_db
+def test_log_group_builder_keeps_user_query_when_only_default_group_has_empty_rule():
+    LogGroup.objects.create(id="default", name="Default", rule={})
+
+    final_query, group_info = LogGroupQueryBuilder.build_query_with_groups('instance_id:"uuid"', ["default"])
+
+    assert final_query == 'instance_id:"uuid"'
+    assert group_info == [{"id": "default", "name": "Default", "status": "empty_rule"}]
 
 
 @pytest.mark.django_db
