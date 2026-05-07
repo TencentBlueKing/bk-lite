@@ -17,5 +17,4 @@ class CephCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "config_file": partial(MiddlewareCollectMetrics.pick_value, keys=("config_file", "conf_file")),
         "cmdline": "cmdline",
         "ceph_exe": "ceph_exe",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

@@ -15,5 +15,4 @@ class SparkCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "java_path": "java_path",
         "java_version": "java_version",
         "log_path": "log_path",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }
