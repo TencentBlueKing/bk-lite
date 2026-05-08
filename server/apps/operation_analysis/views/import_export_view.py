@@ -5,6 +5,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.operation_analysis.constants.import_export import ConflictAction, ConflictReason, ImportExportErrorCode, ObjectType
 from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
 from apps.operation_analysis.serializers.import_export_serializers import (
@@ -27,6 +28,7 @@ class ImportExportViewSet(ViewSet):
     }
 
     @action(detail=False, methods=["post"], url_path="export")
+    @HasPermission("operation_analysis-View")
     def export_objects(self, request):
         serializer = ExportRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -51,6 +53,7 @@ class ImportExportViewSet(ViewSet):
         return Response(result, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["post"], url_path="import/precheck")
+    @HasPermission("operation_analysis-Add")
     def import_precheck(self, request):
         serializer = ImportPrecheckRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -77,6 +80,7 @@ class ImportExportViewSet(ViewSet):
         return Response(result, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["post"], url_path="import/submit")
+    @HasPermission("operation_analysis-Add")
     def import_submit(self, request):
         serializer = ImportSubmitRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
