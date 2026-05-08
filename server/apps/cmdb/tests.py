@@ -18,6 +18,7 @@ CMDB CQL查询测试类
 import os
 import sys
 import json
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -141,6 +142,296 @@ def test_instance_association_instance_list_denies_user_without_object_permissio
     assert _response_json(response)["result"] is False
     mock_check_permission.assert_called_once()
     mock_association_list.assert_not_called()
+
+
+def test_instance_association_map_batches_graph_queries_by_direction():
+    from apps.cmdb.services.instance import InstanceManage
+
+    src_edges = [
+        {
+            "src_inst_id": 101,
+            "dst_inst_id": 201,
+            "src_model_id": "host",
+            "dst_model_id": "service",
+        },
+        {
+            "src_inst_id": 102,
+            "dst_inst_id": 202,
+            "src_model_id": "host",
+            "dst_model_id": "service",
+        },
+    ]
+    dst_edges = [
+        {
+            "src_inst_id": 301,
+            "dst_inst_id": 102,
+            "src_model_id": "service",
+            "dst_model_id": "host",
+        }
+    ]
+
+    graph_client = MagicMock()
+    graph_client.query_edge.side_effect = [src_edges, dst_edges]
+
+    graph_context = MagicMock()
+    graph_context.__enter__.return_value = graph_client
+    graph_context.__exit__.return_value = False
+
+    with patch(
+        "apps.cmdb.services.instance.GraphClient",
+        return_value=graph_context,
+    ):
+        relation_map = InstanceManage.instance_association_map(
+            model_id="host",
+            inst_ids=[101, 102],
+            related_model="service",
+        )
+
+    assert relation_map == {101: [201], 102: [202, 301]}
+    assert graph_client.query_edge.call_count == 2
+    src_call, dst_call = graph_client.query_edge.call_args_list
+    assert src_call.args[0] == "instance_association"
+    assert src_call.args[1] == [
+        {"field": "src_inst_id", "type": "int[]", "value": [101, 102]},
+        {"field": "src_model_id", "type": "str=", "value": "host"},
+        {"field": "dst_model_id", "type": "str=", "value": "service"},
+    ]
+    assert dst_call.args[0] == "instance_association"
+    assert dst_call.args[1] == [
+        {"field": "dst_inst_id", "type": "int[]", "value": [101, 102]},
+        {"field": "dst_model_id", "type": "str=", "value": "host"},
+        {"field": "src_model_id", "type": "str=", "value": "service"},
+    ]
+
+
+def test_get_relation_instances_falls_back_to_per_instance_when_batch_query_fails():
+    from apps.cmdb.services.subscription_trigger import SubscriptionTriggerService
+
+    rule = SimpleNamespace(
+        id=1,
+        model_id="host",
+        trigger_types=["relation_change"],
+        trigger_config={"relation_change": {"related_model": "service", "fields": []}},
+        snapshot_data={},
+    )
+
+    with (
+        patch(
+            "apps.cmdb.services.subscription_trigger.ModelManage.search_model_info",
+            return_value={"model_name": "主机"},
+        ),
+        patch(
+            "apps.cmdb.services.subscription_trigger.InstanceManage.instance_association_map",
+            side_effect=RuntimeError("graph timeout"),
+        ),
+        patch(
+            "apps.cmdb.services.subscription_trigger.InstanceManage.instance_association",
+            side_effect=[
+                [
+                    {
+                        "src_model_id": "host",
+                        "src_inst_id": 101,
+                        "dst_model_id": "service",
+                        "dst_inst_id": 201,
+                    }
+                ],
+                RuntimeError("single query failed"),
+            ],
+        ),
+    ):
+        service = SubscriptionTriggerService(rule)
+        relation_map, failed_instance_ids = service._get_relation_instances([101, 102], "service")
+
+    assert relation_map == {101: [201]}
+    assert failed_instance_ids == {102}
+
+
+def test_relation_snapshot_preserves_previous_relations_for_failed_instances():
+    from apps.cmdb.services.subscription_trigger import SubscriptionTriggerService
+
+    now = datetime.now()
+    rule = SimpleNamespace(
+        id=1,
+        model_id="host",
+        trigger_types=["relation_change"],
+        trigger_config={"relation_change": {"related_model": "service", "fields": []}},
+        snapshot_data={"relations": {"101": {"service": [201]}}},
+        last_check_time=now,
+        created_at=now,
+    )
+    instances = [{"_id": 101, "inst_name": "host-101"}]
+
+    with (
+        patch(
+            "apps.cmdb.services.subscription_trigger.ModelManage.search_model_info",
+            return_value={"model_name": "主机"},
+        ),
+        patch.object(
+            SubscriptionTriggerService,
+            "_build_related_change_map",
+            return_value=({}, 0),
+        ),
+        patch.object(
+            SubscriptionTriggerService,
+            "_build_related_inst_name_map",
+            return_value={},
+        ),
+    ):
+        service = SubscriptionTriggerService(rule)
+        current_snapshot = service._build_current_snapshot(
+            instances,
+            relations_by_model={"service": {}},
+            failed_relation_instance_ids_by_model={"service": {101}},
+        )
+        events = service._check_relation_change(
+            current_snapshot,
+            instances,
+            now,
+            failed_relation_instance_ids_by_model={"service": {101}},
+        )
+
+    assert current_snapshot["relations"] == {"101": {"service": [201]}}
+    assert events == []
+
+
+def test_relation_snapshot_skips_unknown_relations_when_no_previous_snapshot_exists():
+    from apps.cmdb.services.subscription_trigger import SubscriptionTriggerService
+
+    now = datetime.now()
+    rule = SimpleNamespace(
+        id=1,
+        model_id="host",
+        trigger_types=["relation_change"],
+        trigger_config={"relation_change": {"related_model": "service", "fields": []}},
+        snapshot_data={},
+        last_check_time=now,
+        created_at=now,
+    )
+    instances = [{"_id": 101, "inst_name": "host-101"}]
+
+    with (
+        patch(
+            "apps.cmdb.services.subscription_trigger.ModelManage.search_model_info",
+            return_value={"model_name": "主机"},
+        ),
+        patch.object(
+            SubscriptionTriggerService,
+            "_build_related_change_map",
+            return_value=({}, 0),
+        ),
+        patch.object(
+            SubscriptionTriggerService,
+            "_build_related_inst_name_map",
+            return_value={},
+        ),
+    ):
+        service = SubscriptionTriggerService(rule)
+        current_snapshot = service._build_current_snapshot(
+            instances,
+            relations_by_model={"service": {}},
+            failed_relation_instance_ids_by_model={"service": {101}},
+        )
+        events = service._check_relation_change(
+            current_snapshot,
+            instances,
+            now,
+            failed_relation_instance_ids_by_model={"service": {101}},
+        )
+
+    assert current_snapshot["relations"] == {"101": {}}
+    assert events == []
+
+
+def test_collect_model_viewset_scopes_detail_queryset_by_permission():
+    from apps.cmdb.views.collect import CollectModelViewSet
+
+    request = _make_cmdb_request()
+    request.user.permission = {"auto_collection-View"}
+    view = CollectModelViewSet()
+    view.request = request
+    view.action = "info"
+
+    filtered_queryset = MagicMock(name="filtered_queryset")
+
+    with patch.object(
+        CollectModelViewSet,
+        "get_queryset_by_permission",
+        return_value=filtered_queryset,
+    ) as mock_get_queryset_by_permission:
+        result = view.get_queryset()
+
+    assert result is filtered_queryset
+    mock_get_queryset_by_permission.assert_called_once()
+    call_request, call_queryset = mock_get_queryset_by_permission.call_args.args
+    assert call_request is request
+    assert call_queryset.model is view.queryset.model
+
+
+def test_collect_model_instances_uses_permission_filtered_queryset():
+    from apps.cmdb.views.collect import CollectModelViewSet
+
+    request = _make_cmdb_request()
+    request.user.permission = {"auto_collection-View"}
+    request.GET = SimpleNamespace(dict=lambda: {"task_type": "host"})
+    view = CollectModelViewSet()
+
+    authorized_queryset = MagicMock(name="authorized_queryset")
+    filtered_queryset = MagicMock(name="filtered_queryset")
+    authorized_queryset.filter.return_value = filtered_queryset
+    filtered_queryset.values_list.return_value = [
+        [{"_id": 1001, "inst_name": "host-a"}],
+    ]
+
+    with patch.object(
+        CollectModelViewSet,
+        "get_queryset_by_permission",
+        return_value=authorized_queryset,
+    ) as mock_get_queryset_by_permission:
+        response = view.model_instances(request)
+
+    payload = json.loads(response.content)
+    assert payload["result"] is True
+    assert payload["data"] == [{"id": 1001, "inst_name": "host-a"}]
+    mock_get_queryset_by_permission.assert_called_once()
+    call_request, call_queryset = mock_get_queryset_by_permission.call_args.args
+    assert call_request is request
+    assert call_queryset.model is view.queryset.model
+    authorized_queryset.filter.assert_called_once()
+
+
+def test_build_region_query_credential_uses_authorized_task_lookup():
+    from apps.cmdb.views.collect import CollectModelViewSet
+
+    request = _make_cmdb_request()
+    task = SimpleNamespace(
+        decrypt_credentials={"secret_key": "value"},
+        driver_type="qcloud",
+    )
+    params_cls = MagicMock()
+    params_cls.build_region_credential.return_value = {"region_secret": "ok"}
+    view = CollectModelViewSet()
+
+    with (
+        patch.object(
+            CollectModelViewSet,
+            "_get_authorized_task",
+            return_value=task,
+        ) as mock_get_authorized_task,
+        patch(
+            "apps.cmdb.views.collect.NodeParamsFactory.get_params_class",
+            return_value=params_cls,
+        ) as mock_get_params_class,
+    ):
+        credential = view._build_region_query_credential(
+            request,
+            {"model_id": "qcloud_account", "driver_type": "ignored"},
+            task_id=42,
+        )
+
+    assert credential["model_id"] == "qcloud"
+    assert credential["region_secret"] == "ok"
+    mock_get_authorized_task.assert_called_once_with(request, 42)
+    mock_get_params_class.assert_called_once_with("qcloud", "qcloud")
 
 
 def test_instance_association_instance_list_allows_user_with_object_permission():
