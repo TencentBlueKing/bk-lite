@@ -145,6 +145,7 @@
     "inputPassword": "请输入密码",
     "builtin": "内置",
     "mcp": "MCP",
+    "externalApp": "外部应用",
     "unreadNotifications": "未读通知",
     "allNotifications": "所有通知",
     "noMore": "没有更多了",

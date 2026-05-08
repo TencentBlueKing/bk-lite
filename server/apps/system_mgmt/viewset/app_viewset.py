@@ -2,7 +2,7 @@ from django.http import JsonResponse
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import LanguageViewSet
-from apps.system_mgmt.models import App
+from apps.system_mgmt.models import App, Role
 from apps.system_mgmt.serializers.app_serializer import AppSerializer
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -19,6 +19,7 @@ class AppViewSet(LanguageViewSet):
             return JsonResponse({"result": False, "message": message})
 
         app_name = obj.name
+        Role.objects.filter(app=app_name).delete()
         response = super().destroy(request, *args, **kwargs)
 
         # 记录操作日志
