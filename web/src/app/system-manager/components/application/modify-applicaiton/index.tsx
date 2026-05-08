@@ -127,7 +127,6 @@ const ApplicationFormModal: React.FC<ApplicationFormModalProps> = ({
       onSuccess();
     } catch (error) {
       console.error('Form submission error:', error);
-      message.error(isEdit ? t('common.updateFailed') : t('common.createFailed'));
     } finally {
       setLoading(false);
     }
