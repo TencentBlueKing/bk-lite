@@ -493,6 +493,7 @@ const SearchView: React.FC = () => {
               defaultValue={defaultSearchText}
               fields={fields}
               getTimeRange={getTimeRange}
+              logGroups={groups}
               addonAfter={
                 <BulbFilled
                   className="cursor-pointer px-[10px] py-[8px]"
