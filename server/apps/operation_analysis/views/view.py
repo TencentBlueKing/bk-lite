@@ -7,16 +7,16 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.operation_analysis.filters.filters import DashboardModelFilter, DirectoryModelFilter, TopologyModelFilter, ArchitectureModelFilter
+from apps.operation_analysis.filters.filters import ArchitectureModelFilter, DashboardModelFilter, DirectoryModelFilter, TopologyModelFilter
+from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Topology
 from apps.operation_analysis.serializers.directory_serializers import (
+    ArchitectureModelSerializer,
     DashboardModelSerializer,
     DirectoryModelSerializer,
     TopologyModelSerializer,
-    ArchitectureModelSerializer,
 )
 from apps.operation_analysis.services.directory_service import DictDirectoryService
 from config.drf.pagination import CustomPageNumberPagination
-from apps.operation_analysis.models.models import Dashboard, Directory, Topology, Architecture
 
 
 def _raise_if_builtin(instance, action_name="修改"):
@@ -104,7 +104,7 @@ class DirectoryModelViewSet(BuiltinVisibleMixin, AuthViewSet):
         _raise_if_builtin(instance, "删除")
         return super(DirectoryModelViewSet, self).destroy(request, *args, **kwargs)
 
-    # @HasPermission("view-View")
+    @HasPermission("view-View")
     @action(detail=False, methods=["get"], url_path="tree")
     def tree(self, request, *args, **kwargs):
         result = DictDirectoryService.get_dict_trees(request)

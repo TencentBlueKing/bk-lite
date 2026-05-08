@@ -93,7 +93,6 @@ apiClient.interceptors.response.use(
     if (!axios.isAxiosError(error) || error.code === 'ECONNABORTED') {
       return Promise.reject(error);
     }
-    message.error('网络异常，请检查网络连接');
     return Promise.reject(new HandledRequestError('网络异常'));
   }
 );
