@@ -20,7 +20,8 @@
     "tags": [
       "linux",
       "monitor",
-      "cmdb"
+      "cmdb",
+      "x86_64"
     ],
     "package_name": "telegraf",
     "cpu_architecture": "x86_64"
@@ -46,7 +47,8 @@
     "tags": [
       "windows",
       "monitor",
-      "cmdb"
+      "cmdb",
+      "x86_64"
     ],
     "package_name": "telegraf",
     "cpu_architecture": "x86_64"

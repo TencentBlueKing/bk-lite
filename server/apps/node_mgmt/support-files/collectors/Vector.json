@@ -17,7 +17,8 @@
     },
     "tags": [
       "linux",
-      "log"
+      "log",
+      "x86_64"
     ],
     "package_name": "vector",
     "cpu_architecture": "x86_64"
@@ -40,7 +41,8 @@
     },
     "tags": [
       "windows",
-      "log"
+      "log",
+      "x86_64"
     ],
     "package_name": "vector",
     "cpu_architecture": "x86_64"

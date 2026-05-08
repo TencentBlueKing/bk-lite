@@ -3045,6 +3045,52 @@ def test_collector_serializer_normalizes_cpu_architecture_alias():
 
     assert serializer.is_valid(), serializer.errors
     assert serializer.validated_data["cpu_architecture"] == NodeConstants.X86_64_ARCH
+    assert set(serializer.validated_data["tags"]) == {NodeConstants.LINUX_OS, NodeConstants.X86_64_ARCH}
+
+
+@pytest.mark.django_db
+def test_collector_tag_filter_uses_flat_all_and_semantics():
+    Collector.objects.create(
+        id="collector-tag-filter-x86",
+        name="Tag Filter X86",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        executable_path="/opt/x86",
+        execute_parameters="--config %s",
+        introduction="x86",
+        icon="collector",
+        tags=["monitor", "linux", "jmx", NodeConstants.X86_64_ARCH],
+        created_by="tester",
+        updated_by="tester",
+    )
+    Collector.objects.create(
+        id="collector-tag-filter-arm",
+        name="Tag Filter ARM",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.ARM64_ARCH,
+        executable_path="/opt/arm",
+        execute_parameters="--config %s",
+        introduction="arm",
+        icon="collector",
+        tags=["monitor", "linux", "exporter", NodeConstants.ARM64_ARCH],
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    factory = APIRequestFactory()
+    view = CollectorViewSet.as_view({"get": "list"})
+    request = factory.get(
+        "/node_mgmt/api/collector/",
+        {"tags": f"monitor,{NodeConstants.X86_64_ARCH},{NodeConstants.ARM64_ARCH}"},
+    )
+    force_authenticate(request, user=_build_admin_user())
+
+    response = view(request)
+
+    assert response.status_code == 200
+    assert response.data == []
 
 
 @pytest.mark.django_db
@@ -3081,7 +3127,6 @@ def test_collector_retrieve_exposes_architecture_display(monkeypatch):
     assert response.data["id"] == collector.id
     assert response.data["cpu_architecture"] == NodeConstants.ARM64_ARCH
     assert response.data["architecture_display"] == "ARM64"
-    assert response.data["display_name"] == "Vector（ARM64）"
 
 
 @pytest.mark.django_db

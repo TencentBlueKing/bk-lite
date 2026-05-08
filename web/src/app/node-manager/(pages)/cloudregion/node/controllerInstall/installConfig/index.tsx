@@ -202,6 +202,12 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
   useEffect(() => {
     form.resetFields();
+    form.setFieldsValue({
+      os,
+      cpu_architecture: cpuArchitecture,
+      install: installMethod,
+      sidecar_package: null
+    });
   }, [name]);
 
   const handleBatchEdit = () => {
