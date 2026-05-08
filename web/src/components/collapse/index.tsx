@@ -2,7 +2,7 @@ import React, { useState, useEffect, ReactNode } from 'react';
 import {
   CaretRightOutlined,
   CaretDownOutlined,
-  HolderOutlined,
+  HolderOutlined
 } from '@ant-design/icons';
 
 interface AccordionProps {
@@ -14,8 +14,10 @@ interface AccordionProps {
   isOpen?: boolean;
   icon?: React.ReactElement;
   sortable?: boolean;
+  dragHandleOnly?: boolean;
   onToggle?: (isOpen: boolean) => void;
   onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragEnd?: (e: React.DragEvent<HTMLDivElement>) => void;
   onDragOver?: (e: React.DragEvent<HTMLDivElement>) => void;
   onDrop?: (e: React.DragEvent<HTMLDivElement>) => void;
 }
@@ -29,10 +31,12 @@ const Collapse: React.FC<AccordionProps> = ({
   titleClassName = '',
   contentClassName = '',
   sortable = false,
+  dragHandleOnly = false,
   onToggle,
   onDragStart,
+  onDragEnd,
   onDragOver,
-  onDrop,
+  onDrop
 }) => {
   const [open, setOpen] = useState(isOpen);
   const collapseClass = `text-[12px] ${className}`;
@@ -52,22 +56,36 @@ const Collapse: React.FC<AccordionProps> = ({
   return (
     <div
       className={collapseClass}
-      draggable={sortable}
-      onDragStart={sortable ? onDragStart : undefined}
+      draggable={sortable && !dragHandleOnly}
+      onDragStart={sortable && !dragHandleOnly ? onDragStart : undefined}
+      onDragEnd={sortable ? onDragEnd : undefined}
       onDragOver={sortable ? onDragOver : undefined}
       onDrop={sortable ? onDrop : undefined}
     >
       <div
         className={`flex justify-between items-center p-[10px] bg-[var(--color-fill-1)] collapse-title ${titleClassName}`}
       >
-        <div className="flex items-center cursor-pointer" onClick={toggleAccordion}>
+        <div className="flex items-center">
           {sortable && (
-            <HolderOutlined className="font-[800] text-[16px] mr-[6px] cursor-move" />
+            <span
+              className="mr-[6px]"
+              draggable={dragHandleOnly}
+              onClick={(e) => e.stopPropagation()}
+              onDragStart={dragHandleOnly ? onDragStart : undefined}
+              onDragEnd={dragHandleOnly ? onDragEnd : undefined}
+            >
+              <HolderOutlined className="font-[800] text-[16px] cursor-move" />
+            </span>
           )}
-          <span className="text-[var(--color-text-3)] mr-[6px]">
-            {open ? <CaretDownOutlined /> : <CaretRightOutlined />}
-          </span>
-          <span className="font-semibold text-[14px] title">{title}</span>
+          <div
+            className="flex items-center cursor-pointer"
+            onClick={toggleAccordion}
+          >
+            <span className="text-[var(--color-text-3)] mr-[6px]">
+              {open ? <CaretDownOutlined /> : <CaretRightOutlined />}
+            </span>
+            <span className="font-semibold text-[14px] title">{title}</span>
+          </div>
         </div>
         {icon && (
           <div
