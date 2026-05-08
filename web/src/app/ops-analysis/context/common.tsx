@@ -144,7 +144,6 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
       dataSourcesRequestingRef.current = true;
       setDataSourcesLoading(true);
       const response = await getDataSourceList({
-        all_groups: true,
         page: 1,
         page_size: 10000,
       });
@@ -171,7 +170,6 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
       dataSourcesRequestingRef.current = true;
       setDataSourcesLoading(true);
       const response = await getDataSourceList({
-        all_groups: true,
         page: 1,
         page_size: 10000,
       });
