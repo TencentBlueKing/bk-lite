@@ -4,12 +4,15 @@ from types import SimpleNamespace
 from typing import Optional
 
 import nats_client
+from rest_framework import serializers
 from django.db.models import Count, Q
 from apps.core.utils.time_util import format_timestamp
 
-from apps.monitor.models import MonitorObject, Metric, MonitorInstance, MonitorAlert
-from apps.monitor.serializers.monitor_object import MonitorObjectSerializer
-from apps.monitor.serializers.monitor_metrics import MetricSerializer
+from apps.monitor.models import MonitorAlert, MonitorInstance, MonitorObject, MonitorObjectType, Metric, MetricGroup, MonitorPlugin
+from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, MetricSerializer
+from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
+from apps.monitor.serializers.plugin import MonitorPluginSerializer
+from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.services.metrics import Metrics
 from apps.core.utils.permission_utils import (
     check_instance_permission,
@@ -124,6 +127,143 @@ def _paginate_items(items: list, page, page_size):
         "page_size": page_size,
         "items": items[start:end],
     }
+
+
+def _normalize_nats_create_payload(data: dict) -> dict:
+    if not isinstance(data, dict):
+        raise ValueError("data 必须是字典")
+    return dict(data)
+
+
+def _ensure_maintainer_fields(data: dict, operator: str = "api") -> dict:
+    data.setdefault("created_by", operator)
+    data.setdefault("updated_by", operator)
+    data.setdefault("domain", "domain.com")
+    data.setdefault("updated_by_domain", "domain.com")
+    return data
+
+
+def _flatten_error_message(detail, field_name: str = "") -> list[str]:
+    if isinstance(detail, dict):
+        items = []
+        for key, value in detail.items():
+            next_field = f"{field_name}.{key}" if field_name else str(key)
+            items.extend(_flatten_error_message(value, next_field))
+        return items
+    if isinstance(detail, list):
+        items = []
+        for value in detail:
+            items.extend(_flatten_error_message(value, field_name))
+        return items
+    message = str(detail)
+    return [f"{field_name}: {message}" if field_name else message]
+
+
+def _build_validation_message(exc: Exception) -> str:
+    detail = getattr(exc, "detail", exc)
+    messages = _flatten_error_message(detail)
+    return "; ".join(dict.fromkeys(messages)) if messages else str(exc)
+
+
+def _create_with_serializer(serializer_class, data: dict, operator: str = "api"):
+    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator)
+    serializer = serializer_class(data=payload)
+    serializer.is_valid(raise_exception=True)
+    instance = serializer.save()
+    return instance, serializer.data
+
+
+def _create_monitor_object_payload(data: dict, operator: str = "api"):
+    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator)
+    children = payload.pop("children", [])
+
+    if not payload.get("instance_id_keys"):
+        payload["instance_id_keys"] = ["instance_id"]
+    if not payload.get("default_metric"):
+        payload["default_metric"] = f"any({{instance_type='{payload.get('name', '')}'}}) by (instance_id)"
+
+    serializer = MonitorObjectSerializer(data=payload)
+    serializer.is_valid(raise_exception=True)
+    parent_obj = serializer.save()
+
+    child_objects = []
+    for child in children:
+        if child.get("id") and child.get("name"):
+            child_objects.append(
+                MonitorObject(
+                    name=child["id"],
+                    display_name=child["name"],
+                    icon=payload.get("icon", ""),
+                    type_id=payload.get("type"),
+                    description="",
+                    level="derivative",
+                    parent=parent_obj,
+                    is_visible=True,
+                    instance_id_keys=["instance_id", child["id"]],
+                    default_metric=f"any({{instance_type='{child['id']}'}}) by (instance_id, {child['id']})",
+                    created_by=payload["created_by"],
+                    updated_by=payload["updated_by"],
+                    domain=payload["domain"],
+                    updated_by_domain=payload["updated_by_domain"],
+                )
+            )
+    if child_objects:
+        MonitorObject.objects.bulk_create(child_objects)
+
+    return parent_obj, serializer.data
+
+
+def _create_metric_group_payload(data: dict, operator: str = "api"):
+    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator)
+    payload.setdefault("monitor_plugin", None)
+    serializer = MetricGroupSerializer(data=payload)
+    serializer.is_valid(raise_exception=True)
+    instance = serializer.save()
+    return instance, serializer.data
+
+
+def _create_metric_payload(data: dict, operator: str = "api"):
+    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator)
+    payload.setdefault("monitor_plugin", None)
+    serializer = MetricSerializer(data=payload)
+    serializer.is_valid(raise_exception=True)
+    instance = serializer.save()
+    return instance, serializer.data
+
+
+def _get_monitor_policy_viewset():
+    from apps.monitor.views.monitor_policy import MonitorPolicyViewSet
+
+    return MonitorPolicyViewSet()
+
+
+def _create_monitor_policy_payload(data: dict, operator: str = "api"):
+    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator)
+    if not payload.get("schedule"):
+        raise ValueError("schedule 不能为空")
+
+    serializer = MonitorPolicySerializer(data=payload)
+    serializer.is_valid(raise_exception=True)
+    policy = serializer.save()
+
+    view = _get_monitor_policy_viewset()
+    view.update_or_create_task(policy.id, payload.get("schedule"))
+    view.update_policy_organizations(policy.id, payload.get("organizations", []))
+    if view.is_no_data_alert_enabled(policy):
+        view.update_policy_baselines(policy.id, policy.enable_alerts)
+
+    return policy, MonitorPolicySerializer(policy).data
+
+
+def _execute_nats_create(create_func, data: dict):
+    try:
+        _, result_data = create_func(data)
+        return {"result": True, "data": result_data, "message": ""}
+    except (serializers.ValidationError, ValueError) as exc:
+        return {"result": False, "data": [], "message": _build_validation_message(exc)}
+    except Exception as exc:
+        logger.exception("monitor NATS create failed, error=%s", exc)
+        return {"result": False, "data": [], "message": str(exc)}
 
 
 def _build_monitor_alert_segment(alert: MonitorAlert) -> dict:
@@ -287,6 +427,36 @@ def _get_instance_permission_map(permission) -> dict:
     if not isinstance(instance_items, list):
         return {}
     return {item.get("id"): item.get("permission", []) for item in instance_items if isinstance(item, dict) and item.get("id")}
+
+
+@nats_client.register
+def create_monitor_object_type(data: dict):
+    return _execute_nats_create(lambda payload: _create_with_serializer(MonitorObjectTypeSerializer, payload), data)
+
+
+@nats_client.register
+def create_monitor_object(data: dict):
+    return _execute_nats_create(_create_monitor_object_payload, data)
+
+
+@nats_client.register
+def create_monitor_plugin(data: dict):
+    return _execute_nats_create(lambda payload: _create_with_serializer(MonitorPluginSerializer, payload), data)
+
+
+@nats_client.register
+def create_metric_group(data: dict):
+    return _execute_nats_create(_create_metric_group_payload, data)
+
+
+@nats_client.register
+def create_metric(data: dict):
+    return _execute_nats_create(_create_metric_payload, data)
+
+
+@nats_client.register
+def create_monitor_policy(data: dict):
+    return _execute_nats_create(_create_monitor_policy_payload, data)
 
 
 @nats_client.register
