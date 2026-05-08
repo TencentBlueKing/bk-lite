@@ -135,11 +135,21 @@ def _normalize_nats_create_payload(data: dict) -> dict:
     return dict(data)
 
 
-def _ensure_maintainer_fields(data: dict, operator: str = "api") -> dict:
+def _resolve_nats_actor(user_info: Optional[dict]) -> tuple[str, str]:
+    if not isinstance(user_info, dict):
+        return "api", "domain.com"
+
+    user = _normalize_permission_user(user_info.get("user"))
+    operator = getattr(user, "username", None) or "api"
+    domain = user_info.get("domain") or getattr(user, "domain", None) or "domain.com"
+    return operator, domain
+
+
+def _ensure_maintainer_fields(data: dict, operator: str = "api", domain: str = "domain.com") -> dict:
     data.setdefault("created_by", operator)
     data.setdefault("updated_by", operator)
-    data.setdefault("domain", "domain.com")
-    data.setdefault("updated_by_domain", "domain.com")
+    data.setdefault("domain", domain)
+    data.setdefault("updated_by_domain", domain)
     return data
 
 
@@ -165,16 +175,16 @@ def _build_validation_message(exc: Exception) -> str:
     return "; ".join(dict.fromkeys(messages)) if messages else str(exc)
 
 
-def _create_with_serializer(serializer_class, data: dict, operator: str = "api"):
-    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator)
+def _create_with_serializer(serializer_class, data: dict, operator: str = "api", domain: str = "domain.com"):
+    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator, domain=domain)
     serializer = serializer_class(data=payload)
     serializer.is_valid(raise_exception=True)
     instance = serializer.save()
     return instance, serializer.data
 
 
-def _create_monitor_object_payload(data: dict, operator: str = "api"):
-    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator)
+def _create_monitor_object_payload(data: dict, operator: str = "api", domain: str = "domain.com"):
+    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator, domain=domain)
     children = payload.pop("children", [])
 
     if not payload.get("instance_id_keys"):
@@ -213,8 +223,8 @@ def _create_monitor_object_payload(data: dict, operator: str = "api"):
     return parent_obj, serializer.data
 
 
-def _create_metric_group_payload(data: dict, operator: str = "api"):
-    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator)
+def _create_metric_group_payload(data: dict, operator: str = "api", domain: str = "domain.com"):
+    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator, domain=domain)
     payload.setdefault("monitor_plugin", None)
     serializer = MetricGroupSerializer(data=payload)
     serializer.is_valid(raise_exception=True)
@@ -222,8 +232,8 @@ def _create_metric_group_payload(data: dict, operator: str = "api"):
     return instance, serializer.data
 
 
-def _create_metric_payload(data: dict, operator: str = "api"):
-    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator)
+def _create_metric_payload(data: dict, operator: str = "api", domain: str = "domain.com"):
+    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator, domain=domain)
     payload.setdefault("monitor_plugin", None)
     serializer = MetricSerializer(data=payload)
     serializer.is_valid(raise_exception=True)
@@ -237,8 +247,8 @@ def _get_monitor_policy_viewset():
     return MonitorPolicyViewSet()
 
 
-def _create_monitor_policy_payload(data: dict, operator: str = "api"):
-    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator)
+def _create_monitor_policy_payload(data: dict, operator: str = "api", domain: str = "domain.com"):
+    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator, domain=domain)
     if not payload.get("schedule"):
         raise ValueError("schedule 不能为空")
 
@@ -255,9 +265,10 @@ def _create_monitor_policy_payload(data: dict, operator: str = "api"):
     return policy, MonitorPolicySerializer(policy).data
 
 
-def _execute_nats_create(create_func, data: dict):
+def _execute_nats_create(create_func, data: dict, user_info: Optional[dict] = None):
     try:
-        _, result_data = create_func(data)
+        operator, domain = _resolve_nats_actor(user_info)
+        _, result_data = create_func(data, operator=operator, domain=domain)
         return {"result": True, "data": result_data, "message": ""}
     except (serializers.ValidationError, ValueError) as exc:
         return {"result": False, "data": [], "message": _build_validation_message(exc)}
@@ -430,33 +441,51 @@ def _get_instance_permission_map(permission) -> dict:
 
 
 @nats_client.register
-def create_monitor_object_type(data: dict):
-    return _execute_nats_create(lambda payload: _create_with_serializer(MonitorObjectTypeSerializer, payload), data)
+def create_monitor_object_type(data: dict, *args, **kwargs):
+    return _execute_nats_create(
+        lambda payload, operator="api", domain="domain.com": _create_with_serializer(
+            MonitorObjectTypeSerializer,
+            payload,
+            operator=operator,
+            domain=domain,
+        ),
+        data,
+        user_info=kwargs.get("user_info"),
+    )
 
 
 @nats_client.register
-def create_monitor_object(data: dict):
-    return _execute_nats_create(_create_monitor_object_payload, data)
+def create_monitor_object(data: dict, *args, **kwargs):
+    return _execute_nats_create(_create_monitor_object_payload, data, user_info=kwargs.get("user_info"))
 
 
 @nats_client.register
-def create_monitor_plugin(data: dict):
-    return _execute_nats_create(lambda payload: _create_with_serializer(MonitorPluginSerializer, payload), data)
+def create_monitor_plugin(data: dict, *args, **kwargs):
+    return _execute_nats_create(
+        lambda payload, operator="api", domain="domain.com": _create_with_serializer(
+            MonitorPluginSerializer,
+            payload,
+            operator=operator,
+            domain=domain,
+        ),
+        data,
+        user_info=kwargs.get("user_info"),
+    )
 
 
 @nats_client.register
-def create_metric_group(data: dict):
-    return _execute_nats_create(_create_metric_group_payload, data)
+def create_metric_group(data: dict, *args, **kwargs):
+    return _execute_nats_create(_create_metric_group_payload, data, user_info=kwargs.get("user_info"))
 
 
 @nats_client.register
-def create_metric(data: dict):
-    return _execute_nats_create(_create_metric_payload, data)
+def create_metric(data: dict, *args, **kwargs):
+    return _execute_nats_create(_create_metric_payload, data, user_info=kwargs.get("user_info"))
 
 
 @nats_client.register
-def create_monitor_policy(data: dict):
-    return _execute_nats_create(_create_monitor_policy_payload, data)
+def create_monitor_policy(data: dict, *args, **kwargs):
+    return _execute_nats_create(_create_monitor_policy_payload, data, user_info=kwargs.get("user_info"))
 
 
 @nats_client.register
