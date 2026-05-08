@@ -93,5 +93,15 @@
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": "eslint --fix"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "core-js",
+      "core-js-pure",
+      "esbuild",
+      "sharp",
+      "unrs-resolver"
+    ]
   }
 }
