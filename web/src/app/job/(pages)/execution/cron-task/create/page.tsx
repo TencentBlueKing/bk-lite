@@ -532,7 +532,7 @@ const CreateCronTaskPage = () => {
             )}
           </Form.Item>
 
-          <Form.Item label={t('job.concurrencyStrategy')} name="concurrency_strategy">
+          <Form.Item label={t('job.concurrencyStrategy')} name="concurrency_policy">
             <Select defaultValue="skip">
               <Select.Option value="skip">{t('job.skipIfRunning')}</Select.Option>
               <Select.Option value="run">{t('job.runAnyway')}</Select.Option>
