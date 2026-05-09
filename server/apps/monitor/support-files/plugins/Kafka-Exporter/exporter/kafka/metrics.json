@@ -12,7 +12,7 @@
   "metrics": [
     {
       "metric_group": "Base",
-      "name": "up_gauge",
+      "name": "kafka_up_gauge",
       "display_name": "Probe Status",
       "instance_id_keys": ["instance_id"],
       "data_type": "Enum",
@@ -23,7 +23,7 @@
     },
     {
       "metric_group": "Base",
-      "name": "brokers_gauge",
+      "name": "kafka_brokers_gauge",
       "display_name": "Broker Count",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -34,7 +34,7 @@
     },
     {
       "metric_group": "Base",
-      "name": "broker_info_gauge",
+      "name": "kafka_broker_info_gauge",
       "display_name": "Broker Info",
       "instance_id_keys": ["instance_id"],
       "data_type": "Enum",
@@ -45,7 +45,7 @@
     },
     {
       "metric_group": "Topic",
-      "name": "topic_partition_count",
+      "name": "kafka_topic_partition_count",
       "display_name": "Topic Partition Count",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -56,7 +56,7 @@
     },
     {
       "metric_group": "Topic",
-      "name": "topic_partition_current_offset",
+      "name": "kafka_topic_partition_current_offset",
       "display_name": "Partition Current Offset",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -67,7 +67,7 @@
     },
     {
       "metric_group": "Topic",
-      "name": "topic_partition_oldest_offset",
+      "name": "kafka_topic_partition_oldest_offset",
       "display_name": "Partition Oldest Offset",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -78,7 +78,7 @@
     },
     {
       "metric_group": "Topic",
-      "name": "topic_partition_in_sync_replica",
+      "name": "kafka_topic_partition_in_sync_replica",
       "display_name": "Partition In-Sync Replicas",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -89,7 +89,7 @@
     },
     {
       "metric_group": "Topic",
-      "name": "topic_partition_leader_is_preferred",
+      "name": "kafka_topic_partition_leader_is_preferred",
       "display_name": "Partition Preferred Leader Status",
       "instance_id_keys": ["instance_id"],
       "data_type": "Enum",
@@ -100,7 +100,7 @@
     },
     {
       "metric_group": "Topic",
-      "name": "topic_partition_replicas",
+      "name": "kafka_topic_partition_replicas",
       "display_name": "Partition Replica Count",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -111,7 +111,7 @@
     },
     {
       "metric_group": "Topic",
-      "name": "topic_partition_under_replicated_partition",
+      "name": "kafka_topic_partition_under_replicated_partition",
       "display_name": "Partition Under-Replicated Status",
       "instance_id_keys": ["instance_id"],
       "data_type": "Enum",
@@ -122,7 +122,7 @@
     },
     {
       "metric_group": "ConsumerGroup",
-      "name": "consumergroup_current_offset",
+      "name": "kafka_consumergroup_current_offset",
       "display_name": "Consumer Group Current Offset",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
@@ -133,7 +133,7 @@
     },
     {
       "metric_group": "ConsumerGroup",
-      "name": "consumergroup_lag",
+      "name": "kafka_consumergroup_lag",
       "display_name": "Consumer Group Lag",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
