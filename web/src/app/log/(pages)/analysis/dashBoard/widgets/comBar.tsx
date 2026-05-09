@@ -14,6 +14,7 @@ const CHART_MIN_WIDTH_PX = 200;
 const BarChart: React.FC<DashboardBarChartProps> = ({
   rawData,
   loading = false,
+  config,
   onReady
 }) => {
   const [isDataReady, setIsDataReady] = useState(false);
@@ -49,10 +50,19 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
   }, []);
 
   const transformData = (rawData: any) => {
+    const maps = config?.displayMaps;
+    if (maps?.key && maps?.value && Array.isArray(rawData)) {
+      const mapped = rawData.map((item: any) => ({
+        name: item[maps.key],
+        count: Number(item[maps.value]) || 0
+      }));
+      return ChartDataTransformer.transformToLineBarData(mapped);
+    }
     return ChartDataTransformer.transformToLineBarData(rawData);
   };
 
   const chartData = transformData(rawData);
+  const isHorizontal = config?.direction === 'horizontal';
 
   useEffect(() => {
     if (!loading) {
@@ -73,11 +83,12 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
     toolbox: { show: false },
     tooltip: {
       trigger: 'axis',
+      appendToBody: true,
       axisPointer: {
         type: 'shadow'
       },
       enterable: true,
-      confine: true,
+      confine: false,
       extraCssText: 'box-shadow: 0 0 3px rgba(150,150,150, 0.7);',
       textStyle: {
         fontSize: 12
@@ -106,68 +117,104 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
       bottom: 20,
       containLabel: true
     },
-    xAxis: {
-      type: 'category',
-      data: chartData?.categories || [],
-      nameRotate: -90,
-      axisLabel: {
-        margin: 15,
-        textStyle: {
-          color: '#7f92a7',
-          fontSize: 11
+    xAxis: isHorizontal
+      ? {
+        type: 'value',
+        minInterval: 1,
+        axisTick: { show: false },
+        axisLine: { show: false },
+        axisLabel: {
+          formatter: function (value: number) {
+            if (value >= 1000) return (value / 1000).toFixed(1) + 'k';
+            return value.toString();
+          },
+          textStyle: { color: '#7f92a7' }
         },
-        rotate: 0,
-        interval: 'auto',
-        formatter: function (value: string) {
-          return value;
-        }
-      },
-      axisLine: {
-        lineStyle: {
-          color: '#e8e8e8'
-        }
-      },
-      axisTick: {
-        show: false
-      },
-      splitLine: {
-        show: false,
-        lineStyle: {
-          color: '#f0f0f0'
+        splitLine: {
+          show: true,
+          lineStyle: { color: '#f0f0f0', type: 'solid' }
         }
       }
-    },
-    yAxis: {
-      type: 'value',
-      minInterval: 1,
-      axisTick: {
-        show: false
-      },
-      axisLine: {
-        show: false
-      },
-      axisLabel: {
-        formatter: function (value: number) {
-          if (value >= 1000) {
-            return (value / 1000).toFixed(1) + 'k';
+      : {
+        type: 'category',
+        data: chartData?.categories || [],
+        nameRotate: -90,
+        axisLabel: {
+          margin: 15,
+          textStyle: {
+            color: '#7f92a7',
+            fontSize: 11
+          },
+          rotate: 0,
+          interval: 'auto',
+          formatter: function (value: string) {
+            return value;
           }
-          return value.toString();
         },
-        textStyle: {
-          color: '#7f92a7'
+        axisLine: {
+          lineStyle: {
+            color: '#e8e8e8'
+          }
+        },
+        axisTick: {
+          show: false
+        },
+        splitLine: {
+          show: false,
+          lineStyle: {
+            color: '#f0f0f0'
+          }
         }
       },
-      splitLine: {
-        show: true,
-        lineStyle: {
-          color: '#f0f0f0',
-          type: 'solid'
+    yAxis: isHorizontal
+      ? {
+        type: 'category',
+        data: chartData?.categories || [],
+        axisLabel: {
+          textStyle: {
+            color: '#7f92a7',
+            fontSize: 11
+          },
+          formatter: function (value: string) {
+            return value.length > 12 ? value.slice(0, 12) + '...' : value;
+          }
+        },
+        axisLine: { lineStyle: { color: '#e8e8e8' } },
+        axisTick: { show: false },
+        inverse: true
+      }
+      : {
+        type: 'value',
+        minInterval: 1,
+        axisTick: {
+          show: false
+        },
+        axisLine: {
+          show: false
+        },
+        axisLabel: {
+          formatter: function (value: number) {
+            if (value >= 1000) {
+              return (value / 1000).toFixed(1) + 'k';
+            }
+            return value.toString();
+          },
+          textStyle: {
+            color: '#7f92a7'
+          }
+        },
+        splitLine: {
+          show: true,
+          lineStyle: {
+            color: '#f0f0f0',
+            type: 'solid'
+          }
         }
       }
-    }
   };
 
   // 根据数据类型设置 series
+  const barRadius = isHorizontal ? [0, 2, 2, 0] : [2, 2, 0, 0];
   if (chartData && chartData.series) {
     option.series = chartData.series.map((item: any) => ({
       name: item.name,
@@ -175,7 +222,7 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
       data: item.data,
       barMaxWidth: 40,
       itemStyle: {
-        borderRadius: [2, 2, 0, 0]
+        borderRadius: barRadius
       },
       emphasis: {
         focus: 'series'
@@ -189,7 +236,7 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
         data: chartData && chartData.values ? chartData.values : [],
         barMaxWidth: 40,
         itemStyle: {
-          borderRadius: [2, 2, 0, 0]
+          borderRadius: barRadius
         },
         emphasis: {
           focus: 'series'
