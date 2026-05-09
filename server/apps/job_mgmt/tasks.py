@@ -2,14 +2,16 @@
 
 from datetime import timedelta
 
+import requests
 from asgiref.sync import async_to_sync
 from celery import current_app, shared_task
 from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
-from apps.job_mgmt.constants import ConcurrencyPolicy, ExecutionStatus, JobType
+from apps.job_mgmt.constants import ConcurrencyPolicy, ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DistributionFile, JobExecution, ScheduledTask
 from apps.job_mgmt.services import FileDistributionRunner, ScriptExecutionRunner, ScriptParamsService
+from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.playbook_execution import PlaybookExecution
 from apps.node_mgmt.utils.s3 import delete_s3_file
 
@@ -98,9 +100,28 @@ def execute_scheduled_task(scheduled_task_id: int):
         script_content = scheduled_task.script.content or script_content
         script_type = scheduled_task.script.script_type or script_type
 
+    # 高危命令/路径检测（定时任务也需要检查，脚本库内容可能已变更）
+    team = scheduled_task.team or []
+    if scheduled_task.job_type == JobType.SCRIPT and script_content:
+        check_result = DangerousChecker.check_command(script_content, team)
+        if not check_result.can_execute:
+            forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
+            logger.warning(f"[execute_scheduled_task] 脚本包含高危命令，禁止执行: " f"scheduled_task_id={scheduled_task_id}, rules={forbidden_rules}")
+            return
+    if scheduled_task.job_type == JobType.FILE_DISTRIBUTION and scheduled_task.target_path:
+        check_result = DangerousChecker.check_path(scheduled_task.target_path, team)
+        if not check_result.can_execute:
+            forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
+            logger.warning(
+                f"[execute_scheduled_task] 目标路径为高危路径，禁止分发: "
+                f"scheduled_task_id={scheduled_task_id}, path={scheduled_task.target_path}, rules={forbidden_rules}"
+            )
+            return
+
     execution = JobExecution.objects.create(
         name=scheduled_task.name,
         job_type=scheduled_task.job_type,
+        trigger_source=TriggerSource.SCHEDULED,
         status=ExecutionStatus.PENDING,
         script=scheduled_task.script,
         playbook=scheduled_task.playbook,
@@ -167,3 +188,44 @@ def _dispatch_execution_job(job_type: str, execution_id: int) -> bool:
         current_app.send_task("apps.job_mgmt.tasks.execute_playbook_task", args=[execution_id])
         return True
     return False
+
+
+@shared_task(
+    bind=True,
+    max_retries=5,
+    default_retry_delay=5,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=120,
+    retry_jitter=True,
+)
+def do_callback_task(self, url: str, payload: dict, execution_id: int) -> None:
+    """
+    执行回调 POST 请求（Celery 持久化任务）。
+
+    失败时由 Celery 自动重试（指数退避: ~5s → 10s → 20s → 40s → 80s，最多 5 次）。
+    任务持久化到 broker，worker 重启后仍会继续执行。
+    """
+    try:
+        resp = requests.post(url, json=payload, timeout=10)
+        if 200 <= resp.status_code < 300:
+            logger.info(f"[callback] 回调成功: execution_id={execution_id}, url={url}")
+            return
+        else:
+            error_msg = f"回调返回非 2xx: status_code={resp.status_code}"
+            logger.warning(
+                f"[callback] {error_msg}: execution_id={execution_id}, " f"url={url}, attempt={self.request.retries + 1}/{self.max_retries + 1}"
+            )
+            raise RuntimeError(error_msg)
+    except requests.RequestException as e:
+        logger.warning(
+            f"[callback] 回调网络异常: execution_id={execution_id}, " f"url={url}, attempt={self.request.retries + 1}/{self.max_retries + 1}, error={e}"
+        )
+        raise
+    except RuntimeError:
+        raise
+    except Exception as e:
+        logger.error(
+            f"[callback] 回调未知异常: execution_id={execution_id}, " f"url={url}, attempt={self.request.retries + 1}/{self.max_retries + 1}, error={e}"
+        )
+        raise

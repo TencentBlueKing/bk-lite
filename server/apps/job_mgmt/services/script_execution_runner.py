@@ -160,7 +160,14 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                 result["stdout"] = exec_result.get("stdout", exec_result.get("result", ""))
                 result["stderr"] = self.normalize_executor_error(exec_result, exec_result.get("stderr", ""))
                 result["exit_code"] = exec_result.get("exit_code", exec_result.get("code", 0))
-                result["status"] = ExecutionStatus.SUCCESS if result["exit_code"] == 0 else ExecutionStatus.FAILED
+                # 检测超时：executor 返回 code="timeout" 或 category="remote_timeout"
+                is_timeout = str(exec_result.get("code", "")) == "timeout" or exec_result.get("category") == "remote_timeout"
+                if is_timeout:
+                    result["status"] = ExecutionStatus.TIMEOUT
+                elif result["exit_code"] == 0:
+                    result["status"] = ExecutionStatus.SUCCESS
+                else:
+                    result["status"] = ExecutionStatus.FAILED
             else:
                 result["stdout"] = str(exec_result)
                 result["stderr"] = ""

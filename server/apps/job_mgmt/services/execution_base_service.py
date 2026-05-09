@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
 from apps.core.mixinx import EncryptMixin
-from apps.job_mgmt.constants import ExecutionStatus, ExecutorDriver, OSType, ScriptType, SSHCredentialType, TargetSource
+from apps.job_mgmt.constants import CredentialSource, ExecutionStatus, ExecutorDriver, OSType, ScriptType, SSHCredentialType, TargetSource
 from apps.job_mgmt.models import JobExecution, Target
 from apps.job_mgmt.services.callback_service import send_callback
 from apps.rpc.ansible import AnsibleExecutor
@@ -249,6 +249,11 @@ class ExecutionTaskBaseService(object):
         """
         credentials = []
         for target in targets:
+            # 凭据来源检查：credential 模式暂未实现，记录警告并跳过
+            if target.credential_source == CredentialSource.CREDENTIAL:
+                logger.warning(f"[_build_host_credentials] 目标 {target.ip} 使用凭据管理(credential_id={target.credential_id})，" f"该模式暂未实现，跳过此目标")
+                continue
+
             cred = {
                 "host": target.ip,
                 "port": target.ssh_port if target.os_type == OSType.LINUX else target.winrm_port,
