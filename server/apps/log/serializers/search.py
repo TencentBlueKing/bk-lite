@@ -29,9 +29,9 @@ class LogSearchSerializer(serializers.Serializer):
     )
     log_groups = serializers.ListField(
         child=serializers.CharField(),
-        required=False,
-        allow_empty=True,
-        default=list,
+        required=True,
+        allow_empty=False,
+        error_messages={"required": "缺少日志分组", "empty": "缺少日志分组"},
     )
 
 
@@ -52,9 +52,9 @@ class LogHitsSerializer(serializers.Serializer):
     step = serializers.CharField(required=False, allow_blank=True, default="5m")
     log_groups = serializers.ListField(
         child=serializers.CharField(),
-        required=False,
-        allow_empty=True,
-        default=list,
+        required=True,
+        allow_empty=False,
+        error_messages={"required": "缺少日志分组", "empty": "缺少日志分组"},
     )
 
 
@@ -70,7 +70,7 @@ class LogTopStatsSerializer(serializers.Serializer):
     top_num = serializers.IntegerField(min_value=1, max_value=100, default=5)
     log_groups = serializers.ListField(
         child=serializers.CharField(),
-        required=False,
-        allow_empty=True,
-        default=list,
+        required=True,
+        allow_empty=False,
+        error_messages={"required": "缺少日志分组", "empty": "缺少日志分组"},
     )

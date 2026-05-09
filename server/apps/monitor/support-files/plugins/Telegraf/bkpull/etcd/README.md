@@ -32,13 +32,105 @@ Etcd 监控用于帮助使用者持续观察 etcd 集群的健康状态、容量
 | 数据来源 | etcd 实例暴露的 `/metrics` 指标端点 |
 | 默认采集地址 | `http(s)://<host>:<port>/metrics` |
 
+## 前置要求
+
+- 适用于已开启 Prometheus 指标端点的 etcd v3 集群或单实例。
+- 采集器到目标实例的 `host:port` 必须网络可达。
+- 如果使用 HTTPS，需提前准备好采集器运行环境可访问的 CA 证书、客户端证书和客户端私钥路径。
+- 如果指标端点不是默认路径，需要提前确认实际暴露路径，例如 `/metrics`。
+
+## 接入步骤
+
+1. 先在目标节点确认指标端点可访问。
+2. 在监控接入页面选择 `Etcd` 插件。
+3. 填写协议、主机、端口、指标路径和采集间隔。
+4. 如目标端开启 HTTPS 或双向认证，补充 TLS 相关字段。
+5. 保存配置后，等待一个采集周期，确认实例开始上报指标。
+
+### 1. 接入前验证
+
+HTTP 场景可先执行：
+
+```bash
+curl http://<host>:<port>/metrics
+```
+
+HTTPS / mTLS 场景可先执行：
+
+```bash
+curl --cacert /path/to/ca.pem --cert /path/to/client.pem --key /path/to/client-key.pem https://<host>:<port>/metrics
+```
+
+满足以下任一情况即可认为端点基本可用：
+
+- 返回状态码为 `200`
+- 响应内容中能看到 `etcd_`、`process_`、`grpc_` 等 Prometheus 指标文本
+
+### 2. 页面字段说明
+
+| 页面字段 | 是否必填 | 说明 |
+| --- | --- | --- |
+| 协议 `scheme` | 是 | 选择 `http` 或 `https`。 |
+| 主机 `host` | 是 | etcd 实例地址，应填写采集器可访问的 IP 或域名。 |
+| 端口 `port` | 是 | metrics 端点监听端口。 |
+| 指标路径 `metrics_path` | 是 | 默认 `/metrics`，如果实际暴露路径不同，需要按实际填写。 |
+| 间隔 `interval` | 是 | 采集周期，单位秒，默认 `10`。 |
+| CA 证书路径 `tls_ca` | 否 | HTTPS 场景下校验服务端证书使用。 |
+| 客户端证书路径 `tls_cert` | 否 | 双向认证场景下使用。 |
+| 客户端密钥路径 `tls_key` | 否 | 双向认证场景下使用。 |
+| 跳过证书校验 `insecure_skip_verify` | 否 | 仅建议在测试或临时排障时使用。 |
+
+### 3. 最小配置示例
+
+无认证 HTTP：
+
+```text
+协议: http
+主机: 10.0.0.12
+端口: 2379
+指标路径: /metrics
+间隔: 10
+```
+
+HTTPS 双向认证：
+
+```text
+协议: https
+主机: etcd-1.example.com
+端口: 2379
+指标路径: /metrics
+间隔: 10
+CA证书路径: /etc/ssl/etcd/ca.pem
+客户端证书路径: /etc/ssl/etcd/client.pem
+客户端密钥路径: /etc/ssl/etcd/client-key.pem
+跳过证书校验: 关闭
+```
+
+## 接入校验
+
+保存接入后，建议按以下顺序检查：
+
+1. 实例列表中已出现对应 etcd 实例，实例名称通常为 `host:port`。
+2. 一个采集周期后，可查询到 `etcd_server_has_leader_gauge`、`etcd_backend_allocated_usage_percent` 等指标。
+3. 若平台支持查看最近数据，确认最近 5 分钟内持续有 etcd 指标上报。
+
+## 常见接入问题
+
+| 现象 | 常见原因 | 排查建议 |
+| --- | --- | --- |
+| 连接失败或超时 | 端口不通、地址不可达、防火墙限制 | 先从采集器所在环境检查到目标 `host:port` 的网络连通性。 |
+| 返回 `404` | 指标路径填写错误 | 确认实际路径是否为 `/metrics`，必要时按启动参数或代理配置调整。 |
+| HTTPS 握手失败 | CA、客户端证书或密钥配置错误 | 检查证书链、证书路径和证书是否与目标实例匹配。 |
+| 证书校验失败 | 服务端证书域名不匹配或 CA 不可信 | 优先修正证书或 CA 配置，不建议长期启用跳过校验。 |
+| 接入成功但没有 etcd 指标 | 访问到的不是 etcd metrics 端点 | 确认响应内容中是否包含 `etcd_` 前缀指标。 |
+
 ## 口径说明
 
 - 本文档中的指标均按 `instance_id` 维度聚合，因此当前“维度”列统一为 `None`。
 - 频率类指标大多基于最近 5 分钟窗口计算。
 - 容量类指标使用产品标准单位 `bytes`，页面会按 `B/KiB/MiB/GiB` 自动展示。
 - 流量类指标使用产品标准单位 `byteps`，页面会按 `B/s`、`KiB/s`、`MiB/s` 自动展示。
-- 频率类指标使用产品标准单位 `hertz`，页面会按 `Hz/KHz/MHz` 自动展示。
+- 事件与请求类频率指标使用 `cps`。
 - `s` 类指标建议按 `ms` 或 `s` 理解其实际耗时水平。
 
 ## 建议优先关注指标
@@ -72,9 +164,9 @@ Etcd 监控用于帮助使用者持续观察 etcd 集群的健康状态、容量
 | 集群是否有主节点 | `etcd_server_has_leader_gauge` | Enum | `0/1` | 是否为 `1` | 判断当前成员是否能观察到 Leader。返回 `0` 往往意味着选主异常、网络分区或集群短时不可写。 |
 | 当前角色 | `etcd_server_is_leader_gauge` | Enum | `0/1` | 当前是 Leader 还是 Follower | 用于确认当前成员在集群中的角色，方便排查请求是否集中在 Leader。 |
 | 活跃节点连接数 | `etcd_network_active_peers_gauge` | Number | `counts` | 是否持续下降 | 表示当前成员与其他 etcd 节点间保持活跃状态的连接数量。持续下降通常意味着节点失联或复制链路异常。 |
-| 主节点切换频率 | `etcd_server_leader_changes_seen_total_counter_rate` | Number | `hertz` | 是否持续偏高 | 表示最近 5 分钟 Leader 切换速率。持续偏高通常意味着网络抖动、时钟漂移或节点负载不稳定。 |
-| 心跳发送失败频率 | `etcd_server_heartbeat_send_failures_total_counter_rate` | Number | `hertz` | 是否持续非零 | 表示最近 5 分钟 Raft 心跳发送失败速率。持续非零说明 Leader 到 Follower 的通信可能存在异常。 |
-| 健康检查失败频率 | `etcd_server_health_failures_counter_rate` | Number | `hertz` | 是否出现明显升高 | 表示最近 5 分钟 etcd 内部健康检查失败速率，可用于辅助判断服务是否进入异常状态。 |
+| 主节点切换频率 | `etcd_server_leader_changes_seen_total_counter_rate` | Number | `cps` | 是否持续偏高 | 表示最近 5 分钟 Leader 切换速率。持续偏高通常意味着网络抖动、时钟漂移或节点负载不稳定。 |
+| 心跳发送失败频率 | `etcd_server_heartbeat_send_failures_total_counter_rate` | Number | `cps` | 是否持续非零 | 表示最近 5 分钟 Raft 心跳发送失败速率。持续非零说明 Leader 到 Follower 的通信可能存在异常。 |
+| 健康检查失败频率 | `etcd_server_health_failures_counter_rate` | Number | `cps` | 是否出现明显升高 | 表示最近 5 分钟 etcd 内部健康检查失败速率，可用于辅助判断服务是否进入异常状态。 |
 
 ### 存储与碎片
 
@@ -109,13 +201,13 @@ Etcd 监控用于帮助使用者持续观察 etcd 集群的健康状态、容量
 | 指标中文名 | 指标ID | 数据类型 | 单位 | 重点关注 | 指标说明 |
 | --- | --- | --- | --- | --- | --- |
 | 提案积压数 | `etcd_server_proposals_pending_gauge` | Number | `counts` | 是否持续积压 | 表示当前等待提交的 Raft 提案数量。持续积压说明 Leader 的提交链路已受到磁盘、网络或负载影响。 |
-| 提案失败频率 | `etcd_server_proposals_failed_total_counter_rate` | Number | `hertz` | 是否持续升高 | 表示最近 5 分钟提案失败速率。持续升高意味着一致性提交链路存在异常。 |
-| 提案提交频率 | `etcd_server_proposals_committed_rate` | Number | `hertz` | 是否明显下降 | 表示最近 5 分钟提案进入 committed 状态的速率，可用于衡量集群提交吞吐。 |
-| 提案应用频率 | `etcd_server_proposals_applied_rate` | Number | `hertz` | 是否明显下降 | 表示最近 5 分钟提案被状态机应用的速率，可用于衡量最终落地吞吐。 |
+| 提案失败频率 | `etcd_server_proposals_failed_total_counter_rate` | Number | `cps` | 是否持续升高 | 表示最近 5 分钟提案失败速率。持续升高意味着一致性提交链路存在异常。 |
+| 提案提交频率 | `etcd_server_proposals_committed_rate` | Number | `cps` | 是否明显下降 | 表示最近 5 分钟提案进入 committed 状态的速率，可用于衡量集群提交吞吐。 |
+| 提案应用频率 | `etcd_server_proposals_applied_rate` | Number | `cps` | 是否明显下降 | 表示最近 5 分钟提案被状态机应用的速率，可用于衡量最终落地吞吐。 |
 | 提案应用落后数 | `etcd_server_proposals_apply_lag` | Number | `counts` | 是否持续扩大 | 表示已提交提案与已应用提案之间的差值。该值扩大说明状态机处理速度跟不上提交速度。 |
-| 慢应用请求频率 | `etcd_server_slow_apply_total_counter_rate` | Number | `hertz` | 是否持续升高 | 表示最近 5 分钟慢应用事件速率。持续升高说明 apply 路径已出现明显性能退化。 |
-| 读索引失败频率 | `etcd_server_read_indexes_failed_total_counter_rate` | Number | `hertz` | 是否持续非零 | 表示最近 5 分钟 Read Index 失败速率，升高说明线性一致性读路径出现异常。 |
-| 慢读索引频率 | `etcd_server_slow_read_indexes_total_counter_rate` | Number | `hertz` | 是否持续升高 | 表示最近 5 分钟慢读索引事件速率，通常与 Leader 压力升高或网络抖动有关。 |
+| 慢应用请求频率 | `etcd_server_slow_apply_total_counter_rate` | Number | `cps` | 是否持续升高 | 表示最近 5 分钟慢应用事件速率。持续升高说明 apply 路径已出现明显性能退化。 |
+| 读索引失败频率 | `etcd_server_read_indexes_failed_total_counter_rate` | Number | `cps` | 是否持续非零 | 表示最近 5 分钟 Read Index 失败速率，升高说明线性一致性读路径出现异常。 |
+| 慢读索引频率 | `etcd_server_slow_read_indexes_total_counter_rate` | Number | `cps` | 是否持续升高 | 表示最近 5 分钟慢读索引事件速率，通常与 Leader 压力升高或网络抖动有关。 |
 
 ### 请求与流量
 
@@ -123,14 +215,14 @@ Etcd 监控用于帮助使用者持续观察 etcd 集群的健康状态、容量
 
 | 指标中文名 | 指标ID | 数据类型 | 单位 | 重点关注 | 指标说明 |
 | --- | --- | --- | --- | --- | --- |
-| 客户端请求频率 | `etcd_server_client_requests_total_counter_rate` | Number | `hertz` | 是否突增或骤降 | 表示最近 5 分钟 etcd 处理客户端请求的总速率，可用于衡量业务侧访问压力。 |
-| RPC 请求频率 | `etcd_rpc_rate` | Number | `hertz` | 是否与业务峰值一致 | 表示最近 5 分钟 etcd 一元 gRPC 请求的启动速率，可用于观察 API 调用吞吐。 |
-| RPC 失败频率 | `etcd_rpc_failed_rate` | Number | `hertz` | 是否明显升高 | 表示最近 5 分钟非 OK 状态的一元 RPC 失败速率，升高说明客户端访问路径已经出现明显错误。 |
+| 客户端请求频率 | `etcd_server_client_requests_total_counter_rate` | Number | `cps` | 是否突增或骤降 | 表示最近 5 分钟 etcd 处理客户端请求的总速率，可用于衡量业务侧访问压力。 |
+| RPC 请求频率 | `etcd_rpc_rate` | Number | `cps` | 是否与业务峰值一致 | 表示最近 5 分钟 etcd 一元 gRPC 请求的启动速率，可用于观察 API 调用吞吐。 |
+| RPC 失败频率 | `etcd_rpc_failed_rate` | Number | `cps` | 是否明显升高 | 表示最近 5 分钟非 OK 状态的一元 RPC 失败速率，升高说明客户端访问路径已经出现明显错误。 |
 | 客户端入站流量 | `etcd_network_client_grpc_received_bytes_total_counter_rate` | Number | `byteps` | 是否异常放大 | 表示最近 5 分钟来自客户端的 gRPC 入站流量，用于评估写入和查询请求的数据输入压力。 |
 | 客户端出站流量 | `etcd_network_client_grpc_sent_bytes_total_counter_rate` | Number | `byteps` | 是否异常放大 | 表示最近 5 分钟返回给客户端的 gRPC 出站流量，适合观察查询返回量和 Watch 返回压力。 |
 | 节点间入站流量 | `etcd_network_peer_received_bytes_total_counter_rate` | Number | `byteps` | 是否明显失衡 | 表示最近 5 分钟来自其他 Peer 的网络入站流量，是判断复制流量压力的重要指标。 |
 | 节点间出站流量 | `etcd_network_peer_sent_bytes_total_counter_rate` | Number | `byteps` | 是否明显失衡 | 表示最近 5 分钟发送给其他 Peer 的网络出站流量，可用于观察复制和同步成本。 |
-| 节点间发送失败频率 | `etcd_network_peer_sent_failures_total_counter_rate` | Number | `hertz` | 是否持续非零 | 表示最近 5 分钟 Peer 间发送失败速率。持续非零通常说明复制链路存在网络异常或连接中断。 |
+| 节点间发送失败频率 | `etcd_network_peer_sent_failures_total_counter_rate` | Number | `cps` | 是否持续非零 | 表示最近 5 分钟 Peer 间发送失败速率。持续非零通常说明复制链路存在网络异常或连接中断。 |
 
 ### 监听与压缩
 
@@ -140,9 +232,9 @@ Etcd 监控用于帮助使用者持续观察 etcd 集群的健康状态、容量
 | --- | --- | --- | --- | --- | --- |
 | 监听器数量 | `etcd_debugging_mvcc_watcher_total_gauge` | Number | `counts` | 是否持续增长 | 表示当前 MVCC Watcher 总数。Watcher 过多会增加内存占用和事件分发压力。 |
 | 活跃监听流 | `etcd_watch_streams_active` | Number | `counts` | 是否异常增长 | 表示当前活跃 Watch 流数量，可用于判断长连接监听压力。 |
-| 压缩键处理频率 | `etcd_debugging_mvcc_db_compaction_keys_total_counter_rate` | Number | `hertz` | 是否长期偏低 | 表示最近 5 分钟 compaction 处理键的速率，用于观察压缩动作是否正常推进。 |
-| 写入频率 | `etcd_mvcc_put_total_counter_rate` | Number | `hertz` | 是否明显上升 | 表示最近 5 分钟 KV 写入操作速率，可用于观察写入负载变化趋势。 |
-| 删除频率 | `etcd_mvcc_delete_total_counter_rate` | Number | `hertz` | 是否明显上升 | 表示最近 5 分钟 KV 删除操作速率，可用于判断清理行为和数据变更模式。 |
+| 压缩键处理频率 | `etcd_debugging_mvcc_db_compaction_keys_total_counter_rate` | Number | `cps` | 是否长期偏低 | 表示最近 5 分钟 compaction 处理键的速率，用于观察压缩动作是否正常推进。 |
+| 写入频率 | `etcd_mvcc_put_total_counter_rate` | Number | `cps` | 是否明显上升 | 表示最近 5 分钟 KV 写入操作速率，可用于观察写入负载变化趋势。 |
+| 删除频率 | `etcd_mvcc_delete_total_counter_rate` | Number | `cps` | 是否明显上升 | 表示最近 5 分钟 KV 删除操作速率，可用于判断清理行为和数据变更模式。 |
 
 ## 使用建议
 

@@ -17,7 +17,8 @@
     "tags": [
       "linux",
       "beat",
-      "log"
+      "log",
+      "x86_64"
     ],
     "package_name": "packetbeat",
     "cpu_architecture": "x86_64"
@@ -40,7 +41,8 @@
     "tags": [
       "windows",
       "beat",
-      "log"
+      "log",
+      "x86_64"
     ],
     "package_name": "packetbeat",
     "cpu_architecture": "x86_64"

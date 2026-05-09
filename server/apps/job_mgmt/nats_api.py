@@ -298,7 +298,9 @@ def job_script_execute(data: dict):
     )
 
     # 触发异步执行（Celery Worker）
-    execute_script_task.delay(execution.id)
+    result = execute_script_task.delay(execution.id)
+    execution.celery_task_id = result.id
+    execution.save(update_fields=["celery_task_id", "updated_at"])
 
     return {"result": True, "data": {"task_id": execution.id}}
 
@@ -383,7 +385,9 @@ def job_file_distribute(data: dict):
     )
 
     # 触发异步执行（Celery Worker）
-    distribute_files_task.delay(execution.id)
+    result = distribute_files_task.delay(execution.id)
+    execution.celery_task_id = result.id
+    execution.save(update_fields=["celery_task_id", "updated_at"])
 
     return {"result": True, "data": {"task_id": execution.id}}
 

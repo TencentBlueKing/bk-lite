@@ -3,6 +3,7 @@ import os
 from apps.node_mgmt.models.sidecar import Collector
 from apps.core.logger import node_logger as logger
 from apps.node_mgmt.management.services.node_init.definition_loader import load_definition_records
+from apps.node_mgmt.utils.collector_tags import normalize_collector_tags
 
 
 COMMUNITY_PLUGIN_DIRECTORY = "apps/node_mgmt/support-files/collectors"
@@ -16,6 +17,11 @@ def import_collector(collectors):
     create_collectors, update_collectors = [], []
 
     for collector_info in collectors:
+        collector_info["tags"] = normalize_collector_tags(
+            collector_info.get("tags"),
+            collector_info.get("node_operating_system"),
+            collector_info.get("cpu_architecture"),
+        )
         if collector_info["id"] in old_collector_set:
             # 更新时确保内置采集器标记为 is_pre=True
             collector_info["is_pre"] = True

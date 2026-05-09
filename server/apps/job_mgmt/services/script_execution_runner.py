@@ -67,6 +67,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
 
     def _run_via_sidecar(self, execution, target_list: list, script_content: str) -> list:
         results = []
+        cancelled = False
         with ThreadPoolExecutor(max_workers=min(self.MAX_WORKERS, len(target_list))) as pool:
             futures = {
                 pool.submit(
@@ -76,6 +77,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                     script_content,
                     execution.script_type,
                     execution.timeout,
+                    execution.id,
                 ): t
                 for t in target_list
             }
@@ -88,6 +90,13 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                 except Exception as e:
                     logger.exception(f"[{self.task_name}] 目标 {target_info.get('name')} 执行异常: {e}")
                     results.append(self.build_target_failed_result(target_info, str(e)))
+
+                # 每收到一个结果后检查是否已取消，取消则取消剩余 futures
+                if not cancelled and self.is_cancelled(execution.id):
+                    cancelled = True
+                    logger.info(f"[{self.task_name}] 检测到取消，停止剩余目标: execution_id={execution.id}")
+                    for pending_future in futures:
+                        pending_future.cancel()
         return results
 
     def merge_script_with_params(self, script_content: str, params: str, script_type: str) -> str:
@@ -109,7 +118,9 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
 
         return f"{script_content} {params}"
 
-    def execute_script_on_target(self, target_info: dict, target_source: str, script_content: str, script_type: str, timeout: int) -> dict:
+    def execute_script_on_target(
+        self, target_info: dict, target_source: str, script_content: str, script_type: str, timeout: int, execution_id: int
+    ) -> dict:
         target_key = target_info.get("node_id") or str(target_info.get("target_id", ""))
         target_name = target_info.get("name", "")
         target_ip = target_info.get("ip", "")
@@ -126,6 +137,13 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
             "started_at": timezone.now().isoformat(),
             "finished_at": "",
         }
+
+        # 执行前检查是否已取消
+        if self.is_cancelled(execution_id):
+            result["status"] = ExecutionStatus.CANCELLED
+            result["error_message"] = "任务已取消，跳过执行"
+            result["finished_at"] = timezone.now().isoformat()
+            return result
 
         try:
             shell = ScriptType.SHELL_MAPPING.get(script_type, "sh")
@@ -160,7 +178,14 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                 result["stdout"] = exec_result.get("stdout", exec_result.get("result", ""))
                 result["stderr"] = self.normalize_executor_error(exec_result, exec_result.get("stderr", ""))
                 result["exit_code"] = exec_result.get("exit_code", exec_result.get("code", 0))
-                result["status"] = ExecutionStatus.SUCCESS if result["exit_code"] == 0 else ExecutionStatus.FAILED
+                # 检测超时：executor 返回 code="timeout" 或 category="remote_timeout"
+                is_timeout = str(exec_result.get("code", "")) == "timeout" or exec_result.get("category") == "remote_timeout"
+                if is_timeout:
+                    result["status"] = ExecutionStatus.TIMEOUT
+                elif result["exit_code"] == 0:
+                    result["status"] = ExecutionStatus.SUCCESS
+                else:
+                    result["status"] = ExecutionStatus.FAILED
             else:
                 result["stdout"] = str(exec_result)
                 result["stderr"] = ""

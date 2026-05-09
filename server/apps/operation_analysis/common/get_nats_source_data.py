@@ -3,7 +3,6 @@
 # @Time: 2025/7/22 18:24
 # @Author: windyzhao
 from apps.operation_analysis.nats.nats_client import DefaultNastClient
-from apps.core.logger import operation_analysis_logger as logger
 
 
 class GetNatsData:
@@ -39,9 +38,11 @@ class GetNatsData:
         """
         username = self.request.user.username
         team = int(self.request.COOKIES.get("current_team"))
+        include_children = self.request.COOKIES.get("include_children", "0") == "1"
         self.params[self.user_param_key] = {
             "team": team,
-            "user": username
+            "user": username,
+            "include_children": include_children,
         }
 
     def set_namespace_servers(self):
@@ -55,7 +56,7 @@ class GetNatsData:
             protocol = "tls" if namespace.enable_tls else "nats"
 
             # 构建完整的服务器URL
-            if ':' not in namespace.domain:
+            if ":" not in namespace.domain:
                 # 域名不包含端口,使用默认端口4222
                 server_url = f"{protocol}://{namespace.account}:{namespace.decrypt_password}@{namespace.domain}:4222"
             else:
@@ -97,26 +98,21 @@ class GetNatsData:
         """
         namespace = self._get_target_namespace()
         if namespace is None:
-            return []
+            raise RuntimeError("未找到可用的命名空间")
 
         server_url = self.namespace_server_map.get(namespace.id)
         if not server_url:
-            return []
+            raise RuntimeError(f"命名空间 {namespace.name} 未配置服务器连接")
 
         nats_namespace = getattr(namespace, "namespace", "bk_lite")
         nats_client = self._get_client(server=server_url, namespace=nats_namespace)
-        try:
-            if hasattr(nats_client, "DEFAULT_NATS"):
-                fun = getattr(nats_client, "get_customization_nast_data", None)
-            else:
-                fun = getattr(nats_client, self.path, None)
-            if fun is None:
-                raise RuntimeError(f"NamePaces({self.namespace}) Module not found func({self.path})!")
 
-            return_data = fun(**self.params)
-            return return_data.get("data", [])
-        except Exception as e:  # noqa
-            import traceback
+        if hasattr(nats_client, "DEFAULT_NATS"):
+            fun = getattr(nats_client, "get_customization_nast_data", None)
+        else:
+            fun = getattr(nats_client, self.path, None)
+        if fun is None:
+            raise RuntimeError(f"NamePaces({self.namespace}) Module not found func({self.path})!")
 
-            logger.error("==获取NATS数据源数据失败==: namespace={} error={}".format(namespace.name, traceback.format_exc()))
-            return []
+        return_data = fun(**self.params)
+        return return_data.get("data", [])

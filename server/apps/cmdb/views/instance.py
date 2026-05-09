@@ -568,22 +568,13 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 "实例不存在", status_code=status.HTTP_404_NOT_FOUND
             )
 
-        if self.check_creator_and_organizations(request, instance):
-            # 如果是自己创建的实例，直接返回关联实例列表
-            organizations = self.organizations(request, instance)
-            # 再次确认用户所在的组织
-            if not organizations:
-                return WebUtils.response_error(
-                    "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-                )
-
-            has_permission = self.check_instance_permission(
-                request, instance, operator=VIEW
-            )
-            if not has_permission:
-                return WebUtils.response_error(
-                    "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-                )
+        permission_error = self.require_instance_permission(
+            request,
+            instance,
+            operator=VIEW,
+        )
+        if permission_error:
+            return permission_error
 
         asso_insts = InstanceManage.instance_association_instance_list(
             model_id, int(inst_id)

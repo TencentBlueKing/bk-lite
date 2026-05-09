@@ -1,20 +1,20 @@
-"""任务完成回调服务"""
+"""任务完成回调服务
 
-import threading
-import time
+通过 Celery 任务持久化回调请求，确保 worker 重启后仍可继续重试。
+回调任务定义在 tasks.py 中（Celery autodiscover_tasks 只扫描 apps/*/tasks.py）。
+"""
 
-import requests
+from celery import current_app
 
 from apps.core.logger import job_logger as logger
 
 
 def send_callback(execution) -> None:
     """
-    任务完成后通过 HTTP POST 回调通知调用方。
+    任务完成后通过 Celery 异步任务回调通知调用方。
 
     仅在 execution.callback_url 存在时触发。
-    使用后台线程执行，不阻塞主流程。
-    失败时指数退避重试最多 3 次（1s → 2s → 4s）。
+    回调任务持久化到 Celery broker，失败时由 Celery 内置重试机制处理（指数退避，最多 5 次）。
     """
     callback_url = getattr(execution, "callback_url", None)
     if not callback_url:
@@ -29,29 +29,5 @@ def send_callback(execution) -> None:
         "finished_at": execution.finished_at.isoformat() if execution.finished_at else None,
     }
 
-    thread = threading.Thread(
-        target=_do_callback,
-        args=(callback_url, payload, execution.id),
-        daemon=True,
-    )
-    thread.start()
-
-
-def _do_callback(url: str, payload: dict, execution_id: int, max_retries: int = 3) -> None:
-    """执行回调 POST 请求，失败时指数退避重试。"""
-    for attempt in range(max_retries + 1):
-        try:
-            resp = requests.post(url, json=payload, timeout=10)
-            if 200 <= resp.status_code < 300:
-                logger.info(f"[callback] 回调成功: execution_id={execution_id}, url={url}")
-                return
-            else:
-                logger.warning(f"[callback] 回调返回非 2xx: execution_id={execution_id}, " f"status_code={resp.status_code}, attempt={attempt + 1}")
-        except Exception as e:
-            logger.warning(f"[callback] 回调异常: execution_id={execution_id}, " f"attempt={attempt + 1}, error={e}")
-
-        if attempt < max_retries:
-            delay = 2**attempt  # 1s, 2s, 4s
-            time.sleep(delay)
-
-    logger.warning(f"[callback] 回调重试耗尽: execution_id={execution_id}, url={url}")
+    logger.info(f"[callback] 提交回调任务: execution_id={execution.id}, url={callback_url}")
+    current_app.send_task("apps.job_mgmt.tasks.do_callback_task", args=[callback_url, payload, execution.id])
