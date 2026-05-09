@@ -52,7 +52,7 @@
       "unit": "counts",
       "dimensions": ["topic"],
       "description": "Number of partitions for a given Kafka topic.",
-      "query": "sum by (topic) (kafka_topic_partition_count{__$labels__})"
+      "query": "sum by (topic) (kafka_topic_partitions_gauge{__$labels__})"
     },
     {
       "metric_group": "Topic",
@@ -63,7 +63,7 @@
       "unit": "counts",
       "dimensions": ["partition", "topic"],
       "description": "Current offset for the specified topic and partition.",
-      "query": "kafka_topic_partition_current_offset{__$labels__}"
+      "query": "kafka_topic_partition_current_offset_gauge{__$labels__}"
     },
     {
       "metric_group": "Topic",
@@ -74,7 +74,7 @@
       "unit": "counts",
       "dimensions": ["partition", "topic"],
       "description": "Oldest offset for the specified topic and partition.",
-      "query": "kafka_topic_partition_oldest_offset{__$labels__}"
+      "query": "kafka_topic_partition_oldest_offset_gauge{__$labels__}"
     },
     {
       "metric_group": "Topic",
@@ -85,7 +85,7 @@
       "unit": "counts",
       "dimensions": ["partition", "topic"],
       "description": "Number of in-sync replicas for the specified topic and partition.",
-      "query": "kafka_topic_partition_in_sync_replica{__$labels__}"
+      "query": "kafka_topic_partition_in_sync_replica_gauge{__$labels__}"
     },
     {
       "metric_group": "Topic",
@@ -96,7 +96,7 @@
       "unit": "[{\"name\":\"其它节点\",\"id\":0,\"color\":\"#faad14\"},{\"name\":\"首选Broker节点\",\"id\":1,\"color\":\"#1ac44a\"}]",
       "dimensions": ["partition", "topic"],
       "description": "Value is 1 if the preferred Broker node is in use for the topic/partition, otherwise 0.",
-      "query": "kafka_topic_partition_leader_is_preferred{__$labels__}"
+      "query": "kafka_topic_partition_leader_is_preferred_gauge{__$labels__}"
     },
     {
       "metric_group": "Topic",
@@ -107,7 +107,7 @@
       "unit": "counts",
       "dimensions": ["partition", "topic"],
       "description": "Number of replicas for the specified topic and partition.",
-      "query": "kafka_topic_partition_replica{__$labels__}"
+      "query": "kafka_topic_partition_replicas_gauge{__$labels__}"
     },
     {
       "metric_group": "Topic",
@@ -118,7 +118,7 @@
       "unit": "[{\"name\":\"正常\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"副本不足\",\"id\":1,\"color\":\"#ff4d4f\"}]",
       "dimensions": ["partition", "topic"],
       "description": "Value is 1 if the topic/partition is under-replicated, otherwise 0.",
-      "query": "kafka_topic_partition_under_replicated_partition{__$labels__}"
+      "query": "kafka_topic_partition_under_replicated_partition_gauge{__$labels__}"
     },
     {
       "metric_group": "ConsumerGroup",
@@ -129,7 +129,7 @@
       "unit": "counts",
       "dimensions": ["consumergroup", "partition", "topic"],
       "description": "Current offset for the consumer group in the specified topic and partition.",
-      "query": "kafka_consumer_group_current_offset{__$labels__}"
+      "query": "kafka_consumergroup_current_offset_gauge{__$labels__}"
     },
     {
       "metric_group": "ConsumerGroup",
@@ -140,7 +140,7 @@
       "unit": "counts",
       "dimensions": ["consumergroup", "partition", "topic"],
       "description": "Current approximate lag of the consumer group in the specified topic and partition.",
-      "query": "kafka_consumer_group_lag{__$labels__}"
+      "query": "kafka_consumergroup_lag_gauge{__$labels__}"
     },
     {
       "metric_group": "Process",
