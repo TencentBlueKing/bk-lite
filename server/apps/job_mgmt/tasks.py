@@ -7,7 +7,7 @@ from celery import current_app, shared_task
 from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
-from apps.job_mgmt.constants import ExecutionStatus, JobType
+from apps.job_mgmt.constants import ConcurrencyPolicy, ExecutionStatus, JobType
 from apps.job_mgmt.models import DistributionFile, JobExecution, ScheduledTask
 from apps.job_mgmt.services import FileDistributionRunner, ScriptExecutionRunner, ScriptParamsService
 from apps.job_mgmt.services.playbook_execution import PlaybookExecution
@@ -42,6 +42,41 @@ def execute_scheduled_task(scheduled_task_id: int):
     if not scheduled_task.is_enabled:
         logger.info(f"[execute_scheduled_task] 定时任务已禁用: scheduled_task_id={scheduled_task_id}")
         return
+
+    # 并发策略检查
+    policy = scheduled_task.concurrency_policy
+    logger.info(f"[execute_scheduled_task] 并发策略检查: scheduled_task_id={scheduled_task_id}, " f"name={scheduled_task.name}, policy={policy}")
+    if policy in (ConcurrencyPolicy.SKIP, ConcurrencyPolicy.QUEUE):
+        running_executions = JobExecution.objects.filter(
+            scheduled_task_id=scheduled_task_id,
+            status__in=[ExecutionStatus.PENDING, ExecutionStatus.RUNNING],
+        )
+        running_count = running_executions.count()
+        if running_count > 0:
+            running_ids = list(running_executions.values_list("id", flat=True)[:5])
+            if policy == ConcurrencyPolicy.SKIP:
+                logger.info(
+                    f"[execute_scheduled_task] 并发策略=skip, 上次执行未完成, 跳过本次: "
+                    f"scheduled_task_id={scheduled_task_id}, "
+                    f"未完成执行数={running_count}, 未完成执行ID={running_ids}"
+                )
+                return
+            elif policy == ConcurrencyPolicy.QUEUE:
+                logger.info(
+                    f"[execute_scheduled_task] 并发策略=queue, 上次执行未完成, 延迟30秒重试: "
+                    f"scheduled_task_id={scheduled_task_id}, "
+                    f"未完成执行数={running_count}, 未完成执行ID={running_ids}"
+                )
+                execute_scheduled_task.apply_async(
+                    args=[scheduled_task_id],
+                    countdown=30,
+                )
+                return
+        else:
+            logger.info(f"[execute_scheduled_task] 并发策略={policy}, 无未完成执行, 继续触发: " f"scheduled_task_id={scheduled_task_id}")
+    else:
+        logger.info(f"[execute_scheduled_task] 并发策略=run, 无条件触发: " f"scheduled_task_id={scheduled_task_id}")
+
     # 更新上次执行时间和执行次数
     scheduled_task.last_run_at = timezone.now()
     scheduled_task.run_count += 1
@@ -56,15 +91,23 @@ def execute_scheduled_task(scheduled_task_id: int):
     resolved_params = ScriptParamsService.resolve_params(params, script=scheduled_task.script)
     params_str = ScriptParamsService.params_to_string(resolved_params)
 
+    # 脚本内容和类型：优先从关联的 Script 对象获取，回退到定时任务上的临时输入字段
+    script_content = scheduled_task.script_content or ""
+    script_type = scheduled_task.script_type or ""
+    if scheduled_task.script:
+        script_content = scheduled_task.script.content or script_content
+        script_type = scheduled_task.script.script_type or script_type
+
     execution = JobExecution.objects.create(
         name=scheduled_task.name,
         job_type=scheduled_task.job_type,
         status=ExecutionStatus.PENDING,
         script=scheduled_task.script,
         playbook=scheduled_task.playbook,
+        scheduled_task=scheduled_task,
         params=params_str,
-        script_type=scheduled_task.script_type,
-        script_content=scheduled_task.script_content,
+        script_type=script_type,
+        script_content=script_content,
         files=scheduled_task.files,
         target_path=scheduled_task.target_path,
         timeout=scheduled_task.timeout,

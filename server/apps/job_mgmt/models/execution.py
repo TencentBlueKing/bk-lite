@@ -26,6 +26,9 @@ class JobExecution(TimeInfo, MaintainerInfo):
     script = models.ForeignKey(Script, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联脚本")
     playbook = models.ForeignKey(Playbook, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联Playbook")
 
+    # 关联的定时任务（定时触发时设置，用于并发策略判断）
+    scheduled_task = models.ForeignKey("job_mgmt.ScheduledTask", on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联定时任务")
+
     # 目标来源
     target_source = models.CharField(max_length=32, choices=TargetSource.CHOICES, default=TargetSource.MANUAL, verbose_name="目标来源")
 

@@ -8,6 +8,8 @@ from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
 from apps.node_mgmt.models import CloudRegion, SidecarEnv
 from apps.node_mgmt.services.node import NodeService
+from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.tasks.installer import install_collector
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -639,3 +641,11 @@ def delete_child_configs(ids: list):
 def delete_configs(ids: list):
     """删除实例子配置"""
     NatsService().delete_configs(ids)
+
+
+@nats_client.register
+def install_managed_component(data: dict):
+    """安装托管组件（当前复用采集器安装流程）"""
+    task_id = InstallerService.install_collector(data["collector_package"], data["nodes"])
+    install_collector.delay(task_id)
+    return {"task_id": task_id}

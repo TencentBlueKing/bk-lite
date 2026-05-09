@@ -130,7 +130,7 @@ const EditCronTaskContent = () => {
         name: task.name,
         description: task.description,
         timeout: (task as any).timeout || 300,
-        concurrency_strategy: (task as any).concurrency_strategy || 'skip',
+        concurrency_policy: (task as any).concurrency_policy || 'skip',
         script: (task as any).script,
         playbook: (task as any).playbook,
         target_path: (task as any).target_path,
@@ -663,7 +663,7 @@ const EditCronTaskContent = () => {
             )}
           </Form.Item>
 
-          <Form.Item label={t('job.concurrencyStrategy')} name="concurrency_strategy">
+          <Form.Item label={t('job.concurrencyStrategy')} name="concurrency_policy">
             <Select defaultValue="skip">
               <Select.Option value="skip">{t('job.skipIfRunning')}</Select.Option>
               <Select.Option value="run">{t('job.runAnyway')}</Select.Option>
