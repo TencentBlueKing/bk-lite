@@ -2,11 +2,13 @@
 
 import json
 
+from celery import current_app
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import job_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.constants import ExecutionStatus, JobType, TargetSource, TriggerSource
 from apps.job_mgmt.filters.execution import JobExecutionFilter
@@ -151,9 +153,10 @@ class JobExecutionViewSet(AuthViewSet):
             )
             task_func = execute_script_task
 
-        # 触发异步任务
-        task_func.delay(execution.id)
-        # task_func(execution.id)
+        # 触发异步任务并保存 Celery task_id
+        result = task_func.delay(execution.id)
+        execution.celery_task_id = result.id
+        execution.save(update_fields=["celery_task_id", "updated_at"])
 
         return Response(
             JobExecutionDetailSerializer(execution).data,
@@ -244,9 +247,10 @@ class JobExecutionViewSet(AuthViewSet):
             updated_by=username,
         )
 
-        # 触发异步任务
-        # distribute_files_task.delay(execution.id)
-        distribute_files_task(execution.id)
+        # 触发异步任务并保存 Celery task_id
+        result = distribute_files_task.delay(execution.id)
+        execution.celery_task_id = result.id
+        execution.save(update_fields=["celery_task_id", "updated_at"])
 
         return Response(
             JobExecutionDetailSerializer(execution).data,
@@ -267,6 +271,9 @@ class JobExecutionViewSet(AuthViewSet):
     def cancel(self, request, pk=None):
         """
         取消执行（仅限等待中或执行中的任务）
+
+        L0: 尝试 revoke Celery 队列中尚未被 worker 取走的任务
+        L1: 设置 CANCELLED 状态，Runner 循环中检测到后停止后续目标执行
         """
         execution = self.get_object()
 
@@ -276,9 +283,18 @@ class JobExecutionViewSet(AuthViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 更新状态
+        # L0: 尝试 revoke Celery 任务（仅对队列中尚未被 worker 取走的任务有效）
+        if execution.celery_task_id:
+            try:
+                current_app.control.revoke(execution.celery_task_id)
+                logger.info(f"[cancel] 已 revoke Celery 任务: execution_id={execution.id}, task_id={execution.celery_task_id}")
+            except Exception as e:
+                logger.warning(f"[cancel] revoke Celery 任务失败: execution_id={execution.id}, error={e}")
+
+        # L1: 更新状态为 CANCELLED，Runner 循环中会检测此状态并停止后续目标
         execution.status = ExecutionStatus.CANCELLED
         execution.save(update_fields=["status", "updated_at"])
+        logger.info(f"[cancel] 执行已取消: execution_id={execution.id}")
 
         return Response({"message": "已取消执行"})
 
@@ -374,8 +390,10 @@ class JobExecutionViewSet(AuthViewSet):
             )
             task_func = execute_script_task
 
-        # 触发异步任务
-        task_func.delay(execution.id)
+        # 触发异步任务并保存 Celery task_id
+        result = task_func.delay(execution.id)
+        execution.celery_task_id = result.id
+        execution.save(update_fields=["celery_task_id", "updated_at"])
 
         return Response(
             JobExecutionDetailSerializer(execution).data,

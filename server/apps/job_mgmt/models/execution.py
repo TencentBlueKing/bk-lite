@@ -71,6 +71,9 @@ class JobExecution(TimeInfo, MaintainerInfo):
     # 回调地址（第三方 API 调用时传入，任务完成后 POST 通知）
     callback_url = models.CharField(max_length=512, null=True, blank=True, verbose_name="回调地址")
 
+    # Celery 任务 ID（用于 revoke 取消队列中的任务）
+    celery_task_id = models.CharField(max_length=256, blank=True, default="", verbose_name="Celery任务ID")
+
     # 组织归属
     team = models.JSONField(default=list, verbose_name="团队ID列表")
 
