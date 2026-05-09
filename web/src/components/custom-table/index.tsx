@@ -22,7 +22,6 @@ interface CustomTableProps<T>
   };
   onSelectFields?: (fields: string[]) => void;
   rowDraggable?: boolean;
-  rowDragHandleOnly?: boolean;
   onRowDragStart?: (index: number) => void;
   onRowDragEnd?: (
     targetTableData: TableProps<T>['dataSource'],
@@ -49,7 +48,6 @@ const CustomTable = <T extends object>({
   pagination,
   onChange,
   rowDraggable = false,
-  rowDragHandleOnly = false,
   onRowDragStart,
   onRowDragEnd,
   rowSelection,
@@ -123,7 +121,7 @@ const CustomTable = <T extends object>({
   useEffect(() => {
     const initialColumns = renderColumns();
     setColumns(initialColumns);
-  }, [TableProps.columns, rowDraggable, rowDragHandleOnly]);
+  }, [TableProps.columns, rowDraggable]);
 
   const enhanceColumnRender = (column: any) => {
     if (column.render) return column;
@@ -161,8 +159,8 @@ const CustomTable = <T extends object>({
           render: (_: any, __: T, index: number) => (
             <HolderOutlined
               className="font-[800] text-[16px] mr-[6px] cursor-move"
-              draggable={rowDragHandleOnly}
-              onDragStart={rowDragHandleOnly ? handleDragStart(index) : undefined}
+              draggable
+              onDragStart={handleDragStart(index)}
             />
           ),
         },
@@ -170,7 +168,7 @@ const CustomTable = <T extends object>({
       ];
     }
     return cols;
-  }, [TableProps.columns, rowDraggable, rowDragHandleOnly]);
+  }, [TableProps.columns, rowDraggable]);
 
   // 获取列的唯一标识
   const getColumnKey = (col: any, index: number): string => {
@@ -301,8 +299,8 @@ const CustomTable = <T extends object>({
   const renderRow = (index: number) => {
     return {
       index,
-      draggable: rowDraggable && !rowDragHandleOnly,
-      onDragStart: rowDragHandleOnly ? undefined : handleDragStart(index),
+      draggable: false,
+      onDragStart: undefined,
       onDragEnd: rowDraggable ? handleDragEnd : undefined,
       onDragOver: rowDraggable ? handleDragOver(index) : undefined,
       onDrop: rowDraggable ? handleDrop(index) : undefined,
