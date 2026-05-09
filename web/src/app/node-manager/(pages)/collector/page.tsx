@@ -54,7 +54,7 @@ const Collector = () => {
 
   const initData = () => {
     setLoading(true);
-    const { apps, osOptions, kindOptions, tagEnum: newTagEnum } = getTags();
+    const { apps, tagEnum: newTagEnum } = getTags();
     const defaultAppTag = apps && apps.length > 0 ? apps[0].value : '';
     setSelectedAppTag(defaultAppTag);
     fetchCollectorData({
@@ -357,7 +357,7 @@ const Collector = () => {
                     onChange={handleAppTagChange}
                     className="custom-tabs"
               />
-            )}
+                )}
             <div className="flex items-center w-full">
               <div className="flex items-center flex-1 mr-[10px] overflow-x-auto">
                 {(osTags || []).map((tag: any) => (

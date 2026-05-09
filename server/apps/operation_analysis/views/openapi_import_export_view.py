@@ -12,27 +12,22 @@
 
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 
-from apps.core.utils.open_base import OpenAPIViewSet
 from apps.core.exceptions.base_app_exception import UnauthorizedException
 from apps.core.logger import operation_analysis_logger as logger
-from apps.operation_analysis.constants.import_export import (
-    ObjectType,
-    ConflictAction,
-    ConflictReason,
-    ImportExportErrorCode,
-)
+from apps.core.utils.open_base import OpenAPIViewSet
+from apps.operation_analysis.constants.import_export import ConflictAction, ConflictReason, ImportExportErrorCode, ObjectType
+from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
 from apps.operation_analysis.serializers.import_export_serializers import (
     ExportRequestSerializer,
     ImportPrecheckRequestSerializer,
     ImportSubmitRequestSerializer,
 )
 from apps.operation_analysis.services.import_export.export_service import ExportService
-from apps.operation_analysis.services.import_export.precheck_service import PrecheckService
 from apps.operation_analysis.services.import_export.import_service import ImportService
-from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
+from apps.operation_analysis.services.import_export.precheck_service import PrecheckService
 
 
 class OpenImportExportViewSet(OpenAPIViewSet):
@@ -89,24 +84,36 @@ class OpenImportExportViewSet(OpenAPIViewSet):
             return request.user.username
         return "api_user"
 
-    def _convert_ids_to_keys(self, object_type: str, object_ids: list[int]) -> list[str]:
+    def _convert_ids_to_keys(self, object_type: str, object_ids: list[int], current_team: int = None) -> list[str]:
         """将对象 ID 转换为业务键"""
-        from apps.operation_analysis.models.models import Dashboard, Topology, Architecture
-        from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
         from apps.operation_analysis.constants.import_export import BUSINESS_KEY_SEPARATOR
+        from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
+        from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
 
         keys = []
         if object_type == ObjectType.DASHBOARD.value:
-            for obj in Dashboard.objects.filter(id__in=object_ids):
+            qs = Dashboard.objects.filter(id__in=object_ids)
+            if current_team is not None:
+                qs = qs.filter(groups__contains=current_team)
+            for obj in qs:
                 keys.append(f"{object_type}{BUSINESS_KEY_SEPARATOR}{obj.name}")
         elif object_type == ObjectType.TOPOLOGY.value:
-            for obj in Topology.objects.filter(id__in=object_ids):
+            qs = Topology.objects.filter(id__in=object_ids)
+            if current_team is not None:
+                qs = qs.filter(groups__contains=current_team)
+            for obj in qs:
                 keys.append(f"{object_type}{BUSINESS_KEY_SEPARATOR}{obj.name}")
         elif object_type == ObjectType.ARCHITECTURE.value:
-            for obj in Architecture.objects.filter(id__in=object_ids):
+            qs = Architecture.objects.filter(id__in=object_ids)
+            if current_team is not None:
+                qs = qs.filter(groups__contains=current_team)
+            for obj in qs:
                 keys.append(f"{object_type}{BUSINESS_KEY_SEPARATOR}{obj.name}")
         elif object_type == ObjectType.DATASOURCE.value:
-            for obj in DataSourceAPIModel.objects.filter(id__in=object_ids):
+            qs = DataSourceAPIModel.objects.filter(id__in=object_ids)
+            if current_team is not None:
+                qs = qs.filter(groups__contains=current_team)
+            for obj in qs:
                 keys.append(f"{obj.name}{BUSINESS_KEY_SEPARATOR}{obj.rest_api}")
         elif object_type == ObjectType.NAMESPACE.value:
             for obj in NameSpace.objects.filter(id__in=object_ids):
@@ -186,7 +193,7 @@ class OpenImportExportViewSet(OpenAPIViewSet):
         groups = self._require_groups(request)
         organization_id = groups[0]
 
-        object_keys = self._convert_ids_to_keys(object_type, object_ids)
+        object_keys = self._convert_ids_to_keys(object_type, object_ids, current_team=organization_id)
 
         logger.info(
             "Open API export request: object_type=%s, object_ids=%s, organization_id=%s",

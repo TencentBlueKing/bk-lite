@@ -29,6 +29,30 @@ class Monitor(object):
 
 
 class MonitorOperationAnaRpc(BaseOperationAnaRpc):
+    def create_monitor_object_type(self, data: dict, **kwargs):
+        """创建监控对象类型"""
+        return self.client.run("create_monitor_object_type", data=data, **kwargs)
+
+    def create_monitor_object(self, data: dict, **kwargs):
+        """创建监控对象"""
+        return self.client.run("create_monitor_object", data=data, **kwargs)
+
+    def create_monitor_plugin(self, data: dict, **kwargs):
+        """创建监控模板"""
+        return self.client.run("create_monitor_plugin", data=data, **kwargs)
+
+    def create_metric_group(self, data: dict, **kwargs):
+        """创建指标分组"""
+        return self.client.run("create_metric_group", data=data, **kwargs)
+
+    def create_metric(self, data: dict, **kwargs):
+        """创建监控指标"""
+        return self.client.run("create_metric", data=data, **kwargs)
+
+    def create_monitor_policy(self, data: dict, **kwargs):
+        """创建监控告警策略"""
+        return self.client.run("create_monitor_policy", data=data, **kwargs)
+
     def monitor_objects(self, **kwargs):
         """查询监控对象列表"""
         return self.client.run("monitor_objects", **kwargs)
