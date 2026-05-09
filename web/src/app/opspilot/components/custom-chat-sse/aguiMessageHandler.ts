@@ -3,8 +3,8 @@
  * 负责处理不同类型的 AG-UI 消息
  */
 
-import { AGUIMessage, BrowserStepProgressValue, BrowserTaskReceivedValue } from '@/app/opspilot/types/chat';
-import { CustomChatMessage, BrowserStepProgressData, BrowserStepsHistory } from '@/app/opspilot/types/global';
+import { AGUIMessage, BrowserStepProgressValue, BrowserTaskReceivedValue, ApprovalRequestValue } from '@/app/opspilot/types/chat';
+import { CustomChatMessage, BrowserStepProgressData, BrowserStepsHistory, ApprovalRequest } from '@/app/opspilot/types/global';
 import { ToolCallInfo, renderToolCallCard, renderErrorMessage, initToolCallTooltips, syncActiveToolCallPanel, closeActiveToolCallPanel } from './toolCallRenderer';
 
 export interface MessageUpdateFn {
@@ -26,6 +26,7 @@ export class AGUIMessageHandler {
   private botMessage: CustomChatMessage;
   private updateMessages: MessageUpdateFn;
   private browserStepsHistory: BrowserStepProgressData[] = [];
+  private approvalRequests: ApprovalRequest[] = [];
 
   constructor(
     botMessage: CustomChatMessage,
@@ -61,6 +62,13 @@ export class AGUIMessageHandler {
             isThinking: isThinking !== undefined ? isThinking : msgItem.isThinking,
             browserStepProgress: browserStepProgress !== undefined ? browserStepProgress : msgItem.browserStepProgress,
             browserStepsHistory: browserStepsHistory !== undefined ? browserStepsHistory : msgItem.browserStepsHistory,
+            approvalRequests: this.approvalRequests.length > 0
+              ? this.approvalRequests.map(req => {
+                // 保留用户已做出的决策状态，不被 SSE 更新覆盖
+                const existing = msgItem.approvalRequests?.find(r => r.tool_call_id === req.tool_call_id);
+                return existing && existing.status !== 'pending' ? existing : req;
+              })
+              : msgItem.approvalRequests,
             updateAt: new Date().toISOString()
           }
           : msgItem
@@ -234,6 +242,30 @@ export class AGUIMessageHandler {
   }
 
   /**
+   * 处理审批请求事件
+   */
+  handleApprovalRequest(value: ApprovalRequestValue) {
+    const request: ApprovalRequest = {
+      ...value,
+      received_at: Date.now(),
+      status: 'pending',
+    };
+    this.approvalRequests.push(request);
+    this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
+  }
+
+  /**
+   * 更新审批请求状态
+   */
+  updateApprovalStatus(toolCallId: string, status: 'approved' | 'rejected') {
+    const request = this.approvalRequests.find(r => r.tool_call_id === toolCallId);
+    if (request) {
+      request.status = status;
+      this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
+    }
+  }
+
+  /**
    * 处理 ERROR 事件
    */
   handleError(error: string) {
@@ -364,6 +396,8 @@ export class AGUIMessageHandler {
           this.handleBrowserStepProgress(aguiData.value as BrowserStepProgressValue);
         } else if (aguiData.name === 'browser_task_received' && aguiData.value) {
           this.handleBrowserTaskReceived(aguiData.value as BrowserTaskReceivedValue);
+        } else if (aguiData.name === 'approval_request' && aguiData.value) {
+          this.handleApprovalRequest(aguiData.value as ApprovalRequestValue);
         }
         return false;
 

@@ -392,3 +392,53 @@ def execute_safe_select_batch(
             failed += 1
 
     return safe_json_dumps({"total": len(queries), "succeeded": succeeded, "failed": failed, "results": results})
+
+
+# ===================== 临时测试工具（测试完毕后删除）=====================
+
+
+@tool()
+def delete_table_data(
+    table_name: str,
+    where_clause: str = "",
+    database: str = None,
+    instance_name: str = None,
+    instance_id: str = None,
+    config: RunnableConfig = None,
+) -> str:
+    """删除指定表中的数据。如果不提供 where_clause 则清空整张表（危险操作！）。
+    示例: delete_table_data(table_name="logs", where_clause="created_at < '2024-01-01'")
+    """
+    normalized = build_mysql_normalized_from_runnable(config, instance_name, instance_id)
+
+    def _executor(item):
+        conn = get_mysql_connection_from_item(item)
+        try:
+            db = database
+            if not db:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT DATABASE() AS db")
+                row = cursor.fetchone()
+                db = row["db"] if row and row.get("db") else None
+                cursor.close()
+            if not db:
+                return {"error": "未指定数据库且无法获取当前数据库"}
+
+            # 构建 DELETE SQL
+            if where_clause:
+                sql = f"DELETE FROM `{db}`.`{table_name}` WHERE {where_clause}"
+            else:
+                sql = f"DELETE FROM `{db}`.`{table_name}`"
+
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            affected = cursor.rowcount
+            conn.commit()
+            cursor.close()
+            conn.close()
+            return {"success": True, "table": f"{db}.{table_name}", "rows_deleted": affected}
+        except Error as e:
+            conn.close()
+            return {"error": f"删除失败: {str(e)}"}
+
+    return safe_json_dumps(execute_with_credentials(normalized, _executor))

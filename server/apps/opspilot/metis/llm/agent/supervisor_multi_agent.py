@@ -21,6 +21,10 @@ class AgentConfig(BaseModel):
     tools_servers: List[ToolsServer] = Field(default_factory=list, description="Agent 专属工具服务")
     temperature: float = Field(default=0.7, description="Agent 温度参数")
     context_window_size: Optional[int] = Field(default=None, description="上下文窗口大小（消息数量）。None 表示使用全部消息")
+    context_isolation: bool = Field(
+        default=True,
+        description="是否启用独立上下文。启用后子 Agent 只接收任务描述，不继承共享消息历史；" "执行结果仅以摘要形式返回 Supervisor，不暴露中间工具调用细节",
+    )
 
 
 class SupervisorMultiAgentRequest(BasicLLMRequest):
@@ -49,6 +53,10 @@ class SupervisorMultiAgentRequest(BasicLLMRequest):
     supervisor_context_window_size: Optional[int] = Field(
         default=None,
         description="Supervisor 决策时的上下文窗口大小。None 表示使用全部消息",
+    )
+    default_context_isolation: bool = Field(
+        default=True,
+        description="默认是否启用子 Agent 独立上下文，优先级低于 Agent 级配置",
     )
 
 
@@ -265,19 +273,33 @@ class SupervisorMultiAgentNode(ToolsNodes):
             # 编译并执行
             temp_graph = temp_graph_builder.compile()
 
-            # 准备消息上下文（使用智能选择策略）
+            # 确定是否使用独立上下文
+            use_isolation = agent_config.context_isolation if agent_config.context_isolation is not None else request.default_context_isolation
+
             all_messages = state.get("messages", [])
 
-            # 优先使用 Agent 级配置，其次使用全局配置
-            window_size = agent_config.context_window_size
-            if window_size is None:
-                window_size = request.default_context_window_size
+            if use_isolation:
+                # ─── 独立上下文模式 ───
+                # 子 Agent 只接收任务描述，不继承共享消息历史
+                # 从 Supervisor 最近的决策中提取任务上下文
+                task_context = node_builder._build_isolated_task_context(all_messages, agent_name, request)
+                context_messages = [HumanMessage(content=task_context)]
 
-            context_messages = node_builder._select_context_messages(all_messages, window_size)
+                logger.info(f"🔒 独立上下文模式: 构建专属任务描述 ({len(task_context)} 字符)")
+            else:
+                # ─── 共享上下文模式（旧行为） ───
+                window_size = agent_config.context_window_size
+                if window_size is None:
+                    window_size = request.default_context_window_size
 
-            logger.info(
-                f"💬 上下文消息: 原始 {len(all_messages)} 条 -> " f"选择 {len(context_messages)} 条" f"{f' (窗口: {window_size})' if window_size else ' (无限制)'}"
-            )
+                context_messages = node_builder._select_context_messages(all_messages, window_size)
+
+                logger.info(
+                    f"💬 共享上下文模式: 原始 {len(all_messages)} 条 -> "
+                    f"选择 {len(context_messages)} 条"
+                    f"{f' (窗口: {window_size})' if window_size else ' (无限制)'}"
+                )
+
             logger.info("▶️  开始执行 Agent 任务...")
 
             result = await temp_graph.ainvoke({"messages": context_messages}, config=config)
@@ -293,18 +315,13 @@ class SupervisorMultiAgentNode(ToolsNodes):
                 }
 
             # 找出新增的消息（排除输入的上下文消息）
-            # 注意：result_messages 可能包含输入消息 + 新消息
             new_messages = []
-
-            # 从结果中找出不在输入上下文中的消息
             for msg in result_messages:
-                # 检查消息是否在输入上下文中（通过对象引用或内容）
                 is_input_msg = False
                 for ctx_msg in context_messages:
-                    if msg is ctx_msg:  # 同一个对象
+                    if msg is ctx_msg:
                         is_input_msg = True
                         break
-
                 if not is_input_msg:
                     new_messages.append(msg)
 
@@ -318,36 +335,45 @@ class SupervisorMultiAgentNode(ToolsNodes):
 
             logger.info(f"✅ Agent [{agent_name}] 执行完成，产生 {len(new_messages)} 条新消息")
 
-            # 为最后一条 AIMessage 添加 Agent 来源标记
-            # 保持工具调用消息不变，这样可以实时看到工具执行过程
-            marked_messages = []
-            last_ai_msg_idx = None
+            if use_isolation:
+                # ─── 独立上下文：只返回最终摘要给 Supervisor ───
+                # 不暴露中间工具调用细节，仅返回最后一条 AIMessage 作为结果摘要
+                final_summary = node_builder._extract_agent_summary(new_messages, agent_name)
+                logger.info(f"🔒 独立上下文: 仅返回摘要 ({len(final_summary)} 字符) 给 Supervisor")
+                logger.info("=" * 80)
 
-            # 找到最后一个 AIMessage 的索引
-            for i in range(len(new_messages) - 1, -1, -1):
-                if isinstance(new_messages[i], AIMessage):
-                    last_ai_msg_idx = i
-                    break
+                return {
+                    "messages": [AIMessage(content=f"[Agent: {agent_name}]\n{final_summary}")],
+                    "active_agent": agent_name,
+                    "executed_agents": state.get("executed_agents", []) + [agent_name],
+                }
+            else:
+                # ─── 共享上下文：返回全部消息（旧行为） ───
+                marked_messages = []
+                last_ai_msg_idx = None
 
-            for i, msg in enumerate(new_messages):
-                if i == last_ai_msg_idx and isinstance(msg, AIMessage) and msg.content:
-                    # 只标记最后一个 AIMessage
-                    marked_content = f"[Agent: {agent_name}]\n{msg.content}"
-                    marked_messages.append(
-                        AIMessage(
-                            content=marked_content,
-                            response_metadata=getattr(msg, "response_metadata", {}),
-                            tool_calls=getattr(msg, "tool_calls", []),
-                            usage_metadata=getattr(msg, "usage_metadata", None),
+                for i in range(len(new_messages) - 1, -1, -1):
+                    if isinstance(new_messages[i], AIMessage):
+                        last_ai_msg_idx = i
+                        break
+
+                for i, msg in enumerate(new_messages):
+                    if i == last_ai_msg_idx and isinstance(msg, AIMessage) and msg.content:
+                        marked_content = f"[Agent: {agent_name}]\n{msg.content}"
+                        marked_messages.append(
+                            AIMessage(
+                                content=marked_content,
+                                response_metadata=getattr(msg, "response_metadata", {}),
+                                tool_calls=getattr(msg, "tool_calls", []),
+                                usage_metadata=getattr(msg, "usage_metadata", None),
+                            )
                         )
-                    )
-                else:
-                    # 保留其他所有消息（工具调用、工具结果等）
-                    marked_messages.append(msg)
+                    else:
+                        marked_messages.append(msg)
 
-            logger.info("=" * 80)
+                logger.info("=" * 80)
 
-            return {"messages": marked_messages, "active_agent": agent_name, "executed_agents": state.get("executed_agents", []) + [agent_name]}
+                return {"messages": marked_messages, "active_agent": agent_name, "executed_agents": state.get("executed_agents", []) + [agent_name]}
 
         return _execute_agent
 
@@ -360,6 +386,69 @@ class SupervisorMultiAgentNode(ToolsNodes):
 
         # 返回 Agent 名称作为路由目标
         return next_action or "FINISH"
+
+    def _build_isolated_task_context(self, messages: List[BaseMessage], agent_name: str, request: SupervisorMultiAgentRequest) -> str:
+        """
+        为独立上下文的子 Agent 构建任务描述。
+
+        从共享消息中提取用户原始请求和 Supervisor 的委派意图，
+        组合成一个精简的任务描述，不包含其他 Agent 的执行细节。
+        """
+        # 1. 提取用户原始请求
+        user_request = request.user_message or ""
+
+        # 2. 提取 Supervisor 最近一次决策的上下文（如果有）
+        supervisor_context = ""
+        for msg in reversed(messages):
+            if isinstance(msg, AIMessage) and msg.content:
+                # Supervisor 的决策消息通常包含对任务的分析
+                content = msg.content.strip()
+                # 跳过其他 Agent 的结果摘要
+                if content.startswith("[Agent:"):
+                    continue
+                # 找到 Supervisor 的决策/分析
+                supervisor_context = content[:500]  # 限制长度
+                break
+
+        # 3. 收集已完成 Agent 的摘要（提供协作上下文）
+        agent_summaries = []
+        for msg in messages:
+            if isinstance(msg, AIMessage) and msg.content and msg.content.startswith("[Agent:"):
+                # 只取前200字符作为摘要
+                agent_summaries.append(msg.content[:200])
+
+        # 4. 组装任务描述
+        parts = [f"## 用户请求\n{user_request}"]
+
+        if supervisor_context:
+            parts.append(f"\n## Supervisor 指示\n{supervisor_context}")
+
+        if agent_summaries:
+            parts.append("\n## 其他 Agent 已完成的工作\n" + "\n".join(f"- {s}" for s in agent_summaries[-3:]))
+
+        parts.append(f"\n## 你的任务\n请作为 {agent_name} 完成上述请求中属于你职责范围的部分。")
+
+        return "\n".join(parts)
+
+    def _extract_agent_summary(self, new_messages: List[BaseMessage], agent_name: str) -> str:
+        """
+        从子 Agent 执行结果中提取最终摘要。
+
+        只取最后一条有内容的 AIMessage 作为结果摘要，
+        丢弃中间的工具调用和工具返回消息。
+        """
+        # 从后向前找最后一条有内容的 AIMessage
+        for msg in reversed(new_messages):
+            if isinstance(msg, AIMessage) and msg.content and not getattr(msg, "tool_calls", []):
+                return msg.content
+
+        # 如果没有纯文本 AIMessage（所有 AIMessage 都带 tool_calls），
+        # 尝试拼接最后一条 AIMessage 的内容
+        for msg in reversed(new_messages):
+            if isinstance(msg, AIMessage) and msg.content:
+                return msg.content
+
+        return f"{agent_name} 执行完成但未产生文本响应"
 
     def _select_context_messages(self, messages: List[BaseMessage], window_size: Optional[int] = None) -> List[BaseMessage]:
         """

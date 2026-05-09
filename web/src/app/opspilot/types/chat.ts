@@ -7,6 +7,15 @@ export type { BrowserTaskReceivedData };
 export type BrowserStepProgressValue = BrowserStepProgressData;
 export type BrowserTaskReceivedValue = BrowserTaskReceivedData;
 
+export interface ApprovalRequestValue {
+  execution_id: string;
+  node_id: string;
+  tool_call_id: string;
+  tool_name: string;
+  tool_args: Record<string, unknown>;
+  timeout_seconds: number;
+}
+
 export interface CustomChatSSEProps {
   handleSendMessage?: (message: string, currentMessages?: any[]) => Promise<{
     url: string;
@@ -66,7 +75,7 @@ export interface AGUIMessage {
   message?: string;
   code?: string;
   name?: string;
-  value?: BrowserStepProgressValue | BrowserTaskReceivedValue | Record<string, unknown>;
+  value?: BrowserStepProgressValue | BrowserTaskReceivedValue | ApprovalRequestValue | Record<string, unknown>;
 }
 
 export interface ReferenceModalState {

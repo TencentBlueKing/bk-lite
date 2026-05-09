@@ -678,6 +678,45 @@ def interrupt_chat_flow_execution(request):
 
 
 @api_exempt
+def submit_approval(request):
+    """提交审批决策 — 用户对 Agent 危险操作的批准/拒绝。"""
+    if request.method != "POST":
+        return JsonResponse({"result": False, "message": "Method not allowed"}, status=405)
+
+    try:
+        kwargs = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError) as e:
+        return JsonResponse({"result": False, "message": f"Invalid JSON: {e}"}, status=400)
+
+    execution_id = kwargs.get("execution_id", "")
+    node_id = kwargs.get("node_id", "")
+    tool_call_id = kwargs.get("tool_call_id", "")
+    decision = kwargs.get("decision", "")
+
+    if not all([execution_id, node_id, tool_call_id, decision]):
+        return JsonResponse(
+            {"result": False, "message": "execution_id, node_id, tool_call_id, decision are all required"},
+            status=400,
+        )
+
+    if decision not in ("approve", "reject"):
+        return JsonResponse({"result": False, "message": "decision must be 'approve' or 'reject'"}, status=400)
+
+    from apps.opspilot.utils.approval import submit_approval_decision
+
+    submit_approval_decision(
+        execution_id=execution_id,
+        node_id=node_id,
+        tool_call_id=tool_call_id,
+        decision=decision,
+        reason=kwargs.get("reason", ""),
+        decided_by=kwargs.get("decided_by", getattr(request.user, "username", "")),
+    )
+
+    return JsonResponse({"result": True, "data": {"execution_id": execution_id, "node_id": node_id, "decision": decision}})
+
+
+@api_exempt
 def execute_chat_flow_wechat_official(request, bot_id):
     """微信公众号ChatFlow执行入口
 

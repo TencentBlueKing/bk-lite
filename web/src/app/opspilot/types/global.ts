@@ -57,6 +57,17 @@ export interface BrowserStepsHistory {
   isRunning: boolean;
 }
 
+export interface ApprovalRequest {
+  execution_id: string;
+  node_id: string;
+  tool_call_id: string;
+  tool_name: string;
+  tool_args: Record<string, unknown>;
+  timeout_seconds: number;
+  received_at: number;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
 export interface CustomChatMessage {
   id: string;
   role: 'user' | 'bot';
@@ -75,6 +86,7 @@ export interface CustomChatMessage {
   }>;
   browserStepProgress?: BrowserStepProgressData | null;
   browserStepsHistory?: BrowserStepsHistory | null;
+  approvalRequests?: ApprovalRequest[];
 }
 
 export interface ResultItem {
