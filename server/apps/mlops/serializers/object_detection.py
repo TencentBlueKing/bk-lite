@@ -1,8 +1,11 @@
+from types import SimpleNamespace
+
 from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.object_detection import *
 from rest_framework import serializers
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.utils.group_scope import (
+    assert_parent_team_matches,
     assert_team_ownership,
     get_current_team,
     validate_requested_teams,
@@ -362,6 +365,22 @@ class ObjectDetectionServingSerializer(AuthSerializer):
         model = ObjectDetectionServing
         fields = "__all__"
         extra_kwargs = {"container_info": {"read_only": True}}
+
+    def validate_train_job(self, value):
+        request = self.context["request"]
+        assert_team_ownership(value, get_current_team(request), "train_job", request=request)
+        return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+
+        train_job = attrs.get("train_job", getattr(self.instance, "train_job", None))
+        team = attrs.get("team", getattr(self.instance, "team", None))
+        if train_job is not None and team is not None:
+            field_name = "train_job" if "train_job" in attrs or "team" not in attrs else "team"
+            assert_parent_team_matches(SimpleNamespace(team=team), train_job, field_name)
+
+        return attrs
 
     def get_actual_port(self, obj):
         """从 container_info 中获取实际端口"""
