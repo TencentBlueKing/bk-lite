@@ -1156,3 +1156,112 @@ def test_last_over_time_keeps_step_query_for_offset_selector(monkeypatch):
         )
     ]
     assert result["data"]["result"][0]["values"] == [[200, "17"]]
+
+
+def _install_policy_baseline_dependencies(monkeypatch):
+    _install_module(monkeypatch, "apps.core.logger", monitor_logger=_Logger())
+    _install_module(
+        monkeypatch,
+        "apps.monitor.models",
+        MonitorInstance=object,
+        MonitorInstanceOrganization=object,
+        PolicyInstanceBaseline=object,
+    )
+
+
+def test_policy_baseline_query_metric_instances_returns_none_when_query_fails(monkeypatch):
+    _install_policy_baseline_dependencies(monkeypatch)
+
+    class MetricQueryService:
+        def __init__(self, policy, instances_map):
+            self.policy = policy
+            self.instances_map = instances_map
+
+        def set_monitor_obj_instance_key(self):
+            return None
+
+        def query_aggregation_metrics(self, period):
+            raise RuntimeError("victoriametrics unavailable")
+
+    _install_module(
+        monkeypatch,
+        "apps.monitor.tasks.services.policy_scan.metric_query",
+        MetricQueryService=MetricQueryService,
+    )
+
+    module = _load_module(
+        "monitor_policy_baseline_query_failure_test_module",
+        Path(__file__).resolve().parents[1] / "services" / "policy_baseline.py",
+    )
+
+    policy = types.SimpleNamespace(
+        id=1010,
+        source={"type": "instance", "values": ["host-1"]},
+        last_run_time=datetime(2026, 4, 21, 8, 0, tzinfo=timezone.utc),
+        period={"type": "min", "value": 1},
+        group_by=["instance_id"],
+    )
+
+    service = module.PolicyBaselineService(policy)
+
+    assert service._query_metric_instances({"host-1": "Host 1"}) is None
+
+
+def test_policy_baseline_refresh_keeps_existing_baselines_when_query_fails(monkeypatch):
+    _install_policy_baseline_dependencies(monkeypatch)
+    module = _load_module(
+        "monitor_policy_baseline_refresh_failure_test_module",
+        Path(__file__).resolve().parents[1] / "services" / "policy_baseline.py",
+    )
+
+    policy = types.SimpleNamespace(
+        id=1011,
+        source={"type": "instance", "values": ["host-1"]},
+    )
+    service = module.PolicyBaselineService(policy)
+    clear_calls = []
+    replace_calls = []
+
+    monkeypatch.setattr(service, "_build_instances_map", lambda: {"host-1": "Host 1"})
+    monkeypatch.setattr(service, "_query_metric_instances", lambda instances_map: None)
+    monkeypatch.setattr(service, "clear", lambda: clear_calls.append(True))
+    monkeypatch.setattr(
+        service,
+        "_replace_baselines",
+        lambda metric_instances: replace_calls.append(metric_instances),
+    )
+
+    service.refresh()
+
+    assert clear_calls == []
+    assert replace_calls == []
+
+
+def test_policy_baseline_refresh_clears_baselines_when_query_succeeds_but_is_empty(monkeypatch):
+    _install_policy_baseline_dependencies(monkeypatch)
+    module = _load_module(
+        "monitor_policy_baseline_refresh_empty_result_test_module",
+        Path(__file__).resolve().parents[1] / "services" / "policy_baseline.py",
+    )
+
+    policy = types.SimpleNamespace(
+        id=1012,
+        source={"type": "instance", "values": ["host-1"]},
+    )
+    service = module.PolicyBaselineService(policy)
+    clear_calls = []
+    replace_calls = []
+
+    monkeypatch.setattr(service, "_build_instances_map", lambda: {"host-1": "Host 1"})
+    monkeypatch.setattr(service, "_query_metric_instances", lambda instances_map: {})
+    monkeypatch.setattr(service, "clear", lambda: clear_calls.append(True))
+    monkeypatch.setattr(
+        service,
+        "_replace_baselines",
+        lambda metric_instances: replace_calls.append(metric_instances),
+    )
+
+    service.refresh()
+
+    assert clear_calls == [True]
+    assert replace_calls == []
