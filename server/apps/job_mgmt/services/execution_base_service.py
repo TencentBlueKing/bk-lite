@@ -76,6 +76,15 @@ class ExecutionTaskBaseService(object):
         execution.save(update_fields=update_fields)
 
     @staticmethod
+    def is_cancelled(execution_id: int) -> bool:
+        """从数据库刷新并检查执行是否已被取消"""
+        try:
+            current_status = JobExecution.objects.filter(id=execution_id).values_list("status", flat=True).first()
+            return current_status == ExecutionStatus.CANCELLED
+        except Exception:
+            return False
+
+    @staticmethod
     def update_execution_counts(execution: JobExecution):
         results = execution.execution_results or []
         execution.success_count = sum(1 for r in results if r.get("status") == ExecutionStatus.SUCCESS)
@@ -88,7 +97,16 @@ class ExecutionTaskBaseService(object):
         execution.save(update_fields=["execution_results", "updated_at"])
         execution.refresh_from_db()
         if execution.status == ExecutionStatus.CANCELLED:
-            logger.info(f"[{task_name}] 任务被取消: execution_id={execution.id}")
+            # 取消时仍保留已完成的结果和计数，但状态保持 CANCELLED
+            cls.update_execution_counts(execution)
+            execution.finished_at = timezone.now()
+            execution.save(update_fields=["finished_at", "updated_at"])
+            logger.info(
+                f"[{task_name}] 任务被取消，保留已完成结果: execution_id={execution.id}, " f"success={execution.success_count}, failed={execution.failed_count}"
+            )
+            # 取消时也发送回调通知，让第三方系统知道任务被取消
+            execution.refresh_from_db()
+            send_callback(execution)
             return
         cls.update_execution_counts(execution)
         final_status = ExecutionStatus.FAILED if execution.failed_count > 0 else ExecutionStatus.SUCCESS
