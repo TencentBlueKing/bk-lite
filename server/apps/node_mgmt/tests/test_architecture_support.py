@@ -2960,6 +2960,34 @@ def test_nats_client_request_falls_back_to_pickled_base_app_exception_message(mo
 
 
 @pytest.mark.django_db
+def test_install_managed_component_nats_creates_task_and_dispatches_async_worker(monkeypatch):
+    captured = {}
+
+    def fake_install_collector(collector_package, nodes):
+        captured["collector_package"] = collector_package
+        captured["nodes"] = nodes
+        return 1
+
+    class _FakeDelay:
+        def delay(self, task_id):
+            captured["task_id"] = task_id
+
+    monkeypatch.setattr("apps.node_mgmt.nats.node.InstallerService.install_collector", fake_install_collector)
+    monkeypatch.setattr("apps.node_mgmt.nats.node.install_collector", _FakeDelay())
+
+    from apps.node_mgmt.nats.node import install_managed_component
+
+    result = install_managed_component({"collector_package": 12, "nodes": ["node-1", "node-2"]})
+
+    assert result == {"task_id": 1}
+    assert captured == {
+        "collector_package": 12,
+        "nodes": ["node-1", "node-2"],
+        "task_id": 1,
+    }
+
+
+@pytest.mark.django_db
 def test_base_app_exception_str_uses_message():
     exc = BaseAppException("collector config missing")
 

@@ -190,7 +190,7 @@ class FileDistributionRunner(ExecutionTaskBaseService):
         if target_obj and target_obj.driver == ExecutorDriver.ANSIBLE:
             if not target_obj.cloud_region_id:
                 raise ValueError(f"目标缺少云区域配置: target_id={target_id}")
-            instance_id = self.get_cloud_region_name(target_obj.cloud_region_id)
+            instance_id = self._get_ansible_node(target_obj.cloud_region_id)
         else:
             instance_id = ssh_creds["node_id"]
 
