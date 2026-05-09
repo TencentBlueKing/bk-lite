@@ -28,6 +28,20 @@ type sshConn interface{}
 type responseMsg interface {
 	Respond([]byte) error
 }
+type inboundMsg interface {
+	responseMsg
+	Payload() []byte
+}
+type natsInboundMsg struct{ *nats.Msg }
+
+func (m natsInboundMsg) Payload() []byte { return m.Data }
+
+type eventPublisher interface {
+	Publish(subject string, data []byte) error
+}
+type subscriber interface {
+	Subscribe(subject string, cb nats.MsgHandler) (*nats.Subscription, error)
+}
 
 type streamEvent struct {
 	ExecutionID string `json:"execution_id"`
@@ -37,7 +51,7 @@ type streamEvent struct {
 }
 
 type streamLogWriter struct {
-	nc          *nats.Conn
+	publisher   eventPublisher
 	topic       string
 	executionID string
 	stream      string
@@ -87,6 +101,9 @@ var (
 		}
 		return realSSHClient{client: client}, nil
 	}
+	subscribeSSHExecutorFn      = subscribeSSHExecutor
+	subscribeDownloadToRemoteFn = subscribeDownloadToRemote
+	subscribeUploadToRemoteFn   = subscribeUploadToRemote
 )
 
 const sshConnectTimeout = 30 * time.Second
@@ -122,8 +139,8 @@ func (s realSSHSession) Close() error                { return s.session.Close() 
 func (s realSSHSession) SetStdout(w io.Writer)       { s.session.Stdout = w }
 func (s realSSHSession) SetStderr(w io.Writer)       { s.session.Stderr = w }
 
-func newStreamLogWriter(nc *nats.Conn, topic, executionID, stream string) *streamLogWriter {
-	return &streamLogWriter{nc: nc, topic: topic, executionID: executionID, stream: stream}
+func newStreamLogWriter(publisher eventPublisher, topic, executionID, stream string) *streamLogWriter {
+	return &streamLogWriter{publisher: publisher, topic: topic, executionID: executionID, stream: stream}
 }
 
 func (w *streamLogWriter) Write(p []byte) (int, error) {
@@ -131,15 +148,22 @@ func (w *streamLogWriter) Write(p []byte) (int, error) {
 		return 0, nil
 	}
 	_, _ = w.buffer.Write(p)
+
+	var remaining bytes.Buffer
 	for {
 		line, err := w.buffer.ReadString('\n')
 		if err == io.EOF {
+			remaining.WriteString(line)
 			break
 		}
 		if err != nil {
 			return len(p), err
 		}
 		w.publish(strings.TrimRight(line, "\r\n"))
+	}
+	if remaining.Len() > 0 {
+		w.buffer.Reset()
+		_, _ = remaining.WriteTo(&w.buffer)
 	}
 	return len(p), nil
 }
@@ -153,7 +177,7 @@ func (w *streamLogWriter) Flush() {
 }
 
 func (w *streamLogWriter) publish(line string) {
-	if w.nc == nil || w.topic == "" || line == "" {
+	if w.publisher == nil || w.topic == "" || line == "" {
 		return
 	}
 	payload, err := json.Marshal(streamEvent{
@@ -166,7 +190,7 @@ func (w *streamLogWriter) publish(line string) {
 		logger.Warnf("[SSH Execute] stream marshal failed: %v", err)
 		return
 	}
-	if err := w.nc.Publish(w.topic, payload); err != nil {
+	if err := w.publisher.Publish(w.topic, payload); err != nil {
 		logger.Warnf("[SSH Execute] stream publish failed: %v", err)
 	}
 }
@@ -380,6 +404,34 @@ func respondSSHExecuteMessage(msg responseMsg, data []byte, instanceId string, n
 		return false
 	}
 	logger.Debugf("[SSH Subscribe] Instance: %s, Response sent successfully, size: %d bytes", instanceId, len(responseContent))
+	return true
+}
+
+func respondDownloadToRemoteSubscription(msg inboundMsg, instanceId string, nc sshConn) bool {
+	responseContent, ok := handleDownloadToRemoteMessage(msg.Payload(), instanceId, nc)
+	if !ok {
+		logger.Errorf("[Download Subscribe] Instance: %s, Error unmarshalling incoming message", instanceId)
+		return false
+	}
+	if err := msg.Respond(responseContent); err != nil {
+		logger.Errorf("[Download Subscribe] Instance: %s, Error responding to download request: %v", instanceId, err)
+		return false
+	}
+	logger.Debugf("[Download Subscribe] Instance: %s, Response sent successfully, size: %d bytes", instanceId, len(responseContent))
+	return true
+}
+
+func respondUploadToRemoteSubscription(msg inboundMsg, instanceId string) bool {
+	responseContent, ok := handleUploadToRemoteMessage(msg.Payload(), instanceId)
+	if !ok {
+		logger.Errorf("[Upload Subscribe] Instance: %s, Error unmarshalling incoming message", instanceId)
+		return false
+	}
+	if err := msg.Respond(responseContent); err != nil {
+		logger.Errorf("[Upload Subscribe] Instance: %s, Error responding to upload request: %v", instanceId, err)
+		return false
+	}
+	logger.Debugf("[Upload Subscribe] Instance: %s, Response sent successfully, size: %d bytes", instanceId, len(responseContent))
 	return true
 }
 
@@ -1042,61 +1094,53 @@ func buildPublicKeyAuthMethod(signer ssh.Signer, profile sshCompatibilityProfile
 	return ssh.PublicKeys(rsaSigner)
 }
 
-func SubscribeSSHExecutor(nc *nats.Conn, instanceId *string) {
+func subscribeSSHExecutor(sub subscriber, nc *nats.Conn, instanceId *string) error {
 	subject := fmt.Sprintf("ssh.execute.%s", *instanceId)
 	logger.Infof("[SSH Subscribe] Instance: %s, Subscribing to subject: %s", *instanceId, subject)
 
-	_, err := nc.Subscribe(subject, func(msg *nats.Msg) {
+	_, err := sub.Subscribe(subject, func(msg *nats.Msg) {
 		logger.Debugf("[SSH Subscribe] Instance: %s, Received message, size: %d bytes", *instanceId, len(msg.Data))
-		respondSSHExecuteMessage(msg, msg.Data, *instanceId, nc)
+		respondSSHExecuteMessage(natsInboundMsg{msg}, msg.Data, *instanceId, nc)
 	})
+	return err
+}
 
-	if err != nil {
+func SubscribeSSHExecutor(nc *nats.Conn, instanceId *string) {
+	if err := subscribeSSHExecutorFn(nc, nc, instanceId); err != nil {
 		logger.Errorf("[SSH Subscribe] Instance: %s, Failed to subscribe: %v", *instanceId, err)
 	}
 }
 
-func SubscribeDownloadToRemote(nc *nats.Conn, instanceId *string) {
+func subscribeDownloadToRemote(sub subscriber, nc sshConn, instanceId *string) error {
 	subject := fmt.Sprintf("download.remote.%s", *instanceId)
 	logger.Infof("[Download Subscribe] Instance: %s, Subscribing to subject: %s", *instanceId, subject)
 
-	nc.Subscribe(subject, func(msg *nats.Msg) {
+	_, err := sub.Subscribe(subject, func(msg *nats.Msg) {
 		logger.Debugf("[Download Subscribe] Instance: %s, Received download request, size: %d bytes", *instanceId, len(msg.Data))
-
-		responseContent, ok := handleDownloadToRemoteMessage(msg.Data, *instanceId, nc)
-		if !ok {
-			logger.Errorf("[Download Subscribe] Instance: %s, Error unmarshalling incoming message", *instanceId)
-			return
-		}
-
-		if err := msg.Respond(responseContent); err != nil {
-			logger.Errorf("[Download Subscribe] Instance: %s, Error responding to download request: %v", *instanceId, err)
-		} else {
-			logger.Debugf("[Download Subscribe] Instance: %s, Response sent successfully, size: %d bytes", *instanceId, len(responseContent))
-		}
+		respondDownloadToRemoteSubscription(natsInboundMsg{msg}, *instanceId, nc)
 	})
+	return err
 }
 
-func SubscribeUploadToRemote(nc *nats.Conn, instanceId *string) {
+func SubscribeDownloadToRemote(nc *nats.Conn, instanceId *string) {
+	if err := subscribeDownloadToRemoteFn(nc, nc, instanceId); err != nil {
+		logger.Errorf("[Download Subscribe] Instance: %s, Failed to subscribe: %v", *instanceId, err)
+	}
+}
+
+func subscribeUploadToRemote(sub subscriber, instanceId *string) error {
 	subject := fmt.Sprintf("upload.remote.%s", *instanceId)
 	logger.Infof("[Upload Subscribe] Instance: %s, Subscribing to subject: %s", *instanceId, subject)
 
-	_, err := nc.Subscribe(subject, func(msg *nats.Msg) {
+	_, err := sub.Subscribe(subject, func(msg *nats.Msg) {
 		logger.Debugf("[Upload Subscribe] Instance: %s, Received upload request, size: %d bytes", *instanceId, len(msg.Data))
-
-		responseContent, ok := handleUploadToRemoteMessage(msg.Data, *instanceId)
-		if !ok {
-			logger.Errorf("[Upload Subscribe] Instance: %s, Error unmarshalling incoming message", *instanceId)
-			return
-		}
-		if err := msg.Respond(responseContent); err != nil {
-			logger.Errorf("[Upload Subscribe] Instance: %s, Error responding to upload request: %v", *instanceId, err)
-		} else {
-			logger.Debugf("[Upload Subscribe] Instance: %s, Response sent successfully, size: %d bytes", *instanceId, len(responseContent))
-		}
+		respondUploadToRemoteSubscription(natsInboundMsg{msg}, *instanceId)
 	})
+	return err
+}
 
-	if err != nil {
+func SubscribeUploadToRemote(nc *nats.Conn, instanceId *string) {
+	if err := subscribeUploadToRemoteFn(nc, instanceId); err != nil {
 		logger.Errorf("[Upload Subscribe] Instance: %s, Failed to subscribe: %v", *instanceId, err)
 	}
 }
