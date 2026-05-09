@@ -4,27 +4,6 @@ import inspect
 
 from loguru import logger
 
-# 静态导入所有工具模块
-from apps.opspilot.metis.llm.tools import (
-    agent_browser,
-    browser_use,
-    date,
-    elasticsearch,
-    fetch,
-    github,
-    jenkins,
-    kubernetes,
-    kubernetes_data_collection,
-    mssql,
-    mysql,
-    oracle,
-    postgres,
-    python,
-    redis,
-    search,
-    shell,
-    ssh,
-)
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
 
 
@@ -48,27 +27,27 @@ class ToolsLoader:
     TOOLS_PLUS_SUFFIX = "_tools_plus"
     STRUCTURED_TOOL_CLASS = "StructuredTool"
 
-    # 静态定义所有工具模块映射
+    # 惰性定义所有工具模块映射
     TOOL_MODULES = {
-        "agent_browser": (agent_browser, False),
-        "browser_use": (browser_use, False),
+        "agent_browser": ("apps.opspilot.metis.llm.tools.agent_browser", False),
+        "browser_use": ("apps.opspilot.metis.llm.tools.browser_use", False),
         # "cmdb": ("apps.opspilot.metis.llm.tools.cmdb", False),  # 临时关闭 CMDB tools
-        "current_time": (date, False),
-        "duckduckgo": (search, False),
-        "elasticsearch": (elasticsearch, True),
-        "fetch": (fetch, False),
-        "github": (github, False),
-        "jenkins": (jenkins, True),
-        "kubernetes": (kubernetes, True),
-        "kubernetes_data_collection": (kubernetes_data_collection, True),
-        "mssql": (mssql, True),
-        "mysql": (mysql, True),
-        "oracle": (oracle, True),
-        "postgres": (postgres, True),
-        "python": (python, False),
-        "redis": (redis, True),
-        "shell": (shell, False),
-        "ssh": (ssh, False),
+        "current_time": ("apps.opspilot.metis.llm.tools.date", False),
+        "duckduckgo": ("apps.opspilot.metis.llm.tools.search", False),
+        "elasticsearch": ("apps.opspilot.metis.llm.tools.elasticsearch", True),
+        "fetch": ("apps.opspilot.metis.llm.tools.fetch", False),
+        "github": ("apps.opspilot.metis.llm.tools.github", False),
+        "jenkins": ("apps.opspilot.metis.llm.tools.jenkins", True),
+        "kubernetes": ("apps.opspilot.metis.llm.tools.kubernetes", True),
+        "kubernetes_data_collection": ("apps.opspilot.metis.llm.tools.kubernetes_data_collection", True),
+        "mssql": ("apps.opspilot.metis.llm.tools.mssql", True),
+        "mysql": ("apps.opspilot.metis.llm.tools.mysql", True),
+        "oracle": ("apps.opspilot.metis.llm.tools.oracle", True),
+        "postgres": ("apps.opspilot.metis.llm.tools.postgres", True),
+        "python": ("apps.opspilot.metis.llm.tools.python", False),
+        "redis": ("apps.opspilot.metis.llm.tools.redis", True),
+        "shell": ("apps.opspilot.metis.llm.tools.shell", False),
+        "ssh": ("apps.opspilot.metis.llm.tools.ssh", False),
     }
 
     @staticmethod
