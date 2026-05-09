@@ -159,7 +159,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
             <TopMenu hideMainMenu={hideTopMenu} />
           </header>
         )}
-        <main className={`flex-1 p-4 flex text-sm ${!isAuthenticated || isAuthRoute ? 'h-screen' : ''}`}>
+        <main className={`main-content flex-1 p-4 flex text-sm ${!isAuthenticated || isAuthRoute ? 'h-screen' : ''}`}>
           {shouldRenderMenu ? (
             <WithSideMenuLayout
               layoutType="segmented"

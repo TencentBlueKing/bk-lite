@@ -1,0 +1,24 @@
+name: websphere
+version: "2.0.0"
+category: middleware
+
+metadata:
+  display_name: "WebSphere 应用服务器"
+  description: "WebSphere 采集插件，支持脚本方式采集"
+  author: "WeOps"
+  tags: [middleware, websphere, java]
+  cloud_protocol: false
+  model_id: websphere
+
+executors:
+  job:
+    type: job
+    timeout: 60
+    scripts:
+      linux: plugins/inputs/websphere/websphere_default_discover.sh
+    collector:
+      module: plugins.script_executor
+      class: SSHPlugin
+    default_script: linux
+
+default_executor: job

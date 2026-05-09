@@ -24,6 +24,7 @@ from apps.node_mgmt.models.installer import ControllerTaskNode
 from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
 from apps.node_mgmt.tasks.installer import (
     converge_controller_install_connectivity_for_node,
+    _matches_install_connectivity_target,
 )
 from apps.node_mgmt.utils.step_tracker import build_step, now_iso, update_step_by_action
 from apps.node_mgmt.utils.task_result_schema import apply_result_envelope, normalize_task_details
@@ -37,6 +38,8 @@ from apps.core.logger import node_logger as logger
 
 class Sidecar:
     CONVERGE_DEBOUNCE_SECONDS = 5
+    CPU_ARCHITECTURE_TAG = "cpu_architecture"
+    INSTALL_TASK_NODE_TAG = "install_task_node"
 
     @staticmethod
     def generate_etag(data):
@@ -157,11 +160,14 @@ class Sidecar:
 
         install_running_exists = False
         if node_ip:
-            install_running_exists = ControllerTaskNode.objects.filter(
-                ip=node_ip,
-                status="running",
-                task__type="install",
-            ).exists()
+            install_running_exists = any(
+                _matches_install_connectivity_target(task_node, node_id, node_ip)
+                for task_node in ControllerTaskNode.objects.filter(
+                    ip=node_ip,
+                    status="running",
+                    task__type="install",
+                )
+            )
 
         if not action_running_exists and not install_running_exists:
             return
@@ -192,6 +198,88 @@ class Sidecar:
     #
     #     # 重新关联新的组织
     #     Sidecar.asso_groups(node_id, groups)
+
+    @staticmethod
+    def _fallback_cpu_architecture(node_id: str, request_data: dict) -> str:
+        cpu_architecture = normalize_cpu_architecture(request_data.get("cpu_architecture"))
+        if cpu_architecture:
+            return cpu_architecture
+
+        cpu_architecture = normalize_cpu_architecture(request_data.get("architecture"))
+        if cpu_architecture:
+            return cpu_architecture
+
+        tags = request_data.get("tags", [])
+        if tags:
+            tag_data = format_tags_dynamic(tags, [Sidecar.CPU_ARCHITECTURE_TAG])
+            cpu_architectures = tag_data.get(Sidecar.CPU_ARCHITECTURE_TAG, [])
+            if cpu_architectures:
+                normalized_tag_arch = normalize_cpu_architecture(cpu_architectures[0])
+                if normalized_tag_arch:
+                    return normalized_tag_arch
+
+        operating_system = str(request_data.get("operating_system", "")).lower()
+        node_ip = request_data.get("ip", "")
+        if not node_ip or not operating_system:
+            return ""
+
+        task_node = ControllerTaskNode.objects.filter(ip=node_ip, os=operating_system).exclude(cpu_architecture="").order_by("-id").first()
+        if task_node:
+            logger.info(
+                "Falling back to install task CPU architecture for node %s: %s",
+                node_id,
+                task_node.cpu_architecture,
+            )
+            return normalize_cpu_architecture(task_node.cpu_architecture)
+
+        return ""
+
+    @staticmethod
+    def _default_collector_priority(collector_cpu_architecture: str, node_cpu_architecture: str) -> int:
+        collector_arch = normalize_cpu_architecture(collector_cpu_architecture)
+        node_arch = normalize_cpu_architecture(node_cpu_architecture)
+
+        if node_arch == NodeConstants.ARM64_ARCH:
+            if collector_arch == NodeConstants.ARM64_ARCH:
+                return 2
+            return 0
+
+        if node_arch == NodeConstants.X86_64_ARCH:
+            if collector_arch == NodeConstants.X86_64_ARCH:
+                return 2
+            if not collector_arch:
+                return 1
+            return 0
+
+        if not collector_arch:
+            return 2
+        if collector_arch == NodeConstants.X86_64_ARCH:
+            return 1
+        return 0
+
+    @classmethod
+    def _get_default_collectors_for_node(cls, node):
+        node_arch = normalize_cpu_architecture(getattr(node, "cpu_architecture", ""))
+        if node_arch == NodeConstants.ARM64_ARCH:
+            allowed_architectures = [NodeConstants.ARM64_ARCH]
+        elif node_arch == NodeConstants.X86_64_ARCH:
+            allowed_architectures = [NodeConstants.X86_64_ARCH, ""]
+        else:
+            allowed_architectures = ["", NodeConstants.X86_64_ARCH]
+        collector_objs = Collector.objects.filter(
+            controller_default_run=True,
+            node_operating_system=node.operating_system,
+            cpu_architecture__in=allowed_architectures,
+        ).order_by("name", "cpu_architecture", "id")
+
+        selected_collectors = {}
+        for collector_obj in collector_objs:
+            priority = cls._default_collector_priority(collector_obj.cpu_architecture, node_arch)
+            current = selected_collectors.get(collector_obj.name)
+            if current is None or priority > current[0]:
+                selected_collectors[collector_obj.name] = (priority, collector_obj)
+
+        return {name: collector for name, (_, collector) in selected_collectors.items()}
 
     @staticmethod
     def update_node_client(request, node_id):
@@ -232,7 +320,7 @@ class Sidecar:
 
         # 操作系统转小写
         request_data.update(operating_system=request_data["operating_system"].lower())
-        request_data.update(cpu_architecture=normalize_cpu_architecture(request_data.get("architecture")))
+        request_data.update(cpu_architecture=Sidecar._fallback_cpu_architecture(node_id, request_data))
         request_data.pop("architecture", None)
 
         logger.debug(f"node data: {request_data}")
@@ -246,8 +334,14 @@ class Sidecar:
             ControllerConstants.CLOUD_TAG,
             ControllerConstants.INSTALL_METHOD_TAG,
             ControllerConstants.NODE_TYPE_TAG,
+            Sidecar.CPU_ARCHITECTURE_TAG,
+            Sidecar.INSTALL_TASK_NODE_TAG,
         ]
         tags_data = format_tags_dynamic(request_data.get("tags", []), allowed_prefixes)
+
+        cpu_architecture_tags = tags_data.get(Sidecar.CPU_ARCHITECTURE_TAG, [])
+        if cpu_architecture_tags and not request_data.get("cpu_architecture"):
+            request_data.update(cpu_architecture=normalize_cpu_architecture(cpu_architecture_tags[0]))
 
         # 补充云区域关联
         clouds = tags_data.get(ControllerConstants.CLOUD_TAG, [])
@@ -284,6 +378,8 @@ class Sidecar:
 
             # 更新节点
             node_info = {key: val for key, val in request_data.items() if key != "name"}
+            if not node_info.get("cpu_architecture"):
+                node_info.pop("cpu_architecture", None)
             Node.objects.filter(id=node_id).update(**node_info)
 
             # # 更新组织关联(覆盖)
@@ -609,10 +705,7 @@ class Sidecar:
 
     @staticmethod
     def create_default_config(node, node_types):
-        collector_objs = Collector.objects.filter(
-            controller_default_run=True,
-            node_operating_system=node.operating_system,
-        )
+        collector_objs = Sidecar._get_default_collectors_for_node(node).values()
         variables = Sidecar.get_cloud_region_envconfig(node)
         default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
 

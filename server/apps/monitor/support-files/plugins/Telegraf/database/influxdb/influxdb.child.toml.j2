@@ -1,11 +1,12 @@
 [[inputs.influxdb]]
     startup_error_behavior = "retry"
     urls = ["{{ server }}"]
+    interval = "{{ interval }}s"
     {% if username %}
     username = "{{ username }}"
     password = "${PASSWORD__{{ config_id }}}"
     {% endif %}
-    timeout = "{{ interval }}s"
+    timeout = "{{ timeout }}s"
     {% if tls_ca %}
     tls_ca = "{{ tls_ca }}"
     {% endif %}

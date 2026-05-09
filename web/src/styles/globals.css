@@ -207,6 +207,10 @@ html:not(.dark) body {
   z-index: 1000;
 }
 
+.main-content {
+  box-shadow: inset 0 6px 10px -6px rgba(0, 0, 0, 0.03);
+}
+
 .first-loader-wrapper {
   position: fixed;
   top: 0;

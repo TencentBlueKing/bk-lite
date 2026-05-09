@@ -151,6 +151,7 @@ export const useHttpDashboard = () => {
         valueConfig: {
           chartType: 'table',
           dataSource: 1,
+          showIndex: true,
           columns: [
             {
               title: t('log.analysis.http.sourceIP'),
@@ -182,6 +183,7 @@ export const useHttpDashboard = () => {
         valueConfig: {
           chartType: 'table',
           dataSource: 1,
+          showIndex: true,
           columns: [
             {
               title: t('log.analysis.http.urlPath'),
@@ -213,6 +215,7 @@ export const useHttpDashboard = () => {
         valueConfig: {
           chartType: 'table',
           dataSource: 1,
+          showIndex: true,
           columns: [
             {
               title: t('log.analysis.http.sourceIP'),

@@ -58,6 +58,7 @@ const useIntegrationApi = () => {
       start_time?: string;
       end_time?: string;
       limit?: number;
+      log_groups?: React.Key[];
     } = {}
   ) => {
     return await get(`/log/search/field_values/`, {
@@ -103,28 +104,34 @@ const useIntegrationApi = () => {
     return await get('/log/k8s_collect/cloud_region_list/');
   };
 
-  const createK8sInstance = async (params: {
-    organizations?: React.Key[];
-    id?: string;
-    name?: string;
-    collect_type_id?: React.Key;
-  } = {}) => {
+  const createK8sInstance = async (
+    params: {
+      organizations?: React.Key[];
+      id?: string;
+      name?: string;
+      collect_type_id?: React.Key;
+    } = {}
+  ) => {
     return await post('/log/k8s_collect/create_instance/', params);
   };
 
-  const getK8sCommand = async (params: {
-    instance_id?: string;
-    cloud_region_id?: React.Key;
-    runtime_profile?: 'standard' | 'docker' | 'custom';
-    host_log_path?: string;
-    docker_container_log_path?: string;
-  } = {}) => {
+  const getK8sCommand = async (
+    params: {
+      instance_id?: string;
+      cloud_region_id?: React.Key;
+      runtime_profile?: 'standard' | 'docker' | 'custom';
+      host_log_path?: string;
+      docker_container_log_path?: string;
+    } = {}
+  ) => {
     return await post('/log/k8s_collect/generate_install_command/', params);
   };
 
-  const checkK8sCollectStatus = async (params: {
-    instance_id?: string;
-  } = {}) => {
+  const checkK8sCollectStatus = async (
+    params: {
+      instance_id?: string;
+    } = {}
+  ) => {
     return await post('/log/k8s_collect/check_collect_status/', params);
   };
 

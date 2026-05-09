@@ -12,15 +12,15 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "--version",
+            "--package-version",
             type=str,
             default="",
             help="指定需要校验的控制器版本；为空时仅校验各架构是否存在至少一个控制器包",
         )
 
     def handle(self, *args, **options):
-        target_version = options["version"]
-        object_keys = set(async_to_sync(list_s3_files)())
+        target_version = options["package_version"]
+        object_keys = {getattr(entry, "name", entry) for entry in async_to_sync(list_s3_files)()}
 
         required_installer_paths = [
             InstallerConstants.build_latest_alias_path(NodeConstants.WINDOWS_OS, NodeConstants.X86_64_ARCH),

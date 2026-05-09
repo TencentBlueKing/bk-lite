@@ -37,6 +37,7 @@ export interface SmartSearchInputProps {
   getTimeRange?: () => number[]; // 获取时间范围的方法
   addonAfter?: React.ReactNode;
   disabled?: boolean;
+  logGroups?: React.Key[];
 }
 
 const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
@@ -49,7 +50,8 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
     fields = [],
     getTimeRange,
     addonAfter,
-    disabled = false
+    disabled = false,
+    logGroups = []
   }) => {
     const { t } = useTranslation();
     const [options, setOptions] = useState<DefaultOptionType[]>([]);
@@ -187,7 +189,8 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
             filed: fieldName,
             start_time: times[0] ? new Date(times[0]).toISOString() : '',
             end_time: times[1] ? new Date(times[1]).toISOString() : '',
-            limit: 50
+            limit: 50,
+            log_groups: logGroups
           };
 
           const values = await getFieldValues(params);
@@ -217,7 +220,8 @@ const SmartSearchInput: React.FC<SmartSearchInputProps> = React.memo(
             filed: fieldName,
             start_time: times[0] ? new Date(times[0]).toISOString() : '',
             end_time: times[1] ? new Date(times[1]).toISOString() : '',
-            limit: 50
+            limit: 50,
+            log_groups: logGroups
           };
 
           const values = await getFieldValues(params);

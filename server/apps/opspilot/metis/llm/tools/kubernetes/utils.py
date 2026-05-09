@@ -142,9 +142,13 @@ def prepare_context(cfg):
         if configurable.get("kubernetes_instances"):
             from apps.opspilot.metis.llm.tools.kubernetes.connection import get_kubernetes_instances_from_configurable, resolve_kubernetes_instance
 
-            instances, default_id = get_kubernetes_instances_from_configurable(configurable)
+            instances = get_kubernetes_instances_from_configurable(configurable)
             if instances:
-                instance = resolve_kubernetes_instance(instances, default_id)
+                instance = resolve_kubernetes_instance(
+                    instances,
+                    instance_name=configurable.get("instance_name"),
+                    instance_id=configurable.get("instance_id"),
+                )
                 kubeconfig_data = instance.get("kubeconfig_data", "")
                 if kubeconfig_data:
                     if isinstance(kubeconfig_data, str):

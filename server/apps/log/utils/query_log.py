@@ -28,6 +28,30 @@ class VictoriaMetricsAPI:
         return HTTPBasicAuth(self.username, self.password)
 
     @staticmethod
+    def _normalize_logsql_query(query: str) -> str:
+        normalized = "" if query is None else str(query).strip()
+        if not normalized:
+            return normalized
+
+        current = normalized
+        for _ in range(2):
+            try:
+                decoded = json.loads(current)
+            except (TypeError, ValueError, JSONDecodeError):
+                break
+
+            if not isinstance(decoded, str):
+                break
+
+            decoded = decoded.strip()
+            if not decoded or decoded == current:
+                current = decoded
+                break
+
+            current = decoded
+        return current
+
+    @staticmethod
     def _build_url(host: str, path: str) -> str:
         normalized_host = (host or "").rstrip("/")
         if not normalized_host:
@@ -71,6 +95,11 @@ class VictoriaMetricsAPI:
         raise ValueError(f"未找到指标 {metric_name}[type={metric_type}]")
 
     def all_field_names(self, query, start, end):
+        query = self._normalize_logsql_query(query)
+        logger.info(
+            "发送VictoriaLogs field_names查询",
+            extra={"query": query or "*", "start": start, "end": end},
+        )
         data = {
             "query": query or "*",
             "start": start,
@@ -89,6 +118,11 @@ class VictoriaMetricsAPI:
 
     def field_values(self, start, end, field, limit=100, query=None):
         limit = VictoriaLogsConstants.normalize_field_values_limit(limit, default=100, clamp=True)
+        query = self._normalize_logsql_query(query)
+        logger.info(
+            "发送VictoriaLogs field_values查询",
+            extra={"query": query or f"{field}:*", "field": field, "start": start, "end": end, "limit": limit},
+        )
         data = {
             "query": query or f"{field}:*",
             "field": field,
@@ -108,6 +142,11 @@ class VictoriaMetricsAPI:
 
     def query(self, query, start, end, limit=10):
         limit = VictoriaLogsConstants.normalize_query_limit(limit, default=10, clamp=True)
+        query = self._normalize_logsql_query(query)
+        logger.info(
+            "发送VictoriaLogs query查询",
+            extra={"query": query, "start": start, "end": end, "limit": limit},
+        )
         data = {"query": query, "start": start, "end": end, "limit": limit}
         response = requests.post(
             self._build_url(self.host, "/select/logsql/query"),
@@ -160,6 +199,18 @@ class VictoriaMetricsAPI:
 
     def hits(self, query, start, end, field, fields_limit=5, step="5m"):
         fields_limit = VictoriaLogsConstants.normalize_hits_fields_limit(fields_limit, default=5, clamp=True)
+        query = self._normalize_logsql_query(query)
+        logger.info(
+            "发送VictoriaLogs hits查询",
+            extra={
+                "query": query,
+                "start": start,
+                "end": end,
+                "field": field,
+                "fields_limit": fields_limit,
+                "step": step,
+            },
+        )
         data = {
             "query": query,
             "start": start,
@@ -228,6 +279,8 @@ class VictoriaMetricsAPI:
 
     async def tail_async(self, query) -> AsyncIterator[str]:
         """异步版本的tail方法，ASGI兼容实现"""
+        query = self._normalize_logsql_query(query)
+        logger.info("发送VictoriaLogs tail查询", extra={"query": query})
         data = {"query": query}
         response = None
 

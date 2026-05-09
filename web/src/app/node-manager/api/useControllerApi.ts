@@ -62,6 +62,7 @@ const useControllerApi = () => {
     package_id?: string;
     cloud_region_id?: number;
     os?: string;
+    cpu_architecture?: string;
   }): Promise<string> => {
     return await post('/node_mgmt/api/installer/get_install_command/', params);
   };

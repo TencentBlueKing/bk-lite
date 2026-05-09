@@ -53,6 +53,26 @@ export interface InstallerProgressMetric {
   unit?: string;
 }
 
+export interface InstallerFailureContext {
+  bucket?: string;
+  file_key?: string;
+  package_name?: string;
+  cpu_architecture?: string;
+  install_dir?: string;
+  target_path?: string;
+  exit_code?: number;
+}
+
+export interface InstallerFailure {
+  message?: string;
+  type?: string;
+  code?: number;
+  summary?: string;
+  context?: InstallerFailureContext;
+  retriable?: boolean;
+  raw_error?: string;
+}
+
 export interface InstallerStepDetails {
   installer_event?: boolean;
   raw_step?: InstallerStepCode;
@@ -62,6 +82,7 @@ export interface InstallerStepDetails {
   timestamp?: string;
   error?: string;
   installer_message?: string;
+  failure?: InstallerFailure;
 }
 
 export interface InstallerProgressSummary {
@@ -76,6 +97,7 @@ export interface InstallerProgressSummary {
 export interface OperationTaskResult {
   steps?: LogStep[];
   installer_progress?: InstallerProgressSummary;
+  failure?: InstallerFailure;
 }
 
 export interface ControllerInstallProgressRow {
@@ -85,6 +107,7 @@ export interface ControllerInstallProgressRow {
   node_id?: string | number;
   task_node_id?: string | number;
   os?: string;
+  cpu_architecture?: string;
   organizations?: string[];
   status?: InstallerTaskStatus | null;
   result?: OperationTaskResult | null;
@@ -124,10 +147,12 @@ export interface NodeItem {
   node_name: string;
   organizations: React.Key[];
   node_id: string;
+  cpu_architecture?: string;
 }
 export interface ManualInstallController {
   cloud_region_id?: React.Key;
   os?: string;
+  cpu_architecture?: string;
   package_id?: React.Key;
   nodes?: NodeItem[];
 }
@@ -137,6 +162,7 @@ export interface OperationGuidanceProps {
   nodeName: string;
   installerSession?: string;
   os?: string;
+  cpu_architecture?: string;
   installerVersion?: string;
   defaultInstallerVersion?: string;
   nodeData?: any;

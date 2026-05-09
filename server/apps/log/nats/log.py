@@ -103,6 +103,19 @@ def _paginate_items(items: list, page, page_size):
     }
 
 
+def _build_paginated_alert_segments(queryset, page, page_size):
+    total_count = queryset.count()
+    start = (page - 1) * page_size
+    end = start + page_size
+    paged_alerts = queryset.order_by("-start_event_time", "-created_at")[start:end]
+    return {
+        "count": total_count,
+        "page": page,
+        "page_size": page_size,
+        "items": [_build_log_alert_segment(alert) for alert in paged_alerts],
+    }
+
+
 def _build_log_alert_segment(alert: Alert) -> dict:
     start_event_time = getattr(alert, "start_event_time", None)
     created_at = getattr(alert, "created_at", None)
@@ -216,9 +229,8 @@ def query_log_alert_segments(query_data: dict, *args, **kwargs):
     if level_values:
         queryset = queryset.filter(level__in=level_values)
 
-    items = [_build_log_alert_segment(alert) for alert in queryset.order_by("-start_event_time", "-created_at")]
     return {
         "result": True,
-        "data": _paginate_items(items, page, page_size),
+        "data": _build_paginated_alert_segments(queryset, page, page_size),
         "message": "",
     }

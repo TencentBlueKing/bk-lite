@@ -36,8 +36,12 @@ class LLMClientFactory:
             llm.extra_body = {}
 
         show_think = bool((request.extra_config or {}).get("show_think", True))
-        if "qwen" in request.model.lower():
+        model_lower = request.model.lower()
+        if "qwen" in model_lower:
             llm.extra_body["enable_thinking"] = show_think
+        elif "deepseek" in model_lower:
+            thinking_type = "enabled" if show_think else "disabled"
+            llm.extra_body["thinking"] = {"type": thinking_type}
 
         # 如果需要隔离,则禁用callbacks以避免被LangGraph捕获
         if isolated:
@@ -97,9 +101,12 @@ class LLMClientFactory:
             "temperature": request.temperature,
         }
 
-        # 添加 Qwen 模型的特殊配置
-        if "qwen" in request.model.lower():
+        # 添加 Qwen/DeepSeek 模型的特殊配置（隔离调用禁用 thinking）
+        model_lower = request.model.lower()
+        if "qwen" in model_lower:
             call_kwargs["extra_body"] = {"enable_thinking": False}
+        elif "deepseek" in model_lower:
+            call_kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
 
         # 直接调用原生 OpenAI API
         response = client.chat.completions.create(**call_kwargs)

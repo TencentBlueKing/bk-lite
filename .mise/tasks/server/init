@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+SERVER_DIR="${ROOT_DIR}/server"
+ENV_FILE="${SERVER_DIR}/.env"
+
+ALL_INSTALL_APPS="system_mgmt,cmdb,console_mgmt,monitor,node_mgmt,alerts,operation_analysis,opspilot,log,job_mgmt,mlops"
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv 未安装。请先在本机安装并加入 PATH。"
+  exit 1
+fi
+
+if [ ! -d "${SERVER_DIR}" ]; then
+  echo "未找到 server 目录: ${SERVER_DIR}"
+  exit 1
+fi
+
+SERVER_IP="${BKLITE_SERVER_IP:-}"
+if [ -z "${SERVER_IP}" ]; then
+  if [ -t 0 ]; then
+    read -r -p "请输入服务端 IP [127.0.0.1]: " SERVER_IP
+  fi
+  SERVER_IP="${SERVER_IP:-127.0.0.1}"
+fi
+
+cat > "${ENV_FILE}" <<EOF
+DEBUG=True
+SECRET_KEY=bklite-dev-secret-key
+BK_INIT_ADMIN_PASSWORD=password
+
+DB_ENGINE=postgresql
+DB_NAME=bklite
+DB_USER=postgres
+DB_PASSWORD=bklite-password
+DB_HOST=${SERVER_IP}
+DB_PORT=33011
+
+INSTALL_APPS=${ALL_INSTALL_APPS}
+
+ENABLE_CELERY=True
+CELERY_WORKER_CONCURRENCY=1
+CELERY_BROKER_URL=redis://:bklite-password@${SERVER_IP}:33007/3
+CELERY_RESULT_BACKEND=redis://:bklite-password@${SERVER_IP}:33007/3
+REDIS_CACHE_URL=redis://:bklite-password@${SERVER_IP}:33007/1
+
+NATS_SERVERS=nats://admin:bklite-password@${SERVER_IP}:33008
+NATS_NAMESPACE=bklite
+NATS_TLS_ENABLED=false
+NATS_USER=admin
+NATS_PASSWORD=bklite-password
+NATS_USERNAME=admin
+NATS_ADMIN_USERNAME=admin
+NATS_ADMIN_PASSWORD=bklite-password
+
+SNMP_TRAP_NATS_SUBJECT=vector
+SNMP_TRAP_ALERTS_WEBHOOK_URL=http://${SERVER_IP}:8001/api/v1/alerts/api/source/snmp_trap/webhook/
+SNMP_TRAP_ALERTS_SECRET=bklite-dev-token
+SNMP_TRAP_ALERTS_TIMEOUT=10
+SNMP_TRAP_ALERTS_MAX_RETRIES=3
+SNMP_TRAP_PUSH_SOURCE_ID=snmp_trap_bridge
+
+VICTORIAMETRICS_HOST=http://${SERVER_IP}:33010
+VICTORIAMETRICS_SSL_VERIFY=false
+VICTORIALOGS_HOST=http://${SERVER_IP}:33012
+VICTORIALOGS_SSL_VERIFY=false
+
+WEBHOOK_SERVER_URL=http://${SERVER_IP}:33019
+
+MINIO_ENDPOINT=${SERVER_IP}:33013
+MINIO_USE_HTTPS=0
+MINIO_ACCESS_KEY=minio
+MINIO_SECRET_KEY=bklite-password
+
+MLFLOW_TRACKER_URL=http://${SERVER_IP}:33015
+MLFLOW_ENABLE_SYSTEM_METRICS_LOGGING=true
+MLFLOW_S3_ENDPOINT_URL=http://${SERVER_IP}:33013
+AWS_ACCESS_KEY_ID=minio
+AWS_SECRET_ACCESS_KEY=bklite-password
+AWS_DEFAULT_REGION=us-east-1
+
+METIS_DB_URI=postgresql+psycopg://postgres:bklite-password@${SERVER_IP}:33018/metis
+
+KNOWLEDGE_GRAPH_HOST=${SERVER_IP}
+KNOWLEDGE_GRAPH_PASSWORD=bklite-password
+KNOWLEDGE_GRAPH_PORT=33016
+FALKORDB_DATABASE=cmdb_graph
+FALKORDB_REQUIREPASS=bklite-password
+FALKORDB_HOST=${SERVER_IP}
+FALKORDB_PORT=33016
+
+DEFAULT_ZONE_VAR_NATS_SERVERS=${SERVER_IP}:33008
+DEFAULT_ZONE_VAR_NATS_USERNAME=admin
+DEFAULT_ZONE_VAR_NATS_PASSWORD=bklite-password
+DEFAULT_ZONE_VAR_NATS_ADMIN_USERNAME=admin
+DEFAULT_ZONE_VAR_NATS_ADMIN_PASSWORD=bklite-password
+DEFAULT_ZONE_VAR_STARGAZER_URL=http://${SERVER_IP}:33026
+DEFAULT_ZONE_VAR_NODE_SERVER_URL=http://${SERVER_IP}:8001
+DEFAULT_ZONE_VAR_NATS_PROTOCOL=nats
+DEFAULT_ZONE_VAR_WEBHOOK_SERVER_URL=http://${SERVER_IP}:33019
+DEFAULT_ZONE_VAR_TELEGRAF_HTTP_LISTENER_URL=http://${SERVER_IP}:33025
+
+TOP_GROUP=Default
+DEFAULT_GROUP_NAME=Guest
+
+UV_OFFLINE=True
+OPENAI_API_KEY=
+OPENAI_API_BASE=
+MLOPS_RUNTIME=docker
+MLOPS_DOCKER_NETWORK=bridge
+MLOPS_KUBERNETES_NAMESPACE=
+
+CLIENT_ID=
+EOF
+
+cd "${SERVER_DIR}"
+uv sync --all-groups --all-extras
+
+echo "开始执行数据库迁移..."
+uv run python manage.py migrate || true
+
+echo "开始创建缓存表..."
+uv run python manage.py createcachetable django_cache || true
+
+echo "开始收集静态资源..."
+uv run python manage.py collectstatic --noinput || true
+
+INSTALL_APPS="$(printf '%s' "${ALL_INSTALL_APPS}" | tr -d ' ')"
+
+echo "开始批量初始化..."
+INSTALL_APPS="${INSTALL_APPS}" uv run python manage.py batch_init --apps="${INSTALL_APPS}" || true
+
+echo "确保开发管理员存在..."
+uv run python manage.py create_user admin password --email admin@bklite.net --display_name admin --is_superuser || true
+
+echo "server 初始化完成，已生成本地开发 .env、装载依赖并执行初始化。"

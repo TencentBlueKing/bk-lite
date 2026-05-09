@@ -1,11 +1,16 @@
 from django.db import transaction
+from django.db import IntegrityError
 
 import nats_client
 from apps.core.logger import node_logger as logger
 from apps.node_mgmt.constants.database import DatabaseConstants, EnvVariableConstants
+from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
 from apps.node_mgmt.models import CloudRegion, SidecarEnv
 from apps.node_mgmt.services.node import NodeService
+from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.tasks.installer import install_collector
+from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.models import (
@@ -23,6 +28,131 @@ from apps.core.utils.crypto.aes_crypto import AESCryptor
 
 
 class NatsService:
+    @staticmethod
+    def _allowed_architectures(node_arch: str) -> list[str]:
+        normalized_arch = normalize_cpu_architecture(node_arch)
+        if normalized_arch == NodeConstants.ARM64_ARCH:
+            return [NodeConstants.ARM64_ARCH]
+        if normalized_arch == NodeConstants.X86_64_ARCH:
+            return [NodeConstants.X86_64_ARCH, ""]
+        return ["", NodeConstants.X86_64_ARCH]
+
+    @staticmethod
+    def _resolve_collector_for_node(node: Node, collector_name: str):
+        node_arch = normalize_cpu_architecture(getattr(node, "cpu_architecture", ""))
+        allowed_architectures = NatsService._allowed_architectures(node_arch)
+        collectors = list(
+            Collector.objects.filter(
+                name=collector_name,
+                node_operating_system=node.operating_system,
+                cpu_architecture__in=allowed_architectures,
+            ).order_by("cpu_architecture", "id")
+        )
+        if not collectors:
+            return None
+
+        if node_arch == NodeConstants.ARM64_ARCH:
+            return next((item for item in collectors if normalize_cpu_architecture(item.cpu_architecture) == NodeConstants.ARM64_ARCH), None)
+
+        x86_match = next((item for item in collectors if normalize_cpu_architecture(item.cpu_architecture) == NodeConstants.X86_64_ARCH), None)
+        legacy_x86_match = next((item for item in collectors if item.cpu_architecture == ""), None)
+        return x86_match or legacy_x86_match
+
+    def _ensure_parent_configs_for_child_configs(self, configs: list):
+        if not configs:
+            return
+
+        required_pairs = {(config["node_id"], config["collector_name"]) for config in configs}
+        node_ids = [node_id for node_id, _ in required_pairs]
+        collector_names = [collector_name for _, collector_name in required_pairs]
+        existing_pairs = set(
+            CollectorConfiguration.objects.filter(nodes__id__in=node_ids, collector__name__in=collector_names)
+            .values_list("nodes__id", "collector__name")
+            .distinct()
+        )
+        missing_pairs = required_pairs - existing_pairs
+        if not missing_pairs:
+            return
+
+        node_map = {node.id: node for node in Node.objects.filter(id__in=node_ids).select_related("cloud_region")}
+
+        for node_id, collector_name in missing_pairs:
+            node = node_map.get(node_id)
+            if not node:
+                raise BaseAppException(f"节点 {node_id} 不存在，无法为采集器 {collector_name} 创建父配置")
+
+            collector = self._resolve_collector_for_node(node, collector_name)
+            if not collector:
+                raise BaseAppException(
+                    "节点 %s 的采集器 %s 不存在（%s/%s）"
+                    % (
+                        node_id,
+                        collector_name,
+                        node.operating_system,
+                        normalize_cpu_architecture(getattr(node, "cpu_architecture", "")) or NodeConstants.X86_64_ARCH,
+                    )
+                )
+
+            if not collector.controller_default_run:
+                raise BaseAppException(f"节点 {node_id} 的采集器 {collector_name} 未启用默认父配置创建(controller_default_run=False)")
+
+            if not collector.default_config:
+                raise BaseAppException(f"节点 {node_id} 的采集器 {collector_name} 缺少 default_config，无法创建父配置")
+
+            NodeService._create_collector_default_config(node, collector)
+
+            if not CollectorConfiguration.objects.filter(nodes__id=node_id, collector__name=collector_name).exists():
+                raise BaseAppException(
+                    f"节点 {node_id} 的采集器 {collector_name} 父配置自动创建失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量"
+                )
+
+    @staticmethod
+    def _resolve_child_parent_config_id(base_configs: list[dict], node_id: str, collector_name: str, node_arch: str) -> str:
+        exact_matches = []
+        x86_matches = []
+        legacy_x86_matches = []
+
+        normalized_node_arch = normalize_cpu_architecture(node_arch)
+
+        for item in base_configs:
+            if item["nodes__id"] != node_id or item["collector__name"] != collector_name:
+                continue
+
+            collector_arch = normalize_cpu_architecture(item.get("collector__cpu_architecture"))
+            if normalized_node_arch == NodeConstants.ARM64_ARCH:
+                if collector_arch == NodeConstants.ARM64_ARCH:
+                    exact_matches.append(item["id"])
+                continue
+
+            if collector_arch == NodeConstants.X86_64_ARCH:
+                x86_matches.append(item["id"])
+            elif item.get("collector__cpu_architecture", "") == "":
+                legacy_x86_matches.append(item["id"])
+
+        if len(exact_matches) > 1:
+            raise BaseAppException(
+                f"Ambiguous collector configuration for node {node_id} and collector {collector_name}: multiple exact architecture matches"
+            )
+        if exact_matches:
+            return exact_matches[0]
+
+        if normalized_node_arch != NodeConstants.ARM64_ARCH:
+            if len(x86_matches) > 1:
+                raise BaseAppException(
+                    f"Ambiguous collector configuration for node {node_id} and collector {collector_name}: multiple x86_64 matches"
+                )
+            if x86_matches:
+                return x86_matches[0]
+
+            if len(legacy_x86_matches) > 1:
+                raise BaseAppException(
+                    f"Ambiguous collector configuration for node {node_id} and collector {collector_name}: multiple legacy x86-compatible matches"
+                )
+            if legacy_x86_matches:
+                return legacy_x86_matches[0]
+
+        raise BaseAppException(f"Collector configuration not found for node {node_id} and collector {collector_name}")
+
     @staticmethod
     def _encrypt_password_fields(env_config: dict) -> dict:
         """加密包含password的环境变量字段"""
@@ -98,16 +228,51 @@ class NatsService:
             - env_config: 环境变量配置（可选）
         """
 
-        cloud_regions = Node.objects.filter(id__in=[i["node_id"] for i in configs]).values("id", "cloud_region_id", "operating_system")
-        cloud_region_map = {i["id"]: (i["cloud_region_id"], i["operating_system"]) for i in cloud_regions}
+        cloud_regions = Node.objects.filter(id__in=[i["node_id"] for i in configs]).values(
+            "id",
+            "cloud_region_id",
+            "operating_system",
+            "cpu_architecture",
+        )
+        cloud_region_map = {
+            i["id"]: (
+                i["cloud_region_id"],
+                i["operating_system"],
+                normalize_cpu_architecture(i.get("cpu_architecture")),
+            )
+            for i in cloud_regions
+        }
 
-        collectors = Collector.objects.filter(name__in=[i["collector_name"] for i in configs]).values("name", "node_operating_system", "id")
-        collector_map = {(i["name"], i["node_operating_system"]): i["id"] for i in collectors}
+        collectors = Collector.objects.filter(name__in=[i["collector_name"] for i in configs]).values(
+            "name",
+            "node_operating_system",
+            "cpu_architecture",
+            "id",
+        )
+        collector_map = {(i["name"], i["node_operating_system"], normalize_cpu_architecture(i.get("cpu_architecture"))): i["id"] for i in collectors}
 
         conf_objs, node_config_assos = [], []
         for config in configs:
-            cloud_region_id, operating_system = cloud_region_map[config["node_id"]]
-            collector_id = collector_map[(config["collector_name"], operating_system)]
+            cloud_region_id, operating_system, cpu_architecture = cloud_region_map[config["node_id"]]
+            normalized_arch = normalize_cpu_architecture(cpu_architecture)
+            if normalized_arch == NodeConstants.ARM64_ARCH:
+                candidate_keys = [(config["collector_name"], operating_system, NodeConstants.ARM64_ARCH)]
+            elif normalized_arch == NodeConstants.X86_64_ARCH:
+                candidate_keys = [
+                    (config["collector_name"], operating_system, NodeConstants.X86_64_ARCH),
+                    (config["collector_name"], operating_system, ""),
+                ]
+            else:
+                candidate_keys = [
+                    (config["collector_name"], operating_system, NodeConstants.X86_64_ARCH),
+                    (config["collector_name"], operating_system, ""),
+                ]
+
+            collector_id = next((collector_map.get(key) for key in candidate_keys if collector_map.get(key)), None)
+            if not collector_id:
+                raise BaseAppException(
+                    f"Collector {config['collector_name']} not found for {operating_system}/{cpu_architecture or NodeConstants.X86_64_ARCH}"
+                )
 
             # 加密包含password的环境变量
             encrypted_env_config = self._encrypt_password_fields(config.get("env_config", {}))
@@ -157,19 +322,32 @@ class NatsService:
             - sort_order: 排序（可选）
         """
 
-        base_configs = (
+        self._ensure_parent_configs_for_child_configs(configs)
+
+        base_configs = list(
             CollectorConfiguration.objects.filter(
                 nodes__id__in=[config["node_id"] for config in configs],
                 collector__name__in=[config["collector_name"] for config in configs],
             )
-            .values("id", "nodes__id", "collector__name")
+            .values("id", "nodes__id", "collector__name", "collector__cpu_architecture")
             .distinct()
         )
 
-        base_config_map = {(i["nodes__id"], i["collector__name"]): i["id"] for i in base_configs}
+        node_arch_map = {
+            item["id"]: normalize_cpu_architecture(item.get("cpu_architecture"))
+            for item in Node.objects.filter(id__in=[config["node_id"] for config in configs]).values("id", "cpu_architecture")
+        }
 
         node_objs = []
         for config in configs:
+            node_arch = node_arch_map.get(config["node_id"], "")
+            collector_config_id = self._resolve_child_parent_config_id(
+                base_configs=base_configs,
+                node_id=config["node_id"],
+                collector_name=config["collector_name"],
+                node_arch=node_arch,
+            )
+
             # 加密包含password的环境变量
             encrypted_env_config = self._encrypt_password_fields(config.get("env_config", {}))
 
@@ -179,7 +357,7 @@ class NatsService:
                     collect_type=config["collect_type"],
                     config_type=config["type"],
                     content=config["content"],
-                    collector_config_id=base_config_map[(config["node_id"], config["collector_name"])],
+                    collector_config_id=collector_config_id,
                     env_config=encrypted_env_config,
                     sort_order=config.get("sort_order", 0),
                     config_section=config.get("config_section", ""),
@@ -187,7 +365,16 @@ class NatsService:
             )
 
         if node_objs:
-            ChildConfig.objects.bulk_create(node_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+            try:
+                ChildConfig.objects.bulk_create(node_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+            except IntegrityError as e:
+                sample_ids = [config.id for config in node_objs[:3]]
+                raise BaseAppException(
+                    f"批量创建子配置失败，可能存在重复子配置ID或无效父配置关联: count={len(node_objs)}, sample_ids={sample_ids}, error={e}"
+                ) from e
+            except Exception as e:
+                sample_ids = [config.id for config in node_objs[:3]]
+                raise BaseAppException(f"批量创建子配置失败: count={len(node_objs)}, sample_ids={sample_ids}, error={e}") from e
 
         invalidate_bulk_child_config_etags([{"collector_config_id": config.collector_config_id} for config in node_objs])
 
@@ -454,3 +641,11 @@ def delete_child_configs(ids: list):
 def delete_configs(ids: list):
     """删除实例子配置"""
     NatsService().delete_configs(ids)
+
+
+@nats_client.register
+def install_managed_component(data: dict):
+    """安装托管组件（当前复用采集器安装流程）"""
+    task_id = InstallerService.install_collector(data["collector_package"], data["nodes"])
+    install_collector.delay(task_id)
+    return {"task_id": task_id}

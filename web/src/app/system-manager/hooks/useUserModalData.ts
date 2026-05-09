@@ -87,7 +87,7 @@ export function useUserModalData(): UseUserModalDataReturn {
       try {
         setRoleLoading(true);
         const roleData = await getRoleList({ client_list: clientData });
-        const processedRoleData = processRoleTreeData(roleData);
+        const processedRoleData = processRoleTreeData(roleData, t('common.externalApp'));
         setRoleTreeData(processedRoleData);
       } catch {
         message.error(t('common.fetchFailed'));

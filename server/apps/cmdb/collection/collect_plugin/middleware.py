@@ -2,16 +2,33 @@
 # @File: middleware.py
 # @Time: 2025/11/12 14:14
 # @Author: windyzhao
+import codecs
+import json
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
 from apps.cmdb.collection.plugins import get_collection_plugin
 from apps.cmdb.collection.plugins.base import bind_collection_mapping
 from apps.cmdb.constants.constants import CollectPluginTypes
-import codecs
-import json
 from apps.core.logger import cmdb_logger as logger
 
+
 class MiddlewareCollectMetrics(CollectBase):
+    @staticmethod
+    def pick_value(data, keys, default=""):
+        if not isinstance(data, dict):
+            return default
+        for key in keys:
+            value = data.get(key)
+            if value in (None, ""):
+                continue
+            if isinstance(value, str):
+                cleaned = value.strip()
+                if not cleaned or cleaned == "{{bk_host_innerip}}":
+                    continue
+                return cleaned
+            return value
+        return default
+
     @property
     def _metrics(self):
         plugin_cls = get_collection_plugin(CollectPluginTypes.MIDDLEWARE, self.model_id)
@@ -66,15 +83,16 @@ class MiddlewareCollectMetrics(CollectBase):
         return self.inst_name or ""
 
     def get_ip_addr(self, data):
-        ip_addr = ""
-        if isinstance(data, dict):
-            ip_addr = data.get("ip_addr") or data.get("host") or data.get("bk_host_innerip")
+        ip_addr = self.pick_value(data, ("ip_addr", "host", "bk_host_innerip"))
         if ip_addr:
             return ip_addr
         identifier = self._extract_instance_identifier(data)
         if identifier:
             return identifier
         return self.inst_name or ""
+
+    def get_port(self, data):
+        return self.pick_value(data, ("port", "listen_port"))
 
     @staticmethod
     def _extract_instance_identifier(data):
@@ -97,7 +115,6 @@ class MiddlewareCollectMetrics(CollectBase):
         if router_id:
             return router_id
         return self.get_inst_name(data)
-
 
     def get__host_assos(self, data):
         host_inst_name = self.get_ip_addr(data)

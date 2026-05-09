@@ -147,6 +147,115 @@ def build_k8s_source_config():
     return config
 
 
+def build_snmp_trap_source_config():
+    # SNMP Trap 不单独新增一套 receiver，而是复用现有 source-specific webhook。
+    # 这样 bridge 只需要产出标准 `events` 列表，就能接入 alerts 现有生命周期。
+    config = deepcopy(DEFAULT_SOURCE_CONFIG)
+    config.update(
+        {
+            "url": "/api/v1/alerts/api/source/snmp_trap/webhook/",
+            "headers": {"SECRET": "your_source_secret"},
+            "params": {
+                "events": [
+                    {
+                        "push_source_id": "snmp_trap_bridge",
+                        "title": "交换机 GE1/0/3 端口 down",
+                        "description": "SNMP Trap bridge 转发事件",
+                        "item": "snmp_trap:link_down",
+                        "level": "2",
+                        "action": "created",
+                        "start_time": "1719912000",
+                        "external_id": "baf7a5cc9e0b8b7d9c1e3a0d8a2af001",
+                        "resource_id": "10.0.0.8",
+                        "resource_name": "10.0.0.8",
+                        "resource_type": "network_device",
+                        "labels": {
+                            "collect_type": "snmp_trap",
+                            "event_type": "snmp_trap",
+                            "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+                            "node_ip": "10.0.0.8",
+                            "normalized_key": "link_down",
+                            "raw_message": "SNMPv2-MIB::snmpTrapOID.0=SNMPv2-MIB::linkDown ifIndex=3 ifName=GE1/0/3",
+                        },
+                    }
+                ]
+            },
+            "examples": {
+                "CURL": """
+        curl --location --request POST '{url}/api/v1/alerts/api/source/snmp_trap/webhook/' \
+        --header 'SECRET: {SECRET}' \
+        --header 'Content-Type: application/json' \
+        --data-raw '{
+          "events": [
+            {
+              "push_source_id": "snmp_trap_bridge",
+              "title": "交换机 GE1/0/3 端口 down",
+              "description": "SNMP Trap bridge 转发事件",
+              "item": "snmp_trap:link_down",
+              "level": "2",
+              "action": "created",
+              "start_time": "1719912000",
+              "external_id": "baf7a5cc9e0b8b7d9c1e3a0d8a2af001",
+              "resource_id": "10.0.0.8",
+              "resource_name": "10.0.0.8",
+              "resource_type": "network_device",
+              "labels": {
+                "collect_type": "snmp_trap",
+                "event_type": "snmp_trap",
+                "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+                "node_ip": "10.0.0.8",
+                "normalized_key": "link_down"
+              }
+            }
+          ]
+        }'
+        """,
+                "Python": """
+        import json
+        import requests
+
+        url = "{url}/api/v1/alerts/api/source/snmp_trap/webhook/"
+        payload = {
+            "events": [
+                {
+                    "push_source_id": "snmp_trap_bridge",
+                    "title": "交换机 GE1/0/3 端口 down",
+                    "description": "SNMP Trap bridge 转发事件",
+                    "item": "snmp_trap:link_down",
+                    "level": "2",
+                    "action": "created",
+                    "start_time": "1719912000",
+                    "external_id": "baf7a5cc9e0b8b7d9c1e3a0d8a2af001",
+                    "resource_id": "10.0.0.8",
+                    "resource_name": "10.0.0.8",
+                    "resource_type": "network_device",
+                    "labels": {
+                        "collect_type": "snmp_trap",
+                        "event_type": "snmp_trap",
+                        "trap_oid": "1.3.6.1.6.3.1.1.5.3",
+                        "node_ip": "10.0.0.8",
+                        "normalized_key": "link_down"
+                    }
+                }
+            ]
+        }
+        headers = {"SECRET": "{SECRET}", "Content-Type": "application/json"}
+        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        print(response.text)
+        """,
+            },
+            "description": "SNMP Trap bridge 专用 source webhook 接收入口",
+            "accept_bridge_payload": True,
+            "bridge_runtime": "snmp_trap_bridge",
+        }
+    )
+    # 这里单独覆写 push_source_id 的说明，强调该字段来自 bridge，而不是直接来自设备本身。
+    config["event_fields_desc_mapping"]["push_source_id"] = (
+        "事件来源 | 类型: string | 必填: 否(默认snmp_trap_bridge) | 说明: 标记由哪个 SNMP Trap bridge 推送"
+    )
+    return config
+
+
 # 内置告警源配置
 BUILTIN_ALERT_SOURCES = [
     {
@@ -202,5 +311,17 @@ BUILTIN_ALERT_SOURCES = [
         "is_effective": True,
         "description": "内置K8s告警源, Kubernetes Event Exporter 可通过此通道推送事件",
         "logo": "/assets/icons/mm-k8s_K8S.svg",
+    }, {
+        "name": "SNMP Trap",
+        "source_id": "snmp_trap",
+        "source_type": AlertsSourceTypes.RESTFUL,
+        # 首期直接复用 RESTFUL 适配器与 source webhook，避免为了 SNMP Trap 再引入第二套接入模型。
+        # 这里的 RESTFUL 只是告警中心内部接入契约复用，不代表 SNMP 设备本身直接通过 HTTP 推送告警。
+        "config": build_snmp_trap_source_config(),
+        "access_type": AlertAccessType.BUILT_IN,
+        "is_active": True,
+        "is_effective": True,
+        "description": "内置SNMP Trap告警源, 独立 bridge 可通过 source webhook 推送规范化事件",
+        "logo": "/assets/icons/mm-monitor_integrations_SNMP.svg",
     }
 ]
