@@ -68,6 +68,17 @@ export interface ApprovalRequest {
   status: 'pending' | 'approved' | 'rejected';
 }
 
+export interface AgentStepProgressData {
+  agent_name?: string;
+  step: number;
+  max_steps: number;
+  status: 'started' | 'running' | 'completed' | 'error' | 'parallel_started' | 'parallel_completed';
+  description: string;
+  tool_name?: string;
+  elapsed_seconds?: number;
+  total_elapsed_seconds?: number;
+}
+
 export interface CustomChatMessage {
   id: string;
   role: 'user' | 'bot';
@@ -87,6 +98,7 @@ export interface CustomChatMessage {
   browserStepProgress?: BrowserStepProgressData | null;
   browserStepsHistory?: BrowserStepsHistory | null;
   approvalRequests?: ApprovalRequest[];
+  agentStepProgress?: AgentStepProgressData[];
 }
 
 export interface ResultItem {

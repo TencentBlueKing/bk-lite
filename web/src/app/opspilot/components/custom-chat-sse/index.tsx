@@ -16,6 +16,7 @@ import AnnotationModal from '../custom-chat/annotationModal';
 import KnowledgeGraphView from '../knowledge/knowledgeGraphView';
 import PermissionWrapper from '@/components/permission';
 import BrowserStepProgress from './BrowserStepProgress';
+import AgentStepProgress from './AgentStepProgress';
 import ApprovalCard from './ApprovalCard';
 import { CustomChatMessage, Annotation } from '@/app/opspilot/types/global';
 import { useSession } from 'next-auth/react';
@@ -425,7 +426,8 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }, [updateMessages]);
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking, approvalRequests } = msg;
+    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking, approvalRequests, agentStepProgress } = msg;
+
     let replacedContent = parseReferenceLinks(content || '');
     replacedContent = parseSuggestionLinks(replacedContent);
     const html = sanitizeHtml(md.render(replacedContent));
@@ -447,6 +449,13 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               ))}
             </Image.PreviewGroup>
           </div>
+        )}
+        <ThinkingPanel thinking={thinking} isThinking={isThinking} />
+        {Array.isArray(agentStepProgress) && agentStepProgress.length > 0 && (
+          <AgentStepProgress steps={agentStepProgress} />
+        )}
+        {browserStepsHistory && browserStepsHistory.steps.length > 0 && (
+          <BrowserStepProgress history={browserStepsHistory} />
         )}
         <ThinkingPanel thinking={thinking} isThinking={isThinking} />
         {browserStepsHistory && browserStepsHistory.steps.length > 0 && (

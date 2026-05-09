@@ -3,8 +3,8 @@
  * 负责处理不同类型的 AG-UI 消息
  */
 
-import { AGUIMessage, BrowserStepProgressValue, BrowserTaskReceivedValue, ApprovalRequestValue } from '@/app/opspilot/types/chat';
-import { CustomChatMessage, BrowserStepProgressData, BrowserStepsHistory, ApprovalRequest } from '@/app/opspilot/types/global';
+import { AGUIMessage, BrowserStepProgressValue, BrowserTaskReceivedValue, ApprovalRequestValue, AgentStepProgressValue, SubAgentProgressValue } from '@/app/opspilot/types/chat';
+import { CustomChatMessage, BrowserStepProgressData, BrowserStepsHistory, ApprovalRequest, AgentStepProgressData } from '@/app/opspilot/types/global';
 import { ToolCallInfo, renderToolCallCard, renderErrorMessage, initToolCallTooltips, syncActiveToolCallPanel, closeActiveToolCallPanel } from './toolCallRenderer';
 
 export interface MessageUpdateFn {
@@ -27,6 +27,7 @@ export class AGUIMessageHandler {
   private updateMessages: MessageUpdateFn;
   private browserStepsHistory: BrowserStepProgressData[] = [];
   private approvalRequests: ApprovalRequest[] = [];
+  private agentStepProgressList: AgentStepProgressData[] = [];
 
   constructor(
     botMessage: CustomChatMessage,
@@ -50,7 +51,8 @@ export class AGUIMessageHandler {
     browserStepProgress?: BrowserStepProgressData | null,
     browserStepsHistory?: BrowserStepsHistory | null,
     thinking?: string,
-    isThinking?: boolean
+    isThinking?: boolean,
+    agentStepProgress?: AgentStepProgressData[]
   ) {
     this.updateMessages(prevMessages =>
       prevMessages.map(msgItem =>
@@ -62,6 +64,7 @@ export class AGUIMessageHandler {
             isThinking: isThinking !== undefined ? isThinking : msgItem.isThinking,
             browserStepProgress: browserStepProgress !== undefined ? browserStepProgress : msgItem.browserStepProgress,
             browserStepsHistory: browserStepsHistory !== undefined ? browserStepsHistory : msgItem.browserStepsHistory,
+            agentStepProgress: agentStepProgress !== undefined ? agentStepProgress : msgItem.agentStepProgress,
             approvalRequests: this.approvalRequests.length > 0
               ? this.approvalRequests.map(req => {
                 // 保留用户已做出的决策状态，不被 SSE 更新覆盖
@@ -241,6 +244,41 @@ export class AGUIMessageHandler {
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
+  handleAgentStepProgress(value: AgentStepProgressValue) {
+    const data = value as AgentStepProgressData;
+    // Update or append based on agent_name + step
+    const key = `${data.agent_name || 'main'}_${data.step}`;
+    const existingIdx = this.agentStepProgressList.findIndex(
+      d => `${d.agent_name || 'main'}_${d.step}` === key
+    );
+    if (existingIdx >= 0) {
+      this.agentStepProgressList[existingIdx] = data;
+    } else {
+      this.agentStepProgressList.push(data);
+    }
+    this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking, this.agentStepProgressList);
+  }
+
+  handleSubAgentProgress(value: SubAgentProgressValue) {
+    const data: AgentStepProgressData = {
+      agent_name: value.agent_name,
+      step: 0,
+      max_steps: 0,
+      status: value.status,
+      description: value.description,
+    };
+    // For sub-agent lifecycle events, upsert by agent_name
+    const existingIdx = this.agentStepProgressList.findIndex(
+      d => d.agent_name === value.agent_name && (d.status === 'started' || d.status === 'running')
+    );
+    if (existingIdx >= 0 && (value.status === 'completed' || value.status === 'error')) {
+      this.agentStepProgressList[existingIdx] = data;
+    } else {
+      this.agentStepProgressList.push(data);
+    }
+    this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking, this.agentStepProgressList);
+  }
+
   /**
    * 处理审批请求事件
    */
@@ -398,6 +436,10 @@ export class AGUIMessageHandler {
           this.handleBrowserTaskReceived(aguiData.value as BrowserTaskReceivedValue);
         } else if (aguiData.name === 'approval_request' && aguiData.value) {
           this.handleApprovalRequest(aguiData.value as ApprovalRequestValue);
+        } else if (aguiData.name === 'agent_step_progress' && aguiData.value) {
+          this.handleAgentStepProgress(aguiData.value as AgentStepProgressValue);
+        } else if (aguiData.name === 'sub_agent_progress' && aguiData.value) {
+          this.handleSubAgentProgress(aguiData.value as SubAgentProgressValue);
         }
         return false;
 
