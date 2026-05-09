@@ -4,6 +4,7 @@ from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.classification import *
 from rest_framework import serializers
 from apps.mlops.utils.group_scope import (
+    assert_dataset_version_scope,
     assert_parent_team_matches,
     assert_team_ownership,
     get_current_team,
@@ -173,6 +174,14 @@ class ClassificationTrainJobSerializer(AuthSerializer):
                 "help_text": "自动生成，无需手动提供",
             }
         }
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        request = self.context["request"]
+        dataset_version = attrs.get("dataset_version", getattr(self.instance, "dataset_version", None))
+        team = attrs.get("team", getattr(self.instance, "team", None))
+        assert_dataset_version_scope(dataset_version, team, request)
+        return attrs
 
     def validate_team(self, value):
         return validate_requested_teams(self.context["request"], value)

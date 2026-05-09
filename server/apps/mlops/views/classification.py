@@ -804,6 +804,10 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
             if not train_job.config_url:
                 return Response({"error": "训练配置文件不存在"}, status=status.HTTP_400_BAD_REQUEST)
 
+            scope_error = self.ensure_train_job_dataset_scope(request, train_job)
+            if scope_error is not None:
+                return scope_error
+
             # 构建训练任务标识
             job_id = mlflow_service.build_job_id(
                 prefix=self.MLFLOW_PREFIX,

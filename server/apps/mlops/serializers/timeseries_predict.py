@@ -6,6 +6,7 @@ from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.timeseries_predict import *
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.utils.group_scope import (
+    assert_dataset_version_scope,
     assert_parent_team_matches,
     assert_team_ownership,
     get_current_team,
@@ -54,7 +55,13 @@ class TimeSeriesPredictTrainJobSerializer(AuthSerializer):
         # 只在创建时验证（更新时不强制要求）
         if not self.instance and not attrs.get("dataset_version"):
             raise serializers.ValidationError({"dataset_version": "创建训练任务时必须指定数据集版本"})
-        return super().validate(attrs)
+
+        attrs = super().validate(attrs)
+        request = self.context["request"]
+        dataset_version = attrs.get("dataset_version", getattr(self.instance, "dataset_version", None))
+        team = attrs.get("team", getattr(self.instance, "team", None))
+        assert_dataset_version_scope(dataset_version, team, request)
+        return attrs
 
     def validate_team(self, value):
         return validate_requested_teams(self.context["request"], value)
