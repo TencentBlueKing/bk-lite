@@ -25,8 +25,12 @@ from apps.alerts.constants import (
     LevelType,
 )
 from apps.alerts.models import Alert, AlertSource, AlarmStrategy, Event, Level
+from apps.alerts.models.models import Incident
+from apps.alerts.serializers.incident import IncidentModelSerializer
 from apps.alerts.serializers.alert_source import AlertSourceModelSerializer
 from apps.alerts.serializers.strategy import AlarmStrategySerializer
+from apps.alerts.views.incident import IncidentModelViewSet
+from apps.system_mgmt.models.user import User
 
 
 class AlarmStrategySerializerTestCase(TestCase):
@@ -248,7 +252,7 @@ class MissingDetectionProcessorTestCase(TestCase):
             self.processor._process_strategy(smart_strategy, now)
             self.processor._process_strategy(missing_strategy, now)
 
-        events_mock.assert_called_once_with(smart_strategy)
+        events_mock.assert_called_once_with(smart_strategy, now)
         missing_mock.assert_called_once_with(missing_strategy, now)
 
     def test_first_heartbeat_mode_waits_for_first_event(self):
@@ -277,6 +281,8 @@ class MissingDetectionProcessorTestCase(TestCase):
                 "heartbeat_status": HeartbeatStatus.WAITING,
             }
         )
+        AlarmStrategy.objects.filter(pk=strategy.pk).update(created_at=now - timedelta(minutes=10))
+        strategy.refresh_from_db()
         self.create_event(now - timedelta(minutes=1), event_id="EVENT-FIRST")
 
         self.processor._process_missing_detection_strategy(strategy, now)
@@ -1066,3 +1072,94 @@ class RecoveryFallbackTestCase(TestCase):
         self.assertEqual(payload["source_type"], AlertsSourceTypes.ZABBIX)
         self.assertIn(f"/api/v1/alerts/api/source/{source.source_id}/webhook/", payload["webhook_url"])
         self.assertIn("script_template", payload)
+
+
+class IncidentQueryPathTestCase(TestCase):
+    def setUp(self):
+        self.source = AlertSource.objects.create(
+            name="test-source",
+            source_id="source-incident",
+            source_type=AlertsSourceTypes.WEBHOOK,
+        )
+        self.user = User.objects.create(
+            username="incident-operator",
+            display_name="事故处理人",
+            email="incident@example.com",
+            password="pwd",
+        )
+
+    def create_event(self, event_id: str, title: str):
+        now = timezone.now()
+        return Event.objects.create(
+            source=self.source,
+            raw_data={},
+            title=title,
+            description=f"{title} description",
+            level="1",
+            service="svc",
+            event_type=EventType.ALERT,
+            tags={},
+            location="gz",
+            external_id=event_id,
+            start_time=now,
+            labels={},
+            action=EventAction.CREATED,
+            event_id=event_id,
+            item="cpu",
+            resource_id=f"res-{event_id}",
+            resource_type="host",
+            resource_name=f"host-{event_id}",
+            status="received",
+            assignee=[],
+        )
+
+    def create_alert(self, alert_id: str, events):
+        alert = Alert.objects.create(
+            alert_id=alert_id,
+            status=AlertStatus.UNASSIGNED,
+            level="1",
+            title=f"title-{alert_id}",
+            content=f"content-{alert_id}",
+            labels={},
+            first_event_time=timezone.now(),
+            last_event_time=timezone.now(),
+            fingerprint=f"fp-{alert_id}",
+            operator=[self.user.username],
+        )
+        alert.events.add(*events)
+        return alert
+
+    def test_incident_serializer_uses_prefetched_alert_sources_and_operator_map(self):
+        event_a = self.create_event("EVENT-A", "event-a")
+        event_b = self.create_event("EVENT-B", "event-b")
+        alert_1 = self.create_alert("ALERT-A", [event_a])
+        alert_2 = self.create_alert("ALERT-B", [event_b])
+
+        incident = Incident.objects.create(
+            incident_id="INCIDENT-A",
+            title="incident-a",
+            content="content",
+            labels={},
+            operator=[self.user.username],
+            level="1",
+        )
+        incident.alert.add(alert_1, alert_2)
+
+        viewset = IncidentModelViewSet()
+        queryset = list(viewset.get_queryset().filter(pk=incident.pk))
+        serializer = IncidentModelSerializer(
+            queryset,
+            many=True,
+            context={
+                "operator_user_map": {
+                    self.user.username: self.user.display_name,
+                }
+            },
+        )
+
+        with self.assertNumQueries(0):
+            data = serializer.data
+
+        self.assertEqual(data[0]["alert_count"], 2)
+        self.assertEqual(data[0]["sources"], "test-source")
+        self.assertEqual(data[0]["operator_users"], "事故处理人")

@@ -1,11 +1,11 @@
 # -- coding: utf-8 --
 import uuid
 
-from django.db.models import Count
+from django.db import transaction
+from django.db.models import Count, Prefetch
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db import transaction
 
 from apps.alerts.constants.constants import LogAction, LogTargetType
 from apps.alerts.filters import IncidentModelFilter
@@ -16,6 +16,7 @@ from apps.alerts.service.incident_operator import IncidentOperator
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import alert_logger as logger
 from apps.core.utils.web_utils import WebUtils
+from apps.system_mgmt.models.user import User
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
 
@@ -33,14 +34,61 @@ class IncidentModelViewSet(ModelViewSet):
     pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
-        queryset = Incident.objects.annotate(
-            alert_count=Count("alert")
-        ).prefetch_related("alert")
+        alert_prefetch = Prefetch(
+            "alert",
+            queryset=Alert.objects.prefetch_related("events__source"),
+        )
+        queryset = Incident.objects.annotate(alert_count=Count("alert", distinct=True)).prefetch_related(alert_prefetch)
         return queryset
+
+    @staticmethod
+    def _build_operator_user_map(objects):
+        operator_usernames = set()
+        for incident in objects:
+            if incident.operator:
+                operator_usernames.update(incident.operator)
+        if not operator_usernames:
+            return {}
+        return dict(User.objects.filter(username__in=operator_usernames).values_list("username", "display_name"))
 
     @HasPermission("Incidents-View")
     def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            operator_user_map = self._build_operator_user_map(page)
+            serializer = self.get_serializer(
+                page,
+                many=True,
+                context={
+                    **self.get_serializer_context(),
+                    "operator_user_map": operator_user_map,
+                },
+            )
+            return self.get_paginated_response(serializer.data)
+
+        operator_user_map = self._build_operator_user_map(queryset)
+        serializer = self.get_serializer(
+            queryset,
+            many=True,
+            context={
+                **self.get_serializer_context(),
+                "operator_user_map": operator_user_map,
+            },
+        )
+        return WebUtils.response_success(serializer.data)
+
+    @HasPermission("Incidents-View")
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(
+            instance,
+            context={
+                **self.get_serializer_context(),
+                "operator_user_map": self._build_operator_user_map([instance]),
+            },
+        )
+        return Response(serializer.data)
 
     @HasPermission("Alarms-Edit")
     @transaction.atomic
@@ -54,22 +102,15 @@ class IncidentModelViewSet(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         else:
-            has_incident_alert_ids = list(
-                Alert.objects.filter(
-                    id__in=data["alert"], incident__isnull=False
-                ).values_list("id", flat=True)
-            )
+            has_incident_alert_ids = list(Alert.objects.filter(id__in=data["alert"], incident__isnull=False).values_list("id", flat=True))
             not_incident_alert_ids = set(data["alert"]) - set(has_incident_alert_ids)
             data["alert"] = list(not_incident_alert_ids)
             if not not_incident_alert_ids:
                 logger.warning(
-                    f"Some alerts {has_incident_alert_ids} are already associated with an incident. "
-                    "They will not be included in the new incident."
+                    f"Some alerts {has_incident_alert_ids} are already associated with an incident. They will not be included in the new incident."
                 )
                 return Response(
-                    {
-                        "detail": "Some alerts are already associated with an incident and will not be included."
-                    },
+                    {"detail": "Some alerts are already associated with an incident and will not be included."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         if not data["operator"]:
@@ -90,9 +131,7 @@ class IncidentModelViewSet(ModelViewSet):
         OperatorLog.objects.create(**log_data)
 
         headers = self.get_success_headers(serializer.data)
-        return Response(
-            serializer.data, status=status.HTTP_201_CREATED, headers=headers
-        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     @HasPermission("Incidents-Edit")
     @transaction.atomic
@@ -158,9 +197,7 @@ class IncidentModelViewSet(ModelViewSet):
         status_list = []
 
         for incident_id in incident_id_list:
-            result = operator.operate(
-                action=operator_action, incident_id=incident_id, data=request.data
-            )
+            result = operator.operate(action=operator_action, incident_id=incident_id, data=request.data)
             result_list[incident_id] = result
             status_list.append(result["result"])
 
@@ -173,6 +210,4 @@ class IncidentModelViewSet(ModelViewSet):
                 status_code=500,
             )
         else:
-            return WebUtils.response_success(
-                response_data=result_list, message="部分操作成功"
-            )
+            return WebUtils.response_success(response_data=result_list, message="部分操作成功")

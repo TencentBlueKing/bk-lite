@@ -25,20 +25,30 @@ class AlertModelViewSet(ModelViewSet):
     pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
-        queryset = Alert.objects.annotate(
-            event_count_annotated=Count("events"),
-        ).prefetch_related("events__source", "incident_set")
+        queryset = (
+            super()
+            .get_queryset()
+            .annotate(
+                event_count_annotated=Count("events", distinct=True),
+            )
+            .prefetch_related("events__source", "incident_set")
+        )
 
         # StringAgg 是 PostgreSQL 专属函数，其他数据库通过 serializer fallback 处理
         if connection.vendor == "postgresql":
             from django.contrib.postgres.aggregates import StringAgg
 
-            queryset = Alert.objects.annotate(
-                event_count_annotated=Count("events"),
-                # 通过事件获取告警源名称（去重）
-                source_names_annotated=StringAgg("events__source__name", delimiter=", ", distinct=True),
-                incident_title_annotated=StringAgg("incident__title", delimiter=", ", distinct=True),
-            ).prefetch_related("events__source")
+            queryset = (
+                super()
+                .get_queryset()
+                .annotate(
+                    event_count_annotated=Count("events", distinct=True),
+                    # 通过事件获取告警源名称（去重）
+                    source_names_annotated=StringAgg("events__source__name", delimiter=", ", distinct=True),
+                    incident_title_annotated=StringAgg("incident__title", delimiter=", ", distinct=True),
+                )
+                .prefetch_related("events__source", "incident_set")
+            )
 
         return queryset
 

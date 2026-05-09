@@ -11,6 +11,7 @@ class IncidentModelSerializer(serializers.ModelSerializer):
     """
     Serializer for Incident model.
     """
+
     # 持续时间
     duration = serializers.SerializerMethodField()
     created_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
@@ -21,8 +22,8 @@ class IncidentModelSerializer(serializers.ModelSerializer):
         queryset=Alert.objects.all(),
         required=False,
         error_messages={
-            'does_not_exist': '告警ID {pk_value} 已关联Incident或者不存在，请重新检查告警',
-        }
+            "does_not_exist": "告警ID {pk_value} 已关联Incident或者不存在，请重新检查告警",
+        },
     )
     sources = serializers.SerializerMethodField()
     alert_count = serializers.SerializerMethodField()
@@ -43,7 +44,7 @@ class IncidentModelSerializer(serializers.ModelSerializer):
         """
         重写create方法来处理多对多关系
         """
-        alerts = validated_data.pop('alert', [])
+        alerts = validated_data.pop("alert", [])
         incident = Incident.objects.create(**validated_data)
         if alerts:
             incident.alert.set(alerts)
@@ -53,7 +54,7 @@ class IncidentModelSerializer(serializers.ModelSerializer):
         """
         重写update方法来处理多对多关系
         """
-        alerts = validated_data.pop('alert', None)
+        alerts = validated_data.pop("alert", None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
@@ -112,14 +113,13 @@ class IncidentModelSerializer(serializers.ModelSerializer):
         获取关联的告警数量
         """
         # 如果使用了注解（推荐）
-        if hasattr(obj, 'alert_count'):
+        if hasattr(obj, "alert_count"):
             return obj.alert_count
 
         # fallback: 直接计数
         return obj.alert.count() if obj.alert else 0
 
-    @staticmethod
-    def get_operator_users(obj):
+    def get_operator_users(self, obj):
         """
         获取操作员用户列表，从 JSONField 转换为字符串
         """
@@ -132,6 +132,9 @@ class IncidentModelSerializer(serializers.ModelSerializer):
 
         # 如果 operator 是列表，转换为逗号分隔的字符串
         if isinstance(obj.operator, list):
+            operator_user_map = self.context.get("operator_user_map")
+            if operator_user_map is not None:
+                return ", ".join(operator_user_map.get(u, u) for u in obj.operator)
             user_name_list = User.objects.filter(username__in=obj.operator).values_list("display_name", flat=True)
             return ", ".join(list(user_name_list))
 
