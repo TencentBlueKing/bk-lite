@@ -108,20 +108,16 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
 
   return (
     <div className="chart-legend h-full min-w-0 flex flex-col overflow-hidden">
-      <div className="flex-shrink-0">
+      <div className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto">
         <table className="chart-legend-table w-full table-fixed border-collapse">
-          <thead>
+          <thead className="sticky top-0 z-10">
             <tr>
-              <th className="text-left px-2 py-1.5 text-xs text-gray-600 border-b border-gray-200 bg-gray-50">
+              <th className="text-left px-2 py-1.5 text-xs text-[var(--color-text-3)] border-b border-[var(--color-border-2)] bg-[var(--color-fill-2)]">
                 {t('log.analysis.dimension')}
-                <span className="text-gray-400">({legendData.length})</span>
+                <span className="text-[var(--color-text-4)]">({legendData.length})</span>
               </th>
             </tr>
           </thead>
-        </table>
-      </div>
-      <div className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto pr-1">
-        <table className="chart-legend-table w-full table-fixed border-collapse">
           <tbody>
             {legendData.map((item, index) => (
               <tr
@@ -129,8 +125,8 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
                 className={`
                   cursor-pointer transition-all duration-200
                   ${isActive(item) ? 'opacity-100' : 'opacity-50'}
-                  hover:bg-blue-50
-                  ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}
+                  hover:bg-[var(--color-fill-2)]
+                  ${index % 2 === 0 ? '' : 'bg-[var(--color-fill-1)]'}
                 `}
                 onClick={() => handleLegend(item)}
               >
@@ -146,7 +142,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
                     />
                     <div className="flex-1 min-w-0 max-w-full">
                       <EllipsisWithTooltip
-                        className="block w-full min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs leading-relaxed text-gray-700"
+                        className="block w-full min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs leading-relaxed text-[var(--color-text-2)]"
                         text={item || '--'}
                       />
                     </div>
