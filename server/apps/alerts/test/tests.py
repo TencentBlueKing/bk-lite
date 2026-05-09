@@ -11,6 +11,8 @@ from apps.alerts.aggregation.builder.synthetic_alert_builder import (
     SyntheticAlertBuilder,
 )
 from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
+from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
+from apps.alerts.nats.nats import receive_alert_events
 from apps.alerts.constants import (
     AlertStatus,
     AlarmStrategyType,
@@ -35,9 +37,7 @@ class AlarmStrategySerializerTestCase(TestCase):
                 "strategy_type": AlarmStrategyType.MISSING_DETECTION,
                 "team": [1],
                 "dispatch_team": [1],
-                "match_rules": [
-                    [{"key": "service", "operator": "eq", "value": "backup"}]
-                ],
+                "match_rules": [[{"key": "service", "operator": "eq", "value": "backup"}]],
                 "params": {
                     "check_mode": HeartbeatCheckMode.CRON,
                     "cron_expr": "*/5 * * * *",
@@ -93,9 +93,7 @@ class AlarmStrategySerializerTestCase(TestCase):
                 "strategy_type": AlarmStrategyType.MISSING_DETECTION,
                 "team": [1],
                 "dispatch_team": [1],
-                "match_rules": [
-                    [{"key": "service", "operator": "eq", "value": "backup"}]
-                ],
+                "match_rules": [[{"key": "service", "operator": "eq", "value": "backup"}]],
                 "params": {
                     "check_mode": "interval",
                     "cron_expr": "*/5 * * * *",
@@ -124,9 +122,7 @@ class AlarmStrategySerializerTestCase(TestCase):
                 "strategy_type": AlarmStrategyType.MISSING_DETECTION,
                 "team": [1],
                 "dispatch_team": [1],
-                "match_rules": [
-                    [{"key": "service", "operator": "eq", "value": "backup"}]
-                ],
+                "match_rules": [[{"key": "service", "operator": "eq", "value": "backup"}]],
                 "params": {
                     "check_mode": HeartbeatCheckMode.CRON,
                     "cron_expr": "*/5 * * * *",
@@ -192,9 +188,7 @@ class MissingDetectionProcessorTestCase(TestCase):
         params.update(overrides.pop("params", {}))
         return AlarmStrategy.objects.create(
             name=overrides.pop("name", "strategy-%s" % timezone.now().timestamp()),
-            strategy_type=overrides.pop(
-                "strategy_type", AlarmStrategyType.MISSING_DETECTION
-            ),
+            strategy_type=overrides.pop("strategy_type", AlarmStrategyType.MISSING_DETECTION),
             team=[1],
             dispatch_team=[1],
             match_rules=overrides.pop(
@@ -246,10 +240,10 @@ class MissingDetectionProcessorTestCase(TestCase):
         missing_strategy = self.create_strategy(name="missing-rule")
         now = timezone.now()
 
-        with patch.object(
-            self.processor, "_process_missing_detection_strategy"
-        ) as missing_mock, \
-            patch.object(self.processor, "get_events_for_strategy") as events_mock:
+        with (
+            patch.object(self.processor, "_process_missing_detection_strategy") as missing_mock,
+            patch.object(self.processor, "get_events_for_strategy") as events_mock,
+        ):
             events_mock.return_value.exists.return_value = False
             self.processor._process_strategy(smart_strategy, now)
             self.processor._process_strategy(missing_strategy, now)
@@ -265,9 +259,7 @@ class MissingDetectionProcessorTestCase(TestCase):
                 "heartbeat_status": HeartbeatStatus.WAITING,
             }
         )
-        AlarmStrategy.objects.filter(pk=strategy.pk).update(
-            created_at=now - timedelta(minutes=10)
-        )
+        AlarmStrategy.objects.filter(pk=strategy.pk).update(created_at=now - timedelta(minutes=10))
         strategy.refresh_from_db()
 
         self.processor._process_missing_detection_strategy(strategy, now)
@@ -290,9 +282,7 @@ class MissingDetectionProcessorTestCase(TestCase):
         self.processor._process_missing_detection_strategy(strategy, now)
         strategy.refresh_from_db()
 
-        self.assertEqual(
-            strategy.params["heartbeat_status"], HeartbeatStatus.MONITORING
-        )
+        self.assertEqual(strategy.params["heartbeat_status"], HeartbeatStatus.MONITORING)
         self.assertEqual(strategy.params["last_heartbeat_context"]["service"], "backup")
 
     def test_immediate_mode_triggers_single_missing_alert(self):
@@ -305,15 +295,11 @@ class MissingDetectionProcessorTestCase(TestCase):
                 "grace_period": 1,
             }
         )
-        AlarmStrategy.objects.filter(pk=strategy.pk).update(
-            created_at=now - timedelta(minutes=7)
-        )
+        AlarmStrategy.objects.filter(pk=strategy.pk).update(created_at=now - timedelta(minutes=7))
         strategy.refresh_from_db()
 
         self.processor._process_missing_detection_strategy(strategy, now)
-        self.processor._process_missing_detection_strategy(
-            strategy, now + timedelta(minutes=1)
-        )
+        self.processor._process_missing_detection_strategy(strategy, now + timedelta(minutes=1))
         strategy.refresh_from_db()
 
         self.assertEqual(Alert.objects.count(), 1)
@@ -346,9 +332,7 @@ class MissingDetectionProcessorTestCase(TestCase):
                 "last_heartbeat_time": None,
             }
         )
-        AlarmStrategy.objects.filter(pk=strategy.pk).update(
-            created_at=timezone.make_aware(datetime(2026, 3, 20, 0, 0, 0))
-        )
+        AlarmStrategy.objects.filter(pk=strategy.pk).update(created_at=timezone.make_aware(datetime(2026, 3, 20, 0, 0, 0)))
         strategy.refresh_from_db()
 
         deadline = self.processor._calculate_deadline(strategy, strategy.params, now)
@@ -365,9 +349,7 @@ class MissingDetectionProcessorTestCase(TestCase):
                 "grace_period": 1,
             }
         )
-        AlarmStrategy.objects.filter(pk=strategy.pk).update(
-            created_at=now - timedelta(minutes=1)
-        )
+        AlarmStrategy.objects.filter(pk=strategy.pk).update(created_at=now - timedelta(minutes=1))
         strategy.refresh_from_db()
 
         self.processor._process_missing_detection_strategy(strategy, now)
@@ -386,9 +368,7 @@ class MissingDetectionProcessorTestCase(TestCase):
                 "grace_period": 1,
             }
         )
-        AlarmStrategy.objects.filter(pk=strategy.pk).update(
-            created_at=now - timedelta(minutes=8)
-        )
+        AlarmStrategy.objects.filter(pk=strategy.pk).update(created_at=now - timedelta(minutes=8))
         strategy.refresh_from_db()
 
         self.processor._process_missing_detection_strategy(strategy, now)
@@ -406,25 +386,17 @@ class MissingDetectionProcessorTestCase(TestCase):
                 "last_heartbeat_context": {"service": "backup"},
             }
         )
-        alert = SyntheticAlertBuilder.create_alert(
-            strategy, strategy.params, now - timedelta(minutes=1)
-        )
+        alert = SyntheticAlertBuilder.create_alert(strategy, strategy.params, now - timedelta(minutes=1))
         self.create_event(now, event_id="EVENT-RECOVERY")
-        AlarmStrategy.objects.filter(pk=strategy.pk).update(
-            last_execute_time=now - timedelta(minutes=2)
-        )
+        AlarmStrategy.objects.filter(pk=strategy.pk).update(last_execute_time=now - timedelta(minutes=2))
         strategy.refresh_from_db()
 
-        self.processor._process_missing_detection_strategy(
-            strategy, now + timedelta(minutes=1)
-        )
+        self.processor._process_missing_detection_strategy(strategy, now + timedelta(minutes=1))
         strategy.refresh_from_db()
         alert.refresh_from_db()
 
         self.assertEqual(alert.status, AlertStatus.AUTO_RECOVERY)
-        self.assertEqual(
-            strategy.params["heartbeat_status"], HeartbeatStatus.MONITORING
-        )
+        self.assertEqual(strategy.params["heartbeat_status"], HeartbeatStatus.MONITORING)
         self.assertEqual(
             strategy.params["last_heartbeat_time"],
             Event.objects.get(event_id="EVENT-RECOVERY").received_at.isoformat(),
@@ -748,6 +720,318 @@ class AlertSourceIngressTestCase(TestCase):
         self.assertEqual(events[0].external_id, events[1].external_id)
         self.assertEqual(events[0].action, EventAction.CREATED)
         self.assertEqual(events[1].action, EventAction.RECOVERY)
+
+    def test_receiver_rejects_inactive_source(self):
+        source = AlertSource.objects.create(
+            name="RESTful Disabled",
+            source_id="rest-disabled",
+            source_type=AlertsSourceTypes.RESTFUL,
+            secret="rest-secret",
+            is_active=False,
+            config={
+                "event_fields_mapping": {
+                    "title": "title",
+                    "level": "level",
+                    "start_time": "start_time",
+                }
+            },
+        )
+
+        response = self.client.post(
+            f"/api/v1/alerts/api/source/{source.source_id}/webhook/",
+            data=json.dumps(
+                {
+                    "events": [
+                        {
+                            "title": "disabled-source-event",
+                            "level": "3",
+                            "start_time": str(int(timezone.now().timestamp())),
+                        }
+                    ]
+                }
+            ),
+            content_type="application/json",
+            HTTP_SECRET="rest-secret",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Event.objects.count(), 0)
+
+    def test_default_external_id_distinguishes_resource_identity(self):
+        source = AlertSource.objects.create(
+            name="RESTful Source",
+            source_id="rest-source",
+            source_type=AlertsSourceTypes.RESTFUL,
+            secret="rest-secret",
+            config={
+                "event_fields_mapping": {
+                    "title": "title",
+                    "description": "description",
+                    "level": "level",
+                    "item": "item",
+                    "start_time": "start_time",
+                    "resource_id": "resource_id",
+                    "resource_name": "resource_name",
+                    "resource_type": "resource_type",
+                    "action": "action",
+                }
+            },
+        )
+
+        payload = {
+            "events": [
+                {
+                    "title": "cpu high",
+                    "description": "cpu > 90%",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "resource_id": 1,
+                    "resource_name": "shared-name",
+                    "resource_type": "service",
+                    "action": "created",
+                },
+                {
+                    "title": "cpu high",
+                    "description": "cpu > 90%",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "resource_id": "2",
+                    "resource_name": "shared-name",
+                    "resource_type": "service",
+                    "action": "created",
+                },
+            ]
+        }
+
+        response = self.client.post(
+            f"/api/v1/alerts/api/source/{source.source_id}/webhook/",
+            data=json.dumps(payload),
+            content_type="application/json",
+            HTTP_SECRET="rest-secret",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        events = list(Event.objects.filter(source=source).order_by("resource_id"))
+        self.assertEqual(len(events), 2)
+        self.assertNotEqual(events[0].external_id, events[1].external_id)
+
+    def test_nats_ingress_rejects_non_nats_source(self):
+        source = AlertSource.objects.create(
+            name="Prometheus Source",
+            source_id="prometheus-prod",
+            source_type=AlertsSourceTypes.PROMETHEUS,
+            secret="prom-secret",
+            config={},
+        )
+
+        result = receive_alert_events(
+            source_id=source.source_id,
+            pusher="lite-monitor",
+            events=[
+                {
+                    "title": "forged",
+                    "description": "forged",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "action": "created",
+                }
+            ],
+        )
+
+        self.assertFalse(result["result"])
+        self.assertEqual(Event.objects.count(), 0)
+
+    def test_nats_ingress_rejects_inactive_or_ineffective_nats_source(self):
+        inactive_source = AlertSource.objects.create(
+            name="NATS Inactive",
+            source_id="nats-inactive",
+            source_type=AlertsSourceTypes.NATS,
+            secret="nats-secret",
+            is_active=False,
+            config={},
+        )
+        ineffective_source = AlertSource.objects.create(
+            name="NATS Ineffective",
+            source_id="nats-ineffective",
+            source_type=AlertsSourceTypes.NATS,
+            secret="nats-secret",
+            is_effective=False,
+            config={},
+        )
+
+        inactive_result = receive_alert_events(
+            source_id=inactive_source.source_id,
+            pusher="lite-monitor",
+            events=[
+                {
+                    "title": "inactive",
+                    "description": "inactive",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "action": "created",
+                }
+            ],
+        )
+        ineffective_result = receive_alert_events(
+            source_id=ineffective_source.source_id,
+            pusher="lite-monitor",
+            events=[
+                {
+                    "title": "ineffective",
+                    "description": "ineffective",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "action": "created",
+                }
+            ],
+        )
+
+        self.assertFalse(inactive_result["result"])
+        self.assertFalse(ineffective_result["result"])
+        self.assertEqual(Event.objects.count(), 0)
+
+
+class RecoveryFallbackTestCase(TestCase):
+    def setUp(self):
+        self.source = AlertSource.objects.create(
+            name="RESTful Source",
+            source_id="rest-source",
+            source_type=AlertsSourceTypes.RESTFUL,
+            secret="rest-secret",
+            config={},
+        )
+        Level.objects.create(
+            level_id=3,
+            level_name="info",
+            level_display_name="提醒",
+            color="#1677FF",
+            icon="",
+            description="",
+            level_type=LevelType.EVENT,
+        )
+
+    def create_event(self, event_id, action, external_id, received_at, **kwargs):
+        event = Event.objects.create(
+            source=self.source,
+            raw_data=kwargs.pop("raw_data", {}),
+            title=kwargs.pop("title", "cpu high"),
+            description=kwargs.pop("description", "cpu > 90%"),
+            level=kwargs.pop("level", "3"),
+            service=kwargs.pop("service", None),
+            event_type=kwargs.pop("event_type", EventType.ALERT),
+            tags=kwargs.pop("tags", {}),
+            location=kwargs.pop("location", None),
+            external_id=external_id,
+            start_time=kwargs.pop("start_time", received_at),
+            end_time=kwargs.pop("end_time", None),
+            labels=kwargs.pop("labels", {}),
+            action=action,
+            rule_id=kwargs.pop("rule_id", None),
+            event_id=event_id,
+            item=kwargs.pop("item", "cpu_usage"),
+            resource_id=kwargs.pop("resource_id", None),
+            resource_type=kwargs.pop("resource_type", None),
+            resource_name=kwargs.pop("resource_name", "shared-name"),
+            status=kwargs.pop("status", "received"),
+            assignee=kwargs.pop("assignee", []),
+            value=kwargs.pop("value", None),
+        )
+        Event.objects.filter(pk=event.pk).update(received_at=received_at)
+        event.refresh_from_db()
+        return event
+
+    def create_alert(self, alert_id, status, *events):
+        alert = Alert.objects.create(
+            alert_id=alert_id,
+            status=status,
+            level="3",
+            title=f"Alert {alert_id}",
+            content="content",
+            labels={},
+            first_event_time=events[0].received_at,
+            last_event_time=events[-1].received_at,
+            item=events[0].item,
+            resource_id=events[0].resource_id,
+            resource_name=events[0].resource_name,
+            resource_type=events[0].resource_type,
+            operator=[],
+            source_name=self.source.name,
+            fingerprint=f"fp-{alert_id}",
+        )
+        alert.events.add(*events)
+        return alert
+
+    def test_recovery_fallback_recovers_when_candidate_is_unique(self):
+        created_at = timezone.now() - timedelta(minutes=1)
+        created_event = self.create_event(
+            "EVENT-CREATED-1",
+            EventAction.CREATED,
+            "strict-created-id",
+            created_at,
+            item="cpu_usage",
+            resource_id="service-1",
+            resource_type="service",
+            resource_name="shared-name",
+        )
+        alert = self.create_alert("ALERT-1", AlertStatus.UNASSIGNED, created_event)
+        recovery_event = self.create_event(
+            "EVENT-RECOVERY-1",
+            EventAction.RECOVERY,
+            "strict-recovery-id",
+            timezone.now(),
+            item="cpu_usage",
+            resource_name="shared-name",
+            raw_data={"action": "recovery"},
+        )
+
+        RecoveryHandler.handle_recovery_events([recovery_event])
+        alert.refresh_from_db()
+
+        self.assertTrue(alert.events.filter(event_id="EVENT-RECOVERY-1").exists())
+
+    def test_recovery_fallback_skips_ambiguous_candidates(self):
+        created_at = timezone.now() - timedelta(minutes=2)
+        created_event_one = self.create_event(
+            "EVENT-CREATED-2A",
+            EventAction.CREATED,
+            "strict-created-id-a",
+            created_at,
+            item="cpu_usage",
+            resource_id="service-1",
+            resource_type="service",
+            resource_name="shared-name",
+        )
+        created_event_two = self.create_event(
+            "EVENT-CREATED-2B",
+            EventAction.CREATED,
+            "strict-created-id-b",
+            created_at + timedelta(seconds=1),
+            item="cpu_usage",
+            resource_id="service-2",
+            resource_type="service",
+            resource_name="shared-name",
+        )
+        alert_one = self.create_alert("ALERT-2A", AlertStatus.UNASSIGNED, created_event_one)
+        alert_two = self.create_alert("ALERT-2B", AlertStatus.PROCESSING, created_event_two)
+        recovery_event = self.create_event(
+            "EVENT-RECOVERY-2",
+            EventAction.RECOVERY,
+            "strict-recovery-id-2",
+            timezone.now(),
+            item="cpu_usage",
+            resource_name="shared-name",
+            raw_data={"action": "recovery"},
+        )
+
+        RecoveryHandler.handle_recovery_events([recovery_event])
+
+        self.assertFalse(alert_one.events.filter(event_id="EVENT-RECOVERY-2").exists())
+        self.assertFalse(alert_two.events.filter(event_id="EVENT-RECOVERY-2").exists())
 
     def test_integration_guide_returns_prometheus_template(self):
         source = AlertSource.objects.create(
