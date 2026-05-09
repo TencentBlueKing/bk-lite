@@ -42,6 +42,7 @@ class GetNatsData:
         self.params[self.user_param_key] = {
             "team": team,
             "user": username,
+            "domain": self.request.user.domain,
             "include_children": include_children,
         }
 
