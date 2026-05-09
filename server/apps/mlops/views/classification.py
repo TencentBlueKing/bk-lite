@@ -778,6 +778,8 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
         """
         启动训练任务
         """
+        train_job = None
+        previous_status = None
         try:
             train_job = self.get_object()
 
@@ -809,13 +811,6 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
                 train_job_id=train_job.id,
             )
 
-            # 启动前清理可能残留的旧训练容器
-            try:
-                WebhookClient.stop(job_id)
-                logger.info(f"已清理残留的旧训练容器: job_id={job_id}")
-            except (WebhookError, WebhookConnectionError, WebhookTimeoutError):
-                pass  # 容器不存在是正常的
-
             # 调用 WebhookClient 启动训练
             # 动态获取训练镜像
             train_image = get_image_by_prefix(self.MLFLOW_PREFIX, train_job.algorithm)
@@ -839,6 +834,17 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
             except Exception:
                 logger.warning(f"查询 MLflow run 数量失败，降级 expected_run_count=0, TrainJob ID={train_job.id}")
 
+            previous_status = self.claim_train_job_running(train_job)
+            if previous_status is None:
+                return Response({"error": "训练任务已在运行中"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 启动前清理可能残留的旧训练容器
+            try:
+                WebhookClient.stop(job_id)
+                logger.info(f"已清理残留的旧训练容器: job_id={job_id}")
+            except (WebhookError, WebhookConnectionError, WebhookTimeoutError):
+                pass  # 容器不存在是正常的
+
             WebhookClient.train(
                 job_id=job_id,
                 bucket=config.bucket,
@@ -850,10 +856,6 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
                 minio_secret_key=config.minio_secret_key,
                 train_image=train_image,
             )
-
-            # 更新任务状态
-            train_job.status = TrainJobStatus.RUNNING
-            train_job.save(update_fields=["status"])
 
             # 启动异步轮询训练状态
             logger.info(f"触发轮询任务: TrainJob ID={train_job.id}, 预期 run 数量: {expected_run_count}")
@@ -868,13 +870,21 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
             )
 
         except WebhookTimeoutError as e:
+            if train_job and previous_status is not None:
+                self.restore_train_job_status(train_job, previous_status)
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
+            if train_job and previous_status is not None:
+                self.restore_train_job_status(train_job, previous_status)
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
+            if train_job and previous_status is not None:
+                self.restore_train_job_status(train_job, previous_status)
             logger.error(f"启动训练任务失败: {e}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
+            if train_job and previous_status is not None:
+                self.restore_train_job_status(train_job, previous_status)
             logger.error(f"启动训练任务失败: {str(e)}", exc_info=True)
             return Response(
                 {"error": f"启动训练任务失败: {str(e)}"},
