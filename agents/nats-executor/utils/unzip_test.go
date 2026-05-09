@@ -3,6 +3,8 @@ package utils
 import (
 	"archive/zip"
 	"bytes"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -189,6 +191,108 @@ func TestUnzipToDirRejectsMissingDestination(t *testing.T) {
 	if !strings.Contains(err.Error(), "destination directory is required") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+}
+
+func TestUnzipToDirAndExtractZipFileIOFailures(t *testing.T) {
+	t.Run("open archive error", func(t *testing.T) {
+		original := openZipArchive
+		openZipArchive = func(name string) (*zip.ReadCloser, error) {
+			return nil, errors.New("open failed")
+		}
+		defer func() { openZipArchive = original }()
+
+		_, err := UnzipToDir(UnzipRequest{ZipPath: "/tmp/demo.zip", DestDir: t.TempDir()})
+		if err == nil || !strings.Contains(err.Error(), "failed to open zip file") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("create parent dir error", func(t *testing.T) {
+		original := makeDirAll
+		makeDirAll = func(path string, perm os.FileMode) error {
+			if strings.Contains(path, "testdir") {
+				return errors.New("mkdir failed")
+			}
+			return nil
+		}
+		defer func() { makeDirAll = original }()
+
+		zipFilePath := filepath.Join(t.TempDir(), "test.zip")
+		createZipFile(t, zipFilePath, map[string]string{"testdir/hello.txt": "Hello"})
+		_, err := UnzipToDir(UnzipRequest{ZipPath: zipFilePath, DestDir: t.TempDir()})
+		if err == nil || !strings.Contains(err.Error(), "failed to create parent directory") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("open zip entry error", func(t *testing.T) {
+		zipFilePath := filepath.Join(t.TempDir(), "test.zip")
+		createZipFile(t, zipFilePath, map[string]string{"testdir/hello.txt": "Hello"})
+
+		original := openZipEntry
+		openZipEntry = func(f *zip.File) (io.ReadCloser, error) {
+			return nil, errors.New("entry open failed")
+		}
+		defer func() { openZipEntry = original }()
+
+		_, err := UnzipToDir(UnzipRequest{ZipPath: zipFilePath, DestDir: t.TempDir()})
+		if err == nil || !strings.Contains(err.Error(), "failed to open file in zip") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("create destination file error", func(t *testing.T) {
+		zipFilePath := filepath.Join(t.TempDir(), "test.zip")
+		createZipFile(t, zipFilePath, map[string]string{"testdir/hello.txt": "Hello"})
+
+		original := openDestFile
+		openDestFile = func(path string, mode os.FileMode) (*os.File, error) {
+			return nil, errors.New("open dest failed")
+		}
+		defer func() { openDestFile = original }()
+
+		_, err := UnzipToDir(UnzipRequest{ZipPath: zipFilePath, DestDir: t.TempDir()})
+		if err == nil || !strings.Contains(err.Error(), "failed to create output file") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("copy failure", func(t *testing.T) {
+		zipFilePath := filepath.Join(t.TempDir(), "test.zip")
+		createZipFile(t, zipFilePath, map[string]string{"testdir/hello.txt": "Hello"})
+
+		original := copyToDest
+		copyToDest = func(dst io.Writer, src io.Reader) (int64, error) {
+			return 0, errors.New("copy failed")
+		}
+		defer func() { copyToDest = original }()
+
+		_, err := UnzipToDir(UnzipRequest{ZipPath: zipFilePath, DestDir: t.TempDir()})
+		if err == nil || !strings.Contains(err.Error(), "failed to write file") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("remove conflicting directory failure", func(t *testing.T) {
+		baseDir := t.TempDir()
+		zipFilePath := filepath.Join(baseDir, "replace.zip")
+		destDir := filepath.Join(baseDir, "dest")
+		targetPath := filepath.Join(destDir, "testdir", "hello.txt")
+
+		if err := os.MkdirAll(targetPath, 0o755); err != nil {
+			t.Fatalf("failed to create conflicting directory: %v", err)
+		}
+		createZipFile(t, zipFilePath, map[string]string{"testdir/hello.txt": "Hello"})
+
+		original := removePath
+		removePath = func(path string) error { return errors.New("remove failed") }
+		defer func() { removePath = original }()
+
+		_, err := UnzipToDir(UnzipRequest{ZipPath: zipFilePath, DestDir: destDir})
+		if err == nil || !strings.Contains(err.Error(), "failed to remove existing directory") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
 }
 
 func BenchmarkUnzipToDir(b *testing.B) {

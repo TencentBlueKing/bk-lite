@@ -52,6 +52,13 @@ class PlaybookExecution(ExecutionTaskBaseService):
 
     def _run_via_ansible(self, execution, target_list: list):
         """通过 AnsibleExecutor.playbook() 执行 Playbook（异步回调）"""
+        # 提交前检查是否已取消
+        if self.is_cancelled(execution.id):
+            logger.info(f"[{self.task_name}] 任务已取消，跳过 Playbook 提交: execution_id={self.execution_id}")
+            execution.finished_at = timezone.now()
+            execution.save(update_fields=["finished_at", "updated_at"])
+            return
+
         nats_file_key = None
         try:
             nats_file_key = self._execute_playbook_via_ansible(execution, target_list)
@@ -162,6 +169,10 @@ class PlaybookExecution(ExecutionTaskBaseService):
         logger.info(f"[{task_name}] Playbook 文件: {files}")
 
         # 调用 AnsibleExecutor.playbook()
+        # 最后一次检查取消状态，避免已取消但仍提交 RPC
+        if cls.is_cancelled(execution.id):
+            raise ValueError("任务已取消，中止 Playbook 提交")
+
         executor = AnsibleExecutor(ansible_node_id)
         logger.info(
             f"[{task_name}] 调用 AnsibleExecutor.playbook(): "

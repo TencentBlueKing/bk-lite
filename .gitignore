@@ -4,6 +4,7 @@ logs
 .venv
 __pycache__
 *.pyc
+*.out
 *.pyo
 .DS_Store
 *.pyd

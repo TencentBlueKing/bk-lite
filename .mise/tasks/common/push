@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+
+if ! command -v git >/dev/null 2>&1; then
+  echo "git 未安装。请先在本机安装并加入 PATH。"
+  exit 1
+fi
+
+cd "${ROOT_DIR}"
+
+BRANCH="$(git branch --show-current)"
+if [ -z "${BRANCH}" ]; then
+  echo "当前不在任何分支上，无法执行 push。"
+  exit 1
+fi
+
+git add -A
+
+if git diff --cached --quiet; then
+  echo "没有可提交的变更。"
+  exit 0
+fi
+
+COMMIT_MSG="${BKLITE_COMMIT_MSG:-${*:-}}"
+if [ -z "${COMMIT_MSG}" ] && [ -t 0 ]; then
+  read -r -p "请输入 commit message: " COMMIT_MSG
+fi
+
+if [ -z "${COMMIT_MSG}" ]; then
+  echo "缺少 commit message。请使用 'mise run common:push -- \"your message\"' 或设置 BKLITE_COMMIT_MSG。"
+  exit 1
+fi
+
+git commit -m "${COMMIT_MSG}"
+git push -u origin "${BRANCH}"
