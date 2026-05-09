@@ -6,23 +6,23 @@ YAML导出服务
 包含：依赖收敛、敏感字段脱敏、稳定排序、YAML序列化等功能。
 """
 
-import yaml
 from datetime import datetime, timezone
 from typing import Any
 
+import yaml
+
 from apps.operation_analysis.constants.import_export import (
-    ObjectType,
-    ScopeType,
+    BUSINESS_KEY_SEPARATOR,
     CANVAS_TYPES,
-    CONFIG_TYPES,
     OBJECT_TYPE_TO_SECTION,
-    YAML_SCHEMA_VERSION,
     SENSITIVE_FIELDS,
     SENSITIVE_PLACEHOLDER,
-    BUSINESS_KEY_SEPARATOR,
+    YAML_SCHEMA_VERSION,
+    ObjectType,
+    ScopeType,
 )
-from apps.operation_analysis.models.models import Dashboard, Topology, Architecture
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
+from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
 from apps.operation_analysis.services.import_export.view_sets import (
     normalize_canvas_view_sets_for_storage,
     normalize_canvas_view_sets_for_yaml,
@@ -118,7 +118,7 @@ class ExportService:
                 "rest_api": ds.rest_api,
                 "desc": ds.desc or "",
                 "is_active": ds.is_active,
-                "params": ds.params or {},
+                "params": ds.params or [],
                 "tags": tag_names,
                 "chart_type": ds.chart_type or [],
                 "field_schema": ds.field_schema or [],
