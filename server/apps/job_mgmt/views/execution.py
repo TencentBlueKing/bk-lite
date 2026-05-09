@@ -87,6 +87,9 @@ class JobExecutionViewSet(AuthViewSet):
         script = None
         if data.get("script_id"):
             script = Script.objects.filter(id=data["script_id"]).first()
+            # 如果前端未显式传 timeout，使用脚本库定义的超时时间
+            if script and "timeout" not in request.data:
+                timeout = script.timeout
         resolved_params = ScriptParamsService.resolve_params(params, script=script)
         params_str = ScriptParamsService.params_to_string(resolved_params)
         # 根据模式创建执行记录
@@ -105,6 +108,7 @@ class JobExecutionViewSet(AuthViewSet):
                 target_source=target_source,
                 target_list=target_list,
                 team=team,
+                executor_user=username,
                 created_by=username,
                 updated_by=username,
             )
@@ -141,6 +145,7 @@ class JobExecutionViewSet(AuthViewSet):
                 target_source=target_source,
                 target_list=target_list,
                 team=team,
+                executor_user=username,
                 created_by=username,
                 updated_by=username,
             )
@@ -234,6 +239,7 @@ class JobExecutionViewSet(AuthViewSet):
             target_source=target_source,
             target_list=target_list,
             team=data.get("team", []),
+            executor_user=username,
             created_by=username,
             updated_by=username,
         )
@@ -308,6 +314,7 @@ class JobExecutionViewSet(AuthViewSet):
                 target_source=original.target_source,
                 target_list=target_list,
                 team=original.team,
+                executor_user=username,
                 created_by=username,
                 updated_by=username,
             )
@@ -331,6 +338,7 @@ class JobExecutionViewSet(AuthViewSet):
                 target_source=original.target_source,
                 target_list=target_list,
                 team=original.team,
+                executor_user=username,
                 created_by=username,
                 updated_by=username,
             )
@@ -360,6 +368,7 @@ class JobExecutionViewSet(AuthViewSet):
                 target_source=original.target_source,
                 target_list=target_list,
                 team=original.team,
+                executor_user=username,
                 created_by=username,
                 updated_by=username,
             )
