@@ -116,7 +116,7 @@ const OsPie: React.FC<OsPieProps> = ({
       },
       xAxis: {
         type: 'value',
-        axisLabel: { fontSize: 11, color: '#999' },
+        axisLabel: { fontSize: 11, color: '#7f92a7' },
         splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
       },
       yAxis: {
@@ -124,7 +124,7 @@ const OsPie: React.FC<OsPieProps> = ({
         data: sortedBarData.map((d: any) => d.name),
         axisLabel: {
           fontSize: 11,
-          color: '#666',
+          color: '#7f92a7',
           width: 100,
           overflow: 'truncate',
           ellipsis: '...'
@@ -147,7 +147,7 @@ const OsPie: React.FC<OsPieProps> = ({
             show: true,
             position: 'right',
             fontSize: 11,
-            color: '#666'
+            color: '#7f92a7'
           }
         }
       ]
@@ -161,8 +161,9 @@ const OsPie: React.FC<OsPieProps> = ({
     title: { show: false },
     tooltip: {
       trigger: 'item',
+      appendToBody: true,
       enterable: true,
-      confine: true,
+      confine: false,
       extraCssText: 'box-shadow: 0 0 3px rgba(150,150,150, 0.7);',
       textStyle: {
         fontSize: 12
@@ -210,13 +211,11 @@ const OsPie: React.FC<OsPieProps> = ({
           rich: {
             title: {
               fontSize: 14,
-              color: '#666',
               lineHeight: 20
             },
             value: {
               fontSize: 24,
               fontWeight: 'bold',
-              color: '#333',
               lineHeight: 32
             }
           }
