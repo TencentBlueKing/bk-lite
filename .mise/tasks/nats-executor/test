@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+MODULE_DIR="${ROOT_DIR}/agents/nats-executor"
+
+if ! command -v go >/dev/null 2>&1; then
+  echo "go 未安装。请先在本机安装并加入 PATH。"
+  exit 1
+fi
+
+cd "${MODULE_DIR}"
+
+echo "[nats-executor:test] 运行 TDD + BDD 测试"
+go test -count=1 ./... -coverprofile=coverage.out
+
+coverage_line="$(go tool cover -func=coverage.out | tail -n 1)"
+echo "${coverage_line}"
+
+coverage_value="$(echo "${coverage_line}" | awk '{print $3}' | tr -d '%')"
+
+awk -v coverage="${coverage_value}" 'BEGIN {
+  if (coverage <= 90.0) {
+    printf("覆盖率未达要求：当前 %s%%，要求 > 90%%\n", coverage)
+    exit 1
+  }
+}'
+
+echo "[nats-executor:test] 测试完成，覆盖率达标"

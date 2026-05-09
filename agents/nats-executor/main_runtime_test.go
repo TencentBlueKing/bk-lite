@@ -161,7 +161,7 @@ func TestBuildNATSOptionsKeepsBaseOptionsWithoutTLS(t *testing.T) {
 	}
 }
 
-func TestRunHappyPathAndErrorScenarios(t *testing.T) {
+func TestRunScenarios(t *testing.T) {
 	originalLoadConfig := loadConfigFn
 	originalBuildNATSOptions := buildNATSOptionsFn
 	originalConnectNATS := connectNATS
@@ -175,7 +175,7 @@ func TestRunHappyPathAndErrorScenarios(t *testing.T) {
 		registerSubscriptionsFn = originalRegisterSubscriptions
 	}()
 
-	t.Run("happy path version command prints version", func(t *testing.T) {
+	t.Run("version command prints version", func(t *testing.T) {
 		var stdout bytes.Buffer
 		if err := run([]string{"version"}, &stdout, func() { t.Fatal("wait should not be called") }); err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -185,14 +185,14 @@ func TestRunHappyPathAndErrorScenarios(t *testing.T) {
 		}
 	})
 
-	t.Run("corner case missing config path returns explicit error", func(t *testing.T) {
+	t.Run("missing config path returns explicit error", func(t *testing.T) {
 		err := run(nil, io.Discard, func() {})
 		if err == nil || err.Error() != "please specify the config file path using --config" {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
-	t.Run("corner case load config failure bubbles up", func(t *testing.T) {
+	t.Run("load config failure bubbles up", func(t *testing.T) {
 		loadConfigFn = func(path string) (*Config, error) { return nil, errors.New("bad yaml") }
 		err := run([]string{"--config", "/tmp/config.yaml"}, io.Discard, func() {})
 		if err == nil || !strings.Contains(err.Error(), "failed to load config: bad yaml") {
@@ -200,7 +200,7 @@ func TestRunHappyPathAndErrorScenarios(t *testing.T) {
 		}
 	})
 
-	t.Run("corner case build options failure bubbles up", func(t *testing.T) {
+	t.Run("build options failure bubbles up", func(t *testing.T) {
 		loadConfigFn = func(path string) (*Config, error) { return &Config{NATSUrls: "nats://demo:4222"}, nil }
 		buildNATSOptionsFn = func(cfg *Config) ([]nats.Option, error) { return nil, errors.New("bad tls") }
 		err := run([]string{"--config", "/tmp/config.yaml"}, io.Discard, func() {})
@@ -209,7 +209,7 @@ func TestRunHappyPathAndErrorScenarios(t *testing.T) {
 		}
 	})
 
-	t.Run("corner case connect failure bubbles up", func(t *testing.T) {
+	t.Run("connect failure bubbles up", func(t *testing.T) {
 		loadConfigFn = func(path string) (*Config, error) { return &Config{NATSUrls: "nats://demo:4222"}, nil }
 		buildNATSOptionsFn = func(cfg *Config) ([]nats.Option, error) { return []nats.Option{}, nil }
 		connectNATS = func(url string, options ...nats.Option) (*nats.Conn, error) {
@@ -221,7 +221,7 @@ func TestRunHappyPathAndErrorScenarios(t *testing.T) {
 		}
 	})
 
-	t.Run("happy path registers subscriptions and waits", func(t *testing.T) {
+	t.Run("registers subscriptions and waits", func(t *testing.T) {
 		loadConfigFn = func(path string) (*Config, error) {
 			return &Config{NATSUrls: "nats://demo:4222", NATSInstanceID: "instance-1", TLSEnabled: "false"}, nil
 		}

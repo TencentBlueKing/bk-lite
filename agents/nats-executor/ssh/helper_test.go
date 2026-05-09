@@ -29,13 +29,13 @@ func (s rsaSignerWithoutAlgorithmSupport) Sign(rand io.Reader, data []byte) (*go
 	return s.delegate.Sign(rand, data)
 }
 
-func TestSSHTransferHelpersCoverHappyPathAndCornerCases(t *testing.T) {
+func TestSSHTransferHelpers(t *testing.T) {
 	sourceFile := filepath.Join(t.TempDir(), "artifact.txt")
 	if err := os.WriteFile(sourceFile, []byte(strings.Repeat("x", 2048)), 0o600); err != nil {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	t.Run("happy path describes file transfer context", func(t *testing.T) {
+	t.Run("describes file transfer context", func(t *testing.T) {
 		meta := describeTransferSource(sourceFile)
 		if meta.Kind != "file" || meta.BaseName != "artifact.txt" {
 			t.Fatalf("unexpected source meta: %+v", meta)
@@ -49,21 +49,21 @@ func TestSSHTransferHelpersCoverHappyPathAndCornerCases(t *testing.T) {
 		}
 	})
 
-	t.Run("corner case missing source becomes inaccessible", func(t *testing.T) {
+	t.Run("missing source becomes inaccessible", func(t *testing.T) {
 		meta := describeTransferSource(filepath.Join(t.TempDir(), "missing.txt"))
 		if meta.Kind != "missing_or_inaccessible" {
 			t.Fatalf("unexpected source meta: %+v", meta)
 		}
 	})
 
-	t.Run("corner case directory source reports dir kind", func(t *testing.T) {
+	t.Run("directory source reports dir kind", func(t *testing.T) {
 		meta := describeTransferSource(t.TempDir())
 		if meta.Kind != "dir" {
 			t.Fatalf("unexpected source meta: %+v", meta)
 		}
 	})
 
-	t.Run("corner case human readable size and auth fallbacks", func(t *testing.T) {
+	t.Run("human readable size and auth fallbacks", func(t *testing.T) {
 		if got := humanReadableSize(1536); got != "1.5KB" {
 			t.Fatalf("unexpected size formatting: %q", got)
 		}
@@ -78,7 +78,7 @@ func TestSSHTransferHelpersCoverHappyPathAndCornerCases(t *testing.T) {
 		}
 	})
 
-	t.Run("corner case truncates multiline transfer output", func(t *testing.T) {
+	t.Run("truncates multiline transfer output", func(t *testing.T) {
 		output := truncateTransferOutput(strings.Repeat("line\n", 80))
 		if !strings.Contains(output, " | ") || !strings.HasSuffix(output, "...") {
 			t.Fatalf("unexpected truncated output: %q", output)
@@ -125,7 +125,7 @@ func TestBuildPublicKeyAuthMethodSupportsRSAAndNonRSAKeys(t *testing.T) {
 	}
 }
 
-func TestSSHHelperPredicatesAndTimeoutBudgetCornerCases(t *testing.T) {
+func TestSSHHelperPredicatesAndTimeoutBudgets(t *testing.T) {
 	if got := tcpProbeTimeout(500 * time.Millisecond); got != 500*time.Millisecond {
 		t.Fatalf("unexpected short timeout probe budget: %v", got)
 	}

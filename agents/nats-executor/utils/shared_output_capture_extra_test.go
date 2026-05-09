@@ -2,7 +2,7 @@ package utils
 
 import "testing"
 
-func TestSharedOutputCaptureHelperCornerCases(t *testing.T) {
+func TestSharedOutputCaptureHelpers(t *testing.T) {
 	capture := NewSharedOutputCapture(0)
 	if capture.limit != CommandOutputLimitBytes {
 		t.Fatalf("expected default limit, got %d", capture.limit)

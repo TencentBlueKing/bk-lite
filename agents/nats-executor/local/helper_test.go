@@ -10,8 +10,8 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-func TestLocalHelpersSupportBDDScenarios(t *testing.T) {
-	t.Run("happy path keeps short output intact", func(t *testing.T) {
+func TestLocalHelpersSupportScenarioCoverage(t *testing.T) {
+	t.Run("keeps short output intact", func(t *testing.T) {
 		if got := string(sampleBytes([]byte("hello"), 10)); got != "hello" {
 			t.Fatalf("unexpected sample bytes: %q", got)
 		}
@@ -23,7 +23,7 @@ func TestLocalHelpersSupportBDDScenarios(t *testing.T) {
 		}
 	})
 
-	t.Run("corner case truncates long samples and excerpts", func(t *testing.T) {
+	t.Run("truncates long samples and excerpts", func(t *testing.T) {
 		if got := string(sampleBytes([]byte("abcdef"), 3)); got != "abc" {
 			t.Fatalf("unexpected sample bytes: %q", got)
 		}
@@ -35,7 +35,7 @@ func TestLocalHelpersSupportBDDScenarios(t *testing.T) {
 		}
 	})
 
-	t.Run("corner case uses default transfer context", func(t *testing.T) {
+	t.Run("uses default transfer context", func(t *testing.T) {
 		if got := formatSCPLogContext("   "); got != "transfer=unknown" {
 			t.Fatalf("unexpected default log context: %q", got)
 		}
@@ -81,7 +81,7 @@ func TestFormatCapturedExecuteOutputIncludesStdoutStderrAndTruncation(t *testing
 	}
 }
 
-func TestLooksLikeUTF16LEAndSCPFailureAnalysisCornerCases(t *testing.T) {
+func TestLooksLikeUTF16LEAndSCPFailureAnalysis(t *testing.T) {
 	if !looksLikeUTF16LE([]byte{'h', 0x00, 'i', 0x00}) {
 		t.Fatal("expected utf16-like payload to be detected")
 	}

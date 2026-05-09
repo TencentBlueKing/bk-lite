@@ -3,6 +3,7 @@ package local
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -27,20 +28,37 @@ func (s *localSCPBDDState) aLocalSCPExecutorInstance() {
 	s.instanceID = "instance-bdd"
 }
 
-func (s *localSCPBDDState) shellIs(shell string) {
-	s.req.Shell = shell
-}
+func (s *localSCPBDDState) theExecuteRequestIs(table *godog.Table) error {
+	for rowIndex, row := range table.Rows {
+		if rowIndex == 0 {
+			continue
+		}
+		if len(row.Cells) != 2 {
+			return fmt.Errorf("expected 2 cells per row, got %d", len(row.Cells))
+		}
 
-func (s *localSCPBDDState) scpCommandIs(command string) {
-	s.req.Command = command
-}
+		field := strings.TrimSpace(row.Cells[0].Value)
+		value := row.Cells[1].Value
 
-func (s *localSCPBDDState) transferLogContextIs(logContext string) {
-	s.req.LogContext = logContext
-}
+		switch field {
+		case "shell":
+			s.req.Shell = value
+		case "command":
+			s.req.Command = value
+		case "log_context":
+			s.req.LogContext = value
+		case "execute_timeout":
+			seconds, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				return fmt.Errorf("invalid execute_timeout %q: %w", value, err)
+			}
+			s.req.ExecuteTimeout = seconds
+		default:
+			return fmt.Errorf("unsupported request field %q", field)
+		}
+	}
 
-func (s *localSCPBDDState) executeTimeoutIs(seconds int) {
-	s.req.ExecuteTimeout = seconds
+	return nil
 }
 
 func (s *localSCPBDDState) theCommandIsExecutedLocally() {
@@ -86,16 +104,13 @@ func InitializeLocalSCPScenario(sc *godog.ScenarioContext) {
 		return ctx, nil
 	})
 
-	sc.Step(`^a local SCP executor instance$`, state.aLocalSCPExecutorInstance)
-	sc.Step(`^shell is "([^"]*)"$`, state.shellIs)
-	sc.Step(`^scp command is "([^"]*)"$`, state.scpCommandIs)
-	sc.Step(`^transfer log context is "([^"]*)"$`, state.transferLogContextIs)
-	sc.Step(`^execute timeout is (\d+) seconds$`, state.executeTimeoutIs)
-	sc.Step(`^the command is executed locally$`, state.theCommandIsExecutedLocally)
-	sc.Step(`^the execution succeeds$`, state.theExecutionSucceeds)
-	sc.Step(`^the execution fails with code "([^"]*)"$`, state.theExecutionFailsWithCode)
-	sc.Step(`^combined output contains "([^"]*)"$`, state.combinedOutputContains)
-	sc.Step(`^error contains "([^"]*)"$`, state.errorContains)
+	sc.Step(`^存在一个本地 SCP 执行器实例$`, state.aLocalSCPExecutorInstance)
+	sc.Step(`^执行请求为:$`, state.theExecuteRequestIs)
+	sc.Step(`^在本地执行该命令$`, state.theCommandIsExecutedLocally)
+	sc.Step(`^执行成功$`, state.theExecutionSucceeds)
+	sc.Step(`^执行失败且错误码为 "([^"]*)"$`, state.theExecutionFailsWithCode)
+	sc.Step(`^组合输出包含 "([^"]*)"$`, state.combinedOutputContains)
+	sc.Step(`^错误信息包含 "([^"]*)"$`, state.errorContains)
 }
 
 func TestLocalSCPBDDUserScenarios(t *testing.T) {
@@ -106,7 +121,7 @@ func TestLocalSCPBDDUserScenarios(t *testing.T) {
 		ScenarioInitializer: InitializeLocalSCPScenario,
 		Options: &godog.Options{
 			Format:   "pretty",
-			Paths:    []string{"features/local_scp.feature"},
+			Paths:    []string{"../features/local/scp.feature"},
 			TestingT: t,
 		},
 	}
