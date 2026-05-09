@@ -39,10 +39,16 @@ class GetNatsData:
         username = self.request.user.username
         team = int(self.request.COOKIES.get("current_team"))
         include_children = self.request.COOKIES.get("include_children", "0") == "1"
+        permission = getattr(self.request.user, "permission", {})
+        if isinstance(permission, dict):
+            permission = {key: list(value) if isinstance(value, set) else value for key, value in permission.items()}
         self.params[self.user_param_key] = {
             "team": team,
             "user": username,
             "domain": self.request.user.domain,
+            "permission": permission,
+            "group_tree": getattr(self.request.user, "group_tree", []),
+            "is_superuser": getattr(self.request.user, "is_superuser", False),
             "include_children": include_children,
         }
 
