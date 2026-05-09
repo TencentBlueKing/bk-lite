@@ -3,9 +3,11 @@ from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import make_password
 from django.test import Client
 from django.test import TestCase
 from django.utils import timezone
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.alerts.aggregation.builder.synthetic_alert_builder import (
     SyntheticAlertBuilder,
@@ -24,13 +26,33 @@ from apps.alerts.constants import (
     HeartbeatStatus,
     LevelType,
 )
-from apps.alerts.models import Alert, AlertSource, AlarmStrategy, Event, Level
+from apps.alerts.constants.constants import IncidentStatus, LogAction, LogTargetType
+from apps.alerts.models import Alert, AlertSource, AlarmStrategy, Event, Level, OperatorLog
 from apps.alerts.models.models import Incident
 from apps.alerts.serializers.incident import IncidentModelSerializer
 from apps.alerts.serializers.alert_source import AlertSourceModelSerializer
 from apps.alerts.serializers.strategy import AlarmStrategySerializer
+from apps.alerts.views.alert import AlertModelViewSet
+from apps.alerts.views.alert_source import AlertSourceModelViewSet
+from apps.alerts.views.event import EventModelViewSet
 from apps.alerts.views.incident import IncidentModelViewSet
-from apps.system_mgmt.models.user import User
+from apps.alerts.views.operator_log import SystemLogModelViewSet
+from apps.system_mgmt.models.user import Group, User
+
+
+def build_permission_test_user(username, group_list, permissions_by_app=None):
+    user = User.objects.create(
+        username=username,
+        display_name=username,
+        email=f"{username}@example.com",
+        password=make_password("password123"),
+        domain="domain.com",
+        group_list=group_list,
+    )
+    user.permission = permissions_by_app or {}
+    user.is_superuser = False
+    user.is_authenticated = True
+    return user
 
 
 class AlarmStrategySerializerTestCase(TestCase):
@@ -115,7 +137,7 @@ class AlarmStrategySerializerTestCase(TestCase):
 
         self.assertFalse(serializer.is_valid())
         self.assertEqual(
-            serializer.errors["params"]["check_mode"][0],
+            serializer.errors["params"]["check_mode"],
             "缺失检查仅支持 cron 模式。",
         )
 
@@ -146,11 +168,11 @@ class AlarmStrategySerializerTestCase(TestCase):
 
         self.assertFalse(serializer.is_valid())
         self.assertEqual(
-            serializer.errors["params"]["interval_value"][0],
+            serializer.errors["params"]["interval_value"],
             "缺失检查不再支持固定间隔数值。",
         )
         self.assertEqual(
-            serializer.errors["params"]["interval_unit"][0],
+            serializer.errors["params"]["interval_unit"],
             "缺失检查不再支持固定间隔单位。",
         )
 
@@ -443,7 +465,7 @@ class AlertSourceIngressTestCase(TestCase):
         self.assertTrue(config["accept_default_payload"])
         self.assertTrue(config["accept_custom_payload"])
         self.assertTrue(config["send_resolved_required"])
-        self.assertTrue(config["url"].endswith("/api/v1/alerts/api/source/{source_id}/webhook/"))
+        self.assertTrue(config["url"].endswith("/api/v1/alerts/api/source/prometheus-prod/webhook/"))
         self.assertNotIn("external_id_labels", config)
         self.assertNotIn("severity_mapping", config)
         self.assertIn("event_fields_mapping", config)
@@ -1047,11 +1069,14 @@ class RecoveryFallbackTestCase(TestCase):
             secret="prom-secret",
             config={},
         )
+        user = build_permission_test_user("integration-reader-prom", [1], {"alarm": {"Integration-View"}})
 
-        response = self.client.get(f"/api/v1/alerts/api/alert_source/{source.id}/integration-guide/")
+        request = APIRequestFactory().get(f"/api/v1/alerts/api/alert_source/{source.id}/integration-guide/")
+        force_authenticate(request, user=user)
+        response = AlertSourceModelViewSet.as_view({"get": "integration_guide"})(request, pk=source.pk)
 
         self.assertEqual(response.status_code, 200)
-        payload = response.json()["data"]
+        payload = response.data
         self.assertEqual(payload["source_type"], AlertsSourceTypes.PROMETHEUS)
         self.assertIn(f"/api/v1/alerts/api/source/{source.source_id}/webhook/", payload["webhook_url"])
         self.assertIn("alertmanager_default_config", payload)
@@ -1064,11 +1089,14 @@ class RecoveryFallbackTestCase(TestCase):
             secret="zbx-secret",
             config={},
         )
+        user = build_permission_test_user("integration-reader-zbx", [1], {"alarm": {"Integration-View"}})
 
-        response = self.client.get(f"/api/v1/alerts/api/alert_source/{source.id}/integration-guide/")
+        request = APIRequestFactory().get(f"/api/v1/alerts/api/alert_source/{source.id}/integration-guide/")
+        force_authenticate(request, user=user)
+        response = AlertSourceModelViewSet.as_view({"get": "integration_guide"})(request, pk=source.pk)
 
         self.assertEqual(response.status_code, 200)
-        payload = response.json()["data"]
+        payload = response.data
         self.assertEqual(payload["source_type"], AlertsSourceTypes.ZABBIX)
         self.assertIn(f"/api/v1/alerts/api/source/{source.source_id}/webhook/", payload["webhook_url"])
         self.assertIn("script_template", payload)
@@ -1163,3 +1191,319 @@ class IncidentQueryPathTestCase(TestCase):
         self.assertEqual(data[0]["alert_count"], 2)
         self.assertEqual(data[0]["sources"], "test-source")
         self.assertEqual(data[0]["operator_users"], "事故处理人")
+
+
+class AlertPermissionScopeTestCase(TestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self._ensure_groups(1, 2)
+
+    @staticmethod
+    def _ensure_groups(*group_ids):
+        for group_id in group_ids:
+            Group.objects.get_or_create(
+                id=group_id,
+                defaults={"name": f"group-{group_id}", "parent_id": 0},
+            )
+
+    @staticmethod
+    def _build_user(username, group_list, alarm_permissions):
+        user = User.objects.create(
+            username=username,
+            display_name=username,
+            email=f"{username}@example.com",
+            password=make_password("password123"),
+            domain="domain.com",
+            group_list=group_list,
+        )
+        user.permission = {"alarm": set(alarm_permissions)}
+        user.is_superuser = False
+        user.is_authenticated = True
+        return user
+
+    @staticmethod
+    def _build_alert(team, operator, suffix):
+        source = AlertSource.objects.create(
+            name=f"source-{suffix}",
+            source_id=f"source-{suffix}",
+            source_type=AlertsSourceTypes.WEBHOOK,
+        )
+        event = Event.objects.create(
+            source=source,
+            push_source_id="default",
+            raw_data={},
+            title=f"event-{suffix}",
+            description="desc",
+            level="warning",
+            service="svc",
+            event_type=EventType.ALERT,
+            tags={},
+            location="gz",
+            external_id=f"external-{suffix}",
+            start_time=timezone.now(),
+            labels={},
+            action=EventAction.CREATED,
+            event_id=f"EVENT-{suffix}",
+            item="cpu",
+            resource_id=f"resource-{suffix}",
+            resource_type="host",
+            resource_name=f"host-{suffix}",
+            status="received",
+            assignee=[],
+        )
+        alert = Alert.objects.create(
+            alert_id=f"ALERT-{suffix}",
+            status=AlertStatus.UNASSIGNED,
+            level="warning",
+            title=f"alert-{suffix}",
+            content="content",
+            labels={},
+            first_event_time=timezone.now(),
+            last_event_time=timezone.now(),
+            item="cpu",
+            resource_id=f"resource-{suffix}",
+            resource_name=f"host-{suffix}",
+            resource_type="host",
+            operate=None,
+            operator=operator,
+            source_name=source.name,
+            fingerprint=f"fp-{suffix}",
+            group_by_field="service",
+            rule_id=f"rule-{suffix}",
+            team=team,
+        )
+        alert.events.add(event)
+        return alert
+
+    def test_alert_list_is_scoped_by_operator_and_authorized_team(self):
+        user = self._build_user("alert-owner", [1], ["Alarms-View"])
+        team_alert = self._build_alert([1], [], "team")
+        assigned_alert = self._build_alert([2], ["alert-owner"], "assigned")
+        hidden_alert = self._build_alert([2], ["someone-else"], "hidden")
+
+        request = self.factory.get("/api/alert")
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = AlertModelViewSet.as_view({"get": "list"})(request)
+        payload = json.loads(response.content)
+        returned_alert_ids = {item["alert_id"] for item in payload["data"]}
+
+        self.assertIn(team_alert.alert_id, returned_alert_ids)
+        self.assertIn(assigned_alert.alert_id, returned_alert_ids)
+        self.assertNotIn(hidden_alert.alert_id, returned_alert_ids)
+
+    def test_incident_retrieve_rejects_cross_team_access(self):
+        user = self._build_user("incident-reader", [1], ["Incidents-View"])
+        foreign_alert = self._build_alert([2], ["someone-else"], "foreign")
+        incident = Incident.objects.create(
+            incident_id="INCIDENT-foreign",
+            status=IncidentStatus.PENDING,
+            level="warning",
+            title="foreign-incident",
+            content="content",
+            note="",
+            labels={},
+            operator=[],
+            fingerprint="incident-fp",
+            created_by="system",
+            updated_by="system",
+            domain="domain.com",
+            updated_by_domain="domain.com",
+        )
+        incident.alert.add(foreign_alert)
+
+        request = self.factory.get(f"/api/incident/{incident.pk}/")
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = IncidentModelViewSet.as_view({"get": "retrieve"})(request, pk=incident.pk)
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_incident_create_rejects_unscoped_alert_ids(self):
+        user = self._build_user("incident-editor", [1], ["Alarms-Edit"])
+        hidden_alert = self._build_alert([2], ["someone-else"], "hidden-create")
+
+        request = self.factory.post(
+            "/api/incident",
+            {
+                "title": "new-incident",
+                "level": "warning",
+                "content": "content",
+                "note": "",
+                "labels": {},
+                "operator": [],
+                "alert": [hidden_alert.pk],
+            },
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = IncidentModelViewSet.as_view({"post": "create"})(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Incident.objects.count(), 0)
+
+    def test_incident_create_rejects_null_alert_payload(self):
+        user = self._build_user("incident-editor-null", [1], ["Alarms-Edit"])
+
+        request = self.factory.post(
+            "/api/incident",
+            {
+                "title": "new-incident",
+                "level": "warning",
+                "content": "content",
+                "note": "",
+                "labels": {},
+                "operator": [],
+                "alert": None,
+            },
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = IncidentModelViewSet.as_view({"post": "create"})(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["detail"], "alert must be a list of ids.")
+
+    def test_incident_patch_rejects_null_alert_payload(self):
+        user = self._build_user(
+            "incident-editor-patch",
+            [1],
+            ["Incidents-Edit", "Alarms-Edit"],
+        )
+        visible_alert = self._build_alert([1], ["incident-editor-patch"], "visible-patch")
+        incident = Incident.objects.create(
+            incident_id="INCIDENT-visible",
+            status=IncidentStatus.PENDING,
+            level="warning",
+            title="visible-incident",
+            content="content",
+            note="",
+            labels={},
+            operator=["incident-editor-patch"],
+            fingerprint="incident-visible-fp",
+            created_by="system",
+            updated_by="system",
+            domain="domain.com",
+            updated_by_domain="domain.com",
+        )
+        incident.alert.add(visible_alert)
+
+        request = self.factory.patch(
+            f"/api/incident/{incident.pk}/",
+            {"alert": None},
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = IncidentModelViewSet.as_view({"patch": "partial_update"})(request, pk=incident.pk)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["detail"], "alert must be a list of ids.")
+
+    def test_alert_operator_rejects_unscoped_alert_ids(self):
+        user = self._build_user("alert-editor", [1], ["Alarms-Edit"])
+        hidden_alert = self._build_alert([2], ["someone-else"], "hidden-operator")
+
+        request = self.factory.post(
+            "/api/alert/operator/assign/",
+            {"alert_id": [hidden_alert.alert_id], "assignee": ["alert-editor"]},
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = AlertModelViewSet.as_view({"post": "operator"})(request, operator_action="assign")
+        payload = json.loads(response.content)
+        hidden_alert.refresh_from_db()
+
+        self.assertEqual(response.status_code, 500)
+        self.assertFalse(payload["result"])
+        self.assertEqual(
+            payload["data"][hidden_alert.alert_id]["message"],
+            "您没有权限操作此告警",
+        )
+        self.assertEqual(hidden_alert.status, AlertStatus.UNASSIGNED)
+
+    def test_event_retrieve_rejects_cross_team_access(self):
+        user = self._build_user("event-reader", [1], ["Alarms-View"])
+        hidden_alert = self._build_alert([2], ["someone-else"], "hidden-event")
+        hidden_event = hidden_alert.events.first()
+
+        request = self.factory.get(f"/api/events/{hidden_event.pk}/")
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = EventModelViewSet.as_view({"get": "retrieve"})(request, pk=hidden_event.pk)
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_operator_log_list_hides_cross_team_alert_history(self):
+        user = self._build_user("log-reader", [1], ["operation_log-View"])
+        visible_alert = self._build_alert([1], [], "visible-log")
+        hidden_alert = self._build_alert([2], ["someone-else"], "hidden-log")
+        OperatorLog.objects.create(
+            operator="system",
+            action=LogAction.MODIFY,
+            target_type=LogTargetType.ALERT,
+            operator_object="告警处理-关闭",
+            target_id=visible_alert.alert_id,
+            overview="visible log",
+        )
+        OperatorLog.objects.create(
+            operator="system",
+            action=LogAction.MODIFY,
+            target_type=LogTargetType.ALERT,
+            operator_object="告警处理-关闭",
+            target_id=hidden_alert.alert_id,
+            overview="hidden log",
+        )
+
+        request = self.factory.get("/api/log/")
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = SystemLogModelViewSet.as_view({"get": "list"})(request)
+        payload = response.data
+        rows = payload["data"] if isinstance(payload, dict) else payload
+        returned_overviews = {item["overview"] for item in rows}
+
+        self.assertIn("visible log", returned_overviews)
+        self.assertNotIn("hidden log", returned_overviews)
+
+    def test_incident_queryset_keeps_distinct_alert_count_after_scope_filtering(self):
+        user = self._build_user("incident-count-reader", [1], ["Incidents-View"])
+        alert_one = self._build_alert([1], [], "count-one")
+        alert_two = self._build_alert([1], [], "count-two")
+        incident = Incident.objects.create(
+            incident_id="INCIDENT-count",
+            status=IncidentStatus.PENDING,
+            level="warning",
+            title="count-incident",
+            content="content",
+            note="",
+            labels={},
+            operator=[],
+            fingerprint="incident-count-fp",
+            created_by="system",
+            updated_by="system",
+            domain="domain.com",
+            updated_by_domain="domain.com",
+        )
+        incident.alert.add(alert_one, alert_two)
+
+        request = self.factory.get("/api/incident")
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = IncidentModelViewSet.as_view({"get": "list"})(request)
+        payload = json.loads(response.content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["data"][0]["alert_count"], 2)

@@ -147,8 +147,16 @@ class AlertSourceAdapter(ABC):
         return bulk_events
 
     @staticmethod
-    def generate_external_id(item: str, resource_name: str, source_id) -> str:
-        components = f"{item or ''}|{resource_name or ''}|{source_id or ''}"
+    def generate_external_id(item: str, resource_id: str, resource_name: str, resource_type: str, source_id) -> str:
+        components = "|".join(
+            [
+                str(item or ""),
+                str(resource_id or ""),
+                str(resource_name or ""),
+                str(resource_type or ""),
+                str(source_id or ""),
+            ]
+        )
         return hashlib.md5(components.encode("utf-8")).hexdigest()
 
     def add_base_fields(self, event: Event, alert: Dict[str, Any]):
@@ -160,7 +168,13 @@ class AlertSourceAdapter(ABC):
         event.event_id = f"EVENT-{uuid.uuid4().hex}"
 
         if not event.external_id or not str(event.external_id).strip():
-            event.external_id = self.generate_external_id(event.item, event.resource_name, self.alert_source.source_id)
+            event.external_id = self.generate_external_id(
+                event.item,
+                event.resource_id,
+                event.resource_name,
+                event.resource_type,
+                self.alert_source.source_id,
+            )
             logger.debug(f"Generated external_id for event: {event.event_id}")
 
     @staticmethod
