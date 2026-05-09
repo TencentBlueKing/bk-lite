@@ -149,7 +149,7 @@ const EntityList = <T,>({
               })}
               {is_build_in !== undefined && (
                 <Tag color={is_build_in ? 'blue' : 'green'} className="mr-1 font-mini">
-                  {is_build_in ? t('common.builtin') : t('common.mcp')}
+                  {is_build_in ? t('common.builtin') : t('common.externalApp')}
                 </Tag>
               )}
             </div>

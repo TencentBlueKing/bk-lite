@@ -178,16 +178,20 @@ def cleanup_expired_distribution_files_task():
 
 
 def _dispatch_execution_job(job_type: str, execution_id: int) -> bool:
+    result = None
     if job_type == JobType.SCRIPT:
-        current_app.send_task("apps.job_mgmt.tasks.execute_script_task", args=[execution_id])
-        return True
-    if job_type == JobType.FILE_DISTRIBUTION:
-        current_app.send_task("apps.job_mgmt.tasks.distribute_files_task", args=[execution_id])
-        return True
-    if job_type == JobType.PLAYBOOK:
-        current_app.send_task("apps.job_mgmt.tasks.execute_playbook_task", args=[execution_id])
-        return True
-    return False
+        result = current_app.send_task("apps.job_mgmt.tasks.execute_script_task", args=[execution_id])
+    elif job_type == JobType.FILE_DISTRIBUTION:
+        result = current_app.send_task("apps.job_mgmt.tasks.distribute_files_task", args=[execution_id])
+    elif job_type == JobType.PLAYBOOK:
+        result = current_app.send_task("apps.job_mgmt.tasks.execute_playbook_task", args=[execution_id])
+    else:
+        return False
+
+    # 保存 Celery task_id 到执行记录，用于取消时 revoke
+    if result:
+        JobExecution.objects.filter(id=execution_id).update(celery_task_id=result.id)
+    return True
 
 
 @shared_task(
