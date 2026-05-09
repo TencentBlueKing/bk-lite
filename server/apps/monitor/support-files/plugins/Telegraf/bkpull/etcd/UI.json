@@ -42,29 +42,6 @@
       }
     },
     {
-      "name": "interval",
-      "label": "间隔",
-      "type": "inputNumber",
-      "required": true,
-      "default_value": 10,
-      "description": "监控数据的采集时间间隔（单位：秒）",
-      "widget_props": {
-        "min": 1,
-        "precision": 0,
-        "placeholder": "间隔",
-        "addonAfter": "s"
-      },
-      "transform_on_edit": {
-        "origin_path": "child.content.config.interval",
-        "to_form": {
-          "regex": "^(\\d+)s$"
-        },
-        "to_api": {
-          "suffix": "s"
-        }
-      }
-    },
-    {
       "name": "tls_cert",
       "label": "客户端证书路径",
       "type": "input",
@@ -88,6 +65,29 @@
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.tls_key"
+      }
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "间隔",
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
       }
     },
     {

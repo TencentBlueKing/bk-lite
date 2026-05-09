@@ -8,6 +8,7 @@ from apps.core.models.time_info import TimeInfo
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models.cloud_region import CloudRegion
+from apps.node_mgmt.utils.collector_tags import normalize_collector_tags
 
 OS_TYPE = (
     ("linux", "Linux"),
@@ -89,6 +90,10 @@ class Collector(TimeInfo, MaintainerInfo):
         verbose_name = "采集器信息"
         verbose_name_plural = "采集器信息"
         unique_together = ("node_operating_system", "cpu_architecture", "name")
+
+    def save(self, *args, **kwargs):
+        self.tags = normalize_collector_tags(self.tags, self.node_operating_system, self.cpu_architecture)
+        super().save(*args, **kwargs)
 
 
 class CollectorConfiguration(TimeInfo, MaintainerInfo):

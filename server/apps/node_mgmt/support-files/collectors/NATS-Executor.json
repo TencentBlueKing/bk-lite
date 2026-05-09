@@ -15,7 +15,8 @@
       "nats": "nats_urls: \"${NATS_PROTOCOL}://${NATS_ADMIN_USERNAME}:${NATS_ADMIN_PASSWORD}@${NATS_SERVERS}\"\nnats_instanceId: \"${node.id}\"\nnats_conn_timeout: 600\n\n{% if NATS_PROTOCOL == \"tls\" %}\ntls_enabled: \"true\"\ntls_skip_verify: \"false\"\ntls_ca_file: \"${NATS_TLS_CA_FILE}\"\n{% endif %}\n"
     },
     "tags": [
-      "linux"
+      "linux",
+      "x86_64"
     ],
     "package_name": "nats-executor",
     "cpu_architecture": "x86_64"
@@ -36,7 +37,8 @@
       "nats": "nats_urls: \"${NATS_PROTOCOL}://${NATS_ADMIN_USERNAME}:${NATS_ADMIN_PASSWORD}@${NATS_SERVERS}\"\nnats_instanceId: \"${node.id}\"\nnats_conn_timeout: 600\n\n{% if NATS_PROTOCOL == \"tls\" %}\ntls_enabled: \"true\"\ntls_skip_verify: \"false\"\ntls_ca_file: \"${NATS_TLS_CA_WIN_FILE}\"\n{% endif %}\n"
     },
     "tags": [
-      "windows"
+      "windows",
+      "x86_64"
     ],
     "package_name": "nats-executor",
     "cpu_architecture": "x86_64"

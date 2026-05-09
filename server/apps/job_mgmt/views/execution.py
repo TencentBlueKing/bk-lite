@@ -147,8 +147,8 @@ class JobExecutionViewSet(AuthViewSet):
             task_func = execute_script_task
 
         # 触发异步任务
-        # task_func.delay(execution.id)
-        task_func(execution.id)
+        task_func.delay(execution.id)
+        # task_func(execution.id)
 
         return Response(
             JobExecutionDetailSerializer(execution).data,

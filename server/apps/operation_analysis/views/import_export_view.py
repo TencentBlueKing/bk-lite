@@ -1,27 +1,20 @@
 # -- coding: utf-8 --
 from rest_framework import status
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
-from apps.core.decorators.api_permission import HasPermission
-from apps.core.logger import operation_analysis_logger as logger
-from apps.operation_analysis.constants.import_export import (
-    ObjectType,
-    ConflictAction,
-    ConflictReason,
-    ImportExportErrorCode,
-)
+from apps.operation_analysis.constants.import_export import ConflictAction, ConflictReason, ImportExportErrorCode, ObjectType
+from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
 from apps.operation_analysis.serializers.import_export_serializers import (
     ExportRequestSerializer,
     ImportPrecheckRequestSerializer,
     ImportSubmitRequestSerializer,
 )
 from apps.operation_analysis.services.import_export.export_service import ExportService
-from apps.operation_analysis.services.import_export.precheck_service import PrecheckService
 from apps.operation_analysis.services.import_export.import_service import ImportService
-from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
+from apps.operation_analysis.services.import_export.precheck_service import PrecheckService
 
 
 class ImportExportViewSet(ViewSet):
@@ -34,7 +27,6 @@ class ImportExportViewSet(ViewSet):
     }
 
     @action(detail=False, methods=["post"], url_path="export")
-    @HasPermission("operation_analysis-View")
     def export_objects(self, request):
         serializer = ExportRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -45,8 +37,9 @@ class ImportExportViewSet(ViewSet):
         object_ids = data["object_ids"]
 
         organization_id = getattr(request, "organization_id", 0)
+        current_team = self._get_current_team(request)
 
-        object_keys = self._convert_ids_to_keys(object_type, object_ids)
+        object_keys = self._convert_ids_to_keys(object_type, object_ids, current_team=current_team)
 
         result = ExportService.export_objects(
             scope_type=scope,
@@ -58,7 +51,6 @@ class ImportExportViewSet(ViewSet):
         return Response(result, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["post"], url_path="import/precheck")
-    @HasPermission("operation_analysis-Add")
     def import_precheck(self, request):
         serializer = ImportPrecheckRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -85,7 +77,6 @@ class ImportExportViewSet(ViewSet):
         return Response(result, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["post"], url_path="import/submit")
-    @HasPermission("operation_analysis-Add")
     def import_submit(self, request):
         serializer = ImportSubmitRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -153,23 +144,35 @@ class ImportExportViewSet(ViewSet):
 
         return Response(result, status=status.HTTP_200_OK)
 
-    def _convert_ids_to_keys(self, object_type: str, object_ids: list[int]) -> list[str]:
-        from apps.operation_analysis.models.models import Dashboard, Topology, Architecture
-        from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
+    def _convert_ids_to_keys(self, object_type: str, object_ids: list[int], current_team: int = None) -> list[str]:
         from apps.operation_analysis.constants.import_export import BUSINESS_KEY_SEPARATOR
+        from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
+        from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
 
         keys = []
         if object_type == ObjectType.DASHBOARD.value:
-            for obj in Dashboard.objects.filter(id__in=object_ids):
+            qs = Dashboard.objects.filter(id__in=object_ids)
+            if current_team is not None:
+                qs = qs.filter(groups__contains=current_team)
+            for obj in qs:
                 keys.append(f"{object_type}{BUSINESS_KEY_SEPARATOR}{obj.name}")
         elif object_type == ObjectType.TOPOLOGY.value:
-            for obj in Topology.objects.filter(id__in=object_ids):
+            qs = Topology.objects.filter(id__in=object_ids)
+            if current_team is not None:
+                qs = qs.filter(groups__contains=current_team)
+            for obj in qs:
                 keys.append(f"{object_type}{BUSINESS_KEY_SEPARATOR}{obj.name}")
         elif object_type == ObjectType.ARCHITECTURE.value:
-            for obj in Architecture.objects.filter(id__in=object_ids):
+            qs = Architecture.objects.filter(id__in=object_ids)
+            if current_team is not None:
+                qs = qs.filter(groups__contains=current_team)
+            for obj in qs:
                 keys.append(f"{object_type}{BUSINESS_KEY_SEPARATOR}{obj.name}")
         elif object_type == ObjectType.DATASOURCE.value:
-            for obj in DataSourceAPIModel.objects.filter(id__in=object_ids):
+            qs = DataSourceAPIModel.objects.filter(id__in=object_ids)
+            if current_team is not None:
+                qs = qs.filter(groups__contains=current_team)
+            for obj in qs:
                 keys.append(f"{obj.name}{BUSINESS_KEY_SEPARATOR}{obj.rest_api}")
         elif object_type == ObjectType.NAMESPACE.value:
             for obj in NameSpace.objects.filter(id__in=object_ids):
@@ -203,8 +206,8 @@ class ImportExportViewSet(ViewSet):
         return set(permissions)
 
     def _get_existing_object(self, object_type: ObjectType, item):
-        from apps.operation_analysis.models.models import Dashboard, Topology, Architecture
         from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
+        from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
 
         if object_type == ObjectType.DASHBOARD:
             return Dashboard.objects.filter(name=item.name).first()

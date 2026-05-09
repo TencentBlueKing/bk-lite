@@ -145,6 +145,7 @@
     "inputPassword": "Please input the password",
     "builtin": "Built-in",
     "mcp": "MCP",
+    "externalApp": "External App",
     "unreadNotifications": "Unread Notifications",
     "allNotifications": "All Notifications",
     "noMore": "No more",
