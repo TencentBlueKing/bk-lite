@@ -1,0 +1,38 @@
+场景名称: 工具失败自适应重试测试
+
+对应计划: Phase 1 — #25 自适应重试
+
+功能描述:
+  工具执行失败后自动重试，支持指数退避策略。
+  实现方式: RetryConfig 配置 max_retries_per_tool / retry_on_error_keywords / backoff_seconds，
+  logged_tool_node 中检测工具返回的错误内容是否匹配关键词，匹配则自动重试，
+  退避间隔为 base * 2^attempt。
+
+当前状态: 已实现
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py: logged_tool_node L1491-1496（重试循环 + 指数退避）
+  - server/apps/opspilot/metis/llm/chain/entity.py: RetryConfig L66-76（max_retries_per_tool=2, backoff_seconds=1.0, retry_on_error_keywords）
+
+测试用例:
+
+  TestToolRetryBasic:
+    1. 工具第一次失败第二次成功: 匹配 error_keywords 后自动重试一次，第二次成功
+    2. 工具连续失败超过重试上限: 重试 max_retries_per_tool 次后放弃，返回错误信息给 LLM
+    3. 工具成功不重试: 正常返回结果，不触发重试逻辑
+
+  TestToolRetryKeywordMatch:
+    4. 错误内容包含 retry_on_error_keywords 时触发重试: 如 "timeout", "connection", "500"
+    5. 错误内容不包含关键词时不重试: 直接返回错误给 LLM
+    6. 关键词匹配不区分大小写: "Timeout" 和 "TIMEOUT" 均匹配
+
+  TestToolRetryBackoff:
+    7. 指数退避间隔: 第 1 次重试等 backoff_seconds*2^0，第 2 次等 backoff_seconds*2^1
+    8. 可配置退避基数: backoff_seconds=0.5 时间隔更短
+
+  TestToolRetryDisabled:
+    9. enabled=False 时不重试: 工具失败直接返回错误
+    10. max_retries_per_tool=0 时不重试
+
+关联测试文件: cases/test_adaptive_retry.py
+状态: GREEN（功能已实现）

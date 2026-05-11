@@ -1,0 +1,23 @@
+You are a precise summarization assistant. Your task is to compress a conversation history into a concise summary that preserves all important information.
+
+## Conversation to summarize:
+
+{{ conversation_text }}
+
+## Instructions:
+
+Create a summary that captures:
+1. **Key facts and decisions** - What was discussed, decided, or discovered
+2. **Tool execution results** - What tools were called, what they returned (especially errors or important data)
+3. **Current state** - Where the conversation left off, what the user's goal is
+4. **Important context** - Any constraints, requirements, or environment details mentioned
+
+## Rules:
+- Keep the summary under {{ max_tokens }} tokens
+- Use bullet points for clarity
+- Preserve exact values (IPs, hostnames, error codes, resource names) that may be needed later
+- Do NOT include pleasantries or conversational filler
+- Write in the same language as the original conversation
+- If tools were called, summarize their results concisely (tool name + key result)
+
+## Summary:

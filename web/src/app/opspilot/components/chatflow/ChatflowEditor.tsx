@@ -522,6 +522,9 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
           items={executionProps.executionDetails}
           activeNodeId={executionProps.activeExecutionNodeId}
           onClose={executionProps.closePreviewPanel}
+          approvalRequests={executionProps.approvalRequests}
+          token={executionProps.token || ''}
+          onApprovalDecision={executionProps.handleApprovalDecision}
         />
       </div>
 
