@@ -7,16 +7,16 @@ import uuid
 import hashlib
 import json
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from django.utils import timezone
 
 from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
 from apps.alerts.common.shield import execute_shield_check_for_events
-from apps.alerts.constants.constants import LevelType, EventAction
+from apps.alerts.constants.constants import LevelType, EventAction, AlertStatus
 from apps.alerts.constants.init_data import INIT_ALERT_ENRICH
 from apps.alerts.models.sys_setting import SystemSetting
-from apps.alerts.models.models import Event, Level
+from apps.alerts.models.models import Alert, Event, Level
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.common.source_adapter import logger
 from apps.alerts.utils.util import split_list
@@ -159,6 +159,71 @@ class AlertSourceAdapter(ABC):
         )
         return hashlib.md5(components.encode("utf-8")).hexdigest()
 
+    @staticmethod
+    def _normalize_lookup_value(value) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    def resolve_recovery_external_id(self, event: Event) -> Optional[str]:
+        if event.action not in [EventAction.RECOVERY, EventAction.CLOSED]:
+            return None
+
+        item = self._normalize_lookup_value(event.item)
+        resource_name = self._normalize_lookup_value(event.resource_name)
+        resource_id = self._normalize_lookup_value(event.resource_id)
+        resource_type = self._normalize_lookup_value(event.resource_type)
+
+        if not item or not resource_name or resource_id or resource_type:
+            return None
+
+        candidate_alerts = (
+            Alert.objects.filter(
+                status__in=AlertStatus.ACTIVATE_STATUS,
+                events__source=self.alert_source,
+                events__item=item,
+                events__resource_name=resource_name,
+                events__action=EventAction.CREATED,
+            )
+            .prefetch_related("events__source")
+            .distinct()
+        )
+
+        matched_external_ids = []
+        for alert in candidate_alerts:
+            created_external_ids = {
+                existing_event.external_id
+                for existing_event in alert.events.all()
+                if existing_event.action == EventAction.CREATED
+                and existing_event.source_id == self.alert_source.id
+                and self._normalize_lookup_value(existing_event.item) == item
+                and self._normalize_lookup_value(existing_event.resource_name) == resource_name
+                and existing_event.external_id
+            }
+            if len(created_external_ids) == 1:
+                matched_external_ids.append(next(iter(created_external_ids)))
+
+        matched_external_ids = list(dict.fromkeys(matched_external_ids))
+
+        if len(matched_external_ids) == 1:
+            logger.info(
+                "Resolved recovery external_id from active alert: source_id=%s item=%s resource_name=%s",
+                self.alert_source.source_id,
+                item,
+                resource_name,
+            )
+            return matched_external_ids[0]
+
+        if len(matched_external_ids) > 1:
+            logger.warning(
+                "Ambiguous recovery external_id candidates, skip compatibility resolution: source_id=%s item=%s resource_name=%s",
+                self.alert_source.source_id,
+                item,
+                resource_name,
+            )
+
+        return None
+
     def add_base_fields(self, event: Event, alert: Dict[str, Any]):
         """添加基础字段"""
 
@@ -168,7 +233,7 @@ class AlertSourceAdapter(ABC):
         event.event_id = f"EVENT-{uuid.uuid4().hex}"
 
         if not event.external_id or not str(event.external_id).strip():
-            event.external_id = self.generate_external_id(
+            event.external_id = self.resolve_recovery_external_id(event) or self.generate_external_id(
                 event.item,
                 event.resource_id,
                 event.resource_name,

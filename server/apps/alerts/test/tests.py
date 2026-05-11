@@ -15,6 +15,7 @@ from apps.alerts.aggregation.builder.synthetic_alert_builder import (
 from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
 from apps.alerts.aggregation.strategy.matcher import StrategyMatcher
 from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
+from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
 from apps.alerts.nats.nats import receive_alert_events
 from apps.alerts.constants import (
     AlertStatus,
@@ -867,6 +868,42 @@ class AlertSourceIngressTestCase(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(Event.objects.count(), 0)
 
+    def test_receiver_rejects_ineffective_source(self):
+        source = AlertSource.objects.create(
+            name="RESTful Ineffective",
+            source_id="rest-ineffective",
+            source_type=AlertsSourceTypes.RESTFUL,
+            secret="rest-secret",
+            is_effective=False,
+            config={
+                "event_fields_mapping": {
+                    "title": "title",
+                    "level": "level",
+                    "start_time": "start_time",
+                }
+            },
+        )
+
+        response = self.client.post(
+            f"/api/v1/alerts/api/source/{source.source_id}/webhook/",
+            data=json.dumps(
+                {
+                    "events": [
+                        {
+                            "title": "ineffective-source-event",
+                            "level": "3",
+                            "start_time": str(int(timezone.now().timestamp())),
+                        }
+                    ]
+                }
+            ),
+            content_type="application/json",
+            HTTP_SECRET="rest-secret",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Event.objects.count(), 0)
+
     def test_default_external_id_distinguishes_resource_identity(self):
         source = AlertSource.objects.create(
             name="RESTful Source",
@@ -1024,6 +1061,7 @@ class RecoveryFallbackTestCase(TestCase):
             description="",
             level_type=LevelType.EVENT,
         )
+        self.adapter_class = AlertSourceAdapterFactory.get_adapter(self.source)
 
     def create_event(self, event_id, action, external_id, received_at, **kwargs):
         event = Event.objects.create(
@@ -1104,6 +1142,40 @@ class RecoveryFallbackTestCase(TestCase):
 
         self.assertTrue(alert.events.filter(event_id="EVENT-RECOVERY-1").exists())
 
+    def test_recovery_event_reuses_created_external_id_when_legacy_match_is_unique(self):
+        created_at = timezone.now() - timedelta(minutes=1)
+        created_event = self.create_event(
+            "EVENT-CREATED-COMPAT-1",
+            EventAction.CREATED,
+            "legacy-created-id",
+            created_at,
+            item="cpu_usage",
+            resource_id="service-1",
+            resource_type="service",
+            resource_name="shared-name",
+        )
+        alert = self.create_alert("ALERT-COMPAT-1", AlertStatus.UNASSIGNED, created_event)
+
+        adapter = self.adapter_class(alert_source=self.source)
+        recovery_event = Event(
+            title="cpu high",
+            description="cpu recovered",
+            level="3",
+            start_time=timezone.now(),
+            action=EventAction.RECOVERY,
+            item="cpu_usage",
+            resource_name="shared-name",
+        )
+
+        adapter.add_base_fields(recovery_event, {"action": "recovery"})
+        self.assertEqual(recovery_event.external_id, "legacy-created-id")
+
+        recovery_event.save()
+        RecoveryHandler.handle_recovery_events([recovery_event])
+        alert.refresh_from_db()
+
+        self.assertTrue(alert.events.filter(event_id=recovery_event.event_id).exists())
+
     def test_recovery_fallback_skips_ambiguous_candidates(self):
         created_at = timezone.now() - timedelta(minutes=2)
         created_event_one = self.create_event(
@@ -1142,6 +1214,74 @@ class RecoveryFallbackTestCase(TestCase):
 
         self.assertFalse(alert_one.events.filter(event_id="EVENT-RECOVERY-2").exists())
         self.assertFalse(alert_two.events.filter(event_id="EVENT-RECOVERY-2").exists())
+
+    def test_recovery_event_does_not_resolve_external_id_when_legacy_match_is_ambiguous(self):
+        created_at = timezone.now() - timedelta(minutes=2)
+        created_event_one = self.create_event(
+            "EVENT-CREATED-COMPAT-2A",
+            EventAction.CREATED,
+            "legacy-created-id-a",
+            created_at,
+            item="cpu_usage",
+            resource_id="service-1",
+            resource_type="service",
+            resource_name="shared-name",
+        )
+        created_event_two = self.create_event(
+            "EVENT-CREATED-COMPAT-2B",
+            EventAction.CREATED,
+            "legacy-created-id-b",
+            created_at + timedelta(seconds=1),
+            item="cpu_usage",
+            resource_id="service-2",
+            resource_type="service",
+            resource_name="shared-name",
+        )
+        self.create_alert("ALERT-COMPAT-2A", AlertStatus.UNASSIGNED, created_event_one)
+        self.create_alert("ALERT-COMPAT-2B", AlertStatus.PROCESSING, created_event_two)
+
+        adapter = self.adapter_class(alert_source=self.source)
+        recovery_event = Event(
+            title="cpu high",
+            description="cpu recovered",
+            level="3",
+            start_time=timezone.now(),
+            action=EventAction.RECOVERY,
+            item="cpu_usage",
+            resource_name="shared-name",
+        )
+
+        adapter.add_base_fields(recovery_event, {"action": "recovery"})
+
+        self.assertNotIn(recovery_event.external_id, {"legacy-created-id-a", "legacy-created-id-b"})
+
+    def test_recovery_event_keeps_explicit_external_id(self):
+        created_at = timezone.now() - timedelta(minutes=1)
+        created_event = self.create_event(
+            "EVENT-CREATED-COMPAT-3",
+            EventAction.CREATED,
+            "explicit-id",
+            created_at,
+            item="cpu_usage",
+            resource_id="service-1",
+            resource_type="service",
+            resource_name="shared-name",
+        )
+        alert = self.create_alert("ALERT-COMPAT-3", AlertStatus.UNASSIGNED, created_event)
+        recovery_event = self.create_event(
+            "EVENT-RECOVERY-COMPAT-3",
+            EventAction.RECOVERY,
+            "explicit-id",
+            timezone.now(),
+            item="cpu_usage",
+            resource_name="shared-name",
+            raw_data={"action": "recovery"},
+        )
+
+        RecoveryHandler.handle_recovery_events([recovery_event])
+        alert.refresh_from_db()
+
+        self.assertTrue(alert.events.filter(event_id="EVENT-RECOVERY-COMPAT-3").exists())
 
     def test_integration_guide_returns_prometheus_template(self):
         source = AlertSource.objects.create(
