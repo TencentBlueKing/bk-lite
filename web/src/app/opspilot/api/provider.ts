@@ -22,6 +22,10 @@ export const useProviderApi = () => {
     return get(`/opspilot/model_provider_mgmt/${type}/`, params ? { params } : undefined);
   };
 
+  const fetchModelsByVendor = async (type: string, vendorId: number): Promise<Model[]> => {
+    return get(`/opspilot/model_provider_mgmt/${type}/by_vendor/`, { params: { vendor: vendorId } });
+  };
+
   const fetchModelDetail = async (type: string, id: number): Promise<Model> => {
     return get(`/opspilot/model_provider_mgmt/${type}/${id}/`);
   };
@@ -94,6 +98,7 @@ export const useProviderApi = () => {
 
   return {
     fetchModels,
+    fetchModelsByVendor,
     fetchModelDetail,
     addProvider,
     updateProvider,
