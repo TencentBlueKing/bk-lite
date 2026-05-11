@@ -3,6 +3,7 @@ import os
 import uuid
 
 import requests
+from django.core.cache import cache
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import node_logger as logger
@@ -12,25 +13,50 @@ from apps.node_mgmt.models.cloud_region import CloudRegion
 from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
 from apps.node_mgmt.constants.database import CloudRegionConstants, EnvVariableConstants
 from apps.node_mgmt.constants.node import NodeConstants
+from apps.node_mgmt.constants.controller import ControllerConstants
+from apps.node_mgmt.services.sidecar_cache import build_sidecar_env_cache_key, invalidate_sidecar_env_cache
 from apps.node_mgmt.utils.token_auth import generate_node_token
 
 
 class RegionService:
     @staticmethod
-    def get_cloud_region_envconfig(cloud_region_id):
-        """获取云区域环境变量"""
-        objs = SidecarEnv.objects.filter(cloud_region_id=cloud_region_id)
+    def _decode_env_rows(env_rows, keys=None):
         variables = {}
-        for obj in objs:
-            if obj.type == "secret":
-                # 如果是密文，解密后使用
-                aes_obj = AESCryptor()
-                value = aes_obj.decode(obj.value)
-                variables[obj.key] = value
+        selected_keys = set(keys) if keys is not None else None
+        aes_obj = AESCryptor()
+        for env_row in env_rows:
+            if selected_keys is not None and env_row["key"] not in selected_keys:
+                continue
+
+            if env_row["type"] == "secret":
+                try:
+                    variables[env_row["key"]] = aes_obj.decode(env_row["value"])
+                except Exception as error:
+                    logger.warning(
+                        "Failed to decode cloud region secret env %s for cloud region cache read: %s",
+                        env_row["key"],
+                        error,
+                    )
+                    variables[env_row["key"]] = env_row["value"]
             else:
-                # 如果是普通变量，直接使用
-                variables[obj.key] = obj.value
+                variables[env_row["key"]] = env_row["value"]
         return variables
+
+    @staticmethod
+    def _get_cloud_region_env_rows(cloud_region_id):
+        """获取云区域环境变量"""
+        cache_key = build_sidecar_env_cache_key(cloud_region_id)
+        cached_env_rows = cache.get(cache_key)
+        if cached_env_rows is not None:
+            return cached_env_rows
+
+        env_rows = list(SidecarEnv.objects.filter(cloud_region_id=cloud_region_id).values("key", "value", "type"))
+        cache.set(cache_key, env_rows, ControllerConstants.E_CACHE_TIMEOUT)
+        return env_rows
+
+    @staticmethod
+    def get_cloud_region_envconfig(cloud_region_id, keys=None):
+        return RegionService._decode_env_rows(RegionService._get_cloud_region_env_rows(cloud_region_id), keys=keys)
 
     @staticmethod
     def get_deploy_script(data: dict):
@@ -392,6 +418,8 @@ class RegionService:
 
             # 使用 bulk_create 批量创建，ignore_conflicts=True 避免重复创建
             created_count = len(SidecarEnv.objects.bulk_create(new_env_vars, ignore_conflicts=True))
+            if created_count:
+                invalidate_sidecar_env_cache([cloud_region_id])
             created_count += RegionService.sync_proxy_related_env_vars(
                 cloud_region_id=cloud_region_id,
                 old_proxy_address=proxy_address,

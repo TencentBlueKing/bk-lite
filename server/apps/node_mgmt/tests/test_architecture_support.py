@@ -1,3 +1,4 @@
+import base64
 import json
 from io import StringIO
 from queue import Queue
@@ -32,16 +33,19 @@ from apps.node_mgmt.serializers.package import PackageVersionSerializer
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
 from apps.node_mgmt.services.package import PackageService
+from apps.node_mgmt.services.cloudregion import RegionService
 from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.services.version_upgrade import VersionUpgradeService
 from apps.node_mgmt.tasks import installer as installer_tasks
 from apps.node_mgmt.tasks.version_discovery import _calculate_upgrade_info
 from apps.node_mgmt.utils import permission as node_permission
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
+from apps.node_mgmt.utils.token_auth import generate_node_token
 from apps.node_mgmt.views import collector_configuration, node as node_view
 from apps.node_mgmt.views.collector import CollectorViewSet
 from apps.node_mgmt.views.installer import InstallerViewSet
 from apps.node_mgmt.views.sidecar import OpenSidecarViewSet
+from config.components.drf import AUTH_TOKEN_HEADER_NAME
 
 
 def _build_admin_user():
@@ -131,6 +135,18 @@ def _make_node_request(data=None, method="post"):
     request.COOKIES["include_children"] = "0"
     force_authenticate(request, user=_build_admin_user())
     return request
+
+
+def _build_sidecar_request(method, path, *, query_params=None, headers=None):
+    factory = APIRequestFactory()
+    request_factory = getattr(factory, method)
+    return request_factory(path, query_params or {}, format="json", **(headers or {}))
+
+
+def _build_sidecar_auth_header(node_id):
+    token = generate_node_token(node_id, "127.0.0.1", "tester")
+    basic_token = base64.b64encode(f"{token}:unused".encode("utf-8")).decode("utf-8")
+    return {AUTH_TOKEN_HEADER_NAME: f"Basic {basic_token}"}
 
 
 @pytest.mark.parametrize(
@@ -998,6 +1014,506 @@ def test_update_node_client_updates_architecture_without_rebinding_existing_defa
     assert response.status_code == 202
     assert node.cpu_architecture == NodeConstants.ARM64_ARCH
     assert telegraf_config.collector_id == generic_telegraf.id
+
+
+@pytest.mark.django_db
+def test_sidecar_configuration_endpoint_rejects_foreign_configuration_access():
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-authz-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    collector = Collector.objects.create(
+        id="collector-sidecar-authz-render",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node_a = Node.objects.create(
+        id="node-sidecar-authz-a",
+        name="node-sidecar-authz-a",
+        ip="10.0.0.41",
+        operating_system=NodeConstants.LINUX_OS,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    node_b = Node.objects.create(
+        id="node-sidecar-authz-b",
+        name="node-sidecar-authz-b",
+        ip="10.0.0.42",
+        operating_system=NodeConstants.LINUX_OS,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    foreign_config = CollectorConfiguration.objects.create(
+        id="cfg-sidecar-foreign-render",
+        name="cfg-sidecar-foreign-render",
+        collector=collector,
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    foreign_config.nodes.add(node_b)
+
+    view = OpenSidecarViewSet.as_view({"get": "configuration"})
+    request = _build_sidecar_request(
+        "get",
+        f"/node/sidecar/configurations/render/{node_a.id}/{foreign_config.id}",
+        headers=_build_sidecar_auth_header(node_a.id),
+    )
+
+    response = view(request, node_id=node_a.id, configuration_id=foreign_config.id)
+
+    assert response.status_code == 404
+    assert _json_response_data(response)["error"] == "Configuration not found"
+
+
+@pytest.mark.django_db
+def test_sidecar_env_endpoint_rejects_foreign_configuration_access():
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-authz-env-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    collector = Collector.objects.create(
+        id="collector-sidecar-authz-env",
+        name="TelegrafEnv",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node_a = Node.objects.create(
+        id="node-sidecar-env-a",
+        name="node-sidecar-env-a",
+        ip="10.0.0.43",
+        operating_system=NodeConstants.LINUX_OS,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    node_b = Node.objects.create(
+        id="node-sidecar-env-b",
+        name="node-sidecar-env-b",
+        ip="10.0.0.44",
+        operating_system=NodeConstants.LINUX_OS,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    aes = AESCryptor()
+    foreign_config = CollectorConfiguration.objects.create(
+        id="cfg-sidecar-foreign-env",
+        name="cfg-sidecar-foreign-env",
+        collector=collector,
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        env_config={"DB_PASSWORD": aes.encode("secret")},
+        created_by="tester",
+        updated_by="tester",
+    )
+    foreign_config.nodes.add(node_b)
+
+    view = OpenSidecarViewSet.as_view({"get": "configuration_env"})
+    request = _build_sidecar_request(
+        "get",
+        f"/node/sidecar/env_config/{node_a.id}/{foreign_config.id}",
+        headers=_build_sidecar_auth_header(node_a.id),
+    )
+
+    response = view(request, node_id=node_a.id, configuration_id=foreign_config.id)
+
+    assert response.status_code == 404
+    assert _json_response_data(response)["error"] == "Configuration not found"
+
+
+@pytest.mark.django_db
+def test_sidecar_configuration_endpoint_rejects_old_configuration_after_unbind():
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-unbind-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    collector = Collector.objects.create(
+        id="collector-sidecar-unbind",
+        name="TelegrafUnbind",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-sidecar-unbind",
+        name="node-sidecar-unbind",
+        ip="10.0.0.45",
+        operating_system=NodeConstants.LINUX_OS,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    config = CollectorConfiguration.objects.create(
+        id="cfg-sidecar-unbind",
+        name="cfg-sidecar-unbind",
+        collector=collector,
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    config.nodes.add(node)
+
+    view = OpenSidecarViewSet.as_view({"get": "configuration"})
+    headers = _build_sidecar_auth_header(node.id)
+    first_request = _build_sidecar_request(
+        "get",
+        f"/node/sidecar/configurations/render/{node.id}/{config.id}",
+        headers=headers,
+    )
+    first_response = view(first_request, node_id=node.id, configuration_id=config.id)
+    assert first_response.status_code == 200
+    cached_etag = first_response["ETag"]
+
+    config.nodes.remove(node)
+
+    second_request = _build_sidecar_request(
+        "get",
+        f"/node/sidecar/configurations/render/{node.id}/{config.id}",
+        headers={**headers, "HTTP_IF_NONE_MATCH": cached_etag},
+    )
+    second_response = view(second_request, node_id=node.id, configuration_id=config.id)
+
+    assert second_response.status_code == 404
+    assert _json_response_data(second_response)["error"] == "Configuration not found"
+
+
+@pytest.mark.django_db
+def test_sidecar_render_304_path_checks_binding_without_full_object_fetch(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-304-query-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    collector = Collector.objects.create(
+        id="collector-sidecar-304-query",
+        name="Telegraf304",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-sidecar-304-query",
+        name="node-sidecar-304-query",
+        ip="10.0.0.46",
+        operating_system=NodeConstants.LINUX_OS,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    config = CollectorConfiguration.objects.create(
+        id="cfg-sidecar-304-query",
+        name="cfg-sidecar-304-query",
+        collector=collector,
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    config.nodes.add(node)
+
+    assignment_checks = []
+    object_fetches = []
+    cache_store = {}
+
+    original_bound_check = Sidecar.configuration_bound_to_node
+    original_bound_assignment = Sidecar.get_bound_assignment_or_404
+
+    def wrapped_bound_check(node_id, configuration_id):
+        assignment_checks.append((node_id, configuration_id))
+        return original_bound_check(node_id, configuration_id)
+
+    def wrapped_bound_assignment(*args, **kwargs):
+        object_fetches.append((args, kwargs))
+        return original_bound_assignment(*args, **kwargs)
+
+    monkeypatch.setattr(Sidecar, "configuration_bound_to_node", wrapped_bound_check)
+    monkeypatch.setattr(Sidecar, "get_bound_assignment_or_404", wrapped_bound_assignment)
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.sidecar.cache",
+        SimpleNamespace(
+            get=lambda key: cache_store.get(key),
+            set=lambda key, value, timeout: cache_store.__setitem__(key, value),
+        ),
+    )
+
+    view = OpenSidecarViewSet.as_view({"get": "configuration"})
+    headers = _build_sidecar_auth_header(node.id)
+    first_request = _build_sidecar_request(
+        "get",
+        f"/node/sidecar/configurations/render/{node.id}/{config.id}",
+        headers=headers,
+    )
+    first_response = view(first_request, node_id=node.id, configuration_id=config.id)
+    assert first_response.status_code == 200
+
+    second_request = _build_sidecar_request(
+        "get",
+        f"/node/sidecar/configurations/render/{node.id}/{config.id}",
+        headers=headers,
+    )
+    second_request.META["HTTP_IF_NONE_MATCH"] = first_response["ETag"]
+    second_response = view(second_request, node_id=node.id, configuration_id=config.id)
+
+    assert second_response.status_code == 304
+    assert assignment_checks == [(node.id, config.id)]
+    assert len(object_fetches) == 1
+
+
+@pytest.mark.django_db
+def test_sidecar_configuration_env_reuses_cached_cloud_region_env(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-env-cache-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    collector = Collector.objects.create(
+        id="collector-sidecar-env-cache",
+        name="TelegrafEnvCache",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-sidecar-env-cache",
+        name="node-sidecar-env-cache",
+        ip="10.0.0.47",
+        operating_system=NodeConstants.LINUX_OS,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    aes = AESCryptor()
+    config = CollectorConfiguration.objects.create(
+        id="cfg-sidecar-env-cache",
+        name="cfg-sidecar-env-cache",
+        collector=collector,
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        env_config={"DB_PASSWORD": aes.encode("cfg-secret")},
+        created_by="tester",
+        updated_by="tester",
+    )
+    config.nodes.add(node)
+    SidecarEnv.objects.create(
+        key=NodeConstants.NATS_PASSWORD_KEY,
+        value=aes.encode("region-secret"),
+        type="secret",
+        cloud_region=cloud_region,
+    )
+
+    original_env_loader = RegionService.get_cloud_region_envconfig
+    env_loader_calls = []
+
+    def wrapped_env_loader(cloud_region_id, keys=None):
+        env_loader_calls.append((cloud_region_id, tuple(keys) if keys is not None else None))
+        return original_env_loader(cloud_region_id, keys=keys)
+
+    monkeypatch.setattr(RegionService, "get_cloud_region_envconfig", wrapped_env_loader)
+
+    view = OpenSidecarViewSet.as_view({"get": "configuration_env"})
+    request = _build_sidecar_request(
+        "get",
+        f"/node/sidecar/env_config/{node.id}/{config.id}",
+        headers=_build_sidecar_auth_header(node.id),
+    )
+
+    response = view(request, node_id=node.id, configuration_id=config.id)
+
+    assert response.status_code == 200
+    payload = _json_response_data(response)
+    assert payload["env_config"][NodeConstants.NATS_PASSWORD_KEY] == "region-secret"
+    assert payload["env_config"]["DB_PASSWORD"] == "cfg-secret"
+    assert env_loader_calls == [(cloud_region.id, tuple(NodeConstants.CLOUD_REGION_NATS_SECRET_KEYS))]
+
+
+@pytest.mark.django_db
+def test_sidecar_configuration_env_ignores_unrelated_bad_cloud_region_secret(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-env-cache-bad-secret-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    collector = Collector.objects.create(
+        id="collector-sidecar-env-cache-bad-secret",
+        name="TelegrafEnvCacheBadSecret",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-sidecar-env-cache-bad-secret",
+        name="node-sidecar-env-cache-bad-secret",
+        ip="10.0.0.48",
+        operating_system=NodeConstants.LINUX_OS,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    aes = AESCryptor()
+    config = CollectorConfiguration.objects.create(
+        id="cfg-sidecar-env-cache-bad-secret",
+        name="cfg-sidecar-env-cache-bad-secret",
+        collector=collector,
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        env_config={"DB_PASSWORD": aes.encode("cfg-secret")},
+        created_by="tester",
+        updated_by="tester",
+    )
+    config.nodes.add(node)
+    SidecarEnv.objects.create(
+        key=NodeConstants.NATS_PASSWORD_KEY,
+        value=aes.encode("region-secret"),
+        type="secret",
+        cloud_region=cloud_region,
+    )
+    SidecarEnv.objects.create(
+        key="UNRELATED_SECRET",
+        value="not-valid-ciphertext",
+        type="secret",
+        cloud_region=cloud_region,
+    )
+
+    decode_calls = []
+    original_decode_rows = RegionService._decode_env_rows
+
+    def wrapped_decode_rows(env_rows, keys=None):
+        decode_calls.append(set(keys) if keys is not None else None)
+        return original_decode_rows(env_rows, keys=keys)
+
+    monkeypatch.setattr(RegionService, "_decode_env_rows", wrapped_decode_rows)
+
+    view = OpenSidecarViewSet.as_view({"get": "configuration_env"})
+    request = _build_sidecar_request(
+        "get",
+        f"/node/sidecar/env_config/{node.id}/{config.id}",
+        headers=_build_sidecar_auth_header(node.id),
+    )
+
+    response = view(request, node_id=node.id, configuration_id=config.id)
+
+    assert response.status_code == 200
+    payload = _json_response_data(response)
+    assert payload["env_config"][NodeConstants.NATS_PASSWORD_KEY] == "region-secret"
+    assert payload["env_config"]["DB_PASSWORD"] == "cfg-secret"
+    assert decode_calls == [set(NodeConstants.CLOUD_REGION_NATS_SECRET_KEYS)]
 
 
 @pytest.mark.django_db
