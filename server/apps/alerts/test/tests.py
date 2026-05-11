@@ -31,6 +31,7 @@ from apps.alerts.constants import (
 from apps.alerts.constants.constants import IncidentStatus, LogAction, LogTargetType
 from apps.alerts.models import Alert, AlertSource, AlarmStrategy, Event, Level, OperatorLog
 from apps.alerts.models.models import Incident
+from apps.alerts.serializers.event import EventModelSerializer
 from apps.alerts.serializers.incident import IncidentModelSerializer
 from apps.alerts.serializers.alert_source import AlertSourceModelSerializer
 from apps.alerts.serializers.strategy import AlarmStrategySerializer
@@ -1413,6 +1414,17 @@ class IncidentQueryPathTestCase(TestCase):
         self.assertEqual(data[0]["alert_count"], 2)
         self.assertEqual(data[0]["sources"], "test-source")
         self.assertEqual(data[0]["operator_users"], "事故处理人")
+
+    def test_event_serializer_uses_select_related_source_from_viewset_queryset(self):
+        event = self.create_event("EVENT-SOURCE", "event-source")
+
+        viewset = EventModelViewSet()
+        queryset = list(viewset.get_queryset().filter(pk=event.pk))
+
+        with self.assertNumQueries(0):
+            data = EventModelSerializer(queryset, many=True).data
+
+        self.assertEqual(data[0]["source_name"], "test-source")
 
 
 class AlertPermissionScopeTestCase(TestCase):
