@@ -1063,7 +1063,10 @@ def reset_pwd(username, domain, password):
 
     会进行密码复杂度校验
     """
-    user = User.objects.filter(username=username).first()
+    filter_kwargs = {"username": username}
+    if domain:
+        filter_kwargs["domain"] = domain
+    user = User.objects.filter(**filter_kwargs).first()
     if not user:
         return {"result": False, "message": "Username not exists"}
 
