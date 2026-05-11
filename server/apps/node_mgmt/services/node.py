@@ -292,8 +292,11 @@ class NodeService:
             configuration.nodes.add(node)
             logger.info(f"Created default configuration for node {node.id} and collector {collector.name}")
 
+        except BaseAppException:
+            raise
         except Exception as e:
             logger.error(f"Failed to create default config for node {node.id} and collector {collector.name}: {e}")
+            raise BaseAppException(f"节点 {node.id} 自动创建 {collector.name} 父配置失败: {e}") from e
 
     @staticmethod
     def get_node_list(

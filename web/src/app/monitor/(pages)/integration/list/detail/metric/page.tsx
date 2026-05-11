@@ -389,6 +389,11 @@ const Configure = () => {
     setDraggingItemId(id);
   };
 
+  const onDragEnd = () => {
+    setDraggingItemId(null);
+    setDragOverTargetId(null);
+  };
+
   const onDragOver = (e: React.DragEvent<HTMLDivElement>, targetId: string) => {
     if (draggingItemId) {
       e.preventDefault();
@@ -526,7 +531,9 @@ const Configure = () => {
                 }`}
                 key={metricItem.id}
                 sortable
+                dragHandleOnly
                 onDragStart={(e) => onDragStart(e, metricItem.id)}
+                onDragEnd={onDragEnd}
                 onDragOver={(e) => onDragOver(e, metricItem.id)}
                 onDrop={(e) => onDrop(e, metricItem.id)}
                 title={metricItem.display_name || ''}

@@ -104,6 +104,7 @@ class QCloudCollectionPlugin(AutoRegisterCollectionPluginMixin, QCloudCollectMet
             "resource_id": "resource_id",
             "tld": "tld",
             "status": "status",
+            "expired_time": "expired_time",
         },
         "qcloud_eip": {
             "inst_name": QCloudCollectMetrics.set_instance_inst_name,
@@ -183,7 +184,7 @@ class QCloudCollectionPlugin(AutoRegisterCollectionPluginMixin, QCloudCollectMet
             "region": "region",
             "zone": "zone",
             "status": "status",
-            "chartset": "chartset",
+            "chartset": "charset",
             "engine": "engine",
             "mode": "mode",
             "version": "version",
@@ -193,7 +194,7 @@ class QCloudCollectionPlugin(AutoRegisterCollectionPluginMixin, QCloudCollectMet
             "volume_mb": "volume_mb",
             "charge_type": "charge_type",
         },
-        "qcloud_pulsar_cluster": {
+        "qcloud_plusar_cluster": {
             "inst_name": QCloudCollectMetrics.set_instance_inst_name,
             "assos": QCloudCollectMetrics.set_asso_instances,
             "resource_name": "resource_name",
@@ -249,7 +250,9 @@ class QCloudCollectionPlugin(AutoRegisterCollectionPluginMixin, QCloudCollectMet
             "used_topic_num": (int, "used_topic_num"),
             "tpsper_name_space": (int, "tpsper_name_space"),
             "name_space_num": (int, "name_space_num"),
+            "used_name_space_num": (int, "used_name_space_num"),
             "group_num": (int, "group_num"),
+            "used_group_num": (int, "used_group_num"),
         },
     }
 

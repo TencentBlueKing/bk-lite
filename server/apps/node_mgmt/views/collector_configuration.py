@@ -1,21 +1,19 @@
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import action
 
-from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
-from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models.sidecar import CollectorConfiguration, Node
 from apps.node_mgmt.serializers.collector_configuration import (
     CollectorConfigurationSerializer,
     CollectorConfigurationCreateSerializer,
     CollectorConfigurationUpdateSerializer,
     BulkDeleteConfigurationSerializer,
-    ApplyToNodeSerializer,
 )
 from apps.node_mgmt.filters.collector_configuration import CollectorConfigurationFilter
 from apps.node_mgmt.services.collector_configuration import (
     CollectorConfigurationService,
 )
+from apps.node_mgmt.utils.permission import authorize_node_ids, get_authorized_node_queryset
 
 
 class CollectorConfigurationViewSet(ModelViewSet):
@@ -34,24 +32,11 @@ class CollectorConfigurationViewSet(ModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="config_node_asso")
     def get_config_node_asso(self, request):
-        # 获取用户节点权限列表
-        include_children = request.COOKIES.get("include_children", "0") == "1"
-        permission = get_permission_rules(
-            request.user,
-            request.COOKIES.get("current_team"),
-            "node_mgmt",
-            NodeConstants.MODULE,
-            include_children=include_children,
-        )
-        queryset = permission_filter(
-            Node,
-            permission,
-            team_key="nodeorganization__organization__in",
-            id_key="id__in",
-        )
-        node_ids = list(queryset.values_list("id", flat=True).distinct())
+        queryset = get_authorized_node_queryset(request)
+        node_ids = list(queryset.distinct().values_list("id", flat=True))
         if not node_ids:
             return WebUtils.response_success([])
+        authorized_node_ids = set(node_ids)
 
         qs = (
             CollectorConfiguration.objects.select_related("collector")
@@ -88,6 +73,7 @@ class CollectorConfigurationViewSet(ModelViewSet):
                         "operating_system": node.operating_system,
                     }
                     for node in obj.nodes.all()
+                    if node.id in authorized_node_ids
                 ],
             )
             for obj in qs
@@ -121,6 +107,11 @@ class CollectorConfigurationViewSet(ModelViewSet):
 
     @action(methods=["post"], detail=False, url_path="apply_to_node")
     def apply_to_node(self, request):
+        node_ids = [item["node_id"] for item in request.data]
+        _, error_response = authorize_node_ids(request, node_ids)
+        if error_response:
+            return error_response
+
         result = []
         for item in request.data:
             collector_configuration_id = item["collector_configuration_id"]
@@ -141,6 +132,9 @@ class CollectorConfigurationViewSet(ModelViewSet):
     def cancel_apply_to_node(self, request):
         config_id = request.data["collector_configuration_id"]
         node_id = request.data["node_id"]
+        _, error_response = authorize_node_ids(request, [node_id])
+        if error_response:
+            return error_response
         try:
             config = CollectorConfiguration.objects.get(id=config_id)
             node = Node.objects.get(id=node_id)

@@ -17,6 +17,8 @@ CMDB CQL查询测试类
 
 import os
 import sys
+import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 # 检查是否在Django环境中
@@ -34,6 +36,23 @@ if __name__ == "__main__":
 
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.core.logger import cmdb_logger as logger
+
+
+def _make_cmdb_request(username="alice", groups=None):
+    groups = groups or [{"id": 1}]
+    return SimpleNamespace(
+        user=SimpleNamespace(
+            username=username,
+            group_list=groups,
+            group_tree=[],
+            roles=[],
+            permission={"asset_info-View"},
+            is_superuser=False,
+            locale="zh-Hans",
+        ),
+        COOKIES={"current_team": str(groups[0]["id"]), "include_children": "0"},
+        api_pass=False,
+    )
 
 
 def test_import_model_config_applies_shared_post_import_extras():
@@ -74,6 +93,40 @@ def test_model_init_reuses_shared_post_import_extras():
         mock_migrator_cls.assert_called_once_with()
         mock_migrator.main.assert_called_once_with()
         mock_apply_extras.assert_called_once_with(mock_migrator.model_config)
+
+
+def test_instance_association_instance_list_denies_user_without_object_permission():
+    from apps.cmdb.views.instance import InstanceViewSet
+
+    request = _make_cmdb_request(username="alice")
+    instance = {
+        "_id": 1001,
+        "model_id": "host",
+        "inst_name": "host-a",
+        "organization": [1],
+        "_creator": "bob",
+    }
+
+    with patch(
+        "apps.cmdb.views.instance.InstanceManage.query_entity_by_id",
+        return_value=instance,
+    ), patch.object(
+        InstanceViewSet,
+        "check_instance_permission",
+        return_value=False,
+    ) as mock_check_permission, patch(
+        "apps.cmdb.views.instance.InstanceManage.instance_association_instance_list"
+    ) as mock_association_list:
+        response = InstanceViewSet().instance_association_instance_list(
+            request,
+            "host",
+            1001,
+        )
+
+    assert response.status_code == 403
+    assert json.loads(response.content)["result"] is False
+    mock_check_permission.assert_called_once()
+    mock_association_list.assert_not_called()
 
 
 class CQLQueryTest:

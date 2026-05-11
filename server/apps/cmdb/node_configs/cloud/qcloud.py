@@ -27,17 +27,31 @@ class QCloudNodeParams(BaseNodeParams):
         }
 
     def env_config(self, *args, **kwargs):
+        secret_value = self.credential.get("accessSecret") or self.credential.get("access_secret", "")
         env_config = {
             f"PASSWORD_secret_id_{self._instance_id}": self.credential.get("accessKey", ""),
-            f"PASSWORD_secret_key_{self._instance_id}": self.credential.get("secretSecret", ""),
+            f"PASSWORD_secret_key_{self._instance_id}": secret_value,
         }
         return env_config
+
+    @classmethod
+    def build_region_credential(cls, raw_credential):
+        """
+        {"model_id":"qcloud",
+        "cloud_id":1,
+        "access_key":"AKID5SmwvhSinodHixv4BF",
+        "access_secret":"5762zpOSM5dz84vsla"}
+
+        """
+        raw_credential = raw_credential or {}
+        access_key = raw_credential.pop("access_key", None)
+        access_secret = raw_credential.pop("access_secret", None)
+        return {
+            "secret_id": access_key or raw_credential.get("accessKey", ""),
+            "secret_key": access_secret or raw_credential.get("accessSecret"),
+        }
 
     @property
     def password(self):
         # 返回腾讯云的密码数据
-        password_data = {
-            "secret_id": self.credential.get("accessKey", ""),
-            "secret_key": self.credential.get("secretSecret", ""),
-        }
-        return password_data
+        return self.build_region_credential(self.credential)

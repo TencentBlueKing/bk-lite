@@ -10,6 +10,32 @@ import ComTable from '../widgets/comTable';
 import Msgtable from '../widgets/msgTable';
 import ComSingle from '../widgets/comSingle';
 import ComSankey from '../widgets/comSankey';
+import ComHeatmap from '../widgets/comHeatmap';
+import ComKpiCard from '../widgets/comKpiCard';
+import ComBarLine from '../widgets/comBarLine';
+import ComScatter from '../widgets/comScatter';
+import {
+  DockerKpiCard,
+  DockerAreaChart,
+  DockerDonutChart,
+  DockerErrorTable,
+  DockerBarChart,
+  DockerLogTail
+} from '../widgets/docker';
+import {
+  HttpKpiCard,
+  HttpBarLine,
+  HttpDonut,
+  HttpRequestTable
+} from '../widgets/http';
+import {
+  FlowKpiCard,
+  FlowTrend,
+  FlowDonut,
+  FlowBar,
+  FlowTable,
+  FlowSankey
+} from '../widgets/flows';
 import { SearchParams } from '@/app/log/types/search';
 
 const buildInstanceFilterQuery = (
@@ -65,7 +91,27 @@ const componentMap: Record<string, React.ComponentType<any>> = {
   table: ComTable,
   message: Msgtable,
   single: ComSingle,
-  sankey: ComSankey
+  sankey: ComSankey,
+  heatmap: ComHeatmap,
+  kpiCard: ComKpiCard,
+  barLine: ComBarLine,
+  scatter: ComScatter,
+  dockerKpiCard: DockerKpiCard,
+  dockerArea: DockerAreaChart,
+  dockerDonut: DockerDonutChart,
+  dockerErrorTable: DockerErrorTable,
+  dockerBar: DockerBarChart,
+  dockerLogTail: DockerLogTail,
+  httpKpiCard: HttpKpiCard,
+  httpBarLine: HttpBarLine,
+  httpDonut: HttpDonut,
+  httpRequestTable: HttpRequestTable,
+  flowKpiCard: FlowKpiCard,
+  flowTrend: FlowTrend,
+  flowDonut: FlowDonut,
+  flowBar: FlowBar,
+  flowTable: FlowTable,
+  flowSankey: FlowSankey
 };
 
 interface WidgetWrapperProps extends BaseWidgetProps {

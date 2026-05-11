@@ -10,12 +10,18 @@ import PermissionWrapper from '@/components/permission';
 
 const { Search } = Input;
 
+interface TypeConfig {
+  options: { key: number; title: string }[];
+  searchField: string;
+}
+
 interface EntityListProps<T> {
   endpoint: string;
   queryParams?: Record<string, any>;
   CardComponent: React.FC<any>;
   ModifyModalComponent: React.FC<any>;
   itemTypeSingle: string;
+  typeConfig?: TypeConfig;
   beforeDelete?: (item: T, deleteCallback: () => void) => void;
   onCreateFromTemplate?: (itemType: string) => void;
   onTogglePin?: (item: T) => Promise<void>;
@@ -33,6 +39,7 @@ const EntityList = <T,>({
   CardComponent,
   ModifyModalComponent,
   itemTypeSingle,
+  typeConfig,
   beforeDelete,
   onCreateFromTemplate,
   onTogglePin,
@@ -60,7 +67,8 @@ const EntityList = <T,>({
     };
   }, []);
 
-  const getTypeConfig = () => {
+  const getTypeConfig = (): TypeConfig => {
+    if (typeConfig) return typeConfig;
     if (itemTypeSingle === 'skill') {
       return {
         options: [

@@ -33,9 +33,12 @@ const getRoleNodeCheckState = (
   const indeterminate = selectedLeafKeys.length > 0 && selectedLeafKeys.length < leafKeys.length;
 
   if (!node.children || node.children.length === 0) {
+    const isPersonalRole = hasKey(personalRoleIds, node.key);
+    const isOrganizationRole = hasKey(organizationRoleIds, node.key);
+
     return {
-      checked: hasKey(personalRoleIds, node.key),
-      indeterminate: !hasKey(personalRoleIds, node.key) && hasKey(organizationRoleIds, node.key),
+      checked: isPersonalRole,
+      indeterminate: !isPersonalRole && isOrganizationRole,
     };
   }
 

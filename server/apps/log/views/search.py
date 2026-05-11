@@ -18,6 +18,9 @@ class LogSearchViewSet(ViewSet):
         query = request.query_params.get("query", "*")
         log_groups = request.query_params.getlist("log_groups") or request.query_params.getlist("log_groups[]")
 
+        if not log_groups:
+            return WebUtils.response_error(error_message="缺少日志分组", status_code=400)
+
         try:
             scope = LogAccessScopeService.resolve_scope(request, log_groups)
         except ValueError as exc:
@@ -134,6 +137,8 @@ class LogSearchViewSet(ViewSet):
 
         if not query:
             return WebUtils.response_error("Query parameters are required.")
+        if not log_groups:
+            return WebUtils.response_error(error_message="缺少日志分组", status_code=400)
 
         try:
             scope = LogAccessScopeService.resolve_scope(request, log_groups)

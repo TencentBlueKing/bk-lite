@@ -26,7 +26,7 @@ ANNOTATIONS_METRICS = [
     K8S_STATEFULSET_ANNOTATIONS,
     K8S_JOB_ANNOTATIONS,
     K8S_CRONJOB_ANNOTATIONS,
-    K8S_REPLICASET_ANNOTATIONS
+    K8S_REPLICASET_ANNOTATIONS,
 ]
 
 COLLECTION_METRICS = {
@@ -103,7 +103,7 @@ VMWARE_COLLECT_MAP = {
     "vmware_vc_info_gauge": "vmware_vc",
     "vmware_ds_info_gauge": "vmware_ds",
     "vmware_vm_info_gauge": "vmware_vm",
-    "vmware_esxi_info_gauge": "vmware_esxi"
+    "vmware_esxi_info_gauge": "vmware_esxi",
 }
 
 # "network_interfaces_info_gauge"
@@ -119,14 +119,19 @@ PROTOCOL_METRIC_MAP = {
 
 # aliyun
 ALIYUN_COLLECT_CLUSTER = [
-    "aliyun_ecs_info_gauge", "aliyun_bucket_info_gauge", "aliyun_mysql_info_gauge",
-    "aliyun_pgsql_info_gauge", "aliyun_redis_info_gauge", "aliyun_mongodb_info_gauge",
-    "aliyun_kafka_info_gauge", "aliyun_clb_info_gauge"
+    "aliyun_ecs_info_gauge",
+    "aliyun_bucket_info_gauge",
+    "aliyun_mysql_info_gauge",
+    "aliyun_pgsql_info_gauge",
+    "aliyun_redis_info_gauge",
+    "aliyun_mongodb_info_gauge",
+    "aliyun_kafka_info_gauge",
+    "aliyun_clb_info_gauge",
 ]
 
 HOST_COLLECT_METRIC = {
     "host": ["host_info_gauge", "host_proc_usage_info_gauge"],
-    "physcial_server": ["physcial_server_info_gauge","disk_info_gauge","memory_info_gauge","nic_info_gauge","gpu_info_gauge"],
+    "physcial_server": ["physcial_server_info_gauge", "disk_info_gauge", "memory_info_gauge", "nic_info_gauge", "gpu_info_gauge"],
 }
 
 DB_COLLECT_METRIC_MAP = {
@@ -141,7 +146,7 @@ DB_COLLECT_METRIC_MAP = {
 }
 
 MIDDLEWARE_METRIC_MAP = {
-    "nginx" : ["nginx_info_gauge"],
+    "nginx": ["nginx_info_gauge"],
     "zookeeper": ["zookeeper_info_gauge"],
     "kafka": ["kafka_info_gauge"],
     "etcd": ["etcd_info_gauge"],
@@ -151,19 +156,39 @@ MIDDLEWARE_METRIC_MAP = {
     "docker": ["docker_info_gauge"],
     "apache": ["apache_info_gauge"],
     "activemq": ["activemq_info_gauge"],
+    "ceph": ["ceph_info_gauge"],
+    "haproxy": ["haproxy_info_gauge"],
+    "iis": ["iis_info_gauge"],
+    "jboss": ["jboss_info_gauge"],
     "weblogic": ["weblogic_info_gauge"],
     "keepalived": ["keepalived_info_gauge"],
+    "memcached": ["memcached_info_gauge"],
+    "openresty": ["openresty_info_gauge"],
+    "rocketmq": ["rocketmq_info_gauge"],
+    "spark": ["spark_info_gauge"],
+    "squid": ["squid_info_gauge"],
     "tongweb": ["tongweb_info_gauge"],
+    "tuxedo": ["tuxedo_info_gauge"],
+    "websphere": ["websphere_info_gauge"],
     "jetty": ["jetty_info_gauge"],
 }
 
 # Tencent cloud
 QCLOUD_COLLECT_CLUSTER = [
-    "qcloud_cvm_info_gauge","qcloud_rocketmq_info_gauge","qcloud_mysql_info_gauge",
-    "qcloud_redis_info_gauge","qcloud_mongodb_info_gauge","qcloud_pgsql_info_gauge",
-    "qcloud_pulsar_cluster_info_gauge","qcloud_cmq_info_gauge","qcloud_cmq_topic_info_gauge",
-    "qcloud_clb_info_gauge","qcloud_eip_info_gauge","qcloud_bucket_info_gauge","qcloud_filesystem_info_gauge",
-    "qcloud_domain_info_gauge"
+    "qcloud_cvm_info_gauge",
+    "qcloud_rocketmq_info_gauge",
+    "qcloud_mysql_info_gauge",
+    "qcloud_redis_info_gauge",
+    "qcloud_mongodb_info_gauge",
+    "qcloud_pgsql_info_gauge",
+    "qcloud_pulsar_cluster_info_gauge",
+    "qcloud_cmq_info_gauge",
+    "qcloud_cmq_topic_info_gauge",
+    "qcloud_clb_info_gauge",
+    "qcloud_eip_info_gauge",
+    "qcloud_bucket_info_gauge",
+    "qcloud_filesystem_info_gauge",
+    "qcloud_domain_info_gauge",
 ]
 
 # AWS cloud

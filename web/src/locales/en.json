@@ -1,6 +1,7 @@
 {
   "common": {
     "edit": "Edit",
+    "builtIn": "Built-in",
     "delete": "Delete",
     "export": "Export",
     "import": "Import",
@@ -144,6 +145,7 @@
     "inputPassword": "Please input the password",
     "builtin": "Built-in",
     "mcp": "MCP",
+    "externalApp": "External",
     "unreadNotifications": "Unread Notifications",
     "allNotifications": "All Notifications",
     "noMore": "No more",

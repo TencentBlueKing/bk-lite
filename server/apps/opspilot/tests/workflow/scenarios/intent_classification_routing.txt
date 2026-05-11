@@ -1,0 +1,49 @@
+场景名称: 意图分类路由测试 (Intent Classification Routing)
+
+描述:
+  验证包含多入口节点和意图分类器的复杂工作流路由逻辑。
+  5 个入口节点 → 1 个意图分类节点 → 10 个意图分支，每个分支对应不同的智能体节点。
+  确保相同意图从不同入口进入时，始终路由到同一个下游智能体。
+
+前置条件:
+  - 数据库中存在一个 online 状态的 Bot
+  - BotWorkFlow 使用从生产环境导出的 flow_json (flow_json_id4.json)
+  - IntentClassifierNode 的 LLM 调用被 mock，返回指定意图
+  - AgentNode 使用 RecordingAgentExecutor 记录调用信息
+
+入口节点:
+  - agui-1770117632918
+  - restful-1774000290890
+  - openai-1777450801989
+  - celery-1777450797864
+  - web_chat-1777450807494
+
+意图分类节点: intent_classification-1773989472700
+
+意图 → 智能体映射:
+  - generate_script → agents-1773989553282
+  - summary_ticket → agents-1773989974128
+  - ai_log_extraction → agents-1773989998398
+  - scripts_check → agents-1773990036863
+  - write_by_example → agents-1773990058488
+  - tidy_content → agents-1773990420050
+  - change_tone → agents-1773990895494
+  - essay_adjust_content → agents-1773990915824
+  - wrong_log_analysis → agents-1773990933233
+  - ai_log_check → agents-1773990964763
+
+测试用例:
+  TestIntentRoutingPerEntryNode (20 cases):
+    1-15. 3 个意图 × 5 个入口: 同一意图从不同入口进入，路由到同一智能体
+    16-20. 5 个入口: 意图分类器接收到原始用户消息
+
+  TestIntentRoutingAllIntents (10 cases):
+    1-10. 全部 10 个意图各自路由到正确的智能体节点
+
+  TestIntentRoutingDbRecords (3 cases):
+    1. TaskResult 状态为 SUCCESS
+    2. NodeResult 包含入口节点、意图分类节点、智能体节点
+    3. 下游智能体接收的是原始用户消息，而非意图标签
+
+关联测试文件: cases/test_workflow_intent_routing.py
+流程数据: scenarios/flow_json_id4.json (从生产环境 BotWorkFlow id=4 导出)

@@ -510,3 +510,67 @@ def get_kubernetes_pod_logs(namespace, pod_name, container=None, lines=100, tail
             return f"获取Pod日志失败: {error_message}"
     except Exception as e:
         return f"获取Pod日志时发生未知错误: {str(e)}"
+
+
+@tool()
+def get_kubernetes_previous_pod_logs(namespace, pod_name, container=None, lines=100, tail=True, config: RunnableConfig = None):
+    """
+    获取Pod容器上一次实例的日志，用于重启类故障采集。
+
+    Args:
+        namespace (str): Pod所在命名空间
+        pod_name (str): Pod名称
+        container (str, optional): 容器名称，多容器Pod建议显式指定
+        lines (int, optional): 日志行数，默认100
+        tail (bool, optional): True=最后N行，False=开头N行
+        config (RunnableConfig): 工具配置
+
+    Returns:
+        str: previous 容器日志文本，或错误信息
+    """
+    prepare_context(config)
+    try:
+        core_v1 = client.CoreV1Api()
+
+        try:
+            pod = core_v1.read_namespaced_pod(pod_name, namespace)
+        except ApiException as e:
+            if e.status == 404:
+                return f"Pod {pod_name} 在命名空间 {namespace} 中不存在"
+            raise
+
+        if not container and pod.spec.containers and len(pod.spec.containers) > 1:
+            container_names = [c.name for c in pod.spec.containers]
+            return f"Pod {pod_name} 包含多个容器: {container_names}。请指定容器名称。"
+
+        if not container and pod.spec.containers and len(pod.spec.containers) == 1:
+            container = pod.spec.containers[0].name
+
+        logs = core_v1.read_namespaced_pod_log(
+            name=pod_name,
+            namespace=namespace,
+            container=container,
+            previous=True,
+            tail_lines=lines if tail else None,
+            limit_bytes=None if lines else 1024 * 1024,
+        )
+
+        if not tail and logs:
+            log_lines = logs.split("\n")
+            logs = "\n".join(log_lines[:lines])
+
+        if not logs:
+            return f"Pod {pod_name} 容器 {container} 没有上一次实例的日志输出"
+
+        return logs
+
+    except ApiException as e:
+        error_message = str(e)
+        if "previous terminated container" in error_message or "not found" in error_message.lower():
+            return f"Pod {pod_name} 容器 {container} 没有可用的 previous 日志"
+        elif "ContainerNotFound" in error_message:
+            return f"在 Pod {pod_name} 中找不到容器 {container}"
+        else:
+            return f"获取 previous Pod 日志失败: {error_message}"
+    except Exception as e:
+        return f"获取 previous Pod 日志时发生未知错误: {str(e)}"

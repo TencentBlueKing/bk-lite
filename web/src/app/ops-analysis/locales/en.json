@@ -314,7 +314,10 @@
     "unifiedFilterBindingTip": "When enabled, this component will respond to the unified filter at the top of the dashboard. Parameters with the same name and type will be automatically bound.",
     "filterDisabled": "Disabled",
     "filterDisabledTip": "This filter is disabled in the unified filter configuration",
-    "namespaceNotSupported": "This widget is not associated with the selected namespace"
+    "namespaceNotSupported": "This widget is not associated with the selected namespace",
+    "exportPdf": "Export PDF",
+    "exportPdfSuccess": "Export success",
+    "exportPdfFailed": "Export failed"
   },
   "opsAnalysisSidebar": {
     "addArch": "Add Architecture",

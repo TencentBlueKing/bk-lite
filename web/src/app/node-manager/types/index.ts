@@ -19,6 +19,7 @@ interface ModalConfig {
   key?: string;
   ids?: string[];
   selectedsystem?: string;
+  selectedArchitecture?: string;
   nodes?: string[];
   [key: string]: any;
 }

@@ -12,6 +12,7 @@ from apps.job_mgmt.constants import OSType, SSHCredentialType
 from apps.job_mgmt.filters.target import TargetFilter
 from apps.job_mgmt.models import Target
 from apps.job_mgmt.serializers.target import TargetBatchDeleteSerializer, TargetSerializer, TargetTestConnectionSerializer
+from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
 from apps.node_mgmt.models import CloudRegion
 from apps.rpc.executor import Executor
 from apps.rpc.node_mgmt import NodeMgmt
@@ -48,18 +49,28 @@ def _get_executor_node(cloud_region_id: int) -> str:
     return nodes[0]["id"]
 
 
-def _parse_ssh_test_result(result) -> tuple[bool, str, str]:
+def _parse_ssh_test_result(result) -> tuple[bool, str, str, dict]:
     """解析 SSH 测试连接返回结果，兼容字符串与字典两种格式"""
     if isinstance(result, str):
-        return ("success" in result, result, "")
+        return ("success" in result, result, "", {})
 
     if isinstance(result, dict):
         success = result.get("success", False)
         stdout = result.get("result", "")
         error = result.get("error", "")
-        return success, str(stdout), str(error)
+        return success, str(stdout), str(error), result
 
-    return False, str(result), f"未知返回类型: {type(result).__name__}"
+    return False, str(result), f"未知返回类型: {type(result).__name__}", {}
+
+
+def _build_ssh_test_failure_message(result: dict, fallback_error: str, fallback_stdout: str) -> str:
+    """根据执行器返回的阶段与分类构造更友好的测试连接失败文案"""
+    merged_result = dict(result or {})
+    if fallback_error and not merged_result.get("error"):
+        merged_result["error"] = fallback_error
+    if fallback_stdout and not merged_result.get("result"):
+        merged_result["result"] = fallback_stdout
+    return ExecutionTaskBaseService.normalize_executor_error(merged_result, "连接测试失败")
 
 
 def _build_actor_context(request):
@@ -334,16 +345,23 @@ class TargetViewSet(AuthViewSet):
             logger.info(f"[test_connection] Testing SSH: {ssh_user}@{ip}:{ssh_port} via node {node_id}")
             executor = Executor(node_id)
             result = executor.execute_ssh(
-                command="echo success", host=str(ip), username=ssh_user, password=password, private_key=private_key, timeout=30, port=ssh_port
+                command="echo success",
+                host=str(ip),
+                username=ssh_user,
+                password=password,
+                private_key=private_key,
+                timeout=30,
+                port=ssh_port,
+                connection_test=True,
             )
             # 解析结果（兼容字符串与字典）
-            success, stdout, error = _parse_ssh_test_result(result)
+            success, stdout, error, result_detail = _parse_ssh_test_result(result)
 
             if success and "success" in stdout:
                 logger.info(f"[test_connection] SSH connection test passed: {ssh_user}@{ip}:{ssh_port}")
                 return Response({"success": True, "message": "连接测试成功"})
             else:
-                error_msg = error if error else f"输出异常: {stdout}"
+                error_msg = _build_ssh_test_failure_message(result_detail, error, stdout)
                 logger.warning(f"[test_connection] SSH connection test failed: {ssh_user}@{ip}:{ssh_port}, error: {error_msg}")
                 return Response({"success": False, "message": f"连接测试失败: {error_msg}"})
 

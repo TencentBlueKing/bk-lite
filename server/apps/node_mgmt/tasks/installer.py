@@ -143,6 +143,14 @@ def _get_execution_attempt(node_obj) -> int:
     return 1
 
 
+def _matches_install_connectivity_target(task_node, node_id: str, node_ip: str | None = None) -> bool:
+    result = task_node.result or {}
+    install_node_id = result.get(InstallerConstants.INSTALL_NODE_ID_KEY)
+    if install_node_id:
+        return install_node_id == node_id
+    return bool(node_ip) and task_node.ip == node_ip
+
+
 def _add_step(node_obj, action, status, message, timestamp=None, details=None):
     """添加执行步骤记录并立即持久化"""
     result = node_obj.result or {}
@@ -407,9 +415,39 @@ def _parse_exception_details(error_message, exception_obj=None):
     return details
 
 
+def _collect_failure_context_from_node(node_obj):
+    result = node_obj.result or {}
+    steps = result.get("steps", [])
+    latest_installer_details = None
+
+    if isinstance(steps, list):
+        for step in reversed(steps):
+            if not isinstance(step, dict):
+                continue
+            details = step.get("details")
+            if isinstance(details, dict) and details.get("installer_event"):
+                latest_installer_details = details
+                break
+
+    context = {}
+    if latest_installer_details:
+        if latest_installer_details.get("bucket"):
+            context["bucket"] = latest_installer_details.get("bucket")
+        if latest_installer_details.get("file_key"):
+            context["file_key"] = latest_installer_details.get("file_key")
+        if latest_installer_details.get("package_name"):
+            context["package_name"] = latest_installer_details.get("package_name")
+
+    if getattr(node_obj, "cpu_architecture", ""):
+        context["cpu_architecture"] = node_obj.cpu_architecture
+
+    return context
+
+
 def _handle_step_exception(node_obj, error_message, exception_obj=None, timestamp=None):
     """处理步骤执行异常并立即持久化"""
     details = _parse_exception_details(error_message, exception_obj)
+    details.update({k: v for k, v in _collect_failure_context_from_node(node_obj).items() if v not in (None, "")})
     failure = normalize_failure(message=error_message, error=str(exception_obj) if exception_obj else error_message, details=details)
     if failure:
         details["failure"] = failure
@@ -524,10 +562,16 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                 },
             )
 
+            install_node_id = uuid.uuid4().hex
+            result = node_obj.result or {}
+            result[InstallerConstants.INSTALL_NODE_ID_KEY] = install_node_id
+            node_obj.result = result
+            node_obj.save(update_fields=["result"])
+
             install_command = InstallerService.get_install_command(
                 task_obj.created_by,
                 node_obj.ip,
-                uuid.uuid4().hex,
+                install_node_id,
                 resolved_package.os,
                 resolved_package.id,
                 task_obj.cloud_region_id,
@@ -688,6 +732,9 @@ def converge_controller_install_connectivity_for_node(node_id):
     affected_task_ids = set()
 
     for task_node in running_task_nodes:
+        if not _matches_install_connectivity_target(task_node, node_id, node.ip):
+            continue
+
         if _get_execution_phase(task_node) != InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING:
             continue
 
@@ -750,9 +797,13 @@ def timeout_controller_install_task(task_id):
             "Connectivity check timeout",
             details={
                 "timeout": True,
+                **_collect_failure_context_from_node(task_node),
                 "failure": normalize_failure(
                     message="Connectivity check timeout",
-                    details={"error_type": "timeout"},
+                    details={
+                        "error_type": "timeout",
+                        **_collect_failure_context_from_node(task_node),
+                    },
                 ),
             },
         )
@@ -936,15 +987,22 @@ def install_collector(task_id):
     if not package_obj:
         raise BaseAppException("Package version not found")
 
-    file_key = f"{package_obj.os}/{package_obj.object}/{package_obj.version}/{package_obj.name}"
+    nodes = task_obj.collectortasknode_set.select_related("node").all()
     task_obj.status = "running"
     task_obj.save()
 
     collector_install_dir = CollectorConstants.DOWNLOAD_DIR.get(package_obj.os)
-    nodes = task_obj.collectortasknode_set.all()
 
     for node_obj in nodes:
         overall_status = "success"
+        resolved_package = (
+            PackageService.resolve_package_by_architecture(
+                task_obj.package_version_id,
+                getattr(node_obj.node, "cpu_architecture", ""),
+            )
+            or package_obj
+        )
+        file_key = PackageService.resolve_existing_file_path(resolved_package)
 
         try:
             _add_step(
@@ -957,10 +1015,10 @@ def install_collector(task_id):
                 node_obj.node_id,
                 NATS_NAMESPACE,
                 file_key,
-                package_obj.name,
+                resolved_package.name,
                 collector_install_dir,
             )
-            if package_obj.name.lower().endswith(".zip"):
+            if resolved_package.name.lower().endswith(".zip"):
                 _advance_step(
                     node_obj,
                     "success",
@@ -969,11 +1027,11 @@ def install_collector(task_id):
                 )
                 unzip_name = unzip_file(
                     node_obj.node_id,
-                    f"{collector_install_dir}/{package_obj.name}",
+                    f"{collector_install_dir}/{resolved_package.name}",
                     collector_install_dir,
                 )
                 executable_name = unzip_name
-                if package_obj.os in NodeConstants.LINUX_OS:
+                if resolved_package.os in NodeConstants.LINUX_OS:
                     _advance_step(
                         node_obj,
                         "success",
@@ -993,7 +1051,7 @@ def install_collector(task_id):
                         "Collector package extracted",
                     )
             else:
-                executable_name = package_obj.name
+                executable_name = resolved_package.name
                 next_steps = [
                     _build_step(
                         "prepare",
@@ -1001,7 +1059,7 @@ def install_collector(task_id):
                         "Package ready",
                     )
                 ]
-                if package_obj.os in NodeConstants.LINUX_OS:
+                if resolved_package.os in NodeConstants.LINUX_OS:
                     next_steps.append(
                         _build_step(
                             "set_executable",
@@ -1016,7 +1074,7 @@ def install_collector(task_id):
                     next_steps=next_steps,
                 )
 
-            if package_obj.os in NodeConstants.LINUX_OS:
+            if resolved_package.os in NodeConstants.LINUX_OS:
                 executable_path = f"{collector_install_dir}/{executable_name}"
                 exec_command_to_local(
                     node_obj.node_id,
@@ -1031,7 +1089,13 @@ def install_collector(task_id):
         final_message = "Collector installation completed" if overall_status == "success" else "Collector installation failed"
         _save_node_result(node_obj, overall_status, final_message)
 
-        collector_obj = Collector.objects.filter(node_operating_system=package_obj.os, name=package_obj.object).first()
+        collector_obj = PackageService.resolve_collector_by_architecture(
+            node_obj.node.operating_system,
+            resolved_package.object,
+            getattr(node_obj.node, "cpu_architecture", ""),
+        )
+        if not collector_obj:
+            raise BaseAppException(f"Collector definition not found for {resolved_package.object}")
         NodeCollectorInstallStatus.objects.update_or_create(
             node_id=node_obj.node_id,
             collector_id=collector_obj.id,

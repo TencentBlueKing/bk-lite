@@ -16,7 +16,7 @@ export const getFilterDefinitionId = (
 export const getBindableFilterParams = (
   params?: ParamItem[],
 ): Array<ParamItem & { type: BindableParamType }> =>
-  (params || []).filter(
+  (Array.isArray(params) ? params : []).filter(
     (param): param is ParamItem & { type: BindableParamType } =>
       param.filterType === 'filter' &&
       (param.type === 'string' || param.type === 'timeRange'),
@@ -107,10 +107,11 @@ export const fetchWidgetData = async ({
   }
 
   try {
-    const sourceParams =
-      (Array.isArray(config?.dataSourceParams) && config.dataSourceParams.length > 0
+    const rawParams =
+      Array.isArray(config?.dataSourceParams) && config.dataSourceParams.length > 0
         ? config.dataSourceParams
-        : dataSource?.params) || [];
+        : dataSource?.params;
+    const sourceParams = Array.isArray(rawParams) ? rawParams : [];
 
     const userParams: Record<string, unknown> = {};
     sourceParams.forEach((param: any) => {

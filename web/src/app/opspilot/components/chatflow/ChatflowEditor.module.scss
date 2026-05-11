@@ -30,7 +30,7 @@
   }
 
   :global(.react-flow__edge-path) {
-    stroke: var(--color-border-2);
+    stroke: var(--color-border-3);
     stroke-dasharray: 6 6;
     transition: stroke 0.2s ease, stroke-dasharray 0.2s ease, opacity 0.2s ease;
   }

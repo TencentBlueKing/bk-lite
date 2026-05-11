@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import dayjs from 'dayjs';
 import TimeSelector from '@/components/time-selector';
-import { Empty, Form, Input, Select, DatePicker, Switch, InputNumber } from 'antd';
+import { Form, Input, Select, DatePicker, Switch, InputNumber } from 'antd';
 import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
+import CompactEmptyState from '@/app/ops-analysis/components/compactEmptyState';
 
 type TimeValue = number | [number, number];
 
@@ -94,16 +95,14 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
   }, []);
 
   const configParams =
-    selectedDataSource?.params?.filter((param: ParamItem) =>
-      includeFilterTypes.includes(param.filterType || 'fixed')
-    ) || [];
+    (Array.isArray(selectedDataSource?.params) ? selectedDataSource.params : []).filter(
+      (param: ParamItem) =>
+        includeFilterTypes.includes(param.filterType || 'fixed')
+    );
 
   if (configParams.length === 0) {
     return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={t('dashboard.noParamSettings')}
-      />
+      <CompactEmptyState description={t('dashboard.noParamSettings')} />
     );
   }
 

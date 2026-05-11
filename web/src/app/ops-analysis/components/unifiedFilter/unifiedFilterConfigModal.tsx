@@ -131,7 +131,7 @@ const scanFilterParams = (
   dataSources.forEach((ds) => {
     if (!usedDataSourceIds.has(ds.id)) return;
 
-    const params = ds.params || [];
+    const params = Array.isArray(ds.params) ? ds.params : [];
     params.forEach((param: ParamItem) => {
       if (param.filterType !== 'filter') return;
       if (param.type !== 'string' && param.type !== 'timeRange') return;

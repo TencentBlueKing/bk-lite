@@ -51,9 +51,12 @@ class FileDistributionRunner(ExecutionTaskBaseService):
         task_name: str,
     ):
         results = []
+        cancelled = False
         with ThreadPoolExecutor(max_workers=min(self.MAX_WORKERS, len(target_list))) as pool:
             futures = {
-                pool.submit(self.distribute_file_to_target, t, execution.target_source, files, target_path, execution.timeout, overwrite): t
+                pool.submit(
+                    self.distribute_file_to_target, t, execution.target_source, files, target_path, execution.timeout, overwrite, execution.id
+                ): t
                 for t in target_list
             }
             for future in as_completed(futures):
@@ -65,6 +68,13 @@ class FileDistributionRunner(ExecutionTaskBaseService):
                 except Exception as e:
                     logger.exception(f"[{task_name}] 目标 {target_info.get('name')} 分发异常: {e}")
                     results.append(self.build_target_failed_result(target_info, str(e)))
+
+                # 每收到一个结果后检查是否已取消，取消则取消剩余 futures
+                if not cancelled and self.is_cancelled(execution.id):
+                    cancelled = True
+                    logger.info(f"[{task_name}] 检测到取消，停止剩余目标: execution_id={execution.id}")
+                    for pending_future in futures:
+                        pending_future.cancel()
         return results
 
     def _handle_distribution_path_blocked(self, execution: JobExecution, target_list: list, task_name: str) -> bool:
@@ -88,14 +98,28 @@ class FileDistributionRunner(ExecutionTaskBaseService):
         target_path: str,
         timeout: int,
         overwrite: bool = True,
+        execution_id: int = 0,
     ) -> dict:
         result = self._build_distribution_target_result(target_info)
         target_name = result["name"]
         target_ip = result["ip"]
 
+        # 执行前检查是否已取消
+        if execution_id and self.is_cancelled(execution_id):
+            result["status"] = ExecutionStatus.CANCELLED
+            result["error_message"] = "任务已取消，跳过分发"
+            result["finished_at"] = timezone.now().isoformat()
+            return result
+
         success = True
         try:
             for file_item in files:
+                # 每个文件分发前检查是否已取消
+                if execution_id and self.is_cancelled(execution_id):
+                    result["status"] = ExecutionStatus.CANCELLED
+                    result["error_message"] = "任务已取消，跳过剩余文件分发"
+                    result["finished_at"] = timezone.now().isoformat()
+                    return result
                 file_result = {"file_name": file_item.get("name", ""), "success": False, "error": ""}
                 file_key = file_item.get("file_key", "")
                 file_name = file_item.get("name", "")
@@ -117,7 +141,7 @@ class FileDistributionRunner(ExecutionTaskBaseService):
                         success = False
 
                 except Exception as e:
-                    file_result["error"] = str(e)
+                    file_result["error"] = self.normalize_executor_error(str(e), "文件分发失败")
                     success = False
                     logger.exception(f"文件 {file_item.get('name')} 分发到 {target_name} 失败")
 
@@ -125,7 +149,7 @@ class FileDistributionRunner(ExecutionTaskBaseService):
 
         except Exception as e:
             success = False
-            result["error_message"] = f"分发异常: {str(e)}"
+            result["error_message"] = f"分发异常: {self.normalize_executor_error(str(e), '文件分发失败')}"
             logger.exception(f"目标 {target_name}({target_ip}) 文件分发失败")
 
         self.summarize_distribution_result(result, success, files, target_path)
@@ -190,7 +214,7 @@ class FileDistributionRunner(ExecutionTaskBaseService):
         if target_obj and target_obj.driver == ExecutorDriver.ANSIBLE:
             if not target_obj.cloud_region_id:
                 raise ValueError(f"目标缺少云区域配置: target_id={target_id}")
-            instance_id = self.get_cloud_region_name(target_obj.cloud_region_id)
+            instance_id = self._get_ansible_node(target_obj.cloud_region_id)
         else:
             instance_id = ssh_creds["node_id"]
 
@@ -236,6 +260,10 @@ class FileDistributionRunner(ExecutionTaskBaseService):
             elapsed = time.monotonic() - start_time
             if elapsed >= timeout:
                 raise ValueError(f"Ansible 文件分发任务未完成: status={task_status}")
+
+            # 轮询间隙检查是否已取消
+            if hasattr(self, "execution_id") and self.is_cancelled(self.execution_id):
+                raise ValueError("任务已取消，停止等待 Ansible 文件分发结果")
 
             time.sleep(ANSIBLE_TASK_POLL_INTERVAL)
 
@@ -302,12 +330,14 @@ class FileDistributionRunner(ExecutionTaskBaseService):
             timeout=timeout,
             port=ssh_creds["port"],
             overwrite=overwrite,
+            fast_fail=True,
         )
 
     @staticmethod
     def summarize_distribution_result(result: dict, success: bool, files: list, target_path: str) -> None:
         errors = [f"{fr['file_name']}: {fr['error']}" for fr in result["file_results"] if not fr["success"]]
-        error_message = "\n".join(errors) if errors else result.get("error_message", "")
+        raw_error_message = "\n".join(errors) if errors else result.get("error_message", "")
+        error_message = FileDistributionRunner.normalize_executor_error(raw_error_message, "文件分发失败") if raw_error_message else ""
         stdout_message = f"分发 {len(files)} 个文件到 {target_path}"
         if not success and error_message:
             stdout_message = f"NATS接口调用超时: {error_message}" if "RPC request timeout" in error_message else error_message
@@ -324,7 +354,7 @@ class FileDistributionRunner(ExecutionTaskBaseService):
         if isinstance(exec_result, str):
             if "successfully" in exec_result.lower() or "success" in exec_result.lower() or exec_result == "":
                 return True, ""
-            return False, exec_result
+            return False, FileDistributionRunner.normalize_executor_error(exec_result, "文件分发失败")
 
         if isinstance(exec_result, dict):
             success_flag = exec_result.get("success")
@@ -334,11 +364,11 @@ class FileDistributionRunner(ExecutionTaskBaseService):
             if success_flag is True:
                 return True, ""
             if code is not None and code != 0:
-                return False, str(error_info or f"执行失败，code={code}")
+                return False, FileDistributionRunner.normalize_executor_error(exec_result, f"文件分发失败，code={code}")
             if success_flag is False and error_info:
-                return False, str(error_info)
+                return False, FileDistributionRunner.normalize_executor_error(exec_result, "文件分发失败")
             if "failed" in result_text or "error" in result_text:
-                return False, str(exec_result.get("result", "执行失败"))
+                return False, FileDistributionRunner.normalize_executor_error(exec_result, "文件分发失败")
             return True, ""
 
         return False, f"未知响应类型: {type(exec_result)}"

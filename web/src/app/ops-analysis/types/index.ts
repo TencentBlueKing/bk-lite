@@ -10,6 +10,7 @@ export interface DirItem {
   children?: DirItem[];
   desc?: string;
   groups?: number[];
+  is_build_in?: boolean;
 }
 
 export interface SidebarProps {

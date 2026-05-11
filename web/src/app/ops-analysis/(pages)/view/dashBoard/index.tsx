@@ -2,8 +2,10 @@ import React, {
   useState,
   useEffect,
   useMemo,
+  useRef,
   forwardRef,
   useImperativeHandle,
+  useCallback,
 } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import ViewSelector from './components/viewSelector';
@@ -19,6 +21,7 @@ import {
   Spin,
   Tooltip,
   Select,
+  Tag,
 } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
@@ -42,6 +45,7 @@ import {
   EditOutlined,
   ReloadOutlined,
   SettingOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons';
 import { useDashBoardApi } from '@/app/ops-analysis/api/dashBoard';
 import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
@@ -57,6 +61,7 @@ import {
   buildDefaultFilterBindings,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { collectNamespaceOptions } from '@/app/ops-analysis/utils/namespaceFilter';
+import { exportDashboardToPdf } from '@/app/ops-analysis/utils/exportPdf';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
@@ -95,6 +100,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [filterConfigModalVisible, setFilterConfigModalVisible] =
       useState(false);
     const [selectedNamespaceId, setSelectedNamespaceId] = useState<number | undefined>(undefined);
+    const exportRef = useRef<HTMLDivElement>(null);
+    const [exporting, setExporting] = useState(false);
 
     const {
       definitions,
@@ -421,6 +428,23 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setRefreshKey((prev) => prev + 1);
     };
 
+    const handleExportPdf = useCallback(async () => {
+      if (!exportRef.current) return;
+      setExporting(true);
+      try {
+        await exportDashboardToPdf(
+          exportRef.current,
+          selectedDashboard?.name || 'dashboard'
+        );
+        message.success(t('dashboard.exportPdfSuccess'));
+      } catch (err) {
+        console.error('Export PDF failed:', err);
+        message.error(t('dashboard.exportPdfFailed'));
+      } finally {
+        setExporting(false);
+      }
+    }, [selectedDashboard?.name, t]);
+
     const onLayoutChange = (newLayout: LayoutChangeItem[]) => {
       setLayout((prevLayout) => {
         return prevLayout.map((item) => {
@@ -628,89 +652,114 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
     return (
       <div className="h-full flex-1 p-2 pb-0 overflow-auto flex flex-col bg-(--color-bg-1">
-        <div className="w-full mb-2 flex items-center justify-between rounded-lg shadow-sm bg-(--color-bg-1) p-3 border border-(--color-border-2)">
-          <div className="flex-1 mr-8">
-            {selectedDashboard && (
-              <div className="p-1 pt-0">
-                <h2 className="text-lg font-semibold mb-1 text-(--color-text-1)">
-                  {selectedDashboard.name}
-                </h2>
-                <p className="text-sm text-(--color-text-2)">
-                  {selectedDashboard.desc}
-                </p>
-              </div>
-            )}
-          </div>
-          {/* 右侧：工具栏 */}
-          <div className="flex items-center space-x-1 rounded-lg p-2">
-            <Tooltip title={t('common.refresh')}>
-              <Button
-                type="text"
-                icon={<ReloadOutlined style={{ fontSize: 16 }} />}
-                onClick={handleRefresh}
-                className="mr-2"
-              />
-            </Tooltip>
+        <div
+          ref={exportRef}
+          className="flex-1 min-h-0 flex flex-col"
+          data-export-expand="true"
+        >
+          <div className="w-full mb-2 flex items-center justify-between rounded-lg shadow-sm bg-(--color-bg-1) p-3 border border-(--color-border-2)">
+            <div className="flex-1 mr-8">
+              {selectedDashboard && (
+                <div className="p-1 pt-0">
+                  <h2 className="text-lg font-semibold mb-1 text-(--color-text-1)">
+                    {selectedDashboard.name}
+                    {selectedDashboard.is_build_in && (
+                      <Tag color="blue" className="ml-2 text-xs align-middle">{t('common.builtIn')}</Tag>
+                    )}
+                  </h2>
+                  <p className="text-sm text-(--color-text-2)">
+                    {selectedDashboard.desc}
+                  </p>
+                </div>
+              )}
+            </div>
+            {/* 右侧：工具栏 */}
+            <div
+              className="flex items-center space-x-1 rounded-lg p-2"
+              data-export-hidden="true"
+            >
+              <Tooltip title={t('common.refresh')}>
+                <Button
+                  type="text"
+                  icon={<ReloadOutlined style={{ fontSize: 16 }} />}
+                  onClick={handleRefresh}
+                  className="mr-2"
+                />
+              </Tooltip>
 
-            {isEditMode && (
-              <>
-                <PermissionWrapper requiredPermissions={['EditChart']}>
+              {!isEditMode && (
+                <Tooltip title={t('dashboard.exportPdf')}>
                   <Button
                     type="text"
-                    icon={<SettingOutlined style={{ fontSize: 16 }} />}
-                    onClick={() => setFilterConfigModalVisible(true)}
-                  >
-                    {t('dashboard.configFilter')}
-                  </Button>
-                </PermissionWrapper>
-                <PermissionWrapper requiredPermissions={['EditChart']}>
-                  <Button
-                    type="dashed"
-                    icon={<PlusOutlined />}
-                    onClick={openAddModal}
-                    style={{ borderColor: '#1677ff', color: '#1677ff' }}
-                  >
-                    {t('dashboard.addView')}
-                  </Button>
-                </PermissionWrapper>
-              </>
-            )}
+                    icon={<DownloadOutlined style={{ fontSize: 16 }} />}
+                    loading={exporting}
+                    onClick={handleExportPdf}
+                  />
+                </Tooltip>
+              )}
 
-            <div>
-              <PermissionWrapper requiredPermissions={['EditChart']}>
-                {!isEditMode ? (
-                  <Tooltip title={t('common.edit')}>
+              {isEditMode && (
+                <>
+                  <PermissionWrapper requiredPermissions={['EditChart']}>
                     <Button
                       type="text"
-                      icon={<EditOutlined style={{ fontSize: 16 }} />}
-                      disabled={!selectedDashboard?.data_id}
-                      onClick={toggleEditMode}
-                    />
-                  </Tooltip>
-                ) : (
-                  <div className="flex items-center gap-2 ml-5!">
-                    <Button
-                      disabled={!selectedDashboard?.data_id}
-                      onClick={handleCancelEdit}
+                      icon={<SettingOutlined style={{ fontSize: 16 }} />}
+                      onClick={() => setFilterConfigModalVisible(true)}
                     >
-                      {t('common.cancel')}
+                      {t('dashboard.configFilter')}
                     </Button>
+                  </PermissionWrapper>
+                  <PermissionWrapper requiredPermissions={['EditChart']}>
                     <Button
-                      type="primary"
-                      loading={saving}
-                      disabled={!selectedDashboard?.data_id}
-                      onClick={handleSave}
+                      type="dashed"
+                      icon={<PlusOutlined />}
+                      onClick={openAddModal}
+                      style={{ borderColor: '#1677ff', color: '#1677ff' }}
                     >
-                      {t('common.save')}
+                      {t('dashboard.addView')}
                     </Button>
-                  </div>
-                )}
-              </PermissionWrapper>
+                  </PermissionWrapper>
+                </>
+              )}
+
+              <div>
+                <PermissionWrapper requiredPermissions={['EditChart']}>
+                  {!isEditMode ? (
+                    <Tooltip title={t('common.edit')}>
+                      <Button
+                        type="text"
+                        icon={<EditOutlined style={{ fontSize: 16 }} />}
+                        disabled={!selectedDashboard?.data_id || selectedDashboard?.is_build_in}
+                        onClick={toggleEditMode}
+                      />
+                    </Tooltip>
+                  ) : (
+                    <div className="flex items-center gap-2 ml-5!">
+                      <Button
+                        disabled={!selectedDashboard?.data_id}
+                        onClick={handleCancelEdit}
+                      >
+                        {t('common.cancel')}
+                      </Button>
+                      <Button
+                        type="primary"
+                        loading={saving}
+                        disabled={!selectedDashboard?.data_id}
+                        onClick={handleSave}
+                      >
+                        {t('common.save')}
+                      </Button>
+                    </div>
+                  )}
+                </PermissionWrapper>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="flex-1 bg-(--color-fill-1) rounded-lg overflow-hidden flex flex-col">
+          <div
+            className="flex-1 bg-(--color-fill-1) rounded-lg overflow-hidden flex flex-col"
+            data-export-expand="true"
+          >
           {(definitions.length > 0 || namespaceSelectorElement) && (
             <div className="shrink-0">
               <UnifiedFilterBar
@@ -721,7 +770,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               />
             </div>
           )}
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-auto" data-export-expand="true">
             {(() => {
               if (loading) {
                 return (
@@ -747,6 +796,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                           type="primary"
                           icon={<PlusOutlined />}
                           onClick={openAddModal}
+                          disabled={selectedDashboard?.is_build_in}
                         >
                           {t('dashboard.addView')}
                         </Button>
@@ -832,6 +882,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               );
             })()}
           </div>
+        </div>
         </div>
 
         <ViewSelector

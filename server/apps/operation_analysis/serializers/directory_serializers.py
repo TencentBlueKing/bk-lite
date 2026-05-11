@@ -16,56 +16,75 @@ class DirectoryModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
         model = Directory
         fields = "__all__"
         extra_kwargs = {
+            "is_build_in": {"read_only": True},
+            "build_in_key": {"read_only": True},
         }
 
 
-class DashboardModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
+class BuiltinPermissionMixin:
+    """内置对象权限处理：内置对象只返回 View 权限"""
+
+    def get_permissions(self, instance):
+        if getattr(instance, "is_build_in", False):
+            return ["View"]
+        return super().get_permissions(instance)
+
+
+class DashboardModelSerializer(BuiltinPermissionMixin, BaseFormatTimeSerializer, AuthSerializer):
     permission_key = "directory.dashboard"
 
     class Meta:
         model = Dashboard
         fields = "__all__"
         extra_kwargs = {
+            "is_build_in": {"read_only": True},
+            "build_in_key": {"read_only": True},
         }
 
     def create(self, validated_data):
         """
         验证创建的时候 有没有带directory_id 如果没有则报错
         """
-        if 'directory' not in validated_data:
+        if "directory" not in validated_data:
             raise serializers.ValidationError({"directory": ["directory is required for creation."]})
         return super().create(validated_data)
 
 
-class TopologyModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
+class TopologyModelSerializer(BuiltinPermissionMixin, BaseFormatTimeSerializer, AuthSerializer):
     permission_key = "directory.topology"
 
     class Meta:
         model = Topology
         fields = "__all__"
-        extra_kwargs = {}
+        extra_kwargs = {
+            "is_build_in": {"read_only": True},
+            "build_in_key": {"read_only": True},
+        }
 
     def create(self, validated_data):
         """
         验证创建的时候 有没有带directory_id 如果没有则报错
         """
-        if 'directory' not in validated_data:
+        if "directory" not in validated_data:
             raise serializers.ValidationError({"directory": ["directory is required for creation."]})
         return super().create(validated_data)
 
 
-class ArchitectureModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
+class ArchitectureModelSerializer(BuiltinPermissionMixin, BaseFormatTimeSerializer, AuthSerializer):
     permission_key = "directory.architecture"
 
     class Meta:
         model = Architecture
         fields = "__all__"
-        extra_kwargs = {}
+        extra_kwargs = {
+            "is_build_in": {"read_only": True},
+            "build_in_key": {"read_only": True},
+        }
 
     def create(self, validated_data):
         """
         验证创建的时候 有没有带directory_id 如果没有则报错
         """
-        if 'directory' not in validated_data:
+        if "directory" not in validated_data:
             raise serializers.ValidationError({"directory": ["directory is required for creation."]})
         return super().create(validated_data)

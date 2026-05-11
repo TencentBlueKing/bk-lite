@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 import SearchFilter from '@/app/alarm/components/searchFilter';
 import EventTable from '@/app/alarm/components/eventTable';
 import K8sGuide from '@/app/alarm/components/k8sGuide';
+import SnmpTrapGuide from '@/app/alarm/components/snmpTrapGuide';
 import CustomBreadcrumb from '@/app/alarm/components/customBreadcrumb';
 import { CopyOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
@@ -37,8 +38,10 @@ const IntegrationDetail: FC = () => {
     field: string;
     value: string;
   } | null>(null);
+  const [logoLoadFailed, setLogoLoadFailed] = useState<boolean>(false);
 
   const isK8sSource = source?.source_id === 'k8s';
+  const isSnmpTrapSource = source?.source_id === 'snmp_trap';
 
   const sourceItemId = searchParams.get('sourceItemId');
 
@@ -54,6 +57,7 @@ const IntegrationDetail: FC = () => {
       const res = await getAlertSourcesDetail(sourceItemId as string);
       if (res) {
         setSource(res);
+        setLogoLoadFailed(false);
       }
     } catch (error) {
       console.error(error);
@@ -152,16 +156,23 @@ const IntegrationDetail: FC = () => {
   };
 
   const IntegrationHeader = () => (
-    <div className="flex items-center">
-      <div className="inline-flex items-center gap-3 mr-4 px-6 py-4 rounded bg-[#99aaf2] text-white">
-        <img
-          src={source?.logo || ''}
-          alt={source?.description}
-          className="h-[40px] rounded"
-        />
-        <span className="text-[24px] font-semibold">{source?.name}</span>
+    <div className="flex flex-wrap items-start gap-4">
+      <div className="inline-flex max-w-full shrink-0 items-center gap-3 rounded bg-[#99aaf2] px-6 py-4 text-white">
+        {!logoLoadFailed && source?.logo ? (
+          <img
+            src={source.logo}
+            alt=""
+            className="h-[40px] w-[40px] shrink-0 rounded object-contain"
+            onError={() => setLogoLoadFailed(true)}
+          />
+        ) : null}
+        <span className="min-w-0 break-words text-[24px] font-semibold leading-[32px] whitespace-normal">
+          {source?.name}
+        </span>
       </div>
-      <span className="text-[15px]">{source?.description}</span>
+      <span className="min-w-0 flex-1 basis-[240px] self-center break-words text-[15px] leading-[24px]">
+        {source?.description}
+      </span>
     </div>
   );
 
@@ -320,6 +331,8 @@ const IntegrationDetail: FC = () => {
                       loading={k8sMetaLoading}
                       onDownload={handleK8sDownload}
                     />
+                  ) : isSnmpTrapSource ? (
+                    <SnmpTrapGuide />
                   ) : (
                     renderGuideTab()
                   )}

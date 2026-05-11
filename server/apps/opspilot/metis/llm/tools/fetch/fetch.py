@@ -1,6 +1,6 @@
 """高级Fetch工具 - 获取和格式化Web内容"""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -439,3 +439,95 @@ def fetch_json(
                 "error": f"JSON解析失败: {str(e)}",
                 "url": response["url"],
             }
+
+
+@tool()
+def fetch_batch(
+    urls: List[str],
+    format: Literal["html", "txt", "markdown", "json"] = "txt",
+    max_length: Optional[int] = None,
+    bearer_token: Optional[str] = None,
+    config: RunnableConfig = None,
+) -> Dict[str, Any]:
+    """
+    批量获取多个 URL 的内容，一次调用处理多个目标。
+
+    **何时使用此工具：**
+    - 需要同时获取多个 URL 的内容
+    - 对比多个页面的内容
+    - 批量抓取相关页面
+
+    **工具能力：**
+    - 顺序请求每个 URL，单个失败不中断其他
+    - 支持 html / txt / markdown / json 四种格式
+    - 每个结果独立标注成功/失败状态
+
+    Args:
+        urls (List[str]): URL 列表（必填）
+        format (str): 返回内容格式，可选 html/txt/markdown/json，默认 txt
+        max_length (int, optional): 每个 URL 的最大内容长度
+        bearer_token (str, optional): Bearer Token，用于 API 认证
+        config (RunnableConfig): 工具配置（自动传递）
+
+    Returns:
+        dict: 批量结果
+            - total (int): URL 总数
+            - succeeded (int): 成功数量
+            - failed (int): 失败数量
+            - results (list): 每个 URL 的结果，含 input/ok/data 或 error 字段
+    """
+    fetch_config = prepare_fetch_config(config)
+    if max_length is None:
+        max_length = fetch_config.get("default_limit", 5000)
+
+    results = []
+    succeeded = 0
+    failed = 0
+
+    for url in urls:
+        try:
+            response = _http_get_impl(url, headers=None, bearer_token=bearer_token, config=config)
+            if not response.get("success"):
+                results.append({"input": url, "ok": False, "error": response.get("error", "请求失败")})
+                failed += 1
+                continue
+
+            raw_content = response["content"]
+
+            if format == "html":
+                content = raw_content
+            elif format == "txt":
+                content = clean_whitespace(html_to_text(raw_content))
+            elif format == "markdown":
+                content = clean_whitespace(html_to_markdown(raw_content))
+            elif format == "json":
+                try:
+                    content = parse_json(raw_content)
+                except Exception as e:
+                    results.append({"input": url, "ok": False, "error": f"JSON解析失败: {str(e)}"})
+                    failed += 1
+                    continue
+            else:
+                content = clean_whitespace(html_to_text(raw_content))
+
+            truncated = truncate_content(content if isinstance(content, str) else str(content), max_length, 0)
+            results.append(
+                {
+                    "input": url,
+                    "ok": True,
+                    "data": truncated["content"] if isinstance(content, str) else content,
+                    "url": response.get("url", url),
+                }
+            )
+            succeeded += 1
+
+        except Exception as e:
+            results.append({"input": url, "ok": False, "error": str(e)})
+            failed += 1
+
+    return {
+        "total": len(urls),
+        "succeeded": succeeded,
+        "failed": failed,
+        "results": results,
+    }

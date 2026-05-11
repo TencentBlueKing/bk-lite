@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { message } from 'antd';
+import { message, Tag } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useSecurityApi } from '@/app/system-manager/api/security';
 import { AuthSource } from '@/app/system-manager/types/security';
@@ -45,7 +45,9 @@ const AuthSourcesPage: React.FC = () => {
       setRoleTreeData(
         roleData.map((item: any) => ({
           key: item.id,
-          title: item.name,
+          title: item.is_build_in === false
+            ? <span>{item.name}<Tag color="green" className="ml-1" style={{ fontSize: 11, padding: '0 4px' }}>{t('common.externalApp')}</Tag></span>
+            : item.name,
           selectable: false,
           children: item.children.map((child: any) => ({
             key: child.id,

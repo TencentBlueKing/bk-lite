@@ -130,6 +130,7 @@ def exec_command_to_remote(
         passphrase=passphrase,
         timeout=InstallerConstants.COMMAND_EXECUTE_TIMEOUT,
         port=port,
+        fast_fail=True,
     )
     return result
 
@@ -158,6 +159,7 @@ def exec_command_to_remote_stream(
         port=port,
         execution_id=execution_id,
         stream_log_topic=stream_log_topic,
+        fast_fail=True,
     )
     return result
 
@@ -204,6 +206,7 @@ def download_to_remote(
         timeout=InstallerConstants.FILE_TRANSFER_TIMEOUT,
         port=port,
         local_path=local_path,
+        fast_fail=True,
     )
     return result
 

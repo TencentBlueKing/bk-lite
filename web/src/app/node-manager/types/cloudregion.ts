@@ -118,6 +118,7 @@ interface MappedNodeItem extends Omit<BaseNodeInfo, 'id' | 'operating_system'> {
 interface NodeItem extends Pick<BaseNodeInfo, 'ip'> {
   id?: string;
   os: string;
+  cpu_architecture?: string;
   organizations?: string[];
   username?: string;
   password?: string;
@@ -175,6 +176,8 @@ interface ControllerInstallFields {
   id?: number;
   cloud_region_id: number;
   nodes: NodeItem[];
+   os?: string;
+   cpu_architecture?: string;
   work_node?: string;
   sidecar_package?: string;
   executor_package?: string;

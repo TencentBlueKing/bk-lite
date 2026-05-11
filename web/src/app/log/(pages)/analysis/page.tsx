@@ -17,17 +17,33 @@ import TreeSelector from '@/app/log/components/tree-selector';
 import { TreeItem } from '@/app/log/types';
 import { ObjectItem } from '@/app/log/types/event';
 
+const findFirstLeafKey = (nodes: TreeItem[]): string => {
+  for (const node of nodes) {
+    if (!node.children?.length) {
+      return String(node.key);
+    }
+
+    const childKey = findFirstLeafKey(node.children);
+    if (childKey) {
+      return childKey;
+    }
+  }
+
+  return '';
+};
+
 const Analysis: React.FC = () => {
   const menuItems = useBuildInDashBoards();
   const { isLoading } = useApiClient();
   const { getCollectTypes, getDisplayCategoryEnum } = useLogApi();
   const [collapsed, setCollapsed] = useState(false);
   const dashboardRef = useRef<DashboardRef>(null);
-  const [dashboardId, setDashboardId] = useState<string>(
-    menuItems[0]?.id || ''
-  );
+  const [dashboardId, setDashboardId] = useState<string>('');
   const [dashboardCollectTypeIdMap, setDashboardCollectTypeIdMap] = useState<
     Record<string, React.Key>
+  >({});
+  const [dashboardTitleMap, setDashboardTitleMap] = useState<
+    Record<string, string>
   >({});
   const [selectedCollectTypeId, setSelectedCollectTypeId] =
     useState<React.Key | null>(null);
@@ -35,7 +51,7 @@ const Analysis: React.FC = () => {
   const [treeLoading, setTreeLoading] = useState<boolean>(true);
 
   const selectedDashboard = useMemo(() => {
-    return menuItems.find((item) => item.id === dashboardId) || menuItems[0];
+    return menuItems.find((item) => item.id === dashboardId) || null;
   }, [dashboardId, menuItems]);
 
   // 构建 collectTypeName 到仪表盘的映射
@@ -63,15 +79,18 @@ const Analysis: React.FC = () => {
       );
 
       const collectTypeIdMap: Record<string, React.Key> = {};
+      const titleMap: Record<string, string> = {};
 
       // 按 display_category 分组，仅包含有对应仪表盘的 collectType
       const groupedData = collectTypes.reduce(
         (acc, item) => {
           const category = item.display_category || 'other';
           const dashboard = dashboardMap[item.name];
+          const nodeLabel = item.display_name || item.name || '--';
           // 没有仪表盘的节点隐藏
           if (!dashboard) return acc;
           collectTypeIdMap[dashboard.id] = item.id;
+          titleMap[dashboard.id] = nodeLabel;
           if (!acc[category]) {
             acc[category] = {
               title: categoryMap[category] || category,
@@ -80,8 +99,8 @@ const Analysis: React.FC = () => {
             };
           }
           acc[category].children.push({
-            title: item.display_name || item.name,
-            label: item.display_name || item.name || '--',
+            title: nodeLabel,
+            label: nodeLabel,
             key: dashboard.id,
             children: []
           });
@@ -91,6 +110,7 @@ const Analysis: React.FC = () => {
       );
 
       setDashboardCollectTypeIdMap(collectTypeIdMap);
+      setDashboardTitleMap(titleMap);
 
       // 按 categoryEnum 顺序排列，仅展示有子节点的分类
       return categoryEnum
@@ -120,6 +140,25 @@ const Analysis: React.FC = () => {
   useEffect(() => {
     setSelectedCollectTypeId(dashboardCollectTypeIdMap[dashboardId] || null);
   }, [dashboardCollectTypeIdMap, dashboardId]);
+
+  useEffect(() => {
+    if (!treeData.length) {
+      return;
+    }
+
+    const selectedNodeExists = dashboardId
+      ? menuItems.some((item) => item.id === dashboardId)
+      : false;
+
+    if (selectedNodeExists) {
+      return;
+    }
+
+    const firstLeafKey = findFirstLeafKey(treeData);
+    if (firstLeafKey) {
+      setDashboardId(firstLeafKey);
+    }
+  }, [treeData, dashboardId, menuItems]);
 
   const handleNodeSelect = (key: string) => {
     setDashboardId(key);
@@ -167,6 +206,7 @@ const Analysis: React.FC = () => {
         <Dashboard
           ref={dashboardRef}
           selectedDashboard={selectedDashboard}
+          selectedDashboardTitle={dashboardTitleMap[dashboardId] || ''}
           selectedCollectTypeId={selectedCollectTypeId}
           editable={false}
         />

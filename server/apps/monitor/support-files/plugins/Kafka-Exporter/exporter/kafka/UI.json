@@ -126,6 +126,62 @@
       }
     },
     {
+      "name": "ENV_TOPIC_FILTER",
+      "label": "Topic包含",
+      "type": "input",
+      "required": false,
+      "default_value": ".*",
+      "description": "按正则包含要采集的 Topic",
+      "widget_props": {
+        "placeholder": ".*"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.TOPIC_FILTER__{{config_id}}"
+      }
+    },
+    {
+      "name": "ENV_TOPIC_EXCLUDE",
+      "label": "Topic排除",
+      "type": "input",
+      "required": false,
+      "default_value": "^$",
+      "description": "按正则排除不需要采集的 Topic",
+      "widget_props": {
+        "placeholder": "^$"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.TOPIC_EXCLUDE__{{config_id}}"
+      }
+    },
+    {
+      "name": "ENV_GROUP_FILTER",
+      "label": "消费组包含",
+      "type": "input",
+      "required": false,
+      "default_value": ".*",
+      "description": "按正则包含要采集的消费组",
+      "widget_props": {
+        "placeholder": ".*"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.GROUP_FILTER__{{config_id}}"
+      }
+    },
+    {
+      "name": "ENV_GROUP_EXCLUDE",
+      "label": "消费组排除",
+      "type": "input",
+      "required": false,
+      "default_value": "^$",
+      "description": "按正则排除不需要采集的消费组",
+      "widget_props": {
+        "placeholder": "^$"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.GROUP_EXCLUDE__{{config_id}}"
+      }
+    },
+    {
       "name": "interval",
       "label": "间隔",
       "type": "inputNumber",

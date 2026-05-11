@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Spin, Empty } from 'antd';
+import { formatNumericValue } from '@/app/log/utils/common';
 
 interface ComSingleProps {
   rawData: any;
@@ -13,7 +14,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
   config
 }) => {
   const [displayValue, setDisplayValue] = useState<number>();
-  const [fontSize, setFontSize] = useState<number>(100);
+  const [fontSize, setFontSize] = useState<number>(64);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // 处理数据
@@ -26,7 +27,11 @@ const ComSingle: React.FC<ComSingleProps> = ({
         if (Array.isArray(rawData) && rawData.length > 0) {
           const parsed = parseFloat(rawData[0][field]);
           value = isNaN(parsed) ? undefined : parsed;
-        } else if (rawData && typeof rawData === 'object' && !Array.isArray(rawData)) {
+        } else if (
+          rawData &&
+          typeof rawData === 'object' &&
+          !Array.isArray(rawData)
+        ) {
           const parsed = parseFloat(rawData[field]);
           value = isNaN(parsed) ? undefined : parsed;
         }
@@ -39,17 +44,17 @@ const ComSingle: React.FC<ComSingleProps> = ({
   useEffect(() => {
     const updateFontSize = () => {
       if (containerRef.current) {
-        const containerWidth = containerRef.current.clientWidth;
+        const containerWidth = containerRef.current.clientWidth - 32;
         const containerHeight = containerRef.current.clientHeight;
         const digits = String(displayValue ?? '').length || 1;
 
         // 高度约束：确保文本不超出容器高度（lineHeight=1.2）
-        const maxByHeight = containerHeight / 1.2;
-        // 宽度约束：每个数字约 0.65em 宽
-        const maxByWidth = containerWidth / (digits * 0.65);
+        const maxByHeight = containerHeight / 1.4;
+        // 宽度约束：保守估计大号粗体数字的占宽
+        const maxByWidth = containerWidth / Math.max(digits * 0.72, 1);
         const calculatedSize = Math.max(
-          24,
-          Math.min(maxByHeight, maxByWidth, 300)
+          20,
+          Math.min(maxByHeight, maxByWidth, 104)
         );
         setFontSize(calculatedSize);
       }
@@ -90,17 +95,20 @@ const ComSingle: React.FC<ComSingleProps> = ({
   return (
     <div
       ref={containerRef}
-      className="h-full w-full flex items-center justify-center"
+      className="flex h-full w-full items-center justify-center px-2"
     >
-      <div
-        className="font-bold text-center select-none transition-all duration-300"
-        style={{
-          fontSize: `${fontSize}px`,
-          color: config?.color || 'var(--color-primary)',
-          lineHeight: 1.2
-        }}
-      >
-        {displayValue}
+      <div className="flex h-full w-full items-center rounded-2xl bg-[linear-gradient(180deg,rgba(79,124,243,0.08)_0%,rgba(79,124,243,0.02)_100%)] px-5 py-4">
+        <div
+          className="w-full overflow-hidden text-center select-none font-semibold text-[var(--color-text-1)] transition-all duration-300"
+          style={{
+            fontSize: `${fontSize}px`,
+            color: config?.color || 'var(--color-text-1)',
+            lineHeight: 1,
+            letterSpacing: '-0.04em'
+          }}
+        >
+          {formatNumericValue(displayValue)}
+        </div>
       </div>
     </div>
   );

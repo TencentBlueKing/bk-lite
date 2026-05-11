@@ -67,7 +67,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
   const invalidBindings = useMemo((): BindingValidationResult[] => {
     const bindings = config?.filterBindings;
-    if (!bindings || !filterDefinitions || !dataSource?.params) {
+    if (!bindings || !filterDefinitions || !Array.isArray(dataSource?.params)) {
       return [];
     }
 
@@ -370,4 +370,4 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   );
 };
 
-export default WidgetWrapper;
+export default React.memo(WidgetWrapper);
