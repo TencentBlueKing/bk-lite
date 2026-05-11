@@ -13,6 +13,7 @@ from apps.alerts.aggregation.builder.synthetic_alert_builder import (
     SyntheticAlertBuilder,
 )
 from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
+from apps.alerts.aggregation.strategy.matcher import StrategyMatcher
 from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
 from apps.alerts.nats.nats import receive_alert_events
 from apps.alerts.constants import (
@@ -32,6 +33,7 @@ from apps.alerts.models.models import Incident
 from apps.alerts.serializers.incident import IncidentModelSerializer
 from apps.alerts.serializers.alert_source import AlertSourceModelSerializer
 from apps.alerts.serializers.strategy import AlarmStrategySerializer
+from apps.alerts.utils.rule_matcher import RuleMatcher
 from apps.alerts.views.alert import AlertModelViewSet
 from apps.alerts.views.alert_source import AlertSourceModelViewSet
 from apps.alerts.views.event import EventModelViewSet
@@ -429,6 +431,86 @@ class MissingDetectionProcessorTestCase(TestCase):
             strategy.params["last_heartbeat_time"],
             Event.objects.get(event_id="EVENT-RECOVERY").received_at.isoformat(),
         )
+
+
+class StrategyMatcherTestCase(TestCase):
+    def setUp(self):
+        self.source = AlertSource.objects.create(
+            name="matcher-source",
+            source_id="matcher-source",
+            source_type=AlertsSourceTypes.WEBHOOK,
+        )
+        self.event = Event.objects.create(
+            source=self.source,
+            raw_data={},
+            title="cpu high",
+            description="cpu high",
+            level="1",
+            start_time=timezone.now(),
+            event_id="EVENT-strategy-matcher",
+        )
+
+    def test_invalid_in_rule_does_not_match_all_events(self):
+        matched = StrategyMatcher.match_events_to_strategy(
+            Event.objects.all(),
+            [[{"key": "title", "operator": "in", "value": "cpu high"}]],
+        )
+
+        self.assertFalse(matched.exists())
+
+    def test_invalid_regex_rule_does_not_match_all_events(self):
+        matched = StrategyMatcher.match_events_to_strategy(
+            Event.objects.all(),
+            [[{"key": "title", "operator": "regex", "value": "["}]],
+        )
+
+        self.assertFalse(matched.exists())
+
+    def test_partially_invalid_and_group_does_not_broaden_match_scope(self):
+        matched = StrategyMatcher.match_events_to_strategy(
+            Event.objects.all(),
+            [
+                [
+                    {"key": "title", "operator": "eq", "value": "cpu high"},
+                    {"key": "title", "operator": "regex", "value": "["},
+                ]
+            ],
+        )
+
+        self.assertFalse(matched.exists())
+
+    def test_unknown_operator_does_not_fall_back_to_exact_match(self):
+        matched = StrategyMatcher.match_events_to_strategy(
+            Event.objects.all(),
+            [[{"key": "title", "operator": "unknown", "value": "cpu high"}]],
+        )
+
+        self.assertFalse(matched.exists())
+
+    def test_shared_rule_matcher_invalid_and_group_returns_empty_result(self):
+        matcher = RuleMatcher({"title": "title"})
+
+        matched_ids = matcher.filter_queryset(
+            Event.objects.all(),
+            [
+                [
+                    {"key": "title", "operator": "eq", "value": "cpu high"},
+                    {"key": "title", "operator": "re", "value": "["},
+                ]
+            ],
+        )
+
+        self.assertEqual(matched_ids, [])
+
+    def test_shared_rule_matcher_unknown_operator_returns_empty_result(self):
+        matcher = RuleMatcher({"title": "title"})
+
+        matched_ids = matcher.filter_queryset(
+            Event.objects.all(),
+            [[{"key": "title", "operator": "unknown", "value": "cpu high"}]],
+        )
+
+        self.assertEqual(matched_ids, [])
 
 
 class AlertSourceIngressTestCase(TestCase):

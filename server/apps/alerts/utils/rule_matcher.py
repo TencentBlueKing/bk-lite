@@ -39,11 +39,7 @@ class RuleMatcher:
         """
         self.field_mapping = field_mapping
 
-    def filter_queryset(
-        self,
-        queryset: QuerySet,
-        match_rules: List[List[Dict[str, Any]]]
-    ) -> List[int]:
+    def filter_queryset(self, queryset: QuerySet, match_rules: List[List[Dict[str, Any]]]) -> List[int]:
         """
         使用ORM查询过滤匹配规则
 
@@ -112,15 +108,23 @@ class RuleMatcher:
         """
         group_q = Q()
         group_has_valid_rules = False
+        invalid_group = False
 
         for rule in rule_group:
             rule_q = self.build_single_rule_q(rule)
-            if rule_q:
-                group_has_valid_rules = True
-                if not group_q:
-                    group_q = rule_q
-                else:
-                    group_q &= rule_q
+            if rule_q is None:
+                invalid_group = True
+                logger.warning(f"Rule group invalidated by rule: {rule}")
+                break
+
+            group_has_valid_rules = True
+            if not group_q:
+                group_q = rule_q
+            else:
+                group_q &= rule_q
+
+        if invalid_group:
+            return None
 
         return group_q if group_has_valid_rules else None
 
@@ -172,11 +176,7 @@ class RuleMatcher:
             return None
 
 
-def filter_by_rules(
-    queryset: QuerySet,
-    match_rules: List[List[Dict[str, Any]]],
-    field_mapping: Dict[str, str]
-) -> List[int]:
+def filter_by_rules(queryset: QuerySet, match_rules: List[List[Dict[str, Any]]], field_mapping: Dict[str, str]) -> List[int]:
     """
     根据规则过滤查询集
 
