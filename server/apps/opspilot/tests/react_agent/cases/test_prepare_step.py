@@ -173,6 +173,32 @@ class TestPrepareStepBasic:
         messages, llm_inputs = await _build_and_run(request, responses, [search_tool])
         assert len(llm_inputs) == 1
 
+    async def test_step_number_increments(self):
+        """step_number increments across multiple tool-call rounds."""
+        captured_steps = []
+
+        def capture_hook(ctx: PrepareStepContext):
+            captured_steps.append(ctx.step_number)
+            return None
+
+        request = BasicLLMRequest(
+            max_steps=5,
+            compaction_enabled=False,
+            retry_config=RetryConfig(enabled=False),
+            reflection_config=ReflectionConfig(enabled=False),
+            prepare_step_hooks=[capture_hook],
+        )
+
+        responses = [
+            AIMessage(content="t1", tool_calls=[{"name": "search_tool", "args": {"query": "x"}, "id": "c1"}]),
+            AIMessage(content="t2", tool_calls=[{"name": "search_tool", "args": {"query": "y"}, "id": "c2"}]),
+            AIMessage(content="Done."),
+        ]
+
+        await _build_and_run(request, responses, [search_tool])
+
+        assert captured_steps == [1, 2, 3]
+
 
 # ---------------------------------------------------------------------------
 # Tests: Modifying Messages
@@ -283,6 +309,75 @@ class TestPrepareStepModifyTools:
         # Should have bound with only calc_tool
         assert len(bind_calls) >= 1
         assert bind_calls[0] == ["calc_tool"]
+
+    async def test_add_new_tool(self):
+        """Hook adds a new tool on step 2."""
+        bind_calls = []
+
+        def add_tool_hook(ctx: PrepareStepContext):
+            if ctx.step_number == 1:
+                return PrepareStepResult(tools=[search_tool])
+            if ctx.step_number == 2:
+                return PrepareStepResult(tools=[search_tool, calc_tool])
+            return None
+
+        request = BasicLLMRequest(
+            max_steps=5,
+            compaction_enabled=False,
+            retry_config=RetryConfig(enabled=False),
+            reflection_config=ReflectionConfig(enabled=False),
+            prepare_step_hooks=[add_tool_hook],
+        )
+
+        responses = [
+            AIMessage(content="t1", tool_calls=[{"name": "search_tool", "args": {"query": "x"}, "id": "c1"}]),
+            AIMessage(content="t2", tool_calls=[{"name": "calc_tool", "args": {"expr": "1+1"}, "id": "c2"}]),
+            AIMessage(content="Done."),
+        ]
+
+        node_builder = ToolsNodes()
+        node_builder.tools = [search_tool, calc_tool]
+
+        call_count = {"n": 0}
+
+        async def mock_ainvoke(messages, *args, **kwargs):
+            idx = min(call_count["n"], len(responses) - 1)
+            call_count["n"] += 1
+            return responses[idx]
+
+        mock_llm = MagicMock()
+
+        def track_bind_tools(tools_arg, **kwargs):
+            bind_calls.append([getattr(t, "name", str(t)) for t in tools_arg])
+            bound = MagicMock()
+            bound.ainvoke = mock_ainvoke
+            return bound
+
+        mock_llm.bind_tools = track_bind_tools
+        node_builder.get_llm_client = lambda *a, **kw: mock_llm
+
+        graph_builder = StateGraph(AgentState)
+        entry = await node_builder.build_react_nodes(
+            graph_builder=graph_builder,
+            composite_node_name="test_react",
+        )
+        graph_builder.set_entry_point(entry)
+        graph = graph_builder.compile()
+
+        config = {"configurable": {"graph_request": request, "trace_id": "test"}}
+
+        with patch(
+            "apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template",
+            return_value="You are a test assistant.",
+        ):
+            await graph.ainvoke(
+                {"messages": [HumanMessage(content="test")]},
+                config=config,
+            )
+
+        assert len(bind_calls) >= 2
+        assert "search_tool" in bind_calls[0]
+        assert "calc_tool" in bind_calls[1]
 
 
 # ---------------------------------------------------------------------------

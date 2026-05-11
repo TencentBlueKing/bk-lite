@@ -38,3 +38,4 @@
     13. 异步钩子正常执行: async def hook 被正确 await
 
 关联测试文件: cases/test_prepare_step.py
+状态: GREEN（功能已实现）

@@ -261,6 +261,15 @@ class AgentNode(BaseNodeExecutor):
         # 使用同步版本的 invoke_chat,避免异步上下文冲突
         data, _, _ = ChatService.invoke_chat(llm_params)
 
+        # 检查执行是否失败
+        if data.get("success") is False:
+            return {
+                "success": False,
+                "error": data.get("error"),
+                "error_type": data.get("error_type"),
+                output_key: data["message"],
+            }
+
         result = {output_key: data["message"]}
         if data.get("browser_steps"):
             result["browser_steps"] = data["browser_steps"]

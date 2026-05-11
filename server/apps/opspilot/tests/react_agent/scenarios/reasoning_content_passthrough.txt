@@ -24,3 +24,4 @@
     6. Qwen 模型多轮 tool_call: 同上
 
 关联测试文件: cases/test_reasoning_content.py
+状态: GREEN（功能已实现）

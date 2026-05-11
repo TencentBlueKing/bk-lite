@@ -39,3 +39,4 @@ code-reviews/
 /web/enterprise
 /web/src/app/**/(enterprise)/
 .env.dev
+.sisyphus/*

@@ -457,10 +457,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         {browserStepsHistory && browserStepsHistory.steps.length > 0 && (
           <BrowserStepProgress history={browserStepsHistory} />
         )}
-        <ThinkingPanel thinking={thinking} isThinking={isThinking} />
-        {browserStepsHistory && browserStepsHistory.steps.length > 0 && (
-          <BrowserStepProgress history={browserStepsHistory} />
-        )}
         {content && (
           <div
             dangerouslySetInnerHTML={{ __html: html }}

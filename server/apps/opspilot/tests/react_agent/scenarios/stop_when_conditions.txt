@@ -36,3 +36,4 @@
     13. messages 为空时返回 "end"
 
 关联测试文件: cases/test_stop_when.py
+状态: GREEN（功能已实现）

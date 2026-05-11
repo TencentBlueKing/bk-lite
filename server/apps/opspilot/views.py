@@ -229,7 +229,9 @@ def get_skill_and_params(kwargs, team, bot_id=None):
 
 
 def invoke_chat(params, skill_obj, kwargs, current_ip, user_message, history_log=None):
-    return_data, _ = get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_log)
+    return_data, _, is_error = get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_log)
+    if is_error:
+        return JsonResponse(return_data, status=500)
     return JsonResponse(return_data)
 
 
@@ -253,6 +255,17 @@ def format_knowledge_sources(content, skill_obj, doc_map=None, title_map=None):
 def get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_log=None):
     # 使用同步版本的 invoke_chat
     data, doc_map, title_map = ChatService.invoke_chat(params)
+
+    # 检查执行是否失败
+    if data.get("success") is False:
+        error_response = {
+            "error": {
+                "message": data.get("error", data.get("message", "Unknown error")),
+                "type": data.get("error_type", "ExecutionError"),
+                "code": "execution_failed",
+            }
+        }
+        return error_response, None, True  # 第三个返回值表示是否失败
 
     content = format_knowledge_sources(data["message"], skill_obj, doc_map, title_map)
     return_data = {
@@ -284,7 +297,7 @@ def get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_lo
         history_log.citing_knowledge = list(doc_map.values())
         history_log.save()
     insert_skill_log(current_ip, skill_obj.id, return_data, kwargs, user_message=user_message)
-    return return_data, content
+    return return_data, content, False  # 第三个返回值表示是否失败
 
 
 @api_exempt

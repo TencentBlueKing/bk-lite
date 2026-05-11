@@ -497,7 +497,7 @@ def test_get_chat_msg_keeps_evidence_package_json_intact_when_knowledge_sources_
     )
     mocker.patch("apps.opspilot.views.insert_skill_log")
 
-    return_data, content = get_chat_msg(
+    return_data, content, is_error = get_chat_msg(
         current_ip="127.0.0.1",
         kwargs={"model": "gpt-4o"},
         params={"user_message": "collect k8s evidence"},
@@ -505,6 +505,7 @@ def test_get_chat_msg_keeps_evidence_package_json_intact_when_knowledge_sources_
         user_message="collect k8s evidence",
     )
 
+    assert not is_error
     assert content == evidence_package
     assert return_data["choices"][0]["message"]["content"] == evidence_package
 

@@ -28,3 +28,4 @@
     8. 工具切换不影响已有 tool_call 结果: 上一轮 tool_call 的 ToolMessage 仍在 messages 中
 
 关联测试文件: cases/test_dynamic_tools.py
+状态: GREEN（功能已实现）

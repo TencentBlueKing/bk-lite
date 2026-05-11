@@ -27,3 +27,4 @@
     7. usage_metadata 非 dict 时安全处理: 不报错
 
 关联测试文件: cases/test_token_budget.py
+状态: GREEN（功能已实现）

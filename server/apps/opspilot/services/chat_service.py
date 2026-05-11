@@ -86,10 +86,10 @@ class ChatService:
         # 处理用户消息和图片
         chat_kwargs, doc_map, title_map = ChatService.format_chat_server_kwargs(kwargs, llm_model)
 
-        # 创建 agent 实例并直接执行
-        graph, request = create_agent_instance(skill_type, chat_kwargs)
-
         try:
+            # 创建 agent 实例并直接执行
+            graph, request = create_agent_instance(skill_type, chat_kwargs)
+
             if _is_eventlet_environment():
                 raise RuntimeError("当前 Celery worker 使用 eventlet 池，不支持在任务中执行 asyncio.run(graph.execute(...))，请改用 --pool threads 或 solo")
 
@@ -99,6 +99,7 @@ class ChatService:
             # 构建返回结果
             result = {
                 "message": response.message,
+                "success": True,
                 "total_tokens": response.total_tokens,
                 "prompt_tokens": response.prompt_tokens,
                 "completion_tokens": response.completion_tokens,
@@ -118,7 +119,20 @@ class ChatService:
 
             loader = LanguageLoader(app="opspilot", default_lang="en")
             message = loader.get("error.agent_execution_failed") or f"Agent execution failed: {str(e)}"
-            return {"message": message}, doc_map, title_map
+            return (
+                {
+                    "message": message,
+                    "success": False,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "total_tokens": 0,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "browser_steps": [],
+                },
+                doc_map,
+                title_map,
+            )
 
     @staticmethod
     def _process_tools_and_extra_config(kwargs, chat_kwargs, extra_config):  # noqa: C901

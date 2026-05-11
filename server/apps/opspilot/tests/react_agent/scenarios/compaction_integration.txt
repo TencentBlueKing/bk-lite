@@ -26,3 +26,4 @@
     6. prepareStep 修改 messages 后再 compaction: 两者协作不冲突
 
 关联测试文件: cases/test_compaction_integration.py
+状态: GREEN（功能已实现）

@@ -237,6 +237,27 @@ class TestToolRetryDisabled:
         # Error preserved, no retry
         assert any("Error" in str(m.content) or "503" in str(m.content) for m in tool_msgs)
 
+    async def test_max_retries_zero_no_retry(self):
+        """When max_retries_per_tool=0, no retry even if enabled."""
+        request = BasicLLMRequest(
+            max_steps=5,
+            compaction_enabled=False,
+            retry_config=RetryConfig(enabled=True, max_retries_per_tool=0, backoff_seconds=0.01),
+        )
+        responses = [
+            AIMessage(
+                content="Calling",
+                tool_calls=[{"name": "always_fails", "args": {"query": "x"}, "id": "call_1"}],
+            ),
+            AIMessage(content="Failed."),
+        ]
+
+        messages, steps = await _build_and_run(request, responses, [always_fails])
+
+        assert steps == 2
+        tool_msgs = [m for m in messages if isinstance(m, ToolMessage)]
+        assert any("Error" in str(m.content) or "503" in str(m.content) for m in tool_msgs)
+
 
 @pytest.mark.asyncio
 class TestToolRetryKeywords:
@@ -277,6 +298,42 @@ class TestToolRetryKeywords:
         assert steps == 2
         tool_msgs = [m for m in messages if isinstance(m, ToolMessage)]
         # Should have retried and gotten success
+        assert any("success" in str(m.content) for m in tool_msgs)
+
+    async def test_keyword_case_insensitive(self):
+        """Keyword matching is case-insensitive."""
+        call_state = {"n": 0}
+
+        @tool
+        def timeout_then_ok(query: str) -> str:
+            """Connection TIMEOUT first, ok second."""
+            call_state["n"] += 1
+            if call_state["n"] <= 1:
+                return "Error: Connection TIMEOUT"
+            return "success"
+
+        request = BasicLLMRequest(
+            max_steps=5,
+            compaction_enabled=False,
+            retry_config=RetryConfig(
+                enabled=True,
+                max_retries_per_tool=2,
+                backoff_seconds=0.01,
+                retry_on_error_keywords=["timeout"],
+            ),
+        )
+        responses = [
+            AIMessage(
+                content="Calling",
+                tool_calls=[{"name": "timeout_then_ok", "args": {"query": "x"}, "id": "call_1"}],
+            ),
+            AIMessage(content="Done."),
+        ]
+
+        messages, steps = await _build_and_run(request, responses, [timeout_then_ok])
+
+        assert steps == 2
+        tool_msgs = [m for m in messages if isinstance(m, ToolMessage)]
         assert any("success" in str(m.content) for m in tool_msgs)
 
     async def test_non_matching_error_no_retry(self):
@@ -346,3 +403,30 @@ class TestToolRetryBackoff:
         assert sleep_calls[0] == 1.0
         assert sleep_calls[1] == 2.0
         assert sleep_calls[2] == 4.0
+
+    async def test_configurable_backoff_base(self):
+        """Verify the configured backoff base is used for the first retry."""
+        request = BasicLLMRequest(
+            max_steps=5,
+            compaction_enabled=False,
+            retry_config=RetryConfig(enabled=True, max_retries_per_tool=1, backoff_seconds=0.5),
+        )
+        responses = [
+            AIMessage(
+                content="Calling",
+                tool_calls=[{"name": "always_fails", "args": {"query": "x"}, "id": "call_1"}],
+            ),
+            AIMessage(content="Failed after retry."),
+        ]
+
+        sleep_calls = []
+
+        async def mock_sleep(seconds):
+            sleep_calls.append(seconds)
+
+        with patch("asyncio.sleep", side_effect=mock_sleep):
+            messages, steps = await _build_and_run(request, responses, [always_fails])
+
+        assert steps == 2
+        assert len(sleep_calls) == 1, f"Expected 1 sleep call, got {len(sleep_calls)}"
+        assert sleep_calls[0] == 0.5

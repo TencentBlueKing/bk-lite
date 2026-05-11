@@ -140,6 +140,22 @@ class TestToolChoiceAuto:
         assert len(bind_kwargs) >= 1
         assert "tool_choice" not in bind_kwargs[0]
 
+    async def test_default_config_is_auto(self):
+        request = BasicLLMRequest(
+            max_steps=5,
+            compaction_enabled=False,
+            retry_config=RetryConfig(enabled=False),
+            reflection_config=ReflectionConfig(enabled=False),
+            timeout_config=TimeoutConfig(enabled=False),
+            tool_choice_config=ToolChoiceConfig(),
+        )
+        responses = [AIMessage(content="Done.")]
+
+        _, bind_kwargs = await _build_and_run(request, responses)
+
+        assert len(bind_kwargs) >= 1
+        assert "tool_choice" not in bind_kwargs[0]
+
 
 @pytest.mark.asyncio
 class TestToolChoiceNone:
@@ -159,6 +175,22 @@ class TestToolChoiceNone:
         _, bind_kwargs = await _build_and_run(request, responses)
 
         assert bind_kwargs[0]["tool_choice"] == "none"
+
+    async def test_none_mode_llm_outputs_text(self):
+        request = BasicLLMRequest(
+            max_steps=5,
+            compaction_enabled=False,
+            retry_config=RetryConfig(enabled=False),
+            reflection_config=ReflectionConfig(enabled=False),
+            timeout_config=TimeoutConfig(enabled=False),
+            tool_choice_config=ToolChoiceConfig(mode="none"),
+        )
+        responses = [AIMessage(content="text answer")]
+
+        messages, bind_kwargs = await _build_and_run(request, responses)
+
+        assert bind_kwargs[0]["tool_choice"] == "none"
+        assert messages[-1].content == "text answer"
 
 
 @pytest.mark.asyncio
@@ -183,6 +215,26 @@ class TestToolChoiceAny:
 
         assert bind_kwargs[0]["tool_choice"] == "any"
 
+    async def test_any_mode_forces_tool_use(self):
+        request = BasicLLMRequest(
+            max_steps=5,
+            compaction_enabled=False,
+            retry_config=RetryConfig(enabled=False),
+            reflection_config=ReflectionConfig(enabled=False),
+            timeout_config=TimeoutConfig(enabled=False),
+            tool_choice_config=ToolChoiceConfig(mode="any"),
+        )
+        responses = [
+            AIMessage(content="t1", tool_calls=[{"name": "search_tool", "args": {"query": "x"}, "id": "c1"}]),
+            AIMessage(content="t2", tool_calls=[{"name": "calc_tool", "args": {"expr": "1+1"}, "id": "c2"}]),
+            AIMessage(content="Done."),
+        ]
+
+        _, bind_kwargs = await _build_and_run(request, responses)
+
+        assert bind_kwargs[0]["tool_choice"] == "any"
+        assert bind_kwargs[1]["tool_choice"] == "any"
+
 
 @pytest.mark.asyncio
 class TestToolChoiceSpecific:
@@ -205,6 +257,21 @@ class TestToolChoiceSpecific:
         _, bind_kwargs = await _build_and_run(request, responses)
 
         assert bind_kwargs[0]["tool_choice"] == "calc_tool"
+
+    async def test_specific_empty_name_fallback_auto(self):
+        request = BasicLLMRequest(
+            max_steps=5,
+            compaction_enabled=False,
+            retry_config=RetryConfig(enabled=False),
+            reflection_config=ReflectionConfig(enabled=False),
+            timeout_config=TimeoutConfig(enabled=False),
+            tool_choice_config=ToolChoiceConfig(mode="specific", tool_name=""),
+        )
+        responses = [AIMessage(content="Done.")]
+
+        _, bind_kwargs = await _build_and_run(request, responses)
+
+        assert "tool_choice" not in bind_kwargs[0]
 
 
 @pytest.mark.asyncio
@@ -256,3 +323,22 @@ class TestToolChoiceApplyOnSteps:
         # Step 2: in apply_on_steps
         if len(bind_kwargs) >= 2:
             assert bind_kwargs[1].get("tool_choice") == "none"
+
+    async def test_apply_on_all_steps_when_none(self):
+        request = BasicLLMRequest(
+            max_steps=5,
+            compaction_enabled=False,
+            retry_config=RetryConfig(enabled=False),
+            reflection_config=ReflectionConfig(enabled=False),
+            timeout_config=TimeoutConfig(enabled=False),
+            tool_choice_config=ToolChoiceConfig(mode="any", apply_on_steps=None),
+        )
+        responses = [
+            AIMessage(content="t1", tool_calls=[{"name": "search_tool", "args": {"query": "x"}, "id": "c1"}]),
+            AIMessage(content="Done."),
+        ]
+
+        _, bind_kwargs = await _build_and_run(request, responses)
+
+        assert bind_kwargs[0].get("tool_choice") == "any"
+        assert bind_kwargs[1].get("tool_choice") == "any"

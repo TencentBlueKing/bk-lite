@@ -33,7 +33,6 @@ from apps.opspilot.metis.llm.tools.mysql.diagnostics import (  # noqa: E402
 
 # 动态SQL查询工具
 from apps.opspilot.metis.llm.tools.mysql.dynamic import (  # noqa: E402
-    delete_table_data,
     execute_safe_select,
     explain_query_plan,
     get_sample_data,
@@ -101,7 +100,6 @@ __all__ = [
     "execute_safe_select",
     "explain_query_plan",
     "get_sample_data",
-    "delete_table_data",
     # 故障诊断工具
     "diagnose_slow_queries",
     "diagnose_lock_conflicts",

@@ -323,3 +323,27 @@ class TestTimeoutDisabled:
 
         messages, steps = await _build_and_run(request, responses)
         assert steps == 2
+
+    async def test_step_timeout_zero_no_limit(self):
+        """step_timeout_seconds=0 means no step timeout enforcement."""
+        request = BasicLLMRequest(
+            max_steps=5,
+            compaction_enabled=False,
+            retry_config=RetryConfig(enabled=False),
+            reflection_config={"enabled": False},
+            timeout_config=TimeoutConfig(
+                enabled=True,
+                total_timeout_seconds=0,
+                step_timeout_seconds=0,
+                llm_timeout_seconds=0,
+            ),
+        )
+        responses = [
+            AIMessage(content="Step1", tool_calls=[{"name": "fast_tool", "args": {"query": "x"}, "id": "c1"}]),
+            AIMessage(content="Done."),
+        ]
+
+        with patch("asyncio.wait_for", side_effect=AssertionError("wait_for should not be called")):
+            messages, steps = await _build_and_run(request, responses)
+
+        assert steps == 2

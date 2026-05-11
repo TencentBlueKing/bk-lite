@@ -32,7 +32,7 @@ from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
 from langchain_core.tools import tool  # noqa: E402
 from langgraph.graph import StateGraph, add_messages  # noqa: E402
 
-from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, ReflectionConfig, RetryConfig, TimeoutConfig  # noqa: E402
+from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, DoneToolConfig, ReflectionConfig, RetryConfig, TimeoutConfig  # noqa: E402
 from apps.opspilot.metis.llm.chain.node import ToolsNodes  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -87,7 +87,13 @@ async def _build_and_run(request, mock_llm_responses, interrupt_at=None):
     graph_builder.set_entry_point(entry)
     graph = graph_builder.compile()
 
-    config = {"configurable": {"graph_request": request, "trace_id": "test", "execution_id": "exec-1" if interrupt_at else ""}}
+    config = {
+        "configurable": {
+            "graph_request": request,
+            "trace_id": "test",
+            "execution_id": "exec-1" if interrupt_at else "",
+        }
+    }
 
     def capture_event(name, data):
         if name == "agent_step_progress":
@@ -246,3 +252,63 @@ class TestProgressEvents:
         assert statuses[0] == "running"
         assert "tool_executing" in statuses
         assert statuses[-1] == "completed"
+
+
+@pytest.mark.asyncio
+class TestStepProgressWithDoneTool:
+    async def test_done_tool_emits_completed_event(self):
+        request = BasicLLMRequest(
+            max_steps=5,
+            compaction_enabled=False,
+            retry_config=RetryConfig(enabled=False),
+            reflection_config=ReflectionConfig(enabled=False),
+            timeout_config=TimeoutConfig(enabled=False),
+            done_tool_config=DoneToolConfig(enabled=True, tool_name="__done__"),
+        )
+
+        responses = [
+            AIMessage(content="finish", tool_calls=[{"name": "__done__", "args": {"result": "done"}, "id": "d1"}]),
+        ]
+
+        events = []
+
+        async def mock_ainvoke(messages, *args, **kwargs):
+            return responses[0]
+
+        node_builder = ToolsNodes()
+        node_builder.tools = [echo_tool]
+        node_builder.done_tool_config = request.done_tool_config
+
+        mock_llm = MagicMock()
+        mock_llm.bind_tools.return_value = mock_llm
+        mock_llm.ainvoke = mock_ainvoke
+        node_builder.get_llm_client = lambda *a, **kw: mock_llm
+
+        graph_builder = StateGraph(AgentState)
+        entry = await node_builder.build_react_nodes(
+            graph_builder=graph_builder,
+            composite_node_name="test_react",
+        )
+        graph_builder.set_entry_point(entry)
+        graph = graph_builder.compile()
+
+        config = {"configurable": {"graph_request": request, "trace_id": "test", "execution_id": "exec-1"}}
+
+        def capture_event(name, data):
+            if name == "agent_step_progress":
+                events.append(dict(data))
+
+        with patch(
+            "apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template",
+            return_value="You are a test assistant.",
+        ), patch(
+            "langchain_core.callbacks.dispatch_custom_event",
+            side_effect=capture_event,
+        ):
+            await graph.ainvoke(
+                {"messages": [HumanMessage(content="test")]},
+                config=config,
+            )
+
+        completed_events = [e for e in events if e["status"] == "completed"]
+        assert completed_events

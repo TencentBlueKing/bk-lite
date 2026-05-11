@@ -206,6 +206,115 @@ class TestReflectionConsecutiveFailures:
                 assert "[REFLECTION:" not in str(getattr(m, "content", ""))
 
 
+@pytest.mark.asyncio
+class TestReflectionPromptInjection:
+    """Reflection prompt is injected into the LLM messages."""
+
+    async def test_reflection_injects_human_message(self):
+        """Reflection should inject a HumanMessage after consecutive failures reach threshold."""
+        request = BasicLLMRequest(
+            max_steps=10,
+            compaction_enabled=False,
+            retry_config=RetryConfig(enabled=False),
+            reflection_config=ReflectionConfig(enabled=True, consecutive_failures_threshold=3),
+        )
+
+        tool_call = {"name": "always_fails_tool", "args": {"query": "x"}, "id": "call_1"}
+        responses = [
+            AIMessage(content="try1", tool_calls=[{**tool_call, "id": "c1"}]),
+            AIMessage(content="try2", tool_calls=[{**tool_call, "id": "c2"}]),
+            AIMessage(content="try3", tool_calls=[{**tool_call, "id": "c3"}]),
+            AIMessage(content="I'll try differently."),
+        ]
+
+        messages, llm_inputs = await _build_and_run(request, responses, [always_fails_tool])
+
+        assert len(llm_inputs) >= 4
+        fourth_call_messages = llm_inputs[3]
+        reflection_messages = [m for m in fourth_call_messages if isinstance(m, HumanMessage)]
+        assert reflection_messages, f"Expected HumanMessage in 4th LLM call, got: {fourth_call_messages}"
+        assert any("[REFLECTION:" in str(m.content) for m in reflection_messages)
+
+    async def test_reflection_prompt_contains_reason(self):
+        """Reflection prompt should include the reason that triggered it."""
+        request = BasicLLMRequest(
+            max_steps=10,
+            compaction_enabled=False,
+            retry_config=RetryConfig(enabled=False),
+            reflection_config=ReflectionConfig(enabled=True, consecutive_failures_threshold=3),
+        )
+
+        tool_call = {"name": "always_fails_tool", "args": {"query": "x"}, "id": "call_1"}
+        responses = [
+            AIMessage(content="try1", tool_calls=[{**tool_call, "id": "c1"}]),
+            AIMessage(content="try2", tool_calls=[{**tool_call, "id": "c2"}]),
+            AIMessage(content="try3", tool_calls=[{**tool_call, "id": "c3"}]),
+            AIMessage(content="I'll try differently."),
+        ]
+
+        messages, llm_inputs = await _build_and_run(request, responses, [always_fails_tool])
+
+        assert len(llm_inputs) >= 4
+        fourth_call_messages = llm_inputs[3]
+        reflection_messages = [m for m in fourth_call_messages if isinstance(m, HumanMessage)]
+        assert reflection_messages
+        reflection_content = " ".join(str(m.content) for m in reflection_messages)
+        assert "[REFLECTION:" in reflection_content
+
+
+@pytest.mark.asyncio
+class TestReflectionConfigurable:
+    """Reflection behavior with custom config settings."""
+
+    async def test_custom_threshold(self):
+        """A custom consecutive failure threshold should control when reflection starts."""
+        request = BasicLLMRequest(
+            max_steps=12,
+            compaction_enabled=False,
+            retry_config=RetryConfig(enabled=False),
+            reflection_config=ReflectionConfig(enabled=True, consecutive_failures_threshold=5, repetition_threshold=10),
+        )
+
+        tool_call = {"name": "always_fails_tool", "args": {"query": "x"}, "id": "call_1"}
+        responses = [
+            AIMessage(content="try1", tool_calls=[{**tool_call, "id": "c1"}]),
+            AIMessage(content="try2", tool_calls=[{**tool_call, "id": "c2"}]),
+            AIMessage(content="try3", tool_calls=[{**tool_call, "id": "c3"}]),
+            AIMessage(content="try4", tool_calls=[{**tool_call, "id": "c4"}]),
+            AIMessage(content="try5", tool_calls=[{**tool_call, "id": "c5"}]),
+            AIMessage(content="I'll try differently."),
+        ]
+
+        messages, llm_inputs = await _build_and_run(request, responses, [always_fails_tool])
+
+        assert len(llm_inputs) >= 6
+        for call_msgs in llm_inputs[:5]:
+            for m in call_msgs:
+                assert "[REFLECTION:" not in str(getattr(m, "content", ""))
+        sixth_call_messages = llm_inputs[5]
+        assert any("[REFLECTION:" in str(getattr(m, "content", "")) for m in sixth_call_messages)
+
+    async def test_no_reflection_on_step_1(self):
+        """Reflection should not trigger on the first agent step."""
+        request = BasicLLMRequest(
+            max_steps=5,
+            compaction_enabled=False,
+            retry_config=RetryConfig(enabled=False),
+            reflection_config=ReflectionConfig(enabled=True, consecutive_failures_threshold=1),
+        )
+
+        responses = [
+            AIMessage(content="t1", tool_calls=[{"name": "echo_tool", "args": {"query": "x"}, "id": "c1"}]),
+            AIMessage(content="Done."),
+        ]
+
+        messages, llm_inputs = await _build_and_run(request, responses, [echo_tool])
+
+        assert len(llm_inputs) >= 1
+        first_call_messages = llm_inputs[0]
+        assert all("[REFLECTION:" not in str(getattr(m, "content", "")) for m in first_call_messages)
+
+
 # ---------------------------------------------------------------------------
 # Tests: Repetitive Tool Calls
 # ---------------------------------------------------------------------------
@@ -365,4 +474,4 @@ class TestReflectionReset:
                 reflection_calls.append(i)
 
         # Should have exactly 2 reflections (after first 2 failures, then after next 2)
-        assert len(reflection_calls) == 2, f"Expected 2 reflection triggers, got {len(reflection_calls)} at indices {reflection_calls}"
+        assert len(reflection_calls) == 2, f"Expected 2 reflection triggers, got {len(reflection_calls)} " f"at indices {reflection_calls}"

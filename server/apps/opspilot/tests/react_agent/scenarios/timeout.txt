@@ -3,22 +3,31 @@
 对应计划: Phase 2 — #21 超时熔断
 
 功能描述:
-  支持单步超时和总执行时间限制，避免单个工具阻塞整个 agent。
+  支持单步工具执行超时和总执行时间限制，避免单个工具阻塞整个 agent。
+  实现方式: TimeoutConfig 配置 total_timeout_seconds / step_timeout_seconds / llm_timeout_seconds，
+  agent_node 每步检查总耗时，logged_tool_node 使用 asyncio.wait_for 限制单步工具执行。
 
-当前状态: 未实现（仅有 LLM HTTP 超时 timeout=3000）
+当前状态: 已实现
 
 涉及代码:
-  - server/apps/opspilot/metis/llm/chain/node.py（待新增超时机制）
+  - server/apps/opspilot/metis/llm/chain/node.py: agent_node L1131-1138（总超时检查 + step_progress timeout 事件），logged_tool_node L1427-1451（单步 asyncio.wait_for 超时）
+  - server/apps/opspilot/metis/llm/chain/entity.py: TimeoutConfig L108-114（total_timeout_seconds=300, step_timeout_seconds=60, llm_timeout_seconds=120）
 
 测试用例:
 
   TestPerStepTimeout:
-    1. 单步超时: 工具执行超过 step_timeout 秒后中断并返回超时错误
-    2. LLM 调用超时: ainvoke 超过 step_timeout 后中断
+    1. 单步工具执行超时: 工具执行超过 step_timeout_seconds 后 asyncio.TimeoutError，返回 ToolMessage(content="Error: 工具执行超时")
+    2. 超时后其他 tool_call 继续执行: 多个 tool_call 中一个超时不影响其他
 
   TestTotalTimeout:
-    3. 总时间超限: 多步执行累计超过 total_timeout 后强制终止
-    4. 超时后返回中间结果
+    3. 总时间超限: 多步执行累计超过 total_timeout_seconds 后 agent_node 强制终止
+    4. 超时时发射 step_progress 事件 status="timeout"
+    5. 超时后返回 AIMessage 告知用户
+
+  TestTimeoutDisabled:
+    6. enabled=False 时不检查超时: 工具可无限执行
+    7. total_timeout_seconds=0 不限制总时间
+    8. step_timeout_seconds=0 不限制单步时间
 
 关联测试文件: cases/test_timeout.py
-状态: RED（功能未实现）
+状态: GREEN（功能已实现）

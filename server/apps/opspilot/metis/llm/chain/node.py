@@ -964,6 +964,7 @@ class ToolsNodes(BasicNode):
         additional_system_prompt: Optional[str] = None,
         next_node: str = END,
         tools_node: Optional[ToolNode] = None,
+        agent_name: Optional[str] = None,
     ) -> str:
         """构建 ReAct Agent 节点组合
 
@@ -1018,6 +1019,7 @@ class ToolsNodes(BasicNode):
                 dispatch_custom_event(
                     "agent_step_progress",
                     {
+                        "agent_name": agent_name,
                         "step": step_counter["count"],
                         "max_steps": max_steps,
                         "status": status,
