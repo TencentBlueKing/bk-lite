@@ -282,21 +282,20 @@ def get_bk_settings(request):
     return JsonResponse(res)
 
 
-@api_exempt
 def reset_pwd(request):
     try:
         data = _parse_request_data(request)
-        username = data.get("username", "").strip()
-        domain = data.get("domain", "").strip()
+        username = request.user.username
+        domain = getattr(request.user, "domain", "")
         password = data.get("password", "")
 
-        if not username or not password:
+        if not password:
             return JsonResponse(
                 {
                     "result": False,
                     "message": _get_loader(request).get(
                         "error.username_password_empty",
-                        "Username or password cannot be empty",
+                        "Password cannot be empty",
                     ),
                 }
             )
