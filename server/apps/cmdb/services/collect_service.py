@@ -436,7 +436,6 @@ class CollectModelService(object):
         instance_id = instance.id
         instance_name = instance.name
         model_id = instance.model_id
-        is_k8s = instance.is_k8s
 
         # 复制实例数据用于RPC调用
         instance_copy = copy.deepcopy(instance)
