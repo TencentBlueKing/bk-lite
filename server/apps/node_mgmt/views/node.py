@@ -25,6 +25,7 @@ from apps.node_mgmt.tasks.sidecar_config import sync_node_properties_to_sidecar
 from apps.node_mgmt.models.action import CollectorActionTaskNode, CollectorActionTask
 from apps.node_mgmt.utils.permission import (
     add_node_permissions,
+    authorize_mutable_collector_configuration_ids,
     authorize_node_ids,
     authorize_target_organizations,
     get_authorized_node_queryset,
@@ -327,6 +328,9 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
         node_ids = serializer.validated_data["node_ids"]
         collector_configuration_id = serializer.validated_data["collector_configuration_id"]
         _, error_response = authorize_node_ids(request, node_ids)
+        if error_response:
+            return error_response
+        _, error_response = authorize_mutable_collector_configuration_ids(request, [collector_configuration_id])
         if error_response:
             return error_response
         result, message = NodeService.batch_binding_node_configuration(node_ids, collector_configuration_id)

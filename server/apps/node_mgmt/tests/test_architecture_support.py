@@ -26,6 +26,7 @@ from apps.node_mgmt.management.services.node_init.collector_init import import_c
 from apps.node_mgmt.management.services.node_init.controller_init import controller_init
 from apps.node_mgmt.management.services.node_init.definition_loader import load_definition_records
 from apps.node_mgmt.models import CloudRegion, Collector, CollectorConfiguration, Controller, Node, PackageVersion, SidecarEnv
+from apps.node_mgmt.models.sidecar import ChildConfig, NodeOrganization
 from apps.node_mgmt.models.installer import ControllerTask, ControllerTaskNode
 from apps.node_mgmt.nats.node import NatsService
 from apps.node_mgmt.serializers.collector import CollectorSerializer
@@ -229,6 +230,283 @@ def test_authorize_target_organizations_rejects_new_out_of_scope_org(monkeypatch
     assert response.status_code == 403
 
 
+def _create_node_mgmt_region(name="test-region"):
+    return CloudRegion.objects.create(
+        name=name,
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+
+
+def _create_node_mgmt_collector(region, collector_id="collector-1"):
+    return Collector.objects.create(
+        id=collector_id,
+        name=f"collector-{collector_id}",
+        service_type="svc",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        cloud_region=region if hasattr(Collector, "cloud_region") else None,
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+
+
+def _create_node_mgmt_node(region, node_id="node-1", organization=1):
+    node = Node.objects.create(
+        id=node_id,
+        name=node_id,
+        ip=f"10.0.0.{node_id[-1] if node_id[-1].isdigit() else 1}",
+        operating_system="linux",
+        collector_configuration_directory="/etc/collector",
+        cloud_region=region,
+        install_method="manual",
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    NodeOrganization.objects.create(
+        node=node,
+        organization=organization,
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    return node
+
+
+def _create_node_mgmt_configuration(region, collector, config_id, *, created_by="tester", bind_nodes=None):
+    config = CollectorConfiguration.objects.create(
+        id=config_id,
+        name=f"config-{config_id}",
+        config_template="template",
+        collector=collector,
+        cloud_region=region,
+        created_by=created_by,
+        updated_by=created_by,
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    if bind_nodes:
+        config.nodes.add(*bind_nodes)
+    return config
+
+
+@pytest.mark.django_db
+def test_get_authorized_collector_configuration_queryset_includes_authorized_nodes_and_creator(monkeypatch):
+    region = _create_node_mgmt_region()
+    collector = Collector.objects.create(
+        id="collector-auth-1",
+        name="collector-auth-1",
+        service_type="svc",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    allowed_node = _create_node_mgmt_node(region, node_id="node-auth-1", organization=1)
+    denied_node = _create_node_mgmt_node(region, node_id="node-auth-2", organization=2)
+    allowed_config = _create_node_mgmt_configuration(region, collector, "cfg-auth-1", bind_nodes=[allowed_node])
+    _create_node_mgmt_configuration(region, collector, "cfg-auth-2", bind_nodes=[denied_node])
+    owned_config = _create_node_mgmt_configuration(
+        region,
+        collector,
+        "cfg-auth-3",
+        created_by="permission-test-user",
+    )
+
+    monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
+
+    result_ids = set(node_permission.get_authorized_collector_configuration_queryset(_make_permission_request()).values_list("id", flat=True))
+
+    assert result_ids == {allowed_config.id, owned_config.id}
+
+
+@pytest.mark.django_db
+def test_get_authorized_collector_configuration_queryset_excludes_creator_owned_bound_unauthorized_config(monkeypatch):
+    region = _create_node_mgmt_region(name="bound-region")
+    collector = Collector.objects.create(
+        id="collector-bound-1",
+        name="collector-bound-1",
+        service_type="svc",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    denied_node = _create_node_mgmt_node(region, node_id="node-bound-1", organization=2)
+    creator_owned_bound_config = _create_node_mgmt_configuration(
+        region,
+        collector,
+        "cfg-bound-1",
+        created_by="permission-test-user",
+        bind_nodes=[denied_node],
+    )
+
+    monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
+
+    result_ids = set(node_permission.get_authorized_collector_configuration_queryset(_make_permission_request()).values_list("id", flat=True))
+
+    assert creator_owned_bound_config.id not in result_ids
+
+
+@pytest.mark.django_db
+def test_authorize_child_config_ids_rejects_out_of_scope_config(monkeypatch):
+    region = _create_node_mgmt_region(name="child-region")
+    collector = Collector.objects.create(
+        id="collector-child-1",
+        name="collector-child-1",
+        service_type="svc",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    allowed_node = _create_node_mgmt_node(region, node_id="node-child-1", organization=1)
+    denied_node = _create_node_mgmt_node(region, node_id="node-child-2", organization=2)
+    allowed_config = _create_node_mgmt_configuration(region, collector, "cfg-child-1", bind_nodes=[allowed_node])
+    denied_config = _create_node_mgmt_configuration(region, collector, "cfg-child-2", bind_nodes=[denied_node])
+    ChildConfig.objects.create(
+        id="child-allowed",
+        collect_type="metrics",
+        config_type="telegraf",
+        content="allowed",
+        collector_config=allowed_config,
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    denied_child = ChildConfig.objects.create(
+        id="child-denied",
+        collect_type="metrics",
+        config_type="telegraf",
+        content="denied",
+        collector_config=denied_config,
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+
+    monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
+
+    child_configs, response = node_permission.authorize_child_config_ids(_make_permission_request(), [denied_child.id])
+
+    assert child_configs is None
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_authorize_mutable_collector_configuration_ids_rejects_shared_config_with_unauthorized_nodes(monkeypatch):
+    region = _create_node_mgmt_region(name="mutable-region")
+    collector = Collector.objects.create(
+        id="collector-mutable-1",
+        name="collector-mutable-1",
+        service_type="svc",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    allowed_node = _create_node_mgmt_node(region, node_id="node-mutable-1", organization=1)
+    denied_node = _create_node_mgmt_node(region, node_id="node-mutable-2", organization=2)
+    shared_config = _create_node_mgmt_configuration(region, collector, "cfg-mutable-1", bind_nodes=[allowed_node, denied_node])
+
+    monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
+
+    configurations, response = node_permission.authorize_mutable_collector_configuration_ids(_make_permission_request(), [shared_config.id])
+
+    assert configurations is None
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_authorize_mutable_collector_configuration_ids_allows_unbound_creator_draft(monkeypatch):
+    region = _create_node_mgmt_region(name="draft-region")
+    collector = Collector.objects.create(
+        id="collector-draft-1",
+        name="collector-draft-1",
+        service_type="svc",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    draft_config = _create_node_mgmt_configuration(
+        region,
+        collector,
+        "cfg-draft-1",
+        created_by="permission-test-user",
+    )
+
+    monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
+
+    configurations, response = node_permission.authorize_mutable_collector_configuration_ids(_make_permission_request(), [draft_config.id])
+
+    assert response is None
+    assert [config.id for config in configurations] == [draft_config.id]
+
+
+@pytest.mark.django_db
+def test_authorize_mutable_child_config_ids_rejects_shared_parent_with_unauthorized_nodes(monkeypatch):
+    region = _create_node_mgmt_region(name="mutable-child-region")
+    collector = Collector.objects.create(
+        id="collector-mutable-child-1",
+        name="collector-mutable-child-1",
+        service_type="svc",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    allowed_node = _create_node_mgmt_node(region, node_id="node-mutable-child-1", organization=1)
+    denied_node = _create_node_mgmt_node(region, node_id="node-mutable-child-2", organization=2)
+    shared_config = _create_node_mgmt_configuration(region, collector, "cfg-mutable-child-1", bind_nodes=[allowed_node, denied_node])
+    child_config = ChildConfig.objects.create(
+        id="child-mutable-1",
+        collect_type="metrics",
+        config_type="telegraf",
+        content="shared",
+        collector_config=shared_config,
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+
+    monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
+
+    child_configs, response = node_permission.authorize_mutable_child_config_ids(_make_permission_request(), [child_config.id])
+
+    assert child_configs is None
+    assert response.status_code == 403
+
+
 def test_batch_operate_node_collector_requires_node_permission(monkeypatch):
     monkeypatch.setattr(node_view, "authorize_node_ids", lambda request, node_ids: (None, WebUtils.response_403("denied")))
     called = {"value": False}
@@ -305,6 +583,15 @@ def test_node_write_endpoints_require_explicit_action_permission(monkeypatch, vi
     else:
         monkeypatch.setattr(collector_configuration, "authorize_node_ids", lambda request, node_ids: ([_FakeNode()], None))
 
+    if action == "batch_binding_node_configuration":
+        monkeypatch.setattr(node_view, "authorize_mutable_collector_configuration_ids", lambda request, config_ids: ([_FakeConfig([])], None))
+    elif action in {"apply_to_node", "cancel_apply_to_node"}:
+        monkeypatch.setattr(
+            collector_configuration,
+            "authorize_mutable_collector_configuration_ids",
+            lambda request, config_ids: ([_FakeConfig([])], None),
+        )
+
     called = {"value": False}
     if service_attr:
         target = node_view.NodeService if hasattr(node_view.NodeService, service_attr) else collector_configuration.CollectorConfigurationService
@@ -314,12 +601,6 @@ def test_node_write_endpoints_require_explicit_action_permission(monkeypatch, vi
             monkeypatch.setattr(target, service_attr, lambda *args, **kwargs: called.__setitem__("value", True) or (True, "ok"))
     elif action == "cancel_apply_to_node":
         config = SimpleNamespace(nodes=SimpleNamespace(remove=lambda node: called.__setitem__("value", True)))
-        monkeypatch.setattr(
-            collector_configuration.CollectorConfiguration.objects,
-            "get",
-            lambda **kwargs: config,
-        )
-        monkeypatch.setattr(collector_configuration.Node.objects, "get", lambda **kwargs: _FakeNode())
     elif action == "destroy":
         monkeypatch.setattr(node_view.NodeViewSet, "perform_destroy", lambda self, instance: called.__setitem__("value", True))
 
@@ -385,6 +666,54 @@ def test_apply_to_node_prevalidates_permissions_before_mutation(monkeypatch):
                 {"node_id": "node-2", "collector_configuration_id": "cfg-1"},
             ]
         )
+    )
+
+    assert response.status_code == 403
+    assert called["value"] is False
+
+
+def test_apply_to_node_prevalidates_configuration_permissions_before_mutation(monkeypatch):
+    monkeypatch.setattr(collector_configuration, "authorize_node_ids", lambda request, node_ids: ([_FakeNode()], None))
+    monkeypatch.setattr(
+        collector_configuration,
+        "authorize_mutable_collector_configuration_ids",
+        lambda request, config_ids: (None, WebUtils.response_403("denied")),
+    )
+    called = {"value": False}
+    monkeypatch.setattr(
+        collector_configuration.CollectorConfigurationService,
+        "apply_to_node",
+        lambda *args, **kwargs: called.__setitem__("value", True),
+    )
+
+    response = collector_configuration.CollectorConfigurationViewSet.as_view({"post": "apply_to_node"})(
+        _make_node_request(
+            [
+                {"node_id": "node-1", "collector_configuration_id": "cfg-1"},
+            ]
+        )
+    )
+
+    assert response.status_code == 403
+    assert called["value"] is False
+
+
+def test_batch_binding_configuration_prevalidates_configuration_permissions(monkeypatch):
+    monkeypatch.setattr(node_view, "authorize_node_ids", lambda request, node_ids: ([_FakeNode()], None))
+    monkeypatch.setattr(
+        node_view,
+        "authorize_mutable_collector_configuration_ids",
+        lambda request, config_ids: (None, WebUtils.response_403("denied")),
+    )
+    called = {"value": False}
+    monkeypatch.setattr(
+        node_view.NodeService,
+        "batch_binding_node_configuration",
+        lambda *args, **kwargs: called.__setitem__("value", True),
+    )
+
+    response = node_view.NodeViewSet.as_view({"post": "batch_binding_node_configuration"})(
+        _make_node_request({"node_ids": ["node-1"], "collector_configuration_id": "cfg-1"})
     )
 
     assert response.status_code == 403

@@ -1,7 +1,7 @@
-from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.viewset_utils import MaintainerViewSet
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.models.sidecar import CollectorConfiguration, Node
 from apps.node_mgmt.serializers.collector_configuration import (
@@ -14,14 +14,26 @@ from apps.node_mgmt.filters.collector_configuration import CollectorConfiguratio
 from apps.node_mgmt.services.collector_configuration import (
     CollectorConfigurationService,
 )
-from apps.node_mgmt.utils.permission import authorize_node_ids, get_authorized_node_queryset
+from apps.node_mgmt.utils.permission import (
+    authorize_collector_configuration_ids,
+    authorize_mutable_collector_configuration_ids,
+    authorize_node_ids,
+    get_authorized_collector_configuration_queryset,
+    get_mutable_collector_configuration_queryset,
+    get_authorized_node_queryset,
+)
 
 
-class CollectorConfigurationViewSet(ModelViewSet):
+class CollectorConfigurationViewSet(MaintainerViewSet):
     queryset = CollectorConfiguration.objects.all().order_by("-created_at")
     serializer_class = CollectorConfigurationSerializer
     filterset_class = CollectorConfigurationFilter
     search_fields = ["id", "name"]
+
+    def get_queryset(self):
+        if self.action in {"update", "partial_update", "destroy"}:
+            return get_mutable_collector_configuration_queryset(self.request).order_by("-created_at")
+        return get_authorized_collector_configuration_queryset(self.request).order_by("-created_at")
 
     def list(self, request, *args, **kwargs):
         response = super().list(request, *args, **kwargs)
@@ -81,36 +93,49 @@ class CollectorConfigurationViewSet(ModelViewSet):
         ]
         return WebUtils.response_success(result)
 
+    @HasPermission("cloud_region_node-EditMainConfiguration")
     def create(self, request, *args, **kwargs):
         self.serializer_class = CollectorConfigurationCreateSerializer
         return super().create(request, *args, **kwargs)
 
+    @HasPermission("cloud_region_node-EditMainConfiguration")
     def partial_update(self, request, *args, **kwargs):
         self.serializer_class = CollectorConfigurationUpdateSerializer
         return super().partial_update(request, *args, **kwargs)
 
+    @HasPermission("cloud_region_node-EditMainConfiguration")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
+    @HasPermission("cloud_region_node-EditMainConfiguration")
     def update(self, request, *args, **kwargs):
+        self.serializer_class = CollectorConfigurationUpdateSerializer
         return super().update(request, *args, **kwargs)
 
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
     @action(methods=["post"], detail=False, url_path="bulk_delete")
+    @HasPermission("cloud_region_node-EditMainConfiguration")
     def bulk_delete(self, request):
         serializer = BulkDeleteConfigurationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         ids = serializer.validated_data["ids"]
-        CollectorConfiguration.objects.filter(id__in=ids).delete()
+        configurations, error_response = authorize_mutable_collector_configuration_ids(request, ids)
+        if error_response:
+            return error_response
+        CollectorConfiguration.objects.filter(id__in=[config.id for config in configurations]).delete()
         return WebUtils.response_success()
 
     @action(methods=["post"], detail=False, url_path="apply_to_node")
     @HasPermission("cloud_region_node-EditMainConfiguration")
     def apply_to_node(self, request):
         node_ids = [item["node_id"] for item in request.data]
+        config_ids = [item["collector_configuration_id"] for item in request.data]
         _, error_response = authorize_node_ids(request, node_ids)
+        if error_response:
+            return error_response
+        _, error_response = authorize_mutable_collector_configuration_ids(request, config_ids)
         if error_response:
             return error_response
 
@@ -135,17 +160,16 @@ class CollectorConfigurationViewSet(ModelViewSet):
     def cancel_apply_to_node(self, request):
         config_id = request.data["collector_configuration_id"]
         node_id = request.data["node_id"]
-        _, error_response = authorize_node_ids(request, [node_id])
+        nodes, error_response = authorize_node_ids(request, [node_id])
+        if error_response:
+            return error_response
+        configurations, error_response = authorize_mutable_collector_configuration_ids(request, [config_id])
         if error_response:
             return error_response
         try:
-            config = CollectorConfiguration.objects.get(id=config_id)
-            node = Node.objects.get(id=node_id)
+            config = configurations[0]
+            node = nodes[0]
             config.nodes.remove(node)
             return WebUtils.response_success()
-        except CollectorConfiguration.DoesNotExist:
-            return WebUtils.response_error(error_message="配置不存在")
-        except Node.DoesNotExist:
-            return WebUtils.response_error(error_message="节点不存在")
         except Exception as e:
             return WebUtils.response_error(error_message=str(e))
