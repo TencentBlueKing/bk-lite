@@ -2,8 +2,10 @@
 from typing import List, Optional, Tuple
 from collections import defaultdict
 
+from django.db import transaction
 from django.db.models import Q
 
+from apps.alerts.aggregation.recovery.recovery_checker import AlertRecoveryChecker
 from apps.alerts.models.models import Alert, Event
 from apps.alerts.constants.constants import AlertStatus, EventAction
 from apps.core.logger import alert_logger as logger
@@ -43,6 +45,25 @@ class RecoveryHandler:
     @classmethod
     def _supports_unique_fallback(cls, event: Event) -> bool:
         return not cls._normalize_value(event.resource_id) and not cls._normalize_value(event.resource_type)
+
+    @staticmethod
+    def _run_recovery_checks(touched_alerts: List[Alert], total_events: int, total_added: int, total_skipped: int):
+        recovered_count = 0
+
+        for alert in touched_alerts:
+            if hasattr(alert, "_prefetched_objects_cache"):
+                alert._prefetched_objects_cache = {}
+            alert.refresh_from_db()
+            if AlertRecoveryChecker.check_and_recover_alert(alert):
+                recovered_count += 1
+
+        logger.info(
+            f"恢复事件批量处理完成: "
+            f"处理 {total_events} 个恢复事件, "
+            f"新增关联 {total_added} 个, "
+            f"跳过重复 {total_skipped} 个, "
+            f"推进恢复 {recovered_count} 个"
+        )
 
     @staticmethod
     def handle_recovery_events(recovery_events: List[Event]):
@@ -115,6 +136,7 @@ class RecoveryHandler:
         # 4. 批量处理恢复事件关联
         total_added = 0
         total_skipped = 0
+        touched_alerts = {}
 
         for recovery_event in recovery_events:
             external_id = recovery_event.external_id
@@ -152,15 +174,38 @@ class RecoveryHandler:
                 logger.debug(f"恢复事件 {recovery_event.event_id} 未找到匹配的 Alert (external_id={external_id})")
                 continue
 
-            # 批量添加到匹配的 Alert
+            unique_matching_alerts = []
+            seen_alert_ids = set()
             for alert in matching_alerts:
+                if alert.pk in seen_alert_ids:
+                    continue
+                unique_matching_alerts.append(alert)
+                seen_alert_ids.add(alert.pk)
+
+            # 批量添加到匹配的 Alert
+            for alert in unique_matching_alerts:
+                touched_alerts[alert.pk] = alert
                 # 检查是否已关联（使用预加载的数据，无额外查询）
                 if recovery_event.event_id not in alert_existing_events[alert.pk]:
                     alert.events.add(recovery_event)
+                    alert_existing_events[alert.pk].add(recovery_event.event_id)
                     total_added += 1
                     logger.debug(f"恢复事件 {recovery_event.event_id} 已关联到 Alert {alert.alert_id}")
                 else:
                     total_skipped += 1
 
         # 5. 汇总日志
-        logger.info(f"恢复事件批量处理完成: 处理 {len(recovery_events)} 个恢复事件, 新增关联 {total_added} 个, 跳过重复 {total_skipped} 个")
+        if not touched_alerts:
+            logger.info(
+                f"恢复事件批量处理完成: 处理 {len(recovery_events)} 个恢复事件, 新增关联 {total_added} 个, 跳过重复 {total_skipped} 个, 推进恢复 0 个"
+            )
+            return
+
+        transaction.on_commit(
+            lambda: RecoveryHandler._run_recovery_checks(
+                list(touched_alerts.values()),
+                len(recovery_events),
+                total_added,
+                total_skipped,
+            )
+        )

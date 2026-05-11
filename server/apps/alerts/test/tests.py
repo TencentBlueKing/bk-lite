@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
+from django.db import DEFAULT_DB_ALIAS, connections
 from django.test import Client
 from django.test import TestCase
 from django.utils import timezone
@@ -1115,6 +1116,18 @@ class RecoveryFallbackTestCase(TestCase):
         alert.events.add(*events)
         return alert
 
+    def _run_pending_on_commit_callbacks(self):
+        connection = connections[DEFAULT_DB_ALIAS]
+        while connection.run_on_commit:
+            _, callback, robust = connection.run_on_commit.pop(0)
+            if robust:
+                try:
+                    callback()
+                except Exception:
+                    pass
+            else:
+                callback()
+
     def test_recovery_fallback_recovers_when_candidate_is_unique(self):
         created_at = timezone.now() - timedelta(minutes=1)
         created_event = self.create_event(
@@ -1139,9 +1152,11 @@ class RecoveryFallbackTestCase(TestCase):
         )
 
         RecoveryHandler.handle_recovery_events([recovery_event])
+        self._run_pending_on_commit_callbacks()
         alert.refresh_from_db()
 
         self.assertTrue(alert.events.filter(event_id="EVENT-RECOVERY-1").exists())
+        self.assertEqual(alert.status, AlertStatus.UNASSIGNED)
 
     def test_recovery_event_reuses_created_external_id_when_legacy_match_is_unique(self):
         created_at = timezone.now() - timedelta(minutes=1)
@@ -1173,9 +1188,11 @@ class RecoveryFallbackTestCase(TestCase):
 
         recovery_event.save()
         RecoveryHandler.handle_recovery_events([recovery_event])
+        self._run_pending_on_commit_callbacks()
         alert.refresh_from_db()
 
         self.assertTrue(alert.events.filter(event_id=recovery_event.event_id).exists())
+        self.assertEqual(alert.status, AlertStatus.AUTO_RECOVERY)
 
     def test_recovery_fallback_skips_ambiguous_candidates(self):
         created_at = timezone.now() - timedelta(minutes=2)
@@ -1212,9 +1229,14 @@ class RecoveryFallbackTestCase(TestCase):
         )
 
         RecoveryHandler.handle_recovery_events([recovery_event])
+        self._run_pending_on_commit_callbacks()
 
         self.assertFalse(alert_one.events.filter(event_id="EVENT-RECOVERY-2").exists())
         self.assertFalse(alert_two.events.filter(event_id="EVENT-RECOVERY-2").exists())
+        alert_one.refresh_from_db()
+        alert_two.refresh_from_db()
+        self.assertEqual(alert_one.status, AlertStatus.UNASSIGNED)
+        self.assertEqual(alert_two.status, AlertStatus.PROCESSING)
 
     def test_recovery_event_does_not_resolve_external_id_when_legacy_match_is_ambiguous(self):
         created_at = timezone.now() - timedelta(minutes=2)
@@ -1280,9 +1302,129 @@ class RecoveryFallbackTestCase(TestCase):
         )
 
         RecoveryHandler.handle_recovery_events([recovery_event])
+        self._run_pending_on_commit_callbacks()
         alert.refresh_from_db()
 
         self.assertTrue(alert.events.filter(event_id="EVENT-RECOVERY-COMPAT-3").exists())
+        self.assertEqual(alert.status, AlertStatus.AUTO_RECOVERY)
+
+    def test_closed_event_immediately_recovers_active_alert(self):
+        created_at = timezone.now() - timedelta(minutes=5)
+        created_event = self.create_event(
+            "EVENT-CREATED-CLOSED-1",
+            EventAction.CREATED,
+            "ext-closed-1",
+            created_at,
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+        alert = self.create_alert("ALERT-CLOSED-1", AlertStatus.UNASSIGNED, created_event)
+        closed_event = self.create_event(
+            "EVENT-CLOSED-1",
+            EventAction.CLOSED,
+            "ext-closed-1",
+            timezone.now(),
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+            description="cpu closed",
+        )
+
+        RecoveryHandler.handle_recovery_events([closed_event])
+        self._run_pending_on_commit_callbacks()
+        alert.refresh_from_db()
+
+        self.assertTrue(alert.events.filter(event_id="EVENT-CLOSED-1").exists())
+        self.assertEqual(alert.status, AlertStatus.AUTO_RECOVERY)
+
+    def test_alert_recovers_only_after_all_created_events_are_recovered(self):
+        created_at = timezone.now() - timedelta(minutes=5)
+        created_event_one = self.create_event(
+            "EVENT-CREATED-MULTI-1",
+            EventAction.CREATED,
+            "ext-multi-1",
+            created_at,
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+        created_event_two = self.create_event(
+            "EVENT-CREATED-MULTI-2",
+            EventAction.CREATED,
+            "ext-multi-2",
+            created_at + timedelta(seconds=1),
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+        alert = self.create_alert("ALERT-MULTI-1", AlertStatus.UNASSIGNED, created_event_one, created_event_two)
+
+        first_recovery = self.create_event(
+            "EVENT-RECOVERY-MULTI-1",
+            EventAction.RECOVERY,
+            "ext-multi-1",
+            timezone.now(),
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+
+        RecoveryHandler.handle_recovery_events([first_recovery])
+        self._run_pending_on_commit_callbacks()
+        alert.refresh_from_db()
+        self.assertEqual(alert.status, AlertStatus.UNASSIGNED)
+
+        second_recovery = self.create_event(
+            "EVENT-RECOVERY-MULTI-2",
+            EventAction.RECOVERY,
+            "ext-multi-2",
+            timezone.now() + timedelta(seconds=1),
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+
+        RecoveryHandler.handle_recovery_events([second_recovery])
+        self._run_pending_on_commit_callbacks()
+        alert.refresh_from_db()
+        self.assertEqual(alert.status, AlertStatus.AUTO_RECOVERY)
+
+    def test_duplicate_recovery_event_rechecks_existing_relation_and_recovers_alert(self):
+        created_at = timezone.now() - timedelta(minutes=5)
+        created_event = self.create_event(
+            "EVENT-CREATED-DUP-1",
+            EventAction.CREATED,
+            "ext-dup-1",
+            created_at,
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+        recovery_event = self.create_event(
+            "EVENT-RECOVERY-DUP-1",
+            EventAction.RECOVERY,
+            "ext-dup-1",
+            timezone.now(),
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+        alert = self.create_alert("ALERT-DUP-1", AlertStatus.UNASSIGNED, created_event, recovery_event)
+
+        RecoveryHandler.handle_recovery_events([recovery_event])
+        self._run_pending_on_commit_callbacks()
+        alert.refresh_from_db()
+
+        self.assertEqual(alert.status, AlertStatus.AUTO_RECOVERY)
 
     def test_integration_guide_returns_prometheus_template(self):
         source = AlertSource.objects.create(
