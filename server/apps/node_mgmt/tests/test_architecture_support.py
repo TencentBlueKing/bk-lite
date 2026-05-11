@@ -59,6 +59,19 @@ def _build_admin_user():
     )
 
 
+def _build_permission_user(*permissions):
+    user = User(
+        username="permission-test-user",
+        domain="domain.com",
+        locale="en",
+        is_superuser=False,
+        roles=[],
+        group_list=[{"id": 1, "name": "Team"}],
+    )
+    user.permission = {"node": set(permissions)}
+    return user
+
+
 def _json_response_data(response):
     return json.loads(response.content)
 
@@ -134,6 +147,16 @@ def _make_node_request(data=None, method="post"):
     request.COOKIES["current_team"] = "1"
     request.COOKIES["include_children"] = "0"
     force_authenticate(request, user=_build_admin_user())
+    return request
+
+
+def _make_permission_request(data=None, method="post", permissions=()):
+    factory = APIRequestFactory()
+    request_factory = getattr(factory, method)
+    request = request_factory("/node-mgmt/test", data=data or {}, format="json")
+    request.COOKIES["current_team"] = "1"
+    request.COOKIES["include_children"] = "0"
+    force_authenticate(request, user=_build_permission_user(*permissions))
     return request
 
 
@@ -221,6 +244,98 @@ def test_batch_operate_node_collector_requires_node_permission(monkeypatch):
 
     assert response.status_code == 403
     assert called["value"] is False
+
+
+@pytest.mark.parametrize(
+    ("view", "action", "request_data", "method", "required_permission", "service_attr"),
+    [
+        (
+            node_view.NodeViewSet.as_view({"delete": "destroy"}),
+            "destroy",
+            None,
+            "delete",
+            "cloud_region_node-Delete",
+            None,
+        ),
+        (
+            node_view.NodeViewSet.as_view({"patch": "update_node"}),
+            "update_node",
+            {"name": "updated-node"},
+            "patch",
+            "cloud_region_node-Edit",
+            None,
+        ),
+        (
+            node_view.NodeViewSet.as_view({"post": "batch_binding_node_configuration"}),
+            "batch_binding_node_configuration",
+            {"node_ids": ["node-1"], "collector_configuration_id": "cfg-1"},
+            "post",
+            "cloud_region_node-EditMainConfiguration",
+            "batch_binding_node_configuration",
+        ),
+        (
+            node_view.NodeViewSet.as_view({"post": "batch_operate_node_collector"}),
+            "batch_operate_node_collector",
+            {"node_ids": ["node-1"], "collector_id": "collector-1", "operation": "restart"},
+            "post",
+            "cloud_region_node-OperateCollector",
+            "batch_operate_node_collector",
+        ),
+        (
+            collector_configuration.CollectorConfigurationViewSet.as_view({"post": "apply_to_node"}),
+            "apply_to_node",
+            [{"node_id": "node-1", "collector_configuration_id": "cfg-1"}],
+            "post",
+            "cloud_region_node-EditMainConfiguration",
+            "apply_to_node",
+        ),
+        (
+            collector_configuration.CollectorConfigurationViewSet.as_view({"post": "cancel_apply_to_node"}),
+            "cancel_apply_to_node",
+            {"node_id": "node-1", "collector_configuration_id": "cfg-1"},
+            "post",
+            "cloud_region_node-EditMainConfiguration",
+            None,
+        ),
+    ],
+)
+def test_node_write_endpoints_require_explicit_action_permission(monkeypatch, view, action, request_data, method, required_permission, service_attr):
+    if action in {"destroy", "update_node", "batch_binding_node_configuration", "batch_operate_node_collector"}:
+        monkeypatch.setattr(node_view, "authorize_node_ids", lambda request, node_ids: ([_FakeNode()], None))
+    else:
+        monkeypatch.setattr(collector_configuration, "authorize_node_ids", lambda request, node_ids: ([_FakeNode()], None))
+
+    called = {"value": False}
+    if service_attr:
+        target = node_view.NodeService if hasattr(node_view.NodeService, service_attr) else collector_configuration.CollectorConfigurationService
+        if action == "batch_operate_node_collector":
+            monkeypatch.setattr(target, service_attr, lambda *args, **kwargs: called.__setitem__("value", True) or "task-1")
+        else:
+            monkeypatch.setattr(target, service_attr, lambda *args, **kwargs: called.__setitem__("value", True) or (True, "ok"))
+    elif action == "cancel_apply_to_node":
+        config = SimpleNamespace(nodes=SimpleNamespace(remove=lambda node: called.__setitem__("value", True)))
+        monkeypatch.setattr(
+            collector_configuration.CollectorConfiguration.objects,
+            "get",
+            lambda **kwargs: config,
+        )
+        monkeypatch.setattr(collector_configuration.Node.objects, "get", lambda **kwargs: _FakeNode())
+    elif action == "destroy":
+        monkeypatch.setattr(node_view.NodeViewSet, "perform_destroy", lambda self, instance: called.__setitem__("value", True))
+
+    if action == "update_node":
+        monkeypatch.setattr(node_view.sync_node_properties_to_sidecar, "delay", lambda **kwargs: called.__setitem__("value", True))
+
+    kwargs = {"pk": "node-1"} if action in {"destroy", "update_node"} else {}
+    response = view(_make_permission_request(request_data, method=method, permissions=("cloud_region_node-View",)), **kwargs)
+
+    assert response.status_code == 403
+    assert called["value"] is False
+
+    allowed_permissions = ("cloud_region_node-View", required_permission)
+    response = view(_make_permission_request(request_data, method=method, permissions=allowed_permissions), **kwargs)
+
+    assert response.status_code != 403
 
 
 def test_config_node_asso_hides_unauthorized_nodes(monkeypatch):

@@ -1,6 +1,7 @@
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import action
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.models.sidecar import CollectorConfiguration, Node
 from apps.node_mgmt.serializers.collector_configuration import (
@@ -106,6 +107,7 @@ class CollectorConfigurationViewSet(ModelViewSet):
         return WebUtils.response_success()
 
     @action(methods=["post"], detail=False, url_path="apply_to_node")
+    @HasPermission("cloud_region_node-EditMainConfiguration")
     def apply_to_node(self, request):
         node_ids = [item["node_id"] for item in request.data]
         _, error_response = authorize_node_ids(request, node_ids)
@@ -129,6 +131,7 @@ class CollectorConfigurationViewSet(ModelViewSet):
         return WebUtils.response_success(result)
 
     @action(methods=["post"], detail=False, url_path="cancel_apply_to_node")
+    @HasPermission("cloud_region_node-EditMainConfiguration")
     def cancel_apply_to_node(self, request):
         config_id = request.data["collector_configuration_id"]
         node_id = request.data["node_id"]
