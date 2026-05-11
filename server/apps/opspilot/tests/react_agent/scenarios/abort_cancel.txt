@@ -1,0 +1,33 @@
+场景名称: 取消与优雅终止测试
+
+对应计划: Phase 2 — #20 取消与优雅终止
+
+功能描述:
+  用户可中途取消正在执行的 agent 任务，agent 优雅退出。
+  实现方式: 通过 Redis 标记中断请求（execution_interrupt 模块），
+  agent_node 和 logged_tool_node 每步开始前检查 is_interrupt_requested(execution_id)，
+  检测到中断后立即返回中断消息，不再继续执行。
+
+当前状态: 已实现
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py: agent_node L1117-1122（每步开始前中断检查），logged_tool_node L1376-1387（工具执行前中断检查）
+  - server/apps/opspilot/utils/execution_interrupt.py: is_interrupt_requested / request_interrupt（Redis 标记）
+  - server/apps/opspilot/metis/llm/chain/graph.py: L174 CancelledError 捕获
+
+测试用例:
+
+  TestInterruptBeforeStep:
+    1. 设置中断标记后 agent_node 在下一步前终止: 返回 AIMessage(content="任务已被中断。")
+    2. 中断时发射 step_progress 事件 status="interrupted"
+
+  TestInterruptBeforeToolExecution:
+    3. 设置中断标记后 logged_tool_node 跳过工具执行: 返回 ToolMessage(content="[执行已中断]")
+    4. 多个 tool_call 时全部返回中断消息（每个 tool_call_id 对应一条）
+
+  TestInterruptNotSet:
+    5. 未设置中断标记时正常执行: agent_node 和 logged_tool_node 不受影响
+    6. execution_id 为空时跳过中断检查: 不报错，正常执行
+
+关联测试文件: cases/test_interrupt.py, cases/test_cancellation.py
+状态: GREEN（功能已实现）

@@ -93,18 +93,33 @@ def general_embed_by_document_list(document_list, is_show=False, username="", do
         total_count=len(knowledge_ids),
     )
     train_progress = round(float(1 / len(task_obj.knowledge_ids)) * 100, 2)
+    has_failure = False
     for index, document in tqdm(enumerate(document_list)):
+        success = True
         try:
             invoke_document_to_es(document=document, delete_qa_pairs=delete_qa_pairs)
+            document.refresh_from_db()
+            if document.train_status == DocumentStatus.ERROR:
+                success = False
+                has_failure = True
         except Exception:
             logger.exception("Failed to invoke document to ES: document_id=%s", document.id)
+            success = False
+            has_failure = True
+            document.train_status = DocumentStatus.ERROR
+            document.error_message = "训练过程中发生异常"
+            document.save()
         task_progress = task_obj.train_progress + train_progress
         task_obj.train_progress = round(task_progress, 2)
-        task_obj.completed_count += 1
+        if success:
+            task_obj.completed_count += 1
         if index < len(document_list) - 1:
             task_obj.name = document_list[index + 1].name
         task_obj.save()
-    task_obj.delete()
+    if has_failure:
+        logger.warning(f"Knowledge training completed with failures. Task {task_obj.id} retained for tracking.")
+    else:
+        task_obj.delete()
     return None
 
 
@@ -431,10 +446,13 @@ def rebuild_graph_community_by_instance(instance_id):
         graph_obj.save()
         res = GraphUtils.rebuild_graph_community(graph_obj)
         if not res["result"]:
+            graph_obj.status = "failed"
+            graph_obj.save()
             logger.error("Failed to rebuild graph community")
-        logger.info("Graph community rebuild completed for instance ID: {}".format(instance_id))
+            return
         graph_obj.status = "completed"
         graph_obj.save()
+        logger.info("Graph community rebuild completed for instance ID: {}".format(instance_id))
 
     return _run_in_native_thread(_execute)
 
@@ -448,6 +466,8 @@ def create_graph(instance_id):
         instance.save()
         res = GraphUtils.create_graph(instance)
         if not res["result"]:
+            instance.status = "failed"
+            instance.save()
             logger.error("Failed to create graph: {}".format(res["message"]))
             return
 

@@ -5,6 +5,14 @@ Shared behavioral mixin classes for mlops models.
 """
 
 
+class ConfigSyncError(Exception):
+    """Raised when training configuration sync to MinIO fails.
+
+    This exception signals that the database changes should be rolled back
+    because the config file in MinIO is inconsistent with the database state.
+    """
+
+
 class TrainDataFileCleanupMixin:
     """
     Mixin for TrainData models that automatically cleans up old training data files
@@ -113,10 +121,14 @@ class TrainJobConfigSyncMixin:
 
         This method:
         1. Checks if config-related fields are being updated
-        2. Saves to database first to get pk
+        2. Saves to database first to get pk (inside transaction)
         3. Syncs config to MinIO if needed
         4. Updates config_url in database without triggering recursive save
+
+        Raises:
+            ConfigSyncError: If MinIO sync fails, the entire save is rolled back.
         """
+        from django.db import transaction
         from apps.core.logger import mlops_logger as logger
 
         # If only updating non-config fields, skip file sync
@@ -128,48 +140,54 @@ class TrainJobConfigSyncMixin:
             super().save(*args, **kwargs)
             return
 
-        # 1. Save to database first to get pk
-        super().save(*args, **kwargs)
+        # Wrap in transaction so DB changes roll back if MinIO sync fails
+        with transaction.atomic():
+            # 1. Save to database first to get pk
+            super().save(*args, **kwargs)
 
-        # 2. Sync file to MinIO based on pk
-        config_updated = False
+            # 2. Sync file to MinIO based on pk
+            config_updated = False
 
-        if self.hyperopt_config:
-            # Has config → complete and upload to MinIO
-            self._sync_config_to_minio()
-            config_updated = True
-        elif self.config_url:
-            # Config is empty → delete MinIO file
-            try:
+            if self.hyperopt_config:
+                # Has config → complete and upload to MinIO
+                # Raises ConfigSyncError on failure → transaction rolls back
+                self._sync_config_to_minio()
+                config_updated = True
+            elif self.config_url:
+                # Config is empty → delete MinIO file
+                # Failure propagates → transaction rolls back
                 self.config_url.delete(save=False)
                 logger.info(
                     f"Deleted config file (empty config) for TrainJob {self.pk}"
                 )
                 self.config_url = None
                 config_updated = True
-            except Exception as e:
-                logger.warning(f"Failed to delete config file: {e}")
 
-        # 3. If config_url changed, update database (use queryset.update to avoid recursive save)
-        if config_updated:
-            self.__class__.objects.filter(pk=self.pk).update(config_url=self.config_url)
+            # 3. If config_url changed, update database (use queryset.update to avoid recursive save)
+            if config_updated:
+                self.__class__.objects.filter(pk=self.pk).update(
+                    config_url=self.config_url
+                )
 
     def _sync_config_to_minio(self):
-        """Sync hyperopt_config to MinIO (auto-complete model and mlflow config)."""
+        """Sync hyperopt_config to MinIO (auto-complete model and mlflow config).
+
+        Upload new config file first, then clean up old file. This ordering
+        ensures that if the upload fails, the old file is still intact and
+        the transaction rollback leaves everything consistent.
+
+        Raises:
+            ConfigSyncError: If the new config file cannot be uploaded.
+        """
         from django.core.files.base import ContentFile
         import json
         import uuid
         from apps.core.logger import mlops_logger as logger
 
-        # Delete old file
-        if self.config_url:
-            try:
-                self.config_url.delete(save=False)
-                logger.info(f"Deleted old config file for TrainJob {self.pk}")
-            except Exception as e:
-                logger.warning(f"Failed to delete old config file: {e}")
+        # Capture old file path before overwriting
+        old_file_name = self.config_url.name if self.config_url else None
 
-        # Complete and upload config
+        # Build and upload new config file — failure MUST propagate
         try:
             complete_config = self._build_complete_config()
 
@@ -184,6 +202,21 @@ class TrainJobConfigSyncMixin:
             logger.info(f"Synced config to MinIO for TrainJob {self.pk}: {filename}")
         except Exception as e:
             logger.error(f"Failed to sync config to MinIO: {e}", exc_info=True)
+            raise ConfigSyncError(
+                f"训练配置同步到 MinIO 失败，数据库变更已回滚: {e}"
+            ) from e
+
+        # Clean up old file after successful upload (best-effort)
+        if old_file_name and old_file_name != self.config_url.name:
+            try:
+                self.config_url.storage.delete(old_file_name)
+                logger.info(
+                    f"Deleted old config file for TrainJob {self.pk}: {old_file_name}"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to delete old config file '{old_file_name}': {e}"
+                )
 
     def _build_complete_config(self):
         """Build complete config file (add model, mlflow, and max_evals sections)."""

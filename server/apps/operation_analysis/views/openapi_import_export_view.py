@@ -84,41 +84,29 @@ class OpenImportExportViewSet(OpenAPIViewSet):
             return request.user.username
         return "api_user"
 
-    def _convert_ids_to_keys(self, object_type: str, object_ids: list[int], current_team: int = None) -> list[str]:
-        """将对象 ID 转换为业务键"""
-        from apps.operation_analysis.constants.import_export import BUSINESS_KEY_SEPARATOR
+    def _filter_ids_by_org(self, object_type: str, object_ids: list[int], current_team: int = None) -> list[int]:
+        """按组织过滤对象 ID，返回当前组织可见的合法 ID 列表"""
         from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
         from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
 
-        keys = []
-        if object_type == ObjectType.DASHBOARD.value:
-            qs = Dashboard.objects.filter(id__in=object_ids)
+        MODEL_MAP = {
+            ObjectType.DASHBOARD.value: Dashboard,
+            ObjectType.TOPOLOGY.value: Topology,
+            ObjectType.ARCHITECTURE.value: Architecture,
+            ObjectType.DATASOURCE.value: DataSourceAPIModel,
+        }
+
+        model = MODEL_MAP.get(object_type)
+        if model is not None:
+            qs = model.objects.filter(id__in=object_ids)
             if current_team is not None:
                 qs = qs.filter(groups__contains=current_team)
-            for obj in qs:
-                keys.append(f"{object_type}{BUSINESS_KEY_SEPARATOR}{obj.name}")
-        elif object_type == ObjectType.TOPOLOGY.value:
-            qs = Topology.objects.filter(id__in=object_ids)
-            if current_team is not None:
-                qs = qs.filter(groups__contains=current_team)
-            for obj in qs:
-                keys.append(f"{object_type}{BUSINESS_KEY_SEPARATOR}{obj.name}")
-        elif object_type == ObjectType.ARCHITECTURE.value:
-            qs = Architecture.objects.filter(id__in=object_ids)
-            if current_team is not None:
-                qs = qs.filter(groups__contains=current_team)
-            for obj in qs:
-                keys.append(f"{object_type}{BUSINESS_KEY_SEPARATOR}{obj.name}")
-        elif object_type == ObjectType.DATASOURCE.value:
-            qs = DataSourceAPIModel.objects.filter(id__in=object_ids)
-            if current_team is not None:
-                qs = qs.filter(groups__contains=current_team)
-            for obj in qs:
-                keys.append(f"{obj.name}{BUSINESS_KEY_SEPARATOR}{obj.rest_api}")
-        elif object_type == ObjectType.NAMESPACE.value:
-            for obj in NameSpace.objects.filter(id__in=object_ids):
-                keys.append(obj.name)
-        return keys
+            return list(qs.values_list("id", flat=True))
+
+        if object_type == ObjectType.NAMESPACE.value:
+            return list(NameSpace.objects.filter(id__in=object_ids).values_list("id", flat=True))
+
+        return []
 
     def _parse_yaml_to_document(self, yaml_content: str) -> YAMLDocument:
         import yaml as pyyaml
@@ -193,7 +181,7 @@ class OpenImportExportViewSet(OpenAPIViewSet):
         groups = self._require_groups(request)
         organization_id = groups[0]
 
-        object_keys = self._convert_ids_to_keys(object_type, object_ids, current_team=organization_id)
+        filtered_ids = self._filter_ids_by_org(object_type, object_ids, current_team=organization_id)
 
         logger.info(
             "Open API export request: object_type=%s, object_ids=%s, organization_id=%s",
@@ -204,8 +192,8 @@ class OpenImportExportViewSet(OpenAPIViewSet):
 
         result = ExportService.export_objects(
             scope_type=scope,
-            object_types=[object_type],
-            object_keys=object_keys,
+            object_type=object_type,
+            object_ids=filtered_ids,
             organization_id=organization_id,
         )
 

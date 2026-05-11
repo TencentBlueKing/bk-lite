@@ -1,0 +1,40 @@
+场景名称: 循环内反思测试
+
+对应计划: Phase 1 — #6 循环内反思
+
+功能描述:
+  检测 ReAct 循环陷入死循环（连续调用相同工具、重复失败）时，
+  触发反思逻辑，注入反思 prompt 改变执行方向。
+  实现方式: reflection_tracker 记录 consecutive_failures 和 tool_call_history，
+  agent_node 每步检查是否达到阈值，触发时通过模板注入反思 HumanMessage。
+
+当前状态: 已实现
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py: reflection_tracker L996（初始化），L1208-1240（反思检测 + prompt 注入），L1545-1554（tracker 更新）
+  - server/apps/opspilot/metis/llm/chain/entity.py: ReflectionConfig L78-84（consecutive_failures_threshold=3, repetition_window=6, repetition_threshold=3）
+  - server/apps/opspilot/metis/llm/chain/templates/prompts/graph/reflection_prompt: 反思 prompt 模板
+
+测试用例:
+
+  TestReflectionOnConsecutiveFailures:
+    1. 连续 N 次工具调用失败触发反思: consecutive_failures >= consecutive_failures_threshold 时注入反思 prompt
+    2. 间隔失败不触发: 成功-失败-成功-失败，consecutive_failures 被重置
+    3. 反思后 consecutive_failures 重置为 0
+
+  TestReflectionOnRepetition:
+    4. 窗口内同一工具被重复调用超过阈值: tool_call_history 最近 repetition_window 条中最频繁工具 >= repetition_threshold
+    5. 不同工具交替调用不触发: 窗口内无工具达到阈值
+    6. 反思后 tool_call_history 清空
+
+  TestReflectionPromptInjection:
+    7. 反思触发时注入 HumanMessage: messages 末尾追加反思 prompt（含 reason 和 step_number）
+    8. 反思 prompt 使用模板渲染: 包含具体的重复原因描述
+
+  TestReflectionConfigurable:
+    9. 可配置阈值: consecutive_failures_threshold=5 时需 5 次连续失败才触发
+    10. enabled=False 时不触发反思: 跳过所有反思检查
+    11. 仅 step > 1 时检查反思: 第一步不触发
+
+关联测试文件: cases/test_loop_reflection.py
+状态: GREEN（功能已实现）

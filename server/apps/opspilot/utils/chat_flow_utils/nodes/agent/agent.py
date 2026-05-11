@@ -149,6 +149,8 @@ class AgentNode(BaseNodeExecutor):
             "locale": flow_input.get("locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化
             "thread_id": flow_input.get("execution_id", ""),
             "execution_id": flow_input.get("execution_id", ""),
+            "node_id": flow_input.get("node_id", ""),
+            "trigger_type": self._resolve_trigger_type(flow_input),
         }
 
     def sse_execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]):
@@ -204,6 +206,17 @@ class AgentNode(BaseNodeExecutor):
 
         return generate_agui_stream()
 
+    @staticmethod
+    def _resolve_trigger_type(flow_input: Dict[str, Any]) -> str:
+        """根据 entry_type 映射到 trigger_type（用于审批策略判断）"""
+        entry_type = flow_input.get("entry_type", "")
+        if entry_type in ("celery", "test"):
+            return "unattended"
+        elif entry_type in ("enterprise_wechat", "dingtalk", "wechat_official"):
+            return "third_party"
+        else:
+            return "interactive"
+
     def set_llm_params(self, node_id: str, config: Dict[str, Any], input_data: Dict[str, Any]):
         """设置LLM参数
 
@@ -247,6 +260,15 @@ class AgentNode(BaseNodeExecutor):
 
         # 使用同步版本的 invoke_chat,避免异步上下文冲突
         data, _, _ = ChatService.invoke_chat(llm_params)
+
+        # 检查执行是否失败
+        if data.get("success") is False:
+            return {
+                "success": False,
+                "error": data.get("error"),
+                "error_type": data.get("error_type"),
+                output_key: data["message"],
+            }
 
         result = {output_key: data["message"]}
         if data.get("browser_steps"):

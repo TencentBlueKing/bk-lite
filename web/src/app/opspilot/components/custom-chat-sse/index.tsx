@@ -16,6 +16,8 @@ import AnnotationModal from '../custom-chat/annotationModal';
 import KnowledgeGraphView from '../knowledge/knowledgeGraphView';
 import PermissionWrapper from '@/components/permission';
 import BrowserStepProgress from './BrowserStepProgress';
+import AgentStepProgress from './AgentStepProgress';
+import ApprovalCard from './ApprovalCard';
 import { CustomChatMessage, Annotation } from '@/app/opspilot/types/global';
 import { useSession } from 'next-auth/react';
 import { useAuth } from '@/context/auth';
@@ -413,8 +415,19 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     [messages, token, sendMessage]
   );
 
+  const handleApprovalDecision = useCallback((toolCallId: string, decision: 'approved' | 'rejected') => {
+    updateMessages(prev => prev.map(msg => {
+      if (!msg.approvalRequests) return msg;
+      const updated = msg.approvalRequests.map(req =>
+        req.tool_call_id === toolCallId ? { ...req, status: decision } : req
+      );
+      return { ...msg, approvalRequests: updated };
+    }));
+  }, [updateMessages]);
+
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking } = msg;
+    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking, approvalRequests, agentStepProgress } = msg;
+
     let replacedContent = parseReferenceLinks(content || '');
     replacedContent = parseSuggestionLinks(replacedContent);
     const html = sanitizeHtml(md.render(replacedContent));
@@ -438,6 +451,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           </div>
         )}
         <ThinkingPanel thinking={thinking} isThinking={isThinking} />
+        {Array.isArray(agentStepProgress) && agentStepProgress.length > 0 && (
+          <AgentStepProgress steps={agentStepProgress} />
+        )}
         {browserStepsHistory && browserStepsHistory.steps.length > 0 && (
           <BrowserStepProgress history={browserStepsHistory} />
         )}
@@ -450,6 +466,18 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               handleSuggestionClick(e);
             }}
           />
+        )}
+        {Array.isArray(approvalRequests) && approvalRequests.length > 0 && (
+          <div className="mt-2">
+            {approvalRequests.map(req => (
+              <ApprovalCard
+                key={req.tool_call_id}
+                request={req}
+                token={token || ''}
+                onDecision={handleApprovalDecision}
+              />
+            ))}
+          </div>
         )}
         {Array.isArray(knowledgeBase) && knowledgeBase.length ? (
           <KnowledgeBase knowledgeList={knowledgeBase} />

@@ -7,23 +7,19 @@
 """
 
 import datetime
-from typing import Dict, Any
+from typing import Any, Dict
+
 from django.db.models import Count, Q
-from django.db.models.functions import (
-    TruncDate,
-    TruncWeek,
-    TruncMonth,
-    TruncHour,
-    TruncMinute,
-)
+from django.db.models.functions import TruncDate, TruncHour, TruncMinute, TruncMonth, TruncWeek
 from django.utils import timezone
 
 import nats_client
-from apps.alerts.models.models import Alert, Event, Incident, Level
-from apps.alerts.constants.constants import AlertStatus, EventLevel, LevelType
-from apps.core.logger import alert_logger as logger
-from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
+from apps.alerts.constants.constants import AlertStatus, EventLevel, LevelType
+from apps.alerts.models.alert_source import AlertSource
+from apps.alerts.models.models import Alert, Event, Incident, Level
+from apps.core.logger import alert_logger as logger
+from apps.core.utils.viewset_utils import GenericViewSetFun
 
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
 
@@ -32,6 +28,43 @@ def _get_alert_level_display_map():
     level_map = {str(lv.level_id): lv.level_display_name for lv in Level.objects.filter(level_type=LevelType.ALERT)}
     level_map.update({key: value for key, value in ALERT_LEVEL_DISPLAY_MAP.items() if key not in level_map})
     return level_map
+
+
+def _has_alerts_view_permission(user_info: dict) -> bool:
+    if (user_info or {}).get("is_superuser"):
+        return True
+
+    permission_data = (user_info or {}).get("permission", {})
+    if isinstance(permission_data, dict):
+        app_permissions = permission_data.get("alarm", [])
+    elif isinstance(permission_data, (set, list, tuple)):
+        app_permissions = permission_data
+    else:
+        app_permissions = []
+    return "Alarms-View" in set(app_permissions)
+
+
+def _get_authorized_alert_queryset(user_info: dict):
+    user_info = user_info or {}
+    current_team = user_info.get("team")
+    if not current_team:
+        return None, {"result": False, "data": [], "message": "缺少组织信息"}
+
+    if not _has_alerts_view_permission(user_info):
+        return None, {"result": False, "data": [], "message": "Insufficient permissions"}
+
+    team_ids = [int(current_team)]
+    if user_info.get("include_children"):
+        group_tree = user_info.get("group_tree", [])
+        child_group_ids = GenericViewSetFun.extract_child_group_ids(group_tree, int(current_team))
+        if child_group_ids:
+            team_ids = child_group_ids
+
+    team_query = Q()
+    for team_id in team_ids:
+        team_query |= Q(team__contains=team_id)
+
+    return Alert.objects.filter(team_query), None
 
 
 def group_dy_date_format(group_by):
@@ -76,6 +109,11 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
 
     """
     logger.info("=== get_alert_trend_data ===, args={}, kwargs={}".format(args, kwargs))
+    user_info = kwargs.pop("user_info", {})
+    queryset, error = _get_authorized_alert_queryset(user_info)
+    if error:
+        return error
+
     time = kwargs.pop("time", [])  # 默认7天
     if not time:
         return {
@@ -108,11 +146,7 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
 
     # 查询并按时间分组统计
     queryset = (
-        Alert.objects.filter(query_conditions)
-        .annotate(period=trunc_func("created_at"))
-        .values("period")
-        .annotate(count=Count("id"))
-        .order_by("period")
+        queryset.filter(query_conditions).annotate(period=trunc_func("created_at")).values("period").annotate(count=Count("id")).order_by("period")
     )
 
     # 生成完整的时间序列
@@ -319,12 +353,17 @@ def get_alert_statistics(**kwargs):
             "message": ""
         }
     """
-    total_count = Alert.objects.count()
-    active_count = Alert.objects.filter(status__in=AlertStatus.ACTIVATE_STATUS).count()
-    pending_count = Alert.objects.filter(status=AlertStatus.PENDING).count()
-    processing_count = Alert.objects.filter(status=AlertStatus.PROCESSING).count()
-    event_count = Event.objects.count()
-    incident_count = Incident.objects.count()
+    user_info = kwargs.get("user_info", {})
+    queryset, error = _get_authorized_alert_queryset(user_info)
+    if error:
+        return error
+
+    total_count = queryset.count()
+    active_count = queryset.filter(status__in=AlertStatus.ACTIVATE_STATUS).count()
+    pending_count = queryset.filter(status=AlertStatus.PENDING).count()
+    processing_count = queryset.filter(status=AlertStatus.PROCESSING).count()
+    event_count = Event.objects.filter(alert__in=queryset).distinct().count()
+    incident_count = Incident.objects.filter(alert__in=queryset).distinct().count()
 
     return {
         "result": True,
@@ -360,7 +399,11 @@ def get_alert_level_distribution(status_filter=None, **kwargs):
     """
     level_map = _get_alert_level_display_map()
 
-    queryset = Alert.objects
+    user_info = kwargs.get("user_info", {})
+    queryset, error = _get_authorized_alert_queryset(user_info)
+    if error:
+        return error
+
     if status_filter == "active":
         queryset = queryset.filter(status__in=AlertStatus.ACTIVATE_STATUS)
 
@@ -408,7 +451,12 @@ def get_active_alert_top(limit=10, **kwargs):
     if limit > 100:
         limit = 100
 
-    active_alerts = Alert.objects.filter(status__in=AlertStatus.ACTIVATE_STATUS).order_by("created_at")[:limit]
+    user_info = kwargs.get("user_info", {})
+    queryset, error = _get_authorized_alert_queryset(user_info)
+    if error:
+        return error
+
+    active_alerts = queryset.filter(status__in=AlertStatus.ACTIVATE_STATUS).order_by("created_at")[:limit]
 
     level_map = _get_alert_level_display_map()
     status_map = dict(AlertStatus.CHOICES)

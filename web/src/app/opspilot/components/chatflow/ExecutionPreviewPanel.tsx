@@ -14,6 +14,8 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import type { WorkflowExecutionDetailItem } from '@/app/opspilot/types/studio';
+import { ApprovalRequest } from '@/app/opspilot/types/global';
+import ApprovalCard from '../custom-chat-sse/ApprovalCard';
 
 interface ExecutionPreviewPanelProps {
   open: boolean;
@@ -25,6 +27,9 @@ interface ExecutionPreviewPanelProps {
   items: WorkflowExecutionDetailItem[];
   activeNodeId?: string | null;
   onClose: () => void;
+  approvalRequests?: ApprovalRequest[];
+  token?: string;
+  onApprovalDecision?: (toolCallId: string, decision: 'approved' | 'rejected') => void;
 }
 
 const statusConfig = {
@@ -74,6 +79,9 @@ const ExecutionPreviewPanel: React.FC<ExecutionPreviewPanelProps> = ({
   items,
   activeNodeId,
   onClose,
+  approvalRequests,
+  token,
+  onApprovalDecision,
 }) => {
   const { t } = useTranslation();
   const [expandedNodeIds, setExpandedNodeIds] = useState<string[]>([]);
@@ -477,6 +485,18 @@ const ExecutionPreviewPanel: React.FC<ExecutionPreviewPanelProps> = ({
                 </div>
               );
             })}
+          </div>
+        )}
+        {approvalRequests && approvalRequests.length > 0 && token && onApprovalDecision && (
+          <div className="px-4 pb-4">
+            {approvalRequests.map(req => (
+              <ApprovalCard
+                key={req.tool_call_id}
+                request={req}
+                token={token}
+                onDecision={onApprovalDecision}
+              />
+            ))}
           </div>
         )}
       </div>
