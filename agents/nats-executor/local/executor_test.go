@@ -230,3 +230,94 @@ func TestExecuteTimeoutReturnsQuickly(t *testing.T) {
 		t.Fatalf("timeout handling took too long: %v", elapsed)
 	}
 }
+
+func TestSCPFailureAdviceClassifiesCommonFailureModes(t *testing.T) {
+	testCases := []struct {
+		name      string
+		output    string
+		exitCode  int
+		timedOut  bool
+		wantCause string
+		wantNext  string
+	}{
+		{
+			name:      "host key verification",
+			output:    "Host key verification failed",
+			exitCode:  1,
+			wantCause: "host_key_problem",
+			wantNext:  "check_target_host_key_or_known_hosts",
+		},
+		{
+			name:      "auth failure",
+			output:    "Permission denied, please try again.",
+			exitCode:  5,
+			wantCause: "auth_failure",
+			wantNext:  "check_password_private_key_or_passphrase",
+		},
+		{
+			name:      "network or dns",
+			output:    "ssh: connect to host demo port 22: Connection timed out",
+			exitCode:  1,
+			wantCause: "network_or_dns",
+			wantNext:  "check_host_reachability_port_and_firewall",
+		},
+		{
+			name:      "path not found",
+			output:    "scp: /tmp/demo.txt: No such file or directory",
+			exitCode:  1,
+			wantCause: "path_not_found",
+			wantNext:  "check_source_and_target_path",
+		},
+		{
+			name:      "missing sshpass",
+			output:    "sshpass: command not found",
+			exitCode:  127,
+			wantCause: "missing_sshpass",
+			wantNext:  "check_executor_dependencies",
+		},
+		{
+			name:      "timed out without recognizable output",
+			output:    "",
+			exitCode:  0,
+			timedOut:  true,
+			wantCause: "transfer_timeout",
+			wantNext:  "check_network_speed_target_response_and_interactive_prompts",
+		},
+		{
+			name:      "unknown failure",
+			output:    "unexpected stderr",
+			exitCode:  9,
+			wantCause: "unknown",
+			wantNext:  "check_debug_stream_and_full_output",
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			cause, next := scpFailureAdvice(tt.output, tt.exitCode, tt.timedOut)
+			if cause != tt.wantCause || next != tt.wantNext {
+				t.Fatalf("scpFailureAdvice(%q, %d, %v) = (%q, %q), want (%q, %q)", tt.output, tt.exitCode, tt.timedOut, cause, next, tt.wantCause, tt.wantNext)
+			}
+		})
+	}
+}
+
+func TestLocalExecuteStartFailureAndMalformedResponsePaths(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		response := Execute(ExecuteRequest{
+			Command:        "echo should-fail-to-start",
+			ExecuteTimeout: 3,
+			Shell:          ShellTypePwsh,
+		}, "instance-start-failure")
+		if response.Success || response.Code != utils.ErrorCodeExecutionFailure {
+			t.Fatalf("unexpected response: %+v", response)
+		}
+		if !strings.Contains(response.Error, "failed to start command") {
+			t.Fatalf("unexpected error: %+v", response)
+		}
+	}
+
+	if ok := respondLocalExecuteMessage(stubResponseMsg{}, []byte("not-json"), "instance-1"); !ok {
+		t.Fatal("expected malformed payload path to emit explicit error response")
+	}
+}

@@ -36,6 +36,10 @@ class NodeMgmt(object):
         return_data = self.client.run("cloud_region_list")
         return return_data
 
+    def get_cloud_region_proxy_address(self, cloud_region_id):
+        """获取云区域代理地址。"""
+        return self.client.run("get_cloud_region_proxy_address", cloud_region_id)
+
     def node_list(self, query_data):
         """
         :param query_data: 查询条件

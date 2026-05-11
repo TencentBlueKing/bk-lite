@@ -88,6 +88,12 @@ const useIntegrationApi = () => {
     return await post('/log/node_mgmt/nodes/', data);
   };
 
+  const getCloudRegionProxyAddress = async (data: {
+    cloud_region_id?: number | string | null;
+  }) => {
+    return await post('/log/node_mgmt/cloud_region_proxy_address/', data);
+  };
+
   const getInstanceList = async (
     data: {
       collect_type_id?: React.Key;
@@ -215,6 +221,7 @@ const useIntegrationApi = () => {
     getCollectTypes,
     getDisplayCategoryEnum,
     getLogNodeList,
+    getCloudRegionProxyAddress,
     batchCreateInstances,
     getInstanceList,
     getCloudRegionList,

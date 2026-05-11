@@ -15,10 +15,23 @@ import (
 	"nats-executor/local"
 	"nats-executor/utils"
 	"nats-executor/utils/downloaderr"
+
+	"github.com/nats-io/nats.go"
 )
 
 type stubResponseMsg struct {
 	respond func(payload []byte) error
+}
+
+type stubInboundMsg struct {
+	payload []byte
+	respond func(payload []byte) error
+}
+
+type stubSubscriber struct {
+	subject string
+	handler nats.MsgHandler
+	err     error
 }
 
 type subscriberStubSSHSession struct {
@@ -58,6 +71,21 @@ func (s stubResponseMsg) Respond(payload []byte) error {
 		return nil
 	}
 	return s.respond(payload)
+}
+
+func (s stubInboundMsg) Payload() []byte { return s.payload }
+
+func (s stubInboundMsg) Respond(payload []byte) error {
+	if s.respond == nil {
+		return nil
+	}
+	return s.respond(payload)
+}
+
+func (s *stubSubscriber) Subscribe(subject string, cb nats.MsgHandler) (*nats.Subscription, error) {
+	s.subject = subject
+	s.handler = cb
+	return nil, s.err
 }
 
 func TestHandleSSHExecuteMessageRejectsMalformedJSON(t *testing.T) {
@@ -524,6 +552,94 @@ func TestHandleUploadToRemoteMessageReturnsExecutionResponse(t *testing.T) {
 	}
 }
 
+func TestHandleDownloadToRemoteMessageRejectsInvalidTimeoutBeforeSideEffects(t *testing.T) {
+	origDownload := downloadFromObjectStore
+	origBuild := buildSCPCommandFn
+	origExec := executeSCPCommand
+	origMkdirTemp := mkdirTempDir
+	origRemoveAll := removeAllPath
+	defer func() {
+		downloadFromObjectStore = origDownload
+		buildSCPCommandFn = origBuild
+		executeSCPCommand = origExec
+		mkdirTempDir = origMkdirTemp
+		removeAllPath = origRemoveAll
+	}()
+
+	downloadFromObjectStore = func(req utils.DownloadFileRequest, _ sshConn) error {
+		t.Fatal("download should not start when timeout is invalid")
+		return nil
+	}
+	buildSCPCommandFn = func(user, host, password, privateKey string, port uint, sourcePath, targetPath string, isUpload bool, profile sshCompatibilityProfile) (string, func(), error) {
+		t.Fatal("scp command should not be built when timeout is invalid")
+		return "", nil, nil
+	}
+	executeSCPCommand = func(instanceId string, req local.ExecuteRequest) local.ExecuteResponse {
+		t.Fatal("scp execution should not start when timeout is invalid")
+		return local.ExecuteResponse{}
+	}
+	mkdirTempDir = func(dir, pattern string) (string, error) {
+		t.Fatal("staging dir should not be created when timeout is invalid")
+		return "", nil
+	}
+	removeAllPath = func(path string) error {
+		t.Fatal("cleanup should not run when timeout is invalid")
+		return nil
+	}
+
+	payload := []byte(`{"args":[{"bucket_name":"bucket","file_key":"key","file_name":"demo.txt","target_path":"/remote/path","host":"10.0.0.1","port":22,"user":"root","password":"secret","execute_timeout":0}],"kwargs":{}}`)
+	response, ok := handleDownloadToRemoteMessage(payload, "instance-1", nil)
+	if !ok {
+		t.Fatal("expected invalid-timeout response")
+	}
+
+	var result local.ExecuteResponse
+	if err := json.Unmarshal(response, &result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if result.Success || result.Code != utils.ErrorCodeInvalidRequest {
+		t.Fatalf("unexpected response: %+v", result)
+	}
+	if !strings.Contains(result.Error, "execute timeout must be greater than 0") {
+		t.Fatalf("unexpected error: %+v", result)
+	}
+}
+
+func TestHandleUploadToRemoteMessageRejectsInvalidTimeoutBeforeSideEffects(t *testing.T) {
+	origBuild := buildSCPCommandFn
+	origExec := executeSCPCommand
+	defer func() {
+		buildSCPCommandFn = origBuild
+		executeSCPCommand = origExec
+	}()
+
+	buildSCPCommandFn = func(user, host, password, privateKey string, port uint, sourcePath, targetPath string, isUpload bool, profile sshCompatibilityProfile) (string, func(), error) {
+		t.Fatal("scp command should not be built when timeout is invalid")
+		return "", nil, nil
+	}
+	executeSCPCommand = func(instanceId string, req local.ExecuteRequest) local.ExecuteResponse {
+		t.Fatal("scp execution should not start when timeout is invalid")
+		return local.ExecuteResponse{}
+	}
+
+	payload := []byte(`{"args":[{"source_path":"/tmp/demo.txt","target_path":"/remote/path","host":"10.0.0.1","port":22,"user":"root","password":"secret","execute_timeout":0}],"kwargs":{}}`)
+	response, ok := handleUploadToRemoteMessage(payload, "instance-1")
+	if !ok {
+		t.Fatal("expected invalid-timeout response")
+	}
+
+	var result local.ExecuteResponse
+	if err := json.Unmarshal(response, &result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if result.Success || result.Code != utils.ErrorCodeInvalidRequest {
+		t.Fatalf("unexpected response: %+v", result)
+	}
+	if !strings.Contains(result.Error, "execute timeout must be greater than 0") {
+		t.Fatalf("unexpected error: %+v", result)
+	}
+}
+
 func TestSSHExecuteResponseIncludesExecutionFailureCode(t *testing.T) {
 	original := sshDialFn
 	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
@@ -750,3 +866,277 @@ func TestHandleDownloadToRemoteMessageCleansStagingDirAfterExecutorFailure(t *te
 		t.Fatal("expected staging dir cleanup")
 	}
 }
+
+func TestSSHSubscriptionSeams(t *testing.T) {
+	t.Run("register subjects for ssh subscriptions", func(t *testing.T) {
+		testCases := []struct {
+			name    string
+			subject string
+			subFn   func(*stubSubscriber) error
+		}{
+			{name: "execute", subject: "ssh.execute.instance-1", subFn: func(sub *stubSubscriber) error { return subscribeSSHExecutor(sub, nil, strPtr("instance-1")) }},
+			{name: "download", subject: "download.remote.instance-1", subFn: func(sub *stubSubscriber) error { return subscribeDownloadToRemote(sub, nil, strPtr("instance-1")) }},
+			{name: "upload", subject: "upload.remote.instance-1", subFn: func(sub *stubSubscriber) error { return subscribeUploadToRemote(sub, strPtr("instance-1")) }},
+		}
+
+		for _, tt := range testCases {
+			t.Run(tt.name, func(t *testing.T) {
+				sub := &stubSubscriber{}
+				if err := tt.subFn(sub); err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+				if sub.subject != tt.subject || sub.handler == nil {
+					t.Fatalf("unexpected subscription state: %+v", sub)
+				}
+			})
+		}
+	})
+
+	t.Run("registered callbacks can be invoked", func(t *testing.T) {
+		origDial := sshDialFn
+		origDownload := downloadFromObjectStore
+		origBuild := buildSCPCommandFn
+		origExec := executeSCPCommand
+		origMkdir := mkdirTempDir
+		origRemove := removeAllPath
+		sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+			return stubSSHClient{newSession: func() (sshSession, error) {
+				return &subscriberStubSSHSession{run: func(cmd string) error { return nil }, stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}}, nil
+			}}, nil
+		}
+		downloadFromObjectStore = func(req utils.DownloadFileRequest, _ sshConn) error { return nil }
+		buildSCPCommandFn = func(user, host, password, privateKey string, port uint, sourcePath, targetPath string, isUpload bool, profile sshCompatibilityProfile) (string, func(), error) {
+			return "scp cmd", func() {}, nil
+		}
+		executeSCPCommand = func(instanceId string, req local.ExecuteRequest) local.ExecuteResponse {
+			return local.ExecuteResponse{Success: true, Output: "ok", InstanceId: instanceId}
+		}
+		mkdirTempDir = func(dir, pattern string) (string, error) { return "/tmp/stage", nil }
+		removeAllPath = func(path string) error { return nil }
+		defer func() {
+			sshDialFn = origDial
+			downloadFromObjectStore = origDownload
+			buildSCPCommandFn = origBuild
+			executeSCPCommand = origExec
+			mkdirTempDir = origMkdir
+			removeAllPath = origRemove
+		}()
+
+		testCases := []struct {
+			subFn   func(*stubSubscriber) error
+			payload []byte
+		}{
+			{subFn: func(sub *stubSubscriber) error { return subscribeSSHExecutor(sub, nil, strPtr("instance-1")) }, payload: []byte(`{"args":[{"command":"uptime","execute_timeout":1,"host":"10.0.0.1","port":22,"user":"root","password":"x"}],"kwargs":{}}`)},
+			{subFn: func(sub *stubSubscriber) error { return subscribeDownloadToRemote(sub, nil, strPtr("instance-1")) }, payload: []byte(`{"args":[{"bucket_name":"bucket","file_key":"key","file_name":"demo.txt","target_path":"/remote/path","host":"10.0.0.1","port":22,"user":"root","password":"secret","execute_timeout":1}],"kwargs":{}}`)},
+			{subFn: func(sub *stubSubscriber) error { return subscribeUploadToRemote(sub, strPtr("instance-1")) }, payload: []byte(`{"args":[{"source_path":"/tmp/demo.txt","target_path":"/remote/path","host":"10.0.0.1","port":22,"user":"root","password":"secret","execute_timeout":1}],"kwargs":{}}`)},
+		}
+
+		for _, tt := range testCases {
+			sub := &stubSubscriber{}
+			if err := tt.subFn(sub); err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			sub.handler(&nats.Msg{Data: tt.payload})
+		}
+	})
+
+	t.Run("subscribe helper propagates subscribe error", func(t *testing.T) {
+		sub := &stubSubscriber{err: errors.New("subscribe failed")}
+		if err := subscribeSSHExecutor(sub, nil, strPtr("instance-1")); err == nil {
+			t.Fatal("expected subscribe error")
+		}
+	})
+
+	t.Run("public subscribe wrappers delegate through seam", func(t *testing.T) {
+		origExecute := subscribeSSHExecutorFn
+		origDownload := subscribeDownloadToRemoteFn
+		origUpload := subscribeUploadToRemoteFn
+		defer func() {
+			subscribeSSHExecutorFn = origExecute
+			subscribeDownloadToRemoteFn = origDownload
+			subscribeUploadToRemoteFn = origUpload
+		}()
+
+		calls := map[string]int{}
+		subscribeSSHExecutorFn = func(sub subscriber, nc *nats.Conn, instanceId *string) error { calls["execute"]++; return nil }
+		subscribeDownloadToRemoteFn = func(sub subscriber, nc sshConn, instanceId *string) error { calls["download"]++; return nil }
+		subscribeUploadToRemoteFn = func(sub subscriber, instanceId *string) error { calls["upload"]++; return nil }
+
+		SubscribeSSHExecutor(nil, strPtr("instance-1"))
+		SubscribeDownloadToRemote(nil, strPtr("instance-1"))
+		SubscribeUploadToRemote(nil, strPtr("instance-1"))
+
+		for _, name := range []string{"execute", "download", "upload"} {
+			if calls[name] != 1 {
+				t.Fatalf("expected %s wrapper to delegate once, got %d", name, calls[name])
+			}
+		}
+	})
+
+	t.Run("public subscribe wrappers swallow seam errors", func(t *testing.T) {
+		origExecute := subscribeSSHExecutorFn
+		origDownload := subscribeDownloadToRemoteFn
+		origUpload := subscribeUploadToRemoteFn
+		defer func() {
+			subscribeSSHExecutorFn = origExecute
+			subscribeDownloadToRemoteFn = origDownload
+			subscribeUploadToRemoteFn = origUpload
+		}()
+
+		subscribeSSHExecutorFn = func(sub subscriber, nc *nats.Conn, instanceId *string) error { return errors.New("execute failed") }
+		subscribeDownloadToRemoteFn = func(sub subscriber, nc sshConn, instanceId *string) error { return errors.New("download failed") }
+		subscribeUploadToRemoteFn = func(sub subscriber, instanceId *string) error { return errors.New("upload failed") }
+
+		SubscribeSSHExecutor(nil, strPtr("instance-1"))
+		SubscribeDownloadToRemote(nil, strPtr("instance-1"))
+		SubscribeUploadToRemote(nil, strPtr("instance-1"))
+	})
+
+	t.Run("download subscription wrapper responds with executor output", func(t *testing.T) {
+		origDownload := downloadFromObjectStore
+		origBuild := buildSCPCommandFn
+		origExec := executeSCPCommand
+		origMkdir := mkdirTempDir
+		origRemove := removeAllPath
+		downloadFromObjectStore = func(req utils.DownloadFileRequest, _ sshConn) error { return nil }
+		buildSCPCommandFn = func(user, host, password, privateKey string, port uint, sourcePath, targetPath string, isUpload bool, profile sshCompatibilityProfile) (string, func(), error) {
+			return "scp command", func() {}, nil
+		}
+		executeSCPCommand = func(instanceId string, req local.ExecuteRequest) local.ExecuteResponse {
+			return local.ExecuteResponse{Success: true, Output: "done", InstanceId: instanceId}
+		}
+		mkdirTempDir = func(dir, pattern string) (string, error) { return "/tmp/stage", nil }
+		removeAllPath = func(path string) error { return nil }
+		defer func() {
+			downloadFromObjectStore = origDownload
+			buildSCPCommandFn = origBuild
+			executeSCPCommand = origExec
+			mkdirTempDir = origMkdir
+			removeAllPath = origRemove
+		}()
+
+		var got local.ExecuteResponse
+		msg := stubInboundMsg{
+			payload: []byte(`{"args":[{"bucket_name":"bucket","file_key":"key","file_name":"demo.txt","target_path":"/remote/path","host":"10.0.0.1","port":22,"user":"root","password":"secret","execute_timeout":5}],"kwargs":{}}`),
+			respond: func(payload []byte) error { return json.Unmarshal(payload, &got) },
+		}
+		if ok := respondDownloadToRemoteSubscription(msg, "instance-1", nil); !ok {
+			t.Fatal("expected success")
+		}
+		if !got.Success || got.Output != "done" {
+			t.Fatalf("unexpected response: %+v", got)
+		}
+	})
+
+	t.Run("download subscription wrapper reports respond failure", func(t *testing.T) {
+		origDownload := downloadFromObjectStore
+		origBuild := buildSCPCommandFn
+		origExec := executeSCPCommand
+		origMkdir := mkdirTempDir
+		origRemove := removeAllPath
+		downloadFromObjectStore = func(req utils.DownloadFileRequest, _ sshConn) error { return nil }
+		buildSCPCommandFn = func(user, host, password, privateKey string, port uint, sourcePath, targetPath string, isUpload bool, profile sshCompatibilityProfile) (string, func(), error) {
+			return "scp command", func() {}, nil
+		}
+		executeSCPCommand = func(instanceId string, req local.ExecuteRequest) local.ExecuteResponse {
+			return local.ExecuteResponse{Success: true, Output: "done", InstanceId: instanceId}
+		}
+		mkdirTempDir = func(dir, pattern string) (string, error) { return "/tmp/stage", nil }
+		removeAllPath = func(path string) error { return nil }
+		defer func() {
+			downloadFromObjectStore = origDownload
+			buildSCPCommandFn = origBuild
+			executeSCPCommand = origExec
+			mkdirTempDir = origMkdir
+			removeAllPath = origRemove
+		}()
+
+		msg := stubInboundMsg{
+			payload: []byte(`{"args":[{"bucket_name":"bucket","file_key":"key","file_name":"demo.txt","target_path":"/remote/path","host":"10.0.0.1","port":22,"user":"root","password":"secret","execute_timeout":5}],"kwargs":{}}`),
+			respond: func(payload []byte) error { return errors.New("reply failed") },
+		}
+		if ok := respondDownloadToRemoteSubscription(msg, "instance-1", nil); ok {
+			t.Fatal("expected failure")
+		}
+	})
+
+	t.Run("upload subscription wrapper responds with executor output", func(t *testing.T) {
+		origBuild := buildSCPCommandFn
+		origExec := executeSCPCommand
+		buildSCPCommandFn = func(user, host, password, privateKey string, port uint, sourcePath, targetPath string, isUpload bool, profile sshCompatibilityProfile) (string, func(), error) {
+			return "scp upload", func() {}, nil
+		}
+		executeSCPCommand = func(instanceId string, req local.ExecuteRequest) local.ExecuteResponse {
+			return local.ExecuteResponse{Success: true, Output: "uploaded", InstanceId: instanceId}
+		}
+		defer func() {
+			buildSCPCommandFn = origBuild
+			executeSCPCommand = origExec
+		}()
+
+		var got local.ExecuteResponse
+		msg := stubInboundMsg{
+			payload: []byte(`{"args":[{"source_path":"/tmp/demo.txt","target_path":"/remote/path","host":"10.0.0.1","port":22,"user":"root","password":"secret","execute_timeout":5}],"kwargs":{}}`),
+			respond: func(payload []byte) error { return json.Unmarshal(payload, &got) },
+		}
+		if ok := respondUploadToRemoteSubscription(msg, "instance-1"); !ok {
+			t.Fatal("expected success")
+		}
+		if !got.Success || got.Output != "uploaded" {
+			t.Fatalf("unexpected response: %+v", got)
+		}
+	})
+
+	t.Run("upload subscription wrapper reports respond failure", func(t *testing.T) {
+		origBuild := buildSCPCommandFn
+		origExec := executeSCPCommand
+		buildSCPCommandFn = func(user, host, password, privateKey string, port uint, sourcePath, targetPath string, isUpload bool, profile sshCompatibilityProfile) (string, func(), error) {
+			return "scp upload", func() {}, nil
+		}
+		executeSCPCommand = func(instanceId string, req local.ExecuteRequest) local.ExecuteResponse {
+			return local.ExecuteResponse{Success: true, Output: "uploaded", InstanceId: instanceId}
+		}
+		defer func() {
+			buildSCPCommandFn = origBuild
+			executeSCPCommand = origExec
+		}()
+
+		msg := stubInboundMsg{
+			payload: []byte(`{"args":[{"source_path":"/tmp/demo.txt","target_path":"/remote/path","host":"10.0.0.1","port":22,"user":"root","password":"secret","execute_timeout":5}],"kwargs":{}}`),
+			respond: func(payload []byte) error { return errors.New("reply failed") },
+		}
+		if ok := respondUploadToRemoteSubscription(msg, "instance-1"); ok {
+			t.Fatal("expected failure")
+		}
+	})
+
+	t.Run("download subscription wrapper invalid payload returns false", func(t *testing.T) {
+		var got local.ExecuteResponse
+		msg := stubInboundMsg{
+			payload: []byte("not-json"),
+			respond: func(payload []byte) error { return json.Unmarshal(payload, &got) },
+		}
+		if ok := respondDownloadToRemoteSubscription(msg, "instance-1", nil); !ok {
+			t.Fatal("expected explicit error response")
+		}
+		if got.Success || got.Code != utils.ErrorCodeInvalidRequest {
+			t.Fatalf("unexpected response: %+v", got)
+		}
+	})
+
+	t.Run("upload subscription wrapper invalid payload returns false", func(t *testing.T) {
+		var got local.ExecuteResponse
+		msg := stubInboundMsg{
+			payload: []byte("not-json"),
+			respond: func(payload []byte) error { return json.Unmarshal(payload, &got) },
+		}
+		if ok := respondUploadToRemoteSubscription(msg, "instance-1"); !ok {
+			t.Fatal("expected explicit error response")
+		}
+		if got.Success || got.Code != utils.ErrorCodeInvalidRequest {
+			t.Fatalf("unexpected response: %+v", got)
+		}
+	})
+}
+
+func strPtr(value string) *string { return &value }

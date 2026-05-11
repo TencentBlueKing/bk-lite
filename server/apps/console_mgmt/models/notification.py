@@ -9,6 +9,7 @@ class Notification(models.Model):
     app_module = models.CharField(max_length=100, verbose_name=_("模块"), db_index=True)
     content = models.TextField(verbose_name=_("通知内容"))
     is_read = models.BooleanField(default=False, verbose_name=_("是否已读"), db_index=True)
+    source = models.CharField(max_length=100, default="unknown", verbose_name=_("来源"))
 
     class Meta:
         verbose_name = _("通知消息")

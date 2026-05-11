@@ -305,12 +305,13 @@ class CollectTypeService:
         # 计算总数
         total_count = queryset.count()
 
-        # 计算分页
-        start = (page - 1) * page_size
-        end = start + page_size
-
-        # 获取当前页的数据
-        page_data = queryset[start:end]
+        # page_size=-1 means return the full result set for option-loading scenes.
+        if page_size == -1:
+            page_data = queryset
+        else:
+            start = (page - 1) * page_size
+            end = start + page_size
+            page_data = queryset[start:end]
 
         # 获取实例ID列表用于补充额外信息
         instance_ids = [instance.id for instance in page_data]

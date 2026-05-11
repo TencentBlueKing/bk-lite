@@ -95,9 +95,10 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
   }, []);
 
   const configParams =
-    selectedDataSource?.params?.filter((param: ParamItem) =>
-      includeFilterTypes.includes(param.filterType || 'fixed')
-    ) || [];
+    (Array.isArray(selectedDataSource?.params) ? selectedDataSource.params : []).filter(
+      (param: ParamItem) =>
+        includeFilterTypes.includes(param.filterType || 'fixed')
+    );
 
   if (configParams.length === 0) {
     return (

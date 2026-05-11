@@ -1,4 +1,0 @@
-interface:
-  display_name: "企业微信通知"
-  short_description: "从 .env.dev 读取企业微信机器人配置并发送自动化通知。"
-  default_prompt: "使用企业微信通知技能，将当前自动化事项整理成简洁消息并推送到配置的企业微信群。"

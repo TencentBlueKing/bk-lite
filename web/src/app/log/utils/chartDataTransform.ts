@@ -20,10 +20,14 @@ export interface LineBarChartData {
 export type PieChartData = ChartDataItem[];
 
 export interface LineChartConfig {
-  type: 'single' | 'multiple';
+  type: 'single' | 'multiple' | 'dual';
   key: string;
   value: string;
   tooltipField?: string;
+  barField?: string;
+  lineField?: string;
+  barLabel?: string;
+  lineLabel?: string;
 }
 
 /**
@@ -308,6 +312,8 @@ export class ChartDataTransformer {
 
     if (type === 'single') {
       return this.transformSingleLine(rawData, { key, value });
+    } else if (type === 'dual') {
+      return this.transformDualFields(rawData, config);
     } else if (type === 'multiple') {
       return this.transformMultipleLines(rawData, { key, value });
     }
@@ -341,6 +347,45 @@ export class ChartDataTransformer {
     });
 
     return { categories, values };
+  }
+
+  /**
+   * 转换双字段数据（同一行有两个指标字段，分别用于柱状图和折线图）
+   */
+  private static transformDualFields(
+    rawData: any[],
+    config: LineChartConfig
+  ): LineBarChartData {
+    const barField = config.barField || config.value;
+    const lineField = config.lineField || config.key;
+    const barLabel = config.barLabel || barField;
+    const lineLabel = config.lineLabel || lineField;
+
+    const sortedData = rawData
+      .filter((item) => item._time)
+      .sort(
+        (a, b) => new Date(a._time).getTime() - new Date(b._time).getTime()
+      );
+
+    const categories: string[] = [];
+    const barData: (number | null)[] = [];
+    const lineData: (number | null)[] = [];
+
+    sortedData.forEach((item) => {
+      categories.push(this.formatTimeValue(item._time));
+      const bv = formatNumericValue(item[barField]);
+      const lv = formatNumericValue(item[lineField]);
+      barData.push(typeof bv === 'number' ? bv : null);
+      lineData.push(typeof lv === 'number' ? lv : null);
+    });
+
+    return {
+      categories,
+      series: [
+        { name: barLabel, data: barData },
+        { name: lineLabel, data: lineData }
+      ]
+    };
   }
 
   /**
