@@ -29,7 +29,7 @@
 
 ## 5. 联调与验证
 
-- [ ] 5.1 补社区版无 enterprise 时的运行态验证证据：需同时验证 CE 不显示“敏感信息”菜单、基础导航与路由保持正常，以及用户编辑弹窗中的 `email` / `phone` 在缺少 enterprise hook 时直接展示并保持可直接编辑的 plain 模式；`server/support-files/system_mgmt/menus/system-manager.json` 中的 `sensitive_info` 仅为权限定义而非前端菜单入口。
+- [x] 5.1 社区版无 enterprise 时的运行态验证证据：已同时验证 CE 不显示“敏感信息”菜单、基础导航与路由保持正常，以及用户编辑弹窗中的 `email` / `phone` 在缺少 enterprise hook 时直接展示并保持可直接编辑的 plain 模式；`server/support-files/system_mgmt/menus/system-manager.json` 中的 `sensitive_info` 仅为权限定义而非前端菜单入口。
 - [x] 5.2 已验证商业版菜单 patch、route shim 与页面接入：`pnpm prepare-enterprise` 可生成 `/system-manager/security/sensitive-info` shim 页面，本地 `http://127.0.0.1:3000/system-manager/security/sensitive-info` 返回 200，菜单 API 返回结果已包含 `security_management -> sensitive_info`。
 - [x] 5.3 已补后端关键场景验证：全局开关关闭、未授权超管脱敏、授权命中、编辑时省略字段不覆盖、保护开启下显式敏感字段可更新。
 - [ ] 5.4 补更完整的通知、RPC、自动化链路联调验证；当前已验证 `get_all_users` 在保护开启后保持原始联系方式。
