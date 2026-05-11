@@ -20,6 +20,7 @@ export interface TreeSelectNode {
 export interface UserFormPayload {
   username?: string;
   email?: string;
+  phone?: string;
   lastName?: string;
   locale?: string;
   timezone?: string;
@@ -32,6 +33,7 @@ export interface UserFormPayload {
 export interface UserDetailResponse {
   username?: string;
   email?: string;
+  phone?: string;
   display_name?: string;
   timezone?: string;
   locale?: string;

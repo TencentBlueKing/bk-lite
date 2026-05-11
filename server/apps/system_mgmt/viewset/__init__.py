@@ -7,6 +7,7 @@ from .group_viewset import GroupViewSet  # noqa
 from .login_module_viewset import LoginModuleViewSet  # noqa
 from .operation_log_viewset import OperationLogViewSet  # noqa
 from .role_viewset import RoleViewSet  # noqa
+from .sensitive_info_authorization_viewset import SensitiveInfoAuthorizationViewSet  # noqa
 from .system_settings_viewset import SystemSettingsViewSet  # noqa
 from .user_login_log_viewset import UserLoginLogViewSet  # noqa
 from .user_viewset import UserViewSet  # noqa

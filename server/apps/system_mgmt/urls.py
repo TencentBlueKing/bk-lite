@@ -10,6 +10,7 @@ from apps.system_mgmt.viewset import (
     LoginModuleViewSet,
     OperationLogViewSet,
     RoleViewSet,
+    SensitiveInfoAuthorizationViewSet,
     SystemSettingsViewSet,
     UserLoginLogViewSet,
     UserViewSet,
@@ -22,6 +23,7 @@ router.register(r"role", RoleViewSet, basename="role_mgmt")
 router.register(r"channel", ChannelViewSet)
 router.register(r"group_data_rule", GroupDataRuleViewSet)
 router.register(r"system_settings", SystemSettingsViewSet)
+router.register(r"sensitive_info_authorization", SensitiveInfoAuthorizationViewSet)
 router.register(r"app", AppViewSet)
 router.register(r"login_module", LoginModuleViewSet)
 router.register(r"custom_menu_group", CustomMenuGroupViewSet)

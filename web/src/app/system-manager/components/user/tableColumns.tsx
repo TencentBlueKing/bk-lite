@@ -57,6 +57,11 @@ export const createUserTableColumns = ({
       width: 185,
     },
     {
+      title: t('system.user.table.phone'),
+      dataIndex: 'phone',
+      width: 140,
+    },
+    {
       title: t('system.user.table.lastLogin'),
       dataIndex: 'last_login',
       width: 180,
