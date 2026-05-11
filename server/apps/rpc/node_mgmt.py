@@ -36,6 +36,10 @@ class NodeMgmt(object):
         return_data = self.client.run("cloud_region_list")
         return return_data
 
+    def get_cloud_region_proxy_address(self, cloud_region_id):
+        """获取云区域代理地址。"""
+        return self.client.run("get_cloud_region_proxy_address", cloud_region_id)
+
     def node_list(self, query_data):
         """
         :param query_data: 查询条件
@@ -180,3 +184,10 @@ class NodeMgmt(object):
         """
         return_data = self.client.run("get_cloud_region_envconfig", cloud_region_id)
         return return_data
+
+    def install_managed_component(self, collector_package: int, nodes: list[str]):
+        """通过 NATS 触发托管组件安装"""
+        return self.client.run(
+            "install_managed_component",
+            {"collector_package": collector_package, "nodes": nodes},
+        )

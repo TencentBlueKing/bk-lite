@@ -713,7 +713,18 @@
     "imageTooLarge": "Image size cannot exceed 5MB",
     "uploadImage": "Upload Image",
     "referenceDocSource": "Reference Document Source",
-    "referenceQASource": "Reference QA Source"
+    "referenceQASource": "Reference QA Source",
+    "approvalRequired": "Approval Required",
+    "approvalToolName": "Action",
+    "approvalToolArgs": "Details",
+    "approvalApprove": "Approve",
+    "approvalReject": "Reject",
+    "approvalApproved": "Approved",
+    "approvalRejected": "Rejected",
+    "approvalTimeout": "Timed Out",
+    "approvalTimeRemaining": "Time remaining",
+    "approvalReasonPlaceholder": "Optional: reason for decision",
+    "approvalSubmitFailed": "Failed to submit approval decision"
   },
   "settings": {
     "secret": {
@@ -1209,8 +1220,10 @@
     "monthly": "Monthly",
     "cron": "Cron Expression",
     "history": "History",
-    "apiInterface": "API Interface",
-    "agents": "Agents",
+      "apiInterface": "API Interface",
+      "mainAgent": "Main Agent",
+      "stepProgress": "Step {current}/{total}",
+      "agents": "Agents",
     "validate": "Validate",
     "notConfigured": "Not Configured",
     "pleaseEnterNotificationContent": "Please enter notification content",

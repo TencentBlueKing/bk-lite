@@ -16,7 +16,8 @@
     },
     "tags": [
       "linux",
-      "log"
+      "log",
+      "x86_64"
     ],
     "package_name": "snmptrapd",
     "cpu_architecture": "x86_64"

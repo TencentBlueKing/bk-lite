@@ -386,6 +386,10 @@ def test_search_rejects_page_size_above_limit():
     assert response.status_code == 400
 
 
+def test_search_allows_page_size_minus_one_for_full_result():
+    assert CollectInstanceViewSet._normalize_page_params({"page": 1, "page_size": -1}) == (1, -1)
+
+
 def test_search_single_collect_type_merges_duplicate_instance_permissions(monkeypatch):
     instance = make_instance()
     from apps.log.views import collect_config

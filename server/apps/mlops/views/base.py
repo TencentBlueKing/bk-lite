@@ -1,6 +1,9 @@
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.mlops.constants import TrainJobStatus, MLflowRunStatus
-from apps.core.logger import mlops_logger as logger
+from apps.mlops.utils.group_scope import assert_dataset_version_scope
+from django.db import transaction
+from rest_framework import serializers, status
+from rest_framework.response import Response
 
 
 class TeamModelViewSet(AuthViewSet):
@@ -14,6 +17,52 @@ class TeamModelViewSet(AuthViewSet):
     MLFLOW_PREFIX = ""
 
     # ---- run delete eligibility helpers (shared across all TrainJob viewsets) ----
+
+    def claim_train_job_running(self, train_job):
+        """Atomically claim a TrainJob as running.
+
+        Returns the previous status when the claim succeeds, or ``None`` if the
+        TrainJob is already running.
+        """
+        with transaction.atomic():
+            locked_train_job = train_job.__class__.objects.select_for_update().get(pk=train_job.pk)
+            if locked_train_job.status == TrainJobStatus.RUNNING:
+                return None
+
+            previous_status = locked_train_job.status
+            locked_train_job.status = TrainJobStatus.RUNNING
+            locked_train_job.save(update_fields=["status"])
+
+        train_job.status = TrainJobStatus.RUNNING
+        return previous_status
+
+    def ensure_train_job_dataset_scope(self, request, train_job):
+        """Block dirty TrainJob records whose dataset_version no longer matches
+        the current team / persisted team binding.
+        """
+        try:
+            assert_dataset_version_scope(train_job.dataset_version, train_job.team, request)
+        except serializers.ValidationError as exc:
+            detail = getattr(exc, "detail", None)
+            if isinstance(detail, dict):
+                errors = []
+                for value in detail.values():
+                    if isinstance(value, (list, tuple)):
+                        errors.extend(str(item) for item in value)
+                    else:
+                        errors.append(str(value))
+                message = "；".join(errors) if errors else "训练任务关联的数据集版本无权访问"
+            else:
+                message = "训练任务关联的数据集版本无权访问"
+            return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
+        return None
+
+    @staticmethod
+    def restore_train_job_status(train_job, previous_status):
+        """Restore a TrainJob status after webhook launch failure."""
+        updated = train_job.__class__.objects.filter(pk=train_job.pk, status=TrainJobStatus.RUNNING).update(status=previous_status)
+        if updated:
+            train_job.status = previous_status
 
     @staticmethod
     def annotate_run_delete_eligibility(run_datas, train_job_status):

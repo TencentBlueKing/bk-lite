@@ -17,11 +17,20 @@ class CollectorFilter(filters.FilterSet):
         if value in (None, ""):
             return queryset
 
-        normalized_arch = normalize_cpu_architecture(value)
-        if not normalized_arch and str(value).strip():
+        values = []
+        for item in str(value).split(","):
+            raw = item.strip()
+            if not raw:
+                continue
+            normalized_arch = normalize_cpu_architecture(raw)
+            if not normalized_arch:
+                return queryset.none()
+            values.append(normalized_arch)
+
+        if not values and str(value).strip():
             return queryset.none()
 
-        return queryset.filter(cpu_architecture=normalized_arch)
+        return queryset.filter(cpu_architecture__in=values)
 
     def filter_tags(self, queryset, name, value):
         """
@@ -41,12 +50,10 @@ class CollectorFilter(filters.FilterSet):
         if not tags_list:
             return queryset
 
-        # 性能优化：只查询需要的字段（id 和 tags），而不是加载完整对象
         matching_ids = []
         for collector_id, collector_tags in queryset.values_list("id", "tags"):
             if collector_tags is None:
                 collector_tags = []
-            # 检查是否所有查询标签都在采集器的标签列表中（精确匹配，AND 逻辑）
             if all(tag in collector_tags for tag in tags_list):
                 matching_ids.append(collector_id)
 

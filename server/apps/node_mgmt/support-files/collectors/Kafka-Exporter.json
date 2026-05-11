@@ -14,7 +14,8 @@
     "tags": [
       "linux",
       "exporter",
-      "monitor"
+      "monitor",
+      "x86_64"
     ],
     "package_name": "kafka_exporter",
     "cpu_architecture": "x86_64",

@@ -143,6 +143,7 @@ export interface BasicBarChartProps {
 export interface DashboardBarChartProps {
   rawData: any;
   loading?: boolean;
+  config?: any;
   onReady?: (ready: boolean) => void;
 }
 

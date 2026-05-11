@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+SERVER_DIR="${ROOT_DIR}/server"
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv 未安装。请先在本机安装并加入 PATH。"
+  exit 1
+fi
+
+if [ ! -d "${SERVER_DIR}" ]; then
+  echo "未找到 server 目录: ${SERVER_DIR}"
+  exit 1
+fi
+
+cd "${SERVER_DIR}"
+uv run python manage.py makemigrations
+uv run python manage.py migrate
+uv run python manage.py createcachetable django_cache

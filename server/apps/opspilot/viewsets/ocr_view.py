@@ -1,5 +1,7 @@
+from django.http import JsonResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
+from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
@@ -42,3 +44,28 @@ class OCRProviderViewSet(AuthViewSet):
     @HasPermission("provide_list-Delete")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
+
+    @action(methods=["GET"], detail=False)
+    @HasPermission("provide_list-View")
+    def by_vendor(self, request):
+        """按供应商查询模型（配置场景，不过滤模型的 team）
+
+        安全控制：验证用户对该供应商有权限（vendor.team 包含用户的 current_team）
+        """
+        vendor_id = request.query_params.get("vendor")
+        if not vendor_id:
+            message = self.loader.get("error.vendor_required") if self.loader else "vendor parameter is required"
+            return JsonResponse({"result": False, "message": message})
+
+        # 获取用户可见的 team 列表
+        current_team = self._parse_current_team_cookie(request)
+        if not current_team:
+            return self._list(self.get_queryset().none())
+
+        # 过滤：vendor_id + vendor.team 包含用户的 team（安全校验）
+        # 不过滤模型自身的 team（配置场景展示所有模型）
+        queryset = self.filter_queryset(self.get_queryset()).filter(
+            vendor_id=vendor_id,
+            vendor__team__contains=current_team,
+        )
+        return self._list(queryset.order_by(self.ORDERING_FIELD))
