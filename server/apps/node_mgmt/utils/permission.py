@@ -1,7 +1,9 @@
+from django.db.models import Count, F, Q
+
 from apps.core.utils.permission_utils import get_instance_permission_map, get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.node import NodeConstants
-from apps.node_mgmt.models.sidecar import Node
+from apps.node_mgmt.models.sidecar import ChildConfig, CollectorConfiguration, Node
 
 
 def normalize_ids(values):
@@ -30,13 +32,20 @@ def normalize_orgs(values):
 def get_node_permission(request):
     include_children = request.COOKIES.get("include_children", "0") == "1"
     permission = get_permission_rules(
-        request.user,
+        get_request_user(request),
         request.COOKIES.get("current_team"),
         "node_mgmt",
         NodeConstants.MODULE,
         include_children=include_children,
     )
     return permission if isinstance(permission, dict) else {}
+
+
+def get_request_user(request):
+    user = getattr(request, "user", None)
+    if user is not None and getattr(user, "is_authenticated", True):
+        return user
+    return getattr(request, "_force_auth_user", user)
 
 
 def get_authorized_node_queryset(request, permission=None):
@@ -47,6 +56,60 @@ def get_authorized_node_queryset(request, permission=None):
         team_key="nodeorganization__organization__in",
         id_key="id__in",
     )
+
+
+def get_authorized_collector_configuration_queryset(request, permission=None):
+    permission = permission or get_node_permission(request)
+    authorized_node_ids = list(get_authorized_node_queryset(request, permission).distinct().values_list("id", flat=True))
+    username = getattr(get_request_user(request), "username", "")
+
+    filters = Q()
+    if authorized_node_ids:
+        filters |= Q(nodes__id__in=authorized_node_ids)
+    if username:
+        filters |= Q(created_by=username, nodes__isnull=True)
+
+    if not filters:
+        return CollectorConfiguration.objects.none()
+
+    return CollectorConfiguration.objects.filter(filters).distinct()
+
+
+def get_authorized_child_config_queryset(request, permission=None):
+    authorized_configs = get_authorized_collector_configuration_queryset(request, permission)
+    return ChildConfig.objects.filter(collector_config__in=authorized_configs).distinct()
+
+
+def get_mutable_collector_configuration_queryset(request, permission=None):
+    permission = permission or get_node_permission(request)
+    authorized_node_ids = list(get_authorized_node_queryset(request, permission).distinct().values_list("id", flat=True))
+    username = getattr(get_request_user(request), "username", "")
+
+    writable_unbound_ids = []
+    if username:
+        writable_unbound_ids = list(CollectorConfiguration.objects.filter(created_by=username, nodes__isnull=True).values_list("id", flat=True))
+
+    writable_bound_ids = []
+    if authorized_node_ids:
+        writable_bound_ids = list(
+            CollectorConfiguration.objects.annotate(
+                total_nodes=Count("nodes", distinct=True),
+                authorized_nodes=Count("nodes", filter=Q(nodes__id__in=authorized_node_ids), distinct=True),
+            )
+            .filter(total_nodes__gt=0, total_nodes=F("authorized_nodes"))
+            .values_list("id", flat=True)
+        )
+
+    writable_ids = list(dict.fromkeys([*writable_unbound_ids, *writable_bound_ids]))
+    if not writable_ids:
+        return CollectorConfiguration.objects.none()
+
+    return CollectorConfiguration.objects.filter(id__in=writable_ids).distinct()
+
+
+def get_mutable_child_config_queryset(request, permission=None):
+    writable_configs = get_mutable_collector_configuration_queryset(request, permission)
+    return ChildConfig.objects.filter(collector_config__in=writable_configs).distinct()
 
 
 def get_node_organizations(node):
@@ -88,6 +151,82 @@ def authorize_node_ids(request, node_ids, required_permission="Operate"):
         return None, WebUtils.response_403("User does not have permission to operate this node")
 
     return [node_map[node_id] for node_id in normalized_ids], None
+
+
+def authorize_collector_configuration_ids(request, config_ids, permission=None):
+    normalized_ids = normalize_ids(config_ids)
+    if not normalized_ids:
+        return None, WebUtils.response_error(error_message="collector_configuration_ids is required")
+
+    configurations = list(CollectorConfiguration.objects.filter(id__in=normalized_ids).distinct())
+    configuration_map = {str(config.id): config for config in configurations}
+    if any(config_id not in configuration_map for config_id in normalized_ids):
+        return None, WebUtils.response_error(error_message="collector configuration does not exist")
+
+    authorized_configurations = list(get_authorized_collector_configuration_queryset(request, permission).filter(id__in=normalized_ids).distinct())
+    authorized_map = {str(config.id): config for config in authorized_configurations}
+    unauthorized_ids = [config_id for config_id in normalized_ids if config_id not in authorized_map]
+    if unauthorized_ids:
+        return None, WebUtils.response_403("User does not have permission to operate this configuration")
+
+    return [authorized_map[config_id] for config_id in normalized_ids], None
+
+
+def authorize_mutable_collector_configuration_ids(request, config_ids, permission=None):
+    normalized_ids = normalize_ids(config_ids)
+    if not normalized_ids:
+        return None, WebUtils.response_error(error_message="collector_configuration_ids is required")
+
+    configurations = list(CollectorConfiguration.objects.filter(id__in=normalized_ids).distinct())
+    configuration_map = {str(config.id): config for config in configurations}
+    if any(config_id not in configuration_map for config_id in normalized_ids):
+        return None, WebUtils.response_error(error_message="collector configuration does not exist")
+
+    writable_configurations = list(get_mutable_collector_configuration_queryset(request, permission).filter(id__in=normalized_ids).distinct())
+    writable_map = {str(config.id): config for config in writable_configurations}
+    unauthorized_ids = [config_id for config_id in normalized_ids if config_id not in writable_map]
+    if unauthorized_ids:
+        return None, WebUtils.response_403("User does not have permission to modify this configuration")
+
+    return [writable_map[config_id] for config_id in normalized_ids], None
+
+
+def authorize_child_config_ids(request, child_config_ids, permission=None):
+    normalized_ids = normalize_ids(child_config_ids)
+    if not normalized_ids:
+        return None, WebUtils.response_error(error_message="child_config_ids is required")
+
+    child_configs = list(ChildConfig.objects.filter(id__in=normalized_ids).select_related("collector_config").distinct())
+    child_config_map = {str(config.id): config for config in child_configs}
+    if any(config_id not in child_config_map for config_id in normalized_ids):
+        return None, WebUtils.response_error(error_message="child config does not exist")
+
+    authorized_child_configs = list(get_authorized_child_config_queryset(request, permission).filter(id__in=normalized_ids).distinct())
+    authorized_map = {str(config.id): config for config in authorized_child_configs}
+    unauthorized_ids = [config_id for config_id in normalized_ids if config_id not in authorized_map]
+    if unauthorized_ids:
+        return None, WebUtils.response_403("User does not have permission to operate this child configuration")
+
+    return [authorized_map[config_id] for config_id in normalized_ids], None
+
+
+def authorize_mutable_child_config_ids(request, child_config_ids, permission=None):
+    normalized_ids = normalize_ids(child_config_ids)
+    if not normalized_ids:
+        return None, WebUtils.response_error(error_message="child_config_ids is required")
+
+    child_configs = list(ChildConfig.objects.filter(id__in=normalized_ids).select_related("collector_config").distinct())
+    child_config_map = {str(config.id): config for config in child_configs}
+    if any(config_id not in child_config_map for config_id in normalized_ids):
+        return None, WebUtils.response_error(error_message="child config does not exist")
+
+    writable_child_configs = list(get_mutable_child_config_queryset(request, permission).filter(id__in=normalized_ids).distinct())
+    writable_map = {str(config.id): config for config in writable_child_configs}
+    unauthorized_ids = [config_id for config_id in normalized_ids if config_id not in writable_map]
+    if unauthorized_ids:
+        return None, WebUtils.response_403("User does not have permission to modify this child configuration")
+
+    return [writable_map[config_id] for config_id in normalized_ids], None
 
 
 def authorize_target_organizations(request, node, organizations):
