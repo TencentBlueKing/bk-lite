@@ -1116,7 +1116,7 @@ class InstanceManage(object):
             search: 搜索关键词
             permission_map: 权限映射
             creator: 创建者
-            case_sensitive: 是否区分大小写（默认False，模糊匹配）
+            case_sensitive: 是否精确匹配（True=精确匹配，False=不区分大小写模糊匹配，默认False）
 
         Returns:
             实例列表
@@ -1155,7 +1155,7 @@ class InstanceManage(object):
             search: 搜索关键词
             permission_map: 权限映射
             creator: 创建者
-            case_sensitive: 是否区分大小写（默认False，模糊匹配）
+            case_sensitive: 是否精确匹配（True=精确匹配，False=不区分大小写模糊匹配，默认False）
 
         Returns:
             {
@@ -1204,7 +1204,7 @@ class InstanceManage(object):
             creator: 创建者
             page: 页码（从1开始）
             page_size: 每页大小
-            case_sensitive: 是否区分大小写（默认False，模糊匹配）
+            case_sensitive: 是否精确匹配（True=精确匹配，False=不区分大小写模糊匹配，默认False）
 
         Returns:
             {

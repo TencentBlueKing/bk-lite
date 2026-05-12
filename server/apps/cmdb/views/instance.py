@@ -653,7 +653,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         请求参数:
             - search: 搜索关键词（必填）
-            - case_sensitive: 是否区分大小写（可选，默认False即模糊匹配）
+            - case_sensitive: 是否精确匹配（可选，默认False即不区分大小写模糊匹配）
 
         返回示例:
             {
@@ -698,7 +698,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             - model_id: 模型ID（必填）
             - page: 页码（可选，默认1）
             - page_size: 每页大小（可选，默认10，最大100）
-            - case_sensitive: 是否区分大小写（可选，默认False即模糊匹配）
+            - case_sensitive: 是否精确匹配（可选，默认False即不区分大小写模糊匹配）
 
         返回示例:
             {
