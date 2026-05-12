@@ -3,6 +3,7 @@ from functools import wraps
 from typing import Any, Callable
 
 from django.views.generic.base import View
+from rest_framework.exceptions import PermissionDenied
 
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.viewset_utils import GenericViewSetFun
@@ -31,6 +32,15 @@ class CheckKnowledgePermission(GenericViewSetFun):
         def wrapper(*args, **kwargs):
             request = _extract_request(args)
             if not request.user.is_superuser:
+                # 验证 current_team 权限
+                current_team = self._parse_current_team_cookie(request)
+                user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
+                if current_team not in user_group_ids:
+                    locale = getattr(request.user, "locale", "en") or "en"
+                    loader = LanguageLoader(app="opspilot", default_lang=locale)
+                    msg = loader.get("error.no_permission_access_team") or "无权访问该团队数据"
+                    raise PermissionDenied(msg)
+
                 params = request.GET.dict() or request.data
                 if kwargs.get("pk"):
                     instance = self.model.objects.get(id=kwargs["pk"]).knowledge_base
@@ -38,7 +48,6 @@ class CheckKnowledgePermission(GenericViewSetFun):
                     instance = self.model.objects.get(**{self.id_field: params.get(self.params_key)}).knowledge_base
                 else:
                     instance = KnowledgeBase.objects.get(id=params.get("knowledge_base_id"))
-                current_team = request.COOKIES.get("current_team", "0")
                 include_children = request.COOKIES.get("include_children", "0") == "1"
                 has_permission = self.get_has_permission(request.user, instance, current_team, include_children=include_children)
                 if not has_permission:

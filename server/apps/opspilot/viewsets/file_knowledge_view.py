@@ -7,18 +7,31 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.opspilot.models import FileKnowledge, KnowledgeDocument
 from apps.opspilot.serializers import FileKnowledgeSerializer
+from apps.opspilot.utils.team_permission_mixin import TeamPermissionMixin
 
 
-class FileKnowledgeViewSet(LanguageViewSet):
+class FileKnowledgeViewSet(TeamPermissionMixin, LanguageViewSet):
+    """文件知识 ViewSet - 仅暴露 create_file_knowledge action，禁用 list/retrieve/update/destroy"""
+
     queryset = FileKnowledge.objects.all()
     serializer_class = FileKnowledgeSerializer
     ordering = ("-id",)
     search_fields = ("name",)
+    # 禁用未使用的 HTTP 方法，减少攻击面
+    http_method_names = ["post", "options"]
 
     @action(methods=["POST"], detail=False)
     @HasPermission("knowledge_document-Add")
     def create_file_knowledge(self, request):
         kwargs = request.data
+        knowledge_base_id = kwargs.get("knowledge_base_id")
+        if not knowledge_base_id:
+            msg = self.loader.get("error.knowledge_base_required") if self.loader else "缺少 knowledge_base_id"
+            return JsonResponse({"result": False, "message": msg})
+
+        # 验证知识库权限
+        self._validate_knowledge_base_permission(request, knowledge_base_id)
+
         files = request.FILES.getlist("files")
         result = self.import_file_knowledge(files, kwargs, request.user.username, request.user.domain)
         return JsonResponse(result)

@@ -12,11 +12,26 @@ from apps.opspilot.models import BotConversationHistory, ConversationTag, Knowle
 from apps.opspilot.serializers.history_serializer import HistorySerializer
 from apps.opspilot.tasks import invoke_document_to_es
 from apps.opspilot.utils.bot_utils import set_time_range
+from apps.opspilot.utils.team_permission_mixin import TeamPermissionMixin
 
 
-class HistoryViewSet(viewsets.ModelViewSet):
+class HistoryViewSet(TeamPermissionMixin, viewsets.ModelViewSet):
     serializer_class = HistorySerializer
     queryset = BotConversationHistory.objects.all()
+    # 只允许自定义 action 使用的 HTTP 方法
+    http_method_names = ["get", "post", "head", "options"]
+
+    def list(self, request, *args, **kwargs):
+        """禁用内置 list 接口"""
+        return JsonResponse({"result": False, "message": "此接口已禁用"}, status=405)
+
+    def create(self, request, *args, **kwargs):
+        """禁用内置 create 接口"""
+        return JsonResponse({"result": False, "message": "此接口已禁用"}, status=405)
+
+    def retrieve(self, request, *args, **kwargs):
+        """禁用内置 retrieve 接口"""
+        return JsonResponse({"result": False, "message": "此接口已禁用"}, status=405)
 
     @action(methods=["GET"], detail=False)
     @HasPermission("bot_conversation_log-View")
@@ -31,12 +46,11 @@ class HistoryViewSet(viewsets.ModelViewSet):
             start_time,
         ) = self.set_log_params(request)
 
+        # 验证用户有权限访问该 bot
+        self._validate_bot_permission(request, bot_id)
+
         earliest_conversation_subquery = (
-            BotConversationHistory.objects.filter(
-                bot=OuterRef("bot"),
-                channel_user=OuterRef("channel_user"),
-                created_at__date=OuterRef("day"),
-            )
+            BotConversationHistory.objects.filter(bot=OuterRef("bot"), channel_user=OuterRef("channel_user"), created_at__date=OuterRef("day"))
             .order_by("created_at")
             .values("conversation")[:1]
         )

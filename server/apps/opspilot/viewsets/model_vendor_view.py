@@ -4,23 +4,32 @@ from django.db import models
 from django.http import JsonResponse
 from rest_framework.decorators import action
 
-from apps.core.utils.viewset_utils import GenericViewSetFun, LanguageViewSet
+from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.models import EmbedProvider, LLMModel, OCRProvider, RerankProvider
 from apps.opspilot.models.model_provider_mgmt import ModelVendor
 from apps.opspilot.serializers.model_vendor_serializer import ModelVendorSerializer, ModelVendorTestConnectionSerializer
 from apps.opspilot.services.model_vendor_sync_service import ModelVendorSyncService
 
 
-class ModelVendorViewSet(LanguageViewSet, GenericViewSetFun):
+class ModelVendorViewSet(AuthViewSet):
+    """ModelVendor 视图集，继承 AuthViewSet 获得 current_team 权限验证"""
+
     serializer_class = ModelVendorSerializer
     queryset = ModelVendor.objects.all()
     ordering = ("-id",)
     search_fields = ("name", "vendor_type")
+    ORGANIZATION_FIELD = "team"  # ModelVendor.team 是 JSONField (list)
 
     def list(self, request, *args, **kwargs):
+        """重写 list 方法，添加 model_count 统计"""
+        # 调用父类的 list 获取权限过滤后的 queryset
         queryset = self.filter_queryset(self.get_queryset())
-        serializer = self.get_serializer(queryset, many=True)
+        filtered_queryset = self.get_queryset_by_permission(request, queryset)
+
+        serializer = self.get_serializer(filtered_queryset.order_by(self.ORDERING_FIELD), many=True)
         return_data = serializer.data
+
+        # 统计每个 vendor 的 model 数量
         vendor_counts = {}
         for provider_model_class in (LLMModel, EmbedProvider, OCRProvider, RerankProvider):
             provider_counts = dict(
@@ -31,11 +40,14 @@ class ModelVendorViewSet(LanguageViewSet, GenericViewSetFun):
             )
             for vendor_id, provider_count in provider_counts.items():
                 vendor_counts[vendor_id] = vendor_counts.get(vendor_id, 0) + provider_count
+
         for item in return_data:
             item["model_count"] = vendor_counts.get(item["id"], 0)
+
         return JsonResponse({"result": True, "data": return_data})
 
     def update(self, request, *args, **kwargs):
+        """重写 update 方法，添加 is_build_in 检查"""
         instance = self.get_object()
         if instance.is_build_in:
             message = self.loader.get("error.builtin_model_types_no_modify") if self.loader else "Built-in vendors cannot be modified"
@@ -43,6 +55,7 @@ class ModelVendorViewSet(LanguageViewSet, GenericViewSetFun):
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
+        """重写 destroy 方法，添加 is_build_in 检查"""
         instance = self.get_object()
         if instance.is_build_in:
             message = self.loader.get("error.builtin_model_types_no_delete") if self.loader else "Built-in vendors cannot be deleted"

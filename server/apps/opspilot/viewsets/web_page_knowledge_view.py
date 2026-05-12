@@ -5,20 +5,35 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.opspilot.models import KnowledgeDocument, WebPageKnowledge
 from apps.opspilot.serializers import WebPageKnowledgeSerializer
+from apps.opspilot.utils.team_permission_mixin import TeamPermissionMixin
 
 
-class WebPageKnowledgeViewSet(LanguageViewSet):
+class WebPageKnowledgeViewSet(TeamPermissionMixin, LanguageViewSet):
+    """网页知识 ViewSet - 仅暴露 create_web_page_knowledge action，禁用 list/retrieve/update/destroy"""
+
     queryset = WebPageKnowledge.objects.all()
     serializer_class = WebPageKnowledgeSerializer
     ordering = ("-id",)
     search_fields = ("name",)
+    # 禁用未使用的 HTTP 方法，减少攻击面
+    http_method_names = ["post", "options"]
 
     @action(methods=["POST"], detail=False)
     @HasPermission("knowledge_document-Add")
     def create_web_page_knowledge(self, request):
         kwargs = request.data
-        if not kwargs.get("url").strip():
-            return JsonResponse({"result": False, "data": "url is required"})
+        if not kwargs.get("url", "").strip():
+            msg = self.loader.get("error.url_required") if self.loader else "url is required"
+            return JsonResponse({"result": False, "message": msg})
+
+        knowledge_base_id = kwargs.get("knowledge_base_id")
+        if not knowledge_base_id:
+            msg = self.loader.get("error.knowledge_base_required") if self.loader else "缺少 knowledge_base_id"
+            return JsonResponse({"result": False, "message": msg})
+
+        # 验证知识库权限
+        self._validate_knowledge_base_permission(request, knowledge_base_id)
+
         kwargs["knowledge_source_type"] = "web_page"
         new_doc = KnowledgeDocument.create_new_document(kwargs, request.user.username, request.user.domain)
         knowledge_obj = WebPageKnowledge.objects.create(

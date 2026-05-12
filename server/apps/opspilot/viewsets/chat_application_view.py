@@ -12,6 +12,7 @@ from apps.opspilot.models import ChatApplication, WorkFlowConversationHistory
 from apps.opspilot.models.bot_mgmt import BotWorkFlow
 from apps.opspilot.models.model_provider_mgmt import LLMSkill
 from apps.opspilot.serializers.chat_application_serializer import ChatApplicationSerializer
+from apps.opspilot.utils.team_permission_mixin import TeamPermissionMixin
 
 
 class ChatApplicationFilter(FilterSet):
@@ -36,7 +37,7 @@ class ChatApplicationFilter(FilterSet):
         return queryset
 
 
-class ChatApplicationViewSet(viewsets.ReadOnlyModelViewSet):
+class ChatApplicationViewSet(TeamPermissionMixin, viewsets.ReadOnlyModelViewSet):
     """
     聊天应用视图集
 
@@ -55,11 +56,12 @@ class ChatApplicationViewSet(viewsets.ReadOnlyModelViewSet):
         """根据用户团队过滤应用"""
         queryset = super().get_queryset()
 
+        # 验证 current_team 权限
+        current_team = self._validate_current_team_permission(self.request)
+
         # 如果不是超级用户，只返回用户所属团队的应用
         if not self.request.user.is_superuser:
-            current_team = self.request.COOKIES.get("current_team")
-            if current_team:
-                queryset = queryset.filter(bot__team__contains=[int(current_team)])
+            queryset = queryset.filter(bot__team__contains=[current_team])
 
         return queryset
 
