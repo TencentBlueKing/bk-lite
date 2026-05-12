@@ -21,9 +21,7 @@
   - 文件：`server/apps/core/urls.py`
   - 添加 `re_path(r"api/wechat_login/", index_view.wechat_login)`
 
-- [x] **Task 4**: 添加 `WECHAT_MOCK_MODE` 配置
-  - 文件：`server/config/components/base.py` 或相关配置文件
-  - 添加 `WECHAT_MOCK_MODE = env.bool("WECHAT_MOCK_MODE", default=False)`
+- [x] **Task 4**: ~~添加 `WECHAT_MOCK_MODE` 配置~~ (已移除，不需要 Mock 模式)
 
 - [x] **Task 5**: 移除旧接口 `api/wechat_user_register/`
   - 文件：`server/apps/core/urls.py` - 移除路由 ✓
@@ -48,27 +46,13 @@
 
 - [x] **Task 8**: 添加单元测试
   - 文件：`server/apps/core/tests/views/test_wechat_login.py`
-  - 测试 `_mock_wechat_verify()` 函数 ✓ (8 tests)
-  - 测试 `verify_wechat_code()` 函数 ✓ (4 tests)
-  - 测试 `_real_wechat_verify()` 函数 ✓ (5 tests)
-  - 测试 `wechat_login()` 视图 ✓ (5 tests)
-  - 所有 22 个测试通过 ✓
+  - 测试 `verify_wechat_code()` 函数 ✓ (6 tests)
+  - 测试 `wechat_login()` 视图 ✓ (6 tests)
+  - 所有 12 个测试通过 ✓
 
 ## 验证任务
 
-- [ ] **Task 9**: 本地 Mock 模式验证
-  - 设置环境变量：`DEBUG=True`, `WECHAT_MOCK_MODE=True`
-  - 启动服务：`cd server && make dev`
-  - 运行验证脚本：`uv run python scripts/verify_wechat_mock.py`
-  - 或手动测试：
-    ```bash
-    curl -X POST http://localhost:8001/api/v1/core/api/wechat_login/ \
-      -H "Content-Type: application/json" \
-      -d '{"code": "test_code_123"}'
-    ```
-  - 预期结果：返回 `{"result": true, "data": {"token": "...", "openid": "oXk8s5..."}}`
-
-- [ ] **Task 10**: 测试环境真实微信扫码验证
+- [ ] **Task 9**: 测试环境真实微信扫码验证
   - 部署到测试环境
   - 使用真实微信扫码完成登录流程
   - 确认 token 和 cookie 正确设置
