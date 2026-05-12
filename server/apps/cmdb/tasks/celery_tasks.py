@@ -9,11 +9,11 @@ from django.utils.timezone import now
 
 from apps.cmdb.collection.collect_tasks.job_collect import JobCollect
 from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
-from apps.core.logger import cmdb_logger as logger
+from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
 from apps.cmdb.models.collect_model import CollectModels
-from apps.cmdb.constants.constants import CollectRunStatusType
+from apps.cmdb.services.collect_tool_service import CollectToolService
 from apps.cmdb.services.subscription_task import SubscriptionTaskService
-from apps.cmdb.constants.constants import CollectPluginTypes
+from apps.core.logger import cmdb_logger as logger
 
 
 def _build_safe_error_message(err: Exception) -> str:
@@ -173,9 +173,7 @@ def sync_cmdb_display_fields_task(data: dict):
     try:
         from apps.cmdb.display_field import DisplayFieldSynchronizer
 
-        logger.info(
-            f"[SyncCMDBDisplayFields] 开始同步 CMDB _display 字段, 组织数: {len(data.get('organizations', []))}, 用户数: {len(data.get('users', []))}"
-        )
+        logger.info(f"[SyncCMDBDisplayFields] 开始同步 CMDB _display 字段, 组织数: {len(data.get('organizations', []))}, 用户数: {len(data.get('users', []))}")
 
         # 执行同步
         result = DisplayFieldSynchronizer.sync_all(data)
@@ -194,6 +192,24 @@ def sync_cmdb_display_fields_task(data: dict):
             "result": False,
             "message": f"Failed to sync CMDB display fields: {str(exc)}",
         }
+
+
+@shared_task
+def execute_collect_tool_debug_task(debug_id: str, payload: dict, service_name: str, timeout: int):
+    logger.info(f"开始执行采集工具调试任务 debug_id={debug_id}, action={payload.get('action')}")
+    try:
+        return CollectToolService.run_debug_task(debug_id, payload, service_name, timeout)
+    except Exception as exc:
+        logger.error(f"采集工具调试任务失败 debug_id={debug_id}, error={exc}", exc_info=True)
+        result = CollectToolService.build_error_result(
+            debug_id=debug_id,
+            payload=payload,
+            stage="unknown",
+            summary=f"调试任务执行失败: {exc}",
+            raw_log=str(exc),
+        )
+        CollectToolService.save_debug_state(debug_id, "error", result)
+        return result
 
 
 @shared_task
