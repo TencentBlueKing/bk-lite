@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Select, Steps } from 'antd';
+import { Form, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import useIntegrationApi from '@/app/log/api/integration';
@@ -98,62 +98,32 @@ const SnmpTrapConfiguration: React.FC = () => {
             <div className="mb-[10px] font-bold text-[16px]">
               {t('log.integration.snmpTrapAccessGuide')}
             </div>
-            <Steps
-              direction="vertical"
-              current={1}
-              items={[
-                {
-                  status: 'process',
-                  title: t('log.integration.snmpTrapStep1'),
-                  description: (
-                    <div>
-                      <div className="text-[12px] text-[var(--color-text-3)] mb-[10px">
-                        {t('log.integration.snmpTrapStep1Des')}
-                      </div>
-                      <div className="bg-[var(--color-bg-1)] mt-[10px] p-[10px]">
-                        <div className="pb-[10px] mb-[10px] border-b border-[var(--color-border-1)]">
-                          <span className="text-[12px] text-[var(--color-text-3)]">
-                            {t('log.integration.snmpTrapTargetIp')}:
-                          </span>
-                          <span className="ml-[10px] text-[var(--color-primary)] font-mono font-semibold">
-                            {selectedNodeProxyAddress}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-[12px] text-[var(--color-text-3)]">
-                            {t('log.integration.snmpTrapTargetPort')}:
-                          </span>
-                          <span className="ml-[10px] text-[var(--color-primary)] font-mono font-semibold">
-                            162
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ),
-                },
-                {
-                  status: 'process',
-                  title: t('log.integration.snmpTrapStep2'),
-                  description: (
-                    <div>
-                      <div className="text-[12px] text-[var(--color-text-3)] mb-[10px">
-                        {t('log.integration.snmpTrapStep2Des')}
-                      </div>
-                      <div className="bg-[var(--color-bg-1)] mt-[10px] p-[10px]">
-                        <div>
-                          <span className="text-[12px] text-[var(--color-text-3)]">
-                            {t('log.integration.auditBeatPaths')}:
-                          </span>
-                          <span className="ml-[10px] text-[var(--color-primary)] font-mono font-semibold">
-                            /usr/share/mibs
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ),
-                },
-              ]}
-            />
+            <div>
+              <div className="text-[14px] font-bold">
+                {t('log.integration.snmpTrapStep1')}
+              </div>
+              <div className="text-[12px] text-[var(--color-text-3)] mt-[4px] mb-[10px]">
+                {t('log.integration.snmpTrapStep1Des')}
+              </div>
+              <div className="bg-[var(--color-bg-1)] mt-[10px] p-[10px]">
+                <div className="pb-[10px] mb-[10px] border-b border-[var(--color-border-1)]">
+                  <span className="text-[12px] text-[var(--color-text-3)]">
+                    {t('log.integration.snmpTrapTargetIp')}:
+                  </span>
+                  <span className="ml-[10px] text-[var(--color-primary)] font-mono font-semibold">
+                    {selectedNodeProxyAddress}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[12px] text-[var(--color-text-3)]">
+                    {t('log.integration.snmpTrapTargetPort')}:
+                  </span>
+                  <span className="ml-[10px] text-[var(--color-primary)] font-mono font-semibold">
+                    162
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </Form>
