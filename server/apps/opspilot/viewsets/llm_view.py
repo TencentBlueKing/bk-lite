@@ -147,8 +147,6 @@ class LLMViewSet(PinMixin, AuthViewSet):
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
-        if (not request.user.is_superuser) and (instance.created_by != request.user.username):
-            params.pop("team", [])
         if "team" in params:
             delete_team = [i for i in instance.team if i not in params["team"]]
             self.delete_rules(instance.id, delete_team)
