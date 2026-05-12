@@ -107,7 +107,7 @@ class LogAccessScopeService:
                     seen.add(group_id)
 
         if not resolved_ids:
-            raise ValueError("当前用户无可用日志分组权限")
+            raise ValueError("当前组织暂无可用的日志分组权限")
 
         return LogAccessScope(
             log_groups=resolved_ids,

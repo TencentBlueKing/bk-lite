@@ -1,8 +1,12 @@
+from types import SimpleNamespace
+
 from rest_framework import serializers
 
 from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.log_clustering import *
 from apps.mlops.utils.group_scope import (
+    assert_dataset_version_scope,
+    assert_parent_team_matches,
     assert_team_ownership,
     get_current_team,
     validate_requested_teams,
@@ -221,7 +225,13 @@ class LogClusteringTrainJobSerializer(AuthSerializer):
         # 只在创建时验证（更新时不强制要求）
         if not self.instance and not attrs.get("dataset_version"):
             raise serializers.ValidationError({"dataset_version": "创建训练任务时必须指定数据集版本"})
-        return super().validate(attrs)
+
+        attrs = super().validate(attrs)
+        request = self.context["request"]
+        dataset_version = attrs.get("dataset_version", getattr(self.instance, "dataset_version", None))
+        team = attrs.get("team", getattr(self.instance, "team", None))
+        assert_dataset_version_scope(dataset_version, team, request)
+        return attrs
 
     def validate_team(self, value):
         return validate_requested_teams(self.context["request"], value)
@@ -237,6 +247,22 @@ class LogClusteringServingSerializer(AuthSerializer):
     class Meta:
         model = LogClusteringServing
         fields = "__all__"
+
+    def validate_train_job(self, value):
+        request = self.context["request"]
+        assert_team_ownership(value, get_current_team(request), "train_job", request=request)
+        return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+
+        train_job = attrs.get("train_job", getattr(self.instance, "train_job", None))
+        team = attrs.get("team", getattr(self.instance, "team", None))
+        if train_job is not None and team is not None:
+            field_name = "train_job" if "train_job" in attrs or "team" not in attrs else "team"
+            assert_parent_team_matches(SimpleNamespace(team=team), train_job, field_name)
+
+        return attrs
 
     def validate_team(self, value):
         return validate_requested_teams(self.context["request"], value)
