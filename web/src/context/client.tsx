@@ -51,6 +51,12 @@ const sortClientData = (data: ClientData[]): ClientData[] => {
   });
 };
 
+const isNotFoundRequestError = (error: unknown) => {
+  return typeof error === 'object' && error !== null && 'response' in error
+    ? (error as { response?: { status?: number } }).response?.status === 404
+    : false;
+};
+
 export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { get, isLoading: apiLoading } = useApiClient();
   const [clientData, setClientData] = useState<ClientData[]>([]);
@@ -105,6 +111,11 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }
       return data || [];
     } catch (err) {
+      if (isNotFoundRequestError(err)) {
+        setAppConfigList([]);
+        return [];
+      }
+
       console.error('Failed to fetch app config:', err);
       return [];
     } finally {

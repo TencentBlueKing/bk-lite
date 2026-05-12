@@ -64,6 +64,7 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
       const monitorItem = objects.find(
         (item: ObjectItem) => item.id === monitorObject
       );
+      const isMysql = (monitorName || '').toLowerCase() === 'mysql';
       const row: any = {
         monitorObjId: monitorObject || '',
         name: monitorName,
@@ -72,9 +73,16 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
         instance_id: viewConfig.instance_id,
         instance_name: viewConfig.instance_name,
         instance_id_values: viewConfig.instance_id_values,
+        instance_id_keys: Array.isArray(viewConfig.instance_id_keys) && viewConfig.instance_id_keys.length
+          ? viewConfig.instance_id_keys.join(',')
+          : Array.isArray(monitorItem?.instance_id_keys)
+            ? monitorItem.instance_id_keys.join(',')
+            : 'instance_id'
       };
       const params = new URLSearchParams(row);
-      const targetUrl = `/monitor/view/detail?${params.toString()}`;
+      const targetUrl = isMysql
+        ? `/monitor/view/mysql-dashboard?${params.toString()}`
+        : `/monitor/view/detail?${params.toString()}`;
       router.push(targetUrl);
     };
 
@@ -85,7 +93,7 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
           title={title}
           subTitle={viewConfig.instance_name}
           visible={groupVisible}
-          destroyOnClose
+          destroyOnHidden
           footer={
             <div>
               <Button onClick={handleCancel}>{t('common.cancel')}</Button>

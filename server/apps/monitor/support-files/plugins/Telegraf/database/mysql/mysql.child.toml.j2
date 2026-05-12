@@ -3,17 +3,29 @@
     servers = ["{{ username }}:${PASSWORD__{{ config_id }}}@tcp({{ host }}:{{ port }})/?tls=false"]
     metric_version = 2
     interval = "{{ interval }}s"
+    gather_global_variables = true
+    gather_slave_status = true
+    gather_table_schema = true
+    table_schema_databases = []
 
     fieldinclude = [
       # 连接状态
       "threads_connected",
       "threads_running",
+      "threads_cached",
+      "max_used_connections",
       "aborted_connects",
       "aborted_clients",
+      "connection_errors_internal",
+      "connection_errors_max_connections",
+      "connection_errors_peer_address",
+      "connection_errors_select",
+      "connection_errors_tcpwrap",
 
       # 查询性能
       "slow_queries",
       "queries",
+      "questions",
       "com_select",
       "com_insert",
       "com_update",
@@ -22,8 +34,13 @@
       # InnoDB 性能
       "innodb_row_lock_time_avg",
       "innodb_row_lock_waits",
+      "innodb_data_reads",
+      "innodb_data_writes",
+      "innodb_data_fsyncs",
+      "innodb_os_log_fsyncs",
       "innodb_buffer_pool_read_requests",
       "innodb_buffer_pool_reads",
+      "innodb_buffer_pool_pages_free",
       "innodb_buffer_pool_pages_dirty",
       "innodb_buffer_pool_pages_total",
 
@@ -32,12 +49,27 @@
       "bytes_sent",
 
       # 表缓存
+      "open_tables",
+      "opened_tables",
+      "open_files",
       "table_open_cache_hits",
       "table_open_cache_misses",
 
+      # MyISAM/键缓存
+      "key_reads",
+      "key_read_requests",
+
       # 临时表
       "created_tmp_disk_tables",
-      "created_tmp_tables"
+      "created_tmp_tables",
+
+      # Global Variables
+      "max_connections",
+      "table_open_cache",
+      "open_files_limit",
+      "tmp_table_size",
+      "max_heap_table_size",
+      "innodb_buffer_pool_size"
     ]
 
     [inputs.mysql.tags]
@@ -45,3 +77,27 @@
         instance_type = "{{ instance_type }}"
         collect_type = "database"
         config_type = "mysql"
+
+[[processors.enum]]
+    namepass = ["mysql"]
+
+    [[processors.enum.mapping]]
+        field = "slave_slave_io_running"
+        dest = "slave_slave_io_running_int"
+        default = 0
+
+        [processors.enum.mapping.value_mappings]
+            Yes = 1
+            No = 0
+            Connecting = 0
+            Preparing = 0
+
+    [[processors.enum.mapping]]
+        field = "slave_slave_sql_running"
+        dest = "slave_slave_sql_running_int"
+        default = 0
+
+        [processors.enum.mapping.value_mappings]
+            Yes = 1
+            No = 0
+            Preparing = 0

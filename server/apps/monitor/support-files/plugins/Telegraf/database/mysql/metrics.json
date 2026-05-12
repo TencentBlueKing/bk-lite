@@ -8,8 +8,19 @@
   "description": "",
   "default_metric": "any({instance_type='mysql'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["mysql_threads_running", "mysql_slow_queries_rate", "mysql_innodb_buffer_pool_reads_rate"],
+  "supplementary_indicators": ["mysql_uptime", "mysql_threads_running", "mysql_queries_rate", "mysql_slow_queries_rate", "mysql_buffer_pool_hit_ratio", "mysql_connection_utilization", "mysql_variables_max_connections", "mysql_slave_seconds_behind_master"],
   "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "mysql_uptime",
+      "display_name": "Service Uptime",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "Duration since the MySQL instance was last started, used to observe restart frequency and runtime stability",
+      "query": "mysql_uptime{__$labels__}"
+    },
     {
       "metric_group": "ConnStatus",
       "name": "mysql_threads_connected",
@@ -34,6 +45,39 @@
     },
     {
       "metric_group": "ConnStatus",
+      "name": "mysql_threads_cached",
+      "display_name": "Cached Threads",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Number of cached reusable threads, reflecting connection reuse capability",
+      "query": "mysql_threads_cached{__$labels__}"
+    },
+    {
+      "metric_group": "ConnStatus",
+      "name": "mysql_variables_max_connections",
+      "display_name": "Max Connections Setting",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Configured max_connections limit used as the true connection capacity baseline",
+      "query": "mysql_variables_max_connections{__$labels__}"
+    },
+    {
+      "metric_group": "ConnStatus",
+      "name": "mysql_max_used_connections",
+      "display_name": "Max Used Connections",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Historical peak of used connections, used to assess connection pool headroom",
+      "query": "mysql_max_used_connections{__$labels__}"
+    },
+    {
+      "metric_group": "ConnStatus",
       "name": "mysql_aborted_connects",
       "display_name": "Aborted Connections",
       "instance_id_keys": ["instance_id"],
@@ -42,6 +86,116 @@
       "dimensions": [],
       "description": "Number of failed connection attempts, possibly due to permissions, network, or configuration",
       "query": "mysql_aborted_connects{__$labels__}"
+    },
+    {
+      "metric_group": "ConnStatus",
+      "name": "mysql_aborted_clients",
+      "display_name": "Aborted Clients",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Number of clients disconnected abnormally, often related to network jitter or timeout",
+      "query": "mysql_aborted_clients{__$labels__}"
+    },
+    {
+      "metric_group": "ConnStatus",
+      "name": "mysql_connection_errors_internal",
+      "display_name": "Internal Connection Errors",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Connection failures caused by internal server errors",
+      "query": "mysql_connection_errors_internal{__$labels__}"
+    },
+    {
+      "metric_group": "ConnStatus",
+      "name": "mysql_connection_errors_max_connections",
+      "display_name": "Max Connections Errors",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Connection failures caused by reaching max_connections",
+      "query": "mysql_connection_errors_max_connections{__$labels__}"
+    },
+    {
+      "metric_group": "ConnStatus",
+      "name": "mysql_connection_errors_peer_address",
+      "display_name": "Peer Address Connection Errors",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Connection failures caused by invalid or rejected peer addresses",
+      "query": "mysql_connection_errors_peer_address{__$labels__}"
+    },
+    {
+      "metric_group": "ConnStatus",
+      "name": "mysql_connection_errors_select",
+      "display_name": "Socket Poll Connection Errors",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Connection failures caused during socket select handling",
+      "query": "mysql_connection_errors_select{__$labels__}"
+    },
+    {
+      "metric_group": "ConnStatus",
+      "name": "mysql_connection_errors_tcpwrap",
+      "display_name": "Access Control Connection Errors",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Connection failures caused by TCP wrapper access control",
+      "query": "mysql_connection_errors_tcpwrap{__$labels__}"
+    },
+    {
+      "metric_group": "ConnStatus",
+      "name": "mysql_connection_utilization",
+      "display_name": "Connection Utilization",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "description": "Ratio of current open connections to configured max_connections, used to estimate connection pressure",
+      "query": "100 * max by (instance_id) (mysql_threads_connected{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mysql_variables_max_connections{__$labels__}), 1)"
+    },
+    {
+      "metric_group": "Replication",
+      "name": "mysql_slave_seconds_behind_master",
+      "display_name": "Replication Delay",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Seconds the replica is behind its source, used to assess replication lag",
+      "query": "max by (instance_id) (mysql_slave_seconds_behind_master{__$labels__})"
+    },
+    {
+      "metric_group": "Replication",
+      "name": "mysql_slave_io_running",
+      "display_name": "Replication IO Thread",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Replication IO thread status exported from SHOW SLAVE STATUS",
+      "query": "max by (instance_id) (mysql_slave_slave_io_running_int{__$labels__})"
+    },
+    {
+      "metric_group": "Replication",
+      "name": "mysql_slave_sql_running",
+      "display_name": "Replication SQL Thread",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Replication SQL thread status exported from SHOW SLAVE STATUS",
+      "query": "max by (instance_id) (mysql_slave_slave_sql_running_int{__$labels__})"
     },
     {
       "metric_group": "QueryPerf",
@@ -53,6 +207,28 @@
       "dimensions": [],
       "description": "Number of slow query requests, reflecting the frequency of slow queries",
       "query": "rate(mysql_slow_queries{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "QueryPerf",
+      "name": "mysql_queries_rate",
+      "display_name": "QPS (Queries)",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Overall query throughput, reflecting total database access pressure",
+      "query": "rate(mysql_queries{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "QueryPerf",
+      "name": "mysql_questions_rate",
+      "display_name": "Questions Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rate of statements sent by clients, used to assess front-end request pressure",
+      "query": "rate(mysql_questions{__$labels__}[5m])"
     },
     {
       "metric_group": "QueryPerf",
@@ -122,6 +298,50 @@
     },
     {
       "metric_group": "InnoDBPerf",
+      "name": "mysql_innodb_data_reads_rate",
+      "display_name": "InnoDB Data Reads Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Physical read operations issued by InnoDB",
+      "query": "rate(mysql_innodb_data_reads{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_innodb_data_writes_rate",
+      "display_name": "InnoDB Data Writes Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Physical write operations issued by InnoDB",
+      "query": "rate(mysql_innodb_data_writes{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_innodb_data_fsyncs_rate",
+      "display_name": "InnoDB Data Fsyncs Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Fsync operations issued for InnoDB data files, reflecting data file flush pressure",
+      "query": "rate(mysql_innodb_data_fsyncs{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_innodb_os_log_fsyncs_rate",
+      "display_name": "InnoDB Log Fsyncs Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Redo log fsync frequency, reflecting transaction flush pressure",
+      "query": "rate(mysql_innodb_os_log_fsyncs{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "InnoDBPerf",
       "name": "mysql_innodb_buffer_pool_read_requests_rate",
       "display_name": "Buffer Pool Read Requests Rate",
       "instance_id_keys": ["instance_id"],
@@ -144,6 +364,17 @@
     },
     {
       "metric_group": "InnoDBPerf",
+      "name": "mysql_innodb_buffer_pool_pages_free",
+      "display_name": "Free Buffer Pool Pages",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Number of free pages in buffer pool, used to estimate remaining cache headroom",
+      "query": "mysql_innodb_buffer_pool_pages_free{__$labels__}"
+    },
+    {
+      "metric_group": "InnoDBPerf",
       "name": "mysql_innodb_buffer_pool_pages_dirty",
       "display_name": "Dirty Pages",
       "instance_id_keys": ["instance_id"],
@@ -163,6 +394,39 @@
       "dimensions": [],
       "description": "Total pages in buffer pool; used to calculate buffer pool utilization",
       "query": "mysql_innodb_buffer_pool_pages_total{__$labels__}"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_buffer_pool_hit_ratio",
+      "display_name": "Buffer Pool Hit Ratio",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "description": "Ratio of logical reads served by buffer pool instead of disk",
+      "query": "100 * (1 - rate(mysql_innodb_buffer_pool_reads{__$labels__}[5m]) / clamp_min(rate(mysql_innodb_buffer_pool_read_requests{__$labels__}[5m]), 1e-6))"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_buffer_pool_dirty_ratio",
+      "display_name": "Dirty Pages Ratio",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "description": "Ratio of dirty pages in total buffer pool pages",
+      "query": "100 * mysql_innodb_buffer_pool_pages_dirty{__$labels__} / clamp_min(mysql_innodb_buffer_pool_pages_total{__$labels__}, 1)"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_buffer_pool_used_ratio",
+      "display_name": "Buffer Pool Used Ratio",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "description": "Ratio of used pages in total buffer pool pages",
+      "query": "100 * (mysql_innodb_buffer_pool_pages_total{__$labels__} - mysql_innodb_buffer_pool_pages_free{__$labels__}) / clamp_min(mysql_innodb_buffer_pool_pages_total{__$labels__}, 1)"
     },
     {
       "metric_group": "NetTraffic",
@@ -188,6 +452,83 @@
     },
     {
       "metric_group": "TableCache",
+      "name": "mysql_variables_table_open_cache",
+      "display_name": "Table Open Cache Setting",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Configured table_open_cache limit used to assess table handle capacity",
+      "query": "mysql_variables_table_open_cache{__$labels__}"
+    },
+    {
+      "metric_group": "TableCache",
+      "name": "mysql_variables_open_files_limit",
+      "display_name": "Open Files Limit Setting",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Configured open_files_limit used as the file descriptor capacity baseline",
+      "query": "mysql_variables_open_files_limit{__$labels__}"
+    },
+    {
+      "metric_group": "TableCache",
+      "name": "mysql_open_tables",
+      "display_name": "Open Tables",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Number of currently open table handles",
+      "query": "mysql_open_tables{__$labels__}"
+    },
+    {
+      "metric_group": "TableCache",
+      "name": "mysql_opened_tables_rate",
+      "display_name": "Opened Tables Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Rate of table openings, high values may indicate insufficient table cache",
+      "query": "rate(mysql_opened_tables{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "TableCache",
+      "name": "mysql_open_files",
+      "display_name": "Open Files",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Number of open files used by MySQL",
+      "query": "mysql_open_files{__$labels__}"
+    },
+    {
+      "metric_group": "TableCache",
+      "name": "mysql_open_files_utilization",
+      "display_name": "Open Files Utilization",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "description": "Ratio of current open files to open_files_limit, used to assess file descriptor pressure",
+      "query": "100 * max by (instance_id) (mysql_open_files{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mysql_variables_open_files_limit{__$labels__}), 1)"
+    },
+    {
+      "metric_group": "TableCache",
+      "name": "mysql_table_open_cache_utilization",
+      "display_name": "Table Open Cache Utilization",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "description": "Ratio of open tables to table_open_cache, used to assess table cache capacity pressure",
+      "query": "100 * max by (instance_id) (mysql_open_tables{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mysql_variables_table_open_cache{__$labels__}), 1)"
+    },
+    {
+      "metric_group": "TableCache",
       "name": "mysql_table_open_cache_hits_rate",
       "display_name": "Table Cache Hits Ratio",
       "instance_id_keys": ["instance_id"],
@@ -195,7 +536,7 @@
       "unit": "percent",
       "dimensions": [],
       "description": "Table cache hit rate; <95% requires adjusting table_open_cache configuration",
-      "query": "rate(mysql_table_open_cache_hits{__$labels__}[5m])"
+      "query": "100 * rate(mysql_table_open_cache_hits{__$labels__}[5m]) / clamp_min(rate(mysql_table_open_cache_hits{__$labels__}[5m]) + rate(mysql_table_open_cache_misses{__$labels__}[5m]), 1e-6)"
     },
     {
       "metric_group": "TableCache",
@@ -207,6 +548,72 @@
       "dimensions": [],
       "description": "Number of table open cache miss requests, reflecting table cache hit status",
       "query": "rate(mysql_table_open_cache_misses{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "KeyCache",
+      "name": "mysql_key_reads_rate",
+      "display_name": "Key Reads Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "MyISAM key blocks read from disk",
+      "query": "rate(mysql_key_reads{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "KeyCache",
+      "name": "mysql_key_read_requests_rate",
+      "display_name": "Key Read Requests Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Logical MyISAM key read requests",
+      "query": "rate(mysql_key_read_requests{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "KeyCache",
+      "name": "mysql_key_cache_hit_ratio",
+      "display_name": "Key Cache Hit Ratio",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "description": "Ratio of MyISAM key reads served from cache",
+      "query": "100 * (1 - rate(mysql_key_reads{__$labels__}[5m]) / clamp_min(rate(mysql_key_read_requests{__$labels__}[5m]), 1e-6))"
+    },
+    {
+      "metric_group": "TempTable",
+      "name": "mysql_variables_tmp_table_size",
+      "display_name": "Tmp Table Size Setting",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Configured tmp_table_size threshold, useful for temporary table memory headroom analysis",
+      "query": "mysql_variables_tmp_table_size{__$labels__}"
+    },
+    {
+      "metric_group": "TempTable",
+      "name": "mysql_variables_max_heap_table_size",
+      "display_name": "Max Heap Table Size Setting",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Configured max_heap_table_size threshold, used with tmp_table_size to assess in-memory temp table limits",
+      "query": "mysql_variables_max_heap_table_size{__$labels__}"
+    },
+    {
+      "metric_group": "InnoDBPerf",
+      "name": "mysql_variables_innodb_buffer_pool_size",
+      "display_name": "InnoDB Buffer Pool Size Setting",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Configured innodb_buffer_pool_size, used as the cache capacity baseline",
+      "query": "mysql_variables_innodb_buffer_pool_size{__$labels__}"
     },
     {
       "metric_group": "TempTable",
@@ -229,6 +636,17 @@
       "dimensions": [],
       "description": "Total number of temporary tables (memory + disk) created",
       "query": "rate(mysql_created_tmp_tables{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "TempTable",
+      "name": "mysql_tmp_disk_table_ratio",
+      "display_name": "Disk Temp Table Ratio",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "description": "Ratio of temporary tables created on disk",
+      "query": "100 * rate(mysql_created_tmp_disk_tables{__$labels__}[5m]) / clamp_min(rate(mysql_created_tmp_tables{__$labels__}[5m]), 1e-6)"
     }
   ]
 }

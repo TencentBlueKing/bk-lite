@@ -493,6 +493,7 @@ const ViewList: React.FC<ViewListProps> = ({
     const monitorItem = objects.find(
       (item: ObjectItem) => item.id === objectId
     );
+    const isMysql = (monitorItem?.name || '').toLowerCase() === 'mysql';
     const row: any = {
       monitorObjId: objectId || '',
       name: monitorItem?.name || '',
@@ -500,10 +501,15 @@ const ViewList: React.FC<ViewListProps> = ({
       icon: monitorItem?.icon || OBJECT_DEFAULT_ICON,
       instance_id: app.instance_id,
       instance_name: app.instance_name,
-      instance_id_values: app.instance_id_values
+      instance_id_values: app.instance_id_values,
+      instance_id_keys: Array.isArray(monitorItem?.instance_id_keys)
+        ? monitorItem.instance_id_keys.join(',')
+        : 'instance_id'
     };
     const params = new URLSearchParams(row);
-    const targetUrl = `/monitor/view/detail?${params.toString()}`;
+    const targetUrl = isMysql
+      ? `/monitor/view/mysql-dashboard?${params.toString()}`
+      : `/monitor/view/detail?${params.toString()}`;
     router.push(targetUrl);
   };
 

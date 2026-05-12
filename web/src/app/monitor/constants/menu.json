@@ -10,6 +10,11 @@
           "url": "/monitor/view/detail",
           "name": "Detail",
           "isNotMenuItem": true
+        },
+        {
+          "url": "/monitor/view/mysql-dashboard",
+          "name": "mysql_dashboard",
+          "isNotMenuItem": true
         }
       ]
     },
@@ -116,6 +121,11 @@
         {
           "url": "/monitor/view/detail",
           "name": "Detail",
+          "isNotMenuItem": true
+        },
+        {
+          "url": "/monitor/view/mysql-dashboard",
+          "name": "mysql_dashboard",
           "isNotMenuItem": true
         }
       ]
