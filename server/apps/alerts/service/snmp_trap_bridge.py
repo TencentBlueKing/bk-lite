@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 import requests
 
 from apps.alerts.constants.constants import EventAction
+from apps.alerts.models.alert_source import AlertSource
 
 logger = logging.getLogger(__name__)
 
@@ -57,12 +58,17 @@ def load_bridge_config() -> Dict[str, Any]:
     这里故意把 NATS subject、alerts webhook、重试参数都放在环境变量里，
     这样 bridge 可以独立于日志模块部署，也便于在不同环境中单独调优。
     """
+    secret = os.getenv("SNMP_TRAP_ALERTS_SECRET")
+    if not secret:
+        source = AlertSource.objects.filter(source_id="snmp_trap").only("secret").first()
+        secret = source.secret if source else ""
+
     return {
         "webhook_url": os.getenv(
             "SNMP_TRAP_ALERTS_WEBHOOK_URL",
-            "http://127.0.0.1:8001/api/v1/alerts/api/source/snmp_trap/webhook/",
+            "http://127.0.0.1:8000/api/v1/alerts/api/source/snmp_trap/webhook/",
         ),
-        "secret": os.getenv("SNMP_TRAP_ALERTS_SECRET", ""),
+        "secret": secret,
         "timeout": int(os.getenv("SNMP_TRAP_ALERTS_TIMEOUT", "10")),
         "max_retries": int(os.getenv("SNMP_TRAP_ALERTS_MAX_RETRIES", "3")),
         "subject": os.getenv("SNMP_TRAP_NATS_SUBJECT", "vector"),

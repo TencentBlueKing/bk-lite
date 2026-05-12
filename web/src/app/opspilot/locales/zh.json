@@ -713,7 +713,18 @@
     "imageTooLarge": "图片大小不能超过 5MB",
     "uploadImage": "上传图片",
     "referenceDocSource": "引用文档来源",
-    "referenceQASource": "引用问答对来源"
+    "referenceQASource": "引用问答对来源",
+    "approvalRequired": "需要审批",
+    "approvalToolName": "操作",
+    "approvalToolArgs": "详情",
+    "approvalApprove": "批准",
+    "approvalReject": "拒绝",
+    "approvalApproved": "已批准",
+    "approvalRejected": "已拒绝",
+    "approvalTimeout": "已超时",
+    "approvalTimeRemaining": "剩余时间",
+    "approvalReasonPlaceholder": "可选：决策原因",
+    "approvalSubmitFailed": "提交审批决策失败"
   },
   "settings": {
     "secret": {
@@ -1209,8 +1220,10 @@
     "monthly": "每月",
     "cron": "Cron表达式",
     "history": "历史",
-    "apiInterface": "API接口",
-    "agents": "智能体",
+      "apiInterface": "API接口",
+      "mainAgent": "主 Agent",
+      "stepProgress": "步骤 {current}/{total}",
+      "agents": "智能体",
     "validate": "验证",
     "notConfigured": "未配置",
     "pleaseEnterNotificationContent": "请输入通知内容",

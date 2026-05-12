@@ -11,6 +11,7 @@ import pyotp
 import qrcode
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -485,18 +486,19 @@ def init_user_default_attributes(user_id, group_name, default_group_id):
             return {"result": False, "message": "Group already exists"}
 
         guest_group, _ = Group.objects.get_or_create(name="OpsPilotGuest", parent_id=0)
-        group_obj = Group.objects.create(name=group_name, parent_id=top_group.id)
-        user.locale = "zh-Hans"
-        user.timezone = "Asia/Shanghai"
-        user.role_list.extend(role_ids)
-        user.role_list = list(set(user.role_list))  # 去重
-        if normal_role.id in user.role_list:
-            user.role_list.remove(normal_role.id)
-        user.group_list.remove(int(default_group_id))
-        user.group_list.append(guest_group.id)
-        user.group_list.append(group_obj.id)
-        user.save()
-        set_opspilot_guest_group_default_rule(guest_group, user)
+        with transaction.atomic():
+            group_obj = Group.objects.create(name=group_name, parent_id=top_group.id)
+            user.locale = "zh-Hans"
+            user.timezone = "Asia/Shanghai"
+            user.role_list.extend(role_ids)
+            user.role_list = list(set(user.role_list))  # 去重
+            if normal_role.id in user.role_list:
+                user.role_list.remove(normal_role.id)
+            user.group_list.remove(int(default_group_id))
+            user.group_list.append(guest_group.id)
+            user.group_list.append(group_obj.id)
+            user.save()
+            set_opspilot_guest_group_default_rule(guest_group, user)
         cache.delete(f"group_{user.username}")
         return {"result": True, "data": {"group_id": group_obj.id}}
     except Exception as e:
@@ -1061,7 +1063,10 @@ def reset_pwd(username, domain, password):
 
     会进行密码复杂度校验
     """
-    user = User.objects.filter(username=username).first()
+    filter_kwargs = {"username": username}
+    if domain:
+        filter_kwargs["domain"] = domain
+    user = User.objects.filter(**filter_kwargs).first()
     if not user:
         return {"result": False, "message": "Username not exists"}
 

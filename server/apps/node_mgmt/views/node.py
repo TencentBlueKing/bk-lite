@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.viewsets import GenericViewSet
 from django.db.models import Q
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
@@ -24,6 +25,7 @@ from apps.node_mgmt.tasks.sidecar_config import sync_node_properties_to_sidecar
 from apps.node_mgmt.models.action import CollectorActionTaskNode, CollectorActionTask
 from apps.node_mgmt.utils.permission import (
     add_node_permissions,
+    authorize_mutable_collector_configuration_ids,
     authorize_node_ids,
     authorize_target_organizations,
     get_authorized_node_queryset,
@@ -239,6 +241,7 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
 
         return WebUtils.response_success(processed_data)
 
+    @HasPermission("cloud_region_node-Delete")
     def destroy(self, request, *args, **kwargs):
         nodes, error_response = authorize_node_ids(request, [kwargs.get("pk")])
         if error_response:
@@ -248,6 +251,7 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
         return WebUtils.response_success()
 
     @action(methods=["patch"], detail=True, url_path="update")
+    @HasPermission("cloud_region_node-Edit")
     def update_node(self, request, pk=None):
         nodes, error_response = authorize_node_ids(request, [pk])
         if error_response:
@@ -317,12 +321,16 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
         return WebUtils.response_success(enum_data)
 
     @action(detail=False, methods=["post"], url_path="batch_binding_configuration")
+    @HasPermission("cloud_region_node-EditMainConfiguration")
     def batch_binding_node_configuration(self, request):
         serializer = BatchBindingNodeConfigurationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         node_ids = serializer.validated_data["node_ids"]
         collector_configuration_id = serializer.validated_data["collector_configuration_id"]
         _, error_response = authorize_node_ids(request, node_ids)
+        if error_response:
+            return error_response
+        _, error_response = authorize_mutable_collector_configuration_ids(request, [collector_configuration_id])
         if error_response:
             return error_response
         result, message = NodeService.batch_binding_node_configuration(node_ids, collector_configuration_id)
@@ -333,6 +341,7 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
             return WebUtils.response_error(error_message=message)
 
     @action(detail=False, methods=["post"], url_path="batch_operate_collector")
+    @HasPermission("cloud_region_node-OperateCollector")
     def batch_operate_node_collector(self, request):
         serializer = BatchOperateNodeCollectorSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

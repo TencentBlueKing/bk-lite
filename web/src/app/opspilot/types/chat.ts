@@ -1,11 +1,27 @@
 import { ReactNode } from 'react';
 import { ButtonProps } from 'antd';
-import { CustomChatMessage, Annotation, BrowserStepAction, BrowserStepProgressData, BrowserTaskReceivedData } from '@/app/opspilot/types/global';
+import { CustomChatMessage, Annotation, BrowserStepAction, BrowserStepProgressData, BrowserTaskReceivedData, AgentStepProgressData } from '@/app/opspilot/types/global';
 
 export type { BrowserStepAction, BrowserStepProgressData };
 export type { BrowserTaskReceivedData };
 export type BrowserStepProgressValue = BrowserStepProgressData;
 export type BrowserTaskReceivedValue = BrowserTaskReceivedData;
+export type AgentStepProgressValue = AgentStepProgressData;
+export interface SubAgentProgressValue {
+  agent_name: string;
+  status: 'started' | 'completed' | 'error' | 'parallel_started' | 'parallel_completed';
+  description: string;
+  agents?: string[];
+}
+
+export interface ApprovalRequestValue {
+  execution_id: string;
+  node_id: string;
+  tool_call_id: string;
+  tool_name: string;
+  tool_args: Record<string, unknown>;
+  timeout_seconds: number;
+}
 
 export interface CustomChatSSEProps {
   handleSendMessage?: (message: string, currentMessages?: any[]) => Promise<{
@@ -66,7 +82,7 @@ export interface AGUIMessage {
   message?: string;
   code?: string;
   name?: string;
-  value?: BrowserStepProgressValue | BrowserTaskReceivedValue | Record<string, unknown>;
+  value?: BrowserStepProgressValue | BrowserTaskReceivedValue | ApprovalRequestValue | AgentStepProgressValue | SubAgentProgressValue | Record<string, unknown>;
 }
 
 export interface ReferenceModalState {
