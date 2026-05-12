@@ -29,7 +29,12 @@ from apps.alerts.constants import (
     HeartbeatStatus,
     LevelType,
 )
-from apps.alerts.constants.constants import IncidentStatus, LogAction, LogTargetType
+from apps.alerts.constants.constants import (
+    IncidentStatus,
+    LogAction,
+    LogTargetType,
+    SessionStatus,
+)
 from apps.alerts.models import Alert, AlertSource, AlarmStrategy, Event, Level, OperatorLog
 from apps.alerts.models.models import Incident
 from apps.alerts.serializers.event import EventModelSerializer
@@ -42,6 +47,7 @@ from apps.alerts.views.alert_source import AlertSourceModelViewSet
 from apps.alerts.views.event import EventModelViewSet
 from apps.alerts.views.incident import IncidentModelViewSet
 from apps.alerts.views.operator_log import SystemLogModelViewSet
+from apps.alerts.views.strategy import AlarmStrategyModelViewSet
 from apps.system_mgmt.models.user import Group, User
 
 
@@ -992,6 +998,75 @@ class AlertSourceIngressTestCase(TestCase):
 
         self.assertFalse(result["result"])
         self.assertEqual(Event.objects.count(), 0)
+
+
+class TestAlarmStrategySessionDisable(TestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.user = get_user_model().objects.create_user(
+            username="strategy-admin",
+            password="test-pass-123",
+            domain="default.local",
+        )
+        self.user.is_superuser = True
+        self.user.save(update_fields=["is_superuser"])
+
+    def test_update_disabling_session_window_triggers_auto_assignment_for_confirmed_alerts(self):
+        strategy = AlarmStrategy.objects.create(
+            name="session-strategy",
+            strategy_type=AlarmStrategyType.SMART_DENOISE,
+            team=[1],
+            dispatch_team=[1],
+            match_rules=[[{"key": "title", "operator": "eq", "value": "cpu high"}]],
+            params={"group_by": ["service"], "window_size": 10, "time_out": True, "time_minutes": 10},
+            auto_close=False,
+            close_minutes=120,
+        )
+        alert = Alert.objects.create(
+            alert_id="ALERT-SESSION-DISABLE-1",
+            status=AlertStatus.UNASSIGNED,
+            level="1",
+            title="cpu high",
+            content="cpu > 90%",
+            labels={},
+            first_event_time=timezone.now(),
+            last_event_time=timezone.now(),
+            fingerprint="service:backup",
+            group_by_field="service",
+            rule_id=str(strategy.id),
+            is_session_alert=True,
+            session_status=SessionStatus.OBSERVING,
+            session_end_time=timezone.now() + timedelta(minutes=10),
+            team=[1],
+        )
+
+        request = self.factory.put(
+            f"/api/v1/alerts/strategy/{strategy.id}/",
+            data={
+                "name": strategy.name,
+                "strategy_type": strategy.strategy_type,
+                "description": strategy.description,
+                "team": strategy.team,
+                "dispatch_team": strategy.dispatch_team,
+                "match_rules": strategy.match_rules,
+                "params": {"group_by": ["service"], "window_size": 10, "time_out": False, "time_minutes": 0},
+                "auto_close": strategy.auto_close,
+                "close_minutes": strategy.close_minutes,
+                "is_active": strategy.is_active,
+            },
+            format="json",
+        )
+        force_authenticate(request, user=self.user)
+        view = AlarmStrategyModelViewSet.as_view({"put": "update"})
+
+        with patch("apps.alerts.tasks.async_auto_assignment_for_alerts.delay") as assignment_delay:
+            with self.captureOnCommitCallbacks(execute=True):
+                response = view(request, pk=str(strategy.id))
+
+        self.assertEqual(response.status_code, 200)
+        alert.refresh_from_db()
+        self.assertEqual(alert.session_status, SessionStatus.CONFIRMED)
+        assignment_delay.assert_called_once_with([alert.alert_id])
 
     def test_nats_ingress_rejects_inactive_or_ineffective_nats_source(self):
         inactive_source = AlertSource.objects.create(
