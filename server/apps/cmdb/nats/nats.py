@@ -26,6 +26,7 @@ from apps.cmdb.models.change_record import ChangeRecord, CREATE_INST, UPDATE_INS
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.constants.constants import INSTANCE
 from apps.system_mgmt.models import Group, User
+from apps.core.logger import cmdb_logger as logger
 
 
 def _normalize_to_list(value):
@@ -242,7 +243,9 @@ def search_instances(params):
 @nats_client.register
 def receive_config_file_result(data: dict):
     """接收 Stargazer 回传的配置文件采集结果并落库。"""
+    logger.info("==[ConfigFileCollect] 接收配置文件采集结果")
     result = ConfigFileService.process_collect_result(data)
+    logger.info("==[ConfigFileCollect] 处理配置文件采集结果完成", )
     return {
         "result": True,
         "changed": bool(result.get("changed", False)),
