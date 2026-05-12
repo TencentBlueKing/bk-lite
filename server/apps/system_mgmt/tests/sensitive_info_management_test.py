@@ -92,7 +92,7 @@ def test_sensitive_info_authorization_viewset_creates_and_lists_records():
         create_request,
         user=_build_authenticated_request_user(
             username="creator-admin",
-            permission={"system-manager": {"security_settings-Add", "security_settings-View"}},
+            permission={"system-manager": {"sensitive_info-Add", "sensitive_info-View"}},
         ),
     )
 
@@ -112,7 +112,7 @@ def test_sensitive_info_authorization_viewset_creates_and_lists_records():
         list_request,
         user=_build_authenticated_request_user(
             username="viewer-admin",
-            permission={"system-manager": {"security_settings-View"}},
+            permission={"system-manager": {"sensitive_info-View"}},
         ),
     )
 
@@ -158,7 +158,7 @@ def test_sensitive_info_authorization_viewset_records_operation_logs_for_create_
         create_request,
         user=_build_authenticated_request_user(
             username="log-admin",
-            permission={"system-manager": {"security_settings-Add", "security_settings-View"}},
+            permission={"system-manager": {"sensitive_info-Add", "sensitive_info-View"}},
         ),
     )
 
@@ -176,7 +176,7 @@ def test_sensitive_info_authorization_viewset_records_operation_logs_for_create_
         destroy_request,
         user=_build_authenticated_request_user(
             username="log-admin",
-            permission={"system-manager": {"security_settings-View"}},
+            permission={"system-manager": {"sensitive_info-Delete"}},
         ),
     )
 
@@ -210,7 +210,7 @@ def test_sensitive_info_authorization_viewset_current_user_returns_authorized_ty
         user=_build_authenticated_request_user(
             username="current-user",
             is_superuser=False,
-            permission={"system-manager": {"user_group-View"}},
+            permission={"system-manager": {"sensitive_info-View"}},
         ),
     )
 
@@ -233,7 +233,7 @@ def test_sensitive_info_authorization_viewset_current_user_returns_empty_when_mi
         user=_build_authenticated_request_user(
             username="no-sensitive-access-user",
             is_superuser=False,
-            permission={"system-manager": {"user_group-View"}},
+            permission={"system-manager": {"sensitive_info-View"}},
         ),
     )
 

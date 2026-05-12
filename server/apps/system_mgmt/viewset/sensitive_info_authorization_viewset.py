@@ -13,6 +13,7 @@ class SensitiveInfoAuthorizationViewSet(MaintainerViewSet):
     queryset = SensitiveInfoAuthorization.objects.all().order_by("-created_at", "-id")
     serializer_class = SensitiveInfoAuthorizationSerializer
 
+    @HasPermission("sensitive_info-Add")
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
 
@@ -25,6 +26,7 @@ class SensitiveInfoAuthorizationViewSet(MaintainerViewSet):
 
         return response
 
+    @HasPermission("sensitive_info-Delete")
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         username = instance.username
@@ -38,8 +40,12 @@ class SensitiveInfoAuthorizationViewSet(MaintainerViewSet):
 
         return response
 
+    @HasPermission("sensitive_info-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
     @action(detail=False, methods=["GET"])
-    @HasPermission("user_group-View")
+    @HasPermission("sensitive_info-View")
     def current_user(self, request):
         username = getattr(request.user, "username", "")
         domain = getattr(request.user, "domain", "domain.com")

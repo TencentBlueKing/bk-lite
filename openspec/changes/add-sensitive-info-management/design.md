@@ -1,6 +1,6 @@
 ## Context
 
-当前 `add-sensitive-info-management` change 已在代码中形成明确的社区版/商业版分层实现。社区版仓库 `D:\Work\bk-lite\bk-lite` 负责承载基础数据与共享交互，包括 `User.phone`、`SensitiveInfoAuthorization`、`SystemSettings` 默认值与基础 API 契约，以及用户编辑弹窗的共享 overwrite 状态机；商业版仓库 `D:\Work\bk-lite\WeOpsX-Enterprise` 负责承载脱敏逻辑、enterprise 菜单/路由 manifest、敏感信息页面源码，以及基于全局配置/授权关系的 EE override hook。
+当前 `add-sensitive-info-management` change 已在代码中形成明确的社区版/商业版分层实现。社区版仓库负责承载基础数据与共享交互，包括 `User.phone`、`SensitiveInfoAuthorization`、`SystemSettings` 默认值与基础 API 契约，以及用户编辑弹窗的共享 overwrite 状态机；商业版仓库负责承载脱敏逻辑、enterprise 菜单/路由 manifest、敏感信息页面源码，以及基于全局配置/授权关系的 EE override hook。
 
 后端查询出口的实际接入方式不是新建独立 app，而是由社区版 `server/apps/system_mgmt/viewset/user_viewset.py` 通过可选导入 `apps.system_mgmt.enterprise.sensitive_info` 来应用商业版脱敏逻辑。前端页面的实际接入方式也不是“社区版完全没有商业版代码痕迹”，而是由商业版提供 manifest 与源码，再由 `prepare-enterprise` 在社区版生成 enterprise shim 页面/API/hook 供运行时引用。
 
