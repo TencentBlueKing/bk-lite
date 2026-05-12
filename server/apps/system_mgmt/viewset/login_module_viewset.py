@@ -101,9 +101,12 @@ class LoginModuleViewSet(LanguageViewSet):
         if obj.source_type == "bk_lite":
             domain = obj.other_config.get("domain", "")
             group_name = obj.other_config.get("root_group", "")
-            top_group = Group.objects.get(parent_id=0, name=group_name)
-            User.objects.filter(domain=domain).delete()
-            Group.objects.filter(description=top_group.description).delete()
+            if domain:
+                User.objects.filter(domain=domain).delete()
+            if group_name:
+                top_group = Group.objects.filter(parent_id=0, name=group_name).first()
+                if top_group:
+                    Group.objects.filter(description=top_group.description).delete()
             task_name = f"sync_user_group_{obj.name}"
             PeriodicTask.objects.filter(name=task_name).delete()
 
