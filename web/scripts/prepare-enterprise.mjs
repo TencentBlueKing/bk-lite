@@ -152,31 +152,31 @@ const generateEnterpriseJunctions = async () => {
 /* ── tsconfig: dynamically update paths for enterprise modules ── */
 
 const TSCONFIG_PATH = path.join(webRoot, 'tsconfig.json');
-const ENTERPRISE_PATH_MARKER = '/(enterprise)/';
 
 const updateTsconfigPaths = async (moduleNames) => {
   const tsconfig = await fs.readJSON(TSCONFIG_PATH);
   const paths = tsconfig.compilerOptions?.paths || {};
 
-  // Remove all existing enterprise path entries
-  for (const key of Object.keys(paths)) {
-    if (key.includes(ENTERPRISE_PATH_MARKER)) {
-      delete paths[key];
+  // Only add missing enterprise path entries, never remove existing ones.
+  // Existing paths have enterpriseStub.ts fallback so they are safe to keep
+  // even when the enterprise module is not present.
+  let changed = false;
+  for (const moduleName of moduleNames) {
+    const key = `@/app/${moduleName}/(enterprise)/*`;
+    if (!paths[key]) {
+      paths[key] = [
+        `./src/app/${moduleName}/(enterprise)/*`,
+        './src/lib/enterpriseStub.ts',
+      ];
+      changed = true;
+      console.log(`  📝 tsconfig path: ${key}`);
     }
   }
 
-  // Add entries for each discovered enterprise module
-  for (const moduleName of moduleNames) {
-    const key = `@/app/${moduleName}/(enterprise)/*`;
-    paths[key] = [
-      `./src/app/${moduleName}/(enterprise)/*`,
-      './src/lib/enterpriseStub.ts',
-    ];
-    console.log(`  📝 tsconfig path: ${key}`);
+  if (changed) {
+    tsconfig.compilerOptions.paths = paths;
+    await fs.writeJSON(TSCONFIG_PATH, tsconfig, { spaces: 2 });
   }
-
-  tsconfig.compilerOptions.paths = paths;
-  await fs.writeJSON(TSCONFIG_PATH, tsconfig, { spaces: 2 });
 };
 
 /* ── main ── */

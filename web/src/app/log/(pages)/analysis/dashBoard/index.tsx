@@ -9,10 +9,23 @@ import React, {
 } from 'react';
 import TimeSelector from '@/components/time-selector';
 import GridLayout, { WidthProvider } from 'react-grid-layout';
-import { Button, Dropdown, Menu, Modal, Spin, Select, Tooltip, message } from 'antd';
+import {
+  Button,
+  Dropdown,
+  Menu,
+  Modal,
+  Spin,
+  Select,
+  Tooltip,
+  message
+} from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { LayoutItem, DirItem } from '@/app/log/types/analysis';
-import { SaveOutlined, MoreOutlined, QuestionCircleOutlined } from '@ant-design/icons';
+import {
+  SaveOutlined,
+  MoreOutlined,
+  QuestionCircleOutlined
+} from '@ant-design/icons';
 import WidgetWrapper from './components/widgetWrapper';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -178,7 +191,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         }
         const instanceData = await getInstanceList(
           {
-            collect_type_id: collectTypeId
+            collect_type_id: collectTypeId,
+            page: 1,
+            page_size: -1
           },
           { signal: abortController.signal }
         );

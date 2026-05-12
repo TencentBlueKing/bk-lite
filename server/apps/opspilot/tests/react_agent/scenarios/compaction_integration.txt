@@ -1,0 +1,29 @@
+场景名称: 上下文 Compaction 集成测试（ReAct Agent 级别）
+
+对应计划: Phase 2 — #8 上下文 compaction
+
+功能描述:
+  在 agent_node 调用 LLM 前，检测消息 token 总量是否超阈值，
+  超过时自动压缩历史消息为摘要。独立的 compaction 单元测试在
+  workflow/cases/test_compaction.py 中，这里测试与 ReAct 循环的集成。
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py: agent_node 中 compact_messages 调用
+  - server/apps/opspilot/metis/llm/chain/compaction.py: compact_messages 核心逻辑
+
+测试用例:
+
+  TestCompactionInReactLoop:
+    1. 多轮 tool_call 后触发 compaction: 构造长消息历史 + 低阈值，验证 compact_messages 被调用
+    2. compaction 后 agent 继续正常执行: 压缩不影响后续 tool_call 和 LLM 调用
+    3. 保留最近的 tool_call/tool_result 配对: 压缩后最近的配对仍完整
+
+  TestCompactionDisabled:
+    4. compaction_enabled=False 时不压缩: 消息列表不变
+    5. 无工具时不压缩: compaction 仅在有 tools 时启用
+
+  TestCompactionWithPrepareStep:
+    6. prepareStep 修改 messages 后再 compaction: 两者协作不冲突
+
+关联测试文件: cases/test_compaction_integration.py
+状态: GREEN（功能已实现）

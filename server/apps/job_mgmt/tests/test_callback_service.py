@@ -1,22 +1,25 @@
 """回调服务单元测试"""
 
 from datetime import datetime
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+from celery.exceptions import Retry
 
 
 @pytest.mark.unit
-class TestCallbackService:
+class TestSendCallback:
+    """测试 send_callback 入口函数"""
+
     def test_no_callback_url_does_nothing(self):
         from apps.job_mgmt.services.callback_service import send_callback
 
         execution = MagicMock()
         execution.callback_url = None
 
-        with patch("apps.job_mgmt.services.callback_service.threading") as mock_threading:
+        with patch("apps.job_mgmt.services.callback_service.current_app") as mock_app:
             send_callback(execution)
-            mock_threading.Thread.assert_not_called()
+            mock_app.send_task.assert_not_called()
 
     def test_empty_callback_url_does_nothing(self):
         from apps.job_mgmt.services.callback_service import send_callback
@@ -24,11 +27,11 @@ class TestCallbackService:
         execution = MagicMock()
         execution.callback_url = ""
 
-        with patch("apps.job_mgmt.services.callback_service.threading") as mock_threading:
+        with patch("apps.job_mgmt.services.callback_service.current_app") as mock_app:
             send_callback(execution)
-            mock_threading.Thread.assert_not_called()
+            mock_app.send_task.assert_not_called()
 
-    def test_starts_thread_when_url_present(self):
+    def test_sends_celery_task_when_url_present(self):
         from apps.job_mgmt.services.callback_service import send_callback
 
         execution = MagicMock()
@@ -40,46 +43,71 @@ class TestCallbackService:
         execution.failed_count = 0
         execution.finished_at = datetime(2026, 4, 30, 10, 0, 0)
 
-        with patch("apps.job_mgmt.services.callback_service.threading") as mock_threading:
+        with patch("apps.job_mgmt.services.callback_service.current_app") as mock_app:
             send_callback(execution)
-            mock_threading.Thread.assert_called_once()
-            mock_threading.Thread.return_value.start.assert_called_once()
+            mock_app.send_task.assert_called_once_with(
+                "apps.job_mgmt.tasks.do_callback_task",
+                args=[
+                    "http://example.com/callback",
+                    {
+                        "task_id": 1,
+                        "status": "success",
+                        "total_count": 3,
+                        "success_count": 3,
+                        "failed_count": 0,
+                        "finished_at": "2026-04-30T10:00:00",
+                    },
+                    1,
+                ],
+            )
 
-    def test_do_callback_success_first_try(self):
-        from apps.job_mgmt.services.callback_service import _do_callback
 
-        with patch("apps.job_mgmt.services.callback_service.requests.post") as mock_post:
+@pytest.mark.unit
+class TestDoCallbackTask:
+    """测试 do_callback_task Celery 任务的核心逻辑
+
+    autoretry_for=(Exception,) 意味着所有异常都会被 Celery 捕获并触发 retry，
+    retry 会抛出 celery.exceptions.Retry。因此错误场景需要 expect Retry。
+    """
+
+    def test_success_200(self):
+        from apps.job_mgmt.tasks import do_callback_task
+
+        with patch("apps.job_mgmt.tasks.requests.post") as mock_post:
             mock_post.return_value = MagicMock(status_code=200)
-            _do_callback("http://example.com/cb", {"task_id": 1}, 1)
+            do_callback_task("http://example.com/cb", {"task_id": 1}, 1)
+            mock_post.assert_called_once_with("http://example.com/cb", json={"task_id": 1}, timeout=10)
+
+    def test_success_201(self):
+        from apps.job_mgmt.tasks import do_callback_task
+
+        with patch("apps.job_mgmt.tasks.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(status_code=201)
+            do_callback_task("http://example.com/cb", {"task_id": 1}, 1)
             mock_post.assert_called_once()
 
-    def test_do_callback_retries_on_failure(self):
-        from apps.job_mgmt.services.callback_service import _do_callback
+    def test_raises_on_non_2xx(self):
+        from apps.job_mgmt.tasks import do_callback_task
 
-        with patch("apps.job_mgmt.services.callback_service.requests.post") as mock_post, patch(
-            "apps.job_mgmt.services.callback_service.time.sleep"
-        ) as mock_sleep:
+        with patch("apps.job_mgmt.tasks.requests.post") as mock_post:
             mock_post.return_value = MagicMock(status_code=500)
-            _do_callback("http://example.com/cb", {"task_id": 1}, 1, max_retries=3)
-            assert mock_post.call_count == 4  # initial + 3 retries
-            assert mock_sleep.call_count == 3
-            mock_sleep.assert_has_calls([call(1), call(2), call(4)])
+            with pytest.raises((RuntimeError, Retry)):
+                do_callback_task("http://example.com/cb", {"task_id": 1}, 1)
 
-    def test_do_callback_retries_on_exception(self):
-        from apps.job_mgmt.services.callback_service import _do_callback
+    def test_raises_on_400(self):
+        from apps.job_mgmt.tasks import do_callback_task
 
-        with patch("apps.job_mgmt.services.callback_service.requests.post") as mock_post, patch("apps.job_mgmt.services.callback_service.time.sleep"):
-            mock_post.side_effect = Exception("connection refused")
-            _do_callback("http://example.com/cb", {"task_id": 1}, 1, max_retries=2)
-            assert mock_post.call_count == 3  # initial + 2 retries
+        with patch("apps.job_mgmt.tasks.requests.post") as mock_post:
+            mock_post.return_value = MagicMock(status_code=400)
+            with pytest.raises((RuntimeError, Retry)):
+                do_callback_task("http://example.com/cb", {"task_id": 1}, 1)
 
-    def test_do_callback_stops_on_success(self):
-        from apps.job_mgmt.services.callback_service import _do_callback
+    def test_raises_on_network_error(self):
+        import requests as req
 
-        with patch("apps.job_mgmt.services.callback_service.requests.post") as mock_post, patch("apps.job_mgmt.services.callback_service.time.sleep"):
-            mock_post.side_effect = [
-                MagicMock(status_code=500),
-                MagicMock(status_code=200),
-            ]
-            _do_callback("http://example.com/cb", {"task_id": 1}, 1, max_retries=3)
-            assert mock_post.call_count == 2  # failed once, succeeded second
+        from apps.job_mgmt.tasks import do_callback_task
+
+        with patch("apps.job_mgmt.tasks.requests.post") as mock_post:
+            mock_post.side_effect = req.ConnectionError("connection refused")
+            with pytest.raises((req.ConnectionError, Retry)):
+                do_callback_task("http://example.com/cb", {"task_id": 1}, 1)

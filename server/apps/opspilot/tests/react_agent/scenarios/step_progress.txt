@@ -1,0 +1,37 @@
+场景名称: 步骤进度事件测试
+
+对应计划: Phase 2 — #19 步骤进度推送
+
+功能描述:
+  agent_node 每步发射 agent_step_progress 自定义事件，
+  包含当前步数、最大步数、状态、描述、工具名称、耗时等信息。
+  前端通过 SSE 接收并渲染进度条。支持 agent_name 区分主/子 Agent。
+
+当前状态: 已实现
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py:
+    - _emit_step_progress L1011-1028（dispatch_custom_event "agent_step_progress"）
+    - agent_node 多处调用: L1115 running, L1121 interrupted, L1138 timeout, L1329 completed (done tool), L1345 completed
+  - server/apps/opspilot/metis/llm/chain/graph.py: L843 转发 on_custom_event
+  - web/src/app/opspilot/components/custom-chat-sse/AgentStepProgress.tsx: 前端渲染组件
+  - web/src/app/opspilot/components/custom-chat-sse/aguiMessageHandler.ts: L247 handleAgentStepProgress
+
+测试用例:
+
+  TestStepProgressEvents:
+    1. 每步开始时发射 running 事件: 包含 step, max_steps, status="running"
+    2. 任务完成时发射 completed 事件: status="completed"
+    3. 中断时发射 interrupted 事件: status="interrupted"
+    4. 超时时发射 timeout 事件: status="timeout"
+
+  TestStepProgressData:
+    5. 事件包含正确的 step 和 max_steps: step 递增，max_steps 来自配置
+    6. 事件包含 agent_name: 区分主 Agent 和子 Agent
+    7. 事件包含 tool_name 和 step_elapsed: 工具调用后填充
+
+  TestStepProgressWithDoneTool:
+    8. done tool 触发时发射 completed 事件: description 包含 "done tool"
+
+关联测试文件: cases/test_step_progress.py
+状态: GREEN（功能已实现）

@@ -23,11 +23,12 @@ class TestJobScriptExecute:
 
         with patch("apps.job_mgmt.services.dangerous_checker.DangerousChecker.check_command") as mock_check, patch(
             "apps.job_mgmt.nats_api.execute_script_task.delay"
-        ):
+        ) as mock_delay:
             mock_result = MagicMock()
             mock_result.can_execute = True
             mock_result.forbidden = []
             mock_check.return_value = mock_result
+            mock_delay.return_value.id = "fake-celery-task-id"
 
             result = job_script_execute(data)
 
@@ -186,7 +187,7 @@ class TestJobTargetList:
         from apps.job_mgmt.nats_api import job_target_list
 
         for i in range(5):
-            Target.objects.create(name=f"node-{i}", ip=f"10.0.0.{i+1}", os_type="linux", team=[1])
+            Target.objects.create(name=f"node-{i}", ip=f"10.0.0.{i + 1}", os_type="linux", team=[1])
 
         result = job_target_list({"page": 1, "page_size": 2})
         assert result["data"]["count"] == 5

@@ -1,6 +1,6 @@
 from typing import Annotated, List, Optional, TypedDict
 
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.constants import END
 from langgraph.graph import StateGraph, add_messages
@@ -33,6 +33,10 @@ class PlanAndExecuteAgentState(TypedDict):
 
     # 执行相关
     execution_prompt: Optional[str]  # 当前步骤的执行提示
+
+    # 执行追踪
+    execution_count: int  # 已执行的步骤次数
+    step_history: List[str]  # 步骤执行历史（每次执行记录 "步骤描述 -> 结果摘要"）
 
     # 最终结果
     final_response: Optional[str]
@@ -91,7 +95,14 @@ class PlanAndExecuteAgentNode(ToolsNodes):
 
 """
 
-        return {"messages": [AIMessage(content=plan_display)], "original_plan": plan_steps, "current_plan": plan_steps, "final_response": None}
+        return {
+            "messages": [AIMessage(content=plan_display)],
+            "original_plan": plan_steps,
+            "current_plan": plan_steps,
+            "execution_count": 0,
+            "step_history": [],
+            "final_response": None,
+        }
 
     async def executor_node(self, state: PlanAndExecuteAgentState, config: RunnableConfig):
         current_plan = state.get("current_plan", [])
@@ -106,8 +117,19 @@ class PlanAndExecuteAgentNode(ToolsNodes):
             {"current_step": current_step, "user_message": config["configurable"]["graph_request"].user_message},
         )
 
-        # 传递执行提示给React节点使用，不添加额外的显示消息
-        return {**state, "execution_prompt": execution_prompt}
+        # 更新执行追踪
+        execution_count = state.get("execution_count", 0) + 1
+        step_history = list(state.get("step_history", []))
+        step_history.append(f"[步骤 {execution_count}] 执行: {current_step}")
+
+        # 将当前步骤指令注入 messages，使 ReAct agent_node 知道要执行哪一步
+        # 没有这个注入，agent_node 只能看到累积的共享 messages，无法区分当前步骤
+        return {
+            "execution_prompt": execution_prompt,
+            "messages": [HumanMessage(content=execution_prompt)],
+            "execution_count": execution_count,
+            "step_history": step_history,
+        }
 
     async def replanner_node(self, state: PlanAndExecuteAgentState, config: RunnableConfig):
         """智能重新规划节点 - 基于执行结果反思并调整剩余计划"""
@@ -118,6 +140,14 @@ class PlanAndExecuteAgentNode(ToolsNodes):
         if not current_plan:
             # 计划为空，只更新current_plan，不传递任何消息
             logger.debug("[replanner_node] 计划为空，准备进入总结")
+            return {"current_plan": []}
+
+        # 硬性防护：如果执行次数超过计划步骤数的 3 倍，强制结束
+        execution_count = state.get("execution_count", 0)
+        step_history = state.get("step_history", [])
+        max_allowed = max(len(original_plan) * 3, 10)
+        if execution_count >= max_allowed:
+            logger.warning(f"[replanner_node] 执行次数 {execution_count} 超过上限 {max_allowed}，强制结束")
             return {"current_plan": []}
 
         # 收集所有非重复的消息内容
@@ -140,6 +170,8 @@ class PlanAndExecuteAgentNode(ToolsNodes):
                 "original_plan": original_plan,
                 "current_plan": current_plan,
                 "recent_messages": recent_messages,
+                "execution_count": execution_count,
+                "step_history": step_history,
             },
         )
 

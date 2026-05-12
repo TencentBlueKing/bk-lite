@@ -50,10 +50,10 @@ export default function PasswordResetForm({
       const response = await fetch('/api/proxy/core/api/reset_pwd/', {
         method: "POST",
         headers: { 
-          "Content-Type": "application/json" 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${loginData.token}`,
         },
         body: JSON.stringify({
-          username: loginData.username,
           password: newPassword
         }),
       });

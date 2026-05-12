@@ -16,7 +16,7 @@ export const getFilterDefinitionId = (
 export const getBindableFilterParams = (
   params?: ParamItem[],
 ): Array<ParamItem & { type: BindableParamType }> =>
-  (params || []).filter(
+  (Array.isArray(params) ? params : []).filter(
     (param): param is ParamItem & { type: BindableParamType } =>
       param.filterType === 'filter' &&
       (param.type === 'string' || param.type === 'timeRange'),

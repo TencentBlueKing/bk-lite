@@ -1,0 +1,46 @@
+场景名称: 运维安全（人工审批、执行验证、回滚）测试
+
+对应计划: Phase 4 — #22 人工审批, #23 执行后验证, #24 回滚能力
+
+功能描述:
+  #22 人工审批: LLM 自主判断高危操作并调用 request_human_approval 工具，
+    通过 SSE 推送 approval_request 事件，Redis 轮询等待用户审批结果。
+  #23 执行后验证: VerificationConfig 配置验证工具和条件，
+    工具执行后自动调用验证工具检查结果，发射 verification_started/completed 事件。
+  #24 回滚: RollbackConfig 配置回滚工具和参数映射，
+    验证失败时自动执行回滚操作，发射 rollback_started/completed 事件。
+
+当前状态: 已实现
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py:
+    - L873-936: _build_approval_tool（构建 request_human_approval 工具，Redis 轮询等待审批）
+    - L1487: agent_node 中拦截 request_human_approval tool_call
+    - L1572: verification_config 验证逻辑
+    - L1390: rollback_config 回滚逻辑，L1688-1731 回滚执行
+  - server/apps/opspilot/metis/llm/chain/entity.py:
+    - VerificationConfig L153（verification_tool, success_condition, max_retries）
+    - RollbackConfig L203（rollback_tool, param_mapping, snapshot_extraction）
+
+测试用例:
+
+  TestHumanApproval:
+    1. LLM 调用 request_human_approval 工具: 发射 approval_request SSE 事件
+    2. 审批通过后返回 approved 结果: Redis 写入 approved，工具返回成功
+    3. 审批拒绝后返回 rejected 结果: Redis 写入 rejected，工具返回拒绝信息
+    4. 审批超时: Redis 无响应超过 timeout，工具返回超时信息
+    5. approval 工具仅在 approval_config.enabled 时注入
+
+  TestPostExecutionVerification:
+    6. 工具执行后自动触发验证: 匹配 verification_config 的工具调用后执行验证工具
+    7. 验证成功: 发射 verification_completed 事件，继续执行
+    8. 验证失败触发重试: 重试 max_retries 次
+    9. 验证失败且重试耗尽: 触发回滚（如果配置了 rollback_config）
+
+  TestRollback:
+    10. 回滚工具执行: 发射 rollback_started/completed 事件
+    11. 回滚参数映射: param_mapping 从原始工具调用参数映射到回滚工具参数
+    12. snapshot_extraction: 从快照结果中提取回滚参数
+
+关联测试文件: cases/test_approval.py, cases/test_verification.py, cases/test_rollback.py
+状态: GREEN（功能已实现）

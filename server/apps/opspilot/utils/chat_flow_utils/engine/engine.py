@@ -981,11 +981,16 @@ class ChatFlowEngine:
                 # 从累积的内容中提取最终消息
                 final_message = self._extract_final_message(agent_output)
 
-                # 更新全局变量
-                self.variable_manager.set_variable("last_message", final_message)
+                agent_config = agent_node.get("data", {}).get("config", {})
+                agent_output_key = agent_config.get("outputParams", "last_message")
 
-                # 准备节点输入
-                node_input = {"last_message": final_message}
+                # 与同步执行链路保持一致：使用当前节点的 outputParams 作为后续节点输入来源
+                if agent_output_key == "last_message":
+                    self.variable_manager.set_variable("last_message", final_message)
+                    node_input = {"last_message": final_message}
+                else:
+                    self.variable_manager.set_variable(agent_output_key, final_message)
+                    node_input = {agent_output_key: final_message}
                 first_input_data = node_input.copy()
 
                 # 执行每个后续节点
