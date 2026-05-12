@@ -141,3 +141,10 @@ uv run pytest         # Run tests
 - **Python**: `uv` (all Python projects)
 - **Web/Mobile**: `pnpm` (enforced, npm/yarn will fail)
 - **WebChat**: `npm`
+
+## Learnings & Decisions
+
+### Authentication & Cookie Handling (2026-05-12)
+- **Cookie 设置统一**: 所有登录入口（`login()`, `wechat_user_register()`）必须使用 `_set_auth_cookie_on_response()` 辅助函数设置 `bklite_token` cookie
+- **`bk_lite_login` 是内部函数**: 它不是视图，只被 `login()` 视图内部调用（当 `domain != "domain.com"` 时）。不应暴露为 URL 路由。
+- **登录流程**: Web 前端调用 `/api/proxy/core/api/login/` → 后端 `login()` 视图 → 根据 domain 调用 `SystemMgmt.login()` 或 `bk_lite_login()` → 统一设置 cookie

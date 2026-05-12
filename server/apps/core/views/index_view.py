@@ -47,6 +47,31 @@ def _parse_request_data(request):
     return request.POST.dict()
 
 
+def _set_auth_cookie_on_response(response, token):
+    """
+    统一设置认证 cookie。
+
+    在所有登录入口成功后调用此函数，确保 cookie 设置的一致性。
+    """
+    login_expired_time = 3600 * 24  # default 24h
+    try:
+        setting = SystemSettings.objects.filter(key="login_expired_time").first()
+        if setting:
+            login_expired_time = int(float(setting.value) * 3600)
+    except Exception:
+        pass
+
+    response.set_cookie(
+        "bklite_token",
+        token,
+        max_age=login_expired_time,
+        path="/",
+        secure=not django_settings.DEBUG,
+        httponly=True,
+        samesite="Lax",
+    )
+
+
 def _safe_get_user_id_by_username(client, username):
     """安全获取用户ID"""
     try:
@@ -135,23 +160,7 @@ def login(request):
 
         # Set bklite_token cookie with secure attributes on successful login
         if res.get("result") and res.get("data", {}).get("token"):
-            token = res["data"]["token"]
-            login_expired_time = 3600 * 24  # default 24h
-            try:
-                setting = SystemSettings.objects.filter(key="login_expired_time").first()
-                if setting:
-                    login_expired_time = int(float(setting.value) * 3600)
-            except Exception:
-                pass
-            response.set_cookie(
-                "bklite_token",
-                token,
-                max_age=login_expired_time,
-                path="/",
-                secure=not django_settings.DEBUG,
-                httponly=True,
-                samesite="Lax",
-            )
+            _set_auth_cookie_on_response(response, res["data"]["token"])
 
         return response
     except Exception as e:
@@ -236,7 +245,13 @@ def wechat_user_register(request):
             logger.info(f"WeChat registration successful for user_id: {user_id}")
             log_user_login_from_request(request, user_id, UserLoginLog.STATUS_SUCCESS, "domain.com")
 
-        return JsonResponse(res)
+        response = JsonResponse(res)
+
+        # Set bklite_token cookie with secure attributes on successful registration
+        if res.get("result") and res.get("data", {}).get("token"):
+            _set_auth_cookie_on_response(response, res["data"]["token"])
+
+        return response
     except Exception as e:
         logger.error(f"WeChat registration error: {e}")
         # 记录系统错误导致的微信注册失败
