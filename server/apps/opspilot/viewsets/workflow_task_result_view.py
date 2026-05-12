@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.opspilot.enum import WorkFlowExecuteType
 from apps.opspilot.models import WorkFlowTaskNodeResult, WorkFlowTaskResult
 from apps.opspilot.serializers.workflow_task_result_serializer import WorkFlowTaskResultSerializer
@@ -85,6 +86,7 @@ class WorkFlowTaskResultViewSet(TeamPermissionMixin, mixins.ListModelMixin, mixi
             node_data["error"] = node.error_message
         return node_data
 
+    @HasPermission("bot_conversation_log-View")
     def list(self, request, *args, **kwargs):
         """获取工作流任务执行结果列表"""
         bot_id = request.query_params.get("bot_id")
@@ -97,6 +99,7 @@ class WorkFlowTaskResultViewSet(TeamPermissionMixin, mixins.ListModelMixin, mixi
         return super().list(request, *args, **kwargs)
 
     @action(detail=False, methods=["get"], url_path="execution_detail")
+    @HasPermission("bot_conversation_log-View")
     def execution_detail(self, request):
         """按 execution_id 查询节点进度列表"""
         execution_id = request.query_params.get("execution_id", "")
@@ -130,6 +133,7 @@ class WorkFlowTaskResultViewSet(TeamPermissionMixin, mixins.ListModelMixin, mixi
         return Response(list(node_results))
 
     @action(detail=False, methods=["GET"])
+    @HasPermission("bot_conversation_log-View")
     def execution_output_data(self, request):
         """按 execution_id + id 查询节点详情，返回旧版 output_data 结构"""
         execution_id = request.query_params.get("execution_id", "")
@@ -154,6 +158,7 @@ class WorkFlowTaskResultViewSet(TeamPermissionMixin, mixins.ListModelMixin, mixi
         return Response(output_data)
 
     @action(detail=False, methods=["get"], url_path="node_execution_detail")
+    @HasPermission("bot_conversation_log-View")
     def node_execution_detail(self, request):
         """按 execution_id + node_id 查询单节点输入/输出参数"""
         execution_id = request.query_params.get("execution_id", "")

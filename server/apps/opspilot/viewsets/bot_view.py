@@ -43,6 +43,11 @@ class BotViewSet(PinMixin, AuthViewSet):
         """重写排序逻辑：当前用户置顶优先，再按 ID 倒序"""
         return self.query_by_groups_with_pinned(request, queryset)
 
+    @HasPermission("bot_list-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("bot_list-View")
     def retrieve(self, request, *args, **kwargs):
         response = super().retrieve(request, *args, **kwargs)
         if not isinstance(response, Response) or not isinstance(response.data, dict):

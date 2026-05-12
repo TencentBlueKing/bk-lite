@@ -4,6 +4,7 @@ from django.db import models
 from django.http import JsonResponse
 from rest_framework.decorators import action
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.models import EmbedProvider, LLMModel, OCRProvider, RerankProvider
 from apps.opspilot.models.model_provider_mgmt import ModelVendor
@@ -20,6 +21,7 @@ class ModelVendorViewSet(AuthViewSet):
     search_fields = ("name", "vendor_type")
     ORGANIZATION_FIELD = "team"  # ModelVendor.team 是 JSONField (list)
 
+    @HasPermission("provide_list-View")
     def list(self, request, *args, **kwargs):
         """重写 list 方法，添加 model_count 统计"""
         # 调用父类的 list 获取权限过滤后的 queryset
@@ -46,6 +48,11 @@ class ModelVendorViewSet(AuthViewSet):
 
         return JsonResponse({"result": True, "data": return_data})
 
+    @HasPermission("provide_list-Add")
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @HasPermission("provide_list-Setting")
     def update(self, request, *args, **kwargs):
         """重写 update 方法，添加 is_build_in 检查"""
         instance = self.get_object()
@@ -54,6 +61,7 @@ class ModelVendorViewSet(AuthViewSet):
             return JsonResponse({"result": False, "message": message})
         return super().update(request, *args, **kwargs)
 
+    @HasPermission("provide_list-Delete")
     def destroy(self, request, *args, **kwargs):
         """重写 destroy 方法，添加 is_build_in 检查"""
         instance = self.get_object()
@@ -63,6 +71,7 @@ class ModelVendorViewSet(AuthViewSet):
         return super().destroy(request, *args, **kwargs)
 
     @action(methods=["POST"], detail=False)
+    @HasPermission("provide_list-Add")
     def test_connection(self, request):
         serializer = ModelVendorTestConnectionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -78,6 +87,7 @@ class ModelVendorViewSet(AuthViewSet):
         return JsonResponse({"result": True})
 
     @action(methods=["POST"], detail=True)
+    @HasPermission("provide_list-Setting")
     def sync_models(self, request, pk=None):
         vendor = self.get_object()
         locale = getattr(request.user, "locale", "en") or "en"

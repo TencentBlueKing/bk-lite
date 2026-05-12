@@ -7,6 +7,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import ChatApplication, WorkFlowConversationHistory
 from apps.opspilot.models.bot_mgmt import BotWorkFlow
@@ -65,7 +66,16 @@ class ChatApplicationViewSet(TeamPermissionMixin, viewsets.ReadOnlyModelViewSet)
 
         return queryset
 
+    @HasPermission("bot_list-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("bot_list-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
     @action(detail=False, methods=["get"])
+    @HasPermission("bot_list-View")
     def web_chat_sessions(self, request):
         """
         获取用户的 web_chat 会话列表
@@ -133,6 +143,7 @@ class ChatApplicationViewSet(TeamPermissionMixin, viewsets.ReadOnlyModelViewSet)
         return Response(result)
 
     @action(detail=False, methods=["get"])
+    @HasPermission("bot_list-View")
     def session_messages(self, request):
         """
         获取指定会话的全部对话内容
@@ -195,6 +206,7 @@ class ChatApplicationViewSet(TeamPermissionMixin, viewsets.ReadOnlyModelViewSet)
         return Response(return_data)
 
     @action(detail=False, methods=["get"])
+    @HasPermission("bot_list-View")
     def skill_guide(self, request):
         """
         获取工作流中第一个 LLM 节点对应的技能引导信息
@@ -284,6 +296,7 @@ class ChatApplicationViewSet(TeamPermissionMixin, viewsets.ReadOnlyModelViewSet)
             return Response({"error": f"查询失败: {str(e)}"}, status=500)
 
     @action(detail=False, methods=["POST"])
+    @HasPermission("bot_list-View")
     def delete_session_history(self, request):
         """
         删除指定会话的对话历史
