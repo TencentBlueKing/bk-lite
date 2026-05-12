@@ -1,5 +1,5 @@
 [Unit]
-Description=Fusion Collector Sidecar
+Description=Fusion Collector BK Sidecar
 After=network.target
 
 [Service]

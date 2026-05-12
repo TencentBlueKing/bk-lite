@@ -136,6 +136,11 @@ class ControllerConstants:
 
     # Sidecar 服务重启命令
     SIDECAR_RESTART_CMD = {
-        NodeConstants.LINUX_OS: ("systemctl restart sidecar.service", None),
+        NodeConstants.LINUX_OS: (
+            "if systemctl list-unit-files bk-sidecar.service >/dev/null 2>&1; "
+            "then systemctl restart bk-sidecar.service; "
+            "else systemctl restart sidecar.service; fi",
+            None,
+        ),
         NodeConstants.WINDOWS_OS: ("Restart-Service sidecar", "powershell"),
     }
