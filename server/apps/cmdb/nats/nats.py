@@ -31,6 +31,7 @@ from apps.core.utils.permission_utils import get_permission_rules
 from apps.system_mgmt.models import Group, User
 from apps.system_mgmt.models.role import Role
 from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.core.logger import cmdb_logger as logger
 
 
 def _normalize_to_list(value):
@@ -349,7 +350,9 @@ def search_instances(params):
 @nats_client.register
 def receive_config_file_result(data: dict):
     """接收 Stargazer 回传的配置文件采集结果并落库。"""
+    logger.info("==[ConfigFileCollect] 接收配置文件采集结果")
     result = ConfigFileService.process_collect_result(data)
+    logger.info("==[ConfigFileCollect] 处理配置文件采集结果完成", )
     return {
         "result": True,
         "changed": bool(result.get("changed", False)),

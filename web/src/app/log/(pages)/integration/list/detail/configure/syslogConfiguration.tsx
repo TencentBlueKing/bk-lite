@@ -9,10 +9,18 @@ const SyslogConfiguration: React.FC = () => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const { getLogNodeList } = useIntegrationApi();
+  const { getLogNodeList, getCloudRegionProxyAddress } = useIntegrationApi();
   const [nodeList, setNodeList] = useState<TableDataItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [selectedNodeIp, setSelectedNodeIp] = useState<string>('');
+  const [selectedNodeProxyAddress, setSelectedNodeProxyAddress] =
+    useState<string>('');
+
+  const loadCloudRegionProxyAddress = async (cloudRegionId?: number | string) => {
+    const data = await getCloudRegionProxyAddress({
+      cloud_region_id: cloudRegionId,
+    });
+    setSelectedNodeProxyAddress(data.proxy_address || '');
+  };
 
   useEffect(() => {
     if (isLoading) return;
@@ -38,7 +46,7 @@ const SyslogConfiguration: React.FC = () => {
       if (nodes.length > 0) {
         const firstNode = nodes[0];
         form.setFieldsValue({ node_id: firstNode.id });
-        setSelectedNodeIp(firstNode.ip || '');
+        await loadCloudRegionProxyAddress(firstNode.cloud_region);
       }
     } finally {
       setLoading(false);
@@ -48,9 +56,9 @@ const SyslogConfiguration: React.FC = () => {
   const handleNodeChange = (value: number) => {
     const selectedNode = nodeList.find((node) => node.id === value);
     if (selectedNode) {
-      setSelectedNodeIp(selectedNode.ip || '');
+      void loadCloudRegionProxyAddress(selectedNode.cloud_region);
     } else {
-      setSelectedNodeIp('');
+      setSelectedNodeProxyAddress('');
     }
   };
 
@@ -70,7 +78,7 @@ const SyslogConfiguration: React.FC = () => {
               loading={loading}
               onChange={handleNodeChange}
               options={nodeList.map((node) => ({
-                label: `${node.name} (${node.ip})`,
+                label: `${node.name}`,
                 value: node.id,
               }))}
             />
@@ -80,7 +88,7 @@ const SyslogConfiguration: React.FC = () => {
           </span>
         </Form.Item>
 
-        {selectedNodeIp && (
+        {selectedNodeProxyAddress && (
           <div className="p-[20px] bg-[var(--color-fill-1)] w-full">
             <div className="mb-[10px] font-bold text-[16px]">
               {t('log.integration.syslogAccessGuide')}
@@ -95,7 +103,7 @@ const SyslogConfiguration: React.FC = () => {
                   {t('log.integration.syslogTargetIp')}:
                 </span>
                 <span className="ml-[10px] text-[var(--color-primary)] font-mono font-semibold">
-                  {selectedNodeIp}
+                  {selectedNodeProxyAddress}
                 </span>
               </div>
               <div className="pb-[10px]">

@@ -19,5 +19,4 @@ class TuxedoCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "patch_level": "patch_level",
         "maxdispatchthreads": "maxdispatchthreads",
         "mindispatchthreads": "mindispatchthreads",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

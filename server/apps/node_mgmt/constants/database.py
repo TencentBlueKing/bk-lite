@@ -24,6 +24,9 @@ class EnvVariableConstants:
     # 默认云区域环境变量前缀
     DEFAULT_ZONE_ENV_PREFIX = "DEFAULT_ZONE_VAR_"
 
+    # 代理地址环境变量 key
+    PROXY_ADDRESS_KEY = "PROXY_ADDRESS"
+
     # 敏感字段识别关键词（用于判断是否需要加密）
     SENSITIVE_FIELD_KEYWORD = "password"
 

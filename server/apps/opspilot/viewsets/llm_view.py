@@ -1,10 +1,10 @@
-from django.db.models import Case, IntegerField, Value, When
 from django.http import JsonResponse, StreamingHttpResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from redis.exceptions import RedisError
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
@@ -34,7 +34,10 @@ from apps.opspilot.services.builtin_tools import (
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.mcp_cache import get_cached_mcp_tools, set_cached_mcp_tools
 from apps.opspilot.utils.mcp_client import MCPClient
+from apps.opspilot.utils.pin_mixin import PinMixin
+from apps.opspilot.utils.skill_execution_params import resolve_request_tools
 from apps.opspilot.utils.sse_chat import stream_chat
+from apps.opspilot.utils.vendor_model_mixin import VendorModelMixin
 
 
 class LLMFilter(FilterSet):
@@ -50,7 +53,9 @@ class LLMFilter(FilterSet):
         return qs.filter(skill_type__in=[int(i.strip()) for i in value.split(",") if i.strip()])
 
 
-class LLMViewSet(AuthViewSet):
+class LLMViewSet(PinMixin, AuthViewSet):
+    pin_content_type = UserPin.CONTENT_TYPE_SKILL
+    pin_permission_error_key = "error.permission_update_denied"
     serializer_class = LLMSerializer
     queryset = LLMSkill.objects.all()
     filterset_class = LLMFilter
@@ -58,51 +63,12 @@ class LLMViewSet(AuthViewSet):
 
     def query_by_groups(self, request, queryset):
         """重写排序逻辑：当前用户置顶优先，再按 ID 倒序"""
-        new_queryset = self.get_queryset_by_permission(request, queryset)
-        username = request.user.username
-        domain = getattr(request.user, "domain", "")
-        pinned_ids = list(
-            UserPin.objects.filter(
-                username=username,
-                domain=domain,
-                content_type=UserPin.CONTENT_TYPE_SKILL,
-            ).values_list("object_id", flat=True)
-        )
-        new_queryset = new_queryset.annotate(
-            is_pinned_for_user=Case(
-                When(id__in=pinned_ids, then=Value(1)),
-                default=Value(0),
-                output_field=IntegerField(),
-            )
-        )
-        return self._list(new_queryset.order_by("-is_pinned_for_user", "-id"))
+        return self.query_by_groups_with_pinned(request, queryset)
 
     @action(methods=["POST"], detail=True)
     @HasPermission("skill_setting-Edit")
     def toggle_pin(self, request, pk=None):
-        """切换技能置顶状态（个人行为）"""
-        instance = self.get_object()
-        if not request.user.is_superuser:
-            current_team = request.COOKIES.get("current_team", "0")
-            include_children = request.COOKIES.get("include_children", "0") == "1"
-            has_permission = self.get_has_permission(request.user, instance, current_team, include_children=include_children)
-            if not has_permission:
-                message = self.loader.get("error.permission_update_denied") if self.loader else "You do not have permission to update this instance"
-                return JsonResponse({"result": False, "message": message})
-        username = request.user.username
-        domain = getattr(request.user, "domain", "")
-        pin_obj, created = UserPin.objects.get_or_create(
-            username=username,
-            domain=domain,
-            content_type=UserPin.CONTENT_TYPE_SKILL,
-            object_id=instance.id,
-        )
-        if created:
-            is_pinned = True
-        else:
-            pin_obj.delete()
-            is_pinned = False
-        return JsonResponse({"result": True, "data": {"is_pinned": is_pinned}})
+        return super().toggle_pin(request, pk)
 
     @action(methods=["GET"], detail=False)
     @HasPermission("skill_list-View")
@@ -181,8 +147,6 @@ class LLMViewSet(AuthViewSet):
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
-        if (not request.user.is_superuser) and (instance.created_by != request.user.username):
-            params.pop("team", [])
         if "team" in params:
             delete_team = [i for i in instance.team if i not in params["team"]]
             self.delete_rules(instance.id, delete_team)
@@ -293,7 +257,7 @@ class LLMViewSet(AuthViewSet):
                 current_ip = request.META.get("REMOTE_ADDR", "")
                 # 这里可以添加具体的配额检查逻辑
             params["skill_type"] = skill_obj.skill_type
-            params["tools"] = params.get("tools", [])
+            params["tools"] = resolve_request_tools(params.get("tools"), skill_obj.tools)
             params["group"] = params["group"] if params.get("group") else skill_obj.team[0]
             params["enable_km_route"] = params["enable_km_route"] if params.get("enable_km_route") else skill_obj.enable_km_route
             params["km_llm_model"] = params["km_llm_model"] if params.get("km_llm_model") else skill_obj.km_llm_model
@@ -367,7 +331,7 @@ class LLMViewSet(AuthViewSet):
                 current_ip = request.META.get("REMOTE_ADDR", "")
 
             params["skill_type"] = skill_obj.skill_type
-            params["tools"] = params.get("tools", [])
+            params["tools"] = resolve_request_tools(params.get("tools"), skill_obj.tools)
             params["group"] = params["group"] if params.get("group") else skill_obj.team[0]
             params["enable_km_route"] = params["enable_km_route"] if params.get("enable_km_route") else skill_obj.enable_km_route
             params["km_llm_model"] = params["km_llm_model"] if params.get("km_llm_model") else skill_obj.km_llm_model
@@ -404,7 +368,7 @@ class ObjFilter(FilterSet):
         return qs.filter(enabled=enabled)
 
 
-class LLMModelViewSet(AuthViewSet):
+class LLMModelViewSet(VendorModelMixin, AuthViewSet):
     serializer_class = LLMModelSerializer
     queryset = LLMModel.objects.all()
     permission_key = "provider.llm_model"
@@ -489,17 +453,42 @@ class LogFilter(FilterSet):
 
 
 class SkillRequestLogViewSet(LanguageViewSet):
+    """技能调用日志 ViewSet - 仅暴露 list 接口，验证 skill 的 team 权限"""
+
     serializer_class = SkillRequestLogSerializer
     queryset = SkillRequestLog.objects.all()
     filterset_class = LogFilter
     ordering = ("-created_at",)
+    # 仅允许 GET (list)，禁用其他内置接口
+    http_method_names = ["get", "head", "options"]
 
     @HasPermission("skill_invocation_logs-View")
     def list(self, request, *args, **kwargs):
-        if not request.GET.get("skill_id"):
+        skill_id = request.GET.get("skill_id")
+        if not skill_id:
             message = self.loader.get("error.skill_not_found") if self.loader else "Skill id not found"
             return JsonResponse({"result": False, "message": message})
+
+        # 验证 skill 存在且用户有权限访问
+        skill = LLMSkill.objects.filter(id=skill_id).first()
+        if not skill:
+            message = self.loader.get("error.skill_not_found") if self.loader else "Skill not found"
+            return JsonResponse({"result": False, "message": message})
+
+        # 验证 current_team 权限
+        if not request.user.is_superuser:
+            current_team = self._parse_current_team_cookie(request)
+            user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
+            if current_team not in user_group_ids:
+                raise PermissionDenied(self.loader.get("error.no_permission_access_team") if self.loader else "无权访问该团队数据")
+            if current_team not in (skill.team or []):
+                raise PermissionDenied(self.loader.get("error.no_permission_access_skill") if self.loader else "无权访问该技能的日志")
+
         return super().list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        """禁用 retrieve 接口"""
+        return JsonResponse({"result": False, "message": "接口未启用"}, status=405)
 
 
 class ToolsFilter(FilterSet):

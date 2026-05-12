@@ -1,0 +1,41 @@
+场景名称: 工具选择控制 (toolChoice) 测试
+
+对应计划: Phase 1 — #5 toolChoice
+
+功能描述:
+  控制 LLM 是否必须/禁止/优先使用某个工具。
+  ToolChoiceConfig 支持 mode=auto/none/any/specific，
+  apply_on_steps 限制仅在指定步骤生效。
+  agent_node 每步根据配置在 bind_kwargs 中设置 tool_choice 参数。
+
+当前状态: 引擎层已实现，数据层（DB/API/前端配置）未接入
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/entity.py: ToolChoiceConfig L94-105（mode, tool_name, apply_on_steps）
+  - server/apps/opspilot/metis/llm/chain/node.py: agent_node L1266-1288（bind_kwargs tool_choice 注入）
+
+测试用例:
+
+  TestToolChoiceAuto:
+    1. mode=auto 时不传 tool_choice: bind_kwargs 中无 tool_choice 键
+    2. 默认配置即为 auto: ToolChoiceConfig() 等价于 mode="auto"
+
+  TestToolChoiceNone:
+    3. mode=none 时传 tool_choice="none": LLM 被禁止使用工具
+    4. 禁止工具后 LLM 直接输出文本回答
+
+  TestToolChoiceAny:
+    5. mode=any 时传 tool_choice="any": LLM 被强制使用某个工具
+    6. 动态工具选择未激活时强制 tool_choice="any" 触发 activate_tools
+
+  TestToolChoiceSpecific:
+    7. mode=specific + tool_name 时传 tool_choice=<tool_name>: LLM 被强制使用指定工具
+    8. tool_name 为空时 fallback 到 auto
+
+  TestToolChoiceApplyOnSteps:
+    9. apply_on_steps=[1] 时仅第 1 步生效: 第 2 步无 tool_choice
+    10. apply_on_steps=[2] 时仅第 2 步生效: 第 1 步无 tool_choice
+    11. apply_on_steps=None 时全部步骤生效
+
+关联测试文件: cases/test_tool_choice.py
+状态: GREEN（引擎层已实现，25 个测试通过）

@@ -46,6 +46,7 @@ const AuthSourcesList: React.FC<AuthSourcesListProps> = ({
     handleModalCancel,
     handleAuthSourceToggle,
     handleSyncAuthSource,
+    handleDeleteAuthSource,
     handleSourceTypeChange,
   } = useAuthSourceModal({ authSources, onUpdate, t });
 
@@ -65,8 +66,15 @@ const AuthSourcesList: React.FC<AuthSourcesListProps> = ({
           {t('system.security.syncNow')}
         </PermissionWrapper>
       </Menu.Item>
+      {!item.is_build_in && (
+        <Menu.Item key="delete" onClick={() => handleDeleteAuthSource(item)}>
+          <PermissionWrapper requiredPermissions={['Delete']}>
+            {t('common.delete')}
+          </PermissionWrapper>
+        </Menu.Item>
+      )}
     </Menu>
-  ), [handleEditSource, handleSyncAuthSource, t]);
+  ), [handleEditSource, handleSyncAuthSource, handleDeleteAuthSource, t]);
 
   const getAuthImageSrc = useCallback((sourceType: string) => {
     const imageMap: Record<string, string> = {

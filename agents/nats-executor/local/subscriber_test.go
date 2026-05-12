@@ -10,10 +10,23 @@ import (
 
 	"nats-executor/utils"
 	"nats-executor/utils/downloaderr"
+
+	"github.com/nats-io/nats.go"
 )
 
 type stubResponseMsg struct {
 	respond func(payload []byte) error
+}
+
+type stubInboundMsg struct {
+	payload []byte
+	respond func(payload []byte) error
+}
+
+type stubSubscriber struct {
+	subject string
+	handler nats.MsgHandler
+	err     error
 }
 
 func (s stubResponseMsg) Respond(payload []byte) error {
@@ -21,6 +34,21 @@ func (s stubResponseMsg) Respond(payload []byte) error {
 		return nil
 	}
 	return s.respond(payload)
+}
+
+func (s stubInboundMsg) Payload() []byte { return s.payload }
+
+func (s stubInboundMsg) Respond(payload []byte) error {
+	if s.respond == nil {
+		return nil
+	}
+	return s.respond(payload)
+}
+
+func (s *stubSubscriber) Subscribe(subject string, cb nats.MsgHandler) (*nats.Subscription, error) {
+	s.subject = subject
+	s.handler = cb
+	return nil, s.err
 }
 
 func TestExecuteResponseIncludesErrorCodeForTimeout(t *testing.T) {
@@ -401,3 +429,224 @@ func TestHandleHealthCheckMessageReturnsStablePayload(t *testing.T) {
 		t.Fatalf("unexpected health response: %+v", result)
 	}
 }
+
+func TestLocalSubscriptionSeams(t *testing.T) {
+	t.Run("register subjects for local subscriptions", func(t *testing.T) {
+		testCases := []struct {
+			name    string
+			subject string
+			subFn   func(*stubSubscriber) error
+		}{
+			{name: "execute", subject: "local.execute.instance-1", subFn: func(sub *stubSubscriber) error { return subscribeLocalExecutor(sub, stringPointer("instance-1")) }},
+			{name: "download", subject: "download.local.instance-1", subFn: func(sub *stubSubscriber) error {
+				return subscribeDownloadToLocal(sub, nil, stringPointer("instance-1"))
+			}},
+			{name: "unzip", subject: "unzip.local.instance-1", subFn: func(sub *stubSubscriber) error { return subscribeUnzipToLocal(sub, stringPointer("instance-1")) }},
+			{name: "health", subject: "health.check.instance-1", subFn: func(sub *stubSubscriber) error { return subscribeHealthCheck(sub, stringPointer("instance-1")) }},
+		}
+
+		for _, tt := range testCases {
+			t.Run(tt.name, func(t *testing.T) {
+				sub := &stubSubscriber{}
+				if err := tt.subFn(sub); err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+				if sub.subject != tt.subject || sub.handler == nil {
+					t.Fatalf("unexpected subscription state: %+v", sub)
+				}
+			})
+		}
+	})
+
+	t.Run("registered callbacks can be invoked", func(t *testing.T) {
+		origExec := executeLocalCommand
+		origDownload := downloadToLocalFile
+		origUnzip := unzipLocalArchive
+		origNow := nowUTC
+		executeLocalCommand = func(req ExecuteRequest, instanceId string) ExecuteResponse {
+			return ExecuteResponse{Success: true, Output: "ok", InstanceId: instanceId}
+		}
+		downloadToLocalFile = func(req utils.DownloadFileRequest, _ downloadConn) error { return nil }
+		unzipLocalArchive = func(req utils.UnzipRequest) (string, error) { return "parent", nil }
+		nowUTC = func() time.Time { return time.Date(2026, 5, 9, 8, 0, 0, 0, time.UTC) }
+		defer func() {
+			executeLocalCommand = origExec
+			downloadToLocalFile = origDownload
+			unzipLocalArchive = origUnzip
+			nowUTC = origNow
+		}()
+
+		testCases := []struct {
+			subFn   func(*stubSubscriber) error
+			payload []byte
+		}{
+			{subFn: func(sub *stubSubscriber) error { return subscribeLocalExecutor(sub, stringPointer("instance-1")) }, payload: []byte(`{"args":[{"command":"echo ok","execute_timeout":1}],"kwargs":{}}`)},
+			{subFn: func(sub *stubSubscriber) error {
+				return subscribeDownloadToLocal(sub, nil, stringPointer("instance-1"))
+			}, payload: []byte(`{"args":[{"bucket_name":"bucket","file_key":"key","file_name":"demo.txt","target_path":"/tmp","execute_timeout":1}],"kwargs":{}}`)},
+			{subFn: func(sub *stubSubscriber) error { return subscribeUnzipToLocal(sub, stringPointer("instance-1")) }, payload: []byte(`{"args":[{"zip_path":"/tmp/demo.zip","dest_dir":"/tmp/out"}],"kwargs":{}}`)},
+			{subFn: func(sub *stubSubscriber) error { return subscribeHealthCheck(sub, stringPointer("instance-1")) }, payload: []byte(`{}`)},
+		}
+
+		for _, tt := range testCases {
+			sub := &stubSubscriber{}
+			if err := tt.subFn(sub); err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			sub.handler(&nats.Msg{Data: tt.payload})
+		}
+	})
+
+	t.Run("subscribe helper propagates subscribe error", func(t *testing.T) {
+		sub := &stubSubscriber{err: errors.New("subscribe failed")}
+		if err := subscribeLocalExecutor(sub, stringPointer("instance-1")); err == nil {
+			t.Fatal("expected subscribe error")
+		}
+	})
+
+	t.Run("public subscribe wrappers delegate through seam", func(t *testing.T) {
+		origExecute := subscribeLocalExecutorFn
+		origDownload := subscribeDownloadToLocalFn
+		origUnzip := subscribeUnzipToLocalFn
+		origHealth := subscribeHealthCheckFn
+		defer func() {
+			subscribeLocalExecutorFn = origExecute
+			subscribeDownloadToLocalFn = origDownload
+			subscribeUnzipToLocalFn = origUnzip
+			subscribeHealthCheckFn = origHealth
+		}()
+
+		calls := map[string]int{}
+		subscribeLocalExecutorFn = func(sub subscriber, instanceId *string) error { calls["execute"]++; return nil }
+		subscribeDownloadToLocalFn = func(sub subscriber, nc downloadConn, instanceId *string) error { calls["download"]++; return nil }
+		subscribeUnzipToLocalFn = func(sub subscriber, instanceId *string) error { calls["unzip"]++; return nil }
+		subscribeHealthCheckFn = func(sub subscriber, instanceId *string) error { calls["health"]++; return nil }
+
+		SubscribeLocalExecutor(nil, stringPointer("instance-1"))
+		SubscribeDownloadToLocal(nil, stringPointer("instance-1"))
+		SubscribeUnzipToLocal(nil, stringPointer("instance-1"))
+		SubscribeHealthCheck(nil, stringPointer("instance-1"))
+
+		for _, name := range []string{"execute", "download", "unzip", "health"} {
+			if calls[name] != 1 {
+				t.Fatalf("expected %s wrapper to delegate once, got %d", name, calls[name])
+			}
+		}
+	})
+
+	t.Run("download wrapper writes response", func(t *testing.T) {
+		original := downloadToLocalFile
+		downloadToLocalFile = func(req utils.DownloadFileRequest, _ downloadConn) error { return nil }
+		defer func() { downloadToLocalFile = original }()
+
+		var got ExecuteResponse
+		msg := stubInboundMsg{
+			payload: []byte(`{"args":[{"bucket_name":"bucket","file_key":"key","file_name":"demo.txt","target_path":"/tmp","execute_timeout":3}],"kwargs":{}}`),
+			respond: func(payload []byte) error { return json.Unmarshal(payload, &got) },
+		}
+		if ok := respondDownloadToLocalSubscription(msg, "instance-1", nil); !ok {
+			t.Fatal("expected success")
+		}
+		if !got.Success {
+			t.Fatalf("unexpected response: %+v", got)
+		}
+	})
+
+	t.Run("download wrapper reports respond failure", func(t *testing.T) {
+		original := downloadToLocalFile
+		downloadToLocalFile = func(req utils.DownloadFileRequest, _ downloadConn) error { return nil }
+		defer func() { downloadToLocalFile = original }()
+
+		msg := stubInboundMsg{
+			payload: []byte(`{"args":[{"bucket_name":"bucket","file_key":"key","file_name":"demo.txt","target_path":"/tmp","execute_timeout":3}],"kwargs":{}}`),
+			respond: func(payload []byte) error { return errors.New("reply failed") },
+		}
+		if ok := respondDownloadToLocalSubscription(msg, "instance-1", nil); ok {
+			t.Fatal("expected failure")
+		}
+	})
+
+	t.Run("unzip wrapper writes response", func(t *testing.T) {
+		original := unzipLocalArchive
+		unzipLocalArchive = func(req utils.UnzipRequest) (string, error) { return "parent-dir", nil }
+		defer func() { unzipLocalArchive = original }()
+
+		var got ExecuteResponse
+		msg := stubInboundMsg{
+			payload: []byte(`{"args":[{"zip_path":"/tmp/demo.zip","dest_dir":"/tmp/out"}],"kwargs":{}}`),
+			respond: func(payload []byte) error { return json.Unmarshal(payload, &got) },
+		}
+		if ok := respondUnzipToLocalSubscription(msg, "instance-1"); !ok {
+			t.Fatal("expected success")
+		}
+		if !got.Success || got.Output != "parent-dir" {
+			t.Fatalf("unexpected response: %+v", got)
+		}
+	})
+
+	t.Run("health wrapper writes response", func(t *testing.T) {
+		original := nowUTC
+		nowUTC = func() time.Time { return time.Date(2026, 5, 9, 8, 0, 0, 0, time.UTC) }
+		defer func() { nowUTC = original }()
+
+		var got HealthCheckResponse
+		msg := stubInboundMsg{respond: func(payload []byte) error { return json.Unmarshal(payload, &got) }}
+		if ok := respondHealthCheckSubscription(msg, "instance-1", "health.check.instance-1"); !ok {
+			t.Fatal("expected success")
+		}
+		if !got.Success || got.Timestamp != "2026-05-09T08:00:00Z" {
+			t.Fatalf("unexpected response: %+v", got)
+		}
+	})
+
+	t.Run("unzip wrapper reports respond failure", func(t *testing.T) {
+		original := unzipLocalArchive
+		unzipLocalArchive = func(req utils.UnzipRequest) (string, error) { return "parent-dir", nil }
+		defer func() { unzipLocalArchive = original }()
+
+		msg := stubInboundMsg{
+			payload: []byte(`{"args":[{"zip_path":"/tmp/demo.zip","dest_dir":"/tmp/out"}],"kwargs":{}}`),
+			respond: func(payload []byte) error { return errors.New("reply failed") },
+		}
+		if ok := respondUnzipToLocalSubscription(msg, "instance-1"); ok {
+			t.Fatal("expected failure")
+		}
+	})
+
+	t.Run("health wrapper reports respond failure", func(t *testing.T) {
+		msg := stubInboundMsg{respond: func(payload []byte) error { return errors.New("reply failed") }}
+		if ok := respondHealthCheckSubscription(msg, "instance-1", "health.check.instance-1"); ok {
+			t.Fatal("expected failure")
+		}
+	})
+
+	t.Run("download wrapper invalid payload returns false", func(t *testing.T) {
+		var got ExecuteResponse
+		msg := stubInboundMsg{
+			payload: []byte("not-json"),
+			respond: func(payload []byte) error { return json.Unmarshal(payload, &got) },
+		}
+		if ok := respondDownloadToLocalSubscription(msg, "instance-1", nil); !ok {
+			t.Fatal("expected explicit error response")
+		}
+		if got.Success || got.Code != utils.ErrorCodeInvalidRequest {
+			t.Fatalf("unexpected response: %+v", got)
+		}
+	})
+
+	t.Run("unzip wrapper invalid payload returns false", func(t *testing.T) {
+		var got ExecuteResponse
+		msg := stubInboundMsg{
+			payload: []byte("not-json"),
+			respond: func(payload []byte) error { return json.Unmarshal(payload, &got) },
+		}
+		if ok := respondUnzipToLocalSubscription(msg, "instance-1"); !ok {
+			t.Fatal("expected explicit error response")
+		}
+		if got.Success || got.Code != utils.ErrorCodeInvalidRequest {
+			t.Fatalf("unexpected response: %+v", got)
+		}
+	})
+}
+
+func stringPointer(value string) *string { return &value }

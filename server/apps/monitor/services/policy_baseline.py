@@ -41,24 +41,22 @@ class PolicyBaselineService:
 
         instances_map = self._build_instances_map()
         if not instances_map:
-            logger.warning(
-                f"Policy {self.policy.id} has no instances, clearing baselines"
-            )
+            logger.warning(f"Policy {self.policy.id} has no instances, clearing baselines")
             self.clear()
             return
 
         metric_instances = self._query_metric_instances(instances_map)
+        if metric_instances is None:
+            logger.warning(f"Policy {self.policy.id}: baseline refresh query failed, keeping existing baselines")
+            return
+
         if not metric_instances:
-            logger.info(
-                f"Policy {self.policy.id} has no metric data, clearing baselines"
-            )
+            logger.info(f"Policy {self.policy.id}: query succeeded but returned no metric data, clearing baselines")
             self.clear()
             return
 
         self._replace_baselines(metric_instances)
-        logger.info(
-            f"Policy {self.policy.id}: refreshed {len(metric_instances)} baselines"
-        )
+        logger.info(f"Policy {self.policy.id}: refreshed {len(metric_instances)} baselines")
 
     def sync(self, metric_instances: dict[str, str]):
         """增量同步基准数据
@@ -72,11 +70,7 @@ class PolicyBaselineService:
         if not self.policy.source or not metric_instances:
             return
 
-        existing_baselines = set(
-            PolicyInstanceBaseline.objects.filter(policy_id=self.policy.id).values_list(
-                "metric_instance_id", flat=True
-            )
-        )
+        existing_baselines = set(PolicyInstanceBaseline.objects.filter(policy_id=self.policy.id).values_list("metric_instance_id", flat=True))
 
         new_baselines = []
         for metric_instance_id, monitor_instance_id in metric_instances.items():
@@ -90,21 +84,15 @@ class PolicyBaselineService:
                 )
 
         if new_baselines:
-            PolicyInstanceBaseline.objects.bulk_create(
-                new_baselines, ignore_conflicts=True
-            )
-            logger.info(
-                f"Policy {self.policy.id}: synced {len(new_baselines)} new baselines"
-            )
+            PolicyInstanceBaseline.objects.bulk_create(new_baselines, ignore_conflicts=True)
+            logger.info(f"Policy {self.policy.id}: synced {len(new_baselines)} new baselines")
 
     def clear(self):
         """清空该策略的所有基准数据
 
         用于：策略修改禁用无数据告警。
         """
-        deleted_count, _ = PolicyInstanceBaseline.objects.filter(
-            policy_id=self.policy.id
-        ).delete()
+        deleted_count, _ = PolicyInstanceBaseline.objects.filter(policy_id=self.policy.id).delete()
         if deleted_count > 0:
             logger.info(f"Policy {self.policy.id}: cleared {deleted_count} baselines")
 
@@ -129,9 +117,7 @@ class PolicyBaselineService:
         )
         return {instance.id: instance.name for instance in instances}
 
-    def _get_instance_list_by_source(
-        self, source_type: str, source_values: list
-    ) -> list:
+    def _get_instance_list_by_source(self, source_type: str, source_values: list) -> list:
         """根据来源类型获取实例列表"""
         if source_type == "instance":
             return source_values
@@ -146,14 +132,15 @@ class PolicyBaselineService:
 
         return []
 
-    def _query_metric_instances(self, instances_map: dict[str, str]) -> dict[str, str]:
+    def _query_metric_instances(self, instances_map: dict[str, str]) -> dict[str, str] | None:
         """查询 VictoriaMetrics 获取当前维度组合
 
         Args:
             instances_map: {monitor_instance_id: monitor_instance_name}
 
         Returns:
-            dict: {metric_instance_id: monitor_instance_id}
+            dict | None: 查询成功时返回 {metric_instance_id: monitor_instance_id}；
+            查询失败或结果不可信时返回 None
         """
         if not self.policy.last_run_time:
             self.policy.last_run_time = datetime.now(timezone.utc)
@@ -173,13 +160,9 @@ class PolicyBaselineService:
             group_by_keys = self.policy.group_by or []
 
             for metric_info in metrics.get("data", {}).get("result", []):
-                instance_id_tuple = tuple(
-                    [metric_info["metric"].get(key) for key in group_by_keys]
-                )
+                instance_id_tuple = tuple([metric_info["metric"].get(key) for key in group_by_keys])
                 metric_instance_id = str(instance_id_tuple)
-                monitor_instance_id = (
-                    str((instance_id_tuple[0],)) if instance_id_tuple else ""
-                )
+                monitor_instance_id = str((instance_id_tuple[0],)) if instance_id_tuple else ""
 
                 if monitor_instance_id in instances_map:
                     result[metric_instance_id] = monitor_instance_id
@@ -191,7 +174,7 @@ class PolicyBaselineService:
                 f"Policy {self.policy.id}: failed to query metric instances: {e}",
                 exc_info=True,
             )
-            return {}
+            return None
 
     def _replace_baselines(self, metric_instances: dict[str, str]):
         """全量替换基准数据

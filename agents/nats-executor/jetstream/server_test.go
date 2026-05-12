@@ -73,6 +73,24 @@ func withDownloadRemove(tb testing.TB, fn func(string) error) {
 	})
 }
 
+func withDownloadSync(tb testing.TB, fn func(*os.File) error) {
+	tb.Helper()
+	original := syncDownloadFile
+	syncDownloadFile = fn
+	tb.Cleanup(func() {
+		syncDownloadFile = original
+	})
+}
+
+func withDownloadClose(tb testing.TB, fn func(*os.File) error) {
+	tb.Helper()
+	original := closeDownloadFile
+	closeDownloadFile = fn
+	tb.Cleanup(func() {
+		closeDownloadFile = original
+	})
+}
+
 func TestDownloadToFileSucceeds(t *testing.T) {
 	client := &JetStreamClient{
 		objectStore: stubObjectStore{
@@ -314,5 +332,56 @@ func TestDownloadToFileRemoveFailureDoesNotMaskPrimaryError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "stream corrupted") {
 		t.Fatalf("cleanup should not mask primary error, got %v", err)
+	}
+}
+
+func TestDownloadToFilePropagatesSyncAndCloseErrors(t *testing.T) {
+	t.Run("sync error", func(t *testing.T) {
+		withDownloadSync(t, func(f *os.File) error { return errors.New("sync failed") })
+
+		client := &JetStreamClient{
+			objectStore: stubObjectStore{
+				get: func(name string, opts ...nats.GetObjectOpt) (nats.ObjectResult, error) {
+					reader := strings.NewReader("payload")
+					return stubObjectResult{read: reader.Read, close: func() error { return nil }}, nil
+				},
+			},
+		}
+
+		err := client.DownloadToFile(context.Background(), "demo-key", t.TempDir(), "demo.txt")
+		if err == nil || !strings.Contains(err.Error(), "failed to sync temporary file") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("close error", func(t *testing.T) {
+		withDownloadClose(t, func(f *os.File) error { return errors.New("close failed") })
+
+		client := &JetStreamClient{
+			objectStore: stubObjectStore{
+				get: func(name string, opts ...nats.GetObjectOpt) (nats.ObjectResult, error) {
+					reader := strings.NewReader("payload")
+					return stubObjectResult{read: reader.Read, close: func() error { return nil }}, nil
+				},
+			},
+		}
+
+		err := client.DownloadToFile(context.Background(), "demo-key", t.TempDir(), "demo.txt")
+		if err == nil || !strings.Contains(err.Error(), "failed to close temporary file") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestNewJetStreamClientReturnsJetStreamFactoryError(t *testing.T) {
+	original := jetStreamFromConn
+	jetStreamFromConn = func(nc *nats.Conn) (objectStoreManager, error) {
+		return nil, errors.New("jetstream unavailable")
+	}
+	defer func() { jetStreamFromConn = original }()
+
+	_, err := NewJetStreamClient(nil, "downloads")
+	if err == nil || !strings.Contains(err.Error(), "failed to get JetStream context") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

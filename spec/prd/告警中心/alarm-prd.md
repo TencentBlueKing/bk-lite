@@ -1,8 +1,8 @@
 # 告警中心（Alarm）产品PRD
 
-版本：v1.0
+版本：v1.1
 
-日期：2026-03-03
+日期：2026-04-29
 
 ## 1. 背景与目标
 
@@ -36,6 +36,7 @@
 
 本期范围（代码已体现）：
 - 事件接入：REST receiver 与 NATS 接入。
+- 事件接入补充：支持按告警源独立 webhook 地址接入，支持 K8s 部署 YAML 生成入口。
 - 告警聚合：match_rules + group_by + 窗口策略（session/sliding）聚合。
 - 状态流转：Alert 与 Incident 的标准操作流。
 - 策略中心：分派策略、屏蔽策略、相关性规则、系统设置。
@@ -124,6 +125,7 @@
 
 REST 入站：
 - 路径：`POST /alerts/api/receiver_data`
+- 路径补充：`POST /alerts/api/source/{source_id}/webhook` 支持按告警源专属地址接入。
 - 校验：`source_id`、`secret`、`events` 必填。
 - 通过 source adapter 执行标准化处理。
 
@@ -191,6 +193,8 @@ NATS 入站：
 - 告警源管理：新增、编辑、删除、查询。
 - 支持多接入适配能力（REST/NATS 等）。
 - 提供 source 级别鉴权参数（如 secret）。
+- 支持按 source_id 暴露独立 webhook 地址，便于不同告警源单独集成。
+- K8s 告警源支持生成部署 YAML，便于集群侧快速接入。
 
 ### 7.5 设置中心（Settings）
 
@@ -202,7 +206,7 @@ NATS 入站：
 
 ## 8. 接口与数据契约
 
-### 8.1 REST API（后端已注册）
+### 8.1 REST / OpenAPI（后端已注册）
 
 - `/alerts/api/alerts`
 - `/alerts/api/alerts/operator/{action}`
@@ -216,6 +220,8 @@ NATS 入站：
 - `/alerts/api/settings`
 - `/alerts/api/log`
 - `/alerts/api/receiver_data`
+- `/alerts/api/source/{source_id}/webhook`
+- `/alerts/open_api/k8s/render`
 
 ### 8.2 NATS 接口（后端已实现）
 
@@ -264,9 +270,6 @@ NATS 入站：
 - 自动分派/屏蔽流程中存在容错保护，单条失败通常不阻断整体处理。
 - 通知失败会记录结果；提醒重发依赖轮询任务，不体现指数退避机制。
 
-风险提示（代码已暴露）：
-- 提醒任务停止流程中使用 `completed_at` 字段，但模型定义未显式体现该字段，需进一步确认。
-
 ## 12. 需求优先级（MoSCoW）
 
 - Must：事件接入、告警聚合去重、告警状态流转、Incident 管理、策略配置、操作日志。
@@ -288,6 +291,8 @@ NATS 入站：
   - 告警可升级 Incident，Incident 支持认领、关闭、重开。
 - 配置审计场景：
   - 策略与系统设置变更后可在操作日志检索到对应记录。
+- 集成接入场景：
+  - 告警源可使用通用接收地址或 source 专属 webhook 接入，K8s 告警源可生成可部署的接入 YAML。
 
 ## 14. Event 接入数据说明（REST Receiver）
 

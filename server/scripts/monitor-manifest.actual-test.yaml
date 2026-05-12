@@ -34,10 +34,48 @@ registrations:
       widget_y: 0
       widget_w: 6
       widget_h: 4
+    alarm_policies:
+      - policy_key: host-cpu-high
+        name: "Host CPU High"
+        alert_name: "主机 CPU 过高"
+        collect_type: "host"
+        query_condition:
+          metric: "cpu_usage_user"
+        source:
+          from_registration_instances: true
+        schedule:
+          unit: minute
+          value: 5
+        period:
+          unit: minute
+          value: 5
+        algorithm: avg
+        group_by:
+          - instance_id
+        threshold:
+          - compare: ">"
+            value: 80
+            level: warning
+        recovery_condition: 1
+        enable: true
+        enable_alerts:
+          - threshold
+        notice: true
+        notice_type: email
+        notice_users:
+          - admin
     instances:
       - instance_name: host-10.11.27.147
         host: 10.11.27.147
         node_ip: 10.11.27.147
+        install_agent:
+          enabled: true
+          auth_type: password
+          username: testuser
+          password: password
+          port: 22
+          os: linux
+          cpu_architecture: x86_64
 
   - key: mysql-10.11.24.61-3306-shared
     collector: Telegraf

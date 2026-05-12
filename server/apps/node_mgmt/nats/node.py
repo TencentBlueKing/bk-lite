@@ -529,6 +529,35 @@ def get_cloud_region_envconfig(cloud_region_id: str):
 
 
 @nats_client.register
+def get_cloud_region_proxy_address(cloud_region_id: str):
+    """
+    获取云区域代理地址
+    优先从 CloudRegion.proxy_address 读取，若为空则回退到环境变量 PROXY_ADDRESS
+    :param cloud_region_id: 云区域 ID
+    :return: 代理地址
+    """
+    proxy_address = CloudRegion.objects.filter(id=cloud_region_id).values_list("proxy_address", flat=True).first() or ""
+    if proxy_address:
+        return proxy_address
+
+    env_var = SidecarEnv.objects.filter(
+        cloud_region_id=cloud_region_id,
+        key=EnvVariableConstants.PROXY_ADDRESS_KEY,
+    ).first()
+    if not env_var:
+        return ""
+
+    if env_var.type == EnvVariableConstants.TYPE_SECRET and env_var.value:
+        aes_obj = AESCryptor()
+        try:
+            return aes_obj.decode(env_var.value)
+        except Exception as e:
+            logger.warning(f"Failed to decrypt proxy env variable {env_var.key}: {e}")
+
+    return env_var.value or ""
+
+
+@nats_client.register
 def node_list(query_data: dict):
     """获取节点列表"""
     organization_ids = query_data.get("organization_ids")

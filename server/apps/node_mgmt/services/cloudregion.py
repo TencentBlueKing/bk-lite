@@ -3,6 +3,7 @@ import os
 import uuid
 
 import requests
+from django.core.cache import cache
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import node_logger as logger
@@ -10,27 +11,52 @@ from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.models import SidecarEnv
 from apps.node_mgmt.models.cloud_region import CloudRegion
 from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
-from apps.node_mgmt.constants.database import CloudRegionConstants
+from apps.node_mgmt.constants.database import CloudRegionConstants, EnvVariableConstants
 from apps.node_mgmt.constants.node import NodeConstants
+from apps.node_mgmt.constants.controller import ControllerConstants
+from apps.node_mgmt.services.sidecar_cache import build_sidecar_env_cache_key, invalidate_sidecar_env_cache
 from apps.node_mgmt.utils.token_auth import generate_node_token
 
 
 class RegionService:
     @staticmethod
-    def get_cloud_region_envconfig(cloud_region_id):
-        """获取云区域环境变量"""
-        objs = SidecarEnv.objects.filter(cloud_region_id=cloud_region_id)
+    def _decode_env_rows(env_rows, keys=None):
         variables = {}
-        for obj in objs:
-            if obj.type == "secret":
-                # 如果是密文，解密后使用
-                aes_obj = AESCryptor()
-                value = aes_obj.decode(obj.value)
-                variables[obj.key] = value
+        selected_keys = set(keys) if keys is not None else None
+        aes_obj = AESCryptor()
+        for env_row in env_rows:
+            if selected_keys is not None and env_row["key"] not in selected_keys:
+                continue
+
+            if env_row["type"] == "secret":
+                try:
+                    variables[env_row["key"]] = aes_obj.decode(env_row["value"])
+                except Exception as error:
+                    logger.warning(
+                        "Failed to decode cloud region secret env %s for cloud region cache read: %s",
+                        env_row["key"],
+                        error,
+                    )
+                    variables[env_row["key"]] = env_row["value"]
             else:
-                # 如果是普通变量，直接使用
-                variables[obj.key] = obj.value
+                variables[env_row["key"]] = env_row["value"]
         return variables
+
+    @staticmethod
+    def _get_cloud_region_env_rows(cloud_region_id):
+        """获取云区域环境变量"""
+        cache_key = build_sidecar_env_cache_key(cloud_region_id)
+        cached_env_rows = cache.get(cache_key)
+        if cached_env_rows is not None:
+            return cached_env_rows
+
+        env_rows = list(SidecarEnv.objects.filter(cloud_region_id=cloud_region_id).values("key", "value", "type"))
+        cache.set(cache_key, env_rows, ControllerConstants.E_CACHE_TIMEOUT)
+        return env_rows
+
+    @staticmethod
+    def get_cloud_region_envconfig(cloud_region_id, keys=None):
+        return RegionService._decode_env_rows(RegionService._get_cloud_region_env_rows(cloud_region_id), keys=keys)
 
     @staticmethod
     def get_deploy_script(data: dict):
@@ -204,6 +230,125 @@ class RegionService:
         return value.replace(old_address, new_address)
 
     @staticmethod
+    def _sync_proxy_address_env_var(cloud_region_id: int, proxy_address: str) -> int:
+        """同步云区域代理地址环境变量 PROXY_ADDRESS。"""
+        normalized_proxy_address = proxy_address or ""
+        env_var, created = SidecarEnv.objects.get_or_create(
+            cloud_region_id=cloud_region_id,
+            key=EnvVariableConstants.PROXY_ADDRESS_KEY,
+            defaults={
+                "value": normalized_proxy_address,
+                "type": EnvVariableConstants.TYPE_NORMAL,
+                "description": "云区域代理地址",
+                "is_pre": False,
+            },
+        )
+
+        if created:
+            logger.info(f"Created PROXY_ADDRESS env var for cloud region {cloud_region_id}: {normalized_proxy_address}")
+            return 1
+
+        update_fields = []
+        if env_var.value != normalized_proxy_address:
+            env_var.value = normalized_proxy_address
+            update_fields.append("value")
+        if env_var.type != EnvVariableConstants.TYPE_NORMAL:
+            env_var.type = EnvVariableConstants.TYPE_NORMAL
+            update_fields.append("type")
+        if env_var.is_pre:
+            env_var.is_pre = False
+            update_fields.append("is_pre")
+        if not env_var.description:
+            env_var.description = "云区域代理地址"
+            update_fields.append("description")
+
+        if update_fields:
+            env_var.save(update_fields=update_fields)
+            logger.info(f"Updated PROXY_ADDRESS env var for cloud region {cloud_region_id}: {normalized_proxy_address}")
+            return 1
+
+        return 0
+
+    @staticmethod
+    def _get_default_proxy_address() -> str | None:
+        """从默认云区域环境变量中提取默认代理地址。"""
+        default_env_var = SidecarEnv.objects.filter(
+            cloud_region_id=CloudRegionConstants.DEFAULT_CLOUD_REGION_ID,
+            key=NodeConstants.SERVER_URL_KEY,
+            is_pre=True,
+        ).first()
+
+        if not default_env_var:
+            logger.warning("Could not find NODE_SERVER_URL in default cloud region")
+            return None
+
+        default_address = RegionService._extract_default_address(default_env_var.value)
+        if not default_address:
+            logger.warning("Could not extract default address from NODE_SERVER_URL")
+            return None
+
+        return default_address
+
+    @staticmethod
+    def _sync_proxy_address_replace_env_vars(
+        cloud_region_id: int,
+        old_proxy_address: str,
+        new_proxy_address: str,
+        default_proxy_address: str | None = None,
+    ) -> int:
+        """同步需要基于代理地址做替换的环境变量。"""
+        resolved_default_proxy_address = default_proxy_address or RegionService._get_default_proxy_address()
+        if not resolved_default_proxy_address:
+            return 0
+
+        old_address = old_proxy_address or resolved_default_proxy_address
+        new_address = new_proxy_address or resolved_default_proxy_address
+
+        if old_address == new_address:
+            logger.info(f"Proxy address not changed for cloud region {cloud_region_id}, skip replace env vars update")
+            return 0
+
+        env_vars_to_update = SidecarEnv.objects.filter(
+            cloud_region_id=cloud_region_id,
+            key__in=NodeConstants.PROXY_ADDRESS_REPLACE_KEYS,
+        )
+
+        if not env_vars_to_update.exists():
+            logger.warning(f"No environment variables to update for cloud region {cloud_region_id}")
+            return 0
+
+        updated_count = 0
+        for env_var in env_vars_to_update:
+            old_value = env_var.value
+            new_value = RegionService._replace_address(old_value, old_address, new_address)
+
+            if old_value != new_value:
+                env_var.value = new_value
+                env_var.save(update_fields=["value"])
+                updated_count += 1
+                logger.info(f"Updated {env_var.key} for cloud region {cloud_region_id}: {old_value} -> {new_value}")
+
+        return updated_count
+
+    @staticmethod
+    def sync_proxy_related_env_vars(
+        cloud_region_id: int,
+        old_proxy_address: str = "",
+        new_proxy_address: str = "",
+        default_proxy_address: str | None = None,
+    ) -> int:
+        """统一同步云区域代理地址相关环境变量。"""
+        updated_count = RegionService._sync_proxy_address_env_var(cloud_region_id, new_proxy_address)
+        updated_count += RegionService._sync_proxy_address_replace_env_vars(
+            cloud_region_id=cloud_region_id,
+            old_proxy_address=old_proxy_address,
+            new_proxy_address=new_proxy_address,
+            default_proxy_address=default_proxy_address,
+        )
+        logger.info(f"Synchronized {updated_count} proxy-related env vars for cloud region {cloud_region_id}")
+        return updated_count
+
+    @staticmethod
     def init_env_vars(cloud_region_id):
         """初始化云区域下的环境变量
 
@@ -235,7 +380,7 @@ class RegionService:
 
             if not default_env_vars.exists():
                 logger.warning(f"No environment variables found in default cloud region")
-                return 0
+                return RegionService._sync_proxy_address_env_var(cloud_region_id, proxy_address)
 
             # 提取默认云区域的地址（从 NODE_SERVER_URL 中提取）
             default_address = None
@@ -273,6 +418,14 @@ class RegionService:
 
             # 使用 bulk_create 批量创建，ignore_conflicts=True 避免重复创建
             created_count = len(SidecarEnv.objects.bulk_create(new_env_vars, ignore_conflicts=True))
+            if created_count:
+                invalidate_sidecar_env_cache([cloud_region_id])
+            created_count += RegionService.sync_proxy_related_env_vars(
+                cloud_region_id=cloud_region_id,
+                old_proxy_address=proxy_address,
+                new_proxy_address=proxy_address,
+                default_proxy_address=default_address,
+            )
 
             logger.info(f"Initialized {created_count} environment variables for cloud region {cloud_region_id}")
             return created_count
@@ -295,55 +448,11 @@ class RegionService:
             int: 更新的环境变量数量
         """
         try:
-            # 获取默认云区域的地址（从 NODE_SERVER_URL 中提取）
-            default_env_var = SidecarEnv.objects.filter(
-                cloud_region_id=CloudRegionConstants.DEFAULT_CLOUD_REGION_ID,
-                key=NodeConstants.SERVER_URL_KEY,
-                is_pre=True,
-            ).first()
-
-            if not default_env_var:
-                logger.warning(f"Could not find NODE_SERVER_URL in default cloud region")
-                return 0
-
-            default_address = RegionService._extract_default_address(default_env_var.value)
-            if not default_address:
-                logger.warning(f"Could not extract default address from NODE_SERVER_URL")
-                return 0
-
-            # 确定旧地址和新地址
-            # 如果没有旧代理地址，说明之前使用的是默认地址
-            old_address = old_proxy_address if old_proxy_address else default_address
-            new_address = new_proxy_address if new_proxy_address else default_address
-
-            if old_address == new_address:
-                logger.info(f"Proxy address not changed for cloud region {cloud_region_id}, skip update")
-                return 0
-
-            # 获取需要更新的环境变量
-            env_vars_to_update = SidecarEnv.objects.filter(
+            return RegionService.sync_proxy_related_env_vars(
                 cloud_region_id=cloud_region_id,
-                key__in=NodeConstants.PROXY_ADDRESS_REPLACE_KEYS,
+                old_proxy_address=old_proxy_address or "",
+                new_proxy_address=new_proxy_address or "",
             )
-
-            if not env_vars_to_update.exists():
-                logger.warning(f"No environment variables to update for cloud region {cloud_region_id}")
-                return 0
-
-            # 批量更新环境变量
-            updated_count = 0
-            for env_var in env_vars_to_update:
-                old_value = env_var.value
-                new_value = RegionService._replace_address(old_value, old_address, new_address)
-
-                if old_value != new_value:
-                    env_var.value = new_value
-                    env_var.save(update_fields=["value"])
-                    updated_count += 1
-                    logger.info(f"Updated {env_var.key} for cloud region {cloud_region_id}: {old_value} -> {new_value}")
-
-            logger.info(f"Updated {updated_count} environment variables for cloud region {cloud_region_id}")
-            return updated_count
 
         except Exception as e:
             logger.exception(f"Failed to update environment variables for cloud region {cloud_region_id}")

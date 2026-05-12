@@ -17,26 +17,8 @@ CONSTRUCTOR_PARAMS = [
     {"name": "mysql_default_instance_id", "type": "string", "required": False, "description": "默认MySQL实例ID"},
 ]
 
-# 基础资源查询工具
-from apps.opspilot.metis.llm.tools.mysql.resources import (  # noqa: E402
-    get_current_database_info,
-    get_database_config,
-    get_table_structure,
-    list_mysql_databases,
-    list_mysql_indexes,
-    list_mysql_schemas,
-    list_mysql_tables,
-    list_mysql_users,
-)
-
-# 动态SQL查询工具
-from apps.opspilot.metis.llm.tools.mysql.dynamic import (  # noqa: E402
-    execute_safe_select,
-    explain_query_plan,
-    get_sample_data,
-    get_table_schema_details,
-    search_tables_by_keyword,
-)
+# 性能分析工具
+from apps.opspilot.metis.llm.tools.mysql.analysis import analyze_buffer_pool_usage, analyze_query_patterns, analyze_table_statistics  # noqa: E402
 
 # 故障诊断工具
 from apps.opspilot.metis.llm.tools.mysql.diagnostics import (  # noqa: E402
@@ -47,6 +29,15 @@ from apps.opspilot.metis.llm.tools.mysql.diagnostics import (  # noqa: E402
     diagnose_lock_conflicts,
     diagnose_slow_queries,
     get_failed_queries,
+)
+
+# 动态SQL查询工具
+from apps.opspilot.metis.llm.tools.mysql.dynamic import (  # noqa: E402
+    execute_safe_select,
+    explain_query_plan,
+    get_sample_data,
+    get_table_schema_details,
+    search_tables_by_keyword,
 )
 
 # 监控指标采集工具
@@ -69,11 +60,16 @@ from apps.opspilot.metis.llm.tools.mysql.optimization import (  # noqa: E402
     recommend_index_optimization,
 )
 
-# 性能分析工具
-from apps.opspilot.metis.llm.tools.mysql.analysis import (  # noqa: E402
-    analyze_buffer_pool_usage,
-    analyze_query_patterns,
-    analyze_table_statistics,
+# 基础资源查询工具
+from apps.opspilot.metis.llm.tools.mysql.resources import (  # noqa: E402
+    get_current_database_info,
+    get_database_config,
+    get_table_structure,
+    list_mysql_databases,
+    list_mysql_indexes,
+    list_mysql_schemas,
+    list_mysql_tables,
+    list_mysql_users,
 )
 
 # 通用工具函数

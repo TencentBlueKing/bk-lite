@@ -7,11 +7,13 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import ChatApplication, WorkFlowConversationHistory
 from apps.opspilot.models.bot_mgmt import BotWorkFlow
 from apps.opspilot.models.model_provider_mgmt import LLMSkill
 from apps.opspilot.serializers.chat_application_serializer import ChatApplicationSerializer
+from apps.opspilot.utils.team_permission_mixin import TeamPermissionMixin
 
 
 class ChatApplicationFilter(FilterSet):
@@ -36,7 +38,7 @@ class ChatApplicationFilter(FilterSet):
         return queryset
 
 
-class ChatApplicationViewSet(viewsets.ReadOnlyModelViewSet):
+class ChatApplicationViewSet(TeamPermissionMixin, viewsets.ReadOnlyModelViewSet):
     """
     聊天应用视图集
 
@@ -55,15 +57,25 @@ class ChatApplicationViewSet(viewsets.ReadOnlyModelViewSet):
         """根据用户团队过滤应用"""
         queryset = super().get_queryset()
 
+        # 验证 current_team 权限
+        current_team = self._validate_current_team_permission(self.request)
+
         # 如果不是超级用户，只返回用户所属团队的应用
         if not self.request.user.is_superuser:
-            current_team = self.request.COOKIES.get("current_team")
-            if current_team:
-                queryset = queryset.filter(bot__team__contains=[int(current_team)])
+            queryset = queryset.filter(bot__team__contains=[current_team])
 
         return queryset
 
+    @HasPermission("bot_list-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("bot_list-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
     @action(detail=False, methods=["get"])
+    @HasPermission("bot_list-View")
     def web_chat_sessions(self, request):
         """
         获取用户的 web_chat 会话列表
@@ -131,6 +143,7 @@ class ChatApplicationViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(result)
 
     @action(detail=False, methods=["get"])
+    @HasPermission("bot_list-View")
     def session_messages(self, request):
         """
         获取指定会话的全部对话内容
@@ -193,6 +206,7 @@ class ChatApplicationViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(return_data)
 
     @action(detail=False, methods=["get"])
+    @HasPermission("bot_list-View")
     def skill_guide(self, request):
         """
         获取工作流中第一个 LLM 节点对应的技能引导信息
@@ -282,6 +296,7 @@ class ChatApplicationViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({"error": f"查询失败: {str(e)}"}, status=500)
 
     @action(detail=False, methods=["POST"])
+    @HasPermission("bot_list-View")
     def delete_session_history(self, request):
         """
         删除指定会话的对话历史

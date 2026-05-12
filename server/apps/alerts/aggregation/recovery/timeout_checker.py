@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.utils import timezone
 from apps.alerts.models.models import Alert
 from apps.alerts.constants.constants import AlertStatus, SessionStatus
@@ -76,6 +77,32 @@ class TimeoutChecker:
             )
 
     @staticmethod
+    def _trigger_auto_assignment_for_alert_ids(alert_ids):
+        """在事务提交后批量触发自动分派"""
+        if not alert_ids:
+            return
+
+        from apps.alerts.tasks import async_auto_assignment_for_alerts
+
+        unique_alert_ids = list(dict.fromkeys(alert_ids))
+
+        def _dispatch():
+            try:
+                async_auto_assignment_for_alerts.delay(unique_alert_ids)
+                logger.info(
+                    "策略变更确认后触发自动分派: alert_ids=%s",
+                    unique_alert_ids,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(
+                    "策略变更确认后触发自动分派失败 alert_ids=%s, error=%s",
+                    unique_alert_ids,
+                    exc,
+                )
+
+        transaction.on_commit(_dispatch)
+
+    @staticmethod
     def confirm_observing_alerts_by_strategy(strategy_id: int):
         """
         确认指定策略关联的所有观察中告警
@@ -96,15 +123,19 @@ class TimeoutChecker:
         )
 
         confirmed_count = 0
+        confirmed_alert_ids = []
         for alert in observing_alerts:
             alert.session_status = SessionStatus.CONFIRMED
             alert.save(update_fields=["session_status", "updated_at"])
             confirmed_count += 1
+            confirmed_alert_ids.append(alert.alert_id)
 
             logger.info(
                 f"策略变更确认告警: strategy_id={strategy_id}, "
                 f"alert_id={alert.alert_id}, fingerprint={alert.fingerprint}"
             )
+
+        TimeoutChecker._trigger_auto_assignment_for_alert_ids(confirmed_alert_ids)
 
         logger.info(
             f"策略变更确认完成: strategy_id={strategy_id}, 确认告警数={confirmed_count}"

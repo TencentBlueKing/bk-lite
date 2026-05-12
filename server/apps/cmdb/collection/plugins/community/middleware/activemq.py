@@ -16,5 +16,4 @@ class ActivemqCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "java_version": "java_version",
         "xms": "xms",
         "xmx": "xmx",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }
