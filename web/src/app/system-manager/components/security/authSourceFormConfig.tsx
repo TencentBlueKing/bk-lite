@@ -76,6 +76,7 @@ export const getNewAuthSourceFormFields = ({
       <RoleTransfer
         treeData={roleTreeData}
         selectedKeys={selectedRoles}
+        personalRoleIds={selectedRoles}
         disabled={isBuiltIn}
         onChange={newKeys => {
           const nextRoleIds = newKeys.map((key) => Number(key));
@@ -194,6 +195,7 @@ export const getBluekingFormFields = ({
       <RoleTransfer
         treeData={roleTreeData}
         selectedKeys={selectedRoles}
+        personalRoleIds={selectedRoles}
         disabled={isBuiltIn}
         onChange={newKeys => {
           const nextRoleIds = newKeys.map((key) => Number(key));
