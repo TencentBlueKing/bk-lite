@@ -5,6 +5,7 @@ from django.http import HttpResponse, JsonResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import MaintainerViewSet
@@ -21,10 +22,56 @@ class QAPairsFilter(FilterSet):
 
 
 class QAPairsViewSet(MaintainerViewSet):
+    """QA对 ViewSet - 禁用未使用的内置 create 接口，使用自定义 action 创建"""
+
     queryset = QAPairs.objects.all()
     serializer_class = QAPairsSerializer
     filterset_class = QAPairsFilter
     ordering = ("-id",)
+
+    def create(self, request, *args, **kwargs):
+        """禁用内置 create 接口 - 使用 create_qa_pairs/create_qa_pairs_by_custom/create_qa_pairs_by_chunk 等 action"""
+        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
+
+    @HasPermission("knowledge_document-View")
+    def list(self, request, *args, **kwargs):
+        """列表接口 - 强制要求 knowledge_base_id，验证 current_team 权限"""
+        # 强制要求 knowledge_base_id 参数
+        knowledge_base_id = request.query_params.get("knowledge_base_id")
+        if not knowledge_base_id:
+            msg = self.loader.get("error.knowledge_base_required") if self.loader else "缺少 knowledge_base_id"
+            return JsonResponse({"result": False, "message": msg}, status=400)
+
+        # 验证 knowledge_base 是否存在
+        try:
+            knowledge_base = KnowledgeBase.objects.get(id=knowledge_base_id)
+        except KnowledgeBase.DoesNotExist:
+            msg = self.loader.get("error.knowledge_base_not_found") if self.loader else "知识库不存在"
+            return JsonResponse({"result": False, "message": msg}, status=404)
+
+        # 超管可以看到所有数据
+        if not request.user.is_superuser:
+            # 非超管用户：验证 current_team 权限
+            current_team = self._parse_current_team_cookie(request)
+            user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
+            if current_team not in user_group_ids:
+                msg = self.loader.get("error.no_permission_access_team") if self.loader else "无权访问该团队数据"
+                raise PermissionDenied(msg)
+
+            # 验证用户是否有权访问该知识库
+            if current_team not in knowledge_base.team:
+                msg = self.loader.get("error.no_permission_access_knowledge_base") if self.loader else "无权访问该知识库"
+                raise PermissionDenied(msg)
+
+        # 按 knowledge_base_id 过滤（已由 filterset_class 处理，这里显式确保）
+        queryset = self.filter_queryset(self.get_queryset()).filter(knowledge_base_id=knowledge_base_id)
+
+        page = self.paginate_queryset(queryset.order_by(*self.ordering))
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(queryset, many=True)
+        return JsonResponse({"result": True, "data": serializer.data})
 
     @HasPermission("knowledge_document-View")
     @CheckKnowledgePermission(QAPairs)

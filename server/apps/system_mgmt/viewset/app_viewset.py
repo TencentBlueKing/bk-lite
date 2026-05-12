@@ -32,21 +32,24 @@ class AppViewSet(LanguageViewSet):
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
 
-        # 记录操作日志
         if response.status_code == 201:
             app_name = response.data.get("name", "")
+            Role.objects.get_or_create(name="user", app=app_name)
             log_operation(request, "create", "app", f"新增应用: {app_name}")
 
         return response
 
     @HasPermission("application_list-Edit")
     def update(self, request, *args, **kwargs):
+        obj = self.get_object()
+        old_name = obj.name
         response = super().update(request, *args, **kwargs)
 
-        # 记录操作日志
         if response.status_code == 200:
-            app_name = response.data.get("name", "")
-            log_operation(request, "update", "app", f"编辑应用: {app_name}")
+            new_name = response.data.get("name", "")
+            if old_name != new_name:
+                Role.objects.filter(app=old_name).update(app=new_name)
+            log_operation(request, "update", "app", f"编辑应用: {new_name}")
 
         return response
 

@@ -33,13 +33,15 @@ from langgraph.prebuilt import ToolNode
 from loguru import logger
 from pydantic import BaseModel
 
-from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
+from apps.opspilot.metis.llm.chain.compaction import CompactionConfig, compact_messages
+from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, PrepareStepContext, PrepareStepResult, StopConditionContext, StopConditionResult
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
 from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
 from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
+from apps.opspilot.utils.execution_interrupt import is_interrupt_requested
 
 # --- Patch 1: Response deserialization (preserve reasoning_content) ----------
 
@@ -633,11 +635,22 @@ class ToolsNodes(BasicNode):
         self.mcp_config = {}
         self.tools_prompt_tokens = 0
         self.tools_completions_tokens = 0
+        # 动态工具选择相关
+        self.all_tools = []  # 全量工具池
+        self.active_tools = []  # 当前激活的工具
+        self.tool_catalog = {}  # {category_name: [tool_name, ...]}
+        self.tool_catalog_descriptions = {}  # {category_name: description}
+        self._category_tool_map = {}  # {category_name: [StructuredTool, ...]}
+        self._dynamic_mode = False  # 是否启用动态工具选择模式
+        # done tool 相关
+        self.done_tool_config = None  # DoneToolConfig，由外部设置
 
     def get_tools_description(self) -> str:
-        if self.tools:
+        # 动态模式下 self.tools 被清空，使用 all_tools 获取完整工具描述
+        source = self.all_tools if self.all_tools else self.tools
+        if source:
             tools_info = ""
-            for tool in self.tools:
+            for tool in source:
                 tools_info += f"{tool.name}: {tool.description}\n"
             return tools_info
         return ""
@@ -715,8 +728,218 @@ class ToolsNodes(BasicNode):
                 try:
                     langchain_tools = ToolsLoader.load_tools(server.url, server.extra_tools_prompt, server.extra_param_prompt)
                     self.tools.extend(langchain_tools)
+                    # 按类别记录工具映射
+                    category_name = server.url.replace("langchain:", "")
+                    self._category_tool_map[category_name] = langchain_tools
+                    self.tool_catalog[category_name] = [t.name for t in langchain_tools]
+                    # 描述取第一个工具的 description 前 100 字符或 server.extra_tools_prompt
+                    desc = server.extra_tools_prompt or (langchain_tools[0].description[:100] if langchain_tools else "")
+                    self.tool_catalog_descriptions[category_name] = desc
                 except Exception as e:
                     logger.error(f"LangChain 工具加载失败 ({server.url}): {e}。将继续使用其他可用工具。")
+
+        # MCP 工具也记录到 catalog
+        if self.mcp_config:
+            # 收集所有已被 LangChain 类别归属的工具名
+            categorized_names = {name for tools_list in self._category_tool_map.values() for name in [t.name for t in tools_list]}
+            # MCP 工具 = self.tools 中未被 LangChain 归类的部分
+            mcp_tools_ungrouped = [t for t in self.tools if t.name not in categorized_names]
+            # 按 MCP server 名逐个分配（工具名前缀匹配或均分到对应 server）
+            # 注: MultiServerMCPClient 返回的工具不携带 server 来源，此处按顺序尝试匹配
+            mcp_server_names = [s.name for s in request.tools_servers if not s.url.startswith("langchain:")]
+            if len(mcp_server_names) == 1:
+                # 单 MCP server: 全部归入
+                server_name = mcp_server_names[0]
+                server_cfg = next((s for s in request.tools_servers if s.name == server_name), None)
+                if mcp_tools_ungrouped:
+                    self._category_tool_map[server_name] = mcp_tools_ungrouped
+                    self.tool_catalog[server_name] = [t.name for t in mcp_tools_ungrouped]
+                    desc = (server_cfg.extra_tools_prompt if server_cfg else "") or f"MCP tools from {server_name}"
+                    self.tool_catalog_descriptions[server_name] = desc
+            elif len(mcp_server_names) > 1 and mcp_tools_ungrouped:
+                # 多 MCP server: 无法精确归属，统一归入 "mcp_tools" 类别
+                self._category_tool_map["mcp_tools"] = mcp_tools_ungrouped
+                self.tool_catalog["mcp_tools"] = [t.name for t in mcp_tools_ungrouped]
+                self.tool_catalog_descriptions["mcp_tools"] = f"MCP tools ({len(mcp_tools_ungrouped)} tools from {len(mcp_server_names)} servers)"
+
+        # 全量工具池
+        self.all_tools = list(self.tools)
+
+        # 动态工具选择：根据阈值决定是否启用
+        tool_pool_config = getattr(request, "tool_pool_config", None)
+        if tool_pool_config and tool_pool_config.enabled and len(self.all_tools) > tool_pool_config.auto_activate_threshold:
+            self._dynamic_mode = True
+            self.active_tools = []  # 初始不激活任何工具
+            self.tools = []  # 清空 self.tools，由 build_react_nodes 使用 active_tools + meta-tool
+            logger.info(f"动态工具选择已启用: 共 {len(self.all_tools)} 个工具函数, " f"{len(self.tool_catalog)} 个类别, 阈值={tool_pool_config.auto_activate_threshold}")
+        else:
+            self._dynamic_mode = False
+            self.active_tools = list(self.all_tools)
+            logger.info(f"动态工具选择未启用: 共 {len(self.all_tools)} 个工具函数，全部激活")
+
+        # done tool 配置
+        self.done_tool_config = getattr(request, "done_tool_config", None)
+
+    def _build_activate_tools_meta_tool(self):
+        """构建 activate_tools meta-tool，供 LLM 按需激活工具类别"""
+        from langchain_core.tools import StructuredTool
+
+        # 构建工具目录描述
+        catalog_lines = []
+        for category, tool_names in self.tool_catalog.items():
+            desc = self.tool_catalog_descriptions.get(category, "")
+            catalog_lines.append(f"- {category}: {desc} (包含 {len(tool_names)} 个工具)")
+        catalog_text = "\n".join(catalog_lines)
+
+        # 闭包引用
+        category_tool_map = self._category_tool_map
+        active_tools = self.active_tools
+
+        def activate_tools(categories: str) -> str:
+            """激活指定类别的工具，使其可用于后续调用。
+
+            Args:
+                categories: 逗号分隔的类别名称列表，如 "kubernetes,mysql"
+            """
+            category_list = [c.strip() for c in categories.split(",") if c.strip()]
+            activated = []
+            already_active = []
+            not_found = []
+
+            for cat in category_list:
+                if cat not in category_tool_map:
+                    not_found.append(cat)
+                    continue
+                cat_tools = category_tool_map[cat]
+                # 检查是否已激活
+                active_names = {t.name for t in active_tools}
+                new_tools = [t for t in cat_tools if t.name not in active_names]
+                if new_tools:
+                    active_tools.extend(new_tools)
+                    activated.append(f"{cat} ({len(new_tools)} 个工具)")
+                else:
+                    already_active.append(cat)
+
+            parts = []
+            if activated:
+                parts.append(f"已激活: {', '.join(activated)}")
+            if already_active:
+                parts.append(f"已存在: {', '.join(already_active)}")
+            if not_found:
+                parts.append(f"未找到: {', '.join(not_found)}")
+
+            active_names_now = [t.name for t in active_tools]
+            parts.append(f"当前可用工具: {active_names_now}")
+            return "; ".join(parts)
+
+        tool_description = f"激活工具类别，使对应工具可用于后续操作。输入逗号分隔的类别名称。\n\n" f"可用工具类别:\n{catalog_text}\n\n" f'示例: activate_tools(categories="kubernetes,mysql")'
+
+        meta_tool = StructuredTool.from_function(
+            func=activate_tools,
+            name="activate_tools",
+            description=tool_description,
+        )
+        return meta_tool
+
+    def _build_done_tool(self, done_cfg=None):
+        """构建 done tool 用于显式终止 ReAct 循环并返回结构化结果"""
+        if done_cfg is None:
+            from apps.opspilot.metis.llm.chain.entity import DoneToolConfig
+
+            done_cfg = DoneToolConfig()
+        if not done_cfg.enabled:
+            return None
+
+        from langchain_core.tools import StructuredTool
+        from pydantic import BaseModel as PydanticBaseModel
+        from pydantic import Field as PydanticField
+
+        class DoneToolInput(PydanticBaseModel):
+            result: str = PydanticField(description="任务的最终结构化结果（JSON 字符串）")
+
+        def _done_func(result: str) -> str:
+            # 实际不会执行，should_continue 会拦截
+            return result
+
+        done_tool = StructuredTool.from_function(
+            func=_done_func,
+            name=done_cfg.tool_name,
+            description=done_cfg.description,
+            args_schema=DoneToolInput,
+        )
+        return done_tool
+
+    def _build_approval_tool(self):
+        """构建 request_human_approval 工具，供 LLM 在判断操作高危时主动调用"""
+        from langchain_core.tools import StructuredTool
+        from pydantic import BaseModel as PydanticBaseModel
+        from pydantic import Field as PydanticField
+
+        class ApprovalToolInput(PydanticBaseModel):
+            action: str = PydanticField(description="即将执行的操作描述，包括工具名和关键参数")
+            reason: str = PydanticField(description="为什么需要人工审批（风险说明）")
+            risk_level: str = PydanticField(default="medium", description="风险等级: low / medium / high / critical")
+
+        async def _request_approval(action: str, reason: str, risk_level: str = "medium") -> str:
+            import time as _t
+            import uuid
+
+            from langchain_core.callbacks import dispatch_custom_event
+
+            from apps.opspilot.utils.approval import wait_for_approval
+
+            # 从 RunnableConfig 中获取上下文信息（通过闭包不可行，工具执行时由 ToolNode 调用）
+            # 使用唯一标识作为 tool_call_id 的替代
+            request_id = str(uuid.uuid4())[:8]
+            # 从当前执行上下文获取 execution_id
+            # 注意：ToolNode 执行工具时不传 config，所以用模块级的上下文
+            execution_id = getattr(_request_approval, "_execution_id", "") or str(int(_t.time() * 1000))
+            node_id = getattr(_request_approval, "_node_id", "skill_test")
+
+            approval_request_data = {
+                "execution_id": execution_id,
+                "node_id": node_id,
+                "tool_call_id": f"approval_{request_id}",
+                "tool_name": action,
+                "tool_args": {"reason": reason, "risk_level": risk_level},
+                "timeout_seconds": 300,
+            }
+            try:
+                dispatch_custom_event("approval_request", approval_request_data)
+            except Exception:
+                pass
+
+            logger.info(f"[approval_tool] 审批请求已发射: action={action}, risk={risk_level}, id={request_id}")
+
+            decision_info = await wait_for_approval(
+                execution_id=execution_id,
+                node_id=node_id,
+                tool_call_id=f"approval_{request_id}",
+                timeout_seconds=300,
+                poll_interval=1.0,
+                trigger_type="interactive",
+                unattended_strategy="skip",
+                timeout_fallback="deny",
+            )
+
+            decision = decision_info["decision"]
+            dec_reason = decision_info.get("reason", "")
+            logger.info(f"[approval_tool] 审批决策: decision={decision}, reason={dec_reason}")
+
+            if decision == "approve":
+                return f"已批准。你现在可以继续执行操作: {action}"
+            else:
+                return f"操作被拒绝: {action}。原因: {dec_reason}" if dec_reason else f"操作被拒绝: {action}。请告知用户操作未被批准。"
+
+        approval_tool = StructuredTool.from_function(
+            coroutine=_request_approval,
+            name="request_human_approval",
+            description=("当你判断即将执行的操作具有较高风险（如修改系统配置、删除数据、重启服务等），" "应先调用此工具请求人工审批。描述你要做什么以及为什么需要审批。" "收到审批结果后，根据结果决定是否继续执行实际操作。"),
+            args_schema=ApprovalToolInput,
+        )
+        # 存储执行上下文的引用，在 build_react_nodes 中设置
+        approval_tool._request_approval_func = _request_approval
+        return approval_tool
 
     async def build_tools_node(self) -> ToolNode:
         """构建工具节点"""
@@ -734,13 +957,14 @@ class ToolsNodes(BasicNode):
 
     # ========== 使用 LangGraph 标准 ReAct Agent 实现 ==========
 
-    async def build_react_nodes(
+    async def build_react_nodes(  # noqa: C901
         self,
         graph_builder: StateGraph,
         composite_node_name: str = "react_agent",
         additional_system_prompt: Optional[str] = None,
         next_node: str = END,
         tools_node: Optional[ToolNode] = None,
+        agent_name: Optional[str] = None,
     ) -> str:
         """构建 ReAct Agent 节点组合
 
@@ -765,6 +989,48 @@ class ToolsNodes(BasicNode):
         # 保存引用供闭包使用
         tools = self.tools
         get_llm_client = self.get_llm_client
+        step_counter = {"count": 0}  # 步数计数器（闭包可变引用）
+        token_counter = {"total": 0}  # 累计 token 计数器
+        start_time = {"value": None}  # 总超时起始时间（首步时初始化）
+        # 反思追踪器
+        reflection_tracker = {
+            "consecutive_failures": 0,  # 连续失败计数
+            "tool_call_history": [],  # 最近的工具调用名称列表
+        }
+        # 动态工具选择相关
+        dynamic_mode = self._dynamic_mode
+        active_tools_ref = self.active_tools  # 可变列表引用
+        meta_tool = self._build_activate_tools_meta_tool() if dynamic_mode else None
+        # done tool 结构化终止
+        done_tool_instance = self._build_done_tool(self.done_tool_config)
+        done_tool_name = self.done_tool_config.tool_name if (self.done_tool_config and self.done_tool_config.enabled) else None
+        # 人工审批工具（LLM 自主判断高危操作时调用）
+        approval_tool_instance = self._build_approval_tool() if (self.all_tools or self.tools) else None
+
+        # ========== 步骤进度发射辅助 ==========
+        def _emit_step_progress(max_steps: int, status: str, description: str = "", tool_name: str = None, step_elapsed: float = 0.0):
+            """发射 agent_step_progress 自定义事件"""
+            import time as _t
+
+            from langchain_core.callbacks import dispatch_custom_event
+
+            total_elapsed = (_t.monotonic() - start_time["value"]) if start_time["value"] else 0.0
+            try:
+                dispatch_custom_event(
+                    "agent_step_progress",
+                    {
+                        "agent_name": agent_name,
+                        "step": step_counter["count"],
+                        "max_steps": max_steps,
+                        "status": status,
+                        "description": description,
+                        "tool_name": tool_name,
+                        "elapsed_seconds": round(step_elapsed, 2),
+                        "total_elapsed_seconds": round(total_elapsed, 2),
+                    },
+                )
+            except Exception:
+                pass  # 非关键路径，不阻断执行
 
         # ========== Agent 节点：调用 LLM 并决定是否使用工具 ==========
         async def agent_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
@@ -772,18 +1038,44 @@ class ToolsNodes(BasicNode):
             graph_request = config["configurable"]["graph_request"]
             trace_id = config["configurable"].get("trace_id", "unknown")
 
+            # 设置审批工具的执行上下文
+            if approval_tool_instance:
+                func = approval_tool_instance._request_approval_func
+                func._execution_id = config["configurable"].get("execution_id", "")
+                func._node_id = config["configurable"].get("node_id", "skill_test")
+
             # 构建系统提示
+            # 动态工具模式下，构建 activate_tools 使用说明
+            dynamic_tool_instruction = ""
+            if dynamic_mode and meta_tool:
+                catalog_lines = []
+                for category, tool_names in self.tool_catalog.items():
+                    desc = self.tool_catalog_descriptions.get(category, "")
+                    catalog_lines.append(f"- {category}: {desc} (包含 {len(tool_names)} 个工具)")
+                catalog_text = "\n".join(catalog_lines)
+                dynamic_tool_instruction = (
+                    "【铁律：必须先激活工具才能执行任何操作】\n\n"
+                    "你当前没有直接可用的操作工具。你必须先调用 activate_tools 工具来激活需要的工具类别，"
+                    "然后才能使用对应的具体工具完成用户的请求。\n\n"
+                    "可用的工具类别:\n"
+                    f"{catalog_text}\n\n"
+                    '使用方式: 根据用户的请求，判断需要哪些类别的工具，立即调用 activate_tools(categories="类别名1,类别名2") 来激活它们。\n'
+                    "激活后，你就可以使用该类别下的具体工具来完成用户的请求。\n\n"
+                    "⚠️ 重要: \n"
+                    "- 不要告诉用户你无法执行操作，你拥有工具能力，只需要先激活对应类别\n"
+                    "- 不要直接回答用户的问题，必须先调用 activate_tools 激活工具，再使用具体工具获取真实数据\n"
+                    "- 收到用户请求后的第一个动作必须是调用 activate_tools\n"
+                )
+
             final_system_prompt = TemplateLoader.render_template(
                 "prompts/graph/react_agent_system_message",
-                {"user_system_message": graph_request.system_message_prompt, "additional_system_prompt": additional_system_prompt or ""},
+                {
+                    "user_system_message": graph_request.system_message_prompt,
+                    "additional_system_prompt": additional_system_prompt or "",
+                    "dynamic_tool_instruction": dynamic_tool_instruction,
+                    "has_approval_tool": approval_tool_instance is not None,
+                },
             )
-
-            # 获取 LLM 并绑定工具
-            llm = get_llm_client(graph_request)
-            if tools:
-                llm_with_tools = llm.bind_tools(tools)
-            else:
-                llm_with_tools = llm
 
             # 准备消息列表
             messages = state.get("messages", [])
@@ -792,16 +1084,224 @@ class ToolsNodes(BasicNode):
             if not any(isinstance(m, SystemMessage) for m in messages):
                 messages = [SystemMessage(content=final_system_prompt)] + list(messages)
 
+            # 消息裁剪：在 compaction 之前执行轻量级裁剪（截断过长消息、清理早期图片）
+            trim_cfg = graph_request.message_trim_config
+            if trim_cfg.enabled and (tools or dynamic_mode):
+                from apps.opspilot.metis.llm.chain.message_trim import trim_messages
+
+                messages = trim_messages(messages, trim_cfg, model_name=graph_request.model)
+
+            # 上下文 Compaction：检测 token 是否超限，自动压缩历史消息
+            if graph_request.compaction_enabled and (tools or dynamic_mode):
+                compaction_config = CompactionConfig(
+                    enabled=graph_request.compaction_enabled,
+                    max_token_threshold=graph_request.compaction_max_token_threshold,
+                    keep_recent_messages=graph_request.compaction_keep_recent_messages,
+                    summary_max_tokens=graph_request.compaction_summary_max_tokens,
+                )
+                # 使用 isolated LLM 生成摘要（不被 LangGraph 流捕获）
+                compaction_llm = get_llm_client(graph_request, disable_stream=True, isolated=True)
+                messages = await compact_messages(
+                    messages=messages,
+                    llm=compaction_llm,
+                    config=compaction_config,
+                    model_name=graph_request.model,
+                )
+
+            # ========== prepareStep 钩子：每步前允许修改 tools/messages ==========
+            step_counter["count"] += 1
+
+            # 发射步骤开始进度事件
+            _emit_step_progress(graph_request.max_steps, "running", description=f"步骤 {step_counter['count']} 开始")
+
+            # ========== 中断检查：每步开始时检查是否被请求中断 ==========
+            execution_id = config["configurable"].get("execution_id", "")
+            if execution_id and is_interrupt_requested(execution_id):
+                logger.info(f"[{trace_id}] agent_node 检测到中断请求 (step={step_counter['count']})")
+                _emit_step_progress(graph_request.max_steps, "interrupted", description="任务已被中断")
+                return {"messages": [AIMessage(content="任务已被中断。")]}
+
+            # ========== 总超时检查 ==========
+            import time as _time
+
+            timeout_cfg = graph_request.timeout_config
+            if timeout_cfg.enabled:
+                if start_time["value"] is None:
+                    start_time["value"] = _time.monotonic()
+                elif timeout_cfg.total_timeout_seconds > 0:
+                    elapsed = _time.monotonic() - start_time["value"]
+                    if elapsed >= timeout_cfg.total_timeout_seconds:
+                        logger.warning(
+                            f"[{trace_id}] agent_node 总超时 (step={step_counter['count']}, "
+                            f"elapsed={elapsed:.1f}s >= {timeout_cfg.total_timeout_seconds}s)"
+                        )
+                        _emit_step_progress(graph_request.max_steps, "timeout", description=f"任务已超时（{elapsed:.0f}s）")
+                        return {"messages": [AIMessage(content=f"任务已超时（已运行 {elapsed:.0f} 秒）。基于已有信息，以下是当前进展的总结。")]}
+
+            # 本轮使用的工具（动态模式下从 active_tools 取，并附加 meta-tool）
+            if dynamic_mode:
+                current_tools = list(active_tools_ref) + ([meta_tool] if meta_tool else [])
+            else:
+                current_tools = list(tools)
+            # 附加 done tool（如果启用）
+            if done_tool_instance:
+                current_tools = current_tools + [done_tool_instance]
+            # 附加审批工具
+            if approval_tool_instance:
+                current_tools = current_tools + [approval_tool_instance]
+
             logger.info(
                 f"[{trace_id}] ReAct agent_node 准备调用 LLM, model={graph_request.model!r}, "
-                f"bound_tool_count={len(tools)}, bound_tool_names={[tool.name for tool in tools]}, "
+                f"bound_tool_count={len(current_tools)}, bound_tool_names={[tool.name for tool in current_tools]}, "
                 f"message_count={len(messages)}, message_types={[type(m).__name__ for m in messages]}, "
                 f"last_message_preview={str(getattr(messages[-1], 'content', ''))[:200]!r}"
             )
 
-            # 调用 LLM
+            extra_system_prompt_override = None
+
+            if graph_request.prepare_step_hooks:
+                ctx = PrepareStepContext(
+                    step_number=step_counter["count"],
+                    messages=messages,
+                    tools=current_tools,
+                    model=graph_request.model,
+                )
+                for hook in graph_request.prepare_step_hooks:
+                    try:
+                        import inspect
+
+                        if inspect.iscoroutinefunction(hook):
+                            result = await hook(ctx)
+                        else:
+                            result = hook(ctx)
+
+                        if isinstance(result, PrepareStepResult):
+                            if result.stop:
+                                logger.info(f"[{trace_id}] prepareStep 钩子请求终止循环 (step={step_counter['count']})")
+                                return {"messages": [AIMessage(content=result.metadata.get("stop_message", "任务已被 prepareStep 钩子终止"))]}
+                            if result.messages is not None:
+                                messages = result.messages
+                            if result.tools is not None:
+                                current_tools = result.tools
+                            if result.additional_system_prompt is not None:
+                                extra_system_prompt_override = result.additional_system_prompt
+                            ctx.metadata.update(result.metadata)
+                    except Exception as e:
+                        logger.warning(f"[{trace_id}] prepareStep 钩子执行失败: {e}")
+
+            if extra_system_prompt_override is not None:
+                step_system_prompt = TemplateLoader.render_template(
+                    "prompts/graph/react_agent_system_message",
+                    {
+                        "user_system_message": graph_request.system_message_prompt,
+                        "additional_system_prompt": extra_system_prompt_override,
+                        "dynamic_tool_instruction": dynamic_tool_instruction,
+                        "has_approval_tool": approval_tool_instance is not None,
+                    },
+                )
+                if messages and isinstance(messages[0], SystemMessage):
+                    messages = [SystemMessage(content=step_system_prompt)] + list(messages[1:])
+                else:
+                    messages = [SystemMessage(content=step_system_prompt)] + list(messages)
+
+            # ========== 循环内反思：检测连续失败或重复调用 ==========
+            reflection_cfg = graph_request.reflection_config
+            if reflection_cfg.enabled and step_counter["count"] > 1:
+                trigger_reflection = False
+                reflection_reason = ""
+
+                # 条件 1: 连续失败超过阈值
+                if reflection_tracker["consecutive_failures"] >= reflection_cfg.consecutive_failures_threshold:
+                    trigger_reflection = True
+                    reflection_reason = f"连续 {reflection_tracker['consecutive_failures']} 次工具调用失败"
+
+                # 条件 2: 重复调用检测
+                if not trigger_reflection:
+                    history = reflection_tracker["tool_call_history"]
+                    window = history[-reflection_cfg.repetition_window :] if len(history) >= reflection_cfg.repetition_window else history
+                    if window:
+                        from collections import Counter
+
+                        counts = Counter(window)
+                        most_common_name, most_common_count = counts.most_common(1)[0]
+                        if most_common_count >= reflection_cfg.repetition_threshold:
+                            trigger_reflection = True
+                            reflection_reason = f"工具 '{most_common_name}' 在最近 {len(window)} 次调用中被重复调用 {most_common_count} 次"
+
+                if trigger_reflection:
+                    reflection_prompt = TemplateLoader.render_template(
+                        "prompts/graph/reflection_prompt",
+                        {"reason": reflection_reason, "step_number": step_counter["count"]},
+                    )
+                    messages = list(messages) + [HumanMessage(content=reflection_prompt)]
+                    logger.info(f"[{trace_id}] 触发循环内反思 (step={step_counter['count']}): {reflection_reason}")
+                    # 重置追踪器，给 agent 一次"重新来过"的机会
+                    reflection_tracker["consecutive_failures"] = 0
+                    reflection_tracker["tool_call_history"] = []
+
+            # ========== Token 预算软阈值：注入 wrap-up 提示 ==========
+            if (
+                graph_request.max_tokens_budget > 0
+                and graph_request.soft_budget_ratio < 1.0
+                and token_counter["total"] >= graph_request.max_tokens_budget * graph_request.soft_budget_ratio
+                and token_counter["total"] < graph_request.max_tokens_budget
+            ):
+                used_pct = int(token_counter["total"] / graph_request.max_tokens_budget * 100)
+                wrapup_prompt = TemplateLoader.render_template(
+                    "prompts/graph/budget_wrapup_prompt",
+                    {
+                        "step_number": step_counter["count"],
+                        "used_percent": used_pct,
+                        "used_tokens": token_counter["total"],
+                        "total_budget": graph_request.max_tokens_budget,
+                    },
+                )
+                messages = list(messages) + [HumanMessage(content=wrapup_prompt)]
+                logger.info(f"[{trace_id}] Token 预算软阈值触发 wrap-up (step={step_counter['count']}, {used_pct}%)")
+
+            # 获取 LLM 并绑定工具
+            llm = get_llm_client(graph_request)
+            if current_tools:
+                # toolChoice 控制
+                tool_choice_cfg = getattr(graph_request, "tool_choice_config", None)
+                bind_kwargs = {}
+
+                # 动态模式下，如果尚未激活任何工具，强制 LLM 必须调用 activate_tools
+                # 但如果上一条消息是审批工具的拒绝结果，不强制（允许 LLM 直接回复用户）
+                if dynamic_mode and not active_tools_ref:
+                    last_msg = messages[-1] if messages else None
+                    last_is_approval_reject = (
+                        last_msg is not None and hasattr(last_msg, "content") and isinstance(last_msg.content, str) and "操作被拒绝" in last_msg.content
+                    )
+                    if not last_is_approval_reject:
+                        bind_kwargs["tool_choice"] = "any"
+                        logger.info(f"[{trace_id}] 动态模式: 尚未激活工具，强制 tool_choice='any' 以触发 activate_tools")
+                elif tool_choice_cfg and tool_choice_cfg.mode != "auto":
+                    # 检查是否在生效步骤范围内
+                    in_scope = tool_choice_cfg.apply_on_steps is None or step_counter["count"] in tool_choice_cfg.apply_on_steps
+                    if in_scope:
+                        if tool_choice_cfg.mode == "none":
+                            bind_kwargs["tool_choice"] = "none"
+                        elif tool_choice_cfg.mode == "any":
+                            bind_kwargs["tool_choice"] = "any"
+                        elif tool_choice_cfg.mode == "specific" and tool_choice_cfg.tool_name:
+                            bind_kwargs["tool_choice"] = tool_choice_cfg.tool_name
+                llm_with_tools = llm.bind_tools(current_tools, **bind_kwargs)
+            else:
+                llm_with_tools = llm
+
+            # 调用 LLM（带超时保护）
             try:
-                response = await llm_with_tools.ainvoke(messages)
+                import asyncio as _asyncio
+
+                llm_timeout = timeout_cfg.llm_timeout_seconds if (timeout_cfg.enabled and timeout_cfg.llm_timeout_seconds > 0) else None
+                if llm_timeout:
+                    response = await _asyncio.wait_for(llm_with_tools.ainvoke(messages), timeout=llm_timeout)
+                else:
+                    response = await llm_with_tools.ainvoke(messages)
+            except _asyncio.TimeoutError:
+                logger.warning(f"[{trace_id}] ReAct agent_node LLM 调用超时 ({timeout_cfg.llm_timeout_seconds}s)")
+                return {"messages": [AIMessage(content=f"LLM 调用超时（{timeout_cfg.llm_timeout_seconds}s），请稍后重试或简化问题。")]}
             except Exception as e:
                 logger.exception(f"[{trace_id}] ReAct agent_node 调用 LLM 异常: {e}")
                 raise
@@ -811,53 +1311,488 @@ class ToolsNodes(BasicNode):
                 return {"messages": []}
 
             tool_calls = getattr(response, "tool_calls", None) or []
+
+            # ========== done tool 拦截：在 agent_node 中直接处理，避免进入 tools_node ==========
+            if done_tool_name and tool_calls:
+                for tc in tool_calls:
+                    if tc.get("name") == done_tool_name:
+                        import json as _json
+
+                        done_result = tc.get("args", {}).get("result", "")
+                        try:
+                            parsed = _json.loads(done_result) if isinstance(done_result, str) else done_result
+                        except (ValueError, TypeError):
+                            parsed = done_result
+                        structured_output = _json.dumps(parsed, ensure_ascii=False) if not isinstance(parsed, str) else parsed
+                        logger.info(f"[{trace_id}] agent_node 检测到 done tool 调用，返回结构化结果, " f"result_preview={str(structured_output)[:200]!r}")
+                        # 返回无 tool_calls 的 AIMessage，should_continue 会自然终止
+                        _emit_step_progress(graph_request.max_steps, "completed", description="任务完成（done tool）")
+                        return {"messages": [AIMessage(content=structured_output)]}
+
+            # 累计 token 统计
+            usage_metadata = getattr(response, "usage_metadata", None) or {}
+            if isinstance(usage_metadata, dict):
+                token_counter["total"] += usage_metadata.get("total_tokens", 0)
+
             logger.info(
                 f"[{trace_id}] ReAct agent_node 返回: message_type={type(response).__name__}, "
                 f"tool_call_count={len(tool_calls)}, content_preview={str(getattr(response, 'content', ''))[:200]!r}"
             )
             if tool_calls:
                 logger.info(f"[{trace_id}] ReAct agent_node tool_calls: {tool_calls}")
+            else:
+                # LLM 未调用工具 → 循环即将自然结束
+                _emit_step_progress(graph_request.max_steps, "completed", description="任务完成")
 
             return {"messages": [response]}
 
         # ========== 工具节点：执行工具调用 ==========
-        tool_node = tools_node if tools_node else ToolNode(tools, handle_tool_errors=True)
+        # 工具节点必须包含全量工具（因为激活后的工具都可能被调用）
+        if dynamic_mode:
+            all_tools_for_node = list(self.all_tools) + ([meta_tool] if meta_tool else [])
+        else:
+            all_tools_for_node = list(tools)
+        # done tool 也加入 ToolNode（虽然 should_continue 会拦截，但保持一致性）
+        if done_tool_instance:
+            all_tools_for_node = all_tools_for_node + [done_tool_instance]
+        # 审批工具加入 ToolNode
+        if approval_tool_instance:
+            all_tools_for_node = all_tools_for_node + [approval_tool_instance]
+        tool_node = tools_node if tools_node else ToolNode(all_tools_for_node, handle_tool_errors=True)
 
         async def logged_tool_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
-            """带日志的工具节点包装器。"""
+            """带日志和自适应重试的工具节点包装器。"""
+            import asyncio
+
             trace_id = config["configurable"].get("trace_id", "unknown")
+            graph_request = config["configurable"]["graph_request"]
+            retry_cfg = graph_request.retry_config
+
             messages = state.get("messages", [])
             last_message = messages[-1] if messages else None
             tool_calls = getattr(last_message, "tool_calls", None) or []
             logger.info(f"[{trace_id}] ReAct tools_node 开始执行, tool_call_count={len(tool_calls)}, tool_calls={tool_calls}")
-            result = await tool_node.ainvoke(state, config=config)
+
+            # ========== 中断检查：工具执行前检查是否被请求中断 ==========
+            execution_id = config["configurable"].get("execution_id", "")
+            if execution_id and is_interrupt_requested(execution_id):
+                from langchain_core.messages import ToolMessage
+
+                logger.info(f"[{trace_id}] logged_tool_node 检测到中断请求，跳过工具执行")
+                # 返回空 ToolMessage 以满足 LangGraph 对 tool_call_id 配对的要求
+                interrupted_msgs = []
+                for tc in tool_calls:
+                    tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
+                    interrupted_msgs.append(ToolMessage(content="[执行已中断]", tool_call_id=tc_id))
+                return {"messages": interrupted_msgs}
+
+            # ========== 操作前快照（回滚用）==========
+            rollback_cfg = graph_request.rollback_config
+            snapshots: Dict[str, str] = {}  # tool_call_id -> snapshot_result
+            rollback_specs: Dict[str, Any] = {}  # tool_call_id -> ToolRollbackSpec
+            if rollback_cfg.enabled and tool_calls:
+                from apps.opspilot.utils.rollback import get_rollback_spec, take_snapshot
+
+                all_tools_for_snapshot = list(self.tools) + (list(self.all_tools) if hasattr(self, "all_tools") else [])
+                for tc in tool_calls:
+                    tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
+                    tc_name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
+                    tc_args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+
+                    # 查找工具实例
+                    tool_inst = None
+                    for t in all_tools_for_snapshot:
+                        if getattr(t, "name", "") == tc_name:
+                            tool_inst = t
+                            break
+
+                    rb_spec = get_rollback_spec(tc_name, tool_inst, rollback_cfg)
+                    if rb_spec and rb_spec.strategy != "none":
+                        rollback_specs[tc_id] = rb_spec
+                        snapshot = await take_snapshot(
+                            spec=rb_spec,
+                            action_tool_name=tc_name,
+                            action_tool_args=tc_args,
+                            available_tools=all_tools_for_snapshot,
+                            runnable_config=config,
+                        )
+                        if snapshot:
+                            snapshots[tc_id] = snapshot
+                            logger.info(f"[{trace_id}] 快照完成: tool={tc_name}, tc_id={tc_id}")
+
+            # ========== 工具执行（带单步超时保护）==========
+            import asyncio as _asyncio
+
+            timeout_cfg = graph_request.timeout_config
+            step_timeout = timeout_cfg.step_timeout_seconds if (timeout_cfg.enabled and timeout_cfg.step_timeout_seconds > 0) else None
+
+            # 发射工具执行开始事件
+            tool_names = [tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "") for tc in tool_calls]
+            _emit_step_progress(
+                graph_request.max_steps,
+                "tool_executing",
+                description=f"执行工具: {', '.join(tool_names)}",
+                tool_name=tool_names[0] if tool_names else None,
+            )
+
+            try:
+                if step_timeout:
+                    result = await _asyncio.wait_for(tool_node.ainvoke(state, config=config), timeout=step_timeout)
+                else:
+                    result = await tool_node.ainvoke(state, config=config)
+            except _asyncio.TimeoutError:
+                logger.warning(f"[{trace_id}] logged_tool_node 工具执行超时 ({step_timeout}s)")
+                # 返回超时错误 ToolMessage
+                from langchain_core.messages import ToolMessage
+
+                timeout_msgs = []
+                for tc in tool_calls:
+                    tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
+                    timeout_msgs.append(ToolMessage(content=f"Error: 工具执行超时 ({step_timeout}s)", tool_call_id=tc_id))
+                return {"messages": timeout_msgs}
             result_messages = result.get("messages", []) if isinstance(result, dict) else []
+
+            # ========== 自适应重试：检测工具错误并重试 ==========
+            if retry_cfg.enabled and result_messages:
+                from langchain_core.messages import ToolMessage
+
+                retried_any = False
+                for idx, msg in enumerate(result_messages):
+                    if not isinstance(msg, ToolMessage):
+                        continue
+                    content_str = str(getattr(msg, "content", ""))
+                    # 检查是否为错误响应（ToolNode handle_tool_errors 将异常写入 content）
+                    is_error = content_str.startswith("Error:") or content_str.startswith("Traceback")
+                    if not is_error:
+                        # 关键词匹配仅对短内容生效（长内容通常是正常工具结果，可能误匹配）
+                        if len(content_str) < 500:
+                            content_lower = content_str.lower()
+                            is_error = any(kw in content_lower for kw in retry_cfg.retry_on_error_keywords)
+                    # 跳过 meta-tool（activate_tools）的重试
+                    if is_error and meta_tool:
+                        tool_call_id = getattr(msg, "tool_call_id", "")
+                        # 检查该 tool_call_id 对应的是否为 activate_tools
+                        for tc in tool_calls:
+                            tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
+                            tc_name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
+                            if tc_id == tool_call_id and tc_name == meta_tool.name:
+                                is_error = False
+                                break
+                    # 跳过审批工具的重试
+                    if is_error and approval_tool_instance:
+                        tool_call_id = getattr(msg, "tool_call_id", "")
+                        for tc in tool_calls:
+                            tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
+                            tc_name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
+                            if tc_id == tool_call_id and tc_name == "request_human_approval":
+                                is_error = False
+                                break
+
+                    if is_error and retry_cfg.max_retries_per_tool > 0:
+                        tool_call_id = getattr(msg, "tool_call_id", "")
+                        for attempt in range(1, retry_cfg.max_retries_per_tool + 1):
+                            wait_time = retry_cfg.backoff_seconds * (2 ** (attempt - 1))
+                            logger.info(
+                                f"[{trace_id}] 工具重试 (attempt={attempt}/{retry_cfg.max_retries_per_tool}, "
+                                f"tool_call_id={tool_call_id}, wait={wait_time}s): {content_str[:100]}"
+                            )
+                            await asyncio.sleep(wait_time)
+
+                            retry_result = await tool_node.ainvoke(state, config=config)
+                            retry_messages = retry_result.get("messages", []) if isinstance(retry_result, dict) else []
+
+                            # 找到对应 tool_call_id 的结果
+                            retry_msg = None
+                            for rm in retry_messages:
+                                if isinstance(rm, ToolMessage) and getattr(rm, "tool_call_id", "") == tool_call_id:
+                                    retry_msg = rm
+                                    break
+
+                            if retry_msg:
+                                retry_content = str(getattr(retry_msg, "content", ""))
+                                retry_is_error = retry_content.startswith("Error:") or retry_content.startswith("Traceback")
+                                if not retry_is_error:
+                                    retry_content_lower = retry_content.lower()
+                                    retry_is_error = any(kw in retry_content_lower for kw in retry_cfg.retry_on_error_keywords)
+
+                                if not retry_is_error:
+                                    # 重试成功，替换结果
+                                    result_messages[idx] = retry_msg
+                                    retried_any = True
+                                    logger.info(f"[{trace_id}] 工具重试成功 (attempt={attempt}, tool_call_id={tool_call_id})")
+                                    break
+                        else:
+                            logger.warning(f"[{trace_id}] 工具重试耗尽 (tool_call_id={tool_call_id})，保留原始错误")
+
+                if retried_any:
+                    result = {"messages": result_messages}
+
+            # ========== 反思追踪：记录工具执行结果 ==========
+            from langchain_core.messages import ToolMessage
+
+            has_failure = False
+            for msg in result_messages:
+                if isinstance(msg, ToolMessage):
+                    content_str = str(getattr(msg, "content", ""))
+                    is_error = content_str.startswith("Error:") or content_str.startswith("Traceback")
+                    if not is_error:
+                        content_lower = content_str.lower()
+                        is_error = any(kw in content_lower for kw in ["error", "failed", "exception"])
+                    if is_error:
+                        has_failure = True
+
+            if has_failure:
+                reflection_tracker["consecutive_failures"] += 1
+            else:
+                reflection_tracker["consecutive_failures"] = 0
+
+            # 记录工具调用名称
+            for tc in tool_calls:
+                if isinstance(tc, dict):
+                    reflection_tracker["tool_call_history"].append(tc.get("name", ""))
+                else:
+                    reflection_tracker["tool_call_history"].append(getattr(tc, "name", ""))
+
             logger.info(
                 f"[{trace_id}] ReAct tools_node 执行结束, result_message_count={len(result_messages)}, "
                 f"result_types={[type(msg).__name__ for msg in result_messages]}"
             )
+
+            # ========== 构建 tool_call 信息映射（验证和回滚共用）==========
+            tc_info_map = {}
+            for tc in tool_calls:
+                tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
+                tc_name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
+                tc_args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+                tc_info_map[tc_id] = (tc_name, tc_args)
+
+            all_available_tools = list(self.tools) + (list(self.all_tools) if hasattr(self, "all_tools") else [])
+
+            # ========== 执行后验证 ==========
+            verify_cfg = graph_request.verification_config
+            if verify_cfg.enabled and result_messages:
+                from apps.opspilot.utils.verification import get_verification_spec, run_verification
+
+                verification_msgs = []
+                for msg in result_messages:
+                    if not isinstance(msg, ToolMessage):
+                        continue
+                    tc_id = getattr(msg, "tool_call_id", "")
+                    if tc_id not in tc_info_map:
+                        continue
+
+                    tc_name, tc_args = tc_info_map[tc_id]
+                    content_str = str(getattr(msg, "content", ""))
+
+                    # 跳过错误结果（不验证失败的工具调用）
+                    is_error = content_str.startswith("Error:") or content_str.startswith("Traceback")
+                    if is_error:
+                        continue
+
+                    # 查找工具实例
+                    tool_instance = None
+                    for t in all_available_tools:
+                        if getattr(t, "name", "") == tc_name:
+                            tool_instance = t
+                            break
+
+                    # 获取验证规格
+                    spec = get_verification_spec(tc_name, tool_instance, verify_cfg)
+                    if not spec:
+                        continue
+
+                    logger.info(f"[{trace_id}] 触发执行后验证: action={tc_name}, verify={spec.verify_tool}")
+
+                    # 发射验证事件
+                    try:
+                        from langchain_core.callbacks import dispatch_custom_event
+
+                        dispatch_custom_event(
+                            "verification_started",
+                            {
+                                "action_tool": tc_name,
+                                "verify_tool": spec.verify_tool,
+                                "description": spec.description,
+                            },
+                        )
+                    except Exception:
+                        pass
+
+                    # 执行验证
+                    verify_result = await run_verification(
+                        spec=spec,
+                        action_tool_name=tc_name,
+                        action_tool_args=tc_args,
+                        action_tool_result=content_str,
+                        available_tools=all_available_tools,
+                        config=verify_cfg,
+                        runnable_config=config,
+                    )
+
+                    # 构建验证结果 ToolMessage（追加到结果中让 LLM 看到）
+                    verify_content = (
+                        f"[执行后验证] 操作: {tc_name}\n"
+                        f"验证工具: {verify_result['verify_tool']}\n"
+                        f"验证说明: {spec.description}\n"
+                        f"验证结果:\n{verify_result['verify_result']}\n"
+                        f"请根据以上验证结果判断操作 {tc_name} 是否真正生效。"
+                    )
+                    # 使用相同的 tool_call_id 不行（会冲突），需要让 LLM 通过上下文关联
+                    # 改为追加为 HumanMessage 或 SystemMessage（不是 ToolMessage）
+                    from langchain_core.messages import SystemMessage as _SysMsg
+
+                    verification_msgs.append(_SysMsg(content=verify_content))
+
+                    try:
+                        dispatch_custom_event(
+                            "verification_completed",
+                            {
+                                "action_tool": tc_name,
+                                "verify_tool": verify_result["verify_tool"],
+                                "attempts": verify_result["attempts"],
+                                "verify_result_preview": str(verify_result["verify_result"])[:500],
+                            },
+                        )
+                    except Exception:
+                        pass
+
+                if verification_msgs:
+                    result_messages = result.get("messages", []) if isinstance(result, dict) else []
+                    result_messages.extend(verification_msgs)
+                    result = {"messages": result_messages}
+
+            # ========== 操作回滚（验证失败时触发）==========
+            if rollback_cfg.enabled and rollback_specs:
+                from apps.opspilot.utils.rollback import execute_rollback
+
+                rollback_msgs = []
+
+                for tc_id, rb_spec in rollback_specs.items():
+                    if tc_id not in tc_info_map:
+                        continue
+                    tc_name, tc_args = tc_info_map[tc_id]
+                    snapshot = snapshots.get(tc_id)
+
+                    # 构建回滚上下文 SystemMessage（始终注入，让 LLM 知道可以回滚）
+                    if rb_spec.strategy == "auto" and rollback_cfg.auto_rollback_on_verify_fail:
+                        # 自动回滚：直接执行
+                        logger.info(f"[{trace_id}] 自动回滚触发: action={tc_name}, strategy=auto")
+
+                        try:
+                            from langchain_core.callbacks import dispatch_custom_event
+
+                            dispatch_custom_event(
+                                "rollback_started",
+                                {
+                                    "action_tool": tc_name,
+                                    "rollback_tool": rb_spec.rollback_tool,
+                                    "strategy": "auto",
+                                },
+                            )
+                        except Exception:
+                            pass
+
+                        rb_result = await execute_rollback(
+                            spec=rb_spec,
+                            action_tool_name=tc_name,
+                            action_tool_args=tc_args,
+                            snapshot_result=snapshot,
+                            available_tools=all_available_tools,
+                            runnable_config=config,
+                        )
+
+                        rb_content = (
+                            f"[操作回滚] 操作: {tc_name}\n"
+                            f"回滚工具: {rb_result['rollback_tool'] or 'N/A'}\n"
+                            f"回滚结果: {'成功' if rb_result['rolled_back'] else '失败'}\n"
+                            f"详情:\n{rb_result['rollback_result'][:1000]}\n"
+                        )
+                        from langchain_core.messages import SystemMessage as _SysMsg
+
+                        rollback_msgs.append(_SysMsg(content=rb_content))
+
+                        try:
+                            dispatch_custom_event(
+                                "rollback_completed",
+                                {
+                                    "action_tool": tc_name,
+                                    "rollback_tool": rb_result["rollback_tool"],
+                                    "rolled_back": rb_result["rolled_back"],
+                                    "strategy": "auto",
+                                },
+                            )
+                        except Exception:
+                            pass
+
+                    elif rb_spec.strategy == "prompt":
+                        # 提示模式：注入上下文让 LLM 决定是否回滚
+                        prompt_content = f"[回滚可用] 操作: {tc_name}\n" f"如果上述验证结果表明操作未生效或产生了负面影响，你可以执行回滚。\n"
+                        if rb_spec.rollback_tool:
+                            prompt_content += f"回滚工具: {rb_spec.rollback_tool}\n"
+                        if snapshot:
+                            prompt_content += f"操作前快照:\n{snapshot[:800]}\n"
+                        if rb_spec.description:
+                            prompt_content += f"说明: {rb_spec.description}\n"
+                        from langchain_core.messages import SystemMessage as _SysMsg
+
+                        rollback_msgs.append(_SysMsg(content=prompt_content))
+
+                if rollback_msgs:
+                    result_messages = result.get("messages", []) if isinstance(result, dict) else []
+                    result_messages.extend(rollback_msgs)
+                    result = {"messages": result_messages}
+
             return result
 
         # ========== 条件函数：判断是否继续调用工具 ==========
-        def should_continue(state: Dict[str, Any]) -> str:
-            """判断是否需要继续执行工具调用"""
+        def should_continue(state: Dict[str, Any], config: RunnableConfig) -> str:
+            """判断是否需要继续执行工具调用（支持可配置停止条件链）"""
             messages = state.get("messages", [])
             if not messages:
                 return "end"
 
             last_message = messages[-1]
 
-            # 如果最后一条消息有工具调用，继续执行工具
-            if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-                logger.info(f"ReAct should_continue: 检测到 tool_calls，进入 tools 节点: {last_message.tool_calls}")
-                return "continue"
+            # 如果 LLM 没有发起工具调用，自然结束
+            if not (hasattr(last_message, "tool_calls") and last_message.tool_calls):
+                logger.info(
+                    "ReAct should_continue: 未检测到 tool_calls，结束循环, "
+                    f"last_message_type={type(last_message).__name__}, content_preview={str(getattr(last_message, 'content', ''))[:200]!r}"
+                )
+                return "end"
 
-            # 否则结束
-            logger.info(
-                "ReAct should_continue: 未检测到 tool_calls，结束循环, "
-                f"last_message_type={type(last_message).__name__}, content_preview={str(getattr(last_message, 'content', ''))[:200]!r}"
-            )
-            return "end"
+            # ========== stopWhen 条件链评估 ==========
+            graph_request = config["configurable"]["graph_request"]
+
+            # 内置条件 1: 最大步数
+            if graph_request.max_steps > 0 and step_counter["count"] >= graph_request.max_steps:
+                logger.warning(f"ReAct should_continue: 达到最大步数限制 ({step_counter['count']}/{graph_request.max_steps})，强制终止")
+                return "end"
+
+            # 内置条件 2: token 预算
+            if graph_request.max_tokens_budget > 0 and token_counter["total"] >= graph_request.max_tokens_budget:
+                logger.warning(f"ReAct should_continue: 达到 token 预算上限 ({token_counter['total']}/{graph_request.max_tokens_budget})，强制终止")
+                return "end"
+
+            # 自定义条件链
+            if graph_request.stop_when_conditions:
+                ctx = StopConditionContext(
+                    step_number=step_counter["count"],
+                    total_tokens=token_counter["total"],
+                    messages=messages,
+                    last_tool_calls=getattr(last_message, "tool_calls", []),
+                )
+                for condition in graph_request.stop_when_conditions:
+                    try:
+                        result = condition(ctx)
+                        if isinstance(result, StopConditionResult) and result.should_stop:
+                            logger.warning(f"ReAct should_continue: 自定义条件触发停止 — {result.reason}")
+                            return "end"
+                    except Exception as e:
+                        logger.warning(f"ReAct should_continue: 自定义条件执行失败: {e}")
+
+            logger.info(f"ReAct should_continue: 检测到 tool_calls，进入 tools 节点 (step={step_counter['count']}): {last_message.tool_calls}")
+            return "continue"
 
         # ========== Wrapper 节点：入口点，兼容现有 API ==========
         async def wrapper_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:

@@ -187,8 +187,8 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
                 }}
                 renderItem={(item: DatasourceItem) => (
                   <List.Item
-                    className="cursor-pointer hover:bg-blue-50 flex items-center gap-3 justify-between p-3 border border-gray-200 rounded mb-2 last:mb-0"
-                    onClick={() => handleConfig(item)}
+                    className={`flex items-center gap-3 justify-between p-3 border border-gray-200 rounded mb-2 last:mb-0 ${item.hasAuth === false ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-blue-50'}`}
+                    onClick={() => item.hasAuth !== false && handleConfig(item)}
                   >
                     <div className="flex flex-col gap-1 leading-relaxed flex-1">
                       <div className="flex items-center gap-2">

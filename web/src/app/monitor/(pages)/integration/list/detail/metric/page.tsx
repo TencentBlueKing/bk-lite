@@ -579,7 +579,6 @@ const Configure = () => {
                   columns={columns}
                   rowKey="id"
                   rowDraggable={metricItem.child?.length > 1}
-                  rowDragHandleOnly
                   onRowDragEnd={onRowDragEnd}
                 />
               </Collapse>

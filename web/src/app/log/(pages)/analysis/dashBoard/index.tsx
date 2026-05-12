@@ -9,10 +9,23 @@ import React, {
 } from 'react';
 import TimeSelector from '@/components/time-selector';
 import GridLayout, { WidthProvider } from 'react-grid-layout';
-import { Button, Dropdown, Menu, Modal, Spin, Select, message } from 'antd';
+import {
+  Button,
+  Dropdown,
+  Menu,
+  Modal,
+  Spin,
+  Select,
+  Tooltip,
+  message
+} from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { LayoutItem, DirItem } from '@/app/log/types/analysis';
-import { SaveOutlined, MoreOutlined } from '@ant-design/icons';
+import {
+  SaveOutlined,
+  MoreOutlined,
+  QuestionCircleOutlined
+} from '@ant-design/icons';
 import WidgetWrapper from './components/widgetWrapper';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -178,7 +191,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         }
         const instanceData = await getInstanceList(
           {
-            collect_type_id: collectTypeId
+            collect_type_id: collectTypeId,
+            page: 1,
+            page_size: -1
           },
           { signal: abortController.signal }
         );
@@ -445,14 +460,16 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                       >
                         <div className="widget-header flex items-start justify-between gap-3 pb-3">
                           <div className="min-w-0 flex-1">
-                            <h4 className="truncate text-[15px] font-semibold text-[var(--color-text-1)]">
-                              {item.name}
-                            </h4>
-                            {item.description ? (
-                              <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--color-text-3)]">
-                                {item.description || '--'}
-                              </p>
-                            ) : null}
+                            <div className="flex items-center gap-1">
+                              <h4 className="truncate text-[15px] font-semibold text-[var(--color-text-1)]">
+                                {item.name}
+                              </h4>
+                              {item.description && (
+                                <Tooltip title={item.description}>
+                                  <QuestionCircleOutlined className="flex-shrink-0 cursor-help text-xs text-[var(--color-text-3)]" />
+                                </Tooltip>
+                              )}
+                            </div>
                           </div>
                           {editable && (
                             <Dropdown overlay={menu} trigger={['click']}>

@@ -344,6 +344,17 @@ check_root() {
 install_service() {
     echo "开始安装 Fusion Collector Sidecar 服务..."
 
+    local service_source=""
+
+    if [ -f "./bk-sidecar.service" ]; then
+        service_source="./bk-sidecar.service"
+    elif [ -f "./sidecar.service" ]; then
+        service_source="./sidecar.service"
+    else
+        echo "错误: 未找到 systemd 服务文件 (bk-sidecar.service / sidecar.service)"
+        exit 1
+    fi
+
     # 替换配置文件中的占位符
     sed -i "s|__SERVER__URL__|$SERVER_URL|g" ${INSTALL_DIR}/fusion-collectors/sidecar.yml
     sed -i "s|__SERVER__API__TOKEN__|$SERVER_API_TOKEN|g" ${INSTALL_DIR}/fusion-collectors/sidecar.yml
@@ -351,9 +362,13 @@ install_service() {
     sed -i "s|__NODE__NAME__|$NODE_NAME|g" ${INSTALL_DIR}/fusion-collectors/sidecar.yml
 
     # 拷贝服务文件并启用
-    cp -f "./sidecar.service" /etc/systemd/system/
+    systemctl stop sidecar.service >/dev/null 2>&1 || true
+    systemctl disable sidecar.service >/dev/null 2>&1 || true
+    rm -f /etc/systemd/system/sidecar.service
+
+    cp -f "$service_source" /etc/systemd/system/bk-sidecar.service
     systemctl daemon-reload
-    systemctl enable --now sidecar.service
+    systemctl enable --now bk-sidecar.service
 
     if [ $? -eq 0 ]; then
         echo "服务已成功启动并设置为开机自启动"

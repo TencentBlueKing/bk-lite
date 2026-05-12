@@ -839,6 +839,18 @@ class BasicGraph(ABC):
                     for ev in self._handle_chat_model_end_event(event_data, encoder, current_message_id, current_tool_calls):
                         yield ev
 
+                elif event_type == "on_custom_event":
+                    # 转发自定义事件（如 agent_step_progress）
+                    custom_name = event.get("name", "")
+                    if custom_name:
+                        yield encoder.encode(
+                            CustomEvent(
+                                type=EventType.CUSTOM,
+                                name=custom_name,
+                                value=event_data,
+                            )
+                        )
+
             # 清空剩余的浏览器事件
             try:
                 while True:

@@ -8,6 +8,8 @@ from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
 from apps.node_mgmt.models import CloudRegion, SidecarEnv
 from apps.node_mgmt.services.node import NodeService
+from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.tasks.installer import install_collector
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -527,6 +529,35 @@ def get_cloud_region_envconfig(cloud_region_id: str):
 
 
 @nats_client.register
+def get_cloud_region_proxy_address(cloud_region_id: str):
+    """
+    获取云区域代理地址
+    优先从 CloudRegion.proxy_address 读取，若为空则回退到环境变量 PROXY_ADDRESS
+    :param cloud_region_id: 云区域 ID
+    :return: 代理地址
+    """
+    proxy_address = CloudRegion.objects.filter(id=cloud_region_id).values_list("proxy_address", flat=True).first() or ""
+    if proxy_address:
+        return proxy_address
+
+    env_var = SidecarEnv.objects.filter(
+        cloud_region_id=cloud_region_id,
+        key=EnvVariableConstants.PROXY_ADDRESS_KEY,
+    ).first()
+    if not env_var:
+        return ""
+
+    if env_var.type == EnvVariableConstants.TYPE_SECRET and env_var.value:
+        aes_obj = AESCryptor()
+        try:
+            return aes_obj.decode(env_var.value)
+        except Exception as e:
+            logger.warning(f"Failed to decrypt proxy env variable {env_var.key}: {e}")
+
+    return env_var.value or ""
+
+
+@nats_client.register
 def node_list(query_data: dict):
     """获取节点列表"""
     organization_ids = query_data.get("organization_ids")
@@ -639,3 +670,11 @@ def delete_child_configs(ids: list):
 def delete_configs(ids: list):
     """删除实例子配置"""
     NatsService().delete_configs(ids)
+
+
+@nats_client.register
+def install_managed_component(data: dict):
+    """安装托管组件（当前复用采集器安装流程）"""
+    task_id = InstallerService.install_collector(data["collector_package"], data["nodes"])
+    install_collector.delay(task_id)
+    return {"task_id": task_id}

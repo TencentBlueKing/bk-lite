@@ -27,13 +27,79 @@ class GroupDataRuleFilter(FilterSet):
 
 
 class GroupDataRuleViewSet(LanguageViewSet):
+    """数据权限规则 ViewSet - 禁用未使用的 retrieve/partial_update 接口
+
+    权限校验：
+    - 所有接口需要对应的 HasPermission 装饰器
+    - list 限制为用户有权限的组的规则
+    - create/update/destroy 校验 group_id 属于用户有权限的组
+    """
+
     queryset = GroupDataRule.objects.all().order_by("-id")
     serializer_class = GroupDataRuleSerializer
     filterset_class = GroupDataRuleFilter
+    # 仅允许 GET (list, actions), POST (create), PUT (update), DELETE (destroy)
+    # 禁用 PATCH (partial_update)
+    http_method_names = ["get", "post", "put", "delete", "options"]
+
+    def _get_user_group_ids(self, user):
+        """获取用户有权限的组ID集合"""
+        if getattr(user, "is_superuser", False):
+            return None  # superuser 返回 None 表示有权限访问所有组
+        return {g["id"] for g in getattr(user, "group_list", [])}
+
+    def _validate_group_permission(self, request, group_id):
+        """校验用户是否有权限访问指定组
+
+        Args:
+            request: 请求对象
+            group_id: 要校验的组ID
+
+        Returns:
+            tuple: (is_valid, error_response)
+        """
+        if getattr(request.user, "is_superuser", False):
+            return True, None
+
+        user_group_ids = self._get_user_group_ids(request.user)
+        if group_id not in user_group_ids:
+            message = self.loader.get("error.no_permission_access_group") if self.loader else "无权访问该组织"
+            return False, JsonResponse({"result": False, "message": message}, status=403)
+        return True, None
+
+    def _filter_by_accessible_groups(self, queryset, user):
+        """按用户有权限的组筛选规则
+
+        Args:
+            queryset: 原始查询集
+            user: 当前用户对象
+
+        Returns:
+            QuerySet: 筛选后的查询集
+        """
+        if getattr(user, "is_superuser", False):
+            return queryset
+
+        user_group_ids = self._get_user_group_ids(user)
+        if not user_group_ids:
+            return queryset.none()
+
+        # 筛选 group_id 在用户有权限的组中的规则
+        return queryset.filter(group_id__in=user_group_ids)
+
+    def retrieve(self, request, *args, **kwargs):
+        """禁用内置 retrieve 接口"""
+        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
 
     @HasPermission("data_permission-Delete")
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object()
+
+        # 校验用户是否有权限访问该规则所属的组
+        is_valid, error_response = self._validate_group_permission(request, obj.group_id)
+        if not is_valid:
+            return error_response
+
         rule_name = obj.name
         rule_id = obj.id
 
@@ -53,6 +119,13 @@ class GroupDataRuleViewSet(LanguageViewSet):
 
     @HasPermission("data_permission-Add")
     def create(self, request, *args, **kwargs):
+        # 校验用户是否有权限访问该规则所属的组
+        group_id = request.data.get("group_id")
+        if group_id:
+            is_valid, error_response = self._validate_group_permission(request, int(group_id))
+            if not is_valid:
+                return error_response
+
         response = super().create(request, *args, **kwargs)
 
         # 记录操作日志
@@ -65,6 +138,19 @@ class GroupDataRuleViewSet(LanguageViewSet):
     @HasPermission("data_permission-Edit")
     def update(self, request, *args, **kwargs):
         obj = self.get_object()
+
+        # 校验用户是否有权限访问该规则所属的组
+        is_valid, error_response = self._validate_group_permission(request, obj.group_id)
+        if not is_valid:
+            return error_response
+
+        # 如果请求中包含新的 group_id，也需要校验
+        new_group_id = request.data.get("group_id")
+        if new_group_id and int(new_group_id) != obj.group_id:
+            is_valid, error_response = self._validate_group_permission(request, int(new_group_id))
+            if not is_valid:
+                return error_response
+
         rule_id = obj.id
 
         response = super().update(request, *args, **kwargs)
@@ -82,7 +168,17 @@ class GroupDataRuleViewSet(LanguageViewSet):
 
     @HasPermission("data_permission-View")
     def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
+        queryset = self.filter_queryset(self.get_queryset())
+        # 按用户有权限的组筛选
+        queryset = self._filter_by_accessible_groups(queryset, request.user)
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return JsonResponse({"result": True, "data": serializer.data})
 
     @action(methods=["GET"], detail=False)
     @HasPermission("data_permission-View")

@@ -21,6 +21,21 @@ import (
 
 const version = "3.0.0"
 
+var (
+	subscribeLocalExecutor    = local.SubscribeLocalExecutor
+	subscribeDownloadToLocal  = local.SubscribeDownloadToLocal
+	subscribeUnzipToLocal     = local.SubscribeUnzipToLocal
+	subscribeHealthCheck      = local.SubscribeHealthCheck
+	subscribeSSHExecutor      = ssh.SubscribeSSHExecutor
+	subscribeDownloadToRemote = ssh.SubscribeDownloadToRemote
+	subscribeUploadToRemote   = ssh.SubscribeUploadToRemote
+	connectNATS               = nats.Connect
+	closeNATSConn             = func(nc *nats.Conn) { nc.Close() }
+	loadConfigFn              = loadConfig
+	buildNATSOptionsFn        = buildNATSOptions
+	registerSubscriptionsFn   = registerSubscriptions
+)
+
 type Config struct {
 	NATSUrls        string `yaml:"nats_urls"`
 	NATSInstanceID  string `yaml:"nats_instanceId"`
@@ -45,8 +60,15 @@ func loadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	// 渲染环境变量
+	// 渲染所有 string 配置中的环境变量占位符，避免 TLS/实例 ID 等字段静默失效。
 	cfg.NATSUrls = renderEnvVars(cfg.NATSUrls)
+	cfg.NATSInstanceID = renderEnvVars(cfg.NATSInstanceID)
+	cfg.TLSEnabled = renderEnvVars(cfg.TLSEnabled)
+	cfg.TLSHostname = renderEnvVars(cfg.TLSHostname)
+	cfg.TLSCAFile = renderEnvVars(cfg.TLSCAFile)
+	cfg.TLSCertFile = renderEnvVars(cfg.TLSCertFile)
+	cfg.TLSKeyFile = renderEnvVars(cfg.TLSKeyFile)
+	cfg.TLSSkipVerify = renderEnvVars(cfg.TLSSkipVerify)
 
 	return &cfg, nil
 }
@@ -119,91 +141,123 @@ func parseCLIArgs(args []string) (configPath string, showVersion bool, err error
 	return *config, false, nil
 }
 
-func main() {
-	configPath, showVersion, err := parseCLIArgs(os.Args[1:])
-	if err != nil {
-		logger.Fatalf("Failed to parse arguments: %v", err)
-	}
-	if showVersion {
-		fmt.Println(version)
-		return
+func buildTLSConfig(cfg *Config) (*tls.Config, error) {
+	tlsEnabled := parseBool(cfg.TLSEnabled)
+	if !tlsEnabled {
+		return nil, nil
 	}
 
-	if configPath == "" {
-		logger.Fatal("Please specify the config file path using --config")
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: parseBool(cfg.TLSSkipVerify),
 	}
 
-	cfg, err := loadConfig(configPath)
-	if err != nil {
-		logger.Fatalf("Failed to load config: %v", err)
+	if tlsHostname := parseString(cfg.TLSHostname); tlsHostname != "" {
+		tlsConfig.ServerName = tlsHostname
 	}
 
-	//log.Printf("Connecting to NATS server at %s", cfg.NATSUrls)
+	tlsCertFile := parseString(cfg.TLSCertFile)
+	tlsKeyFile := parseString(cfg.TLSKeyFile)
+	if tlsCertFile != "" && tlsKeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(tlsCertFile, tlsKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client certificate: %w", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+
+	if tlsCAFile := parseString(cfg.TLSCAFile); tlsCAFile != "" {
+		caCert, err := os.ReadFile(tlsCAFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA certificate file: %w", err)
+		}
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to append CA certificate")
+		}
+		tlsConfig.RootCAs = caCertPool
+	}
+
+	return tlsConfig, nil
+}
+
+func buildNATSOptions(cfg *Config) ([]nats.Option, error) {
 	opts := []nats.Option{
 		nats.Name("nats-executor"),
 		nats.Compression(true),
 		nats.Timeout(time.Duration(cfg.NatsConnTimeout) * time.Second),
 	}
 
-	// 解析 TLS 参数
-	tlsEnabled := parseBool(cfg.TLSEnabled)
-	tlsSkipVerify := parseBool(cfg.TLSSkipVerify)
-	tlsHostname := parseString(cfg.TLSHostname)
-	tlsCAFile := parseString(cfg.TLSCAFile)
-	tlsCertFile := parseString(cfg.TLSCertFile)
-	tlsKeyFile := parseString(cfg.TLSKeyFile)
-
-	// 添加 TLS 配置
-	if tlsEnabled {
-		tlsConfig := &tls.Config{
-			InsecureSkipVerify: tlsSkipVerify,
-		}
-
-		if tlsHostname != "" {
-			tlsConfig.ServerName = tlsHostname
-		}
-
-		if tlsCertFile != "" && tlsKeyFile != "" {
-			cert, err := tls.LoadX509KeyPair(tlsCertFile, tlsKeyFile)
-			if err != nil {
-				logger.Fatalf("Failed to load client certificate: %v", err)
-			}
-			tlsConfig.Certificates = []tls.Certificate{cert}
-		}
-
-		if tlsCAFile != "" {
-			caCert, err := os.ReadFile(tlsCAFile)
-			if err != nil {
-				logger.Fatalf("Failed to read CA certificate file: %v", err)
-			}
-			caCertPool := x509.NewCertPool()
-			if !caCertPool.AppendCertsFromPEM(caCert) {
-				logger.Fatal("Failed to append CA certificate")
-			}
-			tlsConfig.RootCAs = caCertPool
-		}
-
+	tlsConfig, err := buildTLSConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if tlsConfig != nil {
 		opts = append(opts, nats.Secure(tlsConfig))
+	}
+
+	return opts, nil
+}
+
+func registerSubscriptions(nc *nats.Conn, instanceID string) {
+	subscribeLocalExecutor(nc, &instanceID)
+	subscribeDownloadToLocal(nc, &instanceID)
+	subscribeUnzipToLocal(nc, &instanceID)
+	subscribeHealthCheck(nc, &instanceID)
+
+	subscribeSSHExecutor(nc, &instanceID)
+	subscribeDownloadToRemote(nc, &instanceID)
+	subscribeUploadToRemote(nc, &instanceID)
+}
+
+func run(args []string, stdout io.Writer, wait func()) error {
+	configPath, showVersion, err := parseCLIArgs(args)
+	if err != nil {
+		return fmt.Errorf("failed to parse arguments: %w", err)
+	}
+	if showVersion {
+		_, err := fmt.Fprintln(stdout, version)
+		return err
+	}
+
+	if configPath == "" {
+		return fmt.Errorf("please specify the config file path using --config")
+	}
+
+	cfg, err := loadConfigFn(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	opts, err := buildNATSOptionsFn(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to build NATS options: %w", err)
+	}
+	if parseBool(cfg.TLSEnabled) {
 		logger.Info("TLS enabled for NATS connection")
 	}
 
-	nc, err := nats.Connect(cfg.NATSUrls, opts...)
+	nc, err := connectNATS(cfg.NATSUrls, opts...)
 	if err != nil {
-		logger.Fatalf("Failed to connect to NATS server: %v", err)
+		return fmt.Errorf("failed to connect to NATS server: %w", err)
 	}
-	defer nc.Close()
+	defer func() {
+		if nc != nil {
+			closeNATSConn(nc)
+		}
+	}()
 	logger.Info("Connected to NATS server")
 
-	// 注册各类订阅
-	local.SubscribeLocalExecutor(nc, &cfg.NATSInstanceID)
-	local.SubscribeDownloadToLocal(nc, &cfg.NATSInstanceID)
-	local.SubscribeUnzipToLocal(nc, &cfg.NATSInstanceID)
-	local.SubscribeHealthCheck(nc, &cfg.NATSInstanceID)
-
-	ssh.SubscribeSSHExecutor(nc, &cfg.NATSInstanceID)
-	ssh.SubscribeDownloadToRemote(nc, &cfg.NATSInstanceID)
-	ssh.SubscribeUploadToRemote(nc, &cfg.NATSInstanceID)
+	registerSubscriptionsFn(nc, cfg.NATSInstanceID)
 
 	logger.Infof("Waiting for messages... (log level: %s)", logger.GetLevel())
-	select {}
+	wait()
+	return nil
+}
+
+func main() {
+	if err := run(os.Args[1:], os.Stdout, func() {
+		select {}
+	}); err != nil {
+		logger.Fatal(err.Error())
+	}
 }

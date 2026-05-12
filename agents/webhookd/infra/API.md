@@ -402,13 +402,13 @@ sudo bash install-sidecar.sh
 **管理服务**:
 ```bash
 # 查看服务状态
-systemctl status sidecar
+systemctl status bk-sidecar
 
 # 停止服务
-systemctl stop sidecar
+systemctl stop bk-sidecar
 
 # 启动服务
-systemctl start sidecar
+systemctl start bk-sidecar
 
 # 查看日志
 tail -f /opt/fusion-collector/logs/sidecar.log

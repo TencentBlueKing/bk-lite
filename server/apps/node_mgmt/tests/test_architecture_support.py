@@ -1,3 +1,4 @@
+import base64
 import json
 from io import StringIO
 from queue import Queue
@@ -25,6 +26,7 @@ from apps.node_mgmt.management.services.node_init.collector_init import import_c
 from apps.node_mgmt.management.services.node_init.controller_init import controller_init
 from apps.node_mgmt.management.services.node_init.definition_loader import load_definition_records
 from apps.node_mgmt.models import CloudRegion, Collector, CollectorConfiguration, Controller, Node, PackageVersion, SidecarEnv
+from apps.node_mgmt.models.sidecar import ChildConfig, NodeOrganization
 from apps.node_mgmt.models.installer import ControllerTask, ControllerTaskNode
 from apps.node_mgmt.nats.node import NatsService
 from apps.node_mgmt.serializers.collector import CollectorSerializer
@@ -32,16 +34,19 @@ from apps.node_mgmt.serializers.package import PackageVersionSerializer
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
 from apps.node_mgmt.services.package import PackageService
+from apps.node_mgmt.services.cloudregion import RegionService
 from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.services.version_upgrade import VersionUpgradeService
 from apps.node_mgmt.tasks import installer as installer_tasks
 from apps.node_mgmt.tasks.version_discovery import _calculate_upgrade_info
 from apps.node_mgmt.utils import permission as node_permission
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
+from apps.node_mgmt.utils.token_auth import generate_node_token
 from apps.node_mgmt.views import collector_configuration, node as node_view
 from apps.node_mgmt.views.collector import CollectorViewSet
 from apps.node_mgmt.views.installer import InstallerViewSet
 from apps.node_mgmt.views.sidecar import OpenSidecarViewSet
+from config.components.drf import AUTH_TOKEN_HEADER_NAME
 
 
 def _build_admin_user():
@@ -53,6 +58,19 @@ def _build_admin_user():
         roles=["admin"],
         group_list=[{"id": 1, "name": "Team"}],
     )
+
+
+def _build_permission_user(*permissions):
+    user = User(
+        username="permission-test-user",
+        domain="domain.com",
+        locale="en",
+        is_superuser=False,
+        roles=[],
+        group_list=[{"id": 1, "name": "Team"}],
+    )
+    user.permission = {"node": set(permissions)}
+    return user
 
 
 def _json_response_data(response):
@@ -133,6 +151,28 @@ def _make_node_request(data=None, method="post"):
     return request
 
 
+def _make_permission_request(data=None, method="post", permissions=()):
+    factory = APIRequestFactory()
+    request_factory = getattr(factory, method)
+    request = request_factory("/node-mgmt/test", data=data or {}, format="json")
+    request.COOKIES["current_team"] = "1"
+    request.COOKIES["include_children"] = "0"
+    force_authenticate(request, user=_build_permission_user(*permissions))
+    return request
+
+
+def _build_sidecar_request(method, path, *, query_params=None, headers=None):
+    factory = APIRequestFactory()
+    request_factory = getattr(factory, method)
+    return request_factory(path, query_params or {}, format="json", **(headers or {}))
+
+
+def _build_sidecar_auth_header(node_id):
+    token = generate_node_token(node_id, "127.0.0.1", "tester")
+    basic_token = base64.b64encode(f"{token}:unused".encode("utf-8")).decode("utf-8")
+    return {AUTH_TOKEN_HEADER_NAME: f"Basic {basic_token}"}
+
+
 @pytest.mark.parametrize(
     ("raw_value", "expected"),
     [
@@ -190,6 +230,283 @@ def test_authorize_target_organizations_rejects_new_out_of_scope_org(monkeypatch
     assert response.status_code == 403
 
 
+def _create_node_mgmt_region(name="test-region"):
+    return CloudRegion.objects.create(
+        name=name,
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+
+
+def _create_node_mgmt_collector(region, collector_id="collector-1"):
+    return Collector.objects.create(
+        id=collector_id,
+        name=f"collector-{collector_id}",
+        service_type="svc",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        cloud_region=region if hasattr(Collector, "cloud_region") else None,
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+
+
+def _create_node_mgmt_node(region, node_id="node-1", organization=1):
+    node = Node.objects.create(
+        id=node_id,
+        name=node_id,
+        ip=f"10.0.0.{node_id[-1] if node_id[-1].isdigit() else 1}",
+        operating_system="linux",
+        collector_configuration_directory="/etc/collector",
+        cloud_region=region,
+        install_method="manual",
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    NodeOrganization.objects.create(
+        node=node,
+        organization=organization,
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    return node
+
+
+def _create_node_mgmt_configuration(region, collector, config_id, *, created_by="tester", bind_nodes=None):
+    config = CollectorConfiguration.objects.create(
+        id=config_id,
+        name=f"config-{config_id}",
+        config_template="template",
+        collector=collector,
+        cloud_region=region,
+        created_by=created_by,
+        updated_by=created_by,
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    if bind_nodes:
+        config.nodes.add(*bind_nodes)
+    return config
+
+
+@pytest.mark.django_db
+def test_get_authorized_collector_configuration_queryset_includes_authorized_nodes_and_creator(monkeypatch):
+    region = _create_node_mgmt_region()
+    collector = Collector.objects.create(
+        id="collector-auth-1",
+        name="collector-auth-1",
+        service_type="svc",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    allowed_node = _create_node_mgmt_node(region, node_id="node-auth-1", organization=1)
+    denied_node = _create_node_mgmt_node(region, node_id="node-auth-2", organization=2)
+    allowed_config = _create_node_mgmt_configuration(region, collector, "cfg-auth-1", bind_nodes=[allowed_node])
+    _create_node_mgmt_configuration(region, collector, "cfg-auth-2", bind_nodes=[denied_node])
+    owned_config = _create_node_mgmt_configuration(
+        region,
+        collector,
+        "cfg-auth-3",
+        created_by="permission-test-user",
+    )
+
+    monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
+
+    result_ids = set(node_permission.get_authorized_collector_configuration_queryset(_make_permission_request()).values_list("id", flat=True))
+
+    assert result_ids == {allowed_config.id, owned_config.id}
+
+
+@pytest.mark.django_db
+def test_get_authorized_collector_configuration_queryset_excludes_creator_owned_bound_unauthorized_config(monkeypatch):
+    region = _create_node_mgmt_region(name="bound-region")
+    collector = Collector.objects.create(
+        id="collector-bound-1",
+        name="collector-bound-1",
+        service_type="svc",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    denied_node = _create_node_mgmt_node(region, node_id="node-bound-1", organization=2)
+    creator_owned_bound_config = _create_node_mgmt_configuration(
+        region,
+        collector,
+        "cfg-bound-1",
+        created_by="permission-test-user",
+        bind_nodes=[denied_node],
+    )
+
+    monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
+
+    result_ids = set(node_permission.get_authorized_collector_configuration_queryset(_make_permission_request()).values_list("id", flat=True))
+
+    assert creator_owned_bound_config.id not in result_ids
+
+
+@pytest.mark.django_db
+def test_authorize_child_config_ids_rejects_out_of_scope_config(monkeypatch):
+    region = _create_node_mgmt_region(name="child-region")
+    collector = Collector.objects.create(
+        id="collector-child-1",
+        name="collector-child-1",
+        service_type="svc",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    allowed_node = _create_node_mgmt_node(region, node_id="node-child-1", organization=1)
+    denied_node = _create_node_mgmt_node(region, node_id="node-child-2", organization=2)
+    allowed_config = _create_node_mgmt_configuration(region, collector, "cfg-child-1", bind_nodes=[allowed_node])
+    denied_config = _create_node_mgmt_configuration(region, collector, "cfg-child-2", bind_nodes=[denied_node])
+    ChildConfig.objects.create(
+        id="child-allowed",
+        collect_type="metrics",
+        config_type="telegraf",
+        content="allowed",
+        collector_config=allowed_config,
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    denied_child = ChildConfig.objects.create(
+        id="child-denied",
+        collect_type="metrics",
+        config_type="telegraf",
+        content="denied",
+        collector_config=denied_config,
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+
+    monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
+
+    child_configs, response = node_permission.authorize_child_config_ids(_make_permission_request(), [denied_child.id])
+
+    assert child_configs is None
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_authorize_mutable_collector_configuration_ids_rejects_shared_config_with_unauthorized_nodes(monkeypatch):
+    region = _create_node_mgmt_region(name="mutable-region")
+    collector = Collector.objects.create(
+        id="collector-mutable-1",
+        name="collector-mutable-1",
+        service_type="svc",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    allowed_node = _create_node_mgmt_node(region, node_id="node-mutable-1", organization=1)
+    denied_node = _create_node_mgmt_node(region, node_id="node-mutable-2", organization=2)
+    shared_config = _create_node_mgmt_configuration(region, collector, "cfg-mutable-1", bind_nodes=[allowed_node, denied_node])
+
+    monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
+
+    configurations, response = node_permission.authorize_mutable_collector_configuration_ids(_make_permission_request(), [shared_config.id])
+
+    assert configurations is None
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_authorize_mutable_collector_configuration_ids_allows_unbound_creator_draft(monkeypatch):
+    region = _create_node_mgmt_region(name="draft-region")
+    collector = Collector.objects.create(
+        id="collector-draft-1",
+        name="collector-draft-1",
+        service_type="svc",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    draft_config = _create_node_mgmt_configuration(
+        region,
+        collector,
+        "cfg-draft-1",
+        created_by="permission-test-user",
+    )
+
+    monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
+
+    configurations, response = node_permission.authorize_mutable_collector_configuration_ids(_make_permission_request(), [draft_config.id])
+
+    assert response is None
+    assert [config.id for config in configurations] == [draft_config.id]
+
+
+@pytest.mark.django_db
+def test_authorize_mutable_child_config_ids_rejects_shared_parent_with_unauthorized_nodes(monkeypatch):
+    region = _create_node_mgmt_region(name="mutable-child-region")
+    collector = Collector.objects.create(
+        id="collector-mutable-child-1",
+        name="collector-mutable-child-1",
+        service_type="svc",
+        node_operating_system="linux",
+        executable_path="/bin/collector",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+    allowed_node = _create_node_mgmt_node(region, node_id="node-mutable-child-1", organization=1)
+    denied_node = _create_node_mgmt_node(region, node_id="node-mutable-child-2", organization=2)
+    shared_config = _create_node_mgmt_configuration(region, collector, "cfg-mutable-child-1", bind_nodes=[allowed_node, denied_node])
+    child_config = ChildConfig.objects.create(
+        id="child-mutable-1",
+        collect_type="metrics",
+        config_type="telegraf",
+        content="shared",
+        collector_config=shared_config,
+        created_by="tester",
+        updated_by="tester",
+        domain="domain.com",
+        updated_by_domain="domain.com",
+    )
+
+    monkeypatch.setattr(node_permission, "get_node_permission", lambda request: {"team": [1], "instance": []})
+
+    child_configs, response = node_permission.authorize_mutable_child_config_ids(_make_permission_request(), [child_config.id])
+
+    assert child_configs is None
+    assert response.status_code == 403
+
+
 def test_batch_operate_node_collector_requires_node_permission(monkeypatch):
     monkeypatch.setattr(node_view, "authorize_node_ids", lambda request, node_ids: (None, WebUtils.response_403("denied")))
     called = {"value": False}
@@ -205,6 +522,101 @@ def test_batch_operate_node_collector_requires_node_permission(monkeypatch):
 
     assert response.status_code == 403
     assert called["value"] is False
+
+
+@pytest.mark.parametrize(
+    ("view", "action", "request_data", "method", "required_permission", "service_attr"),
+    [
+        (
+            node_view.NodeViewSet.as_view({"delete": "destroy"}),
+            "destroy",
+            None,
+            "delete",
+            "cloud_region_node-Delete",
+            None,
+        ),
+        (
+            node_view.NodeViewSet.as_view({"patch": "update_node"}),
+            "update_node",
+            {"name": "updated-node"},
+            "patch",
+            "cloud_region_node-Edit",
+            None,
+        ),
+        (
+            node_view.NodeViewSet.as_view({"post": "batch_binding_node_configuration"}),
+            "batch_binding_node_configuration",
+            {"node_ids": ["node-1"], "collector_configuration_id": "cfg-1"},
+            "post",
+            "cloud_region_node-EditMainConfiguration",
+            "batch_binding_node_configuration",
+        ),
+        (
+            node_view.NodeViewSet.as_view({"post": "batch_operate_node_collector"}),
+            "batch_operate_node_collector",
+            {"node_ids": ["node-1"], "collector_id": "collector-1", "operation": "restart"},
+            "post",
+            "cloud_region_node-OperateCollector",
+            "batch_operate_node_collector",
+        ),
+        (
+            collector_configuration.CollectorConfigurationViewSet.as_view({"post": "apply_to_node"}),
+            "apply_to_node",
+            [{"node_id": "node-1", "collector_configuration_id": "cfg-1"}],
+            "post",
+            "cloud_region_node-EditMainConfiguration",
+            "apply_to_node",
+        ),
+        (
+            collector_configuration.CollectorConfigurationViewSet.as_view({"post": "cancel_apply_to_node"}),
+            "cancel_apply_to_node",
+            {"node_id": "node-1", "collector_configuration_id": "cfg-1"},
+            "post",
+            "cloud_region_node-EditMainConfiguration",
+            None,
+        ),
+    ],
+)
+def test_node_write_endpoints_require_explicit_action_permission(monkeypatch, view, action, request_data, method, required_permission, service_attr):
+    if action in {"destroy", "update_node", "batch_binding_node_configuration", "batch_operate_node_collector"}:
+        monkeypatch.setattr(node_view, "authorize_node_ids", lambda request, node_ids: ([_FakeNode()], None))
+    else:
+        monkeypatch.setattr(collector_configuration, "authorize_node_ids", lambda request, node_ids: ([_FakeNode()], None))
+
+    if action == "batch_binding_node_configuration":
+        monkeypatch.setattr(node_view, "authorize_mutable_collector_configuration_ids", lambda request, config_ids: ([_FakeConfig([])], None))
+    elif action in {"apply_to_node", "cancel_apply_to_node"}:
+        monkeypatch.setattr(
+            collector_configuration,
+            "authorize_mutable_collector_configuration_ids",
+            lambda request, config_ids: ([_FakeConfig([])], None),
+        )
+
+    called = {"value": False}
+    if service_attr:
+        target = node_view.NodeService if hasattr(node_view.NodeService, service_attr) else collector_configuration.CollectorConfigurationService
+        if action == "batch_operate_node_collector":
+            monkeypatch.setattr(target, service_attr, lambda *args, **kwargs: called.__setitem__("value", True) or "task-1")
+        else:
+            monkeypatch.setattr(target, service_attr, lambda *args, **kwargs: called.__setitem__("value", True) or (True, "ok"))
+    elif action == "cancel_apply_to_node":
+        config = SimpleNamespace(nodes=SimpleNamespace(remove=lambda node: called.__setitem__("value", True)))
+    elif action == "destroy":
+        monkeypatch.setattr(node_view.NodeViewSet, "perform_destroy", lambda self, instance: called.__setitem__("value", True))
+
+    if action == "update_node":
+        monkeypatch.setattr(node_view.sync_node_properties_to_sidecar, "delay", lambda **kwargs: called.__setitem__("value", True))
+
+    kwargs = {"pk": "node-1"} if action in {"destroy", "update_node"} else {}
+    response = view(_make_permission_request(request_data, method=method, permissions=("cloud_region_node-View",)), **kwargs)
+
+    assert response.status_code == 403
+    assert called["value"] is False
+
+    allowed_permissions = ("cloud_region_node-View", required_permission)
+    response = view(_make_permission_request(request_data, method=method, permissions=allowed_permissions), **kwargs)
+
+    assert response.status_code != 403
 
 
 def test_config_node_asso_hides_unauthorized_nodes(monkeypatch):
@@ -254,6 +666,54 @@ def test_apply_to_node_prevalidates_permissions_before_mutation(monkeypatch):
                 {"node_id": "node-2", "collector_configuration_id": "cfg-1"},
             ]
         )
+    )
+
+    assert response.status_code == 403
+    assert called["value"] is False
+
+
+def test_apply_to_node_prevalidates_configuration_permissions_before_mutation(monkeypatch):
+    monkeypatch.setattr(collector_configuration, "authorize_node_ids", lambda request, node_ids: ([_FakeNode()], None))
+    monkeypatch.setattr(
+        collector_configuration,
+        "authorize_mutable_collector_configuration_ids",
+        lambda request, config_ids: (None, WebUtils.response_403("denied")),
+    )
+    called = {"value": False}
+    monkeypatch.setattr(
+        collector_configuration.CollectorConfigurationService,
+        "apply_to_node",
+        lambda *args, **kwargs: called.__setitem__("value", True),
+    )
+
+    response = collector_configuration.CollectorConfigurationViewSet.as_view({"post": "apply_to_node"})(
+        _make_node_request(
+            [
+                {"node_id": "node-1", "collector_configuration_id": "cfg-1"},
+            ]
+        )
+    )
+
+    assert response.status_code == 403
+    assert called["value"] is False
+
+
+def test_batch_binding_configuration_prevalidates_configuration_permissions(monkeypatch):
+    monkeypatch.setattr(node_view, "authorize_node_ids", lambda request, node_ids: ([_FakeNode()], None))
+    monkeypatch.setattr(
+        node_view,
+        "authorize_mutable_collector_configuration_ids",
+        lambda request, config_ids: (None, WebUtils.response_403("denied")),
+    )
+    called = {"value": False}
+    monkeypatch.setattr(
+        node_view.NodeService,
+        "batch_binding_node_configuration",
+        lambda *args, **kwargs: called.__setitem__("value", True),
+    )
+
+    response = node_view.NodeViewSet.as_view({"post": "batch_binding_node_configuration"})(
+        _make_node_request({"node_ids": ["node-1"], "collector_configuration_id": "cfg-1"})
     )
 
     assert response.status_code == 403
@@ -998,6 +1458,506 @@ def test_update_node_client_updates_architecture_without_rebinding_existing_defa
     assert response.status_code == 202
     assert node.cpu_architecture == NodeConstants.ARM64_ARCH
     assert telegraf_config.collector_id == generic_telegraf.id
+
+
+@pytest.mark.django_db
+def test_sidecar_configuration_endpoint_rejects_foreign_configuration_access():
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-authz-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    collector = Collector.objects.create(
+        id="collector-sidecar-authz-render",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node_a = Node.objects.create(
+        id="node-sidecar-authz-a",
+        name="node-sidecar-authz-a",
+        ip="10.0.0.41",
+        operating_system=NodeConstants.LINUX_OS,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    node_b = Node.objects.create(
+        id="node-sidecar-authz-b",
+        name="node-sidecar-authz-b",
+        ip="10.0.0.42",
+        operating_system=NodeConstants.LINUX_OS,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    foreign_config = CollectorConfiguration.objects.create(
+        id="cfg-sidecar-foreign-render",
+        name="cfg-sidecar-foreign-render",
+        collector=collector,
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    foreign_config.nodes.add(node_b)
+
+    view = OpenSidecarViewSet.as_view({"get": "configuration"})
+    request = _build_sidecar_request(
+        "get",
+        f"/node/sidecar/configurations/render/{node_a.id}/{foreign_config.id}",
+        headers=_build_sidecar_auth_header(node_a.id),
+    )
+
+    response = view(request, node_id=node_a.id, configuration_id=foreign_config.id)
+
+    assert response.status_code == 404
+    assert _json_response_data(response)["error"] == "Configuration not found"
+
+
+@pytest.mark.django_db
+def test_sidecar_env_endpoint_rejects_foreign_configuration_access():
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-authz-env-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    collector = Collector.objects.create(
+        id="collector-sidecar-authz-env",
+        name="TelegrafEnv",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node_a = Node.objects.create(
+        id="node-sidecar-env-a",
+        name="node-sidecar-env-a",
+        ip="10.0.0.43",
+        operating_system=NodeConstants.LINUX_OS,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    node_b = Node.objects.create(
+        id="node-sidecar-env-b",
+        name="node-sidecar-env-b",
+        ip="10.0.0.44",
+        operating_system=NodeConstants.LINUX_OS,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    aes = AESCryptor()
+    foreign_config = CollectorConfiguration.objects.create(
+        id="cfg-sidecar-foreign-env",
+        name="cfg-sidecar-foreign-env",
+        collector=collector,
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        env_config={"DB_PASSWORD": aes.encode("secret")},
+        created_by="tester",
+        updated_by="tester",
+    )
+    foreign_config.nodes.add(node_b)
+
+    view = OpenSidecarViewSet.as_view({"get": "configuration_env"})
+    request = _build_sidecar_request(
+        "get",
+        f"/node/sidecar/env_config/{node_a.id}/{foreign_config.id}",
+        headers=_build_sidecar_auth_header(node_a.id),
+    )
+
+    response = view(request, node_id=node_a.id, configuration_id=foreign_config.id)
+
+    assert response.status_code == 404
+    assert _json_response_data(response)["error"] == "Configuration not found"
+
+
+@pytest.mark.django_db
+def test_sidecar_configuration_endpoint_rejects_old_configuration_after_unbind():
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-unbind-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    collector = Collector.objects.create(
+        id="collector-sidecar-unbind",
+        name="TelegrafUnbind",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-sidecar-unbind",
+        name="node-sidecar-unbind",
+        ip="10.0.0.45",
+        operating_system=NodeConstants.LINUX_OS,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    config = CollectorConfiguration.objects.create(
+        id="cfg-sidecar-unbind",
+        name="cfg-sidecar-unbind",
+        collector=collector,
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    config.nodes.add(node)
+
+    view = OpenSidecarViewSet.as_view({"get": "configuration"})
+    headers = _build_sidecar_auth_header(node.id)
+    first_request = _build_sidecar_request(
+        "get",
+        f"/node/sidecar/configurations/render/{node.id}/{config.id}",
+        headers=headers,
+    )
+    first_response = view(first_request, node_id=node.id, configuration_id=config.id)
+    assert first_response.status_code == 200
+    cached_etag = first_response["ETag"]
+
+    config.nodes.remove(node)
+
+    second_request = _build_sidecar_request(
+        "get",
+        f"/node/sidecar/configurations/render/{node.id}/{config.id}",
+        headers={**headers, "HTTP_IF_NONE_MATCH": cached_etag},
+    )
+    second_response = view(second_request, node_id=node.id, configuration_id=config.id)
+
+    assert second_response.status_code == 404
+    assert _json_response_data(second_response)["error"] == "Configuration not found"
+
+
+@pytest.mark.django_db
+def test_sidecar_render_304_path_checks_binding_without_full_object_fetch(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-304-query-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    collector = Collector.objects.create(
+        id="collector-sidecar-304-query",
+        name="Telegraf304",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-sidecar-304-query",
+        name="node-sidecar-304-query",
+        ip="10.0.0.46",
+        operating_system=NodeConstants.LINUX_OS,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    config = CollectorConfiguration.objects.create(
+        id="cfg-sidecar-304-query",
+        name="cfg-sidecar-304-query",
+        collector=collector,
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    config.nodes.add(node)
+
+    assignment_checks = []
+    object_fetches = []
+    cache_store = {}
+
+    original_bound_check = Sidecar.configuration_bound_to_node
+    original_bound_assignment = Sidecar.get_bound_assignment_or_404
+
+    def wrapped_bound_check(node_id, configuration_id):
+        assignment_checks.append((node_id, configuration_id))
+        return original_bound_check(node_id, configuration_id)
+
+    def wrapped_bound_assignment(*args, **kwargs):
+        object_fetches.append((args, kwargs))
+        return original_bound_assignment(*args, **kwargs)
+
+    monkeypatch.setattr(Sidecar, "configuration_bound_to_node", wrapped_bound_check)
+    monkeypatch.setattr(Sidecar, "get_bound_assignment_or_404", wrapped_bound_assignment)
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.sidecar.cache",
+        SimpleNamespace(
+            get=lambda key: cache_store.get(key),
+            set=lambda key, value, timeout: cache_store.__setitem__(key, value),
+        ),
+    )
+
+    view = OpenSidecarViewSet.as_view({"get": "configuration"})
+    headers = _build_sidecar_auth_header(node.id)
+    first_request = _build_sidecar_request(
+        "get",
+        f"/node/sidecar/configurations/render/{node.id}/{config.id}",
+        headers=headers,
+    )
+    first_response = view(first_request, node_id=node.id, configuration_id=config.id)
+    assert first_response.status_code == 200
+
+    second_request = _build_sidecar_request(
+        "get",
+        f"/node/sidecar/configurations/render/{node.id}/{config.id}",
+        headers=headers,
+    )
+    second_request.META["HTTP_IF_NONE_MATCH"] = first_response["ETag"]
+    second_response = view(second_request, node_id=node.id, configuration_id=config.id)
+
+    assert second_response.status_code == 304
+    assert assignment_checks == [(node.id, config.id)]
+    assert len(object_fetches) == 1
+
+
+@pytest.mark.django_db
+def test_sidecar_configuration_env_reuses_cached_cloud_region_env(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-env-cache-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    collector = Collector.objects.create(
+        id="collector-sidecar-env-cache",
+        name="TelegrafEnvCache",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-sidecar-env-cache",
+        name="node-sidecar-env-cache",
+        ip="10.0.0.47",
+        operating_system=NodeConstants.LINUX_OS,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    aes = AESCryptor()
+    config = CollectorConfiguration.objects.create(
+        id="cfg-sidecar-env-cache",
+        name="cfg-sidecar-env-cache",
+        collector=collector,
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        env_config={"DB_PASSWORD": aes.encode("cfg-secret")},
+        created_by="tester",
+        updated_by="tester",
+    )
+    config.nodes.add(node)
+    SidecarEnv.objects.create(
+        key=NodeConstants.NATS_PASSWORD_KEY,
+        value=aes.encode("region-secret"),
+        type="secret",
+        cloud_region=cloud_region,
+    )
+
+    original_env_loader = RegionService.get_cloud_region_envconfig
+    env_loader_calls = []
+
+    def wrapped_env_loader(cloud_region_id, keys=None):
+        env_loader_calls.append((cloud_region_id, tuple(keys) if keys is not None else None))
+        return original_env_loader(cloud_region_id, keys=keys)
+
+    monkeypatch.setattr(RegionService, "get_cloud_region_envconfig", wrapped_env_loader)
+
+    view = OpenSidecarViewSet.as_view({"get": "configuration_env"})
+    request = _build_sidecar_request(
+        "get",
+        f"/node/sidecar/env_config/{node.id}/{config.id}",
+        headers=_build_sidecar_auth_header(node.id),
+    )
+
+    response = view(request, node_id=node.id, configuration_id=config.id)
+
+    assert response.status_code == 200
+    payload = _json_response_data(response)
+    assert payload["env_config"][NodeConstants.NATS_PASSWORD_KEY] == "region-secret"
+    assert payload["env_config"]["DB_PASSWORD"] == "cfg-secret"
+    assert env_loader_calls == [(cloud_region.id, tuple(NodeConstants.CLOUD_REGION_NATS_SECRET_KEYS))]
+
+
+@pytest.mark.django_db
+def test_sidecar_configuration_env_ignores_unrelated_bad_cloud_region_secret(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-env-cache-bad-secret-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    collector = Collector.objects.create(
+        id="collector-sidecar-env-cache-bad-secret",
+        name="TelegrafEnvCacheBadSecret",
+        service_type="exec",
+        node_operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture="",
+        executable_path="/opt/telegraf",
+        execute_parameters="--config %s",
+        introduction="generic",
+        icon="telegraf",
+        controller_default_run=True,
+        default_config={},
+        tags=[],
+        package_name="telegraf",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-sidecar-env-cache-bad-secret",
+        name="node-sidecar-env-cache-bad-secret",
+        ip="10.0.0.48",
+        operating_system=NodeConstants.LINUX_OS,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    aes = AESCryptor()
+    config = CollectorConfiguration.objects.create(
+        id="cfg-sidecar-env-cache-bad-secret",
+        name="cfg-sidecar-env-cache-bad-secret",
+        collector=collector,
+        config_template="[[inputs.cpu]]",
+        cloud_region=cloud_region,
+        env_config={"DB_PASSWORD": aes.encode("cfg-secret")},
+        created_by="tester",
+        updated_by="tester",
+    )
+    config.nodes.add(node)
+    SidecarEnv.objects.create(
+        key=NodeConstants.NATS_PASSWORD_KEY,
+        value=aes.encode("region-secret"),
+        type="secret",
+        cloud_region=cloud_region,
+    )
+    SidecarEnv.objects.create(
+        key="UNRELATED_SECRET",
+        value="not-valid-ciphertext",
+        type="secret",
+        cloud_region=cloud_region,
+    )
+
+    decode_calls = []
+    original_decode_rows = RegionService._decode_env_rows
+
+    def wrapped_decode_rows(env_rows, keys=None):
+        decode_calls.append(set(keys) if keys is not None else None)
+        return original_decode_rows(env_rows, keys=keys)
+
+    monkeypatch.setattr(RegionService, "_decode_env_rows", wrapped_decode_rows)
+
+    view = OpenSidecarViewSet.as_view({"get": "configuration_env"})
+    request = _build_sidecar_request(
+        "get",
+        f"/node/sidecar/env_config/{node.id}/{config.id}",
+        headers=_build_sidecar_auth_header(node.id),
+    )
+
+    response = view(request, node_id=node.id, configuration_id=config.id)
+
+    assert response.status_code == 200
+    payload = _json_response_data(response)
+    assert payload["env_config"][NodeConstants.NATS_PASSWORD_KEY] == "region-secret"
+    assert payload["env_config"]["DB_PASSWORD"] == "cfg-secret"
+    assert decode_calls == [set(NodeConstants.CLOUD_REGION_NATS_SECRET_KEYS)]
 
 
 @pytest.mark.django_db
@@ -2957,6 +3917,34 @@ def test_nats_client_request_falls_back_to_pickled_base_app_exception_message(mo
         import asyncio
 
         asyncio.run(request("apps.node_mgmt.nats.node", "batch_create_configs_and_child_configs"))
+
+
+@pytest.mark.django_db
+def test_install_managed_component_nats_creates_task_and_dispatches_async_worker(monkeypatch):
+    captured = {}
+
+    def fake_install_collector(collector_package, nodes):
+        captured["collector_package"] = collector_package
+        captured["nodes"] = nodes
+        return 1
+
+    class _FakeDelay:
+        def delay(self, task_id):
+            captured["task_id"] = task_id
+
+    monkeypatch.setattr("apps.node_mgmt.nats.node.InstallerService.install_collector", fake_install_collector)
+    monkeypatch.setattr("apps.node_mgmt.nats.node.install_collector", _FakeDelay())
+
+    from apps.node_mgmt.nats.node import install_managed_component
+
+    result = install_managed_component({"collector_package": 12, "nodes": ["node-1", "node-2"]})
+
+    assert result == {"task_id": 1}
+    assert captured == {
+        "collector_package": 12,
+        "nodes": ["node-1", "node-2"],
+        "task_id": 1,
+    }
 
 
 @pytest.mark.django_db

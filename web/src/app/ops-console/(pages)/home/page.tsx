@@ -19,7 +19,7 @@ const ControlPage = () => {
   const { t } = useTranslation();
   const { post } = useApiClient();
   const { clientData, appConfigList, loading, appConfigLoading, refreshAppConfig } = useClientData();
-  const { loading: userLoading, isFirstLogin, userId } = useUserInfoContext();
+  const { loading: userLoading, isFirstLogin } = useUserInfoContext();
   const [isPopoverVisible, setIsPopoverVisible] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [form] = Form.useForm();
@@ -124,7 +124,6 @@ const ControlPage = () => {
       const values = await form.validateFields();
       await post('/console_mgmt/init_user_set/', {
         group_name: values.group_name,
-        user_id: userId,
       });
       message.success(t('common.saveSuccess'));
       window.location.reload();

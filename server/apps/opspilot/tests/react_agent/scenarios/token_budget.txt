@@ -1,0 +1,30 @@
+场景名称: Token 预算控制测试
+
+对应计划: Phase 2 — #12 Token 预算控制
+
+功能描述:
+  通过 max_tokens_budget 设定任务的总 token 上限，
+  token_counter 在每次 LLM 响应后累加 usage_metadata.total_tokens，
+  超预算时 should_continue 强制终止循环。
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py: token_counter 累加、should_continue 中预算检查
+  - server/apps/opspilot/metis/llm/chain/entity.py: BasicLLMRequest.max_tokens_budget
+
+测试用例:
+
+  TestTokenBudgetEnforcement:
+    1. 累计 token 超预算时终止: max_tokens_budget=1000，每次 LLM 返回 600 tokens，第 2 步后 1200>1000 终止
+    2. 恰好等于预算时终止: 累计 == budget 触发
+    3. 未达预算继续执行: 累计 < budget，循环继续
+
+  TestTokenBudgetDisabled:
+    4. max_tokens_budget=0 不限制: 不管多少 token 都继续
+    5. LLM 无 usage_metadata: token_counter 不增长，不触发
+
+  TestTokenBudgetAccuracy:
+    6. 多轮累加准确: 3 轮分别 300+400+500=1200，验证 token_counter["total"]==1200
+    7. usage_metadata 非 dict 时安全处理: 不报错
+
+关联测试文件: cases/test_token_budget.py
+状态: GREEN（功能已实现）

@@ -1,11 +1,13 @@
 import datetime
+from types import SimpleNamespace
 
-import nats_client
 from django.db.models import Count
-from django.db.models.functions import TruncDate, TruncHour, TruncWeek, TruncMonth
+from django.db.models.functions import TruncDate, TruncHour, TruncMonth, TruncWeek
 from django.utils import timezone
 
-from apps.cmdb.constants.constants import PERMISSION_MODEL, PERMISSION_INSTANCES, PERMISSION_TASK, CollectPluginTypes
+import nats_client
+from apps.cmdb.constants.constants import APP_NAME, INSTANCE, PERMISSION_INSTANCES, PERMISSION_MODEL, PERMISSION_TASK, CollectPluginTypes
+from apps.cmdb.display_field.cache import ExcludeFieldsCache
 from apps.cmdb.display_field.constants import (
     DISPLAY_SUFFIX,
     FIELD_TYPE_ENUM,
@@ -16,16 +18,19 @@ from apps.cmdb.display_field.constants import (
     USER_DISPLAY_FORMAT,
 )
 from apps.cmdb.display_field.handler import DisplayFieldConverter, DisplayFieldHandler
-from apps.cmdb.display_field.cache import ExcludeFieldsCache
-from apps.cmdb.services.model import ModelManage
-from apps.cmdb.services.classification import ClassificationManage
+from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.models.change_record import CREATE_INST, DELETE_INST, OPERATE_TYPE_CHOICES, UPDATE_INST, ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
+from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.config_file_service import ConfigFileService
 from apps.cmdb.services.instance import InstanceManage
-from apps.cmdb.models.change_record import ChangeRecord, CREATE_INST, UPDATE_INST, DELETE_INST, OPERATE_TYPE_CHOICES
-from apps.cmdb.graph.drivers.graph_client import GraphClient
-from apps.cmdb.constants.constants import INSTANCE
+from apps.cmdb.services.model import ModelManage
+from apps.cmdb.utils.base import get_default_group_id
+from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
+from apps.core.utils.permission_utils import get_permission_rules
 from apps.system_mgmt.models import Group, User
+from apps.system_mgmt.models.role import Role
+from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.core.logger import cmdb_logger as logger
 
 
@@ -35,6 +40,108 @@ def _normalize_to_list(value):
     if isinstance(value, list):
         return [item for item in value if item not in (None, "")]
     return [value]
+
+
+def _normalize_permission_user(user, domain=None):
+    if hasattr(user, "username") and hasattr(user, "domain"):
+        return user
+    if isinstance(user, str) and user:
+        return SimpleNamespace(username=user, domain=domain)
+    return user
+
+
+def _get_authorized_team_ids(user_obj, current_team, include_children=False):
+    user_group_ids = [group["id"] if isinstance(group, dict) else group for group in (user_obj.group_list or [])]
+
+    role_ids = set(getattr(user_obj, "role_list", []) or [])
+    if role_ids:
+        role_names = {f"{role.app}--{role.name}" if role.app else role.name for role in Role.objects.filter(id__in=role_ids).only("name", "app")}
+    else:
+        role_names = set()
+
+    if {"admin", "system-manager--admin"}.intersection(role_names):
+        return GroupUtils.get_group_with_descendants(current_team) if include_children else [current_team]
+
+    return GroupUtils.get_user_authorized_child_groups(
+        user_group_list=user_group_ids,
+        target_group_id=current_team,
+        include_children=include_children,
+    )
+
+
+def _build_nats_permission_map(user_info, model_id="", permission_type=PERMISSION_INSTANCES):
+    user_info = user_info or {}
+    team = user_info.get("team")
+    user = user_info.get("user")
+    domain = user_info.get("domain")
+    include_children = user_info.get("include_children", False)
+
+    if not user or team is None:
+        return None
+
+    user_obj = _normalize_permission_user(user, domain=domain)
+    current_team = int(team)
+    user_filters = {"username": user_obj.username}
+    if getattr(user_obj, "domain", None):
+        user_filters["domain"] = user_obj.domain
+    real_user = User.objects.filter(**user_filters).first()
+    if not real_user:
+        return None
+
+    authorized_team_ids = _get_authorized_team_ids(real_user, current_team, include_children=include_children)
+    if not authorized_team_ids:
+        return None
+
+    permission_key = f"{permission_type}.{model_id}" if model_id else permission_type
+    permission_rules = get_permission_rules(
+        user=user_obj,
+        current_team=current_team,
+        app_name=APP_NAME,
+        permission_key=permission_key,
+        include_children=include_children,
+    )
+    if not isinstance(permission_rules, dict):
+        permission_rules = {}
+
+    teams = [int(team_id) for team_id in permission_rules.get("team", [])]
+    instance = permission_rules.get("instance", [])
+    permission_instances_map = CmdbRulesFormatUtil.format_permission_instances_list(instances=instance)
+    inst_names = list(permission_instances_map.keys())
+
+    permission_map = {}
+    for team_id in authorized_team_ids:
+        if team_id in teams:
+            permission_map[team_id] = {
+                "permission_instances_map": {},
+                "inst_names": [],
+            }
+        else:
+            permission_map[team_id] = {
+                "permission_instances_map": permission_instances_map,
+                "inst_names": inst_names,
+            }
+
+    if not permission_map:
+        return None
+
+    return permission_map
+
+
+def _build_nats_model_permission_map(user_info):
+    permission_map = _build_nats_permission_map(user_info, permission_type=PERMISSION_MODEL)
+    if permission_map is None:
+        return None
+
+    default_group_id = get_default_group_id()[0]
+    current_team = int((user_info or {}).get("team") or 0)
+
+    if default_group_id != current_team and default_group_id not in permission_map:
+        permission_map[default_group_id] = {
+            "permission_instances_map": {},
+            "inst_names": [],
+        }
+
+    return permission_map
 
 
 def _build_authoritative_maps(instances, attrs):
@@ -281,9 +388,6 @@ def query_asset_instances(
     if page_size <= 0:
         page_size = 20
 
-    user_info = user_info or {}
-    team = user_info.get("team")
-
     def normalize_query_list(raw_query_list):
         if raw_query_list is None:
             return []
@@ -339,12 +443,14 @@ def query_asset_instances(
         return normalized
 
     query_params = []
-    if team is not None:
-        query_params.append({"field": "organization", "type": "list[]", "value": [int(team)]})
 
     normalized_query_list = normalize_query_list(query_list)
     if normalized_query_list:
         query_params.extend(normalized_query_list)
+
+    permission_map = _build_nats_permission_map(user_info, model_id=model_id)
+    if permission_map is None:
+        return {"result": True, "data": {"count": 0, "items": []}, "message": ""}
 
     instances, count = InstanceManage.instance_list(
         model_id=model_id,
@@ -353,7 +459,7 @@ def query_asset_instances(
         page_size=page_size,
         order="",
         creator="",
-        permission_map={},
+        permission_map=permission_map,
     )
 
     formatted_instances = _format_asset_instances_response(model_id, instances)
@@ -409,21 +515,21 @@ def get_cmdb_statistics(user_info=None, **kwargs):
             "message": ""
         }
     """
-    user_info = user_info or {}
-    team = user_info.get("team")
+    model_permissions_map = _build_nats_model_permission_map(user_info)
+    instance_permissions_map = _build_nats_permission_map(user_info)
+    if model_permissions_map is None or instance_permissions_map is None:
+        return {
+            "result": True,
+            "data": {"model_count": 0, "instance_count": 0, "classification_count": 0},
+            "message": "",
+        }
 
     classifications = ClassificationManage.search_model_classification()
-    classification_count = len(classifications)
-
-    models = ModelManage.search_model()
-    model_count = len(models)
-
-    permissions_map = {}
-    if team is not None:
-        permissions_map[int(team)] = {"inst_names": []}
-
-    model_counts = InstanceManage.model_inst_count(permissions_map=permissions_map)
+    visible_models = ModelManage.search_model(permissions_map=model_permissions_map)
+    model_counts = InstanceManage.model_inst_count(permissions_map=instance_permissions_map)
     instance_count = sum(model_counts.values())
+    model_count = len(visible_models)
+    classification_count = len(classifications)
 
     return {
         "result": True,
@@ -572,13 +678,11 @@ def get_instance_group_by(model_id=None, field=None, user_info=None, **kwargs):
     if not field:
         return {"result": False, "data": [], "message": "field is required"}
 
-    user_info = user_info or {}
-    team = user_info.get("team")
-
     params = [{"field": "model_id", "type": "str=", "value": model_id}]
-    format_permission_dict = {}
-    if team is not None:
-        format_permission_dict[int(team)] = []
+    permission_map = _build_nats_permission_map(user_info, model_id=model_id)
+    if permission_map is None:
+        return {"result": True, "data": [], "message": ""}
+    format_permission_dict = InstanceManage._build_format_permission_dict(permission_map)
 
     with GraphClient() as ag:
         instances, _ = ag.query_entity(
@@ -633,19 +737,16 @@ def get_model_inst_statistics(user_info=None, **kwargs):
             "message": ""
         }
     """
-    user_info = user_info or {}
-    team = user_info.get("team")
-
     classifications = ClassificationManage.search_model_classification()
     classification_map = {c["classification_id"]: c["classification_name"] for c in classifications}
 
-    models = ModelManage.search_model()
+    model_permissions_map = _build_nats_model_permission_map(user_info)
+    instance_permissions_map = _build_nats_permission_map(user_info)
+    if model_permissions_map is None or instance_permissions_map is None:
+        return {"result": True, "data": [], "message": ""}
 
-    permissions_map = {}
-    if team is not None:
-        permissions_map[int(team)] = {"inst_names": []}
-
-    model_counts = InstanceManage.model_inst_count(permissions_map=permissions_map)
+    models = ModelManage.search_model(permissions_map=model_permissions_map)
+    model_counts = InstanceManage.model_inst_count(permissions_map=instance_permissions_map)
 
     result_data = []
     for model in models:

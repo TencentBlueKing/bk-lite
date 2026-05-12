@@ -9,14 +9,17 @@ fi
 echo "开始卸载 Fusion Collector Sidecar 服务..."
 
 # 停止服务
-systemctl stop sidecar.service
+systemctl stop bk-sidecar.service >/dev/null 2>&1 || true
+systemctl stop sidecar.service >/dev/null 2>&1 || true
 echo "服务已停止"
 
 # 禁用服务自启动
-systemctl disable sidecar.service
+systemctl disable bk-sidecar.service >/dev/null 2>&1 || true
+systemctl disable sidecar.service >/dev/null 2>&1 || true
 echo "服务已禁用自启动"
 
 # 删除服务文件
+rm -f /etc/systemd/system/bk-sidecar.service
 rm -f /etc/systemd/system/sidecar.service
 echo "服务文件已删除"
 

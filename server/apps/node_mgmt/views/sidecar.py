@@ -18,6 +18,7 @@ from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
+from apps.core.logger import node_logger as logger
 
 
 class OpenSidecarViewSet(OpenAPIViewSet):
@@ -327,6 +328,9 @@ class OpenSidecarViewSet(OpenAPIViewSet):
                 }
             }
         """
+        node_name = request.data.get("node_name", "")
+        node_ip = request.data.get("node_details", {}).get("ip", "")
+        logger.info(f"Received sidecar node update request node_id={node_id}, node_ip={node_ip}, node_name={node_name}")
         check_token_auth(node_id, request)
         return Sidecar.update_node_client(request, node_id)
 

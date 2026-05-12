@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Form, message } from 'antd';
+import { Form, message, Modal } from 'antd';
 import type { AuthSource } from '@/app/system-manager/types/security';
 import { useSecurityApi } from '@/app/system-manager/api/security';
 import { enhanceAuthSourcesList } from '@/app/system-manager/utils/authSourceUtils';
@@ -33,6 +33,7 @@ interface UseAuthSourceModalResult {
   handleModalCancel: () => void;
   handleAuthSourceToggle: (source: AuthSource, enabled: boolean) => Promise<void>;
   handleSyncAuthSource: (source: AuthSource) => Promise<void>;
+  handleDeleteAuthSource: (source: AuthSource) => Promise<void>;
   handleSourceTypeChange: (newSourceType: string) => void;
 }
 
@@ -47,7 +48,7 @@ export function useAuthSourceModal({
   const [selectedRoles, setSelectedRoles] = useState<number[]>([]);
   const [dynamicForm] = Form.useForm();
 
-  const { updateAuthSource, createAuthSource, syncAuthSource } = useSecurityApi();
+  const { updateAuthSource, createAuthSource, syncAuthSource, deleteAuthSource } = useSecurityApi();
 
   const handleAddAuthSource = useCallback(() => {
     setEditingSource(null);
@@ -138,6 +139,25 @@ export function useAuthSourceModal({
     }
   }, [syncAuthSource, t]);
 
+  const handleDeleteAuthSource = useCallback(async (source: AuthSource) => {
+    Modal.confirm({
+      title: t('common.deleteTitle'),
+      content: t('common.deleteContent'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        try {
+          await deleteAuthSource(source.id);
+          onUpdate(authSources.filter(item => item.id !== source.id));
+          message.success(t('common.delSuccess'));
+        } catch (error) {
+          console.error('Failed to delete auth source:', error);
+          message.error(t('common.delFailed'));
+        }
+      },
+    });
+  }, [deleteAuthSource, authSources, onUpdate, t]);
+
   const handleSourceTypeChange = useCallback((newSourceType: string) => {
     const fieldsToReset = getFieldsToResetOnTypeChange(newSourceType);
     const resetValues = fieldsToReset.reduce((acc, field) => {
@@ -166,6 +186,7 @@ export function useAuthSourceModal({
     handleModalCancel,
     handleAuthSourceToggle,
     handleSyncAuthSource,
+    handleDeleteAuthSource,
     handleSourceTypeChange,
   };
 }

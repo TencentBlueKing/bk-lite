@@ -29,6 +29,7 @@ from apps.opspilot.services.knowledge_search_service import KnowledgeSearchServi
 from apps.opspilot.tasks import general_embed, general_embed_by_document_list
 from apps.opspilot.utils.chunk_helper import ChunkHelper
 from apps.opspilot.utils.graph_utils import GraphUtils
+from apps.opspilot.utils.team_permission_mixin import TeamPermissionMixin
 
 
 class ObjFilter(FilterSet):
@@ -38,11 +39,32 @@ class ObjFilter(FilterSet):
     train_status = filters.NumberFilter(field_name="train_status", lookup_expr="exact")
 
 
-class KnowledgeDocumentViewSet(LanguageViewSet):
+class KnowledgeDocumentViewSet(TeamPermissionMixin, LanguageViewSet):
+    """知识文档 ViewSet - 禁用未使用的 create/update/partial_update 接口"""
+
     queryset = KnowledgeDocument.objects.all()
     serializer_class = KnowledgeDocumentSerializer
     filterset_class = ObjFilter
     ordering = ("-id",)
+    # 仅允许 GET (list, retrieve, actions), POST (actions), DELETE (destroy)
+    # 禁用 PUT (update), PATCH (partial_update), POST create (通过 create 方法返回 405)
+    http_method_names = ["get", "post", "delete", "options"]
+
+    def create(self, request, *args, **kwargs):
+        """禁用 create 接口 - 文档通过 file_knowledge/manual_knowledge/web_page_knowledge 创建"""
+        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
+
+    def get_queryset(self):
+        """根据 knowledge_base.team 过滤文档"""
+        queryset = super().get_queryset()
+
+        # 验证 current_team 权限
+        current_team = self._validate_current_team_permission(self.request)
+
+        # 根据 knowledge_base.team 过滤
+        queryset = queryset.filter(knowledge_base__team__contains=[current_team])
+
+        return queryset
 
     @HasPermission("knowledge_document-Delete")
     def destroy(self, request, *args, **kwargs):

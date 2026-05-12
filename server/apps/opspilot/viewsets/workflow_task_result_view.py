@@ -6,9 +6,11 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.opspilot.enum import WorkFlowExecuteType
 from apps.opspilot.models import WorkFlowTaskNodeResult, WorkFlowTaskResult
 from apps.opspilot.serializers.workflow_task_result_serializer import WorkFlowTaskResultSerializer
+from apps.opspilot.utils.team_permission_mixin import TeamPermissionMixin
 
 
 class WorkFlowTaskResultFilter(FilterSet):
@@ -21,13 +23,21 @@ class WorkFlowTaskResultFilter(FilterSet):
     end_time = filters.DateTimeFilter(field_name="run_time", lookup_expr="lte")
 
 
-class WorkFlowTaskResultViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewSet):
+class WorkFlowTaskResultViewSet(TeamPermissionMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewSet):
     """工作流任务执行结果视图集"""
 
     serializer_class = WorkFlowTaskResultSerializer
     queryset = WorkFlowTaskResult.objects.select_related("bot_work_flow__bot").all()
     filterset_class = WorkFlowTaskResultFilter
     ordering = ["-id"]  # 默认按运行时间倒序排列
+
+    def get_queryset(self):
+        """根据 current_team 过滤工作流任务结果"""
+        queryset = super().get_queryset()
+        current_team = self._validate_current_team_permission(self.request)
+        # 根据 bot.team 过滤
+        queryset = queryset.filter(bot_work_flow__bot__team__contains=[current_team])
+        return queryset
 
     def _resolve_execution_context(self, execution_id: str, task_result_id: str):
         """解析 execution_id 与 task_result 上下文"""
@@ -76,19 +86,32 @@ class WorkFlowTaskResultViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin
             node_data["error"] = node.error_message
         return node_data
 
+    @HasPermission("bot_conversation_log-View")
     def list(self, request, *args, **kwargs):
         """获取工作流任务执行结果列表"""
-        if not request.query_params.get("bot_id"):
+        bot_id = request.query_params.get("bot_id")
+        if not bot_id:
             return Response({"detail": "bot_id参数是必需的。"}, status=400)
+
+        # 验证用户有权限访问该 bot
+        self._validate_bot_permission(request, bot_id)
 
         return super().list(request, *args, **kwargs)
 
     @action(detail=False, methods=["get"], url_path="execution_detail")
+    @HasPermission("bot_conversation_log-View")
     def execution_detail(self, request):
         """按 execution_id 查询节点进度列表"""
         execution_id = request.query_params.get("execution_id", "")
         if not execution_id:
             return Response({"detail": "execution_id参数是必需的。"}, status=400)
+
+        # 验证 execution_id 对应的 task_result 属于用户有权限访问的 bot
+        task_result = WorkFlowTaskResult.objects.filter(execution_id=execution_id).select_related("bot_work_flow__bot").first()
+        if task_result:
+            bot = task_result.bot_work_flow.bot if task_result.bot_work_flow else None
+            if bot:
+                self._validate_bot_permission(request, bot.id)
 
         node_results = (
             WorkFlowTaskNodeResult.objects.filter(execution_id=execution_id)
@@ -110,6 +133,7 @@ class WorkFlowTaskResultViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin
         return Response(list(node_results))
 
     @action(detail=False, methods=["GET"])
+    @HasPermission("bot_conversation_log-View")
     def execution_output_data(self, request):
         """按 execution_id + id 查询节点详情，返回旧版 output_data 结构"""
         execution_id = request.query_params.get("execution_id", "")
@@ -118,6 +142,10 @@ class WorkFlowTaskResultViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin
         execution_id, task_result, error_response = self._resolve_execution_context(execution_id, task_result_id)
         if error_response:
             return error_response
+
+        # 验证 task_result 对应的 bot 权限
+        if task_result and task_result.bot_work_flow and task_result.bot_work_flow.bot:
+            self._validate_bot_permission(request, task_result.bot_work_flow.bot.id)
 
         node_filters = self._build_node_filters(execution_id, task_result)
 
@@ -130,6 +158,7 @@ class WorkFlowTaskResultViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin
         return Response(output_data)
 
     @action(detail=False, methods=["get"], url_path="node_execution_detail")
+    @HasPermission("bot_conversation_log-View")
     def node_execution_detail(self, request):
         """按 execution_id + node_id 查询单节点输入/输出参数"""
         execution_id = request.query_params.get("execution_id", "")

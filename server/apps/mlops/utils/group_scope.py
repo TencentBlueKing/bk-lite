@@ -7,6 +7,8 @@ Mirrors the cookie-parsing behaviour of
 so that mlops-specific code does not depend on the core ViewSet class hierarchy.
 """
 
+from types import SimpleNamespace
+
 import logging
 
 from rest_framework import serializers
@@ -116,3 +118,22 @@ def assert_parent_team_matches(team_owned_obj, parent_obj, field_name):
     parent_team = getattr(parent_obj, "team", None) or []
     if owner_team != parent_team:
         raise serializers.ValidationError({field_name: "关联资源与当前对象的组归属不一致"})
+
+
+def assert_dataset_version_scope(dataset_version, team, request, field_name="dataset_version"):
+    """Validate that a dataset release is visible to the current team and
+    matches the root resource's team binding.
+
+    This is the shared guard for TrainJob write paths and runtime dispatch.
+    """
+    if dataset_version is None:
+        return
+
+    dataset = getattr(dataset_version, "dataset", None)
+    if dataset is None:
+        raise serializers.ValidationError({field_name: "所选数据集版本无关联数据集"})
+
+    assert_team_ownership(dataset, get_current_team(request), field_name, request=request)
+
+    if team is not None:
+        assert_parent_team_matches(SimpleNamespace(team=team), dataset, field_name)

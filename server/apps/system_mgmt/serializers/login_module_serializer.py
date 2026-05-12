@@ -37,12 +37,18 @@ class LoginModuleSerializer(serializers.ModelSerializer):
             Group.objects.get_or_create(parent_id=0, name=validated_data["other_config"].get("root_group", "蓝鲸"))
         instance = super().create(validated_data)
         if source_type == "bk_lite":
-            instance.create_sync_periodic_task()
-            sync_user_and_group_by_login_module.delay(instance.id)
+            try:
+                instance.create_sync_periodic_task()
+                sync_user_and_group_by_login_module.delay(instance.id)
+            except Exception:
+                pass
         return instance
 
     def update(self, instance, validated_data):
         instance = super().update(instance, validated_data)
         if instance.source_type == "bk_lite":
-            instance.create_sync_periodic_task()
+            try:
+                instance.create_sync_periodic_task()
+            except Exception:
+                pass
         return instance
