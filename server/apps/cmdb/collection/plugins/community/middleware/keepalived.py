@@ -16,5 +16,4 @@ class KeepalivedCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "user_name": "user_name",
         "install_path": "install_path",
         "config_file": "config_file",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

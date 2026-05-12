@@ -50,11 +50,7 @@ class AggregationProcessor:
             logger.info(f"开始处理 {len(active_strategies)} 个活跃策略")
             logger.info(
                 "活跃 missing_detection 策略数量=%s",
-                sum(
-                    1
-                    for strategy in active_strategies
-                    if strategy.strategy_type == AlarmStrategyType.MISSING_DETECTION
-                ),
+                sum(1 for strategy in active_strategies if strategy.strategy_type == AlarmStrategyType.MISSING_DETECTION),
             )
 
             for strategy in active_strategies:
@@ -89,10 +85,7 @@ class AggregationProcessor:
 
         cutoff_time = now - timedelta(minutes=window_size)
 
-        logger.info(
-            f"策略 {strategy.name}: 查询时间窗口={window_size}分钟, "
-            f"起始时间={cutoff_time.isoformat()}"
-        )
+        logger.info(f"策略 {strategy.name}: 查询时间窗口={window_size}分钟, 起始时间={cutoff_time.isoformat()}")
 
         events = Event.objects.filter(
             received_at__gte=cutoff_time,
@@ -121,9 +114,7 @@ class AggregationProcessor:
                 logger.info(f"策略 {strategy.name}: 无事件需要处理")
                 return
 
-            matched_events = StrategyMatcher.match_events_to_strategy(
-                events, cast(List[List[Dict]], strategy.match_rules or [])
-            )
+            matched_events = StrategyMatcher.match_events_to_strategy(events, cast(List[List[Dict]], strategy.match_rules or []))
 
             if not matched_events.exists():
                 logger.info(f"策略 {strategy.name}: 无匹配规则的事件")
@@ -139,9 +130,7 @@ class AggregationProcessor:
         except Exception as e:  # noqa
             logger.exception(f"策略 {strategy.name} 处理失败")
 
-    def _process_missing_detection_strategy(
-        self, strategy: AlarmStrategy, now: datetime
-    ) -> None:
+    def _process_missing_detection_strategy(self, strategy: AlarmStrategy, now: datetime) -> None:
         logger.info(
             "单策略开始处理: strategy_id=%s, name=%s",
             strategy.id,
@@ -159,9 +148,7 @@ class AggregationProcessor:
 
                 if latest_event:
                     params["last_heartbeat_time"] = latest_event.received_at.isoformat()
-                    params["last_heartbeat_context"] = self._build_heartbeat_context(
-                        latest_event
-                    )
+                    params["last_heartbeat_context"] = self._build_heartbeat_context(latest_event)
 
                     active_alert = SyntheticAlertBuilder.find_active_alert(strategy)
                     if active_alert and params.get("auto_recovery", True):
@@ -235,9 +222,7 @@ class AggregationProcessor:
         return queryset
 
     def _match_heartbeat_events(self, strategy: AlarmStrategy, candidates):
-        matched_events = StrategyMatcher.match_events_to_strategy(
-            candidates, cast(List[List[Dict]], strategy.match_rules or [])
-        )
+        matched_events = StrategyMatcher.match_events_to_strategy(candidates, cast(List[List[Dict]], strategy.match_rules or []))
         logger.debug(
             "matched_events 数量: strategy_id=%s, count=%s",
             strategy.id,
@@ -276,30 +261,18 @@ class AggregationProcessor:
         )
         return params
 
-    def _calculate_deadline(
-        self, strategy: AlarmStrategy, params: Dict[str, Any], now: datetime
-    ) -> Optional[datetime]:
+    def _calculate_deadline(self, strategy: AlarmStrategy, params: Dict[str, Any], now: datetime) -> Optional[datetime]:
         project_tz = timezone.get_current_timezone()
         cron_tz = self.HEARTBEAT_CRON_SOURCE_TIMEZONE
         now_in_tz = self._normalize_to_project_timezone(now, project_tz)
         now_in_cron_tz = self._normalize_to_timezone(now, cron_tz)
-        last_heartbeat_time = self._parse_runtime_datetime(
-            params.get("last_heartbeat_time")
-        )
-        last_heartbeat_in_tz = self._normalize_to_project_timezone(
-            last_heartbeat_time, project_tz
-        )
-        last_heartbeat_in_cron_tz = self._normalize_to_timezone(
-            last_heartbeat_time, cron_tz
-        )
+        last_heartbeat_time = self._parse_runtime_datetime(params.get("last_heartbeat_time"))
+        last_heartbeat_in_tz = self._normalize_to_project_timezone(last_heartbeat_time, project_tz)
+        last_heartbeat_in_cron_tz = self._normalize_to_timezone(last_heartbeat_time, cron_tz)
 
-        if params.get("activation_mode") == HeartbeatActivationMode.IMMEDIATE:
-            monitoring_start = self._normalize_to_project_timezone(
-                strategy.created_at, project_tz
-            )
-            monitoring_start_in_cron_tz = self._normalize_to_timezone(
-                strategy.created_at, cron_tz
-            )
+        if params.get("activation_mode") == HeartbeatActivationMode.IMMEDIATE and last_heartbeat_in_tz is None:
+            monitoring_start = self._normalize_to_project_timezone(strategy.created_at, project_tz)
+            monitoring_start_in_cron_tz = self._normalize_to_timezone(strategy.created_at, cron_tz)
         else:
             monitoring_start = last_heartbeat_in_tz
             monitoring_start_in_cron_tz = last_heartbeat_in_cron_tz
@@ -315,9 +288,7 @@ class AggregationProcessor:
                 croniter(cron_expr, monitoring_start_in_cron_tz).get_next(datetime),
                 cron_tz,
             )
-            first_expected = self._normalize_to_project_timezone(
-                first_expected_in_cron_tz, project_tz
-            )
+            first_expected = self._normalize_to_project_timezone(first_expected_in_cron_tz, project_tz)
             if first_expected is None:
                 return None
 
@@ -335,20 +306,14 @@ class AggregationProcessor:
                 )
                 return deadline
 
-            previous_expected_in_cron_tz = self._normalize_to_timezone(
-                croniter(cron_expr, now_in_cron_tz).get_prev(datetime), cron_tz
-            )
-            previous_expected = self._normalize_to_project_timezone(
-                previous_expected_in_cron_tz, project_tz
-            )
+            previous_expected_in_cron_tz = self._normalize_to_timezone(croniter(cron_expr, now_in_cron_tz).get_prev(datetime), cron_tz)
+            previous_expected = self._normalize_to_project_timezone(previous_expected_in_cron_tz, project_tz)
             if previous_expected is None:
                 return None
 
             if last_heartbeat_in_tz and last_heartbeat_in_tz >= previous_expected:
                 next_expected_in_cron_tz = self._normalize_to_timezone(
-                    croniter(cron_expr, previous_expected_in_cron_tz).get_next(
-                        datetime
-                    ),
+                    croniter(cron_expr, previous_expected_in_cron_tz).get_next(datetime),
                     cron_tz,
                 )
                 next_expected = self._normalize_to_project_timezone(
@@ -464,9 +429,7 @@ class AggregationProcessor:
         return parsed
 
     @staticmethod
-    def _normalize_to_project_timezone(
-        value: Optional[datetime], project_tz=None
-    ) -> Optional[datetime]:
+    def _normalize_to_project_timezone(value: Optional[datetime], project_tz=None) -> Optional[datetime]:
         if value is None:
             return None
         tz = project_tz or timezone.get_current_timezone()
@@ -475,9 +438,7 @@ class AggregationProcessor:
         return timezone.localtime(value, tz)
 
     @staticmethod
-    def _normalize_to_timezone(
-        value: Optional[datetime], target_tz
-    ) -> Optional[datetime]:
+    def _normalize_to_timezone(value: Optional[datetime], target_tz) -> Optional[datetime]:
         if value is None:
             return None
         if timezone.is_naive(value):
@@ -501,11 +462,7 @@ class AggregationProcessor:
 
             window_config = WindowFactory.create_from_strategy(strategy)
 
-            logger.debug(
-                f"策略 {strategy.name}: 窗口配置 "
-                f"type={window_config.window_type}, "
-                f"size={window_config.window_size_minutes}分钟"
-            )
+            logger.debug(f"策略 {strategy.name}: 窗口配置 type={window_config.window_type}, size={window_config.window_size_minutes}分钟")
 
             sql_query = self.sql_builder.build_aggregation_sql(
                 dimensions=dimensions,
@@ -529,9 +486,7 @@ class AggregationProcessor:
             return True
 
         except Exception as e:
-            logger.error(
-                f"策略 {strategy.name}: 维度 {dimensions} 聚合失败: {e}", exc_info=True
-            )
+            logger.error(f"策略 {strategy.name}: 维度 {dimensions} 聚合失败: {e}", exc_info=True)
             return False
 
     def _create_or_update_alerts(
@@ -542,15 +497,8 @@ class AggregationProcessor:
     ) -> int:
         """创建或更新告警"""
 
-        logger.info(
-            f"策略 {strategy.name}: 开始创建/更新告警, "
-            f"结果数={len(aggregation_results)}"
-        )
-        alert_levels = list(
-            Level.objects.filter(level_type=LevelType.ALERT).values(
-                "level_id", "level_name", "level_display_name"
-            )
-        )
+        logger.info(f"策略 {strategy.name}: 开始创建/更新告警, 结果数={len(aggregation_results)}")
+        alert_levels = list(Level.objects.filter(level_type=LevelType.ALERT).values("level_id", "level_name", "level_display_name"))
         success_count = 0
         fail_count = 0
         recovered_count = 0
@@ -572,10 +520,7 @@ class AggregationProcessor:
 
                     # 如果是新创建的告警，记录ID用于后续自动分配
                     if is_new_alert:
-                        should_delay_assignment = (
-                            alert.is_session_alert
-                            and alert.session_status == SessionStatus.OBSERVING
-                        )
+                        should_delay_assignment = alert.is_session_alert and alert.session_status == SessionStatus.OBSERVING
 
                         if should_delay_assignment:
                             logger.info(
@@ -591,22 +536,15 @@ class AggregationProcessor:
                         recovered_count += 1
 
                     success_count += 1
-                    logger.debug(
-                        f"策略 {strategy.name}: 告警处理成功 "
-                        f"fingerprint={result.get('fingerprint')}"
-                    )
+                    logger.debug(f"策略 {strategy.name}: 告警处理成功 fingerprint={result.get('fingerprint')}")
             except Exception as e:
                 fail_count += 1
                 logger.error(
-                    f"策略 {strategy.name}: 告警创建/更新失败 "
-                    f"fingerprint={result.get('fingerprint')}: {e}",
+                    f"策略 {strategy.name}: 告警创建/更新失败 fingerprint={result.get('fingerprint')}: {e}",
                     exc_info=True,
                 )
 
-        logger.info(
-            f"策略 {strategy.name}: 告警处理完成, "
-            f"成功={success_count}, 失败={fail_count}, 自动恢复={recovered_count}"
-        )
+        logger.info(f"策略 {strategy.name}: 告警处理完成, 成功={success_count}, 失败={fail_count}, 自动恢复={recovered_count}")
         # 异步执行新创建告警的自动分配（不阻塞聚合流程）
         if new_alert_ids:
             self._schedule_auto_assignment(new_alert_ids)
@@ -659,9 +597,7 @@ class AggregationProcessor:
         Returns:
             bool: 存在返回True，否则返回False
         """
-        return Alert.objects.filter(
-            fingerprint=fingerprint, status__in=AlertStatus.ACTIVATE_STATUS
-        ).exists()
+        return Alert.objects.filter(fingerprint=fingerprint, status__in=AlertStatus.ACTIVATE_STATUS).exists()
 
     @staticmethod
     def _schedule_auto_assignment(alert_ids: List[str]) -> None:
@@ -677,9 +613,7 @@ class AggregationProcessor:
             from apps.alerts.tasks import async_auto_assignment_for_alerts
 
             logger.info(f"调度自动分配任务，告警数量: {len(alert_ids)}")
-            current_app.send_task(
-                async_auto_assignment_for_alerts.name, args=[alert_ids]
-            )
+            current_app.send_task(async_auto_assignment_for_alerts.name, args=[alert_ids])
             logger.debug(f"自动分配任务已提交到队列")
 
         except Exception as e:  # noqa

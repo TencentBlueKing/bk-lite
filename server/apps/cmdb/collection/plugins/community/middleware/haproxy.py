@@ -19,5 +19,4 @@ class HaproxyCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "global_maxconn": "global_maxconn",
         "global_pidfile": "global_pidfile",
         "global_user_name": "global_user_name",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

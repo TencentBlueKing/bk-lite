@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from django.conf import settings
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import action
@@ -25,8 +26,12 @@ from apps.core.utils.web_utils import WebUtils
 from apps.cmdb.constants.constants import CollectRunStatusType, CollectPluginTypes, PERMISSION_TASK
 from apps.cmdb.filters.collect_filters import CollectModelFilter, OidModelFilter
 from apps.cmdb.models.collect_model import CollectModels, OidMapping
-from apps.cmdb.serializers.collect_serializer import CollectModelSerializer, CollectModelLIstSerializer, \
-    OidModelSerializer, CollectModelIdStatusSerializer
+from apps.cmdb.serializers.collect_serializer import (
+    CollectModelSerializer,
+    CollectModelLIstSerializer,
+    OidModelSerializer,
+    CollectModelIdStatusSerializer,
+)
 from apps.cmdb.services.collect_service import CollectModelService
 
 
@@ -39,6 +44,14 @@ class CollectModelViewSet(AuthViewSet):
     pagination_class = CustomPageNumberPagination
     permission_classes = [InstanceTaskPermission]
     permission_key = PERMISSION_TASK
+    permission_scoped_actions = {
+        "retrieve",
+        "update",
+        "partial_update",
+        "destroy",
+        "info",
+        "exec_task",
+    }
 
     @staticmethod
     def _parse_positive_int(value, field_name, default):
@@ -52,14 +65,26 @@ class CollectModelViewSet(AuthViewSet):
             raise ValueError(f"{field_name} 必须大于等于 1")
         return parsed
 
-    def _build_region_query_credential(self, params, task_id=None):
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        request = getattr(self, "request", None)
+        action = getattr(self, "action", None)
+        if request is not None and action in self.permission_scoped_actions:
+            return self.get_queryset_by_permission(request, queryset)
+        return queryset
+
+    def _get_authorized_task(self, request, task_id):
+        queryset = self.get_queryset_by_permission(request, self.queryset.all())
+        return get_object_or_404(queryset, id=task_id)
+
+    def _build_region_query_credential(self, request, params, task_id=None):
         credential = dict(params)
         model_id = (credential.get("model_id") or "").split("_account", 1)[0]
         credential["model_id"] = model_id
 
         driver_type = credential.get("driver_type")
         if task_id:
-            instance = self.queryset.get(id=task_id)
+            instance = self._get_authorized_task(request, task_id)
             raw_credential = instance.decrypt_credentials or {}
             driver_type = instance.driver_type
         else:
@@ -139,14 +164,10 @@ class CollectModelViewSet(AuthViewSet):
         if not include_children:
             app_name = self._get_app_name()
             current_team = request.COOKIES.get("current_team", "0")
-            permission_data = get_permission_rules(
-                request.user, current_team, app_name, permission_key, include_children
-            )
+            permission_data = get_permission_rules(request.user, current_team, app_name, permission_key, include_children)
             if not isinstance(permission_data, dict) or not permission_data:
                 return base_queryset
-            instance_ids = [
-                i["id"] for i in permission_data.get("instance", []) if isinstance(i, dict) and "id" in i
-            ]
+            instance_ids = [i["id"] for i in permission_data.get("instance", []) if isinstance(i, dict) and "id" in i]
             team_entries = permission_data.get("team", [])
             allowed_teams = set()
             for team_entry in team_entries:
@@ -194,7 +215,6 @@ class CollectModelViewSet(AuthViewSet):
         result = CollectModelService.exec_task(instance=instance, request=request, view_self=self)
         return result
 
-
     @action(methods=["GET"], detail=False)
     @HasPermission("auto_collection-View")
     def nodes(self, request, *args, **kwargs):
@@ -203,16 +223,10 @@ class CollectModelViewSet(AuthViewSet):
         """
         params = request.GET.dict()
         try:
-            page = self._parse_positive_int(
-                params.get("page", 1), field_name="page", default=1
-            )
-            page_size = self._parse_positive_int(
-                params.get("page_size", 10), field_name="page_size", default=10
-            )
+            page = self._parse_positive_int(params.get("page", 1), field_name="page", default=1)
+            page_size = self._parse_positive_int(params.get("page_size", 10), field_name="page_size", default=10)
         except ValueError as err:
-            return WebUtils.response_error(
-                error_message=str(err), status_code=status.HTTP_400_BAD_REQUEST
-            )
+            return WebUtils.response_error(error_message=str(err), status_code=status.HTTP_400_BAD_REQUEST)
 
         query_data = {
             "page": page,
@@ -223,7 +237,7 @@ class CollectModelViewSet(AuthViewSet):
                 "domain": request.user.domain,
                 "current_team": request.COOKIES.get("current_team"),
             },
-            "node_type": "container"
+            "node_type": "container",
         }
         node = NodeMgmt()
         data = node.node_list(query_data)
@@ -237,9 +251,13 @@ class CollectModelViewSet(AuthViewSet):
         """
         params = requests.GET.dict()
         task_type = params["task_type"]
+        queryset = self.get_queryset_by_permission(requests, self.queryset.all())
         # 云对象可以重复选择不做过滤
-        instances = CollectModels.objects.filter(~Q(instances=[]), ~Q(task_type=CollectPluginTypes.CLOUD),
-                                                 task_type=task_type).values_list("instances", flat=True)
+        instances = queryset.filter(
+            ~Q(instances=[]),
+            ~Q(task_type=CollectPluginTypes.CLOUD),
+            task_type=task_type,
+        ).values_list("instances", flat=True)
         result = []
         for instance in instances:
             if not isinstance(instance, list) or not instance:
@@ -270,7 +288,7 @@ class CollectModelViewSet(AuthViewSet):
         if not cloud_name:
             return WebUtils.response_error(error_message="cloud_id 不存在", status_code=400)
         task_id = params.pop("task_id", None)
-        credential = self._build_region_query_credential(params, task_id=task_id)
+        credential = self._build_region_query_credential(requests, params, task_id=task_id)
         result = CollectModelService.list_regions(credential, cloud_name=cloud_name)
         if result.get("success"):
             return WebUtils.response_success(result.get("result", []))
@@ -285,14 +303,14 @@ class CollectModelViewSet(AuthViewSet):
         serializer = CollectModelIdStatusSerializer(filter_queryset, many=True, context={"request": request})
         data = {}
         for model_data in serializer.data:
-            if not data.get(model_data['model_id'], False):
-                data[model_data['model_id']] = {'success': 0, 'failed': 0, 'running': 0}
-            if model_data['exec_status'] == CollectRunStatusType.SUCCESS:
-                data[model_data['model_id']]['success'] += 1
-            elif model_data['exec_status'] == CollectRunStatusType.ERROR:
-                data[model_data['model_id']]['failed'] += 1
-            elif model_data['exec_status'] == CollectRunStatusType.RUNNING:
-                data[model_data['model_id']]['running'] += 1
+            if not data.get(model_data["model_id"], False):
+                data[model_data["model_id"]] = {"success": 0, "failed": 0, "running": 0}
+            if model_data["exec_status"] == CollectRunStatusType.SUCCESS:
+                data[model_data["model_id"]]["success"] += 1
+            elif model_data["exec_status"] == CollectRunStatusType.ERROR:
+                data[model_data["model_id"]]["failed"] += 1
+            elif model_data["exec_status"] == CollectRunStatusType.RUNNING:
+                data[model_data["model_id"]]["running"] += 1
         return WebUtils.response_success(data)
 
     @HasPermission("auto_collection-View")
@@ -335,9 +353,7 @@ class OidModelViewSet(ModelViewSet):
         raw_oid = request.data.get("oid")
         oid = (raw_oid or "").strip() if isinstance(raw_oid, str) else ""
         if not oid:
-            return WebUtils.response_error(
-                error_message="oid 不能为空", status_code=status.HTTP_400_BAD_REQUEST
-            )
+            return WebUtils.response_error(error_message="oid 不能为空", status_code=status.HTTP_400_BAD_REQUEST)
         if raw_oid != oid:
             return WebUtils.response_error(
                 error_message="oid 不允许包含首尾空格",
@@ -353,9 +369,7 @@ class OidModelViewSet(ModelViewSet):
         raw_oid = request.data.get("oid")
         oid = (raw_oid or "").strip() if isinstance(raw_oid, str) else ""
         if not oid:
-            return WebUtils.response_error(
-                error_message="oid 不能为空", status_code=status.HTTP_400_BAD_REQUEST
-            )
+            return WebUtils.response_error(error_message="oid 不能为空", status_code=status.HTTP_400_BAD_REQUEST)
         if raw_oid != oid:
             return WebUtils.response_error(
                 error_message="oid 不允许包含首尾空格",
