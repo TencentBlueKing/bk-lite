@@ -196,6 +196,11 @@ error:
   vendor_api_key_required: Vendor API key is required
   vendor_sync_not_supported: Only OpenAI-compatible vendors are supported for synchronization
   chat_flow_test_running: A workflow test execution is already running for this bot.
+  no_permission_access_team: You do not have permission to access this team's data.
+  no_permission_access_knowledge_base: You do not have permission to access this knowledge base.
+  no_permission_access_bot: You do not have permission to access this bot's data.
+  knowledge_base_not_found: Knowledge base not found.
+  knowledge_base_required: knowledge_base_id is required.
 tools:
   kubernetes:
     name: Kubernetes Tools
