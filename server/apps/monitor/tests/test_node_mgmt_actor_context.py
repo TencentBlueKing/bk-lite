@@ -359,3 +359,83 @@ def test_monitor_instance_target_organization_guard_rejects_out_of_scope_org(mon
 
     with pytest.raises(module.UnauthorizedException):
         module._ensure_target_organizations([9], actor_context)
+
+
+def test_query_by_instance_fails_closed_when_effective_instance_keys_missing(monkeypatch):
+    class ViewSet:
+        pass
+
+    def action(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
+    class StubBaseAppException(Exception):
+        pass
+
+    class StubMetricQuerySet:
+        def __init__(self, metric):
+            self.metric = metric
+
+        def select_related(self, *args):
+            return self
+
+        def first(self):
+            return self.metric
+
+    class StubMetricManager:
+        def __init__(self, metric):
+            self.metric = metric
+
+        def filter(self, **kwargs):
+            return StubMetricQuerySet(self.metric)
+
+    metric = types.SimpleNamespace(query="cpu{__$labels__}", dimensions=[], unit="", monitor_object=types.SimpleNamespace(instance_id_keys=[]))
+
+    class StubMetricsService:
+        query_called = False
+
+        @staticmethod
+        def get_effective_metric_instance_id_keys(metric_obj):
+            raise StubBaseAppException("指标未配置有效的 instance_id_keys，无法按实例查询")
+
+        @staticmethod
+        def query_metric_by_instance(**kwargs):
+            StubMetricsService.query_called = True
+            return {"status": "success"}
+
+    _install_module(monkeypatch, "rest_framework.viewsets", ViewSet=ViewSet)
+    _install_module(monkeypatch, "rest_framework.decorators", action=action)
+    _install_module(monkeypatch, "apps.core.exceptions.base_app_exception", BaseAppException=StubBaseAppException)
+    _install_module(
+        monkeypatch,
+        "apps.core.utils.web_utils",
+        WebUtils=types.SimpleNamespace(response_success=lambda data=None: data),
+    )
+    _install_module(monkeypatch, "apps.core.logger", monitor_logger=types.SimpleNamespace(warning=lambda *args, **kwargs: None))
+    _install_module(
+        monkeypatch,
+        "apps.monitor.models.monitor_metrics",
+        Metric=types.SimpleNamespace(objects=StubMetricManager(metric)),
+    )
+    _install_module(monkeypatch, "apps.monitor.services.metrics", Metrics=StubMetricsService)
+    _install_module(monkeypatch, "apps.monitor.utils.unit_converter", UnitConverter=types.SimpleNamespace())
+
+    module = _load_module(
+        "metrics_instance_view_test_module",
+        Path(__file__).resolve().parents[1] / "views" / "metrics_instance.py",
+    )
+
+    request = types.SimpleNamespace(
+        GET={
+            "monitor_object_id": "1",
+            "metric_id": "2",
+            "instance_id": "('host-1',)",
+        }
+    )
+
+    with pytest.raises(StubBaseAppException, match="instance_id_keys"):
+        module.MetricsInstanceViewSet().query_by_instance(request)
+
+    assert StubMetricsService.query_called is False
