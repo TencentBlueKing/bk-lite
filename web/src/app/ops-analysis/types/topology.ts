@@ -1,6 +1,11 @@
 import { DirItem } from './index';
 import type { ParamItem } from './dataSource';
-import type { ValueConfig, UnifiedFilterDefinition, TableConfig } from './dashBoard';
+import type {
+  ValueConfig,
+  UnifiedFilterDefinition,
+  TableConfig,
+  FilterBindings,
+} from './dashBoard';
 import type { Graph as X6Graph, Cell, Node, Edge } from '@antv/x6';
 
 // 基础几何类型
@@ -289,6 +294,7 @@ export interface ViewConfigFormValues {
   chartType?: string;
   dataSource?: number | string;
   dataSourceParams?: ParamItem[];
+  filterBindings?: FilterBindings;
   selectedFields?: string[];
   unit?: string;
   conversionFactor?: number;

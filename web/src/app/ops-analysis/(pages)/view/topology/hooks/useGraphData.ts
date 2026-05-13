@@ -18,6 +18,11 @@ import { DirItem } from '@/app/ops-analysis/types';
 import { getEdgeStyleWithLabel } from '../utils/topologyUtils';
 import { createNodeByType } from '../utils/registerNode';
 
+const DEFAULT_TABLE_QUERY_PARAMS = {
+  page: 1,
+  page_size: 20,
+};
+
 const serializeNodeConfig = (nodeData: TopologyNodeData, nodeType: string): Record<string, unknown> | undefined => {
   const styleConfigMapping: Record<string, string[]> = {
     'single-value': ['textColor', 'fontSize', 'backgroundColor', 'borderColor', 'nameColor', 'nameFontSize', 'thresholdColors'],
@@ -52,6 +57,17 @@ export const useGraphData = (
   const { getSourceDataByApiId } = useDataSourceApi();
   
   const tableQueryParamsRef = useRef<Map<string, Record<string, any>>>(new Map());
+
+  const getEffectiveTableQueryParams = useCallback((
+    valueConfig: ValueConfig,
+    queryParams?: Record<string, any>,
+  ) => {
+    if (valueConfig.chartType !== 'table') {
+      return queryParams;
+    }
+
+    return queryParams || DEFAULT_TABLE_QUERY_PARAMS;
+  }, []);
 
   const serializeTopologyData = useCallback((): { nodes: TopologyNodeData[]; edges: SerializedEdge[] } => {
     if (!graphInstance) return { nodes: [], edges: [] };
@@ -210,7 +226,19 @@ export const useGraphData = (
     const nodeData = node.getData();
     if (nodeData.type !== 'chart' || nodeData.valueConfig?.chartType !== 'table') return;
 
-    tableQueryParamsRef.current.set(nodeId, queryParams);
+    const nextQueryParams = getEffectiveTableQueryParams(
+      nodeData.valueConfig,
+      queryParams,
+    );
+    const previousQueryParams = tableQueryParamsRef.current.get(nodeId);
+    if (
+      previousQueryParams &&
+      JSON.stringify(previousQueryParams) === JSON.stringify(nextQueryParams)
+    ) {
+      return;
+    }
+
+    tableQueryParamsRef.current.set(nodeId, nextQueryParams);
 
     node.setData({ ...nodeData, isLoading: true, hasError: false }, { overwrite: true });
 
@@ -225,9 +253,9 @@ export const useGraphData = (
       filterDefinitions,
       dataSource,
       namespaceId,
-      queryParams
+      nextQueryParams
     );
-  }, [graphInstance, loadChartNodeData]);
+  }, [graphInstance, loadChartNodeData, getEffectiveTableQueryParams]);
 
   const createTableQueryHandler = useCallback((
     unifiedFilterValues?: Record<string, FilterValue>,
@@ -335,7 +363,8 @@ export const useGraphData = (
     unifiedFilterValues?: Record<string, FilterValue>,
     filterDefinitions?: UnifiedFilterDefinition[],
     dataSources?: DatasourceItem[],
-    namespaceId?: number
+    namespaceId?: number,
+    shouldRefreshNode?: (nodeData: TopologyNodeData, dataSource?: DatasourceItem) => boolean,
   ) => {
     if (!graphInstance) return;
 
@@ -350,16 +379,25 @@ export const useGraphData = (
     nodes.forEach((node: Node) => {
       const nodeData = node.getData();
       if (nodeData.type === 'chart' && nodeData.valueConfig?.dataSource) {
+        const dataSource = dataSources?.find(
+          (ds) => ds.id === nodeData.valueConfig.dataSource
+        );
+        if (shouldRefreshNode && !shouldRefreshNode(nodeData, dataSource)) {
+          return;
+        }
         node.setData({ 
           ...nodeData, 
           isLoading: true, 
           hasError: false,
           onTableQueryChange: tableQueryHandler,
         }, { overwrite: true });
-        const dataSource = dataSources?.find(
-          (ds) => ds.id === nodeData.valueConfig.dataSource
+        const storedQueryParams = getEffectiveTableQueryParams(
+          nodeData.valueConfig,
+          tableQueryParamsRef.current.get(node.id),
         );
-        const storedQueryParams = tableQueryParamsRef.current.get(node.id);
+        if (nodeData.valueConfig?.chartType === 'table') {
+          tableQueryParamsRef.current.set(node.id, storedQueryParams);
+        }
         loadChartNodeData(
           node.id,
           nodeData.valueConfig,
@@ -371,7 +409,7 @@ export const useGraphData = (
         );
       }
     });
-  }, [graphInstance, loadChartNodeData, createTableQueryHandler]);
+  }, [graphInstance, loadChartNodeData, createTableQueryHandler, getEffectiveTableQueryParams]);
 
   return {
     loading,

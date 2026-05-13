@@ -4,3 +4,754 @@
 #
 # 格式与页面导出的 YAML 完全一致，参考导出功能生成的文件结构。
 # 文件为空或不存在时不会报错，静默跳过。
+
+meta:
+  schema_version: 1.0.0
+  exported_at: '2026-05-13T09:07:36.779440+00:00'
+  source:
+    organization_id: 0
+  object_counts:
+    dashboards: 1
+    topologies: 0
+    architectures: 0
+    datasources: 5
+    namespaces: 1
+dashboards:
+- key: dashboard::CMDB-仪表盘_内置
+  name: CMDB-仪表盘_内置
+  desc: CMDB仪表盘
+  other:
+    timeSelector:
+      selectValue: 10080
+      rangePickerVaule: null
+  view_sets:
+  - h: 2
+    i: 47c8e06b-2023-4f5d-8ca9-e718983234bb
+    w: 4
+    x: 0
+    y: 0
+    name: cmdb模型分类总数统计
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 模型/实例/分类总数统计::get_cmdb_statistics
+      selectedFields:
+      - classification_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#299C46'
+        value: '0'
+  - h: 2
+    i: 1a884812-9fd1-4e01-bd95-ef93e58470bf
+    w: 4
+    x: 4
+    y: 0
+    name: cmdb模型总数统计
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 模型/实例/分类总数统计::get_cmdb_statistics
+      selectedFields:
+      - model_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#299C46'
+        value: '0'
+  - h: 2
+    i: be09cec0-aac6-4d9e-b44c-d7f7e2d75aee
+    w: 4
+    x: 8
+    y: 0
+    name: cmdb实例总数统计
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 模型/实例/分类总数统计::get_cmdb_statistics
+      selectedFields:
+      - instance_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#299C46'
+        value: '0'
+  - h: 4
+    i: 08bebde0-1772-4199-8248-016c30bd2b23
+    w: 6
+    x: 6
+    y: 2
+    name: 主机操作系统分布
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: pie
+      dataSource: 主机操作系统分布::get_instance_group_by
+      dataSourceParams:
+      - name: model_id
+        type: string
+        value: host
+        alias_name: 模型 ID
+        filterType: params
+      - name: field
+        type: string
+        value: os_type
+        alias_name: 分组字段
+        filterType: fixed
+  - h: 4
+    i: 4df1fa2e-a38d-48e9-b6ca-a16f91f768eb
+    w: 6
+    x: 0
+    y: 2
+    name: CMDB 变更趋势
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: line
+      dataSource: CMDB 变更趋势::get_change_trend
+      filterBindings:
+        time__timeRange: true
+        model_id__string: true
+      dataSourceParams:
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: 时间范围 [开始, 结束]
+        filterType: filter
+      - name: group_by
+        type: string
+        value: hour
+        alias_name: '分组方式: day/hour/week/month'
+        filterType: params
+      - name: model_id
+        type: string
+        value: ''
+        alias_name: 按模型过滤
+        filterType: filter
+  - h: 5
+    i: 7951c963-9fd3-40a4-8169-9463676bdc07
+    w: 12
+    x: 0
+    y: 6
+    name: 模型实例统计
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: table
+      dataSource: 模型实例统计::get_model_inst_statistics
+      tableConfig:
+        columns:
+        - key: classification
+          order: 0
+          title: 分类
+          visible: true
+        - key: model
+          order: 1
+          title: 模型名
+          visible: true
+        - key: model_id
+          order: 2
+          title: 模型ID
+          visible: true
+        - key: count
+          order: 3
+          title: 数量
+          visible: true
+      dataSourceParams: []
+  - h: 5
+    i: 7d86f0ed-53d5-4c7b-b7bd-dad2dc48e653
+    w: 12
+    x: 0
+    y: 11
+    name: 查询资产实例
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: table
+      dataSource: 查询资产实例::cmdb/query_asset_instances
+      tableConfig:
+        columns:
+        - key: organization
+          order: 0
+          title: organization
+          visible: true
+        - key: inst_name
+          order: 1
+          title: inst_name
+          visible: true
+        - key: model_id
+          order: 2
+          title: model_id
+          visible: true
+        - key: time_range
+          order: 3
+          title: time_range
+          visible: true
+        - key: enum_test
+          order: 4
+          title: enum_test
+          visible: true
+        - key: bak_operator
+          order: 5
+          title: bak_operator
+          visible: true
+        - key: apiserver
+          order: 6
+          title: apiserver
+          visible: true
+        - key: comment
+          order: 7
+          title: comment
+          visible: true
+        - key: operator
+          order: 8
+          title: operator
+          visible: true
+        - key: auto_collect
+          order: 9
+          title: auto_collect
+          visible: true
+        filterFields:
+        - key: inst_name
+          label: 实例名称
+          inputType: keyword
+      dataSourceParams:
+      - name: model_id
+        type: string
+        value: k8s_cluster
+        alias_name: model_id
+        filterType: params
+  refs:
+    datasource_keys:
+    - 模型/实例/分类总数统计::get_cmdb_statistics
+    - CMDB 变更趋势::get_change_trend
+    - 主机操作系统分布::get_instance_group_by
+    - 模型实例统计::get_model_inst_statistics
+    - 查询资产实例::cmdb/query_asset_instances
+    namespace_keys: []
+  filters:
+  - id: time__timeRange
+    key: time
+    name: 时间
+    type: timeRange
+    order: 0
+    enabled: true
+    defaultValue:
+      end: '2026-04-22T06:10:42.171Z'
+      start: '2026-03-23T06:10:42.171Z'
+      selectValue: 43200
+  - id: model_id__string
+    key: model_id
+    name: 模型ID
+    type: string
+    order: 1
+    enabled: true
+    defaultValue: k8s_cluster
+- key: dashboard::告警-仪表盘_内置
+  name: 告警-仪表盘_内置
+  desc: ''
+  other: {}
+  view_sets:
+  - h: 2
+    i: d0a485b5-9f7c-46ae-9c42-717aa5fca81b
+    w: 4
+    x: 0
+    y: 0
+    name: 告警统计概览-总数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 告警统计概览::get_alert_statistics
+      selectedFields:
+      - total_count
+      thresholdColors:
+      - color: '#EAB839'
+        value: '10'
+      - color: '#fd666d'
+        value: '5'
+      - color: '#299C46'
+        value: '0'
+  - h: 2
+    i: 99ff96a3-2055-4932-b882-bc2b896cc1e7
+    w: 4
+    x: 4
+    y: 0
+    name: 告警统计概览-event总数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 告警统计概览::get_alert_statistics
+      selectedFields:
+      - event_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#299C46'
+        value: '0'
+      dataSourceParams: []
+  - h: 2
+    i: 26462803-5d77-4bfa-90b7-909f830075c3
+    w: 4
+    x: 8
+    y: 0
+    name: 告警统计概览-事故总数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 告警统计概览::get_alert_statistics
+      selectedFields:
+      - incident_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#299C46'
+        value: '0'
+      dataSourceParams: []
+  - h: 2
+    i: 5c2735d3-5449-4d29-871d-545eaf7b24b9
+    w: 4
+    x: 0
+    y: 2
+    name: 告警统计概览-活跃告警
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 告警统计概览::get_alert_statistics
+      selectedFields:
+      - active_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#299C46'
+        value: '0'
+      dataSourceParams: []
+  - h: 2
+    i: 00529616-16d3-4be3-8a7f-463a175f8c53
+    w: 4
+    x: 4
+    y: 2
+    name: 告警统计概览-处理中
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 告警统计概览::get_alert_statistics
+      selectedFields:
+      - pending_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#299C46'
+        value: '0'
+      dataSourceParams: []
+  - h: 2
+    i: a6c83255-dab0-4d69-a19e-c54e2c0c3777
+    w: 4
+    x: 8
+    y: 2
+    name: 告警统计概览-待响应
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 告警统计概览::get_alert_statistics
+      selectedFields:
+      - pending_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#299C46'
+        value: '0'
+      dataSourceParams: []
+  - h: 3
+    i: 586576ee-f427-4c56-9e8a-6777c95c1290
+    w: 6
+    x: 0
+    y: 4
+    name: 告警趋势数据
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: line
+      dataSource: 告警趋势数据::get_alert_trend_data
+      filterBindings:
+        time__timeRange: true
+      dataSourceParams:
+      - name: group_by
+        type: string
+        value: day
+        alias_name: group_by
+        filterType: fixed
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: time
+        filterType: filter
+  - h: 3
+    i: 85bfbc48-c2b7-4621-99ca-621818d656f9
+    w: 6
+    x: 6
+    y: 4
+    name: 告警等级分布
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: pie
+      dataSource: 告警等级分布::get_alert_level_distribution
+      dataSourceParams:
+      - name: status_filter
+        type: string
+        value: active
+        alias_name: 过滤条件
+        filterType: params
+  - h: 5
+    i: 739e9aab-809e-42c6-901a-ca6d664db676
+    w: 12
+    x: 0
+    y: 7
+    name: 活跃告警 TOP N
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: table
+      dataSource: 活跃告警 TOP N::get_active_alert_top
+      tableConfig:
+        columns:
+        - key: alert_id
+          order: 0
+          title: 告警 ID
+          visible: true
+        - key: title
+          order: 1
+          title: title
+          visible: true
+        - key: level
+          order: 2
+          title: level
+          visible: true
+        - key: status
+          order: 3
+          title: status
+          visible: true
+        - key: duration_seconds
+          order: 4
+          title: duration_seconds
+          visible: true
+        - key: created_at
+          order: 5
+          title: created_at
+          visible: true
+        - key: resource_name
+          order: 6
+          title: resource_name
+          visible: true
+      dataSourceParams:
+      - name: limit
+        type: string
+        value: '10'
+        alias_name: 返回数量
+        filterType: params
+  refs:
+    datasource_keys:
+    - 活跃告警 TOP N::get_active_alert_top
+    - 告警统计概览::get_alert_statistics
+    - 告警等级分布::get_alert_level_distribution
+    - 告警趋势数据::get_alert_trend_data
+    namespace_keys: []
+  filters:
+  - id: time__timeRange
+    key: time
+    name: time
+    type: timeRange
+    order: 0
+    enabled: true
+    defaultValue:
+      end: '2026-05-13T03:45:44.807Z'
+      start: '2026-05-06T03:45:44.807Z'
+      selectValue: 10080
+topologies: []
+architectures: []
+datasources:
+- key: CMDB 变更趋势::get_change_trend
+  name: CMDB 变更趋势
+  rest_api: get_change_trend
+  desc: ''
+  is_active: true
+  params:
+  - name: time
+    type: timeRange
+    value: 10080
+    alias_name: 时间范围 [开始, 结束]
+    filterType: filter
+  - name: group_by
+    type: string
+    value: ''
+    alias_name: '分组方式: day/hour/week/month'
+    filterType: params
+  - name: model_id
+    type: string
+    value: k8s_cluster
+    alias_name: 按模型过滤
+    filterType: filter
+  tags:
+  - CMDB
+  chart_type:
+  - line
+  - bar
+  field_schema: []
+  namespace_keys:
+  - 默认命名空间
+- key: 主机操作系统分布::get_instance_group_by
+  name: 主机操作系统分布
+  rest_api: get_instance_group_by
+  desc: ''
+  is_active: true
+  params:
+  - name: model_id
+    type: string
+    value: ''
+    alias_name: 模型 ID
+    filterType: params
+  - name: field
+    type: string
+    value: os_type
+    alias_name: 分组字段
+    filterType: fixed
+  tags:
+  - CMDB
+  chart_type:
+  - pie
+  field_schema: []
+  namespace_keys:
+  - 默认命名空间
+- key: 查询资产实例::cmdb/query_asset_instances
+  name: 查询资产实例
+  rest_api: cmdb/query_asset_instances
+  desc: ''
+  is_active: true
+  params:
+  - name: model_id
+    type: string
+    value: ''
+    alias_name: model_id
+    filterType: params
+  tags:
+  - CMDB
+  chart_type:
+  - table
+  field_schema: []
+  namespace_keys:
+  - 默认命名空间
+- key: 模型/实例/分类总数统计::get_cmdb_statistics
+  name: 模型/实例/分类总数统计
+  rest_api: get_cmdb_statistics
+  desc: ''
+  is_active: true
+  params: []
+  tags:
+  - CMDB
+  chart_type:
+  - single
+  field_schema:
+  - key: model_count
+    title: 模型总数
+    value_type: string
+    description: ''
+  - key: instance_count
+    title: 实例总数
+    value_type: string
+    description: ''
+  - key: classification_count
+    title: 分类总数
+    value_type: string
+    description: ''
+  namespace_keys:
+  - 默认命名空间
+- key: 模型实例统计::get_model_inst_statistics
+  name: 模型实例统计
+  rest_api: get_model_inst_statistics
+  desc: ''
+  is_active: true
+  params: []
+  tags:
+  - CMDB
+  chart_type:
+  - table
+  field_schema:
+  - key: classification
+    title: 分类
+    value_type: string
+    description: ''
+  - key: model
+    title: 模型名
+    value_type: string
+    description: ''
+  - key: model_id
+    title: 模型ID
+    value_type: string
+    description: ''
+  - key: count
+    title: 数量
+    value_type: string
+    description: ''
+  namespace_keys:
+  - 默认命名空间
+- key: 告警等级分布::get_alert_level_distribution
+  name: 告警等级分布
+  rest_api: get_alert_level_distribution
+  desc: ''
+  is_active: true
+  params:
+  - name: status_filter
+    type: string
+    value: active
+    alias_name: 过滤条件
+    filterType: params
+  tags:
+  - 告警
+  chart_type:
+  - pie
+  field_schema:
+  - key: name
+    title: 等级名称
+    value_type: string
+    description: '等级名称: 致命/严重/预警/提醒'
+  - key: value
+    title: 数量
+    value_type: string
+    description: ''
+  namespace_keys:
+  - 默认命名空间
+- key: 告警统计概览::get_alert_statistics
+  name: 告警统计概览
+  rest_api: get_alert_statistics
+  desc: ''
+  is_active: true
+  params: []
+  tags:
+  - 告警
+  chart_type:
+  - single
+  field_schema:
+  - key: total_count
+    title: 告警总数
+    value_type: string
+    description: ''
+  - key: active_count
+    title: 活跃告警数
+    value_type: string
+    description: ''
+  - key: pending_count
+    title: 未响应告警数
+    value_type: string
+    description: ''
+  - key: processing_count
+    title: 处理中告警数
+    value_type: string
+    description: ''
+  - key: event_count
+    title: 事件总数
+    value_type: string
+    description: ''
+  - key: incident_count
+    title: 事故总数
+    value_type: string
+    description: ''
+  namespace_keys:
+  - 默认命名空间
+- key: 告警趋势数据::get_alert_trend_data
+  name: 告警趋势数据
+  rest_api: get_alert_trend_data
+  desc: ''
+  is_active: true
+  params:
+  - name: group_by
+    type: string
+    value: day
+    alias_name: group_by
+    filterType: fixed
+  - name: time
+    type: timeRange
+    value: 10080
+    alias_name: time
+    filterType: filter
+  tags:
+  - 告警
+  chart_type:
+  - line
+  - bar
+  - pie
+  - single
+  field_schema: []
+  namespace_keys:
+  - 默认命名空间
+- key: 活跃告警 TOP N::get_active_alert_top
+  name: 活跃告警 TOP N
+  rest_api: get_active_alert_top
+  desc: ''
+  is_active: true
+  params:
+  - name: limit
+    type: string
+    value: '10'
+    alias_name: 返回数量
+    filterType: params
+  tags:
+  - 告警
+  chart_type:
+  - table
+  field_schema:
+  - key: alert_id
+    title: 告警 ID
+    value_type: string
+    description: ''
+  namespace_keys:
+  - 默认命名空间
+namespaces:
+- key: 默认命名空间
+  name: 默认命名空间
+  domain: 127.0.0.1:4222
+  namespace: bklite
+  account: admin
+  password: '******'
+  enable_tls: false
+  desc: 系统初始化创建的默认命名空间
