@@ -16,5 +16,4 @@ class NginxCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "include": "include",
         "ssl_version": "ssl_version",
         "inst_name": MiddlewareCollectMetrics.get_inst_name,
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

@@ -17,5 +17,4 @@ class DockerCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "networks": lambda self, data: self.format_json_field(data.get("networks")),
         "ports": "ports",
         "mounts": lambda self, data: self.format_json_field(data.get("mounts")),
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }
