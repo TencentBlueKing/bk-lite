@@ -127,16 +127,6 @@
           ]
         },
         {
-          "id": "sensitive_info",
-          "name": "Sensitive Info",
-          "operation": [
-            "View",
-            "Edit",
-            "Add",
-            "Delete"
-          ]
-        },
-        {
           "id": "auth_sources",
           "name": "Auth Sources",
           "operation": [
@@ -181,14 +171,6 @@
             "View",
             "Add",
             "Delete"
-          ]
-        },
-        {
-          "id": "portal_settings",
-          "name": "Portal Settings",
-          "operation": [
-            "View",
-            "Edit"
           ]
         }
       ]
