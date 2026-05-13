@@ -25,7 +25,7 @@ from apps.node_mgmt.management.commands.verify_architecture_rollout import Comma
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
 from apps.node_mgmt.management.services.node_init.controller_init import controller_init
 from apps.node_mgmt.management.services.node_init.definition_loader import load_definition_records
-from apps.node_mgmt.models import CloudRegion, Collector, CollectorConfiguration, Controller, Node, PackageVersion, SidecarEnv
+from apps.node_mgmt.models import CloudRegion, Collector, CollectorConfiguration, Controller, Node, NodeComponentVersion, PackageVersion, SidecarEnv
 from apps.node_mgmt.models.sidecar import ChildConfig, NodeOrganization
 from apps.node_mgmt.models.installer import ControllerTask, ControllerTaskNode
 from apps.node_mgmt.nats.node import NatsService
@@ -38,7 +38,8 @@ from apps.node_mgmt.services.cloudregion import RegionService
 from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.services.version_upgrade import VersionUpgradeService
 from apps.node_mgmt.tasks import installer as installer_tasks
-from apps.node_mgmt.tasks.version_discovery import _calculate_upgrade_info
+from apps.node_mgmt.tasks import version_discovery
+from apps.node_mgmt.tasks.version_discovery import _calculate_upgrade_info, _discover_controller_version
 from apps.node_mgmt.utils import permission as node_permission
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.token_auth import generate_node_token
@@ -1031,6 +1032,120 @@ def test_calculate_upgrade_info_uses_architecture_specific_latest_version():
 
     assert latest_version == "1.5.0"
     assert upgradeable is True
+
+
+@pytest.mark.django_db
+def test_discover_controller_version_preserves_existing_version_when_command_returns_empty(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="version-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    controller = Controller.objects.create(
+        os="linux",
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        name="Controller",
+        description="linux x86",
+        version_command="cat /opt/fusion-collectors/VERSION",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-version-empty",
+        name="node-version-empty",
+        ip="10.0.0.20",
+        operating_system="linux",
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/tmp/config",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    version_record = NodeComponentVersion.objects.create(
+        node=node,
+        component_type="controller",
+        component_id=str(controller.id),
+        version="1.0.0",
+        latest_version="1.1.0",
+        upgradeable=True,
+        message="旧版本信息",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    monkeypatch.setattr(version_discovery.Executor, "execute_local", lambda self, command, timeout=10: "   ")
+
+    _discover_controller_version(node, latest_versions_map={})
+
+    version_record.refresh_from_db()
+    assert version_record.version == "1.0.0"
+    assert version_record.latest_version == "1.1.0"
+    assert version_record.upgradeable is True
+    assert version_record.message == "命令执行成功但返回了空结果"
+    assert NodeComponentVersion.objects.filter(node=node, component_type="controller").count() == 1
+
+
+@pytest.mark.django_db
+def test_discover_controller_version_reuses_existing_unknown_record_after_success(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="version-region-success",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    controller = Controller.objects.create(
+        os="linux",
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        name="Controller",
+        description="linux x86",
+        version_command="cat /opt/fusion-collectors/VERSION",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-version-success",
+        name="node-version-success",
+        ip="10.0.0.21",
+        operating_system="linux",
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/tmp/config",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    version_record = NodeComponentVersion.objects.create(
+        node=node,
+        component_type="controller",
+        component_id="unknown",
+        version="unknown",
+        latest_version="",
+        upgradeable=False,
+        message="未找到操作系统 linux 对应的控制器配置",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    monkeypatch.setattr(version_discovery.Executor, "execute_local", lambda self, command, timeout=10: "1.0.0")
+
+    _discover_controller_version(
+        node,
+        latest_versions_map={
+            "linux": {
+                "Controller": {
+                    NodeConstants.X86_64_ARCH: "1.1.0",
+                }
+            }
+        },
+    )
+
+    version_record.refresh_from_db()
+    assert version_record.component_id == str(controller.id)
+    assert version_record.version == "1.0.0"
+    assert version_record.latest_version == "1.1.0"
+    assert version_record.upgradeable is True
+    assert version_record.message == "版本获取成功"
+    assert NodeComponentVersion.objects.filter(node=node, component_type="controller").count() == 1
 
 
 @pytest.mark.django_db
