@@ -47,6 +47,7 @@ import {
   UnifiedFilterBar,
   UnifiedFilterConfigModal,
 } from '@/app/ops-analysis/components/unifiedFilter';
+import { buildDefaultFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { collectNamespaceOptionsFromNodes, convertNodesToLayoutItems, buildFiltersFromNodes, syncFilterValuesWithDefinitions } from './utils/namespaceUtils';
 
 const Topology = forwardRef<TopologyRef, TopologyProps>(
@@ -68,8 +69,15 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
     } | null>(null);
     const [minimapVisible, setMinimapVisible] = useState(true);
     const [filterConfigModalVisible, setFilterConfigModalVisible] = useState(false);
-    const [selectedNamespaceId, setSelectedNamespaceId] = useState<number | undefined>(undefined);
-    const [searchKey, setSearchKey] = useState(0);
+    const [namespaceDraftId, setNamespaceDraftId] = useState<
+      number | undefined
+    >(undefined);
+    const [appliedNamespaceId, setAppliedNamespaceId] = useState<
+      number | undefined
+    >(undefined);
+    const [appliedFilterValues, setAppliedFilterValues] = useState<
+      Record<string, FilterValue>
+    >({});
     const [nodeChangeKey, setNodeChangeKey] = useState(0);
     const [originalGraphState, setOriginalGraphState] = useState<Model.FromJSONData | null>(null);
     const [originalDefinitions, setOriginalDefinitions] = useState<UnifiedFilterDefinition[]>([]);
@@ -139,21 +147,35 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       return collectNamespaceOptionsFromNodes(
         state.graphInstance,
         dataSourceManager.dataSources,
-        namespaceList
+        namespaceList,
       );
-    }, [state.graphInstance, dataSourceManager.dataSources, namespaceList, searchKey, nodeChangeKey]);
+    }, [
+      state.graphInstance,
+      dataSourceManager.dataSources,
+      namespaceList,
+      nodeChangeKey,
+    ]);
 
     useEffect(() => {
       if (namespaceOptions.length > 0) {
-        const currentValid = selectedNamespaceId !== undefined &&
-          namespaceOptions.some((o) => o.value === selectedNamespaceId);
-        if (!currentValid) {
-          setSelectedNamespaceId(namespaceOptions[0].value);
+        const fallbackNamespaceId = namespaceOptions[0].value;
+        const draftValid =
+          namespaceDraftId !== undefined &&
+          namespaceOptions.some((o) => o.value === namespaceDraftId);
+        const appliedValid =
+          appliedNamespaceId !== undefined &&
+          namespaceOptions.some((o) => o.value === appliedNamespaceId);
+        if (!draftValid) {
+          setNamespaceDraftId(fallbackNamespaceId);
+        }
+        if (!appliedValid) {
+          setAppliedNamespaceId(fallbackNamespaceId);
         }
       } else {
-        setSelectedNamespaceId(undefined);
+        setNamespaceDraftId(undefined);
+        setAppliedNamespaceId(undefined);
       }
-    }, [namespaceOptions, selectedNamespaceId]);
+    }, [namespaceOptions, namespaceDraftId, appliedNamespaceId]);
 
     const namespaceSelectorElement = useMemo(() => {
       if (namespaceOptions.length <= 1) return undefined;
@@ -163,27 +185,90 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
             {t('namespace.title')}:
           </span>
           <Select
-            value={selectedNamespaceId}
+            value={namespaceDraftId}
             onChange={(val: number) => {
-              setSelectedNamespaceId(val);
-              setSearchKey((prev) => prev + 1);
+              setNamespaceDraftId(val);
             }}
             options={namespaceOptions}
             style={{ minWidth: 160 }}
           />
         </div>
       );
-    }, [namespaceOptions, selectedNamespaceId, t]);
+    }, [namespaceOptions, namespaceDraftId, t]);
 
-    const prevSearchKeyRef = useRef(0);
+    const refreshTopologyNodes = useCallback(
+      (
+        scope:
+          | 'filter-search'
+          | 'namespace-search'
+          | 'combined-search'
+          | 'reload',
+        nextValues = appliedFilterValues,
+        nextDefinitions = definitions,
+        nextNamespaceId = appliedNamespaceId,
+      ) => {
+        let shouldRefreshNode:
+          | ((
+              nodeData: TopologyNodeData,
+              dataSource?: DatasourceItem,
+            ) => boolean)
+          | undefined;
 
-    useEffect(() => {
-      if (searchKey === 0 || searchKey === prevSearchKeyRef.current) return;
-      prevSearchKeyRef.current = searchKey;
+        if (scope !== 'reload') {
+          shouldRefreshNode = (
+            nodeData: TopologyNodeData,
+            dataSource?: DatasourceItem,
+          ) => {
+            const bindings = buildDefaultFilterBindings(
+              nodeData.valueConfig?.dataSourceParams?.length
+                ? nodeData.valueConfig.dataSourceParams
+                : dataSource?.params,
+              nextDefinitions,
+              nodeData.valueConfig?.filterBindings,
+            );
+            const hasActiveFilterBinding = Boolean(
+              bindings && Object.values(bindings).some((enabled) => enabled),
+            );
+            const usesNamespace = Boolean(
+              Array.isArray(dataSource?.namespaces) &&
+              dataSource.namespaces.length > 0,
+            );
 
-      refreshAllSingleValueNodes(filterValues, definitions, selectedNamespaceId);
-      refreshAllChartNodes(filterValues, definitions, dataSourceManager.dataSources, selectedNamespaceId);
-    }, [searchKey, filterValues, definitions, refreshAllSingleValueNodes, refreshAllChartNodes, dataSourceManager.dataSources, selectedNamespaceId]);
+            if (scope === 'filter-search') {
+              return hasActiveFilterBinding;
+            }
+            if (scope === 'namespace-search') {
+              return usesNamespace;
+            }
+
+            return hasActiveFilterBinding || usesNamespace;
+          };
+        }
+
+        refreshAllSingleValueNodes(
+          nextValues,
+          nextDefinitions,
+          nextNamespaceId,
+          dataSourceManager.dataSources,
+          shouldRefreshNode,
+        );
+        refreshAllChartNodes(
+          nextValues,
+          nextDefinitions,
+          dataSourceManager.dataSources,
+          nextNamespaceId,
+          shouldRefreshNode,
+        );
+      },
+      [
+        appliedFilterValues,
+        definitions,
+        appliedNamespaceId,
+        refreshAllSingleValueNodes,
+        refreshAllChartNodes,
+        dataSourceManager.dataSources,
+      ],
+    );
 
     const handleFrequencyChange = useCallback(
       (frequency: number) => {
@@ -194,18 +279,23 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
 
         if (frequency > 0) {
           refreshTimerRef.current = setInterval(() => {
-            refreshAllSingleValueNodes(filterValues, definitions, selectedNamespaceId);
-            refreshAllChartNodes(filterValues, definitions, dataSourceManager.dataSources, selectedNamespaceId);
+            refreshTopologyNodes('reload');
           }, frequency);
         }
       },
-      [refreshAllSingleValueNodes, refreshAllChartNodes, filterValues, definitions, dataSourceManager.dataSources, selectedNamespaceId]
+      [refreshTopologyNodes],
     );
 
     const handleRefresh = useCallback(() => {
-      refreshAllSingleValueNodes(filterValues, definitions, selectedNamespaceId);
-      refreshAllChartNodes(filterValues, definitions, dataSourceManager.dataSources, selectedNamespaceId);
-    }, [refreshAllSingleValueNodes, refreshAllChartNodes, filterValues, definitions, dataSourceManager.dataSources, selectedNamespaceId]);
+      setAppliedFilterValues(filterValues);
+      setAppliedNamespaceId(namespaceDraftId);
+      refreshTopologyNodes(
+        'reload',
+        filterValues,
+        definitions,
+        namespaceDraftId,
+      );
+    }, [filterValues, definitions, namespaceDraftId, refreshTopologyNodes]);
 
     // 监听画布容器大小变化，自动调整画布大小
     const handleCanvasResize = useCallback(() => {
@@ -304,9 +394,14 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
             definitions
           );
           const syncedValues = syncFilterValuesWithDefinitions(newDefinitions, filterValues);
+          const nextAppliedValues = syncFilterValuesWithDefinitions(
+            newDefinitions,
+            appliedFilterValues,
+          );
 
           setDefinitions(newDefinitions);
           setFilterValues(syncedValues);
+          setAppliedFilterValues(nextAppliedValues);
           setNodeChangeKey((prev) => prev + 1);
 
           // Now fetch the new node's data with correct filter values
@@ -314,15 +409,21 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
             loadChartNodeData(
               result.nodeId,
               result.valueConfig,
-              syncedValues,
+              nextAppliedValues,
               newDefinitions,
               undefined,
-              selectedNamespaceId,
+              appliedNamespaceId,
             );
           }
         }, 100);
       } else {
-        await handleViewConfigConfirm(values, filterValues, definitions, dataSourceManager.dataSources, selectedNamespaceId);
+        await handleViewConfigConfirm(
+          values,
+          appliedFilterValues,
+          definitions,
+          dataSourceManager.dataSources,
+          appliedNamespaceId,
+        );
         setTimeout(() => rebuildFiltersFromNodes(), 100);
       }
     };
@@ -386,22 +487,32 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
             definitions
           );
           const syncedValues = syncFilterValuesWithDefinitions(newDefinitions, filterValues);
+          const nextAppliedValues = syncFilterValuesWithDefinitions(
+            newDefinitions,
+            appliedFilterValues,
+          );
           setDefinitions(newDefinitions);
           setFilterValues(syncedValues);
+          setAppliedFilterValues(nextAppliedValues);
           setNodeChangeKey((prev) => prev + 1);
 
           // Fetch single-value node data with correct filter values
           if (isSingleValue && nodeId) {
             updateSingleNodeData(
               { ...nodeConfig, id: nodeId },
-              syncedValues,
+              nextAppliedValues,
               newDefinitions,
-              selectedNamespaceId
+              appliedNamespaceId,
             );
           }
         }, 100);
       } else {
-        await handleNodeUpdate(values, filterValues, definitions, selectedNamespaceId);
+        await handleNodeUpdate(
+          values,
+          appliedFilterValues,
+          definitions,
+          appliedNamespaceId,
+        );
         setTimeout(() => rebuildFiltersFromNodes(), 100);
       }
       handleNodeEditClose();
@@ -442,31 +553,100 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
         state.graphInstance.fromJSON(originalGraphState);
       }
       const restoredDefs = [...originalDefinitions];
+      const restoredValues = syncFilterValuesWithDefinitions(
+        restoredDefs,
+        appliedFilterValues,
+      );
       setDefinitions(restoredDefs);
+      setFilterValues(restoredValues);
+      setAppliedFilterValues(restoredValues);
       toggleEditMode();
-      const restoredValues = syncFilterValuesWithDefinitions(restoredDefs, {});
-      refreshAllSingleValueNodes(restoredValues, restoredDefs, selectedNamespaceId);
-      refreshAllChartNodes(restoredValues, restoredDefs, dataSourceManager.dataSources, selectedNamespaceId);
-    }, [state.graphInstance, originalGraphState, originalDefinitions, setDefinitions, toggleEditMode, refreshAllSingleValueNodes, refreshAllChartNodes, dataSourceManager.dataSources, selectedNamespaceId]);
+      refreshTopologyNodes(
+        'reload',
+        restoredValues,
+        restoredDefs,
+        appliedNamespaceId,
+      );
+    }, [
+      state.graphInstance,
+      originalGraphState,
+      originalDefinitions,
+      appliedFilterValues,
+      appliedNamespaceId,
+      setDefinitions,
+      setFilterValues,
+      toggleEditMode,
+      refreshTopologyNodes,
+    ]);
 
     const handleFilterValuesChange = useCallback((values: Record<string, FilterValue>) => {
       setFilterValues(values);
-      setSearchKey((prev) => prev + 1);
     }, [setFilterValues]);
 
-    const handleFilterConfigConfirm = useCallback((newDefinitions: UnifiedFilterDefinition[]) => {
-      updateDefinitions(newDefinitions);
-    }, [updateDefinitions]);
+    const handleFilterSearch = useCallback(
+      (values: Record<string, FilterValue>) => {
+        const namespaceChanged = namespaceDraftId !== appliedNamespaceId;
+        setFilterValues(values);
+        setAppliedFilterValues(values);
+        setAppliedNamespaceId(namespaceDraftId);
+        refreshTopologyNodes(
+          namespaceChanged ? 'combined-search' : 'filter-search',
+          values,
+          definitions,
+          namespaceDraftId,
+        );
+      },
+      [
+        namespaceDraftId,
+        appliedNamespaceId,
+        definitions,
+        refreshTopologyNodes,
+        setFilterValues,
+      ],
+    );
+
+    const handleFilterReset = useCallback(
+      (values: Record<string, FilterValue>) => {
+        handleFilterSearch(values);
+      },
+      [handleFilterSearch],
+    );
+
+    const handleFilterConfigConfirm = useCallback(
+      (newDefinitions: UnifiedFilterDefinition[]) => {
+        updateDefinitions(newDefinitions);
+        setFilterValues(
+          syncFilterValuesWithDefinitions(newDefinitions, filterValues),
+        );
+        setAppliedFilterValues((prev) =>
+          syncFilterValuesWithDefinitions(newDefinitions, prev),
+        );
+      },
+      [updateDefinitions, filterValues, setFilterValues],
+    );
 
     const rebuildFiltersFromNodes = useCallback(() => {
       const newDefinitions = buildFiltersFromNodes(
         state.graphInstance,
         dataSourceManager.dataSources,
-        definitions
+        definitions,
+      );
+      setFilterValues(
+        syncFilterValuesWithDefinitions(newDefinitions, filterValues),
+      );
+      setAppliedFilterValues((prev) =>
+        syncFilterValuesWithDefinitions(newDefinitions, prev),
       );
       setDefinitions(newDefinitions);
       setNodeChangeKey((prev) => prev + 1);
-    }, [state.graphInstance, dataSourceManager.dataSources, definitions, setDefinitions]);
+    }, [
+      state.graphInstance,
+      dataSourceManager.dataSources,
+      definitions,
+      filterValues,
+      setDefinitions,
+      setFilterValues,
+    ]);
 
     useEffect(() => {
       rebuildFiltersRef.current = rebuildFiltersFromNodes;
@@ -485,8 +665,11 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       startInitialization();
       clearOperationHistory();
       setDefinitions([]);
+      setFilterValues({});
+      setAppliedFilterValues({});
       setOriginalDefinitions([]);
-      setSelectedNamespaceId(undefined);
+      setNamespaceDraftId(undefined);
+      setAppliedNamespaceId(undefined);
 
       if (refreshTimerRef.current) {
         clearInterval(refreshTimerRef.current);
@@ -506,6 +689,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           if (autoBuiltFilters.length > 0) {
             setDefinitions(autoBuiltFilters);
             setFilterValues(syncedValues);
+            setAppliedFilterValues(syncedValues);
             setOriginalDefinitions([...autoBuiltFilters]);
           }
 
@@ -516,9 +700,8 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
             namespaceList
           );
           const initialNamespaceId = nsOptions.length > 0 ? nsOptions[0].value : undefined;
-          if (initialNamespaceId !== undefined) {
-            setSelectedNamespaceId(initialNamespaceId);
-          }
+          setNamespaceDraftId(initialNamespaceId);
+          setAppliedNamespaceId(initialNamespaceId);
 
           // Step 3: Fetch all node data with correct filter values
           setTimeout(() => {
@@ -570,7 +753,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
 
     return (
       <div
-        className={`flex-1 p-4 pb-0 overflow-auto flex flex-col bg-[var(--color-bg-1)] ${styles.topologyContainer}`}
+        className={`flex-1 p-4 pb-0 overflow-auto flex flex-col bg-(--color-bg-1) ${styles.topologyContainer}`}
       >
         {/* 工具栏 */}
         <TopologyToolbar
@@ -600,6 +783,8 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
               definitions={definitions}
               values={filterValues}
               onChange={handleFilterValuesChange}
+              onSearch={handleFilterSearch}
+              onReset={handleFilterReset}
               prefixContent={namespaceSelectorElement}
             />
           </div>
@@ -619,7 +804,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           {/* 画布容器 */}
           <div
             ref={canvasContainerRef}
-            className="flex-1 bg-[var(--color-bg-1)] relative"
+            className="flex-1 bg-(--color-bg-1) relative"
           >
             {loading && (
               <div
@@ -708,6 +893,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           onConfirm={handleTopologyViewConfigConfirm}
           dataSourceManager={dataSourceManager}
           filterDefinitions={definitions}
+          unifiedFilterValues={filterValues}
         />
 
         <UnifiedFilterConfigModal

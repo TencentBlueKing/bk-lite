@@ -88,9 +88,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [configDrawerVisible, setConfigDrawerVisible] = useState(false);
     const [currentConfigItem, setCurrentConfigItem] = useState<LayoutItem>();
     const [isNewComponentConfig, setIsNewComponentConfig] = useState(false);
-    const [refreshKey, setRefreshKey] = useState(0);
-    const [searchKey, setSearchKey] = useState(0);
-    const [widgetRefreshKeys, setWidgetRefreshKeys] = useState<Record<string, number>>({});
+    const [dashboardReloadVersion, setDashboardReloadVersion] = useState(0);
+    const [widgetReloadVersions, setWidgetReloadVersions] = useState<
+      Record<string, number>
+    >({});
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(false);
     const [otherConfig, setOtherConfig] = useState<OtherConfig>({});
@@ -99,7 +100,20 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     );
     const [filterConfigModalVisible, setFilterConfigModalVisible] =
       useState(false);
-    const [selectedNamespaceId, setSelectedNamespaceId] = useState<number | undefined>(undefined);
+    const [namespaceDraftId, setNamespaceDraftId] = useState<
+      number | undefined
+    >(undefined);
+    const [appliedFilterDefinitions, setAppliedFilterDefinitions] = useState<
+      UnifiedFilterDefinition[]
+    >([]);
+    const [appliedFilterValues, setAppliedFilterValues] = useState<
+      Record<string, FilterValue>
+    >({});
+    const [appliedNamespaceId, setAppliedNamespaceId] = useState<
+      number | undefined
+    >(undefined);
+    const [filterSearchVersion, setFilterSearchVersion] = useState(0);
+    const [namespaceSearchVersion, setNamespaceSearchVersion] = useState(0);
     const exportRef = useRef<HTMLDivElement>(null);
     const [exporting, setExporting] = useState(false);
 
@@ -111,6 +125,32 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setDefinitions,
     } = useUnifiedFilter();
     const [originalDefinitions, setOriginalDefinitions] = useState<UnifiedFilterDefinition[]>([]);
+
+    const applyQueryState = useCallback(
+      (
+        nextDefinitions: UnifiedFilterDefinition[],
+        nextValues: Record<string, FilterValue>,
+        nextNamespaceId: number | undefined,
+      ) => {
+        setAppliedFilterDefinitions(nextDefinitions);
+        setAppliedFilterValues(nextValues);
+        setAppliedNamespaceId(nextNamespaceId);
+      },
+      [],
+    );
+
+    const syncFilterStateAfterLayoutChange = useCallback(
+      (
+        nextDefinitions: UnifiedFilterDefinition[],
+        nextDraftValues: Record<string, FilterValue>,
+        nextAppliedValues: Record<string, FilterValue>,
+      ) => {
+        setDefinitions(nextDefinitions);
+        setFilterValues(nextDraftValues);
+        applyQueryState(nextDefinitions, nextAppliedValues, appliedNamespaceId);
+      },
+      [setDefinitions, setFilterValues, applyQueryState, appliedNamespaceId],
+    );
 
     const buildFiltersFromLayout = (
       nextLayout: LayoutItem[],
@@ -289,14 +329,25 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
     useEffect(() => {
       if (namespaceOptions.length > 0) {
-        const currentValid = selectedNamespaceId !== undefined && namespaceOptions.some((o) => o.value === selectedNamespaceId);
-        if (!currentValid) {
-          setSelectedNamespaceId(namespaceOptions[0].value);
+        const fallbackNamespaceId = namespaceOptions[0].value;
+        const draftValid =
+          namespaceDraftId !== undefined &&
+          namespaceOptions.some((o) => o.value === namespaceDraftId);
+        const appliedValid =
+          appliedNamespaceId !== undefined &&
+          namespaceOptions.some((o) => o.value === appliedNamespaceId);
+
+        if (!draftValid) {
+          setNamespaceDraftId(fallbackNamespaceId);
+        }
+        if (!appliedValid) {
+          setAppliedNamespaceId(fallbackNamespaceId);
         }
       } else {
-        setSelectedNamespaceId(undefined);
+        setNamespaceDraftId(undefined);
+        setAppliedNamespaceId(undefined);
       }
-    }, [namespaceOptions, selectedNamespaceId]);
+    }, [namespaceOptions, namespaceDraftId, appliedNamespaceId]);
 
     const namespaceSelectorElement = useMemo(() => {
       if (namespaceOptions.length <= 1) return undefined;
@@ -306,17 +357,16 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             {t('namespace.title')}:
           </span>
           <Select
-            value={selectedNamespaceId}
+            value={namespaceDraftId}
             onChange={(val: number) => {
-              setSelectedNamespaceId(val);
-              setSearchKey((prev) => prev + 1);
+              setNamespaceDraftId(val);
             }}
             options={namespaceOptions}
             style={{ minWidth: 160 }}
           />
         </div>
       );
-    }, [namespaceOptions, selectedNamespaceId, t]);
+    }, [namespaceOptions, namespaceDraftId, t]);
 
     useEffect(() => {
       const loadDashboardData = async () => {
@@ -326,6 +376,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           setOtherConfig({});
           setOriginalOtherConfig({});
           setDefinitions([]);
+          setFilterValues({});
+          setAppliedFilterDefinitions([]);
+          setAppliedFilterValues({});
           setOriginalDefinitions([]);
           return;
         }
@@ -359,6 +412,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
           setDefinitions(loadedDefinitions);
           setFilterValues(initialValues);
+          setAppliedFilterDefinitions(loadedDefinitions);
+          setAppliedFilterValues(initialValues);
           setOriginalDefinitions([...loadedDefinitions]);
         } catch (error) {
           console.error('加载仪表盘数据失败:', error);
@@ -367,6 +422,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           setOtherConfig({});
           setOriginalOtherConfig({});
           setDefinitions([]);
+          setFilterValues({});
+          setAppliedFilterDefinitions([]);
+          setAppliedFilterValues({});
           setOriginalDefinitions([]);
         } finally {
           setLoading(false);
@@ -383,8 +441,14 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setCurrentConfigItem(undefined);
       setIsNewComponentConfig(false);
       setSaving(false);
-      setRefreshKey(0);
-      setSelectedNamespaceId(undefined);
+      setDashboardReloadVersion(0);
+      setFilterSearchVersion(0);
+      setNamespaceSearchVersion(0);
+      setWidgetReloadVersions({});
+      setAppliedFilterDefinitions([]);
+      setAppliedFilterValues({});
+      setNamespaceDraftId(undefined);
+      setAppliedNamespaceId(undefined);
     }, [selectedDashboard?.data_id]);
 
     const openAddModal = () => {
@@ -425,7 +489,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     }));
 
     const handleRefresh = () => {
-      setRefreshKey((prev) => prev + 1);
+      applyQueryState(definitions, filterValues, namespaceDraftId);
+      setDashboardReloadVersion((prev) => prev + 1);
     };
 
     const handleExportPdf = useCallback(async () => {
@@ -483,10 +548,17 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       const nextDefinitions = buildFiltersFromLayout(nextLayout, definitions);
       const syncedLayout = syncLayoutFilterBindings(nextLayout, nextDefinitions);
       const nextFilterValues = syncFilterValuesWithDefinitions(nextDefinitions, filterValues);
+      const nextAppliedValues = syncFilterValuesWithDefinitions(
+        nextDefinitions,
+        appliedFilterValues,
+      );
 
       setLayout(syncedLayout);
-      setDefinitions(nextDefinitions);
-      setFilterValues(nextFilterValues);
+      syncFilterStateAfterLayoutChange(
+        nextDefinitions,
+        nextFilterValues,
+        nextAppliedValues,
+      );
       setAddModalVisible(false);
     };
 
@@ -523,19 +595,43 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     };
 
     const handleCancelEdit = () => {
+      const revertedFilterValues = syncFilterValuesWithDefinitions(
+        originalDefinitions,
+        appliedFilterValues,
+      );
+
       setLayout([...originalLayout]);
       setOtherConfig({ ...originalOtherConfig });
       setDefinitions([...originalDefinitions]);
+      setFilterValues(revertedFilterValues);
+      applyQueryState(
+        [...originalDefinitions],
+        revertedFilterValues,
+        appliedNamespaceId,
+      );
       setIsEditMode(false);
+      setDashboardReloadVersion((prev) => prev + 1);
     };
 
     const removeWidget = (id: string) => {
       const nextLayout = layout.filter((item) => item.i !== id);
       const nextDefinitions = buildFiltersFromLayout(nextLayout, definitions);
       const syncedLayout = syncLayoutFilterBindings(nextLayout, nextDefinitions);
+      const nextFilterValues = syncFilterValuesWithDefinitions(
+        nextDefinitions,
+        filterValues,
+      );
+      const nextAppliedValues = syncFilterValuesWithDefinitions(
+        nextDefinitions,
+        appliedFilterValues,
+      );
 
       setLayout(syncedLayout);
-      setDefinitions(nextDefinitions);
+      syncFilterStateAfterLayoutChange(
+        nextDefinitions,
+        nextFilterValues,
+        nextAppliedValues,
+      );
     };
 
     const handleEdit = (id: string) => {
@@ -596,14 +692,21 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         const nextDefinitions = buildFiltersFromLayout(nextLayout, definitions);
         const syncedLayout = syncLayoutFilterBindings(nextLayout, nextDefinitions);
         const nextFilterValues = syncFilterValuesWithDefinitions(nextDefinitions, filterValues);
+        const nextAppliedValues = syncFilterValuesWithDefinitions(
+          nextDefinitions,
+          appliedFilterValues,
+        );
 
         setLayout(syncedLayout);
-        setDefinitions(nextDefinitions);
-        setFilterValues(nextFilterValues);
+        syncFilterStateAfterLayoutChange(
+          nextDefinitions,
+          nextFilterValues,
+          nextAppliedValues,
+        );
         
         // Only refresh the edited widget, not all widgets
         if (editedWidgetId) {
-          setWidgetRefreshKeys((prev) => ({
+          setWidgetReloadVersions((prev) => ({
             ...prev,
             [editedWidgetId]: (prev[editedWidgetId] || 0) + 1,
           }));
@@ -620,9 +723,20 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setIsNewComponentConfig(false);
     };
 
-    const handleFilterValuesChange = (values: Record<string, FilterValue>) => {
+    const handleFilterSearch = (values: Record<string, FilterValue>) => {
+      const namespaceChanged = namespaceDraftId !== appliedNamespaceId;
+
       setFilterValues(values);
-      setSearchKey((prev) => prev + 1);
+      applyQueryState(definitions, values, namespaceDraftId);
+
+      setFilterSearchVersion((prev) => prev + 1);
+      if (namespaceChanged) {
+        setNamespaceSearchVersion((prev) => prev + 1);
+      }
+    };
+
+    const handleFilterReset = (values: Record<string, FilterValue>) => {
+      handleFilterSearch(values);
     };
 
     const handleFilterConfigConfirm = (
@@ -664,7 +778,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                   <h2 className="text-lg font-semibold mb-1 text-(--color-text-1)">
                     {selectedDashboard.name}
                     {selectedDashboard.is_build_in && (
-                      <Tag color="blue" className="ml-2 text-xs align-middle">{t('common.builtIn')}</Tag>
+                      <Tag color="blue" className="ml-2 text-xs align-middle">
+                        {t('common.builtIn')}
+                      </Tag>
                     )}
                   </h2>
                   <p className="text-sm text-(--color-text-2)">
@@ -729,7 +845,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                       <Button
                         type="text"
                         icon={<EditOutlined style={{ fontSize: 16 }} />}
-                        disabled={!selectedDashboard?.data_id || selectedDashboard?.is_build_in}
+                        disabled={
+                          !selectedDashboard?.data_id ||
+                          selectedDashboard?.is_build_in
+                        }
                         onClick={toggleEditMode}
                       />
                     </Tooltip>
@@ -760,129 +879,132 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             className="flex-1 bg-(--color-fill-1) rounded-lg overflow-hidden flex flex-col"
             data-export-expand="true"
           >
-          {(definitions.length > 0 || namespaceSelectorElement) && (
-            <div className="shrink-0">
-              <UnifiedFilterBar
-                definitions={definitions}
-                values={filterValues}
-                onChange={handleFilterValuesChange}
-                prefixContent={namespaceSelectorElement}
-              />
-            </div>
-          )}
-          <div className="flex-1 overflow-auto" data-export-expand="true">
-            {(() => {
-              if (loading) {
-                return (
-                  <div className="h-full flex items-center justify-center">
-                    <Spin size="large" />
-                  </div>
-                );
-              }
+            {(definitions.length > 0 || namespaceSelectorElement) && (
+              <div className="shrink-0">
+                <UnifiedFilterBar
+                  definitions={definitions}
+                  values={filterValues}
+                  onSearch={handleFilterSearch}
+                  onReset={handleFilterReset}
+                  prefixContent={namespaceSelectorElement}
+                />
+              </div>
+            )}
+            <div className="flex-1 overflow-auto" data-export-expand="true">
+              {(() => {
+                if (loading) {
+                  return (
+                    <div className="h-full flex items-center justify-center">
+                      <Spin size="large" />
+                    </div>
+                  );
+                }
 
-              if (!layout.length) {
-                return (
-                  <div className="h-full flex flex-col items-center justify-center">
-                    <Empty
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description={
-                        <span className="text-(--color-text-2)">
-                          {t('dashboard.addView')}
-                        </span>
-                      }
-                    >
-                      <PermissionWrapper requiredPermissions={['EditChart']}>
-                        <Button
-                          type="primary"
-                          icon={<PlusOutlined />}
-                          onClick={openAddModal}
-                          disabled={selectedDashboard?.is_build_in}
-                        >
-                          {t('dashboard.addView')}
-                        </Button>
-                      </PermissionWrapper>
-                    </Empty>
-                  </div>
-                );
-              }
-              return (
-                <ResponsiveGridLayout
-                  className="layout w-full flex-1"
-                  layout={layout}
-                  onLayoutChange={onLayoutChange}
-                  cols={12}
-                  rowHeight={60}
-                  margin={[12, 12]}
-                  containerPadding={[12, 12]}
-                  draggableCancel=".no-drag, .widget-body"
-                  isDraggable={isEditMode}
-                  isResizable={isEditMode}
-                >
-                  {layout.map((item) => {
-                    const menu = (
-                      <Menu>
-                        <Menu.Item
-                          key="edit"
-                          onClick={() => handleEdit(item.i)}
-                        >
-                          {t('common.edit')}
-                        </Menu.Item>
-                        <Menu.Item
-                          key="delete"
-                          onClick={() => handleDelete(item.i)}
-                        >
-                          {t('common.delete')}
-                        </Menu.Item>
-                      </Menu>
-                    );
-
-                    return (
-                      <div
-                        key={item.i}
-                        className="widget bg-(--color-bg-1) rounded-lg shadow-sm overflow-hidden p-4 flex flex-col"
+                if (!layout.length) {
+                  return (
+                    <div className="h-full flex flex-col items-center justify-center">
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description={
+                          <span className="text-(--color-text-2)">
+                            {t('dashboard.addView')}
+                          </span>
+                        }
                       >
-                        <div className="widget-header pb-4 flex justify-between items-start">
-                          <div className="flex-1">
-                            <h4 className="text-md font-medium text-(--color-text-1)">
-                              {item.name}
-                            </h4>
-                            {item.description?.trim() && (
-                              <p className="text-sm text-(--color-text-2) mt-1">
-                                {item.description}
-                              </p>
+                        <PermissionWrapper requiredPermissions={['EditChart']}>
+                          <Button
+                            type="primary"
+                            icon={<PlusOutlined />}
+                            onClick={openAddModal}
+                            disabled={selectedDashboard?.is_build_in}
+                          >
+                            {t('dashboard.addView')}
+                          </Button>
+                        </PermissionWrapper>
+                      </Empty>
+                    </div>
+                  );
+                }
+                return (
+                  <ResponsiveGridLayout
+                    className="layout w-full flex-1"
+                    layout={layout}
+                    onLayoutChange={onLayoutChange}
+                    cols={12}
+                    rowHeight={60}
+                    margin={[12, 12]}
+                    containerPadding={[12, 12]}
+                    draggableCancel=".no-drag, .widget-body"
+                    isDraggable={isEditMode}
+                    isResizable={isEditMode}
+                  >
+                    {layout.map((item) => {
+                      const menu = (
+                        <Menu>
+                          <Menu.Item
+                            key="edit"
+                            onClick={() => handleEdit(item.i)}
+                          >
+                            {t('common.edit')}
+                          </Menu.Item>
+                          <Menu.Item
+                            key="delete"
+                            onClick={() => handleDelete(item.i)}
+                          >
+                            {t('common.delete')}
+                          </Menu.Item>
+                        </Menu>
+                      );
+
+                      return (
+                        <div
+                          key={item.i}
+                          className="widget bg-(--color-bg-1) rounded-lg shadow-sm overflow-hidden p-4 flex flex-col"
+                        >
+                          <div className="widget-header pb-4 flex justify-between items-start">
+                            <div className="flex-1">
+                              <h4 className="text-md font-medium text-(--color-text-1)">
+                                {item.name}
+                              </h4>
+                              {item.description?.trim() && (
+                                <p className="text-sm text-(--color-text-2) mt-1">
+                                  {item.description}
+                                </p>
+                              )}
+                            </div>
+                            {isEditMode && (
+                              <Dropdown overlay={menu} trigger={['click']}>
+                                <button className="no-drag text-(--color-text-2) hover:text-(--color-text-1) transition-colors cursor-pointer">
+                                  <MoreOutlined style={{ fontSize: '20px' }} />
+                                </button>
+                              </Dropdown>
                             )}
                           </div>
-                          {isEditMode && (
-                            <Dropdown overlay={menu} trigger={['click']}>
-                              <button className="no-drag text-(--color-text-2) hover:text-(--color-text-1) transition-colors cursor-pointer">
-                                <MoreOutlined style={{ fontSize: '20px' }} />
-                              </button>
-                            </Dropdown>
-                          )}
+                          <div className="widget-body flex-1 h-full rounded-b overflow-hidden">
+                            <WidgetWrapper
+                              widgetId={item.i}
+                              key={item.i}
+                              chartType={item.valueConfig?.chartType}
+                              config={item.valueConfig}
+                              filterSearchVersion={filterSearchVersion}
+                              namespaceSearchVersion={namespaceSearchVersion}
+                              reloadVersion={`${dashboardReloadVersion}:${widgetReloadVersions[item.i] || 0}`}
+                              dataSource={dataSourceManager.findDataSource(
+                                item.valueConfig?.dataSource,
+                              )}
+                              unifiedFilterValues={appliedFilterValues}
+                              filterDefinitions={appliedFilterDefinitions}
+                              builtinNamespaceId={appliedNamespaceId}
+                            />
+                          </div>
                         </div>
-                        <div className="widget-body flex-1 h-full rounded-b overflow-hidden">
-                          <WidgetWrapper
-                            key={item.i}
-                            chartType={item.valueConfig?.chartType}
-                            config={item.valueConfig}
-                            refreshKey={refreshKey + (widgetRefreshKeys[item.i] || 0)}
-                            searchKey={searchKey}
-                            dataSource={dataSourceManager.findDataSource(
-                              item.valueConfig?.dataSource,
-                            )}
-                            unifiedFilterValues={filterValues}
-                            filterDefinitions={definitions}
-                            builtinNamespaceId={selectedNamespaceId}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </ResponsiveGridLayout>
-              );
-            })()}
+                      );
+                    })}
+                  </ResponsiveGridLayout>
+                );
+              })()}
+            </div>
           </div>
-        </div>
         </div>
 
         <ViewSelector
@@ -897,6 +1019,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           onClose={handleConfigClose}
           dataSourceManager={dataSourceManager}
           filterDefinitions={definitions}
+          unifiedFilterValues={filterValues}
         />
         <UnifiedFilterConfigModal
           open={filterConfigModalVisible}

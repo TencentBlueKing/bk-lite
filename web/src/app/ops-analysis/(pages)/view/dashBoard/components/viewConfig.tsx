@@ -67,6 +67,7 @@ interface FormValues {
 interface ViewConfigPropsWithManager extends ViewConfigProps {
   dataSourceManager: ReturnType<typeof useDataSourceManager>;
   filterDefinitions?: UnifiedFilterDefinition[];
+  unifiedFilterValues?: Record<string, FilterValue>;
 }
 
 const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
@@ -76,6 +77,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   onClose,
   dataSourceManager,
   filterDefinitions = [],
+  unifiedFilterValues = {},
 }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
@@ -96,22 +98,6 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const availableFields = useMemo((): ResponseFieldDefinition[] => {
     return selectedDataSource?.field_schema || [];
   }, [selectedDataSource]);
-
-  const tableConfig = useTableConfig({
-    form,
-    chartType,
-    selectedDataSource,
-    availableFields,
-    getSourceDataByApiId,
-    processFormParamsForSubmit,
-    t,
-  });
-
-  const singleValueConfig = useSingleValueConfig({
-    form,
-    selectedDataSource,
-    getSourceDataByApiId,
-  });
 
   const getFilteredChartTypes = (
     dataSource: DatasourceItem | undefined,
@@ -160,6 +146,25 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     () => computePreviewDefinitions(filterDefinitions, selectedDataSource),
     [filterDefinitions, selectedDataSource],
   );
+
+  const tableConfig = useTableConfig({
+    form,
+    chartType,
+    selectedDataSource,
+    availableFields,
+    getSourceDataByApiId,
+    processFormParamsForSubmit,
+    unifiedFilterValues,
+    filterBindings,
+    filterDefinitions: previewFilterDefinitions,
+    t,
+  });
+
+  const singleValueConfig = useSingleValueConfig({
+    form,
+    selectedDataSource,
+    getSourceDataByApiId,
+  });
 
   const filterFieldOptions = useMemo(() => {
     const columnOptions = tableConfig.displayColumns
