@@ -33,6 +33,7 @@ from apps.node_mgmt.serializers.collector import CollectorSerializer
 from apps.node_mgmt.serializers.package import PackageVersionSerializer
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
+from apps.node_mgmt.services import node as node_service
 from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.services.cloudregion import RegionService
 from apps.node_mgmt.services.sidecar import Sidecar
@@ -98,7 +99,7 @@ class _FakeNode:
 
 
 class _FakeNodeQuerySet(list):
-    def filter(self, **kwargs):
+    def filter(self, *args, **kwargs):
         if "id__in" in kwargs:
             ids = {str(value) for value in kwargs["id__in"]}
             return _FakeNodeQuerySet([node for node in self if str(node.id) in ids])
@@ -229,6 +230,94 @@ def test_authorize_target_organizations_rejects_new_out_of_scope_org(monkeypatch
     response = node_permission.authorize_target_organizations(_make_node_request(), node, [2, 3])
 
     assert response.status_code == 403
+
+
+def test_get_node_permission_rejects_forged_current_team(monkeypatch):
+    captured = {}
+
+    class _ScopedSystemMgmt:
+        def __init__(self, is_local_client=True):
+            captured["is_local_client"] = is_local_client
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            captured["actor_context"] = actor_context
+            captured["include_children"] = include_children
+            return {"result": True, "data": []}
+
+    def _unexpected_permission(*args, **kwargs):
+        raise AssertionError("get_permission_rules should not be called for forged current_team")
+
+    monkeypatch.setattr(node_permission, "SystemMgmt", _ScopedSystemMgmt)
+    monkeypatch.setattr(node_permission, "get_permission_rules", _unexpected_permission)
+
+    request = _make_permission_request()
+    request.COOKIES["current_team"] = "2"
+
+    permission = node_permission.get_node_permission(request)
+
+    assert permission == {}
+    assert captured == {
+        "is_local_client": True,
+        "actor_context": {
+            "username": "permission-test-user",
+            "domain": "domain.com",
+            "current_team": 2,
+            "is_superuser": False,
+        },
+        "include_children": False,
+    }
+
+
+def test_get_node_permission_uses_scoped_current_team(monkeypatch):
+    captured = {}
+
+    class _ScopedSystemMgmt:
+        def __init__(self, is_local_client=True):
+            captured["is_local_client"] = is_local_client
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            captured["actor_context"] = actor_context
+            captured["include_children"] = include_children
+            return {"result": True, "data": [1, 11]}
+
+    def _fake_permission(user, current_team, app_name, permission_key, include_children=False):
+        captured["permission_args"] = {
+            "username": user.username,
+            "domain": user.domain,
+            "current_team": current_team,
+            "app_name": app_name,
+            "permission_key": permission_key,
+            "include_children": include_children,
+        }
+        return {"instance": [], "team": [1, 11]}
+
+    monkeypatch.setattr(node_permission, "SystemMgmt", _ScopedSystemMgmt)
+    monkeypatch.setattr(node_permission, "get_permission_rules", _fake_permission)
+
+    request = _make_permission_request()
+    request.COOKIES["include_children"] = "1"
+
+    permission = node_permission.get_node_permission(request)
+
+    assert permission == {"instance": [], "team": [1, 11]}
+    assert captured == {
+        "is_local_client": True,
+        "actor_context": {
+            "username": "permission-test-user",
+            "domain": "domain.com",
+            "current_team": 1,
+            "is_superuser": False,
+        },
+        "include_children": True,
+        "permission_args": {
+            "username": "permission-test-user",
+            "domain": "domain.com",
+            "current_team": 1,
+            "app_name": "node_mgmt",
+            "permission_key": NodeConstants.MODULE,
+            "include_children": True,
+        },
+    }
 
 
 def _create_node_mgmt_region(name="test-region"):
@@ -697,6 +786,123 @@ def test_apply_to_node_prevalidates_configuration_permissions_before_mutation(mo
 
     assert response.status_code == 403
     assert called["value"] is False
+
+
+def test_get_node_list_rejects_forged_current_team(monkeypatch):
+    captured = {}
+
+    class _ScopedSystemMgmt:
+        def __init__(self, is_local_client=True):
+            captured["is_local_client"] = is_local_client
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            captured["actor_context"] = actor_context
+            captured["include_children"] = include_children
+            return {"result": True, "data": []}
+
+    def _unexpected_permission(*args, **kwargs):
+        raise AssertionError("get_permission_rules should not be called for forged current_team")
+
+    monkeypatch.setattr(node_service, "SystemMgmt", _ScopedSystemMgmt)
+    monkeypatch.setattr(node_service, "get_permission_rules", _unexpected_permission)
+
+    result = node_service.NodeService.get_node_list(
+        organization_ids=[],
+        cloud_region_id=None,
+        name="",
+        ip="",
+        os="",
+        page=1,
+        page_size=20,
+        is_active=None,
+        is_manual=None,
+        is_container=None,
+        permission_data={
+            "username": "permission-test-user",
+            "domain": "domain.com",
+            "current_team": 2,
+            "include_children": False,
+            "is_superuser": False,
+        },
+    )
+
+    assert result["count"] == 0
+    assert list(result["nodes"]) == []
+    assert captured == {
+        "is_local_client": True,
+        "actor_context": {
+            "username": "permission-test-user",
+            "domain": "domain.com",
+            "current_team": 2,
+            "is_superuser": False,
+        },
+        "include_children": False,
+    }
+
+
+def test_get_authorized_nodes_by_ids_uses_scoped_current_team(monkeypatch):
+    captured = {}
+    allowed_node = _FakeNode(node_id="node-scoped", organizations=[1])
+
+    class _ScopedSystemMgmt:
+        def __init__(self, is_local_client=True):
+            captured["is_local_client"] = is_local_client
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            captured["actor_context"] = actor_context
+            captured["include_children"] = include_children
+            return {"result": True, "data": [1]}
+
+    def _fake_permission(user, current_team, app_name, permission_key, include_children=False):
+        captured["permission_args"] = {
+            "username": user.username,
+            "domain": user.domain,
+            "current_team": current_team,
+            "app_name": app_name,
+            "permission_key": permission_key,
+            "include_children": include_children,
+        }
+        return {"instance": [], "team": [1]}
+
+    class _NodeManager:
+        @staticmethod
+        def all():
+            return _FakeNodeQuerySet([allowed_node])
+
+    monkeypatch.setattr(node_service, "SystemMgmt", _ScopedSystemMgmt)
+    monkeypatch.setattr(node_service, "get_permission_rules", _fake_permission)
+    monkeypatch.setattr(node_service.Node, "objects", _NodeManager())
+
+    result = node_service.NodeService.get_authorized_nodes_by_ids(
+        ["node-scoped"],
+        permission_data={
+            "username": "permission-test-user",
+            "domain": "domain.com",
+            "current_team": 1,
+            "include_children": True,
+            "is_superuser": False,
+        },
+    )
+
+    assert result == [{"id": "node-scoped", "organization_ids": [1]}]
+    assert captured == {
+        "is_local_client": True,
+        "actor_context": {
+            "username": "permission-test-user",
+            "domain": "domain.com",
+            "current_team": 1,
+            "is_superuser": False,
+        },
+        "include_children": True,
+        "permission_args": {
+            "username": "permission-test-user",
+            "domain": "domain.com",
+            "current_team": 1,
+            "app_name": "node_mgmt",
+            "permission_key": NodeConstants.MODULE,
+            "include_children": True,
+        },
+    }
 
 
 def test_batch_binding_configuration_prevalidates_configuration_permissions(monkeypatch):
