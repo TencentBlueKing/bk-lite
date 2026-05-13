@@ -1,7 +1,10 @@
 import importlib.util
+import sys
+import types
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 
 def _load_module(module_name: str, file_path: Path):
@@ -9,6 +12,14 @@ def _load_module(module_name: str, file_path: Path):
     module = importlib.util.module_from_spec(spec)
     assert spec is not None and spec.loader is not None
     spec.loader.exec_module(module)
+    return module
+
+
+def _install_module(monkeypatch, name, **attrs):
+    module = types.ModuleType(name)
+    for key, value in attrs.items():
+        setattr(module, key, value)
+    monkeypatch.setitem(sys.modules, name, module)
     return module
 
 
@@ -67,3 +78,140 @@ def test_calculate_alerts_should_render_resource_and_dimension_value():
     assert len(alert_events) == 1
     assert len(info_events) == 0
     assert alert_events[0]["content"] == "主机A|节点:a-1|主机A - agent_id:a-1|92.00%"
+
+
+def test_resolve_metric_instance_id_keys_inherits_monitor_object_keys():
+    instance_id_keys_module = _load_module(
+        "instance_id_keys_module",
+        Path(__file__).resolve().parents[1] / "utils" / "instance_id_keys.py",
+    )
+
+    result = instance_id_keys_module.resolve_metric_instance_id_keys([], ["instance_id", "pod"])
+
+    assert result == ["instance_id", "pod"]
+
+
+def test_resolve_metric_instance_id_keys_raises_when_no_effective_keys():
+    instance_id_keys_module = _load_module(
+        "instance_id_keys_module_strict",
+        Path(__file__).resolve().parents[1] / "utils" / "instance_id_keys.py",
+    )
+
+    with pytest.raises(Exception, match="instance_id_keys"):
+        instance_id_keys_module.resolve_metric_instance_id_keys([], [], strict=True)
+
+
+def test_resolve_monitor_object_instance_id_keys_defaults_for_derivative_object():
+    instance_id_keys_module = _load_module(
+        "instance_id_keys_module_derivative",
+        Path(__file__).resolve().parents[1] / "utils" / "instance_id_keys.py",
+    )
+
+    result = instance_id_keys_module.resolve_monitor_object_instance_id_keys([], level="derivative", object_name="pod")
+
+    assert result == ["instance_id", "pod"]
+
+
+def test_metric_serializer_validate_inherits_monitor_object_instance_id_keys(monkeypatch):
+    class StubModelSerializer:
+        def __init__(self, instance=None):
+            self.instance = instance
+
+        def validate(self, attrs):
+            return attrs
+
+        def to_representation(self, instance):
+            return {
+                "instance_id_keys": getattr(instance, "instance_id_keys", []),
+            }
+
+    class StubValidationError(Exception):
+        def __init__(self, detail):
+            super().__init__(str(detail))
+            self.detail = detail
+
+    class _MetricQuerySet:
+        def exclude(self, **kwargs):
+            return self
+
+        def exists(self):
+            return False
+
+    class _MetricManager:
+        def filter(self, **kwargs):
+            return _MetricQuerySet()
+
+    class _Metric:
+        objects = _MetricManager()
+
+    _install_module(
+        monkeypatch,
+        "rest_framework.serializers",
+        ModelSerializer=StubModelSerializer,
+        BooleanField=lambda **kwargs: None,
+        ValidationError=StubValidationError,
+    )
+    _install_module(monkeypatch, "rest_framework", serializers=sys.modules["rest_framework.serializers"])
+    _install_module(monkeypatch, "apps.monitor.models.monitor_metrics", MetricGroup=object, Metric=_Metric)
+
+    serializer_module = _load_module(
+        "monitor_metric_serializer_module",
+        Path(__file__).resolve().parents[1] / "serializers" / "monitor_metrics.py",
+    )
+
+    serializer = serializer_module.MetricSerializer()
+    monitor_object = types.SimpleNamespace(instance_id_keys=["instance_id", "pod"])
+
+    validated = serializer.validate(
+        {
+            "monitor_object": monitor_object,
+            "monitor_plugin": None,
+            "name": "cpu_usage",
+            "instance_id_keys": [],
+        }
+    )
+
+    assert validated["instance_id_keys"] == ["instance_id", "pod"]
+
+
+def test_metrics_service_effective_instance_keys_fallbacks_to_monitor_object(monkeypatch):
+    class StubBaseAppException(Exception):
+        pass
+
+    class StubLogger:
+        def __init__(self):
+            self.warning_calls = []
+
+        def warning(self, *args, **kwargs):
+            self.warning_calls.append((args, kwargs))
+
+    logger = StubLogger()
+
+    _install_module(monkeypatch, "apps.core.exceptions.base_app_exception", BaseAppException=StubBaseAppException)
+    _install_module(monkeypatch, "apps.core.logger", monitor_logger=logger)
+    _install_module(monkeypatch, "apps.monitor.models.monitor_metrics", Metric=object)
+    _install_module(
+        monkeypatch,
+        "apps.monitor.models.monitor_object",
+        MonitorObject=types.SimpleNamespace(objects=types.SimpleNamespace(filter=lambda **kwargs: None)),
+    )
+    _install_module(monkeypatch, "apps.monitor.utils.dimension", parse_instance_id=lambda value: (value,))
+    _install_module(monkeypatch, "apps.monitor.utils.unit_converter", UnitConverter=object)
+    _install_module(monkeypatch, "apps.monitor.utils.victoriametrics_api", VictoriaMetricsAPI=object)
+
+    metrics_module = _load_module(
+        "metrics_service_module",
+        Path(__file__).resolve().parents[1] / "services" / "metrics.py",
+    )
+
+    metric = types.SimpleNamespace(
+        id=11,
+        monitor_object_id=7,
+        instance_id_keys=[],
+        monitor_object=types.SimpleNamespace(instance_id_keys=["instance_id", "pod"]),
+    )
+
+    keys = metrics_module.Metrics.get_effective_metric_instance_id_keys(metric)
+
+    assert keys == ["instance_id", "pod"]
+    assert len(logger.warning_calls) == 1

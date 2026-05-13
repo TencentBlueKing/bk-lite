@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.monitor.models.monitor_metrics import MetricGroup, Metric
+from apps.monitor.utils.instance_id_keys import resolve_metric_instance_id_keys
 
 
 class MetricGroupSerializer(serializers.ModelSerializer):
@@ -51,11 +52,29 @@ class MetricSerializer(serializers.ModelSerializer):
         model = Metric
         fields = "__all__"
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        monitor_object = getattr(instance, "monitor_object", None)
+        data["instance_id_keys"] = resolve_metric_instance_id_keys(
+            data.get("instance_id_keys", []),
+            getattr(monitor_object, "instance_id_keys", []),
+        )
+        return data
+
     def validate(self, attrs):
         attrs = super().validate(attrs)
         monitor_object = attrs.get("monitor_object", getattr(self.instance, "monitor_object", None))
         monitor_plugin = attrs.get("monitor_plugin", getattr(self.instance, "monitor_plugin", None))
         name = attrs.get("name", getattr(self.instance, "name", None))
+        monitor_object_keys = getattr(monitor_object, "instance_id_keys", [])
+
+        resolved_instance_id_keys = resolve_metric_instance_id_keys(
+            attrs.get("instance_id_keys", getattr(self.instance, "instance_id_keys", [])),
+            monitor_object_keys,
+        )
+        if not resolved_instance_id_keys:
+            raise serializers.ValidationError({"instance_id_keys": "指标必须绑定有效的实例维度键"})
+        attrs["instance_id_keys"] = resolved_instance_id_keys
 
         queryset = Metric.objects.filter(
             monitor_object=monitor_object,
