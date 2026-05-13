@@ -1,7 +1,8 @@
 'use client';
 
 import React, { forwardRef, useImperativeHandle, useMemo } from 'react';
-import { Input, Button, Form, Spin, Select, Radio, Alert } from 'antd';
+import { Input, Button, Form, Spin, Select, Radio, Alert, Space } from 'antd';
+import { EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
 import { useTranslation } from '@/utils/i18n';
@@ -52,6 +53,7 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     handleRoleChange,
     handleSuperuserChange,
     handleChangeRule,
+    sensitiveBehavior,
   } = useUserModalData();
 
   const filteredTreeData = useMemo(
@@ -65,6 +67,48 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
       groupTreeData: filteredTreeData,
     }),
   }), [filteredTreeData, showModal]);
+
+  const renderSensitiveInput = (fieldName: string, placeholder: string) => {
+    if (type === 'add') {
+      return <Input placeholder={placeholder} />;
+    }
+
+    const state = sensitiveBehavior.fieldsState[fieldName];
+    const mode = state?.mode;
+    const isEditing = state?.isEditing;
+
+    if (mode !== 'overwrite') {
+      return <Input placeholder={placeholder} />;
+    }
+
+    return (
+      <Input
+        placeholder={placeholder}
+        disabled={!isEditing}
+        suffix={
+          <Space>
+            {!isEditing ? (
+              <EditOutlined
+                style={{ cursor: 'pointer', color: '#3a84ff' }}
+                onClick={() => sensitiveBehavior.handleEditClick(fieldName)}
+              />
+            ) : (
+              <>
+                <CheckOutlined
+                  style={{ cursor: 'pointer', color: '#2dcb56' }}
+                  onClick={() => sensitiveBehavior.handleConfirmEdit(fieldName)}
+                />
+                <CloseOutlined
+                  style={{ cursor: 'pointer', color: '#ea3636' }}
+                  onClick={() => sensitiveBehavior.handleCancelEdit(fieldName)}
+                />
+              </>
+            )}
+          </Space>
+        }
+      />
+    );
+  };
 
   return (
     <OperateModal
@@ -103,7 +147,13 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
             label={t('system.user.form.email')}
             rules={[{ required: true, message: t('common.inputRequired') }]}
           >
-            <Input placeholder={`${t('common.inputMsg')}${t('system.user.form.email')}`} />
+            {renderSensitiveInput('email', `${t('common.inputMsg')}${t('system.user.form.email')}`)}
+          </Form.Item>
+          <Form.Item
+            name="phone"
+            label={t('system.user.form.phone')}
+          >
+            {renderSensitiveInput('phone', `${t('common.inputMsg')}${t('system.user.form.phone')}`)}
           </Form.Item>
           <Form.Item
             name="lastName"

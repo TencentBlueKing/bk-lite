@@ -5,6 +5,7 @@ interface UserDataType {
   key: string;
   username: string;
   email: string;
+  phone?: string;
   display_name: string;
   name?: string;
   team?: string;
@@ -38,6 +39,7 @@ interface TransmitUserData {
   emailVerified: boolean;
   firstName: string;
   lastName: string;
+  phone?: string;
   Number: string;
   email: string;
   access: Access;
