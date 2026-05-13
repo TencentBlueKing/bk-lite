@@ -14,5 +14,4 @@ class MemcachedCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "maxconn": "maxconn",
         "cachesize": "cachesize",
         "user_name": "user_name",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

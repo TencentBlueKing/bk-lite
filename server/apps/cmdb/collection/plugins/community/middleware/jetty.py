@@ -17,5 +17,4 @@ class JettyCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "java_version": "java_version",
         "conf_path": "conf_path",
         "java_vendor": "java_vendor",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

@@ -23,5 +23,4 @@ class WebsphereCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "threadpool": "threadpool",
         "jdbc": "jdbc",
         "port_list": partial(MiddlewareCollectMetrics.pick_value, keys=("port_list", "soap_port")),
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }
