@@ -2,6 +2,7 @@ import json
 import logging
 import os
 
+import requests
 from django.conf import settings as django_settings
 from django.http import JsonResponse
 from django.shortcuts import render
@@ -70,6 +71,83 @@ def _set_auth_cookie_on_response(response, token):
         httponly=True,
         samesite="Lax",
     )
+
+
+def verify_wechat_code(code: str) -> dict:
+    """
+    真实微信 API 验证 code。
+
+    Returns:
+        {
+            "success": bool,
+            "openid": str,       # 成功时
+            "nickname": str,     # 成功时
+            "unionid": str,      # 成功时（可选）
+            "error": str,        # 失败时
+            "errcode": int       # 失败时（可选）
+        }
+    """
+    try:
+        # 获取微信配置
+        client = _create_system_mgmt_client()
+        wechat_settings = client.get_wechat_settings()
+
+        if not wechat_settings.get("result") or not wechat_settings.get("data", {}).get("enabled"):
+            return {"success": False, "error": "WeChat login is not enabled"}
+
+        app_id = wechat_settings["data"]["app_id"]
+        app_secret = wechat_settings["data"]["app_secret"]
+
+        # Step 1: code 换 access_token
+        token_url = (
+            f"https://api.weixin.qq.com/sns/oauth2/access_token"
+            f"?appid={app_id}"
+            f"&secret={app_secret}"
+            f"&code={code}"
+            f"&grant_type=authorization_code"
+        )
+
+        token_resp = requests.get(token_url, timeout=10)
+        token_data = token_resp.json()
+
+        if "errcode" in token_data:
+            logger.warning(f"WeChat token exchange failed: {token_data}")
+            return {
+                "success": False,
+                "error": token_data.get("errmsg", "Unknown error"),
+                "errcode": token_data.get("errcode"),
+            }
+
+        # Step 2: 获取用户信息
+        userinfo_url = (
+            f"https://api.weixin.qq.com/sns/userinfo" f"?access_token={token_data['access_token']}" f"&openid={token_data['openid']}" f"&lang=zh_CN"
+        )
+
+        userinfo_resp = requests.get(userinfo_url, timeout=10)
+        userinfo_data = userinfo_resp.json()
+
+        if "errcode" in userinfo_data:
+            logger.warning(f"WeChat userinfo fetch failed: {userinfo_data}")
+            return {
+                "success": False,
+                "error": userinfo_data.get("errmsg", "Unknown error"),
+                "errcode": userinfo_data.get("errcode"),
+            }
+
+        return {
+            "success": True,
+            "openid": userinfo_data["openid"],
+            "nickname": userinfo_data.get("nickname", ""),
+            "unionid": userinfo_data.get("unionid"),
+            "headimgurl": userinfo_data.get("headimgurl"),
+        }
+
+    except requests.Timeout:
+        logger.error("WeChat API timeout")
+        return {"success": False, "error": "WeChat API timeout"}
+    except Exception as e:
+        logger.error(f"WeChat verification error: {e}")
+        return {"success": False, "error": str(e)}
 
 
 def _safe_get_user_id_by_username(client, username):
@@ -207,59 +285,97 @@ def logout(request):
 
 
 @api_exempt
-def wechat_user_register(request):
+def wechat_login(request):
+    """
+    微信扫码登录接口。
+
+    接收微信授权 code，后端验证后签发 token。
+
+    Request:
+        POST { "code": "微信授权码" }
+
+    Response:
+        成功: { "result": true, "data": { "id", "username", "token", ... } }
+        失败: { "result": false, "message": "错误信息" }
+    """
+    if request.method != "POST":
+        return JsonResponse({"result": False, "message": "Method not allowed"}, status=405)
+
     try:
         data = _parse_request_data(request)
-        user_id = data.get("user_id", "").strip()
-        nick_name = data.get("nick_name", "").strip()
+        code = data.get("code", "").strip()
 
-        if not user_id:
-            # 记录微信注册失败日志 - user_id 为空
+        if not code:
             loader = _get_loader(request)
-            msg = loader.get("error.user_id_empty", "user_id cannot be empty")
+            msg = loader.get("error.code_empty", "code is required")
             log_user_login_from_request(
                 request,
-                user_id or "unknown",
+                "unknown",
                 UserLoginLog.STATUS_FAILED,
-                "domain.com",
+                "wechat",
                 failure_reason=msg,
             )
             return JsonResponse({"result": False, "message": msg})
 
-        client = _create_system_mgmt_client()
-        res = client.wechat_user_register(user_id, nick_name)
+        # 验证微信 code
+        verify_result = verify_wechat_code(code)
 
-        if not res.get("result"):
-            logger.warning(f"WeChat registration failed for user_id: {user_id}")
-            # 记录微信注册失败日志
-            failure_reason = res.get("message", "WeChat registration failed")
+        if not verify_result["success"]:
+            error_msg = verify_result.get("error", "WeChat verification failed")
+            logger.warning(f"WeChat login failed: {error_msg}")
             log_user_login_from_request(
                 request,
-                user_id,
+                "unknown",
                 UserLoginLog.STATUS_FAILED,
-                "domain.com",
+                "wechat",
+                failure_reason=error_msg,
+            )
+            return JsonResponse({"result": False, "message": error_msg})
+
+        # 用 openid 创建/获取用户
+        openid = verify_result["openid"]
+        nickname = verify_result.get("nickname", openid)
+
+        client = _create_system_mgmt_client()
+        res = client.wechat_user_register(openid, nickname)
+
+        if not res.get("result"):
+            logger.warning(f"WeChat user registration failed for openid: {openid}")
+            failure_reason = res.get("message", "User registration failed")
+            log_user_login_from_request(
+                request,
+                openid,
+                UserLoginLog.STATUS_FAILED,
+                "wechat",
                 failure_reason=str(failure_reason),
             )
-        else:
-            # 记录微信注册成功日志
-            logger.info(f"WeChat registration successful for user_id: {user_id}")
-            log_user_login_from_request(request, user_id, UserLoginLog.STATUS_SUCCESS, "domain.com")
+            return JsonResponse(res)
+
+        # 记录登录成功
+        logger.info(f"WeChat login successful for openid: {openid}")
+        log_user_login_from_request(request, openid, UserLoginLog.STATUS_SUCCESS, "wechat")
+
+        # 添加微信 profile 数据到响应
+        if res.get("data"):
+            res["data"]["openid"] = openid
+            res["data"]["unionid"] = verify_result.get("unionid")
+            res["data"]["display_name"] = nickname
 
         response = JsonResponse(res)
 
-        # Set bklite_token cookie with secure attributes on successful registration
-        if res.get("result") and res.get("data", {}).get("token"):
+        # 设置 cookie
+        if res.get("data", {}).get("token"):
             _set_auth_cookie_on_response(response, res["data"]["token"])
 
         return response
+
     except Exception as e:
-        logger.error(f"WeChat registration error: {e}")
-        # 记录系统错误导致的微信注册失败
+        logger.error(f"WeChat login error: {e}")
         log_user_login_from_request(
             request,
-            user_id if "user_id" in locals() else "unknown",
+            "unknown",
             UserLoginLog.STATUS_FAILED,
-            "domain.com",
+            "wechat",
             failure_reason=f"System error: {str(e)}",
         )
         return JsonResponse(
