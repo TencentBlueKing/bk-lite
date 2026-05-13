@@ -15,26 +15,18 @@ class Policy(TimeInfo, MaintainerInfo):
         null=True,
         blank=True,
     )
-    last_run_time = models.DateTimeField(
-        blank=True, null=True, verbose_name="最后一次执行时间"
-    )
+    last_run_time = models.DateTimeField(blank=True, null=True, verbose_name="最后一次执行时间")
 
     # 日志分组配置 - 策略作用范围
-    log_groups = models.JSONField(
-        default=list, verbose_name="日志分组范围", help_text="策略监控的日志分组ID列表"
-    )
+    log_groups = models.JSONField(default=list, verbose_name="日志分组范围", help_text="策略监控的日志分组ID列表")
 
     # 告警条件（关键字 & 聚合都可能用到）
     alert_type = models.CharField(max_length=50, verbose_name="告警类型")
     alert_name = models.CharField(max_length=255, verbose_name="告警名称")
     alert_level = models.CharField(max_length=30, verbose_name="告警等级")
     alert_condition = models.JSONField(default=dict, verbose_name="告警条件")
-    schedule = models.JSONField(
-        default=dict, verbose_name="策略执行周期, eg: 1h执行一次, 5m执行一次"
-    )
-    period = models.JSONField(
-        default=dict, verbose_name="每次监控检测的数据周期,eg: 1h内, 5m内"
-    )
+    schedule = models.JSONField(default=dict, verbose_name="策略执行周期, eg: 1h执行一次, 5m执行一次")
+    period = models.JSONField(default=dict, verbose_name="每次监控检测的数据周期,eg: 1h内, 5m内")
     show_fields = models.JSONField(default=list, verbose_name="展示字段")
 
     # 通知配置
@@ -52,9 +44,7 @@ class Policy(TimeInfo, MaintainerInfo):
 
 
 class PolicyOrganization(TimeInfo, MaintainerInfo):
-    policy = models.ForeignKey(
-        Policy, on_delete=models.CASCADE, verbose_name="监控策略"
-    )
+    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, verbose_name="监控策略")
     organization = models.IntegerField(verbose_name="组织id")
 
     class Meta:
@@ -69,9 +59,7 @@ class Alert(TimeInfo):
     """
 
     id = models.CharField(primary_key=True, max_length=50, verbose_name="告警ID")
-    policy = models.ForeignKey(
-        Policy, on_delete=models.CASCADE, verbose_name="关联策略"
-    )
+    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, verbose_name="关联策略")
     source_id = models.CharField(max_length=100, db_index=True, verbose_name="资源ID")
     collect_type = models.ForeignKey(
         CollectType,
@@ -80,23 +68,13 @@ class Alert(TimeInfo):
         null=True,
         blank=True,
     )
-    level = models.CharField(
-        db_index=True, default="", max_length=20, verbose_name="最高告警级别"
-    )
+    level = models.CharField(db_index=True, default="", max_length=20, verbose_name="最高告警级别")
     value = models.FloatField(blank=True, null=True, verbose_name="最高告警值")
     content = models.TextField(blank=True, verbose_name="告警内容")
-    status = models.CharField(
-        db_index=True, max_length=20, default="new", verbose_name="告警状态"
-    )
-    start_event_time = models.DateTimeField(
-        blank=True, null=True, verbose_name="开始事件时间"
-    )
-    end_event_time = models.DateTimeField(
-        blank=True, null=True, verbose_name="结束事件时间"
-    )
-    operator = models.CharField(
-        blank=True, null=True, max_length=50, verbose_name="告警处理人"
-    )
+    status = models.CharField(db_index=True, max_length=20, default="new", verbose_name="告警状态")
+    start_event_time = models.DateTimeField(blank=True, null=True, verbose_name="开始事件时间")
+    end_event_time = models.DateTimeField(blank=True, null=True, verbose_name="结束事件时间")
+    operator = models.CharField(blank=True, null=True, max_length=50, verbose_name="告警处理人")
     info_event_count = models.IntegerField(default=0, verbose_name="正常事件计数")
     notice = models.BooleanField(default=False, verbose_name="是否已通知")
 
@@ -111,14 +89,10 @@ class Event(TimeInfo):
     """
 
     id = models.CharField(primary_key=True, max_length=50, verbose_name="事件ID")
-    policy = models.ForeignKey(
-        Policy, on_delete=models.CASCADE, verbose_name="关联策略"
-    )
+    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, verbose_name="关联策略")
     source_id = models.CharField(max_length=100, db_index=True, verbose_name="资源ID")
     alert = models.ForeignKey(Alert, on_delete=models.CASCADE, verbose_name="关联告警")
-    event_time = models.DateTimeField(
-        blank=True, null=True, verbose_name="事件发生时间"
-    )
+    event_time = models.DateTimeField(blank=True, null=True, verbose_name="事件发生时间")
     value = models.FloatField(blank=True, null=True, verbose_name="事件值")
     level = models.CharField(max_length=20, verbose_name="事件级别")
     content = models.TextField(blank=True, verbose_name="事件内容")
@@ -161,9 +135,7 @@ class AlertSnapshot(TimeInfo):
         db_index=True,
         related_name="snapshot",
     )
-    policy = models.ForeignKey(
-        Policy, on_delete=models.CASCADE, verbose_name="关联策略"
-    )
+    policy = models.ForeignKey(Policy, on_delete=models.CASCADE, verbose_name="关联策略")
     source_id = models.CharField(max_length=100, db_index=True, verbose_name="资源ID")
 
     # 快照数据 - 使用 S3JSONField 存储到 S3/MinIO，节省数据库空间
@@ -175,6 +147,7 @@ class AlertSnapshot(TimeInfo):
         bucket_name="log-alert-raw-data",
         compressed=True,
         default=list,
+        delete_previous_on_update=True,
         verbose_name="快照数据集合",
         help_text="累积存储告警下所有事件的原始数据",
     )
