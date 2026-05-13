@@ -15,12 +15,15 @@ CMDB CQL查询测试类
    django.setup()
 """
 
+import json
 import os
 import sys
-import json
 from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+from django.test import SimpleTestCase
+from rest_framework.exceptions import ValidationError
 
 # 检查是否在Django环境中
 if __name__ == "__main__":
@@ -36,8 +39,9 @@ if __name__ == "__main__":
 
     django.setup()
 
-from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.constants.constants import VIEW
+from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.services.collect_tool_service import CollectToolService
 from apps.core.logger import cmdb_logger as logger
 
 
@@ -622,7 +626,7 @@ class CQLQueryTest:
                     logger.info(f"查询成功,返回{len(formatted)}条记录")
                     return formatted
                 else:
-                    logger.info(f"查询成功,返回原始结果")
+                    logger.info("查询成功,返回原始结果")
                     return result
 
         except Exception as e:
@@ -710,3 +714,114 @@ if __name__ == "__main__":
     res = tester.query(query)
     for item in res:
         print(item)
+
+
+class CollectToolPermissionTests(SimpleTestCase):
+    def _make_request(self, username="tester", domain="default"):
+        return SimpleNamespace(
+            user=SimpleNamespace(username=username, domain=domain),
+            COOKIES={"current_team": "1", "include_children": "0"},
+        )
+
+    def test_debug_state_access_isolated_by_owner(self):
+        request = self._make_request(username="alice")
+        owner = {"username": "alice", "domain": "default"}
+        other_owner = {"username": "bob", "domain": "default"}
+
+        self.assertTrue(CollectToolService.can_access_debug_state({"owner": owner}, request))
+        self.assertFalse(CollectToolService.can_access_debug_state({"owner": other_owner}, request))
+
+    def test_save_debug_state_preserves_owner_between_status_updates(self):
+        debug_id = "dbg_test_owner"
+        owner = {"username": "alice", "domain": "default"}
+
+        cache_store = {}
+
+        def fake_get(key):
+            return cache_store.get(key)
+
+        def fake_set(key, value, timeout=None):
+            cache_store[key] = value
+
+        with (
+            patch("apps.cmdb.services.collect_tool_service.cache.get", side_effect=fake_get),
+            patch("apps.cmdb.services.collect_tool_service.cache.set", side_effect=fake_set),
+        ):
+            CollectToolService.save_debug_state(debug_id, "pending", owner=owner)
+            CollectToolService.save_debug_state(debug_id, "running")
+            state = CollectToolService.get_debug_state(debug_id)
+
+        self.assertEqual(state["owner"], owner)
+        self.assertEqual(state["status"], "running")
+
+    def test_build_debug_owner_uses_request_identity(self):
+        request = self._make_request(username="alice", domain="default")
+
+        owner = CollectToolService.build_debug_owner(request)
+
+        self.assertEqual(owner["username"], "alice")
+        self.assertEqual(owner["domain"], "default")
+
+    def test_get_accessible_task_denies_without_object_permission(self):
+        request = self._make_request(username="alice")
+        fake_task = SimpleNamespace(id=123, task_type="protocol")
+
+        with (
+            patch(
+                "apps.cmdb.services.collect_tool_service.CollectModels.objects.get",
+                return_value=fake_task,
+            ),
+            patch(
+                "apps.cmdb.permissions.inst_task_permission.InstanceTaskPermission.has_object_permission",
+                return_value=False,
+            ),
+        ):
+            with self.assertRaises(ValidationError):
+                CollectToolService.get_accessible_task(request, 123, operator="View")
+
+    def test_inject_credentials_replaces_masked_password_from_accessible_task(self):
+        payload = {
+            "protocol": "ipmi",
+            "credential": {"username": "admin", "password": "••••••"},
+        }
+        fake_task = SimpleNamespace(decrypt_credentials={"password": "real-secret"})
+
+        result = CollectToolService.inject_credentials(payload, fake_task)
+
+        self.assertEqual(result["credential"]["password"], "real-secret")
+
+    def test_resolve_access_point_denies_without_node_permission(self):
+        request = self._make_request(username="alice")
+
+        with patch(
+            "apps.rpc.node_mgmt.NodeMgmt.get_authorized_nodes_by_ids",
+            return_value=[],
+        ):
+            with self.assertRaises(ValidationError):
+                CollectToolService.resolve_access_point(request, "node-1")
+
+    def test_execute_debug_maps_error_field_to_summary_and_raw_log(self):
+        payload = {
+            "protocol": "snmp",
+            "action": "raw_collect",
+            "target": "10.0.0.1",
+            "port": 161,
+            "credential": {"version": "v2c", "community": "public"},
+        }
+
+        with patch("apps.cmdb.services.collect_tool_service.Stargazer") as mock_stargazer_cls:
+            mock_stargazer_cls.return_value.collection_tool_debug.return_value = {
+                "success": False,
+                "error": "maximum payload exceeded",
+            }
+
+            result = CollectToolService.execute_debug(
+                payload=payload,
+                service_name="default_stargazer",
+                timeout=30,
+                request_id="dbg_test_error",
+            )
+
+        self.assertEqual(result["summary"], "maximum payload exceeded")
+        self.assertEqual(result["raw_log"], "maximum payload exceeded")
+        self.assertEqual(result["stage"], "unknown")
