@@ -498,6 +498,7 @@ def test_user_viewset_update_user_allows_sensitive_change_when_protection_enable
         user=_build_authenticated_request_user(
             username="unauthorized-editor",
             is_superuser=False,
+            group_list=[{"id": group.id, "name": group.name}],
             permission={"system-manager": {"user_group-Edit User"}},
         ),
     )
@@ -611,9 +612,11 @@ def test_user_viewset_search_user_list_masks_sensitive_fields_for_unauthorized_s
 @pytest.mark.django_db
 # 验证用户详情查询会按授权粒度只放行对应敏感类型的明文，其他类型继续脱敏。
 def test_user_viewset_get_user_detail_only_reveals_authorized_sensitive_type():
+    from apps.system_mgmt.models import Group
     from apps.system_mgmt.viewset.user_viewset import UserViewSet
 
     _set_sensitive_info_settings(enabled=True)
+    group = Group.objects.create(name="group-for-partial-auth-detail")
     target_user = User.objects.create(
         username="partial_auth_user",
         display_name="部分授权用户",
@@ -621,6 +624,7 @@ def test_user_viewset_get_user_detail_only_reveals_authorized_sensitive_type():
         phone="13800003333",
         password=make_password("password123"),
         locale="zh-Hans",
+        group_list=[group.id],
     )
     SensitiveInfoAuthorization.objects.create(
         username="email-viewer",
@@ -641,6 +645,7 @@ def test_user_viewset_get_user_detail_only_reveals_authorized_sensitive_type():
         user=_build_authenticated_request_user(
             username="email-viewer",
             is_superuser=False,
+            group_list=[{"id": group.id, "name": group.name}],
             permission={"system-manager": {"user_group-View"}},
         ),
     )

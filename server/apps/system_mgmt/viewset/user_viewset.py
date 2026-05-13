@@ -182,36 +182,6 @@ class UserViewSet(ViewSetUtils):
             return data
         return apply_sensitive_info_mask_to_list(data, getattr(request, "user", None))
 
-    @staticmethod
-    def _is_valid_phone(phone):
-        if phone is None:
-            return True
-        if not isinstance(phone, str):
-            return False
-
-        normalized_phone = phone.strip()
-        if not normalized_phone:
-            return True
-        if re.fullmatch(r"[0-9+\-()\s]+", normalized_phone) is None:
-            return False
-
-        digits_only = re.sub(r"[+\-()\s]", "", normalized_phone)
-        return digits_only.isdigit() and 7 <= len(digits_only) <= 15
-
-    @staticmethod
-    def _mask_user_payload(data, request):
-        # EE 增强判断：有 enterprise 脱敏实现时按授权结果处理；缺失时保持 CE 原始返回。
-        if apply_sensitive_info_mask is None:
-            return data
-        return apply_sensitive_info_mask(data, getattr(request, "user", None))
-
-    @staticmethod
-    def _mask_user_payload_list(data, request):
-        # EE 增强判断：列表查询同样优先走 enterprise 脱敏实现；缺失时回退到 CE 原始数据。
-        if apply_sensitive_info_mask_to_list is None:
-            return data
-        return apply_sensitive_info_mask_to_list(data, getattr(request, "user", None))
-
     @action(detail=False, methods=["GET"])
     @HasPermission("user_group-View")
     def search_user_list(self, request):
