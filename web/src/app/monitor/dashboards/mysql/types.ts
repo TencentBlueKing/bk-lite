@@ -4,13 +4,14 @@ export type MetricUnit =
   | 'counts'
   | 'percent'
   | 'cps'
+  | 's'
   | 'bytes'
   | 'byteps'
   | 'ms'
   | 'ops'
   | 'permin';
 
-export type MysqlMetricConfig = {
+export interface MysqlMetricConfig {
   name: string;
   display_name: string;
   description: string;
@@ -19,27 +20,28 @@ export type MysqlMetricConfig = {
   color: string;
   dimensions?: Array<{ name: string; description: string }>;
   groupId?: number | string;
-};
+}
 
-export type MetricOriginMeta = {
+export interface MetricOriginMeta {
   kind: 'raw' | 'derived';
   sources: string[];
   queryHint: string;
-};
+}
 
-export type MetricSeries = MysqlMetricConfig & {
+export interface MetricSeries extends MysqlMetricConfig {
   viewData: ChartData[];
   loadState: 'success' | 'error';
-};
+}
 
-export type MetricSection = {
+export interface MetricSection {
   key: string;
   title: string;
   metrics: MetricSeries[];
-};
+}
 
-export type TrendLegendItem = {
+export interface TrendLegendItem {
   label: string;
   color: string;
   primary?: boolean;
-};
+  dashed?: boolean;
+}

@@ -135,8 +135,8 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   }, [isLoading, pathname, isAuthenticated, status, session, router, configMenus, hasPermission]);
 
   const hideTopMenu = useMemo(() => {
-    return pathname?.startsWith('/opspilot/studio/chat') || isDashboardRoute;
-  }, [pathname, isDashboardRoute]);
+    return pathname?.startsWith('/opspilot/studio/chat');
+  }, [pathname]);
 
   const watermarkContent = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -157,7 +157,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const layoutContent = (
     <AntdRegistry>
       <div className="flex flex-col min-h-screen">
-        {isAuthenticated && hasResolvedPathname && !isAuthRoute && !isDashboardRoute && (
+        {isAuthenticated && hasResolvedPathname && !isAuthRoute && (
           <header className="sticky top-0 left-0 right-0 flex justify-between items-center header-bg">
             <TopMenu hideMainMenu={hideTopMenu} />
           </header>

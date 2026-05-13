@@ -4,6 +4,14 @@ export const MYSQL_COLLECTION_STATUS_QUERY = "any({instance_type='mysql', collec
 
 export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   {
+    name: 'mysql_uptime',
+    display_name: 'MySQL 运行时长',
+    description: '实例自上次启动以来的持续运行时间。',
+    unit: 's',
+    query: 'mysql_uptime{__$labels__}',
+    color: '#597ef7'
+  },
+  {
     name: 'mysql_threads_connected',
     display_name: '当前连接数',
     description: '当前已建立连接数量，直接反映连接压力。',
@@ -53,6 +61,38 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     color: '#4d9fff'
   },
   {
+    name: 'mysql_process_list_threads_idle',
+    display_name: 'Sleep 线程数',
+    description: '来自 process list 的 idle 线程数量。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_process_list_threads_idle{__$labels__})',
+    color: '#2f6bff'
+  },
+  {
+    name: 'mysql_process_list_threads_executing',
+    display_name: 'Query 线程数',
+    description: '来自 process list 的 executing 线程数量。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_process_list_threads_executing{__$labels__})',
+    color: '#ff4d4f'
+  },
+  {
+    name: 'mysql_process_list_threads_sending_data',
+    display_name: 'Sending data 线程数',
+    description: '来自 process list 的 sending data 线程数量。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_process_list_threads_sending_data{__$labels__})',
+    color: '#faad14'
+  },
+  {
+    name: 'mysql_process_list_threads_waiting_for_lock',
+    display_name: 'Locked 线程数',
+    description: '来自 process list 的 waiting for lock 线程数量。',
+    unit: 'counts',
+    query: 'max by (instance_id) (mysql_process_list_threads_waiting_for_lock{__$labels__})',
+    color: '#5b8ff9'
+  },
+  {
     name: 'mysql_queries_rate',
     display_name: 'QPS (Queries)',
     description: '整体查询吞吐量，用于评估总访问压力。',
@@ -72,8 +112,8 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     name: 'mysql_slow_queries_rate',
     display_name: '慢查询速率',
     description: '慢查询触发频次，用于评估 SQL 性能风险。',
-    unit: 'permin',
-    query: '60 * rate(mysql_slow_queries{__$labels__}[5m])',
+    unit: 'cps',
+    query: 'rate(mysql_slow_queries{__$labels__}[5m])',
     color: '#ff4d4f'
   },
   {
@@ -469,7 +509,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_connection_errors_select',
-    display_name: 'Select 连接错误数',
+    display_name: '轮询连接错误数',
     description: '在 socket select 处理阶段发生的连接失败累计值。',
     unit: 'counts',
     query: 'mysql_connection_errors_select{__$labels__}',
@@ -477,7 +517,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_connection_errors_tcpwrap',
-    display_name: 'TCP Wrapper 连接错误数',
+    display_name: '访问控制连接错误数',
     description: '因 TCP Wrapper 访问控制导致的连接失败累计值。',
     unit: 'counts',
     query: 'mysql_connection_errors_tcpwrap{__$labels__}',
@@ -516,9 +556,14 @@ export const DEFAULT_METRIC_COLORS = ['#2f6bff', '#27c274', '#ff8a1f', '#ff4d4f'
 export const DASHBOARD_METRIC_MAP = new Map(DASHBOARD_METRICS.map((metric) => [metric.name, metric]));
 
 export const DASHBOARD_FALLBACK_GROUPS: Record<string, string> = {
+  mysql_uptime: 'Base',
   mysql_threads_connected: 'ConnStatus',
   mysql_threads_running: 'ConnStatus',
   mysql_threads_cached: 'ConnStatus',
+  mysql_process_list_threads_idle: 'ConnStatus',
+  mysql_process_list_threads_executing: 'ConnStatus',
+  mysql_process_list_threads_sending_data: 'ConnStatus',
+  mysql_process_list_threads_waiting_for_lock: 'ConnStatus',
   mysql_variables_max_connections: 'ConnStatus',
   mysql_max_used_connections: 'ConnStatus',
   mysql_aborted_connects: 'ConnStatus',

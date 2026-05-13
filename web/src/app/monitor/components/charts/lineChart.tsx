@@ -80,6 +80,15 @@ const getDetails = (arr: ChartData[]): Record<string, any> => {
   }, {});
 };
 
+interface ResolvedSeriesStyle {
+  color: string;
+  strokeDasharray?: string;
+  fillOpacity: number;
+  strokeOpacity: number;
+  strokeWidth: number;
+  unit?: string;
+}
+
 const getNiceStep = (rawStep: number) => {
   if (!Number.isFinite(rawStep) || rawStep <= 0) {
     return 1;
@@ -147,7 +156,7 @@ const LineChart: React.FC<LineChartProps> = memo(
     data,
     unit = '',
     showDimensionFilter = false,
-    metric = {},
+    metric,
     threshold = [],
     eventData = [],
     allowSelect = true,
@@ -189,13 +198,14 @@ const LineChart: React.FC<LineChartProps> = memo(
 
     const details = useMemo(() => getDetails(data), [data]);
 
-    const resolvedSeriesStyles = useMemo(
+    const resolvedSeriesStyles = useMemo<ResolvedSeriesStyle[]>(
       () =>
         chartAreaKeys.map((_, index) => ({
           color:
             seriesStyles[index]?.color ||
-            (index === 0 ? (metric as MetricItem)?.color : undefined) ||
-            colors[index],
+            (index === 0 && metric && typeof metric.color === 'string' ? metric.color : '') ||
+            colors[index] ||
+            generateUniqueRandomColor(),
           strokeDasharray: seriesStyles[index]?.strokeDasharray,
           fillOpacity: seriesStyles[index]?.fillOpacity ?? 0,
           strokeOpacity: seriesStyles[index]?.strokeOpacity ?? 1,
@@ -218,10 +228,7 @@ const LineChart: React.FC<LineChartProps> = memo(
       return 4;
     }, [containerHeight]);
 
-    const visibleColors = useMemo(
-      () => resolvedSeriesStyles.map((item) => item.color || generateUniqueRandomColor()),
-      [resolvedSeriesStyles]
-    );
+    const visibleColors = useMemo<string[]>(() => resolvedSeriesStyles.map((item) => item.color), [resolvedSeriesStyles]);
 
     const xAxisTickCount = useMemo(() => {
       if (containerWidth >= 1400) {
@@ -545,7 +552,9 @@ const LineChart: React.FC<LineChartProps> = memo(
     const handleMouseDown = useCallback(
       (e: any) => {
         if (!allowSelect) return;
-        setStartX((pre) => e.activeLabel || pre);
+        if (typeof e?.activeLabel !== 'number') return;
+        setStartX(e.activeLabel);
+        setEndX(null);
         setIsDragging(true);
         document.body.style.userSelect = 'none'; // 禁用文本选择
       },
@@ -556,7 +565,8 @@ const LineChart: React.FC<LineChartProps> = memo(
       (e: any) => {
         if (!allowSelect) return;
         if (isDragging) {
-          setEndX((pre) => e.activeLabel || pre);
+          if (typeof e?.activeLabel !== 'number') return;
+          setEndX(e.activeLabel);
         }
       },
       [allowSelect, isDragging]
@@ -566,7 +576,7 @@ const LineChart: React.FC<LineChartProps> = memo(
       if (!allowSelect) return;
       setIsDragging(false);
       document.body.style.userSelect = ''; // 重新启用文本选择
-      if (startX !== null && endX !== null) {
+      if (typeof startX === 'number' && typeof endX === 'number' && startX !== endX) {
         const selectedTimeRange: [Dayjs, Dayjs] = [
           dayjs(Math.min(startX, endX) * 1000),
           dayjs(Math.max(startX, endX) * 1000)
