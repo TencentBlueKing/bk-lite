@@ -8,12 +8,8 @@ from apps.monitor.models.monitor_object import MonitorObject
 
 
 class PolicyTemplate(models.Model):
-    monitor_object = models.ForeignKey(
-        MonitorObject, on_delete=models.CASCADE, verbose_name="监控对象"
-    )
-    plugin = models.ForeignKey(
-        MonitorPlugin, on_delete=models.CASCADE, verbose_name="监控插件"
-    )
+    monitor_object = models.ForeignKey(MonitorObject, on_delete=models.CASCADE, verbose_name="监控对象")
+    plugin = models.ForeignKey(MonitorPlugin, on_delete=models.CASCADE, verbose_name="监控插件")
     templates = models.JSONField(default=list, verbose_name="策略模板列表")
 
     class Meta:
@@ -23,9 +19,7 @@ class PolicyTemplate(models.Model):
 
 
 class MonitorPolicy(TimeInfo, MaintainerInfo):
-    monitor_object = models.ForeignKey(
-        MonitorObject, on_delete=models.CASCADE, verbose_name="监控对象"
-    )
+    monitor_object = models.ForeignKey(MonitorObject, on_delete=models.CASCADE, verbose_name="监控对象")
 
     name = models.CharField(max_length=100, verbose_name="监控策略名称")
     organizations = models.JSONField(default=list, verbose_name="策略所属组织")
@@ -38,24 +32,16 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
 
     source = models.JSONField(default=dict, verbose_name="策略适用的资源")
 
-    schedule = models.JSONField(
-        default=dict, verbose_name="策略执行周期, eg: 1h执行一次, 5m执行一次"
-    )
-    period = models.JSONField(
-        default=dict, verbose_name="每次监控检测的数据周期,eg: 1h内, 5m内"
-    )
+    schedule = models.JSONField(default=dict, verbose_name="策略执行周期, eg: 1h执行一次, 5m执行一次")
+    period = models.JSONField(default=dict, verbose_name="每次监控检测的数据周期,eg: 1h内, 5m内")
 
     algorithm = models.CharField(max_length=50, verbose_name="聚合算法")
     group_by = models.JSONField(default=list, verbose_name="分组字段")
     threshold = models.JSONField(default=list, verbose_name="阈值")
-    recovery_condition = models.SmallIntegerField(
-        default=1, verbose_name="多少周期不满足阈值自动恢复"
-    )
+    recovery_condition = models.SmallIntegerField(default=1, verbose_name="多少周期不满足阈值自动恢复")
 
     # 单位配置
-    metric_unit = models.CharField(
-        max_length=50, default="", blank=True, verbose_name="指标原始单位"
-    )
+    metric_unit = models.CharField(max_length=50, default="", blank=True, verbose_name="指标原始单位")
     calculation_unit = models.CharField(
         max_length=50,
         default="",
@@ -63,18 +49,10 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
         verbose_name="计算单位（用于阈值对比和结果记录）",
     )
 
-    no_data_period = models.JSONField(
-        default=dict, verbose_name="无数据告警的数据周期（eg:10m内无数据）"
-    )
-    no_data_level = models.CharField(
-        max_length=20, default="", verbose_name="无数据告警级别"
-    )
-    no_data_alert_name = models.CharField(
-        max_length=200, default="", verbose_name="无数据告警名称"
-    )
-    no_data_recovery_period = models.JSONField(
-        default=dict, verbose_name="无数据告警恢复的数据周期（eg:10m内有数据）"
-    )
+    no_data_period = models.JSONField(default=dict, verbose_name="无数据告警的数据周期（eg:10m内无数据）")
+    no_data_level = models.CharField(max_length=20, default="", verbose_name="无数据告警级别")
+    no_data_alert_name = models.CharField(max_length=200, default="", verbose_name="无数据告警名称")
+    no_data_recovery_period = models.JSONField(default=dict, verbose_name="无数据告警恢复的数据周期（eg:10m内有数据）")
 
     notice = models.BooleanField(default=True, verbose_name="是否通知")
     notice_type = models.CharField(max_length=50, default="", verbose_name="通知方式")
@@ -84,9 +62,7 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
     # 是否启动策略
     enable = models.BooleanField(default=True, verbose_name="是否启用")
     enable_alerts = models.JSONField(default=list, verbose_name="启用的告警类型")
-    last_run_time = models.DateTimeField(
-        blank=True, null=True, verbose_name="最后一次执行时间"
-    )
+    last_run_time = models.DateTimeField(blank=True, null=True, verbose_name="最后一次执行时间")
 
     class Meta:
         verbose_name = "监控策略"
@@ -94,9 +70,7 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
 
 
 class PolicyOrganization(TimeInfo, MaintainerInfo):
-    policy = models.ForeignKey(
-        MonitorPolicy, on_delete=models.CASCADE, verbose_name="监控策略"
-    )
+    policy = models.ForeignKey(MonitorPolicy, on_delete=models.CASCADE, verbose_name="监控策略")
     organization = models.IntegerField(verbose_name="组织id")
 
     class Meta:
@@ -126,24 +100,14 @@ class MonitorEvent(models.Model):
     )
 
     policy_id = models.IntegerField(db_index=True, verbose_name="监控策略ID")
-    monitor_instance_id = models.CharField(
-        db_index=True, max_length=100, verbose_name="监控对象实例ID"
-    )
-    metric_instance_id = models.CharField(
-        db_index=True, default="", max_length=255, verbose_name="指标实例ID"
-    )
+    monitor_instance_id = models.CharField(db_index=True, max_length=100, verbose_name="监控对象实例ID")
+    metric_instance_id = models.CharField(db_index=True, default="", max_length=255, verbose_name="指标实例ID")
     dimensions = models.JSONField(default=dict, verbose_name="维度值")
-    created_at = models.DateTimeField(
-        db_index=True, auto_now_add=True, verbose_name="事件生成时间"
-    )
+    created_at = models.DateTimeField(db_index=True, auto_now_add=True, verbose_name="事件生成时间")
     # 事件发生时间
-    event_time = models.DateTimeField(
-        blank=True, null=True, verbose_name="事件发生时间"
-    )
+    event_time = models.DateTimeField(blank=True, null=True, verbose_name="事件发生时间")
     value = models.FloatField(blank=True, null=True, verbose_name="事件值")
-    level = models.CharField(
-        max_length=20, choices=LEVEL_CHOICES, verbose_name="事件级别"
-    )
+    level = models.CharField(max_length=20, choices=LEVEL_CHOICES, verbose_name="事件级别")
     content = models.TextField(blank=True, verbose_name="事件内容")
     notice_result = models.JSONField(default=list, verbose_name="通知结果")
 
@@ -155,9 +119,7 @@ class MonitorEvent(models.Model):
 
 
 class MonitorEventRawData(models.Model):
-    event = models.ForeignKey(
-        MonitorEvent, on_delete=models.CASCADE, verbose_name="事件"
-    )
+    event = models.ForeignKey(MonitorEvent, on_delete=models.CASCADE, verbose_name="事件")
     data = S3JSONField(
         bucket_name="monitor-alert-raw-data",
         compressed=True,
@@ -171,15 +133,9 @@ class MonitorAlert(TimeInfo):
     ALERT_TYPE_CHOICES = [("alert", "Alert"), ("no_data", "No Data")]
 
     policy_id = models.IntegerField(db_index=True, default=0, verbose_name="监控策略ID")
-    monitor_instance_id = models.CharField(
-        db_index=True, default="", max_length=100, verbose_name="监控对象实例ID"
-    )
-    monitor_instance_name = models.CharField(
-        default="", max_length=100, verbose_name="监控对象实例名称"
-    )
-    metric_instance_id = models.CharField(
-        db_index=True, default="", max_length=255, verbose_name="指标实例ID"
-    )
+    monitor_instance_id = models.CharField(db_index=True, default="", max_length=100, verbose_name="监控对象实例ID")
+    monitor_instance_name = models.CharField(default="", max_length=100, verbose_name="监控对象实例名称")
+    metric_instance_id = models.CharField(db_index=True, default="", max_length=255, verbose_name="指标实例ID")
     dimensions = models.JSONField(default=dict, verbose_name="维度值")
     alert_type = models.CharField(
         db_index=True,
@@ -188,9 +144,7 @@ class MonitorAlert(TimeInfo):
         max_length=50,
         verbose_name="告警类型",
     )
-    level = models.CharField(
-        db_index=True, default="", max_length=20, verbose_name="最高告警级别"
-    )
+    level = models.CharField(db_index=True, default="", max_length=20, verbose_name="最高告警级别")
     value = models.FloatField(blank=True, null=True, verbose_name="最高告警值")
     content = models.TextField(blank=True, verbose_name="告警内容")
     status = models.CharField(
@@ -200,15 +154,9 @@ class MonitorAlert(TimeInfo):
         choices=STATUS_CHOICES,
         verbose_name="告警状态",
     )
-    start_event_time = models.DateTimeField(
-        blank=True, null=True, verbose_name="开始事件时间"
-    )
-    end_event_time = models.DateTimeField(
-        blank=True, null=True, verbose_name="结束事件时间"
-    )
-    operator = models.CharField(
-        blank=True, null=True, max_length=50, verbose_name="告警处理人"
-    )
+    start_event_time = models.DateTimeField(blank=True, null=True, verbose_name="开始事件时间")
+    end_event_time = models.DateTimeField(blank=True, null=True, verbose_name="结束事件时间")
+    operator = models.CharField(blank=True, null=True, max_length=50, verbose_name="告警处理人")
     info_event_count = models.IntegerField(default=0, verbose_name="信息事件数量")
     operation_logs = models.JSONField(default=list, verbose_name="操作记录")
 
@@ -220,13 +168,9 @@ class MonitorAlert(TimeInfo):
 class MonitorAlertMetricSnapshot(TimeInfo):
     """告警指标快照表 - 记录告警全生命周期内的原始指标数据"""
 
-    alert = models.OneToOneField(
-        "MonitorAlert", on_delete=models.CASCADE, verbose_name="关联告警", db_index=True
-    )
+    alert = models.OneToOneField("MonitorAlert", on_delete=models.CASCADE, verbose_name="关联告警", db_index=True)
     policy_id = models.IntegerField(db_index=True, verbose_name="监控策略ID")
-    monitor_instance_id = models.CharField(
-        db_index=True, max_length=100, verbose_name="监控对象实例ID"
-    )
+    monitor_instance_id = models.CharField(db_index=True, max_length=100, verbose_name="监控对象实例ID")
 
     # 快照数据 - 使用 S3JSONField 存储到 S3/MinIO，节省数据库空间
     # 格式: [
@@ -238,6 +182,7 @@ class MonitorAlertMetricSnapshot(TimeInfo):
         bucket_name="monitor-alert-raw-data",
         compressed=True,
         default=list,
+        delete_previous_on_update=True,
         verbose_name="快照数据集合",
     )
 
@@ -252,12 +197,8 @@ class MonitorAlertMetricSnapshot(TimeInfo):
 class PolicyInstanceBaseline(TimeInfo):
     """策略实例基准表 - 记录策略监控的所有维度组合，用于无数据检测"""
 
-    policy = models.ForeignKey(
-        MonitorPolicy, on_delete=models.CASCADE, verbose_name="监控策略"
-    )
-    monitor_instance_id = models.CharField(
-        db_index=True, max_length=100, verbose_name="监控实例ID"
-    )
+    policy = models.ForeignKey(MonitorPolicy, on_delete=models.CASCADE, verbose_name="监控策略")
+    monitor_instance_id = models.CharField(db_index=True, max_length=100, verbose_name="监控实例ID")
     metric_instance_id = models.CharField(max_length=255, verbose_name="指标实例ID")
 
     class Meta:
