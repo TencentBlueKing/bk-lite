@@ -24,7 +24,7 @@ import {
 } from '@/app/monitor/utils/common';
 import dayjs, { Dayjs } from 'dayjs';
 import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
-import LazyMetricItem from './lazyMetricItem';
+import LazyMetricItem from '@/app/monitor/components/metric-views/lazyMetricItem';
 
 const MonitorView: React.FC<ViewModalProps> = ({
   monitorObject,

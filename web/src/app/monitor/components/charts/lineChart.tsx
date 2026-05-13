@@ -50,6 +50,16 @@ interface LineChartProps {
   allowSelect?: boolean;
   syncId?: string;
   onXRangeChange?: (arr: [Dayjs, Dayjs]) => void;
+  seriesStyles?: Array<{
+    color?: string;
+    strokeDasharray?: string;
+    fillOpacity?: number;
+    strokeOpacity?: number;
+    strokeWidth?: number;
+    unit?: string;
+  }>;
+  xAxisTimeFormat?: string;
+  leftAxisWidthOverride?: number;
 }
 
 const getChartAreaKeys = (arr: ChartData[]): string[] => {
@@ -70,6 +80,68 @@ const getDetails = (arr: ChartData[]): Record<string, any> => {
   }, {});
 };
 
+const getNiceStep = (rawStep: number) => {
+  if (!Number.isFinite(rawStep) || rawStep <= 0) {
+    return 1;
+  }
+
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+  const normalized = rawStep / magnitude;
+
+  if (normalized <= 1) return magnitude;
+  if (normalized <= 2) return 2 * magnitude;
+  if (normalized <= 5) return 5 * magnitude;
+  return 10 * magnitude;
+};
+
+const formatAxisNumber = (value: number) => {
+  if (!Number.isFinite(value)) {
+    return '';
+  }
+
+  if (Math.abs(value) >= 1000) {
+    return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  }
+
+  if (Number.isInteger(value)) {
+    return `${value}`;
+  }
+
+  return value.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
+};
+
+const buildNiceAxis = (
+  rawDomain: [number | 'auto', number | 'auto'],
+  tickCount: number
+) => {
+  const [rawMin, rawMax] = rawDomain;
+  const minValue = typeof rawMin === 'number' ? rawMin : 0;
+  const maxValue = typeof rawMax === 'number' ? rawMax : minValue + 1;
+  const span = Math.max(maxValue - minValue, 1e-6);
+  const step = getNiceStep(span / Math.max(tickCount - 1, 1));
+
+  let niceMin = Math.floor(minValue / step) * step;
+  let niceMax = Math.ceil(maxValue / step) * step;
+
+  if (minValue >= 0) {
+    niceMin = Math.max(0, niceMin);
+  }
+
+  if (niceMax <= niceMin) {
+    niceMax = niceMin + step;
+  }
+
+  const ticks: number[] = [];
+  for (let current = niceMin; current <= niceMax + step / 2; current += step) {
+    ticks.push(Number(current.toFixed(10)));
+  }
+
+  return {
+    domain: [niceMin, niceMax] as [number, number],
+    ticks
+  };
+};
+
 const LineChart: React.FC<LineChartProps> = memo(
   ({
     data,
@@ -81,7 +153,10 @@ const LineChart: React.FC<LineChartProps> = memo(
     allowSelect = true,
     showDimensionTable = false,
     syncId,
-    onXRangeChange
+    onXRangeChange,
+    seriesStyles = [],
+    xAxisTimeFormat,
+    leftAxisWidthOverride
   }) => {
     const { formatTime } = useFormatTime();
     const levelList = useLevelList();
@@ -113,6 +188,56 @@ const LineChart: React.FC<LineChartProps> = memo(
     const chartAreaKeys = useMemo(() => getChartAreaKeys(data), [data]);
 
     const details = useMemo(() => getDetails(data), [data]);
+
+    const resolvedSeriesStyles = useMemo(
+      () =>
+        chartAreaKeys.map((_, index) => ({
+          color:
+            seriesStyles[index]?.color ||
+            (index === 0 ? (metric as MetricItem)?.color : undefined) ||
+            colors[index],
+          strokeDasharray: seriesStyles[index]?.strokeDasharray,
+          fillOpacity: seriesStyles[index]?.fillOpacity ?? 0,
+          strokeOpacity: seriesStyles[index]?.strokeOpacity ?? 1,
+          strokeWidth: seriesStyles[index]?.strokeWidth ?? 2.5,
+          unit: seriesStyles[index]?.unit
+        })),
+      [chartAreaKeys, colors, metric, seriesStyles]
+    );
+
+    const seriesUnits = useMemo(
+      () => Object.fromEntries(chartAreaKeys.map((key, index) => [key, resolvedSeriesStyles[index]?.unit || unit])),
+      [chartAreaKeys, resolvedSeriesStyles, unit]
+    );
+
+    const yAxisTickCount = useMemo(() => {
+      if (containerHeight && containerHeight <= 220) {
+        return 3;
+      }
+
+      return 4;
+    }, [containerHeight]);
+
+    const visibleColors = useMemo(
+      () => resolvedSeriesStyles.map((item) => item.color || generateUniqueRandomColor()),
+      [resolvedSeriesStyles]
+    );
+
+    const xAxisTickCount = useMemo(() => {
+      if (containerWidth >= 1400) {
+        return 7;
+      }
+
+      if (containerWidth >= 1100) {
+        return 6;
+      }
+
+      if (containerWidth >= 800) {
+        return 5;
+      }
+
+      return 4;
+    }, [containerWidth]);
 
     const levelNameMap = useMemo(() => {
       return levelList.reduce(
@@ -146,21 +271,47 @@ const LineChart: React.FC<LineChartProps> = memo(
 
     // 计算 Y 轴范围，确保阈值线能显示
     const yAxisDomain = useMemo((): [number | 'auto', number | 'auto'] => {
-      if (!threshold.length) {
-        return [0, 'auto'];
-      }
       // 获取数据中的所有值
       const dataValues: number[] = [];
       data.forEach((item) => {
-        Object.keys(item).forEach((key) => {
-          if (key.includes('value')) {
-            const val = item[key];
-            if (typeof val === 'number' && !isNaN(val)) {
-              dataValues.push(val);
-            }
+        chartAreaKeys.forEach((key) => {
+          const val = item[key];
+          if (typeof val === 'number' && !isNaN(val)) {
+            dataValues.push(val);
           }
         });
       });
+
+      if (!dataValues.length && !threshold.length) {
+        return [0, 'auto'];
+      }
+
+      const dataMin = dataValues.length ? Math.min(...dataValues) : 0;
+      const dataMax = dataValues.length ? Math.max(...dataValues) : 0;
+      const dataSpan = dataMax - dataMin;
+      const basePadding = dataSpan > 0
+        ? dataSpan * 0.12
+        : Math.max(Math.abs(dataMax || dataMin) * 0.18, 0.6);
+      let yMin = dataMin - basePadding;
+      let yMax = dataMax + basePadding;
+
+      if (dataValues.length && dataMin >= 0) {
+        yMin = Math.max(0, yMin);
+      }
+
+      if (dataValues.length && dataSpan === 0) {
+        if (dataMax === 0) {
+          yMax = 1;
+        } else {
+          yMin = Math.max(dataMin >= 0 ? 0 : dataMin - basePadding, dataMin - basePadding);
+          yMax = dataMax + basePadding;
+        }
+      }
+
+      if (!threshold.length) {
+        return [yMin, yMax];
+      }
+
       // 获取所有有效阈值
       const validThresholdItems = threshold.filter(
         (item) => item.value !== null && item.value !== undefined
@@ -169,27 +320,50 @@ const LineChart: React.FC<LineChartProps> = memo(
         (item) => item.value as number
       );
       // 如果没有数据或阈值，返回自动计算
-      if (!dataValues.length || !thresholdValues.length) {
-        return [0, 'auto'];
+      if (!thresholdValues.length) {
+        return [yMin, yMax];
       }
-      const dataMax = Math.max(...dataValues);
       const thresholdMax = Math.max(...thresholdValues);
+      const thresholdMin = Math.min(...thresholdValues);
 
       // 检查是否有"大于"类型的阈值（需要向上显示阴影区域）
       const hasGreaterThan = validThresholdItems.some(
         (item) => item.method === '>' || item.method === '>=' || !item.method
       );
 
-      // 只有当阈值最大值超过数据最大值时，才用阈值最大值设置 Y 轴上限
-      if (thresholdMax > dataMax) {
-        // 如果有"大于"类型的阈值，需要额外留出空间显示阴影区域
-        const yMax = hasGreaterThan
-          ? Math.ceil(thresholdMax * 1.1)
-          : thresholdMax;
-        return [0, yMax];
+      if (thresholdMin < yMin) {
+        yMin = thresholdMin;
       }
-      return [0, 'auto'];
-    }, [data, threshold]);
+
+      if (thresholdMax > yMax) {
+        yMax = hasGreaterThan ? Math.ceil(thresholdMax * 1.1) : thresholdMax;
+      }
+
+      if (yMin >= 0) {
+        yMin = Math.max(0, yMin);
+      }
+
+      return [yMin, yMax];
+    }, [data, chartAreaKeys, threshold]);
+
+    const niceYAxis = useMemo(() => buildNiceAxis(yAxisDomain, yAxisTickCount), [yAxisDomain, yAxisTickCount]);
+
+    const leftAxisWidth = useMemo(() => {
+      if (typeof leftAxisWidthOverride === 'number') {
+        return leftAxisWidthOverride;
+      }
+
+      if (isStringArray(unit)) {
+        return 56;
+      }
+
+      const maxLabelLength = Math.max(
+        ...niceYAxis.ticks.map((tick) => formatAxisNumber(Number(tick)).length),
+        1
+      );
+
+      return Math.min(Math.max(maxLabelLength * 8 + 8, 32), 50);
+    }, [leftAxisWidthOverride, niceYAxis.ticks, unit]);
 
     // 计算阈值标签信息（包含格式化文本和偏移量）
     const thresholdLabelInfo = useMemo(() => {
@@ -207,11 +381,9 @@ const LineChart: React.FC<LineChartProps> = memo(
 
       // 计算 Y 轴像素高度（估算，减去上下边距）
       const chartHeight = (containerHeight || 300) - 40;
-      const yMin = 0;
+      const yMin = niceYAxis.domain[0];
       const yMax =
-        typeof yAxisDomain[1] === 'number'
-          ? yAxisDomain[1]
-          : Math.max(...validItems.map((i) => i.numValue), 1);
+        niceYAxis.domain[1] || Math.max(...validItems.map((i) => i.numValue), 1);
       const yRange = yMax - yMin || 1;
 
       // 为每个标签计算 dy 偏移量，避免重叠
@@ -298,7 +470,7 @@ const LineChart: React.FC<LineChartProps> = memo(
       levelNameMap,
       formatThresholdValue,
       containerHeight,
-      yAxisDomain
+      niceYAxis
     ]);
 
     // 计算右侧 margin：级别名称动态 + 数值动态（有最大宽度限制）
@@ -423,10 +595,7 @@ const LineChart: React.FC<LineChartProps> = memo(
           )?.name;
           label = unitName || label;
         } else {
-          const numValue = Number(payload.value);
-          label = Number.isInteger(numValue)
-            ? String(numValue)
-            : numValue.toFixed(2);
+          label = formatAxisNumber(Number(payload.value));
         }
         const maxLength = 6; // 设置标签的最大长度
         return (
@@ -437,6 +606,7 @@ const LineChart: React.FC<LineChartProps> = memo(
             fontSize={14}
             fill="var(--color-text-3)"
             dy={4}
+            dx={2}
           >
             {label.length > maxLength && <title>{label}</title>}
             {label.length > maxLength
@@ -446,6 +616,17 @@ const LineChart: React.FC<LineChartProps> = memo(
         );
       },
       [unit]
+    );
+
+    const formatXAxisTick = useCallback(
+      (tick: number) => {
+        if (xAxisTimeFormat) {
+          return dayjs(tick * 1000).format(xAxisTimeFormat);
+        }
+
+        return formatTime(tick, minTime, maxTime);
+      },
+      [formatTime, maxTime, minTime, xAxisTimeFormat]
     );
 
     return (
@@ -465,7 +646,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                   top: 10,
                   right: rightMargin,
                   left: 0,
-                  bottom: 0
+                  bottom: 6
                 }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
@@ -474,16 +655,23 @@ const LineChart: React.FC<LineChartProps> = memo(
                 <XAxis
                   dataKey="time"
                   tick={{ fill: 'var(--color-text-3)', fontSize: 14 }}
-                  tickFormatter={(tick) => formatTime(tick, minTime, maxTime)}
+                  tickFormatter={formatXAxisTick}
+                  tickCount={xAxisTickCount}
+                  minTickGap={36}
+                  dy={8}
                 />
                 <YAxis
+                  yAxisId="left"
                   axisLine={false}
                   tickLine={false}
                   tick={renderYAxisTick}
-                  domain={yAxisDomain}
+                  domain={niceYAxis.domain}
+                  allowDataOverflow={false}
+                  ticks={niceYAxis.ticks}
+                  interval={0}
+                  width={leftAxisWidth}
                 />
-
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <CartesianGrid strokeDasharray="4 6" vertical={false} stroke="rgba(107, 127, 152, 0.28)" />
                 <Tooltip
                   offset={-1}
                   content={
@@ -491,6 +679,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                       unit={unit}
                       visible={!isDragging}
                       metric={metric as MetricItem}
+                      seriesUnits={seriesUnits}
                       maxHeight={
                         containerHeight ? containerHeight * 0.75 : undefined
                       }
@@ -501,13 +690,23 @@ const LineChart: React.FC<LineChartProps> = memo(
                   }
                 />
                 {chartAreaKeys.map((key, index) => (
-                  <Area
-                    key={key}
-                    type="monotone"
-                    dataKey={key}
-                    stroke={colors[index]}
-                    fillOpacity={0}
-                    fill={colors[index]}
+                    <Area
+                      key={key}
+                      type="monotoneX"
+                      dataKey={key}
+                      yAxisId="left"
+                      stroke={resolvedSeriesStyles[index]?.color || colors[index]}
+                      strokeDasharray={resolvedSeriesStyles[index]?.strokeDasharray}
+                      strokeOpacity={resolvedSeriesStyles[index]?.strokeOpacity}
+                    fillOpacity={resolvedSeriesStyles[index]?.fillOpacity ?? 0}
+                    fill={resolvedSeriesStyles[index]?.color || colors[index]}
+                    strokeWidth={resolvedSeriesStyles[index]?.strokeWidth ?? 2.5}
+                    connectNulls
+                    dot={false}
+                    activeDot={{ r: 4, strokeWidth: 2, fill: resolvedSeriesStyles[index]?.color || colors[index] }}
+                    isAnimationActive={false}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                     hide={!visibleAreas.includes(key)}
                   />
                 ))}
@@ -520,8 +719,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                     ? `rgba(${parseInt(levelColor.slice(1, 3), 16)}, ${parseInt(levelColor.slice(3, 5), 16)}, ${parseInt(levelColor.slice(5, 7), 16)}, 0.1)`
                     : levelColor;
 
-                  const yMax =
-                    yAxisDomain[1] === 'auto' ? undefined : yAxisDomain[1];
+                  const yMax = niceYAxis.domain[1];
 
                   // = 等于：不显示阴影区域（只显示阈值线）
                   if (item.method === '=') {
@@ -533,6 +731,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                     return (
                       <ReferenceArea
                         key={`area-${item.level}-${index}`}
+                        yAxisId="left"
                         y1={0}
                         y2={yMax}
                         fill={fillColor}
@@ -548,6 +747,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                   return (
                     <ReferenceArea
                       key={`area-${item.level}-${index}`}
+                      yAxisId="left"
                       y1={isLessThan ? 0 : item.value}
                       y2={isLessThan ? item.value : yMax}
                       fill={fillColor}
@@ -560,6 +760,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                   <ReferenceLine
                     key={`trigger-${index}`}
                     y={`${item.value}`}
+                    yAxisId="left"
                     isFront={true}
                     stroke="transparent"
                     strokeWidth={8}
@@ -592,6 +793,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                     <ReferenceLine
                       key={`visual-${item.uniqueKey}`}
                       y={`${item.numValue}`}
+                      yAxisId="left"
                       isFront={true}
                       stroke={levelColor}
                       strokeWidth={1}
@@ -631,6 +833,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                   <ReferenceArea
                     x1={Math.min(startX, endX)}
                     x2={Math.max(startX, endX)}
+                    yAxisId="left"
                     strokeOpacity={0.3}
                     fill="rgba(0, 0, 255, 0.1)"
                   />
@@ -647,7 +850,7 @@ const LineChart: React.FC<LineChartProps> = memo(
             {showDimensionFilter && hasDimension && (
               <DimensionFilter
                 data={data}
-                colors={colors}
+                colors={visibleColors}
                 visibleAreas={visibleAreas}
                 details={details}
                 onLegendClick={handleLegendClick}
@@ -656,7 +859,7 @@ const LineChart: React.FC<LineChartProps> = memo(
             {showDimensionTable && hasDimension && (
               <DimensionTable
                 data={data}
-                colors={colors}
+                colors={visibleColors}
                 details={details}
                 unit={unit}
               />

@@ -12,7 +12,7 @@
           "isNotMenuItem": true
         },
         {
-          "url": "/monitor/view/mysql-dashboard",
+          "url": "/monitor/view/dashboard/mysql",
           "name": "mysql_dashboard",
           "isNotMenuItem": true
         }
@@ -124,7 +124,7 @@
           "isNotMenuItem": true
         },
         {
-          "url": "/monitor/view/mysql-dashboard",
+          "url": "/monitor/view/dashboard/mysql",
           "name": "mysql_dashboard",
           "isNotMenuItem": true
         }

@@ -25,7 +25,7 @@ import {
 } from '@/app/monitor/utils/common';
 
 import dayjs, { Dayjs } from 'dayjs';
-import LazyMetricItem from '../lazyMetricItem';
+import LazyMetricItem from './lazyMetricItem';
 
 const MetricViews: React.FC<ViewDetailProps> = ({
   monitorObjectId,

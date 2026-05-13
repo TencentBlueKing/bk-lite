@@ -17,6 +17,7 @@ import TopMenu from '@/components/top-menu';
 import { ConfigProvider, Watermark } from 'antd';
 import Spin from '@/components/spin';
 import { portalBrandingDefaults, usePortalBranding } from '@/hooks/usePortalBranding';
+import { isProfessionalDashboardRoute } from '@/app/monitor/dashboards/utils';
 import '@/styles/globals.css';
 import { MenuItem } from '@/types/index'
 import WithSideMenuLayout from '@/components/sub-layout'
@@ -75,14 +76,16 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const isLoading = isAuthLoading || (isAuthenticated && (permissionsLoading || menusLoading));
   const authPaths = ['/auth/signin', '/auth/signout'];
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
+  const hasResolvedPathname = pathname !== null;
   const isAuthRoute = Boolean(pathname && authPaths.includes(pathname));
+  const isDashboardRoute = isProfessionalDashboardRoute(pathname);
 
   const shouldRenderMenu = useMemo(() => {
-    if (pathname?.startsWith('/ops-console')) {
+    if (pathname?.startsWith('/ops-console') || isDashboardRoute) {
       return false;
     }
     return shouldRenderSecondLayerMenu(pathname, menus);
-  }, [pathname, menus]);
+  }, [pathname, menus, isDashboardRoute]);
 
   const isPathInMenu = useCallback((path: string, menus: MenuItem[]): boolean => {
     for (const menu of menus) {
@@ -132,8 +135,8 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   }, [isLoading, pathname, isAuthenticated, status, session, router, configMenus, hasPermission]);
 
   const hideTopMenu = useMemo(() => {
-    return pathname?.startsWith('/opspilot/studio/chat');
-  }, [pathname]);
+    return pathname?.startsWith('/opspilot/studio/chat') || isDashboardRoute;
+  }, [pathname, isDashboardRoute]);
 
   const watermarkContent = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -154,7 +157,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const layoutContent = (
     <AntdRegistry>
       <div className="flex flex-col min-h-screen">
-        {isAuthenticated && !isAuthRoute && (
+        {isAuthenticated && hasResolvedPathname && !isAuthRoute && !isDashboardRoute && (
           <header className="sticky top-0 left-0 right-0 flex justify-between items-center header-bg">
             <TopMenu hideMainMenu={hideTopMenu} />
           </header>

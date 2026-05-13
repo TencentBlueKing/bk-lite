@@ -11,6 +11,7 @@ import MonitorView from './monitorView';
 import MonitorAlarm from './monitorAlarm';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
+import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
 
 const ViewModal = forwardRef<ModalRef, ViewModalProps>(
   ({ monitorObject, monitorName, plugins, metrics, objects = [] }, ref) => {
@@ -64,7 +65,6 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
       const monitorItem = objects.find(
         (item: ObjectItem) => item.id === monitorObject
       );
-      const isMysql = (monitorName || '').toLowerCase() === 'mysql';
       const row: any = {
         monitorObjId: monitorObject || '',
         name: monitorName,
@@ -80,9 +80,8 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
             : 'instance_id'
       };
       const params = new URLSearchParams(row);
-      const targetUrl = isMysql
-        ? `/monitor/view/mysql-dashboard?${params.toString()}`
-        : `/monitor/view/detail?${params.toString()}`;
+      const professionalDashboardUrl = getProfessionalDashboardUrl(monitorName, monitorItem?.display_name, params.toString());
+      const targetUrl = professionalDashboardUrl || `/monitor/view/detail?${params.toString()}`;
       router.push(targetUrl);
     };
 

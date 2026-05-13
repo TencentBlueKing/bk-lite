@@ -12,6 +12,7 @@ interface CustomToolTipProps extends Omit<TooltipProps<any, string>, 'unit'> {
   metric?: MetricItem;
   maxHeight?: number;
   maxWidth?: number;
+  seriesUnits?: Record<string, string>;
 }
 
 const CustomTooltip: React.FC<CustomToolTipProps> = ({
@@ -22,20 +23,22 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
   unit = '',
   visible = true,
   maxHeight,
-  maxWidth
+  maxWidth,
+  seriesUnits = {}
 }) => {
   const { convertToLocalizedTime } = useLocalizedTime();
   const { findUnitNameById } = useUnitTransform();
 
   const getValue = useCallback(
-    (item: TableDataItem) => {
+    (item: TableDataItem & { dataKey?: string }) => {
       const value = getEnumValue(metric as MetricItem, item.value);
       if (value === '--') {
         return value;
       }
-      return `${value} ${findUnitNameById(unit)}`;
+      const currentUnit = (item.dataKey && seriesUnits[item.dataKey]) || unit;
+      return `${value} ${findUnitNameById(currentUnit)}`;
     },
-    [metric, unit, getEnumValue, findUnitNameById]
+    [metric, unit, getEnumValue, findUnitNameById, seriesUnits]
   );
 
   if (active && payload?.length && visible) {
