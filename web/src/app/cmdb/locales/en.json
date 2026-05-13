@@ -325,6 +325,8 @@
         "chooseIp": "Choose IP",
         "chooseAsset": "Choose Asset",
         "chooseHost": "Choose Host",
+        "hostAssetSelectionNeedsProxy": "Host model instance mode requires selecting a proxy before choosing assets",
+        "proxyCloudUnavailable": "The current proxy is not bound to a cloud region, so host model instances cannot be filtered",
         "everyMinute": "Every",
         "executeOnce": "Execute once",
         "database": "Database",
