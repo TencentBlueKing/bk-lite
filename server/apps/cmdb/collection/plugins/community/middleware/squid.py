@@ -16,5 +16,4 @@ class SquidCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "access_log": "access_log",
         "error_log": "error_log",
         "visible_hostname": "visible_hostname",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

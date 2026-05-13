@@ -15,5 +15,4 @@ class JbossCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "jvm_xmx": "jvm_xmx",
         "role": "role",
         "config_file": "config_file",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

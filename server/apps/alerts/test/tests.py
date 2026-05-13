@@ -3,14 +3,21 @@ from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import make_password
+from django.db import DEFAULT_DB_ALIAS, connections
 from django.test import Client
 from django.test import TestCase
 from django.utils import timezone
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.alerts.aggregation.builder.synthetic_alert_builder import (
     SyntheticAlertBuilder,
 )
 from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
+from apps.alerts.aggregation.strategy.matcher import StrategyMatcher
+from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
+from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
+from apps.alerts.nats.nats import receive_alert_events
 from apps.alerts.constants import (
     AlertStatus,
     AlarmStrategyType,
@@ -22,9 +29,41 @@ from apps.alerts.constants import (
     HeartbeatStatus,
     LevelType,
 )
-from apps.alerts.models import Alert, AlertSource, AlarmStrategy, Event, Level
+from apps.alerts.constants.constants import (
+    IncidentStatus,
+    LogAction,
+    LogTargetType,
+    SessionStatus,
+)
+from apps.alerts.models import Alert, AlertSource, AlarmStrategy, Event, Level, OperatorLog
+from apps.alerts.models.models import Incident
+from apps.alerts.serializers.event import EventModelSerializer
+from apps.alerts.serializers.incident import IncidentModelSerializer
 from apps.alerts.serializers.alert_source import AlertSourceModelSerializer
 from apps.alerts.serializers.strategy import AlarmStrategySerializer
+from apps.alerts.utils.rule_matcher import RuleMatcher
+from apps.alerts.views.alert import AlertModelViewSet
+from apps.alerts.views.alert_source import AlertSourceModelViewSet
+from apps.alerts.views.event import EventModelViewSet
+from apps.alerts.views.incident import IncidentModelViewSet
+from apps.alerts.views.operator_log import SystemLogModelViewSet
+from apps.alerts.views.strategy import AlarmStrategyModelViewSet
+from apps.system_mgmt.models.user import Group, User
+
+
+def build_permission_test_user(username, group_list, permissions_by_app=None):
+    user = User.objects.create(
+        username=username,
+        display_name=username,
+        email=f"{username}@example.com",
+        password=make_password("password123"),
+        domain="domain.com",
+        group_list=group_list,
+    )
+    user.permission = permissions_by_app or {}
+    user.is_superuser = False
+    user.is_authenticated = True
+    return user
 
 
 class AlarmStrategySerializerTestCase(TestCase):
@@ -35,9 +74,7 @@ class AlarmStrategySerializerTestCase(TestCase):
                 "strategy_type": AlarmStrategyType.MISSING_DETECTION,
                 "team": [1],
                 "dispatch_team": [1],
-                "match_rules": [
-                    [{"key": "service", "operator": "eq", "value": "backup"}]
-                ],
+                "match_rules": [[{"key": "service", "operator": "eq", "value": "backup"}]],
                 "params": {
                     "check_mode": HeartbeatCheckMode.CRON,
                     "cron_expr": "*/5 * * * *",
@@ -93,9 +130,7 @@ class AlarmStrategySerializerTestCase(TestCase):
                 "strategy_type": AlarmStrategyType.MISSING_DETECTION,
                 "team": [1],
                 "dispatch_team": [1],
-                "match_rules": [
-                    [{"key": "service", "operator": "eq", "value": "backup"}]
-                ],
+                "match_rules": [[{"key": "service", "operator": "eq", "value": "backup"}]],
                 "params": {
                     "check_mode": "interval",
                     "cron_expr": "*/5 * * * *",
@@ -113,7 +148,7 @@ class AlarmStrategySerializerTestCase(TestCase):
 
         self.assertFalse(serializer.is_valid())
         self.assertEqual(
-            serializer.errors["params"]["check_mode"][0],
+            serializer.errors["params"]["check_mode"],
             "缺失检查仅支持 cron 模式。",
         )
 
@@ -124,9 +159,7 @@ class AlarmStrategySerializerTestCase(TestCase):
                 "strategy_type": AlarmStrategyType.MISSING_DETECTION,
                 "team": [1],
                 "dispatch_team": [1],
-                "match_rules": [
-                    [{"key": "service", "operator": "eq", "value": "backup"}]
-                ],
+                "match_rules": [[{"key": "service", "operator": "eq", "value": "backup"}]],
                 "params": {
                     "check_mode": HeartbeatCheckMode.CRON,
                     "cron_expr": "*/5 * * * *",
@@ -146,11 +179,11 @@ class AlarmStrategySerializerTestCase(TestCase):
 
         self.assertFalse(serializer.is_valid())
         self.assertEqual(
-            serializer.errors["params"]["interval_value"][0],
+            serializer.errors["params"]["interval_value"],
             "缺失检查不再支持固定间隔数值。",
         )
         self.assertEqual(
-            serializer.errors["params"]["interval_unit"][0],
+            serializer.errors["params"]["interval_unit"],
             "缺失检查不再支持固定间隔单位。",
         )
 
@@ -192,9 +225,7 @@ class MissingDetectionProcessorTestCase(TestCase):
         params.update(overrides.pop("params", {}))
         return AlarmStrategy.objects.create(
             name=overrides.pop("name", "strategy-%s" % timezone.now().timestamp()),
-            strategy_type=overrides.pop(
-                "strategy_type", AlarmStrategyType.MISSING_DETECTION
-            ),
+            strategy_type=overrides.pop("strategy_type", AlarmStrategyType.MISSING_DETECTION),
             team=[1],
             dispatch_team=[1],
             match_rules=overrides.pop(
@@ -246,15 +277,15 @@ class MissingDetectionProcessorTestCase(TestCase):
         missing_strategy = self.create_strategy(name="missing-rule")
         now = timezone.now()
 
-        with patch.object(
-            self.processor, "_process_missing_detection_strategy"
-        ) as missing_mock, \
-            patch.object(self.processor, "get_events_for_strategy") as events_mock:
+        with (
+            patch.object(self.processor, "_process_missing_detection_strategy") as missing_mock,
+            patch.object(self.processor, "get_events_for_strategy") as events_mock,
+        ):
             events_mock.return_value.exists.return_value = False
             self.processor._process_strategy(smart_strategy, now)
             self.processor._process_strategy(missing_strategy, now)
 
-        events_mock.assert_called_once_with(smart_strategy)
+        events_mock.assert_called_once_with(smart_strategy, now)
         missing_mock.assert_called_once_with(missing_strategy, now)
 
     def test_first_heartbeat_mode_waits_for_first_event(self):
@@ -265,9 +296,7 @@ class MissingDetectionProcessorTestCase(TestCase):
                 "heartbeat_status": HeartbeatStatus.WAITING,
             }
         )
-        AlarmStrategy.objects.filter(pk=strategy.pk).update(
-            created_at=now - timedelta(minutes=10)
-        )
+        AlarmStrategy.objects.filter(pk=strategy.pk).update(created_at=now - timedelta(minutes=10))
         strategy.refresh_from_db()
 
         self.processor._process_missing_detection_strategy(strategy, now)
@@ -285,14 +314,14 @@ class MissingDetectionProcessorTestCase(TestCase):
                 "heartbeat_status": HeartbeatStatus.WAITING,
             }
         )
+        AlarmStrategy.objects.filter(pk=strategy.pk).update(created_at=now - timedelta(minutes=10))
+        strategy.refresh_from_db()
         self.create_event(now - timedelta(minutes=1), event_id="EVENT-FIRST")
 
         self.processor._process_missing_detection_strategy(strategy, now)
         strategy.refresh_from_db()
 
-        self.assertEqual(
-            strategy.params["heartbeat_status"], HeartbeatStatus.MONITORING
-        )
+        self.assertEqual(strategy.params["heartbeat_status"], HeartbeatStatus.MONITORING)
         self.assertEqual(strategy.params["last_heartbeat_context"]["service"], "backup")
 
     def test_immediate_mode_triggers_single_missing_alert(self):
@@ -305,15 +334,11 @@ class MissingDetectionProcessorTestCase(TestCase):
                 "grace_period": 1,
             }
         )
-        AlarmStrategy.objects.filter(pk=strategy.pk).update(
-            created_at=now - timedelta(minutes=7)
-        )
+        AlarmStrategy.objects.filter(pk=strategy.pk).update(created_at=now - timedelta(minutes=7))
         strategy.refresh_from_db()
 
         self.processor._process_missing_detection_strategy(strategy, now)
-        self.processor._process_missing_detection_strategy(
-            strategy, now + timedelta(minutes=1)
-        )
+        self.processor._process_missing_detection_strategy(strategy, now + timedelta(minutes=1))
         strategy.refresh_from_db()
 
         self.assertEqual(Alert.objects.count(), 1)
@@ -346,9 +371,7 @@ class MissingDetectionProcessorTestCase(TestCase):
                 "last_heartbeat_time": None,
             }
         )
-        AlarmStrategy.objects.filter(pk=strategy.pk).update(
-            created_at=timezone.make_aware(datetime(2026, 3, 20, 0, 0, 0))
-        )
+        AlarmStrategy.objects.filter(pk=strategy.pk).update(created_at=timezone.make_aware(datetime(2026, 3, 20, 0, 0, 0)))
         strategy.refresh_from_db()
 
         deadline = self.processor._calculate_deadline(strategy, strategy.params, now)
@@ -365,9 +388,7 @@ class MissingDetectionProcessorTestCase(TestCase):
                 "grace_period": 1,
             }
         )
-        AlarmStrategy.objects.filter(pk=strategy.pk).update(
-            created_at=now - timedelta(minutes=1)
-        )
+        AlarmStrategy.objects.filter(pk=strategy.pk).update(created_at=now - timedelta(minutes=1))
         strategy.refresh_from_db()
 
         self.processor._process_missing_detection_strategy(strategy, now)
@@ -386,9 +407,7 @@ class MissingDetectionProcessorTestCase(TestCase):
                 "grace_period": 1,
             }
         )
-        AlarmStrategy.objects.filter(pk=strategy.pk).update(
-            created_at=now - timedelta(minutes=8)
-        )
+        AlarmStrategy.objects.filter(pk=strategy.pk).update(created_at=now - timedelta(minutes=8))
         strategy.refresh_from_db()
 
         self.processor._process_missing_detection_strategy(strategy, now)
@@ -406,29 +425,101 @@ class MissingDetectionProcessorTestCase(TestCase):
                 "last_heartbeat_context": {"service": "backup"},
             }
         )
-        alert = SyntheticAlertBuilder.create_alert(
-            strategy, strategy.params, now - timedelta(minutes=1)
-        )
+        alert = SyntheticAlertBuilder.create_alert(strategy, strategy.params, now - timedelta(minutes=1))
         self.create_event(now, event_id="EVENT-RECOVERY")
-        AlarmStrategy.objects.filter(pk=strategy.pk).update(
-            last_execute_time=now - timedelta(minutes=2)
-        )
+        AlarmStrategy.objects.filter(pk=strategy.pk).update(last_execute_time=now - timedelta(minutes=2))
         strategy.refresh_from_db()
 
-        self.processor._process_missing_detection_strategy(
-            strategy, now + timedelta(minutes=1)
-        )
+        self.processor._process_missing_detection_strategy(strategy, now + timedelta(minutes=1))
         strategy.refresh_from_db()
         alert.refresh_from_db()
 
         self.assertEqual(alert.status, AlertStatus.AUTO_RECOVERY)
-        self.assertEqual(
-            strategy.params["heartbeat_status"], HeartbeatStatus.MONITORING
-        )
+        self.assertEqual(strategy.params["heartbeat_status"], HeartbeatStatus.MONITORING)
         self.assertEqual(
             strategy.params["last_heartbeat_time"],
             Event.objects.get(event_id="EVENT-RECOVERY").received_at.isoformat(),
         )
+
+
+class StrategyMatcherTestCase(TestCase):
+    def setUp(self):
+        self.source = AlertSource.objects.create(
+            name="matcher-source",
+            source_id="matcher-source",
+            source_type=AlertsSourceTypes.WEBHOOK,
+        )
+        self.event = Event.objects.create(
+            source=self.source,
+            raw_data={},
+            title="cpu high",
+            description="cpu high",
+            level="1",
+            start_time=timezone.now(),
+            event_id="EVENT-strategy-matcher",
+        )
+
+    def test_invalid_in_rule_does_not_match_all_events(self):
+        matched = StrategyMatcher.match_events_to_strategy(
+            Event.objects.all(),
+            [[{"key": "title", "operator": "in", "value": "cpu high"}]],
+        )
+
+        self.assertFalse(matched.exists())
+
+    def test_invalid_regex_rule_does_not_match_all_events(self):
+        matched = StrategyMatcher.match_events_to_strategy(
+            Event.objects.all(),
+            [[{"key": "title", "operator": "regex", "value": "["}]],
+        )
+
+        self.assertFalse(matched.exists())
+
+    def test_partially_invalid_and_group_does_not_broaden_match_scope(self):
+        matched = StrategyMatcher.match_events_to_strategy(
+            Event.objects.all(),
+            [
+                [
+                    {"key": "title", "operator": "eq", "value": "cpu high"},
+                    {"key": "title", "operator": "regex", "value": "["},
+                ]
+            ],
+        )
+
+        self.assertFalse(matched.exists())
+
+    def test_unknown_operator_does_not_fall_back_to_exact_match(self):
+        matched = StrategyMatcher.match_events_to_strategy(
+            Event.objects.all(),
+            [[{"key": "title", "operator": "unknown", "value": "cpu high"}]],
+        )
+
+        self.assertFalse(matched.exists())
+
+    def test_shared_rule_matcher_invalid_and_group_returns_empty_result(self):
+        matcher = RuleMatcher({"title": "title"})
+
+        matched_ids = matcher.filter_queryset(
+            Event.objects.all(),
+            [
+                [
+                    {"key": "title", "operator": "eq", "value": "cpu high"},
+                    {"key": "title", "operator": "re", "value": "["},
+                ]
+            ],
+        )
+
+        self.assertEqual(matched_ids, [])
+
+    def test_shared_rule_matcher_unknown_operator_returns_empty_result(self):
+        matcher = RuleMatcher({"title": "title"})
+
+        matched_ids = matcher.filter_queryset(
+            Event.objects.all(),
+            [[{"key": "title", "operator": "unknown", "value": "cpu high"}]],
+        )
+
+        self.assertEqual(matched_ids, [])
 
 
 class AlertSourceIngressTestCase(TestCase):
@@ -465,7 +556,7 @@ class AlertSourceIngressTestCase(TestCase):
         self.assertTrue(config["accept_default_payload"])
         self.assertTrue(config["accept_custom_payload"])
         self.assertTrue(config["send_resolved_required"])
-        self.assertTrue(config["url"].endswith("/api/v1/alerts/api/source/{source_id}/webhook/"))
+        self.assertTrue(config["url"].endswith("/api/v1/alerts/api/source/prometheus-prod/webhook/"))
         self.assertNotIn("external_id_labels", config)
         self.assertNotIn("severity_mapping", config)
         self.assertIn("event_fields_mapping", config)
@@ -749,6 +840,667 @@ class AlertSourceIngressTestCase(TestCase):
         self.assertEqual(events[0].action, EventAction.CREATED)
         self.assertEqual(events[1].action, EventAction.RECOVERY)
 
+    def test_receiver_rejects_inactive_source(self):
+        source = AlertSource.objects.create(
+            name="RESTful Disabled",
+            source_id="rest-disabled",
+            source_type=AlertsSourceTypes.RESTFUL,
+            secret="rest-secret",
+            is_active=False,
+            config={
+                "event_fields_mapping": {
+                    "title": "title",
+                    "level": "level",
+                    "start_time": "start_time",
+                }
+            },
+        )
+
+        response = self.client.post(
+            f"/api/v1/alerts/api/source/{source.source_id}/webhook/",
+            data=json.dumps(
+                {
+                    "events": [
+                        {
+                            "title": "disabled-source-event",
+                            "level": "3",
+                            "start_time": str(int(timezone.now().timestamp())),
+                        }
+                    ]
+                }
+            ),
+            content_type="application/json",
+            HTTP_SECRET="rest-secret",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Event.objects.count(), 0)
+
+    def test_receiver_rejects_ineffective_source(self):
+        source = AlertSource.objects.create(
+            name="RESTful Ineffective",
+            source_id="rest-ineffective",
+            source_type=AlertsSourceTypes.RESTFUL,
+            secret="rest-secret",
+            is_effective=False,
+            config={
+                "event_fields_mapping": {
+                    "title": "title",
+                    "level": "level",
+                    "start_time": "start_time",
+                }
+            },
+        )
+
+        response = self.client.post(
+            f"/api/v1/alerts/api/source/{source.source_id}/webhook/",
+            data=json.dumps(
+                {
+                    "events": [
+                        {
+                            "title": "ineffective-source-event",
+                            "level": "3",
+                            "start_time": str(int(timezone.now().timestamp())),
+                        }
+                    ]
+                }
+            ),
+            content_type="application/json",
+            HTTP_SECRET="rest-secret",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Event.objects.count(), 0)
+
+    def test_default_external_id_distinguishes_resource_identity(self):
+        source = AlertSource.objects.create(
+            name="RESTful Source",
+            source_id="rest-source",
+            source_type=AlertsSourceTypes.RESTFUL,
+            secret="rest-secret",
+            config={
+                "event_fields_mapping": {
+                    "title": "title",
+                    "description": "description",
+                    "level": "level",
+                    "item": "item",
+                    "start_time": "start_time",
+                    "resource_id": "resource_id",
+                    "resource_name": "resource_name",
+                    "resource_type": "resource_type",
+                    "action": "action",
+                }
+            },
+        )
+
+        payload = {
+            "events": [
+                {
+                    "title": "cpu high",
+                    "description": "cpu > 90%",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "resource_id": 1,
+                    "resource_name": "shared-name",
+                    "resource_type": "service",
+                    "action": "created",
+                },
+                {
+                    "title": "cpu high",
+                    "description": "cpu > 90%",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "resource_id": "2",
+                    "resource_name": "shared-name",
+                    "resource_type": "service",
+                    "action": "created",
+                },
+            ]
+        }
+
+        response = self.client.post(
+            f"/api/v1/alerts/api/source/{source.source_id}/webhook/",
+            data=json.dumps(payload),
+            content_type="application/json",
+            HTTP_SECRET="rest-secret",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        events = list(Event.objects.filter(source=source).order_by("resource_id"))
+        self.assertEqual(len(events), 2)
+        self.assertNotEqual(events[0].external_id, events[1].external_id)
+
+    def test_nats_ingress_rejects_non_nats_source(self):
+        source = AlertSource.objects.create(
+            name="Prometheus Source",
+            source_id="prometheus-prod",
+            source_type=AlertsSourceTypes.PROMETHEUS,
+            secret="prom-secret",
+            config={},
+        )
+
+        result = receive_alert_events(
+            source_id=source.source_id,
+            pusher="lite-monitor",
+            events=[
+                {
+                    "title": "forged",
+                    "description": "forged",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "action": "created",
+                }
+            ],
+        )
+
+        self.assertFalse(result["result"])
+        self.assertEqual(Event.objects.count(), 0)
+
+
+class TestAlarmStrategySessionDisable(TestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.user = get_user_model().objects.create_user(
+            username="strategy-admin",
+            password="test-pass-123",
+            domain="default.local",
+        )
+        self.user.is_superuser = True
+        self.user.save(update_fields=["is_superuser"])
+
+    def test_update_disabling_session_window_triggers_auto_assignment_for_confirmed_alerts(self):
+        strategy = AlarmStrategy.objects.create(
+            name="session-strategy",
+            strategy_type=AlarmStrategyType.SMART_DENOISE,
+            team=[1],
+            dispatch_team=[1],
+            match_rules=[[{"key": "title", "operator": "eq", "value": "cpu high"}]],
+            params={"group_by": ["service"], "window_size": 10, "time_out": True, "time_minutes": 10},
+            auto_close=False,
+            close_minutes=120,
+        )
+        alert = Alert.objects.create(
+            alert_id="ALERT-SESSION-DISABLE-1",
+            status=AlertStatus.UNASSIGNED,
+            level="1",
+            title="cpu high",
+            content="cpu > 90%",
+            labels={},
+            first_event_time=timezone.now(),
+            last_event_time=timezone.now(),
+            fingerprint="service:backup",
+            group_by_field="service",
+            rule_id=str(strategy.id),
+            is_session_alert=True,
+            session_status=SessionStatus.OBSERVING,
+            session_end_time=timezone.now() + timedelta(minutes=10),
+            team=[1],
+        )
+
+        request = self.factory.put(
+            f"/api/v1/alerts/strategy/{strategy.id}/",
+            data={
+                "name": strategy.name,
+                "strategy_type": strategy.strategy_type,
+                "description": strategy.description,
+                "team": strategy.team,
+                "dispatch_team": strategy.dispatch_team,
+                "match_rules": strategy.match_rules,
+                "params": {"group_by": ["service"], "window_size": 10, "time_out": False, "time_minutes": 0},
+                "auto_close": strategy.auto_close,
+                "close_minutes": strategy.close_minutes,
+                "is_active": strategy.is_active,
+            },
+            format="json",
+        )
+        force_authenticate(request, user=self.user)
+        view = AlarmStrategyModelViewSet.as_view({"put": "update"})
+
+        with patch("apps.alerts.tasks.async_auto_assignment_for_alerts.delay") as assignment_delay:
+            with self.captureOnCommitCallbacks(execute=True):
+                response = view(request, pk=str(strategy.id))
+
+        self.assertEqual(response.status_code, 200)
+        alert.refresh_from_db()
+        self.assertEqual(alert.session_status, SessionStatus.CONFIRMED)
+        assignment_delay.assert_called_once_with([alert.alert_id])
+
+    def test_nats_ingress_rejects_inactive_or_ineffective_nats_source(self):
+        inactive_source = AlertSource.objects.create(
+            name="NATS Inactive",
+            source_id="nats-inactive",
+            source_type=AlertsSourceTypes.NATS,
+            secret="nats-secret",
+            is_active=False,
+            config={},
+        )
+        ineffective_source = AlertSource.objects.create(
+            name="NATS Ineffective",
+            source_id="nats-ineffective",
+            source_type=AlertsSourceTypes.NATS,
+            secret="nats-secret",
+            is_effective=False,
+            config={},
+        )
+
+        inactive_result = receive_alert_events(
+            source_id=inactive_source.source_id,
+            pusher="lite-monitor",
+            events=[
+                {
+                    "title": "inactive",
+                    "description": "inactive",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "action": "created",
+                }
+            ],
+        )
+        ineffective_result = receive_alert_events(
+            source_id=ineffective_source.source_id,
+            pusher="lite-monitor",
+            events=[
+                {
+                    "title": "ineffective",
+                    "description": "ineffective",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "action": "created",
+                }
+            ],
+        )
+
+        self.assertFalse(inactive_result["result"])
+        self.assertFalse(ineffective_result["result"])
+        self.assertEqual(Event.objects.count(), 0)
+
+
+class RecoveryFallbackTestCase(TestCase):
+    def setUp(self):
+        self.source = AlertSource.objects.create(
+            name="RESTful Source",
+            source_id="rest-source",
+            source_type=AlertsSourceTypes.RESTFUL,
+            secret="rest-secret",
+            config={},
+        )
+        Level.objects.create(
+            level_id=3,
+            level_name="info",
+            level_display_name="提醒",
+            color="#1677FF",
+            icon="",
+            description="",
+            level_type=LevelType.EVENT,
+        )
+        self.adapter_class = AlertSourceAdapterFactory.get_adapter(self.source)
+
+    def create_event(self, event_id, action, external_id, received_at, **kwargs):
+        event = Event.objects.create(
+            source=self.source,
+            raw_data=kwargs.pop("raw_data", {}),
+            title=kwargs.pop("title", "cpu high"),
+            description=kwargs.pop("description", "cpu > 90%"),
+            level=kwargs.pop("level", "3"),
+            service=kwargs.pop("service", None),
+            event_type=kwargs.pop("event_type", EventType.ALERT),
+            tags=kwargs.pop("tags", {}),
+            location=kwargs.pop("location", None),
+            external_id=external_id,
+            start_time=kwargs.pop("start_time", received_at),
+            end_time=kwargs.pop("end_time", None),
+            labels=kwargs.pop("labels", {}),
+            action=action,
+            rule_id=kwargs.pop("rule_id", None),
+            event_id=event_id,
+            item=kwargs.pop("item", "cpu_usage"),
+            resource_id=kwargs.pop("resource_id", None),
+            resource_type=kwargs.pop("resource_type", None),
+            resource_name=kwargs.pop("resource_name", "shared-name"),
+            status=kwargs.pop("status", "received"),
+            assignee=kwargs.pop("assignee", []),
+            value=kwargs.pop("value", None),
+        )
+        Event.objects.filter(pk=event.pk).update(received_at=received_at)
+        event.refresh_from_db()
+        return event
+
+    def create_alert(self, alert_id, status, *events):
+        alert = Alert.objects.create(
+            alert_id=alert_id,
+            status=status,
+            level="3",
+            title=f"Alert {alert_id}",
+            content="content",
+            labels={},
+            first_event_time=events[0].received_at,
+            last_event_time=events[-1].received_at,
+            item=events[0].item,
+            resource_id=events[0].resource_id,
+            resource_name=events[0].resource_name,
+            resource_type=events[0].resource_type,
+            operator=[],
+            source_name=self.source.name,
+            fingerprint=f"fp-{alert_id}",
+        )
+        alert.events.add(*events)
+        return alert
+
+    def _run_pending_on_commit_callbacks(self):
+        connection = connections[DEFAULT_DB_ALIAS]
+        while connection.run_on_commit:
+            _, callback, robust = connection.run_on_commit.pop(0)
+            if robust:
+                try:
+                    callback()
+                except Exception:
+                    pass
+            else:
+                callback()
+
+    def test_recovery_fallback_recovers_when_candidate_is_unique(self):
+        created_at = timezone.now() - timedelta(minutes=1)
+        created_event = self.create_event(
+            "EVENT-CREATED-1",
+            EventAction.CREATED,
+            "strict-created-id",
+            created_at,
+            item="cpu_usage",
+            resource_id="service-1",
+            resource_type="service",
+            resource_name="shared-name",
+        )
+        alert = self.create_alert("ALERT-1", AlertStatus.UNASSIGNED, created_event)
+        recovery_event = self.create_event(
+            "EVENT-RECOVERY-1",
+            EventAction.RECOVERY,
+            "strict-recovery-id",
+            timezone.now(),
+            item="cpu_usage",
+            resource_name="shared-name",
+            raw_data={"action": "recovery"},
+        )
+
+        RecoveryHandler.handle_recovery_events([recovery_event])
+        self._run_pending_on_commit_callbacks()
+        alert.refresh_from_db()
+
+        self.assertTrue(alert.events.filter(event_id="EVENT-RECOVERY-1").exists())
+        self.assertEqual(alert.status, AlertStatus.UNASSIGNED)
+
+    def test_recovery_event_reuses_created_external_id_when_legacy_match_is_unique(self):
+        created_at = timezone.now() - timedelta(minutes=1)
+        created_event = self.create_event(
+            "EVENT-CREATED-COMPAT-1",
+            EventAction.CREATED,
+            "legacy-created-id",
+            created_at,
+            item="cpu_usage",
+            resource_id="service-1",
+            resource_type="service",
+            resource_name="shared-name",
+        )
+        alert = self.create_alert("ALERT-COMPAT-1", AlertStatus.UNASSIGNED, created_event)
+
+        adapter = self.adapter_class(alert_source=self.source)
+        recovery_event = Event(
+            title="cpu high",
+            description="cpu recovered",
+            level="3",
+            start_time=timezone.now(),
+            action=EventAction.RECOVERY,
+            item="cpu_usage",
+            resource_name="shared-name",
+        )
+
+        adapter.add_base_fields(recovery_event, {"action": "recovery"})
+        self.assertEqual(recovery_event.external_id, "legacy-created-id")
+
+        recovery_event.save()
+        RecoveryHandler.handle_recovery_events([recovery_event])
+        self._run_pending_on_commit_callbacks()
+        alert.refresh_from_db()
+
+        self.assertTrue(alert.events.filter(event_id=recovery_event.event_id).exists())
+        self.assertEqual(alert.status, AlertStatus.AUTO_RECOVERY)
+
+    def test_recovery_fallback_skips_ambiguous_candidates(self):
+        created_at = timezone.now() - timedelta(minutes=2)
+        created_event_one = self.create_event(
+            "EVENT-CREATED-2A",
+            EventAction.CREATED,
+            "strict-created-id-a",
+            created_at,
+            item="cpu_usage",
+            resource_id="service-1",
+            resource_type="service",
+            resource_name="shared-name",
+        )
+        created_event_two = self.create_event(
+            "EVENT-CREATED-2B",
+            EventAction.CREATED,
+            "strict-created-id-b",
+            created_at + timedelta(seconds=1),
+            item="cpu_usage",
+            resource_id="service-2",
+            resource_type="service",
+            resource_name="shared-name",
+        )
+        alert_one = self.create_alert("ALERT-2A", AlertStatus.UNASSIGNED, created_event_one)
+        alert_two = self.create_alert("ALERT-2B", AlertStatus.PROCESSING, created_event_two)
+        recovery_event = self.create_event(
+            "EVENT-RECOVERY-2",
+            EventAction.RECOVERY,
+            "strict-recovery-id-2",
+            timezone.now(),
+            item="cpu_usage",
+            resource_name="shared-name",
+            raw_data={"action": "recovery"},
+        )
+
+        RecoveryHandler.handle_recovery_events([recovery_event])
+        self._run_pending_on_commit_callbacks()
+
+        self.assertFalse(alert_one.events.filter(event_id="EVENT-RECOVERY-2").exists())
+        self.assertFalse(alert_two.events.filter(event_id="EVENT-RECOVERY-2").exists())
+        alert_one.refresh_from_db()
+        alert_two.refresh_from_db()
+        self.assertEqual(alert_one.status, AlertStatus.UNASSIGNED)
+        self.assertEqual(alert_two.status, AlertStatus.PROCESSING)
+
+    def test_recovery_event_does_not_resolve_external_id_when_legacy_match_is_ambiguous(self):
+        created_at = timezone.now() - timedelta(minutes=2)
+        created_event_one = self.create_event(
+            "EVENT-CREATED-COMPAT-2A",
+            EventAction.CREATED,
+            "legacy-created-id-a",
+            created_at,
+            item="cpu_usage",
+            resource_id="service-1",
+            resource_type="service",
+            resource_name="shared-name",
+        )
+        created_event_two = self.create_event(
+            "EVENT-CREATED-COMPAT-2B",
+            EventAction.CREATED,
+            "legacy-created-id-b",
+            created_at + timedelta(seconds=1),
+            item="cpu_usage",
+            resource_id="service-2",
+            resource_type="service",
+            resource_name="shared-name",
+        )
+        self.create_alert("ALERT-COMPAT-2A", AlertStatus.UNASSIGNED, created_event_one)
+        self.create_alert("ALERT-COMPAT-2B", AlertStatus.PROCESSING, created_event_two)
+
+        adapter = self.adapter_class(alert_source=self.source)
+        recovery_event = Event(
+            title="cpu high",
+            description="cpu recovered",
+            level="3",
+            start_time=timezone.now(),
+            action=EventAction.RECOVERY,
+            item="cpu_usage",
+            resource_name="shared-name",
+        )
+
+        adapter.add_base_fields(recovery_event, {"action": "recovery"})
+
+        self.assertNotIn(recovery_event.external_id, {"legacy-created-id-a", "legacy-created-id-b"})
+
+    def test_recovery_event_keeps_explicit_external_id(self):
+        created_at = timezone.now() - timedelta(minutes=1)
+        created_event = self.create_event(
+            "EVENT-CREATED-COMPAT-3",
+            EventAction.CREATED,
+            "explicit-id",
+            created_at,
+            item="cpu_usage",
+            resource_id="service-1",
+            resource_type="service",
+            resource_name="shared-name",
+        )
+        alert = self.create_alert("ALERT-COMPAT-3", AlertStatus.UNASSIGNED, created_event)
+        recovery_event = self.create_event(
+            "EVENT-RECOVERY-COMPAT-3",
+            EventAction.RECOVERY,
+            "explicit-id",
+            timezone.now(),
+            item="cpu_usage",
+            resource_name="shared-name",
+            raw_data={"action": "recovery"},
+        )
+
+        RecoveryHandler.handle_recovery_events([recovery_event])
+        self._run_pending_on_commit_callbacks()
+        alert.refresh_from_db()
+
+        self.assertTrue(alert.events.filter(event_id="EVENT-RECOVERY-COMPAT-3").exists())
+        self.assertEqual(alert.status, AlertStatus.AUTO_RECOVERY)
+
+    def test_closed_event_immediately_recovers_active_alert(self):
+        created_at = timezone.now() - timedelta(minutes=5)
+        created_event = self.create_event(
+            "EVENT-CREATED-CLOSED-1",
+            EventAction.CREATED,
+            "ext-closed-1",
+            created_at,
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+        alert = self.create_alert("ALERT-CLOSED-1", AlertStatus.UNASSIGNED, created_event)
+        closed_event = self.create_event(
+            "EVENT-CLOSED-1",
+            EventAction.CLOSED,
+            "ext-closed-1",
+            timezone.now(),
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+            description="cpu closed",
+        )
+
+        RecoveryHandler.handle_recovery_events([closed_event])
+        self._run_pending_on_commit_callbacks()
+        alert.refresh_from_db()
+
+        self.assertTrue(alert.events.filter(event_id="EVENT-CLOSED-1").exists())
+        self.assertEqual(alert.status, AlertStatus.AUTO_RECOVERY)
+
+    def test_alert_recovers_only_after_all_created_events_are_recovered(self):
+        created_at = timezone.now() - timedelta(minutes=5)
+        created_event_one = self.create_event(
+            "EVENT-CREATED-MULTI-1",
+            EventAction.CREATED,
+            "ext-multi-1",
+            created_at,
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+        created_event_two = self.create_event(
+            "EVENT-CREATED-MULTI-2",
+            EventAction.CREATED,
+            "ext-multi-2",
+            created_at + timedelta(seconds=1),
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+        alert = self.create_alert("ALERT-MULTI-1", AlertStatus.UNASSIGNED, created_event_one, created_event_two)
+
+        first_recovery = self.create_event(
+            "EVENT-RECOVERY-MULTI-1",
+            EventAction.RECOVERY,
+            "ext-multi-1",
+            timezone.now(),
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+
+        RecoveryHandler.handle_recovery_events([first_recovery])
+        self._run_pending_on_commit_callbacks()
+        alert.refresh_from_db()
+        self.assertEqual(alert.status, AlertStatus.UNASSIGNED)
+
+        second_recovery = self.create_event(
+            "EVENT-RECOVERY-MULTI-2",
+            EventAction.RECOVERY,
+            "ext-multi-2",
+            timezone.now() + timedelta(seconds=1),
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+
+        RecoveryHandler.handle_recovery_events([second_recovery])
+        self._run_pending_on_commit_callbacks()
+        alert.refresh_from_db()
+        self.assertEqual(alert.status, AlertStatus.AUTO_RECOVERY)
+
+    def test_duplicate_recovery_event_rechecks_existing_relation_and_recovers_alert(self):
+        created_at = timezone.now() - timedelta(minutes=5)
+        created_event = self.create_event(
+            "EVENT-CREATED-DUP-1",
+            EventAction.CREATED,
+            "ext-dup-1",
+            created_at,
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+        recovery_event = self.create_event(
+            "EVENT-RECOVERY-DUP-1",
+            EventAction.RECOVERY,
+            "ext-dup-1",
+            timezone.now(),
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+        alert = self.create_alert("ALERT-DUP-1", AlertStatus.UNASSIGNED, created_event, recovery_event)
+
+        RecoveryHandler.handle_recovery_events([recovery_event])
+        self._run_pending_on_commit_callbacks()
+        alert.refresh_from_db()
+
+        self.assertEqual(alert.status, AlertStatus.AUTO_RECOVERY)
+
     def test_integration_guide_returns_prometheus_template(self):
         source = AlertSource.objects.create(
             name="Prometheus Prod",
@@ -757,11 +1509,14 @@ class AlertSourceIngressTestCase(TestCase):
             secret="prom-secret",
             config={},
         )
+        user = build_permission_test_user("integration-reader-prom", [1], {"alarm": {"Integration-View"}})
 
-        response = self.client.get(f"/api/v1/alerts/api/alert_source/{source.id}/integration-guide/")
+        request = APIRequestFactory().get(f"/api/v1/alerts/api/alert_source/{source.id}/integration-guide/")
+        force_authenticate(request, user=user)
+        response = AlertSourceModelViewSet.as_view({"get": "integration_guide"})(request, pk=source.pk)
 
         self.assertEqual(response.status_code, 200)
-        payload = response.json()["data"]
+        payload = response.data
         self.assertEqual(payload["source_type"], AlertsSourceTypes.PROMETHEUS)
         self.assertIn(f"/api/v1/alerts/api/source/{source.source_id}/webhook/", payload["webhook_url"])
         self.assertIn("alertmanager_default_config", payload)
@@ -774,11 +1529,432 @@ class AlertSourceIngressTestCase(TestCase):
             secret="zbx-secret",
             config={},
         )
+        user = build_permission_test_user("integration-reader-zbx", [1], {"alarm": {"Integration-View"}})
 
-        response = self.client.get(f"/api/v1/alerts/api/alert_source/{source.id}/integration-guide/")
+        request = APIRequestFactory().get(f"/api/v1/alerts/api/alert_source/{source.id}/integration-guide/")
+        force_authenticate(request, user=user)
+        response = AlertSourceModelViewSet.as_view({"get": "integration_guide"})(request, pk=source.pk)
 
         self.assertEqual(response.status_code, 200)
-        payload = response.json()["data"]
+        payload = response.data
         self.assertEqual(payload["source_type"], AlertsSourceTypes.ZABBIX)
         self.assertIn(f"/api/v1/alerts/api/source/{source.source_id}/webhook/", payload["webhook_url"])
         self.assertIn("script_template", payload)
+
+
+class IncidentQueryPathTestCase(TestCase):
+    def setUp(self):
+        self.source = AlertSource.objects.create(
+            name="test-source",
+            source_id="source-incident",
+            source_type=AlertsSourceTypes.WEBHOOK,
+        )
+        self.user = User.objects.create(
+            username="incident-operator",
+            display_name="事故处理人",
+            email="incident@example.com",
+            password="pwd",
+        )
+
+    def create_event(self, event_id: str, title: str):
+        now = timezone.now()
+        return Event.objects.create(
+            source=self.source,
+            raw_data={},
+            title=title,
+            description=f"{title} description",
+            level="1",
+            service="svc",
+            event_type=EventType.ALERT,
+            tags={},
+            location="gz",
+            external_id=event_id,
+            start_time=now,
+            labels={},
+            action=EventAction.CREATED,
+            event_id=event_id,
+            item="cpu",
+            resource_id=f"res-{event_id}",
+            resource_type="host",
+            resource_name=f"host-{event_id}",
+            status="received",
+            assignee=[],
+        )
+
+    def create_alert(self, alert_id: str, events):
+        alert = Alert.objects.create(
+            alert_id=alert_id,
+            status=AlertStatus.UNASSIGNED,
+            level="1",
+            title=f"title-{alert_id}",
+            content=f"content-{alert_id}",
+            labels={},
+            first_event_time=timezone.now(),
+            last_event_time=timezone.now(),
+            fingerprint=f"fp-{alert_id}",
+            operator=[self.user.username],
+        )
+        alert.events.add(*events)
+        return alert
+
+    def test_incident_serializer_uses_prefetched_alert_sources_and_operator_map(self):
+        event_a = self.create_event("EVENT-A", "event-a")
+        event_b = self.create_event("EVENT-B", "event-b")
+        alert_1 = self.create_alert("ALERT-A", [event_a])
+        alert_2 = self.create_alert("ALERT-B", [event_b])
+
+        incident = Incident.objects.create(
+            incident_id="INCIDENT-A",
+            title="incident-a",
+            content="content",
+            labels={},
+            operator=[self.user.username],
+            level="1",
+        )
+        incident.alert.add(alert_1, alert_2)
+
+        viewset = IncidentModelViewSet()
+        queryset = list(viewset.get_queryset().filter(pk=incident.pk))
+        serializer = IncidentModelSerializer(
+            queryset,
+            many=True,
+            context={
+                "operator_user_map": {
+                    self.user.username: self.user.display_name,
+                }
+            },
+        )
+
+        with self.assertNumQueries(0):
+            data = serializer.data
+
+        self.assertEqual(data[0]["alert_count"], 2)
+        self.assertEqual(data[0]["sources"], "test-source")
+        self.assertEqual(data[0]["operator_users"], "事故处理人")
+
+    def test_event_serializer_uses_select_related_source_from_viewset_queryset(self):
+        event = self.create_event("EVENT-SOURCE", "event-source")
+
+        viewset = EventModelViewSet()
+        queryset = list(viewset.get_queryset().filter(pk=event.pk))
+
+        with self.assertNumQueries(0):
+            data = EventModelSerializer(queryset, many=True).data
+
+        self.assertEqual(data[0]["source_name"], "test-source")
+
+
+class AlertPermissionScopeTestCase(TestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self._ensure_groups(1, 2)
+
+    @staticmethod
+    def _ensure_groups(*group_ids):
+        for group_id in group_ids:
+            Group.objects.get_or_create(
+                id=group_id,
+                defaults={"name": f"group-{group_id}", "parent_id": 0},
+            )
+
+    @staticmethod
+    def _build_user(username, group_list, alarm_permissions):
+        user = User.objects.create(
+            username=username,
+            display_name=username,
+            email=f"{username}@example.com",
+            password=make_password("password123"),
+            domain="domain.com",
+            group_list=group_list,
+        )
+        user.permission = {"alarm": set(alarm_permissions)}
+        user.is_superuser = False
+        user.is_authenticated = True
+        return user
+
+    @staticmethod
+    def _build_alert(team, operator, suffix):
+        source = AlertSource.objects.create(
+            name=f"source-{suffix}",
+            source_id=f"source-{suffix}",
+            source_type=AlertsSourceTypes.WEBHOOK,
+        )
+        event = Event.objects.create(
+            source=source,
+            push_source_id="default",
+            raw_data={},
+            title=f"event-{suffix}",
+            description="desc",
+            level="warning",
+            service="svc",
+            event_type=EventType.ALERT,
+            tags={},
+            location="gz",
+            external_id=f"external-{suffix}",
+            start_time=timezone.now(),
+            labels={},
+            action=EventAction.CREATED,
+            event_id=f"EVENT-{suffix}",
+            item="cpu",
+            resource_id=f"resource-{suffix}",
+            resource_type="host",
+            resource_name=f"host-{suffix}",
+            status="received",
+            assignee=[],
+        )
+        alert = Alert.objects.create(
+            alert_id=f"ALERT-{suffix}",
+            status=AlertStatus.UNASSIGNED,
+            level="warning",
+            title=f"alert-{suffix}",
+            content="content",
+            labels={},
+            first_event_time=timezone.now(),
+            last_event_time=timezone.now(),
+            item="cpu",
+            resource_id=f"resource-{suffix}",
+            resource_name=f"host-{suffix}",
+            resource_type="host",
+            operate=None,
+            operator=operator,
+            source_name=source.name,
+            fingerprint=f"fp-{suffix}",
+            group_by_field="service",
+            rule_id=f"rule-{suffix}",
+            team=team,
+        )
+        alert.events.add(event)
+        return alert
+
+    def test_alert_list_is_scoped_by_operator_and_authorized_team(self):
+        user = self._build_user("alert-owner", [1], ["Alarms-View"])
+        team_alert = self._build_alert([1], [], "team")
+        assigned_alert = self._build_alert([2], ["alert-owner"], "assigned")
+        hidden_alert = self._build_alert([2], ["someone-else"], "hidden")
+
+        request = self.factory.get("/api/alert")
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = AlertModelViewSet.as_view({"get": "list"})(request)
+        payload = json.loads(response.content)
+        returned_alert_ids = {item["alert_id"] for item in payload["data"]}
+
+        self.assertIn(team_alert.alert_id, returned_alert_ids)
+        self.assertIn(assigned_alert.alert_id, returned_alert_ids)
+        self.assertNotIn(hidden_alert.alert_id, returned_alert_ids)
+
+    def test_incident_retrieve_rejects_cross_team_access(self):
+        user = self._build_user("incident-reader", [1], ["Incidents-View"])
+        foreign_alert = self._build_alert([2], ["someone-else"], "foreign")
+        incident = Incident.objects.create(
+            incident_id="INCIDENT-foreign",
+            status=IncidentStatus.PENDING,
+            level="warning",
+            title="foreign-incident",
+            content="content",
+            note="",
+            labels={},
+            operator=[],
+            fingerprint="incident-fp",
+            created_by="system",
+            updated_by="system",
+            domain="domain.com",
+            updated_by_domain="domain.com",
+        )
+        incident.alert.add(foreign_alert)
+
+        request = self.factory.get(f"/api/incident/{incident.pk}/")
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = IncidentModelViewSet.as_view({"get": "retrieve"})(request, pk=incident.pk)
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_incident_create_rejects_unscoped_alert_ids(self):
+        user = self._build_user("incident-editor", [1], ["Alarms-Edit"])
+        hidden_alert = self._build_alert([2], ["someone-else"], "hidden-create")
+
+        request = self.factory.post(
+            "/api/incident",
+            {
+                "title": "new-incident",
+                "level": "warning",
+                "content": "content",
+                "note": "",
+                "labels": {},
+                "operator": [],
+                "alert": [hidden_alert.pk],
+            },
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = IncidentModelViewSet.as_view({"post": "create"})(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Incident.objects.count(), 0)
+
+    def test_incident_create_rejects_null_alert_payload(self):
+        user = self._build_user("incident-editor-null", [1], ["Alarms-Edit"])
+
+        request = self.factory.post(
+            "/api/incident",
+            {
+                "title": "new-incident",
+                "level": "warning",
+                "content": "content",
+                "note": "",
+                "labels": {},
+                "operator": [],
+                "alert": None,
+            },
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = IncidentModelViewSet.as_view({"post": "create"})(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["detail"], "alert must be a list of ids.")
+
+    def test_incident_patch_rejects_null_alert_payload(self):
+        user = self._build_user(
+            "incident-editor-patch",
+            [1],
+            ["Incidents-Edit", "Alarms-Edit"],
+        )
+        visible_alert = self._build_alert([1], ["incident-editor-patch"], "visible-patch")
+        incident = Incident.objects.create(
+            incident_id="INCIDENT-visible",
+            status=IncidentStatus.PENDING,
+            level="warning",
+            title="visible-incident",
+            content="content",
+            note="",
+            labels={},
+            operator=["incident-editor-patch"],
+            fingerprint="incident-visible-fp",
+            created_by="system",
+            updated_by="system",
+            domain="domain.com",
+            updated_by_domain="domain.com",
+        )
+        incident.alert.add(visible_alert)
+
+        request = self.factory.patch(
+            f"/api/incident/{incident.pk}/",
+            {"alert": None},
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = IncidentModelViewSet.as_view({"patch": "partial_update"})(request, pk=incident.pk)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["detail"], "alert must be a list of ids.")
+
+    def test_alert_operator_rejects_unscoped_alert_ids(self):
+        user = self._build_user("alert-editor", [1], ["Alarms-Edit"])
+        hidden_alert = self._build_alert([2], ["someone-else"], "hidden-operator")
+
+        request = self.factory.post(
+            "/api/alert/operator/assign/",
+            {"alert_id": [hidden_alert.alert_id], "assignee": ["alert-editor"]},
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = AlertModelViewSet.as_view({"post": "operator"})(request, operator_action="assign")
+        payload = json.loads(response.content)
+        hidden_alert.refresh_from_db()
+
+        self.assertEqual(response.status_code, 500)
+        self.assertFalse(payload["result"])
+        self.assertEqual(
+            payload["data"][hidden_alert.alert_id]["message"],
+            "您没有权限操作此告警",
+        )
+        self.assertEqual(hidden_alert.status, AlertStatus.UNASSIGNED)
+
+    def test_event_retrieve_rejects_cross_team_access(self):
+        user = self._build_user("event-reader", [1], ["Alarms-View"])
+        hidden_alert = self._build_alert([2], ["someone-else"], "hidden-event")
+        hidden_event = hidden_alert.events.first()
+
+        request = self.factory.get(f"/api/events/{hidden_event.pk}/")
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = EventModelViewSet.as_view({"get": "retrieve"})(request, pk=hidden_event.pk)
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_operator_log_list_hides_cross_team_alert_history(self):
+        user = self._build_user("log-reader", [1], ["operation_log-View"])
+        visible_alert = self._build_alert([1], [], "visible-log")
+        hidden_alert = self._build_alert([2], ["someone-else"], "hidden-log")
+        OperatorLog.objects.create(
+            operator="system",
+            action=LogAction.MODIFY,
+            target_type=LogTargetType.ALERT,
+            operator_object="告警处理-关闭",
+            target_id=visible_alert.alert_id,
+            overview="visible log",
+        )
+        OperatorLog.objects.create(
+            operator="system",
+            action=LogAction.MODIFY,
+            target_type=LogTargetType.ALERT,
+            operator_object="告警处理-关闭",
+            target_id=hidden_alert.alert_id,
+            overview="hidden log",
+        )
+
+        request = self.factory.get("/api/log/")
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = SystemLogModelViewSet.as_view({"get": "list"})(request)
+        payload = response.data
+        rows = payload["data"] if isinstance(payload, dict) else payload
+        returned_overviews = {item["overview"] for item in rows}
+
+        self.assertIn("visible log", returned_overviews)
+        self.assertNotIn("hidden log", returned_overviews)
+
+    def test_incident_queryset_keeps_distinct_alert_count_after_scope_filtering(self):
+        user = self._build_user("incident-count-reader", [1], ["Incidents-View"])
+        alert_one = self._build_alert([1], [], "count-one")
+        alert_two = self._build_alert([1], [], "count-two")
+        incident = Incident.objects.create(
+            incident_id="INCIDENT-count",
+            status=IncidentStatus.PENDING,
+            level="warning",
+            title="count-incident",
+            content="content",
+            note="",
+            labels={},
+            operator=[],
+            fingerprint="incident-count-fp",
+            created_by="system",
+            updated_by="system",
+            domain="domain.com",
+            updated_by_domain="domain.com",
+        )
+        incident.alert.add(alert_one, alert_two)
+
+        request = self.factory.get("/api/incident")
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = IncidentModelViewSet.as_view({"get": "list"})(request)
+        payload = json.loads(response.content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["data"][0]["alert_count"], 2)

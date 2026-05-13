@@ -16,17 +16,52 @@ dayjs.extend(isSameOrBefore);
 dayjs.extend(isBetween);
 dayjs.extend(minMax);
 
+type HeatMapViewMode = 'month' | 'day';
+
+// 获取热力图格子颜色（按事件数量）
+export function getHeatMapCellColor(
+  count: number,
+  mode: HeatMapViewMode
+): string {
+  if (count === 0) return 'var(--color-fill-4)';
+  if (mode === 'month') {
+    if (count <= 5) return '#ffd6cc';
+    if (count <= 15) return '#ff9d8a';
+    return 'var(--color-fail)';
+  } else {
+    if (count <= 2) return '#ffd6cc';
+    if (count <= 5) return '#ff9d8a';
+    return 'var(--color-fail)';
+  }
+}
+
+interface HeatMapCellData {
+  date: string;
+  count: number;
+  startTime: string;
+  endTime: string;
+}
+
+export interface HeatMapCellClickPayload {
+  mode: HeatMapViewMode;
+  count: number;
+  startTime: string;
+  endTime: string;
+}
+
 interface EventHeatMapProps {
   data: HeatMapDataItem[];
   className?: string;
+  onCellClick?: (payload: HeatMapCellClickPayload) => void;
 }
 
 const EventHeatMap: React.FC<EventHeatMapProps> = ({
   data = [],
   className = '',
+  onCellClick
 }) => {
   const { t } = useTranslation();
-  const [viewMode, setViewMode] = useState<'month' | 'day'>('month');
+  const [viewMode, setViewMode] = useState<HeatMapViewMode>('month');
   const [currentDate, setCurrentDate] = useState<Dayjs>(dayjs());
 
   // 获取数据中最新的日期作为默认日期
@@ -53,10 +88,15 @@ const EventHeatMap: React.FC<EventHeatMapProps> = ({
       hourMap.set(hour, existing + 1);
     });
 
-    return Array.from(hourMap.entries()).map(([hour, count]) => ({
-      date: hour,
-      count,
-    }));
+    return Array.from(hourMap.entries()).map(([hour, count]) => {
+      const startTime = dayjs(hour, 'YYYY/MM/DD HH:mm:ss');
+      return {
+        date: hour,
+        count,
+        startTime: startTime.toISOString(),
+        endTime: startTime.add(1, 'hour').toISOString()
+      };
+    });
   }, [data]);
 
   // 按天聚合数据（用于按月模式）
@@ -70,10 +110,15 @@ const EventHeatMap: React.FC<EventHeatMapProps> = ({
       dateMap.set(date, existing + 1);
     });
 
-    return Array.from(dateMap.entries()).map(([date, count]) => ({
-      date,
-      count,
-    }));
+    return Array.from(dateMap.entries()).map(([date, count]) => {
+      const startTime = dayjs(date, 'YYYY/MM/DD');
+      return {
+        date,
+        count,
+        startTime: startTime.toISOString(),
+        endTime: startTime.add(1, 'day').toISOString()
+      };
+    });
   }, [data]);
 
   // 获取显示范围的数据
@@ -83,7 +128,7 @@ const EventHeatMap: React.FC<EventHeatMapProps> = ({
       const monthStart = currentDate.startOf('month');
       const daysInMonth = currentDate.daysInMonth();
 
-      const monthData = [];
+      const monthData: HeatMapCellData[] = [];
       for (let day = 1; day <= daysInMonth; day++) {
         const dayTime = monthStart.date(day);
         const dateKey = dayTime.format('YYYY/MM/DD');
@@ -96,6 +141,8 @@ const EventHeatMap: React.FC<EventHeatMapProps> = ({
         monthData.push({
           date: dateKey,
           count: existingData?.count || 0,
+          startTime: dayTime.startOf('day').toISOString(),
+          endTime: dayTime.startOf('day').add(1, 'day').toISOString()
         });
       }
 
@@ -105,7 +152,7 @@ const EventHeatMap: React.FC<EventHeatMapProps> = ({
       const dayStart = currentDate.startOf('day');
 
       // 生成24小时的完整数据，即使某些小时没有数据
-      const hourlyData = [];
+      const hourlyData: HeatMapCellData[] = [];
       for (let hour = 0; hour < 24; hour++) {
         const hourTime = dayStart.hour(hour);
         const hourKey = hourTime.format('YYYY/MM/DD HH:00:00');
@@ -118,6 +165,8 @@ const EventHeatMap: React.FC<EventHeatMapProps> = ({
         hourlyData.push({
           date: hourKey,
           count: existingData?.count || 0,
+          startTime: hourTime.startOf('hour').toISOString(),
+          endTime: hourTime.startOf('hour').add(1, 'hour').toISOString()
         });
       }
 
@@ -126,17 +175,8 @@ const EventHeatMap: React.FC<EventHeatMapProps> = ({
   }, [currentDate, viewMode, processedData, processedHourData]);
 
   // 获取格子的颜色
-  const getCellColor = useCallback((count: number, mode: 'month' | 'day') => {
-    if (count === 0) return 'var(--color-fill-4)';
-    if (mode === 'month') {
-      if (count <= 5) return '#ffd6cc';
-      if (count <= 15) return '#ff9d8a';
-      return 'var(--color-fail)';
-    } else {
-      if (count <= 2) return '#ffd6cc';
-      if (count <= 5) return '#ff9d8a';
-      return 'var(--color-fail)';
-    }
+  const getCellColor = useCallback((count: number, mode: HeatMapViewMode) => {
+    return getHeatMapCellColor(count, mode);
   }, []);
 
   // 图例配置
@@ -146,14 +186,14 @@ const EventHeatMap: React.FC<EventHeatMapProps> = ({
         { color: 'var(--color-fill-4)', label: '0' },
         { color: '#ffd6cc', label: '1-5' },
         { color: '#ff9d8a', label: '6-15' },
-        { color: 'var(--color-fail)', label: '16+' },
+        { color: 'var(--color-fail)', label: '16+' }
       ];
     } else {
       return [
         { color: 'var(--color-fill-4)', label: '0' },
         { color: '#ffd6cc', label: '1-2' },
         { color: '#ff9d8a', label: '3-5' },
-        { color: 'var(--color-fail)', label: '6+' },
+        { color: 'var(--color-fail)', label: '6+' }
       ];
     }
   }, [viewMode]);
@@ -219,6 +259,19 @@ const EventHeatMap: React.FC<EventHeatMapProps> = ({
     }
   }, []);
 
+  const handleCellClick = useCallback(
+    (cellData: HeatMapCellData) => {
+      if (cellData.count <= 0) return;
+      onCellClick?.({
+        mode: viewMode,
+        count: cellData.count,
+        startTime: cellData.startTime,
+        endTime: cellData.endTime
+      });
+    },
+    [onCellClick, viewMode]
+  );
+
   return (
     <div
       className={`bg-[var(--color-fill-1)] p-[10px] rounded-sm ${className}`}
@@ -279,6 +332,7 @@ const EventHeatMap: React.FC<EventHeatMapProps> = ({
         >
           {displayData.map((cellData, index) => {
             const color = getCellColor(cellData.count, viewMode);
+            const isClickable = cellData.count > 0;
 
             // 生成 tooltip 内容
             let tooltipTitle: React.ReactNode;
@@ -313,10 +367,15 @@ const EventHeatMap: React.FC<EventHeatMapProps> = ({
               <Tooltip key={index} title={tooltipTitle}>
                 <div className="flex flex-col items-center">
                   <div
-                    className="h-6 rounded transition-all duration-200 hover:scale-105 hover:shadow-md flex items-center justify-center relative w-full"
+                    className={`h-6 rounded transition-all duration-200 flex items-center justify-center relative w-full ${
+                      isClickable
+                        ? 'cursor-pointer hover:scale-105 hover:shadow-md'
+                        : 'cursor-not-allowed'
+                    }`}
                     style={{
-                      backgroundColor: color,
+                      backgroundColor: color
                     }}
+                    onClick={() => handleCellClick(cellData)}
                   >
                     <span
                       className="text-[12px] font-medium select-none"
