@@ -263,8 +263,8 @@ class K8sLogCollectService:
         query = f'collect_type:"kubernetes" AND instance_id:"{instance.id}"'
         data = SearchService.search_logs(
             query,
-            start_time.strftime("%Y-%m-%d %H:%M:%S"),
-            end_time.strftime("%Y-%m-%d %H:%M:%S"),
+            start_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            end_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
             1,
         )
         return bool(data)
