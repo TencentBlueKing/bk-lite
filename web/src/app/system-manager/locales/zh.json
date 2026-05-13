@@ -147,6 +147,7 @@
       },
       "groupPermission": "组织权限授予",
       "form": {
+        "pendingSensitiveEdit": "请先确认或取消敏感信息的修改",
         "administrator": "管理员",
         "locale": "语言环境",
         "zoneinfo": "时区",

@@ -147,6 +147,7 @@
       },
       "groupPermission": "Organization Permission Grant",
       "form": {
+        "pendingSensitiveEdit": "Please confirm or cancel the sensitive field edit first",
         "administrator": "Administrator",
         "locale": "Locale",
         "zoneinfo": "zoneInfo",

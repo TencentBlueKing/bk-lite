@@ -249,7 +249,7 @@ export function useUserModalData(): UseUserModalDataReturn {
     async (onSuccess: () => void) => {
       try {
         if (isAnyFieldEditing()) {
-          message.warning(t('common.valFailed'));
+          message.error(t('system.user.form.pendingSensitiveEdit'));
           return;
         }
 
