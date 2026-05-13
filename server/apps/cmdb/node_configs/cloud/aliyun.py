@@ -15,7 +15,6 @@ class AliyunNodeParams(BaseNodeParams):
         self.PLUGIN_MAP.update({self.model_id: self.plugin_name})
         self.host_field = "endpoint"
 
-
     def set_credential(self, *args, **kwargs):
         _access_key = f"PASSWORD_access_key_{self._instance_id}"
         _access_secret = f"PASSWORD_access_secret_{self._instance_id}"
@@ -34,11 +33,26 @@ class AliyunNodeParams(BaseNodeParams):
         }
         return env_config
 
+    @classmethod
+    def build_region_credential(cls, raw_credential):
+        """
+        1. 保存任务的时候 迷失密钥是 accessKey 和 accessSecret
+        2. 构建区域凭据的时候 迷失密钥是 access_key 和 access_secret
+
+        {"model_id":"qcloud",
+        "cloud_id":1,
+        "access_key":"AKID5SmwvhSinodHixv4BF",
+        "access_secret":"5762zpOSM5dz84vsla"}
+
+        """
+        raw_credential = raw_credential or {}
+        access_key = raw_credential.pop("access_key", None)
+        access_secret = raw_credential.pop("access_secret", None)
+        return {
+            "secret_id": access_key or raw_credential.get("accessKey", ""),
+            "secret_key": access_secret or raw_credential.get("accessSecret"),
+        }
     @property
     def password(self):
-        # 返回阿里云的密码数据
-        password_data = {
-            "access_key": self.credential.get("accessKey", ""),
-            "access_secret": self.credential.get("accessSecret", ""),
-        }
-        return password_data
+        # 返回腾讯云的密码数据
+        return self.build_region_credential(self.credential)

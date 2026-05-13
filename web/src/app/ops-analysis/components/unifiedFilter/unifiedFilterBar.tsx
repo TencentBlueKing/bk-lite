@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Input, Space, Button, Select } from 'antd';
+import { Input, Button, Select } from 'antd';
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import TimeSelector from '@/components/time-selector';
@@ -146,8 +146,8 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   };
 
   return (
-    <div className="flex items-center gap-4 mx-3 mt-3 p-3 bg-(--color-bg-1) rounded-lg border border-(--color-border-2)">
-      <Space wrap size="middle">
+    <div className="mx-3 mt-3 rounded-lg border border-(--color-border-2) bg-(--color-bg-1) p-3">
+      <div className="flex flex-wrap items-center gap-4">
         {prefixContent}
         {enabledDefinitions.map((definition) => (
           <div key={definition.id} className="flex items-center gap-2">
@@ -157,6 +157,10 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
             {renderFilterControl(definition)}
           </div>
         ))}
+        <div
+          className="flex shrink-0 items-center gap-2 whitespace-nowrap"
+          data-export-hidden="true"
+        >
         <Button
           type="primary"
           size="small"
@@ -168,7 +172,8 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
         <Button size="small" icon={<ReloadOutlined />} onClick={handleReset}>
           {t('common.reset')}
         </Button>
-      </Space>
+        </div>
+      </div>
     </div>
   );
 };

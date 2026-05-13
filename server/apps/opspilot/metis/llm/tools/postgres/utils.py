@@ -1,9 +1,10 @@
 """PostgreSQL通用工具函数"""
 import json
+
 import psycopg2
-from psycopg2.extras import RealDictCursor
 from langchain_core.runnables import RunnableConfig
 from loguru import logger
+from psycopg2.extras import RealDictCursor
 
 
 def prepare_context(config: RunnableConfig = None) -> dict:
@@ -22,8 +23,7 @@ def prepare_context(config: RunnableConfig = None) -> dict:
         config = {}
 
     # 从config的configurable中提取参数
-    configurable = config.get("configurable", {}) if isinstance(
-        config, dict) else getattr(config, "configurable", {})
+    configurable = config.get("configurable", {}) if isinstance(config, dict) else getattr(config, "configurable", {})
 
     db_config = {
         "host": configurable.get("host", "localhost"),
@@ -38,7 +38,8 @@ def prepare_context(config: RunnableConfig = None) -> dict:
 
 def get_db_connection(config: RunnableConfig = None, database: str = None):
     """
-    获取数据库连接
+    获取数据库连接。优先使用多实例配置（postgres_instances），
+    无多实例配置时回退到平铺字段（host/port/database/user/password）。
 
     Args:
         config: RunnableConfig对象
@@ -47,9 +48,33 @@ def get_db_connection(config: RunnableConfig = None, database: str = None):
     Returns:
         psycopg2.connection: 数据库连接对象
     """
-    db_config = prepare_context(config)
+    configurable = config.get("configurable", {}) if isinstance(config, dict) else (getattr(config, "configurable", {}) if config else {})
 
-    # 如果提供了database参数,则覆盖配置中的database
+    # 多实例路径
+    if configurable.get("postgres_instances"):
+        from apps.opspilot.metis.llm.tools.postgres.connection import build_postgres_normalized_from_runnable, get_postgres_connection_from_item
+
+        normalized = build_postgres_normalized_from_runnable(config)
+        item = normalized.items[0]
+        conn = get_postgres_connection_from_item(item)
+        if database:
+            # psycopg2 不支持 USE；通过重新连接切换 database
+            cfg = dict(item["config"])
+            cfg["database"] = database
+            conn.close()
+            conn = psycopg2.connect(
+                host=cfg["host"],
+                port=cfg["port"],
+                database=cfg["database"],
+                user=cfg["user"],
+                password=cfg["password"],
+                cursor_factory=RealDictCursor,
+                connect_timeout=10,
+            )
+        return conn
+
+    # 平铺字段（legacy）回退路径
+    db_config = prepare_context(config)
     if database:
         db_config["database"] = database
 
@@ -61,7 +86,7 @@ def get_db_connection(config: RunnableConfig = None, database: str = None):
             user=db_config["user"],
             password=db_config["password"],
             cursor_factory=RealDictCursor,
-            connect_timeout=10
+            connect_timeout=10,
         )
         return conn
     except psycopg2.Error as e:
@@ -134,7 +159,7 @@ def format_size(bytes_value: int) -> str:
 
     bytes_value = int(bytes_value)
 
-    for unit in ['B', 'KB', 'MB', 'GB', 'TB', 'PB']:
+    for unit in ["B", "KB", "MB", "GB", "TB", "PB"]:
         if bytes_value < 1024.0:
             return f"{bytes_value:.2f} {unit}"
         bytes_value /= 1024.0
@@ -180,29 +205,19 @@ def parse_pg_version(config: RunnableConfig = None) -> dict:
         dict: 版本信息
     """
     try:
-        result = execute_readonly_query(
-            "SELECT version() as version", config=config)
+        result = execute_readonly_query("SELECT version() as version", config=config)
         version_string = result[0]["version"]
 
         # 解析版本号
         # 例如: "PostgreSQL 14.5 on x86_64-pc-linux-gnu..."
         parts = version_string.split()
         version_number = parts[1] if len(parts) > 1 else "unknown"
-        major_version = int(version_number.split(
-            '.')[0]) if '.' in version_number else 0
+        major_version = int(version_number.split(".")[0]) if "." in version_number else 0
 
-        return {
-            "full_version": version_string,
-            "version_number": version_number,
-            "major_version": major_version
-        }
+        return {"full_version": version_string, "version_number": version_number, "major_version": major_version}
     except Exception as e:
         logger.error(f"解析版本失败: {e}")
-        return {
-            "full_version": "unknown",
-            "version_number": "unknown",
-            "major_version": 0
-        }
+        return {"full_version": "unknown", "version_number": "unknown", "major_version": 0}
 
 
 def safe_json_dumps(data: dict) -> str:
@@ -215,9 +230,10 @@ def safe_json_dumps(data: dict) -> str:
     Returns:
         str: JSON字符串
     """
+
     def default_handler(obj):
         """处理无法序列化的对象"""
-        if hasattr(obj, 'isoformat'):
+        if hasattr(obj, "isoformat"):
             return obj.isoformat()
         return str(obj)
 

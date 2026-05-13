@@ -82,6 +82,9 @@ class StrategyMatcher:
 
         try:
             q_filter = StrategyMatcher._build_q_filter(match_rules)
+            if q_filter is None:
+                logger.warning("match_rules 非空但没有有效条件，返回空结果集")
+                return events_queryset.none()
 
             logger.debug(f"match_rules过滤: {len(match_rules)}组条件, 首组示例: {match_rules[0][:2] if match_rules and match_rules[0] else 'empty'}")
 
@@ -94,7 +97,7 @@ class StrategyMatcher:
             return events_queryset.none()
 
     @staticmethod
-    def _build_q_filter(match_rules: List[List[Dict]]) -> Q:
+    def _build_q_filter(match_rules: List[List[Dict]]) -> Optional[Q]:
         """
         构建Django Q对象
 
@@ -102,7 +105,7 @@ class StrategyMatcher:
         内层列表: AND 关系
 
         Returns:
-            Q对象，如果所有条件都无效则返回空Q()（匹配所有）
+            Q对象；如果规则非空但没有可用条件组，则返回None
         """
         or_conditions = []
 
@@ -111,12 +114,18 @@ class StrategyMatcher:
                 continue
 
             and_conditions = []
+            invalid_group = False
 
             for condition in and_group:
                 q_obj = StrategyMatcher._build_condition_q(condition)
-                # 只有当q_obj不为None时才添加（跳过无效条件）
-                if q_obj is not None:
-                    and_conditions.append(q_obj)
+                if q_obj is None:
+                    invalid_group = True
+                    logger.warning(f"match_rules条件无效，整组失效: {condition}")
+                    break
+                and_conditions.append(q_obj)
+
+            if invalid_group:
+                continue
 
             # 如果该AND组至少有一个有效条件，才构建Q对象
             if and_conditions:
@@ -126,10 +135,10 @@ class StrategyMatcher:
                     combined_and &= q
                 or_conditions.append(combined_and)
 
-        # 如果没有任何有效的OR条件组，返回空Q()（匹配所有记录）
+        # 如果没有任何有效的OR条件组，说明规则为空组或包含无效条件，需失败关闭。
         if not or_conditions:
-            logger.warning("所有match_rules条件都无效，返回空过滤器")
-            return Q()
+            logger.warning("所有match_rules条件都无效")
+            return None
 
         # 将多个OR条件组合并
         final_q = or_conditions[0]
@@ -168,7 +177,10 @@ class StrategyMatcher:
             return None
 
         field_name = StrategyMatcher.FIELD_MAP.get(key, key)
-        django_operator = StrategyMatcher.OPERATOR_MAP.get(operator, "exact")
+        django_operator = StrategyMatcher.OPERATOR_MAP.get(operator)
+        if django_operator is None:
+            logger.warning(f"未知操作符: {condition}")
+            return None
 
         # 处理取反操作符
         if django_operator == "not_contains":

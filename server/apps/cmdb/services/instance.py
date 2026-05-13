@@ -579,6 +579,58 @@ class InstanceManage(object):
         return src_edge + dst_edge
 
     @staticmethod
+    def instance_association_map(model_id: str, inst_ids: list[int], related_model: str | None = None) -> dict[int, list[int]]:
+        """批量查询实例关联映射，避免按实例逐条查询关系。"""
+
+        normalized_ids: list[int] = []
+        seen_ids: set[int] = set()
+        for inst_id in inst_ids:
+            try:
+                normalized_id = int(inst_id)
+            except (TypeError, ValueError):
+                continue
+            if normalized_id in seen_ids:
+                continue
+            seen_ids.add(normalized_id)
+            normalized_ids.append(normalized_id)
+
+        if not normalized_ids:
+            return {}
+
+        relation_map: dict[int, set[int]] = {inst_id: set() for inst_id in normalized_ids}
+
+        with GraphClient() as ag:
+            src_query_data = [
+                {"field": "src_inst_id", "type": "int[]", "value": normalized_ids},
+                {"field": "src_model_id", "type": "str=", "value": model_id},
+            ]
+            if related_model:
+                src_query_data.append({"field": "dst_model_id", "type": "str=", "value": related_model})
+            src_edges = ag.query_edge(INSTANCE_ASSOCIATION, src_query_data)
+
+            dst_query_data = [
+                {"field": "dst_inst_id", "type": "int[]", "value": normalized_ids},
+                {"field": "dst_model_id", "type": "str=", "value": model_id},
+            ]
+            if related_model:
+                dst_query_data.append({"field": "src_model_id", "type": "str=", "value": related_model})
+            dst_edges = ag.query_edge(INSTANCE_ASSOCIATION, dst_query_data)
+
+        for edge in src_edges:
+            src_inst_id = edge.get("src_inst_id")
+            dst_inst_id = edge.get("dst_inst_id")
+            if src_inst_id in relation_map and dst_inst_id is not None:
+                relation_map[src_inst_id].add(int(dst_inst_id))
+
+        for edge in dst_edges:
+            dst_inst_id = edge.get("dst_inst_id")
+            src_inst_id = edge.get("src_inst_id")
+            if dst_inst_id in relation_map and src_inst_id is not None:
+                relation_map[dst_inst_id].add(int(src_inst_id))
+
+        return {inst_id: sorted(related_ids) for inst_id, related_ids in relation_map.items()}
+
+    @staticmethod
     def check_asso_mapping(data: dict):
         """校验关联关系的约束"""
         asso_info = ModelManage.model_association_info_search(data["model_asst_id"])
@@ -1064,7 +1116,7 @@ class InstanceManage(object):
             search: 搜索关键词
             permission_map: 权限映射
             creator: 创建者
-            case_sensitive: 是否区分大小写（默认False，模糊匹配）
+            case_sensitive: 是否精确匹配（True=精确匹配，False=不区分大小写模糊匹配，默认False）
 
         Returns:
             实例列表
@@ -1103,7 +1155,7 @@ class InstanceManage(object):
             search: 搜索关键词
             permission_map: 权限映射
             creator: 创建者
-            case_sensitive: 是否区分大小写（默认False，模糊匹配）
+            case_sensitive: 是否精确匹配（True=精确匹配，False=不区分大小写模糊匹配，默认False）
 
         Returns:
             {
@@ -1152,7 +1204,7 @@ class InstanceManage(object):
             creator: 创建者
             page: 页码（从1开始）
             page_size: 每页大小
-            case_sensitive: 是否区分大小写（默认False，模糊匹配）
+            case_sensitive: 是否精确匹配（True=精确匹配，False=不区分大小写模糊匹配，默认False）
 
         Returns:
             {

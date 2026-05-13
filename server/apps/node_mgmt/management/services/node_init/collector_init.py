@@ -1,8 +1,9 @@
-import json
 import os
 
 from apps.node_mgmt.models.sidecar import Collector
 from apps.core.logger import node_logger as logger
+from apps.node_mgmt.management.services.node_init.definition_loader import load_definition_records
+from apps.node_mgmt.utils.collector_tags import normalize_collector_tags
 
 
 COMMUNITY_PLUGIN_DIRECTORY = "apps/node_mgmt/support-files/collectors"
@@ -16,6 +17,11 @@ def import_collector(collectors):
     create_collectors, update_collectors = [], []
 
     for collector_info in collectors:
+        collector_info["tags"] = normalize_collector_tags(
+            collector_info.get("tags"),
+            collector_info.get("node_operating_system"),
+            collector_info.get("cpu_architecture"),
+        )
         if collector_info["id"] in old_collector_set:
             # 更新时确保内置采集器标记为 is_pre=True
             collector_info["is_pre"] = True
@@ -41,6 +47,7 @@ def import_collector(collectors):
                 "default_config",
                 "tags",
                 "package_name",
+                "cpu_architecture",
                 "is_pre",
             ],
         )
@@ -48,40 +55,21 @@ def import_collector(collectors):
 
 def migrate_collector():
     """迁移采集器"""
-    collectors_path = []
-
-    plugin_directories = [COMMUNITY_PLUGIN_DIRECTORY]
-    if os.path.isdir(ENTERPRISE_PLUGIN_DIRECTORY):
-        plugin_directories.append(ENTERPRISE_PLUGIN_DIRECTORY)
-
-    for plugin_dir in plugin_directories:
-        if not os.path.isdir(plugin_dir):
-            continue
-        for file_name in os.listdir(plugin_dir):
-            file_path = os.path.join(plugin_dir, file_name)
-            if os.path.isfile(file_path) and file_name.endswith(".json"):
-                collectors_path.append(file_path)
+    collectors_data = load_definition_records(
+        COMMUNITY_PLUGIN_DIRECTORY,
+        ENTERPRISE_PLUGIN_DIRECTORY,
+    )
 
     # 收集所有内置采集器的ID
     builtin_collector_ids = set()
 
-    for file_path in collectors_path:
-        # 打开并读取 JSON 文件
-        try:
-            with open(file_path, "r", encoding="utf-8") as file:
-                collectors_data = json.load(file)
-                import_collector(collectors_data)
-                # 收集当前文件中的采集器ID
-                for collector in collectors_data:
-                    builtin_collector_ids.add(collector["id"])
-        except Exception as e:
-            logger.error(f"导入采集器 {file_path} 失败！原因：{e}")
+    import_collector([{k: v for k, v in collector.items() if not k.startswith("_")} for collector in collectors_data])
+    for collector in collectors_data:
+        builtin_collector_ids.add(collector["id"])
 
     # 删除已移除的内置采集器（只删除 is_pre=True 的采集器）
     # 这样可以保护用户通过视图创建的采集器（is_pre=False）
-    removed_builtin_collectors = Collector.objects.filter(is_pre=True).exclude(
-        id__in=builtin_collector_ids
-    )
+    removed_builtin_collectors = Collector.objects.filter(is_pre=True).exclude(id__in=builtin_collector_ids)
 
     if removed_builtin_collectors.exists():
         removed_count = removed_builtin_collectors.count()

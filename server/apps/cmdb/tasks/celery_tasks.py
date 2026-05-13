@@ -16,6 +16,22 @@ from apps.cmdb.services.subscription_task import SubscriptionTaskService
 from apps.cmdb.constants.constants import CollectPluginTypes
 
 
+def _build_safe_error_message(err: Exception) -> str:
+    message = str(err).strip()
+    if message:
+        return message
+
+    attr_message = getattr(err, "message", None)
+    if isinstance(attr_message, str) and attr_message.strip():
+        return attr_message.strip()
+
+    detail = getattr(err, "detail", None)
+    if isinstance(detail, str) and detail.strip():
+        return detail.strip()
+
+    return err.__class__.__name__
+
+
 @shared_task
 def sync_collect_task(instance_id):
     """
@@ -30,10 +46,10 @@ def sync_collect_task(instance_id):
     CollectModelService.repair_host_cloud_snapshot(instance)
     if instance.exec_status == CollectRunStatusType.NOT_START:
         CollectModels._default_manager.filter(id=instance_id).update(exec_status=CollectRunStatusType.RUNNING)
-    # # 防止周期触发与延迟补跑重叠导致同一任务并发执行
-    # if instance.exec_status == CollectRunStatusType.RUNNING:
-    #     logger.info("采集任务已在执行中，跳过重复执行 task_id={}".format(instance_id))
-    #     return
+    # 防止周期触发与延迟补跑重叠导致同一任务并发执行
+    if instance.exec_status == CollectRunStatusType.RUNNING:
+        logger.info("采集任务已在执行中，跳过重复执行 task_id={}".format(instance_id))
+        return
     # 统一在 Celery 执行入口更新任务开始时间和运行状态
     start_time = now()
     instance.exec_status = CollectRunStatusType.RUNNING
@@ -63,7 +79,7 @@ def sync_collect_task(instance_id):
         import traceback
 
         logger.error("同步数据失败 task_id={}, error={}".format(instance_id, traceback.format_exc()))
-        exec_error_message = "同步数据失败, error={}".format(err)
+        exec_error_message = "同步数据失败, error={}".format(_build_safe_error_message(err))
         result = {}
         format_data = {}
         instance.exec_status = CollectRunStatusType.ERROR

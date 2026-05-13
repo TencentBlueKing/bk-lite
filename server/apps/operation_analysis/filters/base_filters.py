@@ -65,7 +65,7 @@ class GroupPermissionMixin:
         return True, current_team
 
     @classmethod
-    def apply_group_filter(cls, queryset, current_team, user="", permission_key=""):
+    def apply_group_filter(cls, queryset, current_team, user="", permission_key="", group_ids=None):
         """
         对查询集应用组织过滤
 
@@ -73,6 +73,7 @@ class GroupPermissionMixin:
         :param current_team: 当前组织ID (None 表示超级用户,不过滤)
         :param permission_key: 权限键，用于获取实例级权限
         :param user: 当前用户
+        :param group_ids: 扩展的组织ID列表（用于 include_children），传入时使用 OR 查询
         :return: 过滤后的 QuerySet
 
         示例:
@@ -89,8 +90,14 @@ class GroupPermissionMixin:
             # 超级用户,返回所有数据
             return queryset
 
-        # 第一层: 必须在当前组织下
-        queryset = queryset.filter(groups__contains=int(current_team))
+        # 第一层: 必须在当前组织下（支持 include_children 展开的组织列表）
+        if group_ids and len(group_ids) > 1:
+            org_query = Q()
+            for gid in group_ids:
+                org_query |= Q(groups__contains=int(gid))
+            queryset = queryset.filter(org_query)
+        else:
+            queryset = queryset.filter(groups__contains=int(current_team))
 
         # 第二层: 构建或查询条件 (实例级权限 OR 创建者权限)
         permission_q = Q()

@@ -4,6 +4,7 @@
 
 处理外部告警源发送过来的告警数据
 """
+
 import json
 
 from django.http import JsonResponse
@@ -34,7 +35,11 @@ def _receive_events(request, path_source_id=None, expected_source_type=None):
         if not source_id:
             return JsonResponse({"status": "error", "message": "Missing source_id."}, status=400)
 
-        event_source = AlertSource.objects.filter(source_id=source_id).first()
+        event_source = AlertSource.objects.filter(
+            source_id=source_id,
+            is_active=True,
+            is_effective=True,
+        ).first()
         if not event_source:
             return JsonResponse({"status": "error", "message": "Invalid source_id or source_type."}, status=400)
 
@@ -61,8 +66,7 @@ def _receive_events(request, path_source_id=None, expected_source_type=None):
             return JsonResponse({"status": "error", "message": "Invalid secret."}, status=403)
 
         adapter.main()
-        return JsonResponse({"status": "success", "time": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
-                             "message": "Data received successfully."})
+        return JsonResponse({"status": "success", "time": timezone.now().strftime("%Y-%m-%d %H:%M:%S"), "message": "Data received successfully."})
     except ValueError as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=400)
     except Exception as e:
@@ -73,8 +77,9 @@ def _receive_events(request, path_source_id=None, expected_source_type=None):
             str(e),
             exc_info=True,
         )
-        return JsonResponse({"status": "error", "time": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
-                             "message": "Internal server error."}, status=500)
+        return JsonResponse(
+            {"status": "error", "time": timezone.now().strftime("%Y-%m-%d %H:%M:%S"), "message": "Internal server error."}, status=500
+        )
 
 
 @csrf_exempt
@@ -90,7 +95,7 @@ def receiver_source_data(request, source_id):
 def receiver_data(request):
     """
     接收告警数据的函数视图
-    
+
     :param request: 请求对象
     :return: JSON响应
     """
@@ -108,4 +113,3 @@ def request_test(requests):
     """
     logger.info("Processing request test: request=%s", requests)
     return WebUtils.response_success([])
-

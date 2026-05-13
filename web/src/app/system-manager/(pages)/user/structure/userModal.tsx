@@ -10,6 +10,7 @@ import { ZONEINFO_OPTIONS, LOCALE_OPTIONS } from '@/app/system-manager/constants
 import RoleTransfer from '@/app/system-manager/components/user/roleTransfer';
 import { useUserModalData } from '@/app/system-manager/hooks/useUserModalData';
 import { transformTreeDataForSelect } from '@/app/system-manager/utils/userFormUtils';
+import type { TreeSelectNode } from '@/app/system-manager/utils/userFormUtils';
 
 interface ModalProps {
   onSuccess: () => void;
@@ -20,6 +21,7 @@ interface ModalConfig {
   type: 'add' | 'edit';
   userId?: string;
   groupKeys?: React.Key[];
+  groupTreeData?: TreeSelectNode[];
 }
 
 export interface ModalRef {
@@ -44,29 +46,27 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     organizationRoleIds,
     organizationRoleSourceMap,
     isSuperuser,
-    setIsSuperuser,
     showModal,
     handleCancel,
     handleConfirm,
     handleGroupChange,
     handleRoleChange,
+    handleSuperuserChange,
     handleChangeRule,
     sensitiveBehavior,
   } = useUserModalData();
-
-  useImperativeHandle(ref, () => ({
-    showModal,
-  }));
 
   const filteredTreeData = useMemo(
     () => (treeData ? transformTreeDataForSelect(treeData) : []),
     [treeData]
   );
 
-  const handleSuperuserChange = (value: boolean) => {
-    setIsSuperuser(value);
-    formRef.current?.setFieldsValue({ is_superuser: value });
-  };
+  useImperativeHandle(ref, () => ({
+    showModal: (config) => showModal({
+      ...config,
+      groupTreeData: filteredTreeData,
+    }),
+  }), [filteredTreeData, showModal]);
 
   const renderSensitiveInput = (fieldName: string, placeholder: string) => {
     if (type === 'add') {
@@ -211,7 +211,7 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
             required={!isSuperuser}
           >
             <Form.Item name="is_superuser" style={{ marginBottom: 8 }}>
-              <Radio.Group onChange={(e) => handleSuperuserChange(e.target.value)}>
+                <Radio.Group onChange={(e) => handleSuperuserChange(e.target.value)}>
                 <Radio value={false}>{t('system.user.form.normalUser')}</Radio>
                 <Radio value={true}>{t('system.user.form.superuser')}</Radio>
               </Radio.Group>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import ChartLegend from '../components/chartLegend';
 import { Spin, Empty } from 'antd';
@@ -6,20 +6,63 @@ import { randomColorForLegend } from '@/app/log/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/log/utils/chartDataTransform';
 import { DashboardBarChartProps } from '@/app/log/types';
 
+const LEGEND_WIDTH_CLASS = 'w-40';
+const LEGEND_WIDTH_PX = 160;
+const LEGEND_GAP_PX = 8;
+const CHART_MIN_WIDTH_PX = 200;
+
 const BarChart: React.FC<DashboardBarChartProps> = ({
   rawData,
   loading = false,
-  onReady,
+  config,
+  onReady
 }) => {
   const [isDataReady, setIsDataReady] = useState(false);
+  const [showLegend, setShowLegend] = useState(true);
   const chartRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<ResizeObserver | null>(null);
   const chartColors = randomColorForLegend();
 
+  const containerCallbackRef = useCallback((node: HTMLDivElement | null) => {
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+    containerRef.current = node;
+    if (!node) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const containerWidth = entry.contentRect.width;
+        setShowLegend(
+          containerWidth >= CHART_MIN_WIDTH_PX + LEGEND_WIDTH_PX + LEGEND_GAP_PX
+        );
+      }
+    });
+    observer.observe(node);
+    observerRef.current = observer;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      observerRef.current?.disconnect();
+    };
+  }, []);
+
   const transformData = (rawData: any) => {
+    const maps = config?.displayMaps;
+    if (maps?.key && maps?.value && Array.isArray(rawData)) {
+      const mapped = rawData.map((item: any) => ({
+        name: item[maps.key],
+        count: Number(item[maps.value]) || 0
+      }));
+      return ChartDataTransformer.transformToLineBarData(mapped);
+    }
     return ChartDataTransformer.transformToLineBarData(rawData);
   };
 
   const chartData = transformData(rawData);
+  const isHorizontal = config?.direction === 'horizontal';
 
   useEffect(() => {
     if (!loading) {
@@ -40,14 +83,15 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
     toolbox: { show: false },
     tooltip: {
       trigger: 'axis',
+      appendToBody: true,
       axisPointer: {
-        type: 'shadow',
+        type: 'shadow'
       },
       enterable: true,
-      confine: true,
+      confine: false,
       extraCssText: 'box-shadow: 0 0 3px rgba(150,150,150, 0.7);',
       textStyle: {
-        fontSize: 12,
+        fontSize: 12
       },
       formatter: function (params: any) {
         if (!params || params.length === 0) return '';
@@ -64,77 +108,113 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
 
         content += '</div>';
         return content;
-      },
+      }
     },
     grid: {
       top: 14,
       left: 18,
       right: 24,
       bottom: 20,
-      containLabel: true,
+      containLabel: true
     },
-    xAxis: {
-      type: 'category',
-      data: chartData?.categories || [],
-      nameRotate: -90,
-      axisLabel: {
-        margin: 15,
-        textStyle: {
-          color: '#7f92a7',
-          fontSize: 11,
+    xAxis: isHorizontal
+      ? {
+        type: 'value',
+        minInterval: 1,
+        axisTick: { show: false },
+        axisLine: { show: false },
+        axisLabel: {
+          formatter: function (value: number) {
+            if (value >= 1000) return (value / 1000).toFixed(1) + 'k';
+            return value.toString();
+          },
+          textStyle: { color: '#7f92a7' }
         },
-        rotate: 0,
-        interval: 'auto',
-        formatter: function (value: string) {
-          return value;
-        },
-      },
-      axisLine: {
-        lineStyle: {
-          color: '#e8e8e8',
-        },
-      },
-      axisTick: {
-        show: false,
-      },
-      splitLine: {
-        show: false,
-        lineStyle: {
-          color: '#f0f0f0',
-        },
-      },
-    },
-    yAxis: {
-      type: 'value',
-      minInterval: 1,
-      axisTick: {
-        show: false,
-      },
-      axisLine: {
-        show: false,
-      },
-      axisLabel: {
-        formatter: function (value: number) {
-          if (value >= 1000) {
-            return (value / 1000).toFixed(1) + 'k';
+        splitLine: {
+          show: true,
+          lineStyle: { color: '#f0f0f0', type: 'solid' }
+        }
+      }
+      : {
+        type: 'category',
+        data: chartData?.categories || [],
+        nameRotate: -90,
+        axisLabel: {
+          margin: 15,
+          textStyle: {
+            color: '#7f92a7',
+            fontSize: 11
+          },
+          rotate: 0,
+          interval: 'auto',
+          formatter: function (value: string) {
+            return value;
           }
-          return value.toString();
         },
-        textStyle: {
-          color: '#7f92a7',
+        axisLine: {
+          lineStyle: {
+            color: '#e8e8e8'
+          }
         },
+        axisTick: {
+          show: false
+        },
+        splitLine: {
+          show: false,
+          lineStyle: {
+            color: '#f0f0f0'
+          }
+        }
       },
-      splitLine: {
-        show: true,
-        lineStyle: {
-          color: '#f0f0f0',
-          type: 'solid',
+    yAxis: isHorizontal
+      ? {
+        type: 'category',
+        data: chartData?.categories || [],
+        axisLabel: {
+          textStyle: {
+            color: '#7f92a7',
+            fontSize: 11
+          },
+          formatter: function (value: string) {
+            return value.length > 12 ? value.slice(0, 12) + '...' : value;
+          }
         },
-      },
-    },
+        axisLine: { lineStyle: { color: '#e8e8e8' } },
+        axisTick: { show: false },
+        inverse: true
+      }
+      : {
+        type: 'value',
+        minInterval: 1,
+        axisTick: {
+          show: false
+        },
+        axisLine: {
+          show: false
+        },
+        axisLabel: {
+          formatter: function (value: number) {
+            if (value >= 1000) {
+              return (value / 1000).toFixed(1) + 'k';
+            }
+            return value.toString();
+          },
+          textStyle: {
+            color: '#7f92a7'
+          }
+        },
+        splitLine: {
+          show: true,
+          lineStyle: {
+            color: '#f0f0f0',
+            type: 'solid'
+          }
+        }
+      }
   };
 
   // 根据数据类型设置 series
+  const barRadius = isHorizontal ? [0, 2, 2, 0] : [2, 2, 0, 0];
   if (chartData && chartData.series) {
     option.series = chartData.series.map((item: any) => ({
       name: item.name,
@@ -142,11 +222,11 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
       data: item.data,
       barMaxWidth: 40,
       itemStyle: {
-        borderRadius: [2, 2, 0, 0],
+        borderRadius: barRadius
       },
       emphasis: {
-        focus: 'series',
-      },
+        focus: 'series'
+      }
     }));
   } else {
     option.series = [
@@ -156,12 +236,12 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
         data: chartData && chartData.values ? chartData.values : [],
         barMaxWidth: 40,
         itemStyle: {
-          borderRadius: [2, 2, 0, 0],
+          borderRadius: barRadius
         },
         emphasis: {
-          focus: 'series',
-        },
-      },
+          focus: 'series'
+        }
+      }
     ];
   }
 
@@ -182,9 +262,12 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
   }
 
   return (
-    <div className="h-full flex">
+    <div
+      className="h-full flex w-full overflow-hidden"
+      ref={containerCallbackRef}
+    >
       {/* 图表区域 */}
-      <div className="flex-1">
+      <div className="flex-1 min-w-[200px]">
         <ReactEcharts
           ref={chartRef}
           option={option}
@@ -193,8 +276,10 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
       </div>
 
       {/* 图例区域 - 仅在多系列数据时显示 */}
-      {chartData?.series && chartData.series.length > 1 && (
-        <div className="w-32 ml-2 flex-shrink-0 h-full">
+      {showLegend && chartData?.series && chartData.series.length > 1 && (
+        <div
+          className={`ml-2 h-full ${LEGEND_WIDTH_CLASS} flex-shrink-0 min-w-0`}
+        >
           <ChartLegend
             chart={chartRef.current?.getEchartsInstance()}
             data={chartData.series}

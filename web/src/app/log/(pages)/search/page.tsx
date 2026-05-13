@@ -107,6 +107,7 @@ const SearchView: React.FC = () => {
   const queryText = searchParams.get('query') || '';
   const startTime = searchParams.get('startTime') || '';
   const endTime = searchParams.get('endTime') || '';
+  const urlLogGroups = searchParams.getAll('log_groups');
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const terminalRef = useRef<LogTerminalRef | null>(null);
   const timeSelectorRef = useRef<TimeSelectorRef>(null);
@@ -215,12 +216,19 @@ const SearchView: React.FC = () => {
         page: 1
       });
       const list = data || [];
-      const ids = list.at()?.id ? [list.at().id] : [];
+      const availableIds = list
+        .map((item) => item.id)
+        .filter((id): id is React.Key => !!id);
+      const selectedIds = urlLogGroups.length
+        ? availableIds.filter((id) => urlLogGroups.includes(String(id)))
+        : list.at()?.id
+          ? [list.at().id]
+          : [];
       setGroupList(list);
-      setGroups(ids);
+      setGroups(selectedIds);
       if (list.length) {
-        await getAllFieldsByConfig({ logGroups: ids });
-        getLogData('init', { logGroups: ids });
+        await getAllFieldsByConfig({ logGroups: selectedIds });
+        getLogData('init', { logGroups: selectedIds });
       }
     } finally {
       setPageLoading(false);
@@ -485,6 +493,7 @@ const SearchView: React.FC = () => {
               defaultValue={defaultSearchText}
               fields={fields}
               getTimeRange={getTimeRange}
+              logGroups={groups}
               addonAfter={
                 <BulbFilled
                   className="cursor-pointer px-[10px] py-[8px]"

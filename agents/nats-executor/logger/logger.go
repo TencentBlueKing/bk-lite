@@ -10,6 +10,7 @@ import (
 var (
 	defaultLogger *slog.Logger
 	currentLevel  *slog.LevelVar
+	exitFunc      = os.Exit
 )
 
 func init() {
@@ -101,10 +102,10 @@ func Errorf(format string, args ...any) {
 
 func Fatal(msg string, args ...any) {
 	defaultLogger.Error(msg, args...)
-	os.Exit(1)
+	exitFunc(1)
 }
 
 func Fatalf(format string, args ...any) {
 	defaultLogger.Error(fmt.Sprintf(format, args...))
-	os.Exit(1)
+	exitFunc(1)
 }

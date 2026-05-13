@@ -107,21 +107,17 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
   };
 
   return (
-    <div className="chart-legend h-full flex flex-col overflow-hidden">
-      <div className="flex-shrink-0">
-        <table className="chart-legend-table w-full border-collapse">
-          <thead>
+    <div className="chart-legend h-full min-w-0 flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto">
+        <table className="chart-legend-table w-full table-fixed border-collapse">
+          <thead className="sticky top-0 z-10">
             <tr>
-              <th className="text-left px-2 py-1.5 text-xs text-gray-600 border-b border-gray-200 bg-gray-50">
+              <th className="text-left px-2 py-1.5 text-xs text-[var(--color-text-3)] border-b border-[var(--color-border-2)] bg-[var(--color-fill-2)]">
                 {t('log.analysis.dimension')}
-                <span className="text-gray-400">({legendData.length})</span>
+                <span className="text-[var(--color-text-4)]">({legendData.length})</span>
               </th>
             </tr>
           </thead>
-        </table>
-      </div>
-      <div className="flex-1 overflow-y-auto min-h-0">
-        <table className="chart-legend-table w-full border-collapse">
           <tbody>
             {legendData.map((item, index) => (
               <tr
@@ -129,13 +125,13 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
                 className={`
                   cursor-pointer transition-all duration-200
                   ${isActive(item) ? 'opacity-100' : 'opacity-50'}
-                  hover:bg-blue-50
-                  ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}
+                  hover:bg-[var(--color-fill-2)]
+                  ${index % 2 === 0 ? '' : 'bg-[var(--color-fill-1)]'}
                 `}
                 onClick={() => handleLegend(item)}
               >
-                <td className="px-2 py-1">
-                  <div className="flex items-center space-x-2 min-w-0">
+                <td className="w-full max-w-0 px-2 py-1">
+                  <div className="flex w-full min-w-0 items-center gap-2">
                     <div
                       className="w-4 h-1 flex-shrink-0"
                       style={{
@@ -144,9 +140,9 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
                           : '#d1d5db'
                       }}
                     />
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 max-w-full">
                       <EllipsisWithTooltip
-                        className="max-w-[106px] text-xs text-gray-700 leading-relaxed whitespace-nowrap overflow-hidden text-ellipsis"
+                        className="block w-full min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs leading-relaxed text-[var(--color-text-2)]"
                         text={item || '--'}
                       />
                     </div>

@@ -1,6 +1,7 @@
 {
   "common": {
     "edit": "编辑",
+    "builtIn": "内置",
     "delete": "删除",
     "export": "导出",
     "import": "导入",
@@ -144,6 +145,7 @@
     "inputPassword": "请输入密码",
     "builtin": "内置",
     "mcp": "MCP",
+    "externalApp": "外部",
     "unreadNotifications": "未读通知",
     "allNotifications": "所有通知",
     "noMore": "没有更多了",

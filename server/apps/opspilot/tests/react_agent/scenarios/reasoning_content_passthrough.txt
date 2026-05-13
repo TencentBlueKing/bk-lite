@@ -1,0 +1,27 @@
+场景名称: DeepSeek/Qwen Thinking 模式 reasoning_content 回传测试
+
+对应计划: 修复项（非计划内，但影响 ReAct 循环）
+
+功能描述:
+  DeepSeek 和 Qwen 开启 thinking 模式后，LLM 响应包含 reasoning_content 字段。
+  langchain-openai 的 _convert_message_to_dict 不会序列化此字段，
+  导致多轮 tool_call 循环时 API 报 400 错误。
+  修复方案：monkey-patch _convert_message_to_dict 注入 reasoning_content。
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py: 顶部 monkey-patch
+
+测试用例:
+
+  TestReasoningContentPreserved:
+    1. AIMessage 含 reasoning_content 时序列化保留: _convert_message_to_dict 输出包含该字段
+    2. AIMessage 不含 reasoning_content 时无影响: 输出不含该字段
+    3. 含 reasoning_content + tool_calls: 两者都正确序列化
+    4. HumanMessage/SystemMessage/ToolMessage 不受影响: 其他消息类型序列化正常
+
+  TestReasoningContentInReactLoop:
+    5. DeepSeek 模型多轮 tool_call: mock LLM 返回带 reasoning_content 的 AIMessage，下一轮调用不报错
+    6. Qwen 模型多轮 tool_call: 同上
+
+关联测试文件: cases/test_reasoning_content.py
+状态: GREEN（功能已实现）

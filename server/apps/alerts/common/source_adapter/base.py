@@ -7,16 +7,16 @@ import uuid
 import hashlib
 import json
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from django.utils import timezone
 
 from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
 from apps.alerts.common.shield import execute_shield_check_for_events
-from apps.alerts.constants.constants import LevelType, EventAction
+from apps.alerts.constants.constants import LevelType, EventAction, AlertStatus
 from apps.alerts.constants.init_data import INIT_ALERT_ENRICH
 from apps.alerts.models.sys_setting import SystemSetting
-from apps.alerts.models.models import Event, Level
+from apps.alerts.models.models import Alert, Event, Level
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.common.source_adapter import logger
 from apps.alerts.utils.util import split_list
@@ -73,12 +73,16 @@ class AlertSourceAdapter(ABC):
 
     def get_integration_guide(self, base_url: str) -> Dict[str, Any]:
         """返回源类型对接说明与模板"""
+        # 对于 snmp_trap 这类内置 source，接入地址可能不是通用 receiver_data，
+        # 因此这里优先读取 source 自身配置的 url，避免说明文档和真实入口不一致。
+        webhook_path = self.alert_source.config.get("url") or "/api/v1/alerts/api/receiver_data/"
+        description = self.alert_source.config.get("description") or "通用事件接收入口"
         return {
             "source_type": self.alert_source.source_type,
             "source_id": self.alert_source.source_id,
-            "webhook_url": f"{base_url}/api/v1/alerts/api/receiver_data/",
+            "webhook_url": f"{base_url}{webhook_path}",
             "headers": {"SECRET": self.alert_source.secret},
-            "description": "通用事件接收入口",
+            "description": description,
         }
 
     @staticmethod
@@ -143,9 +147,82 @@ class AlertSourceAdapter(ABC):
         return bulk_events
 
     @staticmethod
-    def generate_external_id(item: str, resource_name: str, source_id) -> str:
-        components = f"{item or ''}|{resource_name or ''}|{source_id or ''}"
+    def generate_external_id(item: str, resource_id: str, resource_name: str, resource_type: str, source_id) -> str:
+        components = "|".join(
+            [
+                str(item or ""),
+                str(resource_id or ""),
+                str(resource_name or ""),
+                str(resource_type or ""),
+                str(source_id or ""),
+            ]
+        )
         return hashlib.md5(components.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _normalize_lookup_value(value) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    def resolve_recovery_external_id(self, event: Event) -> Optional[str]:
+        if event.action not in [EventAction.RECOVERY, EventAction.CLOSED]:
+            return None
+
+        item = self._normalize_lookup_value(event.item)
+        resource_name = self._normalize_lookup_value(event.resource_name)
+        resource_id = self._normalize_lookup_value(event.resource_id)
+        resource_type = self._normalize_lookup_value(event.resource_type)
+
+        if not item or not resource_name or resource_id or resource_type:
+            return None
+
+        candidate_alerts = (
+            Alert.objects.filter(
+                status__in=AlertStatus.ACTIVATE_STATUS,
+                events__source=self.alert_source,
+                events__item=item,
+                events__resource_name=resource_name,
+                events__action=EventAction.CREATED,
+            )
+            .prefetch_related("events__source")
+            .distinct()
+        )
+
+        matched_external_ids = []
+        for alert in candidate_alerts:
+            created_external_ids = {
+                existing_event.external_id
+                for existing_event in alert.events.all()
+                if existing_event.action == EventAction.CREATED
+                and existing_event.source_id == self.alert_source.id
+                and self._normalize_lookup_value(existing_event.item) == item
+                and self._normalize_lookup_value(existing_event.resource_name) == resource_name
+                and existing_event.external_id
+            }
+            if len(created_external_ids) == 1:
+                matched_external_ids.append(next(iter(created_external_ids)))
+
+        matched_external_ids = list(dict.fromkeys(matched_external_ids))
+
+        if len(matched_external_ids) == 1:
+            logger.info(
+                "Resolved recovery external_id from active alert: source_id=%s item=%s resource_name=%s",
+                self.alert_source.source_id,
+                item,
+                resource_name,
+            )
+            return matched_external_ids[0]
+
+        if len(matched_external_ids) > 1:
+            logger.warning(
+                "Ambiguous recovery external_id candidates, skip compatibility resolution: source_id=%s item=%s resource_name=%s",
+                self.alert_source.source_id,
+                item,
+                resource_name,
+            )
+
+        return None
 
     def add_base_fields(self, event: Event, alert: Dict[str, Any]):
         """添加基础字段"""
@@ -156,7 +233,13 @@ class AlertSourceAdapter(ABC):
         event.event_id = f"EVENT-{uuid.uuid4().hex}"
 
         if not event.external_id or not str(event.external_id).strip():
-            event.external_id = self.generate_external_id(event.item, event.resource_name, self.alert_source.source_id)
+            event.external_id = self.resolve_recovery_external_id(event) or self.generate_external_id(
+                event.item,
+                event.resource_id,
+                event.resource_name,
+                event.resource_type,
+                self.alert_source.source_id,
+            )
             logger.debug(f"Generated external_id for event: {event.event_id}")
 
     @staticmethod

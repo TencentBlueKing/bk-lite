@@ -1,4 +1,10 @@
+import React from 'react';
+import { Tag } from 'antd';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
+
+interface UserGroupTreeDataNode extends TreeDataNode {
+  isVirtual?: boolean;
+}
 
 export interface GroupRole {
   id: number;
@@ -14,6 +20,7 @@ export interface TreeSelectNode {
   title: string;
   value: React.Key;
   key: React.Key;
+  isVirtual?: boolean;
   children: TreeSelectNode[];
 }
 
@@ -47,12 +54,35 @@ export interface UserDetailResponse {
  * Converts TreeDataNode format to TreeSelect-compatible format
  */
 export function transformTreeDataForSelect(data: TreeDataNode[]): TreeSelectNode[] {
-  return data.map((node: TreeDataNode) => ({
-    title: (node.title as string) || 'Unknown',
-    value: node.key,
-    key: node.key,
-    children: node.children ? transformTreeDataForSelect(node.children as TreeDataNode[]) : [],
-  }));
+  return data.map((node: TreeDataNode) => {
+    const groupNode = node as UserGroupTreeDataNode;
+    return {
+      title: (node.title as string) || 'Unknown',
+      value: node.key,
+      key: node.key,
+      isVirtual: groupNode.isVirtual === true,
+      children: node.children ? transformTreeDataForSelect(node.children as TreeDataNode[]) : [],
+    };
+  });
+}
+
+export function flattenTreeSelectNodes(nodes: TreeSelectNode[]): TreeSelectNode[] {
+  return nodes.reduce<TreeSelectNode[]>((acc, node) => {
+    acc.push(node);
+    if (node.children.length > 0) {
+      acc.push(...flattenTreeSelectNodes(node.children));
+    }
+    return acc;
+  }, []);
+}
+
+export function hasNormalGroupSelection(groupIds: React.Key[], treeData: TreeSelectNode[]): boolean {
+  if (groupIds.length === 0) {
+    return false;
+  }
+
+  const groupMap = new Map(flattenTreeSelectNodes(treeData).map((node) => [String(node.key), node]));
+  return groupIds.some((groupId) => groupMap.get(String(groupId))?.isVirtual !== true);
 }
 
 /**
@@ -60,11 +90,14 @@ export function transformTreeDataForSelect(data: TreeDataNode[]): TreeSelectNode
  * Marks roles that come from organization as disabled
  */
 export function processRoleTreeData(
-  roleData: Array<{ id: number; name: string; children: Array<{ id: number; name: string }> }>
+  roleData: Array<{ id: number; name: string; is_build_in?: boolean; children: Array<{ id: number; name: string }> }>,
+  externalAppLabel = 'External App'
 ): TreeDataNode[] {
   return roleData.map((item) => ({
     key: item.id,
-    title: item.name,
+    title: item.is_build_in === false
+      ? React.createElement('span', null, item.name, React.createElement(Tag, { color: 'green', className: 'ml-1', style: { fontSize: 11, padding: '0 4px' } }, externalAppLabel))
+      : item.name,
     selectable: false,
     children: item.children.map((child) => ({
       key: child.id,

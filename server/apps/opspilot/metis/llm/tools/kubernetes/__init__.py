@@ -28,6 +28,12 @@ from apps.opspilot.metis.llm.tools.kubernetes.cluster import (
     list_kubernetes_api_resources,
     verify_kubernetes_connection,
 )
+from apps.opspilot.metis.llm.tools.kubernetes.data_collection import (
+    build_incident_evidence_package,
+    collect_k8s_context_by_target_type,
+    normalize_alert_event,
+    resolve_k8s_target_from_alert,
+)
 from apps.opspilot.metis.llm.tools.kubernetes.diagnostics import (
     diagnose_kubernetes_pod_issues,
     get_failed_kubernetes_pods,
@@ -41,6 +47,7 @@ from apps.opspilot.metis.llm.tools.kubernetes.diagnostics_advanced import (
     check_pvc_capacity,
     diagnose_pending_pod_issues,
 )
+from apps.opspilot.metis.llm.tools.kubernetes.node_diagnostics import diagnose_node_issues
 from apps.opspilot.metis.llm.tools.kubernetes.optimization import (
     check_pod_distribution,
     check_scaling_capacity,
@@ -59,6 +66,7 @@ from apps.opspilot.metis.llm.tools.kubernetes.remediation import (
 from apps.opspilot.metis.llm.tools.kubernetes.resources import (
     get_kubernetes_namespaces,
     get_kubernetes_pod_logs,
+    get_kubernetes_previous_pod_logs,
     get_kubernetes_resource_yaml,
     list_kubernetes_deployments,
     list_kubernetes_events,
@@ -77,7 +85,12 @@ from apps.opspilot.metis.llm.tools.kubernetes.tracing import (
 from apps.opspilot.metis.llm.tools.kubernetes.utils import format_bytes, parse_resource_quantity, prepare_context
 
 CONSTRUCTOR_PARAMS = [
-    {"name": "kubeconfig_data", "type": "textarea", "required": False, "description": "Kubernetes配置文件内容，默认使用 ~/.kube/config 或集群内配置"}
+    {
+        "name": "kubernetes_instances",
+        "type": "array",
+        "required": False,
+        "description": "Kubernetes 实例列表，每个实例包含 id、name、kubeconfig_data",
+    },
 ]
 
 
@@ -93,6 +106,7 @@ __all__ = [
     "list_kubernetes_events",
     "get_kubernetes_resource_yaml",
     "get_kubernetes_pod_logs",
+    "get_kubernetes_previous_pod_logs",
     # 故障诊断和监控工具
     "get_failed_kubernetes_pods",
     "get_pending_kubernetes_pods",
@@ -100,6 +114,7 @@ __all__ = [
     "get_kubernetes_node_capacity",
     "get_kubernetes_orphaned_resources",
     "diagnose_kubernetes_pod_issues",
+    "diagnose_node_issues",
     # 配置分析和策略检查工具
     "check_kubernetes_resource_quotas",
     "check_kubernetes_network_policies",
@@ -146,8 +161,113 @@ __all__ = [
     "batch_restart_pods",
     "find_configmap_consumers",
     "cleanup_failed_pods",
+    # 告警驱动采集编排工具
+    "normalize_alert_event",
+    "resolve_k8s_target_from_alert",
+    "collect_k8s_context_by_target_type",
+    "build_incident_evidence_package",
     # 通用工具函数
     "prepare_context",
     "format_bytes",
     "parse_resource_quantity",
 ]
+
+
+# ---------------------------------------------------------------------------
+# 执行后验证元数据（附加到操作类工具）
+# ---------------------------------------------------------------------------
+
+_VERIFICATION_TOOLS = [
+    (
+        restart_pod,
+        {
+            "verify_tool": "list_kubernetes_pods",
+            "args_mapping": {"namespace": "namespace"},
+            "delay_seconds": 5.0,
+            "description": "验证 Pod 重启后状态是否恢复为 Running",
+        },
+    ),
+    (
+        scale_deployment,
+        {
+            "verify_tool": "list_kubernetes_deployments",
+            "args_mapping": {"namespace": "namespace"},
+            "delay_seconds": 5.0,
+            "description": "验证 Deployment 副本数是否已调整到目标值",
+        },
+    ),
+    (
+        delete_kubernetes_resource,
+        {
+            "verify_tool": "kubectl_get_resources",
+            "args_mapping": {"namespace": "namespace"},
+            "delay_seconds": 3.0,
+            "description": "验证资源是否已被成功删除",
+        },
+    ),
+    (
+        rollback_deployment,
+        {
+            "verify_tool": "list_kubernetes_deployments",
+            "args_mapping": {"namespace": "namespace"},
+            "delay_seconds": 5.0,
+            "description": "验证 Deployment 是否已成功回滚到指定版本",
+        },
+    ),
+]
+
+for _tool_obj, _verify_spec in _VERIFICATION_TOOLS:
+    if not hasattr(_tool_obj, "metadata") or _tool_obj.metadata is None:
+        _tool_obj.metadata = {}
+    _tool_obj.metadata["verification"] = _verify_spec
+
+
+# ---------------------------------------------------------------------------
+# 操作回滚元数据（附加到操作类工具）
+# ---------------------------------------------------------------------------
+
+_ROLLBACK_TOOLS = [
+    (
+        scale_deployment,
+        {
+            "snapshot_tool": "list_kubernetes_deployments",
+            "snapshot_args_mapping": {"namespace": "namespace"},
+            "rollback_tool": "scale_deployment",
+            "rollback_args_mapping": {"deployment_name": "deployment_name", "namespace": "namespace"},
+            "rollback_snapshot_args": {},
+            "strategy": "prompt",
+            "description": "回滚 Deployment 副本数到操作前的值",
+        },
+    ),
+    (
+        rollback_deployment,
+        {
+            "snapshot_tool": "get_deployment_revision_history",
+            "snapshot_args_mapping": {"deployment_name": "deployment_name", "namespace": "namespace"},
+            "rollback_tool": "rollback_deployment",
+            "rollback_args_mapping": {"deployment_name": "deployment_name", "namespace": "namespace"},
+            "rollback_snapshot_args": {},
+            "strategy": "prompt",
+            "description": "回滚操作可通过再次回滚到之前的 revision 来撤销",
+        },
+    ),
+    (
+        restart_pod,
+        {
+            "strategy": "none",
+            "description": "Pod 重启由控制器重建，不可回滚",
+        },
+    ),
+    (
+        delete_kubernetes_resource,
+        {
+            "strategy": "none",
+            "description": "资源删除不可自动回滚，需手动重新创建",
+        },
+    ),
+]
+
+for _tool_obj, _rb_spec in _ROLLBACK_TOOLS:
+    if not hasattr(_tool_obj, "metadata") or _tool_obj.metadata is None:
+        _tool_obj.metadata = {}
+    _tool_obj.metadata["rollback"] = _rb_spec

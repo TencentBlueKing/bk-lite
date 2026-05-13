@@ -4,8 +4,9 @@ import { useSession } from 'next-auth/react';
 import { useAuth } from '@/context/auth';
 import { useStudioApi } from '../../../api/studio';
 import type { WorkflowExecutionDetailItem } from '@/app/opspilot/types/studio';
-import { AGUIMessage, BrowserTaskReceivedValue } from '@/app/opspilot/types/chat';
+import { AGUIMessage, BrowserTaskReceivedValue, ApprovalRequestValue } from '@/app/opspilot/types/chat';
 import { ToolCallInfo, syncActiveToolCallPanel, closeActiveToolCallPanel } from '../../custom-chat-sse/toolCallRenderer';
+import { ApprovalRequest } from '@/app/opspilot/types/global';
 
 const TERMINAL_EXECUTION_STATUSES = new Set(['success', 'fail', 'interrupted']);
 
@@ -70,6 +71,7 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
   const [executionSummary, setExecutionSummary] = useState<ExecutionSummary>({ status: 'idle' });
   const [activeExecutionNodeId, setActiveExecutionNodeId] = useState<string | null>(null);
   const [hasActiveExecution, setHasActiveExecution] = useState(false);
+  const [approvalRequests, setApprovalRequests] = useState<ApprovalRequest[]>([]);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const toolCallsRef = useRef<Map<string, ToolCallInfo>>(new Map());
@@ -304,6 +306,13 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
               syncActiveToolCallPanel(toolCallId, toolCall);
             }
           }
+        } else if (aguiData.name === 'approval_request' && aguiData.value) {
+          const value = aguiData.value as ApprovalRequestValue;
+          setApprovalRequests(prev => [...prev, {
+            ...value,
+            received_at: Date.now(),
+            status: 'pending',
+          }]);
         }
         break;
 
@@ -667,6 +676,12 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
     return accumulator;
   }, {});
 
+  const handleApprovalDecision = useCallback((toolCallId: string, decision: 'approved' | 'rejected') => {
+    setApprovalRequests(prev => prev.map(req =>
+      req.tool_call_id === toolCallId ? { ...req, status: decision } : req
+    ));
+  }, []);
+
   return {
     isExecuteDrawerVisible,
     setIsExecuteDrawerVisible,
@@ -691,5 +706,8 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
     hasActiveExecution,
     executionStatusMap,
     executionDurationMap,
+    approvalRequests,
+    handleApprovalDecision,
+    token,
   };
 };

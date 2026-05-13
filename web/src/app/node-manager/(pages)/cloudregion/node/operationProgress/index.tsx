@@ -434,6 +434,20 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
                       {failureGuidance.reason}
                     </div>
                   )}
+                  {!!failureGuidance.context?.length && (
+                    <div className="mt-[4px] text-[var(--color-text-3)]">
+                      <div className="mb-[2px] text-[12px]">
+                        {t('node-manager.cloudregion.node.failureContext')}:
+                      </div>
+                      <div className="space-y-[2px]">
+                      {failureGuidance.context.map((entry) => (
+                        <div key={entry} className="line-clamp-1">
+                          {entry}
+                        </div>
+                      ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="mt-[4px] text-[var(--color-text-2)] line-clamp-2">
                     {t('node-manager.cloudregion.node.nextAction')}:
                     {' '}
@@ -655,8 +669,10 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
       }
 
       const newTableData = normalizeControllerInstallRows(
-        data.map((item, index: number) => ({
+        data.map((item: any, index: number) => ({
           ...item,
+          cpu_architecture:
+            item.cpu_architecture || item.nodeData?.cpu_architecture || '',
           id: item.id ?? index
         }))
       );

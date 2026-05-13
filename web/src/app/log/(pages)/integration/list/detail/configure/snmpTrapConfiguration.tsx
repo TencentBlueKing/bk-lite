@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Select, Steps } from 'antd';
+import { Form, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import useIntegrationApi from '@/app/log/api/integration';
@@ -9,10 +9,18 @@ const SnmpTrapConfiguration: React.FC = () => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const { getLogNodeList } = useIntegrationApi();
+  const { getLogNodeList, getCloudRegionProxyAddress } = useIntegrationApi();
   const [nodeList, setNodeList] = useState<TableDataItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [selectedNodeIp, setSelectedNodeIp] = useState<string>('');
+  const [selectedNodeProxyAddress, setSelectedNodeProxyAddress] =
+    useState<string>('');
+
+  const loadCloudRegionProxyAddress = async (cloudRegionId?: number | string) => {
+    const data = await getCloudRegionProxyAddress({
+      cloud_region_id: cloudRegionId,
+    });
+    setSelectedNodeProxyAddress(data.proxy_address || '');
+  };
 
   useEffect(() => {
     if (isLoading) return;
@@ -38,7 +46,7 @@ const SnmpTrapConfiguration: React.FC = () => {
       if (nodes.length > 0) {
         const firstNode = nodes[0];
         form.setFieldsValue({ node_id: firstNode.id });
-        setSelectedNodeIp(firstNode.ip || '');
+        await loadCloudRegionProxyAddress(firstNode.cloud_region);
       }
     } finally {
       setLoading(false);
@@ -48,9 +56,9 @@ const SnmpTrapConfiguration: React.FC = () => {
   const handleNodeChange = (value: number) => {
     const selectedNode = nodeList.find((node) => node.id === value);
     if (selectedNode) {
-      setSelectedNodeIp(selectedNode.ip || '');
+      void loadCloudRegionProxyAddress(selectedNode.cloud_region);
     } else {
-      setSelectedNodeIp('');
+      setSelectedNodeProxyAddress('');
     }
   };
 
@@ -75,7 +83,7 @@ const SnmpTrapConfiguration: React.FC = () => {
               loading={loading}
               onChange={handleNodeChange}
               options={nodeList.map((node) => ({
-                label: `${node.name} (${node.ip})`,
+                label: `${node.name}`,
                 value: node.id,
               }))}
             />
@@ -85,67 +93,37 @@ const SnmpTrapConfiguration: React.FC = () => {
           </span>
         </Form.Item>
 
-        {selectedNodeIp && (
+        {selectedNodeProxyAddress && (
           <div className="p-[20px] bg-[var(--color-fill-1)] w-full">
             <div className="mb-[10px] font-bold text-[16px]">
               {t('log.integration.snmpTrapAccessGuide')}
             </div>
-            <Steps
-              direction="vertical"
-              current={1}
-              items={[
-                {
-                  status: 'process',
-                  title: t('log.integration.snmpTrapStep1'),
-                  description: (
-                    <div>
-                      <div className="text-[12px] text-[var(--color-text-3)] mb-[10px">
-                        {t('log.integration.snmpTrapStep1Des')}
-                      </div>
-                      <div className="bg-[var(--color-bg-1)] mt-[10px] p-[10px]">
-                        <div className="pb-[10px] mb-[10px] border-b border-[var(--color-border-1)]">
-                          <span className="text-[12px] text-[var(--color-text-3)]">
-                            {t('log.integration.snmpTrapTargetIp')}:
-                          </span>
-                          <span className="ml-[10px] text-[var(--color-primary)] font-mono font-semibold">
-                            {selectedNodeIp}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-[12px] text-[var(--color-text-3)]">
-                            {t('log.integration.snmpTrapTargetPort')}:
-                          </span>
-                          <span className="ml-[10px] text-[var(--color-primary)] font-mono font-semibold">
-                            162
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ),
-                },
-                {
-                  status: 'process',
-                  title: t('log.integration.snmpTrapStep2'),
-                  description: (
-                    <div>
-                      <div className="text-[12px] text-[var(--color-text-3)] mb-[10px">
-                        {t('log.integration.snmpTrapStep2Des')}
-                      </div>
-                      <div className="bg-[var(--color-bg-1)] mt-[10px] p-[10px]">
-                        <div>
-                          <span className="text-[12px] text-[var(--color-text-3)]">
-                            {t('log.integration.auditBeatPaths')}:
-                          </span>
-                          <span className="ml-[10px] text-[var(--color-primary)] font-mono font-semibold">
-                            /usr/share/mibs
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ),
-                },
-              ]}
-            />
+            <div>
+              <div className="text-[14px] font-bold">
+                {t('log.integration.snmpTrapStep1')}
+              </div>
+              <div className="text-[12px] text-[var(--color-text-3)] mt-[4px] mb-[10px]">
+                {t('log.integration.snmpTrapStep1Des')}
+              </div>
+              <div className="bg-[var(--color-bg-1)] mt-[10px] p-[10px]">
+                <div className="pb-[10px] mb-[10px] border-b border-[var(--color-border-1)]">
+                  <span className="text-[12px] text-[var(--color-text-3)]">
+                    {t('log.integration.snmpTrapTargetIp')}:
+                  </span>
+                  <span className="ml-[10px] text-[var(--color-primary)] font-mono font-semibold">
+                    {selectedNodeProxyAddress}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[12px] text-[var(--color-text-3)]">
+                    {t('log.integration.snmpTrapTargetPort')}:
+                  </span>
+                  <span className="ml-[10px] text-[var(--color-primary)] font-mono font-semibold">
+                    162
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </Form>

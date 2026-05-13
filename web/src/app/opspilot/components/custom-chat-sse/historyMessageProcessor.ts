@@ -305,6 +305,7 @@ const buildFromEvents = (events: any[], finalize = true) => {
   let isThinking = false;
   let lastBlockType: string | null = null;
   const steps: BrowserStepProgressData[] = [];
+  const agentSteps: any[] = [];
   let isRunning = false;
   let lastStep: BrowserStepProgressData | null = null;
 
@@ -434,6 +435,34 @@ const buildFromEvents = (events: any[], finalize = true) => {
               tool.browserTaskReceived = browserTaskReceived;
             }
           }
+        } else if (msg.name === 'agent_step_progress' && msg.value) {
+          const data = msg.value as any;
+          const key = `${data.agent_name || 'main'}_${data.step}`;
+          const existingIdx = agentSteps.findIndex(
+            (d: any) => `${d.agent_name || 'main'}_${d.step}` === key
+          );
+          if (existingIdx >= 0) {
+            agentSteps[existingIdx] = data;
+          } else {
+            agentSteps.push(data);
+          }
+        } else if (msg.name === 'sub_agent_progress' && msg.value) {
+          const data = msg.value as any;
+          const newStep = {
+            agent_name: data.agent_name,
+            step: 0,
+            max_steps: 0,
+            status: data.status,
+            description: data.description,
+          };
+          const existingIdx = agentSteps.findIndex(
+            (d: any) => d.agent_name === data.agent_name && (d.status === 'started' || d.status === 'running')
+          );
+          if (existingIdx >= 0 && (data.status === 'completed' || data.status === 'error')) {
+            agentSteps[existingIdx] = newStep;
+          } else {
+            agentSteps.push(newStep);
+          }
         }
         break;
 
@@ -467,7 +496,8 @@ const buildFromEvents = (events: any[], finalize = true) => {
     thinking,
     isThinking: finalize ? false : isThinking,
     browserStepProgress: lastStep,
-    browserStepsHistory
+    browserStepsHistory,
+    agentStepProgress: agentSteps.length > 0 ? agentSteps : undefined
   };
 };
 
@@ -513,6 +543,7 @@ export const processHistoryMessageWithExtras = (
   isThinking?: boolean;
   browserStepProgress?: BrowserStepProgressData | null;
   browserStepsHistory?: BrowserStepsHistory | null;
+  agentStepProgress?: import('@/app/opspilot/types/global').AgentStepProgressData[];
 } => {
   if (role !== 'bot') {
     return {

@@ -1,2 +1,2 @@
 push:
-	git add . && codegpt commit . && git push
+	git add . && git commit -m "up" . && git push

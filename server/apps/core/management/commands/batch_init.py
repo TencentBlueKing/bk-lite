@@ -118,6 +118,7 @@ class Command(BaseCommand):
         call_command("init_default_namespace")
         call_command("init_default_groups")
         call_command("init_source_api_data", force_update=True)
+        call_command("init_builtin_canvases")
 
     def _init_opspilot(self):
         """OpsPilot资源初始化"""
@@ -137,7 +138,7 @@ class Command(BaseCommand):
         try:
             result = preload_language_cache()
             self.stdout.write(
-                self.style.SUCCESS(f"语言缓存预热完成: {len(result['loaded'])} 已加载, " f"{len(result['skipped'])} 已跳过, {len(result['failed'])} 失败")
+                self.style.SUCCESS(f"语言缓存预热完成: {len(result['loaded'])} 已加载, {len(result['skipped'])} 已跳过, {len(result['failed'])} 失败")
             )
         except Exception as e:
             self.stdout.write(self.style.WARNING(f"语言缓存预热失败: {str(e)}"))

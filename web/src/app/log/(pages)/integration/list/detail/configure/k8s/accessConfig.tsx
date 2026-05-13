@@ -38,8 +38,12 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
     ? Number(searchParams.get('id'))
     : undefined;
   const { isLoading } = useApiClient();
-  const { getCloudRegionList, createK8sInstance, getK8sCommand, getInstanceList } =
-    useIntegrationApi();
+  const {
+    getCloudRegionList,
+    createK8sInstance,
+    getK8sCommand,
+    getInstanceList
+  } = useIntegrationApi();
   const [submitLoading, setSubmitLoading] = useState(false);
   const [cloudRegionLoading, setCloudRegionLoading] = useState(false);
   const [cloudRegionList, setCloudRegionList] = useState<CloudRegionItem[]>([]);
@@ -49,7 +53,9 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
     () => Boolean(String(commandData?.docker_container_log_path || '').trim()),
     [commandData?.docker_container_log_path]
   );
-  const [showDockerAdvanced, setShowDockerAdvanced] = useState(hasDockerContainerPath);
+  const [showDockerAdvanced, setShowDockerAdvanced] = useState(
+    hasDockerContainerPath
+  );
 
   useEffect(() => {
     if (!isLoading) {
@@ -66,7 +72,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         k8sCluster: commandData.instance_id,
         runtime_profile: commandData.runtime_profile || 'standard',
         host_log_path: commandData.host_log_path,
-        docker_container_log_path: commandData.docker_container_log_path,
+        docker_container_log_path: commandData.docker_container_log_path
       });
     }
   }, [commandData, form]);
@@ -94,7 +100,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
       const data = await getInstanceList({
         collect_type_id: collectTypeId,
         page: 1,
-        page_size: 1000,
+        page_size: -1
       });
       setK8sClusterList(data?.items || []);
     } finally {
@@ -110,7 +116,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         cloud_region_id: values.cloud_region_id,
         runtime_profile: values.runtime_profile as RuntimeProfile,
         host_log_path: values.host_log_path,
-        docker_container_log_path: values.docker_container_log_path,
+        docker_container_log_path: values.docker_container_log_path
       };
 
       if (values.accessType === 'new') {
@@ -119,11 +125,11 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
           id: clusterName,
           name: clusterName,
           organizations: values.organizations,
-          collect_type_id: collectTypeId,
+          collect_type_id: collectTypeId
         });
         const commandResult = await getK8sCommand({
           ...commandParams,
-          instance_id: createResult?.instance_id,
+          instance_id: createResult?.instance_id
         });
         onNext({
           command: commandResult,
@@ -131,14 +137,14 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
           cloud_region_id: values.cloud_region_id,
           runtime_profile: values.runtime_profile,
           host_log_path: values.host_log_path,
-          docker_container_log_path: values.docker_container_log_path,
+          docker_container_log_path: values.docker_container_log_path
         });
         return;
       }
 
       const commandResult = await getK8sCommand({
         ...commandParams,
-        instance_id: values.k8sCluster,
+        instance_id: values.k8sCluster
       });
       onNext({
         command: commandResult,
@@ -146,7 +152,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         cloud_region_id: values.cloud_region_id,
         runtime_profile: values.runtime_profile,
         host_log_path: values.host_log_path,
-        docker_container_log_path: values.docker_container_log_path,
+        docker_container_log_path: values.docker_container_log_path
       });
     } finally {
       setSubmitLoading(false);
@@ -193,7 +199,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         className="w-full"
         initialValues={{
           accessType: 'new',
-          runtime_profile: commandData?.runtime_profile || 'standard',
+          runtime_profile: commandData?.runtime_profile || 'standard'
         }}
       >
         <div className="flex items-center mb-6">
@@ -232,15 +238,22 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
           {({ getFieldValue }) =>
             getFieldValue('accessType') === 'new' ? (
               <>
-                <Form.Item label={t('log.integration.k8s.clusterName')} required>
+                <Form.Item
+                  label={t('log.integration.k8s.clusterName')}
+                  required
+                >
                   <div className="flex items-start gap-4">
                     <Form.Item
                       name="name"
                       noStyle
-                      rules={[{ required: true, message: t('common.required') }]}
+                      rules={[
+                        { required: true, message: t('common.required') }
+                      ]}
                     >
                       <Input
-                        placeholder={t('log.integration.k8s.clusterNamePlaceholder')}
+                        placeholder={t(
+                          'log.integration.k8s.clusterNamePlaceholder'
+                        )}
                         style={{ width: FORM_CONTROL_WIDTH }}
                       />
                     </Form.Item>
@@ -250,12 +263,17 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                   </div>
                 </Form.Item>
 
-                <Form.Item label={t('log.integration.k8s.organization')} required>
+                <Form.Item
+                  label={t('log.integration.k8s.organization')}
+                  required
+                >
                   <div className="flex items-start gap-4">
                     <Form.Item
                       name="organizations"
                       noStyle
-                      rules={[{ required: true, message: t('common.required') }]}
+                      rules={[
+                        { required: true, message: t('common.required') }
+                      ]}
                     >
                       <GroupTreeSelector
                         style={{ width: FORM_CONTROL_WIDTH }}
@@ -283,7 +301,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                       style={{ width: FORM_CONTROL_WIDTH }}
                       options={k8sClusterList.map((item) => ({
                         label: item.name,
-                        value: item.id,
+                        value: item.id
                       }))}
                     />
                   </Form.Item>
@@ -309,7 +327,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                 style={{ width: FORM_CONTROL_WIDTH }}
                 options={cloudRegionList.map((item) => ({
                   label: item.name || item.id,
-                  value: item.id,
+                  value: item.id
                 }))}
               />
             </Form.Item>
@@ -327,9 +345,15 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
               rules={[{ required: true, message: t('common.required') }]}
             >
               <Radio.Group style={{ width: FORM_CONTROL_WIDTH }}>
-                <Radio value="standard">{t('log.integration.k8s.runtimeProfileStandard')}</Radio>
-                <Radio value="docker">{t('log.integration.k8s.runtimeProfileDocker')}</Radio>
-                <Radio value="custom">{t('log.integration.k8s.runtimeProfileCustom')}</Radio>
+                <Radio value="standard">
+                  {t('log.integration.k8s.runtimeProfileStandard')}
+                </Radio>
+                <Radio value="docker">
+                  {t('log.integration.k8s.runtimeProfileDocker')}
+                </Radio>
+                <Radio value="custom">
+                  {t('log.integration.k8s.runtimeProfileCustom')}
+                </Radio>
               </Radio.Group>
             </Form.Item>
             <div className="text-[var(--color-text-3)] flex-1">
@@ -347,7 +371,10 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
           {({ getFieldValue }) =>
             getFieldValue('runtime_profile') === 'custom' ? (
               <>
-                <Form.Item label={t('log.integration.k8s.hostLogPath')} required>
+                <Form.Item
+                  label={t('log.integration.k8s.hostLogPath')}
+                  required
+                >
                   <div className="flex items-start gap-4">
                     <Form.Item
                       name="host_log_path"
@@ -359,13 +386,19 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                             if (!value || String(value).startsWith('/')) {
                               return Promise.resolve();
                             }
-                            return Promise.reject(new Error(t('log.integration.k8s.absolutePathRequired')));
-                          },
-                        },
+                            return Promise.reject(
+                              new Error(
+                                t('log.integration.k8s.absolutePathRequired')
+                              )
+                            );
+                          }
+                        }
                       ]}
                     >
                       <Input
-                        placeholder={t('log.integration.k8s.hostLogPathPlaceholder')}
+                        placeholder={t(
+                          'log.integration.k8s.hostLogPathPlaceholder'
+                        )}
                         style={{ width: FORM_CONTROL_WIDTH }}
                       />
                     </Form.Item>
@@ -386,7 +419,9 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                 </Button>
 
                 {showDockerAdvanced ? (
-                  <Form.Item label={t('log.integration.k8s.dockerContainerLogPath')}>
+                  <Form.Item
+                    label={t('log.integration.k8s.dockerContainerLogPath')}
+                  >
                     <div className="flex items-start gap-4">
                       <Form.Item
                         name="docker_container_log_path"
@@ -397,13 +432,19 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                               if (!value || String(value).startsWith('/')) {
                                 return Promise.resolve();
                               }
-                              return Promise.reject(new Error(t('log.integration.k8s.absolutePathRequired')));
-                            },
-                          },
+                              return Promise.reject(
+                                new Error(
+                                  t('log.integration.k8s.absolutePathRequired')
+                                )
+                              );
+                            }
+                          }
                         ]}
                       >
                         <Input
-                          placeholder={t('log.integration.k8s.dockerContainerLogPathPlaceholder')}
+                          placeholder={t(
+                            'log.integration.k8s.dockerContainerLogPathPlaceholder'
+                          )}
                           style={{ width: FORM_CONTROL_WIDTH }}
                         />
                       </Form.Item>

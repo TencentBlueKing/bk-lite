@@ -86,13 +86,9 @@ class LogAccessScopeService:
         accessible_map = {group.id: group for group in accessible_groups}
 
         requested_ids = []
-        has_default = False
         for group_id in log_group_ids:
             normalized = str(group_id).strip()
             if not normalized:
-                continue
-            if normalized == "default":
-                has_default = True
                 continue
             requested_ids.append(normalized)
 
@@ -100,7 +96,7 @@ class LogAccessScopeService:
         if unauthorized:
             raise ValueError(f"以下日志分组无权限访问或不存在: {', '.join(unauthorized)}")
 
-        if has_default or not requested_ids:
+        if not requested_ids:
             resolved_ids = [group.id for group in accessible_groups]
         else:
             resolved_ids = []
@@ -111,7 +107,7 @@ class LogAccessScopeService:
                     seen.add(group_id)
 
         if not resolved_ids:
-            raise ValueError("当前用户无可用日志分组权限")
+            raise ValueError("当前组织暂无可用的日志分组权限")
 
         return LogAccessScope(
             log_groups=resolved_ids,

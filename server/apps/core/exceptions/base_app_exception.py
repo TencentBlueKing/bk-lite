@@ -16,20 +16,14 @@ class BaseAppException(Exception):
         :param data: 附加数据，可以是任意类型
         :param args: 传递给父类Exception的其他参数
         """
-        super(BaseAppException, self).__init__(*args)
-        
         self.message = message or self.MESSAGE
+        super(BaseAppException, self).__init__(self.message, *args)
+
         self.data = data
 
         # 仅记录异常发生的关键信息
         logger = logging.getLogger(self.__class__.__module__)
-        logger.log(
-            self.LOG_LEVEL,
-            "异常 %s: %s [%s]",
-            self.__class__.__name__,
-            self.message,
-            self.ERROR_CODE
-        )
+        logger.log(self.LOG_LEVEL, "异常 %s: %s [%s]", self.__class__.__name__, self.message, self.ERROR_CODE)
 
     def render_data(self) -> Any:
         """
@@ -55,6 +49,7 @@ class BaseAppException(Exception):
 
 class UnauthorizedException(BaseAppException):
     """认证失败异常，返回401状态码"""
+
     ERROR_CODE = "4010001"
     MESSAGE = "未授权访问"
     STATUS_CODE = 401

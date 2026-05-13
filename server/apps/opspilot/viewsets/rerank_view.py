@@ -5,6 +5,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.models import RerankProvider
 from apps.opspilot.serializers.rerank_serializer import RerankProviderSerializer
+from apps.opspilot.utils.vendor_model_mixin import VendorModelMixin
 
 
 class ObjFilter(FilterSet):
@@ -21,7 +22,7 @@ class ObjFilter(FilterSet):
         return qs.filter(enabled=enabled)
 
 
-class RerankProviderViewSet(AuthViewSet):
+class RerankProviderViewSet(VendorModelMixin, AuthViewSet):
     queryset = RerankProvider.objects.all()
     serializer_class = RerankProviderSerializer
     permission_key = "provider.rerank_model"

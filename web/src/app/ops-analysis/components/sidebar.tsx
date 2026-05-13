@@ -254,6 +254,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       const isRoot = parentId === null;
       const isGroup = item.type === 'directory';
       const canDelete = item.type !== 'directory' || !hasChildren(item);
+      const isBuiltIn = !!item.is_build_in;
 
       const stopEventPropagation = (event?: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement> | Event) => {
         event?.stopPropagation?.();
@@ -263,6 +264,31 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       const isCatalogue = item.type === 'directory';
       const editPermission = isCatalogue ? 'EditCatalogue' : 'EditChart';
       const deletePermission = isCatalogue ? 'DeleteCatalogue' : 'DeleteChart';
+
+      // 内置对象：只显示导出按钮（非目录），其余禁用
+      if (isBuiltIn) {
+        return (
+          <Menu selectable={false}>
+            {!isGroup && (
+              <Menu.Item
+                key="export"
+                onClick={(e) => {
+                  stopEventPropagation(e.domEvent);
+                  handleExport(item);
+                }}
+              >
+                {t('opsAnalysisSidebar.exportYaml')}
+              </Menu.Item>
+            )}
+            <Menu.Item key="edit" disabled>
+              {t('common.edit')}
+            </Menu.Item>
+            <Menu.Item key="delete" disabled>
+              {t('common.delete')}
+            </Menu.Item>
+          </Menu>
+        );
+      }
 
       return (
         <Menu selectable={false}>
@@ -436,22 +462,29 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                 className="max-w-[126px] whitespace-nowrap overflow-hidden text-ellipsis"
                 text={item.name || '--'}
               />
+              {item.is_build_in && item.type === 'directory' && (
+                <span className="ml-1 text-[10px] text-gray-400">({t('common.builtIn')})</span>
+              )}
             </span>
-            <Dropdown
-              overlay={menuFor(item, parentId)}
-              trigger={['click']}
-              placement="bottomLeft"
-              getPopupContainer={() => document.body}
-            >
-              <Button
-                type="text"
-                icon={<MoreOutlined />}
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-                className="flex-shrink-0"
-                size="small"
-              />
-            </Dropdown>
+            {(item.is_build_in && item.type === 'directory') ? (
+              <span />
+            ) : (
+              <Dropdown
+                overlay={menuFor(item, parentId)}
+                trigger={['click']}
+                placement="bottomLeft"
+                getPopupContainer={() => document.body}
+              >
+                <Button
+                  type="text"
+                  icon={<MoreOutlined />}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  className="flex-shrink-0"
+                  size="small"
+                />
+              </Dropdown>
+            )}
           </span>
         ),
         children: item.children

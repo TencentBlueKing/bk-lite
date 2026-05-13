@@ -11,6 +11,7 @@ import CloudTask from './components/cloudTask';
 import HostTask from './components/hostTask';
 import IPMITask from './components/ipmiTask';
 import ConfigFileTask from './components/configFileTask';
+import PluginCard from './components/pluginCard';
 import TaskDetail from './components/taskDetail';
 import MarkdownRenderer from '@/components/markdown';
 import CustomTable from '@/components/custom-table';
@@ -22,17 +23,7 @@ import type { ColumnType } from 'antd/es/table';
 import type { FilterValue } from 'antd/es/table/interface';
 import { Modal } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import {
-  Input,
-  Button,
-  Spin,
-  Tag,
-  Drawer,
-  message,
-  Tabs,
-  Card,
-  Tooltip,
-} from 'antd';
+import { Input, Button, Spin, Tag, Drawer, message, Tabs, Tooltip } from 'antd';
 import {
   getExecStatusConfig,
   EXEC_STATUS,
@@ -52,10 +43,6 @@ type ExtendedColumnItem = ColumnType<CollectTask> & {
   key: string;
   dataIndex?: string;
 };
-
-interface PluginCardProps {
-  tab: TreeNode;
-}
 
 const ProfessionalCollection: React.FC = () => {
   const { t } = useTranslation();
@@ -861,38 +848,41 @@ const ProfessionalCollection: React.FC = () => {
     setCurrentColumns(newColumns);
   }, [executingTaskIds]);
 
-  const handlePluginCardClick = (pluginId: string) => {
-    setSelectedPluginId(pluginId);
-    stateRef.current.selectedPluginId = pluginId;
+  const handlePluginCardClick = useCallback(
+    (pluginId: string) => {
+      setSelectedPluginId(pluginId);
+      stateRef.current.selectedPluginId = pluginId;
 
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
 
-    setSearchTextUI('');
-    stateRef.current.searchText = '';
-    stateRef.current.currentExecStatus = undefined;
+      setSearchTextUI('');
+      stateRef.current.searchText = '';
+      stateRef.current.currentExecStatus = undefined;
 
-    stateRef.current.pagination.current = 1;
-    setPaginationUI((prev) => ({
-      ...prev,
-      current: 1,
-    }));
+      stateRef.current.pagination.current = 1;
+      setPaginationUI((prev) => ({
+        ...prev,
+        current: 1,
+      }));
 
-    setPluginDoc('');
-    setDocLoading(false);
+      setPluginDoc('');
+      setDocLoading(false);
 
-    fetchData(true, pluginId);
-    syncUrlState(
-      {
-        categoryId: selectedCategoryRef.current.categoryId || 'all',
-        pluginId,
-        taskId: null,
-      },
-      'replace'
-    );
-  };
+      fetchData(true, pluginId);
+      syncUrlState(
+        {
+          categoryId: selectedCategoryRef.current.categoryId || 'all',
+          pluginId,
+          taskId: null,
+        },
+        'replace',
+      );
+    },
+    [fetchData, syncUrlState],
+  );
 
   useEffect(() => {
     if (!categoryList.length) {
@@ -926,119 +916,6 @@ const ProfessionalCollection: React.FC = () => {
     openTaskDetailById(taskId);
   }, [categoryList.length, currentTask, detailVisible, openTaskDetailById, searchParams]);
 
-  const PluginCard: React.FC<PluginCardProps> = ({ tab }) => {
-    const isActive = selectedPluginId === tab.id;
-    const tags = tab.tag || [];
-    const description = tab.desc || '';
-
-    const taskStats = taskStatus[tab.model_id || tab.id] || {
-      running: 0,
-      success: 0,
-      failed: 0,
-    };
-
-    const statusItems = [
-      {
-        color: 'bg-blue-500',
-        label: t('Collection.statusLabel.running'),
-        value: taskStats.running,
-      },
-      {
-        color: 'bg-green-500',
-        label: t('Collection.statusLabel.syncSuccess'),
-        value: taskStats.success,
-      },
-      {
-        color: 'bg-red-500',
-        label: t('Collection.statusLabel.syncFailed'),
-        value: taskStats.failed,
-      },
-    ];
-
-    return (
-      <Card
-        key={tab.id}
-        hoverable
-        className={`cursor-pointer transition-all ${isActive
-          ? 'border-blue-500 shadow-md bg-blue-50'
-          : 'border-gray-200 hover:border-blue-300'
-          }`}
-        styles={{ body: { padding: '12px' } }}
-        onClick={() => handlePluginCardClick(tab.id)}
-      >
-        <div className="flex items-center gap-3 mb-2">
-          <div
-            className={`w-10 h-10 rounded flex items-center justify-center text-lg font-semibold flex-shrink-0 ${isActive ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-600'}`}
-          >
-            {tab.name?.charAt(0)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-xs text-gray-700 mb-2 leading-relaxed">
-              <span
-                className={`font-semibold ${isActive ? 'text-blue-600' : 'text-gray-900'}`}
-              >
-                {tab.name}
-              </span>
-              {description && (
-                <span className="text-gray-500 ml-1">{description}</span>
-              )}
-            </div>
-            {tags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {tags.map((tag: string) => (
-                  <Tag
-                    key={tag}
-                    color="blue"
-                    style={{
-                      fontSize: '10px',
-                      padding: '0 4px',
-                      lineHeight: '16px',
-                      margin: 0,
-                      borderRadius: '2px',
-                    }}
-                  >
-                    {tag}
-                  </Tag>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <Tooltip
-          placement="left"
-          title={
-            <div className="flex flex-col gap-1">
-              {statusItems.map(({ label, value, color }) => (
-                <div key={label} className="flex items-center gap-2 text-xs">
-                  <div className={`w-2 h-2 rounded-full ${color}`} />
-                  <span>
-                    {label}：{value}
-                  </span>
-                </div>
-              ))}
-            </div>
-          }
-        >
-          <div
-            className="flex items-center justify-around pt-2 mt-3 border-t"
-            style={{ borderColor: 'var(--color-border-2)' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {statusItems.map(({ color, value }, index) => (
-              <div key={index} className="flex items-center gap-1.5">
-                <div
-                  className={`w-2 h-2 rounded-full ${color} ring-2 ring-white shadow-sm`}
-                />
-                <span className="text-sm font-medium">{value}</span>
-              </div>
-            ))}
-          </div>
-        </Tooltip>
-      </Card>
-    );
-  };
-
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       <div className="bg-white border-b border-gray-200 ml-2">
@@ -1060,28 +937,43 @@ const ProfessionalCollection: React.FC = () => {
         )}
       </div>
 
-      <div className="flex flex-1 overflow-hidden pt-4">
-        <div className="w-60 flex-shrink-0 h-full">
+      <div className="flex min-h-0 flex-1 overflow-hidden pt-4">
+        <div className="flex min-h-0 w-70 shrink-0 flex-col self-stretch">
           {categoryLoading ? (
             <div className="flex items-center justify-center py-4">
               <Spin size="small" />
             </div>
           ) : (
-            <div className="flex flex-col gap-3 px-2 py-1 overflow-auto h-full">
+            <div className="min-h-0 flex-1 overflow-auto px-2 py-1 space-y-3">
               {selectedCategoryRef.current.category?.tabItems?.map((tab) => (
-                <PluginCard key={tab.id} tab={tab} />
+                <PluginCard
+                  key={tab.id}
+                  tab={tab}
+                  isActive={selectedPluginId === tab.id}
+                  onSelect={handlePluginCardClick}
+                  runningLabel={t('Collection.statusLabel.running')}
+                  successLabel={t('Collection.statusLabel.syncSuccess')}
+                  failedLabel={t('Collection.statusLabel.syncFailed')}
+                  runningCount={
+                    taskStatus[tab.model_id || tab.id]?.running || 0
+                  }
+                  successCount={
+                    taskStatus[tab.model_id || tab.id]?.success || 0
+                  }
+                  failedCount={taskStatus[tab.model_id || tab.id]?.failed || 0}
+                />
               ))}
             </div>
           )}
         </div>
 
         <div
-          className="w-px flex-shrink-0 mr-2"
+          className="w-px shrink-0 mr-2"
           style={{ backgroundColor: 'var(--color-border-2)' }}
         ></div>
 
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex flex-col flex-1 overflow-hidden bg-white rounded shadow-sm border border-gray-200">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
               <span className="text-base font-semibold text-gray-900">
                 {currentPlugin?.name || ''}
@@ -1138,7 +1030,7 @@ const ProfessionalCollection: React.FC = () => {
                   displayFieldKeys,
                   choosableFields: allColumns.filter(
                     (item): item is ColumnItem =>
-                      item.key !== 'action' && 'dataIndex' in item
+                      item.key !== 'action' && 'dataIndex' in item,
                   ),
                 }}
               />
@@ -1167,8 +1059,7 @@ const ProfessionalCollection: React.FC = () => {
             >
               {taskDocDrawerVisible
                 ? t('Collection.closeDoc')
-                : t('Collection.viewDoc')
-              }
+                : t('Collection.viewDoc')}
             </Button>
           </div>
         }

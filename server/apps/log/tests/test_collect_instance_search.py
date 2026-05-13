@@ -87,3 +87,44 @@ def test_search_instance_uses_current_page_node_lookup(monkeypatch):
     assert requested_node_ids == ["node-3", "node-4"]
     assert result["count"] == 5
     assert [item["node_name"] for item in result["items"]] == ["name-node-3", "name-node-4"]
+
+
+def test_search_instance_with_page_size_minus_one_returns_all_items(monkeypatch):
+    instances = [
+        SimpleNamespace(
+            id=f"inst-{idx}",
+            name=f"instance-{idx}",
+            node_id=f"node-{idx}",
+            collect_type_id="ctype",
+            collect_type=SimpleNamespace(name="file", collector="Vector"),
+        )
+        for idx in range(1, 4)
+    ]
+    requested_node_ids = []
+
+    class FakeNodeMgmt:
+        def get_node_names_by_ids(self, node_ids):
+            requested_node_ids.extend(node_ids)
+            return [{"id": node_id, "name": f"name-{node_id}"} for node_id in node_ids]
+
+    monkeypatch.setattr(
+        "apps.log.services.collect_type.CollectInstanceOrganization",
+        SimpleNamespace(objects=FakeValuesListManager([])),
+    )
+    monkeypatch.setattr(
+        "apps.log.services.collect_type.CollectConfig",
+        SimpleNamespace(objects=FakeValuesListManager([])),
+    )
+    monkeypatch.setattr("apps.log.services.collect_type.NodeMgmt", FakeNodeMgmt)
+
+    result = CollectTypeService.search_instance_with_permission(
+        collect_type_id=None,
+        name=None,
+        page=1,
+        page_size=-1,
+        queryset=FakeQuerySet(instances),
+    )
+
+    assert requested_node_ids == ["node-1", "node-2", "node-3"]
+    assert result["count"] == 3
+    assert [item["id"] for item in result["items"]] == ["inst-1", "inst-2", "inst-3"]

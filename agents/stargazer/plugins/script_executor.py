@@ -3,6 +3,7 @@
 SSH 脚本执行器插件
 用于统一处理所有基于脚本的采集任务
 """
+
 import os
 import json
 import logging
@@ -16,7 +17,7 @@ logger = logging.getLogger("stargazer.ssh_plugin")
 class SSHPlugin:
     """
     SSH 脚本执行插件
-    
+
     用于执行基于脚本的采集任务，支持：
     1. 自动判断本地执行还是 SSH 远程执行
     2. 从指定路径读取脚本
@@ -26,7 +27,7 @@ class SSHPlugin:
     def __init__(self, params: Dict[str, Any]):
         """
         初始化 SSH 插件
-        
+
         Args:
             params: 参数字典，包含：
                 - node_id: 节点 ID
@@ -61,7 +62,7 @@ class SSHPlugin:
     def _get_shell_type(self) -> str:
         """
         根据脚本文件扩展名判断脚本类型
-        
+
         Returns:
             脚本类型，支持: "sh"(默认), "bash", "bat", "cmd", "powershell", "pwsh"
         """
@@ -70,15 +71,15 @@ class SSHPlugin:
 
         # 扩展名到 shell 类型的映射
         ext_to_shell = {
-            '.sh': 'bash',
-            '.bash': 'bash',
-            '.bat': 'bat',
-            '.cmd': 'cmd',
-            '.ps1': 'powershell',
-            '.psm1': 'powershell',
+            ".sh": "bash",
+            ".bash": "bash",
+            ".bat": "bat",
+            ".cmd": "cmd",
+            ".ps1": "powershell",
+            ".psm1": "powershell",
         }
 
-        return ext_to_shell.get(ext, 'sh')  # 默认返回 sh
+        return ext_to_shell.get(ext, "sh")  # 默认返回 sh
 
     def _read_script(self) -> str:
         """读取脚本内容"""
@@ -91,10 +92,16 @@ class SSHPlugin:
             path = project_root / self.script_path
 
         if not path.exists():
-            raise FileNotFoundError(f"Script not found: {path} (original: {self.script_path})")
+            raise FileNotFoundError(
+                f"Script not found: {path} (original: {self.script_path})"
+            )
 
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, "r", encoding="utf-8") as f:
             content = f.read()
+
+        host_innerip = str(self.connect_ip or self.host or "").strip()
+        if host_innerip:
+            content = content.replace("{{bk_host_innerip}}", host_innerip)
 
         logger.info(f"📖 Script loaded from {path}: {len(content)} bytes")
         return content
@@ -103,18 +110,20 @@ class SSHPlugin:
         """构建执行参数"""
         exec_params = {
             "command": script_content,
-            "execute_timeout": self.execute_timeout
+            "execute_timeout": self.execute_timeout,
         }
 
         # 如果不是本地执行，需要 SSH 凭据
         if not self.node_info:
-            exec_params.update({
-                "host": self.connect_ip,
-                "user": self.username,
-                "username": self.username,
-                "password": self.password,
-                "port": int(self.port)
-            })
+            exec_params.update(
+                {
+                    "host": self.connect_ip,
+                    "user": self.username,
+                    "username": self.username,
+                    "password": self.password,
+                    "port": int(self.port),
+                }
+            )
         else:
             # 本地执行时指定脚本类型
             shell_type = self._get_shell_type()
@@ -150,7 +159,7 @@ class SSHPlugin:
     async def list_all_resources(self, need_raw=False) -> Dict[str, Any]:
         """
         执行脚本采集
-        
+
         Returns:
             采集结果，格式：{"success": True, "result": "..."}
             need_raw： 是否需要原始结果
@@ -169,14 +178,14 @@ class SSHPlugin:
             else:
                 subject = f"{execution_mode}.execute.{self.node_id}"
 
-            logger.info(f"🚀 Executing script via NATS: mode={execution_mode}, subject={subject}")
+            logger.info(
+                f"🚀 Executing script via NATS: mode={execution_mode}, subject={subject}"
+            )
 
             # 4. 通过 NATS 执行
             payload = json.dumps({"args": [exec_params], "kwargs": {}}).encode()
             response = await nats_request(
-                subject,
-                payload=payload,
-                timeout=self.execute_timeout
+                subject, payload=payload, timeout=self.execute_timeout
             )
             if response.get("success"):
                 if need_raw:
@@ -184,15 +193,24 @@ class SSHPlugin:
                 collect_data = response["result"]
                 parsed_payload = self._parse_collect_output(collect_data)
                 if parsed_payload:
-                    result = {"result": {self.model_id: parsed_payload}, "success": True}
+                    result = {
+                        "result": {self.model_id: parsed_payload},
+                        "success": True,
+                    }
                 else:
                     result = {"result": {}, "success": True}
             else:
-                result = {"result": {"cmdb_collect_error": response.get("result")}, "success": False}
-            logger.info(f"✅ Script execution completed: success={response.get('success')}")
+                result = {
+                    "result": {"cmdb_collect_error": response.get("result")},
+                    "success": False,
+                }
+            logger.info(
+                f"✅ Script execution completed: success={response.get('success')}"
+            )
             return result
         except Exception as e:
             import traceback
+
             logger.error(f"❌ SSHPlugin execution failed: {traceback.format_exc()}")
             return {"result": {"cmdb_collect_error": str(e)}, "success": False}
 

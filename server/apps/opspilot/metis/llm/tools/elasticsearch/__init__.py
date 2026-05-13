@@ -53,15 +53,8 @@ from apps.opspilot.metis.llm.tools.elasticsearch.snapshots import (
 )
 
 CONSTRUCTOR_PARAMS = [
-    {"name": "url", "type": "string", "required": False, "description": "Elasticsearch连接地址，例如 http://127.0.0.1:9200"},
-    {"name": "username", "type": "string", "required": False, "description": "Basic Auth 用户名"},
-    {"name": "password", "type": "string", "required": False, "description": "Basic Auth 密码"},
-    {"name": "api_key", "type": "string", "required": False, "description": "Elasticsearch API Key"},
-    {"name": "verify_certs", "type": "boolean", "required": False, "description": "是否校验证书"},
-    {"name": "ca_certs", "type": "string", "required": False, "description": "CA证书路径"},
-    {"name": "client_cert", "type": "string", "required": False, "description": "客户端证书路径"},
-    {"name": "client_key", "type": "string", "required": False, "description": "客户端私钥路径"},
-    {"name": "request_timeout", "type": "integer", "required": False, "description": "请求超时时间（秒）"},
+    {"name": "es_instances", "type": "string", "required": False, "description": "Elasticsearch多实例JSON配置"},
+    {"name": "es_default_instance_id", "type": "string", "required": False, "description": "默认Elasticsearch实例ID"},
 ]
 
 __all__ = [

@@ -4,6 +4,7 @@ logs
 .venv
 __pycache__
 *.pyc
+*.out
 *.pyo
 .DS_Store
 *.pyd
@@ -39,3 +40,4 @@ code-reviews/
 /web/enterprise
 /web/src/app/**/(enterprise)/
 .env.dev
+.sisyphus/*

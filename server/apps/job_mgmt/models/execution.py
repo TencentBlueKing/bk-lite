@@ -26,6 +26,9 @@ class JobExecution(TimeInfo, MaintainerInfo):
     script = models.ForeignKey(Script, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联脚本")
     playbook = models.ForeignKey(Playbook, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联Playbook")
 
+    # 关联的定时任务（定时触发时设置，用于并发策略判断）
+    scheduled_task = models.ForeignKey("job_mgmt.ScheduledTask", on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联定时任务")
+
     # 目标来源
     target_source = models.CharField(max_length=32, choices=TargetSource.CHOICES, default=TargetSource.MANUAL, verbose_name="目标来源")
 
@@ -64,6 +67,12 @@ class JobExecution(TimeInfo, MaintainerInfo):
 
     # 执行用户（快照，记录执行时的凭据用户名）
     executor_user = models.CharField(max_length=128, blank=True, default="", verbose_name="执行用户")
+
+    # 回调地址（第三方 API 调用时传入，任务完成后 POST 通知）
+    callback_url = models.CharField(max_length=512, null=True, blank=True, verbose_name="回调地址")
+
+    # Celery 任务 ID（用于 revoke 取消队列中的任务）
+    celery_task_id = models.CharField(max_length=256, blank=True, default="", verbose_name="Celery任务ID")
 
     # 组织归属
     team = models.JSONField(default=list, verbose_name="团队ID列表")

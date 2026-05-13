@@ -295,6 +295,28 @@ def _safe_extract_zip(zip_file: zipfile.ZipFile, workspace: Path) -> None:
     zip_file.extractall(workspace)
 
 
+def _resolve_playbook_path_from_workspace(workspace: Path, playbook_entry: str) -> Path:
+    entry = str(playbook_entry).strip() or "playbook.yml"
+    exact_path = _safe_workspace_path(workspace, entry, "playbook_path")
+    if exact_path.is_file():
+        return exact_path
+
+    if len(Path(entry).parts) > 1:
+        raise ValueError(f"ZIP 解压后未找到入口文件: {entry}")
+
+    entry_name = Path(entry).name
+    candidates = sorted(
+        (path for path in workspace.rglob(entry_name) if path.is_file()),
+        key=lambda path: (len(path.relative_to(workspace).parts), str(path.relative_to(workspace))),
+    )
+    if not candidates:
+        raise ValueError(f"ZIP 解压后未找到入口文件: {entry}")
+    if len(candidates) > 1:
+        candidate_names = [str(path.relative_to(workspace)) for path in candidates]
+        raise ValueError(f"ZIP 解压后找到多个入口文件，请显式指定 playbook_path: {candidate_names}")
+    return candidates[0]
+
+
 def _normalize_windows_target_path(target_path: str) -> str:
     return str(target_path).replace("\\", "/").rstrip("/")
 
@@ -489,7 +511,7 @@ def parse_playbook_recap(output: str) -> list[dict[str, Any]]:
 
 
 def _extract_host_task_output(lines: list[str], host: str) -> str:
-    """从 playbook 输出中提取指定 host 的 task 输出行。"""
+    """从 playbook 输出中提取指定 host 的 task 输出内容（仅提取有意义的值）。"""
     host_lines: list[str] = []
     capturing = False
 
@@ -497,7 +519,6 @@ def _extract_host_task_output(lines: list[str], host: str) -> str:
         # 匹配 ok: [host], changed: [host], fatal: [host], skipping: [host] 等
         if re.match(rf"^(ok|changed|fatal|failed|skipping|unreachable):\s+\[{re.escape(host)}\]", line):
             capturing = True
-            host_lines.append(line)
             continue
 
         # 新 TASK 或 PLAY 行结束当前捕获
@@ -512,7 +533,48 @@ def _extract_host_task_output(lines: list[str], host: str) -> str:
         if capturing:
             host_lines.append(line)
 
-    return "\n".join(host_lines).strip()
+    # 尝试从 JSON 块中提取 msg/stdout/results 等有意义的内容
+    raw_output = "\n".join(host_lines).strip()
+    return _extract_meaningful_output(raw_output)
+
+
+def _extract_meaningful_output(raw_output: str) -> str:
+    """从 ansible task 输出中提取有意义的内容（如 msg, stdout, results）。"""
+    import json as _json
+
+    # 尝试解析为 JSON 对象
+    try:
+        data = _json.loads(raw_output)
+        if isinstance(data, dict):
+            # 优先提取常见字段
+            for key in ("msg", "stdout", "stdout_lines", "results"):
+                if key in data:
+                    val = data[key]
+                    if isinstance(val, list):
+                        return "\n".join(str(item) for item in val)
+                    return str(val)
+            # 没有常见字段，返回整个 JSON
+            return raw_output
+    except (_json.JSONDecodeError, TypeError, ValueError):
+        pass
+
+    # 非 JSON，尝试去掉外层花括号内的 JSON 片段
+    # 匹配形如 { "msg": "..." } 的内容
+    json_match = re.search(r"\{[^{}]*\}", raw_output, re.DOTALL)
+    if json_match:
+        try:
+            data = _json.loads(json_match.group())
+            if isinstance(data, dict):
+                for key in ("msg", "stdout", "stdout_lines", "results"):
+                    if key in data:
+                        val = data[key]
+                        if isinstance(val, list):
+                            return "\n".join(str(item) for item in val)
+                        return str(val)
+        except (_json.JSONDecodeError, TypeError, ValueError):
+            pass
+
+    return raw_output
 
 
 def _build_host_credentials_inventory(workspace: Path, host_credentials: list[dict[str, Any]]) -> str:
@@ -699,16 +761,10 @@ async def prepare_playbook_execution(
                 # 列出解压后的 workspace 内容
                 all_files = [str(p.relative_to(workspace)) for p in workspace.rglob("*") if p.is_file()]
                 logger.info("[prepare_playbook] workspace 文件列表: %s", all_files)
-                # 在解压后的内容中查找 playbook.yml 入口文件
                 playbook_entry = payload.playbook_path or "playbook.yml"
-                # 支持 ZIP 内有顶层目录的情况（如 playbook-template/playbook.yml）
-                candidates = list(workspace.rglob(Path(playbook_entry).name))
-                logger.info("[prepare_playbook] 查找入口文件 '%s', 候选: %s", playbook_entry, candidates)
-                if candidates:
-                    playbook_path = str(candidates[0])
-                    logger.info("[prepare_playbook] 使用 playbook_path=%s", playbook_path)
-                else:
-                    raise ValueError(f"ZIP 解压后未找到入口文件: {playbook_entry}")
+                resolved_playbook_path = _resolve_playbook_path_from_workspace(workspace, playbook_entry)
+                playbook_path = str(resolved_playbook_path)
+                logger.info("[prepare_playbook] 使用 playbook_path=%s", playbook_path)
                 # 已通过 ZIP 提供 playbook，清除 playbook_content 避免被覆盖
                 playbook_content = None
 
@@ -887,7 +943,7 @@ async def run_command(cmd: list[str], timeout: int) -> tuple[int, str]:
     output, decode_strategy = decode_command_output(stdout)
     exit_code = proc.returncode or 0
     logger.info(
-        "command output decode: exit_code=%s strategy=%s bytes=%s raw_prefix=%s decoded_prefix=%r",
+        "command output log: exit_code=%s strategy=%s bytes=%s raw_prefix=%s decoded_prefix=%r",
         exit_code,
         decode_strategy,
         len(stdout),

@@ -1,0 +1,40 @@
+场景名称: Done Tool 显式终止测试
+
+对应计划: Phase 1 — #7 Done Tool
+
+功能描述:
+  注入一个特殊的 __done__ 工具，LLM 调用该工具时 agent 立即终止循环，
+  将工具参数中的 final_answer 作为最终回答返回。
+  DoneToolConfig 控制是否启用、工具名称和描述。
+
+当前状态: 已实现
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py:
+    - _build_done_tool L844-870（构建 StructuredTool）
+    - agent_node L1005-1006（初始化 done_tool）
+    - agent_node L1147-1148（注入 current_tools）
+    - agent_node L1316-1329（拦截 done tool_call，提取 final_answer，发射 completed 事件）
+    - logged_tool_node L1356-1357（注入 all_tools_for_node）
+  - server/apps/opspilot/metis/llm/chain/entity.py: DoneToolConfig L126-131（enabled=False, tool_name="__done__"）
+
+测试用例:
+
+  TestDoneToolBasic:
+    1. LLM 调用 __done__ 工具时立即终止: 返回 AIMessage(content=final_answer)
+    2. final_answer 为空时返回默认消息
+    3. done tool 与普通 tool_call 混合时: 优先处理 done tool，忽略其他 tool_call
+
+  TestDoneToolDisabled:
+    4. enabled=False 时不注入 done tool: current_tools 中无 __done__
+    5. 默认配置 enabled=False: 需显式开启
+
+  TestDoneToolCustomName:
+    6. 自定义 tool_name: 使用自定义名称替代 __done__
+    7. 自定义 description: LLM 看到的工具描述可配置
+
+  TestDoneToolWithStepProgress:
+    8. done tool 触发时发射 step_progress completed 事件
+
+关联测试文件: cases/test_done_tool.py
+状态: GREEN（功能已实现）

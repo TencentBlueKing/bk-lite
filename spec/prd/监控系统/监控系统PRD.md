@@ -1,7 +1,7 @@
 # 监控系统 PRD（Monitor /monitor）
 
-- 文档日期：2026-04-06
-- 文档版本：v1.5
+- 文档日期：2026-04-22
+- 文档版本：v1.6
 - 适用范围：BK-Lite Web 端监控模块（`/monitor`）
 - 原则：若官网文档与项目实现冲突，以当前代码实现为准
 
@@ -82,7 +82,13 @@
 - Event（Alert / Strategy / Template）
 - Integration（List / Asset / Group / Object）
 
-### 4.2 核心对象
+### 4.2 二级与详情导航
+- View：资源列表、实例查看弹层、实例详情页。
+- Search：查询面板、命名查询保存、已保存查询加载。
+- Event：Alert / Strategy / Template。
+- Integration：List / Asset / Group / Object；其中 List 详情页包含 Configure / Metric，两类详情能力默认可用；当模板类型为 SNMP 时，额外提供 Collect。
+
+### 4.3 核心对象
 - 监控对象类型（Monitor Object Type）
 - 监控对象（Monitor Object）
 - 监控实例（Monitor Instance）
@@ -159,6 +165,7 @@
   2) 指标定义（插件/采集类型、指标、分组、过滤、汇聚）
   3) 告警条件（阈值告警、无数据告警、自动恢复）
    4) 通知配置（通知开关、通知方式、通知人）
+- 策略配置页同时提供告警名称变量面板与指标预览，支持变量插入、阈值对照与查询结果预览。
 - 通知渠道来源于系统管理已配置渠道。
 
 ### 5.3.3 告警名称模板变量（策略配置）
@@ -176,8 +183,8 @@
 ### 5.4.1 集成列表
 - 展示可接入监控插件/模板。
 - 支持按对象分类筛选、关键字检索。
-- 支持创建、编辑、删除自建模板；当前自建模板覆盖 API 与 PULL 类型。
-- 支持进入详情配置页。
+- 支持创建、编辑、删除自建模板；当前自建模板覆盖 API、PULL 与 SNMP 类型。
+- 支持进入模板详情页；详情默认提供 Configure 与 Metric 两类能力，SNMP 模板额外提供 Collect。
 - 接入详情当前按模板/对象类型提供入口：API 类型使用接入引导页，非 K8s 对象使用自动配置页，K8s 对象使用专用三步向导。
 
 ### 5.4.2 资产管理
@@ -266,6 +273,7 @@
 3. 实例查看口径包含实例查看弹层与实例详情页两个入口。
 4. 本 PRD 仅覆盖 `/monitor` 范围，不混入 `/alarm`。
 5. Integration 口径包含插件/模板接入、资产、分组与对象治理；API 模板走接入引导页，非 K8s 对象走自动配置，K8s 对象走专用向导。
+6. 集成详情口径以当前详情页为准：默认包含 Configure、Metric，Collect 仅对 SNMP 模板开放。
 
 ---
 
@@ -303,7 +311,7 @@
 ## 11. 验收清单
 
 1. **导航与页面**
-   - `/monitor` 下四大域页面可访问，Integration 子页包含 list / asset / group / object，相关路由可用。
+   - `/monitor` 下四大域页面可访问，Integration 子页包含 list / asset / group / object，相关路由可用；list 详情可访问 configure / metric，SNMP 模板可访问 collect。
 
 2. **View**
 - 可按对象筛选资源；Pod / Node 支持列表 / 蜂巢切换；可打开实例查看弹层与详情页。
@@ -322,7 +330,7 @@
    - 模板可查看并复用生成策略。
 
 7. **Integration**
-- 插件可筛选并进入配置；支持 API 接入引导、非 K8s 对象自动配置、K8s 对象专用向导；资产可管理，分组规则可维护。
+- 插件可筛选并进入详情；支持 API 接入引导、非 K8s 对象自动配置、K8s 对象专用向导；详情默认具备 Configure / Metric，SNMP 模板具备 Collect；支持 API、PULL、SNMP 自建模板创建、编辑、删除；资产可管理，分组规则可维护。
 
 8. **Integration-Object**
 - 可维护对象类型与对象，支持排序与可见性控制。
@@ -347,4 +355,4 @@
 
 ## 13. 结论
 
-本 PRD 以代码实现为唯一事实基线，完整覆盖监控模块 `/monitor` 的 View、Search、Event、Integration 四域能力与 Integration 下的对象治理能力，明确了实例查看入口、查询保存复用、告警口径分层、通知渠道来源与集成接入方式，可直接用于研发排期、测试验收与产品口径对齐。
+本 PRD 以代码实现为唯一事实基线，完整覆盖监控模块 `/monitor` 的 View、Search、Event、Integration 四域能力与 Integration 下的对象治理能力，明确了实例查看入口、查询保存复用、策略配置辅助面板、告警口径分层、通知渠道来源与集成接入方式，可直接用于研发排期、测试验收与产品口径对齐。

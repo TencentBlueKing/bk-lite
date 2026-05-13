@@ -3,6 +3,7 @@
 # @Time: 2025/11/3 16:21
 # @Author: windyzhao
 
+
 class TreeNodeBuilder:
     """树节点构建器基类"""
 
@@ -21,7 +22,8 @@ class TreeNodeBuilder:
                 "name": directory.name,
                 "type": "directory",
                 "groups": directory.groups,
-                "children": []
+                "is_build_in": directory.is_build_in,
+                "children": [],
             }
 
             # 构建父子关系映射
@@ -46,7 +48,8 @@ class TreeNodeBuilder:
                 "desc": dashboard.desc,
                 "type": "dashboard",
                 "groups": dashboard.groups,
-                "children": []
+                "is_build_in": dashboard.is_build_in,
+                "children": [],
             }
 
             # 仪表盘属于目录的子节点
@@ -70,7 +73,8 @@ class TreeNodeBuilder:
                 "desc": topology.desc,
                 "type": "topology",
                 "groups": topology.groups,
-                "children": []
+                "is_build_in": topology.is_build_in,
+                "children": [],
             }
 
             parent_key = f"directory_{topology.directory_id}"
@@ -93,7 +97,8 @@ class TreeNodeBuilder:
                 "desc": architecture.desc,
                 "type": "architecture",
                 "groups": architecture.groups,
-                "children": []
+                "is_build_in": architecture.is_build_in,
+                "children": [],
             }
 
             parent_key = f"directory_{architecture.directory_id}"

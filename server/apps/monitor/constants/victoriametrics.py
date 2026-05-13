@@ -4,6 +4,8 @@ import os
 class VictoriaMetricsConstants:
     """VictoriaMetrics服务相关常量"""
 
+    REQUEST_TIMEOUT = (3, 15)
+
     # VictoriaMetrics服务信息
     HOST = os.getenv("VICTORIAMETRICS_HOST")
     USER = os.getenv("VICTORIAMETRICS_USER")
@@ -11,4 +13,3 @@ class VictoriaMetricsConstants:
 
     # SSL验证配置，支持环境变量控制
     SSL_VERIFY = os.getenv("VICTORIAMETRICS_SSL_VERIFY", "false").lower() == "true"
-

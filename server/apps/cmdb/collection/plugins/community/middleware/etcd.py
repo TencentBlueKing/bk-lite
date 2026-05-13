@@ -14,5 +14,4 @@ class EtcdCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "conf_file_path": "conf_file_path",
         "peer_port": "peer_port",
         "install_path": "install_path",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }
