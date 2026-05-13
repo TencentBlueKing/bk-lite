@@ -17,5 +17,4 @@ class TongwebCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "xmx": "xmx",
         "metaspace_size": "metaspace_size",
         "max_metaspace_size": "max_metaspace_size",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

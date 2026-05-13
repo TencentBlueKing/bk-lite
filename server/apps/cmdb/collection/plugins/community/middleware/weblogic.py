@@ -22,5 +22,4 @@ class WeblogicCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "admin_server_name": "admin_server_name",
         "domain_version": "domain_version",
         "java_version": "java_version",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

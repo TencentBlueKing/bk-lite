@@ -3,11 +3,12 @@ import logging
 from django.db.models import Q
 from django.http import JsonResponse
 from rest_framework import viewsets
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from apps.core.utils.loader import LanguageLoader
-from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.permission_utils import delete_instance_rules, get_permission_rules
+from apps.core.utils.user_group import normalize_user_group_ids
 
 logger = logging.getLogger(__name__)
 
@@ -132,30 +133,33 @@ class GenericViewSetFun(object):
     @classmethod
     def filter_by_group(cls, queryset, request, user):
         current_team = cls._parse_current_team_cookie(request)
+        # 验证 current_team 权限（超管豁免）
+        if not getattr(user, "is_superuser", False):
+            user_group_ids = {g["id"] for g in getattr(user, "group_list", [])}
+
+            if current_team not in user_group_ids:
+                raise PermissionDenied("无权访问该团队数据")
+
         include_children = request.COOKIES.get("include_children", "0") == "1"
         fields = [i.name for i in queryset.model._meta.fields]
         org_field = getattr(cls, "ORGANIZATION_FIELD", "team")
-        if "created_by" in fields:
-            creator_query = Q(created_by=request.user.username, domain=request.user.domain)
+        if org_field in fields:
             if include_children:
                 # 提取当前组及其所有子组的 ID
                 group_tree = getattr(user, "group_tree", [])
                 team_ids = cls.extract_child_group_ids(group_tree, current_team)
 
                 if team_ids:
-                    # 查询组织 ID 在子组列表中，或者是当前用户创建的数据
-                    team_query = Q()
+                    # 查询组织 ID 在子组列表中
+                    query = Q()
                     for team_id in team_ids:
-                        team_query |= Q(**{f"{org_field}__contains": team_id})
-                    query = team_query | creator_query
+                        query |= Q(**{f"{org_field}__contains": team_id})
                 else:
                     # 没有找到子组，使用当前组
-                    query = Q(**{f"{org_field}__contains": current_team}) | creator_query
+                    query = Q(**{f"{org_field}__contains": current_team})
             else:
-                # 不包含子组，team包含当前组 或者 是当前用户创建的
-                query = Q(**{f"{org_field}__contains": current_team}) | creator_query
-        elif org_field in fields:
-            query = Q(**{f"{org_field}__contains": current_team})
+                # 不包含子组，team包含当前组
+                query = Q(**{f"{org_field}__contains": current_team})
         else:
             query = Q()
         return current_team, include_children, org_field, query
@@ -232,6 +236,21 @@ class AuthViewSet(MaintainerViewSet):
     SUPERUSER_RULE_ID = ["0"]
     ORDERING_FIELD = "-id"
     ORGANIZATION_FIELD = "team"  # 默认使用 team 字段,子类可覆盖为 groups 或其他字段名
+
+    def _validate_current_team_permission(self, request):
+        """验证用户有权限访问 current_team，返回 current_team 值
+
+        - 如果 current_team 无效或用户无权访问，抛出 PermissionDenied
+        - superuser 跳过 group_list 验证，但仍需要有效的 current_team
+        """
+        current_team = self._parse_current_team_cookie(request)
+        if not current_team:
+            raise PermissionDenied(self.loader.get("error.no_permission_access_team") if self.loader else "无权访问该团队数据")
+        if not getattr(request.user, "is_superuser", False):
+            user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
+            if current_team not in user_group_ids:
+                raise PermissionDenied(self.loader.get("error.no_permission_access_team") if self.loader else "无权访问该团队数据")
+        return current_team
 
     def filter_rules(self, rules):
         """根据规则过滤查询集"""
@@ -367,19 +386,23 @@ class AuthViewSet(MaintainerViewSet):
         return Response(serializer.data)
 
     def get_detail(self, request, *args, **kwargs):
+        """获取详情"""
         user = getattr(request, "user", None)
         instance = self.get_object()
         if getattr(user, "is_superuser", False):
             return super().retrieve(request, *args, **kwargs)
+        # 验证 current_team 权限
+        current_team = self._parse_current_team_cookie(request)
+        user_group_ids = {g["id"] for g in getattr(user, "group_list", [])}
+        if current_team not in user_group_ids:
+            raise PermissionDenied("无权访问该团队数据")
         if hasattr(self, "permission_key"):
-            current_team = request.COOKIES.get("current_team", "0")
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(user, instance, current_team, is_check=True, include_children=include_children)
             if not has_permission:
                 message = self.loader.get("error.no_permission_view") if self.loader else "User does not have permission to view this instance"
                 return self.value_error(message)
         serializer = self.get_serializer(instance)
-        """获取详情"""
         return serializer
 
     def destroy(self, request, *args, **kwargs):
@@ -387,8 +410,12 @@ class AuthViewSet(MaintainerViewSet):
         instance = self.get_object()
         if getattr(user, "is_superuser", False):
             return super().destroy(request, *args, **kwargs)
+        # 验证 current_team 权限
+        current_team = self._parse_current_team_cookie(request)
+        user_group_ids = {g["id"] for g in getattr(user, "group_list", [])}
+        if current_team not in user_group_ids:
+            raise PermissionDenied("无权访问该团队数据")
         if hasattr(self, "permission_key"):
-            current_team = request.COOKIES.get("current_team", "0")
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(user, instance, current_team, include_children=include_children)
             if not has_permission:

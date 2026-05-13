@@ -14,5 +14,4 @@ class ConsulCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "data_dir": "data_dir",
         "conf_path": "conf_path",
         "role": "role",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

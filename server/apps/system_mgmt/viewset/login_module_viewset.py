@@ -1,6 +1,7 @@
 from django.http import JsonResponse
 from django_celery_beat.models import PeriodicTask
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import Group, LoginModule, User
 from apps.system_mgmt.serializers.login_module_serializer import LoginModuleSerializer
@@ -12,12 +13,14 @@ class LoginModuleViewSet(LanguageViewSet):
     queryset = LoginModule.objects.all()
     serializer_class = LoginModuleSerializer
 
+    @HasPermission("auth_sources-View")
     def list(self, request, *args, **kwargs):
         """
         List all login modules.
         """
         return super().list(request, *args, **kwargs)
 
+    @HasPermission("auth_sources-Add")
     def create(self, request, *args, **kwargs):
         """
         Create a new login module.
@@ -52,6 +55,7 @@ class LoginModuleViewSet(LanguageViewSet):
 
         return response
 
+    @HasPermission("auth_sources-Edit")
     def update(self, request, *args, **kwargs):
         """
         Update an existing login module.
@@ -86,6 +90,7 @@ class LoginModuleViewSet(LanguageViewSet):
 
         return response
 
+    @HasPermission("auth_sources-Delete")
     def destroy(self, request, *args, **kwargs):
         """
         Delete a login module.
@@ -96,9 +101,12 @@ class LoginModuleViewSet(LanguageViewSet):
         if obj.source_type == "bk_lite":
             domain = obj.other_config.get("domain", "")
             group_name = obj.other_config.get("root_group", "")
-            top_group = Group.objects.get(parent_id=0, name=group_name)
-            User.objects.filter(domain=domain).delete()
-            Group.objects.filter(description=top_group.description).delete()
+            if domain:
+                User.objects.filter(domain=domain).delete()
+            if group_name:
+                top_group = Group.objects.filter(parent_id=0, name=group_name).first()
+                if top_group:
+                    Group.objects.filter(description=top_group.description).delete()
             task_name = f"sync_user_group_{obj.name}"
             PeriodicTask.objects.filter(name=task_name).delete()
 
@@ -110,6 +118,7 @@ class LoginModuleViewSet(LanguageViewSet):
 
         return response
 
+    @HasPermission("auth_sources-Edit")
     def sync_data(self, request, *args, **kwargs):
         obj = self.get_object()
         sync_user_and_group_by_login_module.delay(obj.id)

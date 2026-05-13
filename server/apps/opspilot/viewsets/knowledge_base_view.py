@@ -88,7 +88,11 @@ class KnowledgeBaseViewSet(AuthViewSet):
     def update_settings(self, request, *args, **kwargs):
         instance: KnowledgeBase = self.get_object()
         if not request.user.is_superuser:
-            current_team = request.COOKIES.get("current_team", "0")
+            # 验证 current_team 权限
+            current_team = self._parse_current_team_cookie(request)
+            user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
+            if current_team not in user_group_ids:
+                return JsonResponse({"result": False, "message": self.loader.get("error.permission_update_denied")})
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, instance, current_team, include_children=include_children)
             if not has_permission:

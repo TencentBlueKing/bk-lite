@@ -19,5 +19,4 @@ class RocketmqCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "cluster_name": "cluster_name",
         "namesrv_addr": "namesrv_addr",
         "java_path": "java_path",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }
