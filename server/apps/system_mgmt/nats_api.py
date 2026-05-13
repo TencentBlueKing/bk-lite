@@ -1147,7 +1147,7 @@ def get_wechat_settings():
         "data": {
             "enabled": True,
             "app_id": login_module.app_id,
-            "app_secret": login_module.decrypted_app_secret,
+            # app_secret 不再返回给前端，OAuth 验证已移至后端
             "redirect_uri": login_module.other_config.get("redirect_uri", ""),
             "callback_url": login_module.other_config.get("callback_url", ""),
         },
