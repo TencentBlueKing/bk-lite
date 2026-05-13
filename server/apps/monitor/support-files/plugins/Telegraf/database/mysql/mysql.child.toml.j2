@@ -3,13 +3,26 @@
     servers = ["{{ username }}:${PASSWORD__{{ config_id }}}@tcp({{ host }}:{{ port }})/?tls=false"]
     metric_version = 2
     interval = "{{ interval }}s"
-    gather_global_variables = true
+
+    # 扩展采集项，用于专业仪表盘与全量指标展示
+    gather_process_list = true
+    gather_user_statistics = false
+    gather_innodb_metrics = true
     gather_slave_status = true
-    gather_table_schema = true
+    gather_replica_status = false
+    gather_binary_logs = true
+    gather_global_variables = true
+    gather_table_schema = false
+    gather_table_io_waits = true
+    gather_table_lock_waits = true
+
+    # 慢速 SQL 相关采集间隔
+    interval_slow = "10s"
     table_schema_databases = []
 
     fieldinclude = [
       # 连接状态
+      "uptime",
       "threads_connected",
       "threads_running",
       "threads_cached",
@@ -63,13 +76,22 @@
       "created_tmp_disk_tables",
       "created_tmp_tables",
 
-      # Global Variables
+      # 全局变量
       "max_connections",
       "table_open_cache",
       "open_files_limit",
       "tmp_table_size",
       "max_heap_table_size",
-      "innodb_buffer_pool_size"
+      "innodb_buffer_pool_size",
+
+      # 主从/角色状态
+      "read_only",
+      "super_read_only",
+      "log_bin",
+      "log_slave_updates",
+      "slave_seconds_behind_master",
+      "slave_slave_io_running",
+      "slave_slave_sql_running"
     ]
 
     [inputs.mysql.tags]
@@ -77,27 +99,3 @@
         instance_type = "{{ instance_type }}"
         collect_type = "database"
         config_type = "mysql"
-
-[[processors.enum]]
-    namepass = ["mysql"]
-
-    [[processors.enum.mapping]]
-        field = "slave_slave_io_running"
-        dest = "slave_slave_io_running_int"
-        default = 0
-
-        [processors.enum.mapping.value_mappings]
-            Yes = 1
-            No = 0
-            Connecting = 0
-            Preparing = 0
-
-    [[processors.enum.mapping]]
-        field = "slave_slave_sql_running"
-        dest = "slave_slave_sql_running_int"
-        default = 0
-
-        [processors.enum.mapping.value_mappings]
-            Yes = 1
-            No = 0
-            Preparing = 0
