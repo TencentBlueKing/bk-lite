@@ -1310,7 +1310,9 @@
       "detailTitle": "Basic Information",
       "detailDescription": "Display provider access information",
       "typeLabel": "Type",
-      "enabledStatus": "Enabled Status"
+      "enabledStatus": "Enabled Status",
+      "protocolType": "API Protocol",
+      "protocolTypeRequired": "Please select an API protocol"
     },
     "model": {
       "add": "Add",

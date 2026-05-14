@@ -79,9 +79,10 @@ class ModelVendorViewSet(AuthViewSet):
         validated_data: dict[str, Any] = raw_validated_data if isinstance(raw_validated_data, dict) else {}
         api_base = validated_data.get("api_base") or ""
         resolved_api_key = validated_data.get("resolved_api_key") or ""
+        protocol_type = validated_data.get("protocol_type") or "openai"
         locale = getattr(request.user, "locale", "en") or "en"
         try:
-            ModelVendorSyncService.fetch_models_with_credentials(api_base, resolved_api_key, locale=locale)
+            ModelVendorSyncService.fetch_models_with_credentials(api_base, resolved_api_key, protocol_type=protocol_type, locale=locale)
         except Exception as error:
             return JsonResponse({"result": False, "message": str(error)})
         return JsonResponse({"result": True})
