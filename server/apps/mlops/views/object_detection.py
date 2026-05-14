@@ -286,7 +286,7 @@ class ObjectDetectionTrainJobViewSet(TeamModelViewSet):
 
     @HasPermission("object_detection-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        return self.destroy_train_job_with_runtime_cleanup(request, *args, **kwargs)
 
     @HasPermission("object_detection-Add")
     def create(self, request, *args, **kwargs):
@@ -882,7 +882,7 @@ class ObjectDetectionServingViewSet(TeamModelViewSet):
 
     @HasPermission("object_detection-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        return self.destroy_serving_with_runtime_cleanup(request, *args, **kwargs)
 
     @HasPermission("object_detection-Add")
     def create(self, request, *args, **kwargs):

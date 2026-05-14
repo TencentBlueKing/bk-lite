@@ -1,6 +1,13 @@
+from apps.core.logger import mlops_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.mlops.constants import TrainJobStatus, MLflowRunStatus
 from apps.mlops.utils.group_scope import assert_dataset_version_scope
+from apps.mlops.utils.webhook_client import (
+    WebhookClient,
+    WebhookConnectionError,
+    WebhookError,
+    WebhookTimeoutError,
+)
 from django.db import transaction
 from rest_framework import serializers, status
 from rest_framework.response import Response
@@ -15,6 +22,74 @@ class TeamModelViewSet(AuthViewSet):
 
     ORGANIZATION_FIELD = "team"
     MLFLOW_PREFIX = ""
+
+    def cleanup_serving_runtime(self, serving):
+        """Delete a serving runtime and return an error response on failure."""
+        container_id = f"{self.MLFLOW_PREFIX}_Serving_{serving.id}"
+
+        try:
+            WebhookClient.remove(container_id)
+            logger.info(
+                f"删除 serving 容器成功: container_id={container_id}, serving_id={serving.id}"
+            )
+        except (WebhookConnectionError, WebhookTimeoutError) as e:
+            logger.error(
+                f"删除 serving 容器失败，已阻止数据库记录删除: container_id={container_id}, "
+                f"serving_id={serving.id}, error={str(e)}",
+                exc_info=True,
+            )
+            return Response(
+                {"error": f"删除服务失败：容器清理失败，{str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        except WebhookError as e:
+            if "not found" in str(e).lower() or "does not exist" in str(e).lower():
+                logger.warning(
+                    f"删除 serving 时容器已不存在，继续删除记录: container_id={container_id}, "
+                    f"serving_id={serving.id}"
+                )
+            else:
+                logger.error(
+                    f"删除 serving 容器失败，已阻止数据库记录删除: container_id={container_id}, "
+                    f"serving_id={serving.id}, error={str(e)}",
+                    exc_info=True,
+                )
+                return Response(
+                    {"error": f"删除服务失败：容器清理失败，{str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+        return None
+
+    def destroy_serving_with_runtime_cleanup(self, request, *args, **kwargs):
+        """Delete serving runtime first, then remove the DB record."""
+        instance = self.get_object()
+        cleanup_error = self.cleanup_serving_runtime(instance)
+        if cleanup_error is not None:
+            return cleanup_error
+
+        return super().destroy(request, *args, **kwargs)
+
+    def destroy_train_job_with_runtime_cleanup(self, request, *args, **kwargs):
+        """Delete all related serving runtimes first, then remove the train job."""
+        train_job = self.get_object()
+        related_servings = list(train_job.servings.all())
+
+        for serving in related_servings:
+            cleanup_error = self.cleanup_serving_runtime(serving)
+            if cleanup_error is not None:
+                logger.error(
+                    f"删除训练任务前清理关联 serving 失败，已阻止数据库记录删除: "
+                    f"train_job_id={train_job.id}, serving_id={serving.id}"
+                )
+                return cleanup_error
+
+        logger.info(
+            f"删除训练任务前已完成关联 serving runtime 清理: "
+            f"train_job_id={train_job.id}, serving_count={len(related_servings)}"
+        )
+
+        return super().destroy(request, *args, **kwargs)
 
     # ---- run delete eligibility helpers (shared across all TrainJob viewsets) ----
 

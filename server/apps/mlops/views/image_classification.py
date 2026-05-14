@@ -304,7 +304,7 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
 
     @HasPermission("image_classification-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        return self.destroy_train_job_with_runtime_cleanup(request, *args, **kwargs)
 
     @HasPermission("image_classification-Add")
     def create(self, request, *args, **kwargs):
@@ -902,7 +902,7 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
 
     @HasPermission("image_classification-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        return self.destroy_serving_with_runtime_cleanup(request, *args, **kwargs)
 
     @HasPermission("image_classification-Add")
     def create(self, request, *args, **kwargs):

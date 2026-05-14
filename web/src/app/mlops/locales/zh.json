@@ -159,7 +159,7 @@
     "selectDatasets": "请选择数据训练集",
     "selectTraindata": "请选择训练数据参数",
     "delTraintask": "删除训练任务",
-    "delTraintaskContent": "确定要删除该训练任务吗？",
+    "delTraintaskContent": "确定要删除该训练任务吗？\n删除该训练任务会同时将能力发布中关联的模型服务删除，请确认能力发布中的没有需要关联此训练任务的模型服务后删除。",
     "getTrainStatusFailed": "获取训练状态错误"
   },
   "model-release": {

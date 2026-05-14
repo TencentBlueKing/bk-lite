@@ -90,7 +90,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
 
     @HasPermission("timeseries_predict-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        return self.destroy_train_job_with_runtime_cleanup(request, *args, **kwargs)
 
     @HasPermission("timeseries_predict-Add")
     def create(self, request, *args, **kwargs):
@@ -753,7 +753,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
     @HasPermission("timeseries_predict-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        return self.destroy_serving_with_runtime_cleanup(request, *args, **kwargs)
 
     @HasPermission("timeseries_predict-Add")
     def create(self, request, *args, **kwargs):

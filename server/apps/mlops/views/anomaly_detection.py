@@ -79,6 +79,10 @@ class AnomalyDetectionTrainJobViewSet(TeamModelViewSet):
 
     MLFLOW_PREFIX = "AnomalyDetection"  # MLflow 命名前缀
 
+    @HasPermission("anomaly_detection-Delete")
+    def destroy(self, request, *args, **kwargs):
+        return self.destroy_train_job_with_runtime_cleanup(request, *args, **kwargs)
+
     @action(detail=True, methods=["post"], url_path="train")
     @HasPermission("anomaly_detection-Train")
     def train(self, request, pk=None):
@@ -589,10 +593,6 @@ class AnomalyDetectionTrainJobViewSet(TeamModelViewSet):
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @HasPermission("anomaly_detection-Delete")
-    def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
-
     @HasPermission("anomaly_detection-Edit")
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
@@ -875,7 +875,7 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
 
     @HasPermission("anomaly_detection-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        return self.destroy_serving_with_runtime_cleanup(request, *args, **kwargs)
 
     @HasPermission("anomaly_detection-Add")
     def create(self, request, *args, **kwargs):
