@@ -153,7 +153,7 @@ class TestPrepareStepBasic:
         assert len(captured_contexts) == 2  # called before each LLM invocation
         assert captured_contexts[0]["step"] == 1
         assert captured_contexts[0]["model"] == "gpt-4o"
-        assert captured_contexts[0]["tool_count"] == 2  # search_tool + request_human_approval
+        assert captured_contexts[0]["tool_count"] == 3  # search_tool + request_human_approval + request_user_choice
         assert captured_contexts[1]["step"] == 2
         # After tool execution, messages grew
         assert captured_contexts[1]["msg_count"] > captured_contexts[0]["msg_count"]

@@ -68,6 +68,33 @@ export interface ApprovalRequest {
   status: 'pending' | 'approved' | 'rejected';
 }
 
+export interface UserChoiceOption {
+  key: string;
+  label: string;
+  description?: string;
+  icon?: string;
+  disabled?: boolean;
+  recommended?: boolean;
+}
+
+export interface UserChoiceRequest {
+  execution_id: string;
+  node_id: string;
+  choice_id: string;
+  title: string;
+  description?: string;
+  options: UserChoiceOption[];
+  multiple: boolean;
+  min_select: number;
+  max_select: number;
+  timeout_seconds: number;
+  default_keys: string[];
+  display_hint: 'auto' | 'buttons' | 'dropdown' | 'checkbox';
+  received_at: number;
+  status: 'pending' | 'submitted' | 'timeout';
+  selected?: string[];
+}
+
 export interface AgentStepProgressData {
   agent_name?: string;
   step: number;
@@ -98,6 +125,7 @@ export interface CustomChatMessage {
   browserStepProgress?: BrowserStepProgressData | null;
   browserStepsHistory?: BrowserStepsHistory | null;
   approvalRequests?: ApprovalRequest[];
+  userChoiceRequests?: UserChoiceRequest[];
   agentStepProgress?: AgentStepProgressData[];
 }
 

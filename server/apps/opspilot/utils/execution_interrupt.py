@@ -2,6 +2,16 @@
 执行中断控制模块
 
 提供基于 django cache 的轻量级中断信号存储，用于 workflow / AGUI / tools 协作式中断。
+缓存过期后自动回退到数据库查询 WorkFlowTaskResult.status == INTERRUPTED。
+
+配置项：
+    WORKFLOW_INTERRUPT_CACHE_TTL (环境变量):
+        中断信号缓存过期时间（秒），默认 3600（1 小时）。
+        对于长时间运行的工作流，可适当增大此值。
+        缓存过期后会自动回退到数据库查询，确保中断信号不丢失。
+
+        示例：
+            export WORKFLOW_INTERRUPT_CACHE_TTL=7200  # 2 小时
 """
 
 import os
@@ -14,6 +24,31 @@ from apps.core.logger import opspilot_logger as logger
 
 INTERRUPT_CACHE_TTL = int(os.getenv("WORKFLOW_INTERRUPT_CACHE_TTL", "3600"))
 INTERRUPT_CACHE_PREFIX = "workflow_interrupt"
+
+
+def _check_interrupt_in_database(execution_id: str) -> bool:
+    """
+    数据库兜底查询：检查 WorkFlowTaskResult.status == INTERRUPTED。
+
+    仅在缓存未命中时调用，避免频繁数据库访问。
+    使用 exists() 优化查询性能。
+    """
+    # 延迟导入避免循环依赖
+    from apps.opspilot.enum import WorkFlowTaskStatus
+    from apps.opspilot.models import WorkFlowTaskResult
+
+    try:
+        return WorkFlowTaskResult.objects.filter(
+            execution_id=execution_id,
+            status=WorkFlowTaskStatus.INTERRUPTED,
+        ).exists()
+    except Exception as e:
+        logger.warning(
+            "Failed to check interrupt status in database: execution_id=%s, error=%s",
+            execution_id,
+            str(e),
+        )
+        return False
 
 
 def _get_interrupt_cache_key(execution_id: str) -> str:
@@ -41,10 +76,32 @@ def get_interrupt_request(execution_id: str) -> Optional[Dict[str, Any]]:
 
 
 def is_interrupt_requested(execution_id: str) -> bool:
-    """检查是否已请求中断。"""
+    """
+    检查是否已请求中断。
+
+    双重检查机制：
+    1. 优先查询缓存（快速路径）
+    2. 缓存未命中时回退到数据库查询 WorkFlowTaskResult.status == INTERRUPTED
+
+    这确保即使缓存过期（默认 1 小时），长时间运行的任务仍能检测到中断请求。
+    """
     if not execution_id:
         return False
-    return get_interrupt_request(execution_id) is not None
+
+    # 快速路径：缓存命中
+    cache_result = get_interrupt_request(execution_id)
+    if cache_result is not None:
+        logger.debug("Interrupt check hit cache: execution_id=%s", execution_id)
+        return True
+
+    # 慢速路径：数据库兜底
+    db_result = _check_interrupt_in_database(execution_id)
+    if db_result:
+        logger.info(
+            "Interrupt check hit database (cache expired): execution_id=%s",
+            execution_id,
+        )
+    return db_result
 
 
 def clear_interrupt_request(execution_id: str) -> None:

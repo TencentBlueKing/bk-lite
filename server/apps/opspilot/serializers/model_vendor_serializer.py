@@ -68,6 +68,7 @@ class ModelVendorTestConnectionSerializer(serializers.Serializer):
     api_key = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     password_changed = serializers.BooleanField(required=False, default=True)
     protocol_type = serializers.ChoiceField(choices=["openai", "anthropic"], required=False, default="openai")
+    vendor_type = serializers.CharField(required=False, allow_blank=True, default="")
 
     def validate(self, attrs):
         password_changed = attrs.get("password_changed", True)
