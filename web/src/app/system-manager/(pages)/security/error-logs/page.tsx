@@ -68,7 +68,7 @@ const ErrorLogsPage: React.FC = () => {
       }
 
       const response = await getErrorLogs(params);
-      setDataSource(response.results || []);
+      setDataSource(response.items || []);
       setPagination(prev => ({
         ...prev,
         current: page,

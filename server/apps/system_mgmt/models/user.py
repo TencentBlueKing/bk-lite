@@ -8,6 +8,7 @@ class User(models.Model):
     username = models.CharField(max_length=100)
     display_name = models.CharField(max_length=100)
     email = models.EmailField()
+    phone = models.CharField(max_length=32, null=True, blank=True)
     password = models.CharField(max_length=128)
     disabled = models.BooleanField(default=False)
     locale = models.CharField(max_length=32, default="zh-Hans")
@@ -48,6 +49,7 @@ class User(models.Model):
             "username",
             "display_name",
             "email",
+            "phone",
             "disabled",
             "locale",
             "timezone",

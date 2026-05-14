@@ -1310,7 +1310,9 @@
       "detailTitle": "基础信息",
       "detailDescription": "展示供应商接入信息",
       "typeLabel": "类型",
-      "enabledStatus": "启用状态"
+      "enabledStatus": "启用状态",
+      "protocolType": "协议类型",
+      "protocolTypeRequired": "请选择协议类型"
     },
     "model": {
       "add": "新增",

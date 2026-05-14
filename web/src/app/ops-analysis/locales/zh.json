@@ -287,7 +287,7 @@
     "bindingInvalidTypeMismatch": "参数类型不匹配",
     "bindingInvalidUnknown": "未知原因",
     "unifiedFilterConfig": "统一筛选配置",
-    "configFilter": "筛选配置",
+    "configUnifiedFilterFields": "配置统一筛选字段",
     "filterName": "显示名称",
     "filterKey": "参数名",
     "defaultValue": "默认值",

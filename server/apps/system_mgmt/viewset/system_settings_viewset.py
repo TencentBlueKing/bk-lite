@@ -21,12 +21,21 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
         "watermark_enabled": "0",
         "watermark_text": "BlueKing Lite · ${username} · ${date}",
     }
+    SENSITIVE_INFO_SETTING_DEFAULTS = {
+        "sensitive_info_protection_enabled": "0",
+        "sensitive_info_types": "email,phone",
+    }
+
 
     def _ensure_portal_settings(self):
-        existing_keys = set(SystemSettings.objects.filter(key__in=self.PORTAL_SETTING_DEFAULTS.keys()).values_list("key", flat=True))
+        default_settings = {
+            **self.PORTAL_SETTING_DEFAULTS,
+            **self.SENSITIVE_INFO_SETTING_DEFAULTS,
+        }
+        existing_keys = set(SystemSettings.objects.filter(key__in=default_settings.keys()).values_list("key", flat=True))
         missing_settings = [
             SystemSettings(key=key, value=value)
-            for key, value in self.PORTAL_SETTING_DEFAULTS.items()
+            for key, value in default_settings.items()
             if key not in existing_keys
         ]
 

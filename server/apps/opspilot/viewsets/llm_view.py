@@ -374,6 +374,50 @@ class LLMModelViewSet(VendorModelMixin, AuthViewSet):
     permission_key = "provider.llm_model"
     filterset_class = ObjFilter
 
+    def _validate_llm_model_name(self, name, group_list, org_value, vendor_id, exclude_id=None):
+        """验证 LLM 模型名称在同一供应商和团队中的唯一性"""
+        import logging
+
+        logger = logging.getLogger(__name__)
+        try:
+            if not name or not isinstance(name, str):
+                return ""
+
+            if not isinstance(group_list, list) or not isinstance(org_value, list):
+                return ""
+
+            if not vendor_id:
+                return ""
+
+            org_field = self.ORGANIZATION_FIELD
+            # 添加 vendor_id 过滤条件
+            queryset = self.queryset.filter(name=name, vendor_id=vendor_id)
+            if exclude_id:
+                queryset = queryset.exclude(id=exclude_id)
+
+            team_list = list(queryset.values_list(org_field, flat=True))
+            existing_teams = []
+
+            for team_data in team_list:
+                if isinstance(team_data, list):
+                    existing_teams.extend(team_data)
+
+            team_name_map = {}
+            for group in group_list:
+                if isinstance(group, dict) and "id" in group and "name" in group:
+                    team_name_map[group["id"]] = group["name"]
+
+            for team_id in org_value:
+                if team_id in existing_teams:
+                    conflict_team_name = team_name_map.get(team_id, f"Team-{team_id}")
+                    return conflict_team_name
+
+            return ""
+
+        except Exception as e:
+            logger.error(f"Error in _validate_llm_model_name: {e}")
+            return ""
+
     @HasPermission("provide_list-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -390,7 +434,12 @@ class LLMModelViewSet(VendorModelMixin, AuthViewSet):
         if not params.get("team"):
             message = self.loader.get("error.team_empty") if self.loader else "The team is empty."
             return JsonResponse({"result": False, "message": message})
-        validate_msg = self._validate_name(params["name"], request.user.group_list, params["team"])
+        validate_msg = self._validate_llm_model_name(
+            params["name"],
+            request.user.group_list,
+            params["team"],
+            params.get("vendor"),
+        )
         if validate_msg:
             message = (
                 self.loader.get("error.llm_model_name_exists")
@@ -415,10 +464,13 @@ class LLMModelViewSet(VendorModelMixin, AuthViewSet):
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         params = request.data
-        validate_msg = self._validate_name(
+        # 更新时使用请求中的 vendor，如果没有则使用实例原有的 vendor
+        vendor_id = params.get("vendor") or instance.vendor_id
+        validate_msg = self._validate_llm_model_name(
             params["name"],
             request.user.group_list,
             params["team"],
+            vendor_id,
             exclude_id=instance.id,
         )
         if validate_msg:

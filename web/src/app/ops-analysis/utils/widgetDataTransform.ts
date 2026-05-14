@@ -85,6 +85,32 @@ export const formatTimeRange = (timeParams: any): string[] => {
   return [startTimeStr, endTimeStr];
 };
 
+const formatTimeRangeForSignature = (timeParams: any): unknown => {
+  if (timeParams && typeof timeParams === 'number') {
+    return { mode: 'relative', value: timeParams };
+  }
+
+  if (timeParams && Array.isArray(timeParams) && timeParams.length === 2) {
+    return [
+      dayjs(timeParams[0]).format('YYYY-MM-DD HH:mm:ss'),
+      dayjs(timeParams[1]).format('YYYY-MM-DD HH:mm:ss'),
+    ];
+  }
+
+  if (timeParams && timeParams.start && timeParams.end) {
+    if (timeParams.selectValue && timeParams.selectValue > 0) {
+      return { mode: 'relative', value: timeParams.selectValue };
+    }
+
+    return {
+      start: dayjs(timeParams.start).format('YYYY-MM-DD HH:mm:ss'),
+      end: dayjs(timeParams.end).format('YYYY-MM-DD HH:mm:ss'),
+    };
+  }
+
+  return { mode: 'relative', value: 10080 };
+};
+
 export const fetchWidgetData = async ({
   config,
   dataSource,
@@ -107,29 +133,14 @@ export const fetchWidgetData = async ({
   }
 
   try {
-    const rawParams =
-      Array.isArray(config?.dataSourceParams) && config.dataSourceParams.length > 0
-        ? config.dataSourceParams
-        : dataSource?.params;
-    const sourceParams = Array.isArray(rawParams) ? rawParams : [];
-
-    const userParams: Record<string, unknown> = {};
-    sourceParams.forEach((param: any) => {
-      userParams[param.name] = param.value;
-    });
-
-    const requestParams = processDataSourceParams({
-      sourceParams,
-      userParams,
+    const finalRequestParams = buildWidgetRequestParams({
+      config,
+      dataSource,
+      extraParams,
       unifiedFilterValues,
       filterBindings,
       filterDefinitions,
     });
-
-    const finalRequestParams = {
-      ...requestParams,
-      ...(extraParams || {}),
-    };
 
     const rawData = await getSourceDataByApiId(config.dataSource, finalRequestParams);
     return rawData;
@@ -139,18 +150,101 @@ export const fetchWidgetData = async ({
   }
 };
 
+export const buildWidgetRequestParams = ({
+  config,
+  dataSource,
+  extraParams,
+  unifiedFilterValues,
+  filterBindings,
+  filterDefinitions,
+}: {
+  config: any;
+  dataSource?: any;
+  extraParams?: Record<string, any>;
+  unifiedFilterValues?: Record<string, FilterValue>;
+  filterBindings?: FilterBindings;
+  filterDefinitions?: UnifiedFilterDefinition[];
+}) => {
+  const rawParams =
+    Array.isArray(config?.dataSourceParams) && config.dataSourceParams.length > 0
+      ? config.dataSourceParams
+      : dataSource?.params;
+  const sourceParams = Array.isArray(rawParams) ? rawParams : [];
+
+  const userParams: Record<string, unknown> = {};
+  sourceParams.forEach((param: any) => {
+    userParams[param.name] = param.value;
+  });
+
+  const requestParams = processDataSourceParams({
+    sourceParams,
+    userParams,
+    unifiedFilterValues,
+    filterBindings,
+    filterDefinitions,
+  });
+
+  return {
+    ...requestParams,
+    ...(extraParams || {}),
+  };
+};
+
+export const buildWidgetRequestSignatureParams = ({
+  config,
+  dataSource,
+  extraParams,
+  unifiedFilterValues,
+  filterBindings,
+  filterDefinitions,
+}: {
+  config: any;
+  dataSource?: any;
+  extraParams?: Record<string, any>;
+  unifiedFilterValues?: Record<string, FilterValue>;
+  filterBindings?: FilterBindings;
+  filterDefinitions?: UnifiedFilterDefinition[];
+}) => {
+  const rawParams =
+    Array.isArray(config?.dataSourceParams) && config.dataSourceParams.length > 0
+      ? config.dataSourceParams
+      : dataSource?.params;
+  const sourceParams = Array.isArray(rawParams) ? rawParams : [];
+
+  const userParams: Record<string, unknown> = {};
+  sourceParams.forEach((param: any) => {
+    userParams[param.name] = param.value;
+  });
+
+  const requestParams = processDataSourceParams({
+    sourceParams,
+    userParams,
+    unifiedFilterValues,
+    filterBindings,
+    filterDefinitions,
+    timeRangeFormatter: formatTimeRangeForSignature,
+  });
+
+  return {
+    ...requestParams,
+    ...(extraParams || {}),
+  };
+};
+
 export const processDataSourceParams = ({
   sourceParams,
   userParams = {},
   unifiedFilterValues,
   filterBindings,
   filterDefinitions,
+  timeRangeFormatter = formatTimeRange,
 }: {
   sourceParams: any;
   userParams?: Record<string, any>;
   unifiedFilterValues?: Record<string, FilterValue>;
   filterBindings?: FilterBindings;
   filterDefinitions?: UnifiedFilterDefinition[];
+    timeRangeFormatter?: (timeParams: any) => unknown;
 }) => {
 
   if (!sourceParams || !Array.isArray(sourceParams)) {
@@ -205,7 +299,7 @@ export const processDataSourceParams = ({
       case 'fixed':
         // 固定参数：直接使用配置值
         processedParams[name] = (type === 'timeRange')
-          ? formatTimeRange(defaultValue)
+          ? timeRangeFormatter(defaultValue)
           : defaultValue;
         break;
 
@@ -220,7 +314,7 @@ export const processDataSourceParams = ({
           } else if (unifiedValue !== null && unifiedValue !== undefined && unifiedValue !== '') {
             // 有绑定且有值：使用统一筛选值
             processedParams[name] = (type === 'timeRange')
-              ? formatTimeRange(unifiedValue)
+              ? timeRangeFormatter(unifiedValue)
               : unifiedValue;
           } else {
             // 有绑定但无值：不传该参数
@@ -230,7 +324,7 @@ export const processDataSourceParams = ({
           // 无绑定：使用默认值
           if (defaultValue !== null && defaultValue !== undefined && defaultValue !== '') {
             processedParams[name] = (type === 'timeRange')
-              ? formatTimeRange(defaultValue)
+              ? timeRangeFormatter(defaultValue)
               : defaultValue;
           }
         }
@@ -241,11 +335,11 @@ export const processDataSourceParams = ({
         // 私有参数：使用用户传入的参数值
         if (processedParams[name] !== undefined) {
           processedParams[name] = (type === 'timeRange')
-            ? formatTimeRange(processedParams[name])
+            ? timeRangeFormatter(processedParams[name])
             : processedParams[name];
         } else if (defaultValue !== undefined) {
           processedParams[name] = (type === 'timeRange')
-            ? formatTimeRange(defaultValue)
+            ? timeRangeFormatter(defaultValue)
             : defaultValue;
         }
         break;
@@ -254,7 +348,7 @@ export const processDataSourceParams = ({
         // 默认：使用配置的默认值
         if (defaultValue !== undefined) {
           processedParams[name] = (type === 'timeRange')
-            ? formatTimeRange(defaultValue)
+            ? timeRangeFormatter(defaultValue)
             : defaultValue;
         }
     }

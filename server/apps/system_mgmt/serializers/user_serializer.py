@@ -3,6 +3,28 @@ from rest_framework import serializers
 from apps.system_mgmt.models import Group, Role, User
 
 
+USER_PUBLIC_FIELDS = [
+    "id",
+    "username",
+    "display_name",
+    "email",
+    "phone",
+    "disabled",
+    "locale",
+    "timezone",
+    "group_list",
+    "role_list",
+    "temporary_pwd",
+    "domain",
+    "last_login",
+    "password_last_modified",
+    "password_error_count",
+    "account_locked_until",
+    "group_role_list",
+    "is_superuser",
+]
+
+
 class UserSerializer(serializers.ModelSerializer):
     group_role_list = serializers.SerializerMethodField()
     is_superuser = serializers.SerializerMethodField()
@@ -60,7 +82,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = "__all__"
+        fields = USER_PUBLIC_FIELDS
 
     def get_is_superuser(self, obj):
         return self.super_role_id in obj.role_list

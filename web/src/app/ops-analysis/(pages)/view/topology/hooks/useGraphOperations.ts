@@ -1032,7 +1032,9 @@ export const useGraphOperations = (
   const refreshAllSingleValueNodes = useCallback((
     unifiedFilterValues?: Record<string, FilterValue>,
     filterDefinitions?: UnifiedFilterDefinition[],
-    namespaceId?: number
+    namespaceId?: number,
+    dataSources?: DatasourceItem[],
+    shouldRefreshNode?: (nodeData: TopologyNodeData, dataSource?: DatasourceItem) => boolean,
   ) => {
     if (!graphInstance) return;
 
@@ -1040,6 +1042,12 @@ export const useGraphOperations = (
     nodes.forEach((node: Node) => {
       const nodeData = node.getData();
       if (nodeData.type === 'single-value' && nodeData.valueConfig?.dataSource && nodeData.valueConfig?.selectedFields?.length) {
+        const dataSource = dataSources?.find(
+          (source) => source.id === nodeData.valueConfig.dataSource,
+        );
+        if (shouldRefreshNode && !shouldRefreshNode(nodeData, dataSource)) {
+          return;
+        }
         updateSingleNodeData(nodeData, unifiedFilterValues, filterDefinitions, namespaceId);
       }
     });
