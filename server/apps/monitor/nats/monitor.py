@@ -14,6 +14,7 @@ from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, Mon
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.services.metrics import Metrics
+from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from apps.core.utils.permission_utils import (
     check_instance_permission,
     get_permission_rules,
@@ -187,8 +188,11 @@ def _create_monitor_object_payload(data: dict, operator: str = "api", domain: st
     payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator, domain=domain)
     children = payload.pop("children", [])
 
-    if not payload.get("instance_id_keys"):
-        payload["instance_id_keys"] = ["instance_id"]
+    payload["instance_id_keys"] = resolve_monitor_object_instance_id_keys(
+        payload.get("instance_id_keys"),
+        level=payload.get("level", "base"),
+        object_name=payload.get("name", ""),
+    )
     if not payload.get("default_metric"):
         payload["default_metric"] = f"any({{instance_type='{payload.get('name', '')}'}}) by (instance_id)"
 
@@ -209,7 +213,11 @@ def _create_monitor_object_payload(data: dict, operator: str = "api", domain: st
                     level="derivative",
                     parent=parent_obj,
                     is_visible=True,
-                    instance_id_keys=["instance_id", child["id"]],
+                    instance_id_keys=resolve_monitor_object_instance_id_keys(
+                        [],
+                        level="derivative",
+                        object_name=child["id"],
+                    ),
                     default_metric=f"any({{instance_type='{child['id']}'}}) by (instance_id, {child['id']})",
                     created_by=payload["created_by"],
                     updated_by=payload["updated_by"],
@@ -401,9 +409,11 @@ def _get_authorized_monitor_instances(user_info: dict, monitor_obj_id: Optional[
     if error:
         return {}, error
 
-    instance_queryset = MonitorInstance.objects.filter(is_deleted=False, is_active=True).select_related(
-        "monitor_object"
-    ).prefetch_related("monitorinstanceorganization_set")
+    instance_queryset = (
+        MonitorInstance.objects.filter(is_deleted=False, is_active=True)
+        .select_related("monitor_object")
+        .prefetch_related("monitorinstanceorganization_set")
+    )
     if monitor_obj_id:
         instance_queryset = instance_queryset.filter(monitor_object_id=monitor_obj_id)
 
@@ -869,11 +879,7 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
 @nats_client.register
 def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwargs):
     if query_data is None:
-        query_data = {
-            key: value
-            for key, value in kwargs.items()
-            if key not in {"user_info", "_timeout"}
-        }
+        query_data = {key: value for key, value in kwargs.items() if key not in {"user_info", "_timeout"}}
     query_data = _normalize_monitor_query_data(query_data)
     monitor_obj_id = query_data.get("monitor_obj_id")
     if monitor_obj_id not in (None, ""):
@@ -910,11 +916,15 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
         permission, error = _get_monitor_instance_permission(monitor_obj_id, user_info)
         if error:
             return error
-        authorized_qs = _get_authorized_instance_queryset(permission).filter(
-            monitor_object_id=monitor_obj_id,
-            is_deleted=False,
-            is_active=True,
-        ).select_related("monitor_object")
+        authorized_qs = (
+            _get_authorized_instance_queryset(permission)
+            .filter(
+                monitor_object_id=monitor_obj_id,
+                is_deleted=False,
+                is_active=True,
+            )
+            .select_related("monitor_object")
+        )
         authorized_instances = {str(instance.id): instance for instance in authorized_qs}
     else:
         authorized_instances, error = _get_authorized_monitor_instances(user_info)
@@ -951,8 +961,8 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
         instance = authorized_instances.get(str(alert.monitor_instance_id))
         item["monitor_obj_id"] = str(instance.monitor_object_id) if instance else None
         item["monitor_object_name"] = (
-            instance.monitor_object.display_name or instance.monitor_object.name
-        ) if instance and instance.monitor_object else None
+            (instance.monitor_object.display_name or instance.monitor_object.name) if instance and instance.monitor_object else None
+        )
         item["end_event_time"] = None
         items.append(item)
     return {
