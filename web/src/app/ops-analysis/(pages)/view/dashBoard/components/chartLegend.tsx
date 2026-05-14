@@ -78,9 +78,11 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
             <table className="chart-legend-table w-full table-fixed border-collapse">
               <thead>
                 <tr>
-                  <th className="text-left px-2 py-1.5 text-xs text-gray-600 border-b border-gray-200 bg-gray-50">
+                  <th className="text-left px-2 py-1.5 text-xs text-[var(--color-text-2)] border-b border-[var(--color-border-1)] bg-[var(--color-fill-2)]">
                     维度
-                    <span className="text-gray-400">({legendData.length})</span>
+                    <span className="text-[var(--color-text-3)]">
+                      ({legendData.length})
+                    </span>
                   </th>
                 </tr>
               </thead>
@@ -95,8 +97,8 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
                     className={`
                       cursor-pointer transition-all duration-200
                       ${isActive(item) ? 'opacity-100' : 'opacity-50'}
-                      hover:bg-blue-50
-                      ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}
+                      hover:bg-[var(--color-fill-2)]
+                      ${index % 2 === 0 ? 'bg-[var(--color-fill-1)]' : 'bg-transparent'}
                     `}
                     onClick={() => handleLegend(item)}
                   >
@@ -107,11 +109,11 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
                           style={{
                             backgroundColor: isActive(item)
                               ? colors[index % colors.length]
-                              : '#d1d5db',
+                              : 'var(--color-fill-4)',
                           }}
                         />
                         <EllipsisWithTooltip
-                          className="block flex-1 min-w-0 max-w-full overflow-hidden whitespace-nowrap text-ellipsis text-xs leading-relaxed text-gray-700"
+                          className="block flex-1 min-w-0 max-w-full overflow-hidden whitespace-nowrap text-ellipsis text-xs leading-relaxed text-[var(--color-text-2)]"
                           text={item || '--'}
                         />
                       </div>

@@ -48,10 +48,17 @@ import {
   UnifiedFilterConfigModal,
 } from '@/app/ops-analysis/components/unifiedFilter';
 import { buildDefaultFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
+import {
+  getOpsChartTheme,
+  resolveOpsChartThemeName,
+} from '@/app/ops-analysis/utils/chartTheme';
 import { collectNamespaceOptionsFromNodes, convertNodesToLayoutItems, buildFiltersFromNodes, syncFilterValuesWithDefinitions } from './utils/namespaceUtils';
 
 const Topology = forwardRef<TopologyRef, TopologyProps>(
   ({ selectedTopology }, ref) => {
+    const themeName = resolveOpsChartThemeName();
+    const chartTheme = getOpsChartTheme(themeName);
+    const isDarkTheme = themeName === 'dark';
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasContainerRef = useRef<HTMLDivElement>(null as any);
     const minimapContainerRef = useRef<HTMLDivElement>(null as any);
@@ -780,7 +787,10 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
 
     return (
       <div
-        className={`flex-1 p-4 pb-0 overflow-auto flex flex-col bg-(--color-bg-1) ${styles.topologyContainer}`}
+        className={`flex-1 p-2 pb-0 overflow-auto flex flex-col ${styles.topologyContainer}`}
+        style={{
+          backgroundColor: isDarkTheme ? 'var(--color-fill-1)' : '#f5f6f8',
+        }}
       >
         {/* 工具栏 */}
         <TopologyToolbar
@@ -804,79 +814,98 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           onFrequencyChange={handleFrequencyChange}
         />
 
-        {(definitions.length > 0 || namespaceSelectorElement) && (
-          <div className="shrink-0 mb-2">
-            <UnifiedFilterBar
-              definitions={definitions}
-              values={filterValues}
-              onChange={handleFilterValuesChange}
-              onSearch={handleFilterSearch}
-              onReset={handleFilterReset}
-              prefixContent={namespaceSelectorElement}
-            />
-          </div>
-        )}
-
-        <div className="flex-1 flex overflow-hidden">
-          {/* 侧边栏 */}
-          <NodeSidebar
-            collapsed={state.collapsed}
-            isEditMode={state.isEditMode}
-            graphInstance={state.graphInstance ?? undefined}
-            setCollapsed={state.setCollapsed}
-            onShowNodeConfig={handleShowNodeConfig}
-            onShowChartSelector={handleShowChartSelector}
-          />
-
-          {/* 画布容器 */}
-          <div
-            ref={canvasContainerRef}
-            className="flex-1 bg-(--color-bg-1) relative"
-          >
-            {loading && (
-              <div
-                className="absolute inset-0 flex items-center justify-center backdrop-blur-sm z-10"
-                style={{
-                  backgroundColor: 'var(--color-bg-1)',
-                  opacity: 0.8,
-                }}
-              >
-                <Spin size="large" />
-              </div>
-            )}
-            <div
-              ref={containerRef}
-              className="absolute inset-0"
-              tabIndex={-1}
-            />
-
-            <div
-              className={styles.minimapContainer}
-              style={{ display: minimapVisible ? 'block' : 'none' }}
-            >
-              <div className={styles.minimapHeader}>
-                <button
-                  onClick={() => setMinimapVisible(false)}
-                  className={styles.minimapCloseBtn}
-                  title={t('topology.minimapCollapse')}
-                >
-                  <CloseOutlined />
-                </button>
-              </div>
-              <div
-                ref={minimapContainerRef}
-                className={styles.minimapContent}
+        <div
+          className="flex-1 rounded-2xl overflow-hidden flex flex-col"
+          style={{
+            border: `1px solid ${chartTheme.panelBorderColor}`,
+            backgroundColor: chartTheme.panelBg,
+            boxShadow: isDarkTheme
+              ? '0 10px 24px rgba(0, 0, 0, 0.18)'
+              : '0 12px 28px rgba(31, 63, 104, 0.06)',
+          }}
+        >
+          {(definitions.length > 0 || namespaceSelectorElement) && (
+            <div className="shrink-0">
+              <UnifiedFilterBar
+                definitions={definitions}
+                values={filterValues}
+                onChange={handleFilterValuesChange}
+                onSearch={handleFilterSearch}
+                onReset={handleFilterReset}
+                prefixContent={namespaceSelectorElement}
+                containerClassName="mx-0 mt-0"
+                appearance="embedded"
               />
             </div>
-            {!minimapVisible && (
-              <button
-                onClick={() => setMinimapVisible(true)}
-                className={styles.minimapShowBtn}
-                title={t('topology.minimapShow')}
+          )}
+
+          <div
+            className={`flex-1 flex overflow-hidden p-2.5 ${state.collapsed ? 'gap-0' : 'gap-2'}`}
+          >
+            {/* 侧边栏 */}
+            <NodeSidebar
+              collapsed={state.collapsed}
+              isEditMode={state.isEditMode}
+              graphInstance={state.graphInstance ?? undefined}
+              setCollapsed={state.setCollapsed}
+              onShowNodeConfig={handleShowNodeConfig}
+              onShowChartSelector={handleShowChartSelector}
+            />
+
+            {/* 画布容器 */}
+            <div
+              ref={canvasContainerRef}
+              className="flex-1 relative rounded-xl overflow-hidden"
+              style={{
+                border: `1px solid ${chartTheme.panelBorderColor}`,
+                backgroundColor: chartTheme.panelBg,
+              }}
+            >
+              {loading && (
+                <div
+                  className="absolute inset-0 flex items-center justify-center backdrop-blur-sm z-10"
+                  style={{
+                    backgroundColor: 'var(--color-bg-1)',
+                    opacity: 0.8,
+                  }}
+                >
+                  <Spin size="large" />
+                </div>
+              )}
+              <div
+                ref={containerRef}
+                className="absolute inset-0"
+                tabIndex={-1}
+              />
+
+              <div
+                className={styles.minimapContainer}
+                style={{ display: minimapVisible ? 'block' : 'none' }}
               >
-                <AppstoreOutlined />
-              </button>
-            )}
+                <div className={styles.minimapHeader}>
+                  <button
+                    onClick={() => setMinimapVisible(false)}
+                    className={styles.minimapCloseBtn}
+                    title={t('topology.minimapCollapse')}
+                  >
+                    <CloseOutlined />
+                  </button>
+                </div>
+                <div
+                  ref={minimapContainerRef}
+                  className={styles.minimapContent}
+                />
+              </div>
+              {!minimapVisible && (
+                <button
+                  onClick={() => setMinimapVisible(true)}
+                  className={styles.minimapShowBtn}
+                  title={t('topology.minimapShow')}
+                >
+                  <AppstoreOutlined />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

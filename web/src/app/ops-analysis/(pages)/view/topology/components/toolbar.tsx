@@ -37,20 +37,30 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
   onFilterConfig,
 }) => {
   const { t } = useTranslation();
+  const iconButtonClassName =
+    'rounded-full! h-8 w-8 min-w-8 flex items-center justify-center';
 
   return (
-    <div className="w-full mb-2 flex items-center justify-between rounded-lg shadow-sm bg-[var(--color-bg-1)] p-3 border border-[var(--color-border-2)]">
+    <div
+      className="w-full mb-2.5 flex items-center justify-between rounded-xl bg-(--color-bg-1) px-3.5 py-2.5 border border-(--color-border-2)"
+      style={{ boxShadow: '0 8px 22px rgba(31, 63, 104, 0.05)' }}
+    >
       {/* 左侧：拓扑信息 */}
-      <div className="flex-1 mr-8">
+      <div className="flex-1 mr-6">
         {selectedTopology && (
-          <div className="p-1 pt-0">
-            <h2 className="text-lg font-semibold mb-1 text-[var(--color-text-1)]">
+          <div className="pt-0.5">
+            <h2 className="text-xl leading-7 font-semibold mb-1 text-(--color-text-1)">
               {selectedTopology.name}
               {selectedTopology.is_build_in && (
-                <Tag color="blue" className="ml-2 text-xs align-middle">{t('common.builtIn')}</Tag>
+                <Tag
+                  color="blue"
+                  className="ml-2 text-xs align-middle rounded-full! px-2! py-0.5!"
+                >
+                  {t('common.builtIn')}
+                </Tag>
               )}
             </h2>
-            <p className="text-sm text-[var(--color-text-2)]">
+            <p className="text-sm leading-5 text-(--color-text-2)">
               {selectedTopology.desc}
             </p>
           </div>
@@ -58,48 +68,43 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
       </div>
 
       {/* 右侧：工具栏 */}
-      <div className="flex items-center space-x-1 rounded-lg p-2">
-        {/* 刷新控件 */}
-        {onRefresh && onFrequencyChange && (
-          <div className="mr-2">
-            <TimeSelector
-              onlyRefresh={true}
-              onRefresh={onRefresh}
-              onFrequenceChange={onFrequencyChange}
+      <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-0.5">
+          <Tooltip title={t('topology.zoomIn')}>
+            <Button
+              type="text"
+              icon={<ZoomInOutlined style={{ fontSize: 16 }} />}
+              onClick={onZoomIn}
+              className={iconButtonClassName}
             />
-          </div>
-        )}
-
-        <Tooltip title={t('topology.zoomIn')}>
-          <Button
-            type="text"
-            icon={<ZoomInOutlined style={{ fontSize: 16 }} />}
-            onClick={onZoomIn}
-          />
-        </Tooltip>
-        <Tooltip title={t('topology.zoomOut')}>
-          <Button
-            type="text"
-            icon={<ZoomOutOutlined style={{ fontSize: 16 }} />}
-            onClick={onZoomOut}
-          />
-        </Tooltip>
-        <Tooltip title={t('topology.fitView')}>
-          <Button
-            type="text"
-            icon={<FullscreenOutlined style={{ fontSize: 16 }} />}
-            onClick={onFit}
-          />
-        </Tooltip>
+          </Tooltip>
+          <Tooltip title={t('topology.zoomOut')}>
+            <Button
+              type="text"
+              icon={<ZoomOutOutlined style={{ fontSize: 16 }} />}
+              onClick={onZoomOut}
+              className={iconButtonClassName}
+            />
+          </Tooltip>
+          <Tooltip title={t('topology.fitView')}>
+            <Button
+              type="text"
+              icon={<FullscreenOutlined style={{ fontSize: 16 }} />}
+              onClick={onFit}
+              className={iconButtonClassName}
+            />
+          </Tooltip>
+        </div>
 
         {isEditMode && (
-          <>
+          <div className="ml-0.5 flex items-center gap-0.5">
             <Tooltip title={t('topology.undo')}>
               <Button
                 type="text"
                 icon={<UndoOutlined style={{ fontSize: 16 }} />}
                 onClick={onUndo}
                 disabled={!canUndo}
+                className={iconButtonClassName}
               />
             </Tooltip>
             <Tooltip title={t('topology.redo')}>
@@ -108,6 +113,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
                 icon={<RedoOutlined style={{ fontSize: 16 }} />}
                 onClick={onRedo}
                 disabled={!canRedo}
+                className={iconButtonClassName}
               />
             </Tooltip>
             <Tooltip title={t('topology.selectMode')}>
@@ -115,9 +121,11 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
                 type="text"
                 icon={<SelectOutlined style={{ fontSize: 16 }} />}
                 onClick={onSelectMode}
+                className={iconButtonClassName}
                 style={{
                   backgroundColor: isSelectMode ? '#1677ff15' : 'transparent',
                   color: isSelectMode ? '#1677ff' : undefined,
+                  borderRadius: 999,
                 }}
               />
             </Tooltip>
@@ -126,32 +134,47 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
                 type="text"
                 icon={<DeleteOutlined style={{ fontSize: 16 }} />}
                 onClick={onDelete}
+                className={iconButtonClassName}
               />
             </Tooltip>
             {onFilterConfig && (
               <PermissionWrapper requiredPermissions={['EditChart']}>
-                <Button
-                  type="text"
-                  icon={<SettingOutlined style={{ fontSize: 16 }} />}
-                  onClick={onFilterConfig}
-                >
-                  {t('dashboard.configFilter')}
-                </Button>
+                <Tooltip title={t('dashboard.configUnifiedFilterFields')}>
+                  <Button
+                    type="text"
+                    icon={<SettingOutlined style={{ fontSize: 16 }} />}
+                    onClick={onFilterConfig}
+                    className={iconButtonClassName}
+                  />
+                </Tooltip>
               </PermissionWrapper>
             )}
-          </>
+          </div>
+        )}
+
+        {/* 刷新控件 */}
+        {onRefresh && onFrequencyChange && (
+          <TimeSelector
+            onlyRefresh={true}
+            onRefresh={onRefresh}
+            onFrequenceChange={onFrequencyChange}
+          />
         )}
 
         <div>
           <PermissionWrapper requiredPermissions={['EditChart']}>
             {isEditMode ? (
-              <div className="flex items-center gap-2 ml-5!">
+              <div className="flex items-center gap-2 ml-2">
                 {onCancel && (
-                  <Button onClick={onCancel}>
+                  <Button onClick={onCancel} className="rounded-full!">
                     {t('common.cancel')}
                   </Button>
                 )}
-                <Button type="primary" onClick={onSave}>
+                <Button
+                  type="primary"
+                  onClick={onSave}
+                  className="rounded-full!"
+                >
                   {t('common.save')}
                 </Button>
               </div>
@@ -162,6 +185,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
                   icon={<EditOutlined style={{ fontSize: 16 }} />}
                   onClick={onEdit}
                   disabled={selectedTopology?.is_build_in}
+                  className="rounded-full!"
                 />
               </Tooltip>
             )}
