@@ -3,6 +3,38 @@ import ReactEcharts from 'echarts-for-react';
 import { Empty } from 'antd';
 import useChartColors from './useChartColors';
 
+const trimTrailingZeros = (value: string) =>
+  value.replace(/\.0+$|(?<=\.\d*[1-9])0+$/g, '');
+
+const formatCompactNumber = (value: number): string => {
+  if (!isFinite(value)) return '--';
+
+  const absValue = Math.abs(value);
+  if (absValue >= 1_000_000) {
+    return `${trimTrailingZeros((value / 1_000_000).toFixed(absValue >= 10_000_000 ? 1 : 2))}M`;
+  }
+  if (absValue >= 1_000) {
+    return `${trimTrailingZeros((value / 1_000).toFixed(absValue >= 100_000 ? 0 : 1))}k`;
+  }
+  return Number.isInteger(value)
+    ? String(value)
+    : trimTrailingZeros(value.toFixed(2));
+};
+
+const normalizeFieldKey = (field: string) => field.replace(/^"|"$/g, '');
+
+const getFieldValue = (item: any, field: string) => {
+  if (!field) return undefined;
+  if (item[field] !== undefined) return item[field];
+
+  const normalizedField = normalizeFieldKey(field);
+  if (normalizedField !== field && item[normalizedField] !== undefined) {
+    return item[normalizedField];
+  }
+
+  return undefined;
+};
+
 interface DockerBarChartProps {
   rawData: any;
   loading?: boolean;
@@ -17,7 +49,8 @@ const DockerBarChart: React.FC<DockerBarChartProps> = ({
   const colors = useChartColors();
 
   const chartOption = useMemo(() => {
-    if (!rawData || !Array.isArray(rawData) || rawData.length === 0) return null;
+    if (!rawData || !Array.isArray(rawData) || rawData.length === 0)
+      return null;
 
     const displayMaps = config?.displayMaps || {};
     const nameField = displayMaps.key || 'name';
@@ -25,8 +58,8 @@ const DockerBarChart: React.FC<DockerBarChartProps> = ({
 
     const items = rawData
       .map((item: any) => ({
-        name: item[nameField] || '',
-        value: parseFloat(item[valueField]) || 0
+        name: getFieldValue(item, nameField) || '-',
+        value: parseFloat(getFieldValue(item, valueField)) || 0
       }))
       .sort((a: any, b: any) => a.value - b.value);
 
@@ -53,10 +86,16 @@ const DockerBarChart: React.FC<DockerBarChartProps> = ({
       },
       xAxis: {
         type: 'value',
+        splitNumber: 4,
         axisLine: { show: false },
         axisTick: { show: false },
         splitLine: { lineStyle: { color: colors.splitLine } },
-        axisLabel: { color: colors.axisLabel, fontSize: 10 }
+        axisLabel: {
+          color: colors.axisLabel,
+          fontSize: 10,
+          hideOverlap: true,
+          formatter: (value: number) => formatCompactNumber(value)
+        }
       },
       yAxis: {
         type: 'category',
@@ -66,7 +105,7 @@ const DockerBarChart: React.FC<DockerBarChartProps> = ({
         axisLabel: {
           color: colors.axisLabel,
           fontSize: 10,
-          width: 100,
+          width: 60,
           overflow: 'truncate'
         }
       },
@@ -79,7 +118,10 @@ const DockerBarChart: React.FC<DockerBarChartProps> = ({
             borderRadius: [0, 3, 3, 0],
             color: {
               type: 'linear',
-              x: 0, y: 0, x2: 1, y2: 0,
+              x: 0,
+              y: 0,
+              x2: 1,
+              y2: 0,
               colorStops: [
                 { offset: 0, color: barColor + '60' },
                 { offset: 1, color: barColor }
@@ -90,7 +132,10 @@ const DockerBarChart: React.FC<DockerBarChartProps> = ({
             itemStyle: {
               color: {
                 type: 'linear',
-                x: 0, y: 0, x2: 1, y2: 0,
+                x: 0,
+                y: 0,
+                x2: 1,
+                y2: 0,
                 colorStops: [
                   { offset: 0, color: barColor + '80' },
                   { offset: 1, color: barColor }
@@ -102,7 +147,8 @@ const DockerBarChart: React.FC<DockerBarChartProps> = ({
             show: true,
             position: 'right',
             color: colors.textSecondary,
-            fontSize: 10
+            fontSize: 10,
+            formatter: (params: any) => formatCompactNumber(params.value)
           }
         }
       ]
@@ -114,7 +160,10 @@ const DockerBarChart: React.FC<DockerBarChartProps> = ({
       <div className="h-full flex items-center justify-center">
         <div
           className="w-5 h-5 rounded-full border-2 border-t-transparent animate-spin"
-          style={{ borderColor: `${colors.primary}33`, borderTopColor: 'transparent' }}
+          style={{
+            borderColor: `${colors.primary}33`,
+            borderTopColor: 'transparent'
+          }}
         />
       </div>
     );

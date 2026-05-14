@@ -3,13 +3,26 @@ import ReactEcharts from 'echarts-for-react';
 import { Empty } from 'antd';
 import useChartColors from './useChartColors';
 
-interface DockerAreaChartProps {
+/**
+ * DockerDualLine — 双折线 + 双Y轴
+ * 左轴对应 field1（barField），右轴对应 field2（lineField）。
+ * 两条线各自独立Y轴，适用于数量级差异较大的场景（如日志总量 vs 错误量）。
+ */
+
+interface DockerDualLineProps {
   rawData: any;
   loading?: boolean;
   config?: any;
 }
 
-const DockerAreaChart: React.FC<DockerAreaChartProps> = ({
+/** 轴标签单位换算（k/M） */
+const axisFormatter = (v: number): string => {
+  if (Math.abs(v) >= 1_000_000) return (v / 1_000_000).toFixed(1) + 'M';
+  if (Math.abs(v) >= 1_000) return (v / 1_000).toFixed(1) + 'k';
+  return String(v);
+};
+
+const DockerDualLine: React.FC<DockerDualLineProps> = ({
   rawData,
   loading = false,
   config
@@ -38,20 +51,33 @@ const DockerAreaChart: React.FC<DockerAreaChartProps> = ({
       return isNaN(v) ? 0 : v;
     });
 
-    const color1 = colors.series[0];
-    const color2 = colors.series[4];
+    const color1 = colors.series[0]; // 蓝
+    const color2 = colors.series[4]; // 红（danger）
 
     const seriesList: any[] = [
       {
         name: label1,
         type: 'line',
+        yAxisIndex: 0,
         smooth: true,
-        symbol: 'circle',
-        symbolSize: 4,
+        symbol: 'none',
         lineStyle: { width: 2, color: color1 },
         itemStyle: { color: color1 },
-        // 无面积填充
         data: series1Data
+      }
+    ];
+
+    const yAxes: any[] = [
+      {
+        type: 'value',
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: { lineStyle: { color: colors.splitLine } },
+        axisLabel: {
+          color: colors.axisLabel,
+          fontSize: 10,
+          formatter: axisFormatter
+        }
       }
     ];
 
@@ -63,12 +89,23 @@ const DockerAreaChart: React.FC<DockerAreaChartProps> = ({
       seriesList.push({
         name: label2,
         type: 'line',
+        yAxisIndex: 1,
         smooth: true,
-        symbol: 'circle',
-        symbolSize: 4,
+        symbol: 'none',
         lineStyle: { width: 2, color: color2 },
         itemStyle: { color: color2 },
         data: series2Data
+      });
+      yAxes.push({
+        type: 'value',
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: { show: false }, // 右轴不画分割线，避免与左轴重叠
+        axisLabel: {
+          color: colors.axisLabel,
+          fontSize: 10,
+          formatter: axisFormatter
+        }
       });
     }
 
@@ -82,7 +119,6 @@ const DockerAreaChart: React.FC<DockerAreaChartProps> = ({
         textStyle: { color: colors.textPrimary, fontSize: 12 }
       },
       legend: {
-        // 图内左上角内嵌
         top: 4,
         left: 8,
         textStyle: { color: colors.textSecondary, fontSize: 11 },
@@ -92,9 +128,9 @@ const DockerAreaChart: React.FC<DockerAreaChartProps> = ({
       },
       grid: {
         top: 36,
-        right: 16,
+        right: field2 ? 52 : 16, // 右轴有刻度时右侧留空间
         bottom: 24,
-        left: 48
+        left: 52
       },
       xAxis: {
         type: 'category',
@@ -105,17 +141,10 @@ const DockerAreaChart: React.FC<DockerAreaChartProps> = ({
         axisLabel: {
           color: colors.axisLabel,
           fontSize: 10,
-          rotate: 0,
           interval: 'auto'
         }
       },
-      yAxis: {
-        type: 'value',
-        axisLine: { show: false },
-        axisTick: { show: false },
-        splitLine: { lineStyle: { color: colors.splitLine } },
-        axisLabel: { color: colors.axisLabel, fontSize: 10 }
-      },
+      yAxis: yAxes,
       series: seriesList
     };
   }, [rawData, config, colors]);
@@ -152,4 +181,4 @@ const DockerAreaChart: React.FC<DockerAreaChartProps> = ({
   );
 };
 
-export default DockerAreaChart;
+export default DockerDualLine;
