@@ -30,7 +30,7 @@ import pytest  # noqa: E402
 
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest  # noqa: E402
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory  # noqa: E402
-from apps.opspilot.services.model_vendor_sync_service import ANTHROPIC_KNOWN_MODELS, ModelVendorSyncService  # noqa: E402
+from apps.opspilot.services.model_vendor_sync_service import ModelVendorSyncService  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # LLMClientFactory Tests
@@ -342,68 +342,65 @@ class TestProtocolTypeDetection:
         assert ModelVendorSyncService._get_protocol_type(vendor) == "openai"
 
 
-class TestFetchAnthropicModels:
-    """_fetch_anthropic_models returns known models and validates key."""
+class TestAnthropicConnection:
+    """test_anthropic_connection validates Anthropic API connectivity."""
 
     @patch("apps.opspilot.services.model_vendor_sync_service.requests.post")
-    def test_returns_known_models_on_success(self, mock_post):
+    def test_successful_connection(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200)
-        result = ModelVendorSyncService._fetch_anthropic_models("https://api.anthropic.com", "sk-ant-key")
-        assert len(result) == len(ANTHROPIC_KNOWN_MODELS)
-        model_ids = [m["id"] for m in result]
-        for known in ANTHROPIC_KNOWN_MODELS:
-            assert known in model_ids
+        # Should not raise
+        ModelVendorSyncService.test_anthropic_connection("https://api.anthropic.com", "sk-ant-key")
+        mock_post.assert_called_once()
 
     @patch("apps.opspilot.services.model_vendor_sync_service.requests.post")
     def test_invalid_key_raises_error(self, mock_post):
         mock_post.return_value = MagicMock(status_code=401)
         with pytest.raises(ValueError):
-            ModelVendorSyncService._fetch_anthropic_models("https://api.anthropic.com", "invalid-key")
+            ModelVendorSyncService.test_anthropic_connection("https://api.anthropic.com", "invalid-key")
 
     def test_empty_key_raises_error(self):
         with pytest.raises(ValueError):
-            ModelVendorSyncService._fetch_anthropic_models("https://api.anthropic.com", "")
-
-    @patch("apps.opspilot.services.model_vendor_sync_service.requests.post")
-    def test_network_error_still_returns_models(self, mock_post):
-        """Network errors should not prevent model list return."""
-        import requests as req
-
-        mock_post.side_effect = req.exceptions.ConnectionError("timeout")
-        result = ModelVendorSyncService._fetch_anthropic_models("https://api.anthropic.com", "sk-ant-key")
-        assert len(result) == len(ANTHROPIC_KNOWN_MODELS)
+            ModelVendorSyncService.test_anthropic_connection("https://api.anthropic.com", "")
 
     @patch("apps.opspilot.services.model_vendor_sync_service.requests.post")
     def test_custom_base_url_used(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200)
-        ModelVendorSyncService._fetch_anthropic_models("https://my-proxy.com", "sk-key")
+        ModelVendorSyncService.test_anthropic_connection("https://my-proxy.com", "sk-key")
         call_url = mock_post.call_args[0][0]
         assert call_url == "https://my-proxy.com/v1/messages"
 
     @patch("apps.opspilot.services.model_vendor_sync_service.requests.post")
     def test_empty_base_url_defaults_to_anthropic(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200)
-        ModelVendorSyncService._fetch_anthropic_models("", "sk-key")
+        ModelVendorSyncService.test_anthropic_connection("", "sk-key")
         call_url = mock_post.call_args[0][0]
         assert call_url == "https://api.anthropic.com/v1/messages"
+
+    @patch("apps.opspilot.services.model_vendor_sync_service.requests.post")
+    def test_custom_model_used(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200)
+        ModelVendorSyncService.test_anthropic_connection("https://api.anthropic.com", "sk-key", model="deepseek-chat")
+        call_json = mock_post.call_args[1]["json"]
+        assert call_json["model"] == "deepseek-chat"
+
+    @patch("apps.opspilot.services.model_vendor_sync_service.requests.post")
+    def test_api_error_raises_value_error(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=500, text="Internal Server Error")
+        with pytest.raises(ValueError, match="API 连接失败"):
+            ModelVendorSyncService.test_anthropic_connection("https://api.anthropic.com", "sk-key")
 
 
 class TestFetchModelsDispatch:
     """fetch_models_with_credentials dispatches by protocol_type."""
 
-    @patch.object(
-        ModelVendorSyncService,
-        "_fetch_anthropic_models",
-        return_value=[{"id": "claude-3-haiku-20240307"}],
-    )
-    def test_anthropic_protocol_calls_anthropic_fetch(self, mock_fetch):
-        result = ModelVendorSyncService.fetch_models_with_credentials(
-            "https://api.anthropic.com",
-            "sk-key",
-            protocol_type="anthropic",
-        )
-        mock_fetch.assert_called_once()
-        assert result == [{"id": "claude-3-haiku-20240307"}]
+    def test_anthropic_protocol_raises_error(self):
+        """Anthropic protocol should raise error (no /models endpoint)."""
+        with pytest.raises(ValueError, match="Anthropic"):
+            ModelVendorSyncService.fetch_models_with_credentials(
+                "https://api.anthropic.com",
+                "sk-key",
+                protocol_type="anthropic",
+            )
 
     @patch.object(
         ModelVendorSyncService,
@@ -428,8 +425,9 @@ class TestIsSupportedVendor:
         v.vendor_type = vendor_type
         return v
 
-    def test_anthropic_supported(self):
-        assert ModelVendorSyncService.is_supported(self._make_vendor("anthropic"))
+    def test_anthropic_not_supported(self):
+        """Anthropic vendor type does not support model sync (no /models endpoint)."""
+        assert not ModelVendorSyncService.is_supported(self._make_vendor("anthropic"))
 
     def test_openai_supported(self):
         assert ModelVendorSyncService.is_supported(self._make_vendor("openai"))
