@@ -195,7 +195,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           </div>
         ))}
         <div
-          className="ml-auto flex shrink-0 items-center gap-2 whitespace-nowrap"
+          className="flex shrink-0 items-center gap-2 whitespace-nowrap"
           data-export-hidden="true"
         >
           <Button
