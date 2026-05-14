@@ -61,6 +61,10 @@ import {
   buildDefaultFilterBindings,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { collectNamespaceOptions } from '@/app/ops-analysis/utils/namespaceFilter';
+import {
+  getOpsChartTheme,
+  resolveOpsChartThemeName,
+} from '@/app/ops-analysis/utils/chartTheme';
 import { exportDashboardToPdf } from '@/app/ops-analysis/utils/exportPdf';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -78,6 +82,9 @@ const ResponsiveGridLayout = WidthProvider(GridLayout) as any;
 const Dashboard = forwardRef<DashboardRef, DashboardProps>(
   ({ selectedDashboard }, ref) => {
     const { t } = useTranslation();
+    const themeName = resolveOpsChartThemeName();
+    const chartTheme = getOpsChartTheme(themeName);
+    const isDarkTheme = themeName === 'dark';
     const { getDashboardDetail, saveDashboard } = useDashBoardApi();
     const dataSourceManager = useDataSourceManager();
     const { fetchDataSources, namespaceList, fetchNamespaces } = useOpsAnalysis();
@@ -765,25 +772,36 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     };
 
     return (
-      <div className="h-full flex-1 p-2 pb-0 overflow-auto flex flex-col bg-(--color-bg-1">
+      <div
+        className="h-full flex-1 overflow-auto flex flex-col p-2 pb-0"
+        style={{
+          backgroundColor: isDarkTheme ? 'var(--color-fill-1)' : '#f4f7fb',
+        }}
+      >
         <div
           ref={exportRef}
           className="flex-1 min-h-0 flex flex-col"
           data-export-expand="true"
         >
-          <div className="w-full mb-2 flex items-center justify-between rounded-lg shadow-sm bg-(--color-bg-1) p-3 border border-(--color-border-2)">
+          <div
+            className="w-full mb-2 flex items-center justify-between rounded-xl bg-(--color-bg-1) px-4 py-3 border border-(--color-border-2)"
+            style={{ boxShadow: '0 8px 20px rgba(31, 63, 104, 0.05)' }}
+          >
             <div className="flex-1 mr-8">
               {selectedDashboard && (
-                <div className="p-1 pt-0">
-                  <h2 className="text-lg font-semibold mb-1 text-(--color-text-1)">
+                <div className="pt-0.5">
+                  <h2 className="text-xl leading-7 font-semibold mb-1 text-(--color-text-1)">
                     {selectedDashboard.name}
                     {selectedDashboard.is_build_in && (
-                      <Tag color="blue" className="ml-2 text-xs align-middle">
+                      <Tag
+                        color="blue"
+                        className="ml-2 text-xs align-middle rounded-full! px-2! py-0.5!"
+                      >
                         {t('common.builtIn')}
                       </Tag>
                     )}
                   </h2>
-                  <p className="text-sm text-(--color-text-2)">
+                  <p className="text-sm leading-5 text-(--color-text-2)">
                     {selectedDashboard.desc}
                   </p>
                 </div>
@@ -791,7 +809,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             </div>
             {/* 右侧：工具栏 */}
             <div
-              className="flex items-center space-x-1 rounded-lg p-2"
+              className="flex items-center gap-1.5"
               data-export-hidden="true"
             >
               <Tooltip title={t('common.refresh')}>
@@ -799,7 +817,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                   type="text"
                   icon={<ReloadOutlined style={{ fontSize: 16 }} />}
                   onClick={handleRefresh}
-                  className="mr-2"
+                  className="rounded-full!"
                 />
               </Tooltip>
 
@@ -810,6 +828,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                     icon={<DownloadOutlined style={{ fontSize: 16 }} />}
                     loading={exporting}
                     onClick={handleExportPdf}
+                    className="rounded-full!"
                   />
                 </Tooltip>
               )}
@@ -817,20 +836,26 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               {isEditMode && (
                 <>
                   <PermissionWrapper requiredPermissions={['EditChart']}>
-                    <Button
-                      type="text"
-                      icon={<SettingOutlined style={{ fontSize: 16 }} />}
-                      onClick={() => setFilterConfigModalVisible(true)}
-                    >
-                      {t('dashboard.configFilter')}
-                    </Button>
+                    <Tooltip title={t('dashboard.configUnifiedFilterFields')}>
+                      <Button
+                        type="text"
+                        icon={<SettingOutlined style={{ fontSize: 16 }} />}
+                        onClick={() => setFilterConfigModalVisible(true)}
+                        className="rounded-full!"
+                      />
+                    </Tooltip>
                   </PermissionWrapper>
                   <PermissionWrapper requiredPermissions={['EditChart']}>
                     <Button
-                      type="dashed"
+                      type="default"
                       icon={<PlusOutlined />}
                       onClick={openAddModal}
-                      style={{ borderColor: '#1677ff', color: '#1677ff' }}
+                      className="rounded-full!"
+                      style={{
+                        borderColor: chartTheme.panelBorderColor,
+                        color: 'var(--color-text-1)',
+                        background: chartTheme.panelBg,
+                      }}
                     >
                       {t('dashboard.addView')}
                     </Button>
@@ -850,13 +875,15 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                           selectedDashboard?.is_build_in
                         }
                         onClick={toggleEditMode}
+                        className="rounded-full!"
                       />
                     </Tooltip>
                   ) : (
-                    <div className="flex items-center gap-2 ml-5!">
+                    <div className="flex items-center gap-2 ml-4">
                       <Button
                         disabled={!selectedDashboard?.data_id}
                         onClick={handleCancelEdit}
+                        className="rounded-full!"
                       >
                         {t('common.cancel')}
                       </Button>
@@ -865,6 +892,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                         loading={saving}
                         disabled={!selectedDashboard?.data_id}
                         onClick={handleSave}
+                        className="rounded-full!"
                       >
                         {t('common.save')}
                       </Button>
@@ -876,7 +904,14 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           </div>
 
           <div
-            className="flex-1 bg-(--color-fill-1) rounded-lg overflow-hidden flex flex-col"
+            className="flex-1 rounded-2xl overflow-hidden flex flex-col"
+            style={{
+              border: `1px solid ${chartTheme.panelBorderColor}`,
+              backgroundColor: chartTheme.panelBg,
+              boxShadow: isDarkTheme
+                ? '0 10px 24px rgba(0, 0, 0, 0.18)'
+                : '0 12px 28px rgba(31, 63, 104, 0.06)',
+            }}
             data-export-expand="true"
           >
             {(definitions.length > 0 || namespaceSelectorElement) && (
@@ -932,13 +967,15 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                     onLayoutChange={onLayoutChange}
                     cols={12}
                     rowHeight={60}
-                    margin={[12, 12]}
-                    containerPadding={[12, 12]}
+                    margin={[10, 10]}
+                    containerPadding={[10, 10]}
                     draggableCancel=".no-drag, .widget-body"
                     isDraggable={isEditMode}
                     isResizable={isEditMode}
                   >
                     {layout.map((item) => {
+                      const isTableWidget =
+                        item.valueConfig?.chartType === 'table';
                       const menu = (
                         <Menu>
                           <Menu.Item
@@ -959,15 +996,25 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                       return (
                         <div
                           key={item.i}
-                          className="widget bg-(--color-bg-1) rounded-lg shadow-sm overflow-hidden p-4 flex flex-col"
+                          className="widget rounded-2xl overflow-hidden p-3 flex flex-col"
+                          style={{
+                            backgroundColor: chartTheme.panelBg,
+                            border: `1px solid ${chartTheme.panelBorderColor}`,
+                            boxShadow: '0 6px 18px rgba(31, 63, 104, 0.05)',
+                          }}
                         >
-                          <div className="widget-header pb-4 flex justify-between items-start">
+                          <div
+                            className="widget-header pb-3 mb-2.5 flex justify-between items-start"
+                            style={{
+                              borderBottom: `1px solid ${chartTheme.panelBorderColor}`,
+                            }}
+                          >
                             <div className="flex-1">
-                              <h4 className="text-md font-medium text-(--color-text-1)">
+                              <h4 className="text-[15px] font-semibold text-(--color-text-1)">
                                 {item.name}
                               </h4>
                               {item.description?.trim() && (
-                                <p className="text-sm text-(--color-text-2) mt-1">
+                                <p className="text-xs text-(--color-text-2) mt-1">
                                   {item.description}
                                 </p>
                               )}
@@ -980,7 +1027,15 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                               </Dropdown>
                             )}
                           </div>
-                          <div className="widget-body flex-1 h-full rounded-b overflow-hidden">
+                          <div
+                            className={`widget-body flex-1 h-full ${isTableWidget ? 'rounded-lg' : 'rounded-xl'}`}
+                            style={{
+                              backgroundColor: isTableWidget
+                                ? chartTheme.panelBg
+                                : chartTheme.panelSubtleBg,
+                              overflow: isTableWidget ? 'visible' : 'hidden',
+                            }}
+                          >
                             <WidgetWrapper
                               widgetId={item.i}
                               key={item.i}
