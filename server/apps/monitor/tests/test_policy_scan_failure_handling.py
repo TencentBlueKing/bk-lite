@@ -37,6 +37,41 @@ def _load_module(module_name, file_path):
     return module
 
 
+def _load_snapshot_recorder_module(monkeypatch, module_name):
+    class _MonitorEventRawDataQuerySet:
+        def select_related(self, *args):
+            return []
+
+    class _MonitorEventRawDataManager:
+        def filter(self, **kwargs):
+            return _MonitorEventRawDataQuerySet()
+
+    class MonitorEventRawData:
+        objects = _MonitorEventRawDataManager()
+
+    class MonitorAlertMetricSnapshot:
+        pass
+
+    _install_module(
+        monkeypatch,
+        "apps.monitor.models",
+        MonitorEventRawData=MonitorEventRawData,
+        MonitorAlertMetricSnapshot=MonitorAlertMetricSnapshot,
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.tasks.utils.policy_methods",
+        METHOD={},
+        period_to_seconds=lambda period: 60,
+    )
+    _install_module(monkeypatch, "apps.core.logger", celery_logger=_Logger())
+
+    return _load_module(
+        module_name,
+        Path(__file__).resolve().parents[1] / "tasks" / "services" / "policy_scan" / "snapshot_recorder.py",
+    )
+
+
 class _PolicyQuerySet:
     def __init__(self, manager):
         self.manager = manager
@@ -462,6 +497,84 @@ def test_policy_scan_pre_check_propagates_metric_setup_failures(monkeypatch):
 
     with pytest.raises(RuntimeError, match="metric missing"):
         scanner._pre_check()
+
+
+def test_snapshot_recorder_reuses_fallback_raw_metric_query_for_multiple_alerts(monkeypatch):
+    module = _load_snapshot_recorder_module(monkeypatch, "monitor_policy_snapshot_recorder_cache_test_module")
+
+    policy = types.SimpleNamespace(
+        id=1005,
+        period={"type": "min", "value": 1},
+        group_by=["instance_id"],
+        last_run_time=datetime(2026, 5, 14, 8, 0, tzinfo=timezone.utc),
+    )
+    query_calls = []
+
+    def query_raw_metrics(period):
+        query_calls.append(period)
+        return {
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "host-1"}, "values": [[1, "1"]]},
+                    {"metric": {"instance_id": "host-2"}, "values": [[1, "2"]]},
+                ]
+            }
+        }
+
+    recorder = module.SnapshotRecorder(
+        policy,
+        {},
+        [
+            types.SimpleNamespace(id=1, metric_instance_id="('host-1',)", monitor_instance_id="host-1", alert_type="alert"),
+            types.SimpleNamespace(id=2, metric_instance_id="('host-2',)", monitor_instance_id="host-2", alert_type="alert"),
+        ],
+        types.SimpleNamespace(query_raw_metrics=query_raw_metrics),
+    )
+    snapshot_calls = []
+    recorder._update_alert_snapshot = (
+        lambda alert, event_objs, raw_data, snapshot_time, is_new_alert=False, is_no_data_alert=False: snapshot_calls.append((alert.id, raw_data))
+    )
+
+    recorder.record_snapshots_for_active_alerts()
+
+    assert len(query_calls) == 1
+    assert snapshot_calls == [
+        (1, {"metric": {"instance_id": "host-1"}, "values": [[1, "1"]]}),
+        (2, {"metric": {"instance_id": "host-2"}, "values": [[1, "2"]]}),
+    ]
+
+
+def test_snapshot_recorder_skips_fallback_raw_metric_query_for_no_data_alerts(monkeypatch):
+    module = _load_snapshot_recorder_module(monkeypatch, "monitor_policy_snapshot_recorder_no_data_test_module")
+
+    policy = types.SimpleNamespace(
+        id=1006,
+        period={"type": "min", "value": 1},
+        group_by=["instance_id"],
+        last_run_time=datetime(2026, 5, 14, 8, 0, tzinfo=timezone.utc),
+    )
+
+    def unexpected_query(period):
+        raise AssertionError("no_data snapshots should not query fallback raw metrics")
+
+    recorder = module.SnapshotRecorder(
+        policy,
+        {},
+        [
+            types.SimpleNamespace(id=3, metric_instance_id="('host-3',)", monitor_instance_id="host-3", alert_type="no_data"),
+        ],
+        types.SimpleNamespace(query_raw_metrics=unexpected_query),
+    )
+    snapshot_calls = []
+    recorder._update_alert_snapshot = (
+        lambda alert, event_objs, raw_data, snapshot_time, is_new_alert=False, is_no_data_alert=False: snapshot_calls.append(
+            (alert.id, raw_data, is_no_data_alert)
+        )
+    )
+
+    recorder.record_snapshots_for_active_alerts()
+
+    assert snapshot_calls == [(3, {}, True)]
 
 
 def test_no_data_events_can_notify_without_legacy_policy_field(monkeypatch):
