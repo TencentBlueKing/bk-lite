@@ -9,7 +9,10 @@ import {
   ClockCircleOutlined,
   RiseOutlined,
   FallOutlined,
-  NodeIndexOutlined
+  NodeIndexOutlined,
+  CodeOutlined,
+  DesktopOutlined,
+  HddOutlined
 } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
@@ -371,18 +374,23 @@ const inferMysqlIdentity = (roleSignals: {
   return { deployment, role, replication };
 };
 
+const getCollectionStatusTones = (metric?: MetricSeries | null) => {
+  if (!Array.isArray(metric?.viewData)) {
+    return [] as Array<'success' | 'empty'>;
+  }
+
+  return [...metric.viewData]
+    .sort((a, b) => Number(a.time) - Number(b.time))
+    .slice(-COLLECTION_STATUS_SEGMENT_COUNT)
+    .map((point) => (Number(point.value1 ?? 0) > 0 ? ('success' as const) : ('empty' as const)));
+};
+
 const buildCollectionStatusTimeline = (metric?: MetricSeries | null) => {
   if (metric?.loadState === 'error') {
     return Array.from({ length: COLLECTION_STATUS_SEGMENT_COUNT }, () => 'error' as const);
   }
 
-  const points = Array.isArray(metric?.viewData)
-    ? [...metric.viewData]
-      .sort((a, b) => Number(a.time) - Number(b.time))
-      .slice(-COLLECTION_STATUS_SEGMENT_COUNT)
-    : [];
-
-  const tones = points.map((point) => (Number(point.value1 ?? 0) > 0 ? ('success' as const) : ('empty' as const)));
+  const tones = getCollectionStatusTones(metric);
 
   if (tones.length >= COLLECTION_STATUS_SEGMENT_COUNT) {
     return tones;
@@ -488,18 +496,7 @@ const mergeChartSeries = (
 };
 
 const getCollectionStatus = (metric?: MetricSeries | null) => {
-  const hasData = Array.isArray(metric?.viewData) && metric.viewData.length > 0;
   const hasError = metric?.loadState === 'error';
-
-  if (hasData) {
-    return {
-      label: '正常',
-      tagColor: 'success' as const,
-      accentColor: '#27c274',
-      summary: '采集中',
-      detail: '当前采集状态指标可正常返回，说明 MySQL 监控探针采集链路正常。'
-    };
-  }
 
   if (hasError) {
     return {
@@ -508,6 +505,18 @@ const getCollectionStatus = (metric?: MetricSeries | null) => {
       accentColor: '#ff4d4f',
       summary: '查询失败',
       detail: '当前采集状态指标查询失败，请检查探针与数据库连通性或采集配置。'
+    };
+  }
+
+  const latestTone = getCollectionStatusTones(metric).at(-1);
+
+  if (latestTone === 'success') {
+    return {
+      label: '正常',
+      tagColor: 'success' as const,
+      accentColor: '#27c274',
+      summary: '采集中',
+      detail: '当前采集状态指标可正常返回，说明 MySQL 监控探针采集链路正常。'
     };
   }
 
@@ -1076,11 +1085,11 @@ export default function MysqlDashboardPage() {
   const statementKnownValue = Math.max(selectValue, 0) + Math.max(insertValue, 0) + Math.max(updateValue, 0) + Math.max(deleteValue, 0);
   const statementOtherValue = Math.max(qpsValue - statementKnownValue, 0);
   const statementShare = [
-    { name: 'SELECT', value: selectValue, color: '#2f6bff' },
-    { name: 'INSERT', value: insertValue, color: '#ff8a1f' },
-    { name: 'UPDATE', value: updateValue, color: '#faad14' },
-    { name: 'DELETE', value: deleteValue, color: '#5b8ff9' },
-    { name: '其他', value: statementOtherValue, color: '#c9d2de' }
+    { name: 'SELECT', value: selectValue, color: '#4c8dff' },
+    { name: 'INSERT', value: insertValue, color: '#ff8f3d' },
+    { name: 'UPDATE', value: updateValue, color: '#ffbf47' },
+    { name: 'DELETE', value: deleteValue, color: '#ff627e' },
+    { name: '其他', value: statementOtherValue, color: '#7f8da3' }
   ];
   const statementShareChartData = statementShare.filter((item) => item.value > 0);
 
@@ -1099,35 +1108,35 @@ export default function MysqlDashboardPage() {
     {
       name: 'Sleep',
       value: threadSleepCount,
-      color: '#2f6bff'
+      color: '#6f86a8'
     },
     {
       name: 'Query',
       value: threadQueryCount,
-      color: '#ff4d4f'
+      color: '#27c274'
     },
     {
       name: 'Sending data',
       value: threadSendingCount,
-      color: '#faad14'
+      color: '#ffb020'
     },
     {
       name: 'Locked',
       value: threadLockedCount,
-      color: '#5b8ff9'
+      color: '#ff5d73'
     },
     {
       name: '其他',
       value: threadOtherValue,
-      color: '#c9d2de'
+      color: '#7f8da3'
     }
   ];
   const threadShareChartData = threadShare.filter((item) => item.value > 0);
   const bufferPoolUsedValue = Math.min(Math.max(bpUsedValue, 0), 100);
   const bufferPoolHitRatio = Math.min(Math.max(hitValue, 0), 100);
   const bufferPoolShareChartData = [
-    { name: '已使用', value: bufferPoolUsedValue, color: '#2f6bff' },
-    { name: '空闲', value: Math.max(100 - bufferPoolUsedValue, 0), color: '#d9e4ff' }
+    { name: '已使用', value: bufferPoolUsedValue, color: '#4c8dff' },
+    { name: '空闲', value: Math.max(100 - bufferPoolUsedValue, 0), color: '#314257' }
   ].filter((item) => item.value > 0);
   const normalizeCountValue = (value: number) => (Number.isFinite(value) ? Math.max(Math.round(value), 0) : 0);
   const bufferPoolTotalPages = normalizeCountValue(getLatest('mysql_innodb_buffer_pool_pages_total'));
@@ -1182,6 +1191,72 @@ export default function MysqlDashboardPage() {
     logSlaveUpdates: logSlaveUpdatesValue
   });
   const replicationApplicable = mysqlIdentity.role === '从库' || hasReplicationData;
+  const renderFlowValue = (name: string, value: string, unit = '') => (hasMetricData(name) ? `${value}${unit}` : '--');
+  const requestFlowNodes = [
+    {
+      title: '客户端 / 连接',
+      subTitle: '请求入口',
+      icon: <DesktopOutlined />,
+      metrics: [
+        { label: 'QPS', value: `${qpsCardDisplay.value}${qpsCardDisplay.unit}` },
+        {
+          label: '活跃连接',
+          value: hasMetricData('mysql_threads_connected') ? threadsConnectedValue.toFixed(0) : '--'
+        },
+        { label: '连接使用率', value: `${connCardDisplay.value}${connCardDisplay.unit}` }
+      ]
+    },
+    {
+      title: 'MySQL 实例',
+      subTitle: mysqlIdentity.role,
+      icon: <DatabaseOutlined />,
+      metrics: [
+        { label: '部署', value: mysqlIdentity.deployment },
+        { label: '运行时长', value: uptimeDisplay },
+        { label: '最大连接', value: hasMetricData('mysql_variables_max_connections') ? maxConnectionsValue.toFixed(0) : '--' }
+      ]
+    },
+    {
+      title: 'SQL 执行',
+      subTitle: '查询 / 锁等待',
+      icon: <CodeOutlined />,
+      metrics: [
+        { label: 'SELECT', value: renderFlowValue('mysql_com_select_rate', selectValue.toFixed(1), '/s') },
+        { label: '慢查询', value: `${slowCardDisplay.value}${slowCardDisplay.unit}` },
+        {
+          label: '锁等待',
+          value: renderFlowValue('mysql_innodb_row_lock_waits_rate', (lockWaitRate * 60).toFixed(lockWaitRate * 60 >= 10 ? 0 : 1), '/min')
+        }
+      ]
+    },
+    {
+      title: '存储引擎 InnoDB',
+      subTitle: '缓存与落盘入口',
+      icon: <HddOutlined />,
+      metrics: [
+        { label: 'Buffer Pool 命中率', value: `${hitCardDisplay.value}${hitCardDisplay.unit}` },
+        { label: '磁盘 I/O', value: renderFlowValue('mysql_innodb_data_writes_rate', dataWriteValue.toFixed(1), '/s') },
+        { label: '脏页比例', value: renderFlowValue('mysql_buffer_pool_dirty_ratio', bpDirtyValue.toFixed(1), '%') }
+      ]
+    }
+  ];
+  const bufferFlowMetrics = [
+    {
+      label: '命中率',
+      value: `${hitCardDisplay.value}${hitCardDisplay.unit}`
+    },
+    {
+      label: '使用率',
+      value: renderFlowValue('mysql_buffer_pool_used_ratio', bufferPoolUsedValue.toFixed(1), '%')
+    },
+    {
+      label: '脏页',
+      value: renderFlowValue('mysql_buffer_pool_dirty_ratio', bpDirtyValue.toFixed(1), '%')
+    }
+  ];
+  const bufferFlowCellCount = 28;
+  const bufferFlowUsedCells = Math.round((bufferPoolUsedValue / 100) * bufferFlowCellCount);
+  const bufferFlowDirtyCells = Math.round((bpDirtyValue / 100) * bufferFlowCellCount);
 
   const onTimeChange = (val: number[], originValue: number | null) => {
     setTimeValues({
@@ -1255,7 +1330,7 @@ export default function MysqlDashboardPage() {
                   className={`${styles.modeTab} ${displayMode === 'dashboard' ? styles.modeTabActive : ''}`}
                   onClick={() => setDisplayMode('dashboard')}
                 >
-                  专业仪表盘
+                  监控仪表盘
                 </button>
                 <button
                   type="button"
@@ -1320,9 +1395,11 @@ export default function MysqlDashboardPage() {
                 loading={instanceLoading}
                 options={instanceOptions}
                 onChange={onInstanceChange}
-                placeholder="切换实例"
+                placeholder="选择实例"
+                title={currentInstanceOption?.label || resolvedInstanceName}
                 showSearch
                 optionFilterProp="label"
+                popupMatchSelectWidth={360}
                 filterOption={(input, option) => {
                   const searchText = input.trim().toLowerCase();
                   if (!searchText) {
@@ -1529,6 +1606,129 @@ export default function MysqlDashboardPage() {
                 </div>
                   </div>
 
+                  <div className={`${styles.panel} ${styles.dataFlowPanel}`}>
+                    <div className={styles.panelHeader}>
+                      <div className={styles.panelHeading}>
+                        <h3 className={styles.panelTitle}>请求链路与 InnoDB 数据流</h3>
+                        <div className={styles.panelSubTitle}>从请求入口到缓存、日志与落盘路径</div>
+                      </div>
+                    </div>
+                    <div className={styles.mysqlFlowModel}>
+                      <div className={styles.mysqlFlowScene}>
+                        <div className={styles.mysqlRequestPath}>
+                          {requestFlowNodes.map((node, index) => (
+                            <React.Fragment key={node.title}>
+                              <div className={styles.mysqlPathNode}>
+                                <div className={styles.mysqlNodeTitle}>{node.title}</div>
+                                <div className={styles.mysqlNodeIcon}>{node.icon}</div>
+                                <div className={styles.mysqlNodeMetrics}>
+                                  {node.metrics.map((item) => (
+                                    <div className={styles.mysqlNodeMetric} key={item.label}>
+                                      <span>{item.label}</span>
+                                      <strong>{item.value}</strong>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                              {index < requestFlowNodes.length - 1 ? (
+                                <div className={styles.mysqlFlowConnector}>
+                                  <span />
+                                </div>
+                              ) : null}
+                            </React.Fragment>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className={`${styles.mysqlFlowScene} ${styles.mysqlInnoScene}`}>
+                        <div className={styles.innodbBox}>
+                        <div className={styles.innodbBoxTitle}>InnoDB 内部</div>
+                        <div className={styles.innodbInner}>
+                          <div className={styles.innodbBufferCard}>
+                            <div className={styles.innodbCardTitle}>Buffer Pool</div>
+                            <div className={styles.innodbBufferGrid}>
+                              {Array.from({ length: bufferFlowCellCount }).map((_, index) => (
+                                <span
+                                  className={`${styles.bufferCell} ${
+                                    index < bufferFlowDirtyCells
+                                      ? styles.bufferCellDirty
+                                      : index < bufferFlowUsedCells
+                                        ? styles.bufferCellUsed
+                                        : ''
+                                  }`}
+                                  key={index}
+                                />
+                              ))}
+                            </div>
+                            <div className={styles.innodbMetricRows}>
+                              {bufferFlowMetrics.map((item) => (
+                                <div className={styles.mysqlNodeMetric} key={item.label}>
+                                  <span>{item.label}</span>
+                                  <strong>{item.value}</strong>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className={styles.innodbFork}>
+                            <span className={styles.innodbForkMain} />
+                            <span className={styles.innodbForkTop} />
+                            <span className={styles.innodbForkBottom} />
+                          </div>
+
+                          <div className={styles.innodbLogCards}>
+                            <div className={styles.innodbColumnTitle}>日志与事务</div>
+                            <div className={styles.innodbLogCard}>
+                              <span>Redo Log Buffer</span>
+                              <strong>{renderFlowValue('mysql_innodb_os_log_fsyncs_rate', fsyncValue.toFixed(1), '/s')}</strong>
+                            </div>
+                            <div className={styles.innodbLogCard}>
+                              <span>Undo Log / 临时表</span>
+                              <strong>{renderFlowValue('mysql_created_tmp_tables_rate', (tmpTotalRate * 60).toFixed(tmpTotalRate * 60 >= 10 ? 0 : 1), '/min')}</strong>
+                            </div>
+                          </div>
+
+                          <div className={styles.innodbFork}>
+                            <span className={styles.innodbForkMain} />
+                            <span className={styles.innodbForkTop} />
+                            <span className={styles.innodbForkBottomDashed} />
+                          </div>
+
+                          <div className={styles.innodbDiskStack}>
+                            <div className={styles.innodbColumnTitle}>磁盘持久化</div>
+                            <div className={styles.innodbDiskCard}>
+                              <span>Data File / ibd</span>
+                              <div className={styles.mysqlNodeMetric}><span>读 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_reads_rate', dataReadValue.toFixed(1), '/s')}</strong></div>
+                              <div className={styles.mysqlNodeMetric}><span>写 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_writes_rate', dataWriteValue.toFixed(1), '/s')}</strong></div>
+                            </div>
+                            <div className={styles.innodbDiskCard}>
+                              <span>Redo Log / ib_logfile</span>
+                              <div className={styles.mysqlNodeMetric}><span>刷盘</span><strong>{renderFlowValue('mysql_innodb_os_log_fsyncs_rate', fsyncValue.toFixed(1), '/s')}</strong></div>
+                              <div className={styles.mysqlNodeMetric}><span>复制延迟</span><strong>{replicationApplicable ? renderFlowValue('mysql_slave_seconds_behind_master', replicationDelayDisplay.value, replicationDelayDisplay.unit || 's') : '不适用'}</strong></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      </div>
+
+                      <div className={styles.mysqlFlowLegend}>
+                        <span><i className={styles.mysqlLegendRequest} /> 请求流向</span>
+                        <span><i className={styles.mysqlLegendWrite} /> 写入路径</span>
+                        <span><i className={styles.mysqlLegendBackground} /> 后台/异步路径</span>
+                        <span><i className={styles.mysqlLegendPersist} /> 数据落盘</span>
+                      </div>
+                      <div className={styles.mysqlFlowKpis}>
+                        <div><span>部署 / 身份</span><strong>{mysqlIdentity.deployment} / {mysqlIdentity.role}</strong></div>
+                        <div><span>读 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_reads_rate', dataReadValue.toFixed(1), '/s')}</strong></div>
+                        <div><span>写 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_writes_rate', dataWriteValue.toFixed(1), '/s')}</strong></div>
+                        <div><span>Redo 刷盘</span><strong>{renderFlowValue('mysql_innodb_os_log_fsyncs_rate', fsyncValue.toFixed(1), '/s')}</strong></div>
+                        <div><span>磁盘临时表</span><strong>{renderFlowValue('mysql_created_tmp_disk_tables_rate', (tmpDiskRate * 60).toFixed(tmpDiskRate * 60 >= 10 ? 0 : 1), '/min')}</strong></div>
+                        <div><span>脏页比例</span><strong>{renderFlowValue('mysql_buffer_pool_dirty_ratio', bpDirtyValue.toFixed(1), '%')}</strong></div>
+                        <div><span>锁等待</span><strong>{renderFlowValue('mysql_innodb_row_lock_waits_rate', (lockWaitRate * 60).toFixed(lockWaitRate * 60 >= 10 ? 0 : 1), '/min')}</strong></div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className={styles.detailGrid}>
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
                   <div className={styles.panelHeader}>
@@ -1547,7 +1747,10 @@ export default function MysqlDashboardPage() {
                                 cy="50%"
                                 innerRadius={50}
                                 outerRadius={70}
+                                cornerRadius={10}
                                 paddingAngle={statementShareChartData.length > 1 ? 2 : 0}
+                                stroke="rgba(255, 255, 255, 0.96)"
+                                strokeWidth={4}
                                 dataKey="value"
                               >
                                 {statementShareChartData.map((item) => (
@@ -1601,7 +1804,10 @@ export default function MysqlDashboardPage() {
                                 cy="50%"
                                 innerRadius={50}
                                 outerRadius={70}
+                                cornerRadius={10}
                                 paddingAngle={threadShareChartData.length > 1 ? 2 : 0}
+                                stroke="rgba(255, 255, 255, 0.96)"
+                                strokeWidth={4}
                                 dataKey="value"
                               >
                                 {threadShareChartData.map((item) => (
@@ -1796,7 +2002,12 @@ export default function MysqlDashboardPage() {
                                   cy="50%"
                                   innerRadius={52}
                                   outerRadius={72}
+                                  startAngle={220}
+                                  endAngle={-40}
+                                  cornerRadius={10}
                                   paddingAngle={bufferPoolShareChartData.length > 1 ? 2 : 0}
+                                  stroke="rgba(255, 255, 255, 0.96)"
+                                  strokeWidth={4}
                                   dataKey="value"
                                 >
                                   {bufferPoolShareChartData.map((item) => (
@@ -1943,7 +2154,7 @@ export default function MysqlDashboardPage() {
                     <div className={styles.panelHeader}>
                       <div className={styles.panelHeading}>
                         <h3 className={styles.panelTitle}>监控指标全景</h3>
-                        <div className={styles.panelSubTitle}>复用详情页的通用监控视图能力，减少专业仪表盘重复维护</div>
+                        <div className={styles.panelSubTitle}>复用详情页的通用监控视图能力，减少监控仪表盘重复维护</div>
                       </div>
                     </div>
                     <MetricViews

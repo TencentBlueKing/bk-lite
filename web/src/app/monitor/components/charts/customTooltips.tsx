@@ -29,6 +29,20 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
   const { convertToLocalizedTime } = useLocalizedTime();
   const { findUnitNameById } = useUnitTransform();
 
+  const formatDetailText = useCallback(
+    (detail: { label?: string; value?: string }) => {
+      const labelText = detail.label?.trim() || '';
+      const valueText = detail.value?.trim() || '';
+
+      if (labelText && valueText && labelText !== valueText) {
+        return `${labelText}：${valueText}`;
+      }
+
+      return valueText || labelText;
+    },
+    []
+  );
+
   const getValue = useCallback(
     (item: TableDataItem & { dataKey?: string }) => {
       const value = getEnumValue(metric as MetricItem, item.value);
@@ -76,11 +90,8 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
               ></span>
               <span className="flex-1">
                 {(item.payload.details?.[item.dataKey] || [])
-                  .map((detail: any) =>
-                    detail.label
-                      ? `${detail.label}：${detail.value}`
-                      : detail.value
-                  )
+                  .map((detail: any) => formatDetailText(detail))
+                  .filter(Boolean)
                   .join('-')}
               </span>
               <span className="font-[600] ml-[10px] whitespace-nowrap">
