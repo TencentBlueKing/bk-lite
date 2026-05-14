@@ -20,6 +20,24 @@ from apps.node_mgmt.utils.token_auth import generate_node_token
 
 class RegionService:
     @staticmethod
+    def get_region_service_instance_id(cloud_region_name: str, service_name: str) -> str:
+        """返回云区域级服务的实例 ID。
+
+        云区域环境通过 webhookd proxy 部署时，会将 ``ZONE_NAME`` 注入到
+        ``NATS_INSTANCE_ID``，因此 region 级 ``nats-executor`` 的实例 ID
+        固定等于 ``cloud_region.name``；``stargazer`` 则在此基础上追加
+        ``_stargazer`` 后缀。
+
+        注意：这与节点/采集器路径中使用 ``node.id`` 作为实例 ID 的语义不同，
+        两者不能混用。
+        """
+        if service_name == CloudRegionServiceConstants.NATS_EXECUTOR_SERVICE_NAME:
+            return cloud_region_name
+        if service_name == CloudRegionServiceConstants.STARGAZER_SERVICE_NAME:
+            return f"{cloud_region_name}_stargazer"
+        raise BaseAppException(f"Unsupported cloud region service: {service_name}")
+
+    @staticmethod
     def _decode_env_rows(env_rows, keys=None):
         variables = {}
         selected_keys = set(keys) if keys is not None else None
@@ -115,6 +133,11 @@ class RegionService:
         api_token = generate_node_token(node_id, proxy_ip, "system")
         redis_password = uuid.uuid4().hex[:12]
 
+        region_executor_instance_id = RegionService.get_region_service_instance_id(
+            cloud_region.name,
+            CloudRegionServiceConstants.NATS_EXECUTOR_SERVICE_NAME,
+        )
+
         webhook_params = {
             "node_id": node_id,
             "zone_id": str(cloud_region_id),
@@ -134,7 +157,11 @@ class RegionService:
         webhook_api_url = f"{webhook_url.rstrip('/')}/infra/proxy"
 
         try:
-            logger.info(str(webhook_params))
+            logger.info(
+                "Generating deploy script for cloud region %s with region executor instance_id=%s",
+                cloud_region_id,
+                region_executor_instance_id,
+            )
             response = requests.post(
                 webhook_api_url,
                 json=webhook_params,

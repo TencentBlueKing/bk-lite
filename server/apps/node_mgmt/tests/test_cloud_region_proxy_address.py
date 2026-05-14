@@ -1,6 +1,8 @@
 import pytest
 
 from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
 from apps.node_mgmt.constants.database import CloudRegionConstants, EnvVariableConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import CloudRegion, SidecarEnv
@@ -129,3 +131,25 @@ def test_update_env_vars_on_proxy_change_updates_proxy_related_env_vars():
     assert SidecarEnv.objects.get(cloud_region=cloud_region, key=EnvVariableConstants.PROXY_ADDRESS_KEY).value == "proxy.example.com"
     assert SidecarEnv.objects.get(cloud_region=cloud_region, key=NodeConstants.SERVER_URL_KEY).value == "https://proxy.example.com:443"
     assert SidecarEnv.objects.get(cloud_region=cloud_region, key=NodeConstants.NATS_SERVERS_KEY).value == "nats://proxy.example.com:4222"
+
+
+def test_get_region_service_instance_id_uses_region_scoped_contract():
+    assert (
+        RegionService.get_region_service_instance_id(
+            "default",
+            CloudRegionServiceConstants.NATS_EXECUTOR_SERVICE_NAME,
+        )
+        == "default"
+    )
+    assert (
+        RegionService.get_region_service_instance_id(
+            "default",
+            CloudRegionServiceConstants.STARGAZER_SERVICE_NAME,
+        )
+        == "default_stargazer"
+    )
+
+
+def test_get_region_service_instance_id_rejects_unsupported_service():
+    with pytest.raises(BaseAppException, match="Unsupported cloud region service"):
+        RegionService.get_region_service_instance_id("default", "unknown-service")
