@@ -4,6 +4,7 @@ import ChartLegend from '../components/chartLegend';
 import { Spin, Empty } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
+import { useTranslation } from '@/utils/i18n';
 
 interface EChartsInstance {
   dispatchAction: (payload: Record<string, any>) => void;
@@ -20,6 +21,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
   loading = false,
   onReady,
 }) => {
+  const { t } = useTranslation();
   const chartRef = useRef<any>(null);
   const chartColors = randomColorForLegend();
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
@@ -256,7 +258,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
   } else {
     option.series = [
       {
-        name: '告警数',
+        name: t('topology.treeValueTitle'),
         type: 'line',
         data: chartData && chartData.values ? chartData.values : [],
         smooth: true,
