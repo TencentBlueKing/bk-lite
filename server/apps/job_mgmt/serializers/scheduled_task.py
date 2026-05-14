@@ -1,5 +1,6 @@
 """定时任务序列化器"""
 
+from django.db import transaction
 from rest_framework import serializers
 
 from apps.job_mgmt.constants import JobType, ScheduleType, TargetSource
@@ -184,13 +185,17 @@ class ScheduledTaskCreateSerializer(serializers.ModelSerializer):
             validated_data["created_by"] = request.user.username
             validated_data["updated_by"] = request.user.username
 
-        instance = ScheduledTask.objects.create(**validated_data)
+        with transaction.atomic():
+            instance = ScheduledTask.objects.create(**validated_data)
 
-        # 创建 celery-beat PeriodicTask
-        periodic_task = ScheduledTaskService.create_periodic_task(instance)
-        if periodic_task:
-            instance.periodic_task_id = periodic_task.id
-            instance.save(update_fields=["periodic_task_id"])
+            # 创建 celery-beat PeriodicTask
+            periodic_task = ScheduledTaskService.create_periodic_task(instance)
+            if periodic_task:
+                instance.periodic_task_id = periodic_task.id
+                instance.save(update_fields=["periodic_task_id"])
+            else:
+                # PeriodicTask 创建失败，回滚整个事务
+                raise serializers.ValidationError({"non_field_errors": ["创建定时调度任务失败，请检查 Cron 表达式或计划执行时间"]})
 
         return instance
 
@@ -297,15 +302,19 @@ class ScheduledTaskUpdateSerializer(serializers.ModelSerializer):
         if request and request.user:
             validated_data["updated_by"] = request.user.username
 
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
+        with transaction.atomic():
+            for attr, value in validated_data.items():
+                setattr(instance, attr, value)
+            instance.save()
 
-        # 更新 celery-beat PeriodicTask
-        periodic_task = ScheduledTaskService.update_periodic_task(instance)
-        if periodic_task:
-            instance.periodic_task_id = periodic_task.id
-            instance.save(update_fields=["periodic_task_id"])
+            # 更新 celery-beat PeriodicTask
+            periodic_task = ScheduledTaskService.update_periodic_task(instance)
+            if periodic_task:
+                instance.periodic_task_id = periodic_task.id
+                instance.save(update_fields=["periodic_task_id"])
+            elif instance.is_enabled:
+                # 启用状态下 PeriodicTask 更新失败，回滚
+                raise serializers.ValidationError({"non_field_errors": ["更新定时调度任务失败，请检查配置"]})
 
         return instance
 
