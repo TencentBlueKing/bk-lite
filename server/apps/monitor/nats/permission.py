@@ -12,15 +12,11 @@ def get_monitor_module_data(module, child_module, page, page_size, group_id):
         queryset = MonitorInstance.objects.filter(
             monitor_object_id=child_module,
             monitorinstanceorganization__organization=group_id,
-        ).distinct("id")
+        ).distinct()
     elif module == "policy":
-        queryset = MonitorPolicy.objects.filter(
-            monitor_object_id=child_module, policyorganization__organization=group_id
-        ).distinct("id")
+        queryset = MonitorPolicy.objects.filter(monitor_object_id=child_module, policyorganization__organization=group_id).distinct()
     elif module == "condition":
-        queryset = MonitorCondition.objects.filter(
-            organizations__organization=group_id
-        ).distinct("id")
+        queryset = MonitorCondition.objects.filter(organizations__organization=group_id).distinct()
     else:
         raise ValueError("Invalid module type")
     # 计算总数
@@ -48,9 +44,7 @@ def get_monitor_module_list():
 
     type_list = []
     for obj_type, items in obj_map.items():
-        type_list.append(
-            {"name": obj_type, "display_name": obj_type, "children": items}
-        )
+        type_list.append({"name": obj_type, "display_name": obj_type, "children": items})
 
     return [
         {
