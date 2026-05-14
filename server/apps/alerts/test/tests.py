@@ -1882,6 +1882,182 @@ class AlertPermissionScopeTestCase(TestCase):
         )
         self.assertEqual(hidden_alert.status, AlertStatus.UNASSIGNED)
 
+    def test_alert_operator_rejects_assignee_outside_alert_team_scope(self):
+        user = self._build_user("alert-editor-scope", [1], ["Alarms-Edit"])
+        self._build_user("foreign-alert-operator", [2], [])
+        visible_alert = self._build_alert([1], [], "visible-operator-scope")
+
+        request = self.factory.post(
+            "/api/alert/operator/assign/",
+            {
+                "alert_id": [visible_alert.alert_id],
+                "assignee": ["foreign-alert-operator"],
+            },
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = AlertModelViewSet.as_view({"post": "operator"})(request, operator_action="assign")
+        payload = json.loads(response.content)
+        visible_alert.refresh_from_db()
+
+        self.assertEqual(response.status_code, 500)
+        self.assertFalse(payload["result"])
+        self.assertEqual(
+            payload["data"][visible_alert.alert_id]["message"],
+            "以下处理人不在告警所属组织范围内: foreign-alert-operator",
+        )
+        self.assertEqual(visible_alert.status, AlertStatus.UNASSIGNED)
+        self.assertEqual(visible_alert.operator, [])
+
+    @patch("apps.alerts.service.alter_operator.AlertOperator.format_notify_data", return_value={})
+    def test_alert_operator_accepts_assignee_within_alert_team_scope(self, _format_notify_data):
+        user = self._build_user("alert-editor-valid", [1], ["Alarms-Edit"])
+        self._build_user("team-alert-operator", [1], [])
+        visible_alert = self._build_alert([1], [], "visible-operator-valid")
+
+        request = self.factory.post(
+            "/api/alert/operator/assign/",
+            {
+                "alert_id": [visible_alert.alert_id],
+                "assignee": ["team-alert-operator"],
+            },
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = AlertModelViewSet.as_view({"post": "operator"})(request, operator_action="assign")
+        visible_alert.refresh_from_db()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(visible_alert.status, AlertStatus.PENDING)
+        self.assertEqual(visible_alert.operator, ["team-alert-operator"])
+
+    def test_incident_create_rejects_operator_outside_alert_team_scope(self):
+        user = self._build_user("incident-editor-scope", [1], ["Alarms-Edit"])
+        self._build_user("foreign-incident-operator", [2], [])
+        visible_alert = self._build_alert([1], [], "visible-incident-scope")
+
+        request = self.factory.post(
+            "/api/incident",
+            {
+                "title": "new-incident-scope",
+                "level": "warning",
+                "content": "content",
+                "note": "",
+                "labels": {},
+                "operator": ["foreign-incident-operator"],
+                "alert": [visible_alert.pk],
+            },
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = IncidentModelViewSet.as_view({"post": "create"})(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["operator"][0],
+            "以下处理人不在事故关联告警组织范围内: foreign-incident-operator",
+        )
+        self.assertEqual(Incident.objects.count(), 0)
+
+    def test_incident_patch_rejects_operator_outside_alert_team_scope(self):
+        user = self._build_user(
+            "incident-editor-scope-patch",
+            [1],
+            ["Incidents-Edit", "Alarms-Edit"],
+        )
+        self._build_user("foreign-incident-patch-operator", [2], [])
+        visible_alert = self._build_alert([1], ["incident-editor-scope-patch"], "visible-incident-patch-scope")
+        incident = Incident.objects.create(
+            incident_id="INCIDENT-scope-patch",
+            status=IncidentStatus.PENDING,
+            level="warning",
+            title="scope-patch-incident",
+            content="content",
+            note="",
+            labels={},
+            operator=["incident-editor-scope-patch"],
+            fingerprint="incident-scope-patch-fp",
+            created_by="system",
+            updated_by="system",
+            domain="domain.com",
+            updated_by_domain="domain.com",
+        )
+        incident.alert.add(visible_alert)
+
+        request = self.factory.patch(
+            f"/api/incident/{incident.pk}/",
+            {"operator": ["foreign-incident-patch-operator"]},
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = IncidentModelViewSet.as_view({"patch": "partial_update"})(request, pk=incident.pk)
+        incident.refresh_from_db()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["operator"][0],
+            "以下处理人不在事故关联告警组织范围内: foreign-incident-patch-operator",
+        )
+        self.assertEqual(incident.operator, ["incident-editor-scope-patch"])
+
+    def test_alert_operator_rejects_nonexistent_assignee(self):
+        user = self._build_user("alert-editor-missing", [1], ["Alarms-Edit"])
+        visible_alert = self._build_alert([1], [], "visible-operator-missing")
+
+        request = self.factory.post(
+            "/api/alert/operator/assign/",
+            {"alert_id": [visible_alert.alert_id], "assignee": ["ghost-user"]},
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = AlertModelViewSet.as_view({"post": "operator"})(request, operator_action="assign")
+        payload = json.loads(response.content)
+        visible_alert.refresh_from_db()
+
+        self.assertEqual(response.status_code, 500)
+        self.assertFalse(payload["result"])
+        self.assertEqual(
+            payload["data"][visible_alert.alert_id]["message"],
+            "以下处理人不存在: ghost-user",
+        )
+        self.assertEqual(visible_alert.operator, [])
+
+    def test_incident_create_rejects_nonexistent_operator(self):
+        user = self._build_user("incident-editor-missing", [1], ["Alarms-Edit"])
+        visible_alert = self._build_alert([1], [], "visible-incident-missing")
+
+        request = self.factory.post(
+            "/api/incident",
+            {
+                "title": "new-incident-missing",
+                "level": "warning",
+                "content": "content",
+                "note": "",
+                "labels": {},
+                "operator": ["ghost-incident-user"],
+                "alert": [visible_alert.pk],
+            },
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = IncidentModelViewSet.as_view({"post": "create"})(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["operator"][0], "以下处理人不存在: ghost-incident-user")
+        self.assertEqual(Incident.objects.count(), 0)
+
     def test_event_retrieve_rejects_cross_team_access(self):
         user = self._build_user("event-reader", [1], ["Alarms-View"])
         hidden_alert = self._build_alert([2], ["someone-else"], "hidden-event")
