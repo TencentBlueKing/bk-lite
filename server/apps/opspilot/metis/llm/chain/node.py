@@ -22,7 +22,6 @@ from deepagents import create_deep_agent
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_openai import ChatOpenAI
 from langchain_openai.chat_models.base import BaseChatOpenAI as _BaseChatOpenAI
 from langchain_openai.chat_models.base import _convert_delta_to_message_chunk as _original_convert_delta_to_message_chunk
 from langchain_openai.chat_models.base import _convert_dict_to_message as _original_convert_dict_to_message
@@ -146,7 +145,7 @@ class BasicNode:
         trace_id = config["configurable"]["trace_id"]
         logger.debug(f"[{trace_id}] {message}")
 
-    def get_llm_client(self, request: BasicLLMRequest, disable_stream=False, isolated=False) -> ChatOpenAI:
+    def get_llm_client(self, request: BasicLLMRequest, disable_stream=False, isolated=False):
         """
         获取LLM客户端
 
@@ -154,31 +153,11 @@ class BasicNode:
             request: LLM请求对象
             disable_stream: 是否禁用流式输出
             isolated: 是否创建独立客户端(不被LangGraph跟踪),用于内部调用如问题改写
+
+        Returns:
+            BaseChatModel客户端实例 (ChatOpenAI 或 ChatAnthropic)
         """
-        llm = ChatOpenAI(
-            model=request.model,
-            base_url=request.openai_api_base,
-            disable_streaming=disable_stream,
-            timeout=3000,
-            api_key=request.openai_api_key,
-            temperature=request.temperature,
-        )
-        if llm.extra_body is None:
-            llm.extra_body = {}
-
-        show_think = bool((request.extra_config or {}).get("show_think", True))
-        model_lower = request.model.lower()
-        if "qwen" in model_lower:
-            llm.extra_body["enable_thinking"] = show_think
-        elif "deepseek" in model_lower:
-            thinking_type = "enabled" if show_think else "disabled"
-            llm.extra_body["thinking"] = {"type": thinking_type}
-
-        # 如果需要隔离,则禁用callbacks以避免被LangGraph捕获
-        if isolated:
-            llm.callbacks = None
-
-        return llm
+        return LLMClientFactory.create_client(request, disable_stream=disable_stream, isolated=isolated)
 
     def prompt_message_node(self, state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
         system_message_prompt = TemplateLoader.render_template(

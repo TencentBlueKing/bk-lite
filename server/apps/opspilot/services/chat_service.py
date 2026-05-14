@@ -228,6 +228,7 @@ class ChatService:
             "openai_api_base": llm_model.openai_api_base,
             "openai_api_key": llm_model.openai_api_key,
             "model": llm_model.model_name,
+            "protocol_type": llm_model.protocol_type,
             "system_message_prompt": resolved_prompt,
             "temperature": kwargs["temperature"],
             "user_message": user_message,

@@ -10,6 +10,8 @@ export type ProviderResourceType = 'llm_model' | 'embed_provider' | 'rerank_prov
 
 export type VendorType = 'openai' | 'azure' | 'aliyun' | 'zhipu' | 'baidu' | 'anthropic' | 'deepseek' | 'other';
 
+export type ProtocolType = 'openai' | 'anthropic';
+
 export interface Model {
     id: number;
     name: string;
@@ -38,6 +40,7 @@ export interface ModelVendor {
     id: number;
     name: string;
     vendor_type: VendorType;
+    protocol_type?: ProtocolType;
     api_base: string;
     api_key?: string;
     description?: string;
@@ -56,6 +59,7 @@ export interface ModelVendor {
 export interface ModelVendorPayload {
     name: string;
     vendor_type: VendorType;
+    protocol_type?: ProtocolType;
     api_base: string;
     api_key: string;
     team: number[];

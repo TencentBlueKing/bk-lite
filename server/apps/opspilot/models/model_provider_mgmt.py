@@ -18,10 +18,16 @@ VENDOR_TYPE_CHOICES = (
     ("other", "其它"),
 )
 
+PROTOCOL_TYPE_CHOICES = (
+    ("openai", "OpenAI 兼容"),
+    ("anthropic", "Anthropic 兼容"),
+)
+
 
 class ModelVendor(models.Model, EncryptMixin):
     name = models.CharField(max_length=255, verbose_name="名称")
     vendor_type = models.CharField(max_length=50, choices=VENDOR_TYPE_CHOICES, default="openai", verbose_name="供应商类型")
+    protocol_type = models.CharField(max_length=20, choices=PROTOCOL_TYPE_CHOICES, default="openai", verbose_name="协议类型")
     api_base = models.CharField(max_length=500, blank=True, default="", verbose_name="API地址")
     api_key = models.TextField(blank=True, default="", verbose_name="API Key")
     enabled = models.BooleanField(default=True, verbose_name="是否启用")
@@ -82,6 +88,18 @@ class LLMModel(models.Model, EncryptMixin):
     @property
     def model_name(self):
         return self.model or self.name
+
+    @property
+    def protocol_type(self):
+        """根据供应商类型推导协议类型"""
+        if not self.vendor_id:
+            return "openai"
+        if self.vendor.vendor_type == "anthropic":
+            return "anthropic"
+        # deepseek 和 other 类型支持协议选择
+        if self.vendor.vendor_type in ("deepseek", "other"):
+            return self.vendor.protocol_type or "openai"
+        return "openai"
 
     class Meta:
         verbose_name = "LLM模型"

@@ -1,14 +1,22 @@
-import React, { useEffect, useState } from 'react';
-import { Alert, Button, Form, Input, Switch, message } from 'antd';
+import React, {useEffect, useState} from 'react';
+import {Alert, Button, Form, Input, message, Radio, Switch} from 'antd';
 import Image from 'next/image';
-import { useTranslation } from '@/utils/i18n';
-import { useUserInfoContext } from '@/context/userInfo';
+import {useTranslation} from '@/utils/i18n';
+import {useUserInfoContext} from '@/context/userInfo';
 import OperateModal from '@/components/operate-modal';
 import Password from '@/components/password';
 import GroupTreeSelect from '@/components/group-tree-select';
-import { useProviderApi } from '@/app/opspilot/api/provider';
-import { getVendorOption, VENDOR_LABEL_MAP, VENDOR_OPTIONS } from '@/app/opspilot/constants/provider';
-import type { ModelVendor, ModelVendorPayload } from '@/app/opspilot/types/provider';
+import {useProviderApi} from '@/app/opspilot/api/provider';
+import {
+  getAnthropicApiBase,
+  getDefaultProtocolType,
+  getVendorOption,
+  PROTOCOL_TYPE_OPTIONS,
+  supportsProtocolSelection,
+  VENDOR_LABEL_MAP,
+  VENDOR_OPTIONS
+} from '@/app/opspilot/constants/provider';
+import type {ModelVendor, ModelVendorPayload, ProtocolType} from '@/app/opspilot/types/provider';
 
 interface VendorModalSubmitValues extends Omit<ModelVendorPayload, 'api_key'> {
   api_key?: string;
@@ -42,6 +50,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
   const [submitError, setSubmitError] = useState<string>('');
   const [testing, setTesting] = useState(false);
   const vendorType = Form.useWatch('vendor_type', form);
+  const protocolType = Form.useWatch('protocol_type', form);
   const apiKeyValue = Form.useWatch('api_key', form);
   const fetchVendorDetailRef = React.useRef(fetchVendorDetail);
   const translationRef = React.useRef(t);
@@ -64,6 +73,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
       form.setFieldsValue({
         name: vendor.name,
         vendor_type: vendor.vendor_type,
+        protocol_type: vendor.protocol_type || getDefaultProtocolType(vendor.vendor_type),
         api_base: vendor.api_base,
         api_key: MASKED_API_KEY,
         team: vendor.team || [],
@@ -80,6 +90,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
           form.setFieldsValue({
             name: detail.name,
             vendor_type: detail.vendor_type,
+            protocol_type: detail.protocol_type || getDefaultProtocolType(detail.vendor_type),
             api_base: detail.api_base,
             api_key: MASKED_API_KEY,
             team: detail.team || [],
@@ -104,6 +115,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
     form.resetFields();
     form.setFieldsValue({
       vendor_type: defaultVendor.value,
+      protocol_type: getDefaultProtocolType(defaultVendor.value),
       api_base: defaultVendor.defaultApiBase,
       team: selectedGroup ? [Number(selectedGroup.id)] : [],
       enabled: true,
@@ -119,8 +131,26 @@ const VendorModal: React.FC<VendorModalProps> = ({
     const option = getVendorOption(vendorType);
     if (option) {
       form.setFieldValue('api_base', option.defaultApiBase);
+      // 更新默认协议类型
+      form.setFieldValue('protocol_type', getDefaultProtocolType(vendorType));
     }
   }, [apiBaseTouched, form, mode, vendorType, visible]);
+
+  // 当协议类型变化时，更新默认 API 地址
+  useEffect(() => {
+    if (!visible || mode !== 'add' || apiBaseTouched || !protocolType || !supportsProtocolSelection(vendorType)) {
+      return;
+    }
+
+    if (protocolType === 'anthropic') {
+      // 根据供应商类型获取对应的 Anthropic API 地址
+      form.setFieldValue('api_base', getAnthropicApiBase(vendorType));
+    } else {
+      // OpenAI 协议使用供应商默认地址
+      const option = getVendorOption(vendorType);
+      form.setFieldValue('api_base', option?.defaultApiBase || '');
+    }
+  }, [apiBaseTouched, form, mode, protocolType, vendorType, visible]);
 
   const handleOk = async () => {
     try {
@@ -129,6 +159,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
       const payload: VendorModalSubmitValues = {
         name: values.name,
         vendor_type: values.vendor_type,
+        protocol_type: supportsProtocolSelection(values.vendor_type) ? values.protocol_type : undefined,
         api_base: values.api_base,
         team: values.team,
         description: values.description,
@@ -160,12 +191,24 @@ const VendorModal: React.FC<VendorModalProps> = ({
       }
 
       const values = await form.validateFields(fieldsToValidate);
+      const currentVendorType = form.getFieldValue('vendor_type');
+      const currentProtocolType = form.getFieldValue('protocol_type') as ProtocolType;
+      
+      // 确定实际使用的协议类型
+      let effectiveProtocolType: ProtocolType = 'openai';
+      if (currentVendorType === 'anthropic') {
+        effectiveProtocolType = 'anthropic';
+      } else if (supportsProtocolSelection(currentVendorType) && currentProtocolType) {
+        effectiveProtocolType = currentProtocolType;
+      }
+
       setTesting(true);
       const result = await testVendorConnection({
         api_base: values.api_base,
         api_key: mode === 'add' || apiKeyChanged ? values.api_key : undefined,
         password_changed: mode === 'add' ? true : apiKeyChanged,
         original_id: mode === 'edit' && vendor ? vendor.id : undefined,
+        protocol_type: effectiveProtocolType,
       });
       if (result.success) {
         message.success(t('provider.vendor.testSuccess'));
@@ -244,6 +287,24 @@ const VendorModal: React.FC<VendorModalProps> = ({
             })}
           </div>
         </Form.Item>
+
+        {/* 协议类型选择 - 仅在 vendor_type 为 'other' 时显示 */}
+        {supportsProtocolSelection(vendorType) && (
+          <Form.Item
+            name="protocol_type"
+            label={t('provider.vendor.protocolType')}
+            rules={[{ required: true, message: t('provider.vendor.protocolTypeRequired') }]}
+            className="mb-5"
+          >
+            <Radio.Group>
+              {PROTOCOL_TYPE_OPTIONS.map((option) => (
+                <Radio key={option.value} value={option.value}>
+                  {option.label}
+                </Radio>
+              ))}
+            </Radio.Group>
+          </Form.Item>
+        )}
 
         <Form.Item
           name="name"
