@@ -14,6 +14,7 @@ from apps.alerts.aggregation.builder.synthetic_alert_builder import (
     SyntheticAlertBuilder,
 )
 from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
+from apps.alerts.aggregation.window.factory import WindowFactory
 from apps.alerts.aggregation.strategy.matcher import StrategyMatcher
 from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
@@ -41,6 +42,7 @@ from apps.alerts.serializers.event import EventModelSerializer
 from apps.alerts.serializers.incident import IncidentModelSerializer
 from apps.alerts.serializers.alert_source import AlertSourceModelSerializer
 from apps.alerts.serializers.strategy import AlarmStrategySerializer
+from apps.alerts.utils.util import MAX_AGGREGATION_WINDOW_SIZE_MINUTES
 from apps.alerts.utils.rule_matcher import RuleMatcher
 from apps.alerts.views.alert import AlertModelViewSet
 from apps.alerts.views.alert_source import AlertSourceModelViewSet
@@ -67,6 +69,99 @@ def build_permission_test_user(username, group_list, permissions_by_app=None):
 
 
 class AlarmStrategySerializerTestCase(TestCase):
+    def test_smart_denoise_serializer_rejects_non_positive_window_size(self):
+        serializer = AlarmStrategySerializer(
+            data={
+                "name": "smart-rule",
+                "strategy_type": AlarmStrategyType.SMART_DENOISE,
+                "team": [1],
+                "dispatch_team": [1],
+                "match_rules": [[{"key": "service", "operator": "eq", "value": "backup"}]],
+                "params": {
+                    "group_by": ["service"],
+                    "window_size": 0,
+                    "time_out": False,
+                },
+                "auto_close": False,
+                "close_minutes": 120,
+            }
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertEqual(
+            serializer.errors["params"]["window_size"],
+            "窗口大小必须为大于 0 的整数分钟。",
+        )
+
+    def test_smart_denoise_serializer_rejects_oversized_window_size(self):
+        serializer = AlarmStrategySerializer(
+            data={
+                "name": "smart-rule",
+                "strategy_type": AlarmStrategyType.SMART_DENOISE,
+                "team": [1],
+                "dispatch_team": [1],
+                "match_rules": [[{"key": "service", "operator": "eq", "value": "backup"}]],
+                "params": {
+                    "group_by": ["service"],
+                    "window_size": MAX_AGGREGATION_WINDOW_SIZE_MINUTES + 1,
+                    "time_out": False,
+                },
+                "auto_close": False,
+                "close_minutes": 120,
+            }
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertEqual(
+            serializer.errors["params"]["window_size"],
+            f"窗口大小不能超过 {MAX_AGGREGATION_WINDOW_SIZE_MINUTES} 分钟。",
+        )
+
+    def test_smart_denoise_serializer_accepts_valid_window_size(self):
+        serializer = AlarmStrategySerializer(
+            data={
+                "name": "smart-rule",
+                "strategy_type": AlarmStrategyType.SMART_DENOISE,
+                "team": [1],
+                "dispatch_team": [1],
+                "match_rules": [[{"key": "service", "operator": "eq", "value": "backup"}]],
+                "params": {
+                    "group_by": ["service"],
+                    "window_size": 5,
+                    "time_out": False,
+                },
+                "auto_close": False,
+                "close_minutes": 120,
+            }
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data["params"]["window_size"], 5)
+
+    def test_smart_denoise_serializer_partial_update_preserves_existing_params(self):
+        strategy = AlarmStrategy.objects.create(
+            name="smart-rule-existing",
+            strategy_type=AlarmStrategyType.SMART_DENOISE,
+            team=[1],
+            dispatch_team=[1],
+            match_rules=[[{"key": "service", "operator": "eq", "value": "backup"}]],
+            params={"group_by": ["service"], "window_size": 30, "time_out": True, "time_minutes": 15},
+            auto_close=False,
+            close_minutes=120,
+        )
+
+        serializer = AlarmStrategySerializer(
+            strategy,
+            data={"description": "patched-description"},
+            partial=True,
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(
+            serializer.validated_data["params"],
+            strategy.params,
+        )
+
     def test_missing_detection_serializer_strips_runtime_fields(self):
         serializer = AlarmStrategySerializer(
             data={
@@ -287,6 +382,45 @@ class MissingDetectionProcessorTestCase(TestCase):
 
         events_mock.assert_called_once_with(smart_strategy, now)
         missing_mock.assert_called_once_with(missing_strategy, now)
+
+    def test_get_events_for_strategy_clamps_oversized_window_size(self):
+        now = timezone.now()
+        strategy = self.create_strategy(
+            name="smart-window-clamp",
+            strategy_type=AlarmStrategyType.SMART_DENOISE,
+            params={"group_by": ["service"], "window_size": MAX_AGGREGATION_WINDOW_SIZE_MINUTES + 60, "time_out": False},
+        )
+        old_event = self.create_event(
+            now - timedelta(minutes=MAX_AGGREGATION_WINDOW_SIZE_MINUTES + 30),
+            event_id="EVENT-OLD-WINDOW",
+        )
+        recent_event = self.create_event(
+            now - timedelta(minutes=5),
+            event_id="EVENT-RECENT-WINDOW",
+        )
+
+        events = self.processor.get_events_for_strategy(strategy, now)
+
+        self.assertQuerySetEqual(
+            events.order_by("event_id").values_list("event_id", flat=True),
+            [recent_event.event_id],
+            transform=lambda value: value,
+        )
+        self.assertFalse(events.filter(pk=old_event.pk).exists())
+
+    def test_window_factory_clamps_oversized_window_size(self):
+        strategy = self.create_strategy(
+            name="smart-window-config",
+            strategy_type=AlarmStrategyType.SMART_DENOISE,
+            params={"group_by": ["service"], "window_size": MAX_AGGREGATION_WINDOW_SIZE_MINUTES + 60, "time_out": False},
+        )
+
+        window_config = WindowFactory.create_from_strategy(strategy)
+
+        self.assertEqual(
+            window_config.window_size_minutes,
+            MAX_AGGREGATION_WINDOW_SIZE_MINUTES,
+        )
 
     def test_first_heartbeat_mode_waits_for_first_event(self):
         now = timezone.make_aware(datetime(2026, 3, 20, 10, 0, 0))

@@ -2,6 +2,8 @@ from enum import Enum
 from datetime import timedelta
 from django.utils import timezone
 
+from apps.alerts.utils.util import parse_aggregation_window_size
+
 
 class WindowType(str, Enum):
     SLIDING = "sliding"
@@ -40,7 +42,12 @@ class WindowFactory:
     def create_from_strategy(strategy) -> WindowConfig:
         params = strategy.params or {}
 
-        window_size = params.get("window_size", WindowFactory.DEFAULT_WINDOW_SIZE)
+        raw_window_size = params.get("window_size")
+        window_size, _ = parse_aggregation_window_size(
+            raw_window_size,
+            default=WindowFactory.DEFAULT_WINDOW_SIZE,
+            clamp=True,
+        )
         time_out = params.get("time_out", False)
         session_timeout = params.get(
             "time_minutes", WindowFactory.DEFAULT_SESSION_TIMEOUT
