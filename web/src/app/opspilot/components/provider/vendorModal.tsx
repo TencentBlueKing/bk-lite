@@ -209,6 +209,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
         password_changed: mode === 'add' ? true : apiKeyChanged,
         original_id: mode === 'edit' && vendor ? vendor.id : undefined,
         protocol_type: effectiveProtocolType,
+        vendor_type: currentVendorType,
       });
       if (result.success) {
         message.success(t('provider.vendor.testSuccess'));

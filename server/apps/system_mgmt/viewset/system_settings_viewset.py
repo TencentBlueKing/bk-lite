@@ -3,6 +3,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.serializers.system_settings_serializer import SystemSettingsSerializer
 from apps.system_mgmt.utils.operation_log_utils import log_operation
@@ -26,23 +27,19 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
         "sensitive_info_types": "email,phone",
     }
 
-
     def _ensure_portal_settings(self):
         default_settings = {
             **self.PORTAL_SETTING_DEFAULTS,
             **self.SENSITIVE_INFO_SETTING_DEFAULTS,
         }
         existing_keys = set(SystemSettings.objects.filter(key__in=default_settings.keys()).values_list("key", flat=True))
-        missing_settings = [
-            SystemSettings(key=key, value=value)
-            for key, value in default_settings.items()
-            if key not in existing_keys
-        ]
+        missing_settings = [SystemSettings(key=key, value=value) for key, value in default_settings.items() if key not in existing_keys]
 
         if missing_settings:
             SystemSettings.objects.bulk_create(missing_settings, ignore_conflicts=True)
 
     @action(methods=["GET"], detail=False)
+    @HasPermission("security_settings-View")
     def get_sys_set(self, request):
         self._ensure_portal_settings()
         sys_settings = SystemSettings.objects.all().values_list("key", "value")
@@ -55,6 +52,7 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
         return JsonResponse({"result": True, "data": dict(branding_settings)})
 
     @action(methods=["POST"], detail=False)
+    @HasPermission("security_settings-Edit")
     def update_sys_set(self, request):
         kwargs = request.data
         existing_settings = list(SystemSettings.objects.filter(key__in=list(kwargs.keys())))
@@ -66,11 +64,7 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
         if existing_settings:
             SystemSettings.objects.bulk_update(existing_settings, ["value"])
 
-        missing_settings = [
-            SystemSettings(key=key, value=value)
-            for key, value in kwargs.items()
-            if key not in existing_keys
-        ]
+        missing_settings = [SystemSettings(key=key, value=value) for key, value in kwargs.items() if key not in existing_keys]
         if missing_settings:
             SystemSettings.objects.bulk_create(missing_settings)
 
@@ -81,6 +75,7 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
         return JsonResponse({"result": True})
 
     @action(methods=["GET"], detail=False)
+    @HasPermission("security_settings-View")
     def get_password_settings(self, request):
         """
         获取密码策略配置

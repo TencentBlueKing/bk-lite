@@ -73,6 +73,21 @@ def _set_auth_cookie_on_response(response, token):
     )
 
 
+def _get_client_ip(request):
+    """
+    Get client IP address from request.
+
+    Handles X-Forwarded-For header for proxied requests.
+    """
+    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+    if x_forwarded_for:
+        # Take the first IP in the chain (original client)
+        ip = x_forwarded_for.split(",")[0].strip()
+    else:
+        ip = request.META.get("REMOTE_ADDR", "")
+    return ip
+
+
 def verify_wechat_code(code: str) -> dict:
     """
     真实微信 API 验证 code。
@@ -488,24 +503,30 @@ def login_info(request):
         )
 
 
-@api_exempt
 def generate_qr_code(request):
-    try:
-        username = request.GET.get("username", "").strip()
+    """
+    Generate OTP QR code for the current authenticated user.
 
-        if not username:
+    Requires authentication - only generates QR code for request.user.
+    """
+    try:
+        # Use authenticated user instead of username parameter
+        if not hasattr(request, "user") or not request.user or not request.user.id:
             return JsonResponse(
                 {
                     "result": False,
-                    "message": _get_loader(request).get("error.username_empty", "Username cannot be empty"),
-                }
+                    "message": _get_loader(request).get("error.unauthorized", "Authentication required"),
+                },
+                status=401,
             )
 
+        user_id = request.user.id
+
         client = _create_system_mgmt_client()
-        res = client.generate_qr_code(username)
+        res = client.generate_qr_code_by_user_id(user_id)
 
         if not res.get("result"):
-            logger.warning(f"QR code generation failed for user: {username}")
+            logger.warning(f"QR code generation failed for user_id: {user_id}")
 
         return JsonResponse(res)
     except Exception as e:
@@ -518,30 +539,92 @@ def generate_qr_code(request):
         )
 
 
-@api_exempt
 def verify_otp_code(request):
-    try:
-        data = _parse_request_data(request)
-        username = data.get("username", "").strip()
-        otp_code = data.get("otp_code", "").strip()
+    """
+    Verify OTP code for the current authenticated user (for OTP binding).
 
-        if not username or not otp_code:
+    Requires authentication - only verifies OTP for request.user.
+    """
+    try:
+        # Use authenticated user instead of username parameter
+        if not hasattr(request, "user") or not request.user or not request.user.id:
             return JsonResponse(
                 {
                     "result": False,
-                    "message": _get_loader(request).get("error.otp_empty", "Username or OTP code cannot be empty"),
+                    "message": _get_loader(request).get("error.unauthorized", "Authentication required"),
+                },
+                status=401,
+            )
+
+        data = _parse_request_data(request)
+        otp_code = data.get("otp_code", "").strip()
+
+        if not otp_code:
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": _get_loader(request).get("error.otp_empty", "OTP code cannot be empty"),
                 }
             )
 
+        user_id = request.user.id
+
         client = _create_system_mgmt_client()
-        res = client.verify_otp_code(username, otp_code)
+        res = client.verify_otp_code_by_user_id(user_id, otp_code)
 
         if not res.get("result"):
-            logger.warning(f"OTP verification failed for user: {username}")
+            logger.warning(f"OTP verification failed for user_id: {user_id}")
 
         return JsonResponse(res)
     except Exception as e:
         logger.error(f"OTP verification error: {e}")
+        return JsonResponse(
+            {
+                "result": False,
+                "message": _get_loader(request).get("error.system_error", "System error occurred"),
+            }
+        )
+
+
+@api_exempt
+def verify_otp_login(request):
+    """
+    Verify OTP code with challenge_id and complete two-factor authentication.
+
+    This is the second phase of login for OTP-enabled users.
+    On success, issues JWT token and sets bklite_token cookie.
+    """
+    try:
+        data = _parse_request_data(request)
+        challenge_id = data.get("challenge_id", "").strip()
+        otp_code = data.get("otp_code", "").strip()
+
+        if not challenge_id or not otp_code:
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": _get_loader(request).get("error.otp_challenge_empty", "Challenge ID and OTP code are required"),
+                }
+            )
+
+        # Get client IP for rate limiting
+        client_ip = _get_client_ip(request)
+
+        client = _create_system_mgmt_client()
+        res = client.verify_otp_login(challenge_id, otp_code, client_ip)
+
+        response = JsonResponse(res)
+
+        # Set bklite_token cookie on successful OTP verification
+        if res.get("result") and res.get("data", {}).get("token"):
+            _set_auth_cookie_on_response(response, res["data"]["token"])
+            logger.info(f"OTP login successful for user: {res['data'].get('username')}")
+        else:
+            logger.warning(f"OTP login failed: {res.get('message')}")
+
+        return response
+    except Exception as e:
+        logger.error(f"OTP login error: {e}")
         return JsonResponse(
             {
                 "result": False,

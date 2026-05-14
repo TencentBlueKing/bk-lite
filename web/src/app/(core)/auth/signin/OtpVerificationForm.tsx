@@ -11,6 +11,11 @@ interface LoginResponse {
   id?: string;
   locale?: string;
   timezone?: string;
+  // OTP two-phase authentication fields
+  require_otp?: boolean;
+  challenge_id?: string;
+  qr_code?: string;  // QR code for first-time OTP binding
+  need_binding?: boolean;  // Flag indicating first-time OTP binding
 }
 
 interface OtpVerificationFormProps {
@@ -38,19 +43,24 @@ export default function OtpVerificationForm({
       onError("Please enter the OTP code");
       return;
     }
+
+    if (!loginData.challenge_id) {
+      onError("Invalid session. Please try logging in again.");
+      return;
+    }
     
     setIsLoading(true);
     onError("");
     
     try {
-      // Use fetch directly to avoid automatic signIn() call
-      const response = await fetch('/api/proxy/core/api/verify_otp_code/', {
+      // Two-phase authentication: verify OTP with challenge_id to get token
+      const response = await fetch('/api/proxy/core/api/verify_otp_login/', {
         method: "POST",
         headers: { 
           "Content-Type": "application/json" 
         },
         body: JSON.stringify({
-          username: loginData.username,
+          challenge_id: loginData.challenge_id,
           otp_code: otpCode
         }),
       });
@@ -58,13 +68,22 @@ export default function OtpVerificationForm({
       const responseData = await response.json();
       
       if (response.ok && responseData.result) {
-        // OTP verification successful, now create NextAuth session
-        onOtpVerification(loginData);
+        // OTP verification successful, token is now in responseData.data
+        const verifiedLoginData: LoginResponse = {
+          ...loginData,
+          token: responseData.data.token,
+          id: responseData.data.id || loginData.id,
+          locale: responseData.data.locale || loginData.locale,
+          timezone: responseData.data.timezone || loginData.timezone,
+          // Clear challenge_id as it's been used
+          challenge_id: undefined,
+          require_otp: false,
+        };
+        onOtpVerification(verifiedLoginData);
       } else {
         onError(responseData.message || "Invalid OTP code");
         setIsLoading(false);
       }
-      
     } catch (error) {
       console.error("Error verifying OTP:", error);
       onError("Failed to verify OTP code");

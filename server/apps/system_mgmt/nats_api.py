@@ -1050,9 +1050,11 @@ def login(username, password):
                 "Your password has expired. Please change it immediately.",
             )
 
-    result = get_user_login_token(user, username)
+    result = get_user_login_token(user, username, skip_token_for_otp=True)
     if result.get("result"):
-        result["data"]["password_expiry_reminder"] = password_expiry_reminder
+        # Only add password_expiry_reminder if not requiring OTP (has token)
+        if not result.get("data", {}).get("require_otp"):
+            result["data"]["password_expiry_reminder"] = password_expiry_reminder
     return result
 
 
@@ -1184,6 +1186,41 @@ def generate_qr_code(username):
     return {"result": True, "data": {"qr_code": qr_code_base64}}
 
 
+@nats_client.register
+def generate_qr_code_by_user_id(user_id):
+    """
+    Generate OTP QR code for a user by user_id.
+
+    This is the secure version that requires authentication.
+    The user_id comes from the authenticated session.
+    """
+    user = User.objects.filter(id=user_id).first()
+    if not user:
+        return {"result": False, "message": "User not found"}
+
+    user.otp_secret = pyotp.random_base32()
+    user.save()
+    totp = pyotp.TOTP(user.otp_secret)
+    # 创建用于Authenticator应用的配置URL
+    provisioning_uri = totp.provisioning_uri(name=user.username, issuer_name="WeopsX")
+
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(provisioning_uri)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    qr_code_base64 = base64.b64encode(buffer.getvalue()).decode()
+
+    return {"result": True, "data": {"qr_code": qr_code_base64}}
+
+
 # 验证OTP代码
 @nats_client.register
 def verify_otp_code(username, otp_code):
@@ -1192,6 +1229,103 @@ def verify_otp_code(username, otp_code):
     if totp.verify(otp_code):
         return {"result": True, "message": "Verification successful"}
     return {"result": False, "message": "Invalid OTP code"}
+
+
+@nats_client.register
+def verify_otp_code_by_user_id(user_id, otp_code):
+    """
+    Verify OTP code for a user by user_id.
+
+    This is the secure version that requires authentication.
+    The user_id comes from the authenticated session.
+    """
+    user = User.objects.filter(id=user_id).first()
+    if not user:
+        return {"result": False, "message": "User not found"}
+
+    if not user.otp_secret:
+        return {"result": False, "message": "OTP not configured for this user"}
+
+    totp = pyotp.TOTP(user.otp_secret)
+    if totp.verify(otp_code):
+        return {"result": True, "message": "Verification successful"}
+    return {"result": False, "message": "Invalid OTP code"}
+
+
+@nats_client.register
+def verify_otp_login(challenge_id, otp_code, client_ip=""):
+    """
+    Verify OTP code with challenge_id and issue JWT token.
+
+    This is the second phase of two-factor authentication.
+    The challenge_id was obtained from the first phase (password verification).
+
+    Args:
+        challenge_id: The challenge ID from password verification
+        otp_code: The OTP code from user's authenticator app
+        client_ip: Client IP for rate limiting
+
+    Returns:
+        Dict with login result and JWT token if successful
+    """
+    from apps.system_mgmt.otp_challenge import check_rate_limit, invalidate_challenge, record_failed_attempt, reset_rate_limit, verify_challenge
+
+    # Verify challenge exists and is valid
+    challenge_data = verify_challenge(challenge_id)
+    if not challenge_data:
+        return {"result": False, "message": "Invalid or expired challenge. Please login again."}
+
+    username = challenge_data.get("username")
+    user_id = challenge_data.get("user_id")
+
+    # Check rate limit
+    is_limited, remaining = check_rate_limit(client_ip, username)
+    if is_limited:
+        return {"result": False, "message": "Too many failed attempts. Please try again later."}
+
+    # Get user
+    user = User.objects.filter(id=user_id).first()
+    if not user:
+        return {"result": False, "message": "User not found"}
+
+    if not user.otp_secret:
+        return {"result": False, "message": "OTP not configured for this user"}
+
+    # Verify OTP code
+    totp = pyotp.TOTP(user.otp_secret)
+    if not totp.verify(otp_code):
+        record_failed_attempt(client_ip, username)
+        return {"result": False, "message": "Invalid OTP code"}
+
+    # OTP verified successfully
+    # Invalidate challenge (one-time use)
+    invalidate_challenge(challenge_id)
+
+    # Reset rate limit
+    reset_rate_limit(client_ip, username)
+
+    # Issue JWT token
+    secret_key = os.getenv("SECRET_KEY")
+    algorithm = os.getenv("JWT_ALGORITHM", "HS256")
+    user_obj = _build_jwt_payload(user.id)
+    token = jwt.encode(payload=user_obj, key=secret_key, algorithm=algorithm)
+
+    user.last_login = timezone.now()
+    user.save()
+
+    return {
+        "result": True,
+        "data": {
+            "token": token,
+            "username": username,
+            "display_name": user.display_name,
+            "id": user.id,
+            "domain": user.domain,
+            "locale": user.locale,
+            "timezone": user.timezone,
+            "temporary_pwd": user.temporary_pwd,
+        },
+    }
 
 
 @nats_client.register
@@ -1211,20 +1345,85 @@ def bk_lite_user_login(username, domain):
     return get_user_login_token(user, username)
 
 
-def get_user_login_token(user, username):
+def get_user_login_token(user, username, skip_token_for_otp=False):
+    """
+    Get login token for user.
+
+    Args:
+        user: User object
+        username: Username string
+        skip_token_for_otp: If True and OTP is enabled, return challenge_id instead of token
+
+    Returns:
+        Dict with login result and data
+    """
     if user.disabled:
         return {"result": False, "message": "User is disabled"}
+
+    # Check if OTP is enabled globally
+    enable_otp_setting = SystemSettings.objects.filter(key="enable_otp").first()
+    enable_otp = enable_otp_setting and enable_otp_setting.value == "1"
+
+    # Check if user has OTP configured (has otp_secret)
+    user_has_otp = user.otp_secret is not None and user.otp_secret != ""
+
+    # If OTP is enabled and we should use two-phase authentication
+    if skip_token_for_otp and enable_otp:
+        from apps.system_mgmt.otp_challenge import create_challenge
+
+        # Generate QR code for first-time OTP binding if user hasn't configured OTP yet
+        qr_code_base64 = None
+        if not user_has_otp:
+            # Generate new OTP secret and QR code
+            user.otp_secret = pyotp.random_base32()
+            user.save()
+            totp = pyotp.TOTP(user.otp_secret)
+            provisioning_uri = totp.provisioning_uri(name=username, issuer_name="WeopsX")
+
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=10,
+                border=4,
+            )
+            qr.add_data(provisioning_uri)
+            qr.make(fit=True)
+
+            img = qr.make_image(fill_color="black", back_color="white")
+            buffer = io.BytesIO()
+            img.save(buffer, format="PNG")
+            qr_code_base64 = base64.b64encode(buffer.getvalue()).decode()
+
+        challenge_id = create_challenge(user.id, username)
+        response_data = {
+            "require_otp": True,
+            "challenge_id": challenge_id,
+            "username": username,
+            "display_name": user.display_name,
+            "id": user.id,
+            "domain": user.domain,
+            "locale": user.locale,
+            "timezone": user.timezone,
+        }
+
+        # Include QR code for first-time binding
+        if qr_code_base64:
+            response_data["qr_code"] = qr_code_base64
+            response_data["need_bindng"] = True  # Flag to indicate first-time binding
+
+        return {
+            "result": True,
+            "data": response_data,
+        }
+
+    # Normal flow (OTP disabled): issue JWT token
     secret_key = os.getenv("SECRET_KEY")
     algorithm = os.getenv("JWT_ALGORITHM", "HS256")
     user_obj = _build_jwt_payload(user.id)
     token = jwt.encode(payload=user_obj, key=secret_key, algorithm=algorithm)
-    enable_otp = SystemSettings.objects.filter(key="enable_otp").first()
     user.last_login = timezone.now()
     user.save()
-    if not enable_otp:
-        enable_otp = False
-    else:
-        enable_otp = enable_otp.value == "1"
+
     return {
         "result": True,
         "data": {

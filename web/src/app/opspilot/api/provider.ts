@@ -1,5 +1,5 @@
 import useApiClient from '@/utils/request';
-import {GroupOrderPayload, Model, ModelGroup, ModelGroupPayload, ModelVendor, ModelVendorPayload, ProtocolType,} from '../types/provider';
+import {GroupOrderPayload, Model, ModelGroup, ModelGroupPayload, ModelVendor, ModelVendorPayload, ProtocolType, VendorType,} from '../types/provider';
 
 export const useProviderApi = () => {
   const { get, post, put, del, patch } = useApiClient();
@@ -10,6 +10,7 @@ export const useProviderApi = () => {
     password_changed?: boolean;
     original_id?: number;
     protocol_type?: ProtocolType;
+    vendor_type?: VendorType;
   }
 
   const fetchModels = async (type: string, params?: Record<string, unknown>): Promise<Model[]> => {

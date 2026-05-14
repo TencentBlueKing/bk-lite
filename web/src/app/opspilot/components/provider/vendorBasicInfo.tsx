@@ -28,6 +28,7 @@ const VendorBasicInfo: React.FC<VendorBasicInfoProps> = ({ vendorId, onUpdated }
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [apiKeyChanged, setApiKeyChanged] = useState(false);
+  const [vendorDetail, setVendorDetail] = useState<ModelVendor | null>(null);
   const apiKeyValue = Form.useWatch('api_key', form);
 
   const onUpdatedRef = React.useRef(onUpdated);
@@ -37,6 +38,7 @@ const VendorBasicInfo: React.FC<VendorBasicInfoProps> = ({ vendorId, onUpdated }
     setLoading(true);
     try {
       const detail = await fetchVendorDetail(vendorId);
+      setVendorDetail(detail);
       setApiKeyChanged(false);
       form.setFieldsValue({
         name: detail.name,
@@ -105,6 +107,8 @@ const VendorBasicInfo: React.FC<VendorBasicInfoProps> = ({ vendorId, onUpdated }
         api_key: apiKeyChanged ? values.api_key : undefined,
         password_changed: apiKeyChanged,
         original_id: apiKeyChanged ? vendorId : vendorId,
+        protocol_type: vendorDetail?.protocol_type,
+        vendor_type: vendorDetail?.vendor_type,
       });
 
       if (result.success) {
