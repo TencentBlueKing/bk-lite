@@ -15,6 +15,7 @@ class SnapshotRecorder:
         self.instances_map = instances_map
         self.active_alerts = active_alerts
         self.metric_query_service = metric_query_service
+        self._fallback_raw_data_map = None
 
     def _get_alert_metric_instance_id(self, alert) -> str:
         """获取告警的 metric_instance_id，兼容旧数据"""
@@ -48,13 +49,12 @@ class SnapshotRecorder:
             is_new_alert = metric_id in new_alert_metric_ids
             related_events = event_map.get(metric_id, [])
             raw_data = instance_raw_data_map.get(metric_id, {})
+            is_no_data_alert = alert.alert_type == "no_data"
 
-            if not raw_data:
+            if not raw_data and not is_no_data_alert:
                 raw_data = self._query_fallback_raw_data(metric_id)
 
             # 无数据告警即使没有 raw_data 也需要记录快照（记录"仍然无数据"状态）
-            is_no_data_alert = alert.alert_type == "no_data"
-
             if related_events or raw_data or is_new_alert or is_no_data_alert:
                 self._update_alert_snapshot(
                     alert,
@@ -91,13 +91,21 @@ class SnapshotRecorder:
 
     def _query_fallback_raw_data(self, metric_instance_id):
         """查询兜底原始数据（用于历史活跃告警）"""
+        fallback_data_map = self._get_fallback_raw_data_map()
+        return fallback_data_map.get(metric_instance_id, {})
+
+    def _get_fallback_raw_data_map(self):
+        if self._fallback_raw_data_map is not None:
+            return self._fallback_raw_data_map
+
         fallback_data = self.metric_query_service.query_raw_metrics(self.policy.period)
         group_by_keys = self.policy.group_by or []
+        self._fallback_raw_data_map = {}
         for metric_info in fallback_data.get("data", {}).get("result", []):
             current_metric_id = str(tuple([metric_info["metric"].get(i) for i in group_by_keys]))
-            if current_metric_id == metric_instance_id:
-                return metric_info
-        return {}
+            self._fallback_raw_data_map[current_metric_id] = metric_info
+
+        return self._fallback_raw_data_map
 
     def _update_alert_snapshot(
         self,
