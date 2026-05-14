@@ -102,6 +102,16 @@ def _mock_policy_permission(mocker, policy_id=None, organization=1):
     )
 
 
+def _mock_policy_permission_result(mocker, permission_data, teams=None):
+    mocker.patch(
+        "apps.log.views.policy.get_permissions_rules",
+        return_value={
+            "data": permission_data,
+            "team": teams or [],
+        },
+    )
+
+
 def _create_policy(name, organization):
     policy = Policy.objects.create(
         name=name,
@@ -305,6 +315,230 @@ def test_log_group_create_rejects_unauthorized_organizations(api_client, authent
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert "无权限绑定日志分组" in str(response.json())
+
+
+@pytest.mark.django_db
+def test_policy_create_rejects_unauthorized_organizations(api_client, authenticated_user, mocker):
+    _mock_policy_permission_result(mocker, permission_data={}, teams=[1])
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/log/policy/",
+        data={
+            "name": "cross-org-policy",
+            "alert_type": "keyword",
+            "alert_name": "cross-org-policy",
+            "alert_level": "warning",
+            "alert_condition": {"query": "error"},
+            "schedule": {"type": "min", "value": 5},
+            "period": {"type": "min", "value": 5},
+            "organizations": [2],
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert Policy.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_policy_create_returns_bound_organizations(api_client, authenticated_user, mocker):
+    _mock_policy_permission_result(mocker, permission_data={}, teams=[1])
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/log/policy/",
+        data={
+            "name": "bound-org-policy",
+            "alert_type": "keyword",
+            "alert_name": "bound-org-policy",
+            "alert_level": "warning",
+            "alert_condition": {"query": "error"},
+            "schedule": {"type": "min", "value": 5},
+            "period": {"type": "min", "value": 5},
+            "organizations": [1],
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.json()["data"]["organizations"] == [1]
+
+
+@pytest.mark.django_db
+def test_policy_create_rejects_invalid_organizations_payload(api_client, authenticated_user, mocker):
+    _mock_policy_permission_result(mocker, permission_data={}, teams=[1])
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/log/policy/",
+        data={
+            "name": "invalid-org-policy",
+            "alert_type": "keyword",
+            "alert_name": "invalid-org-policy",
+            "alert_level": "warning",
+            "alert_condition": {"query": "error"},
+            "schedule": {"type": "min", "value": 5},
+            "period": {"type": "min", "value": 5},
+            "organizations": ["bad"],
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["message"] == "organizations entries must be integers"
+    assert Policy.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_policy_update_hides_unauthorized_policy(api_client, authenticated_user, mocker):
+    policy = _create_policy("denied-policy-update", organization=2)
+    _mock_policy_permission_result(mocker, permission_data={}, teams=[1])
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.patch(
+        f"/api/v1/log/policy/{policy.id}/",
+        data={"alert_name": "changed"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    policy.refresh_from_db()
+    assert policy.alert_name == "denied-policy-update"
+
+
+@pytest.mark.django_db
+def test_policy_update_rejects_view_only_instance_permission(api_client, authenticated_user, mocker):
+    policy = _create_policy("view-only-policy", organization=2)
+    _mock_policy_permission_result(
+        mocker,
+        permission_data={
+            "None": {
+                "instance": [{"id": policy.id, "permission": ["View"]}],
+            }
+        },
+        teams=[1],
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.patch(
+        f"/api/v1/log/policy/{policy.id}/",
+        data={"alert_name": "changed"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    policy.refresh_from_db()
+    assert policy.alert_name == "view-only-policy"
+
+
+@pytest.mark.django_db
+def test_policy_update_returns_updated_organizations(api_client, authenticated_user, mocker):
+    policy = _create_policy("update-org-policy", organization=1)
+    _mock_policy_permission_result(
+        mocker,
+        permission_data={
+            "None": {
+                "instance": [{"id": policy.id, "permission": ["Operate"]}],
+            }
+        },
+        teams=[1],
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.patch(
+        f"/api/v1/log/policy/{policy.id}/",
+        data={"organizations": [1, 1]},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["data"]["organizations"] == [1]
+
+
+@pytest.mark.django_db
+def test_policy_update_rejects_invalid_organizations_payload(api_client, authenticated_user, mocker):
+    policy = _create_policy("invalid-update-org-policy", organization=1)
+    _mock_policy_permission_result(
+        mocker,
+        permission_data={
+            "None": {
+                "instance": [{"id": policy.id, "permission": ["Operate"]}],
+            }
+        },
+        teams=[1],
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.patch(
+        f"/api/v1/log/policy/{policy.id}/",
+        data={"organizations": ["bad"]},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["message"] == "organizations entries must be integers"
+    assert list(policy.policyorganization_set.values_list("organization", flat=True)) == [1]
+
+
+@pytest.mark.django_db
+def test_policy_update_rejects_target_org_outside_authorized_scope(api_client, authenticated_user, mocker):
+    policy = _create_policy("scoped-policy", organization=2)
+    _mock_policy_permission_result(
+        mocker,
+        permission_data={
+            "None": {
+                "instance": [{"id": policy.id, "permission": ["Operate"]}],
+            },
+            "all": {"team": [2]},
+        },
+        teams=[1],
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.patch(
+        f"/api/v1/log/policy/{policy.id}/",
+        data={"organizations": [3]},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert list(policy.policyorganization_set.values_list("organization", flat=True)) == [2]
+
+
+@pytest.mark.django_db
+def test_policy_enable_rejects_view_only_instance_permission(api_client, authenticated_user, mocker):
+    policy = _create_policy("toggle-policy", organization=2)
+    _mock_policy_permission_result(
+        mocker,
+        permission_data={
+            "None": {
+                "instance": [{"id": policy.id, "permission": ["View"]}],
+            }
+        },
+        teams=[1],
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        f"/api/v1/log/policy/{policy.id}/enable/",
+        data={"enabled": False},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+def test_policy_destroy_hides_unauthorized_policy(api_client, authenticated_user, mocker):
+    policy = _create_policy("delete-policy", organization=2)
+    _mock_policy_permission_result(mocker, permission_data={}, teams=[1])
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.delete(f"/api/v1/log/policy/{policy.id}/")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert Policy.objects.filter(id=policy.id).exists()
 
 
 @pytest.mark.django_db
