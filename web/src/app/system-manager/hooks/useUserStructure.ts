@@ -145,6 +145,7 @@ export function useUserTable(
         username: item.username,
         name: item.display_name,
         email: item.email,
+        phone: item.phone,
         role: item.role,
         group_role_list: item.group_role_list || [],
         roles: item.roles || [],

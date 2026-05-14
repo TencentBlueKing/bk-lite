@@ -2,15 +2,34 @@ import re
 
 import pandas as pd
 
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import monitor_logger as logger
 from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.instance_id_keys import resolve_metric_instance_id_keys
 from apps.monitor.utils.unit_converter import UnitConverter
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
 class Metrics:
     _STEP_PATTERN = re.compile(r"^(?P<value>\d+)(?P<unit>[smhdw])$")
+
+    @staticmethod
+    def get_effective_metric_instance_id_keys(metric: Metric) -> list[str]:
+        monitor_object = getattr(metric, "monitor_object", None) or MonitorObject.objects.filter(id=metric.monitor_object_id).first()
+        metric_keys = getattr(metric, "instance_id_keys", [])
+        monitor_object_keys = getattr(monitor_object, "instance_id_keys", [])
+        effective_keys = resolve_metric_instance_id_keys(metric_keys, monitor_object_keys, strict=True)
+
+        if not metric_keys and effective_keys:
+            logger.warning(
+                "Metric instance_id_keys empty, fallback to monitor object keys. metric_id=%s monitor_object_id=%s keys=%s",
+                getattr(metric, "id", None),
+                getattr(metric, "monitor_object_id", None),
+                effective_keys,
+            )
+        return effective_keys
 
     @staticmethod
     def get_metrics(query):
@@ -130,6 +149,8 @@ class Metrics:
         """
         # 解析 instance_id 字符串元组
         instance_id_values = parse_instance_id(instance_id)
+        if not instance_id_keys:
+            raise BaseAppException("指标未配置有效的 instance_id_keys，无法按实例查询")
 
         # 构建标签过滤条件: name="aa", id="bb"
         label_conditions = []

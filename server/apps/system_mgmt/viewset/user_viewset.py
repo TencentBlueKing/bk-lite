@@ -1,9 +1,18 @@
+import re
+
 from django.contrib.auth.hashers import make_password
 from django.core.cache import cache
 from django.db import transaction
 from django.db.models import F, Q
 from django.http import JsonResponse
 from rest_framework.decorators import action
+
+try:
+    # EE 增强判断：优先加载 enterprise 脱敏实现，缺失时回退到 CE 默认行为。
+    from apps.system_mgmt.enterprise.sensitive_info import apply_sensitive_info_mask, apply_sensitive_info_mask_to_list
+except (ImportError, ModuleNotFoundError):
+    apply_sensitive_info_mask = None
+    apply_sensitive_info_mask_to_list = None
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import system_mgmt_logger as logger
@@ -143,6 +152,36 @@ class UserViewSet(ViewSetUtils):
         """禁用内置 destroy 接口 - 使用 delete_user action"""
         return JsonResponse({"result": False, "message": "接口未启用"}, status=405)
 
+    @staticmethod
+    def _is_valid_phone(phone):
+        if phone is None:
+            return True
+        if not isinstance(phone, str):
+            return False
+
+        normalized_phone = phone.strip()
+        if not normalized_phone:
+            return True
+        if re.fullmatch(r"[0-9+\-()\s]+", normalized_phone) is None:
+            return False
+
+        digits_only = re.sub(r"[+\-()\s]", "", normalized_phone)
+        return digits_only.isdigit() and 7 <= len(digits_only) <= 15
+
+    @staticmethod
+    def _mask_user_payload(data, request):
+        # EE 增强判断：有 enterprise 脱敏实现时按授权结果处理；缺失时保持 CE 原始返回。
+        if apply_sensitive_info_mask is None:
+            return data
+        return apply_sensitive_info_mask(data, getattr(request, "user", None))
+
+    @staticmethod
+    def _mask_user_payload_list(data, request):
+        # EE 增强判断：列表查询同样优先走 enterprise 脱敏实现；缺失时回退到 CE 原始数据。
+        if apply_sensitive_info_mask_to_list is None:
+            return data
+        return apply_sensitive_info_mask_to_list(data, getattr(request, "user", None))
+
     @action(detail=False, methods=["GET"])
     @HasPermission("user_group-View")
     def search_user_list(self, request):
@@ -187,6 +226,8 @@ class UserViewSet(ViewSetUtils):
         for user_data in data:
             user_data["roles"] = [role_map.get(role_id, "") for role_id in user_data.get("role_list", [])]
 
+        data = self._mask_user_payload_list(data, request)
+
         return JsonResponse({"result": True, "data": {"count": total, "users": data}})
 
     @action(detail=False, methods=["GET"])
@@ -196,7 +237,7 @@ class UserViewSet(ViewSetUtils):
         # 按用户有权限的组筛选
         queryset = self._filter_users_by_accessible_groups(queryset, request.user)
         data = queryset.values(*User.display_fields())
-        return JsonResponse({"result": True, "data": list(data)})
+        return JsonResponse({"result": True, "data": self._mask_user_payload_list(list(data), request)})
 
     @action(detail=False, methods=["GET"])
     @HasPermission("user_group-View")
@@ -248,6 +289,8 @@ class UserViewSet(ViewSetUtils):
             group_role_ids = list(group_role_id_set)
         data["group_role_ids"] = group_role_ids
 
+        data = self._mask_user_payload(data, request)
+
         return JsonResponse({"result": True, "data": data})
 
     # @action(detail=False, methods=["GET"])
@@ -279,6 +322,8 @@ class UserViewSet(ViewSetUtils):
             if invalid_role_ids:
                 message = loader.get("error.invalid_role_ids", "Invalid role IDs: {ids}").format(ids=list(invalid_role_ids))
                 return JsonResponse({"result": False, "message": message})
+        if not self._is_valid_phone(kwargs.get("phone")):
+            return JsonResponse({"result": False, "message": "手机号格式不正确"})
         is_superuser = kwargs.pop("is_superuser", False)
         if is_superuser:
             roles = [Role.objects.get(name="admin", app="").id]
@@ -287,6 +332,7 @@ class UserViewSet(ViewSetUtils):
                 username=kwargs["username"],
                 display_name=kwargs["lastName"],
                 email=kwargs["email"],
+                phone=kwargs.get("phone"),
                 disabled=False,
                 locale=kwargs["locale"],
                 timezone=kwargs["timezone"],
@@ -396,6 +442,8 @@ class UserViewSet(ViewSetUtils):
         params["groups"] = groups
         is_superuser = params.pop("is_superuser", False)
         admin_role_id = Role.objects.get(name="admin", app="").id
+        if not self._is_valid_phone(params.get("phone")):
+            return JsonResponse({"result": False, "message": "手机号格式不正确"})
         if is_superuser:
             params["roles"] = [admin_role_id]
         else:
@@ -408,14 +456,19 @@ class UserViewSet(ViewSetUtils):
             if rules:
                 add_rule = [UserRule(username=params["username"], group_rule_id=i) for i in rules]
                 UserRule.objects.bulk_create(add_rule, batch_size=100)
-            User.objects.filter(id=pk).update(
-                display_name=params.get("lastName"),
-                email=params.get("email"),
-                locale=params.get("locale"),
-                timezone=params.get("timezone"),
-                group_list=params.get("groups"),
-                role_list=params.get("roles"),
-            )
+            update_fields = {
+                "display_name": params.get("lastName"),
+                "locale": params.get("locale"),
+                "timezone": params.get("timezone"),
+                "group_list": params.get("groups"),
+                "role_list": params.get("roles"),
+            }
+            if "email" in params:
+                update_fields["email"] = params["email"]
+            if "phone" in params:
+                update_fields["phone"] = params["phone"]
+
+            User.objects.filter(id=pk).update(**update_fields)
             # 清除用户菜单缓存（缓存键格式为 menus-user:{user_id}）
             cache.delete(f"menus-user:{pk}")
 

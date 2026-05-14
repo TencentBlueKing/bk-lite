@@ -25,7 +25,7 @@ from apps.node_mgmt.management.commands.verify_architecture_rollout import Comma
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
 from apps.node_mgmt.management.services.node_init.controller_init import controller_init
 from apps.node_mgmt.management.services.node_init.definition_loader import load_definition_records
-from apps.node_mgmt.models import CloudRegion, Collector, CollectorConfiguration, Controller, Node, PackageVersion, SidecarEnv
+from apps.node_mgmt.models import CloudRegion, Collector, CollectorConfiguration, Controller, Node, NodeComponentVersion, PackageVersion, SidecarEnv
 from apps.node_mgmt.models.sidecar import ChildConfig, NodeOrganization
 from apps.node_mgmt.models.installer import ControllerTask, ControllerTaskNode
 from apps.node_mgmt.nats.node import NatsService
@@ -33,12 +33,14 @@ from apps.node_mgmt.serializers.collector import CollectorSerializer
 from apps.node_mgmt.serializers.package import PackageVersionSerializer
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
+from apps.node_mgmt.services import node as node_service
 from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.services.cloudregion import RegionService
 from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.services.version_upgrade import VersionUpgradeService
 from apps.node_mgmt.tasks import installer as installer_tasks
-from apps.node_mgmt.tasks.version_discovery import _calculate_upgrade_info
+from apps.node_mgmt.tasks import version_discovery
+from apps.node_mgmt.tasks.version_discovery import _calculate_upgrade_info, _discover_controller_version
 from apps.node_mgmt.utils import permission as node_permission
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.token_auth import generate_node_token
@@ -97,7 +99,7 @@ class _FakeNode:
 
 
 class _FakeNodeQuerySet(list):
-    def filter(self, **kwargs):
+    def filter(self, *args, **kwargs):
         if "id__in" in kwargs:
             ids = {str(value) for value in kwargs["id__in"]}
             return _FakeNodeQuerySet([node for node in self if str(node.id) in ids])
@@ -228,6 +230,94 @@ def test_authorize_target_organizations_rejects_new_out_of_scope_org(monkeypatch
     response = node_permission.authorize_target_organizations(_make_node_request(), node, [2, 3])
 
     assert response.status_code == 403
+
+
+def test_get_node_permission_rejects_forged_current_team(monkeypatch):
+    captured = {}
+
+    class _ScopedSystemMgmt:
+        def __init__(self, is_local_client=True):
+            captured["is_local_client"] = is_local_client
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            captured["actor_context"] = actor_context
+            captured["include_children"] = include_children
+            return {"result": True, "data": []}
+
+    def _unexpected_permission(*args, **kwargs):
+        raise AssertionError("get_permission_rules should not be called for forged current_team")
+
+    monkeypatch.setattr(node_permission, "SystemMgmt", _ScopedSystemMgmt)
+    monkeypatch.setattr(node_permission, "get_permission_rules", _unexpected_permission)
+
+    request = _make_permission_request()
+    request.COOKIES["current_team"] = "2"
+
+    permission = node_permission.get_node_permission(request)
+
+    assert permission == {}
+    assert captured == {
+        "is_local_client": True,
+        "actor_context": {
+            "username": "permission-test-user",
+            "domain": "domain.com",
+            "current_team": 2,
+            "is_superuser": False,
+        },
+        "include_children": False,
+    }
+
+
+def test_get_node_permission_uses_scoped_current_team(monkeypatch):
+    captured = {}
+
+    class _ScopedSystemMgmt:
+        def __init__(self, is_local_client=True):
+            captured["is_local_client"] = is_local_client
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            captured["actor_context"] = actor_context
+            captured["include_children"] = include_children
+            return {"result": True, "data": [1, 11]}
+
+    def _fake_permission(user, current_team, app_name, permission_key, include_children=False):
+        captured["permission_args"] = {
+            "username": user.username,
+            "domain": user.domain,
+            "current_team": current_team,
+            "app_name": app_name,
+            "permission_key": permission_key,
+            "include_children": include_children,
+        }
+        return {"instance": [], "team": [1, 11]}
+
+    monkeypatch.setattr(node_permission, "SystemMgmt", _ScopedSystemMgmt)
+    monkeypatch.setattr(node_permission, "get_permission_rules", _fake_permission)
+
+    request = _make_permission_request()
+    request.COOKIES["include_children"] = "1"
+
+    permission = node_permission.get_node_permission(request)
+
+    assert permission == {"instance": [], "team": [1, 11]}
+    assert captured == {
+        "is_local_client": True,
+        "actor_context": {
+            "username": "permission-test-user",
+            "domain": "domain.com",
+            "current_team": 1,
+            "is_superuser": False,
+        },
+        "include_children": True,
+        "permission_args": {
+            "username": "permission-test-user",
+            "domain": "domain.com",
+            "current_team": 1,
+            "app_name": "node_mgmt",
+            "permission_key": NodeConstants.MODULE,
+            "include_children": True,
+        },
+    }
 
 
 def _create_node_mgmt_region(name="test-region"):
@@ -698,6 +788,123 @@ def test_apply_to_node_prevalidates_configuration_permissions_before_mutation(mo
     assert called["value"] is False
 
 
+def test_get_node_list_rejects_forged_current_team(monkeypatch):
+    captured = {}
+
+    class _ScopedSystemMgmt:
+        def __init__(self, is_local_client=True):
+            captured["is_local_client"] = is_local_client
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            captured["actor_context"] = actor_context
+            captured["include_children"] = include_children
+            return {"result": True, "data": []}
+
+    def _unexpected_permission(*args, **kwargs):
+        raise AssertionError("get_permission_rules should not be called for forged current_team")
+
+    monkeypatch.setattr(node_service, "SystemMgmt", _ScopedSystemMgmt)
+    monkeypatch.setattr(node_service, "get_permission_rules", _unexpected_permission)
+
+    result = node_service.NodeService.get_node_list(
+        organization_ids=[],
+        cloud_region_id=None,
+        name="",
+        ip="",
+        os="",
+        page=1,
+        page_size=20,
+        is_active=None,
+        is_manual=None,
+        is_container=None,
+        permission_data={
+            "username": "permission-test-user",
+            "domain": "domain.com",
+            "current_team": 2,
+            "include_children": False,
+            "is_superuser": False,
+        },
+    )
+
+    assert result["count"] == 0
+    assert list(result["nodes"]) == []
+    assert captured == {
+        "is_local_client": True,
+        "actor_context": {
+            "username": "permission-test-user",
+            "domain": "domain.com",
+            "current_team": 2,
+            "is_superuser": False,
+        },
+        "include_children": False,
+    }
+
+
+def test_get_authorized_nodes_by_ids_uses_scoped_current_team(monkeypatch):
+    captured = {}
+    allowed_node = _FakeNode(node_id="node-scoped", organizations=[1])
+
+    class _ScopedSystemMgmt:
+        def __init__(self, is_local_client=True):
+            captured["is_local_client"] = is_local_client
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            captured["actor_context"] = actor_context
+            captured["include_children"] = include_children
+            return {"result": True, "data": [1]}
+
+    def _fake_permission(user, current_team, app_name, permission_key, include_children=False):
+        captured["permission_args"] = {
+            "username": user.username,
+            "domain": user.domain,
+            "current_team": current_team,
+            "app_name": app_name,
+            "permission_key": permission_key,
+            "include_children": include_children,
+        }
+        return {"instance": [], "team": [1]}
+
+    class _NodeManager:
+        @staticmethod
+        def all():
+            return _FakeNodeQuerySet([allowed_node])
+
+    monkeypatch.setattr(node_service, "SystemMgmt", _ScopedSystemMgmt)
+    monkeypatch.setattr(node_service, "get_permission_rules", _fake_permission)
+    monkeypatch.setattr(node_service.Node, "objects", _NodeManager())
+
+    result = node_service.NodeService.get_authorized_nodes_by_ids(
+        ["node-scoped"],
+        permission_data={
+            "username": "permission-test-user",
+            "domain": "domain.com",
+            "current_team": 1,
+            "include_children": True,
+            "is_superuser": False,
+        },
+    )
+
+    assert result == [{"id": "node-scoped", "organization_ids": [1]}]
+    assert captured == {
+        "is_local_client": True,
+        "actor_context": {
+            "username": "permission-test-user",
+            "domain": "domain.com",
+            "current_team": 1,
+            "is_superuser": False,
+        },
+        "include_children": True,
+        "permission_args": {
+            "username": "permission-test-user",
+            "domain": "domain.com",
+            "current_team": 1,
+            "app_name": "node_mgmt",
+            "permission_key": NodeConstants.MODULE,
+            "include_children": True,
+        },
+    }
+
+
 def test_batch_binding_configuration_prevalidates_configuration_permissions(monkeypatch):
     monkeypatch.setattr(node_view, "authorize_node_ids", lambda request, node_ids: ([_FakeNode()], None))
     monkeypatch.setattr(
@@ -1031,6 +1238,120 @@ def test_calculate_upgrade_info_uses_architecture_specific_latest_version():
 
     assert latest_version == "1.5.0"
     assert upgradeable is True
+
+
+@pytest.mark.django_db
+def test_discover_controller_version_preserves_existing_version_when_command_returns_empty(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="version-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    controller = Controller.objects.create(
+        os="linux",
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        name="Controller",
+        description="linux x86",
+        version_command="cat /opt/fusion-collectors/VERSION",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-version-empty",
+        name="node-version-empty",
+        ip="10.0.0.20",
+        operating_system="linux",
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/tmp/config",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    version_record = NodeComponentVersion.objects.create(
+        node=node,
+        component_type="controller",
+        component_id=str(controller.id),
+        version="1.0.0",
+        latest_version="1.1.0",
+        upgradeable=True,
+        message="旧版本信息",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    monkeypatch.setattr(version_discovery.Executor, "execute_local", lambda self, command, timeout=10: "   ")
+
+    _discover_controller_version(node, latest_versions_map={})
+
+    version_record.refresh_from_db()
+    assert version_record.version == "1.0.0"
+    assert version_record.latest_version == "1.1.0"
+    assert version_record.upgradeable is True
+    assert version_record.message == "命令执行成功但返回了空结果"
+    assert NodeComponentVersion.objects.filter(node=node, component_type="controller").count() == 1
+
+
+@pytest.mark.django_db
+def test_discover_controller_version_reuses_existing_unknown_record_after_success(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="version-region-success",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    controller = Controller.objects.create(
+        os="linux",
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        name="Controller",
+        description="linux x86",
+        version_command="cat /opt/fusion-collectors/VERSION",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-version-success",
+        name="node-version-success",
+        ip="10.0.0.21",
+        operating_system="linux",
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/tmp/config",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    version_record = NodeComponentVersion.objects.create(
+        node=node,
+        component_type="controller",
+        component_id="unknown",
+        version="unknown",
+        latest_version="",
+        upgradeable=False,
+        message="未找到操作系统 linux 对应的控制器配置",
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    monkeypatch.setattr(version_discovery.Executor, "execute_local", lambda self, command, timeout=10: "1.0.0")
+
+    _discover_controller_version(
+        node,
+        latest_versions_map={
+            "linux": {
+                "Controller": {
+                    NodeConstants.X86_64_ARCH: "1.1.0",
+                }
+            }
+        },
+    )
+
+    version_record.refresh_from_db()
+    assert version_record.component_id == str(controller.id)
+    assert version_record.version == "1.0.0"
+    assert version_record.latest_version == "1.1.0"
+    assert version_record.upgradeable is True
+    assert version_record.message == "版本获取成功"
+    assert NodeComponentVersion.objects.filter(node=node, component_type="controller").count() == 1
 
 
 @pytest.mark.django_db

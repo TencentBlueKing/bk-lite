@@ -15,7 +15,9 @@ import { useTranslation } from '@/utils/i18n';
 interface UnifiedFilterBarProps {
   definitions: UnifiedFilterDefinition[];
   values: Record<string, FilterValue>;
-  onChange: (values: Record<string, FilterValue>) => void;
+  onChange?: (values: Record<string, FilterValue>) => void;
+  onSearch?: (values: Record<string, FilterValue>) => void;
+  onReset?: (values: Record<string, FilterValue>) => void;
   prefixContent?: React.ReactNode;
 }
 
@@ -23,10 +25,11 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   definitions,
   values,
   onChange,
+  onSearch,
+  onReset,
   prefixContent,
 }) => {
   const { t } = useTranslation();
-  // 本地状态，用于暂存用户输入，点击搜索后才同步到父组件
   const [localValues, setLocalValues] =
     useState<Record<string, FilterValue>>(values);
 
@@ -34,7 +37,6 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
     .filter((d) => d.enabled)
     .sort((a, b) => a.order - b.order);
 
-  // 当外部 values 变化时同步到本地
   useEffect(() => {
     setLocalValues(values);
   }, [values]);
@@ -62,22 +64,28 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
         selectValue: originValue ?? 0,
       };
       handleLocalValueChange(filterId, timeRangeValue);
-    } else {
-      handleLocalValueChange(filterId, null);
+      return;
     }
+
+    handleLocalValueChange(filterId, null);
   };
 
   const getTimeSelectorDefaultValue = (
     value: FilterValue,
-  ): { selectValue: number; rangePickerVaule: [dayjs.Dayjs, dayjs.Dayjs] | null } => {
+  ): {
+    selectValue: number;
+    rangePickerVaule: [dayjs.Dayjs, dayjs.Dayjs] | null;
+  } => {
     const timeValue = value as TimeRangeValue | null | undefined;
     if (!timeValue || !timeValue.start || !timeValue.end) {
       return { selectValue: 15, rangePickerVaule: null };
     }
+
     const selectVal = timeValue.selectValue ?? 0;
     if (selectVal > 0) {
       return { selectValue: selectVal, rangePickerVaule: null };
     }
+
     return {
       selectValue: 0,
       rangePickerVaule: [dayjs(timeValue.start), dayjs(timeValue.end)],
@@ -85,7 +93,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   };
 
   const handleSearch = () => {
-    onChange(localValues);
+    (onSearch || onChange)?.(localValues);
   };
 
   const handleReset = () => {
@@ -94,7 +102,13 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
       emptyValues[def.id] = def.defaultValue ?? null;
     });
     setLocalValues(emptyValues);
-    onChange(emptyValues);
+
+    if (onReset) {
+      onReset(emptyValues);
+      return;
+    }
+
+    (onSearch || onChange)?.(emptyValues);
   };
 
   const renderFilterControl = (definition: UnifiedFilterDefinition) => {
@@ -122,7 +136,9 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           return (
             <Select
               value={(value as string) || undefined}
-              onChange={(val) => handleLocalValueChange(definition.id, val ?? null)}
+              onChange={(val) =>
+                handleLocalValueChange(definition.id, val ?? null)
+              }
               placeholder={definition.name}
               allowClear
               style={{ minWidth: 160 }}
@@ -130,13 +146,13 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
             />
           );
         }
+
         return (
           <Input
             value={(value as string) || ''}
             onChange={(e) =>
               handleLocalValueChange(definition.id, e.target.value)
             }
-            onPressEnter={handleSearch}
             placeholder={definition.name}
             allowClear
             style={{ minWidth: 160 }}
@@ -161,17 +177,17 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           className="flex shrink-0 items-center gap-2 whitespace-nowrap"
           data-export-hidden="true"
         >
-        <Button
-          type="primary"
-          size="small"
-          icon={<SearchOutlined />}
-          onClick={handleSearch}
-        >
-          {t('common.search')}
-        </Button>
-        <Button size="small" icon={<ReloadOutlined />} onClick={handleReset}>
-          {t('common.reset')}
-        </Button>
+          <Button
+            type="primary"
+            size="small"
+            icon={<SearchOutlined />}
+            onClick={handleSearch}
+          >
+            {t('common.search')}
+          </Button>
+          <Button size="small" icon={<ReloadOutlined />} onClick={handleReset}>
+            {t('common.reset')}
+          </Button>
         </div>
       </div>
     </div>

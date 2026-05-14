@@ -3,13 +3,16 @@ import { Spin, Tooltip } from 'antd';
 import { ExclamationCircleOutlined, WarningOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import {
-  BaseWidgetProps,
   FilterValue,
   UnifiedFilterDefinition,
   BindingValidationResult,
+  ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
-import { fetchWidgetData } from '../../../../utils/widgetDataTransform';
+import {
+  buildWidgetRequestParams,
+  buildWidgetRequestSignatureParams,
+} from '../../../../utils/widgetDataTransform';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
 import { datasourceSupportsNamespace } from '@/app/ops-analysis/utils/namespaceFilter';
@@ -27,24 +30,52 @@ const componentMap: Record<string, React.ComponentType<any>> = {
   single: ComSingle,
 };
 
-interface WidgetWrapperProps extends BaseWidgetProps {
+const inflightWidgetRequests = new Map<string, Promise<unknown>>();
+
+const getOrCreateInflightRequest = async <T,>(
+  requestKey: string,
+  createRequest: () => Promise<T>,
+): Promise<T> => {
+  const existingRequest = inflightWidgetRequests.get(requestKey) as
+    | Promise<T>
+    | undefined;
+  if (existingRequest) {
+    return existingRequest;
+  }
+
+  const requestPromise = createRequest().finally(() => {
+    inflightWidgetRequests.delete(requestKey);
+  });
+
+  inflightWidgetRequests.set(requestKey, requestPromise as Promise<unknown>);
+  return requestPromise;
+};
+
+interface WidgetWrapperProps {
+  widgetId: string;
   chartType?: string;
+  config?: ValueConfig;
+  onReady?: (hasData?: boolean) => void;
   dataSource?: DatasourceItem;
   unifiedFilterValues?: Record<string, FilterValue>;
   filterDefinitions?: UnifiedFilterDefinition[];
-  searchKey?: number;
+  filterSearchVersion?: number;
+  namespaceSearchVersion?: number;
+  reloadVersion?: string;
   builtinNamespaceId?: number;
 }
 
 const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
+  widgetId,
   chartType,
   config,
-  refreshKey,
   onReady,
   dataSource,
   unifiedFilterValues,
   filterDefinitions,
-  searchKey,
+  filterSearchVersion = 0,
+  namespaceSearchVersion = 0,
+  reloadVersion = '0:0',
   builtinNamespaceId,
 }) => {
   const { t } = useTranslation();
@@ -60,10 +91,103 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   );
   const { getSourceDataByApiId } = useDataSourceApi();
 
-  const unifiedFilterValuesRef = useRef(unifiedFilterValues);
-  unifiedFilterValuesRef.current = unifiedFilterValues;
-
   const fetchIdRef = useRef(0);
+  const tableQueryKey = useMemo(
+    () => JSON.stringify(tableQueryParams),
+    [tableQueryParams],
+  );
+  const normalizedDataSourceId = useMemo(() => {
+    if (typeof config?.dataSource === 'string') {
+      return parseInt(config.dataSource, 10);
+    }
+    return config?.dataSource;
+  }, [config?.dataSource]);
+  const widgetUsesNamespace = useMemo(
+    () =>
+      Array.isArray(dataSource?.namespaces) && dataSource.namespaces.length > 0,
+    [dataSource?.namespaces],
+  );
+  const nsSupported = useMemo(
+    () => datasourceSupportsNamespace(dataSource, builtinNamespaceId),
+    [dataSource, builtinNamespaceId],
+  );
+  const canFetchInCurrentNamespace = !widgetUsesNamespace || nsSupported;
+  const requestEnabled =
+    Boolean(normalizedDataSourceId) &&
+    dataSource?.hasAuth !== false &&
+    (!widgetUsesNamespace || builtinNamespaceId !== undefined) &&
+    canFetchInCurrentNamespace;
+
+  const requestParams = useMemo(() => {
+    if (!requestEnabled) {
+      return null;
+    }
+
+    return buildWidgetRequestParams({
+      config,
+      dataSource,
+      extraParams: {
+        ...(widgetUsesNamespace && builtinNamespaceId !== undefined
+          ? { namespace_id: builtinNamespaceId }
+          : {}),
+        ...(chartType === 'table' ? tableQueryParams : {}),
+      },
+      unifiedFilterValues,
+      filterBindings: config?.filterBindings,
+      filterDefinitions,
+    });
+  }, [
+    requestEnabled,
+    config,
+    dataSource,
+    widgetUsesNamespace,
+    builtinNamespaceId,
+    chartType,
+    tableQueryParams,
+    unifiedFilterValues,
+    filterDefinitions,
+  ]);
+
+  const requestSignatureParams = useMemo(() => {
+    if (!requestEnabled) {
+      return null;
+    }
+
+    return buildWidgetRequestSignatureParams({
+      config,
+      dataSource,
+      extraParams: {
+        ...(widgetUsesNamespace && builtinNamespaceId !== undefined
+          ? { namespace_id: builtinNamespaceId }
+          : {}),
+        ...(chartType === 'table' ? tableQueryParams : {}),
+      },
+      unifiedFilterValues,
+      filterBindings: config?.filterBindings,
+      filterDefinitions,
+    });
+  }, [
+    requestEnabled,
+    config,
+    dataSource,
+    widgetUsesNamespace,
+    builtinNamespaceId,
+    chartType,
+    tableQueryParams,
+    unifiedFilterValues,
+    filterDefinitions,
+  ]);
+
+  const requestSignature = useMemo(() => {
+    if (!normalizedDataSourceId || !requestSignatureParams) {
+      return null;
+    }
+
+    return JSON.stringify({
+      dataSourceId: normalizedDataSourceId,
+      requestParams: requestSignatureParams,
+    });
+  }, [normalizedDataSourceId, requestSignatureParams]);
 
   const invalidBindings = useMemo((): BindingValidationResult[] => {
     const bindings = config?.filterBindings;
@@ -113,6 +237,13 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     return results;
   }, [config?.filterBindings, filterDefinitions, dataSource?.params]);
 
+  const hasEnabledFilterBindings = useMemo(() => {
+    const bindings = config?.filterBindings;
+    return Boolean(
+      bindings && Object.values(bindings).some((enabled) => enabled),
+    );
+  }, [config?.filterBindings]);
+
   const handleTableQueryChange = useCallback((params: Record<string, any>) => {
     setTableQueryParams((prev) => {
       const next = params || {};
@@ -121,41 +252,102 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     });
   }, []);
 
-  const validateChartData = useCallback((data: unknown, type?: string) => {
-    const isDataEmpty = () => !data || (Array.isArray(data) && data.length === 0);
+  const validateChartData = useCallback(
+    (data: unknown, type?: string) => {
+      const isDataEmpty = () =>
+        !data || (Array.isArray(data) && data.length === 0);
 
-    if (isDataEmpty()) {
-      return { isValid: true };
-    }
-
-    const errorMessage = t('dashboard.dataFormatMismatch');
-    switch (type) {
-      case 'pie':
-        return ChartDataTransformer.validatePieData(data, errorMessage);
-      case 'line':
-      case 'bar':
-        return ChartDataTransformer.validateLineBarData(data, errorMessage);
-      case 'table':
+      if (isDataEmpty()) {
         return { isValid: true };
-      default:
-        return { isValid: true };
-    }
-  }, [t]);
+      }
 
-  const fetchData = useCallback(async () => {
-    if (!config?.dataSource) {
+      const errorMessage = t('dashboard.dataFormatMismatch');
+      switch (type) {
+        case 'pie':
+          return ChartDataTransformer.validatePieData(data, errorMessage);
+        case 'line':
+        case 'bar':
+          return ChartDataTransformer.validateLineBarData(data, errorMessage);
+        case 'table':
+          return { isValid: true };
+        default:
+          return { isValid: true };
+      }
+    },
+    [t],
+  );
+
+  const fetchData = useCallback(
+    async (nextRequestParams: Record<string, any>, requestKey: string) => {
+      const isTableChart = chartType === 'table';
+
+      if (!normalizedDataSourceId) {
+        return;
+      }
+
+      const currentFetchId = ++fetchIdRef.current;
+
+      try {
+        if (isTableChart) {
+          setTableLoading(true);
+        } else {
+          setLoading(true);
+        }
+        setDataValidation(null);
+
+        const data = await getOrCreateInflightRequest(requestKey, () =>
+          getSourceDataByApiId(normalizedDataSourceId, nextRequestParams),
+        );
+
+        // Discard stale response if a newer fetch has started
+        if (currentFetchId !== fetchIdRef.current) return;
+
+        setRawData(data);
+
+        const validation = validateChartData(data, chartType);
+        setDataValidation(validation);
+      } catch (err) {
+        if (currentFetchId !== fetchIdRef.current) return;
+        console.error('获取数据失败:', err);
+        setRawData(null);
+        setDataValidation({
+          isValid: false,
+          message: t('dashboard.dataFetchFailed'),
+        });
+      } finally {
+        if (currentFetchId !== fetchIdRef.current) return;
+        if (isTableChart) {
+          setTableLoading(false);
+        } else {
+          setLoading(false);
+        }
+      }
+    },
+    [
+      normalizedDataSourceId,
+      chartType,
+      getSourceDataByApiId,
+      validateChartData,
+      t,
+    ],
+  );
+
+  const fetchDataRef = useRef(fetchData);
+  fetchDataRef.current = fetchData;
+
+  useEffect(() => {
+    if (!normalizedDataSourceId) {
+      setRawData(null);
       setLoading(false);
       setTableLoading(false);
       setDataValidation(null);
       return;
     }
 
-    const isTableChart = chartType === 'table';
-
     if (dataSource?.hasAuth === false) {
+      setRawData(null);
       setLoading(false);
       setTableLoading(false);
-      setRawData(null);
       setDataValidation({
         isValid: false,
         message: t('common.noAuth'),
@@ -163,105 +355,98 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       return;
     }
 
-    const currentFetchId = ++fetchIdRef.current;
-
-    try {
-      if (isTableChart) {
-        setTableLoading(true);
-      } else {
-        setLoading(true);
-      }
-      setDataValidation(null);
-
-      const data = await fetchWidgetData({
-        config,
-        dataSource,
-        extraParams: {
-          ...(builtinNamespaceId !== undefined ? { namespace_id: builtinNamespaceId } : {}),
-          ...(chartType === 'table' ? tableQueryParams : {}),
-        },
-        getSourceDataByApiId,
-        unifiedFilterValues: unifiedFilterValuesRef.current,
-        filterBindings: config?.filterBindings,
-        filterDefinitions,
-      });
-
-      // Discard stale response if a newer fetch has started
-      if (currentFetchId !== fetchIdRef.current) return;
-
-      setRawData(data);
-
-      const validation = validateChartData(data, chartType);
-      setDataValidation(validation);
-    } catch (err) {
-      if (currentFetchId !== fetchIdRef.current) return;
-      console.error('获取数据失败:', err);
+    if (!canFetchInCurrentNamespace) {
       setRawData(null);
-      setDataValidation({
-        isValid: false,
-        message: t('dashboard.dataFetchFailed'),
-      });
-    } finally {
-      if (currentFetchId !== fetchIdRef.current) return;
-      if (isTableChart) {
-        setTableLoading(false);
-      } else {
-        setLoading(false);
-      }
+      setLoading(false);
+      setTableLoading(false);
+      setDataValidation(null);
     }
   }, [
-    config,
-    chartType,
-    dataSource,
-    tableQueryParams,
-    getSourceDataByApiId,
-    filterDefinitions,
-    validateChartData,
-    builtinNamespaceId,
+    normalizedDataSourceId,
+    dataSource?.hasAuth,
+    canFetchInCurrentNamespace,
     t,
   ]);
 
-  const dataSourceId = config?.dataSource;
-  const fetchDataRef = useRef(fetchData);
-  fetchDataRef.current = fetchData;
-  const initialFetchDoneRef = useRef(false);
+  const previousRequestRef = useRef<{
+    signature: string | null;
+    filterSearchVersion: number;
+    namespaceSearchVersion: number;
+    reloadVersion: string;
+    tableQueryKey: string;
+    hasRequested: boolean;
+  }>({
+    signature: null,
+    filterSearchVersion,
+    namespaceSearchVersion,
+    reloadVersion,
+    tableQueryKey,
+    hasRequested: false,
+  });
 
   useEffect(() => {
-    if (!dataSourceId || initialFetchDoneRef.current) return;
-    initialFetchDoneRef.current = true;
-    fetchDataRef.current();
-  }, [dataSourceId]);
+    const previousRequest = previousRequestRef.current;
+    const filterSearchChanged =
+      previousRequest.filterSearchVersion !== filterSearchVersion;
+    const namespaceSearchChanged =
+      previousRequest.namespaceSearchVersion !== namespaceSearchVersion;
+    const reloadChanged = previousRequest.reloadVersion !== reloadVersion;
+    const tableQueryChanged = previousRequest.tableQueryKey !== tableQueryKey;
+    const isInitialRequest = !previousRequest.hasRequested;
+    const shouldFetchForFilterSearch =
+      filterSearchChanged && hasEnabledFilterBindings;
+    const shouldFetchForNamespaceSearch =
+      namespaceSearchChanged && widgetUsesNamespace;
+    const shouldFetchForTableQuery = chartType === 'table' && tableQueryChanged;
 
-  const prevRefreshDepsRef = useRef<string>('');
-  useEffect(() => {
-    const key = JSON.stringify({ refreshKey, searchKey, hasAuth: dataSource?.hasAuth, builtinNamespaceId });
-    if (!initialFetchDoneRef.current || !dataSourceId || prevRefreshDepsRef.current === key) {
-      prevRefreshDepsRef.current = key;
+    if (!requestEnabled || !requestSignature || !requestParams) {
+      previousRequestRef.current = {
+        signature: requestSignature,
+        filterSearchVersion,
+        namespaceSearchVersion,
+        reloadVersion,
+        tableQueryKey,
+        hasRequested: false,
+      };
       return;
     }
-    prevRefreshDepsRef.current = key;
-    fetchDataRef.current();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey, searchKey, dataSource?.hasAuth, builtinNamespaceId]);
 
-  const prevTableQueryRef = useRef<string>(JSON.stringify({ page: 1, page_size: 20 }));
-  useEffect(() => {
-    const key = JSON.stringify(tableQueryParams);
-    if (!dataSourceId || chartType !== 'table' || prevTableQueryRef.current === key) {
-      prevTableQueryRef.current = key;
+    const shouldFetch =
+      isInitialRequest ||
+      reloadChanged ||
+      shouldFetchForFilterSearch ||
+      shouldFetchForNamespaceSearch ||
+      shouldFetchForTableQuery;
+
+    previousRequestRef.current = {
+      signature: requestSignature,
+      filterSearchVersion,
+      namespaceSearchVersion,
+      reloadVersion,
+      tableQueryKey,
+      hasRequested: previousRequest.hasRequested || shouldFetch,
+    };
+
+    if (!shouldFetch) {
       return;
     }
-    prevTableQueryRef.current = key;
-    fetchDataRef.current();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tableQueryParams]);
 
-  useEffect(() => {
-    setDataValidation(null);
-    if (chartType !== 'table') {
-      setLoading(true);
-    }
-  }, [chartType]);
+    const requestKey = `${widgetId}:${reloadVersion}:${filterSearchVersion}:${namespaceSearchVersion}:${requestSignature}`;
+    fetchDataRef.current(requestParams, requestKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    widgetId,
+    requestEnabled,
+    requestSignature,
+    requestParams,
+    filterSearchVersion,
+    namespaceSearchVersion,
+    reloadVersion,
+    tableQueryKey,
+    chartType,
+    hasEnabledFilterBindings,
+    widgetUsesNamespace,
+  ]);
 
   const getInvalidBindingReasonText = (
     reason: BindingValidationResult['reason'],
@@ -328,8 +513,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     </div>
   );
 
-  const nsSupported = builtinNamespaceId === undefined || datasourceSupportsNamespace(dataSource, builtinNamespaceId);
-
   if (loading && chartType !== 'table') {
     return (
       <div className="h-full flex items-center justify-center">
@@ -362,9 +545,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         loading={chartType === 'table' ? tableLoading : loading}
         config={config}
         dataSource={dataSource}
-        refreshKey={refreshKey}
         onReady={onReady}
-        onQueryChange={chartType === 'table' ? handleTableQueryChange : undefined}
+        onQueryChange={
+          chartType === 'table' ? handleTableQueryChange : undefined
+        }
       />
     </div>
   );
