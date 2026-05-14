@@ -19,6 +19,8 @@ interface UnifiedFilterBarProps {
   onSearch?: (values: Record<string, FilterValue>) => void;
   onReset?: (values: Record<string, FilterValue>) => void;
   prefixContent?: React.ReactNode;
+  containerClassName?: string;
+  appearance?: 'default' | 'embedded';
 }
 
 const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
@@ -28,6 +30,8 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   onSearch,
   onReset,
   prefixContent,
+  containerClassName,
+  appearance = 'default',
 }) => {
   const { t } = useTranslation();
   const [localValues, setLocalValues] =
@@ -44,6 +48,8 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   if (enabledDefinitions.length === 0 && !prefixContent) {
     return null;
   }
+
+  const isEmbedded = appearance === 'embedded';
 
   const handleLocalValueChange = (filterId: string, value: FilterValue) => {
     setLocalValues((prev) => ({
@@ -162,12 +168,27 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   };
 
   return (
-    <div className="mx-3 mt-3 rounded-lg border border-(--color-border-2) bg-(--color-bg-1) p-3">
-      <div className="flex flex-wrap items-center gap-4">
+    <div
+      className={
+        isEmbedded
+          ? `border-b border-(--color-border-2) bg-transparent px-4 py-3 ${containerClassName ?? ''}`
+          : `rounded-lg border border-(--color-border-2) bg-(--color-bg-1) px-3 py-2 ${containerClassName ?? 'mx-2 mt-2'}`
+      }
+    >
+      <div
+        className={`flex flex-wrap items-center ${isEmbedded ? 'gap-x-4 gap-y-2' : 'gap-x-3 gap-y-2.5'}`}
+      >
         {prefixContent}
         {enabledDefinitions.map((definition) => (
-          <div key={definition.id} className="flex items-center gap-2">
-            <span className="text-sm text-(--color-text-2) whitespace-nowrap">
+          <div
+            key={definition.id}
+            className={
+              isEmbedded
+                ? 'flex items-center gap-2'
+                : 'flex items-center gap-2 px-1 py-1'
+            }
+          >
+            <span className="text-xs font-medium tracking-[0.02em] text-(--color-text-2) whitespace-nowrap">
               {definition.name}:
             </span>
             {renderFilterControl(definition)}
@@ -179,13 +200,19 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
         >
           <Button
             type="primary"
-            size="small"
+            size="middle"
             icon={<SearchOutlined />}
             onClick={handleSearch}
+            className="rounded-lg!"
           >
             {t('common.search')}
           </Button>
-          <Button size="small" icon={<ReloadOutlined />} onClick={handleReset}>
+          <Button
+            size="middle"
+            icon={<ReloadOutlined />}
+            onClick={handleReset}
+            className="rounded-lg!"
+          >
             {t('common.reset')}
           </Button>
         </div>

@@ -4,6 +4,10 @@ import { IntlProvider } from 'react-intl';
 import type { Node } from '@antv/x6';
 import { NODE_DEFAULTS } from '../constants/nodeDefaults';
 import { getLocaleData } from '../utils/localeStore';
+import {
+  getOpsChartTheme,
+  resolveOpsChartThemeName,
+} from '@/app/ops-analysis/utils/chartTheme';
 import ComLine from '../../dashBoard/widgets/comLine';
 import ComPie from '../../dashBoard/widgets/comPie';
 import ComBar from '../../dashBoard/widgets/comBar';
@@ -23,6 +27,7 @@ interface ChartNodeProps {
 }
 
 const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
+  const chartTheme = getOpsChartTheme(resolveOpsChartThemeName());
   const [nodeData, setNodeData] = useState(() => node.getData() || {});
 
   useEffect(() => {
@@ -75,24 +80,27 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
       style={{
         width: `${width}px`,
         height: `${height}px`,
-        border: '1px solid var(--color-border-2)',
-        borderRadius: '6px',
-        backgroundColor: 'var(--color-bg-1)',
+        border: `1px solid ${chartTheme.panelBorderColor}`,
+        borderRadius: '18px',
+        backgroundColor: chartTheme.panelBg,
+        boxShadow: 'none',
         display: 'flex',
         flexDirection: 'column',
+        overflow: 'hidden',
       }}
     >
       {componentName && (
         <div
           style={{
-            padding: '12px 12px 8px',
-            backgroundColor: 'var(--color-bg-2)',
+            padding: '14px 14px 10px',
+            backgroundColor: chartTheme.panelBg,
+            borderBottom: `1px solid ${chartTheme.panelBorderColor}`,
           }}
         >
           <div
             style={{
               fontSize: '14px',
-              fontWeight: '500',
+              fontWeight: '600',
               color: 'var(--color-text-1)',
               marginBottom: normalizedDescription ? '4px' : 0,
               lineHeight: '20px',
@@ -119,7 +127,8 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
           flex: 1,
           minHeight: 0,
           position: 'relative',
-          padding: '8px',
+          padding: '12px',
+          backgroundColor: chartTheme.panelBg,
         }}
       >
         {shouldShowLoading ? (

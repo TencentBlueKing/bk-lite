@@ -4,6 +4,11 @@ import ChartLegend from '../components/chartLegend';
 import { Spin, Empty } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
+import { useTranslation } from '@/utils/i18n';
+import {
+  getOpsChartTheme,
+  resolveOpsChartThemeName,
+} from '@/app/ops-analysis/utils/chartTheme';
 
 interface BarChartProps {
   rawData: any;
@@ -16,8 +21,11 @@ const BarChart: React.FC<BarChartProps> = ({
   loading = false,
   onReady,
 }) => {
+  const { t } = useTranslation();
   const chartRef = useRef<any>(null);
-  const chartColors = randomColorForLegend();
+  const themeName = resolveOpsChartThemeName();
+  const chartTheme = getOpsChartTheme(themeName);
+  const chartColors = randomColorForLegend(themeName);
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
 
   const handleLegendChange = useCallback((selected: Record<string, boolean>) => {
@@ -53,9 +61,13 @@ const BarChart: React.FC<BarChartProps> = ({
       },
       enterable: true,
       confine: true,
-      extraCssText: 'box-shadow: 0 0 3px rgba(150,150,150, 0.7);',
+      backgroundColor: chartTheme.tooltipBackgroundColor,
+      borderWidth: 1,
+      borderColor: chartTheme.tooltipBorderColor,
+      extraCssText: `box-shadow: ${chartTheme.tooltipShadow};`,
       textStyle: {
         fontSize: 12,
+        color: chartTheme.tooltipTextColor,
       },
       formatter: function (params: any) {
         if (!params || params.length === 0) return '';
@@ -88,7 +100,7 @@ const BarChart: React.FC<BarChartProps> = ({
       axisLabel: {
         margin: 15,
         textStyle: {
-          color: '#7f92a7',
+          color: chartTheme.axisLabelColor,
           fontSize: 11,
         },
         rotate: 0,
@@ -99,7 +111,7 @@ const BarChart: React.FC<BarChartProps> = ({
       },
       axisLine: {
         lineStyle: {
-          color: '#e8e8e8',
+          color: chartTheme.axisLineColor,
         },
       },
       axisTick: {
@@ -108,7 +120,7 @@ const BarChart: React.FC<BarChartProps> = ({
       splitLine: {
         show: false,
         lineStyle: {
-          color: '#f0f0f0',
+          color: chartTheme.splitLineColor,
         },
       },
     },
@@ -129,13 +141,13 @@ const BarChart: React.FC<BarChartProps> = ({
           return value.toString();
         },
         textStyle: {
-          color: '#7f92a7',
+          color: chartTheme.axisLabelColor,
         },
       },
       splitLine: {
         show: true,
         lineStyle: {
-          color: '#f0f0f0',
+          color: chartTheme.splitLineColor,
           type: 'solid',
         },
       },
@@ -159,7 +171,7 @@ const BarChart: React.FC<BarChartProps> = ({
   } else {
     option.series = [
       {
-        name: '数量',
+        name: t('topology.treeValueTitle'),
         type: 'bar',
         data: chartData && chartData.values ? chartData.values : [],
         barMaxWidth: 40,
@@ -172,6 +184,10 @@ const BarChart: React.FC<BarChartProps> = ({
       },
     ];
   }
+
+  const legendData = option.series.map((item: { name?: string }) => ({
+    name: item.name || t('topology.treeValueTitle'),
+  }));
 
   if (loading) {
     return (
@@ -192,7 +208,7 @@ const BarChart: React.FC<BarChartProps> = ({
   return (
     <div className="h-full flex">
       {/* 图表区域 */}
-      <div className="flex-1">
+      <div className="flex-1 min-w-0">
         <ReactEcharts
           ref={chartRef}
           option={option}
@@ -201,11 +217,11 @@ const BarChart: React.FC<BarChartProps> = ({
         />
       </div>
 
-      {/* 图例区域 - 仅在多系列数据时显示 */}
-      {chartData?.series && chartData.series.length > 1 && (
+      {/* 图例区域 */}
+      {legendData.length > 0 && (
         <div className="w-38 ml-2 shrink-0 h-full">
           <ChartLegend
-            data={chartData.series}
+            data={legendData}
             colors={chartColors}
             onSelectionChange={handleLegendChange}
           />
