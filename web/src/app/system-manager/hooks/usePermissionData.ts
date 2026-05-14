@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useRoleApi } from '@/app/system-manager/api/application';
 import type {
   PermissionsState,
@@ -36,12 +36,17 @@ export function useModuleConfig(clientId: string | null): UseModuleConfigResult 
   const [moduleTree, setModuleTree] = useState<Record<string, ModuleItem>>({});
   const [moduleConfigLoading, setModuleConfigLoading] = useState(false);
 
+  const getAppModulesRef = useRef(getAppModules);
+  getAppModulesRef.current = getAppModules;
+  const loadingRef = useRef(moduleConfigLoading);
+  loadingRef.current = moduleConfigLoading;
+
   const fetchModuleConfig = useCallback(async () => {
-    if (!clientId || moduleConfigLoading) return;
+    if (!clientId || loadingRef.current) return;
 
     try {
       setModuleConfigLoading(true);
-      const config = await getAppModules({ params: { app: clientId } });
+      const config = await getAppModulesRef.current({ params: { app: clientId } });
 
       setModuleConfig(config);
       setSubModuleMap(buildSubModulesMap(config));
@@ -56,7 +61,7 @@ export function useModuleConfig(clientId: string | null): UseModuleConfigResult 
     } finally {
       setModuleConfigLoading(false);
     }
-  }, [clientId, moduleConfigLoading, getAppModules]);
+  }, [clientId]);
 
   return {
     moduleConfig,
@@ -92,17 +97,26 @@ export function usePermissionData(
   const [moduleData, setModuleData] = useState<Record<string, DataPermission[]>>({});
   const [pagination, setPagination] = useState<Record<string, PaginationInfo>>({});
 
+  const permissionsRef = useRef(permissions);
+  permissionsRef.current = permissions;
+  const loadingRef = useRef(loading);
+  loadingRef.current = loading;
+  const paginationRef = useRef(pagination);
+  paginationRef.current = pagination;
+  const getAppDataRef = useRef(getAppData);
+  getAppDataRef.current = getAppData;
+
   const loadSpecificData = useCallback(async (module: string, subModule?: string) => {
     const dataKey = subModule ? `${module}_${subModule}` : module;
 
-    if (loading[dataKey]) {
+    if (loadingRef.current[dataKey]) {
       return;
     }
 
     try {
       setLoading(prev => ({ ...prev, [dataKey]: true }));
 
-      const paginationInfo = pagination[dataKey] || { current: 1, pageSize: 10, total: 0 };
+      const paginationInfo = paginationRef.current[dataKey] || { current: 1, pageSize: 10, total: 0 };
 
       const params: Record<string, unknown> = {
         app: clientId,
@@ -113,20 +127,20 @@ export function usePermissionData(
         group_id: formGroupId
       };
 
-      const data = await getAppData({ params });
+      const data = await getAppDataRef.current({ params });
 
       const formattedData = data.items.map((item: DataPermission) => {
         let currentPermission: DataPermission | undefined;
 
         if (subModule) {
-          const modulePermission = permissions[module];
+          const modulePermission = permissionsRef.current[module];
           if (modulePermission && typeof (modulePermission as ModulePermissionConfig).type === 'undefined') {
             const providerConfig = modulePermission as ProviderPermissionConfig;
             const subModuleConfig = findPermissionInTree(providerConfig, subModule);
             currentPermission = subModuleConfig?.specificData?.find(p => p.id === item.id);
           }
         } else {
-          const moduleConfig = permissions[module] as ModulePermissionConfig;
+          const moduleConfig = permissionsRef.current[module] as ModulePermissionConfig;
           currentPermission = moduleConfig.specificData?.find(p => p.id === item.id);
         }
 
@@ -154,7 +168,7 @@ export function usePermissionData(
     } finally {
       setLoading(prev => ({ ...prev, [dataKey]: false }));
     }
-  }, [clientId, permissions, formGroupId, loading, pagination, getAppData]);
+  }, [clientId, formGroupId]);
 
   const handleTableChange = useCallback(async (
     paginationInfo: PaginationInfo,
@@ -188,16 +202,16 @@ export function usePermissionData(
         group_id: formGroupId
       };
 
-      const data = await getAppData({ params });
+      const data = await getAppDataRef.current({ params });
 
       const formattedData = data.items.map((item: DataPermission) => {
         let currentPermission: DataPermission | undefined;
         if (subModule) {
-          const providerConfig = permissions[module] as ProviderPermissionConfig;
+          const providerConfig = permissionsRef.current[module] as ProviderPermissionConfig;
           const subModuleConfig = providerConfig[subModule] as PermissionConfig;
           currentPermission = subModuleConfig.specificData?.find(p => p.id === item.id);
         } else {
-          const moduleConfig = permissions[module] as ModulePermissionConfig;
+          const moduleConfig = permissionsRef.current[module] as ModulePermissionConfig;
           currentPermission = moduleConfig.specificData?.find(p => p.id === item.id);
         }
 
@@ -217,7 +231,7 @@ export function usePermissionData(
     } finally {
       setLoading(prev => ({ ...prev, [dataKey]: false }));
     }
-  }, [clientId, permissions, formGroupId, getAppData]);
+  }, [clientId, formGroupId]);
 
   return {
     loading,
