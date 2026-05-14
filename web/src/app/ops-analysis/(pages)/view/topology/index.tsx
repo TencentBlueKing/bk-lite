@@ -406,12 +406,39 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
 
           // Now fetch the new node's data with correct filter values
           if (result?.nodeId && result?.valueConfig?.dataSource) {
+            const dataSource = dataSourceManager.dataSources.find(
+              (ds) => ds.id === result.valueConfig?.dataSource,
+            );
+            const nextValueConfig = {
+              ...result.valueConfig,
+              filterBindings: buildDefaultFilterBindings(
+                Array.isArray(result.valueConfig.dataSourceParams) &&
+                  result.valueConfig.dataSourceParams.length > 0
+                  ? result.valueConfig.dataSourceParams
+                  : dataSource?.params,
+                newDefinitions,
+                result.valueConfig.filterBindings,
+              ),
+            };
+
+            const addedNode = state.graphInstance?.getCellById(result.nodeId);
+            if (addedNode) {
+              const addedNodeData = addedNode.getData();
+              addedNode.setData(
+                {
+                  ...addedNodeData,
+                  valueConfig: nextValueConfig,
+                },
+                { overwrite: true },
+              );
+            }
+
             loadChartNodeData(
               result.nodeId,
-              result.valueConfig,
+              nextValueConfig,
               nextAppliedValues,
               newDefinitions,
-              undefined,
+              dataSource,
               appliedNamespaceId,
             );
           }
