@@ -39,6 +39,11 @@ interface LoginResponse {
   locale?: string;
   timezone?: string;
   redirect_url?: string;
+  // OTP two-phase authentication fields
+  require_otp?: boolean;
+  challenge_id?: string;
+  qr_code?: string;  // QR code for first-time OTP binding
+  need_binding?: boolean;  // Flag indicating first-time OTP binding
 }
 
 interface WeChatSettings {
@@ -299,22 +304,11 @@ export default function SigninClient({
         return;
       }
 
-      if (userData.enable_otp) {
-        if (userData.qrcode) {
-          try {
-            const qrResponse = await fetch(`/api/proxy/core/api/generate_qr_code/?username=${encodeURIComponent(userData.username)}`, {
-              method: "GET",
-              headers: {
-                "Content-Type": "application/json"
-              },
-            });
-            const qrData = await qrResponse.json();
-            if (qrResponse.ok && qrData.result) {
-              setQrCodeUrl(qrData.data.qr_code);
-            }
-          } catch (error) {
-            console.error("Failed to generate QR code:", error);
-          }
+      // Two-phase OTP authentication: require_otp means OTP verification is required
+      if (userData.require_otp && userData.challenge_id) {
+        // If qr_code is included, this is first-time OTP binding
+        if (userData.qr_code) {
+          setQrCodeUrl(userData.qr_code);
         }
         setAuthStep('otp-verification');
         setIsLoading(false);
@@ -334,22 +328,10 @@ export default function SigninClient({
   const handlePasswordResetComplete = async (updatedLoginData: LoginResponse) => {
     setLoginData(updatedLoginData);
 
-    if (updatedLoginData.enable_otp) {
-      if (updatedLoginData.qrcode) {
-        try {
-          const qrResponse = await fetch(`/api/proxy/core/api/generate_qr_code/?username=${encodeURIComponent(updatedLoginData.username || '')}`, {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json"
-            },
-          });
-          const qrData = await qrResponse.json();
-          if (qrResponse.ok && qrData.result) {
-            setQrCodeUrl(qrData.data.qr_code || qrData.data.qr_code_url);
-          }
-        } catch (error) {
-          console.error("Failed to generate QR code:", error);
-        }
+    // Two-phase OTP authentication after password reset
+    if (updatedLoginData.require_otp && updatedLoginData.challenge_id) {
+      if (updatedLoginData.qr_code) {
+        setQrCodeUrl(updatedLoginData.qr_code);
       }
       setAuthStep('otp-verification');
       return;

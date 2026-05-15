@@ -16,6 +16,7 @@ from apps.monitor.models import MonitorInstance, MonitorPolicy
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
 from apps.monitor.services.monitor_object import MonitorObjectService
+from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from config.drf.pagination import CustomPageNumberPagination
 
 
@@ -39,17 +40,11 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         results = serializer.data
 
-        lan = LanguageLoader(
-            app=LanguageConstants.APP, default_lang=request.user.locale
-        )
+        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
 
         # 统计每个对象的子对象数量
-        children_counts = MonitorObject.objects.filter(
-            parent__isnull=False
-        ).values('parent_id').annotate(
-            children_count=Count('id')
-        )
-        children_count_map = {item['parent_id']: item['children_count'] for item in children_counts}
+        children_counts = MonitorObject.objects.filter(parent__isnull=False).values("parent_id").annotate(children_count=Count("id"))
+        children_count_map = {item["parent_id"]: item["children_count"] for item in children_counts}
 
         # 构建类型 id -> name 的映射，用于自定义类型的 fallback 显示
         type_name_map = {t.id: t.name for t in MonitorObjectType.objects.all()}
@@ -84,17 +79,12 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
                 inst_res.get("team", []),
             )
 
-            inst_objs = MonitorInstance.objects.filter(
-                is_deleted=False
-            ).prefetch_related("monitorinstanceorganization_set")
+            inst_objs = MonitorInstance.objects.filter(is_deleted=False).prefetch_related("monitorinstanceorganization_set")
             inst_map = {}
             for inst_obj in inst_objs:
                 monitor_object_id = inst_obj.monitor_object_id
                 instance_id = inst_obj.id
-                teams = {
-                    i.organization
-                    for i in inst_obj.monitorinstanceorganization_set.all()
-                }
+                teams = {i.organization for i in inst_obj.monitorinstanceorganization_set.all()}
                 _check = check_instance_permission(
                     monitor_object_id,
                     instance_id,
@@ -126,19 +116,13 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
                 policy_res.get("team", []),
             )
 
-            policy_objs = MonitorPolicy.objects.all().prefetch_related(
-                "policyorganization_set"
-            )
+            policy_objs = MonitorPolicy.objects.all().prefetch_related("policyorganization_set")
             policy_map = {}
             for policy_obj in policy_objs:
                 monitor_object_id = policy_obj.monitor_object_id
                 instance_id = policy_obj.id
-                teams = {
-                    i.organization for i in policy_obj.policyorganization_set.all()
-                }
-                _check = check_instance_permission(
-                    monitor_object_id, instance_id, teams, policy_permissions, cur_team
-                )
+                teams = {i.organization for i in policy_obj.policyorganization_set.all()}
+                _check = check_instance_permission(monitor_object_id, instance_id, teams, policy_permissions, cur_team)
                 if not _check:
                     continue
                 if monitor_object_id not in policy_map:
@@ -172,8 +156,11 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         children = data.pop("children", [])
 
         # 父对象自动填充 instance_id_keys
-        if not data.get("instance_id_keys"):
-            data["instance_id_keys"] = ["instance_id"]
+        data["instance_id_keys"] = resolve_monitor_object_instance_id_keys(
+            data.get("instance_id_keys"),
+            level=data.get("level", "base"),
+            object_name=data.get("name", ""),
+        )
 
         # 自动填充 default_metric
         if not data.get("default_metric"):
@@ -183,27 +170,33 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         parent_obj = serializer.save()
-        
+
         # 批量创建子对象
         if children:
             child_objects = []
             for child in children:
                 if child.get("id") and child.get("name"):
-                    child_objects.append(MonitorObject(
-                        name=child["id"],
-                        display_name=child["name"],
-                        icon=data.get("icon", ""),
-                        type_id=data.get("type"),
-                        description="",
-                        level="derivative",
-                        parent=parent_obj,
-                        is_visible=True,
-                        instance_id_keys=["instance_id", child["id"]],
-                        default_metric=f"any({{instance_type='{child['id']}'}}) by (instance_id, {child['id']})",
-                    ))
+                    child_objects.append(
+                        MonitorObject(
+                            name=child["id"],
+                            display_name=child["name"],
+                            icon=data.get("icon", ""),
+                            type_id=data.get("type"),
+                            description="",
+                            level="derivative",
+                            parent=parent_obj,
+                            is_visible=True,
+                            instance_id_keys=resolve_monitor_object_instance_id_keys(
+                                [],
+                                level="derivative",
+                                object_name=child["id"],
+                            ),
+                            default_metric=f"any({{instance_type='{child['id']}'}}) by (instance_id, {child['id']})",
+                        )
+                    )
             if child_objects:
                 MonitorObject.objects.bulk_create(child_objects)
-        
+
         return WebUtils.response_success(serializer.data)
 
     def update(self, request, *args, **kwargs):
@@ -214,8 +207,11 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         children = data.pop("children", None)
 
         # 父对象自动补充 instance_id_keys
-        if not instance.instance_id_keys and "instance_id_keys" not in data:
-            data["instance_id_keys"] = ["instance_id"]
+        data["instance_id_keys"] = resolve_monitor_object_instance_id_keys(
+            data.get("instance_id_keys", instance.instance_id_keys),
+            level=data.get("level", instance.level),
+            object_name=data.get("name", instance.name),
+        )
 
         # 自动补充空的 default_metric
         if not instance.default_metric and "default_metric" not in data:
@@ -225,19 +221,19 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(instance, data=data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
-        
+
         # 处理子对象
         if children is not None:
             # 获取现有子对象
             existing_children = {child.name: child for child in MonitorObject.objects.filter(parent=instance)}
-            
+
             new_children = []
             for child in children:
                 child_id = child.get("id")
                 child_name = child.get("name")
                 if not child_id or not child_name:
                     continue
-                    
+
                 if child_id in existing_children:
                     # 更新已有子对象的 display_name
                     existing_child = existing_children[child_id]
@@ -246,51 +242,52 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
                         existing_child.save(update_fields=["display_name"])
                 else:
                     # 创建新子对象
-                    new_children.append(MonitorObject(
-                        name=child_id,
-                        display_name=child_name,
-                        icon=instance.icon,
-                        type_id=instance.type_id,
-                        description="",
-                        level="derivative",
-                        parent=instance,
-                        is_visible=True,
-                        instance_id_keys=["instance_id", child_id],
-                        default_metric=f"any({{instance_type='{child_id}'}}) by (instance_id, {child_id})",
-                    ))
-            
+                    new_children.append(
+                        MonitorObject(
+                            name=child_id,
+                            display_name=child_name,
+                            icon=instance.icon,
+                            type_id=instance.type_id,
+                            description="",
+                            level="derivative",
+                            parent=instance,
+                            is_visible=True,
+                            instance_id_keys=resolve_monitor_object_instance_id_keys(
+                                [],
+                                level="derivative",
+                                object_name=child_id,
+                            ),
+                            default_metric=f"any({{instance_type='{child_id}'}}) by (instance_id, {child_id})",
+                        )
+                    )
+
             if new_children:
                 MonitorObject.objects.bulk_create(new_children)
-        
+
         return WebUtils.response_success(serializer.data)
 
 
 class MonitorObjectTypeViewSet(viewsets.ModelViewSet):
     """监控对象类型视图"""
+
     queryset = MonitorObjectType.objects.all()
     serializer_class = MonitorObjectTypeSerializer
     pagination_class = None  # 不分页
 
     def list(self, request, *args, **kwargs):
         # 排除 id 为 'all' 的类型
-        queryset = self.filter_queryset(self.get_queryset()).exclude(id='all')
-        
+        queryset = self.filter_queryset(self.get_queryset()).exclude(id="all")
+
         # 获取语言加载器
-        lan = LanguageLoader(
-            app=LanguageConstants.APP, default_lang=request.user.locale
-        )
-        
+        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
+
         # 统计每个类型下的父对象数量（不包括子对象）
-        type_object_counts = MonitorObject.objects.filter(
-            parent__isnull=True
-        ).values('type').annotate(
-            object_count=Count('id')
-        )
-        count_map = {item['type']: item['object_count'] for item in type_object_counts}
-        
+        type_object_counts = MonitorObject.objects.filter(parent__isnull=True).values("type").annotate(object_count=Count("id"))
+        count_map = {item["type"]: item["object_count"] for item in type_object_counts}
+
         serializer = self.get_serializer(queryset, many=True)
         results = serializer.data
-        
+
         for result in results:
             # 添加国际化显示名称
             # 优先级：国际化 > name 字段 > id
@@ -301,5 +298,5 @@ class MonitorObjectTypeViewSet(viewsets.ModelViewSet):
             result["object_count"] = count_map.get(result["id"], 0)
             # 添加是否内置标识：有国际化配置表示内置类型
             result["is_builtin"] = bool(i18n_name)
-        
+
         return WebUtils.response_success(results)

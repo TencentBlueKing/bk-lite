@@ -107,8 +107,6 @@ class BotViewSet(PinMixin, AuthViewSet):
         rasa_model = data.pop("rasa_model", None)
         node_port = data.pop("node_port", None)
         workflow_data = data.pop("workflow_data", None)
-        if (not request.user.is_superuser) and (obj.created_by != request.user.username):
-            data.pop("team", [])
         if "team" in data:
             delete_team = [i for i in obj.team if i not in data["team"]]
             self.delete_rules(obj.id, delete_team)

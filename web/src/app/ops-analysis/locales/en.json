@@ -1,7 +1,8 @@
 {
   "common": {
     "total": "Total",
-    "items": "items"
+    "items": "items",
+    "loading": "Loading"
   },
   "topology": {
     "nodeConfig": {
@@ -230,7 +231,7 @@
     "lineColor": "Line Color",
     "pageSize": "Page Size",
     "selectDataSource": "Please select data source",
-    "dataFetchFailed": "Data fetch failed",
+    "dataFetchFailed": "Data query failed",
     "inputName": "Please enter widget name",
     "paramSettings": "Parameter Settings",
     "noParamSettings": "No configurable parameters",
@@ -287,7 +288,7 @@
     "bindingInvalidTypeMismatch": "Parameter type mismatch",
     "bindingInvalidUnknown": "Unknown reason",
     "unifiedFilterConfig": "Unified Filter Configuration",
-    "configFilter": "Filter Configure",
+    "configUnifiedFilterFields": "Configure unified filter fields",
     "filterName": "Display Name",
     "filterKey": "Parameter Key",
     "defaultValue": "Default Value",

@@ -21,8 +21,9 @@ DINGTALK_ALLOWED_DOMAINS = [
     "api.dingtalk.com",
 ]
 
-# 消息去重缓存过期时间（秒）
-MESSAGE_DEDUP_EXPIRE_SECONDS = 60
+# 两阶段去重缓存过期时间
+MESSAGE_PROCESSING_EXPIRE_SECONDS = 300  # 处理中状态 5 分钟超时（允许超时后重试）
+MESSAGE_COMPLETED_EXPIRE_SECONDS = 86400  # 已完成状态 24 小时（防止重复处理）
 
 
 def is_valid_dingtalk_url(url: str) -> bool:
@@ -246,50 +247,59 @@ class DingTalkChatFlowUtils(object):
             return False
 
     def _is_message_processed(self, msg_id: str) -> bool:
-        """检查消息是否已处理（去重）
+        """检查消息是否已处理（两阶段去重）
+
+        状态转换：
+        - None → processing (5min TTL) → completed (24h TTL)
+        - 失败时清除 → None（允许 Celery 重试或平台重试）
 
         Args:
             msg_id: 消息唯一标识
 
         Returns:
-            bool: True表示已处理过，False表示未处理
+            bool: True 表示已处理或处理中，False 表示可以处理
         """
         cache_key = f"dingtalk_msg:{self.bot_id}:{msg_id}"
-        if cache.get(cache_key):
+        status = cache.get(cache_key)
+
+        if status == "completed":
+            logger.debug(f"钉钉消息已完成处理，跳过: msg_id={msg_id}")
             return True
-        # 标记为已处理
-        cache.set(cache_key, "1", MESSAGE_DEDUP_EXPIRE_SECONDS)
+        if status == "processing":
+            logger.debug(f"钉钉消息处理中，跳过: msg_id={msg_id}")
+            return True
+
+        # 标记为处理中（短 TTL，超时后允许重试）
+        cache.set(cache_key, "processing", MESSAGE_PROCESSING_EXPIRE_SECONDS)
         return False
 
-    def _async_process_and_reply(self, bot_chat_flow, dingtalk_config, text_content, sender_id, webhook_url, msg_id):
-        """异步处理消息并回复
+    def mark_message_completed(self, msg_id: str):
+        """标记消息处理完成
 
         Args:
-            bot_chat_flow: Bot工作流对象
-            dingtalk_config: 钉钉配置
-            text_content: 用户消息
-            sender_id: 发送者ID
-            webhook_url: 回复webhook地址
-            msg_id: 消息ID
+            msg_id: 消息唯一标识
         """
-        try:
-            node_id = dingtalk_config["node_id"]
-            reply_text = self.execute_chatflow_with_message(bot_chat_flow, node_id, text_content, sender_id, is_third_party=True)
+        cache_key = f"dingtalk_msg:{self.bot_id}:{msg_id}"
+        cache.set(cache_key, "completed", MESSAGE_COMPLETED_EXPIRE_SECONDS)
+        logger.debug(f"钉钉消息处理完成: msg_id={msg_id}")
 
-            if webhook_url and reply_text:
-                markdown_content = {"title": "机器人回复", "text": reply_text}
-                self.send_message(webhook_url, "markdown", markdown_content)
-        except Exception as e:
-            logger.error(f"钉钉异步处理消息失败，Bot {self.bot_id}，MsgId {msg_id}，错误: {str(e)}")
-            logger.exception(e)
+    def mark_message_failed(self, msg_id: str):
+        """标记消息处理失败，清除去重标记允许重试
+
+        Args:
+            msg_id: 消息唯一标识
+        """
+        cache_key = f"dingtalk_msg:{self.bot_id}:{msg_id}"
+        cache.delete(cache_key)
+        logger.info(f"钉钉消息处理失败，已清除去重标记: msg_id={msg_id}")
 
     def handle_dingtalk_message(self, request, bot_chat_flow, dingtalk_config):
         """处理钉钉消息
 
-        采用异步处理模式：
-        1. 立即返回success给钉钉（避免超时重试）
-        2. 使用消息ID去重（防止重试导致重复处理）
-        3. 异步执行ChatFlow并通过webhook回复
+        采用 Celery 异步处理模式：
+        1. 立即返回 success 给钉钉（避免超时重试）
+        2. 使用两阶段去重（processing → completed）
+        3. 通过 Celery 任务异步执行 ChatFlow 并回复
 
         Returns:
             JsonResponse: 消息处理响应
@@ -322,20 +332,24 @@ class DingTalkChatFlowUtils(object):
                 logger.warning(f"钉钉收到空消息，Bot {self.bot_id}")
                 return JsonResponse({"success": True})
 
-            # 消息去重检查
+            # 两阶段去重检查（标记为 processing）
             if self._is_message_processed(msg_id):
-                logger.info(f"钉钉消息已处理，跳过重复消息，Bot {self.bot_id}，MsgId {msg_id}")
+                logger.info(f"钉钉消息已处理或处理中，跳过，Bot {self.bot_id}，MsgId {msg_id}")
                 return JsonResponse({"success": True})
 
-            # 异步处理消息（立即返回，避免超时）
-            thread = threading.Thread(
-                target=self._async_process_and_reply,
-                args=(bot_chat_flow, dingtalk_config, text_content, sender_id, webhook_url, msg_id),
-                daemon=True,
-            )
-            thread.start()
+            # 使用 Celery 任务异步处理（替代 daemon 线程）
+            from apps.opspilot.tasks import process_dingtalk_message
 
-            logger.info(f"钉钉消息已接收，异步处理中，Bot {self.bot_id}，MsgId {msg_id}")
+            process_dingtalk_message.delay(
+                bot_id=self.bot_id,
+                msg_id=msg_id,
+                text_content=text_content,
+                sender_id=sender_id,
+                webhook_url=webhook_url,
+                config=dingtalk_config,
+            )
+
+            logger.info(f"钉钉消息已接收，Celery 任务已投递，Bot {self.bot_id}，MsgId {msg_id}")
             return JsonResponse({"success": True})
 
         except Exception as e:

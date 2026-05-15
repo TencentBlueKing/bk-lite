@@ -7,6 +7,7 @@ from .login_module import *  # noqa
 from .menu import *  # noqa
 from .operation_log import *  # noqa
 from .role import *  # noqa
+from .sensitive_info_authorization import *  # noqa
 from .system_settings import *  # noqa
 from .user import *  # noqa
 from .user_login_log import *  # noqa

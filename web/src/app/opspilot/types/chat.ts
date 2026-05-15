@@ -1,6 +1,13 @@
-import { ReactNode } from 'react';
-import { ButtonProps } from 'antd';
-import { CustomChatMessage, Annotation, BrowserStepAction, BrowserStepProgressData, BrowserTaskReceivedData, AgentStepProgressData } from '@/app/opspilot/types/global';
+import {ReactNode} from 'react';
+import {ButtonProps} from 'antd';
+import {
+  AgentStepProgressData,
+  Annotation,
+  BrowserStepAction,
+  BrowserStepProgressData,
+  BrowserTaskReceivedData,
+  CustomChatMessage
+} from '@/app/opspilot/types/global';
 
 export type { BrowserStepAction, BrowserStepProgressData };
 export type { BrowserTaskReceivedData };
@@ -21,6 +28,28 @@ export interface ApprovalRequestValue {
   tool_name: string;
   tool_args: Record<string, unknown>;
   timeout_seconds: number;
+}
+
+export interface UserChoiceRequestValue {
+  execution_id: string;
+  node_id: string;
+  choice_id: string;
+  title: string;
+  description?: string;
+  options: Array<{
+    key: string;
+    label: string;
+    description?: string;
+    icon?: string;
+    disabled?: boolean;
+    recommended?: boolean;
+  }>;
+  multiple: boolean;
+  min_select: number;
+  max_select: number;
+  timeout_seconds: number;
+  default_keys: string[];
+  display_hint: 'auto' | 'buttons' | 'dropdown' | 'checkbox';
 }
 
 export interface CustomChatSSEProps {
@@ -82,7 +111,7 @@ export interface AGUIMessage {
   message?: string;
   code?: string;
   name?: string;
-  value?: BrowserStepProgressValue | BrowserTaskReceivedValue | ApprovalRequestValue | AgentStepProgressValue | SubAgentProgressValue | Record<string, unknown>;
+  value?: BrowserStepProgressValue | BrowserTaskReceivedValue | ApprovalRequestValue | UserChoiceRequestValue | AgentStepProgressValue | SubAgentProgressValue | Record<string, unknown>;
 }
 
 export interface ReferenceModalState {

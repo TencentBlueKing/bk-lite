@@ -4,6 +4,7 @@ from apps.core.utils.permission_utils import get_instance_permission_map, get_pe
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models.sidecar import ChildConfig, CollectorConfiguration, Node
+from apps.rpc.system_mgmt import SystemMgmt
 
 
 def normalize_ids(values):
@@ -31,9 +32,33 @@ def normalize_orgs(values):
 
 def get_node_permission(request):
     include_children = request.COOKIES.get("include_children", "0") == "1"
+    current_team = request.COOKIES.get("current_team")
+    user = get_request_user(request)
+
+    if current_team in (None, "") or user is None:
+        return {}
+
+    try:
+        current_team_int = int(current_team)
+    except (TypeError, ValueError):
+        return {}
+
+    scope_result = SystemMgmt(is_local_client=True).get_authorized_groups_scoped(
+        {
+            "username": getattr(user, "username", ""),
+            "domain": getattr(user, "domain", "domain.com"),
+            "current_team": current_team_int,
+            "is_superuser": getattr(user, "is_superuser", False),
+        },
+        include_children=include_children,
+    )
+    authorized_groups = scope_result.get("data", []) if isinstance(scope_result, dict) else []
+    if not authorized_groups:
+        return {}
+
     permission = get_permission_rules(
-        get_request_user(request),
-        request.COOKIES.get("current_team"),
+        user,
+        current_team_int,
         "node_mgmt",
         NodeConstants.MODULE,
         include_children=include_children,
@@ -235,7 +260,7 @@ def authorize_target_organizations(request, node, organizations):
         return None
 
     permission = get_node_permission(request)
-    allowed_orgs = normalize_orgs(permission.get("team", [])) | get_node_organizations(node)
+    allowed_orgs = normalize_orgs(permission.get("team", []))
     if not target_orgs.issubset(allowed_orgs):
         return WebUtils.response_403("User does not have permission to assign nodes to these organizations")
 

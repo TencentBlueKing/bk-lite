@@ -730,6 +730,43 @@ def submit_approval(request):
 
 
 @api_exempt
+def submit_choice(request):
+    """提交用户选择 — 用户从多个选项中选择的结果。"""
+    if request.method != "POST":
+        return JsonResponse({"result": False, "message": "Method not allowed"}, status=405)
+
+    try:
+        kwargs = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError) as e:
+        return JsonResponse({"result": False, "message": f"Invalid JSON: {e}"}, status=400)
+
+    execution_id = kwargs.get("execution_id", "")
+    node_id = kwargs.get("node_id", "")
+    choice_id = kwargs.get("choice_id", "")
+    selected = kwargs.get("selected", [])
+
+    if not all([execution_id, node_id, choice_id]):
+        return JsonResponse(
+            {"result": False, "message": "execution_id, node_id, choice_id are all required"},
+            status=400,
+        )
+
+    if not isinstance(selected, list) or len(selected) == 0:
+        return JsonResponse({"result": False, "message": "selected must be a non-empty list"}, status=400)
+
+    from apps.opspilot.utils.user_choice import submit_user_choice
+
+    submit_user_choice(
+        execution_id=execution_id,
+        node_id=node_id,
+        choice_id=choice_id,
+        selected=selected,
+    )
+
+    return JsonResponse({"result": True, "data": {"execution_id": execution_id, "node_id": node_id, "selected": selected}})
+
+
+@api_exempt
 def execute_chat_flow_wechat_official(request, bot_id):
     """微信公众号ChatFlow执行入口
 

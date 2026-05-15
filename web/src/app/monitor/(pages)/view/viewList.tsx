@@ -30,6 +30,7 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { ListItem } from '@/types';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
+import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { getDerivativeObjectNames } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
 const { Option } = Select;
@@ -500,10 +501,14 @@ const ViewList: React.FC<ViewListProps> = ({
       icon: monitorItem?.icon || OBJECT_DEFAULT_ICON,
       instance_id: app.instance_id,
       instance_name: app.instance_name,
-      instance_id_values: app.instance_id_values
+      instance_id_values: app.instance_id_values,
+      instance_id_keys: Array.isArray(monitorItem?.instance_id_keys)
+        ? monitorItem.instance_id_keys.join(',')
+        : 'instance_id'
     };
     const params = new URLSearchParams(row);
-    const targetUrl = `/monitor/view/detail?${params.toString()}`;
+    const professionalDashboardUrl = getProfessionalDashboardUrl(monitorItem?.name, monitorItem?.display_name, params.toString());
+    const targetUrl = professionalDashboardUrl || `/monitor/view/detail?${params.toString()}`;
     router.push(targetUrl);
   };
 

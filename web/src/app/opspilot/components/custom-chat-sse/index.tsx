@@ -1,11 +1,11 @@
-import React, { useState, useCallback, useRef, ReactNode, useEffect } from 'react';
-import { Popconfirm, Button, Tooltip, Flex, Spin, Drawer, ButtonProps, Upload, message as antMessage, Image } from 'antd';
-import { FullscreenOutlined, FullscreenExitOutlined, SendOutlined, PictureOutlined } from '@ant-design/icons';
-import type { UploadFile } from 'antd/es/upload/interface';
-import { Bubble, Sender } from '@ant-design/x';
+import React, {ReactNode, useCallback, useEffect, useRef, useState} from 'react';
+import {Button, ButtonProps, Drawer, Flex, Image, message as antMessage, Popconfirm, Spin, Tooltip, Upload} from 'antd';
+import {FullscreenExitOutlined, FullscreenOutlined, PictureOutlined, SendOutlined} from '@ant-design/icons';
+import type {UploadFile} from 'antd/es/upload/interface';
+import {Bubble, Sender} from '@ant-design/x';
 import DOMPurify from 'dompurify';
 import Icon from '@/components/icon';
-import { useTranslation } from '@/utils/i18n';
+import {useTranslation} from '@/utils/i18n';
 import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
@@ -18,13 +18,14 @@ import PermissionWrapper from '@/components/permission';
 import BrowserStepProgress from './BrowserStepProgress';
 import AgentStepProgress from './AgentStepProgress';
 import ApprovalCard from './ApprovalCard';
-import { CustomChatMessage, Annotation } from '@/app/opspilot/types/global';
-import { useSession } from 'next-auth/react';
-import { useAuth } from '@/context/auth';
-import { CustomChatSSEProps, GuideParseResult } from '@/app/opspilot/types/chat';
-import { useSSEStream } from './hooks/useSSEStream';
-import { useSendMessage } from './hooks/useSendMessage';
-import { useReferenceHandler } from './hooks/useReferenceHandler';
+import UserChoiceCard from './UserChoiceCard';
+import {Annotation, CustomChatMessage} from '@/app/opspilot/types/global';
+import {useSession} from 'next-auth/react';
+import {useAuth} from '@/context/auth';
+import {CustomChatSSEProps, GuideParseResult} from '@/app/opspilot/types/chat';
+import {useSSEStream} from './hooks/useSSEStream';
+import {useSendMessage} from './hooks/useSendMessage';
+import {useReferenceHandler} from './hooks/useReferenceHandler';
 
 const normalizeThinkingText = (value?: string) => {
   if (!value) return '';
@@ -425,8 +426,18 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     }));
   }, [updateMessages]);
 
+  const handleUserChoiceSubmit = useCallback((choiceId: string, status: 'submitted' | 'timeout', selected: string[]) => {
+    updateMessages(prev => prev.map(msg => {
+      if (!msg.userChoiceRequests) return msg;
+      const updated = msg.userChoiceRequests.map(req =>
+        req.choice_id === choiceId ? { ...req, status, selected } : req
+      );
+      return { ...msg, userChoiceRequests: updated };
+    }));
+  }, [updateMessages]);
+
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking, approvalRequests, agentStepProgress } = msg;
+    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, agentStepProgress } = msg;
 
     let replacedContent = parseReferenceLinks(content || '');
     replacedContent = parseSuggestionLinks(replacedContent);
@@ -475,6 +486,18 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 request={req}
                 token={token || ''}
                 onDecision={handleApprovalDecision}
+              />
+            ))}
+          </div>
+        )}
+        {Array.isArray(userChoiceRequests) && userChoiceRequests.length > 0 && (
+          <div className="mt-2">
+            {userChoiceRequests.map(req => (
+              <UserChoiceCard
+                key={req.choice_id}
+                request={req}
+                token={token || ''}
+                onSubmit={handleUserChoiceSubmit}
               />
             ))}
           </div>

@@ -84,7 +84,7 @@ const EntityList = <T,>({
     return (
       <div
         key={id}
-        className={`p-4 rounded-xl relative shadow-md ${onCardClick ? 'cursor-pointer' : ''} ${styles.commonCard}`}
+        className={`p-4 rounded-xl relative shadow-md flex flex-col ${onCardClick ? 'cursor-pointer' : ''} ${styles.commonCard}`}
         onClick={() => (onCardClick ? onCardClick(item) : undefined)}
         onMouseEnter={() => setHoveredCard((current) => (current !== id ? id : current))}
         onMouseLeave={() => setHoveredCard((current) => (current === id ? null : current))}
@@ -118,44 +118,37 @@ const EntityList = <T,>({
             </h3>
           </div>
         </div>
-        <div className="h-[50px]">
+        <div className="flex-1 min-h-[50px]">
           <p
             className={`text-xs mt-3 text-sm max-h-[66px] ${(isSingleButtonAction && hoveredCard === id) ? 'line-clamp-2' : 'line-clamp-3'} ${styles.desc}`}>{description}</p>
         </div>
-        {descSlot && (
-          <div className="mt-2">
-            {descSlot(item)}
-          </div>
-        )}
-        {(tagList && tagList.length > 0) || infoText || is_build_in !== undefined ? (
-          <div className="mt-2 flex justify-between items-end">
-            <div className="flex flex-wrap gap-1">
-              {tagList && tagList.length > 0 && tagList.map((t: any, idx: number) => {
-                // 支持带color的tag和提示
-                if (typeof t === 'object' && t.name) {
-                  return (
-                    <Tooltip key={idx} title={t.tooltip}>
-                      <Tag color={t.color} className="mr-1 font-mini">
-                        {t.name}
-                      </Tag>
-                    </Tooltip>
-                  );
-                }
+        <div className="mt-auto mt-2 flex justify-between items-center">
+          <div className="flex flex-wrap gap-1">
+            {tagList && tagList.length > 0 && tagList.map((t: any, idx: number) => {
+              if (typeof t === 'object' && t.name) {
                 return (
-                  <Tag key={idx} className="mr-1 font-mini">
-                    {t}
-                  </Tag>
+                  <Tooltip key={idx} title={t.tooltip}>
+                    <Tag color={t.color} className="mr-1 font-mini">
+                      {t.name}
+                    </Tag>
+                  </Tooltip>
                 );
-              })}
-              {is_build_in !== undefined && (
-                <Tag color={is_build_in ? 'blue' : 'green'} className="mr-1 font-mini">
-                  {is_build_in ? t('common.builtin') : t('common.externalApp')}
+              }
+              return (
+                <Tag key={idx} className="mr-1 font-mini">
+                  {t}
                 </Tag>
-              )}
-            </div>
+              );
+            })}
+            {is_build_in !== undefined && (
+              <Tag color={is_build_in ? 'blue' : 'green'} className="mr-1 font-mini">
+                {is_build_in ? t('common.builtin') : t('common.externalApp')}
+              </Tag>
+            )}
             {infoText && <span className='text-[var(--color-text-4)] font-mini'>{infoText}</span>}
           </div>
-        ) : null}
+          {descSlot && descSlot(item)}
+        </div>
         {isSingleButtonAction && (
           <Button
             size="small"

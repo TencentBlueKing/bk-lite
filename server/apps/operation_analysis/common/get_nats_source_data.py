@@ -101,7 +101,7 @@ class GetNatsData:
 
     def get_data(self):
         """
-        获取单个 namespace 的 NATS 数据源数据，直接返回裸数据。
+        获取单个 namespace 的 NATS 数据源数据，保留下游返回体语义。
         """
         namespace = self._get_target_namespace()
         if namespace is None:
@@ -121,5 +121,4 @@ class GetNatsData:
         if fun is None:
             raise RuntimeError(f"NamePaces({self.namespace}) Module not found func({self.path})!")
 
-        return_data = fun(**self.params)
-        return return_data.get("data", [])
+        return fun(**self.params)

@@ -4,7 +4,7 @@ export const MODEL_TYPE_OPTIONS: Record<string, string> = {
   'hugging_face': 'HuggingFace',
 };
 
-import type { ProviderResourceType, VendorType } from '@/app/opspilot/types/provider';
+import type {ProtocolType, ProviderResourceType, VendorType} from '@/app/opspilot/types/provider';
 
 export const MODEL_CATEGORY_OPTIONS = [
   { value: 'text', label: '文本类' },
@@ -79,4 +79,35 @@ export const getConfigField = (type: string): string | undefined => {
 
 export const getProviderType = (type: ProviderResourceType): string | undefined => {
   return PROVIDER_TYPE_MAP[type];
+};
+
+// 协议类型选项
+export const PROTOCOL_TYPE_OPTIONS: Array<{
+  value: ProtocolType;
+  label: string;
+  defaultApiBase: string;
+}> = [
+  { value: 'openai', label: 'OpenAI 协议', defaultApiBase: '' },
+  { value: 'anthropic', label: 'Anthropic 协议', defaultApiBase: 'https://api.anthropic.com' },
+];
+
+// 获取供应商类型对应的默认 Anthropic API 地址
+export const getAnthropicApiBase = (vendorType: VendorType): string => {
+  if (vendorType === 'deepseek') {
+    return 'https://api.deepseek.com/anthropic';
+  }
+  return 'https://api.anthropic.com';
+};
+
+// 获取供应商类型对应的默认协议
+export const getDefaultProtocolType = (vendorType: VendorType): ProtocolType => {
+  if (vendorType === 'anthropic') {
+    return 'anthropic';
+  }
+  return 'openai';
+};
+
+// 判断供应商类型是否支持协议选择（deepseek 和 other 类型支持）
+export const supportsProtocolSelection = (vendorType: VendorType): boolean => {
+  return vendorType === 'deepseek' || vendorType === 'other';
 };

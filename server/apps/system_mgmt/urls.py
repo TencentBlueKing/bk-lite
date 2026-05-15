@@ -29,3 +29,9 @@ router.register(r"user_login_log", UserLoginLogViewSet)
 router.register(r"operation_log", OperationLogViewSet)
 router.register(r"error_log", ErrorLogViewSet)
 urlpatterns = router.urls
+
+try:
+    enterprise_urls = __import__("apps.system_mgmt.enterprise.urls", fromlist=["urlpatterns"])
+    urlpatterns += enterprise_urls.urlpatterns
+except (ImportError, ModuleNotFoundError):
+    pass

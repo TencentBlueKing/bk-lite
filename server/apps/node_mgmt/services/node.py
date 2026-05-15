@@ -24,10 +24,46 @@ from datetime import datetime, timedelta
 from apps.system_mgmt.models import User
 from apps.core.logger import node_logger as logger
 from apps.node_mgmt.services.sidecar import Sidecar
+from apps.rpc.system_mgmt import SystemMgmt
 from jinja2 import Template as JinjaTemplate
 
 
 class NodeService:
+    @staticmethod
+    def _build_scoped_permission(permission_data):
+        user_obj = User(username=permission_data["username"], domain=permission_data["domain"])
+        include_children = permission_data.get("include_children", False)
+        current_team = permission_data.get("current_team")
+
+        if current_team in (None, ""):
+            return {}
+
+        try:
+            current_team = int(current_team)
+        except (TypeError, ValueError):
+            return {}
+
+        scope_result = SystemMgmt(is_local_client=True).get_authorized_groups_scoped(
+            {
+                "username": permission_data["username"],
+                "domain": permission_data["domain"],
+                "current_team": current_team,
+                "is_superuser": permission_data.get("is_superuser", False),
+            },
+            include_children=include_children,
+        )
+        authorized_groups = scope_result.get("data", []) if isinstance(scope_result, dict) else []
+        if not authorized_groups:
+            return {}
+
+        return get_permission_rules(
+            user_obj,
+            current_team,
+            "node_mgmt",
+            NodeConstants.MODULE,
+            include_children=include_children,
+        )
+
     @staticmethod
     def process_node_data(node_data):
         """处理节点数据列表，并补充每个节点的采集器名称和采集器配置名称"""
@@ -314,17 +350,9 @@ class NodeService:
     ):
         """获取节点列表"""
         if permission_data:
-            user_obj = User(username=permission_data["username"], domain=permission_data["domain"])
             from apps.core.utils.permission_utils import permission_filter
 
-            include_children = permission_data.get("include_children", False)
-            permission = get_permission_rules(
-                user_obj,
-                permission_data["current_team"],
-                "node_mgmt",
-                NodeConstants.MODULE,
-                include_children=include_children,
-            )
+            permission = NodeService._build_scoped_permission(permission_data)
             # 如果提供了权限信息，使用权限过滤
             qs = permission_filter(
                 Node,
@@ -395,17 +423,9 @@ class NodeService:
             return []
 
         if permission_data:
-            user_obj = User(username=permission_data["username"], domain=permission_data["domain"])
             from apps.core.utils.permission_utils import permission_filter
 
-            include_children = permission_data.get("include_children", False)
-            permission = get_permission_rules(
-                user_obj,
-                permission_data["current_team"],
-                "node_mgmt",
-                NodeConstants.MODULE,
-                include_children=include_children,
-            )
+            permission = NodeService._build_scoped_permission(permission_data)
             qs = permission_filter(
                 Node,
                 permission,

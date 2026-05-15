@@ -4,6 +4,10 @@ from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorPlugin, MonitorPluginUITemplate
 from apps.monitor.models.monitor_metrics import MetricGroup, Metric
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
+from apps.monitor.utils.instance_id_keys import (
+    resolve_metric_instance_id_keys,
+    resolve_monitor_object_instance_id_keys,
+)
 
 
 class MonitorPluginService:
@@ -47,6 +51,14 @@ class MonitorPluginService:
             data["type"] = obj_type
 
         monitor_obj = MonitorObject.objects.filter(name=data["name"]).first()
+        object_level = data.get("level", getattr(monitor_obj, "level", "base"))
+        object_name = data.get("name", getattr(monitor_obj, "name", ""))
+        object_instance_id_keys = resolve_monitor_object_instance_id_keys(
+            data.get("instance_id_keys", getattr(monitor_obj, "instance_id_keys", [])),
+            level=object_level,
+            object_name=object_name,
+        )
+        data["instance_id_keys"] = object_instance_id_keys
 
         if monitor_obj:
             supplementary_indicators = monitor_obj.supplementary_indicators + data.get("supplementary_indicators", [])
@@ -101,6 +113,11 @@ class MonitorPluginService:
                 existing_metrics.pop(metric_name)
 
         for metric in metrics:
+            metric_instance_id_keys = resolve_metric_instance_id_keys(
+                metric.get("instance_id_keys", []),
+                monitor_obj.instance_id_keys,
+                strict=True,
+            )
             if metric["name"] in existing_metrics:
                 existing_metric = existing_metrics[metric["name"]]
                 existing_metric.metric_group_id = groups_map[metric["metric_group"]]
@@ -111,7 +128,7 @@ class MonitorPluginService:
                 existing_metric.data_type = metric["data_type"]
                 existing_metric.description = metric["description"]
                 existing_metric.dimensions = metric["dimensions"]
-                existing_metric.instance_id_keys = metric.get("instance_id_keys", [])
+                existing_metric.instance_id_keys = metric_instance_id_keys
                 metrics_to_update.append(existing_metric)
             else:
                 metrics_to_create.append(
@@ -126,7 +143,7 @@ class MonitorPluginService:
                         data_type=metric["data_type"],
                         description=metric["description"],
                         dimensions=metric["dimensions"],
-                        instance_id_keys=metric.get("instance_id_keys", []),
+                        instance_id_keys=metric_instance_id_keys,
                     )
                 )
 
@@ -205,7 +222,7 @@ class MonitorPluginService:
                     "data_type": i.data_type,
                     "description": i.description,
                     "dimensions": i.dimensions,
-                    "instance_id_keys": i.instance_id_keys,
+                    "instance_id_keys": resolve_metric_instance_id_keys(i.instance_id_keys, monitor_obj.instance_id_keys),
                 }
                 for i in metrics
             ],

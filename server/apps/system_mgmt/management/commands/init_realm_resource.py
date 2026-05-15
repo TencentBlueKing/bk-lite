@@ -75,6 +75,8 @@ def extend_menus_by_install_apps(menu_data: dict, install_apps: set[str]) -> dic
         return result
 
     children.append({"id": "license_mgmt", "name": "License", "operation": ["View", "Add", "Edit", "Delete"]})
+    children.append({"id": "portal_settings", "name": "Portal Settings", "operation": ["View", "Edit"]})
+    children.append({"id": "sensitive_info", "name": "Sensitive Info", "operation": ["View", "Edit", "Add", "Delete"]})
     return result
 
 

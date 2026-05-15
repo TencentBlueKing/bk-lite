@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 
 from apps.core.utils.web_utils import WebUtils
 from apps.log.services.k8s_collect import K8sLogCollectService
+from apps.log.views.collect_config import CollectInstanceViewSet
 from apps.rpc.node_mgmt import NodeMgmt
 
 
@@ -14,13 +15,26 @@ class K8sCollectViewSet(viewsets.ViewSet):
 
     @action(methods=["post"], detail=False, url_path="create_instance")
     def create_instance(self, request):
+        organizations = request.data.get("organizations", [])
+        if not organizations:
+            return WebUtils.response_error("organizations is required")
+        error_response = CollectInstanceViewSet()._authorize_target_organizations(
+            request,
+            organizations,
+            request.data.get("collect_type_id"),
+        )
+        if error_response:
+            return error_response
         data = K8sLogCollectService.create_k8s_collect_instance(request.data)
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="generate_install_command")
     def generate_install_command(self, request):
+        instances, error_response = CollectInstanceViewSet()._authorize_instances(request, [request.data.get("instance_id")])
+        if error_response:
+            return error_response
         command = K8sLogCollectService.generate_install_command(
-            request.data.get("instance_id"),
+            instances[0].id,
             request.data.get("cloud_region_id"),
             request.data.get("runtime_profile"),
             request.data.get("host_log_path"),
@@ -30,5 +44,12 @@ class K8sCollectViewSet(viewsets.ViewSet):
 
     @action(methods=["post"], detail=False, url_path="check_collect_status")
     def check_collect_status(self, request):
-        success = K8sLogCollectService.check_collect_status(request.data.get("instance_id"))
+        instances, error_response = CollectInstanceViewSet()._authorize_instances(
+            request,
+            [request.data.get("instance_id")],
+            required_permission="View",
+        )
+        if error_response:
+            return error_response
+        success = K8sLogCollectService.check_collect_status(instances[0].id)
         return WebUtils.response_success({"success": success})

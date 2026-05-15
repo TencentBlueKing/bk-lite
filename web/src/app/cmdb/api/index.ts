@@ -8,3 +8,4 @@ export { useNodeMgmtSyncApi } from './nodeMgmtSync';
 export { useConfigFileApi } from './configFile';
 export { useUserConfigApi, useSavedFiltersApi, type SavedFilterItem, type SavedFilterCondition } from './userConfig';
 export { useSubscriptionApi } from './subscription';
+export { useCollectToolApi } from './collectTool';

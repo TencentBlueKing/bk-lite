@@ -56,6 +56,7 @@ def normalize_llm_error_message(error_msg: str) -> str:
     Returns:
         str: 友好的错误信息
     """
+    # OpenAI 兼容错误码
     if "Error code: 502" in error_msg:
         return "LLM服务暂时不可用(502)，请检查模型配置或稍后重试"
     elif "Error code: 503" in error_msg:
@@ -66,6 +67,15 @@ def normalize_llm_error_message(error_msg: str) -> str:
         return "LLM API密钥无效(401)，请检查模型配置"
     elif "Error code: 429" in error_msg:
         return "LLM请求频率超限(429)，请稍后重试"
+    # Anthropic 特有错误
+    elif "authentication_error" in error_msg.lower() or "invalid x-api-key" in error_msg.lower():
+        return "Anthropic API密钥无效，请检查模型配置"
+    elif "rate_limit_error" in error_msg.lower():
+        return "Anthropic请求频率超限，请稍后重试"
+    elif "overloaded_error" in error_msg.lower():
+        return "Anthropic服务过载，请稍后重试"
+    elif "invalid_request_error" in error_msg.lower():
+        return f"Anthropic请求参数错误: {error_msg}"
     elif "Connection" in error_msg or "timeout" in error_msg.lower():
         return f"LLM服务连接失败: {error_msg}"
     else:

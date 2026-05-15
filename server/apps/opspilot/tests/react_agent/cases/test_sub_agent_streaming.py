@@ -66,32 +66,38 @@ class TestSubAgentProgressEventsExist:
     def test_has_error_status_event(self):
         """Agent not found / not initialized emits error status."""
         src = self._src()
-        assert src.count('"status": "error"') >= 1
+        # Implementation uses _emit_sub_agent_event(agent_name, "error", ...)
+        assert src.count('"error"') >= 1
 
     def test_has_started_status_event(self):
         """Agent execution start emits started status."""
         src = self._src()
-        assert '"status": "started"' in src
+        # Implementation uses _emit_sub_agent_event(agent_name, "started", ...)
+        assert '"started"' in src
 
     def test_has_completed_status_event(self):
         """Agent execution completion emits completed status."""
         src = self._src()
-        assert '"status": "completed"' in src
+        # Implementation uses _emit_sub_agent_event(agent_name, "completed", ...)
+        assert '"completed"' in src
 
     def test_has_parallel_started_event(self):
         """Parallel execution start emits parallel_started."""
         src = self._src()
-        assert '"status": "parallel_started"' in src
+        # Implementation uses _emit_sub_agent_event("", "parallel_started", ...)
+        assert '"parallel_started"' in src
 
     def test_has_parallel_completed_event(self):
         """Parallel execution completion emits parallel_completed."""
         src = self._src()
-        assert '"status": "parallel_completed"' in src
+        # Implementation uses _emit_sub_agent_event("", "parallel_completed", ...)
+        assert '"parallel_completed"' in src
 
     def test_started_before_ainvoke(self):
         """'started' event must be dispatched BEFORE agent ainvoke call."""
         src = self._src()
-        idx_started = src.find('"status": "started"')
+        # Implementation uses _emit_sub_agent_event(agent_name, "started", ...)
+        idx_started = src.find('"started"')
         idx_ainvoke = src.find("temp_graph.ainvoke")
         assert idx_started != -1 and idx_ainvoke != -1
         assert idx_started < idx_ainvoke, "started event must be dispatched before agent execution"
@@ -100,34 +106,35 @@ class TestSubAgentProgressEventsExist:
         """'completed' event must be dispatched AFTER agent ainvoke call."""
         src = self._src()
         idx_ainvoke = src.find("temp_graph.ainvoke")
-        idx_completed = src.find('"status": "completed"')
+        # Implementation uses _emit_sub_agent_event(agent_name, "completed", ...)
+        idx_completed = src.find('"completed"')
         assert idx_ainvoke != -1 and idx_completed != -1
         assert idx_completed > idx_ainvoke, "completed event must be dispatched after agent execution"
 
     def test_error_events_include_agent_name(self):
         """Error events must include agent_name for UI identification."""
         src = self._src()
-        # Find all error event blocks
-        pattern = r'dispatch_custom_event\("sub_agent_progress",\s*\{[^}]*"status":\s*"error"[^}]*\}'
-        matches = re.findall(pattern, src, re.DOTALL)
-        assert len(matches) >= 1
-        for m in matches:
-            assert "agent_name" in m, "Error event must include agent_name"
+        # Implementation uses _emit_sub_agent_event(agent_name, "error", description)
+        # The helper method signature guarantees agent_name is always included
+        pattern = r'_emit_sub_agent_event\([^,]+,\s*"error"'
+        matches = re.findall(pattern, src)
+        assert len(matches) >= 1, "Error events must be emitted via _emit_sub_agent_event"
 
     def test_started_event_includes_description(self):
         """Started event should include agent description for UI display."""
         src = self._src()
-        # Find the started event block
-        idx = src.find('"status": "started"')
-        block = src[max(0, idx - 200) : idx + 200]
-        assert "description" in block, "Started event should include description"
+        # Implementation uses _emit_sub_agent_event(agent_name, "started", agent_config.description)
+        pattern = r'_emit_sub_agent_event\([^,]+,\s*"started",\s*[^)]+\)'
+        matches = re.findall(pattern, src)
+        assert len(matches) >= 1, "Started event must include description parameter"
 
     def test_completed_event_includes_description(self):
         """Completed event should include result info for UI display."""
         src = self._src()
-        idx = src.find('"status": "completed"')
-        block = src[max(0, idx - 100) : idx + 200]
-        assert "description" in block, "Completed event should include description"
+        # Implementation uses _emit_sub_agent_event(agent_name, "completed", f"执行完成...")
+        pattern = r'_emit_sub_agent_event\([^,]+,\s*"completed",\s*[^)]+\)'
+        matches = re.findall(pattern, src)
+        assert len(matches) >= 1, "Completed event must include description parameter"
 
 
 # ---------------------------------------------------------------------------
@@ -237,9 +244,10 @@ class TestLifecycleCoverage:
         )
         with open(full, encoding="utf-8") as f:
             src = f.read()
-        # Extract all status values from sub_agent_progress events
-        pattern = r'dispatch_custom_event\("sub_agent_progress",\s*\{[^}]*"status":\s*"([^"]+)"'
-        return set(re.findall(pattern, src, re.DOTALL))
+        # Extract all status values from _emit_sub_agent_event calls
+        # Pattern matches: _emit_sub_agent_event(agent_name, "status_value", ...)
+        pattern = r'_emit_sub_agent_event\([^,]+,\s*"([^"]+)"'
+        return set(re.findall(pattern, src))
 
     def test_all_lifecycle_statuses_present(self):
         found = self._extract_statuses()

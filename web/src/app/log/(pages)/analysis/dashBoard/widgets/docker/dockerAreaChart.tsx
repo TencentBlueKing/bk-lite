@@ -17,7 +17,8 @@ const DockerAreaChart: React.FC<DockerAreaChartProps> = ({
   const colors = useChartColors();
 
   const chartOption = useMemo(() => {
-    if (!rawData || !Array.isArray(rawData) || rawData.length === 0) return null;
+    if (!rawData || !Array.isArray(rawData) || rawData.length === 0)
+      return null;
 
     const displayMaps = config?.displayMaps || {};
     const field1 = displayMaps.barField || displayMaps.key || 'logcount';
@@ -44,20 +45,12 @@ const DockerAreaChart: React.FC<DockerAreaChartProps> = ({
       {
         name: label1,
         type: 'line',
-        stack: 'total',
         smooth: true,
-        symbol: 'none',
-        lineStyle: { width: 1.5, color: color1 },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: color1 + '40' },
-              { offset: 1, color: color1 + '05' }
-            ]
-          }
-        },
+        symbol: 'circle',
+        symbolSize: 4,
+        lineStyle: { width: 2, color: color1 },
+        itemStyle: { color: color1 },
+        // 无面积填充
         data: series1Data
       }
     ];
@@ -70,20 +63,11 @@ const DockerAreaChart: React.FC<DockerAreaChartProps> = ({
       seriesList.push({
         name: label2,
         type: 'line',
-        stack: 'total',
         smooth: true,
-        symbol: 'none',
-        lineStyle: { width: 1.5, color: color2 },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: color2 + '40' },
-              { offset: 1, color: color2 + '05' }
-            ]
-          }
-        },
+        symbol: 'circle',
+        symbolSize: 4,
+        lineStyle: { width: 2, color: color2 },
+        itemStyle: { color: color2 },
         data: series2Data
       });
     }
@@ -98,15 +82,18 @@ const DockerAreaChart: React.FC<DockerAreaChartProps> = ({
         textStyle: { color: colors.textPrimary, fontSize: 12 }
       },
       legend: {
-        bottom: 4,
+        // 图内左上角内嵌
+        top: 4,
+        left: 8,
         textStyle: { color: colors.textSecondary, fontSize: 11 },
         itemWidth: 12,
-        itemHeight: 8
+        itemHeight: 4,
+        icon: 'rect'
       },
       grid: {
-        top: 12,
+        top: 36,
         right: 16,
-        bottom: field2 ? 54 : 12,
+        bottom: 24,
         left: 48
       },
       xAxis: {
@@ -138,7 +125,10 @@ const DockerAreaChart: React.FC<DockerAreaChartProps> = ({
       <div className="h-full flex items-center justify-center">
         <div
           className="w-5 h-5 rounded-full border-2 border-t-transparent animate-spin"
-          style={{ borderColor: `${colors.primary}33`, borderTopColor: 'transparent' }}
+          style={{
+            borderColor: `${colors.primary}33`,
+            borderTopColor: 'transparent'
+          }}
         />
       </div>
     );

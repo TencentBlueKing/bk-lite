@@ -1,5 +1,10 @@
 """LLM客户端工厂类,用于创建不同用途的LLM客户端"""
 
+from typing import Union
+
+import anthropic
+from langchain_anthropic import ChatAnthropic
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from openai import OpenAI
@@ -11,7 +16,7 @@ class LLMClientFactory:
     """LLM客户端工厂"""
 
     @staticmethod
-    def create_client(request: BasicLLMRequest, disable_stream=False, isolated=False) -> ChatOpenAI:
+    def create_client(request: BasicLLMRequest, disable_stream=False, isolated=False) -> BaseChatModel:
         """
         创建LLM客户端
 
@@ -21,8 +26,22 @@ class LLMClientFactory:
             isolated: 是否创建独立客户端(不被LangGraph跟踪),用于内部调用如问题改写
 
         Returns:
-            ChatOpenAI客户端实例
+            BaseChatModel客户端实例 (ChatOpenAI 或 ChatAnthropic)
         """
+        if request.protocol_type == "anthropic":
+            llm = LLMClientFactory._create_anthropic_client(request, disable_stream)
+        else:
+            llm = LLMClientFactory._create_openai_client(request, disable_stream)
+
+        # 如果需要隔离,则禁用callbacks以避免被LangGraph捕获
+        if isolated:
+            llm.callbacks = None
+
+        return llm
+
+    @staticmethod
+    def _create_openai_client(request: BasicLLMRequest, disable_stream: bool) -> ChatOpenAI:
+        """创建 OpenAI 兼容客户端"""
         llm = ChatOpenAI(
             model=request.model,
             base_url=request.openai_api_base,
@@ -43,29 +62,75 @@ class LLMClientFactory:
             thinking_type = "enabled" if show_think else "disabled"
             llm.extra_body["thinking"] = {"type": thinking_type}
 
-        # 如果需要隔离,则禁用callbacks以避免被LangGraph捕获
-        if isolated:
-            llm.callbacks = None
+        return llm
+
+    @staticmethod
+    def _create_anthropic_client(request: BasicLLMRequest, disable_stream: bool) -> ChatAnthropic:
+        """创建 Anthropic 客户端"""
+        # Anthropic API base URL 处理
+        base_url = request.openai_api_base
+        if not base_url or base_url == "https://api.openai.com":
+            base_url = "https://api.anthropic.com"
+
+        # 处理 thinking 模式
+        show_think = bool((request.extra_config or {}).get("show_think", True))
+        model_kwargs = {}
+
+        # DeepSeek Anthropic API 使用与 OpenAI 相同的 thinking 参数格式
+        model_lower = request.model.lower()
+        if "deepseek" in model_lower:
+            thinking_type = "enabled" if show_think else "disabled"
+            model_kwargs["thinking"] = {"type": thinking_type}
+
+        llm = ChatAnthropic(
+            model=request.model,
+            anthropic_api_url=base_url,
+            api_key=request.openai_api_key,
+            temperature=request.temperature,
+            disable_streaming=disable_stream,
+            timeout=3000,
+            model_kwargs=model_kwargs if model_kwargs else None,
+        )
 
         return llm
 
     @staticmethod
-    def create_isolated_client(request: BasicLLMRequest) -> OpenAI:
+    def create_isolated_client(request: BasicLLMRequest) -> Union[OpenAI, anthropic.Anthropic]:
         """
-        创建独立的原生OpenAI客户端,完全绕过LangChain/LangGraph追踪
+        创建独立的原生客户端,完全绕过LangChain/LangGraph追踪
         适用于内部调用场景,如问题改写、知识路由等
 
         Args:
             request: LLM请求对象
 
         Returns:
-            原生OpenAI客户端实例
+            原生客户端实例 (OpenAI 或 Anthropic)
         """
+        if request.protocol_type == "anthropic":
+            return LLMClientFactory._create_isolated_anthropic_client(request)
+        else:
+            return LLMClientFactory._create_isolated_openai_client(request)
+
+    @staticmethod
+    def _create_isolated_openai_client(request: BasicLLMRequest) -> OpenAI:
+        """创建独立的原生 OpenAI 客户端"""
         kwargs = {"api_key": request.openai_api_key, "timeout": 60.0}
         if request.openai_api_base:
             kwargs["base_url"] = request.openai_api_base
-
         return OpenAI(**kwargs)
+
+    @staticmethod
+    def _create_isolated_anthropic_client(request: BasicLLMRequest) -> anthropic.Anthropic:
+        """创建独立的原生 Anthropic 客户端"""
+        base_url = request.openai_api_base
+        if not base_url or base_url == "https://api.openai.com":
+            base_url = "https://api.anthropic.com"
+
+        return anthropic.Anthropic(
+            api_key=request.openai_api_key,
+            base_url=base_url,
+            timeout=60.0,
+        )
 
     @staticmethod
     def invoke_isolated(request: BasicLLMRequest, messages: list) -> str:
@@ -79,7 +144,15 @@ class LLMClientFactory:
         Returns:
             LLM响应内容字符串
         """
-        client = LLMClientFactory.create_isolated_client(request)
+        if request.protocol_type == "anthropic":
+            return LLMClientFactory._invoke_isolated_anthropic(request, messages)
+        else:
+            return LLMClientFactory._invoke_isolated_openai(request, messages)
+
+    @staticmethod
+    def _invoke_isolated_openai(request: BasicLLMRequest, messages: list) -> str:
+        """使用独立 OpenAI 客户端调用"""
+        client = LLMClientFactory._create_isolated_openai_client(request)
 
         # 转换消息格式
         openai_messages = []
@@ -111,3 +184,44 @@ class LLMClientFactory:
         # 直接调用原生 OpenAI API
         response = client.chat.completions.create(**call_kwargs)
         return response.choices[0].message.content
+
+    @staticmethod
+    def _invoke_isolated_anthropic(request: BasicLLMRequest, messages: list) -> str:
+        """使用独立 Anthropic 客户端调用"""
+        client = LLMClientFactory._create_isolated_anthropic_client(request)
+
+        # 转换消息格式 - Anthropic 格式与 OpenAI 类似但有细微差别
+        anthropic_messages = []
+        system_message = None
+
+        for msg in messages:
+            if isinstance(msg, HumanMessage):
+                anthropic_messages.append({"role": "user", "content": msg.content})
+            elif isinstance(msg, dict):
+                # Anthropic 的 system 消息需要单独处理
+                if msg.get("role") == "system":
+                    system_message = msg.get("content", "")
+                else:
+                    anthropic_messages.append(msg)
+            else:
+                role = getattr(msg, "type", "user")
+                content = getattr(msg, "content", str(msg))
+                if role == "system":
+                    system_message = content
+                else:
+                    anthropic_messages.append({"role": role, "content": content})
+
+        # 准备调用参数
+        call_kwargs = {
+            "model": request.model,
+            "messages": anthropic_messages,
+            "temperature": request.temperature,
+            "max_tokens": 4096,  # Anthropic 要求必须指定 max_tokens
+        }
+
+        if system_message:
+            call_kwargs["system"] = system_message
+
+        # 直接调用原生 Anthropic API
+        response = client.messages.create(**call_kwargs)
+        return response.content[0].text

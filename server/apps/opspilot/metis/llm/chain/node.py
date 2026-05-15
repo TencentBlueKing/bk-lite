@@ -22,7 +22,6 @@ from deepagents import create_deep_agent
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_openai import ChatOpenAI
 from langchain_openai.chat_models.base import BaseChatOpenAI as _BaseChatOpenAI
 from langchain_openai.chat_models.base import _convert_delta_to_message_chunk as _original_convert_delta_to_message_chunk
 from langchain_openai.chat_models.base import _convert_dict_to_message as _original_convert_dict_to_message
@@ -146,7 +145,7 @@ class BasicNode:
         trace_id = config["configurable"]["trace_id"]
         logger.debug(f"[{trace_id}] {message}")
 
-    def get_llm_client(self, request: BasicLLMRequest, disable_stream=False, isolated=False) -> ChatOpenAI:
+    def get_llm_client(self, request: BasicLLMRequest, disable_stream=False, isolated=False):
         """
         获取LLM客户端
 
@@ -154,31 +153,11 @@ class BasicNode:
             request: LLM请求对象
             disable_stream: 是否禁用流式输出
             isolated: 是否创建独立客户端(不被LangGraph跟踪),用于内部调用如问题改写
+
+        Returns:
+            BaseChatModel客户端实例 (ChatOpenAI 或 ChatAnthropic)
         """
-        llm = ChatOpenAI(
-            model=request.model,
-            base_url=request.openai_api_base,
-            disable_streaming=disable_stream,
-            timeout=3000,
-            api_key=request.openai_api_key,
-            temperature=request.temperature,
-        )
-        if llm.extra_body is None:
-            llm.extra_body = {}
-
-        show_think = bool((request.extra_config or {}).get("show_think", True))
-        model_lower = request.model.lower()
-        if "qwen" in model_lower:
-            llm.extra_body["enable_thinking"] = show_think
-        elif "deepseek" in model_lower:
-            thinking_type = "enabled" if show_think else "disabled"
-            llm.extra_body["thinking"] = {"type": thinking_type}
-
-        # 如果需要隔离,则禁用callbacks以避免被LangGraph捕获
-        if isolated:
-            llm.callbacks = None
-
-        return llm
+        return LLMClientFactory.create_client(request, disable_stream=disable_stream, isolated=isolated)
 
     def prompt_message_node(self, state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
         system_message_prompt = TemplateLoader.render_template(
@@ -941,6 +920,142 @@ class ToolsNodes(BasicNode):
         approval_tool._request_approval_func = _request_approval
         return approval_tool
 
+    def _build_choice_tool(self):
+        """构建 request_user_choice 工具，供 LLM 需要用户从多个选项中选择时调用"""
+        from typing import List
+
+        from langchain_core.tools import StructuredTool
+        from pydantic import BaseModel as PydanticBaseModel
+        from pydantic import Field as PydanticField
+
+        class ChoiceOption(PydanticBaseModel):
+            key: str = PydanticField(description="选项唯一标识，将返回给你")
+            label: str = PydanticField(description="选项显示文本")
+            description: str = PydanticField(default="", description="选项详细描述（可选）")
+            recommended: bool = PydanticField(default=False, description="是否为推荐选项")
+
+        class ChoiceToolInput(PydanticBaseModel):
+            title: str = PydanticField(description="选择标题，如'请选择要查询的表'")
+            options: List[ChoiceOption] = PydanticField(description="可选项列表，至少2个")
+            description: str = PydanticField(default="", description="补充说明（可选）")
+            multiple: bool = PydanticField(default=False, description="是否允许多选")
+            min_select: int = PydanticField(default=1, description="最少选择数量（多选时有效）")
+            max_select: int = PydanticField(default=0, description="最多选择数量（多选时有效，0表示不限制）")
+            timeout_seconds: int = PydanticField(default=60, description="等待用户选择的超时时间（秒），超时后使用默认选项")
+            default_keys: List[str] = PydanticField(
+                default_factory=list,
+                description="超时时的默认选项 key 列表（可选，不填则使用第一个或推荐选项）",
+            )
+
+        async def _request_choice(
+            title: str,
+            options: List[ChoiceOption],
+            description: str = "",
+            multiple: bool = False,
+            min_select: int = 1,
+            max_select: int = 0,
+            timeout_seconds: int = 60,
+            default_keys: List[str] = None,
+        ) -> str:
+            import time as _t
+            import uuid
+
+            from langchain_core.callbacks import dispatch_custom_event
+
+            from apps.opspilot.utils.user_choice import wait_for_choice
+
+            choice_id = str(uuid.uuid4())[:8]
+            execution_id = getattr(_request_choice, "_execution_id", "") or str(int(_t.time() * 1000))
+            node_id = getattr(_request_choice, "_node_id", "skill_test")
+
+            options_data = [opt.model_dump() for opt in options]
+            default_keys = default_keys or []
+
+            # Calculate effective min/max select
+            effective_min_select = min_select if multiple else 1
+            effective_max_select = max_select if max_select > 0 else (len(options) if multiple else 1)
+
+            # If no default_keys, use recommended options or first option
+            if not default_keys:
+                recommended_keys = [opt["key"] for opt in options_data if opt.get("recommended")]
+                if recommended_keys:
+                    if effective_max_select > 0:
+                        default_keys = recommended_keys[:effective_max_select]
+                    else:
+                        default_keys = recommended_keys
+                elif options_data:
+                    default_keys = [options_data[0]["key"]]
+
+            choice_request_data = {
+                "execution_id": execution_id,
+                "node_id": node_id,
+                "choice_id": choice_id,
+                "title": title,
+                "description": description,
+                "options": options_data,
+                "multiple": multiple,
+                "min_select": effective_min_select,
+                "max_select": effective_max_select,
+                "timeout_seconds": timeout_seconds,
+                "default_keys": default_keys,
+                "display_hint": "auto",
+            }
+
+            try:
+                dispatch_custom_event("user_choice_request", choice_request_data)
+            except Exception:
+                pass
+
+            logger.info(f"[choice_tool] 选择请求已发射: title={title}, " f"options={len(options)}, id={choice_id}, timeout={timeout_seconds}s")
+
+            result = await wait_for_choice(
+                execution_id=execution_id,
+                node_id=node_id,
+                choice_id=choice_id,
+                options=options_data,
+                default_keys=default_keys,
+                timeout_seconds=timeout_seconds,
+                poll_interval=1.0,
+                trigger_type="interactive",
+            )
+
+            selected = result["selected"]
+            source = result["source"]
+
+            # Dispatch result event to notify frontend
+            try:
+                dispatch_custom_event(
+                    "user_choice_result",
+                    {
+                        "execution_id": execution_id,
+                        "node_id": node_id,
+                        "choice_id": choice_id,
+                        "selected": selected,
+                        "source": source,
+                    },
+                )
+            except Exception:
+                pass
+
+            # 构建返回给 LLM 的文本
+            selected_labels = [opt["label"] for opt in options_data if opt["key"] in selected]
+
+            if source == "user":
+                return f"用户选择了: {', '.join(selected_labels)} (keys: {selected})"
+            elif source == "timeout":
+                return f"用户未在规定时间内选择，已使用默认选项: " f"{', '.join(selected_labels)} (keys: {selected})"
+            else:
+                return f"自动选择: {', '.join(selected_labels)} (keys: {selected})"
+
+        choice_tool = StructuredTool.from_function(
+            coroutine=_request_choice,
+            name="request_user_choice",
+            description=("当你需要用户从多个选项中选择时调用此工具。" "例如：用户请求查询多个表但一次只能查一个，需要用户选择；" "或者有多种执行方案需要用户决定。" "提供清晰的选项列表，等待用户选择后继续。"),
+            args_schema=ChoiceToolInput,
+        )
+        choice_tool._request_choice_func = _request_choice
+        return choice_tool
+
     async def build_tools_node(self) -> ToolNode:
         """构建工具节点"""
         try:
@@ -1006,6 +1121,8 @@ class ToolsNodes(BasicNode):
         done_tool_name = self.done_tool_config.tool_name if (self.done_tool_config and self.done_tool_config.enabled) else None
         # 人工审批工具（LLM 自主判断高危操作时调用）
         approval_tool_instance = self._build_approval_tool() if (self.all_tools or self.tools) else None
+        # 用户选择工具（LLM 需要用户从多个选项中选择时调用）
+        choice_tool_instance = self._build_choice_tool() if (self.all_tools or self.tools) else None
 
         # ========== 步骤进度发射辅助 ==========
         def _emit_step_progress(max_steps: int, status: str, description: str = "", tool_name: str = None, step_elapsed: float = 0.0):
@@ -1041,6 +1158,12 @@ class ToolsNodes(BasicNode):
             # 设置审批工具的执行上下文
             if approval_tool_instance:
                 func = approval_tool_instance._request_approval_func
+                func._execution_id = config["configurable"].get("execution_id", "")
+                func._node_id = config["configurable"].get("node_id", "skill_test")
+
+            # 设置选择工具的执行上下文
+            if choice_tool_instance:
+                func = choice_tool_instance._request_choice_func
                 func._execution_id = config["configurable"].get("execution_id", "")
                 func._node_id = config["configurable"].get("node_id", "skill_test")
 
@@ -1149,6 +1272,9 @@ class ToolsNodes(BasicNode):
             # 附加审批工具
             if approval_tool_instance:
                 current_tools = current_tools + [approval_tool_instance]
+            # 附加选择工具
+            if choice_tool_instance:
+                current_tools = current_tools + [choice_tool_instance]
 
             logger.info(
                 f"[{trace_id}] ReAct agent_node 准备调用 LLM, model={graph_request.model!r}, "
@@ -1358,6 +1484,9 @@ class ToolsNodes(BasicNode):
         # 审批工具加入 ToolNode
         if approval_tool_instance:
             all_tools_for_node = all_tools_for_node + [approval_tool_instance]
+        # 选择工具加入 ToolNode
+        if choice_tool_instance:
+            all_tools_for_node = all_tools_for_node + [choice_tool_instance]
         tool_node = tools_node if tools_node else ToolNode(all_tools_for_node, handle_tool_errors=True)
 
         async def logged_tool_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:

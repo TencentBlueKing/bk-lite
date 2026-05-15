@@ -11,6 +11,7 @@ import MonitorView from './monitorView';
 import MonitorAlarm from './monitorAlarm';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
+import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
 
 const ViewModal = forwardRef<ModalRef, ViewModalProps>(
   ({ monitorObject, monitorName, plugins, metrics, objects = [] }, ref) => {
@@ -72,9 +73,15 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
         instance_id: viewConfig.instance_id,
         instance_name: viewConfig.instance_name,
         instance_id_values: viewConfig.instance_id_values,
+        instance_id_keys: Array.isArray(viewConfig.instance_id_keys) && viewConfig.instance_id_keys.length
+          ? viewConfig.instance_id_keys.join(',')
+          : Array.isArray(monitorItem?.instance_id_keys)
+            ? monitorItem.instance_id_keys.join(',')
+            : 'instance_id'
       };
       const params = new URLSearchParams(row);
-      const targetUrl = `/monitor/view/detail?${params.toString()}`;
+      const professionalDashboardUrl = getProfessionalDashboardUrl(monitorName, monitorItem?.display_name, params.toString());
+      const targetUrl = professionalDashboardUrl || `/monitor/view/detail?${params.toString()}`;
       router.push(targetUrl);
     };
 
@@ -85,7 +92,7 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
           title={title}
           subTitle={viewConfig.instance_name}
           visible={groupVisible}
-          destroyOnClose
+          destroyOnHidden
           footer={
             <div>
               <Button onClick={handleCancel}>{t('common.cancel')}</Button>
