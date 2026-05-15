@@ -46,6 +46,7 @@ interface LoginResponse {
   locale?: string;
   timezone?: string;
   redirect_url?: string;
+  password_expiry_reminder?: string;
   // OTP two-phase authentication fields
   require_otp?: boolean;
   challenge_id?: string;
@@ -404,6 +405,11 @@ export default function SigninClient({
         setFormError(result.error);
         setIsLoading(false);
       } else if (result?.ok) {
+        // Store password expiry reminder in sessionStorage for display after redirect
+        if (userData.password_expiry_reminder) {
+          sessionStorage.setItem('password_expiry_reminder', userData.password_expiry_reminder);
+        }
+
         const targetUrl = buildThirdLoginCallbackUrl(
           userData.redirect_url || callbackUrl || "/",
           userData.token,

@@ -1,5 +1,4 @@
 import json
-import logging
 import os
 
 import requests
@@ -8,6 +7,7 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from rest_framework.decorators import api_view
 
+from apps.core.logger import logger
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.rpc.base import RpcClient
@@ -15,8 +15,6 @@ from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import UserLoginLog
 from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.utils.login_log_utils import log_user_login_from_request
-
-logger = logging.getLogger(__name__)
 
 PORTAL_BRANDING_KEYS = ("portal_name", "portal_logo_url", "portal_favicon_url", "watermark_enabled", "watermark_text")
 
@@ -248,7 +246,6 @@ def login(request):
                     res["data"] = {}
                 res["data"]["redirect_url"] = c_url
                 logger.info(f"Login successful for user: {username}, redirect to: {c_url}")
-
         response = JsonResponse(res)
 
         # Set bklite_token cookie with secure attributes on successful login
