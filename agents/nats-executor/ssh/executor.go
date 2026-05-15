@@ -332,6 +332,9 @@ func handleDownloadToRemoteMessage(data []byte, instanceId string, nc sshConn) (
 		LogContext:     logContext,
 		ExecuteTimeout: remainingBudgetSeconds(deadline),
 	}
+	if downloadRequest.Password != "" {
+		localExecuteRequest.Env = map[string]string{"SSHPASS": downloadRequest.Password}
+	}
 
 	responseData := executeSCPCommand(instanceId, localExecuteRequest)
 	responseContent, err := json.Marshal(responseData)
@@ -386,6 +389,9 @@ func handleUploadToRemoteMessage(data []byte, instanceId string) ([]byte, bool) 
 		LogCommand:     redactSensitiveCommand(scpCommand),
 		LogContext:     logContext,
 		ExecuteTimeout: remainingBudgetSeconds(deadline),
+	}
+	if uploadRequest.Password != "" {
+		localExecuteRequest.Env = map[string]string{"SSHPASS": uploadRequest.Password}
 	}
 
 	responseData := executeSCPCommand(instanceId, localExecuteRequest)
@@ -480,11 +486,11 @@ func buildSCPCommand(user, host, password, privateKey string, port uint, sourceP
 		cleanup = func() {}
 
 		if isUpload {
-			scpCommand = fmt.Sprintf("sshpass -p %s scp %s -P %d -r %s %s",
-				shellQuote(password), sshOptions, port, shellQuote(sourcePath), shellQuoteRemoteTarget(user, host, targetPath))
+			scpCommand = fmt.Sprintf("sshpass -e scp %s -P %d -r %s %s",
+				sshOptions, port, shellQuote(sourcePath), shellQuoteRemoteTarget(user, host, targetPath))
 		} else {
-			scpCommand = fmt.Sprintf("sshpass -p %s scp %s -P %d -r %s %s",
-				shellQuote(password), sshOptions, port, shellQuoteRemoteTarget(user, host, targetPath), shellQuote(sourcePath))
+			scpCommand = fmt.Sprintf("sshpass -e scp %s -P %d -r %s %s",
+				sshOptions, port, shellQuoteRemoteTarget(user, host, targetPath), shellQuote(sourcePath))
 		}
 
 		logger.Debugf("[SCP] Using password authentication with profile=%s", profile)
