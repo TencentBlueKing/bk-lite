@@ -54,20 +54,10 @@ class ModelVendorViewSet(AuthViewSet):
 
     @HasPermission("provide_list-Setting")
     def update(self, request, *args, **kwargs):
-        """重写 update 方法，添加 is_build_in 检查"""
-        instance = self.get_object()
-        if instance.is_build_in:
-            message = self.loader.get("error.builtin_model_types_no_modify") if self.loader else "Built-in vendors cannot be modified"
-            return JsonResponse({"result": False, "message": message})
         return super().update(request, *args, **kwargs)
 
     @HasPermission("provide_list-Delete")
     def destroy(self, request, *args, **kwargs):
-        """重写 destroy 方法，添加 is_build_in 检查"""
-        instance = self.get_object()
-        if instance.is_build_in:
-            message = self.loader.get("error.builtin_model_types_no_delete") if self.loader else "Built-in vendors cannot be deleted"
-            return JsonResponse({"result": False, "message": message})
         return super().destroy(request, *args, **kwargs)
 
     @action(methods=["POST"], detail=False)
@@ -80,9 +70,23 @@ class ModelVendorViewSet(AuthViewSet):
         api_base = validated_data.get("api_base") or ""
         resolved_api_key = validated_data.get("resolved_api_key") or ""
         protocol_type = validated_data.get("protocol_type") or "openai"
+        vendor_type = validated_data.get("vendor_type") or ""
         locale = getattr(request.user, "locale", "en") or "en"
         try:
-            ModelVendorSyncService.fetch_models_with_credentials(api_base, resolved_api_key, protocol_type=protocol_type, locale=locale)
+            # 测试连接策略：
+            # - anthropic vendor type + anthropic protocol: 使用 Anthropic API 验证
+            # - deepseek/other + anthropic protocol: 使用 Anthropic 协议验证（但用 deepseek 模型）
+            # - 其他情况: 使用 OpenAI /models 端点验证
+            if protocol_type == "anthropic":
+                if vendor_type == "anthropic":
+                    # 真正的 Anthropic 供应商，使用 Claude 模型验证
+                    ModelVendorSyncService.test_anthropic_connection(api_base, resolved_api_key, locale=locale)
+                else:
+                    # DeepSeek/other 使用 Anthropic 协议，用 deepseek-chat 模型验证
+                    test_model = "deepseek-chat" if vendor_type == "deepseek" else "deepseek-chat"
+                    ModelVendorSyncService.test_anthropic_connection(api_base, resolved_api_key, model=test_model, locale=locale)
+            else:
+                ModelVendorSyncService.fetch_models_with_credentials(api_base, resolved_api_key, protocol_type=protocol_type, locale=locale)
         except Exception as error:
             return JsonResponse({"result": False, "message": str(error)})
         return JsonResponse({"result": True})

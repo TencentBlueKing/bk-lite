@@ -724,7 +724,14 @@
     "approvalTimeout": "已超时",
     "approvalTimeRemaining": "剩余时间",
     "approvalReasonPlaceholder": "可选：决策原因",
-    "approvalSubmitFailed": "提交审批决策失败"
+    "approvalSubmitFailed": "提交审批决策失败",
+    "choiceMinSelect": "请至少选择 {min} 项",
+    "choiceMaxSelect": "最多只能选择 {max} 项",
+    "choiceSubmitFailed": "提交选择失败",
+    "choicePlaceholder": "请选择...",
+    "choiceConfirm": "确认选择",
+    "choiceTimeout": "已超时",
+    "choiceSelected": "已选择"
   },
   "settings": {
     "secret": {

@@ -486,14 +486,6 @@ class LLMModelViewSet(VendorModelMixin, AuthViewSet):
 
     @HasPermission("provide_list-Delete")
     def destroy(self, request, *args, **kwargs):
-        obj = self.get_object()
-        if obj.is_build_in:
-            return JsonResponse(
-                {
-                    "result": False,
-                    "message": self.loader.get("error.builtin_model_delete_denied") if self.loader else "Built-in model is not allowed to be deleted",
-                }
-            )
         return super().destroy(request, *args, **kwargs)
 
 

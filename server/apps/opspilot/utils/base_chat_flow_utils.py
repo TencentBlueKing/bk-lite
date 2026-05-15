@@ -3,11 +3,28 @@
 提取企业微信、微信公众号、钉钉等第三方渠道的公共逻辑：
 - Bot 和工作流验证
 - ChatFlow 执行
-- 消息去重
-- 异步处理框架
+- 消息去重（两阶段：processing → completed）
+- Celery 任务处理
+
+配置项（常量，如需修改请直接编辑本文件）：
+    MESSAGE_PROCESSING_EXPIRE_SECONDS:
+        消息"处理中"状态的缓存过期时间（秒），默认 300（5 分钟）。
+        超时后允许重试（Celery 重试或平台重发）。
+        如果 ChatFlow 执行时间较长，可适当增大此值。
+
+    MESSAGE_COMPLETED_EXPIRE_SECONDS:
+        消息"已完成"状态的缓存过期时间（秒），默认 86400（24 小时）。
+        防止同一消息在此时间内被重复处理。
+        对于高频消息场景，可适当减小此值以节省缓存空间。
+
+两阶段去重流程：
+    1. 收到消息 → 检查缓存状态
+    2. 状态为 None → 标记为 "processing"（短 TTL）→ 开始处理
+    3. 处理成功 → 标记为 "completed"（长 TTL）
+    4. 处理失败 → 清除标记（允许重试）
+    5. 状态为 "processing" 或 "completed" → 跳过处理
 """
 
-import threading
 from abc import ABC, abstractmethod
 
 from django.core.cache import cache
@@ -17,8 +34,9 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import Bot, BotWorkFlow
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 
-# 消息去重缓存过期时间（秒）- 第三方平台重试间隔约为5秒，3次重试共约15秒
-MESSAGE_DEDUP_EXPIRE_SECONDS = 60
+# 两阶段去重缓存过期时间
+MESSAGE_PROCESSING_EXPIRE_SECONDS = 300  # 处理中状态 5 分钟超时（允许超时后重试）
+MESSAGE_COMPLETED_EXPIRE_SECONDS = 86400  # 已完成状态 24 小时（防止重复处理）
 
 
 class BaseChatFlowUtils(ABC):
@@ -108,36 +126,63 @@ class BaseChatFlowUtils(ABC):
         return reply_text
 
     def is_message_processed(self, msg_id: str) -> bool:
-        """检查消息是否已处理（去重）
+        """检查消息是否已处理（两阶段去重，原子操作）
+
+        状态转换：
+        - None → processing (5min TTL) → completed (24h TTL)
+        - 失败时清除 → None（允许 Celery 重试或平台重试）
+
+        并发安全：
+        - 使用 cache.add() 原子操作获取处理权
+        - 多个 worker 同时到达时，只有一个能成功获取
 
         Args:
             msg_id: 消息唯一标识
 
         Returns:
-            bool: True 表示已处理过，False 表示未处理
+            bool: True 表示已处理或处理中，False 表示可以处理
         """
         cache_key = f"{self.cache_key_prefix}:{self.bot_id}:{msg_id}"
-        if cache.get(cache_key):
-            return True
-        # 标记为已处理
-        cache.set(cache_key, "1", MESSAGE_DEDUP_EXPIRE_SECONDS)
-        return False
+        status = cache.get(cache_key)
 
-    def process_message_async(self, process_func, *args, **kwargs):
-        """异步处理消息
+        if status == "completed":
+            logger.debug(f"{self.channel_name}消息已完成处理，跳过: msg_id={msg_id}")
+            return True
+        if status == "processing":
+            logger.debug(f"{self.channel_name}消息处理中，跳过: msg_id={msg_id}")
+            return True
+
+        # 原子操作：尝试获取处理权
+        # cache.add() 只在 key 不存在时设置，返回 True 表示设置成功
+        # 这避免了 get() + set() 之间的竞态条件
+        acquired = cache.add(cache_key, "processing", MESSAGE_PROCESSING_EXPIRE_SECONDS)
+        if acquired:
+            logger.debug(f"{self.channel_name}获取消息处理权: msg_id={msg_id}")
+            return False  # 成功获取处理权，可以处理
+        else:
+            # 其他 worker 已获取处理权（在 get() 和 add() 之间的窗口）
+            logger.debug(f"{self.channel_name}消息处理权已被其他进程获取，跳过: msg_id={msg_id}")
+            return True
+
+    def mark_message_completed(self, msg_id: str):
+        """标记消息处理完成
 
         Args:
-            process_func: 处理函数
-            *args: 处理函数的位置参数
-            **kwargs: 处理函数的关键字参数
+            msg_id: 消息唯一标识
         """
-        thread = threading.Thread(
-            target=process_func,
-            args=args,
-            kwargs=kwargs,
-            daemon=True,
-        )
-        thread.start()
+        cache_key = f"{self.cache_key_prefix}:{self.bot_id}:{msg_id}"
+        cache.set(cache_key, "completed", MESSAGE_COMPLETED_EXPIRE_SECONDS)
+        logger.debug(f"{self.channel_name}消息处理完成: msg_id={msg_id}")
+
+    def mark_message_failed(self, msg_id: str):
+        """标记消息处理失败，清除去重标记允许重试
+
+        Args:
+            msg_id: 消息唯一标识
+        """
+        cache_key = f"{self.cache_key_prefix}:{self.bot_id}:{msg_id}"
+        cache.delete(cache_key)
+        logger.info(f"{self.channel_name}消息处理失败，已清除去重标记: msg_id={msg_id}")
 
     @abstractmethod
     def send_reply(self, reply_text: str, sender_id: str, config: dict):
@@ -153,7 +198,10 @@ class BaseChatFlowUtils(ABC):
         pass
 
     def async_process_and_reply(self, bot_chat_flow, config, message, sender_id, msg_id):
-        """异步处理消息并回复（通用实现）
+        """处理消息并回复（供 Celery 任务调用）
+
+        注意：此方法现在由 Celery 任务调用，不再由 daemon 线程调用。
+        成功时标记 completed，失败时标记 failed 允许重试。
 
         Args:
             bot_chat_flow: Bot 工作流对象
@@ -161,11 +209,18 @@ class BaseChatFlowUtils(ABC):
             message: 用户消息
             sender_id: 发送者 ID
             msg_id: 消息 ID
+
+        Raises:
+            Exception: 处理失败时抛出异常，供 Celery 重试
         """
         try:
             node_id = config["node_id"]
             reply_text = self.execute_chatflow_with_message(bot_chat_flow, node_id, message, sender_id)
             self.send_reply(reply_text, sender_id, config)
+            # 成功：标记为已完成
+            self.mark_message_completed(msg_id)
         except Exception as e:
-            logger.error(f"{self.channel_name}异步处理消息失败，Bot {self.bot_id}，MsgId {msg_id}，错误: {str(e)}")
-            logger.exception(e)
+            logger.error(f"{self.channel_name}消息处理失败，Bot {self.bot_id}，MsgId {msg_id}，错误: {str(e)}")
+            # 失败：清除去重标记，允许重试
+            self.mark_message_failed(msg_id)
+            raise
