@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { formatOpsDisplayTime } from '@/app/ops-analysis/utils/dateTime';
 
 export interface ChartDataItem {
   name: string;
@@ -106,13 +107,10 @@ export class ChartDataTransformer {
 
   static formatTimeValue(value: any): string {
     if (typeof value === 'number') {
-      const timestamp = value > 9999999999 ? value : value * 1000;
-      return dayjs(timestamp).format('MM-DD HH:mm:ss');
+      return formatOpsDisplayTime(value, 'MM-DD HH:mm:ss');
     } else if (typeof value === 'string') {
       if (this.isUnixTimestampLike(value)) {
-        const numericValue = Number(value);
-        const timestamp = numericValue > 9999999999 ? numericValue : numericValue * 1000;
-        return dayjs(timestamp).format('MM-DD HH:mm:ss');
+        return formatOpsDisplayTime(value, 'MM-DD HH:mm:ss');
       }
 
       const trimmed = value.trim();
@@ -123,7 +121,7 @@ export class ChartDataTransformer {
 
       const dateValue = dayjs(value);
       if (dateValue.isValid()) {
-        return dateValue.format('MM-DD HH:mm:ss');
+        return formatOpsDisplayTime(value, 'MM-DD HH:mm:ss');
       }
       return value;
     }

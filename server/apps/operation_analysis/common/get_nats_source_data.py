@@ -46,6 +46,7 @@ class GetNatsData:
             "team": team,
             "user": username,
             "domain": self.request.user.domain,
+            "timezone": getattr(self.request.user, "timezone", None),
             "permission": permission,
             "group_tree": getattr(self.request.user, "group_tree", []),
             "is_superuser": getattr(self.request.user, "is_superuser", False),
