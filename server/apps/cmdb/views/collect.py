@@ -46,6 +46,7 @@ class CollectModelViewSet(AuthViewSet):
     permission_classes = [InstanceTaskPermission]
     permission_key = PERMISSION_TASK
     permission_scoped_actions = {
+        "list",
         "retrieve",
         "update",
         "partial_update",
