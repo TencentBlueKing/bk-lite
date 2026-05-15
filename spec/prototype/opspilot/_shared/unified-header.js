@@ -2,7 +2,7 @@
     const navItems = [
         { key: 'workspace', label: '工作台', href: '../工作台/工作台.html', icon: 'workspace' },
         { key: 'agent', label: '智能体', href: '../智能体/智能体.html', icon: 'agent' },
-        { key: 'memory', label: '记忆体', href: '../记忆体/记忆体.html', icon: 'memory' },
+        { key: 'memory', label: '记忆', href: '../记忆/记忆.html', icon: 'memory' },
         { key: 'knowledge', label: '知识库', href: '../知识库/知识库.html', icon: 'knowledge' },
         { key: 'tool', label: '工具', href: '../工具/工具.html', icon: 'tool' },
         { key: 'model', label: '模型', href: '../模型/模型.html', icon: 'model' }
@@ -461,7 +461,7 @@
     function getActiveKey() {
         const pathname = decodeURIComponent(window.location.pathname);
 
-        if (pathname.includes('/记忆体/')) {
+        if (pathname.includes('/记忆/')) {
             return 'memory';
         }
 
