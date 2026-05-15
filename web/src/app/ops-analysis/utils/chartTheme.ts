@@ -38,7 +38,7 @@ export const getOpsChartTheme = (themeName: OpsChartThemeName) => {
     singleValueMetaColor: isDarkTheme ? 'rgba(255,255,255,0.52)' : '#7f92a7',
     singleValueSurface: isDarkTheme ? 'rgba(255,255,255,0.02)' : '#fcfdff',
     lineWidth: isDarkTheme ? 2 : 1,
-    lineAreaOpacity: isDarkTheme ? 0.16 : 0.1,
+    lineAreaOpacity: isDarkTheme ? 0.1 : 0.06,
     lineOpacity: isDarkTheme ? 0.94 : 0.92,
   };
 };

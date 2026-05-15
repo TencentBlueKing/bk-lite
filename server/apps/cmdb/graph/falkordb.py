@@ -1139,9 +1139,7 @@ class FalkorDBClient:
             edge = self._execute_query(query, params=params)
         else:
             properties_str = self.format_properties_set(properties).replace("n.", "e.")
-            edge = self._execute_query(
-                f"MATCH ()-[e]->() WHERE ID(e) = {validated_id} SET {properties_str} RETURN e"
-            )
+            edge = self._execute_query(f"MATCH ()-[e]->() WHERE ID(e) = {validated_id} SET {properties_str} RETURN e")
 
         result = self.edge_to_dict(edge)
         if not result:
@@ -1597,7 +1595,7 @@ class FalkorDBClient:
             permission_params: 权限过滤参数（与现有全文检索保持一致）
             inst_name_params: 实例名称过滤参数
             created: 创建者过滤
-            case_sensitive: 是否区分大小写（True=精准匹配，False=模糊匹配，默认False）
+            case_sensitive: 是否精确匹配（True=精确匹配，False=不区分大小写模糊匹配，默认False）
             permission_params_dict: 权限参数字典（参数化模式下使用）
 
         Returns:
@@ -1651,7 +1649,7 @@ class FalkorDBClient:
                     f"ANY(key IN keys(n) WHERE "
                     f"none(excluded IN {exclude_list_str} WHERE excluded = key) AND "
                     f"n[key] IS NOT NULL AND "
-                    f"toString(n[key]) CONTAINS $search_term)"
+                    f"toString(n[key]) = $search_term)"
                 )
             else:
                 search_condition = (
@@ -1668,7 +1666,7 @@ class FalkorDBClient:
                     f"ANY(key IN keys(n) WHERE "
                     f"none(excluded IN {exclude_list_str} WHERE excluded = key) AND "
                     f"n[key] IS NOT NULL AND "
-                    f"toString(n[key]) CONTAINS '{escaped_search}')"
+                    f"toString(n[key]) = '{escaped_search}')"
                 )
             else:
                 search_condition = (
@@ -1795,7 +1793,7 @@ class FalkorDBClient:
                     f"ANY(key IN keys(n) WHERE "
                     f"none(excluded IN {exclude_list_str} WHERE excluded = key) AND "
                     f"n[key] IS NOT NULL AND "
-                    f"toString(n[key]) CONTAINS $search_term)"
+                    f"toString(n[key]) = $search_term)"
                 )
             else:
                 search_condition = (
@@ -1812,7 +1810,7 @@ class FalkorDBClient:
                     f"ANY(key IN keys(n) WHERE "
                     f"none(excluded IN {exclude_list_str} WHERE excluded = key) AND "
                     f"n[key] IS NOT NULL AND "
-                    f"toString(n[key]) CONTAINS '{escaped_search}')"
+                    f"toString(n[key]) = '{escaped_search}')"
                 )
             else:
                 search_condition = (

@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models.models import Alert, Incident
+from apps.alerts.utils.operator_scope import normalize_usernames, validate_incident_operators
 from apps.system_mgmt.models.user import User
 
 
@@ -56,6 +57,17 @@ class IncidentModelSerializer(serializers.ModelSerializer):
             incident.alert.set(alerts)
         return incident
 
+    def validate_operator(self, value):
+        normalized_operators = normalize_usernames(value)
+        if not normalized_operators:
+            return normalized_operators
+
+        alerts = self._get_operator_scope_alerts()
+        normalized_operators, validation_message = validate_incident_operators(alerts, normalized_operators)
+        if validation_message:
+            raise serializers.ValidationError(validation_message)
+        return normalized_operators
+
     def update(self, instance, validated_data):
         """
         重写update方法来处理多对多关系
@@ -68,6 +80,14 @@ class IncidentModelSerializer(serializers.ModelSerializer):
         if alerts is not None:
             instance.alert.set(alerts)
         return instance
+
+    def _get_operator_scope_alerts(self):
+        incoming_alerts = self.initial_data.get("alert") if hasattr(self, "initial_data") else None
+        if incoming_alerts is not None:
+            return self.context.get("allowed_alert_queryset", Alert.objects.none()).filter(id__in=incoming_alerts)
+        if self.instance is not None:
+            return self.instance.alert.all()
+        return []
 
     @staticmethod
     def get_duration(obj):

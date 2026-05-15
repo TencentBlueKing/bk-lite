@@ -21,32 +21,31 @@ BUILTIN_APP_MODULES = frozenset({
 
 
 @nats_client.register
-def create_notification(app, message, source="unknown"):
+def create_notification(app, message):
     """
     创建通知消息
     :param app: 应用模块名称
     :param message: 通知内容
-    :param source: 调用来源标识
     :return: 创建结果
     """
     try:
         # 校验 app 白名单
         if app not in BUILTIN_APP_MODULES and not App.objects.filter(name=app).exists():
-            logger.warning(f"通知创建被拒绝: 非法 app={app}, source={source}")
+            logger.warning(f"通知创建被拒绝: 非法 app={app}")
             return {"result": False, "message": f"Invalid app module: {app}"}
 
         # 校验 message 长度
         if len(message) > MAX_MESSAGE_LENGTH:
-            logger.warning(f"通知创建被拒绝: message 超长({len(message)}), app={app}, source={source}")
+            logger.warning(f"通知创建被拒绝: message 超长({len(message)}), app={app}")
             return {"result": False, "message": f"Message too long (max {MAX_MESSAGE_LENGTH} characters)"}
 
         notification = Notification.objects.create(
             app_module=app,
             content=message,
-            source=source,
+            source=app,
         )
-        logger.info(f"创建通知消息成功: app={app}, notification_id={notification.id}, source={source}")
+        logger.info(f"创建通知消息成功: app={app}, notification_id={notification.id}")
         return {"result": True}
     except Exception as e:
-        logger.error(f"创建通知消息失败: app={app}, source={source}, error={str(e)}")
+        logger.error(f"创建通知消息失败: app={app}, error={str(e)}")
         return {"result": False, "message": str(e)}

@@ -63,6 +63,13 @@ class NodeMgmt(object):
         """
         return self.client.run("get_node_names_by_ids", node_ids)
 
+    def get_nodes_by_ids(self, node_ids):
+        """
+        :param node_ids: 节点ID列表
+        :return: [{"id": "node_id", "cloud_region_id": 1, "cloud_region_name": "default"}]
+        """
+        return self.client.run("get_nodes_by_ids", node_ids)
+
     def batch_create_configs_and_child_configs(self, configs: list, child_configs: list):
         """
         批量创建配置和子配置
