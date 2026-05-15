@@ -305,19 +305,22 @@ export default function SigninClient({
       const userData = responseData.data;
       setLoginData(userData);
 
-      if (userData.temporary_pwd) {
-        setAuthStep('reset-password');
-        setIsLoading(false);
-        return;
-      }
-
       // Two-phase OTP authentication: require_otp means OTP verification is required
+      // OTP must be verified BEFORE password reset (need token for reset API)
       if (userData.require_otp && userData.challenge_id) {
         // If qr_code is included, this is first-time OTP binding
         if (userData.qr_code) {
           setQrCodeUrl(userData.qr_code);
         }
         setAuthStep('otp-verification');
+        setIsLoading(false);
+        return;
+      }
+
+      // Only check temporary_pwd when NOT going through OTP flow
+      // (OTP flow will check temporary_pwd after verification)
+      if (userData.temporary_pwd) {
+        setAuthStep('reset-password');
         setIsLoading(false);
         return;
       }
