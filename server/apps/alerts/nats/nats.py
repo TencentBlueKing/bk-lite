@@ -8,6 +8,7 @@
 
 import datetime
 from typing import Any, Dict
+from zoneinfo import ZoneInfo
 
 from django.db.models import Count, Q
 from django.db.models.functions import TruncDate, TruncHour, TruncMinute, TruncMonth, TruncWeek
@@ -90,6 +91,38 @@ def group_dy_date_format(group_by):
     return trunc_func, date_format
 
 
+def _resolve_target_timezone(timezone_name=None):
+    if isinstance(timezone_name, str) and timezone_name:
+        try:
+            return ZoneInfo(timezone_name)
+        except Exception:
+            logger.warning("Invalid timezone provided for alert trend: %s", timezone_name)
+    return timezone.get_current_timezone()
+
+
+def _parse_client_datetime(value, target_tz):
+    text = str(value).strip()
+    try:
+        parsed = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        parsed = datetime.datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
+
+    if timezone.is_naive(parsed):
+        return timezone.make_aware(parsed, target_tz)
+    return parsed.astimezone(target_tz)
+
+
+def _format_period_value(value, target_tz):
+    if isinstance(value, datetime.date) and not isinstance(value, datetime.datetime):
+        value = datetime.datetime.combine(value, datetime.time.min, tzinfo=target_tz)
+    elif timezone.is_naive(value):
+        value = timezone.make_aware(value, target_tz)
+    else:
+        value = value.astimezone(target_tz)
+
+    return value.isoformat()
+
+
 @nats_client.register
 def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
     """
@@ -110,6 +143,7 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
     """
     logger.info("=== get_alert_trend_data ===, args={}, kwargs={}".format(args, kwargs))
     user_info = kwargs.pop("user_info", {})
+    target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.pop("timezone", None))
     queryset, error = _get_authorized_alert_queryset(user_info)
     if error:
         return error
@@ -122,16 +156,14 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
             "message": "start_time and end_time are required.",
         }
     start_time, end_time = time
-    # 解析时间字符串
-    start_dt = datetime.datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
-    end_dt = datetime.datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
-    # 转换为时区感知时间
-    aware_start = timezone.make_aware(start_dt)
-    aware_end = timezone.make_aware(end_dt)
+    aware_start = _parse_client_datetime(start_time, target_tz)
+    aware_end = _parse_client_datetime(end_time, target_tz)
+    start_dt = aware_start.astimezone(target_tz)
+    end_dt = aware_end.astimezone(target_tz)
 
     # 根据group_by选择截断函数和日期格式
     group_by = kwargs.pop("group_by", "day")
-    trunc_func, date_format = group_dy_date_format(group_by)
+    trunc_func, _ = group_dy_date_format(group_by)
 
     # 构建查询条件
     query_conditions = Q(created_at__gte=aware_start, created_at__lt=aware_end)
@@ -146,7 +178,11 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
 
     # 查询并按时间分组统计
     queryset = (
-        queryset.filter(query_conditions).annotate(period=trunc_func("created_at")).values("period").annotate(count=Count("id")).order_by("period")
+        queryset.filter(query_conditions)
+        .annotate(period=trunc_func("created_at", tzinfo=target_tz))
+        .values("period")
+        .annotate(count=Count("id"))
+        .order_by("period")
     )
 
     # 生成完整的时间序列
@@ -185,16 +221,13 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
     period_counts = {}
     for item in queryset:
         if item["period"]:
-            period_key = item["period"].strftime(date_format)
+            period_key = _format_period_value(item["period"], target_tz)
             period_counts[period_key] = item["count"]
 
     # 构建完整结果，包含0值
     result = []
     for period in all_periods:
-        if isinstance(period, datetime.date):
-            period_str = period.strftime(date_format)
-        else:  # datetime对象
-            period_str = period.strftime(date_format)
+        period_str = _format_period_value(period, target_tz)
 
         result.append([period_str, period_counts.get(period_str, 0)])
 
@@ -452,6 +485,7 @@ def get_active_alert_top(limit=10, **kwargs):
         limit = 100
 
     user_info = kwargs.get("user_info", {})
+    target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.get("timezone"))
     queryset, error = _get_authorized_alert_queryset(user_info)
     if error:
         return error
@@ -472,7 +506,7 @@ def get_active_alert_top(limit=10, **kwargs):
                 "level": level_map.get(alert.level, alert.level),
                 "status": status_map.get(alert.status, alert.status),
                 "duration_seconds": duration_seconds,
-                "created_at": alert.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "created_at": timezone.localtime(alert.created_at, target_tz).isoformat(),
                 "resource_name": alert.resource_name or "",
             }
         )
