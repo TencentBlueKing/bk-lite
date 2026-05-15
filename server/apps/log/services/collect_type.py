@@ -58,6 +58,10 @@ class CollectTypeService:
         existing_instances = CollectInstance.objects.filter(id__in=instance_ids)
         existing_set = {obj.id for obj in existing_instances}
 
+        for instance in data["instances"]:
+            if len(instance.get("node_ids", [])) != 1:
+                raise BaseAppException(f"实例 {instance.get('instance_name', '')} 必须关联且仅关联一个节点")
+
         # 分离新旧实例
         new_instances, old_instances = [], []
         for instance in data["instances"]:
@@ -98,25 +102,16 @@ class CollectTypeService:
         try:
             with transaction.atomic():
                 # 步骤1：批量创建实例
-                CollectInstance.objects.bulk_create(
-                    creates, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE
-                )
+                CollectInstance.objects.bulk_create(creates, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
                 logger.info(f"创建 CollectInstance 成功，数量={len(creates)}")
 
                 # 步骤2：批量创建组织关联
                 if assos:
                     CollectInstanceOrganization.objects.bulk_create(
-                        [
-                            CollectInstanceOrganization(
-                                collect_instance_id=asso[0], organization=asso[1]
-                            )
-                            for asso in assos
-                        ],
+                        [CollectInstanceOrganization(collect_instance_id=asso[0], organization=asso[1]) for asso in assos],
                         batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
                     )
-                    logger.info(
-                        f"创建 CollectInstanceOrganization 成功，数量={len(assos)}"
-                    )
+                    logger.info(f"创建 CollectInstanceOrganization 成功，数量={len(assos)}")
 
                 # 步骤3：创建配置（Controller 的 RPC 调用）
                 # 注意：Controller.controller() 内部已有完整的事务保护和回滚机制
@@ -143,22 +138,14 @@ class CollectTypeService:
 
         with transaction.atomic():
             # 删除旧的组织关联
-            CollectInstanceOrganization.objects.filter(
-                collect_instance_id__in=instance_ids
-            ).delete()
+            CollectInstanceOrganization.objects.filter(collect_instance_id__in=instance_ids).delete()
 
             # 添加新的组织关联
             creates = []
             for instance_id in instance_ids:
                 for org in organizations:
-                    creates.append(
-                        CollectInstanceOrganization(
-                            collect_instance_id=instance_id, organization=org
-                        )
-                    )
-            CollectInstanceOrganization.objects.bulk_create(
-                creates, ignore_conflicts=True
-            )
+                    creates.append(CollectInstanceOrganization(collect_instance_id=instance_id, organization=org))
+            CollectInstanceOrganization.objects.bulk_create(creates, ignore_conflicts=True)
 
     @staticmethod
     def update_instance_config(child_info, base_info):
@@ -206,12 +193,8 @@ class CollectTypeService:
 
             if has_template:
                 if not isinstance(raw_content, dict):
-                    raise BaseAppException(
-                        f"{config_type} content must be mapping when template rendering is enabled"
-                    )
-                return col_obj.render_config_template_content(
-                    config_type, raw_content, instance_id, node_id=node_id
-                )
+                    raise BaseAppException(f"{config_type} content must be mapping when template rendering is enabled")
+                return col_obj.render_config_template_content(config_type, raw_content, instance_id, node_id=node_id)
 
             if config_obj.file_type == "yaml":
                 return yaml.safe_dump(
@@ -226,16 +209,12 @@ class CollectTypeService:
                     raise BaseAppException("toml content must be a mapping")
                 return toml.dumps(raw_content)
 
-            raise BaseAppException(
-                f"unsupported config file type: {config_obj.file_type}"
-            )
+            raise BaseAppException(f"unsupported config file type: {config_obj.file_type}")
 
         if base_info:
             config_obj = CollectConfig.objects.filter(id=base_info["id"]).first()
             if config_obj:
-                base_content = CollectTypeService._extract_update_payload(
-                    base_info, "base"
-                )
+                base_content = CollectTypeService._extract_update_payload(base_info, "base")
                 content = build_content(config_obj, "base", base_content)
                 env_config = base_info.get("env_config")
                 if env_config:
@@ -246,9 +225,7 @@ class CollectTypeService:
             config_obj = CollectConfig.objects.filter(id=child_info["id"]).first()
             if not config_obj:
                 return
-            child_content = CollectTypeService._extract_update_payload(
-                child_info, "child"
-            )
+            child_content = CollectTypeService._extract_update_payload(child_info, "child")
             content = build_content(config_obj, "child", child_content)
             NodeMgmt().update_child_config_content(child_info["id"], content, child_env)
 
@@ -266,20 +243,11 @@ class CollectTypeService:
             # 更新组织信息
             instance.collectinstanceorganization_set.all().delete()
             if organizations:
-                creates = [
-                    CollectInstanceOrganization(
-                        collect_instance_id=instance_id, organization=org
-                    )
-                    for org in organizations
-                ]
-                CollectInstanceOrganization.objects.bulk_create(
-                    creates, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE
-                )
+                creates = [CollectInstanceOrganization(collect_instance_id=instance_id, organization=org) for org in organizations]
+                CollectInstanceOrganization.objects.bulk_create(creates, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
 
     @staticmethod
-    def search_instance_with_permission(
-        collect_type_id, name, page, page_size, queryset
-    ):
+    def search_instance_with_permission(collect_type_id, name, page, page_size, queryset):
         """
         使用权限过滤后的查询集查询采集实例列表（参考监控模块实现）
         支持单采集类型查询和全部采集类型查询
@@ -318,16 +286,12 @@ class CollectTypeService:
 
         # 补充组织与配置信息
         org_map = defaultdict(list)
-        org_objs = CollectInstanceOrganization.objects.filter(
-            collect_instance_id__in=instance_ids
-        ).values_list("collect_instance_id", "organization")
+        org_objs = CollectInstanceOrganization.objects.filter(collect_instance_id__in=instance_ids).values_list("collect_instance_id", "organization")
         for instance_id, organization in org_objs:
             org_map[instance_id].append(organization)
 
         conf_map = defaultdict(list)
-        conf_objs = CollectConfig.objects.filter(
-            collect_instance_id__in=instance_ids
-        ).values_list("collect_instance", "id")
+        conf_objs = CollectConfig.objects.filter(collect_instance_id__in=instance_ids).values_list("collect_instance", "id")
         for instance_id, config_id in conf_objs:
             conf_map[instance_id].append(config_id)
 
