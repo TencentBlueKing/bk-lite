@@ -66,6 +66,7 @@ const RAW_VALUE_METRICS = new Set([
   'mysql_innodb_buffer_pool_pages_dirty'
 ]);
 const CONNECTION_ERROR_LABELS: Record<string, string> = {
+  mysql_aborted_connects: '连接尝试失败数',
   mysql_aborted_clients: '客户端异常断开数',
   mysql_connection_errors_internal: '内部连接错误数',
   mysql_connection_errors_max_connections: '连接数上限错误数',
@@ -184,23 +185,88 @@ const getLatestChartValue = (data: ChartData[]) => {
   return typeof latestValue === 'number' ? latestValue : 0;
 };
 
-const getLatestChartSeriesTotal = (data: ChartData[]) => {
-  const latestPoint = [...data]
-    .filter((point) => Number.isFinite(Number(point.time)))
-    .sort((a, b) => Number(a.time) - Number(b.time))
-    .at(-1);
-
-  if (!latestPoint) {
+const getChartPointSeriesTotal = (point?: ChartData) => {
+  if (!point) {
     return 0;
   }
 
-  return Object.entries(latestPoint).reduce((sum, [key, value]) => {
+  return Object.entries(point).reduce((sum, [key, value]) => {
     if (!/^value\d+$/.test(key) || typeof value !== 'number' || !Number.isFinite(value)) {
       return sum;
     }
 
     return sum + value;
   }, 0);
+};
+
+const buildSeriesTotalByTime = (data: ChartData[] = []) => {
+  const totals = new Map<number, number>();
+
+  data.forEach((point) => {
+    const time = Number(point.time);
+    if (!Number.isFinite(time)) {
+      return;
+    }
+
+    totals.set(time, getChartPointSeriesTotal(point));
+  });
+
+  return totals;
+};
+
+const getLatestThreadSnapshot = (metricMap: Record<string, MetricSeries | undefined>) => {
+  const connectedByTime = buildSeriesTotalByTime(metricMap.mysql_threads_connected?.viewData || []);
+  const sleepByTime = buildSeriesTotalByTime(metricMap.mysql_process_list_threads_idle?.viewData || []);
+  const queryByTime = buildSeriesTotalByTime(metricMap.mysql_process_list_threads_executing?.viewData || []);
+  const sendingByTime = buildSeriesTotalByTime(metricMap.mysql_process_list_threads_sending_data?.viewData || []);
+  const lockedByTime = buildSeriesTotalByTime(metricMap.mysql_process_list_threads_waiting_for_lock?.viewData || []);
+  const allTimes = Array.from(
+    new Set([
+      ...connectedByTime.keys(),
+      ...sleepByTime.keys(),
+      ...queryByTime.keys(),
+      ...sendingByTime.keys(),
+      ...lockedByTime.keys()
+    ])
+  ).sort((a, b) => b - a);
+
+  const latestConnected = allTimes.find((time) => connectedByTime.has(time));
+  const latestConnectedCount = latestConnected === undefined ? 0 : connectedByTime.get(latestConnected) || 0;
+  const activeTime = allTimes.find((time) => {
+    const knownTotal =
+      (sleepByTime.get(time) || 0) +
+      (queryByTime.get(time) || 0) +
+      (sendingByTime.get(time) || 0) +
+      (lockedByTime.get(time) || 0);
+
+    return knownTotal > 0;
+  });
+  const snapshotTime = activeTime ?? allTimes[0];
+
+  if (snapshotTime === undefined) {
+    return {
+      connected: 0,
+      sleep: 0,
+      query: 0,
+      sending: 0,
+      locked: 0
+    };
+  }
+
+  const sleep = sleepByTime.get(snapshotTime) || 0;
+  const query = queryByTime.get(snapshotTime) || 0;
+  const sending = sendingByTime.get(snapshotTime) || 0;
+  const locked = lockedByTime.get(snapshotTime) || 0;
+  const knownTotal = sleep + query + sending + locked;
+  const connected = Math.max(connectedByTime.get(snapshotTime) || latestConnectedCount, knownTotal);
+
+  return {
+    connected,
+    sleep,
+    query,
+    sending,
+    locked
+  };
 };
 
 const buildPreviousPeriodTimeValues = (timeValues: TimeValuesProps): TimeValuesProps | null => {
@@ -721,6 +787,7 @@ export default function MysqlDashboardPage() {
   const [collectionStatusMetric, setCollectionStatusMetric] = useState<MetricSeries | null>(null);
   const [instanceOptions, setInstanceOptions] = useState<MysqlInstanceOption[]>([]);
   const [instanceLoading, setInstanceLoading] = useState(false);
+  const [metricsRefreshSignal, setMetricsRefreshSignal] = useState(0);
 
   const monitorObjectId = searchParams.get('monitorObjId') || '';
   const monitorObjectName = searchParams.get('name') || 'Mysql';
@@ -900,7 +967,12 @@ export default function MysqlDashboardPage() {
   };
 
   useEffect(() => {
-    loadMetrics();
+    if (isDashboardMode) {
+      loadMetrics();
+      return;
+    }
+
+    setLoading(false);
   }, [instanceId, resolvedInstanceName, idValuesKey, timeValues, isDashboardMode]);
 
   useEffect(() => {
@@ -941,11 +1013,6 @@ export default function MysqlDashboardPage() {
     return getLatestChartValue(target?.viewData || []);
   };
 
-  const getLatestTotal = (name: string) => {
-    const target = metricMap[name];
-    return getLatestChartSeriesTotal(target?.viewData || []);
-  };
-
   const hasMetricData = (name: string) => {
     const target = metricMap[name];
     return target?.loadState === 'success' && Array.isArray(target.viewData) && target.viewData.length > 0;
@@ -955,6 +1022,9 @@ export default function MysqlDashboardPage() {
     value: hasMetricData(name) ? display.value : '--',
     unit: hasMetricData(name) ? display.unit : ''
   });
+
+  const renderMetricValue = (name: string, value: string) => (hasMetricData(name) ? value : '--');
+  const getMetricValue = (name: string, value: number) => (hasMetricData(name) ? value : 0);
 
   const qpsValue = getLatest('mysql_queries_rate');
   const connValue = getLatest('mysql_connection_utilization');
@@ -979,9 +1049,13 @@ export default function MysqlDashboardPage() {
   const lockWaitRate = getLatest('mysql_innodb_row_lock_waits_rate');
   const openedTablesRate = getLatest('mysql_opened_tables_rate');
   const tableCacheMissRate = getLatest('mysql_table_open_cache_misses_rate');
+  const abortedConnects = getLatest('mysql_aborted_connects');
+  const abortedConnectsRate = getLatest('mysql_aborted_connects_rate');
   const abortedClients = getLatest('mysql_aborted_clients');
+  const abortedClientsRate = getLatest('mysql_aborted_clients_rate');
   const internalConnectionErrors = getLatest('mysql_connection_errors_internal');
   const maxConnectionErrors = getLatest('mysql_connection_errors_max_connections');
+  const maxConnectionErrorsRate = getLatest('mysql_connection_errors_max_connections_rate');
   const peerAddressConnectionErrors = getLatest('mysql_connection_errors_peer_address');
   const selectConnectionErrors = getLatest('mysql_connection_errors_select');
   const tcpwrapConnectionErrors = getLatest('mysql_connection_errors_tcpwrap');
@@ -1077,8 +1151,8 @@ export default function MysqlDashboardPage() {
         },
         {
           key: 'mysql_innodb_os_log_fsyncs_rate',
-          label: 'Redo 刷盘速率',
-          displayName: 'Redo 刷盘速率',
+          label: 'Redo 刷盘',
+          displayName: 'Redo 刷盘',
           data: metricMap.mysql_innodb_os_log_fsyncs_rate?.viewData || []
         }
       ]),
@@ -1114,11 +1188,12 @@ export default function MysqlDashboardPage() {
   const statementShareChartData = statementShare.filter((item) => item.value > 0);
 
   const totalStatements = statementShare.reduce((sum, item) => sum + item.value, 0);
-  const threadConnectedCount = hasMetricData('mysql_threads_connected') ? Math.max(getLatestTotal('mysql_threads_connected'), 0) : 0;
-  const threadSleepCount = hasMetricData('mysql_process_list_threads_idle') ? Math.max(getLatestTotal('mysql_process_list_threads_idle'), 0) : 0;
-  const threadQueryCount = hasMetricData('mysql_process_list_threads_executing') ? Math.max(getLatestTotal('mysql_process_list_threads_executing'), 0) : 0;
-  const threadSendingCount = hasMetricData('mysql_process_list_threads_sending_data') ? Math.max(getLatestTotal('mysql_process_list_threads_sending_data'), 0) : 0;
-  const threadLockedCount = hasMetricData('mysql_process_list_threads_waiting_for_lock') ? Math.max(getLatestTotal('mysql_process_list_threads_waiting_for_lock'), 0) : 0;
+  const threadSnapshot = getLatestThreadSnapshot(metricMap);
+  const threadConnectedCount = hasMetricData('mysql_threads_connected') ? Math.max(threadSnapshot.connected, 0) : 0;
+  const threadSleepCount = hasMetricData('mysql_process_list_threads_idle') ? Math.max(threadSnapshot.sleep, 0) : 0;
+  const threadQueryCount = hasMetricData('mysql_process_list_threads_executing') ? Math.max(threadSnapshot.query, 0) : 0;
+  const threadSendingCount = hasMetricData('mysql_process_list_threads_sending_data') ? Math.max(threadSnapshot.sending, 0) : 0;
+  const threadLockedCount = hasMetricData('mysql_process_list_threads_waiting_for_lock') ? Math.max(threadSnapshot.locked, 0) : 0;
   const threadKnownStateCount = threadSleepCount + threadQueryCount + threadSendingCount + threadLockedCount;
   const threadDistributionTotal = Math.max(threadConnectedCount, threadKnownStateCount);
   const threadOtherValue = Math.max(
@@ -1155,10 +1230,18 @@ export default function MysqlDashboardPage() {
   const threadShareChartData = threadShare.filter((item) => item.value > 0);
   const bufferPoolUsedValue = Math.min(Math.max(bpUsedValue, 0), 100);
   const bufferPoolHitRatio = Math.min(Math.max(hitValue, 0), 100);
+  const bufferPoolDirtyRatio = Math.min(Math.max(bpDirtyValue, 0), bufferPoolUsedValue);
+  const bufferPoolCleanUsedRatio = Math.max(bufferPoolUsedValue - bufferPoolDirtyRatio, 0);
   const bufferPoolShareChartData = [
-    { name: '已使用', value: bufferPoolUsedValue, color: '#4c8dff' },
-    { name: '空闲', value: Math.max(100 - bufferPoolUsedValue, 0), color: '#314257' }
+    { name: '已用页', value: bufferPoolCleanUsedRatio, color: '#4c8dff' },
+    { name: '脏页', value: bufferPoolDirtyRatio, color: '#ff9f43' },
+    { name: '空闲页', value: Math.max(100 - bufferPoolUsedValue, 0), color: '#cbd5e1' }
   ].filter((item) => item.value > 0);
+  const bufferPoolLegendItems = [
+    { name: '已用页', value: bufferPoolCleanUsedRatio, color: '#4c8dff' },
+    { name: '脏页', value: bufferPoolDirtyRatio, color: '#ff9f43' },
+    { name: '空闲页', value: Math.max(100 - bufferPoolUsedValue, 0), color: '#cbd5e1' }
+  ];
   const normalizeCountValue = (value: number) => (Number.isFinite(value) ? Math.max(Math.round(value), 0) : 0);
   const bufferPoolTotalPages = normalizeCountValue(getLatest('mysql_innodb_buffer_pool_pages_total'));
   const bufferPoolFreePages = normalizeCountValue(getLatest('mysql_innodb_buffer_pool_pages_free'));
@@ -1166,6 +1249,7 @@ export default function MysqlDashboardPage() {
   const bufferPoolUsedPages = Math.max(bufferPoolTotalPages - bufferPoolFreePages, 0);
 
   const connectionErrorStats = [
+    { label: CONNECTION_ERROR_LABELS.mysql_aborted_connects, value: abortedConnects, color: '#a855f7' },
     { label: CONNECTION_ERROR_LABELS.mysql_aborted_clients, value: abortedClients, color: '#ff4d4f' },
     { label: CONNECTION_ERROR_LABELS.mysql_connection_errors_internal, value: internalConnectionErrors, color: '#ff7a45' },
     { label: CONNECTION_ERROR_LABELS.mysql_connection_errors_max_connections, value: maxConnectionErrors, color: '#2f6bff' },
@@ -1173,8 +1257,35 @@ export default function MysqlDashboardPage() {
     { label: CONNECTION_ERROR_LABELS.mysql_connection_errors_select, value: selectConnectionErrors, color: '#faad14' },
     { label: CONNECTION_ERROR_LABELS.mysql_connection_errors_tcpwrap, value: tcpwrapConnectionErrors, color: '#722ed1' }
   ].sort((a, b) => b.value - a.value);
+  const connectionErrorRateStats = [
+    {
+      label: CONNECTION_ERROR_LABELS.mysql_aborted_connects,
+      value: getMetricValue('mysql_aborted_connects_rate', abortedConnectsRate * 60),
+      display: renderMetricValue('mysql_aborted_connects_rate', `${(abortedConnectsRate * 60).toFixed(abortedConnectsRate * 60 >= 10 ? 0 : 1)} /min`),
+      cumulative: abortedConnects,
+      color: '#a855f7'
+    },
+    {
+      label: CONNECTION_ERROR_LABELS.mysql_aborted_clients,
+      value: getMetricValue('mysql_aborted_clients_rate', abortedClientsRate * 60),
+      display: renderMetricValue('mysql_aborted_clients_rate', `${(abortedClientsRate * 60).toFixed(abortedClientsRate * 60 >= 10 ? 0 : 1)} /min`),
+      cumulative: abortedClients,
+      color: '#52c41a'
+    },
+    {
+      label: CONNECTION_ERROR_LABELS.mysql_connection_errors_max_connections,
+      value: getMetricValue('mysql_connection_errors_max_connections_rate', maxConnectionErrorsRate * 60),
+      display: renderMetricValue('mysql_connection_errors_max_connections_rate', `${(maxConnectionErrorsRate * 60).toFixed(maxConnectionErrorsRate * 60 >= 10 ? 0 : 1)} /min`),
+      cumulative: maxConnectionErrors,
+      color: '#2f6bff'
+    }
+  ];
   const totalConnectionErrors = connectionErrorStats.reduce((sum, item) => sum + item.value, 0);
   const topConnectionError = connectionErrorStats.find((item) => item.value > 0) || connectionErrorStats[0];
+  const totalConnectionErrorRate = connectionErrorRateStats.reduce((sum, item) => sum + item.value, 0);
+  const topConnectionErrorRate = connectionErrorRateStats.find((item) => item.value > 0) || connectionErrorRateStats[0];
+  const totalConnectionErrorRateDisplay = `${totalConnectionErrorRate >= 100 ? totalConnectionErrorRate.toFixed(0) : totalConnectionErrorRate.toFixed(1)} /min`;
+
   const uptimeDisplay = hasMetricData('mysql_uptime') ? uptimeInsight.uptimeText : '--';
   const startupTimeDisplay = hasMetricData('mysql_uptime') ? uptimeInsight.startupTimeText : metricEmptyText;
   const uptimeState = !hasMetricData('mysql_uptime')
@@ -1223,7 +1334,13 @@ export default function MysqlDashboardPage() {
   ].filter(Boolean) as React.ReactNode[];
   const replicationApplicable = mysqlIdentity.role === '从库' || hasReplicationData;
   const renderFlowValue = (name: string, value: string, unit = '') => (hasMetricData(name) ? `${value}${unit}` : '--');
-  const requestFlowNodes = [
+  const requestFlowNodes: Array<{
+    title: string;
+    subTitle: string;
+    icon: React.ReactNode;
+    className?: string;
+    metrics: Array<{ label: string; value: string }>;
+  }> = [
     {
       title: '客户端 / 连接',
       subTitle: '请求入口',
@@ -1231,7 +1348,7 @@ export default function MysqlDashboardPage() {
       metrics: [
         { label: 'QPS', value: `${qpsCardDisplay.value}${qpsCardDisplay.unit}` },
         {
-          label: '活跃连接',
+          label: '当前连接',
           value: hasMetricData('mysql_threads_connected') ? threadsConnectedValue.toFixed(0) : '--'
         },
         { label: '连接使用率', value: `${connCardDisplay.value}${connCardDisplay.unit}` }
@@ -1262,12 +1379,13 @@ export default function MysqlDashboardPage() {
     },
     {
       title: '存储引擎 InnoDB',
-      subTitle: '缓存与落盘入口',
+      subTitle: '进入缓存、日志与落盘',
       icon: <HddOutlined />,
+      className: styles.mysqlPathNodeEngine,
       metrics: [
-        { label: '缓冲池命中率', value: `${hitCardDisplay.value}${hitCardDisplay.unit}` },
+        { label: '命中率', value: `${hitCardDisplay.value}${hitCardDisplay.unit}` },
         { label: '磁盘 I/O', value: renderFlowValue('mysql_innodb_data_writes_rate', dataWriteValue.toFixed(1), '/s') },
-        { label: '脏页比例', value: renderFlowValue('mysql_buffer_pool_dirty_ratio', bpDirtyValue.toFixed(1), '%') }
+        { label: '脏页', value: renderFlowValue('mysql_buffer_pool_dirty_ratio', bpDirtyValue.toFixed(1), '%') }
       ]
     }
   ];
@@ -1377,7 +1495,7 @@ export default function MysqlDashboardPage() {
                   customFrequencyList={MYSQL_REFRESH_FREQUENCY_LIST}
                   onChange={onTimeChange}
                   onFrequenceChange={onFrequenceChange}
-                  onRefresh={() => loadMetrics()}
+                  onRefresh={() => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))}
                 />
               </div>
               <div className={styles.actionButtons}>
@@ -1509,7 +1627,7 @@ export default function MysqlDashboardPage() {
                       noDataType={getNoDataType('mysql_slow_queries_rate')}
                     />
                     <StatCard
-                      title="Buffer Pool 命中率"
+                      title="缓冲池命中率"
                       value={hitCardDisplay.value}
                       unit={hitCardDisplay.unit}
                       icon={<DatabaseOutlined />}
@@ -1530,11 +1648,11 @@ export default function MysqlDashboardPage() {
                       </div>
                     </div>
                     <div className={styles.mysqlFlowModel}>
-                      <div className={styles.mysqlFlowScene}>
+                      <div className={`${styles.mysqlFlowScene} ${styles.mysqlRequestScene}`}>
                         <div className={styles.mysqlRequestPath}>
                           {requestFlowNodes.map((node, index) => (
                             <React.Fragment key={node.title}>
-                              <div className={styles.mysqlPathNode}>
+                              <div className={[styles.mysqlPathNode, node.className].filter(Boolean).join(' ')}>
                                 <div className={styles.mysqlNodeTitle}>{node.title}</div>
                                 <div className={styles.mysqlNodeIcon}>{node.icon}</div>
                                 <div className={styles.mysqlNodeMetrics}>
@@ -1600,7 +1718,7 @@ export default function MysqlDashboardPage() {
                             </div>
                           </div>
 
-                          <div className={styles.innodbFork}>
+                          <div className={`${styles.innodbFork} ${styles.innodbForkWrite}`}>
                             <span className={styles.innodbForkMain} />
                             <span className={styles.innodbForkTop} />
                             <span className={styles.innodbForkBottom} />
@@ -1609,16 +1727,26 @@ export default function MysqlDashboardPage() {
                           <div className={styles.innodbLogCards}>
                             <div className={styles.innodbColumnTitle}>日志与事务</div>
                             <div className={styles.innodbLogCard}>
-                              <span>重做日志缓冲</span>
-                              <strong>{renderFlowValue('mysql_innodb_os_log_fsyncs_rate', fsyncValue.toFixed(1), '/s')}</strong>
+                              <span>Redo 日志</span>
+                              <div className={styles.mysqlNodeMetric}>
+                                <span>Redo 刷盘</span>
+                                <strong>{renderFlowValue('mysql_innodb_os_log_fsyncs_rate', fsyncValue.toFixed(1), '/s')}</strong>
+                              </div>
                             </div>
                             <div className={styles.innodbLogCard}>
-                              <span>回滚日志 / 临时表</span>
-                              <strong>{renderFlowValue('mysql_created_tmp_tables_rate', (tmpTotalRate * 60).toFixed(tmpTotalRate * 60 >= 10 ? 0 : 1), '/min')}</strong>
+                              <span>临时表</span>
+                              <div className={styles.mysqlNodeMetric}>
+                                <span>总临时表</span>
+                                <strong>{renderFlowValue('mysql_created_tmp_tables_rate', (tmpTotalRate * 60).toFixed(tmpTotalRate * 60 >= 10 ? 0 : 1), '/min')}</strong>
+                              </div>
+                              <div className={styles.mysqlNodeMetric}>
+                                <span>磁盘临时表</span>
+                                <strong>{renderFlowValue('mysql_created_tmp_disk_tables_rate', (tmpDiskRate * 60).toFixed(tmpDiskRate * 60 >= 10 ? 0 : 1), '/min')}</strong>
+                              </div>
                             </div>
                           </div>
 
-                          <div className={styles.innodbFork}>
+                          <div className={`${styles.innodbFork} ${styles.innodbForkPersist}`}>
                             <span className={styles.innodbForkMain} />
                             <span className={styles.innodbForkTop} />
                             <span className={styles.innodbForkBottomDashed} />
@@ -1632,22 +1760,13 @@ export default function MysqlDashboardPage() {
                               <div className={styles.mysqlNodeMetric}><span>写 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_writes_rate', dataWriteValue.toFixed(1), '/s')}</strong></div>
                             </div>
                             <div className={styles.innodbDiskCard}>
-                              <span>重做日志文件</span>
-                              <div className={styles.mysqlNodeMetric}><span>刷盘</span><strong>{renderFlowValue('mysql_innodb_os_log_fsyncs_rate', fsyncValue.toFixed(1), '/s')}</strong></div>
+                              <span>Redo 日志文件</span>
+                              <div className={styles.mysqlNodeMetric}><span>Redo 刷盘</span><strong>{renderFlowValue('mysql_innodb_os_log_fsyncs_rate', fsyncValue.toFixed(1), '/s')}</strong></div>
                               <div className={styles.mysqlNodeMetric}><span>复制延迟</span><strong>{replicationApplicable ? renderFlowValue('mysql_slave_seconds_behind_master', replicationDelayDisplay.value, replicationDelayDisplay.unit || 's') : '不适用'}</strong></div>
                             </div>
                           </div>
                         </div>
                       </div>
-                      </div>
-
-                      <div className={styles.mysqlFlowKpis}>
-                        <div><span>读 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_reads_rate', dataReadValue.toFixed(1), '/s')}</strong></div>
-                        <div><span>写 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_writes_rate', dataWriteValue.toFixed(1), '/s')}</strong></div>
-                        <div><span>Redo 刷盘</span><strong>{renderFlowValue('mysql_innodb_os_log_fsyncs_rate', fsyncValue.toFixed(1), '/s')}</strong></div>
-                        <div><span>磁盘临时表</span><strong>{renderFlowValue('mysql_created_tmp_disk_tables_rate', (tmpDiskRate * 60).toFixed(tmpDiskRate * 60 >= 10 ? 0 : 1), '/min')}</strong></div>
-                        <div><span>脏页比例</span><strong>{renderFlowValue('mysql_buffer_pool_dirty_ratio', bpDirtyValue.toFixed(1), '%')}</strong></div>
-                        <div><span>锁等待</span><strong>{renderFlowValue('mysql_innodb_row_lock_waits_rate', (lockWaitRate * 60).toFixed(lockWaitRate * 60 >= 10 ? 0 : 1), '/min')}</strong></div>
                       </div>
                     </div>
                   </div>
@@ -1774,12 +1893,14 @@ export default function MysqlDashboardPage() {
                                 data={statementShareChartData}
                                 cx="50%"
                                 cy="50%"
-                                innerRadius={50}
-                                outerRadius={70}
-                                cornerRadius={10}
-                                paddingAngle={statementShareChartData.length > 1 ? 2 : 0}
-                                stroke="rgba(255, 255, 255, 0.96)"
-                                strokeWidth={4}
+                                innerRadius={52}
+                                outerRadius={72}
+                                startAngle={90}
+                                endAngle={-270}
+                                cornerRadius={0}
+                                paddingAngle={0}
+                                stroke="none"
+                                strokeWidth={0}
                                 dataKey="value"
                               >
                                 {statementShareChartData.map((item) => (
@@ -1831,12 +1952,14 @@ export default function MysqlDashboardPage() {
                                 data={threadShareChartData}
                                 cx="50%"
                                 cy="50%"
-                                innerRadius={50}
-                                outerRadius={70}
-                                cornerRadius={10}
-                                paddingAngle={threadShareChartData.length > 1 ? 2 : 0}
-                                stroke="rgba(255, 255, 255, 0.96)"
-                                strokeWidth={4}
+                                innerRadius={52}
+                                outerRadius={72}
+                                startAngle={90}
+                                endAngle={-270}
+                                cornerRadius={0}
+                                paddingAngle={0}
+                                stroke="none"
+                                strokeWidth={0}
                                 dataKey="value"
                               >
                                 {threadShareChartData.map((item) => (
@@ -1929,38 +2052,45 @@ export default function MysqlDashboardPage() {
                       <div className={styles.panelHeader}>
                         <div className={styles.panelHeading}>
                           <h3 className={styles.panelTitle}>锁与等待指标</h3>
-                          <div className={styles.panelSubTitle}>每分钟</div>
+                          <div className={styles.panelSubTitle}>事件速率 / 平均值</div>
                         </div>
                       </div>
                       <div className={`${styles.bars} ${styles.compactBars} ${styles.barsFull}`}>
                         {[
                           {
                             label: '行锁等待',
-                            value: lockWaitRate * 60,
-                            display: `${(lockWaitRate * 60).toFixed(lockWaitRate * 60 >= 10 ? 0 : 1)} /min`,
+                            value: getMetricValue('mysql_innodb_row_lock_waits_rate', lockWaitRate * 60),
+                            display: renderMetricValue('mysql_innodb_row_lock_waits_rate', `${(lockWaitRate * 60).toFixed(lockWaitRate * 60 >= 10 ? 0 : 1)} /min`),
                             color: '#ff4d4f',
-                            max: Math.max(lockWaitRate * 60, 1)
+                            max: Math.max(getMetricValue('mysql_innodb_row_lock_waits_rate', lockWaitRate * 60), 1)
                           },
                           {
                             label: '平均等待时间',
-                            value: lockWait,
-                            display: `${lockWait.toFixed(lockWait >= 10 ? 0 : 1)} ms`,
+                            value: getMetricValue('mysql_innodb_row_lock_time_avg', lockWait),
+                            display: renderMetricValue('mysql_innodb_row_lock_time_avg', `${lockWait.toFixed(lockWait >= 10 ? 0 : 1)} ms`),
                             color: '#faad14',
-                            max: Math.max(lockWait, 10)
+                            max: Math.max(getMetricValue('mysql_innodb_row_lock_time_avg', lockWait), 10)
+                          },
+                          {
+                            label: '连接尝试失败',
+                            value: getMetricValue('mysql_aborted_connects_rate', abortedConnectsRate * 60),
+                            display: renderMetricValue('mysql_aborted_connects_rate', `${(abortedConnectsRate * 60).toFixed(abortedConnectsRate * 60 >= 10 ? 0 : 1)} /min`),
+                            color: '#a855f7',
+                            max: Math.max(getMetricValue('mysql_aborted_connects_rate', abortedConnectsRate * 60), 1)
                           },
                           {
                             label: '异常断开客户端',
-                            value: abortedClients,
-                            display: abortedClients.toFixed(abortedClients >= 10 ? 0 : 1),
+                            value: getMetricValue('mysql_aborted_clients_rate', abortedClientsRate * 60),
+                            display: renderMetricValue('mysql_aborted_clients_rate', `${(abortedClientsRate * 60).toFixed(abortedClientsRate * 60 >= 10 ? 0 : 1)} /min`),
                             color: '#52c41a',
-                            max: Math.max(abortedClients, 1)
+                            max: Math.max(getMetricValue('mysql_aborted_clients_rate', abortedClientsRate * 60), 1)
                           },
                           {
                             label: '达到连接上限',
-                            value: maxConnectionErrors,
-                            display: maxConnectionErrors.toFixed(maxConnectionErrors >= 10 ? 0 : 1),
+                            value: getMetricValue('mysql_connection_errors_max_connections_rate', maxConnectionErrorsRate * 60),
+                            display: renderMetricValue('mysql_connection_errors_max_connections_rate', `${(maxConnectionErrorsRate * 60).toFixed(maxConnectionErrorsRate * 60 >= 10 ? 0 : 1)} /min`),
                             color: '#2f6bff',
-                            max: Math.max(maxConnectionErrors, 1)
+                            max: Math.max(getMetricValue('mysql_connection_errors_max_connections_rate', maxConnectionErrorsRate * 60), 1)
                           }
                         ].map((item) => (
                           <div key={item.label} className={styles.barRow}>
@@ -2017,13 +2147,13 @@ export default function MysqlDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel} ${styles.fillPanel}`}>
                       <div className={styles.panelHeader}>
                         <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}>Buffer Pool 使用情况</h3>
+                          <h3 className={styles.panelTitle}>缓冲池使用情况</h3>
                           <div className={styles.panelSubTitle}>缓存页状态</div>
                         </div>
                       </div>
                       <div className={`${styles.ringCard} ${styles.bufferPoolRingCard} ${styles.ringCardRelaxed} ${styles.fillBody}`}>
                           <div className={`${styles.ringChartWrap} ${styles.bufferPoolChartWrap}`}>
-                            <ResponsiveContainer width="100%" height="100%">
+                            <ResponsiveContainer width="100%" height={176}>
                               <PieChart>
                                 <Pie
                                   data={bufferPoolShareChartData}
@@ -2031,12 +2161,12 @@ export default function MysqlDashboardPage() {
                                   cy="50%"
                                   innerRadius={52}
                                   outerRadius={72}
-                                  startAngle={220}
-                                  endAngle={-40}
-                                  cornerRadius={10}
-                                  paddingAngle={bufferPoolShareChartData.length > 1 ? 2 : 0}
-                                  stroke="rgba(255, 255, 255, 0.96)"
-                                  strokeWidth={4}
+                                  startAngle={90}
+                                  endAngle={-270}
+                                  cornerRadius={0}
+                                  paddingAngle={0}
+                                  stroke="none"
+                                  strokeWidth={0}
                                   dataKey="value"
                                 >
                                   {bufferPoolShareChartData.map((item) => (
@@ -2048,6 +2178,14 @@ export default function MysqlDashboardPage() {
                             <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
                               <div className={styles.ringValue}>{bufferPoolUsedValue.toFixed(0)}%</div>
                               <div className={styles.ringCaption}>使用率</div>
+                            </div>
+                            <div className={styles.bufferPoolLegend}>
+                              {bufferPoolLegendItems.map((item) => (
+                                <span key={item.name}>
+                                  <i style={{ background: item.color }} />
+                                  {item.name}
+                                </span>
+                              ))}
                             </div>
                           </div>
                           <div className={`${styles.ringInfoPanel} ${styles.ringInfoPanelCompact}`}>
@@ -2131,46 +2269,51 @@ export default function MysqlDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
                       <div className={styles.panelHeader}>
                         <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}>连接错误统计</h3>
-                          <div className={styles.panelSubTitle}>累计</div>
+                          <h3 className={styles.panelTitle}>连接异常热点</h3>
+                          <div className={styles.panelSubTitle}>当前 5 分钟平均速率</div>
                         </div>
                       </div>
                       <div className={styles.errorOverview}>
                         <div className={styles.errorOverviewHeader}>
-                          <span className={styles.errorOverviewLabel}>错误总量</span>
-                          <span className={styles.errorOverviewValue}>{totalConnectionErrors.toLocaleString()}</span>
+                          <span className={styles.errorOverviewLabel}>错误速率总量</span>
+                          <span className={styles.errorOverviewValue}>{totalConnectionErrorRateDisplay}</span>
                         </div>
                         <div className={styles.errorStackBar}>
-                          {connectionErrorStats.map((item) => (
+                          {connectionErrorRateStats.map((item) => (
                             <div
                               key={item.label}
                               className={styles.errorStackSegment}
                               style={{
-                                width: `${totalConnectionErrors > 0 ? Math.max((item.value / totalConnectionErrors) * 100, item.value > 0 ? 4 : 0) : 0}%`,
+                                width: `${totalConnectionErrorRate > 0 ? Math.max((item.value / totalConnectionErrorRate) * 100, item.value > 0 ? 8 : 0) : 0}%`,
                                 background: item.color,
                                 opacity: item.value > 0 ? 1 : 0.16
                               }}
                             />
                           ))}
                         </div>
-                        {topConnectionError ? (
-                          <div className={styles.errorOverviewHint}>
-                            <span
-                              className={styles.errorDot}
-                              style={{ background: totalConnectionErrors > 0 ? topConnectionError.color : '#94a3b8' }}
-                            />
-                            {totalConnectionErrors > 0 ? `当前主要错误: ${topConnectionError.label}` : '当前无连接错误'}
-                          </div>
-                        ) : null}
+                        <div className={styles.errorOverviewHint}>
+                          <span
+                            className={styles.errorDot}
+                            style={{ background: totalConnectionErrorRate > 0 ? topConnectionErrorRate.color : '#94a3b8' }}
+                          />
+                          {totalConnectionErrorRate > 0
+                            ? `当前主要错误: ${topConnectionErrorRate.label}`
+                            : totalConnectionErrors > 0
+                              ? `当前速率平稳，历史累计最多: ${topConnectionError.label}`
+                              : '当前无明显连接异常'}
+                        </div>
                       </div>
                       <div className={styles.errorList}>
-                        {connectionErrorStats.map((item) => (
+                        {connectionErrorRateStats.map((item) => (
                           <div className={styles.errorRow} key={item.label}>
                             <span className={styles.errorLabel}>
                               <span className={styles.errorDot} style={{ background: item.color, opacity: item.value > 0 ? 1 : 0.32 }} />
-                              {item.label}
+                              <span>
+                                {item.label}
+                                <span className={styles.errorMeta}>累计 {item.cumulative.toLocaleString()}</span>
+                              </span>
                             </span>
-                            <span className={styles.errorValue}>{item.value.toLocaleString()}</span>
+                            <span className={styles.errorValue}>{item.display}</span>
                           </div>
                         ))}
                       </div>
@@ -2183,15 +2326,21 @@ export default function MysqlDashboardPage() {
                     <div className={styles.panelHeader}>
                       <div className={styles.panelHeading}>
                         <h3 className={styles.panelTitle}>监控指标全景</h3>
-                        <div className={styles.panelSubTitle}>复用详情页的通用监控视图能力，减少监控仪表盘重复维护</div>
                       </div>
                     </div>
                     <MetricViews
+                      key={`${monitorObjectId}-${instanceId}-${idValues.join('|')}`}
                       monitorObjectId={monitorObjectId}
                       monitorObjectName={monitorObjectName}
                       instanceId={String(instanceId)}
                       instanceName={instanceName}
                       idValues={idValues}
+                      externalTimeValues={timeValues}
+                      externalTimeDefaultValue={timeDefaultValue}
+                      externalFrequence={frequence}
+                      externalRefreshSignal={metricsRefreshSignal}
+                      hideTimeSelector
+                      onExternalXRangeChange={onXRangeChange}
                     />
                   </div>
                 </div>

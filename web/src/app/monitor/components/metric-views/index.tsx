@@ -27,12 +27,78 @@ import {
 import dayjs, { Dayjs } from 'dayjs';
 import LazyMetricItem from './lazyMetricItem';
 
+const MYSQL_GROUP_NAME_MAP: Record<string, string> = {
+  ConnStatus: '连接状态',
+  KeyCache: '键缓存',
+  TempTable: '临时表',
+  InnoDBPerf: 'InnoDB 性能',
+  Replication: '复制状态'
+};
+
+const MYSQL_METRIC_NAME_MAP: Record<string, string> = {
+  mysql_process_list_threads_idle: '空闲线程数',
+  mysql_process_list_threads_executing: '执行线程数',
+  mysql_process_list_threads_sending_data: '发送数据线程数',
+  mysql_process_list_threads_waiting_for_lock: '锁等待线程数',
+  mysql_queries_rate: '查询吞吐速率',
+  mysql_questions_rate: '请求语句速率',
+  mysql_com_select_rate: '查询语句速率',
+  mysql_com_insert_rate: '插入语句速率',
+  mysql_com_update_rate: '更新语句速率',
+  mysql_com_delete_rate: '删除语句速率',
+  mysql_innodb_os_log_fsyncs_rate: 'Redo 刷盘',
+  mysql_innodb_buffer_pool_read_requests_rate: '缓冲池读请求速率',
+  mysql_innodb_buffer_pool_reads_rate: '缓冲池磁盘读取速率',
+  mysql_buffer_pool_hit_ratio: '缓冲池命中率',
+  mysql_buffer_pool_used_ratio: '缓冲池使用率',
+  mysql_innodb_buffer_pool_pages_total: '缓冲池总页数',
+  mysql_innodb_buffer_pool_pages_dirty: '缓冲池脏页数',
+  mysql_innodb_buffer_pool_pages_free: '缓冲池空闲页数',
+  mysql_key_reads_rate: '键缓存磁盘读取速率',
+  mysql_key_read_requests_rate: '键缓存读取请求速率',
+  mysql_key_cache_hit_ratio: '键缓存命中率',
+  mysql_variables_innodb_buffer_pool_size: '缓冲池配置大小',
+  mysql_variables_read_only: '只读状态',
+  mysql_variables_super_read_only: '超级只读状态',
+  mysql_variables_log_bin: '二进制日志状态',
+  mysql_variables_log_slave_updates: '复制回放写入日志状态',
+  mysql_innodb_data_fsyncs_rate: 'InnoDB 数据文件刷盘速率'
+};
+
+const normalizeMysqlDisplayName = (name = '') => name
+  .replace(/QPS\s*\(Queries\)/gi, '查询吞吐速率')
+  .replace(/Questions/gi, '请求语句')
+  .replace(/Sending data/gi, '发送数据')
+  .replace(/Locked/gi, '锁等待')
+  .replace(/Sleep/gi, '空闲')
+  .replace(/Query/gi, '执行')
+  .replace(/SELECT/gi, '查询语句')
+  .replace(/INSERT/gi, '插入语句')
+  .replace(/UPDATE/gi, '更新语句')
+  .replace(/DELETE/gi, '删除语句')
+  .replace(/Buffer Pool/gi, '缓冲池')
+  .replace(/Key Cache/gi, '键缓存')
+  .replace(/Redo\s+Fsync/gi, 'Redo 刷盘')
+  .replace(/Fsync/gi, '刷盘')
+  .replace(/Read Only/gi, '只读状态')
+  .replace(/Super Read Only/gi, '超级只读状态')
+  .replace(/Log Bin/gi, '二进制日志状态')
+  .replace(/Log Slave Updates/gi, '复制回放写入日志状态')
+  .replace(/\s+/g, ' ')
+  .trim();
+
 const MetricViews: React.FC<ViewDetailProps> = ({
   monitorObjectId,
   monitorObjectName,
   instanceId,
   instanceName,
-  idValues
+  idValues,
+  externalTimeValues,
+  externalTimeDefaultValue,
+  externalFrequence,
+  externalRefreshSignal,
+  hideTimeSelector = false,
+  onExternalXRangeChange
 }) => {
   const { isLoading } = useApiClient();
   const { getMonitorPlugin, getMonitorMetrics, getMetricsGroup } =
@@ -74,11 +140,24 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   const [resetCounter, setResetCounter] = useState<number>(0);
   const [needsRefreshOnExpand, setNeedsRefreshOnExpand] =
     useState<boolean>(false);
+  const lastExternalRefreshSignalRef = useRef<number | undefined>(externalRefreshSignal);
 
   // 请求并发控制
   const MAX_CONCURRENT_REQUESTS = 12;
   const activeRequestsRef = useRef<Map<number, AbortController>>(new Map());
   const requestQueueRef = useRef<number[]>([]);
+  const isMysqlView = String(monitorObjectName || '').toLowerCase() === 'mysql';
+  const activeTimeValues = externalTimeValues || timeValues;
+  const activeTimeDefaultValue = externalTimeDefaultValue || timeDefaultValue;
+  const activeFrequence = typeof externalFrequence === 'number' ? externalFrequence : frequence;
+
+  const getDisplayName = (item: { name?: string; display_name?: string }) => {
+    const displayName = item.display_name || item.name || '--';
+    if (!isMysqlView) {
+      return displayName;
+    }
+    return MYSQL_METRIC_NAME_MAP[item.name || ''] || MYSQL_GROUP_NAME_MAP[displayName] || normalizeMysqlDisplayName(displayName);
+  };
 
   const cancelRequest = (metricId: number) => {
     const abortController = activeRequestsRef.current.get(metricId);
@@ -148,17 +227,17 @@ const MetricViews: React.FC<ViewDetailProps> = ({
 
   useEffect(() => {
     clearTimer();
-    if (frequence > 0) {
+    if (activeFrequence > 0) {
       timerRef.current = setInterval(() => {
         handleSearch('timer');
-      }, frequence);
+      }, activeFrequence);
     }
     return () => clearTimer();
-  }, [frequence, timeValues, metricId, activeTab]);
+  }, [activeFrequence, activeTimeValues, metricId, activeTab]);
 
   useEffect(() => {
     handleSearch('refresh');
-  }, [timeValues]);
+  }, [activeTimeValues]);
 
   // 组件卸载时取消所有请求
   useEffect(() => {
@@ -212,6 +291,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
         .then((res) => {
           const groupData = res[0].map((item: GroupInfo) => ({
             ...item,
+            display_name: getDisplayName(item),
             isLoading: false,
             child: []
           }));
@@ -223,6 +303,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
             if (target) {
               target.child.push({
                 ...metric,
+                display_name: getDisplayName(metric),
                 viewData: []
               });
             }
@@ -300,7 +381,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       ),
       source_unit: item.unit || ''
     };
-    const recentTimeRange = getRecentTimeRange(timeValues);
+    const recentTimeRange = getRecentTimeRange(activeTimeValues);
     const startTime = recentTimeRange.at(0);
     const endTime = recentTimeRange.at(1);
     const MAX_POINTS = 100;
@@ -478,6 +559,19 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (externalRefreshSignal === undefined) {
+      return;
+    }
+
+    if (lastExternalRefreshSignalRef.current === externalRefreshSignal) {
+      return;
+    }
+
+    lastExternalRefreshSignalRef.current = externalRefreshSignal;
+    handleSearch('refresh');
+  }, [externalRefreshSignal]);
+
   const handleMetricVisible = useCallback(
     (metric: MetricItem) => {
       fetchSingleMetricData(metric);
@@ -597,6 +691,11 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     // 清空所有指标数据，但保留分组结构和当前筛选状态
     clearAllMetricData();
 
+    if (externalTimeValues && onExternalXRangeChange) {
+      onExternalXRangeChange(arr);
+      return;
+    }
+
     setTimeDefaultValue((pre) => ({
       ...pre,
       rangePickerVaule: arr,
@@ -661,12 +760,14 @@ const MetricViews: React.FC<ViewDetailProps> = ({
           }))}
           onChange={handleMetricIdChange}
         ></Select>
-        <TimeSelector
-          defaultValue={timeDefaultValue}
-          onChange={onTimeChange}
-          onFrequenceChange={onFrequenceChange}
-          onRefresh={onRefresh}
-        />
+        {!hideTimeSelector ? (
+          <TimeSelector
+            defaultValue={activeTimeDefaultValue}
+            onChange={onTimeChange}
+            onFrequenceChange={onFrequenceChange}
+            onRefresh={onRefresh}
+          />
+        ) : null}
       </div>
       <div className="groupList h-[calc(100vh-240px)] overflow-y-auto">
         <Spin spinning={loading}>

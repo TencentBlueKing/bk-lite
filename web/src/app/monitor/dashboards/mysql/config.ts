@@ -62,7 +62,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_process_list_threads_idle',
-    display_name: 'Sleep 线程数',
+    display_name: '空闲线程数',
     description: '来自 process list 的 idle 线程数量。',
     unit: 'counts',
     query: 'max by (instance_id) (mysql_process_list_threads_idle{__$labels__})',
@@ -70,7 +70,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_process_list_threads_executing',
-    display_name: 'Query 线程数',
+    display_name: '执行线程数',
     description: '来自 process list 的 executing 线程数量。',
     unit: 'counts',
     query: 'max by (instance_id) (mysql_process_list_threads_executing{__$labels__})',
@@ -78,7 +78,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_process_list_threads_sending_data',
-    display_name: 'Sending data 线程数',
+    display_name: '发送数据线程数',
     description: '来自 process list 的 sending data 线程数量。',
     unit: 'counts',
     query: 'max by (instance_id) (mysql_process_list_threads_sending_data{__$labels__})',
@@ -86,7 +86,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_process_list_threads_waiting_for_lock',
-    display_name: 'Locked 线程数',
+    display_name: '锁等待线程数',
     description: '来自 process list 的 waiting for lock 线程数量。',
     unit: 'counts',
     query: 'max by (instance_id) (mysql_process_list_threads_waiting_for_lock{__$labels__})',
@@ -94,7 +94,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_queries_rate',
-    display_name: 'QPS (Queries)',
+    display_name: '查询吞吐速率',
     description: '整体查询吞吐量，用于评估总访问压力。',
     unit: 'cps',
     query: 'rate(mysql_queries{__$labels__}[5m])',
@@ -102,7 +102,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_questions_rate',
-    display_name: 'Questions 速率',
+    display_name: '请求语句速率',
     description: '客户端发起语句速率，衡量入口请求压力。',
     unit: 'cps',
     query: 'rate(mysql_questions{__$labels__}[5m])',
@@ -118,7 +118,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_com_select_rate',
-    display_name: 'SELECT 速率',
+    display_name: '查询语句速率',
     description: '读请求速率，反映查询读负载。',
     unit: 'cps',
     query: 'rate(mysql_com_select{__$labels__}[5m])',
@@ -126,7 +126,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_com_insert_rate',
-    display_name: 'INSERT 速率',
+    display_name: '插入语句速率',
     description: '写入请求速率。',
     unit: 'cps',
     query: 'rate(mysql_com_insert{__$labels__}[5m])',
@@ -134,7 +134,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_com_update_rate',
-    display_name: 'UPDATE 速率',
+    display_name: '更新语句速率',
     description: '更新请求速率。',
     unit: 'cps',
     query: 'rate(mysql_com_update{__$labels__}[5m])',
@@ -142,7 +142,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_com_delete_rate',
-    display_name: 'DELETE 速率',
+    display_name: '删除语句速率',
     description: '删除请求速率。',
     unit: 'cps',
     query: 'rate(mysql_com_delete{__$labels__}[5m])',
@@ -166,7 +166,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_innodb_data_reads_rate',
-    display_name: 'InnoDB 读 IOPS',
+    display_name: 'InnoDB 物理读速率',
     description: 'InnoDB 物理读操作速率。',
     unit: 'ops',
     query: 'rate(mysql_innodb_data_reads{__$labels__}[5m])',
@@ -174,7 +174,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_innodb_data_writes_rate',
-    display_name: 'InnoDB 写 IOPS',
+    display_name: 'InnoDB 物理写速率',
     description: 'InnoDB 物理写操作速率。',
     unit: 'ops',
     query: 'rate(mysql_innodb_data_writes{__$labels__}[5m])',
@@ -182,7 +182,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_innodb_os_log_fsyncs_rate',
-    display_name: 'Redo Fsync 速率',
+    display_name: 'Redo 刷盘',
     description: 'Redo 日志刷盘频率，反映事务提交压力。',
     unit: 'ops',
     query: 'rate(mysql_innodb_os_log_fsyncs{__$labels__}[5m])',
@@ -190,7 +190,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_innodb_buffer_pool_read_requests_rate',
-    display_name: 'Buffer Pool 读请求',
+    display_name: '缓冲池读请求速率',
     description: '逻辑读请求速率，衡量缓存读取压力。',
     unit: 'cps',
     query: 'rate(mysql_innodb_buffer_pool_read_requests{__$labels__}[5m])',
@@ -199,14 +199,14 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   {
     name: 'mysql_innodb_buffer_pool_reads_rate',
     display_name: '磁盘读取速率',
-    description: '需要从磁盘读取的 Buffer Pool miss 速率。',
+    description: '需要从磁盘读取的缓冲池未命中速率。',
     unit: 'cps',
     query: 'rate(mysql_innodb_buffer_pool_reads{__$labels__}[5m])',
     color: '#ff4d4f'
   },
   {
     name: 'mysql_buffer_pool_hit_ratio',
-    display_name: 'Buffer Pool 命中率',
+    display_name: '缓冲池命中率',
     description: '逻辑读由缓存命中的比例。',
     unit: 'percent',
     query:
@@ -215,8 +215,8 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_buffer_pool_used_ratio',
-    display_name: 'Buffer Pool 使用率',
-    description: 'Buffer Pool 已使用页占比。',
+    display_name: '缓冲池使用率',
+    description: '缓冲池已使用页占比。',
     unit: 'percent',
     query:
       '100 * (mysql_innodb_buffer_pool_pages_total{__$labels__} - mysql_innodb_buffer_pool_pages_free{__$labels__}) / clamp_min(mysql_innodb_buffer_pool_pages_total{__$labels__}, 1)',
@@ -225,7 +225,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   {
     name: 'mysql_buffer_pool_dirty_ratio',
     display_name: '脏页占比',
-    description: '脏页页数占 Buffer Pool 总页数的比例。',
+    description: '脏页页数占缓冲池总页数的比例。',
     unit: 'percent',
     query:
       '100 * mysql_innodb_buffer_pool_pages_dirty{__$labels__} / clamp_min(mysql_innodb_buffer_pool_pages_total{__$labels__}, 1)',
@@ -233,8 +233,8 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_innodb_buffer_pool_pages_total',
-    display_name: 'Buffer Pool 总页数',
-    description: 'Buffer Pool 总页数。',
+    display_name: '缓冲池总页数',
+    description: '缓冲池总页数。',
     unit: 'counts',
     query: 'mysql_innodb_buffer_pool_pages_total{__$labels__}',
     color: '#597ef7'
@@ -250,7 +250,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   {
     name: 'mysql_innodb_buffer_pool_pages_free',
     display_name: '空闲页数',
-    description: 'Buffer Pool 空闲页数。',
+    description: '缓冲池空闲页数。',
     unit: 'counts',
     query: 'mysql_innodb_buffer_pool_pages_free{__$labels__}',
     color: '#73d13d'
@@ -330,24 +330,24 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_key_reads_rate',
-    display_name: 'Key Cache 磁盘读取速率',
-    description: 'MyISAM Key Cache 从磁盘读取键块的速率。',
+    display_name: '键缓存磁盘读取速率',
+    description: 'MyISAM 键缓存从磁盘读取键块的速率。',
     unit: 'cps',
     query: 'rate(mysql_key_reads{__$labels__}[5m])',
     color: '#7f56d9'
   },
   {
     name: 'mysql_key_read_requests_rate',
-    display_name: 'Key Cache 读取请求速率',
-    description: 'MyISAM Key Cache 逻辑读取请求速率。',
+    display_name: '键缓存读取请求速率',
+    description: 'MyISAM 键缓存逻辑读取请求速率。',
     unit: 'cps',
     query: 'rate(mysql_key_read_requests{__$labels__}[5m])',
     color: '#9254de'
   },
   {
     name: 'mysql_key_cache_hit_ratio',
-    display_name: 'Key Cache 命中率',
-    description: 'MyISAM Key Cache 命中率。',
+    display_name: '键缓存命中率',
+    description: 'MyISAM 键缓存命中率。',
     unit: 'percent',
     query:
       '100 * (1 - rate(mysql_key_reads{__$labels__}[5m]) / clamp_min(rate(mysql_key_read_requests{__$labels__}[5m]), 1e-6))',
@@ -355,9 +355,9 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_variables_innodb_buffer_pool_size',
-    display_name: 'Buffer Pool 配置大小',
+    display_name: '缓冲池配置大小',
     description: 'innodb_buffer_pool_size 配置值，用于衡量缓存容量基线。',
-    unit: 'counts',
+    unit: 'bytes',
     query: 'mysql_variables_innodb_buffer_pool_size{__$labels__}',
     color: '#6f7f95'
   },
@@ -390,7 +390,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     name: 'mysql_variables_tmp_table_size',
     display_name: '临时表内存阈值',
     description: 'tmp_table_size 配置值，用于判断临时表内存上限。',
-    unit: 'counts',
+    unit: 'bytes',
     query: 'mysql_variables_tmp_table_size{__$labels__}',
     color: '#6f7f95'
   },
@@ -398,13 +398,13 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     name: 'mysql_variables_max_heap_table_size',
     display_name: '堆临时表内存阈值',
     description: 'max_heap_table_size 配置值，用于判断内存临时表容量上限。',
-    unit: 'counts',
+    unit: 'bytes',
     query: 'mysql_variables_max_heap_table_size{__$labels__}',
     color: '#9aa9bf'
   },
   {
     name: 'mysql_variables_read_only',
-    display_name: 'Read Only',
+    display_name: '只读状态',
     description: '实例 read_only 配置值，通常 1 表示只读。',
     unit: 'counts',
     query: 'max by (instance_id) (mysql_variables_read_only{__$labels__})',
@@ -412,7 +412,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_variables_super_read_only',
-    display_name: 'Super Read Only',
+    display_name: '超级只读状态',
     description: '实例 super_read_only 配置值，通常 1 表示超级只读。',
     unit: 'counts',
     query: 'max by (instance_id) (mysql_variables_super_read_only{__$labels__})',
@@ -420,7 +420,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_variables_log_bin',
-    display_name: 'Log Bin',
+    display_name: '二进制日志状态',
     description: '实例 log_bin 配置值，通常 1 表示开启 binlog。',
     unit: 'counts',
     query: 'max by (instance_id) (mysql_variables_log_bin{__$labels__})',
@@ -428,7 +428,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_variables_log_slave_updates',
-    display_name: 'Log Slave Updates',
+    display_name: '复制回放写入日志状态',
     description: '实例 log_slave_updates 配置值，通常 1 表示记录复制回放写入。',
     unit: 'counts',
     query: 'max by (instance_id) (mysql_variables_log_slave_updates{__$labels__})',
@@ -452,11 +452,27 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     color: '#ff4d4f'
   },
   {
+    name: 'mysql_aborted_connects_rate',
+    display_name: '中断连接速率',
+    description: '连接尝试失败速率。',
+    unit: 'cps',
+    query: 'rate(mysql_aborted_connects{__$labels__}[5m])',
+    color: '#ff4d4f'
+  },
+  {
     name: 'mysql_aborted_clients',
     display_name: '异常断开客户端数',
     description: '客户端异常断开累计值。',
     unit: 'counts',
     query: 'mysql_aborted_clients{__$labels__}',
+    color: '#ff7875'
+  },
+  {
+    name: 'mysql_aborted_clients_rate',
+    display_name: '异常断开客户端速率',
+    description: '客户端异常断开速率。',
+    unit: 'cps',
+    query: 'rate(mysql_aborted_clients{__$labels__}[5m])',
     color: '#ff7875'
   },
   {
@@ -500,6 +516,14 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     color: '#ff4d4f'
   },
   {
+    name: 'mysql_connection_errors_max_connections_rate',
+    display_name: '连接上限错误速率',
+    description: '因达到 max_connections 导致的拒绝连接速率。',
+    unit: 'cps',
+    query: 'rate(mysql_connection_errors_max_connections{__$labels__}[5m])',
+    color: '#ff4d4f'
+  },
+  {
     name: 'mysql_connection_errors_peer_address',
     display_name: '对端地址连接错误数',
     description: '因对端地址非法或被拒绝导致的连接失败累计值。',
@@ -525,8 +549,8 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
   },
   {
     name: 'mysql_innodb_data_fsyncs_rate',
-    display_name: 'InnoDB 数据文件 Fsync 速率',
-    description: 'InnoDB 数据文件执行 fsync 的速率。',
+    display_name: 'InnoDB 数据文件刷盘速率',
+    description: 'InnoDB 数据文件执行刷盘的速率。',
     unit: 'ops',
     query: 'rate(mysql_innodb_data_fsyncs{__$labels__}[5m])',
     color: '#597ef7'
@@ -567,9 +591,12 @@ export const DASHBOARD_FALLBACK_GROUPS: Record<string, string> = {
   mysql_variables_max_connections: 'ConnStatus',
   mysql_max_used_connections: 'ConnStatus',
   mysql_aborted_connects: 'ConnStatus',
+  mysql_aborted_connects_rate: 'ConnStatus',
   mysql_aborted_clients: 'ConnStatus',
+  mysql_aborted_clients_rate: 'ConnStatus',
   mysql_connection_errors_internal: 'ConnStatus',
   mysql_connection_errors_max_connections: 'ConnStatus',
+  mysql_connection_errors_max_connections_rate: 'ConnStatus',
   mysql_connection_errors_peer_address: 'ConnStatus',
   mysql_connection_errors_select: 'ConnStatus',
   mysql_connection_errors_tcpwrap: 'ConnStatus',
@@ -633,7 +660,7 @@ export const TREND_LEGENDS: Record<string, TrendLegendItem[]> = {
   innodb: [
     { label: 'InnoDB 读 IOPS', color: '#2f6bff', primary: true },
     { label: 'InnoDB 写 IOPS', color: '#27c274' },
-    { label: 'Redo 刷盘速率', color: '#ff8a1f' }
+    { label: 'Redo 刷盘', color: '#ff8a1f' }
   ],
   network: [
     { label: '接收速率', color: '#2f6bff', primary: true },

@@ -3,8 +3,11 @@ import {
   ChartProps,
   MetricItem,
   ObjectItem,
-  TableDataItem
+  TableDataItem,
+  TimeSelectorDefaultValue,
+  TimeValuesProps
 } from '@/app/monitor/types';
+import { Dayjs } from 'dayjs';
 
 export interface ViewModalProps {
   monitorObject: React.Key;
@@ -45,6 +48,12 @@ export interface ViewDetailProps {
   monitorObjectName: string;
   idValues: string[];
   instanceName: string;
+  externalTimeValues?: TimeValuesProps;
+  externalTimeDefaultValue?: TimeSelectorDefaultValue;
+  externalFrequence?: number;
+  externalRefreshSignal?: number;
+  hideTimeSelector?: boolean;
+  onExternalXRangeChange?: (range: [Dayjs, Dayjs]) => void;
 }
 
 export interface ViewInstanceSearchProps {
