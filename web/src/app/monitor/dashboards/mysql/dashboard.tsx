@@ -184,6 +184,25 @@ const getLatestChartValue = (data: ChartData[]) => {
   return typeof latestValue === 'number' ? latestValue : 0;
 };
 
+const getLatestChartSeriesTotal = (data: ChartData[]) => {
+  const latestPoint = [...data]
+    .filter((point) => Number.isFinite(Number(point.time)))
+    .sort((a, b) => Number(a.time) - Number(b.time))
+    .at(-1);
+
+  if (!latestPoint) {
+    return 0;
+  }
+
+  return Object.entries(latestPoint).reduce((sum, [key, value]) => {
+    if (!/^value\d+$/.test(key) || typeof value !== 'number' || !Number.isFinite(value)) {
+      return sum;
+    }
+
+    return sum + value;
+  }, 0);
+};
+
 const buildPreviousPeriodTimeValues = (timeValues: TimeValuesProps): TimeValuesProps | null => {
   const [startTime, endTime] = getRecentTimeRange(timeValues);
 
@@ -922,6 +941,11 @@ export default function MysqlDashboardPage() {
     return getLatestChartValue(target?.viewData || []);
   };
 
+  const getLatestTotal = (name: string) => {
+    const target = metricMap[name];
+    return getLatestChartSeriesTotal(target?.viewData || []);
+  };
+
   const hasMetricData = (name: string) => {
     const target = metricMap[name];
     return target?.loadState === 'success' && Array.isArray(target.viewData) && target.viewData.length > 0;
@@ -938,10 +962,6 @@ export default function MysqlDashboardPage() {
   const hitValue = getLatest('mysql_buffer_pool_hit_ratio');
   const uptimeValue = getLatest('mysql_uptime');
   const threadsConnectedValue = getLatest('mysql_threads_connected');
-  const threadSleepValue = getLatest('mysql_process_list_threads_idle');
-  const threadQueryValue = getLatest('mysql_process_list_threads_executing');
-  const threadSendingDataValue = getLatest('mysql_process_list_threads_sending_data');
-  const threadLockedValue = getLatest('mysql_process_list_threads_waiting_for_lock');
   const maxConnectionsValue = getLatest('mysql_variables_max_connections');
   const bpUsedValue = getLatest('mysql_buffer_pool_used_ratio');
   const bpDirtyValue = getLatest('mysql_buffer_pool_dirty_ratio');
@@ -1094,12 +1114,13 @@ export default function MysqlDashboardPage() {
   const statementShareChartData = statementShare.filter((item) => item.value > 0);
 
   const totalStatements = statementShare.reduce((sum, item) => sum + item.value, 0);
-  const threadSleepCount = hasMetricData('mysql_process_list_threads_idle') ? Math.max(threadSleepValue, 0) : 0;
-  const threadQueryCount = hasMetricData('mysql_process_list_threads_executing') ? Math.max(threadQueryValue, 0) : 0;
-  const threadSendingCount = hasMetricData('mysql_process_list_threads_sending_data') ? Math.max(threadSendingDataValue, 0) : 0;
-  const threadLockedCount = hasMetricData('mysql_process_list_threads_waiting_for_lock') ? Math.max(threadLockedValue, 0) : 0;
+  const threadConnectedCount = hasMetricData('mysql_threads_connected') ? Math.max(getLatestTotal('mysql_threads_connected'), 0) : 0;
+  const threadSleepCount = hasMetricData('mysql_process_list_threads_idle') ? Math.max(getLatestTotal('mysql_process_list_threads_idle'), 0) : 0;
+  const threadQueryCount = hasMetricData('mysql_process_list_threads_executing') ? Math.max(getLatestTotal('mysql_process_list_threads_executing'), 0) : 0;
+  const threadSendingCount = hasMetricData('mysql_process_list_threads_sending_data') ? Math.max(getLatestTotal('mysql_process_list_threads_sending_data'), 0) : 0;
+  const threadLockedCount = hasMetricData('mysql_process_list_threads_waiting_for_lock') ? Math.max(getLatestTotal('mysql_process_list_threads_waiting_for_lock'), 0) : 0;
   const threadKnownStateCount = threadSleepCount + threadQueryCount + threadSendingCount + threadLockedCount;
-  const threadDistributionTotal = Math.max(threadsConnectedValue, threadKnownStateCount);
+  const threadDistributionTotal = Math.max(threadConnectedCount, threadKnownStateCount);
   const threadOtherValue = Math.max(
     threadDistributionTotal - threadKnownStateCount,
     0
@@ -1108,7 +1129,7 @@ export default function MysqlDashboardPage() {
     {
       name: 'Sleep',
       value: threadSleepCount,
-      color: '#6f86a8'
+      color: '#2f6bff'
     },
     {
       name: 'Query',
@@ -1128,7 +1149,7 @@ export default function MysqlDashboardPage() {
     {
       name: '其他',
       value: threadOtherValue,
-      color: '#7f8da3'
+      color: '#b8c4d4'
     }
   ];
   const threadShareChartData = threadShare.filter((item) => item.value > 0);
@@ -1190,6 +1211,16 @@ export default function MysqlDashboardPage() {
     logBin: logBinValue,
     logSlaveUpdates: logSlaveUpdatesValue
   });
+  const instanceMetaItems = [
+    instanceIdText ? <span key="instance-id" className={styles.instanceMetaInline}>{instanceIdText}</span> : null,
+    <span key="object-name" className={styles.instanceMetaInline}>{objectDisplayText}</span>,
+    <span key="identity" className={styles.instanceIdentityGroup}>
+      <span className={styles.identityPill}>部署: {mysqlIdentity.deployment}</span>
+      <span className={styles.identityPill}>身份: {mysqlIdentity.role}</span>
+      <span className={styles.identityPill}>复制: {mysqlIdentity.replication}</span>
+    </span>,
+    <span key="timezone" className={styles.instanceMetaInline}>时区: Asia/Shanghai</span>
+  ].filter(Boolean) as React.ReactNode[];
   const replicationApplicable = mysqlIdentity.role === '从库' || hasReplicationData;
   const renderFlowValue = (name: string, value: string, unit = '') => (hasMetricData(name) ? `${value}${unit}` : '--');
   const requestFlowNodes = [
@@ -1208,12 +1239,12 @@ export default function MysqlDashboardPage() {
     },
     {
       title: 'MySQL 实例',
-      subTitle: mysqlIdentity.role,
+      subTitle: '实例信息',
       icon: <DatabaseOutlined />,
       metrics: [
         { label: '部署', value: mysqlIdentity.deployment },
+        { label: '身份', value: mysqlIdentity.role },
         { label: '运行时长', value: uptimeDisplay },
-        { label: '最大连接', value: hasMetricData('mysql_variables_max_connections') ? maxConnectionsValue.toFixed(0) : '--' }
       ]
     },
     {
@@ -1234,7 +1265,7 @@ export default function MysqlDashboardPage() {
       subTitle: '缓存与落盘入口',
       icon: <HddOutlined />,
       metrics: [
-        { label: 'Buffer Pool 命中率', value: `${hitCardDisplay.value}${hitCardDisplay.unit}` },
+        { label: '缓冲池命中率', value: `${hitCardDisplay.value}${hitCardDisplay.unit}` },
         { label: '磁盘 I/O', value: renderFlowValue('mysql_innodb_data_writes_rate', dataWriteValue.toFixed(1), '/s') },
         { label: '脏页比例', value: renderFlowValue('mysql_buffer_pool_dirty_ratio', bpDirtyValue.toFixed(1), '%') }
       ]
@@ -1363,21 +1394,12 @@ export default function MysqlDashboardPage() {
               <div className={styles.instanceInfo}>
                 <div className={styles.meta}>
                   <span className={styles.instanceName}>{primaryInstanceText}</span>
-                  {instanceIdText ? (
-                    <>
+                  {instanceMetaItems.map((item, index) => (
+                    <React.Fragment key={index}>
                       <span className={styles.instanceMetaDivider}>|</span>
-                      <span className={styles.instanceMetaInline}>{instanceIdText}</span>
-                    </>
-                  ) : null}
-                  <span className={styles.instanceMetaDivider}>|</span>
-                  <span className={styles.instanceMetaInline}>{objectDisplayText}</span>
-                  <span className={styles.instanceIdentityGroup}>
-                    <span className={styles.identityPill}>部署: {mysqlIdentity.deployment}</span>
-                    <span className={styles.identityPill}>身份: {mysqlIdentity.role}</span>
-                    <span className={styles.identityPill}>复制: {mysqlIdentity.replication}</span>
-                  </span>
-                  <span className={styles.instanceMetaDivider}>|</span>
-                  <span className={styles.instanceMetaInline}>时区: Asia/Shanghai</span>
+                      {item}
+                    </React.Fragment>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1500,112 +1522,6 @@ export default function MysqlDashboardPage() {
                     />
                   </div>
 
-                  <div className={styles.mainTrendGrid}>
-                    <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
-                  <div className={styles.panelHeader}>
-                    <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}>QPS 趋势</h3>
-                      <div className={styles.panelSubTitle}>总查询吞吐</div>
-                      <div className={styles.chartLegend}>
-                        {TREND_LEGENDS.qps.slice(0, 1).map((item) => (
-                          <span className={styles.chartLegendItem} key={item.label}>
-                            <span className={styles.chartLegendDot} style={{ background: item.color }} />
-                            {item.label}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <div className={styles.chartWrap}>
-                    <LineChart
-                      data={qpsTrendData}
-                        metric={buildMetricItem(metricMap.mysql_queries_rate || dashboardMetrics[0])}
-                      unit="cps"
-                      xAxisTimeFormat="HH:mm"
-                       leftAxisWidthOverride={44}
-                      seriesStyles={TREND_LEGENDS.qps.slice(0, 1).map((item) => ({
-                        color: item.color,
-                        fillOpacity: 0.09,
-                        strokeOpacity: 1,
-                        strokeWidth: 2.8,
-                        unit: 'cps'
-                      }))}
-                      onXRangeChange={onXRangeChange}
-                    />
-                  </div>
-                </div>
-
-                    <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
-                  <div className={styles.panelHeader}>
-                    <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}>慢查询趋势</h3>
-                      <div className={styles.panelSubTitle}>每分钟慢 SQL</div>
-                      <div className={styles.chartLegend}>
-                        {TREND_LEGENDS.qps.slice(1, 2).map((item) => (
-                          <span className={styles.chartLegendItem} key={item.label}>
-                            <span className={styles.chartLegendDot} style={{ background: item.color }} />
-                            {item.label}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <div className={styles.chartWrap}>
-                    <LineChart
-                      data={slowQueryTrendData}
-                        metric={buildMetricItem(metricMap.mysql_slow_queries_rate || dashboardMetrics[0])}
-                      unit="permin"
-                      xAxisTimeFormat="HH:mm"
-                       leftAxisWidthOverride={44}
-                      seriesStyles={TREND_LEGENDS.qps.slice(1, 2).map((item) => ({
-                        color: item.color,
-                        fillOpacity: 0.08,
-                        strokeOpacity: 1,
-                        strokeWidth: 2.8,
-                        unit: 'permin'
-                      }))}
-                      onXRangeChange={onXRangeChange}
-                    />
-                  </div>
-                </div>
-
-                    <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
-                  <div className={styles.panelHeader}>
-                    <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}>连接与线程趋势</h3>
-                      <div className={styles.panelSubTitle}>连接总量与执行线程</div>
-                      <div className={styles.chartLegend}>
-                        {TREND_LEGENDS.connection.map((item) => (
-                          <span className={styles.chartLegendItem} key={item.label}>
-                            <span
-                              className={`${styles.chartLegendDot} ${item.dashed ? styles.chartLegendDash : ''}`}
-                              style={{ background: item.dashed ? 'transparent' : item.color, borderColor: item.color }}
-                            />
-                            {item.label}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <div className={styles.chartWrap}>
-                    <LineChart
-                      data={connectionTrendData}
-                        metric={buildMetricItem(metricMap.mysql_threads_connected || dashboardMetrics[0])}
-                      unit="counts"
-                      xAxisTimeFormat="HH:mm"
-                      leftAxisWidthOverride={44}
-                      seriesStyles={TREND_LEGENDS.connection.map((item) => ({
-                        color: item.color,
-                        fillOpacity: item.primary ? 0.08 : 0.03,
-                        strokeOpacity: item.primary ? 1 : 0.68,
-                        strokeWidth: item.primary ? 2.8 : 2.2
-                      }))}
-                      onXRangeChange={onXRangeChange}
-                    />
-                  </div>
-                </div>
-                  </div>
-
                   <div className={`${styles.panel} ${styles.dataFlowPanel}`}>
                     <div className={styles.panelHeader}>
                       <div className={styles.panelHeading}>
@@ -1643,9 +1559,23 @@ export default function MysqlDashboardPage() {
                       <div className={`${styles.mysqlFlowScene} ${styles.mysqlInnoScene}`}>
                         <div className={styles.innodbBox}>
                         <div className={styles.innodbBoxTitle}>InnoDB 内部</div>
+                        <div className={`${styles.mysqlFlowLegend} ${styles.mysqlFlowLegendInno}`}>
+                          <span>
+                            <i className={styles.mysqlLegendWrite} />
+                            写入路径
+                          </span>
+                          <span>
+                            <i className={styles.mysqlLegendPersist} />
+                            数据落盘
+                          </span>
+                          <span>
+                            <i className={styles.mysqlLegendBackground} />
+                            后台 / 异步路径
+                          </span>
+                        </div>
                         <div className={styles.innodbInner}>
                           <div className={styles.innodbBufferCard}>
-                            <div className={styles.innodbCardTitle}>Buffer Pool</div>
+                            <div className={styles.innodbCardTitle}>缓冲池</div>
                             <div className={styles.innodbBufferGrid}>
                               {Array.from({ length: bufferFlowCellCount }).map((_, index) => (
                                 <span
@@ -1679,11 +1609,11 @@ export default function MysqlDashboardPage() {
                           <div className={styles.innodbLogCards}>
                             <div className={styles.innodbColumnTitle}>日志与事务</div>
                             <div className={styles.innodbLogCard}>
-                              <span>Redo Log Buffer</span>
+                              <span>重做日志缓冲</span>
                               <strong>{renderFlowValue('mysql_innodb_os_log_fsyncs_rate', fsyncValue.toFixed(1), '/s')}</strong>
                             </div>
                             <div className={styles.innodbLogCard}>
-                              <span>Undo Log / 临时表</span>
+                              <span>回滚日志 / 临时表</span>
                               <strong>{renderFlowValue('mysql_created_tmp_tables_rate', (tmpTotalRate * 60).toFixed(tmpTotalRate * 60 >= 10 ? 0 : 1), '/min')}</strong>
                             </div>
                           </div>
@@ -1697,12 +1627,12 @@ export default function MysqlDashboardPage() {
                           <div className={styles.innodbDiskStack}>
                             <div className={styles.innodbColumnTitle}>磁盘持久化</div>
                             <div className={styles.innodbDiskCard}>
-                              <span>Data File / ibd</span>
+                              <span>数据文件</span>
                               <div className={styles.mysqlNodeMetric}><span>读 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_reads_rate', dataReadValue.toFixed(1), '/s')}</strong></div>
                               <div className={styles.mysqlNodeMetric}><span>写 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_writes_rate', dataWriteValue.toFixed(1), '/s')}</strong></div>
                             </div>
                             <div className={styles.innodbDiskCard}>
-                              <span>Redo Log / ib_logfile</span>
+                              <span>重做日志文件</span>
                               <div className={styles.mysqlNodeMetric}><span>刷盘</span><strong>{renderFlowValue('mysql_innodb_os_log_fsyncs_rate', fsyncValue.toFixed(1), '/s')}</strong></div>
                               <div className={styles.mysqlNodeMetric}><span>复制延迟</span><strong>{replicationApplicable ? renderFlowValue('mysql_slave_seconds_behind_master', replicationDelayDisplay.value, replicationDelayDisplay.unit || 's') : '不适用'}</strong></div>
                             </div>
@@ -1711,20 +1641,119 @@ export default function MysqlDashboardPage() {
                       </div>
                       </div>
 
-                      <div className={styles.mysqlFlowLegend}>
-                        <span><i className={styles.mysqlLegendRequest} /> 请求流向</span>
-                        <span><i className={styles.mysqlLegendWrite} /> 写入路径</span>
-                        <span><i className={styles.mysqlLegendBackground} /> 后台/异步路径</span>
-                        <span><i className={styles.mysqlLegendPersist} /> 数据落盘</span>
-                      </div>
                       <div className={styles.mysqlFlowKpis}>
-                        <div><span>部署 / 身份</span><strong>{mysqlIdentity.deployment} / {mysqlIdentity.role}</strong></div>
                         <div><span>读 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_reads_rate', dataReadValue.toFixed(1), '/s')}</strong></div>
                         <div><span>写 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_writes_rate', dataWriteValue.toFixed(1), '/s')}</strong></div>
                         <div><span>Redo 刷盘</span><strong>{renderFlowValue('mysql_innodb_os_log_fsyncs_rate', fsyncValue.toFixed(1), '/s')}</strong></div>
                         <div><span>磁盘临时表</span><strong>{renderFlowValue('mysql_created_tmp_disk_tables_rate', (tmpDiskRate * 60).toFixed(tmpDiskRate * 60 >= 10 ? 0 : 1), '/min')}</strong></div>
                         <div><span>脏页比例</span><strong>{renderFlowValue('mysql_buffer_pool_dirty_ratio', bpDirtyValue.toFixed(1), '%')}</strong></div>
                         <div><span>锁等待</span><strong>{renderFlowValue('mysql_innodb_row_lock_waits_rate', (lockWaitRate * 60).toFixed(lockWaitRate * 60 >= 10 ? 0 : 1), '/min')}</strong></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={styles.mainTrendGrid}>
+                    <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
+                      <div className={styles.panelHeader}>
+                        <div className={styles.panelHeading}>
+                          <h3 className={styles.panelTitle}>QPS 趋势</h3>
+                          <div className={styles.panelSubTitle}>总查询吞吐</div>
+                          <div className={styles.chartLegend}>
+                            {TREND_LEGENDS.qps.slice(0, 1).map((item) => (
+                              <span className={styles.chartLegendItem} key={item.label}>
+                                <span className={styles.chartLegendDot} style={{ background: item.color }} />
+                                {item.label}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <div className={styles.chartWrap}>
+                        <LineChart
+                          data={qpsTrendData}
+                          metric={buildMetricItem(metricMap.mysql_queries_rate || dashboardMetrics[0])}
+                          unit="cps"
+                          xAxisTimeFormat="HH:mm"
+                          leftAxisWidthOverride={44}
+                          seriesStyles={TREND_LEGENDS.qps.slice(0, 1).map((item) => ({
+                            color: item.color,
+                            fillOpacity: 0.09,
+                            strokeOpacity: 1,
+                            strokeWidth: 2.8,
+                            unit: 'cps'
+                          }))}
+                          onXRangeChange={onXRangeChange}
+                        />
+                      </div>
+                    </div>
+
+                    <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
+                      <div className={styles.panelHeader}>
+                        <div className={styles.panelHeading}>
+                          <h3 className={styles.panelTitle}>慢查询趋势</h3>
+                          <div className={styles.panelSubTitle}>每分钟慢 SQL</div>
+                          <div className={styles.chartLegend}>
+                            {TREND_LEGENDS.qps.slice(1, 2).map((item) => (
+                              <span className={styles.chartLegendItem} key={item.label}>
+                                <span className={styles.chartLegendDot} style={{ background: item.color }} />
+                                {item.label}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <div className={styles.chartWrap}>
+                        <LineChart
+                          data={slowQueryTrendData}
+                          metric={buildMetricItem(metricMap.mysql_slow_queries_rate || dashboardMetrics[0])}
+                          unit="permin"
+                          xAxisTimeFormat="HH:mm"
+                          leftAxisWidthOverride={44}
+                          seriesStyles={TREND_LEGENDS.qps.slice(1, 2).map((item) => ({
+                            color: item.color,
+                            fillOpacity: 0.08,
+                            strokeOpacity: 1,
+                            strokeWidth: 2.8,
+                            unit: 'permin'
+                          }))}
+                          onXRangeChange={onXRangeChange}
+                        />
+                      </div>
+                    </div>
+
+                    <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
+                      <div className={styles.panelHeader}>
+                        <div className={styles.panelHeading}>
+                          <h3 className={styles.panelTitle}>连接与线程趋势</h3>
+                          <div className={styles.panelSubTitle}>连接总量与执行线程</div>
+                          <div className={styles.chartLegend}>
+                            {TREND_LEGENDS.connection.map((item) => (
+                              <span className={styles.chartLegendItem} key={item.label}>
+                                <span
+                                  className={`${styles.chartLegendDot} ${item.dashed ? styles.chartLegendDash : ''}`}
+                                  style={{ background: item.dashed ? 'transparent' : item.color, borderColor: item.color }}
+                                />
+                                {item.label}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <div className={styles.chartWrap}>
+                        <LineChart
+                          data={connectionTrendData}
+                          metric={buildMetricItem(metricMap.mysql_threads_connected || dashboardMetrics[0])}
+                          unit="counts"
+                          xAxisTimeFormat="HH:mm"
+                          leftAxisWidthOverride={44}
+                          seriesStyles={TREND_LEGENDS.connection.map((item) => ({
+                            color: item.color,
+                            fillOpacity: item.primary ? 0.08 : 0.03,
+                            strokeOpacity: item.primary ? 1 : 0.68,
+                            strokeWidth: item.primary ? 2.8 : 2.2
+                          }))}
+                          onXRangeChange={onXRangeChange}
+                        />
                       </div>
                     </div>
                   </div>
