@@ -112,12 +112,12 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
   const isCollectDisplay = displaySource === 'collect';
 
   useEffect(() => {
-    if (isCollectDisplay) {
-      setActiveTab((current) => (current === 'relation' ? current : 'raw_data'));
-      return;
+    const tabOrder = ['add', 'update', 'delete', 'relation', 'raw_data'] as const;
+    const firstWithData = tabOrder.find((key) => (detail?.[key]?.count || 0) > 0);
+    if (firstWithData) {
+      setActiveTab(firstWithData);
     }
-    setActiveTab((current) => (current === 'raw_data' ? 'add' : current));
-  }, [isCollectDisplay]);
+  }, [detail]);
 
   const tabMap = useMemo(
     () => ({
@@ -198,26 +198,15 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
   }, [activeTab, t]);
 
   const tabItems = useMemo(() => {
-    if (isCollectDisplay) {
-      return [
-        { key: 'raw_data', label: `${t('Collection.taskDetail.rawData')} (${tabMap.raw_data.count || 0})` },
-        { key: 'add', label: `${t('Collection.syncStatus.add')} (${tabMap.add.count || 0})` },
-        { key: 'update', label: `${t('Collection.syncStatus.update')} (${tabMap.update.count || 0})` },
-        { key: 'delete', label: `${t('Collection.syncStatus.delete')} (${tabMap.delete.count || 0})` },
-        { key: 'relation', label: `${t('Collection.nodeMgmtSync.conflict')} (${tabMap.relation.count || 0})` },
-      ];
-    }
-
-    return [
+    const tabs = [
       { key: 'add', label: `${t('Collection.syncStatus.add')} (${tabMap.add.count || 0})` },
       { key: 'update', label: `${t('Collection.syncStatus.update')} (${tabMap.update.count || 0})` },
       { key: 'delete', label: `${t('Collection.syncStatus.delete')} (${tabMap.delete.count || 0})` },
       { key: 'relation', label: `${t('Collection.nodeMgmtSync.conflict')} (${tabMap.relation.count || 0})` },
       { key: 'raw_data', label: `${t('Collection.taskDetail.rawData')} (${tabMap.raw_data.count || 0})` },
     ];
-  }, [isCollectDisplay, t, tabMap]);
-
-  const resultMessage = displayMessage.message || syncRun?.error_message || '';
+    return tabs;
+  }, [t, tabMap]);
 
   if (!open) {
     return null;
@@ -294,8 +283,6 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
               showIcon
             />
           ) : null}
-
-          {resultMessage ? <Alert type="info" message={resultMessage} showIcon /> : null}
 
           {todoItems.length ? (
             <Alert

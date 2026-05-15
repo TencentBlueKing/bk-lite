@@ -759,9 +759,11 @@ class NodeMgmtSyncService:
                 derived_raw_data.extend(detail[key]["data"])
             detail["raw_data"] = {"data": derived_raw_data, "count": len(derived_raw_data)}
 
-        # 更新 message.all 为实际数据量
         if message["all"] == 0:
             message["all"] = detail["raw_data"]["count"]
+
+        if detail["raw_data"]["count"] > 0 and message.get("message"):
+            message["message"] = ""
 
         latest_collect_task = max(
             collect_tasks,
