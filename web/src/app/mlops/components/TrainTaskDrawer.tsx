@@ -109,7 +109,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
       message.info(t(`mlops-common.downloadStart`));
 
       const response = await fetch(
-        `/api/proxy/mlops/${TRAINJOB_MAP[tagName]}/download_model/${record.run_id}/`,
+        `/api/proxy/mlops/${TRAINJOB_MAP[tagName]}/${selectId}/runs/${record.run_id}/download_model/`,
         {
           method: 'GET',
           headers: {
@@ -189,7 +189,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
             downloadModel={downloadModel}
             deleteRun={handleDeleteRun}
           /> :
-          <TrainTaskDetail activeKey={key} backToList={() => setShowList(true)} metricData={currentDetail} />}
+          (key ? <TrainTaskDetail activeKey={key} trainJobId={selectId} backToList={() => setShowList(true)} metricData={currentDetail} /> : null)}
       </div>
     </Drawer>
   );
