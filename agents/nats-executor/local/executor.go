@@ -11,6 +11,7 @@ import (
 	"nats-executor/logger"
 	"nats-executor/utils"
 	"nats-executor/utils/downloaderr"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -309,6 +310,13 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 		cmd = exec.CommandContext(ctx, "sh", "-c", req.Command)
 	default:
 		cmd = exec.CommandContext(ctx, shell, "-c", req.Command)
+	}
+
+	if len(req.Env) > 0 {
+		cmd.Env = os.Environ()
+		for k, v := range req.Env {
+			cmd.Env = append(cmd.Env, k+"="+v)
+		}
 	}
 
 	startTime := time.Now()
