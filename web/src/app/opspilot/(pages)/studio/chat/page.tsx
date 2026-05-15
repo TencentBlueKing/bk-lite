@@ -176,16 +176,13 @@ const StudioChatPage: React.FC = () => {
     }, 400);
   };
 
-  const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
-    e.stopPropagation();
+  const handleDeleteSession = async (sessionIdToDelete: string) => {
     if (!currentAgent?.node_id) return;
     
     try {
-      await deleteSessionHistory(currentAgent.node_id, sessionId);
-      // 从列表中移除
-      setFunctionList(list => list.filter(item => item.id !== sessionId));
-      // 如果删除的是当前选中的会话，清空选择
-      if (selectedItem === sessionId) {
+      await deleteSessionHistory(currentAgent.node_id, sessionIdToDelete);
+      setFunctionList(list => list.filter(item => item.id !== sessionIdToDelete));
+      if (selectedItem === sessionIdToDelete) {
         setSelectedItem('');
         setSessionId(null);
         setInitialMessages([]);
@@ -300,7 +297,7 @@ const StudioChatPage: React.FC = () => {
                       <Popconfirm
                         title="删除会话"
                         description="确定要删除这个会话吗？删除后无法恢复。"
-                        onConfirm={(e) => handleDeleteSession(e!, item.id)}
+                        onConfirm={() => handleDeleteSession(item.id)}
                         okText="删除"
                         cancelText="取消"
                         okButtonProps={{ danger: true }}

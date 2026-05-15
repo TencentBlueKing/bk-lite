@@ -970,7 +970,7 @@ const ProfessionalCollection: React.FC = () => {
           <div className="flex items-center justify-center py-2">
             <Spin size="small" />
           </div>
-          ) : (
+        ) : (
             <Tabs
               activeKey={selectedCategoryRef.current.categoryId}
               onChange={(key) => handleCategoryChange([key])}
@@ -982,10 +982,10 @@ const ProfessionalCollection: React.FC = () => {
               items={categoryList.map((category) => {
                 return {
                   key: category.id,
-                label: category.name,
-              };
-            })}
-          />
+                  label: category.name,
+                };
+              })}
+            />
         )}
       </div>
 
