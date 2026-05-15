@@ -17,6 +17,7 @@ from apps.alerts.constants.constants import (
     LogAction,
 )
 from apps.alerts.service.base import get_default_notify_params
+from apps.alerts.utils.operator_scope import validate_alert_assignees
 from apps.core.logger import alert_logger as logger
 
 
@@ -143,6 +144,10 @@ class AlertOperator(object):
 
             if not assignee:
                 return {"result": False, "message": "请指定处理人", "data": {}}
+
+            assignee, validation_message = validate_alert_assignees(alert, assignee)
+            if validation_message:
+                return {"result": False, "message": validation_message, "data": {}}
 
             # 更新告警状态和处理人
             alert.status = AlertStatus.PENDING
@@ -297,6 +302,10 @@ class AlertOperator(object):
             if not new_assignee:
                 logger.warning(f"转派操作缺少新处理人信息: alert_id={alert_id}")
                 return {"result": False, "message": "请指定新的处理人", "data": {}}
+
+            new_assignee, validation_message = validate_alert_assignees(alert, new_assignee)
+            if validation_message:
+                return {"result": False, "message": validation_message, "data": {}}
 
             old_assignee = alert.operator.copy()
 

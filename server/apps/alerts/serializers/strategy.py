@@ -8,6 +8,7 @@ from apps.alerts.constants import (
     HeartbeatStatus,
 )
 from apps.alerts.models.alert_operator import AlarmStrategy
+from apps.alerts.utils.util import parse_aggregation_window_size
 
 
 class AlarmStrategySerializer(serializers.ModelSerializer):
@@ -31,12 +32,37 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
 
         if strategy_type == AlarmStrategyType.MISSING_DETECTION:
             attrs = self._validate_missing_detection(attrs)
+        else:
+            attrs = self._validate_aggregation_strategy(attrs)
 
         if self.instance:
             attrs["last_execute_time"] = self.instance.last_execute_time
         else:
             attrs["last_execute_time"] = None
 
+        return attrs
+
+    def _validate_aggregation_strategy(self, attrs):
+        existing_params = {}
+        if self.instance and self.instance.strategy_type != AlarmStrategyType.MISSING_DETECTION:
+            existing_params = dict(self.instance.params or {})
+
+        params = dict(existing_params)
+        params.update(dict(attrs.get("params") or {}))
+        params_errors = {}
+
+        try:
+            normalized_window_size, _ = parse_aggregation_window_size(
+                params.get("window_size")
+            )
+            params["window_size"] = normalized_window_size
+        except ValueError as error:
+            params_errors["window_size"] = str(error)
+
+        if params_errors:
+            raise serializers.ValidationError({"params": params_errors})
+
+        attrs["params"] = params
         return attrs
 
     def _validate_missing_detection(self, attrs):

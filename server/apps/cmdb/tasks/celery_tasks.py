@@ -13,6 +13,7 @@ from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusTy
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.services.collect_tool_service import CollectToolService
 from apps.cmdb.services.subscription_task import SubscriptionTaskService
+from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 from apps.core.logger import cmdb_logger as logger
 
 
@@ -47,9 +48,9 @@ def sync_collect_task(instance_id):
     if instance.exec_status == CollectRunStatusType.NOT_START:
         CollectModels._default_manager.filter(id=instance_id).update(exec_status=CollectRunStatusType.RUNNING)
     # 防止周期触发与延迟补跑重叠导致同一任务并发执行
-    if instance.exec_status == CollectRunStatusType.RUNNING:
-        logger.info("采集任务已在执行中，跳过重复执行 task_id={}".format(instance_id))
-        return
+    # if instance.exec_status == CollectRunStatusType.RUNNING:
+    #     logger.info("采集任务已在执行中，跳过重复执行 task_id={}".format(instance_id))
+    #     return
     # 统一在 Celery 执行入口更新任务开始时间和运行状态
     start_time = now()
     instance.exec_status = CollectRunStatusType.RUNNING
@@ -254,3 +255,14 @@ def full_sync_auto_association_rule_task(model_asst_id: str) -> dict:
 
     logger.info("[AutoRelationRule] start rule full sync, model_asst_id=%s", model_asst_id)
     return AutoRelationRuleReconcileService.full_sync_rule(model_asst_id)
+
+
+@shared_task
+def sync_node_mgmt_hosts() -> dict:
+    data =  NodeMgmtSyncService.trigger_sync()
+    return data
+
+
+@shared_task
+def collect_node_mgmt_hosts() -> dict:
+    return NodeMgmtSyncService.trigger_collect()

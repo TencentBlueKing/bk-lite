@@ -451,3 +451,22 @@ class NodeService:
             return []
 
         return list(Node.objects.filter(id__in=normalized_node_ids).values("id", "name"))
+
+    @staticmethod
+    def get_nodes_by_ids(node_ids):
+        normalized_node_ids = list({str(node_id) for node_id in node_ids if node_id not in (None, "")})
+        if not normalized_node_ids:
+            return []
+
+        nodes = Node.objects.filter(id__in=normalized_node_ids).select_related("cloud_region").prefetch_related("nodeorganization_set")
+        return [
+            {
+                "id": node.id,
+                "name": node.name,
+                "cloud_region_id": node.cloud_region_id,
+                "cloud_region_name": getattr(node.cloud_region, "name", ""),
+                "node_type": node.node_type,
+                "organization_ids": [rel.organization for rel in node.nodeorganization_set.all()],
+            }
+            for node in nodes
+        ]

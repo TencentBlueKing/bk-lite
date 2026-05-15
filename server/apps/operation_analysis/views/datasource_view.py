@@ -2,6 +2,8 @@
 # @File: datasource_view.py
 # @Time: 2025/11/3 15:48
 # @Author: windyzhao
+from django.http import Http404
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -18,6 +20,57 @@ from apps.operation_analysis.serializers.datasource_serializers import (
 )
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
+
+
+def _normalize_downstream_result(result):
+    if isinstance(result, dict) and "result" in result:
+        return result
+    return {"result": True, "data": result, "message": ""}
+
+
+def _build_error_response(detail, status_code, data=None):
+    payload = {
+        "detail": detail,
+    }
+    if data is not None:
+        payload["data"] = data
+    return Response(payload, status=status_code)
+
+
+def _get_downstream_failure_status(result):
+    code = result.get("code")
+    if code is not None:
+        try:
+            normalized_code = int(str(code))
+        except (TypeError, ValueError):
+            normalized_code = None
+        if normalized_code and 400 <= normalized_code <= 599:
+            return normalized_code
+        if normalized_code and 40000 <= normalized_code <= 59999 and normalized_code % 100 == 0:
+            return normalized_code // 100
+
+    message = str(result.get("message") or "").strip()
+    if not message:
+        return status.HTTP_502_BAD_GATEWAY
+
+    if any(keyword in message for keyword in ("无权", "权限", "未授权", "forbidden", "Forbidden")):
+        return status.HTTP_403_FORBIDDEN
+    if any(keyword in message for keyword in ("不存在", "未找到", "not found", "Not Found")):
+        return status.HTTP_404_NOT_FOUND
+    if any(keyword in message for keyword in ("缺少", "不能为空", "必须", "不能", "非法", "格式错误", "参数错误", "无效")):
+        return status.HTTP_400_BAD_REQUEST
+    return status.HTTP_502_BAD_GATEWAY
+
+
+def _classify_runtime_exception(error):
+    message = str(error).strip()
+    if message == "未找到可用的命名空间":
+        return status.HTTP_500_INTERNAL_SERVER_ERROR, "未找到可用命名空间"
+    if "未配置服务器连接" in message:
+        return status.HTTP_500_INTERNAL_SERVER_ERROR, "命名空间未配置连接信息"
+    if "Module not found func" in message:
+        return status.HTTP_500_INTERNAL_SERVER_ERROR, "数据源配置异常"
+    return status.HTTP_500_INTERNAL_SERVER_ERROR, "数据查询失败"
 
 
 class DataSourceTagModelViewSet(ModelViewSet):
@@ -83,12 +136,21 @@ class DataSourceAPIModelViewSet(AuthViewSet):
     @HasPermission("data_source-View")
     @action(detail=False, methods=["post"], url_path=r"get_source_data/(?P<pk>[^/.]+)")
     def get_source_data(self, request, *args, **kwargs):
-        instance = self.get_object()
+        try:
+            instance = self.get_object()
+        except Http404:
+            return _build_error_response(
+                "数据源不存在或已删除",
+                status.HTTP_404_NOT_FOUND,
+            )
 
         # 组织校验：当前组织必须在数据源的 groups 中
         current_team = self._parse_current_team_cookie(request)
         if current_team not in (instance.groups or []):
-            return Response({"detail": "无权访问该数据源"}, status=403)
+            return _build_error_response(
+                "无权访问当前数据源",
+                status.HTTP_403_FORBIDDEN,
+            )
 
         params = dict(request.data)
         namespace_list = instance.namespaces.all()
@@ -99,12 +161,21 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             namespace, path = instance.rest_api.split("/", 1)
         client = GetNatsData(namespace=namespace, path=path, params=params, namespace_list=namespace_list, request=request)
         try:
-            result = client.get_data()
+            result = _normalize_downstream_result(client.get_data())
         except Exception as e:
             logger.error("获取数据源数据失败: {}".format(e))
-            return Response({"detail": "数据查询失败，请稍后重试"}, status=500)
+            error_status, error_message = _classify_runtime_exception(e)
+            return _build_error_response(error_message, error_status)
 
-        return Response(result)
+        if not result.get("result", True):
+            error_status = _get_downstream_failure_status(result)
+            return _build_error_response(
+                result.get("message") or "数据查询失败",
+                error_status,
+                result.get("data"),
+            )
+
+        return Response(result.get("data"))
 
     @HasPermission("data_source-View")
     def retrieve(self, request, *args, **kwargs):

@@ -52,6 +52,14 @@ class MetricSerializer(serializers.ModelSerializer):
         model = Metric
         fields = "__all__"
 
+    def _resolve_instance_id_keys(self, attrs, default_metric_keys=None):
+        monitor_object = attrs.get("monitor_object", getattr(self.instance, "monitor_object", None))
+        monitor_object_keys = getattr(monitor_object, "instance_id_keys", [])
+        return resolve_metric_instance_id_keys(
+            attrs.get("instance_id_keys", default_metric_keys),
+            monitor_object_keys,
+        )
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
         monitor_object = getattr(instance, "monitor_object", None)
@@ -66,15 +74,13 @@ class MetricSerializer(serializers.ModelSerializer):
         monitor_object = attrs.get("monitor_object", getattr(self.instance, "monitor_object", None))
         monitor_plugin = attrs.get("monitor_plugin", getattr(self.instance, "monitor_plugin", None))
         name = attrs.get("name", getattr(self.instance, "name", None))
-        monitor_object_keys = getattr(monitor_object, "instance_id_keys", [])
 
-        resolved_instance_id_keys = resolve_metric_instance_id_keys(
-            attrs.get("instance_id_keys", getattr(self.instance, "instance_id_keys", [])),
-            monitor_object_keys,
-        )
+        default_metric_keys = getattr(self.instance, "instance_id_keys", []) if self.instance is not None else []
+        resolved_instance_id_keys = self._resolve_instance_id_keys(attrs, default_metric_keys=default_metric_keys)
         if not resolved_instance_id_keys:
             raise serializers.ValidationError({"instance_id_keys": "指标必须绑定有效的实例维度键"})
-        attrs["instance_id_keys"] = resolved_instance_id_keys
+        if self.instance is None:
+            attrs["instance_id_keys"] = resolved_instance_id_keys
 
         queryset = Metric.objects.filter(
             monitor_object=monitor_object,
@@ -93,7 +99,12 @@ class MetricSerializer(serializers.ModelSerializer):
         在创建时，手动设置 is_pre 为 False
         """
         # 手动设置 is_pre 为 False，表示用户创建的数据是非预制的
+        validated_data["instance_id_keys"] = self._resolve_instance_id_keys(validated_data, default_metric_keys=[])
         validated_data["is_pre"] = False
 
         # 调用父类的 create 方法
         return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        validated_data.pop("instance_id_keys", None)
+        return super().update(instance, validated_data)

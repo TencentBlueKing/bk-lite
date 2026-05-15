@@ -58,6 +58,7 @@ export interface TopologyNodeData {
   // 运行时状态字段
   isLoading?: boolean;
   hasError?: boolean;
+  errorMessage?: string;
   rawData?: any;
   isPlaceholder?: boolean;
   isNewNode?: boolean; 

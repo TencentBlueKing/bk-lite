@@ -260,7 +260,7 @@ def authorize_target_organizations(request, node, organizations):
         return None
 
     permission = get_node_permission(request)
-    allowed_orgs = normalize_orgs(permission.get("team", [])) | get_node_organizations(node)
+    allowed_orgs = normalize_orgs(permission.get("team", []))
     if not target_orgs.issubset(allowed_orgs):
         return WebUtils.response_403("User does not have permission to assign nodes to these organizations")
 

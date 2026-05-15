@@ -14,6 +14,7 @@ export const useDockerDashboard = () => {
     filters: {},
     other: {},
     view_sets: [
+      // ── Row 1: KPI ×4 (y=0, h=2) ──────────────────────────────────────
       {
         h: 2,
         w: 3,
@@ -65,7 +66,7 @@ export const useDockerDashboard = () => {
           },
           dataSourceParams: {
             query:
-              'collect_type:"docker" (ERROR OR FATAL) | stats by (_time:${_time}) count() as errcount'
+              'collect_type:"docker" | extract "(?P<level>ERROR|FATAL)" from _msg | stats by (_time:${_time}) count() as errcount'
           }
         }
       },
@@ -125,18 +126,19 @@ export const useDockerDashboard = () => {
           }
         }
       },
+
+      // ── Row 2: 趋势图 ×2 (y=2, h=3) ───────────────────────────────────
       {
-        h: 2,
-        w: 8,
+        h: 3,
+        w: 6,
         x: 0,
         y: 2,
         i: uuidv4(),
         name: t('log.analysis.docker.logVsErrorTrend'),
         moved: false,
         static: false,
-        description: t('log.analysis.docker.logVsErrorTrendDesc'),
         valueConfig: {
-          chartType: 'dockerArea',
+          chartType: 'dockerDualLine',
           dataSource: 1,
           displayMaps: {
             type: 'dual',
@@ -154,40 +156,43 @@ export const useDockerDashboard = () => {
         }
       },
       {
-        h: 2,
-        w: 4,
-        x: 8,
+        h: 3,
+        w: 6,
+        x: 6,
         y: 2,
         i: uuidv4(),
         name: t('log.analysis.docker.streamDistribution'),
         moved: false,
         static: false,
-        description: t('log.analysis.docker.streamDistributionDesc'),
         valueConfig: {
-          chartType: 'line',
+          chartType: 'dockerDualLine',
           dataSource: 1,
           displayMaps: {
-            type: 'multiple',
-            key: 'stream',
-            value: 'logcount',
-            tooltipField: 'stream'
+            type: 'dual',
+            key: 'stdout',
+            value: 'stdout',
+            barField: 'stdout',
+            lineField: 'stderr',
+            barLabel: 'stdout',
+            lineLabel: 'stderr'
           },
           dataSourceParams: {
             query:
-              'collect_type:"docker" | stats by (_time:${_time},stream) count() as logcount | sort by (_time asc, stream asc)'
+              'collect_type:"docker" | stats by (_time:${_time}) count() if (stream:="stdout") as stdout, count() if (stream:="stderr") as stderr'
           }
         }
       },
+
+      // ── Row 3: 分布+柱状 ×3 (y=5, h=3) ───────────────────────────────
       {
-        h: 2,
+        h: 3,
         w: 4,
         x: 0,
-        y: 4,
+        y: 5,
         i: uuidv4(),
         name: t('log.analysis.docker.severityDistribution'),
         moved: false,
         static: false,
-        description: t('log.analysis.docker.severityDistributionDesc'),
         valueConfig: {
           chartType: 'dockerDonut',
           dataSource: 1,
@@ -204,15 +209,14 @@ export const useDockerDashboard = () => {
         }
       },
       {
-        h: 2,
-        w: 8,
+        h: 3,
+        w: 4,
         x: 4,
-        y: 4,
+        y: 5,
         i: uuidv4(),
-        name: t('log.analysis.docker.topContainerErrors'),
+        name: 'Top 容器错误日志行数',
         moved: false,
         static: false,
-        description: t('log.analysis.docker.topContainerErrorsDesc'),
         valueConfig: {
           chartType: 'dockerBar',
           dataSource: 1,
@@ -230,15 +234,40 @@ export const useDockerDashboard = () => {
         }
       },
       {
-        h: 2,
-        w: 6,
-        x: 0,
-        y: 6,
+        h: 3,
+        w: 4,
+        x: 8,
+        y: 5,
         i: uuidv4(),
-        name: t('log.analysis.docker.topImageErrors'),
+        name: 'Top 服务日志行数',
         moved: false,
         static: false,
-        description: t('log.analysis.docker.topImageErrorsDesc'),
+        valueConfig: {
+          chartType: 'dockerBar',
+          dataSource: 1,
+          barColor: '#15B77E',
+          displayMaps: {
+            type: 'single',
+            key: '"label.com.docker.compose.service"',
+            value: 'logcount',
+            tooltipField: '"label.com.docker.compose.service"'
+          },
+          dataSourceParams: {
+            query:
+              'collect_type:"docker" | stats by ("label.com.docker.compose.service") count() as logcount | sort by (logcount desc) | limit 10'
+          }
+        }
+      },
+      // ── Row 4: 镜像柱 + 最近日志表 (y=8, h=3) ───────────────────────
+      {
+        h: 3,
+        w: 6,
+        x: 0,
+        y: 8,
+        i: uuidv4(),
+        name: 'Top 镜像错误日志行数',
+        moved: false,
+        static: false,
         valueConfig: {
           chartType: 'dockerBar',
           dataSource: 1,
@@ -256,98 +285,20 @@ export const useDockerDashboard = () => {
         }
       },
       {
-        h: 2,
+        h: 3,
         w: 6,
         x: 6,
-        y: 6,
-        i: uuidv4(),
-        name: t('log.analysis.docker.topServices'),
-        moved: false,
-        static: false,
-        description: t('log.analysis.docker.topServicesDesc'),
-        valueConfig: {
-          chartType: 'dockerBar',
-          dataSource: 1,
-          barColor: '#15B77E',
-          displayMaps: {
-            type: 'single',
-            key: '"label.com.docker.compose.service"',
-            value: 'logcount',
-            tooltipField: '"label.com.docker.compose.service"'
-          },
-          dataSourceParams: {
-            query:
-              'collect_type:"docker" | stats by ("label.com.docker.compose.service") count() as logcount | sort by (logcount desc) | limit 10'
-          }
-        }
-      },
-      {
-        h: 3,
-        w: 12,
-        x: 0,
         y: 8,
-        i: uuidv4(),
-        name: t('log.analysis.docker.topContainerErrors'),
-        moved: false,
-        static: false,
-        description: t('log.analysis.docker.topContainerErrorsTableDesc'),
-        valueConfig: {
-          chartType: 'dockerErrorTable',
-          dataSource: 1,
-          displayMaps: {
-            type: 'single',
-            key: 'container_name',
-            value: 'errcount',
-            imageField: 'image',
-            timeField: 'last_time'
-          },
-          dataSourceParams: {
-            query:
-              'collect_type:"docker" stream:"stderr" | stats by (container_name,image) count() as errcount, max(_time) as last_time | sort by (errcount desc) | limit 10'
-          }
-        }
-      },
-      {
-        h: 3,
-        w: 6,
-        x: 0,
-        y: 11,
-        i: uuidv4(),
-        name: t('log.analysis.docker.errorHeatmap'),
-        moved: false,
-        static: false,
-        description: t('log.analysis.docker.errorHeatmapDesc'),
-        valueConfig: {
-          chartType: 'heatmap',
-          dataSource: 1,
-          limit: 8,
-          displayMaps: {
-            time: '_time',
-            category: 'container_name',
-            value: 'errcount'
-          },
-          dataSourceParams: {
-            query:
-              'collect_type:"docker" stream:"stderr" | stats by (_time:${_time},container_name) count() as errcount | sort by (errcount desc)'
-          }
-        }
-      },
-      {
-        h: 3,
-        w: 6,
-        x: 6,
-        y: 11,
         i: uuidv4(),
         name: t('log.analysis.docker.recentErrorLogs'),
         moved: false,
         static: false,
-        description: t('log.analysis.docker.recentErrorLogsDesc'),
         valueConfig: {
           chartType: 'dockerLogTail',
           dataSource: 1,
           dataSourceParams: {
             query:
-              'collect_type:"docker" stream:"stderr" | sort by (_time desc) | limit 50'
+              'collect_type:"docker" stream:"stderr" | extract "(?P<level>ERROR|FATAL|WARN|INFO)" from _msg | sort by (_time desc) | limit 50'
           }
         }
       }

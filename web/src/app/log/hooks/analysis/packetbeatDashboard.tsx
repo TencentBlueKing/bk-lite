@@ -24,7 +24,7 @@ export const usePacketbeatDashboard = () => {
         name: t('log.analysis.packetbeat.totalTrafficVolume'),
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.totalTrafficVolumeDesc'),
+        description: '统计网络总流量，并与上一周期对比。',
         valueConfig: {
           chartType: 'flowKpiCard',
           dataSource: 1,
@@ -50,7 +50,7 @@ export const usePacketbeatDashboard = () => {
         name: t('log.analysis.packetbeat.totalPacketVolume'),
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.totalPacketVolumeDesc'),
+        description: '统计网络总包数，并与上一周期对比。',
         valueConfig: {
           chartType: 'flowKpiCard',
           dataSource: 1,
@@ -77,7 +77,7 @@ export const usePacketbeatDashboard = () => {
         name: t('log.analysis.packetbeat.flowRecordCount'),
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.flowRecordCountDesc'),
+        description: '统计流记录总数，并与上一周期对比。',
         valueConfig: {
           chartType: 'flowKpiCard',
           dataSource: 1,
@@ -104,7 +104,7 @@ export const usePacketbeatDashboard = () => {
         name: t('log.analysis.packetbeat.longLivedFlows'),
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.longLivedFlowsDesc'),
+        description: '统计长时连接数，并与上一周期对比。',
         valueConfig: {
           chartType: 'flowKpiCard',
           dataSource: 1,
@@ -128,12 +128,9 @@ export const usePacketbeatDashboard = () => {
         x: 0,
         y: 2,
         i: uuidv4(),
-        name: t('log.analysis.packetbeat.protocolTrafficDistribution'),
+        name: '协议流量趋势图',
         moved: false,
         static: false,
-        description: t(
-          'log.analysis.packetbeat.protocolTrafficDistributionDesc'
-        ),
         valueConfig: {
           chartType: 'flowTrend',
           dataSource: 1,
@@ -158,7 +155,6 @@ export const usePacketbeatDashboard = () => {
         name: t('log.analysis.packetbeat.transportDistribution'),
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.transportDistributionDesc'),
         valueConfig: {
           chartType: 'flowDonut',
           dataSource: 1,
@@ -180,10 +176,9 @@ export const usePacketbeatDashboard = () => {
         x: 0,
         y: 5,
         i: uuidv4(),
-        name: t('log.analysis.packetbeat.topSourceIPs'),
+        name: '源 IP 流量 Top 10',
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.topSourceIPsDesc'),
         valueConfig: {
           chartType: 'flowBar',
           dataSource: 1,
@@ -206,10 +201,9 @@ export const usePacketbeatDashboard = () => {
         x: 6,
         y: 5,
         i: uuidv4(),
-        name: t('log.analysis.packetbeat.topDestinationPorts'),
+        name: '目标端口流量 Top 10',
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.topDestinationPortsDesc'),
         valueConfig: {
           chartType: 'flowBar',
           dataSource: 1,
@@ -235,7 +229,8 @@ export const usePacketbeatDashboard = () => {
         name: t('log.analysis.packetbeat.highTrafficSankey'),
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.highTrafficSankeyDesc'),
+        description:
+          '展示高流量五元组关系，帮助定位源、目标、协议与端口之间的流量链路。',
         valueConfig: {
           chartType: 'flowSankey',
           dataSource: 1,
@@ -268,7 +263,6 @@ export const usePacketbeatDashboard = () => {
         name: t('log.analysis.packetbeat.topFlowSessions'),
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.topFlowSessionsDesc'),
         valueConfig: {
           chartType: 'flowTable',
           dataSource: 1,

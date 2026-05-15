@@ -8,6 +8,23 @@ from apps.cmdb.models import CollectModels
 
 class BaseCollect(object):
     COLLECT_PLUGIN = None
+    RAW_DATA_FIELDS = (
+        "id",
+        "_id",
+        "model_id",
+        "inst_name",
+        "name",
+        "ip_addr",
+        "ip",
+        "cloud",
+        "cloud_id",
+        "cloud_name",
+        "organization",
+        "organization_ids",
+        "__time__",
+        "_status",
+        "_error",
+    )
 
     def __init__(self, instance_id, default_metrics=None):
         self.task = CollectModels.objects.get(id=instance_id)
@@ -66,7 +83,7 @@ class BaseCollect(object):
         # 强加了一个原始数据，如果原始数据存在则删除，保留原有逻辑
         raw_data = []
         # 强加一个总数，这个总数是发现正常数据的总数，不是原始数据的总数
-        all_count = []
+        all_count = None
         if result.get("__raw_data__", False) or result.get("__raw_data__", False) == []:
             raw_data = result.pop("__raw_data__")
         if result.get("all", False) or result.get("all", False) == 0:
@@ -93,9 +110,40 @@ class BaseCollect(object):
                         format_data[operator].append(_data)
         if raw_data:
             format_data["__raw_data__"] = raw_data
-        if raw_data:
+        elif all_count:
+            # When the collector reports discovered instances but raw VM rows are unavailable,
+            # derive a displayable raw_data snapshot from the normalized add/update/delete buckets.
+            derived_raw_data = []
+            seen = set()
+            for operator in ("add", "update", "delete"):
+                for item in format_data.get(operator, []):
+                    if not isinstance(item, dict):
+                        continue
+                    identity = (
+                        item.get("model_id"),
+                        item.get("inst_name"),
+                        item.get("ip_addr"),
+                        item.get("_id"),
+                        item.get("id"),
+                    )
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                    derived_raw_data.append(self._sanitize_raw_data_item(item))
+            if derived_raw_data:
+                format_data["__raw_data__"] = derived_raw_data
+        if all_count is not None:
             format_data["all"] = all_count
         return format_data
+
+    @classmethod
+    def _sanitize_raw_data_item(cls, item):
+        if not isinstance(item, dict):
+            return {}
+        sanitized = {key: item.get(key) for key in cls.RAW_DATA_FIELDS if key in item}
+        if sanitized.get("model_id") in (None, ""):
+            sanitized["model_id"] = "host"
+        return sanitized
 
     @staticmethod
     def format_assos_result(assos_result):

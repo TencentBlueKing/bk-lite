@@ -112,6 +112,95 @@ def test_resolve_monitor_object_instance_id_keys_defaults_for_derivative_object(
     assert result == ["instance_id", "pod"]
 
 
+def test_monitor_object_serializer_create_generates_default_instance_id_keys(monkeypatch):
+    class StubModelSerializer:
+        def __init__(self, instance=None, source=None, read_only=False):
+            self.instance = instance
+
+        def validate(self, attrs):
+            return attrs
+
+        def create(self, validated_data):
+            return validated_data
+
+        def update(self, instance, validated_data):
+            for key, value in validated_data.items():
+                setattr(instance, key, value)
+            return instance
+
+    _install_module(
+        monkeypatch,
+        "rest_framework.serializers",
+        ModelSerializer=StubModelSerializer,
+    )
+    _install_module(monkeypatch, "rest_framework", serializers=sys.modules["rest_framework.serializers"])
+    _install_module(
+        monkeypatch,
+        "apps.monitor.models.monitor_object",
+        MonitorObject=object,
+        MonitorObjectOrganizationRule=object,
+        MonitorObjectType=object,
+    )
+
+    serializer_module = _load_module(
+        "monitor_object_serializer_create_module",
+        Path(__file__).resolve().parents[1] / "serializers" / "monitor_object.py",
+    )
+
+    serializer = serializer_module.MonitorObjectSerializer()
+
+    created = serializer.create(
+        {
+            "name": "host",
+            "level": "base",
+        }
+    )
+
+    assert created["instance_id_keys"] == ["instance_id"]
+
+
+def test_monitor_object_serializer_create_generates_derivative_instance_id_keys(monkeypatch):
+    class StubModelSerializer:
+        def __init__(self, instance=None, source=None, read_only=False):
+            self.instance = instance
+
+        def validate(self, attrs):
+            return attrs
+
+        def create(self, validated_data):
+            return validated_data
+
+    _install_module(
+        monkeypatch,
+        "rest_framework.serializers",
+        ModelSerializer=StubModelSerializer,
+    )
+    _install_module(monkeypatch, "rest_framework", serializers=sys.modules["rest_framework.serializers"])
+    _install_module(
+        monkeypatch,
+        "apps.monitor.models.monitor_object",
+        MonitorObject=object,
+        MonitorObjectOrganizationRule=object,
+        MonitorObjectType=object,
+    )
+
+    serializer_module = _load_module(
+        "monitor_object_serializer_derivative_module",
+        Path(__file__).resolve().parents[1] / "serializers" / "monitor_object.py",
+    )
+
+    serializer = serializer_module.MonitorObjectSerializer()
+
+    created = serializer.create(
+        {
+            "name": "pod",
+            "level": "derivative",
+        }
+    )
+
+    assert created["instance_id_keys"] == ["instance_id", "pod"]
+
+
 def test_metric_serializer_validate_inherits_monitor_object_instance_id_keys(monkeypatch):
     class StubModelSerializer:
         def __init__(self, instance=None):
@@ -124,6 +213,14 @@ def test_metric_serializer_validate_inherits_monitor_object_instance_id_keys(mon
             return {
                 "instance_id_keys": getattr(instance, "instance_id_keys", []),
             }
+
+        def create(self, validated_data):
+            return validated_data
+
+        def update(self, instance, validated_data):
+            for key, value in validated_data.items():
+                setattr(instance, key, value)
+            return instance
 
     class StubValidationError(Exception):
         def __init__(self, detail):
@@ -174,6 +271,123 @@ def test_metric_serializer_validate_inherits_monitor_object_instance_id_keys(mon
     assert validated["instance_id_keys"] == ["instance_id", "pod"]
 
 
+def test_metric_serializer_create_persists_monitor_object_instance_id_keys_when_omitted(monkeypatch):
+    class StubModelSerializer:
+        def __init__(self, instance=None):
+            self.instance = instance
+
+        def validate(self, attrs):
+            return attrs
+
+        def create(self, validated_data):
+            return validated_data
+
+    class StubValidationError(Exception):
+        def __init__(self, detail):
+            super().__init__(str(detail))
+            self.detail = detail
+
+    class _MetricQuerySet:
+        def exclude(self, **kwargs):
+            return self
+
+        def exists(self):
+            return False
+
+    class _MetricManager:
+        def filter(self, **kwargs):
+            return _MetricQuerySet()
+
+    class _Metric:
+        objects = _MetricManager()
+
+    _install_module(
+        monkeypatch,
+        "rest_framework.serializers",
+        ModelSerializer=StubModelSerializer,
+        BooleanField=lambda **kwargs: None,
+        ValidationError=StubValidationError,
+    )
+    _install_module(monkeypatch, "rest_framework", serializers=sys.modules["rest_framework.serializers"])
+    _install_module(monkeypatch, "apps.monitor.models.monitor_metrics", MetricGroup=object, Metric=_Metric)
+
+    serializer_module = _load_module(
+        "monitor_metric_serializer_create_module",
+        Path(__file__).resolve().parents[1] / "serializers" / "monitor_metrics.py",
+    )
+
+    serializer = serializer_module.MetricSerializer()
+    monitor_object = types.SimpleNamespace(instance_id_keys=["instance_id", "pod"])
+
+    created = serializer.create(
+        {
+            "monitor_object": monitor_object,
+            "monitor_plugin": None,
+            "name": "cpu_usage",
+        }
+    )
+
+    assert created["instance_id_keys"] == ["instance_id", "pod"]
+
+
+def test_metric_serializer_update_preserves_existing_instance_id_keys_when_omitted(monkeypatch):
+    class StubModelSerializer:
+        def __init__(self, instance=None):
+            self.instance = instance
+
+        def validate(self, attrs):
+            return attrs
+
+        def update(self, instance, validated_data):
+            for key, value in validated_data.items():
+                setattr(instance, key, value)
+            return instance
+
+    class StubValidationError(Exception):
+        def __init__(self, detail):
+            super().__init__(str(detail))
+            self.detail = detail
+
+    class _MetricQuerySet:
+        def exclude(self, **kwargs):
+            return self
+
+        def exists(self):
+            return False
+
+    class _MetricManager:
+        def filter(self, **kwargs):
+            return _MetricQuerySet()
+
+    class _Metric:
+        objects = _MetricManager()
+
+    _install_module(
+        monkeypatch,
+        "rest_framework.serializers",
+        ModelSerializer=StubModelSerializer,
+        BooleanField=lambda **kwargs: None,
+        ValidationError=StubValidationError,
+    )
+    _install_module(monkeypatch, "rest_framework", serializers=sys.modules["rest_framework.serializers"])
+    _install_module(monkeypatch, "apps.monitor.models.monitor_metrics", MetricGroup=object, Metric=_Metric)
+
+    serializer_module = _load_module(
+        "monitor_metric_serializer_update_module",
+        Path(__file__).resolve().parents[1] / "serializers" / "monitor_metrics.py",
+    )
+
+    instance = types.SimpleNamespace(
+        instance_id_keys=["instance_id", "legacy_key"],
+        monitor_object=types.SimpleNamespace(instance_id_keys=["instance_id", "pod"]),
+    )
+    serializer = serializer_module.MetricSerializer(instance=instance)
+
+    updated = serializer.update(instance, {"display_name": "CPU"})
+
+    assert updated.instance_id_keys == ["instance_id", "legacy_key"]
+
+
 def test_metrics_service_effective_instance_keys_fallbacks_to_monitor_object(monkeypatch):
     class StubBaseAppException(Exception):
         pass
@@ -215,3 +429,91 @@ def test_metrics_service_effective_instance_keys_fallbacks_to_monitor_object(mon
 
     assert keys == ["instance_id", "pod"]
     assert len(logger.warning_calls) == 1
+
+
+def test_backfill_metric_instance_id_keys_updates_metrics_from_monitor_object(monkeypatch):
+    class _Atomic:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class _Style:
+        def SUCCESS(self, message):
+            return message
+
+        def WARNING(self, message):
+            return message
+
+    class _Stdout:
+        def __init__(self):
+            self.messages = []
+
+        def write(self, message):
+            self.messages.append(message)
+
+    class StubBaseCommand:
+        def __init__(self):
+            self.stdout = _Stdout()
+            self.style = _Style()
+
+    class _QuerySet(list):
+        def order_by(self, *args, **kwargs):
+            return self
+
+    object_bulk_updates = []
+    metric_bulk_updates = []
+
+    monitor_object = types.SimpleNamespace(
+        id=7,
+        name="pod",
+        level="base",
+        instance_id_keys=["instance_id", "pod"],
+    )
+    metric = types.SimpleNamespace(
+        id=11,
+        monitor_object_id=7,
+        monitor_object=monitor_object,
+        instance_id_keys=[],
+    )
+
+    class _MonitorObjectManager:
+        def all(self):
+            return _QuerySet([monitor_object])
+
+        def bulk_update(self, objects, fields):
+            object_bulk_updates.append((list(objects), list(fields)))
+
+    class _MetricManager:
+        def select_related(self, *args, **kwargs):
+            return self
+
+        def all(self):
+            return _QuerySet([metric])
+
+        def bulk_update(self, objects, fields):
+            metric_bulk_updates.append((list(objects), list(fields)))
+
+    _install_module(monkeypatch, "django.core.management", BaseCommand=StubBaseCommand)
+    _install_module(monkeypatch, "django.db", transaction=types.SimpleNamespace(atomic=lambda: _Atomic()))
+    _install_module(
+        monkeypatch,
+        "apps.monitor.models",
+        Metric=types.SimpleNamespace(objects=_MetricManager()),
+        MonitorObject=types.SimpleNamespace(objects=_MonitorObjectManager()),
+    )
+
+    command_module = _load_module(
+        "backfill_metric_instance_id_keys_command_module",
+        Path(__file__).resolve().parents[1] / "management" / "commands" / "backfill_metric_instance_id_keys.py",
+    )
+
+    command = command_module.Command()
+    command.handle(dry_run=False)
+
+    assert metric.instance_id_keys == ["instance_id", "pod"]
+    assert object_bulk_updates == []
+    assert len(metric_bulk_updates) == 1
+    assert metric_bulk_updates[0][1] == ["instance_id_keys"]
+    assert "metric updated=1" in command.stdout.messages[0]
