@@ -1808,6 +1808,26 @@
   margin-bottom: 12px;
 }
 
+.chartPanelHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'title'
+    'subtitle'
+    'legend';
+  align-items: start;
+  column-gap: 0;
+  row-gap: 6px;
+}
+
+.chartHeaderTitle {
+  grid-area: title;
+}
+
+.chartHeaderSubTitle {
+  grid-area: subtitle;
+}
+
 .fillPanel {
   display: flex;
   flex-direction: column;
@@ -1875,6 +1895,17 @@
   margin-top: 0;
 }
 
+.chartLegendHeader {
+  grid-area: legend;
+  justify-content: flex-end;
+  align-items: center;
+  align-self: flex-start;
+  flex-wrap: nowrap;
+  gap: 8px;
+  max-width: none;
+  white-space: nowrap;
+}
+
 .chartLegendItem {
   display: inline-flex;
   align-items: center;
@@ -1883,6 +1914,7 @@
   font-size: 14px;
   font-weight: 600;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .chartLegendDot {

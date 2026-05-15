@@ -326,6 +326,36 @@ const getUptimeInsight = (uptimeSeconds: number) => {
   };
 };
 
+const countRestartsInRange = (data: ChartData[] = []) => {
+  const points = [...data]
+    .map((point) => ({
+      time: Number(point.time),
+      value: getChartPointSeriesTotal(point)
+    }))
+    .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value) && point.value >= 0)
+    .sort((a, b) => a.time - b.time);
+
+  if (points.length < 2) {
+    return 0;
+  }
+
+  let restartCount = 0;
+
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const drop = previous.value - current.value;
+    const gapSeconds = Math.max((current.time - previous.time) / 1000, 0);
+    const tolerance = Math.max(30, gapSeconds * 0.2);
+
+    if (drop > tolerance && current.value < previous.value * 0.98) {
+      restartCount += 1;
+    }
+  }
+
+  return restartCount;
+};
+
 const getCompareTone = (direction: 'up' | 'down' | 'flat') => {
   if (direction === 'flat') {
     return 'flat';
@@ -744,7 +774,7 @@ const CollectionStatusCard = ({
           {status.label}
         </div>
         <div className={styles.collectionStatusTimelineBlock}>
-          <div className={styles.collectionStatusTimelineTitle}>状态时间线（{windowLabel}）</div>
+          <div className={styles.collectionStatusTimelineTitle}>状态时间线</div>
           <div className={styles.collectionStatusTimeline}>
             {timeline.map((tone, index) => (
               <span key={`${tone}-${index}`} className={`${styles.collectionStatusSegment} ${styles[`collectionStatusSegment${tone === 'success' ? 'Success' : tone === 'error' ? 'Error' : 'Empty'}`]}`} />
@@ -1308,18 +1338,16 @@ export default function MysqlDashboardPage() {
 
   const uptimeDisplay = hasMetricData('mysql_uptime') ? uptimeInsight.uptimeText : '--';
   const startupTimeDisplay = hasMetricData('mysql_uptime') ? uptimeInsight.startupTimeText : metricEmptyText;
+  const uptimeRestarts = countRestartsInRange(metricMap.mysql_uptime?.viewData || []);
   const uptimeState = !hasMetricData('mysql_uptime')
     ? { label: '状态未知', detail: metricEmptyText, tone: 'empty' }
-    : uptimeValue < 3600
-      ? { label: '运行初期', detail: '连续运行时间少于 1 小时', tone: 'warning' }
-    : uptimeValue < 86400
-        ? { label: '已运行 1 小时以上', detail: '连续运行时间在 1 小时到 1 天之间', tone: 'success' }
-        : { label: '已运行 1 天以上', detail: '连续运行时间已超过 1 天', tone: 'success' };
+    : uptimeRestarts > 0
+      ? { label: '期间有重启', detail: '', tone: 'warning' }
+      : { label: '运行正常', detail: '', tone: 'success' };
   const uptimeStateGuide = [
-    { label: '状态未知', detail: '未获取到 mysql_uptime 指标，可能是当前时间范围无数据或查询失败。' },
-    { label: '运行初期', detail: 'mysql_uptime 小于 1 小时。' },
-    { label: '已运行 1 小时以上', detail: 'mysql_uptime 大于等于 1 小时且小于 1 天。' },
-    { label: '已运行 1 天以上', detail: 'mysql_uptime 大于等于 1 天。' }
+    { label: '状态未知', detail: '当前观察范围内未获取到 mysql_uptime 指标，无法判断是否发生过重启。' },
+    { label: '运行正常', detail: `当前所选时段（${collectionStatusWindowLabel}）内 mysql_uptime 未出现明显回退。该状态仅表示未观察到重启，不代表实例整体健康度。` },
+    { label: '期间有重启', detail: `当前所选时段（${collectionStatusWindowLabel}）内 mysql_uptime 出现回退，说明实例在该时间段内发生过重启。以上状态仅描述重启观察结果，不代表实例整体健康度。` }
   ];
   const connCardDisplay = getDisplayValue('mysql_connection_utilization', connDisplay);
   const qpsCardDisplay = getDisplayValue('mysql_queries_rate', qpsDisplay);
@@ -1625,7 +1653,7 @@ export default function MysqlDashboardPage() {
                               <ClockCircleOutlined className={styles.uptimeStatusInfoIcon} />
                             </Tooltip>
                           </span>
-                          <span className={styles.uptimeStatusDetail}>{uptimeState.detail}</span>
+                          {uptimeState.detail ? <span className={styles.uptimeStatusDetail}>{uptimeState.detail}</span> : null}
                         </div>
                       }
                       hideTrend
@@ -1816,18 +1844,16 @@ export default function MysqlDashboardPage() {
 
                   <div className={styles.mainTrendGrid}>
                     <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
-                      <div className={styles.panelHeader}>
-                        <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}>QPS 趋势</h3>
-                          <div className={styles.panelSubTitle}>总查询吞吐</div>
-                          <div className={styles.chartLegend}>
-                            {TREND_LEGENDS.qps.slice(0, 1).map((item) => (
-                              <span className={styles.chartLegendItem} key={item.label}>
-                                <span className={styles.chartLegendDot} style={{ background: item.color }} />
-                                {item.label}
-                              </span>
-                            ))}
-                          </div>
+                      <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
+                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>QPS 趋势</h3>
+                        <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>总查询吞吐</div>
+                        <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
+                          {TREND_LEGENDS.qps.slice(0, 1).map((item) => (
+                            <span className={styles.chartLegendItem} key={item.label}>
+                              <span className={styles.chartLegendDot} style={{ background: item.color }} />
+                              {item.label}
+                            </span>
+                          ))}
                         </div>
                       </div>
                       <div className={styles.chartWrap}>
@@ -1850,18 +1876,16 @@ export default function MysqlDashboardPage() {
                     </div>
 
                     <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
-                      <div className={styles.panelHeader}>
-                        <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}>慢查询趋势</h3>
-                          <div className={styles.panelSubTitle}>每分钟慢 SQL</div>
-                          <div className={styles.chartLegend}>
-                            {TREND_LEGENDS.qps.slice(1, 2).map((item) => (
-                              <span className={styles.chartLegendItem} key={item.label}>
-                                <span className={styles.chartLegendDot} style={{ background: item.color }} />
-                                {item.label}
-                              </span>
-                            ))}
-                          </div>
+                      <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
+                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>慢查询趋势</h3>
+                        <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>每分钟慢 SQL</div>
+                        <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
+                          {TREND_LEGENDS.qps.slice(1, 2).map((item) => (
+                            <span className={styles.chartLegendItem} key={item.label}>
+                              <span className={styles.chartLegendDot} style={{ background: item.color }} />
+                              {item.label}
+                            </span>
+                          ))}
                         </div>
                       </div>
                       <div className={styles.chartWrap}>
@@ -1884,21 +1908,19 @@ export default function MysqlDashboardPage() {
                     </div>
 
                     <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
-                      <div className={styles.panelHeader}>
-                        <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}>连接与线程趋势</h3>
-                          <div className={styles.panelSubTitle}>连接总量与执行线程</div>
-                          <div className={styles.chartLegend}>
-                            {TREND_LEGENDS.connection.map((item) => (
-                              <span className={styles.chartLegendItem} key={item.label}>
-                                <span
-                                  className={`${styles.chartLegendDot} ${item.dashed ? styles.chartLegendDash : ''}`}
-                                  style={{ background: item.dashed ? 'transparent' : item.color, borderColor: item.color }}
-                                />
-                                {item.label}
-                              </span>
-                            ))}
-                          </div>
+                      <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
+                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>连接与线程趋势</h3>
+                        <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>连接总量与执行线程</div>
+                        <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
+                          {TREND_LEGENDS.connection.map((item) => (
+                            <span className={styles.chartLegendItem} key={item.label}>
+                              <span
+                                className={`${styles.chartLegendDot} ${item.dashed ? styles.chartLegendDash : ''}`}
+                                style={{ background: item.dashed ? 'transparent' : item.color, borderColor: item.color }}
+                              />
+                              {item.label}
+                            </span>
+                          ))}
                         </div>
                       </div>
                       <div className={styles.chartWrap}>
@@ -2151,18 +2173,16 @@ export default function MysqlDashboardPage() {
                     </div>
 
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                  <div className={styles.panelHeader}>
-                    <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}>InnoDB 读写趋势</h3>
-                      <div className={styles.panelSubTitle}>每秒</div>
-                      <div className={styles.chartLegend}>
-                        {TREND_LEGENDS.innodb.map((item) => (
-                          <span className={styles.chartLegendItem} key={item.label}>
-                            <span className={styles.chartLegendDot} style={{ background: item.color }} />
-                            {item.label}
-                          </span>
-                        ))}
-                      </div>
+                  <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
+                    <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>InnoDB 读写趋势</h3>
+                    <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>每秒</div>
+                    <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
+                      {TREND_LEGENDS.innodb.map((item) => (
+                        <span className={styles.chartLegendItem} key={item.label}>
+                          <span className={styles.chartLegendDot} style={{ background: item.color }} />
+                          {item.label}
+                        </span>
+                      ))}
                     </div>
                   </div>
                       <div className={styles.chartWrap}>
