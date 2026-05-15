@@ -17,5 +17,4 @@ class TomcatCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "permsize": "permsize",
         "log_path": "log_path",
         "java_version": "java_version",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

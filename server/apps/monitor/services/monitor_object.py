@@ -104,7 +104,7 @@ class MonitorObjectService:
             qs = qs.filter(name__icontains=name)
 
         # 去除重复
-        qs = qs.distinct("id")
+        qs = qs.distinct()
 
         count = qs.count()
 

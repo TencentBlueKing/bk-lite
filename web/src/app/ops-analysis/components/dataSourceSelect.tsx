@@ -41,6 +41,7 @@ const DataSourceSelect: React.FC<DataSourceSelectProps> = ({
       ),
       value: item.id,
       title: item.desc,
+      disabled: item.hasAuth === false,
     }));
   };
 

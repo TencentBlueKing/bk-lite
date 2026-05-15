@@ -61,6 +61,10 @@ import {
   buildDefaultFilterBindings,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { collectNamespaceOptions } from '@/app/ops-analysis/utils/namespaceFilter';
+import {
+  getOpsChartTheme,
+  resolveOpsChartThemeName,
+} from '@/app/ops-analysis/utils/chartTheme';
 import { exportDashboardToPdf } from '@/app/ops-analysis/utils/exportPdf';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -78,6 +82,9 @@ const ResponsiveGridLayout = WidthProvider(GridLayout) as any;
 const Dashboard = forwardRef<DashboardRef, DashboardProps>(
   ({ selectedDashboard }, ref) => {
     const { t } = useTranslation();
+    const themeName = resolveOpsChartThemeName();
+    const chartTheme = getOpsChartTheme(themeName);
+    const isDarkTheme = themeName === 'dark';
     const { getDashboardDetail, saveDashboard } = useDashBoardApi();
     const dataSourceManager = useDataSourceManager();
     const { fetchDataSources, namespaceList, fetchNamespaces } = useOpsAnalysis();
@@ -88,9 +95,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [configDrawerVisible, setConfigDrawerVisible] = useState(false);
     const [currentConfigItem, setCurrentConfigItem] = useState<LayoutItem>();
     const [isNewComponentConfig, setIsNewComponentConfig] = useState(false);
-    const [refreshKey, setRefreshKey] = useState(0);
-    const [searchKey, setSearchKey] = useState(0);
-    const [widgetRefreshKeys, setWidgetRefreshKeys] = useState<Record<string, number>>({});
+    const [dashboardReloadVersion, setDashboardReloadVersion] = useState(0);
+    const [widgetReloadVersions, setWidgetReloadVersions] = useState<
+      Record<string, number>
+    >({});
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(false);
     const [otherConfig, setOtherConfig] = useState<OtherConfig>({});
@@ -99,7 +107,20 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     );
     const [filterConfigModalVisible, setFilterConfigModalVisible] =
       useState(false);
-    const [selectedNamespaceId, setSelectedNamespaceId] = useState<number | undefined>(undefined);
+    const [namespaceDraftId, setNamespaceDraftId] = useState<
+      number | undefined
+    >(undefined);
+    const [appliedFilterDefinitions, setAppliedFilterDefinitions] = useState<
+      UnifiedFilterDefinition[]
+    >([]);
+    const [appliedFilterValues, setAppliedFilterValues] = useState<
+      Record<string, FilterValue>
+    >({});
+    const [appliedNamespaceId, setAppliedNamespaceId] = useState<
+      number | undefined
+    >(undefined);
+    const [filterSearchVersion, setFilterSearchVersion] = useState(0);
+    const [namespaceSearchVersion, setNamespaceSearchVersion] = useState(0);
     const exportRef = useRef<HTMLDivElement>(null);
     const [exporting, setExporting] = useState(false);
 
@@ -111,6 +132,32 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setDefinitions,
     } = useUnifiedFilter();
     const [originalDefinitions, setOriginalDefinitions] = useState<UnifiedFilterDefinition[]>([]);
+
+    const applyQueryState = useCallback(
+      (
+        nextDefinitions: UnifiedFilterDefinition[],
+        nextValues: Record<string, FilterValue>,
+        nextNamespaceId: number | undefined,
+      ) => {
+        setAppliedFilterDefinitions(nextDefinitions);
+        setAppliedFilterValues(nextValues);
+        setAppliedNamespaceId(nextNamespaceId);
+      },
+      [],
+    );
+
+    const syncFilterStateAfterLayoutChange = useCallback(
+      (
+        nextDefinitions: UnifiedFilterDefinition[],
+        nextDraftValues: Record<string, FilterValue>,
+        nextAppliedValues: Record<string, FilterValue>,
+      ) => {
+        setDefinitions(nextDefinitions);
+        setFilterValues(nextDraftValues);
+        applyQueryState(nextDefinitions, nextAppliedValues, appliedNamespaceId);
+      },
+      [setDefinitions, setFilterValues, applyQueryState, appliedNamespaceId],
+    );
 
     const buildFiltersFromLayout = (
       nextLayout: LayoutItem[],
@@ -289,14 +336,25 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
     useEffect(() => {
       if (namespaceOptions.length > 0) {
-        const currentValid = selectedNamespaceId !== undefined && namespaceOptions.some((o) => o.value === selectedNamespaceId);
-        if (!currentValid) {
-          setSelectedNamespaceId(namespaceOptions[0].value);
+        const fallbackNamespaceId = namespaceOptions[0].value;
+        const draftValid =
+          namespaceDraftId !== undefined &&
+          namespaceOptions.some((o) => o.value === namespaceDraftId);
+        const appliedValid =
+          appliedNamespaceId !== undefined &&
+          namespaceOptions.some((o) => o.value === appliedNamespaceId);
+
+        if (!draftValid) {
+          setNamespaceDraftId(fallbackNamespaceId);
+        }
+        if (!appliedValid) {
+          setAppliedNamespaceId(fallbackNamespaceId);
         }
       } else {
-        setSelectedNamespaceId(undefined);
+        setNamespaceDraftId(undefined);
+        setAppliedNamespaceId(undefined);
       }
-    }, [namespaceOptions, selectedNamespaceId]);
+    }, [namespaceOptions, namespaceDraftId, appliedNamespaceId]);
 
     const namespaceSelectorElement = useMemo(() => {
       if (namespaceOptions.length <= 1) return undefined;
@@ -306,17 +364,16 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             {t('namespace.title')}:
           </span>
           <Select
-            value={selectedNamespaceId}
+            value={namespaceDraftId}
             onChange={(val: number) => {
-              setSelectedNamespaceId(val);
-              setSearchKey((prev) => prev + 1);
+              setNamespaceDraftId(val);
             }}
             options={namespaceOptions}
             style={{ minWidth: 160 }}
           />
         </div>
       );
-    }, [namespaceOptions, selectedNamespaceId, t]);
+    }, [namespaceOptions, namespaceDraftId, t]);
 
     useEffect(() => {
       const loadDashboardData = async () => {
@@ -326,6 +383,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           setOtherConfig({});
           setOriginalOtherConfig({});
           setDefinitions([]);
+          setFilterValues({});
+          setAppliedFilterDefinitions([]);
+          setAppliedFilterValues({});
           setOriginalDefinitions([]);
           return;
         }
@@ -359,6 +419,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
           setDefinitions(loadedDefinitions);
           setFilterValues(initialValues);
+          setAppliedFilterDefinitions(loadedDefinitions);
+          setAppliedFilterValues(initialValues);
           setOriginalDefinitions([...loadedDefinitions]);
         } catch (error) {
           console.error('加载仪表盘数据失败:', error);
@@ -367,6 +429,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           setOtherConfig({});
           setOriginalOtherConfig({});
           setDefinitions([]);
+          setFilterValues({});
+          setAppliedFilterDefinitions([]);
+          setAppliedFilterValues({});
           setOriginalDefinitions([]);
         } finally {
           setLoading(false);
@@ -383,8 +448,14 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setCurrentConfigItem(undefined);
       setIsNewComponentConfig(false);
       setSaving(false);
-      setRefreshKey(0);
-      setSelectedNamespaceId(undefined);
+      setDashboardReloadVersion(0);
+      setFilterSearchVersion(0);
+      setNamespaceSearchVersion(0);
+      setWidgetReloadVersions({});
+      setAppliedFilterDefinitions([]);
+      setAppliedFilterValues({});
+      setNamespaceDraftId(undefined);
+      setAppliedNamespaceId(undefined);
     }, [selectedDashboard?.data_id]);
 
     const openAddModal = () => {
@@ -425,7 +496,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     }));
 
     const handleRefresh = () => {
-      setRefreshKey((prev) => prev + 1);
+      applyQueryState(definitions, filterValues, namespaceDraftId);
+      setDashboardReloadVersion((prev) => prev + 1);
     };
 
     const handleExportPdf = useCallback(async () => {
@@ -483,10 +555,17 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       const nextDefinitions = buildFiltersFromLayout(nextLayout, definitions);
       const syncedLayout = syncLayoutFilterBindings(nextLayout, nextDefinitions);
       const nextFilterValues = syncFilterValuesWithDefinitions(nextDefinitions, filterValues);
+      const nextAppliedValues = syncFilterValuesWithDefinitions(
+        nextDefinitions,
+        appliedFilterValues,
+      );
 
       setLayout(syncedLayout);
-      setDefinitions(nextDefinitions);
-      setFilterValues(nextFilterValues);
+      syncFilterStateAfterLayoutChange(
+        nextDefinitions,
+        nextFilterValues,
+        nextAppliedValues,
+      );
       setAddModalVisible(false);
     };
 
@@ -523,19 +602,43 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     };
 
     const handleCancelEdit = () => {
+      const revertedFilterValues = syncFilterValuesWithDefinitions(
+        originalDefinitions,
+        appliedFilterValues,
+      );
+
       setLayout([...originalLayout]);
       setOtherConfig({ ...originalOtherConfig });
       setDefinitions([...originalDefinitions]);
+      setFilterValues(revertedFilterValues);
+      applyQueryState(
+        [...originalDefinitions],
+        revertedFilterValues,
+        appliedNamespaceId,
+      );
       setIsEditMode(false);
+      setDashboardReloadVersion((prev) => prev + 1);
     };
 
     const removeWidget = (id: string) => {
       const nextLayout = layout.filter((item) => item.i !== id);
       const nextDefinitions = buildFiltersFromLayout(nextLayout, definitions);
       const syncedLayout = syncLayoutFilterBindings(nextLayout, nextDefinitions);
+      const nextFilterValues = syncFilterValuesWithDefinitions(
+        nextDefinitions,
+        filterValues,
+      );
+      const nextAppliedValues = syncFilterValuesWithDefinitions(
+        nextDefinitions,
+        appliedFilterValues,
+      );
 
       setLayout(syncedLayout);
-      setDefinitions(nextDefinitions);
+      syncFilterStateAfterLayoutChange(
+        nextDefinitions,
+        nextFilterValues,
+        nextAppliedValues,
+      );
     };
 
     const handleEdit = (id: string) => {
@@ -596,14 +699,21 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         const nextDefinitions = buildFiltersFromLayout(nextLayout, definitions);
         const syncedLayout = syncLayoutFilterBindings(nextLayout, nextDefinitions);
         const nextFilterValues = syncFilterValuesWithDefinitions(nextDefinitions, filterValues);
+        const nextAppliedValues = syncFilterValuesWithDefinitions(
+          nextDefinitions,
+          appliedFilterValues,
+        );
 
         setLayout(syncedLayout);
-        setDefinitions(nextDefinitions);
-        setFilterValues(nextFilterValues);
+        syncFilterStateAfterLayoutChange(
+          nextDefinitions,
+          nextFilterValues,
+          nextAppliedValues,
+        );
         
         // Only refresh the edited widget, not all widgets
         if (editedWidgetId) {
-          setWidgetRefreshKeys((prev) => ({
+          setWidgetReloadVersions((prev) => ({
             ...prev,
             [editedWidgetId]: (prev[editedWidgetId] || 0) + 1,
           }));
@@ -620,9 +730,20 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setIsNewComponentConfig(false);
     };
 
-    const handleFilterValuesChange = (values: Record<string, FilterValue>) => {
+    const handleFilterSearch = (values: Record<string, FilterValue>) => {
+      const namespaceChanged = namespaceDraftId !== appliedNamespaceId;
+
       setFilterValues(values);
-      setSearchKey((prev) => prev + 1);
+      applyQueryState(definitions, values, namespaceDraftId);
+
+      setFilterSearchVersion((prev) => prev + 1);
+      if (namespaceChanged) {
+        setNamespaceSearchVersion((prev) => prev + 1);
+      }
+    };
+
+    const handleFilterReset = (values: Record<string, FilterValue>) => {
+      handleFilterSearch(values);
     };
 
     const handleFilterConfigConfirm = (
@@ -651,23 +772,36 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     };
 
     return (
-      <div className="h-full flex-1 p-2 pb-0 overflow-auto flex flex-col bg-(--color-bg-1">
+      <div
+        className="h-full flex-1 overflow-auto flex flex-col p-2 pb-0"
+        style={{
+          backgroundColor: isDarkTheme ? 'var(--color-fill-1)' : '#f4f7fb',
+        }}
+      >
         <div
           ref={exportRef}
           className="flex-1 min-h-0 flex flex-col"
           data-export-expand="true"
         >
-          <div className="w-full mb-2 flex items-center justify-between rounded-lg shadow-sm bg-(--color-bg-1) p-3 border border-(--color-border-2)">
+          <div
+            className="w-full mb-2 flex items-center justify-between rounded-xl bg-(--color-bg-1) px-4 py-3 border border-(--color-border-2)"
+            style={{ boxShadow: '0 8px 20px rgba(31, 63, 104, 0.05)' }}
+          >
             <div className="flex-1 mr-8">
               {selectedDashboard && (
-                <div className="p-1 pt-0">
-                  <h2 className="text-lg font-semibold mb-1 text-(--color-text-1)">
+                <div className="pt-0.5">
+                  <h2 className="text-xl leading-7 font-semibold mb-1 text-(--color-text-1)">
                     {selectedDashboard.name}
                     {selectedDashboard.is_build_in && (
-                      <Tag color="blue" className="ml-2 text-xs align-middle">{t('common.builtIn')}</Tag>
+                      <Tag
+                        color="blue"
+                        className="ml-2 text-xs align-middle rounded-full! px-2! py-0.5!"
+                      >
+                        {t('common.builtIn')}
+                      </Tag>
                     )}
                   </h2>
-                  <p className="text-sm text-(--color-text-2)">
+                  <p className="text-sm leading-5 text-(--color-text-2)">
                     {selectedDashboard.desc}
                   </p>
                 </div>
@@ -675,7 +809,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             </div>
             {/* 右侧：工具栏 */}
             <div
-              className="flex items-center space-x-1 rounded-lg p-2"
+              className="flex items-center gap-1.5"
               data-export-hidden="true"
             >
               <Tooltip title={t('common.refresh')}>
@@ -683,7 +817,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                   type="text"
                   icon={<ReloadOutlined style={{ fontSize: 16 }} />}
                   onClick={handleRefresh}
-                  className="mr-2"
+                  className="rounded-full!"
                 />
               </Tooltip>
 
@@ -694,6 +828,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                     icon={<DownloadOutlined style={{ fontSize: 16 }} />}
                     loading={exporting}
                     onClick={handleExportPdf}
+                    className="rounded-full!"
                   />
                 </Tooltip>
               )}
@@ -701,20 +836,26 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               {isEditMode && (
                 <>
                   <PermissionWrapper requiredPermissions={['EditChart']}>
-                    <Button
-                      type="text"
-                      icon={<SettingOutlined style={{ fontSize: 16 }} />}
-                      onClick={() => setFilterConfigModalVisible(true)}
-                    >
-                      {t('dashboard.configFilter')}
-                    </Button>
+                    <Tooltip title={t('dashboard.configUnifiedFilterFields')}>
+                      <Button
+                        type="text"
+                        icon={<SettingOutlined style={{ fontSize: 16 }} />}
+                        onClick={() => setFilterConfigModalVisible(true)}
+                        className="rounded-full!"
+                      />
+                    </Tooltip>
                   </PermissionWrapper>
                   <PermissionWrapper requiredPermissions={['EditChart']}>
                     <Button
-                      type="dashed"
+                      type="default"
                       icon={<PlusOutlined />}
                       onClick={openAddModal}
-                      style={{ borderColor: '#1677ff', color: '#1677ff' }}
+                      className="rounded-full!"
+                      style={{
+                        borderColor: chartTheme.panelBorderColor,
+                        color: 'var(--color-text-1)',
+                        background: chartTheme.panelBg,
+                      }}
                     >
                       {t('dashboard.addView')}
                     </Button>
@@ -729,15 +870,20 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                       <Button
                         type="text"
                         icon={<EditOutlined style={{ fontSize: 16 }} />}
-                        disabled={!selectedDashboard?.data_id || selectedDashboard?.is_build_in}
+                        disabled={
+                          !selectedDashboard?.data_id ||
+                          selectedDashboard?.is_build_in
+                        }
                         onClick={toggleEditMode}
+                        className="rounded-full!"
                       />
                     </Tooltip>
                   ) : (
-                    <div className="flex items-center gap-2 ml-5!">
+                    <div className="flex items-center gap-2 ml-4">
                       <Button
                         disabled={!selectedDashboard?.data_id}
                         onClick={handleCancelEdit}
+                        className="rounded-full!"
                       >
                         {t('common.cancel')}
                       </Button>
@@ -746,6 +892,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                         loading={saving}
                         disabled={!selectedDashboard?.data_id}
                         onClick={handleSave}
+                        className="rounded-full!"
                       >
                         {t('common.save')}
                       </Button>
@@ -757,132 +904,162 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           </div>
 
           <div
-            className="flex-1 bg-(--color-fill-1) rounded-lg overflow-hidden flex flex-col"
+            className="flex-1 rounded-2xl overflow-hidden flex flex-col"
+            style={{
+              border: `1px solid ${chartTheme.panelBorderColor}`,
+              backgroundColor: chartTheme.panelBg,
+              boxShadow: isDarkTheme
+                ? '0 10px 24px rgba(0, 0, 0, 0.18)'
+                : '0 12px 28px rgba(31, 63, 104, 0.06)',
+            }}
             data-export-expand="true"
           >
-          {(definitions.length > 0 || namespaceSelectorElement) && (
-            <div className="shrink-0">
-              <UnifiedFilterBar
-                definitions={definitions}
-                values={filterValues}
-                onChange={handleFilterValuesChange}
-                prefixContent={namespaceSelectorElement}
-              />
-            </div>
-          )}
-          <div className="flex-1 overflow-auto" data-export-expand="true">
-            {(() => {
-              if (loading) {
-                return (
-                  <div className="h-full flex items-center justify-center">
-                    <Spin size="large" />
-                  </div>
-                );
-              }
+            {(definitions.length > 0 || namespaceSelectorElement) && (
+              <div className="shrink-0">
+                <UnifiedFilterBar
+                  definitions={definitions}
+                  values={filterValues}
+                  onSearch={handleFilterSearch}
+                  onReset={handleFilterReset}
+                  prefixContent={namespaceSelectorElement}
+                />
+              </div>
+            )}
+            <div className="flex-1 overflow-auto" data-export-expand="true">
+              {(() => {
+                if (loading) {
+                  return (
+                    <div className="h-full flex items-center justify-center">
+                      <Spin size="large" />
+                    </div>
+                  );
+                }
 
-              if (!layout.length) {
-                return (
-                  <div className="h-full flex flex-col items-center justify-center">
-                    <Empty
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description={
-                        <span className="text-(--color-text-2)">
-                          {t('dashboard.addView')}
-                        </span>
-                      }
-                    >
-                      <PermissionWrapper requiredPermissions={['EditChart']}>
-                        <Button
-                          type="primary"
-                          icon={<PlusOutlined />}
-                          onClick={openAddModal}
-                          disabled={selectedDashboard?.is_build_in}
-                        >
-                          {t('dashboard.addView')}
-                        </Button>
-                      </PermissionWrapper>
-                    </Empty>
-                  </div>
-                );
-              }
-              return (
-                <ResponsiveGridLayout
-                  className="layout w-full flex-1"
-                  layout={layout}
-                  onLayoutChange={onLayoutChange}
-                  cols={12}
-                  rowHeight={60}
-                  margin={[12, 12]}
-                  containerPadding={[12, 12]}
-                  draggableCancel=".no-drag, .widget-body"
-                  isDraggable={isEditMode}
-                  isResizable={isEditMode}
-                >
-                  {layout.map((item) => {
-                    const menu = (
-                      <Menu>
-                        <Menu.Item
-                          key="edit"
-                          onClick={() => handleEdit(item.i)}
-                        >
-                          {t('common.edit')}
-                        </Menu.Item>
-                        <Menu.Item
-                          key="delete"
-                          onClick={() => handleDelete(item.i)}
-                        >
-                          {t('common.delete')}
-                        </Menu.Item>
-                      </Menu>
-                    );
-
-                    return (
-                      <div
-                        key={item.i}
-                        className="widget bg-(--color-bg-1) rounded-lg shadow-sm overflow-hidden p-4 flex flex-col"
+                if (!layout.length) {
+                  return (
+                    <div className="h-full flex flex-col items-center justify-center">
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description={
+                          <span className="text-(--color-text-2)">
+                            {t('dashboard.addView')}
+                          </span>
+                        }
                       >
-                        <div className="widget-header pb-4 flex justify-between items-start">
-                          <div className="flex-1">
-                            <h4 className="text-md font-medium text-(--color-text-1)">
-                              {item.name}
-                            </h4>
-                            {item.description?.trim() && (
-                              <p className="text-sm text-(--color-text-2) mt-1">
-                                {item.description}
-                              </p>
+                        <PermissionWrapper requiredPermissions={['EditChart']}>
+                          <Button
+                            type="primary"
+                            icon={<PlusOutlined />}
+                            onClick={openAddModal}
+                            disabled={selectedDashboard?.is_build_in}
+                          >
+                            {t('dashboard.addView')}
+                          </Button>
+                        </PermissionWrapper>
+                      </Empty>
+                    </div>
+                  );
+                }
+                return (
+                  <ResponsiveGridLayout
+                    className="layout w-full flex-1"
+                    layout={layout}
+                    onLayoutChange={onLayoutChange}
+                    cols={12}
+                    rowHeight={60}
+                    margin={[10, 10]}
+                    containerPadding={[10, 10]}
+                    draggableCancel=".no-drag, .widget-body"
+                    isDraggable={isEditMode}
+                    isResizable={isEditMode}
+                  >
+                    {layout.map((item) => {
+                      const isTableWidget =
+                        item.valueConfig?.chartType === 'table';
+                      const menu = (
+                        <Menu>
+                          <Menu.Item
+                            key="edit"
+                            onClick={() => handleEdit(item.i)}
+                          >
+                            {t('common.edit')}
+                          </Menu.Item>
+                          <Menu.Item
+                            key="delete"
+                            onClick={() => handleDelete(item.i)}
+                          >
+                            {t('common.delete')}
+                          </Menu.Item>
+                        </Menu>
+                      );
+
+                      return (
+                        <div
+                          key={item.i}
+                          className="widget rounded-2xl overflow-hidden p-3 flex flex-col"
+                          style={{
+                            backgroundColor: chartTheme.panelBg,
+                            border: `1px solid ${chartTheme.panelBorderColor}`,
+                            boxShadow: '0 6px 18px rgba(31, 63, 104, 0.05)',
+                          }}
+                        >
+                          <div
+                            className="widget-header pb-3 mb-2.5 flex justify-between items-start"
+                            style={{
+                              borderBottom: `1px solid ${chartTheme.panelBorderColor}`,
+                            }}
+                          >
+                            <div className="flex-1">
+                              <h4 className="text-[15px] font-semibold text-(--color-text-1)">
+                                {item.name}
+                              </h4>
+                              {item.description?.trim() && (
+                                <p className="text-xs text-(--color-text-2) mt-1">
+                                  {item.description}
+                                </p>
+                              )}
+                            </div>
+                            {isEditMode && (
+                              <Dropdown overlay={menu} trigger={['click']}>
+                                <button className="no-drag text-(--color-text-2) hover:text-(--color-text-1) transition-colors cursor-pointer">
+                                  <MoreOutlined style={{ fontSize: '20px' }} />
+                                </button>
+                              </Dropdown>
                             )}
                           </div>
-                          {isEditMode && (
-                            <Dropdown overlay={menu} trigger={['click']}>
-                              <button className="no-drag text-(--color-text-2) hover:text-(--color-text-1) transition-colors cursor-pointer">
-                                <MoreOutlined style={{ fontSize: '20px' }} />
-                              </button>
-                            </Dropdown>
-                          )}
+                          <div
+                            className={`widget-body flex-1 h-full ${isTableWidget ? 'rounded-lg' : 'rounded-xl'}`}
+                            style={{
+                              backgroundColor: isTableWidget
+                                ? chartTheme.panelBg
+                                : chartTheme.panelSubtleBg,
+                              overflow: isTableWidget ? 'visible' : 'hidden',
+                            }}
+                          >
+                            <WidgetWrapper
+                              widgetId={item.i}
+                              key={item.i}
+                              chartType={item.valueConfig?.chartType}
+                              config={item.valueConfig}
+                              filterSearchVersion={filterSearchVersion}
+                              namespaceSearchVersion={namespaceSearchVersion}
+                              reloadVersion={`${dashboardReloadVersion}:${widgetReloadVersions[item.i] || 0}`}
+                              dataSource={dataSourceManager.findDataSource(
+                                item.valueConfig?.dataSource,
+                              )}
+                              unifiedFilterValues={appliedFilterValues}
+                              filterDefinitions={appliedFilterDefinitions}
+                              builtinNamespaceId={appliedNamespaceId}
+                            />
+                          </div>
                         </div>
-                        <div className="widget-body flex-1 h-full rounded-b overflow-hidden">
-                          <WidgetWrapper
-                            key={item.i}
-                            chartType={item.valueConfig?.chartType}
-                            config={item.valueConfig}
-                            refreshKey={refreshKey + (widgetRefreshKeys[item.i] || 0)}
-                            searchKey={searchKey}
-                            dataSource={dataSourceManager.findDataSource(
-                              item.valueConfig?.dataSource,
-                            )}
-                            unifiedFilterValues={filterValues}
-                            filterDefinitions={definitions}
-                            builtinNamespaceId={selectedNamespaceId}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </ResponsiveGridLayout>
-              );
-            })()}
+                      );
+                    })}
+                  </ResponsiveGridLayout>
+                );
+              })()}
+            </div>
           </div>
-        </div>
         </div>
 
         <ViewSelector
@@ -897,6 +1074,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           onClose={handleConfigClose}
           dataSourceManager={dataSourceManager}
           filterDefinitions={definitions}
+          unifiedFilterValues={filterValues}
         />
         <UnifiedFilterConfigModal
           open={filterConfigModalVisible}

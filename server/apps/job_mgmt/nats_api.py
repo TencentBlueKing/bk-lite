@@ -81,6 +81,8 @@ def ansible_task_callback(data: dict):
 
     仅支持结构化的 per-host 结果数组，不再兼容旧版字符串输出。
 
+    所有异常分支都必须收敛到终态（FAILED），避免作业永久 RUNNING。
+
     Args:
         data: 回调数据，包含以下字段：
             - task_id: 任务ID（对应 JobExecution.id）
@@ -113,6 +115,42 @@ def ansible_task_callback(data: dict):
         logger.info(f"[ansible_task_callback] 任务已处于终态: task_id={task_id}, status={execution.status}")
         return {"success": True, "message": "任务已处理"}
 
+    # 辅助函数：将执行记录收敛到 FAILED 终态
+    def _fail_execution(error_message: str):
+        """将执行记录收敛到 FAILED 终态"""
+        target_list_for_fail = execution.target_list or []
+        execution.status = ExecutionStatus.FAILED
+        execution.finished_at = timezone.now()
+        execution.execution_results = [
+            {
+                "target_key": str(t.get("target_id", "")),
+                "name": t.get("name", ""),
+                "ip": t.get("ip", ""),
+                "status": ExecutionStatus.FAILED,
+                "stdout": "",
+                "stderr": error_message,
+                "exit_code": 1,
+                "error_message": error_message,
+                "started_at": execution.started_at.isoformat() if execution.started_at else "",
+                "finished_at": timezone.now().isoformat(),
+            }
+            for t in target_list_for_fail
+        ]
+        execution.success_count = 0
+        execution.failed_count = len(target_list_for_fail)
+        execution.save(
+            update_fields=[
+                "status",
+                "execution_results",
+                "finished_at",
+                "success_count",
+                "failed_count",
+                "updated_at",
+            ]
+        )
+        logger.warning(f"[ansible_task_callback] 任务异常收敛到 FAILED: task_id={task_id}, reason={error_message}")
+        send_callback(execution)
+
     # 解析新版本结构化回调数据
     raw_result = data.get("result", [])
     error_output = data.get("error", "")
@@ -121,8 +159,8 @@ def ansible_task_callback(data: dict):
     execution_results = []
 
     if not (isinstance(raw_result, list) and raw_result and all(isinstance(item, dict) for item in raw_result)):
-        logger.warning(f"[ansible_task_callback] 非法的新版本结果格式: task_id={task_id}, result={raw_result}")
-        return {"success": False, "message": "非法的新版本结果格式"}
+        _fail_execution(f"回调结果格式非法: {raw_result}")
+        return {"success": False, "message": "非法的新版本结果格式，已收敛到 FAILED"}
 
     target_map = {}
     for target_info in target_list:
@@ -134,13 +172,13 @@ def ansible_task_callback(data: dict):
         host_key = str(host_result.get("host", ""))
         target_info = target_map.get(host_key)
         if not target_info:
-            logger.warning(f"[ansible_task_callback] 结果中的主机未匹配到目标: task_id={task_id}, host={host_key}")
-            return {"success": False, "message": f"结果中的主机未匹配到目标: {host_key}"}
+            _fail_execution(f"结果中的主机未匹配到目标: {host_key}")
+            return {"success": False, "message": f"结果中的主机未匹配到目标: {host_key}，已收敛到 FAILED"}
 
         target_key = str(target_info.get("target_id", ""))
         if target_key in seen_target_keys:
-            logger.warning(f"[ansible_task_callback] 结果中的主机重复: task_id={task_id}, host={host_key}")
-            return {"success": False, "message": f"结果中的主机重复: {host_key}"}
+            _fail_execution(f"结果中的主机重复: {host_key}")
+            return {"success": False, "message": f"结果中的主机重复: {host_key}，已收敛到 FAILED"}
         seen_target_keys.add(target_key)
 
         host_status = host_result.get("status")
@@ -298,7 +336,9 @@ def job_script_execute(data: dict):
     )
 
     # 触发异步执行（Celery Worker）
-    execute_script_task.delay(execution.id)
+    result = execute_script_task.delay(execution.id)
+    execution.celery_task_id = result.id
+    execution.save(update_fields=["celery_task_id", "updated_at"])
 
     return {"result": True, "data": {"task_id": execution.id}}
 
@@ -383,7 +423,9 @@ def job_file_distribute(data: dict):
     )
 
     # 触发异步执行（Celery Worker）
-    distribute_files_task.delay(execution.id)
+    result = distribute_files_task.delay(execution.id)
+    execution.celery_task_id = result.id
+    execution.save(update_fields=["celery_task_id", "updated_at"])
 
     return {"result": True, "data": {"task_id": execution.id}}
 

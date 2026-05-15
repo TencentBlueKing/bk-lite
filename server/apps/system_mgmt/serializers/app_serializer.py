@@ -1,8 +1,9 @@
+from django.db import transaction
 from rest_framework import serializers
 from rest_framework.fields import empty
 
 from apps.core.utils.loader import LanguageLoader
-from apps.system_mgmt.models import App
+from apps.system_mgmt.models import App, Role
 
 
 class AppSerializer(serializers.ModelSerializer):
@@ -35,9 +36,12 @@ class AppSerializer(serializers.ModelSerializer):
             del data["description_cn"]
         return data
 
+    @transaction.atomic
     def create(self, validated_data):
         validated_data["is_build_in"] = False
-        return super().create(validated_data)
+        instance = super().create(validated_data)
+        Role.objects.get_or_create(name="user", app=instance.name)
+        return instance
 
     def update(self, instance, validated_data):
         validated_data.pop("is_build_in", None)

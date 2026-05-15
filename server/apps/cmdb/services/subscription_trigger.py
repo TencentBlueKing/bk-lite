@@ -135,52 +135,51 @@ class SubscriptionTriggerService:
             f"trigger_types={self.rule.trigger_types}, checkpoint={checkpoint.isoformat()}"
         )
         instances = self._get_current_instances()
-        logger.info(
-            "[Subscription] 当前实例集加载完成 "
-            f"rule_id={self.rule.id}, instances_count={len(instances)}"
-        )
+        logger.info(f"[Subscription] 当前实例集加载完成 rule_id={self.rule.id}, instances_count={len(instances)}")
         if not instances:
             self._update_snapshot(
                 {"instances": [], "relations": {}, "expiration_notified": {}},
                 checkpoint,
             )
-            logger.info(
-                f"[Subscription] 当前实例为空，已更新快照 rule_id={self.rule.id}"
-            )
+            logger.info(f"[Subscription] 当前实例为空，已更新快照 rule_id={self.rule.id}")
             return []
 
-        instance_ids = [
-            int(i.get("_id")) for i in instances if i.get("_id") is not None
-        ]
+        instance_ids = [int(i.get("_id")) for i in instances if i.get("_id") is not None]
         relation_maps_by_model: dict[str, dict[int, list[int]]] = {}
+        relation_failed_instance_ids_by_model: dict[str, set[int]] = {}
         if TriggerType.RELATION_CHANGE.value in self.rule.trigger_types:
-            relation_models = self._normalize_relation_change_models(
-                self.rule.trigger_config.get("relation_change", {})
-            )
+            relation_models = self._normalize_relation_change_models(self.rule.trigger_config.get("relation_change", {}))
             for relation_model in relation_models:
                 related_model = relation_model.get("related_model")
                 if not related_model:
                     continue
-                relation_maps_by_model[related_model] = self._get_relation_instances(
-                    instance_ids, related_model
-                )
+                (
+                    relation_maps_by_model[related_model],
+                    relation_failed_instance_ids_by_model[related_model],
+                ) = self._get_relation_instances(instance_ids, related_model)
 
-        current_snapshot = self._build_current_snapshot(instances, relation_maps_by_model)
+        current_snapshot = self._build_current_snapshot(
+            instances,
+            relation_maps_by_model,
+            relation_failed_instance_ids_by_model,
+        )
 
         if TriggerType.ATTRIBUTE_CHANGE.value in self.rule.trigger_types:
             self.events.extend(self._check_attribute_change(instances, checkpoint))
         if TriggerType.RELATION_CHANGE.value in self.rule.trigger_types:
             self.events.extend(
-                self._check_relation_change(current_snapshot, instances, checkpoint)
+                self._check_relation_change(
+                    current_snapshot,
+                    instances,
+                    checkpoint,
+                    relation_failed_instance_ids_by_model,
+                )
             )
         if TriggerType.EXPIRATION.value in self.rule.trigger_types:
             self.events.extend(self._check_expiration(instances, current_snapshot))
 
         self._update_snapshot(current_snapshot, checkpoint)
-        logger.info(
-            "[Subscription] 触发检测结束 "
-            f"rule_id={self.rule.id}, events_count={len(self.events)}"
-        )
+        logger.info(f"[Subscription] 触发检测结束 rule_id={self.rule.id}, events_count={len(self.events)}")
         return self.events
 
     def _get_current_instances(self) -> list[dict[str, Any]]:
@@ -195,9 +194,7 @@ class SubscriptionTriggerService:
             else:
                 instance_ids = self.rule.instance_filter.get("instance_ids", [])
                 if not instance_ids:
-                    logger.info(
-                        f"[Subscription] 实例筛选为空，跳过 rule_id={self.rule.id}"
-                    )
+                    logger.info(f"[Subscription] 实例筛选为空，跳过 rule_id={self.rule.id}")
                     return []
                 query_list = [{"field": "id", "type": "id[]", "value": instance_ids}]
 
@@ -211,26 +208,34 @@ class SubscriptionTriggerService:
                 creator="",
             )
             all_instances.extend(data)
-            logger.info(
-                "[Subscription] 分页查询实例 "
-                f"rule_id={self.rule.id}, page={page}, page_size={page_size}, "
-                f"fetched={len(data)}, total={count}"
-            )
+            logger.info(f"[Subscription] 分页查询实例 rule_id={self.rule.id}, page={page}, page_size={page_size}, fetched={len(data)}, total={count}")
             if len(all_instances) >= count:
                 break
             page += 1
 
         return all_instances
 
-    def _get_relation_instances(
-        self, instance_ids: list[int], related_model: str
-    ) -> dict[int, list[int]]:
-        logger.info(
-            "[Subscription] 开始查询关联实例 "
-            f"rule_id={self.rule.id}, related_model={related_model}, "
-            f"instance_count={len(instance_ids)}"
-        )
+    def _get_relation_instances(self, instance_ids: list[int], related_model: str) -> tuple[dict[int, list[int]], set[int]]:
+        logger.info(f"[Subscription] 开始查询关联实例 rule_id={self.rule.id}, related_model={related_model}, instance_count={len(instance_ids)}")
+        try:
+            relation_map = InstanceManage.instance_association_map(
+                self.rule.model_id,
+                instance_ids,
+                related_model=related_model,
+            )
+            logger.info(
+                f"[Subscription] 关联实例批量查询完成 rule_id={self.rule.id}, related_model={related_model}, relation_map_size={len(relation_map)}"
+            )
+            return relation_map, set()
+        except Exception as exc:
+            logger.error(
+                "[Subscription] batch query relation failed, fallback to per-instance query "
+                f"rule_id={self.rule.id}, related_model={related_model}, error={exc}",
+                exc_info=True,
+            )
+
         relation_map: dict[int, list[int]] = {}
+        failed_instance_ids: set[int] = set()
         for inst_id in instance_ids:
             try:
                 rels = InstanceManage.instance_association(self.rule.model_id, inst_id)
@@ -239,6 +244,7 @@ class SubscriptionTriggerService:
                     f"[Subscription] query relation failed inst_id={inst_id}, error={exc}",
                     exc_info=True,
                 )
+                failed_instance_ids.add(inst_id)
                 continue
             related_ids: list[int] = []
             for rel in rels:
@@ -249,18 +255,20 @@ class SubscriptionTriggerService:
             relation_map[inst_id] = sorted(list(set(related_ids)))
         logger.info(
             "[Subscription] 关联实例查询完成 "
-            f"rule_id={self.rule.id}, relation_map_size={len(relation_map)}"
+            f"rule_id={self.rule.id}, relation_map_size={len(relation_map)}, "
+            f"failed_instance_count={len(failed_instance_ids)}"
         )
-        return relation_map
+        return relation_map, failed_instance_ids
 
     def _build_current_snapshot(
         self,
         instances: list[dict[str, Any]],
         relations_by_model: dict[str, dict[int, list[int]]],
+        failed_relation_instance_ids_by_model: dict[str, set[int]] | None = None,
     ) -> dict[str, Any]:
-        relation_models = self._normalize_relation_change_models(
-            self.rule.trigger_config.get("relation_change", {})
-        )
+        relation_models = self._normalize_relation_change_models(self.rule.trigger_config.get("relation_change", {}))
+        failed_relation_instance_ids_by_model = failed_relation_instance_ids_by_model or {}
+        previous_relations = (self.rule.snapshot_data or {}).get("relations", {})
         snapshot_relations: dict[str, dict[str, list[int]]] = {}
         for inst in instances:
             inst_id = int(inst.get("_id"))
@@ -269,14 +277,16 @@ class SubscriptionTriggerService:
                 related_model = relation_model.get("related_model")
                 if not related_model:
                     continue
-                inst_relations[related_model] = (
-                    relations_by_model.get(related_model, {}).get(inst_id, [])
-                )
+                failed_instance_ids = failed_relation_instance_ids_by_model.get(related_model, set())
+                if inst_id in failed_instance_ids:
+                    previous_related_ids = (previous_relations.get(str(inst_id), {}) or {}).get(related_model)
+                    if previous_related_ids is not None:
+                        inst_relations[related_model] = list(previous_related_ids)
+                    continue
+                inst_relations[related_model] = relations_by_model.get(related_model, {}).get(inst_id, [])
             snapshot_relations[str(inst_id)] = inst_relations
         return {
-            "instances": [
-                int(i.get("_id")) for i in instances if i.get("_id") is not None
-            ],
+            "instances": [int(i.get("_id")) for i in instances if i.get("_id") is not None],
             "relations": snapshot_relations,
         }
 
@@ -334,13 +344,7 @@ class SubscriptionTriggerService:
             return inst_name
         before_data = before_data or {}
         after_data = after_data or {}
-        return (
-            after_data.get("inst_name")
-            or after_data.get("ip_addr")
-            or before_data.get("inst_name")
-            or before_data.get("ip_addr")
-            or str(inst_id)
-        )
+        return after_data.get("inst_name") or after_data.get("ip_addr") or before_data.get("inst_name") or before_data.get("ip_addr") or str(inst_id)
 
     def _build_related_change_map(
         self,
@@ -362,11 +366,7 @@ class SubscriptionTriggerService:
             before_data = record.before_data or {}
             after_data = record.after_data or {}
             changed_fields = self._get_changed_fields(before_data, after_data)
-            matched_fields = (
-                sorted(list(changed_fields & watch_fields))
-                if watch_fields
-                else sorted(list(changed_fields))
-            )
+            matched_fields = sorted(list(changed_fields & watch_fields)) if watch_fields else sorted(list(changed_fields))
             if not matched_fields:
                 continue
 
@@ -377,9 +377,7 @@ class SubscriptionTriggerService:
                 change_details.append(f"{field}: {old_val} → {new_val}")
             if not change_details:
                 continue
-            related_change_map.setdefault(record.inst_id, []).append(
-                "字段变化: " + "; ".join(change_details)
-            )
+            related_change_map.setdefault(record.inst_id, []).append("字段变化: " + "; ".join(change_details))
         return related_change_map, len(related_change_records)
 
     def _build_related_inst_name_map(
@@ -425,11 +423,7 @@ class SubscriptionTriggerService:
                     related_inst_id = int(related_inst_id)
                 except (TypeError, ValueError):
                     continue
-                related_inst_name_map[related_inst_id] = (
-                    related_inst.get("inst_name")
-                    or related_inst.get("ip_addr")
-                    or str(related_inst_id)
-                )
+                related_inst_name_map[related_inst_id] = related_inst.get("inst_name") or related_inst.get("ip_addr") or str(related_inst_id)
         except Exception as exc:
             logger.error(
                 f"[Subscription] 关联实例名称查询失败 rule_id={self.rule.id}, related_model={related_model}, error={exc}",
@@ -437,32 +431,19 @@ class SubscriptionTriggerService:
             )
         return related_inst_name_map
 
-    def _check_attribute_change(
-        self, instances: list[dict[str, Any]], checkpoint: datetime
-    ) -> list[TriggerEvent]:
+    def _check_attribute_change(self, instances: list[dict[str, Any]], checkpoint: datetime) -> list[TriggerEvent]:
         # 属性变化通过 ChangeRecord 增量窗口比对，避免全量字段对比开销。
         events: list[TriggerEvent] = []
         config = self.rule.trigger_config.get("attribute_change", {})
         watch_fields = set(config.get("fields", []))
         merge_mode = self.attribute_merge_mode
         if not watch_fields:
-            logger.info(
-                f"[Subscription] 未配置属性监听字段，跳过 rule_id={self.rule.id}"
-            )
+            logger.info(f"[Subscription] 未配置属性监听字段，跳过 rule_id={self.rule.id}")
             return events
 
-        instance_map = {
-            int(inst.get("_id")): inst
-            for inst in instances
-            if inst.get("_id") is not None
-        }
-        previous_instance_ids = {
-            int(inst_id)
-            for inst_id in (self.rule.snapshot_data or {}).get("instances", [])
-        }
-        candidate_instance_ids = sorted(
-            set(instance_map.keys()) | previous_instance_ids
-        )
+        instance_map = {int(inst.get("_id")): inst for inst in instances if inst.get("_id") is not None}
+        previous_instance_ids = {int(inst_id) for inst_id in (self.rule.snapshot_data or {}).get("instances", [])}
+        candidate_instance_ids = sorted(set(instance_map.keys()) | previous_instance_ids)
         now_str = timezone.now().isoformat()
 
         merged_event_map: dict[int, dict[str, Any]] = {}
@@ -477,25 +458,17 @@ class SubscriptionTriggerService:
                 summary = "实例进入订阅范围（可能为新建或属性变化命中过滤条件）"
                 inst_name = self._resolve_attribute_inst_name(instance_map, inst_id)
                 if merge_mode == "single":
-                    self._merge_attribute_summary(
-                        merged_event_map, inst_id, inst_name, summary
-                    )
+                    self._merge_attribute_summary(merged_event_map, inst_id, inst_name, summary)
                 else:
-                    self._emit_attribute_event(
-                        events, inst_id, inst_name, summary, now_str
-                    )
+                    self._emit_attribute_event(events, inst_id, inst_name, summary, now_str)
 
             for inst_id in removed_ids:
                 summary = "实例离开订阅范围（可能为删除或属性变化不再命中过滤条件）"
                 inst_name = self._resolve_attribute_inst_name(instance_map, inst_id)
                 if merge_mode == "single":
-                    self._merge_attribute_summary(
-                        merged_event_map, inst_id, inst_name, summary
-                    )
+                    self._merge_attribute_summary(merged_event_map, inst_id, inst_name, summary)
                 else:
-                    self._emit_attribute_event(
-                        events, inst_id, inst_name, summary, now_str
-                    )
+                    self._emit_attribute_event(events, inst_id, inst_name, summary, now_str)
 
             if added_ids or removed_ids:
                 logger.info(
@@ -538,9 +511,7 @@ class SubscriptionTriggerService:
             matched = sorted(list(changed_fields & watch_fields))
             if not matched:
                 continue
-            inst_name = self._resolve_attribute_inst_name(
-                instance_map, record.inst_id, before_data, after_data
-            )
+            inst_name = self._resolve_attribute_inst_name(instance_map, record.inst_id, before_data, after_data)
             change_details = []
             for field in matched:
                 old_val = truncate_value(before_data.get(field))
@@ -551,9 +522,7 @@ class SubscriptionTriggerService:
 
             field_change_summary = "字段变化: " + "; ".join(change_details)
             if merge_mode == "single":
-                self._merge_attribute_summary(
-                    merged_event_map, record.inst_id, inst_name, field_change_summary
-                )
+                self._merge_attribute_summary(merged_event_map, record.inst_id, inst_name, field_change_summary)
             else:
                 self._emit_attribute_event(
                     events,
@@ -583,10 +552,7 @@ class SubscriptionTriggerService:
                         triggered_at=now_str,
                     )
                 )
-        logger.info(
-            "[Subscription] 属性变更检测完成 "
-            f"rule_id={self.rule.id}, merge_mode={merge_mode}, events_count={len(events)}"
-        )
+        logger.info(f"[Subscription] 属性变更检测完成 rule_id={self.rule.id}, merge_mode={merge_mode}, events_count={len(events)}")
         return events
 
     def _check_relation_change(
@@ -594,6 +560,7 @@ class SubscriptionTriggerService:
         current_snapshot: dict[str, Any],
         instances: list[dict[str, Any]],
         checkpoint: datetime,
+        failed_relation_instance_ids_by_model: dict[str, set[int]] | None = None,
     ) -> list[TriggerEvent]:
         # 关联变化关注两类事件：关联实例新增/删除，及已关联实例的属性变化。
         relation_config = self.rule.trigger_config.get("relation_change", {}) or {}
@@ -602,15 +569,12 @@ class SubscriptionTriggerService:
             logger.info(f"[Subscription] 未配置关联模型，跳过 rule_id={self.rule.id}")
             return []
 
+        failed_relation_instance_ids_by_model = failed_relation_instance_ids_by_model or {}
         previous_relations = (self.rule.snapshot_data or {}).get("relations", {})
         current_relations = current_snapshot.get("relations", {})
-        all_instance_ids = sorted(
-            set(previous_relations.keys()) | set(current_relations.keys())
-        )
+        all_instance_ids = sorted(set(previous_relations.keys()) | set(current_relations.keys()))
         inst_name_map = {
-            str(int(inst.get("_id"))): (
-                inst.get("inst_name") or inst.get("ip_addr") or str(inst.get("_id"))
-            )
+            str(int(inst.get("_id"))): (inst.get("inst_name") or inst.get("ip_addr") or str(inst.get("_id")))
             for inst in instances
             if inst.get("_id") is not None
         }
@@ -622,6 +586,7 @@ class SubscriptionTriggerService:
             related_model = relation_model.get("related_model")
             if not related_model:
                 continue
+            failed_instance_ids = failed_relation_instance_ids_by_model.get(related_model, set())
             watch_fields = set(relation_model.get("fields", []) or [])
             related_change_map, related_record_count = self._build_related_change_map(
                 related_model=related_model,
@@ -636,12 +601,10 @@ class SubscriptionTriggerService:
             )
 
             for inst_id_str in all_instance_ids:
-                prev_related = set(
-                    (previous_relations.get(inst_id_str, {}) or {}).get(related_model, [])
-                )
-                curr_related = set(
-                    (current_relations.get(inst_id_str, {}) or {}).get(related_model, [])
-                )
+                if int(inst_id_str) in failed_instance_ids:
+                    continue
+                prev_related = set((previous_relations.get(inst_id_str, {}) or {}).get(related_model, []))
+                curr_related = set((current_relations.get(inst_id_str, {}) or {}).get(related_model, []))
                 added = sorted(list(curr_related - prev_related))
                 removed = sorted(list(prev_related - curr_related))
                 stable_related = sorted(list(prev_related & curr_related))
@@ -658,12 +621,8 @@ class SubscriptionTriggerService:
                     if not change_summaries:
                         continue
                     merged_summary = " | ".join(change_summaries)
-                    related_inst_name = related_inst_name_map.get(
-                        related_inst_id, str(related_inst_id)
-                    )
-                    changed_related_parts.append(
-                        f"关联实例[{related_inst_name}]属性变化: {merged_summary}"
-                    )
+                    related_inst_name = related_inst_name_map.get(related_inst_id, str(related_inst_id))
+                    changed_related_parts.append(f"关联实例[{related_inst_name}]属性变化: {merged_summary}")
                 if changed_related_parts:
                     summary_parts.extend(changed_related_parts)
 
@@ -691,9 +650,7 @@ class SubscriptionTriggerService:
         )
         return events
 
-    def _check_expiration(
-        self, instances: list[dict[str, Any]], current_snapshot: dict[str, Any]
-    ) -> list[TriggerEvent]:
+    def _check_expiration(self, instances: list[dict[str, Any]], current_snapshot: dict[str, Any]) -> list[TriggerEvent]:
         # 到期提醒使用去重键避免同一实例在窗口内反复通知。
         config = self.rule.trigger_config.get("expiration", {})
         time_field = config.get("time_field")
@@ -702,11 +659,7 @@ class SubscriptionTriggerService:
             logger.info(f"[Subscription] 到期配置无效，跳过 rule_id={self.rule.id}")
             return []
 
-        previous_notified = set(
-            (
-                (self.rule.snapshot_data or {}).get("expiration_notified", {}) or {}
-            ).keys()
-        )
+        previous_notified = set(((self.rule.snapshot_data or {}).get("expiration_notified", {}) or {}).keys())
         current_notified: dict[str, str] = {}
         today = timezone.localdate()
         target_date = today + timedelta(days=days_before)
@@ -749,9 +702,7 @@ class SubscriptionTriggerService:
         )
         return events
 
-    def _update_snapshot(
-        self, current_snapshot: dict[str, Any], checkpoint: datetime
-    ) -> None:
+    def _update_snapshot(self, current_snapshot: dict[str, Any], checkpoint: datetime) -> None:
         updates: dict[str, Any] = {
             "snapshot_data": current_snapshot,
             "last_check_time": checkpoint,
@@ -762,11 +713,7 @@ class SubscriptionTriggerService:
         SubscriptionRule.objects.filter(id=self.rule.id).update(**updates)
         for key, value in updates.items():
             setattr(self.rule, key, value)
-        logger.info(
-            "[Subscription] 快照更新完成 "
-            f"rule_id={self.rule.id}, last_check_time={checkpoint.isoformat()}, "
-            f"triggered={bool(self.events)}"
-        )
+        logger.info(f"[Subscription] 快照更新完成 rule_id={self.rule.id}, last_check_time={checkpoint.isoformat()}, triggered={bool(self.events)}")
 
     @staticmethod
     def _get_changed_fields(before_data: dict, after_data: dict) -> set[str]:

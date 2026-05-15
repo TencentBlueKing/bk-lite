@@ -97,9 +97,7 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         return WebUtils.response_success(data)
 
     @staticmethod
-    def _apply_unit_conversion(
-        response_data: dict, source_unit: str, target_unit: Optional[str] = None
-    ) -> dict:
+    def _apply_unit_conversion(response_data: dict, source_unit: str, target_unit: Optional[str] = None) -> dict:
         """
         对 VictoriaMetrics 响应数据应用单位转换
 
@@ -118,9 +116,7 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
             if not result_list:
                 return response_data
 
-            logger.debug(
-                f"开始单位转换，初始单位: {source_unit}, 目标单位: {target_unit or '自动'}"
-            )
+            logger.debug(f"开始单位转换，初始单位: {source_unit}, 目标单位: {target_unit or '自动'}")
 
             all_numeric_values = []
 
@@ -129,9 +125,7 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
                 if not values:
                     continue
 
-                extracted_values = MetricsInstanceViewSet._extract_values_from_item(
-                    values
-                )
+                extracted_values = MetricsInstanceViewSet._extract_values_from_item(values)
                 all_numeric_values.extend(extracted_values)
 
             if not all_numeric_values:
@@ -141,14 +135,10 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
             if target_unit:
                 final_target_unit = target_unit
             else:
-                _, final_target_unit = UnitConverter.auto_convert(
-                    all_numeric_values, source_unit
-                )
+                _, final_target_unit = UnitConverter.auto_convert(all_numeric_values, source_unit)
 
             logger.info(
-                f"统一单位转换: {source_unit} -> {final_target_unit}, "
-                f"基于 {len(all_numeric_values)} 个数据点, "
-                f"涉及 {len(result_list)} 条时间序列"
+                f"统一单位转换: {source_unit} -> {final_target_unit}, 基于 {len(all_numeric_values)} 个数据点, 涉及 {len(result_list)} 条时间序列"
             )
 
             for item in result_list:
@@ -156,20 +146,12 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
                 if not values:
                     continue
 
-                is_single_value = (
-                    isinstance(values, list)
-                    and len(values) == 2
-                    and not isinstance(values[0], list)
-                )
+                is_single_value = isinstance(values, list) and len(values) == 2 and not isinstance(values[0], list)
 
                 if is_single_value:
-                    MetricsInstanceViewSet._convert_single_value(
-                        item, values, source_unit, final_target_unit
-                    )
+                    MetricsInstanceViewSet._convert_single_value(item, values, source_unit, final_target_unit)
                 else:
-                    MetricsInstanceViewSet._convert_range_values(
-                        item, values, source_unit, final_target_unit
-                    )
+                    MetricsInstanceViewSet._convert_range_values(item, values, source_unit, final_target_unit)
 
             data["unit"] = final_target_unit
             data["source_unit"] = source_unit
@@ -189,11 +171,7 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         :return: 数值列表
         """
         numeric_values = []
-        is_single_value = (
-            isinstance(values, list)
-            and len(values) == 2
-            and not isinstance(values[0], list)
-        )
+        is_single_value = isinstance(values, list) and len(values) == 2 and not isinstance(values[0], list)
 
         if is_single_value:
             # 单值
@@ -218,9 +196,7 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         return numeric_values
 
     @staticmethod
-    def _convert_single_value(
-        item: dict, values: list, source_unit: str, target_unit: str
-    ):
+    def _convert_single_value(item: dict, values: list, source_unit: str, target_unit: str):
         """
         转换单值查询的数据
 
@@ -235,22 +211,15 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
 
         try:
             value = float(value_str)
-            converted_values = UnitConverter.convert_values(
-                [value], source_unit, target_unit
-            )
+            converted_values = UnitConverter.convert_values([value], source_unit, target_unit)
             item["value"] = [timestamp, str(converted_values[0])]
 
-            logger.debug(
-                f"转换: {item.get('metric', {}).get('__name__', 'unknown')} "
-                f"{value} {source_unit} -> {converted_values[0]} {target_unit}"
-            )
+            logger.debug(f"转换: {item.get('metric', {}).get('__name__', 'unknown')} {value} {source_unit} -> {converted_values[0]} {target_unit}")
         except (ValueError, TypeError) as e:
             logger.warning(f"无法转换值 '{value_str}': {e}")
 
     @staticmethod
-    def _convert_range_values(
-        item: dict, values: list, source_unit: str, target_unit: str
-    ):
+    def _convert_range_values(item: dict, values: list, source_unit: str, target_unit: str):
         """
         转换范围查询的数据
 
@@ -280,18 +249,13 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
             return
 
         # 转换到统一单位
-        converted_values = UnitConverter.convert_values(
-            numeric_values, source_unit, target_unit
-        )
+        converted_values = UnitConverter.convert_values(numeric_values, source_unit, target_unit)
 
         # 更新转换后的值
         for idx, converted_value in zip(valid_indices, converted_values):
             values[idx][1] = str(converted_value)
 
-        logger.debug(
-            f"转换: {item.get('metric', {}).get('__name__', 'unknown')} "
-            f"{len(converted_values)} 个数据点 -> {target_unit}"
-        )
+        logger.debug(f"转换: {item.get('metric', {}).get('__name__', 'unknown')} {len(converted_values)} 个数据点 -> {target_unit}")
 
     @action(methods=["get"], detail=False, url_path="query_by_instance")
     def query_by_instance(self, request):
@@ -301,20 +265,18 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         auto_convert = request.GET.get("auto_convert_unit", "true").lower() == "true"
 
         if not all([monitor_object_id, metric_id, instance_id]):
-            raise BaseAppException(
-                "monitor_object_id, metric_id, instance_id are required"
-            )
+            raise BaseAppException("monitor_object_id, metric_id, instance_id are required")
 
-        metric = Metric.objects.filter(
-            id=metric_id, monitor_object_id=monitor_object_id
-        ).first()
+        metric = Metric.objects.filter(id=metric_id, monitor_object_id=monitor_object_id).select_related("monitor_object").first()
         if not metric:
             raise BaseAppException("Metric not found")
+
+        effective_instance_id_keys = MetricsService.get_effective_metric_instance_id_keys(metric)
 
         data = MetricsService.query_metric_by_instance(
             metric_query=metric.query,
             instance_id=instance_id,
-            instance_id_keys=metric.instance_id_keys,
+            instance_id_keys=effective_instance_id_keys,
             dimensions=metric.dimensions,
         )
 

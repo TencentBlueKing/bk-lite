@@ -231,6 +231,115 @@ func TestDownloadFilePropagatesIOErrorKind(t *testing.T) {
 	}
 }
 
+func TestDownloadFilePropagatesCanceledErrorKind(t *testing.T) {
+	withStubDownloader(t, func(nc *nats.Conn, bucketName string) (fileDownloader, error) {
+		return stubDownloader{download: func(ctx context.Context, fileKey, targetPath, fileName string) error {
+			return downloaderr.New(downloaderr.KindCanceled, context.Canceled)
+		}}, nil
+	})
+
+	err := DownloadFile(DownloadFileRequest{
+		BucketName:     "bucket",
+		FileKey:        "key",
+		FileName:       "file.txt",
+		TargetPath:     "/tmp",
+		ExecuteTimeout: 1,
+	}, nil)
+
+	if err == nil {
+		t.Fatal("expected canceled error")
+	}
+	if downloaderr.KindOf(err) != downloaderr.KindCanceled {
+		t.Fatalf("expected canceled error kind, got %s", downloaderr.KindOf(err))
+	}
+	if !strings.Contains(err.Error(), "download operation canceled") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDownloadFileMapsPlainCanceledAndTimeoutErrors(t *testing.T) {
+	testCases := []struct {
+		name     string
+		err      error
+		wantKind downloaderr.Kind
+		wantText string
+	}{
+		{name: "timeout", err: context.DeadlineExceeded, wantKind: downloaderr.KindTimeout, wantText: "download operation timed out"},
+		{name: "canceled", err: context.Canceled, wantKind: downloaderr.KindCanceled, wantText: "download operation canceled"},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			withStubDownloader(t, func(nc *nats.Conn, bucketName string) (fileDownloader, error) {
+				return stubDownloader{download: func(ctx context.Context, fileKey, targetPath, fileName string) error {
+					return tt.err
+				}}, nil
+			})
+
+			err := DownloadFile(DownloadFileRequest{
+				BucketName:     "bucket",
+				FileKey:        "key",
+				FileName:       "file.txt",
+				TargetPath:     "/tmp",
+				ExecuteTimeout: 1,
+			}, nil)
+			if err == nil {
+				t.Fatal("expected mapped error")
+			}
+			if downloaderr.KindOf(err) != tt.wantKind {
+				t.Fatalf("expected %s, got %s", tt.wantKind, downloaderr.KindOf(err))
+			}
+			if !strings.Contains(err.Error(), tt.wantText) {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestDownloadFileSuccessAndUnknownErrorFallback(t *testing.T) {
+	t.Run("success path", func(t *testing.T) {
+		called := false
+		withStubDownloader(t, func(nc *nats.Conn, bucketName string) (fileDownloader, error) {
+			return stubDownloader{download: func(ctx context.Context, fileKey, targetPath, fileName string) error {
+				called = true
+				return nil
+			}}, nil
+		})
+
+		if err := DownloadFile(DownloadFileRequest{
+			BucketName:     "bucket",
+			FileKey:        "key",
+			FileName:       "file.txt",
+			TargetPath:     "/tmp",
+			ExecuteTimeout: 1,
+		}, nil); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if !called {
+			t.Fatal("expected downloader to be called")
+		}
+	})
+
+	t.Run("plain error falls back to dependency kind", func(t *testing.T) {
+		withStubDownloader(t, func(nc *nats.Conn, bucketName string) (fileDownloader, error) {
+			return stubDownloader{download: func(ctx context.Context, fileKey, targetPath, fileName string) error {
+				return errors.New("plain failure")
+			}}, nil
+		})
+
+		err := DownloadFile(DownloadFileRequest{
+			BucketName:     "bucket",
+			FileKey:        "key",
+			FileName:       "file.txt",
+			TargetPath:     "/tmp",
+			ExecuteTimeout: 1,
+		}, nil)
+		if err == nil || downloaderr.KindOf(err) != downloaderr.KindDependency || !strings.Contains(err.Error(), "failed to download file") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
 func TestDownloadFileSucceeds(t *testing.T) {
 	called := false
 	withStubDownloader(t, func(nc *nats.Conn, bucketName string) (fileDownloader, error) {

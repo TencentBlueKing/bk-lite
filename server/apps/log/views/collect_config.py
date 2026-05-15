@@ -180,6 +180,7 @@ class CollectTypeViewSet(ModelViewSet):
 class CollectInstanceViewSet(ViewSet):
     OPERATE_PERMISSION = "Operate"
     PAGE_SIZE_MAX = 500
+    PAGE_SIZE_ALL = -1
 
     @staticmethod
     def _normalize_ids(values):
@@ -213,6 +214,8 @@ class CollectInstanceViewSet(ViewSet):
 
         if page < 1:
             raise ValueError("page must be greater than or equal to 1")
+        if page_size == cls.PAGE_SIZE_ALL:
+            return page, page_size
         if page_size < 1 or page_size > cls.PAGE_SIZE_MAX:
             raise ValueError(f"page_size must be between 1 and {cls.PAGE_SIZE_MAX}")
         return page, page_size

@@ -12,15 +12,19 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from apps.operation_analysis.constants.import_export import (
-    YAML_SCHEMA_VERSION,
-    OBJECT_TYPE_TO_SECTION,
-    ObjectType,
-    ImportExportErrorCode,
     BUSINESS_KEY_SEPARATOR,
+    OBJECT_TYPE_TO_SECTION,
+    YAML_SCHEMA_VERSION,
+    ImportExportErrorCode,
+    ObjectType,
 )
-from apps.operation_analysis.services.import_export.view_sets import (
-    normalize_canvas_view_sets_for_storage,
-)
+
+
+def _normalize_canvas_view_sets_for_storage(v, object_type):
+    """延迟导入以避免循环依赖"""
+    from apps.operation_analysis.services.import_export.view_sets import normalize_canvas_view_sets_for_storage
+
+    return normalize_canvas_view_sets_for_storage(v, object_type)
 
 
 class ImportExportValidationError(Exception):
@@ -152,7 +156,7 @@ class DashboardItem(BaseModel):
     @field_validator("view_sets", mode="before")
     @classmethod
     def normalize_view_sets(cls, v: Any) -> list:
-        normalized = normalize_canvas_view_sets_for_storage(v, ObjectType.DASHBOARD)
+        normalized = _normalize_canvas_view_sets_for_storage(v, ObjectType.DASHBOARD)
         return normalized if isinstance(normalized, list) else []
 
 
@@ -184,7 +188,7 @@ class TopologyItem(BaseModel):
     @field_validator("view_sets", mode="before")
     @classmethod
     def normalize_view_sets(cls, v: Any) -> dict:
-        return normalize_canvas_view_sets_for_storage(v, ObjectType.TOPOLOGY)
+        return _normalize_canvas_view_sets_for_storage(v, ObjectType.TOPOLOGY)
 
 
 class ArchitectureItem(BaseModel):
@@ -215,7 +219,7 @@ class ArchitectureItem(BaseModel):
     @field_validator("view_sets", mode="before")
     @classmethod
     def normalize_view_sets(cls, v: Any) -> dict:
-        return normalize_canvas_view_sets_for_storage(v, ObjectType.ARCHITECTURE)
+        return _normalize_canvas_view_sets_for_storage(v, ObjectType.ARCHITECTURE)
 
 
 class YAMLDocument(BaseModel):

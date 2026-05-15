@@ -62,7 +62,7 @@ const EMPTY_MODELS: ModelSectionState = {
 const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendorId }) => {
   const { t } = useTranslation();
   const { themeName } = useTheme();
-  const { fetchModels, fetchModelDetail, addProvider, updateProvider, deleteProvider, fetchVendorDetail } = useProviderApi();
+  const { fetchModelsByVendor, fetchModelDetail, addProvider, updateProvider, deleteProvider, fetchVendorDetail } = useProviderApi();
   const [loading, setLoading] = useState(false);
   const [searchValue, setSearchValue] = useState('');
   const [modelsByType, setModelsByType] = useState<ModelSectionState>(EMPTY_MODELS);
@@ -78,7 +78,7 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
     try {
       const [vendor, ...responses] = await Promise.all([
         fetchVendorDetail(vendorId),
-        ...MODEL_TABS.map(({ type }) => fetchModels(type, { vendor: vendorId })),
+        ...MODEL_TABS.map(({ type }) => fetchModelsByVendor(type, vendorId)),
       ]);
 
       setVendorDetail(vendor);

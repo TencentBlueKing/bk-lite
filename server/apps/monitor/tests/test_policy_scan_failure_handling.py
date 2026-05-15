@@ -37,6 +37,41 @@ def _load_module(module_name, file_path):
     return module
 
 
+def _load_snapshot_recorder_module(monkeypatch, module_name):
+    class _MonitorEventRawDataQuerySet:
+        def select_related(self, *args):
+            return []
+
+    class _MonitorEventRawDataManager:
+        def filter(self, **kwargs):
+            return _MonitorEventRawDataQuerySet()
+
+    class MonitorEventRawData:
+        objects = _MonitorEventRawDataManager()
+
+    class MonitorAlertMetricSnapshot:
+        pass
+
+    _install_module(
+        monkeypatch,
+        "apps.monitor.models",
+        MonitorEventRawData=MonitorEventRawData,
+        MonitorAlertMetricSnapshot=MonitorAlertMetricSnapshot,
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.tasks.utils.policy_methods",
+        METHOD={},
+        period_to_seconds=lambda period: 60,
+    )
+    _install_module(monkeypatch, "apps.core.logger", celery_logger=_Logger())
+
+    return _load_module(
+        module_name,
+        Path(__file__).resolve().parents[1] / "tasks" / "services" / "policy_scan" / "snapshot_recorder.py",
+    )
+
+
 class _PolicyQuerySet:
     def __init__(self, manager):
         self.manager = manager
@@ -462,6 +497,84 @@ def test_policy_scan_pre_check_propagates_metric_setup_failures(monkeypatch):
 
     with pytest.raises(RuntimeError, match="metric missing"):
         scanner._pre_check()
+
+
+def test_snapshot_recorder_reuses_fallback_raw_metric_query_for_multiple_alerts(monkeypatch):
+    module = _load_snapshot_recorder_module(monkeypatch, "monitor_policy_snapshot_recorder_cache_test_module")
+
+    policy = types.SimpleNamespace(
+        id=1005,
+        period={"type": "min", "value": 1},
+        group_by=["instance_id"],
+        last_run_time=datetime(2026, 5, 14, 8, 0, tzinfo=timezone.utc),
+    )
+    query_calls = []
+
+    def query_raw_metrics(period):
+        query_calls.append(period)
+        return {
+            "data": {
+                "result": [
+                    {"metric": {"instance_id": "host-1"}, "values": [[1, "1"]]},
+                    {"metric": {"instance_id": "host-2"}, "values": [[1, "2"]]},
+                ]
+            }
+        }
+
+    recorder = module.SnapshotRecorder(
+        policy,
+        {},
+        [
+            types.SimpleNamespace(id=1, metric_instance_id="('host-1',)", monitor_instance_id="host-1", alert_type="alert"),
+            types.SimpleNamespace(id=2, metric_instance_id="('host-2',)", monitor_instance_id="host-2", alert_type="alert"),
+        ],
+        types.SimpleNamespace(query_raw_metrics=query_raw_metrics),
+    )
+    snapshot_calls = []
+    recorder._update_alert_snapshot = (
+        lambda alert, event_objs, raw_data, snapshot_time, is_new_alert=False, is_no_data_alert=False: snapshot_calls.append((alert.id, raw_data))
+    )
+
+    recorder.record_snapshots_for_active_alerts()
+
+    assert len(query_calls) == 1
+    assert snapshot_calls == [
+        (1, {"metric": {"instance_id": "host-1"}, "values": [[1, "1"]]}),
+        (2, {"metric": {"instance_id": "host-2"}, "values": [[1, "2"]]}),
+    ]
+
+
+def test_snapshot_recorder_skips_fallback_raw_metric_query_for_no_data_alerts(monkeypatch):
+    module = _load_snapshot_recorder_module(monkeypatch, "monitor_policy_snapshot_recorder_no_data_test_module")
+
+    policy = types.SimpleNamespace(
+        id=1006,
+        period={"type": "min", "value": 1},
+        group_by=["instance_id"],
+        last_run_time=datetime(2026, 5, 14, 8, 0, tzinfo=timezone.utc),
+    )
+
+    def unexpected_query(period):
+        raise AssertionError("no_data snapshots should not query fallback raw metrics")
+
+    recorder = module.SnapshotRecorder(
+        policy,
+        {},
+        [
+            types.SimpleNamespace(id=3, metric_instance_id="('host-3',)", monitor_instance_id="host-3", alert_type="no_data"),
+        ],
+        types.SimpleNamespace(query_raw_metrics=unexpected_query),
+    )
+    snapshot_calls = []
+    recorder._update_alert_snapshot = (
+        lambda alert, event_objs, raw_data, snapshot_time, is_new_alert=False, is_no_data_alert=False: snapshot_calls.append(
+            (alert.id, raw_data, is_no_data_alert)
+        )
+    )
+
+    recorder.record_snapshots_for_active_alerts()
+
+    assert snapshot_calls == [(3, {}, True)]
 
 
 def test_no_data_events_can_notify_without_legacy_policy_field(monkeypatch):
@@ -1156,3 +1269,112 @@ def test_last_over_time_keeps_step_query_for_offset_selector(monkeypatch):
         )
     ]
     assert result["data"]["result"][0]["values"] == [[200, "17"]]
+
+
+def _install_policy_baseline_dependencies(monkeypatch):
+    _install_module(monkeypatch, "apps.core.logger", monitor_logger=_Logger())
+    _install_module(
+        monkeypatch,
+        "apps.monitor.models",
+        MonitorInstance=object,
+        MonitorInstanceOrganization=object,
+        PolicyInstanceBaseline=object,
+    )
+
+
+def test_policy_baseline_query_metric_instances_returns_none_when_query_fails(monkeypatch):
+    _install_policy_baseline_dependencies(monkeypatch)
+
+    class MetricQueryService:
+        def __init__(self, policy, instances_map):
+            self.policy = policy
+            self.instances_map = instances_map
+
+        def set_monitor_obj_instance_key(self):
+            return None
+
+        def query_aggregation_metrics(self, period):
+            raise RuntimeError("victoriametrics unavailable")
+
+    _install_module(
+        monkeypatch,
+        "apps.monitor.tasks.services.policy_scan.metric_query",
+        MetricQueryService=MetricQueryService,
+    )
+
+    module = _load_module(
+        "monitor_policy_baseline_query_failure_test_module",
+        Path(__file__).resolve().parents[1] / "services" / "policy_baseline.py",
+    )
+
+    policy = types.SimpleNamespace(
+        id=1010,
+        source={"type": "instance", "values": ["host-1"]},
+        last_run_time=datetime(2026, 4, 21, 8, 0, tzinfo=timezone.utc),
+        period={"type": "min", "value": 1},
+        group_by=["instance_id"],
+    )
+
+    service = module.PolicyBaselineService(policy)
+
+    assert service._query_metric_instances({"host-1": "Host 1"}) is None
+
+
+def test_policy_baseline_refresh_keeps_existing_baselines_when_query_fails(monkeypatch):
+    _install_policy_baseline_dependencies(monkeypatch)
+    module = _load_module(
+        "monitor_policy_baseline_refresh_failure_test_module",
+        Path(__file__).resolve().parents[1] / "services" / "policy_baseline.py",
+    )
+
+    policy = types.SimpleNamespace(
+        id=1011,
+        source={"type": "instance", "values": ["host-1"]},
+    )
+    service = module.PolicyBaselineService(policy)
+    clear_calls = []
+    replace_calls = []
+
+    monkeypatch.setattr(service, "_build_instances_map", lambda: {"host-1": "Host 1"})
+    monkeypatch.setattr(service, "_query_metric_instances", lambda instances_map: None)
+    monkeypatch.setattr(service, "clear", lambda: clear_calls.append(True))
+    monkeypatch.setattr(
+        service,
+        "_replace_baselines",
+        lambda metric_instances: replace_calls.append(metric_instances),
+    )
+
+    service.refresh()
+
+    assert clear_calls == []
+    assert replace_calls == []
+
+
+def test_policy_baseline_refresh_clears_baselines_when_query_succeeds_but_is_empty(monkeypatch):
+    _install_policy_baseline_dependencies(monkeypatch)
+    module = _load_module(
+        "monitor_policy_baseline_refresh_empty_result_test_module",
+        Path(__file__).resolve().parents[1] / "services" / "policy_baseline.py",
+    )
+
+    policy = types.SimpleNamespace(
+        id=1012,
+        source={"type": "instance", "values": ["host-1"]},
+    )
+    service = module.PolicyBaselineService(policy)
+    clear_calls = []
+    replace_calls = []
+
+    monkeypatch.setattr(service, "_build_instances_map", lambda: {"host-1": "Host 1"})
+    monkeypatch.setattr(service, "_query_metric_instances", lambda instances_map: {})
+    monkeypatch.setattr(service, "clear", lambda: clear_calls.append(True))
+    monkeypatch.setattr(
+        service,
+        "_replace_baselines",
+        lambda metric_instances: replace_calls.append(metric_instances),
+    )
+
+    service.refresh()
+
+    assert clear_calls == [True]
+    assert replace_calls == []

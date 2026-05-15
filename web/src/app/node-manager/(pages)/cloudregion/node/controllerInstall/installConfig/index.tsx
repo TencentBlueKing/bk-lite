@@ -39,11 +39,17 @@ interface InstallConfigProps {
   cancel: () => void;
 }
 
+interface ControllerPlatformOption {
+  os: string;
+  cpuArchitecture: string;
+  description?: string;
+}
+
 const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
   const { installController } = useNodeManagerApi();
-  const { manualInstallController } = useControllerApi();
+  const { manualInstallController, getControllerList } = useControllerApi();
   const commonContext = useUserInfoContext();
   const INFO_ITEM = useMemo(
     () => ({
@@ -70,12 +76,17 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   }));
   const batchEditModalRef = useRef<any>(null);
   const excelImportModalRef = useRef<any>(null);
+  const hasFetchedPlatformsRef = useRef<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [versionLoading, setVersionLoading] = useState<boolean>(false);
+  const [platformLoading, setPlatformLoading] = useState<boolean>(false);
   const [installMethod, setInstallMethod] = useState<string>('remoteInstall');
-  const [os, setOs] = useState<string>('linux');
-  const [cpuArchitecture, setCpuArchitecture] = useState<string>('x86_64');
+  const [os, setOs] = useState<string>('');
+  const [cpuArchitecture, setCpuArchitecture] = useState<string>('');
+  const [controllerPlatforms, setControllerPlatforms] = useState<
+    ControllerPlatformOption[]
+  >([]);
   const [sidecarVersionList, setSidecarVersionList] = useState<TableDataItem[]>(
     []
   );
@@ -144,6 +155,31 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     return installMethod === 'remoteInstall';
   }, [installMethod]);
 
+  const availableOSOptions = useMemo(() => {
+    const osSet = new Set(controllerPlatforms.map((item) => item.os));
+    return OPERATE_SYSTEMS.filter((item) => osSet.has(item.value));
+  }, [controllerPlatforms]);
+
+  const architectureOptions = useMemo(() => {
+    const architectureSet = new Set(
+      controllerPlatforms
+        .filter((item) => item.os === os)
+        .map((item) => item.cpuArchitecture)
+    );
+
+    return (CPU_ARCHITECTURE_OPTIONS[os] || []).filter((item) =>
+      architectureSet.has(item.value)
+    );
+  }, [controllerPlatforms, os]);
+
+  const selectedPlatform = useMemo(() => {
+    return (
+      controllerPlatforms.find(
+        (item) => item.os === os && item.cpuArchitecture === cpuArchitecture
+      ) || null
+    );
+  }, [controllerPlatforms, cpuArchitecture, os]);
+
   // Windows 系统只支持手动安装
   const availableInstallWays = useMemo(() => {
     if (os === 'windows') {
@@ -151,10 +187,6 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     }
     return installWays;
   }, [os, installWays]);
-
-  const architectureOptions = useMemo(() => {
-    return CPU_ARCHITECTURE_OPTIONS[os] || CPU_ARCHITECTURE_OPTIONS.linux;
-  }, [os]);
 
   // 对当前查询结果做去重，接口已按操作系统和 CPU 架构精确过滤
   const filteredSidecarVersionList = useMemo(() => {
@@ -169,40 +201,123 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   }, [sidecarVersionList]);
 
   const noVersionAvailable = useMemo(() => {
-    return !versionLoading && filteredSidecarVersionList.length === 0;
-  }, [filteredSidecarVersionList.length, versionLoading]);
+    return !!selectedPlatform && !versionLoading && filteredSidecarVersionList.length === 0;
+  }, [filteredSidecarVersionList.length, selectedPlatform, versionLoading]);
+
+  const getControllerPlatforms = useCallback(async () => {
+    setPlatformLoading(true);
+    try {
+      const response = await getControllerList({});
+      const controllerList = Array.isArray(response)
+        ? response
+        : response?.items || response?.results || [];
+      const dedupedPlatforms = new Map<string, ControllerPlatformOption>();
+
+      controllerList.forEach((item: any) => {
+        const targetOS = item.node_operating_system || item.os || 'linux';
+        const targetArchitecture =
+          item.cpu_architecture || item.cpuArchitecture || 'x86_64';
+        const key = `${targetOS}::${targetArchitecture}`;
+
+        if (!dedupedPlatforms.has(key)) {
+          dedupedPlatforms.set(key, {
+            os: targetOS,
+            cpuArchitecture: targetArchitecture,
+            description: item.display_description || item.description || ''
+          });
+        }
+      });
+
+      const nextPlatforms = Array.from(dedupedPlatforms.values());
+      setControllerPlatforms(nextPlatforms);
+    } finally {
+      setPlatformLoading(false);
+    }
+  }, [getControllerList]);
+
+  useEffect(() => {
+    if (platformLoading) {
+      return;
+    }
+
+    if (!controllerPlatforms.length) {
+      if (os) {
+        setOs('');
+      }
+      if (cpuArchitecture) {
+        setCpuArchitecture('');
+      }
+      setSidecarVersionList([]);
+      form.setFieldsValue({
+        os: undefined,
+        cpu_architecture: undefined,
+        sidecar_package: null
+      });
+      return;
+    }
+
+    const nextOs = availableOSOptions.some((item) => item.value === os)
+      ? os
+      : availableOSOptions[0]?.value || '';
+
+    const nextArchitectureSet = new Set(
+      controllerPlatforms
+        .filter((item) => item.os === nextOs)
+        .map((item) => item.cpuArchitecture)
+    );
+
+    const nextArchitecture = nextArchitectureSet.has(cpuArchitecture)
+      ? cpuArchitecture
+      : CPU_ARCHITECTURE_OPTIONS[nextOs]?.find((item) =>
+        nextArchitectureSet.has(item.value)
+      )?.value || '';
+
+    if (nextOs !== os || nextArchitecture !== cpuArchitecture) {
+      form.setFieldValue('sidecar_package', null);
+    }
+
+    if (nextOs !== os) {
+      setOs(nextOs);
+    }
+
+    if (nextArchitecture !== cpuArchitecture) {
+      setCpuArchitecture(nextArchitecture);
+      return;
+    }
+    form.setFieldsValue({
+      os: nextOs || undefined,
+      cpu_architecture: nextArchitecture || undefined
+    });
+  }, [availableOSOptions, controllerPlatforms, cpuArchitecture, form, os, platformLoading]);
+
+  useEffect(() => {
+    if (isLoading || hasFetchedPlatformsRef.current) {
+      return;
+    }
+
+    hasFetchedPlatformsRef.current = true;
+    getControllerPlatforms();
+  }, [getControllerPlatforms, isLoading]);
 
   useEffect(() => {
     if (!isLoading && os && cpuArchitecture) {
       getSidecarList();
+      return;
     }
+    setSidecarVersionList([]);
   }, [isLoading, os, cpuArchitecture]);
 
   useEffect(() => {
-    if (os) {
-      const nextCpuArchitecture =
-        CPU_ARCHITECTURE_OPTIONS[os]?.[0]?.value || 'x86_64';
-      setCpuArchitecture(nextCpuArchitecture);
-      form.setFieldsValue({
-        cpu_architecture: nextCpuArchitecture,
-        sidecar_package: null
-      });
-      // Windows 系统自动切换到手动安装
-      if (os === 'windows') {
-        setInstallMethod('manualInstall');
-        form.setFieldsValue({
-          install: 'manualInstall'
-        });
-      }
-      // 恢复表格到初始状态
+    if (os === 'windows' && installMethod !== 'manualInstall') {
+      setInstallMethod('manualInstall');
       setTableData([{ ...INFO_ITEM, key: uuidv4() }]);
       setSelectedRowKeys([]);
     }
-  }, [form, os, INFO_ITEM]);
+  }, [INFO_ITEM, installMethod, os]);
 
   useEffect(() => {
-    form.resetFields();
-  }, [name]);
+    form.setFieldValue('install', installMethod);
+  }, [form, installMethod]);
 
   const handleBatchEdit = () => {
     const selectedRows = tableData.filter((item) =>
@@ -394,13 +509,13 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
         cloud_region_id: cloudId,
         work_node: name,
         package_id: values.sidecar_package || '',
-        cpu_architecture: values.cpu_architecture
+        cpu_architecture: cpuArchitecture
       };
       if (isRemote) {
         params.nodes = tableData.map((item) => ({
           ip: item.ip,
           os: os,
-          cpu_architecture: values.cpu_architecture,
+          cpu_architecture: cpuArchitecture,
           organizations: item.organizations,
           port: item.port,
           username: item.username,
@@ -425,21 +540,21 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
         const manualParams: ManualInstallController = {
           cloud_region_id: cloudId,
           os: os,
-          cpu_architecture: values.cpu_architecture,
+          cpu_architecture: cpuArchitecture,
           package_id: values.sidecar_package || '',
           nodes: tableData.map((item) => ({
             ip: item.ip,
             node_name: item.node_name,
             organizations: item.organizations,
             node_id: item.key as string,
-            cpu_architecture: values.cpu_architecture
+            cpu_architecture: cpuArchitecture
           }))
         };
         result = await manualInstallController(manualParams);
         manualTaskList = (result || []).map((item: any) => ({
           ...item,
           os,
-          cpu_architecture: values.cpu_architecture
+          cpu_architecture: cpuArchitecture
         }));
       }
       message.success(t('common.operationSuccessful'));
@@ -449,7 +564,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           : manualTaskList.map((item: TableDataItem) => item.node_id),
         installMethod,
         os,
-        cpu_architecture: values.cpu_architecture,
+        cpu_architecture: cpuArchitecture,
         nodes,
         manualTaskList, // 手动安装时传递任务列表
         packageId: values.sidecar_package || ''
@@ -467,7 +582,15 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           required
           label={t('node-manager.cloudregion.Configuration.system')}
         >
-          <Segmented options={OPERATE_SYSTEMS} value={os} onChange={setOs} />
+          <Segmented
+            options={availableOSOptions}
+            value={os}
+            onChange={(value) => {
+              setOs(value);
+              form.setFieldValue('sidecar_package', null);
+            }}
+            disabled={platformLoading || availableOSOptions.length <= 1}
+          />
         </Form.Item>
         <Form.Item<ControllerInstallFields>
           name="cpu_architecture"
@@ -477,7 +600,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
         >
           <Segmented
             options={architectureOptions}
-            disabled={architectureOptions.length === 1}
+            disabled={platformLoading || architectureOptions.length <= 1}
             value={cpuArchitecture}
             onChange={(value) => {
               setCpuArchitecture(value);

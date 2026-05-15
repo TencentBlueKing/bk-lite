@@ -1,12 +1,4 @@
 from apps.core.utils.loader import LanguageLoader
-from apps.opspilot.metis.llm.tools.mssql import CONSTRUCTOR_PARAMS as MSSQL_CONSTRUCTOR_PARAMS, __all__ as MSSQL_EXPORTS
-from apps.opspilot.metis.llm.tools.mssql.connection import get_mssql_instances_prompt
-from apps.opspilot.metis.llm.tools.mysql import CONSTRUCTOR_PARAMS as MYSQL_CONSTRUCTOR_PARAMS, __all__ as MYSQL_EXPORTS
-from apps.opspilot.metis.llm.tools.mysql.connection import get_mysql_instances_prompt
-from apps.opspilot.metis.llm.tools.oracle import CONSTRUCTOR_PARAMS as ORACLE_CONSTRUCTOR_PARAMS, __all__ as ORACLE_EXPORTS
-from apps.opspilot.metis.llm.tools.oracle.connection import get_oracle_instances_prompt
-from apps.opspilot.metis.llm.tools.redis import CONSTRUCTOR_PARAMS as REDIS_CONSTRUCTOR_PARAMS, __all__ as REDIS_EXPORTS
-from apps.opspilot.metis.llm.tools.redis.connection import get_redis_instances_prompt
 
 BUILTIN_REDIS_TOOL_ID = -1
 BUILTIN_REDIS_TOOL_NAME = "redis"
@@ -49,6 +41,8 @@ def _build_sub_tools(tool_name, exports, loader: LanguageLoader):
 
 
 def build_builtin_redis_tool(loader: LanguageLoader):
+    from apps.opspilot.metis.llm.tools.redis import CONSTRUCTOR_PARAMS as redis_constructor_params, __all__ as redis_exports
+
     description = loader.get(f"tools.{BUILTIN_REDIS_TOOL_NAME}.description") or "Redis built-in tool"
     return {
         "id": BUILTIN_REDIS_TOOL_ID,
@@ -62,16 +56,18 @@ def build_builtin_redis_tool(loader: LanguageLoader):
         "params": {
             "name": BUILTIN_REDIS_TOOL_NAME,
             "url": f"langchain:{BUILTIN_REDIS_TOOL_NAME}",
-            "kwargs": _build_kwargs_from_params(REDIS_CONSTRUCTOR_PARAMS),
+            "kwargs": _build_kwargs_from_params(redis_constructor_params),
             "enable_auth": False,
             "auth_token": "",
         },
         "is_build_in": True,
-        "tools": _build_sub_tools(BUILTIN_REDIS_TOOL_NAME, REDIS_EXPORTS, loader),
+        "tools": _build_sub_tools(BUILTIN_REDIS_TOOL_NAME, redis_exports, loader),
     }
 
 
 def build_builtin_redis_runtime_tool(tool_kwargs):
+    from apps.opspilot.metis.llm.tools.redis.connection import get_redis_instances_prompt
+
     return {
         "name": BUILTIN_REDIS_TOOL_NAME,
         "url": f"langchain:{BUILTIN_REDIS_TOOL_NAME}",
@@ -82,6 +78,8 @@ def build_builtin_redis_runtime_tool(tool_kwargs):
 
 
 def build_builtin_mysql_tool(loader: LanguageLoader):
+    from apps.opspilot.metis.llm.tools.mysql import CONSTRUCTOR_PARAMS as mysql_constructor_params, __all__ as mysql_exports
+
     description = loader.get(f"tools.{BUILTIN_MYSQL_TOOL_NAME}.description") or "MySQL built-in tool"
     return {
         "id": BUILTIN_MYSQL_TOOL_ID,
@@ -95,16 +93,18 @@ def build_builtin_mysql_tool(loader: LanguageLoader):
         "params": {
             "name": BUILTIN_MYSQL_TOOL_NAME,
             "url": f"langchain:{BUILTIN_MYSQL_TOOL_NAME}",
-            "kwargs": _build_kwargs_from_params(MYSQL_CONSTRUCTOR_PARAMS),
+            "kwargs": _build_kwargs_from_params(mysql_constructor_params),
             "enable_auth": False,
             "auth_token": "",
         },
         "is_build_in": True,
-        "tools": _build_sub_tools(BUILTIN_MYSQL_TOOL_NAME, MYSQL_EXPORTS, loader),
+        "tools": _build_sub_tools(BUILTIN_MYSQL_TOOL_NAME, mysql_exports, loader),
     }
 
 
 def build_builtin_mysql_runtime_tool(tool_kwargs):
+    from apps.opspilot.metis.llm.tools.mysql.connection import get_mysql_instances_prompt
+
     return {
         "name": BUILTIN_MYSQL_TOOL_NAME,
         "url": f"langchain:{BUILTIN_MYSQL_TOOL_NAME}",
@@ -115,6 +115,8 @@ def build_builtin_mysql_runtime_tool(tool_kwargs):
 
 
 def build_builtin_oracle_tool(loader: LanguageLoader):
+    from apps.opspilot.metis.llm.tools.oracle import CONSTRUCTOR_PARAMS as oracle_constructor_params, __all__ as oracle_exports
+
     description = loader.get(f"tools.{BUILTIN_ORACLE_TOOL_NAME}.description") or "Oracle built-in tool"
     return {
         "id": BUILTIN_ORACLE_TOOL_ID,
@@ -128,16 +130,18 @@ def build_builtin_oracle_tool(loader: LanguageLoader):
         "params": {
             "name": BUILTIN_ORACLE_TOOL_NAME,
             "url": f"langchain:{BUILTIN_ORACLE_TOOL_NAME}",
-            "kwargs": _build_kwargs_from_params(ORACLE_CONSTRUCTOR_PARAMS),
+            "kwargs": _build_kwargs_from_params(oracle_constructor_params),
             "enable_auth": False,
             "auth_token": "",
         },
         "is_build_in": True,
-        "tools": _build_sub_tools(BUILTIN_ORACLE_TOOL_NAME, ORACLE_EXPORTS, loader),
+        "tools": _build_sub_tools(BUILTIN_ORACLE_TOOL_NAME, oracle_exports, loader),
     }
 
 
 def build_builtin_oracle_runtime_tool(tool_kwargs):
+    from apps.opspilot.metis.llm.tools.oracle.connection import get_oracle_instances_prompt
+
     return {
         "name": BUILTIN_ORACLE_TOOL_NAME,
         "url": f"langchain:{BUILTIN_ORACLE_TOOL_NAME}",
@@ -148,6 +152,8 @@ def build_builtin_oracle_runtime_tool(tool_kwargs):
 
 
 def build_builtin_mssql_tool(loader: LanguageLoader):
+    from apps.opspilot.metis.llm.tools.mssql import CONSTRUCTOR_PARAMS as mssql_constructor_params, __all__ as mssql_exports
+
     description = loader.get(f"tools.{BUILTIN_MSSQL_TOOL_NAME}.description") or "MSSQL built-in tool"
     return {
         "id": BUILTIN_MSSQL_TOOL_ID,
@@ -161,16 +167,18 @@ def build_builtin_mssql_tool(loader: LanguageLoader):
         "params": {
             "name": BUILTIN_MSSQL_TOOL_NAME,
             "url": f"langchain:{BUILTIN_MSSQL_TOOL_NAME}",
-            "kwargs": _build_kwargs_from_params(MSSQL_CONSTRUCTOR_PARAMS),
+            "kwargs": _build_kwargs_from_params(mssql_constructor_params),
             "enable_auth": False,
             "auth_token": "",
         },
         "is_build_in": True,
-        "tools": _build_sub_tools(BUILTIN_MSSQL_TOOL_NAME, MSSQL_EXPORTS, loader),
+        "tools": _build_sub_tools(BUILTIN_MSSQL_TOOL_NAME, mssql_exports, loader),
     }
 
 
 def build_builtin_mssql_runtime_tool(tool_kwargs):
+    from apps.opspilot.metis.llm.tools.mssql.connection import get_mssql_instances_prompt
+
     return {
         "name": BUILTIN_MSSQL_TOOL_NAME,
         "url": f"langchain:{BUILTIN_MSSQL_TOOL_NAME}",

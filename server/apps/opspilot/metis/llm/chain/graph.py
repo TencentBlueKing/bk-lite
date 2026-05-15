@@ -362,6 +362,50 @@ class BasicGraph(ABC):
         result = await self.invoke(graph, request, stream_mode="messages")
         return result
 
+    def _extract_content_from_chunk(self, content: Any) -> tuple[str, str]:
+        """从 chunk.content 中提取文本内容和 thinking 内容
+
+        Anthropic 格式的 content 可能是:
+        - str: 普通文本
+        - list: 包含 content blocks，如 [{'type': 'thinking', 'thinking': '...'}, {'type': 'text', 'text': '...'}]
+
+        Returns:
+            (text_content, thinking_content)
+        """
+        if isinstance(content, str):
+            return content, ""
+
+        if not isinstance(content, list):
+            return str(content), ""
+
+        text_parts = []
+        thinking_parts = []
+
+        for block in content:
+            if not isinstance(block, dict):
+                text_parts.append(str(block))
+                continue
+
+            block_type = block.get("type", "")
+
+            # Anthropic thinking block 格式
+            if block_type == "thinking":
+                thinking_text = block.get("thinking", "")
+                if thinking_text:
+                    thinking_parts.append(thinking_text)
+            # Anthropic text block 格式
+            elif block_type == "text":
+                text = block.get("text", "")
+                if text:
+                    text_parts.append(text)
+            # 其他格式，尝试提取 text 或转为字符串
+            elif "text" in block:
+                text_parts.append(block["text"])
+            elif "content" in block:
+                text_parts.append(str(block["content"]))
+
+        return "".join(text_parts), "".join(thinking_parts)
+
     def _handle_chat_model_stream_content(
         self,
         chunk: Any,
@@ -381,7 +425,35 @@ class BasicGraph(ABC):
         if not (chunk and hasattr(chunk, "content") and chunk.content):
             return events, current_message_id, message_started, thinking_started
 
-        content_delta = chunk.content if isinstance(chunk.content, str) else str(chunk.content)
+        # 处理 Anthropic 格式的 content（可能是 list of content blocks）
+        content_delta, thinking_delta = self._extract_content_from_chunk(chunk.content)
+
+        # 处理 thinking 内容（Anthropic 格式）
+        if thinking_delta and show_think:
+            if not thinking_started:
+                thinking_started = True
+                events.append(
+                    encoder.encode(
+                        ThinkingTextMessageStartEvent(
+                            type=EventType.THINKING_TEXT_MESSAGE_START,
+                            message_id=f"think_{run_id}_{int(time.time() * 1000)}",
+                            timestamp=int(time.time() * 1000),
+                        )
+                    )
+                )
+            events.append(
+                encoder.encode(
+                    ThinkingTextMessageContentEvent(
+                        type=EventType.THINKING_TEXT_MESSAGE_CONTENT,
+                        delta=thinking_delta,
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
+
+        # 如果没有文本内容，直接返回
+        if not content_delta:
+            return events, current_message_id, message_started, thinking_started
 
         if show_think:
             remaining_content = content_delta
@@ -743,6 +815,7 @@ class BasicGraph(ABC):
         message_started = False
         thinking_started = False
         show_think = bool((request.extra_config or {}).get("show_think", True))
+        logger.info(f"[BasicGraph] stream_events - extra_config={request.extra_config}, show_think={show_think}")
         execution_id = (request.extra_config or {}).get("execution_id") or request.thread_id
         # 创建浏览器步骤事件队列和回调
         browser_event_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
@@ -838,6 +911,18 @@ class BasicGraph(ABC):
                 elif event_type == "on_chat_model_end":
                     for ev in self._handle_chat_model_end_event(event_data, encoder, current_message_id, current_tool_calls):
                         yield ev
+
+                elif event_type == "on_custom_event":
+                    # 转发自定义事件（如 agent_step_progress）
+                    custom_name = event.get("name", "")
+                    if custom_name:
+                        yield encoder.encode(
+                            CustomEvent(
+                                type=EventType.CUSTOM,
+                                name=custom_name,
+                                value=event_data,
+                            )
+                        )
 
             # 清空剩余的浏览器事件
             try:

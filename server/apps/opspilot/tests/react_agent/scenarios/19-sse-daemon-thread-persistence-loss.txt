@@ -1,0 +1,232 @@
+# Scenario 19: SSE Persistence Relies on Daemon Threads, May Lose Audit and State
+
+## Issue Reference
+- GitHub Issue: #2959
+- Title: [opspilot] SSE 持久化依赖守护线程，可能导致对话审计与执行状态丢失
+
+## Problem Statement
+
+SSE (Server-Sent Events) persistence operations use daemon threads (`daemon=True`).
+Daemon threads are forcibly terminated when the main process exits, which means:
+- In-flight database writes are aborted
+- Conversation history may be partially saved or lost
+- Execution state updates may not complete
+- Audit trail becomes incomplete
+
+### Original Implementation (Buggy - Before Fix)
+```python
+# sse_chat.py (before fix)
+def _log_and_update_tokens(final_stats, ...):
+    thread = threading.Thread(
+        target=_do_log_and_update,
+        args=(...),
+        daemon=True,  # PROBLEM: Killed on main process exit!
+    )
+    thread.start()
+
+# engine.py (before fix)
+def _record_conversation_history(...):
+    thread = threading.Thread(
+        target=self._do_record_history,
+        args=(...),
+        daemon=True,  # PROBLEM: Killed on main process exit!
+    )
+    thread.start()
+```
+
+### Fixed Implementation (Synchronous Execution)
+```python
+# sse_chat.py (after fix)
+def _log_and_update_tokens_sync(final_stats, skill_name, skill_id, current_ip, kwargs, user_message, show_think, history_log=None):
+    """
+    Synchronous logging and token update.
+    
+    Called after stream ends, does not block streaming response.
+    Failures are logged but don't raise exceptions.
+    """
+    try:
+        # Process final content
+        final_content = final_stats["content"]
+        if not show_think:
+            final_content = re.sub(r"<think>.*?</think>", "", final_content, flags=re.DOTALL).strip()
+        
+        # Save history log
+        if history_log:
+            history_log.conversation = final_content
+            history_log.save()
+        
+        # Insert skill log
+        if current_ip:
+            insert_skill_log(current_ip, skill_id, log_data, kwargs, user_message=user_message)
+    
+    except Exception as e:
+        logger.error(
+            "SSE persistence failed: skill_name=%s, skill_id=%s, error=%s",
+            skill_name, skill_id, str(e),
+            exc_info=True,
+        )
+
+# engine.py (after fix)
+def _record_execution_result(self, input_data, result, success, start_node_type=None):
+    """Record workflow execution result - synchronous"""
+    try:
+        task_result = self._ensure_execution_result_started(input_data, start_node_type)
+        # ... update task_result ...
+        task_result.save(update_fields=[...])
+    except Exception as e:
+        logger.exception(f"记录工作流执行结果失败: execution_id={self.execution_id}, error={str(e)}")
+        # Failure doesn't affect main flow
+```
+
+### Key Design Decision
+The fix converts daemon thread persistence to **synchronous execution** because:
+1. SSE persistence happens AFTER the `STATS` event (stream already ended)
+2. No blocking concern - user has already received the response
+3. Synchronous execution guarantees data persistence
+4. Simpler error handling and debugging
+
+### Remaining Daemon Thread (Intentional)
+```python
+# engine.py line 1063 - NOT a persistence issue
+thread = threading.Thread(target=execute_in_background, daemon=True, name="SSE-SubsequentNodes")
+```
+This daemon thread is for **workflow node execution** (not persistence). The persistence calls 
+(`_record_execution_result`) inside this thread are synchronous within the thread context.
+
+## Affected Files
+- `server/apps/opspilot/utils/sse_chat.py`: `_log_and_update_tokens_sync()` - now synchronous
+- `server/apps/opspilot/utils/chat_flow_utils/engine/engine.py`: `_record_execution_result()`, `_record_conversation_history()` - now synchronous
+
+## Implementation Details
+
+### SSE Chat Persistence Flow
+```
+1. Stream starts → yield chunks to client
+2. Stream ends → yield STATS event
+3. After STATS → call _log_and_update_tokens_sync() synchronously
+4. Persistence completes → response fully done
+```
+
+### Engine Persistence Flow
+```
+1. Node executes → result available
+2. Call _record_execution_result() synchronously
+3. Database updated → continue to next node
+```
+
+### Error Handling
+- Persistence failures are logged with full context (skill_name, skill_id, execution_id)
+- Failures don't raise exceptions (don't affect already-sent response)
+- `exc_info=True` captures full stack trace for debugging
+
+## Test Scenarios
+
+### Test Class: TestSynchronousPersistence
+
+#### 1. test_sse_persistence_completes_before_response_ends
+**Goal**: Verify SSE persistence completes synchronously after stream ends.
+**Setup**: Mock database, mock SSE response
+**Action**:
+1. Start SSE chat response
+2. Generate conversation content
+3. End stream (STATS event)
+4. Check database immediately
+**Assert**: Conversation history is fully saved (no race condition)
+
+#### 2. test_engine_persistence_synchronous
+**Goal**: Verify engine persistence is synchronous.
+**Setup**: Mock database, create ChatFlowEngine
+**Action**:
+1. Execute workflow node
+2. Check database immediately after execute() returns
+**Assert**: WorkFlowTaskResult is saved (no daemon thread delay)
+
+#### 3. test_persistence_failure_logged_not_raised
+**Goal**: Verify persistence failures are logged but don't crash.
+**Setup**: Mock database to raise exception
+**Action**: Trigger persistence with failing database
+**Assert**:
+- No exception raised
+- Error logged with context (skill_name, skill_id, error message)
+- `exc_info=True` in log call
+
+### Test Class: TestConversationHistoryReliability
+
+#### 4. test_conversation_history_saved_completely
+**Goal**: Verify full conversation is saved, not truncated.
+**Setup**: Mock database
+**Action**:
+1. Generate long conversation (10,000 characters)
+2. End stream
+3. Check saved content
+**Assert**: Full content saved, no truncation
+
+#### 5. test_think_tags_stripped_when_show_think_false
+**Goal**: Verify `<think>` tags are stripped before saving when show_think=False.
+**Setup**: Mock database, set show_think=False
+**Action**:
+1. Generate content with `<think>...</think>` tags
+2. End stream
+3. Check saved content
+**Assert**: Saved content has no `<think>` tags
+
+#### 6. test_history_log_updated_if_provided
+**Goal**: Verify history_log object is updated when provided.
+**Setup**: Mock history_log object
+**Action**: Call `_log_and_update_tokens_sync()` with history_log
+**Assert**: `history_log.conversation` updated and `save()` called
+
+### Test Class: TestAuditTrailReliability
+
+#### 7. test_skill_log_inserted_synchronously
+**Goal**: Verify skill execution logs are saved synchronously.
+**Setup**: Mock database, mock skill execution
+**Action**:
+1. Execute skill
+2. Check database immediately (no waiting)
+**Assert**: Skill log is present
+
+#### 8. test_workflow_execution_result_recorded
+**Goal**: Verify workflow execution result is recorded.
+**Setup**: Mock database, create ChatFlowEngine
+**Action**:
+1. Execute workflow
+2. Check WorkFlowTaskResult
+**Assert**: 
+- status is SUCCESS or FAIL (not pending)
+- input_data and output_data populated
+- finished_at timestamp set
+
+#### 9. test_workflow_node_results_linked_to_task
+**Goal**: Verify node results are linked to task result.
+**Setup**: Mock database, workflow with 3 nodes
+**Action**:
+1. Execute workflow
+2. Check WorkFlowTaskNodeResult records
+**Assert**: All node results have task_result foreign key set
+
+### Test Class: TestErrorStateRecording
+
+#### 10. test_error_state_recorded_on_failure
+**Goal**: Verify errors are recorded, not just successes.
+**Setup**: Mock workflow with failing node
+**Action**:
+1. Execute workflow that fails at node 2
+2. Check WorkFlowTaskResult
+**Assert**:
+- status is FAIL
+- last_output contains error information
+- finished_at timestamp set
+
+#### 11. test_interrupt_state_recorded
+**Goal**: Verify interrupted state is recorded correctly.
+**Setup**: Mock workflow, request interrupt mid-execution
+**Action**:
+1. Start workflow
+2. Request interrupt
+3. Check WorkFlowTaskResult
+**Assert**:
+- status is INTERRUPTED
+- result contains interrupted flag
+
+## Test Count: 11

@@ -1,3 +1,5 @@
+import React from 'react';
+import { Tag } from 'antd';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
 
 interface UserGroupTreeDataNode extends TreeDataNode {
@@ -25,6 +27,7 @@ export interface TreeSelectNode {
 export interface UserFormPayload {
   username?: string;
   email?: string;
+  phone?: string;
   lastName?: string;
   locale?: string;
   timezone?: string;
@@ -37,6 +40,7 @@ export interface UserFormPayload {
 export interface UserDetailResponse {
   username?: string;
   email?: string;
+  phone?: string;
   display_name?: string;
   timezone?: string;
   locale?: string;
@@ -86,11 +90,14 @@ export function hasNormalGroupSelection(groupIds: React.Key[], treeData: TreeSel
  * Marks roles that come from organization as disabled
  */
 export function processRoleTreeData(
-  roleData: Array<{ id: number; name: string; children: Array<{ id: number; name: string }> }>
+  roleData: Array<{ id: number; name: string; is_build_in?: boolean; children: Array<{ id: number; name: string }> }>,
+  externalAppLabel = 'External App'
 ): TreeDataNode[] {
   return roleData.map((item) => ({
     key: item.id,
-    title: item.name,
+    title: item.is_build_in === false
+      ? React.createElement('span', null, item.name, React.createElement(Tag, { color: 'green', className: 'ml-1', style: { fontSize: 11, padding: '0 4px' } }, externalAppLabel))
+      : item.name,
     selectable: false,
     children: item.children.map((child) => ({
       key: child.id,

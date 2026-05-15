@@ -16,5 +16,4 @@ class RabbitmqCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "version": "version",
         "enabled_plugin_file": "enabled_plugin_file",
         "erlang_version": "erlang_version",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

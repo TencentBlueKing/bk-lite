@@ -26,6 +26,17 @@ type downloadConn interface{}
 type responseMsg interface {
 	Respond([]byte) error
 }
+type inboundMsg interface {
+	responseMsg
+	Payload() []byte
+}
+type natsInboundMsg struct{ *nats.Msg }
+
+func (m natsInboundMsg) Payload() []byte { return m.Data }
+
+type subscriber interface {
+	Subscribe(subject string, cb nats.MsgHandler) (*nats.Subscription, error)
+}
 
 var (
 	executeLocalCommand = Execute
@@ -33,8 +44,12 @@ var (
 		natsConn, _ := nc.(*nats.Conn)
 		return utils.DownloadFile(req, natsConn)
 	}
-	unzipLocalArchive = utils.UnzipToDir
-	nowUTC            = func() time.Time { return time.Now().UTC() }
+	unzipLocalArchive          = utils.UnzipToDir
+	nowUTC                     = func() time.Time { return time.Now().UTC() }
+	subscribeLocalExecutorFn   = subscribeLocalExecutor
+	subscribeDownloadToLocalFn = subscribeDownloadToLocal
+	subscribeUnzipToLocalFn    = subscribeUnzipToLocal
+	subscribeHealthCheckFn     = subscribeHealthCheck
 )
 
 type incomingMessage struct {
@@ -182,6 +197,43 @@ func respondLocalExecuteMessage(msg responseMsg, data []byte, instanceId string)
 	}
 
 	logger.Debugf("[Local Subscribe] Instance: %s, Response sent successfully, size: %d bytes", instanceId, len(responseContent))
+	return true
+}
+
+func respondDownloadToLocalSubscription(msg inboundMsg, instanceId string, nc downloadConn) bool {
+	responseContent, ok := handleDownloadToLocalMessage(msg.Payload(), instanceId, nc)
+	if !ok {
+		logger.Errorf("[Download Local Subscribe] Instance: %s, Error unmarshalling incoming message", instanceId)
+		return false
+	}
+	if err := msg.Respond(responseContent); err != nil {
+		logger.Errorf("[Download Local Subscribe] Instance: %s, Error responding to download request: %v", instanceId, err)
+		return false
+	}
+	return true
+}
+
+func respondUnzipToLocalSubscription(msg inboundMsg, instanceId string) bool {
+	responseContent, ok := handleUnzipToLocalMessage(msg.Payload(), instanceId)
+	if !ok {
+		logger.Errorf("[Unzip Local Subscribe] Instance: %s, Error unmarshalling incoming message", instanceId)
+		return false
+	}
+	if err := msg.Respond(responseContent); err != nil {
+		logger.Errorf("[Unzip Local Subscribe] Instance: %s, Error responding to unzip request: %v", instanceId, err)
+		return false
+	}
+	return true
+}
+
+func respondHealthCheckSubscription(msg inboundMsg, instanceId, subject string) bool {
+	logger.Debugf("[Health Check] Received health check request from subject: %s", subject)
+	responseContent := handleHealthCheckMessage(instanceId)
+	if err := msg.Respond(responseContent); err != nil {
+		logger.Errorf("[Health Check Subscribe] Instance: %s, Error responding to health check: %v", instanceId, err)
+		return false
+	}
+	logger.Debugf("[Health Check] Responded with status: ok")
 	return true
 }
 
@@ -494,6 +546,10 @@ func decodeExecuteOutput(output []byte, shell string) string {
 }
 
 func decodeExecuteOutputWithStrategy(output []byte, shell string) (string, string) {
+	return decodeExecuteOutputWithStrategyForOS(output, shell, runtime.GOOS)
+}
+
+func decodeExecuteOutputWithStrategyForOS(output []byte, shell string, goos string) (string, string) {
 	if decoded, ok := decodeUTF16LEOutput(output); ok {
 		return decoded, "utf16le"
 	}
@@ -502,7 +558,7 @@ func decodeExecuteOutputWithStrategy(output []byte, shell string) (string, strin
 		return string(output), "utf8"
 	}
 
-	if runtime.GOOS == "windows" && (shell == ShellTypeBat || shell == ShellTypeCmd || shell == ShellTypePowerShell || shell == ShellTypePwsh) {
+	if goos == "windows" && (shell == ShellTypeBat || shell == ShellTypeCmd || shell == ShellTypePowerShell || shell == ShellTypePwsh) {
 		if decoded, err := simplifiedchinese.GBK.NewDecoder().Bytes(output); err == nil {
 			return string(decoded), "gbk"
 		}
@@ -512,7 +568,11 @@ func decodeExecuteOutputWithStrategy(output []byte, shell string) (string, strin
 }
 
 func wrapPowerShellCommand(command string) string {
-	if runtime.GOOS != "windows" {
+	return wrapPowerShellCommandForOS(command, runtime.GOOS)
+}
+
+func wrapPowerShellCommandForOS(command, goos string) string {
+	if goos != "windows" {
 		return command
 	}
 
@@ -525,7 +585,11 @@ func wrapPowerShellCommand(command string) string {
 }
 
 func wrapCmdCommand(command string) string {
-	if runtime.GOOS != "windows" {
+	return wrapCmdCommandForOS(command, runtime.GOOS)
+}
+
+func wrapCmdCommandForOS(command, goos string) string {
+	if goos != "windows" {
 		return command
 	}
 
@@ -685,72 +749,67 @@ func classifySCPFailure(output string, exitCode int) string {
 	}
 }
 
-func SubscribeLocalExecutor(nc *nats.Conn, instanceId *string) {
+func subscribeLocalExecutor(sub subscriber, instanceId *string) error {
 	subject := fmt.Sprintf("local.execute.%s", *instanceId)
 	logger.Infof("[Local Subscribe] Instance: %s, Subscribing to subject: %s", *instanceId, subject)
 
-	_, err := nc.Subscribe(subject, func(msg *nats.Msg) {
+	_, err := sub.Subscribe(subject, func(msg *nats.Msg) {
 		logger.Debugf("[Local Subscribe] Instance: %s, Received message, size: %d bytes", *instanceId, len(msg.Data))
-		respondLocalExecuteMessage(msg, msg.Data, *instanceId)
+		respondLocalExecuteMessage(natsInboundMsg{msg}, msg.Data, *instanceId)
 	})
+	return err
+}
 
-	if err != nil {
+func SubscribeLocalExecutor(nc *nats.Conn, instanceId *string) {
+	if err := subscribeLocalExecutorFn(nc, instanceId); err != nil {
 		logger.Errorf("[Local Subscribe] Instance: %s, Failed to subscribe: %v", *instanceId, err)
 	}
 }
 
-func SubscribeDownloadToLocal(nc *nats.Conn, instanceId *string) {
+func subscribeDownloadToLocal(sub subscriber, nc downloadConn, instanceId *string) error {
 	subject := fmt.Sprintf("download.local.%s", *instanceId)
 	logger.Infof("[Download Local Subscribe] Instance: %s, Subscribing to subject: %s", *instanceId, subject)
 
-	_, err := nc.Subscribe(subject, func(msg *nats.Msg) {
-		responseContent, ok := handleDownloadToLocalMessage(msg.Data, *instanceId, nc)
-		if !ok {
-			logger.Errorf("[Download Local Subscribe] Instance: %s, Error unmarshalling incoming message", *instanceId)
-			return
-		}
-		if err := msg.Respond(responseContent); err != nil {
-			logger.Errorf("[Download Local Subscribe] Instance: %s, Error responding to download request: %v", *instanceId, err)
-		}
+	_, err := sub.Subscribe(subject, func(msg *nats.Msg) {
+		respondDownloadToLocalSubscription(natsInboundMsg{msg}, *instanceId, nc)
 	})
+	return err
+}
 
-	if err != nil {
+func SubscribeDownloadToLocal(nc *nats.Conn, instanceId *string) {
+	if err := subscribeDownloadToLocalFn(nc, nc, instanceId); err != nil {
 		logger.Errorf("[Download Local Subscribe] Instance: %s, Failed to subscribe: %v", *instanceId, err)
 	}
 }
 
-func SubscribeUnzipToLocal(nc *nats.Conn, instanceId *string) {
+func subscribeUnzipToLocal(sub subscriber, instanceId *string) error {
 	subject := fmt.Sprintf("unzip.local.%s", *instanceId)
 	logger.Infof("[Unzip Local Subscribe] Instance: %s, Subscribing to subject: %s", *instanceId, subject)
 
-	_, err := nc.Subscribe(subject, func(msg *nats.Msg) {
-		responseContent, ok := handleUnzipToLocalMessage(msg.Data, *instanceId)
-		if !ok {
-			logger.Errorf("[Unzip Local Subscribe] Instance: %s, Error unmarshalling incoming message", *instanceId)
-			return
-		}
-		if err := msg.Respond(responseContent); err != nil {
-			logger.Errorf("[Unzip Local Subscribe] Instance: %s, Error responding to unzip request: %v", *instanceId, err)
-		}
+	_, err := sub.Subscribe(subject, func(msg *nats.Msg) {
+		respondUnzipToLocalSubscription(natsInboundMsg{msg}, *instanceId)
 	})
+	return err
+}
 
-	if err != nil {
+func SubscribeUnzipToLocal(nc *nats.Conn, instanceId *string) {
+	if err := subscribeUnzipToLocalFn(nc, instanceId); err != nil {
 		logger.Errorf("[Unzip Local Subscribe] Instance: %s, Failed to subscribe: %v", *instanceId, err)
 	}
 }
 
-func SubscribeHealthCheck(nc *nats.Conn, instanceId *string) {
+func subscribeHealthCheck(sub subscriber, instanceId *string) error {
 	subject := fmt.Sprintf("health.check.%s", *instanceId)
 	logger.Infof("[Health Check Subscribe] Instance: %s, Subscribing to subject: %s", *instanceId, subject)
 
-	_, err := nc.Subscribe(subject, func(msg *nats.Msg) {
-		logger.Debugf("[Health Check] Received health check request from subject: %s", subject)
-		responseContent := handleHealthCheckMessage(*instanceId)
-		msg.Respond(responseContent)
-		logger.Debugf("[Health Check] Responded with status: ok")
+	_, err := sub.Subscribe(subject, func(msg *nats.Msg) {
+		respondHealthCheckSubscription(natsInboundMsg{msg}, *instanceId, subject)
 	})
+	return err
+}
 
-	if err != nil {
+func SubscribeHealthCheck(nc *nats.Conn, instanceId *string) {
+	if err := subscribeHealthCheckFn(nc, instanceId); err != nil {
 		logger.Errorf("[Health Check Subscribe] Instance: %s, Failed to subscribe: %v", *instanceId, err)
 	}
 }

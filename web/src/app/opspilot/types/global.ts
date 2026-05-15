@@ -57,6 +57,55 @@ export interface BrowserStepsHistory {
   isRunning: boolean;
 }
 
+export interface ApprovalRequest {
+  execution_id: string;
+  node_id: string;
+  tool_call_id: string;
+  tool_name: string;
+  tool_args: Record<string, unknown>;
+  timeout_seconds: number;
+  received_at: number;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
+export interface UserChoiceOption {
+  key: string;
+  label: string;
+  description?: string;
+  icon?: string;
+  disabled?: boolean;
+  recommended?: boolean;
+}
+
+export interface UserChoiceRequest {
+  execution_id: string;
+  node_id: string;
+  choice_id: string;
+  title: string;
+  description?: string;
+  options: UserChoiceOption[];
+  multiple: boolean;
+  min_select: number;
+  max_select: number;
+  timeout_seconds: number;
+  default_keys: string[];
+  display_hint: 'auto' | 'buttons' | 'dropdown' | 'checkbox';
+  received_at: number;
+  status: 'pending' | 'submitted' | 'timeout';
+  selected?: string[];
+}
+
+export interface AgentStepProgressData {
+  agent_name?: string;
+  step: number;
+  max_steps: number;
+  status: 'started' | 'running' | 'completed' | 'error' | 'parallel_started' | 'parallel_completed';
+  description: string;
+  tool_name?: string;
+  elapsed_seconds?: number;
+  total_elapsed_seconds?: number;
+}
+
 export interface CustomChatMessage {
   id: string;
   role: 'user' | 'bot';
@@ -75,6 +124,9 @@ export interface CustomChatMessage {
   }>;
   browserStepProgress?: BrowserStepProgressData | null;
   browserStepsHistory?: BrowserStepsHistory | null;
+  approvalRequests?: ApprovalRequest[];
+  userChoiceRequests?: UserChoiceRequest[];
+  agentStepProgress?: AgentStepProgressData[];
 }
 
 export interface ResultItem {

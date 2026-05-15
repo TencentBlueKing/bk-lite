@@ -354,10 +354,14 @@ def _handle_agui_data_event(data_json: dict, state: dict, show_think: bool, enab
         return "", []
 
     if event_type == "THINKING_TEXT_MESSAGE_CONTENT":
-        return (
-            _build_sse_line(_build_thinking_event(data_json.get("delta", ""), data_json.get("timestamp"))),
-            [],
-        )
+        # 只有在 show_think=True 时才输出 thinking 事件
+        if show_think:
+            return (
+                _build_sse_line(_build_thinking_event(data_json.get("delta", ""), data_json.get("timestamp"))),
+                [],
+            )
+        else:
+            return "", []
 
     if event_type == "TEXT_MESSAGE_CONTENT":
         return _handle_text_message_content_event(data_json, state, show_think, enable_thinking_split)

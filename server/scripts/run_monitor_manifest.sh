@@ -104,6 +104,7 @@ for i, item in enumerate(registrations or []):
     if not isinstance(item.get("instances"), list) or not item.get("instances"):
         errors.append(f"registrations[{i}].instances must be a non-empty list")
     oa = item.get("operation_analysis") or {}
+    alarm_policies = item.get("alarm_policies") or []
     if oa.get("enabled"):
         if len(item.get("instances") or []) != 1:
             errors.append(f"registrations[{i}].operation_analysis currently requires exactly one instance")
@@ -131,6 +132,39 @@ for i, item in enumerate(registrations or []):
             )
         else:
             shared_dashboard_configs[effective_dashboard_key] = dashboard_config
+    if alarm_policies:
+        if not isinstance(alarm_policies, list):
+            errors.append(f"registrations[{i}].alarm_policies must be a list")
+        policy_keys = set()
+        for k, policy in enumerate(alarm_policies or []):
+            if not isinstance(policy, dict):
+                errors.append(f"registrations[{i}].alarm_policies[{k}] must be an object")
+                continue
+            for field in [
+                "policy_key",
+                "name",
+                "alert_name",
+                "collect_type",
+                "query_condition",
+                "source",
+                "schedule",
+                "period",
+                "algorithm",
+                "threshold",
+                "enable",
+                "enable_alerts",
+            ]:
+                if field not in policy:
+                    errors.append(f"registrations[{i}].alarm_policies[{k}].{field} is required")
+            if "policy_key" in policy:
+                if policy["policy_key"] in policy_keys:
+                    errors.append(f"registrations[{i}].alarm_policies policy_key must be unique")
+                policy_keys.add(policy["policy_key"])
+            source = policy.get("source") or {}
+            if source != {"from_registration_instances": True}:
+                errors.append(
+                    f"registrations[{i}].alarm_policies[{k}].source currently only supports {{from_registration_instances: true}}"
+                )
     for j, instance in enumerate(item.get("instances") or []):
         if not isinstance(instance, dict):
             errors.append(f"registrations[{i}].instances[{j}] must be an object")
@@ -156,6 +190,10 @@ for i, item in enumerate(registrations or []):
             if auth_type == "private_key" and not install_agent.get("private_key"):
                 errors.append(
                     f"registrations[{i}].instances[{j}].install_agent.private_key is required when auth_type=private_key"
+                )
+            if not install_agent.get("cpu_architecture"):
+                errors.append(
+                    f"registrations[{i}].instances[{j}].install_agent.cpu_architecture is required when install_agent is enabled"
                 )
             install_os = install_agent.get("os")
             if install_os not in [None, "", "linux"]:
@@ -458,6 +496,8 @@ def validate_install_agent(instance):
 
     install.setdefault("port", 22)
     install.setdefault("os", "linux")
+    if not install.get("cpu_architecture"):
+        fail("install_agent.cpu_architecture is required")
     if install["os"] != "linux":
         fail("only linux install_agent is supported currently")
     return install
@@ -499,8 +539,10 @@ def start_install(instance, install):
                 "password": install.get("password", ""),
                 "private_key": install.get("private_key", ""),
                 "passphrase": install.get("passphrase", ""),
+                "cpu_architecture": install.get("cpu_architecture", ""),
             }
         ],
+        cpu_architecture=install.get("cpu_architecture", ""),
     )
     install_controller.delay(task_id)
     timeout_controller_install_task.apply_async(
@@ -530,7 +572,12 @@ def wait_for_node(instance, existing_node_ids):
 
 for instance in reg.get("instances") or []:
     node = resolve_existing_node(instance)
-    if not node:
+    if node:
+        install = instance.get("install_agent") or {}
+        if install.get("enabled"):
+            host = instance.get("node_ip") or defaults.get("node_ip") or instance.get("host") or node.ip
+            print(f"{reg_key}: agent already installed for host {host}, skip install_agent")
+    else:
         host = instance.get("node_ip") or defaults.get("node_ip") or instance.get("host")
         existing_node_ids = list(Node.objects.filter(ip=host, cloud_region_id=1).values_list("id", flat=True)) if host else []
         install = validate_install_agent(instance)
@@ -911,6 +958,287 @@ with open(path, "w", encoding="utf-8") as f:
 PY
 }
 
+extract_registration_instance_context() {
+  local result_file="$1"
+  local out_file="$2"
+
+  RESULT_FILE="${result_file}" OUT_FILE="${out_file}" "${DJANGO_PYTHON}" <<'PY'
+import os
+import yaml
+
+with open(os.environ["RESULT_FILE"], "r", encoding="utf-8") as f:
+    data = yaml.safe_load(f) or {}
+
+instances = ((data.get("result") or {}).get("instances") or [])
+
+doc = {"instances": []}
+for item in instances:
+    doc["instances"].append(
+        {
+            "instance_name": item.get("instance_name"),
+            "instance_id_values": item.get("instance_id_values") or [],
+        }
+    )
+
+with open(os.environ["OUT_FILE"], "w", encoding="utf-8") as f:
+    yaml.safe_dump(doc, f, allow_unicode=True, sort_keys=False)
+PY
+}
+
+build_alarm_policy_specs() {
+  local key="$1"
+  local instance_ctx_file="$2"
+  local out_file="$3"
+
+  MANIFEST_PATH="${MANIFEST_PATH}" REG_KEY="${key}" INSTANCE_CTX_FILE="${instance_ctx_file}" OUT_FILE="${out_file}" "${DJANGO_PYTHON}" <<'PY'
+import os
+import yaml
+from copy import deepcopy
+
+with open(os.environ["MANIFEST_PATH"], "r", encoding="utf-8") as f:
+    manifest = yaml.safe_load(f) or {}
+
+with open(os.environ["INSTANCE_CTX_FILE"], "r", encoding="utf-8") as f:
+    instance_ctx = yaml.safe_load(f) or {}
+
+reg = next(item for item in manifest["registrations"] if item["key"] == os.environ["REG_KEY"])
+alarm_policies = reg.get("alarm_policies") or []
+
+UNIT_MAP = {
+    "minute": "min",
+    "minutes": "min",
+    "min": "min",
+    "hour": "hour",
+    "hours": "hour",
+    "day": "day",
+    "days": "day",
+}
+
+
+def normalize_time_block(block):
+    block = deepcopy(block or {})
+    if "type" in block:
+        return block
+    unit = block.get("unit")
+    if unit:
+        mapped = UNIT_MAP.get(unit)
+        if mapped:
+            block["type"] = mapped
+            block.pop("unit", None)
+    return block
+
+doc = {
+    "registration_key": reg["key"],
+    "monitor_object_name": reg.get("monitor_object_name"),
+    "collect_type": reg.get("collect_type"),
+    "organizations": reg.get("organizations") or manifest.get("defaults", {}).get("group_ids") or [],
+    "policies": [],
+}
+
+instance_items = instance_ctx.get("instances") or []
+for item in alarm_policies:
+    spec = deepcopy(item)
+    spec["schedule"] = normalize_time_block(spec.get("schedule"))
+    spec["period"] = normalize_time_block(spec.get("period"))
+    if spec.get("no_data_period"):
+        spec["no_data_period"] = normalize_time_block(spec.get("no_data_period"))
+    if spec.get("no_data_recovery_period"):
+        spec["no_data_recovery_period"] = normalize_time_block(spec.get("no_data_recovery_period"))
+    source = spec.get("source") or {}
+    if source.get("from_registration_instances") is True:
+        spec["source"] = {
+            "values": [
+                {
+                    "instance_name": inst.get("instance_name"),
+                    "instance_id_values": inst.get("instance_id_values") or [],
+                }
+                for inst in instance_items
+            ]
+        }
+    doc["policies"].append(spec)
+
+with open(os.environ["OUT_FILE"], "w", encoding="utf-8") as f:
+    yaml.safe_dump(doc, f, allow_unicode=True, sort_keys=False)
+PY
+}
+
+apply_alarm_policies_via_django() {
+  local policy_file="$1"
+
+  POLICY_FILE="${policy_file}" "${DJANGO_PYTHON}" <<'PY'
+import os
+import yaml
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "settings")
+import django
+django.setup()
+
+from rest_framework.test import APIRequestFactory
+
+from apps.monitor.models.monitor_policy import MonitorPolicy
+from apps.monitor.models.monitor_object import MonitorObject, PolicyOrganization
+from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
+from apps.monitor.views.monitor_policy import MonitorPolicyViewSet
+
+with open(os.environ["POLICY_FILE"], "r", encoding="utf-8") as f:
+    data = yaml.safe_load(f) or {}
+
+monitor_object = MonitorObject.objects.get(name=data["monitor_object_name"])
+operator = "admin"
+applied = []
+
+factory = APIRequestFactory()
+fake_request = factory.post("/api/monitor_policy/")
+fake_request.user = type("User", (), {"username": operator})()
+view = MonitorPolicyViewSet()
+
+for item in data.get("policies") or []:
+    existing = MonitorPolicy.objects.filter(
+        monitor_object=monitor_object,
+        name=item["name"],
+        collect_type=item["collect_type"],
+    ).first()
+
+    payload = {
+        "monitor_object": monitor_object.id,
+        "name": item["name"],
+        "organizations": item.get("organizations", data.get("organizations") or []),
+        "alert_name": item["alert_name"],
+        "collect_type": item["collect_type"],
+        "query_condition": item["query_condition"],
+        "source": item["source"],
+        "schedule": item["schedule"],
+        "period": item["period"],
+        "algorithm": item["algorithm"],
+        "group_by": item.get("group_by", []),
+        "threshold": item["threshold"],
+        "recovery_condition": item.get("recovery_condition", 1),
+        "metric_unit": item.get("metric_unit", ""),
+        "calculation_unit": item.get("calculation_unit", ""),
+        "no_data_period": item.get("no_data_period", {}),
+        "no_data_level": item.get("no_data_level", "warning"),
+        "no_data_alert_name": item.get("no_data_alert_name", f"{item['alert_name']}-no-data"),
+        "no_data_recovery_period": item.get("no_data_recovery_period", {}),
+        "notice": item.get("notice", True),
+        "notice_type": item.get("notice_type", ""),
+        "notice_type_id": item.get("notice_type_id", 0),
+        "notice_users": item.get("notice_users", []),
+        "enable": item.get("enable", True),
+        "enable_alerts": item.get("enable_alerts", []),
+        "updated_by": operator,
+    }
+
+    if existing:
+        serializer = MonitorPolicySerializer(existing, data=payload, partial=False)
+    else:
+        payload["created_by"] = operator
+        serializer = MonitorPolicySerializer(data=payload)
+
+    serializer.is_valid(raise_exception=True)
+    obj = serializer.save()
+
+    view.update_or_create_task(obj.id, payload["schedule"])
+    view.update_policy_organizations(obj.id, payload["organizations"])
+    if existing:
+        old_enable = existing.enable
+        old_state = view.get_baseline_state(existing)
+        refreshed = MonitorPolicy.objects.filter(id=obj.id).first()
+        if view.should_update_policy_baselines(existing, old_state, refreshed):
+            view.update_policy_baselines(
+                obj.id,
+                refreshed.enable_alerts,
+                operator=operator,
+                reset_active_no_data_alerts=view.baseline_state_changed(old_state, refreshed),
+            )
+        if payload.get("enable") != old_enable:
+            view.handle_policy_enable_change(obj.id, old_enable, payload.get("enable"))
+    else:
+        created = MonitorPolicy.objects.filter(id=obj.id).first()
+        if view.is_no_data_alert_enabled(created):
+            view.update_policy_baselines(obj.id, created.enable_alerts, operator=operator)
+
+    applied.append(
+        {
+            "policy_key": item["policy_key"],
+            "policy_id": obj.id,
+            "name": obj.name,
+        }
+    )
+
+print(yaml.safe_dump({"applied": applied}, allow_unicode=True, sort_keys=False))
+PY
+}
+
+update_meta_alarm_policy_status() {
+  local key="$1"
+  local status="$2"
+  local applied_file="${3:-}"
+  local error="${4:-}"
+
+  META_FILE="${OUTPUT_DIR}/${key}.meta.yaml" STATUS="${status}" APPLIED_FILE="${applied_file}" ERROR_MSG="${error}" "${DJANGO_PYTHON}" <<'PY'
+import os
+import yaml
+
+meta_file = os.environ["META_FILE"]
+status = os.environ["STATUS"]
+applied_file = os.environ.get("APPLIED_FILE", "")
+error_msg = os.environ.get("ERROR_MSG", "")
+
+with open(meta_file, "r", encoding="utf-8") as f:
+    data = yaml.safe_load(f) or {}
+
+data.setdefault("alarm_policies", {})
+data["alarm_policies"]["status"] = status
+
+if applied_file and os.path.exists(applied_file):
+    with open(applied_file, "r", encoding="utf-8") as f:
+        applied = yaml.safe_load(f) or {}
+    data["alarm_policies"]["applied"] = applied.get("applied", [])
+
+if error_msg:
+    data["alarm_policies"]["error"] = error_msg
+else:
+    data["alarm_policies"].pop("error", None)
+
+with open(meta_file, "w", encoding="utf-8") as f:
+    yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+PY
+}
+
+run_alarm_policy_post_step() {
+  local key="$1"
+  local result_file="$2"
+
+  local policy_ctx_file="${OUTPUT_DIR}/${key}.alarm-policy-instance-context.yaml"
+  local policy_spec_file="${OUTPUT_DIR}/${key}.alarm-policies.yaml"
+  local policy_apply_file="${OUTPUT_DIR}/${key}.alarm-policies.applied.yaml"
+
+  if ! MANIFEST_PATH="${MANIFEST_PATH}" REG_KEY="${key}" "${DJANGO_PYTHON}" <<'PY'
+import os
+import yaml
+
+with open(os.environ["MANIFEST_PATH"], "r", encoding="utf-8") as f:
+    manifest = yaml.safe_load(f) or {}
+
+reg = next(item for item in manifest.get("registrations", []) if item.get("key") == os.environ["REG_KEY"])
+raise SystemExit(0 if (reg.get("alarm_policies") or []) else 1)
+PY
+  then
+    return 2
+  fi
+
+  extract_registration_instance_context "${result_file}" "${policy_ctx_file}"
+  build_alarm_policy_specs "${key}" "${policy_ctx_file}" "${policy_spec_file}"
+
+  if apply_alarm_policies_via_django "${policy_spec_file}" > "${policy_apply_file}"; then
+    update_meta_alarm_policy_status "${key}" "success" "${policy_apply_file}"
+    return 0
+  fi
+
+  update_meta_alarm_policy_status "${key}" "failed" "" "alarm policy step failed"
+  return 1
+}
+
 process_operation_analysis_groups() {
   build_oa_group_files "${OA_GROUP_DIR}"
 
@@ -1100,7 +1428,8 @@ for path in result_files:
         item = yaml.safe_load(f) or {}
     results.append(item)
     oa_failed = ((item.get("operation_analysis") or {}).get("status") == "failed")
-    if item.get("status") == "success" and not oa_failed:
+    alarm_failed = ((item.get("alarm_policies") or {}).get("status") == "failed")
+    if item.get("status") == "success" and not oa_failed and not alarm_failed:
         success += 1
     else:
         failed += 1
@@ -1140,6 +1469,19 @@ main() {
 
     if run_create_monitor_instance "${request_file}" "${result_file}"; then
       ids="$(extract_instance_ids "${result_file}" | paste -sd, -)"
+      alarm_status="skipped"
+      alarm_error=""
+      if run_alarm_policy_post_step "${key}" "${result_file}"; then
+        alarm_status="success"
+      else
+        rc=$?
+        if [[ ${rc} -eq 2 ]]; then
+          alarm_status="skipped"
+        else
+          alarm_status="failed"
+          alarm_error="alarm policy step failed"
+        fi
+      fi
       oa_status="skipped"
       oa_error=""
       if queue_operation_analysis_widget "${key}" "${result_file}" "${oa_widget_file}"; then
@@ -1163,6 +1505,11 @@ main() {
           for id in ${ids//,/ }; do
             printf '  - %s\n' "${id}"
           done
+        fi
+        printf 'alarm_policies:\n'
+        printf '  status: %s\n' "${alarm_status}"
+        if [[ -n "${alarm_error}" ]]; then
+          printf '  error: %s\n' "${alarm_error}"
         fi
         printf 'operation_analysis:\n'
         printf '  status: %s\n' "${oa_status}"

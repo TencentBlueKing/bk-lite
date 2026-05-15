@@ -5,6 +5,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.models import OCRProvider
 from apps.opspilot.serializers.ocr_serializer import OCRProviderSerializer
+from apps.opspilot.utils.vendor_model_mixin import VendorModelMixin
 
 
 class ObjFilter(FilterSet):
@@ -21,7 +22,7 @@ class ObjFilter(FilterSet):
         return qs.filter(enabled=enabled)
 
 
-class OCRProviderViewSet(AuthViewSet):
+class OCRProviderViewSet(VendorModelMixin, AuthViewSet):
     queryset = OCRProvider.objects.all()
     serializer_class = OCRProviderSerializer
     permission_key = "provider.ocr_model"

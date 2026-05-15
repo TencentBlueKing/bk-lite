@@ -2,6 +2,7 @@ from django.http import JsonResponse
 from django_filters import rest_framework as filters
 from rest_framework import permissions
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import ErrorLog
 from apps.system_mgmt.serializers.error_log_serializer import ErrorLogSerializer
@@ -57,6 +58,10 @@ class ErrorLogViewSet(GroupFilterMixin, LanguageViewSet):
     filterset_class = ErrorLogFilter
     permission_classes = [permissions.IsAuthenticated]
     http_method_names = ["get", "head", "options"]
+
+    @HasPermission("error_logs-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
     def retrieve(self, request, *args, **kwargs):
         """禁用详情接口"""

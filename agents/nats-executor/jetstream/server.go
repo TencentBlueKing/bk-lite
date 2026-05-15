@@ -18,12 +18,20 @@ type objectStoreGetter interface {
 	Get(name string, opts ...nats.GetObjectOpt) (nats.ObjectResult, error)
 }
 
+type objectStoreManager interface {
+	ObjectStore(bucket string) (nats.ObjectStore, error)
+	CreateObjectStore(cfg *nats.ObjectStoreConfig) (nats.ObjectStore, error)
+}
+
 var (
 	createTempDownloadFile = func(dir, pattern string) (*os.File, error) {
 		return os.CreateTemp(dir, pattern)
 	}
 	renameDownloadFile = os.Rename
 	removeDownloadFile = os.Remove
+	syncDownloadFile   = func(f *os.File) error { return f.Sync() }
+	closeDownloadFile  = func(f *os.File) error { return f.Close() }
+	jetStreamFromConn  = func(nc *nats.Conn) (objectStoreManager, error) { return nc.JetStream() }
 )
 
 type JetStreamClient struct {
@@ -33,11 +41,24 @@ type JetStreamClient struct {
 }
 
 func NewJetStreamClient(nc *nats.Conn, bucketName string) (*JetStreamClient, error) {
-	js, err := nc.JetStream()
+	js, err := jetStreamFromConn(nc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get JetStream context: %v", err)
 	}
 
+	return newJetStreamClientFromContext(nc, js, bucketName)
+}
+
+func newJetStreamClientFromContext(nc *nats.Conn, js objectStoreManager, bucketName string) (*JetStreamClient, error) {
+	store, err := ensureObjectStore(js, bucketName)
+	if err != nil {
+		return nil, err
+	}
+
+	return &JetStreamClient{nc: nc, objectStore: store}, nil
+}
+
+func ensureObjectStore(js objectStoreManager, bucketName string) (nats.ObjectStore, error) {
 	store, err := js.ObjectStore(bucketName)
 	if err != nil {
 		if err == nats.ErrBucketNotFound {
@@ -50,8 +71,7 @@ func NewJetStreamClient(nc *nats.Conn, bucketName string) (*JetStreamClient, err
 			return nil, fmt.Errorf("failed to create or access object store: %v", err)
 		}
 	}
-
-	return &JetStreamClient{nc: nc, js: js, objectStore: store}, nil
+	return store, nil
 }
 
 func (jsc *JetStreamClient) DownloadToFile(ctx context.Context, fileKey, targetPath, fileName string) error {
@@ -83,7 +103,7 @@ func (jsc *JetStreamClient) DownloadToFile(ctx context.Context, fileKey, targetP
 	tempClosed := false
 	cleanupTemp := func() {
 		if !tempClosed {
-			_ = tempFile.Close()
+			_ = closeDownloadFile(tempFile)
 			tempClosed = true
 		}
 		_ = removeDownloadFile(tempPath)
@@ -101,12 +121,12 @@ func (jsc *JetStreamClient) DownloadToFile(ctx context.Context, fileKey, targetP
 		return downloaderr.New(kind, fmt.Errorf("failed to write file: %w", err))
 	}
 
-	if err := tempFile.Sync(); err != nil {
+	if err := syncDownloadFile(tempFile); err != nil {
 		cleanupTemp()
 		return downloaderr.New(downloaderr.KindIO, fmt.Errorf("failed to sync temporary file %s: %w", tempPath, err))
 	}
 
-	if err := tempFile.Close(); err != nil {
+	if err := closeDownloadFile(tempFile); err != nil {
 		tempClosed = true
 		_ = removeDownloadFile(tempPath)
 		return downloaderr.New(downloaderr.KindIO, fmt.Errorf("failed to close temporary file %s: %w", tempPath, err))

@@ -190,7 +190,14 @@ error:
   vendor_api_base_required: 供应商 API 地址不能为空
   vendor_api_key_required: 供应商 API Key 不能为空
   vendor_sync_not_supported: 当前仅支持 OpenAI-compatible 供应商同步
+  anthropic_sync_not_supported: Anthropic API 不支持模型同步，请手动添加模型
+  anthropic_no_models_endpoint: Anthropic API 不支持模型列表查询，请手动添加模型
   chat_flow_test_running: 当前 Bot 已有正在执行中的工作流测试任务。
+  no_permission_access_team: 无权访问该团队数据
+  no_permission_access_knowledge_base: 无权访问该知识库
+  no_permission_access_bot: 无权访问该 Bot 的数据
+  knowledge_base_not_found: 知识库不存在
+  knowledge_base_required: 缺少 knowledge_base_id
 tools:
   kubernetes:
     name: Kubernetes工具

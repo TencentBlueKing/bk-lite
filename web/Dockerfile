@@ -7,6 +7,9 @@ WORKDIR /app
 # 设置Node.js最大堆内存为4GB
 ENV NODE_OPTIONS="--max-old-space-size=8192"
 
+# 跳过 electron 二进制下载（react-devtools 的传递依赖，构建期不需要）
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
+
 # 如果提供了 NEXUS_NODEJS_REPOSITY，则切换 npm 源
 RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
   echo "Setting npm registry to: $NEXUS_NODEJS_REPOSITY"; \
@@ -15,7 +18,7 @@ RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
   echo "Using default npm registry"; \
   fi
 
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9
 
 # 如果提供了 NEXUS_NODEJS_REPOSITY，则切换 pnpm 源
 RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
@@ -35,7 +38,7 @@ RUN pnpm install
 RUN pnpm run build
 
 FROM node:24-alpine
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9
 
 # 在生产环境也设置内存限制
 ENV NODE_OPTIONS="--max-old-space-size=2048"

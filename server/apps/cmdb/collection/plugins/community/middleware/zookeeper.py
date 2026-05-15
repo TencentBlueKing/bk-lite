@@ -20,5 +20,4 @@ class ZookeeperCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "init_limit": "init_limit",
         "sync_limit": "sync_limit",
         "server": "server",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

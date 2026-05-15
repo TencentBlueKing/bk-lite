@@ -7,6 +7,7 @@ import pytest
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.log.services.collect_type import CollectTypeService
 from apps.log.views.collect_config import CollectConfigViewSet, CollectInstanceViewSet
+from apps.log.views.k8s_collect import K8sCollectViewSet
 
 
 class FakeQuerySet(list):
@@ -386,6 +387,10 @@ def test_search_rejects_page_size_above_limit():
     assert response.status_code == 400
 
 
+def test_search_allows_page_size_minus_one_for_full_result():
+    assert CollectInstanceViewSet._normalize_page_params({"page": 1, "page_size": -1}) == (1, -1)
+
+
 def test_search_single_collect_type_merges_duplicate_instance_permissions(monkeypatch):
     instance = make_instance()
     from apps.log.views import collect_config
@@ -544,3 +549,175 @@ def test_update_instance_collect_config_allows_authorized_instance(monkeypatch):
 
     assert response.status_code == 200
     update_config.assert_called_once_with(None, {"content": "key: value"}, instance.id, instance.collect_type_id)
+
+
+def test_k8s_create_instance_rejects_target_org_outside_authorized_scope(monkeypatch):
+    from apps.log.views import collect_config, k8s_collect
+
+    create_instance = Mock()
+    monkeypatch.setattr(
+        collect_config,
+        "get_permissions_rules",
+        Mock(return_value={"data": {}, "team": [1]}),
+    )
+    monkeypatch.setattr(k8s_collect.K8sLogCollectService, "create_k8s_collect_instance", create_instance)
+
+    payload = {"collect_type_id": 7, "name": "demo", "organizations": [2]}
+    response = K8sCollectViewSet().create_instance(make_request(payload))
+
+    assert response.status_code == 403
+    create_instance.assert_not_called()
+
+
+def test_k8s_create_instance_requires_organizations(monkeypatch):
+    from apps.log.views import k8s_collect
+
+    create_instance = Mock()
+    monkeypatch.setattr(k8s_collect.K8sLogCollectService, "create_k8s_collect_instance", create_instance)
+
+    response = K8sCollectViewSet().create_instance(make_request({"collect_type_id": 7, "name": "demo", "organizations": []}))
+
+    assert response.status_code == 400
+    create_instance.assert_not_called()
+
+
+def test_k8s_create_instance_allows_authorized_target_org_scope(monkeypatch):
+    from apps.log.views import collect_config, k8s_collect
+
+    create_instance = Mock(return_value={"instance_id": "k8s-demo"})
+    monkeypatch.setattr(
+        collect_config,
+        "get_permissions_rules",
+        Mock(return_value={"data": {"all": {"team": [2]}}, "team": [1]}),
+    )
+    monkeypatch.setattr(k8s_collect.K8sLogCollectService, "create_k8s_collect_instance", create_instance)
+
+    payload = {"collect_type_id": 7, "name": "demo", "organizations": [2]}
+    response = K8sCollectViewSet().create_instance(make_request(payload))
+
+    assert response.status_code == 200
+    create_instance.assert_called_once_with(payload)
+
+
+def test_k8s_generate_install_command_requires_operate_permission(monkeypatch):
+    instance = make_instance()
+    from apps.log.views import collect_config, k8s_collect
+
+    generate_install_command = Mock()
+    monkeypatch.setattr(
+        collect_config.CollectInstance.objects,
+        "filter",
+        Mock(return_value=FakeQuerySet([instance])),
+    )
+    monkeypatch.setattr(
+        collect_config,
+        "get_permissions_rules",
+        Mock(return_value={"data": {}, "team": [1]}),
+    )
+    monkeypatch.setattr(k8s_collect.K8sLogCollectService, "generate_install_command", generate_install_command)
+
+    payload = {"instance_id": instance.id, "cloud_region_id": 1}
+    response = K8sCollectViewSet().generate_install_command(make_request(payload))
+
+    assert response.status_code == 403
+    generate_install_command.assert_not_called()
+
+
+def test_k8s_generate_install_command_allows_authorized_instance(monkeypatch):
+    instance = make_instance()
+    from apps.log.views import collect_config, k8s_collect
+
+    generate_install_command = Mock(return_value="kubectl apply")
+    monkeypatch.setattr(
+        collect_config.CollectInstance.objects,
+        "filter",
+        Mock(return_value=FakeQuerySet([instance])),
+    )
+    monkeypatch.setattr(
+        collect_config,
+        "get_permissions_rules",
+        Mock(
+            return_value={
+                "data": {
+                    str(instance.collect_type_id): {
+                        "instance": [{"id": instance.id, "permission": ["Operate"]}],
+                    }
+                },
+                "team": [1],
+            }
+        ),
+    )
+    monkeypatch.setattr(k8s_collect.K8sLogCollectService, "generate_install_command", generate_install_command)
+
+    payload = {
+        "instance_id": instance.id,
+        "cloud_region_id": 1,
+        "runtime_profile": "standard",
+        "host_log_path": "/var/log/pods",
+        "docker_container_log_path": "/var/lib/docker/containers",
+    }
+    response = K8sCollectViewSet().generate_install_command(make_request(payload))
+
+    assert response.status_code == 200
+    generate_install_command.assert_called_once_with(
+        instance.id,
+        1,
+        "standard",
+        "/var/log/pods",
+        "/var/lib/docker/containers",
+    )
+
+
+def test_k8s_check_collect_status_requires_view_permission(monkeypatch):
+    instance = make_instance()
+    from apps.log.views import collect_config, k8s_collect
+
+    check_collect_status = Mock()
+    monkeypatch.setattr(
+        collect_config.CollectInstance.objects,
+        "filter",
+        Mock(return_value=FakeQuerySet([instance])),
+    )
+    monkeypatch.setattr(
+        collect_config,
+        "get_permissions_rules",
+        Mock(return_value={"data": {}, "team": [1]}),
+    )
+    monkeypatch.setattr(k8s_collect.K8sLogCollectService, "check_collect_status", check_collect_status)
+
+    response = K8sCollectViewSet().check_collect_status(make_request({"instance_id": instance.id}))
+
+    assert response.status_code == 403
+    check_collect_status.assert_not_called()
+
+
+def test_k8s_check_collect_status_allows_instance_level_view_permission(monkeypatch):
+    instance = make_instance()
+    from apps.log.views import collect_config, k8s_collect
+
+    check_collect_status = Mock(return_value=True)
+    monkeypatch.setattr(
+        collect_config.CollectInstance.objects,
+        "filter",
+        Mock(return_value=FakeQuerySet([instance])),
+    )
+    monkeypatch.setattr(
+        collect_config,
+        "get_permissions_rules",
+        Mock(
+            return_value={
+                "data": {
+                    str(instance.collect_type_id): {
+                        "instance": [{"id": instance.id, "permission": ["View"]}],
+                    }
+                },
+                "team": [1],
+            }
+        ),
+    )
+    monkeypatch.setattr(k8s_collect.K8sLogCollectService, "check_collect_status", check_collect_status)
+
+    response = K8sCollectViewSet().check_collect_status(make_request({"instance_id": instance.id}))
+
+    assert response.status_code == 200
+    check_collect_status.assert_called_once_with(instance.id)

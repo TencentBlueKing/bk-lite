@@ -26,6 +26,14 @@ const setToken = (token: string | null) => {
   tokenRef.current = token;
 };
 
+/** Error already shown to user by the request interceptor — callers should stay silent. */
+export class HandledRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'HandledRequestError';
+  }
+}
+
 const handleResponse = (response: AxiosResponse) => {
   const { result, message: msg, data } = response.data;
   if (!result) {
@@ -56,6 +64,10 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error) => {
+    if (isSessionExpiredState()) {
+      return Promise.reject(error);
+    }
+
     if (error.response) {
       const { status } = error.response;
       const messageText = error.response?.data?.message;
@@ -67,17 +79,27 @@ apiClient.interceptors.response.use(
         return Promise.reject(error);
       } else if ([400, 403].includes(status)) {
         message.error(messageText);
-        return Promise.reject(new Error(messageText));
+        return Promise.reject(new HandledRequestError(messageText));
       } else if (status === 500) {
         message.error(messageText);
-        return Promise.reject(new Error(messageText || 'Internal Server Error'));
+        return Promise.reject(new HandledRequestError(messageText || 'Internal Server Error'));
+      } else {
+        message.error(messageText);
+        return Promise.reject(new HandledRequestError(messageText));
       }
     }
-    return Promise.reject(error);
+
+    // Network error / timeout / no response
+    if (!axios.isAxiosError(error) || error.code === 'ECONNABORTED') {
+      return Promise.reject(error);
+    }
+    return Promise.reject(new HandledRequestError('网络异常'));
   }
 );
 
 export const isSilentRequestError = (error: unknown) => {
+  if (error instanceof HandledRequestError) return true;
+
   if (axios.isAxiosError(error)) {
     const status = error.response?.status;
     return error.code === 'ECONNABORTED' || status === 401 || status === 460;

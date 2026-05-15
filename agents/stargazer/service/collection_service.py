@@ -138,6 +138,7 @@ class CollectionService:
                 strict_enterprise=strict_enterprise,
             )
             result = await executor.execute()
+            logger.info("Raw collection result: {}".format(result))
 
             if self.params.get("callback_subject"):
                 logger.info("✅ Collection completed successfully (callback mode)")

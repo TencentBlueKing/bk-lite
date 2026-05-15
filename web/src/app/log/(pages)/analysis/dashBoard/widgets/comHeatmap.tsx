@@ -99,7 +99,7 @@ const ComHeatmap: React.FC<ComHeatmapProps> = ({
 
   const option = {
     tooltip: {
-      confine: true,
+      confine: false,
       appendToBody: true,
       position: 'top'
     },

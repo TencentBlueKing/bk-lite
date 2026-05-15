@@ -156,8 +156,12 @@ const CustomTable = <T extends object>({
           width: 30,
           title: '',
           dataIndex: 'sort',
-          render: () => (
-            <HolderOutlined className="font-[800] text-[16px] mr-[6px] cursor-move" />
+          render: (_: any, __: T, index: number) => (
+            <HolderOutlined
+              className="font-[800] text-[16px] mr-[6px] cursor-move"
+              draggable
+              onDragStart={handleDragStart(index)}
+            />
           ),
         },
         ...cols,
@@ -251,30 +255,34 @@ const CustomTable = <T extends object>({
       );
   };
 
+  const resetDragState = () => {
+    setDraggedIndex(null);
+    setHoveredIndex(null);
+  };
+
   const handleDragStart = (index: number) => () => {
     setDraggedIndex(index);
     onRowDragStart?.(index);
   };
 
+  const handleDragEnd = () => {
+    resetDragState();
+  };
+
   const handleDragOver =
-    (index: number) => (event: React.DragEvent<HTMLDivElement>) => {
+    (index: number) => (event: React.DragEvent<HTMLElement>) => {
+      if (!rowDraggable || draggedIndex === null) return;
       event.preventDefault();
       setHoveredIndex(index);
     };
 
   const handleDrop =
-    (index: number) => (event: React.DragEvent<HTMLDivElement>) => {
+    (index: number) => (event: React.DragEvent<HTMLElement>) => {
+      if (!rowDraggable || draggedIndex === null) return;
       event.preventDefault();
       const sourceIndex = draggedIndex;
       const targetIndex = index;
-      setDraggedIndex(null);
-      setHoveredIndex(null);
-
-      if (sourceIndex === null) {
-        const targetTableData = cloneDeep(TableProps.dataSource) as T[];
-        onRowDragEnd?.(targetTableData, targetIndex, -1);
-        return;
-      }
+      resetDragState();
 
       if (
         sourceIndex !== null &&
@@ -291,10 +299,11 @@ const CustomTable = <T extends object>({
   const renderRow = (index: number) => {
     return {
       index,
-      draggable: rowDraggable,
-      onDragStart: handleDragStart(index),
-      onDragOver: handleDragOver(index),
-      onDrop: handleDrop(index),
+      draggable: false,
+      onDragStart: undefined,
+      onDragEnd: rowDraggable ? handleDragEnd : undefined,
+      onDragOver: rowDraggable ? handleDragOver(index) : undefined,
+      onDrop: rowDraggable ? handleDrop(index) : undefined,
     };
   };
 

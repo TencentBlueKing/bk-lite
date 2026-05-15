@@ -144,7 +144,9 @@ const Node = () => {
       selectedRowKeys.includes(item.key)
     );
     const operatingSystems = selectedNodes.map((node) => node.operating_system);
-    const architectures = selectedNodes.map((node) => node.cpu_architecture || '');
+    const architectures = selectedNodes.map(
+      (node) => node.cpu_architecture || ''
+    );
     const uniqueOS = [...new Set(operatingSystems)];
     const uniqueArchitectures = [...new Set(architectures)];
     // 采集器：检查操作系统和 CPU 架构是否一致
@@ -400,14 +402,22 @@ const Node = () => {
                     style={{
                       fontSize: isAutoInstall ? '32px' : '24px',
                       transform: isAutoInstall ? 'none' : 'translateX(2px)',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      marginRight: isAutoInstall ? '' : '8px'
                     }}
                   />
                 </div>
               </Tooltip>
-              <Tooltip title={`CPU架构: ${cpuArchitectureLabel}`}>
-                <div className="flex items-center text-[12px] min-w-[52px] text-[var(--color-text-2)] cursor-pointer">
-                  {cpuArchitectureLabel}
+              <Tooltip
+                title={`${t(
+                  'node-manager.cloudregion.node.cpuArchitecture'
+                )}: ${cpuArchitectureLabel}`}
+              >
+                <div className="flex items-center">
+                  <Icon
+                    type="cpu"
+                    style={{ fontSize: '28px', cursor: 'pointer' }}
+                  />
                 </div>
               </Tooltip>
             </div>

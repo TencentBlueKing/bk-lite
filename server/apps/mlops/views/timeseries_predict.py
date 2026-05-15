@@ -106,6 +106,8 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
         """
         启动训练任务
         """
+        train_job = None
+        previous_status = None
         try:
             train_job = self.get_object()
 
@@ -129,6 +131,10 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
 
             if not train_job.config_url:
                 return Response({"error": "训练配置文件不存在"}, status=status.HTTP_400_BAD_REQUEST)
+
+            scope_error = self.ensure_train_job_dataset_scope(request, train_job)
+            if scope_error is not None:
+                return scope_error
 
             # 构建训练任务标识
             job_id = mlflow_service.build_job_id(
@@ -159,6 +165,10 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
             except Exception:
                 logger.warning(f"查询 MLflow run 数量失败，降级 expected_run_count=0, TrainJob ID={train_job.id}")
 
+            previous_status = self.claim_train_job_running(train_job)
+            if previous_status is None:
+                return Response({"error": "训练任务已在运行中"}, status=status.HTTP_400_BAD_REQUEST)
+
             # 启动前清理可能残留的旧训练容器
             try:
                 WebhookClient.stop(job_id)
@@ -179,10 +189,6 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
                 train_image=train_image,
             )
 
-            # 更新任务状态
-            train_job.status = TrainJobStatus.RUNNING
-            train_job.save(update_fields=["status"])
-
             # 启动异步轮询训练状态
             logger.info(f"触发轮询任务: TrainJob ID={train_job.id}, 预期 run 数量: {expected_run_count}")
             poll_train_job_status.delay(train_job.id, self.MLFLOW_PREFIX, expected_run_count)
@@ -196,13 +202,21 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
             )
 
         except WebhookTimeoutError as e:
+            if train_job and previous_status is not None:
+                self.restore_train_job_status(train_job, previous_status)
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
+            if train_job and previous_status is not None:
+                self.restore_train_job_status(train_job, previous_status)
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
+            if train_job and previous_status is not None:
+                self.restore_train_job_status(train_job, previous_status)
             logger.error(f"启动训练任务失败: {e}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
+            if train_job and previous_status is not None:
+                self.restore_train_job_status(train_job, previous_status)
             logger.error(f"启动训练任务失败: {str(e)}", exc_info=True)
             return Response(
                 {"error": f"启动训练任务失败: {str(e)}"},

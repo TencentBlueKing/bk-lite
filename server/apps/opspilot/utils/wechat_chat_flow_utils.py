@@ -135,10 +135,10 @@ class WechatChatFlowUtils(BaseChatFlowUtils):
     def handle_wechat_message(self, request, crypto, bot_chat_flow, wechat_config):
         """处理企业微信消息
 
-        采用异步处理模式：
-        1. 立即返回success给企业微信（避免5秒超时重试）
-        2. 使用消息ID去重（防止重试导致重复处理）
-        3. 异步执行ChatFlow并通过主动发送接口回复
+        采用 Celery 异步处理模式：
+        1. 立即返回 success 给企业微信（避免 5 秒超时重试）
+        2. 使用两阶段去重（processing → completed）
+        3. 通过 Celery 任务异步执行 ChatFlow 并回复
 
         Returns:
             HttpResponse: 消息处理响应
@@ -173,22 +173,23 @@ class WechatChatFlowUtils(BaseChatFlowUtils):
                 logger.warning(f"企业微信收到空消息，Bot {self.bot_id}，发送者: {sender_id}")
                 return HttpResponse("success")
 
-            # 消息去重检查（使用基类方法）
+            # 两阶段去重检查（标记为 processing）
             if self.is_message_processed(msg_id):
-                logger.info(f"企业微信消息已处理，跳过重复消息，Bot {self.bot_id}，MsgId {msg_id}")
+                logger.info(f"企业微信消息已处理或处理中，跳过，Bot {self.bot_id}，MsgId {msg_id}")
                 return HttpResponse("success")
 
-            # 异步处理消息（使用基类方法，立即返回避免超时）
-            self.process_message_async(
-                self.async_process_and_reply,
-                bot_chat_flow,
-                wechat_config,
-                message,
-                sender_id,
-                msg_id,
+            # 使用 Celery 任务异步处理（替代 daemon 线程）
+            from apps.opspilot.tasks import process_wechat_message
+
+            process_wechat_message.delay(
+                bot_id=self.bot_id,
+                msg_id=msg_id,
+                message=message,
+                sender_id=sender_id,
+                config=wechat_config,
             )
 
-            logger.info(f"企业微信消息已接收，异步处理中，Bot {self.bot_id}，MsgId {msg_id}")
+            logger.info(f"企业微信消息已接收，Celery 任务已投递，Bot {self.bot_id}，MsgId {msg_id}")
             return HttpResponse("success")
 
         except Exception as e:

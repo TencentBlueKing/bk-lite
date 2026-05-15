@@ -1,4 +1,4 @@
-import type { OAuthConfig, OAuthUserConfig } from "next-auth/providers/oauth";
+import type {OAuthConfig, OAuthUserConfig} from "next-auth/providers/oauth";
 
 export interface WechatProfile {
   openid: string;
@@ -11,6 +11,12 @@ export interface WechatProfile {
   privilege?: string[];
   unionid?: string;
   access_token?: string;
+  // Extended fields from backend response
+  id?: number;
+  username?: string;
+  token?: string;
+  locale?: string;
+  timezone?: string;
 }
 
 export default function WeChatProvider<P extends WechatProfile>(
@@ -18,7 +24,6 @@ export default function WeChatProvider<P extends WechatProfile>(
 ): OAuthConfig<P> {
   console.log("[WeChat OAuth] Initializing WeChat Provider with options:", {
     clientId: options.clientId ? "Set" : "Not set",
-    clientSecret: options.clientSecret ? "Set" : "Not set",
     redirectUri: options.redirectUri,
   });
 
@@ -40,35 +45,38 @@ export default function WeChatProvider<P extends WechatProfile>(
     token: {
       url: "https://api.weixin.qq.com/sns/oauth2/access_token",
       async request({ params }) {
-        console.log("[WeChat OAuth] Token request params:", params);
+        console.log("[WeChat OAuth] Token request - passing code to backend");
         
-        const url = new URL("https://api.weixin.qq.com/sns/oauth2/access_token");
-        url.searchParams.set("appid", options.clientId);
-        url.searchParams.set("secret", options.clientSecret);
-        url.searchParams.set("code", params.code!);
-        url.searchParams.set("grant_type", "authorization_code");
-
-        console.log("[WeChat OAuth] Token request URL:", url.toString());
-
-        const response = await fetch(url.toString(), {
-          method: "GET",
+        // Instead of calling WeChat API directly, pass code to backend
+        // Backend handles WeChat OAuth verification securely
+        const response = await fetch(`${process.env.NEXTAPI_URL}/api/v1/core/api/wechat_login/`, {
+          method: "POST",
           headers: {
-            "Accept": "application/json",
+            "Content-Type": "application/json",
           },
+          body: JSON.stringify({ code: params.code }),
         });
 
-        const tokens = await response.json();
-        console.log("[WeChat OAuth] Token response:", tokens);
+        const data = await response.json();
+        console.log("[WeChat OAuth] Backend response:", {
+          result: data.result,
+          hasData: !!data.data,
+          message: data.message,
+        });
 
-        if (tokens.errcode) {
-          throw new Error(`WeChat token error: ${tokens.errmsg} (${tokens.errcode})`);
+        if (!data.result || !data.data) {
+          throw new Error(`WeChat login failed: ${data.message || 'Unknown error'}`);
         }
 
+        // Return tokens in next-auth expected format
+        // Store backend response data in tokens for use in profile()
         return {
           tokens: {
-            access_token: tokens.access_token,
-            openid: tokens.openid,
-            unionid: tokens.unionid,
+            access_token: data.data.token, // Use backend JWT as access_token
+            openid: data.data.openid,
+            unionid: data.data.unionid,
+            // Store full backend response for profile()
+            backend_data: data.data,
           }
         };
       }
@@ -76,81 +84,42 @@ export default function WeChatProvider<P extends WechatProfile>(
     userinfo: {
       url: "https://api.weixin.qq.com/sns/userinfo",
       async request({ tokens }) {
-        console.log("[WeChat OAuth] Userinfo request with tokens:", tokens);
+        console.log("[WeChat OAuth] Userinfo - using backend data");
         
-        const url = new URL("https://api.weixin.qq.com/sns/userinfo");
-        url.searchParams.set("access_token", tokens.access_token!);
-        url.searchParams.set("openid", (tokens as any).openid!);
-        url.searchParams.set("lang", "zh_CN");
-
-        console.log("[WeChat OAuth] Userinfo request URL:", url.toString());
-
-        const response = await fetch(url.toString(), {
-          method: "GET",
-          headers: {
-            "Accept": "application/json",
-          },
-        });
-
-        const profile = await response.json();
-        console.log("[WeChat OAuth] Userinfo response:", profile);
-
-        if (profile.errcode) {
-          throw new Error(`WeChat userinfo error: ${profile.errmsg} (${profile.errcode})`);
-        }
-
+        // We already have all user info from the backend response
+        // No need to call WeChat API again
+        const backendData = (tokens as any).backend_data;
+        
         return {
-          ...profile,
-          access_token: tokens.access_token,
+          openid: backendData.openid,
+          nickname: backendData.display_name || backendData.username,
+          unionid: backendData.unionid,
+          // Include backend data for profile()
+          ...backendData,
         };
       }
     },
     async profile(profile) {
       console.log("[WeChat OAuth] Processing profile:", {
         openid: profile.openid || "Not received",
-        nickname: profile.nickname || "Not received",
-        unionid: profile.unionid ? "Set" : "Not set"
+        username: profile.username || "Not received",
+        id: profile.id || "Not received",
       });
 
-      try {
-        const registerResponse = await fetch(`${process.env.NEXTAPI_URL}/api/v1/core/api/wechat_user_register/`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            user_id: profile.openid,
-            nick_name: profile.nickname || profile.openid
-          }),
-        });
-
-        const registerData = await registerResponse.json();
-        console.log("[WeChat OAuth] Register API response:", registerData);
-
-        if (!registerResponse.ok || !registerData.result) {
-          console.error("[WeChat OAuth] Register API failed:", registerData);
-          throw new Error(`WeChat user register failed: ${registerData.message || 'Unknown error'}`);
-        }
-
-        // Use data returned from registration interface
-        const userData = registerData.data;
-        return {
-          id: userData.id.toString(),
-          name: userData.username || profile.nickname || profile.openid,
-          username: userData.username,
-          image: profile.headimgurl,
-          email: null,
-          token: userData.token,
-          locale: userData.locale || 'zh',
-          timezone: userData.timezone || 'Asia/Shanghai',
-          wechatOpenId: profile.openid,
-          wechatUnionId: profile.unionid,
-        };
-
-      } catch (error) {
-        console.error("[WeChat OAuth] Error during user registration:", error);
-        throw error;
-      }
+      // User is already registered by backend's wechat_login endpoint
+      // Just return the profile data
+      return {
+        id: String(profile.id || profile.username || profile.openid),
+        name: profile.username || profile.nickname || profile.openid,
+        username: profile.username,
+        image: profile.headimgurl,
+        email: null,
+        token: profile.token,
+        locale: profile.locale || 'zh',
+        timezone: profile.timezone || 'Asia/Shanghai',
+        wechatOpenId: profile.openid,
+        wechatUnionId: profile.unionid,
+      };
     },
     clientId: options.clientId || "",
     clientSecret: options.clientSecret || ""

@@ -446,10 +446,10 @@ const ComTable: React.FC<ComTableProps> = ({
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col">
       {renderFilters()}
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-visible">
         <CustomTable
           columns={antColumns}
           dataSource={tableData}

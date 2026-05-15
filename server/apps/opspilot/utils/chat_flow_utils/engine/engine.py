@@ -546,19 +546,16 @@ class ChatFlowEngine:
                 self._update_node_execution_order(agent_node_id)
                 await self._record_node_execution_result_async(agent_node_id, agent_context)
 
-                # 记录系统输出到对话历史
+                # 记录系统输出到对话历史（流已结束，同步执行不会阻塞）
                 if accumulated_content:
-                    threading.Thread(
-                        target=lambda: self._record_conversation_history(
-                            user_id,
-                            accumulated_content,
-                            "bot",
-                            entry_type,
-                            node_id,
-                            session_id,
-                        ),
-                        daemon=True,
-                    ).start()
+                    self._record_conversation_history(
+                        user_id,
+                        accumulated_content,
+                        "bot",
+                        entry_type,
+                        node_id,
+                        session_id,
+                    )
 
                 # 检查是否有后续节点
                 next_nodes = self._get_next_nodes(target_agent_node.get("id"), {"success": True, "data": {}})
@@ -574,20 +571,13 @@ class ChatFlowEngine:
                     # 有后续节点：不在此处记录，让后续节点执行完成后统一记录
                     pass
                 else:
-                    # 没有后续节点：直接记录成功执行结果
-                    # 捕获变量，避免闭包延迟绑定问题
-                    captured_final_message = final_message
-                    captured_start_node_type = start_node.get("type", "") if start_node else None
-
-                    threading.Thread(
-                        target=lambda: self._record_execution_result(
-                            input_data,
-                            captured_final_message,
-                            True,
-                            captured_start_node_type,
-                        ),
-                        daemon=True,
-                    ).start()
+                    # 没有后续节点：直接记录成功执行结果（流已结束，同步执行不会阻塞）
+                    self._record_execution_result(
+                        input_data,
+                        final_message,
+                        True,
+                        start_node.get("type", "") if start_node else None,
+                    )
 
                 # 执行后续节点(在后台异步执行,不阻塞流式响应)
                 self._execute_subsequent_nodes_async(target_agent_node, accumulated_content)
@@ -607,21 +597,13 @@ class ChatFlowEngine:
                 error_data = {"type": "ERROR", "error": f"流处理错误: {str(e)}", "timestamp": int(time.time() * 1000)}
                 yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 
-                # 记录失败执行结果到 WorkFlowTaskResult
-                # 捕获异常信息，避免闭包引用在 except 块结束后被删除的变量
-                error_msg = str(e)
-                error_type_name = type(e).__name__
-                start_node_type = start_node.get("type", "") if start_node else None
-
-                threading.Thread(
-                    target=lambda: self._record_execution_result(
-                        input_data,
-                        {"success": False, "error": error_msg, "error_type": error_type_name},
-                        False,
-                        start_node_type,
-                    ),
-                    daemon=True,
-                ).start()
+                # 记录失败执行结果到 WorkFlowTaskResult（流已结束，同步执行不会阻塞）
+                self._record_execution_result(
+                    input_data,
+                    {"success": False, "error": str(e), "error_type": type(e).__name__},
+                    False,
+                    start_node.get("type", "") if start_node else None,
+                )
 
         # 直接使用嵌套的异步生成器创建 StreamingHttpResponse
         return self._create_sse_stream_response(generate_stream)
@@ -981,11 +963,16 @@ class ChatFlowEngine:
                 # 从累积的内容中提取最终消息
                 final_message = self._extract_final_message(agent_output)
 
-                # 更新全局变量
-                self.variable_manager.set_variable("last_message", final_message)
+                agent_config = agent_node.get("data", {}).get("config", {})
+                agent_output_key = agent_config.get("outputParams", "last_message")
 
-                # 准备节点输入
-                node_input = {"last_message": final_message}
+                # 与同步执行链路保持一致：使用当前节点的 outputParams 作为后续节点输入来源
+                if agent_output_key == "last_message":
+                    self.variable_manager.set_variable("last_message", final_message)
+                    node_input = {"last_message": final_message}
+                else:
+                    self.variable_manager.set_variable(agent_output_key, final_message)
+                    node_input = {agent_output_key: final_message}
                 first_input_data = node_input.copy()
 
                 # 执行每个后续节点
@@ -1232,7 +1219,7 @@ class ChatFlowEngine:
             WorkFlowTaskNodeResult.objects.filter(execution_id=self.execution_id, task_result__isnull=True).update(task_result=task_result)
 
         except Exception as e:
-            logger.exception(f"记录工作流执行结果失败: {str(e)}")
+            logger.exception(f"记录工作流执行结果失败: execution_id={self.execution_id}, success={success}, error={str(e)}")
             # 记录失败不影响主流程
 
     def validate_flow(self) -> List[str]:
@@ -1466,7 +1453,7 @@ class ChatFlowEngine:
                 execution_id=self.execution_id,
             )
         except Exception as e:
-            logger.error(f"记录{role}对话历史失败: {str(e)}")
+            logger.error(f"记录{role}对话历史失败: execution_id={self.execution_id}, user_id={user_id}, error={str(e)}")
 
     def _check_chain_result(self, chain_result: Dict[str, Any]) -> tuple:
         """检查节点链执行结果，判断是否有节点执行失败

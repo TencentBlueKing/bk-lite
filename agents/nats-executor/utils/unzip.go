@@ -9,6 +9,18 @@ import (
 	"strings"
 )
 
+var (
+	openZipArchive = zip.OpenReader
+	makeDirAll     = os.MkdirAll
+	statPath       = os.Stat
+	removePath     = os.RemoveAll
+	openZipEntry   = func(f *zip.File) (io.ReadCloser, error) { return f.Open() }
+	openDestFile   = func(path string, mode os.FileMode) (*os.File, error) {
+		return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	}
+	copyToDest = io.Copy
+)
+
 type UnzipRequest struct {
 	ZipPath string `json:"zip_path"`
 	DestDir string `json:"dest_dir"`
@@ -20,7 +32,7 @@ func UnzipToDir(req UnzipRequest) (string, error) {
 		return "", fmt.Errorf("destination directory is required")
 	}
 
-	reader, err := zip.OpenReader(req.ZipPath)
+	reader, err := openZipArchive(req.ZipPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open zip file: %w", err)
 	}
@@ -56,20 +68,20 @@ func UnzipToDir(req UnzipRequest) (string, error) {
 
 		if f.FileInfo().IsDir() {
 			// 创建目录
-			if err := os.MkdirAll(fpath, 0755); err != nil {
+			if err := makeDirAll(fpath, 0755); err != nil {
 				return "", fmt.Errorf("failed to create directory: %w", err)
 			}
 			continue
 		}
 
 		// 创建父目录
-		if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
+		if err := makeDirAll(filepath.Dir(fpath), 0755); err != nil {
 			return "", fmt.Errorf("failed to create parent directory: %w", err)
 		}
 
 		// 检查目标路径是否已存在目录，如果是则删除
-		if info, err := os.Stat(fpath); err == nil && info.IsDir() {
-			if err := os.RemoveAll(fpath); err != nil {
+		if info, err := statPath(fpath); err == nil && info.IsDir() {
+			if err := removePath(fpath); err != nil {
 				return "", fmt.Errorf("failed to remove existing directory: %w", err)
 			}
 		}
@@ -83,19 +95,19 @@ func UnzipToDir(req UnzipRequest) (string, error) {
 }
 
 func extractZipFile(f *zip.File, fpath string) error {
-	inFile, err := f.Open()
+	inFile, err := openZipEntry(f)
 	if err != nil {
 		return fmt.Errorf("failed to open file in zip: %w", err)
 	}
 	defer inFile.Close()
 
-	outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+	outFile, err := openDestFile(fpath, f.Mode())
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
 	defer outFile.Close()
 
-	if _, err := io.Copy(outFile, inFile); err != nil {
+	if _, err := copyToDest(outFile, inFile); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 

@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+WEB_DIR="${ROOT_DIR}/web"
+ENV_LOCAL="${WEB_DIR}/.env.local"
+ALL_WEB_APPS="ops-console,system-manager,cmdb,monitor,log,node-manager,alarm,ops-analysis,opspilot,job,mlops"
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pnpm 未安装。请先在本机安装并加入 PATH。"
+  exit 1
+fi
+
+if [ ! -d "${WEB_DIR}" ]; then
+  echo "未找到 web 目录: ${WEB_DIR}"
+  exit 1
+fi
+
+cat > "${ENV_LOCAL}" <<'EOF'
+NEXTAUTH_URL="http://127.0.0.1:3000"
+NEXTAUTH_SECRET="bk-lite-web-local-dev"
+NEXTAPI_URL="http://127.0.0.1:8001"
+NEXTAPI_INSTALL_APP="__ALL_WEB_APPS__"
+NEXT_PUBLIC_IS_DEMO_ENV="false"
+
+WECHAT_APP_ID=appid
+WECHAT_APP_SECRET=appsecret
+WECHAT_APP_REDIRECT_URI=http://127.0.0.1:3000
+EOF
+
+perl -0pi -e 's/__ALL_WEB_APPS__/'"${ALL_WEB_APPS}"'/g' "${ENV_LOCAL}"
+
+cd "${WEB_DIR}"
+
+pnpm generate-workspace
+pnpm install
+
+if [ -e "${WEB_DIR}/enterprise" ]; then
+  pnpm prepare-enterprise
+fi
+
+node --input-type=module <<'EOF'
+import { combineLocales, combineMenus, copyPublicDirectories } from './src/utils/dynamicsMerged.mjs';
+
+await combineLocales();
+await combineMenus();
+copyPublicDirectories();
+EOF
+
+echo "web 初始化完成，当前已装载全部模块。"

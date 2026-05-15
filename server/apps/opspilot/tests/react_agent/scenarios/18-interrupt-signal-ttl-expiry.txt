@@ -1,0 +1,178 @@
+# Scenario 18: Interrupt Signal TTL Expiry May Cause Long Tasks to Run Uncontrolled
+
+## Issue Reference
+- GitHub Issue: #2960
+- Title: [opspilot] 中断信号仅保存在带 TTL 的缓存，可能导致长任务失控继续执行
+
+## Problem Statement
+
+Interrupt signals are stored in Django cache with a fixed TTL (default 3600 seconds).
+For long-running tasks (e.g., large knowledge base training, complex multi-agent workflows),
+if the task runs longer than the TTL, the interrupt signal expires and the task continues
+executing even though the user requested cancellation.
+
+### Original Implementation (Buggy - Before Fix)
+```python
+# execution_interrupt.py
+INTERRUPT_CACHE_TTL = int(os.getenv("WORKFLOW_INTERRUPT_CACHE_TTL", "3600"))  # 1 hour
+
+def request_interrupt(execution_id: str, reason: str = "user_manual", ...):
+    cache.set(_get_interrupt_cache_key(execution_id), payload, INTERRUPT_CACHE_TTL)
+    # After 3600 seconds, this key expires!
+
+def is_interrupt_requested(execution_id: str) -> bool:
+    return get_interrupt_request(execution_id) is not None
+    # Returns False after TTL expires, task continues!
+```
+
+### Fixed Implementation (Database Fallback)
+```python
+def _check_interrupt_in_database(execution_id: str) -> bool:
+    """Database fallback: check WorkFlowTaskResult.status == INTERRUPTED"""
+    from apps.opspilot.enum import WorkFlowTaskStatus
+    from apps.opspilot.models import WorkFlowTaskResult
+    
+    return WorkFlowTaskResult.objects.filter(
+        execution_id=execution_id,
+        status=WorkFlowTaskStatus.INTERRUPTED,
+    ).exists()
+
+def is_interrupt_requested(execution_id: str) -> bool:
+    """Dual-check mechanism: cache first, database fallback"""
+    if not execution_id:
+        return False
+    
+    # Fast path: cache hit
+    cache_result = get_interrupt_request(execution_id)
+    if cache_result is not None:
+        return True
+    
+    # Slow path: database fallback
+    return _check_interrupt_in_database(execution_id)
+```
+
+### Risk Scenarios (Now Mitigated)
+1. **Knowledge Base Training**: Training 10,000+ documents may take hours → DB fallback ensures interrupt detected
+2. **Complex Multi-Agent Workflows**: Deep research tasks with many sub-agents → DB fallback ensures interrupt detected
+3. **Browser Automation**: Long-running browser-use tasks with many steps → DB fallback ensures interrupt detected
+4. **Batch Processing**: Processing large datasets in workflow nodes → DB fallback ensures interrupt detected
+
+## Affected Files
+- `server/apps/opspilot/utils/execution_interrupt.py`: Core interrupt signal storage with DB fallback
+- `server/apps/opspilot/metis/llm/chain/node.py`: Interrupt checks in agent_node
+- `server/apps/opspilot/metis/llm/chain/graph.py`: Interrupt checks during streaming
+- `server/apps/opspilot/utils/chat_flow_utils/engine/engine.py`: ChatFlow engine interrupt checks
+
+## Implementation Details
+
+### Configuration
+```python
+# Environment variable (optional)
+WORKFLOW_INTERRUPT_CACHE_TTL = int(os.getenv("WORKFLOW_INTERRUPT_CACHE_TTL", "3600"))
+# Default: 1 hour cache TTL
+# For long-running workflows, increase this value
+# Example: export WORKFLOW_INTERRUPT_CACHE_TTL=7200  # 2 hours
+```
+
+### Dual-Check Mechanism
+1. **Cache (Fast Path)**: O(1) lookup, used for most cases
+2. **Database (Slow Path)**: Only when cache misses, uses `exists()` for performance
+3. **Automatic Fallback**: No code changes needed in callers
+
+### Database Query Optimization
+```python
+# Uses exists() instead of get() for performance
+WorkFlowTaskResult.objects.filter(
+    execution_id=execution_id,
+    status=WorkFlowTaskStatus.INTERRUPTED,
+).exists()  # Returns True/False, no object instantiation
+```
+
+## Test Scenarios
+
+### Test Class: TestInterruptSignalDualCheck
+
+#### 1. test_interrupt_detected_from_cache
+**Goal**: Verify interrupt signal is detected from cache (fast path).
+**Setup**: Mock cache with interrupt signal
+**Action**: Call `is_interrupt_requested(execution_id="test-exec-1")`
+**Assert**: Returns True, database NOT queried
+
+#### 2. test_interrupt_detected_from_database_after_cache_expiry
+**Goal**: Verify interrupt signal is detected from database when cache expires.
+**Setup**: 
+- Mock cache to return None (expired)
+- Mock database with WorkFlowTaskResult.status == INTERRUPTED
+**Action**: Call `is_interrupt_requested(execution_id="test-exec-1")`
+**Assert**: 
+- Returns True
+- Database query executed
+- Log message indicates "cache expired"
+
+#### 3. test_no_interrupt_when_both_cache_and_db_empty
+**Goal**: Verify no false positives when no interrupt exists.
+**Setup**: Mock cache to return None, mock database with no matching record
+**Action**: Call `is_interrupt_requested(execution_id="test-exec-1")`
+**Assert**: Returns False
+
+#### 4. test_database_fallback_uses_exists_optimization
+**Goal**: Verify database query uses `exists()` for performance.
+**Setup**: Mock database
+**Action**: Call `_check_interrupt_in_database(execution_id="test-exec-1")`
+**Assert**: Query uses `.exists()` (not `.first()` or `.get()`)
+
+### Test Class: TestLongRunningTaskInterrupt
+
+#### 5. test_interrupt_survives_beyond_cache_ttl
+**Goal**: Verify interrupt signal is still valid after cache TTL expires.
+**Setup**: 
+- Request interrupt at T=0
+- Simulate cache expiry (T > INTERRUPT_CACHE_TTL)
+- Ensure WorkFlowTaskResult.status == INTERRUPTED in database
+**Action**: Call `is_interrupt_requested()` after cache expiry
+**Assert**: Returns True (database fallback works)
+
+#### 6. test_2_hour_task_interruptible_at_90_minutes
+**Goal**: Simulate a 2-hour task that can still be interrupted after 90 minutes.
+**Setup**: 
+- Start "task" at T=0
+- Request interrupt at T=30min (sets cache + updates DB status)
+- Simulate T=90min (cache expired at T=60min)
+**Action**: Check `is_interrupt_requested()` at T=90min
+**Assert**: Returns True (database fallback)
+
+#### 7. test_agent_node_checks_interrupt_each_step
+**Goal**: Verify agent_node checks interrupt at each step.
+**Setup**: Mock agent execution with multiple steps
+**Action**:
+1. Start agent with 10 steps
+2. Request interrupt after step 3
+3. Continue execution
+**Assert**: Agent should stop at step 4 (first check after interrupt)
+
+### Test Class: TestInterruptSignalReliability
+
+#### 8. test_database_query_error_handled_gracefully
+**Goal**: Verify database query errors don't crash the system.
+**Setup**: Mock database to raise exception
+**Action**: Call `_check_interrupt_in_database(execution_id="test-exec-1")`
+**Assert**: 
+- Returns False (fail-safe)
+- Warning logged with error details
+
+#### 9. test_empty_execution_id_returns_false
+**Goal**: Verify empty execution_id is handled safely.
+**Setup**: None
+**Action**: Call `is_interrupt_requested(execution_id="")`
+**Assert**: Returns False immediately (no cache/DB query)
+
+#### 10. test_multiple_interrupt_requests_idempotent
+**Goal**: Verify multiple interrupt requests don't cause issues.
+**Setup**: Mock cache
+**Action**: Call `request_interrupt()` 5 times for same execution_id
+**Assert**: 
+- No errors
+- `is_interrupt_requested()` returns True
+- Only latest timestamp stored
+
+## Test Count: 10
