@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Button, Empty, Select, Spin, Tag } from 'antd';
+import { Button, Empty, Select, Spin, Tag, Tooltip } from 'antd';
 import {
   ArrowLeftOutlined,
   DatabaseOutlined,
@@ -1311,10 +1311,16 @@ export default function MysqlDashboardPage() {
   const uptimeState = !hasMetricData('mysql_uptime')
     ? { label: '状态未知', detail: metricEmptyText, tone: 'empty' }
     : uptimeValue < 3600
-      ? { label: '刚启动', detail: '最近 1 小时内启动', tone: 'warning' }
-      : uptimeValue < 86400
-        ? { label: '运行中', detail: '已连续运行超过 1 小时', tone: 'success' }
-        : { label: '运行稳定', detail: '已连续运行超过 1 天', tone: 'success' };
+      ? { label: '运行初期', detail: '连续运行时间少于 1 小时', tone: 'warning' }
+    : uptimeValue < 86400
+        ? { label: '已运行 1 小时以上', detail: '连续运行时间在 1 小时到 1 天之间', tone: 'success' }
+        : { label: '已运行 1 天以上', detail: '连续运行时间已超过 1 天', tone: 'success' };
+  const uptimeStateGuide = [
+    { label: '状态未知', detail: '未获取到 mysql_uptime 指标，可能是当前时间范围无数据或查询失败。' },
+    { label: '运行初期', detail: 'mysql_uptime 小于 1 小时。' },
+    { label: '已运行 1 小时以上', detail: 'mysql_uptime 大于等于 1 小时且小于 1 天。' },
+    { label: '已运行 1 天以上', detail: 'mysql_uptime 大于等于 1 天。' }
+  ];
   const connCardDisplay = getDisplayValue('mysql_connection_utilization', connDisplay);
   const qpsCardDisplay = getDisplayValue('mysql_queries_rate', qpsDisplay);
   const slowCardDisplay = getDisplayValue('mysql_slow_queries_rate', slowDisplay);
@@ -1598,10 +1604,27 @@ export default function MysqlDashboardPage() {
                       iconStyle={{ background: 'rgba(89, 126, 247, 0.12)', color: '#597ef7' }}
                       color="#597ef7"
                       footer={<><span>启动时间</span><span>{startupTimeDisplay}</span></>}
-                      extra={
-                        <div className={`${styles.uptimeStatus} ${styles[`uptimeStatus${uptimeState.tone === 'success' ? 'Success' : uptimeState.tone === 'warning' ? 'Warning' : 'Empty'}`]}`}>
-                          <span className={styles.uptimeStatusDot} />
-                          <span className={styles.uptimeStatusMain}>{uptimeState.label}</span>
+                        extra={
+                          <div className={`${styles.uptimeStatus} ${styles[`uptimeStatus${uptimeState.tone === 'success' ? 'Success' : uptimeState.tone === 'warning' ? 'Warning' : 'Empty'}`]}`}>
+                            <span className={styles.uptimeStatusDot} />
+                          <span className={styles.uptimeStatusMainWrap}>
+                            <span className={styles.uptimeStatusMain}>{uptimeState.label}</span>
+                            <Tooltip
+                              overlayClassName="lightMetricTooltip"
+                              title={
+                                <div className={styles.uptimeStatusTooltip}>
+                                  {uptimeStateGuide.map((item) => (
+                                    <div key={item.label} className={styles.uptimeStatusTooltipRow}>
+                                      <strong>{item.label}</strong>
+                                      <span>{item.detail}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              }
+                            >
+                              <ClockCircleOutlined className={styles.uptimeStatusInfoIcon} />
+                            </Tooltip>
+                          </span>
                           <span className={styles.uptimeStatusDetail}>{uptimeState.detail}</span>
                         </div>
                       }
