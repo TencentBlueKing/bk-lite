@@ -11,6 +11,12 @@ const LEGEND_WIDTH_PX = 160;
 const LEGEND_GAP_PX = 8;
 const CHART_MIN_WIDTH_PX = 200;
 
+const normalizeCategoryLabel = (value: unknown) => {
+  if (value === null || value === undefined) return '--';
+  const text = String(value).trim();
+  return text ? text : '--';
+};
+
 const BarChart: React.FC<DashboardBarChartProps> = ({
   rawData,
   loading = false,
@@ -53,7 +59,7 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
     const maps = config?.displayMaps;
     if (maps?.key && maps?.value && Array.isArray(rawData)) {
       const mapped = rawData.map((item: any) => ({
-        name: item[maps.key],
+        name: normalizeCategoryLabel(item[maps.key]),
         count: Number(item[maps.value]) || 0
       }));
       return ChartDataTransformer.transformToLineBarData(mapped);
