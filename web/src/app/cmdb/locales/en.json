@@ -407,6 +407,29 @@
             "writeFailed": "Failed to write to CMDB",
             "failedCount": "items"
         },
+        "nodeMgmtSync": {
+            "entry": "Node Management Sync",
+            "title": "Node Management Sync",
+            "lastSyncTime": "Latest Sync Time",
+            "lastCollectTime": "Latest Collect Time",
+            "autoSync": "Auto Sync",
+            "autoCollect": "Auto Collect",
+            "totalDiscovered": "Total Discovered",
+            "addData": "Data to Add",
+            "updateData": "Data to Update",
+            "deleteData": "Data to Delete",
+            "conflict": "Conflict",
+            "conflictNotice": "There are {count} anchor conflicts from non-Node Management sources. The system did not take them over automatically.",
+            "searchPlaceholder": "Search by instance/IP/cloud region",
+            "loadFailed": "Failed to load node management sync data",
+            "saveFailed": "Failed to save node management sync config",
+            "table": {
+                "objectType": "Object Type",
+                "instanceName": "Instance Name",
+                "status": "Write Status",
+                "errorReason": "Failure Reason"
+            }
+        },
         "statusLabel": {
             "running": "Running",
             "syncSuccess": "Sync Success",

@@ -405,6 +405,29 @@
             "writeFailed": "录入CMDB失败",
             "failedCount": "条"
         },
+        "nodeMgmtSync": {
+            "entry": "节点管理同步",
+            "title": "节点管理同步",
+            "lastSyncTime": "最新同步时间",
+            "lastCollectTime": "最新采集时间",
+            "autoSync": "自动同步",
+            "autoCollect": "自动采集",
+            "totalDiscovered": "本次发现总数",
+            "addData": "需要新增数据",
+            "updateData": "需要更新数据",
+            "deleteData": "需要删除数据",
+            "conflict": "冲突",
+            "conflictNotice": "存在 {count} 条同锚点但非节点管理来源的冲突数据，系统未自动接管。",
+            "searchPlaceholder": "搜索实例名/IP/云区域",
+            "loadFailed": "加载节点管理同步数据失败",
+            "saveFailed": "保存节点管理同步配置失败",
+            "table": {
+                "objectType": "对象类型",
+                "instanceName": "实例名",
+                "status": "录入状态",
+                "errorReason": "失败原因"
+            }
+        },
         "statusLabel": {
             "running": "进行中",
             "syncSuccess": "同步成功",

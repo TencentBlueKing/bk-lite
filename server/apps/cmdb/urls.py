@@ -10,6 +10,7 @@ from apps.cmdb.views.field_group import FieldGroupViewSet
 from apps.cmdb.views.user_personal_config import UserPersonalConfigViewSet
 from apps.cmdb.views.public_enum_library import PublicEnumLibraryViewSet
 from apps.cmdb.views.subscription import SubscriptionViewSet
+from apps.cmdb.views.node_mgmt_sync import NodeMgmtSyncViewSet
 
 router = routers.DefaultRouter()
 router.register(r"api/classification", ClassificationViewSet, basename="classification")
@@ -27,5 +28,6 @@ router.register(
     basename="public_enum_libraries",
 )
 router.register(r"api/subscription", SubscriptionViewSet, basename="subscription")
+router.register(r"api/node_mgmt_sync", NodeMgmtSyncViewSet, basename="node_mgmt_sync")
 
 urlpatterns = router.urls

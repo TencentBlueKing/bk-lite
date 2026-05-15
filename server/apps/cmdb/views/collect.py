@@ -15,6 +15,7 @@ from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.permissions.inst_task_permission import InstanceTaskPermission
 from apps.cmdb.services.collect_object_tree import get_collect_obj_tree
 from apps.cmdb.utils.base import get_current_team_from_request
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.decorators.api_permission import HasPermission
@@ -54,6 +55,10 @@ class CollectModelViewSet(AuthViewSet):
     }
 
     @staticmethod
+    def apply_visibility_filter(queryset):
+        return queryset.filter(is_visible=True)
+
+    @staticmethod
     def _parse_positive_int(value, field_name, default):
         if value in (None, ""):
             return default
@@ -70,7 +75,9 @@ class CollectModelViewSet(AuthViewSet):
         request = getattr(self, "request", None)
         action = getattr(self, "action", None)
         if request is not None and action in self.permission_scoped_actions:
-            return self.get_queryset_by_permission(request, queryset)
+            queryset = self.get_queryset_by_permission(request, queryset)
+        if action in {"list", "task_status", "collect_task_names"}:
+            queryset = self.apply_visibility_filter(queryset)
         return queryset
 
     def _get_authorized_task(self, request, task_id):
@@ -104,9 +111,10 @@ class CollectModelViewSet(AuthViewSet):
     @action(methods=["get"], detail=False, url_path="collect_task_names")
     def collect_task_names(self, request, *args, **kwargs):
         # Given 实例页需要直接拼接采集任务详情链接，When 返回任务列表，Then 提供 id/name/plugin/category。
-        queryset = CollectModels.objects.all().order_by("id")
+        queryset = CollectModels.objects.all()
         # Given 页面受组织与实例权限控制，When 查询任务名，Then 先应用对象权限过滤。
         queryset = self.get_queryset_by_permission(request, queryset)
+        queryset = self.apply_visibility_filter(queryset).order_by("id")
         task_list = queryset.values("id", "name", "model_id")
         collect_obj_tree = get_collect_obj_tree()
         plugin_meta_map = {
@@ -212,7 +220,13 @@ class CollectModelViewSet(AuthViewSet):
     @action(methods=["POST"], detail=True)
     def exec_task(self, request, *args, **kwargs):
         instance = self.get_object()
-        result = CollectModelService.exec_task(instance=instance, request=request, view_self=self)
+        user = request.user
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        has_permission = self.get_has_permission(user, instance, current_team, include_children=include_children)
+        if not has_permission:
+            raise BaseAppException("您没有操作该采集任务的权限！")
+        result = CollectModelService.exec_task(instance=instance, operator=request.user.username)
         return result
 
     @action(methods=["GET"], detail=False)
@@ -299,6 +313,7 @@ class CollectModelViewSet(AuthViewSet):
     def task_status(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         filter_queryset = self.get_queryset_by_permission(request=request, queryset=queryset)
+        filter_queryset = self.apply_visibility_filter(filter_queryset)
         filter_queryset = filter_queryset.only("model_id", "exec_status")
         serializer = CollectModelIdStatusSerializer(filter_queryset, many=True, context={"request": request})
         data = {}

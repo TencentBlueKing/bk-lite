@@ -14,6 +14,7 @@ from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.constants.constants import CollectRunStatusType
 from apps.cmdb.services.subscription_task import SubscriptionTaskService
 from apps.cmdb.constants.constants import CollectPluginTypes
+from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 
 
 def _build_safe_error_message(err: Exception) -> str:
@@ -238,3 +239,15 @@ def full_sync_auto_association_rule_task(model_asst_id: str) -> dict:
 
     logger.info("[AutoRelationRule] start rule full sync, model_asst_id=%s", model_asst_id)
     return AutoRelationRuleReconcileService.full_sync_rule(model_asst_id)
+
+
+@shared_task
+def sync_node_mgmt_hosts() -> dict:
+    data =  NodeMgmtSyncService.trigger_sync()
+    # collect_node_mgmt_hosts()
+    return data
+
+
+@shared_task
+def collect_node_mgmt_hosts() -> dict:
+    return NodeMgmtSyncService.trigger_collect()
