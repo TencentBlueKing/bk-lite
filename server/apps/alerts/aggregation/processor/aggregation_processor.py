@@ -574,7 +574,7 @@ class AggregationProcessor:
         if not fingerprint:
             return
         global_level = [str(i["level_id"]) for i in alert_levels]
-        raw_fingerprint = fingerprint.split("|")[-1]
+        raw_fingerprint = fingerprint.split("|", 1)[1] if "|" in fingerprint else fingerprint
         now_level = result["alert_level"]
         event_count = int(result.get("event_count") or 0)
         first_event_description = (result.get("first_event_description") or "").strip()
