@@ -37,6 +37,23 @@ import {
   FlowTable,
   FlowSankey
 } from '../widgets/flows';
+import {
+  MysqlKpiCard,
+  MysqlBarLine,
+  MysqlDualLine,
+  MysqlDonut,
+  MysqlSlowTable,
+  MysqlDetailTable,
+  MysqlInstanceBar
+} from '../widgets/mysql';
+import {
+  RedisKpiCard,
+  RedisDonut,
+  RedisLogTable,
+  RedisInstanceBar,
+  RedisTrendLine,
+  RedisNodeCompareBar
+} from '../widgets/redis';
 import { SearchParams } from '@/app/log/types/search';
 
 const buildInstanceFilterQuery = (
@@ -142,7 +159,20 @@ const componentMap: Record<string, React.ComponentType<any>> = {
   flowDonut: FlowDonut,
   flowBar: FlowBar,
   flowTable: FlowTable,
-  flowSankey: FlowSankey
+  flowSankey: FlowSankey,
+  mysqlKpiCard: MysqlKpiCard,
+  mysqlBarLine: MysqlBarLine,
+  mysqlDualLine: MysqlDualLine,
+  mysqlDonut: MysqlDonut,
+  mysqlSlowTable: MysqlSlowTable,
+  mysqlDetailTable: MysqlDetailTable,
+  mysqlInstanceBar: MysqlInstanceBar,
+  redisKpiCard: RedisKpiCard,
+  redisDonut: RedisDonut,
+  redisLogTable: RedisLogTable,
+  redisInstanceBar: RedisInstanceBar,
+  redisTrendLine: RedisTrendLine,
+  redisNodeCompareBar: RedisNodeCompareBar
 };
 
 interface WidgetWrapperProps extends BaseWidgetProps {
@@ -191,7 +221,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     'dockerKpiCard',
     'flowKpiCard',
     'httpKpiCard',
-    'kpiCard'
+    'kpiCard',
+    'mysqlKpiCard',
+    'redisKpiCard'
   ].includes(chartType || '');
 
   // 保持 ref 与最新 props 同步

@@ -77,13 +77,12 @@ def register_cleanup_signals(
         model=train_job_model,
     )
 
-    # 5. Docker 容器清理
+    # 5. Serving 运行时清理
     _register_docker_cleanup(
         prefix=prefix,
         dispatch_uid_prefix=dispatch_uid_prefix,
         model=serving_model,
     )
-
 
 def _register_dataset_release_cleanup(
     *,
@@ -308,7 +307,26 @@ def _register_docker_cleanup(
 ) -> None:
     """注册 Docker 容器清理信号"""
 
-    def cleanup_docker_container(sender, instance, **kwargs):
+    def cleanup_docker_container(sender, instance, origin=None, **kwargs):
+        if origin is instance or getattr(origin, "model", None) is sender:
+            logger.info(
+                f"[Signal] 跳过 direct delete 的 {prefix}Serving 容器清理, "
+                f"serving_id={instance.id}"
+            )
+            return
+
+        origin_class_name = getattr(getattr(origin, "__class__", None), "__name__", "")
+        if (
+            getattr(instance, "train_job_id", None) is not None
+            and getattr(origin, "pk", None) == instance.train_job_id
+            and origin_class_name.endswith("TrainJob")
+        ):
+            logger.info(
+                f"[Signal] 跳过 train job cascade delete 的 {prefix}Serving 容器清理, "
+                f"serving_id={instance.id}, train_job_id={instance.train_job_id}"
+            )
+            return
+
         logger.info(
             f"[Signal] post_delete 触发: {prefix}Serving (容器清理), "
             f"serving_id={instance.id}, port={instance.port}"

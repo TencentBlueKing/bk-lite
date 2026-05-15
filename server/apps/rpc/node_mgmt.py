@@ -36,9 +36,9 @@ class NodeMgmt(object):
         return_data = self.client.run("cloud_region_list")
         return return_data
 
-    def get_cloud_region_proxy_address(self, cloud_region_id):
+    def get_cloud_region_proxy_address(self, cloud_region_id, organization_ids=None):
         """获取云区域代理地址。"""
-        return self.client.run("get_cloud_region_proxy_address", cloud_region_id)
+        return self.client.run("get_cloud_region_proxy_address", cloud_region_id, organization_ids)
 
     def node_list(self, query_data):
         """
