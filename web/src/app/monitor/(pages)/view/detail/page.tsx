@@ -7,7 +7,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import detailStyle from '../index.module.scss';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import Overview from './overview';
-import Metric from './metric';
+import Metric from '@/app/monitor/components/metric-views';
 
 const ViewDetail = () => {
   const { t } = useTranslation();

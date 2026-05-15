@@ -4,6 +4,7 @@ import { useMenus } from '@/context/menus';
 import { MenuItem } from '@/types/index';
 import { getClientIdFromRoute, mapClientName } from '@/utils/route';
 import { isSessionExpiredState } from '@/utils/sessionExpiry';
+import { getProfessionalDashboardPermissionPath } from '@/app/monitor/dashboards/registry';
 
 interface Permissions {
   [url: string]: string[];
@@ -188,7 +189,18 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
 
   const hasPermission = useCallback(
     (url: string) => {
-      return Object.keys(permissions).some((permissionUrl) => permissionUrl.startsWith(url));
+      const normalizedUrl = String(url || '').replace(/\/$/, '');
+
+      if (permissions[normalizedUrl]) {
+        return true;
+      }
+
+      const inheritedPermissionPath = getProfessionalDashboardPermissionPath(normalizedUrl);
+      if (inheritedPermissionPath && permissions[String(inheritedPermissionPath).replace(/\/$/, '')]) {
+        return true;
+      }
+
+      return Object.keys(permissions).some((permissionUrl) => String(permissionUrl || '').replace(/\/$/, '') === normalizedUrl);
     },
     [permissions]
   );
