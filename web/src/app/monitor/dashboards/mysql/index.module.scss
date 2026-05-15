@@ -688,7 +688,7 @@
 .mysqlFlowScene {
   position: relative;
   min-width: 0;
-  align-self: start;
+  align-self: stretch;
   padding: 18px;
   border-radius: 16px;
   border: 1px solid #dfe8f3;
@@ -713,18 +713,22 @@
 }
 
 .mysqlInnoScene {
-  padding: 14px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(249, 252, 255, 0.96) 100%),
-    radial-gradient(circle at 50% 8%, rgba(39, 194, 116, 0.08), transparent 38%);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.mysqlInnoScene::before {
+  content: none;
 }
 
 .mysqlRequestScene {
   display: flex;
   align-items: center;
-  min-height: 322px;
-  padding-top: 26px;
-  padding-bottom: 26px;
+  min-height: 306px;
+  padding-top: 18px;
+  padding-bottom: 18px;
 }
 
 .mysqlRequestPath {
@@ -733,14 +737,18 @@
   gap: 12px;
   align-items: center;
   width: 100%;
+  height: 100%;
 }
 
 .mysqlPathNode {
   position: relative;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
   min-width: 0;
-  min-height: 230px;
-  padding: 16px 16px 14px;
+  min-height: 252px;
+  padding: 20px 18px 18px;
   border-radius: 12px;
   border: 1px solid #dce6f3;
   background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
@@ -758,13 +766,11 @@
 }
 
 .mysqlPathNodeEngine {
-  border-color: rgba(88, 141, 249, 0.72);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 251, 255, 0.98) 100%),
-    radial-gradient(circle at 50% 10%, rgba(47, 107, 255, 0.1), transparent 48%);
+  border-color: #dce6f3;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
   box-shadow:
-    0 18px 32px rgba(47, 107, 255, 0.08),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.78);
+    0 18px 32px rgba(30, 52, 88, 0.08),
+    0 2px 0 rgba(255, 255, 255, 0.88) inset;
 }
 
 .mysqlFlowConnector {
@@ -803,17 +809,17 @@
   font-weight: 850;
   line-height: 1.2;
   text-align: center;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .mysqlNodeIcon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 46px;
-  height: 46px;
-  margin: 0 auto 18px;
-  border-radius: 12px;
+  width: 50px;
+  height: 50px;
+  margin: 0 auto;
+  border-radius: 14px;
   background: #eef4ff;
   color: #2f6bff;
   font-size: 24px;
@@ -829,6 +835,10 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.mysqlPathNode .mysqlNodeMetrics {
+  margin-top: 34px;
 }
 
 .mysqlNodeMetric {
@@ -954,7 +964,10 @@
 }
 
 .innodbBufferCard {
+  display: flex;
+  flex-direction: column;
   min-height: 196px;
+  padding-bottom: 26px;
   background: linear-gradient(180deg, rgba(242, 248, 255, 0.98) 0%, rgba(255, 255, 255, 0.94) 100%);
   border-color: rgba(196, 216, 242, 0.95);
 }
@@ -1033,16 +1046,20 @@
 
 .innodbBufferGrid {
   display: grid;
-  grid-template-columns: repeat(7, 12px);
+  grid-template-columns: repeat(7, 13px);
   justify-content: center;
-  gap: 6px;
+  gap: 7px;
   width: fit-content;
-  margin: 0 auto 16px;
+  margin: 8px auto 24px;
   padding: 0;
   border-radius: 0;
   background: transparent;
   border: 0;
   box-shadow: none;
+}
+
+.innodbBufferCard .innodbMetricRows {
+  margin-top: 18px;
 }
 
 .innodbFork {
@@ -1095,7 +1112,7 @@
 
 .innodbForkBottomDashed {
   top: 68%;
-  border-top: 2px dashed currentColor;
+  background: currentColor;
 }
 
 .innodbForkWrite .innodbForkTop {
@@ -1110,6 +1127,7 @@
   color: #2f6bff;
 }
 
+.innodbForkPersist .innodbForkBottom,
 .innodbForkPersist .innodbForkBottomDashed {
   color: #f59e0b;
 }
@@ -1192,7 +1210,7 @@
   color: #6f8199;
   font-size: 12px;
   font-weight: 800;
-  line-height: 1.2;
+  line-height: 1;
 }
 
 .mysqlFlowLegendInno {
@@ -1203,6 +1221,7 @@
 .mysqlFlowLegend span {
   display: inline-flex;
   align-items: center;
+  line-height: 1;
   gap: 8px;
 }
 
@@ -1210,54 +1229,50 @@
   display: inline-block;
   position: relative;
   width: 30px;
-  height: 0;
+  height: 14px;
+  color: #7fa6ed;
+  border-top: 0;
   border-radius: 999px;
+}
+
+.mysqlFlowLegend i::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 1px;
+  top: 50%;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translateY(-50%);
 }
 
 .mysqlFlowLegend i::after {
   content: '';
   position: absolute;
   right: -1px;
-  top: -4px;
+  top: 50%;
   width: 7px;
   height: 7px;
-  transform: rotate(45deg);
+  transform: translateY(-50%) rotate(45deg);
+  border-top: 2px solid currentColor;
+  border-right: 2px solid currentColor;
 }
 
-.mysqlLegendRequest {
-  border-top: 2px solid #7fa6ed;
+.mysqlFlowLegend i.mysqlLegendRequest {
+  color: #7fa6ed;
 }
 
-.mysqlLegendRequest::after {
-  border-top: 2px solid #7fa6ed;
-  border-right: 2px solid #7fa6ed;
+.mysqlFlowLegend i.mysqlLegendWrite {
+  color: #22b86f;
 }
 
-.mysqlLegendWrite {
-  border-top: 2px solid #22b86f;
+.mysqlFlowLegend i.mysqlLegendBackground {
+  color: #f59e0b;
 }
 
-.mysqlLegendWrite::after {
-  border-top: 2px solid #22b86f;
-  border-right: 2px solid #22b86f;
-}
-
-.mysqlLegendBackground {
-  border-top: 2px dashed #f59e0b;
-}
-
-.mysqlLegendBackground::after {
-  border-top: 2px solid #f59e0b;
-  border-right: 2px solid #f59e0b;
-}
-
-.mysqlLegendPersist {
-  border-top: 2px solid #2f6bff;
-}
-
-.mysqlLegendPersist::after {
-  border-top: 2px solid #2f6bff;
-  border-right: 2px solid #2f6bff;
+.mysqlFlowLegend i.mysqlLegendPersist {
+  color: #2f6bff;
 }
 
 .dataFlow {
@@ -3037,7 +3052,7 @@
   }
 
   .mysqlPathNode {
-    min-height: 216px;
+    min-height: 252px;
   }
 
   .flowPipeline {

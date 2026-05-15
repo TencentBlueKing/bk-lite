@@ -1688,7 +1688,7 @@ export default function MysqlDashboardPage() {
                           </span>
                           <span>
                             <i className={styles.mysqlLegendBackground} />
-                            后台 / 异步路径
+                            临时表 / 后台路径
                           </span>
                         </div>
                         <div className={styles.innodbInner}>
@@ -1749,7 +1749,7 @@ export default function MysqlDashboardPage() {
                           <div className={`${styles.innodbFork} ${styles.innodbForkPersist}`}>
                             <span className={styles.innodbForkMain} />
                             <span className={styles.innodbForkTop} />
-                            <span className={styles.innodbForkBottomDashed} />
+                            <span className={styles.innodbForkBottom} />
                           </div>
 
                           <div className={styles.innodbDiskStack}>
