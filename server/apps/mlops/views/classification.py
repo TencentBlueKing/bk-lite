@@ -607,8 +607,8 @@ class ClassificationServingViewSet(TeamModelViewSet):
             train_job_id=train_job.id,
         )
 
-        # 默认使用 'latest' 版本
-        return mlflow_service.resolve_model_uri(model_name, "latest")
+        # 使用 serving 上保存的模型版本
+        return mlflow_service.resolve_model_uri(model_name, serving.model_version)
 
     @action(detail=True, methods=["post"], url_path="predict")
     @HasPermission("classification-Predict")
