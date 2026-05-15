@@ -130,7 +130,7 @@ const OperationGuidance = forwardRef<ModalRef>(({}, ref) => {
       });
       // 创建Blob对象
       const blob = new Blob([response.data], {
-        type: response.headers['content-type'] || 'application/zip'
+        type: (response.headers['content-type'] as string) || 'application/zip'
       });
       // 尝试从响应头获取文件名
       const contentDisposition = response.headers['content-disposition'];

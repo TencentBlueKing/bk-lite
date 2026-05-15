@@ -24,6 +24,9 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
   const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
+  const [hoveredDatasourceId, setHoveredDatasourceId] = useState<number | null>(
+    null,
+  );
   const [currentDataSources, setCurrentDataSources] = useState<
     DatasourceItem[]
   >([]);
@@ -70,6 +73,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
       void fetchDataSources();
     } else {
       setSelectedTagId(null);
+      setHoveredDatasourceId(null);
       setCurrentDataSources([]);
       setSearch('');
     }
@@ -187,12 +191,29 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
                 }}
                 renderItem={(item: DatasourceItem) => (
                   <List.Item
-                    className={`flex items-center gap-3 justify-between p-3 border border-gray-200 rounded mb-2 last:mb-0 ${item.hasAuth === false ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-blue-50'}`}
+                    className={`flex items-center gap-3 justify-between p-3 rounded mb-2 last:mb-0 transition-colors ${item.hasAuth === false ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                    style={{
+                      border: '1px solid var(--color-border-1)',
+                      backgroundColor:
+                        hoveredDatasourceId === item.id
+                          ? 'var(--color-fill-2)'
+                          : 'var(--color-fill-1)',
+                    }}
+                    onMouseEnter={() => {
+                      if (item.hasAuth !== false) {
+                        setHoveredDatasourceId(item.id);
+                      }
+                    }}
+                    onMouseLeave={() => {
+                      if (hoveredDatasourceId === item.id) {
+                        setHoveredDatasourceId(null);
+                      }
+                    }}
                     onClick={() => item.hasAuth !== false && handleConfig(item)}
                   >
                     <div className="flex flex-col gap-1 leading-relaxed flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium leading-5">
+                        <span className="font-medium leading-5 text-[var(--color-text-1)]">
                           {item.name}
                         </span>
                         {item.hasAuth === false && (

@@ -206,12 +206,12 @@ def test_authorize_node_ids_requires_operate_permission(monkeypatch):
     assert response.status_code == 403
 
 
-def test_authorize_target_organizations_allows_existing_org_for_instance_permission(monkeypatch):
+def test_authorize_target_organizations_allows_in_scope_team_org(monkeypatch):
     node = _FakeNode(organizations=[2])
     monkeypatch.setattr(
         node_permission,
         "get_node_permission",
-        lambda request: {"instance": [{"id": node.id, "permission": ["Operate"]}], "team": []},
+        lambda request: {"instance": [{"id": node.id, "permission": ["Operate"]}], "team": [2]},
     )
 
     response = node_permission.authorize_target_organizations(_make_node_request(), node, [2])
@@ -228,6 +228,19 @@ def test_authorize_target_organizations_rejects_new_out_of_scope_org(monkeypatch
     )
 
     response = node_permission.authorize_target_organizations(_make_node_request(), node, [2, 3])
+
+    assert response.status_code == 403
+
+
+def test_authorize_target_organizations_rejects_existing_org_outside_team_scope(monkeypatch):
+    node = _FakeNode(organizations=[2])
+    monkeypatch.setattr(
+        node_permission,
+        "get_node_permission",
+        lambda request: {"instance": [{"id": node.id, "permission": ["Operate"]}], "team": []},
+    )
+
+    response = node_permission.authorize_target_organizations(_make_node_request(), node, [2])
 
     assert response.status_code == 403
 

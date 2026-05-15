@@ -16,6 +16,7 @@ import {
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
 import { datasourceSupportsNamespace } from '@/app/ops-analysis/utils/namespaceFilter';
+import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
 import ComPie from '../widgets/comPie';
 import ComLine from '../widgets/comLine';
 import ComBar from '../widgets/comBar';
@@ -312,7 +313,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         setRawData(null);
         setDataValidation({
           isValid: false,
-          message: t('dashboard.dataFetchFailed'),
+          message: getRequestErrorMessage(err, t('dashboard.dataFetchFailed')),
         });
       } finally {
         if (currentFetchId !== fetchIdRef.current) return;

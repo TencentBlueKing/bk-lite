@@ -75,7 +75,7 @@ const ImportInst = forwardRef<FieldModalRef, FieldModalProps>(
         });
         // 创建一个Blob对象
         const blob = new Blob([response.data], {
-          type: response.headers['content-type'],
+          type: response.headers['content-type'] as string,
         });
         // 创建一个下载链接
         const link = document.createElement('a');

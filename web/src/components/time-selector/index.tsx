@@ -192,7 +192,7 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
             options={customTimeRangeList || TIME_RANGE_LIST}
             open={dropdownOpen}
             onChange={handleTimeRangeChange}
-            onDropdownVisibleChange={handleDropdownVisibleChange}
+            onOpenChange={handleDropdownVisibleChange}
           />
           <RangePicker
             style={{

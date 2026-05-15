@@ -504,6 +504,15 @@ const useFieldConfigs = (): FieldConfig[] => {
           { id: 'true', name: t('common.yes') },
           { id: 'false', name: t('common.no') }
         ]
+      },
+      {
+        name: 'cpu_architecture',
+        label: t('node-manager.cloudregion.node.cpuArchitecture'),
+        lookup_expr: 'in',
+        options: [
+          { id: 'x86_64', name: 'X86_64' },
+          { id: 'arm64', name: 'ARM64' }
+        ]
       }
     ],
     [t, installMethodMap]

@@ -13,6 +13,7 @@ from apps.alerts.models.models import Alert, Incident
 from apps.alerts.models.operator_log import OperatorLog
 from apps.alerts.serializers import IncidentModelSerializer
 from apps.alerts.service.incident_operator import IncidentOperator
+from apps.alerts.utils.operator_scope import normalize_usernames
 from apps.alerts.utils.permission_scope import (
     filter_alert_queryset_for_request,
     filter_incident_queryset_for_request,
@@ -173,8 +174,10 @@ class IncidentModelViewSet(ModelViewSet):
                 {"detail": "Some alerts are already associated with an incident and will not be included."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if not data["operator"]:
-            data["operator"] = self.request.user.username
+        if not data.get("operator"):
+            data["operator"] = [self.request.user.username]
+        else:
+            data["operator"] = normalize_usernames(data.get("operator"))
 
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
@@ -208,6 +211,8 @@ class IncidentModelViewSet(ModelViewSet):
                     {"detail": "Some alerts are out of your authorized scope."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+        if "operator" in request.data:
+            request.data["operator"] = normalize_usernames(request.data.get("operator"))
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)

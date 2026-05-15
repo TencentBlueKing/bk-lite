@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OpsPilot - 记忆体</title>
+    <title>OpsPilot - 记忆</title>
     <style>
         :root {
             --color-primary: #2b5bff;
@@ -193,6 +193,15 @@
             flex-wrap: wrap;
         }
 
+        .toolbar-right {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: nowrap;
+            flex-shrink: 0;
+        }
+
         .toolbar-title {
             font-size: 16px;
             font-weight: 700;
@@ -217,12 +226,19 @@
         .primary-button {
             background: var(--color-primary);
             color: #fff;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
 
         .ghost-button {
             background: #fff;
             color: #53657f;
             border-color: var(--color-border);
+        }
+
+        .toolbar-search {
+            width: 240px;
+            flex: 0 0 240px;
         }
 
         .card-grid {
@@ -233,6 +249,7 @@
 
         .create-card,
         .memory-card {
+            height: 216px;
             transition: all 0.18s ease;
             overflow: hidden;
         }
@@ -245,7 +262,6 @@
         }
 
         .create-card {
-            min-height: 216px;
             padding: 18px;
             display: flex;
             flex-direction: column;
@@ -281,12 +297,14 @@
 
         .memory-card {
             position: relative;
-            min-height: 180px;
+            display: flex;
+            flex-direction: column;
             cursor: pointer;
         }
 
         .card-cover {
             position: relative;
+            flex-shrink: 0;
             height: 56px;
             border-bottom: 1px solid rgba(213, 222, 235, 0.9);
             background: linear-gradient(120deg, #d6e1f4 0%, #bed1f1 58%, #95b3ed 100%);
@@ -300,15 +318,21 @@
             position: absolute;
             left: 12px;
             top: 12px;
-            height: 22px;
-            padding: 0 8px;
+            height: 24px;
+            padding: 0 10px;
             border-radius: 999px;
-            background: rgba(255, 255, 255, 0.2);
+            background: #244fcf;
             color: #fff;
             font-size: 11px;
             display: inline-flex;
             align-items: center;
             font-weight: 600;
+            box-shadow: 0 4px 10px rgba(36, 79, 207, 0.18);
+        }
+
+        .scope-pill.organization {
+            background: rgba(255, 255, 255, 0.2);
+            box-shadow: none;
             backdrop-filter: blur(8px);
         }
 
@@ -328,28 +352,22 @@
             font-size: 14px;
         }
 
-        .card-badge {
-            position: absolute;
-            right: 14px;
-            top: 40px;
-            width: 44px;
-            height: 44px;
-            border-radius: 14px;
-            border: 4px solid #fff;
-            box-shadow: 0 6px 16px rgba(30, 51, 86, 0.15);
+        .card-body {
+            position: relative;
+            padding: 14px;
+            padding-bottom: 40px;
             display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #f8fbff;
-            color: #2c63ff;
-            font-size: 20px;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            gap: 8px;
         }
 
-        .card-body {
-            padding: 20px 14px 14px;
+        .card-content {
             display: flex;
             flex-direction: column;
             gap: 8px;
+            min-height: 0;
         }
 
         .card-title-row {
@@ -371,11 +389,19 @@
             font-size: 12px;
             line-height: 1.7;
             color: #7888a0;
-            min-height: 52px;
+            min-height: 0;
+            overflow: hidden;
+            display: -webkit-box;
+            line-clamp: 3;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 3;
         }
 
         .card-footer {
-            margin-top: auto;
+            position: absolute;
+            right: 14px;
+            bottom: 14px;
+            max-width: calc(100% - 28px);
             display: flex;
             align-items: center;
             justify-content: flex-end;
@@ -668,6 +694,14 @@
                 align-items: stretch;
             }
 
+            .toolbar-right {
+                justify-content: stretch;
+            }
+
+            .toolbar-search {
+                width: 100%;
+            }
+
             .card-grid {
                 grid-template-columns: 1fr;
             }
@@ -685,7 +719,7 @@
             </div>
             <nav class="main-nav">
                 <a href="../工作台/工作台.html"><span class="nav-dot"></span>工作台</a>
-                <a class="active" href="./记忆体.html"><span class="nav-dot"></span>记忆体</a>
+                <a class="active" href="./记忆.html"><span class="nav-dot"></span>记忆</a>
                 <a href="../智能体/智能体.html"><span class="nav-dot"></span>智能体</a>
                 <a href="../知识库/知识库.html"><span class="nav-dot"></span>知识库</a>
                 <a href="../工具/工具.html"><span class="nav-dot"></span>工具</a>
@@ -702,15 +736,19 @@
             <section class="toolbar">
                 <div class="toolbar-left">
                     <div>
-                        <div class="toolbar-title">记忆体列表</div>
+                        <div class="toolbar-title">记忆列表</div>
                         <div class="toolbar-sub">卡片代表一个可被工作流绑定和持续回写的记忆容器。</div>
                     </div>
+                </div>
+                <div class="toolbar-right">
+                    <input class="field toolbar-search" id="memorySearchInput" type="text" placeholder="搜索记忆名称">
+                    <button class="primary-button" id="createMemoryBtn" type="button">新建记忆</button>
                 </div>
             </section>
 
             <section class="card-grid" id="cardGrid"></section>
             <section class="empty-state" id="emptyState">
-                <strong>没有找到匹配的记忆体</strong>
+                <strong>没有找到匹配的记忆</strong>
                 <div>请调整筛选条件或关键词后重试。</div>
             </section>
         </main>
@@ -719,12 +757,12 @@
     <div class="modal-mask" id="createModalMask">
         <section class="modal" role="dialog" aria-modal="true" aria-labelledby="createModalTitle">
             <div class="modal-head">
-                <strong id="createModalTitle">创建记忆体</strong>
+                <strong id="createModalTitle">创建记忆</strong>
                 <button class="close-btn" id="closeCreateModal" type="button">×</button>
             </div>
             <div class="form-row">
                 <label class="form-label" for="memoryName"><span class="required">*</span> 名称</label>
-                <input class="field" id="memoryName" type="text" placeholder="例如：RCA 个人记忆体">
+                <input class="field" id="memoryName" type="text" placeholder="例如：RCA 个人记忆">
             </div>
             <div class="form-row">
                 <label class="form-label" for="memoryScope"><span class="required">*</span> 作用域</label>
@@ -743,7 +781,7 @@
             </div>
             <div class="form-row">
                 <label class="form-label" for="memoryDesc"><span class="required">*</span> 简介</label>
-                <textarea class="textarea" id="memoryDesc" placeholder="请输入记忆体简介，用于列表卡片展示。"></textarea>
+                <textarea class="textarea" id="memoryDesc" placeholder="请输入记忆简介，用于列表卡片展示。"></textarea>
             </div>
             <div class="modal-foot">
                 <button class="ghost-button" id="cancelCreate" type="button">取消</button>
@@ -763,7 +801,7 @@
         const memorySpaces = [
             {
                 id: 'personal-rca',
-                name: 'RCA 个人记忆体',
+                name: 'RCA 个人记忆',
                 scope: 'personal',
                 scopeLabel: '个人',
                 strong: false,
@@ -774,7 +812,7 @@
             },
             {
                 id: 'org-ops',
-                name: '组织运维经验记忆体',
+                name: '组织运维经验记忆',
                 scope: 'organization',
                 scopeLabel: '组织',
                 strong: true,
@@ -785,7 +823,7 @@
             },
             {
                 id: 'personal-oncall',
-                name: '值班个人记忆体',
+                name: '值班个人记忆',
                 scope: 'personal',
                 scopeLabel: '个人',
                 strong: false,
@@ -796,7 +834,7 @@
             },
             {
                 id: 'org-release',
-                name: '发布故障组织记忆体',
+                name: '发布故障组织记忆',
                 scope: 'organization',
                 scopeLabel: '组织',
                 strong: true,
@@ -807,7 +845,7 @@
             },
             {
                 id: 'personal-k8s',
-                name: 'K8s 巡检个人记忆体',
+                name: 'K8s 巡检个人记忆',
                 scope: 'personal',
                 scopeLabel: '个人',
                 strong: false,
@@ -821,7 +859,8 @@
         const state = {
             menuId: null,
             editingId: null,
-            selectedGroups: ['Default', 'WeOps']
+            selectedGroups: ['Default', 'WeOps'],
+            searchKeyword: ''
         };
 
         const cardGrid = document.getElementById('cardGrid');
@@ -837,6 +876,8 @@
         const cardMenuPanel = document.getElementById('cardMenuPanel');
         const editMemoryBtn = document.getElementById('editMemoryBtn');
         const deleteMemoryBtn = document.getElementById('deleteMemoryBtn');
+        const memorySearchInput = document.getElementById('memorySearchInput');
+        const createMemoryBtn = document.getElementById('createMemoryBtn');
 
         function getGroupSummary(groups) {
             return groups.join(',');
@@ -867,7 +908,7 @@
 
         function openModal(mode, item) {
             state.editingId = mode === 'edit' && item ? item.id : null;
-            createModalTitle.textContent = mode === 'edit' ? '编辑记忆体' : '创建记忆体';
+            createModalTitle.textContent = mode === 'edit' ? '编辑记忆' : '创建记忆';
             memoryNameInput.value = item?.name || '';
             memoryScopeSelect.value = item?.scope || 'personal';
             memoryScopeSelect.disabled = mode === 'edit';
@@ -889,25 +930,31 @@
         }
 
         function getList() {
-            return memorySpaces;
+            const keyword = state.searchKeyword.trim().toLowerCase();
+            if (!keyword) {
+                return memorySpaces;
+            }
+            return memorySpaces.filter((item) => item.name.toLowerCase().includes(keyword));
         }
 
         function renderCard(item) {
             const coverClass = item.scope === 'organization' ? 'card-cover organization' : 'card-cover';
+            const scopeClass = item.scope === 'organization' ? 'scope-pill organization' : 'scope-pill';
             return `
                 <article class="memory-card" data-id="${item.id}" data-action="open-memory" title="${item.name}">
                     <div class="${coverClass}">
-                        <span class="scope-pill">${item.scopeLabel}</span>
+                        <span class="${scopeClass}">${item.scopeLabel}</span>
                         <div class="card-menu-wrap">
                             <button class="card-menu" type="button" data-action="menu" data-id="${item.id}">⋮</button>
                         </div>
-                        <div class="card-badge">${item.icon}</div>
                     </div>
                     <div class="card-body">
-                        <div class="card-title-row">
-                            <h3 class="card-title">${item.name}</h3>
+                        <div class="card-content">
+                            <div class="card-title-row">
+                                <h3 class="card-title">${item.name}</h3>
+                            </div>
+                            <p class="card-desc">${item.desc}</p>
                         </div>
-                        <p class="card-desc">${item.desc}</p>
                         <div class="card-footer">
                             <span class="card-footer-label">组织:</span>
                             <span class="card-footer-value">${getGroupSummary(item.groups || [])}</span>
@@ -919,20 +966,10 @@
 
         function render() {
             const list = getList();
-            cardGrid.innerHTML = `
-                <article class="create-card">
-                    <div>
-                        <span class="create-kicker">+</span>
-                        <div class="create-title">新建记忆体</div>
-                        <div class="create-desc">定义作用域、记忆准则、默认模型和回写策略，让 workflow 在稳定边界内持续维护长期记忆。</div>
-                    </div>
-                </article>
-            ` + list.map(renderCard).join('');
+            cardGrid.innerHTML = list.map(renderCard).join('');
 
             cardGrid.style.display = list.length ? 'grid' : 'none';
             emptyState.style.display = list.length ? 'none' : 'flex';
-
-            document.querySelector('.create-card').addEventListener('click', openCreateModal);
         }
 
         function toggleMenu(id, anchor) {
@@ -985,7 +1022,7 @@
                 const selected = memorySpaces.find((item) => item.id === openCard.dataset.id);
                 if (selected) {
                     sessionStorage.setItem('selectedMemorySpace', JSON.stringify(selected));
-                    window.location.href = './记忆体详情.html';
+                    window.location.href = './记忆详情.html';
                 }
                 return;
             }
@@ -1021,6 +1058,12 @@
             state.menuId = null;
             cardMenuPanel.classList.remove('open');
             alert('删除流程为原型占位。');
+        });
+
+        createMemoryBtn.addEventListener('click', openCreateModal);
+        memorySearchInput.addEventListener('input', (event) => {
+            state.searchKeyword = event.target.value;
+            render();
         });
 
         document.getElementById('closeCreateModal').addEventListener('click', closeCreateModal);

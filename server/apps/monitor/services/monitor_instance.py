@@ -317,7 +317,7 @@ class InstanceSearch:
             qs = qs.filter(name__icontains=name)
 
         # 去除重复
-        qs = qs.distinct("id")
+        qs = qs.distinct()
 
         objs_map = {i.id: i for i in qs}
         return objs_map
@@ -329,7 +329,7 @@ class InstanceSearch:
             qs = qs.filter(name__icontains=name)
 
         # 去除重复
-        qs = qs.distinct("id")
+        qs = qs.distinct()
 
         count = qs.count()
         if count == 0:

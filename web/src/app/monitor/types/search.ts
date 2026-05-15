@@ -20,6 +20,7 @@ export interface SearchParams {
   step?: number;
   query: string;
   source_unit?: string;
+  auto_convert_unit?: boolean;
 }
 
 export interface QueryGroup {
