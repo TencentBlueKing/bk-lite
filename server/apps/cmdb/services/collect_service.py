@@ -22,8 +22,6 @@ from apps.core.utils.web_utils import WebUtils
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.stargazer import Stargazer
 from apps.cmdb.tasks.celery_tasks import sync_collect_task
-from apps.node_mgmt.models.cloud_region import CloudRegion
-from apps.node_mgmt.models.sidecar import Node
 
 
 class CollectModelService(object):
@@ -33,6 +31,17 @@ class CollectModelService(object):
     DELAY_SYNC_THRESHOLD_MINUTES = 15
     # 延迟补跑等待时长（秒）
     DELAY_SYNC_COUNTDOWN_SECONDS = 4 * 60
+
+    @staticmethod
+    def _safe_int(value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _node_mgmt_client():
+        return NodeMgmt()
 
     @staticmethod
     def should_sync_node_params(instance):
@@ -102,15 +111,26 @@ class CollectModelService(object):
     def _get_cloud_region_id_by_node(node_id):
         if node_id in (None, ""):
             return None
-        node = Node.objects.filter(id=str(node_id)).only("cloud_region_id").first()
-        return getattr(node, "cloud_region_id", None)
+        rows = CollectModelService._node_mgmt_client().get_nodes_by_ids([str(node_id)])
+        if not isinstance(rows, list) or not rows:
+            return None
+        node = rows[0] if isinstance(rows[0], dict) else {}
+        return CollectModelService._safe_int(node.get("cloud_region_id"))
 
     @staticmethod
     def _get_cloud_region_name(cloud_id):
         if cloud_id in (None, ""):
             return ""
-        cloud_name = CloudRegion.objects.filter(id=cloud_id).values_list("name", flat=True).first()
-        return str(cloud_name or "").strip()
+        rows = CollectModelService._node_mgmt_client().cloud_region_list()
+        cloud_id = CollectModelService._safe_int(cloud_id)
+        if cloud_id is None or not isinstance(rows, list):
+            return ""
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            if CollectModelService._safe_int(item.get("id")) == cloud_id:
+                return str(item.get("name") or "").strip()
+        return ""
 
     @classmethod
     def _resolve_host_cloud_meta(cls, params=None, access_point=None, instances=None, prefer_access_point=False):
@@ -118,11 +138,7 @@ class CollectModelService(object):
         access_point_item = cls._get_snapshot_item(access_point)
         instance_item = cls._get_snapshot_item(instances)
 
-        access_point_cloud = (
-            access_point_item.get("cloud")
-            or access_point_item.get("cloud_id")
-            or access_point_item.get("cloud_region")
-        )
+        access_point_cloud = access_point_item.get("cloud") or access_point_item.get("cloud_id") or access_point_item.get("cloud_region")
         access_point_cloud_name = access_point_item.get("cloud_name") or access_point_item.get("cloud_region_name")
 
         task_cloud = params.get("cloud") or instance_item.get("cloud") or instance_item.get("cloud_id")
@@ -505,12 +521,10 @@ class CollectModelService(object):
         }
 
     @classmethod
-    def exec_task(cls, instance, request, view_self):
+    def exec_task(cls, instance, operator):
         """
         执行任务
         """
-        cls.has_permission(request=request, instance=instance, view_self=view_self)
-
         if instance.exec_status == CollectRunStatusType.RUNNING:
             return WebUtils.response_error(error_message="任务正在执行中!无法重复执行！", status_code=400)
 
@@ -527,7 +541,7 @@ class CollectModelService(object):
             sync_collect_task(instance.id)
 
         create_change_record(
-            operator=request.user.username,
+            operator=operator,
             model_id=instance.model_id,
             label="采集任务",
             _type=EXECUTE,
