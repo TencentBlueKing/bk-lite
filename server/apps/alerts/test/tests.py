@@ -14,6 +14,7 @@ from apps.alerts.aggregation.builder.synthetic_alert_builder import (
     SyntheticAlertBuilder,
 )
 from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
+from apps.alerts.aggregation.window.factory import WindowFactory
 from apps.alerts.aggregation.strategy.matcher import StrategyMatcher
 from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
@@ -41,6 +42,7 @@ from apps.alerts.serializers.event import EventModelSerializer
 from apps.alerts.serializers.incident import IncidentModelSerializer
 from apps.alerts.serializers.alert_source import AlertSourceModelSerializer
 from apps.alerts.serializers.strategy import AlarmStrategySerializer
+from apps.alerts.utils.util import MAX_AGGREGATION_WINDOW_SIZE_MINUTES
 from apps.alerts.utils.rule_matcher import RuleMatcher
 from apps.alerts.views.alert import AlertModelViewSet
 from apps.alerts.views.alert_source import AlertSourceModelViewSet
@@ -67,6 +69,99 @@ def build_permission_test_user(username, group_list, permissions_by_app=None):
 
 
 class AlarmStrategySerializerTestCase(TestCase):
+    def test_smart_denoise_serializer_rejects_non_positive_window_size(self):
+        serializer = AlarmStrategySerializer(
+            data={
+                "name": "smart-rule",
+                "strategy_type": AlarmStrategyType.SMART_DENOISE,
+                "team": [1],
+                "dispatch_team": [1],
+                "match_rules": [[{"key": "service", "operator": "eq", "value": "backup"}]],
+                "params": {
+                    "group_by": ["service"],
+                    "window_size": 0,
+                    "time_out": False,
+                },
+                "auto_close": False,
+                "close_minutes": 120,
+            }
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertEqual(
+            serializer.errors["params"]["window_size"],
+            "窗口大小必须为大于 0 的整数分钟。",
+        )
+
+    def test_smart_denoise_serializer_rejects_oversized_window_size(self):
+        serializer = AlarmStrategySerializer(
+            data={
+                "name": "smart-rule",
+                "strategy_type": AlarmStrategyType.SMART_DENOISE,
+                "team": [1],
+                "dispatch_team": [1],
+                "match_rules": [[{"key": "service", "operator": "eq", "value": "backup"}]],
+                "params": {
+                    "group_by": ["service"],
+                    "window_size": MAX_AGGREGATION_WINDOW_SIZE_MINUTES + 1,
+                    "time_out": False,
+                },
+                "auto_close": False,
+                "close_minutes": 120,
+            }
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertEqual(
+            serializer.errors["params"]["window_size"],
+            f"窗口大小不能超过 {MAX_AGGREGATION_WINDOW_SIZE_MINUTES} 分钟。",
+        )
+
+    def test_smart_denoise_serializer_accepts_valid_window_size(self):
+        serializer = AlarmStrategySerializer(
+            data={
+                "name": "smart-rule",
+                "strategy_type": AlarmStrategyType.SMART_DENOISE,
+                "team": [1],
+                "dispatch_team": [1],
+                "match_rules": [[{"key": "service", "operator": "eq", "value": "backup"}]],
+                "params": {
+                    "group_by": ["service"],
+                    "window_size": 5,
+                    "time_out": False,
+                },
+                "auto_close": False,
+                "close_minutes": 120,
+            }
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data["params"]["window_size"], 5)
+
+    def test_smart_denoise_serializer_partial_update_preserves_existing_params(self):
+        strategy = AlarmStrategy.objects.create(
+            name="smart-rule-existing",
+            strategy_type=AlarmStrategyType.SMART_DENOISE,
+            team=[1],
+            dispatch_team=[1],
+            match_rules=[[{"key": "service", "operator": "eq", "value": "backup"}]],
+            params={"group_by": ["service"], "window_size": 30, "time_out": True, "time_minutes": 15},
+            auto_close=False,
+            close_minutes=120,
+        )
+
+        serializer = AlarmStrategySerializer(
+            strategy,
+            data={"description": "patched-description"},
+            partial=True,
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(
+            serializer.validated_data["params"],
+            strategy.params,
+        )
+
     def test_missing_detection_serializer_strips_runtime_fields(self):
         serializer = AlarmStrategySerializer(
             data={
@@ -287,6 +382,45 @@ class MissingDetectionProcessorTestCase(TestCase):
 
         events_mock.assert_called_once_with(smart_strategy, now)
         missing_mock.assert_called_once_with(missing_strategy, now)
+
+    def test_get_events_for_strategy_clamps_oversized_window_size(self):
+        now = timezone.now()
+        strategy = self.create_strategy(
+            name="smart-window-clamp",
+            strategy_type=AlarmStrategyType.SMART_DENOISE,
+            params={"group_by": ["service"], "window_size": MAX_AGGREGATION_WINDOW_SIZE_MINUTES + 60, "time_out": False},
+        )
+        old_event = self.create_event(
+            now - timedelta(minutes=MAX_AGGREGATION_WINDOW_SIZE_MINUTES + 30),
+            event_id="EVENT-OLD-WINDOW",
+        )
+        recent_event = self.create_event(
+            now - timedelta(minutes=5),
+            event_id="EVENT-RECENT-WINDOW",
+        )
+
+        events = self.processor.get_events_for_strategy(strategy, now)
+
+        self.assertQuerySetEqual(
+            events.order_by("event_id").values_list("event_id", flat=True),
+            [recent_event.event_id],
+            transform=lambda value: value,
+        )
+        self.assertFalse(events.filter(pk=old_event.pk).exists())
+
+    def test_window_factory_clamps_oversized_window_size(self):
+        strategy = self.create_strategy(
+            name="smart-window-config",
+            strategy_type=AlarmStrategyType.SMART_DENOISE,
+            params={"group_by": ["service"], "window_size": MAX_AGGREGATION_WINDOW_SIZE_MINUTES + 60, "time_out": False},
+        )
+
+        window_config = WindowFactory.create_from_strategy(strategy)
+
+        self.assertEqual(
+            window_config.window_size_minutes,
+            MAX_AGGREGATION_WINDOW_SIZE_MINUTES,
+        )
 
     def test_first_heartbeat_mode_waits_for_first_event(self):
         now = timezone.make_aware(datetime(2026, 3, 20, 10, 0, 0))
@@ -1881,6 +2015,182 @@ class AlertPermissionScopeTestCase(TestCase):
             "您没有权限操作此告警",
         )
         self.assertEqual(hidden_alert.status, AlertStatus.UNASSIGNED)
+
+    def test_alert_operator_rejects_assignee_outside_alert_team_scope(self):
+        user = self._build_user("alert-editor-scope", [1], ["Alarms-Edit"])
+        self._build_user("foreign-alert-operator", [2], [])
+        visible_alert = self._build_alert([1], [], "visible-operator-scope")
+
+        request = self.factory.post(
+            "/api/alert/operator/assign/",
+            {
+                "alert_id": [visible_alert.alert_id],
+                "assignee": ["foreign-alert-operator"],
+            },
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = AlertModelViewSet.as_view({"post": "operator"})(request, operator_action="assign")
+        payload = json.loads(response.content)
+        visible_alert.refresh_from_db()
+
+        self.assertEqual(response.status_code, 500)
+        self.assertFalse(payload["result"])
+        self.assertEqual(
+            payload["data"][visible_alert.alert_id]["message"],
+            "以下处理人不在告警所属组织范围内: foreign-alert-operator",
+        )
+        self.assertEqual(visible_alert.status, AlertStatus.UNASSIGNED)
+        self.assertEqual(visible_alert.operator, [])
+
+    @patch("apps.alerts.service.alter_operator.AlertOperator.format_notify_data", return_value={})
+    def test_alert_operator_accepts_assignee_within_alert_team_scope(self, _format_notify_data):
+        user = self._build_user("alert-editor-valid", [1], ["Alarms-Edit"])
+        self._build_user("team-alert-operator", [1], [])
+        visible_alert = self._build_alert([1], [], "visible-operator-valid")
+
+        request = self.factory.post(
+            "/api/alert/operator/assign/",
+            {
+                "alert_id": [visible_alert.alert_id],
+                "assignee": ["team-alert-operator"],
+            },
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = AlertModelViewSet.as_view({"post": "operator"})(request, operator_action="assign")
+        visible_alert.refresh_from_db()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(visible_alert.status, AlertStatus.PENDING)
+        self.assertEqual(visible_alert.operator, ["team-alert-operator"])
+
+    def test_incident_create_rejects_operator_outside_alert_team_scope(self):
+        user = self._build_user("incident-editor-scope", [1], ["Alarms-Edit"])
+        self._build_user("foreign-incident-operator", [2], [])
+        visible_alert = self._build_alert([1], [], "visible-incident-scope")
+
+        request = self.factory.post(
+            "/api/incident",
+            {
+                "title": "new-incident-scope",
+                "level": "warning",
+                "content": "content",
+                "note": "",
+                "labels": {},
+                "operator": ["foreign-incident-operator"],
+                "alert": [visible_alert.pk],
+            },
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = IncidentModelViewSet.as_view({"post": "create"})(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["operator"][0],
+            "以下处理人不在事故关联告警组织范围内: foreign-incident-operator",
+        )
+        self.assertEqual(Incident.objects.count(), 0)
+
+    def test_incident_patch_rejects_operator_outside_alert_team_scope(self):
+        user = self._build_user(
+            "incident-editor-scope-patch",
+            [1],
+            ["Incidents-Edit", "Alarms-Edit"],
+        )
+        self._build_user("foreign-incident-patch-operator", [2], [])
+        visible_alert = self._build_alert([1], ["incident-editor-scope-patch"], "visible-incident-patch-scope")
+        incident = Incident.objects.create(
+            incident_id="INCIDENT-scope-patch",
+            status=IncidentStatus.PENDING,
+            level="warning",
+            title="scope-patch-incident",
+            content="content",
+            note="",
+            labels={},
+            operator=["incident-editor-scope-patch"],
+            fingerprint="incident-scope-patch-fp",
+            created_by="system",
+            updated_by="system",
+            domain="domain.com",
+            updated_by_domain="domain.com",
+        )
+        incident.alert.add(visible_alert)
+
+        request = self.factory.patch(
+            f"/api/incident/{incident.pk}/",
+            {"operator": ["foreign-incident-patch-operator"]},
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = IncidentModelViewSet.as_view({"patch": "partial_update"})(request, pk=incident.pk)
+        incident.refresh_from_db()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["operator"][0],
+            "以下处理人不在事故关联告警组织范围内: foreign-incident-patch-operator",
+        )
+        self.assertEqual(incident.operator, ["incident-editor-scope-patch"])
+
+    def test_alert_operator_rejects_nonexistent_assignee(self):
+        user = self._build_user("alert-editor-missing", [1], ["Alarms-Edit"])
+        visible_alert = self._build_alert([1], [], "visible-operator-missing")
+
+        request = self.factory.post(
+            "/api/alert/operator/assign/",
+            {"alert_id": [visible_alert.alert_id], "assignee": ["ghost-user"]},
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = AlertModelViewSet.as_view({"post": "operator"})(request, operator_action="assign")
+        payload = json.loads(response.content)
+        visible_alert.refresh_from_db()
+
+        self.assertEqual(response.status_code, 500)
+        self.assertFalse(payload["result"])
+        self.assertEqual(
+            payload["data"][visible_alert.alert_id]["message"],
+            "以下处理人不存在: ghost-user",
+        )
+        self.assertEqual(visible_alert.operator, [])
+
+    def test_incident_create_rejects_nonexistent_operator(self):
+        user = self._build_user("incident-editor-missing", [1], ["Alarms-Edit"])
+        visible_alert = self._build_alert([1], [], "visible-incident-missing")
+
+        request = self.factory.post(
+            "/api/incident",
+            {
+                "title": "new-incident-missing",
+                "level": "warning",
+                "content": "content",
+                "note": "",
+                "labels": {},
+                "operator": ["ghost-incident-user"],
+                "alert": [visible_alert.pk],
+            },
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=user)
+
+        response = IncidentModelViewSet.as_view({"post": "create"})(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["operator"][0], "以下处理人不存在: ghost-incident-user")
+        self.assertEqual(Incident.objects.count(), 0)
 
     def test_event_retrieve_rejects_cross_team_access(self):
         user = self._build_user("event-reader", [1], ["Alarms-View"])

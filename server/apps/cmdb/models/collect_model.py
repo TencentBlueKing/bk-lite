@@ -30,7 +30,8 @@ class CollectModels(MaintainerInfo, TimeInfo):
 
     name = models.CharField(max_length=128, help_text="任务名称")
     task_type = models.CharField(max_length=32, choices=CollectPluginTypes.CHOICE, help_text="任务类型")
-    driver_type = models.CharField(max_length=32, choices=CollectDriverTypes.CHOICE, default=CollectDriverTypes.PROTOCOL, help_text="驱动类型")
+    driver_type = models.CharField(max_length=32, choices=CollectDriverTypes.CHOICE,
+                                   default=CollectDriverTypes.PROTOCOL, help_text="驱动类型")
     model_id = models.CharField(max_length=64, help_text="模型ID")
 
     is_interval = models.BooleanField(default=False, help_text="是否开启周期巡检")
@@ -46,7 +47,8 @@ class CollectModels(MaintainerInfo, TimeInfo):
 
     timeout = models.PositiveSmallIntegerField(default=0, help_text="超时时间(单个ip)")
 
-    exec_status = models.PositiveSmallIntegerField(default=CollectRunStatusType.NOT_START, choices=CollectRunStatusType.CHOICE, help_text="执行状态")
+    exec_status = models.PositiveSmallIntegerField(default=CollectRunStatusType.NOT_START,
+                                                   choices=CollectRunStatusType.CHOICE, help_text="执行状态")
     exec_time = models.DateTimeField(blank=True, null=True, help_text="执行时间")
 
     task_id = models.CharField(max_length=64, blank=True, null=True, help_text="任务执行id")
@@ -55,7 +57,8 @@ class CollectModels(MaintainerInfo, TimeInfo):
 
     plugin_id = models.IntegerField(default=0, help_text="采集插件ID")
 
-    input_method = models.PositiveSmallIntegerField(default=CollectInputMethod.AUTO, choices=CollectInputMethod.CHOICE, help_text="录入方式")
+    input_method = models.PositiveSmallIntegerField(default=CollectInputMethod.AUTO, choices=CollectInputMethod.CHOICE,
+                                                    help_text="录入方式")
 
     data_cleanup_strategy = models.CharField(
         max_length=32, choices=DataCleanupStrategy.CHOICE, default=DataCleanupStrategy.DEFAULT, help_text="数据清理策略"
@@ -66,6 +69,10 @@ class CollectModels(MaintainerInfo, TimeInfo):
     collect_digest = JSONField(default=dict, help_text="采集摘要数据")
     format_data = JSONField(default=dict, help_text="采集返回的分类后的数据")
     team = JSONField(default=list, help_text="关联组织")  # 把params里的组织单独抽出来，方便权限控制
+
+    is_system = models.BooleanField(default=False, help_text="是否为系统内置任务")
+    is_visible = models.BooleanField(default=True, help_text="是否在普通采集页面展示")
+    system_code = models.CharField(max_length=128, blank=True, null=True, help_text="系统任务编码")
 
     class Meta:
         verbose_name = "采集任务"
@@ -142,7 +149,7 @@ class CollectModels(MaintainerInfo, TimeInfo):
         # 去除加密前缀
         encrypted_text = password
         if isinstance(password, str) and password.startswith(ENCRYPTED_PREFIX):
-            encrypted_text = password[len(ENCRYPTED_PREFIX) :]
+            encrypted_text = password[len(ENCRYPTED_PREFIX):]
 
         try:
             crypto = PasswordCrypto(SECRET_KEY)

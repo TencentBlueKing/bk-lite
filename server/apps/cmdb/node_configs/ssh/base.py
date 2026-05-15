@@ -10,6 +10,10 @@ class SSHNodeParamsMixin:
     host_field = "ip_addr"
     executor_type = "job"  # 默认执行器类型
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.executor_type = "job"
+
     def set_credential(self, *args, **kwargs):
         credential_data = {
             "node_id": self.instance.access_point[0]["id"],
