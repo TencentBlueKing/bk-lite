@@ -1328,13 +1328,6 @@ class ObjectDetectionServingViewSet(TeamModelViewSet):
         """
         serving = self.get_object()
 
-        # 校验服务状态
-        if serving.status != "active":
-            return Response(
-                {"error": "服务未发布，请先发布服务"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
         # 验证容器信息
         if not serving.container_info or not isinstance(serving.container_info, dict):
             return Response(
