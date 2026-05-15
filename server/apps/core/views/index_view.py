@@ -159,7 +159,7 @@ def verify_wechat_code(code: str) -> dict:
         logger.error("WeChat API timeout")
         return {"success": False, "error": "WeChat API timeout"}
     except Exception as e:
-        logger.error(f"WeChat verification error: {e}")
+        logger.exception(f"WeChat verification error: {e}")
         return {"success": False, "error": str(e)}
 
 
