@@ -1,15 +1,22 @@
 "use client";
-import { ArrowLeftOutlined } from "@ant-design/icons";
-import { signIn } from "next-auth/react";
-import { useState, useEffect } from "react";
-import { Select, Input } from "antd";
+import {ArrowLeftOutlined} from "@ant-design/icons";
+import {signIn} from "next-auth/react";
+import {useEffect, useState} from "react";
+import {Input, Select} from "antd";
 import PasswordResetForm from "./PasswordResetForm";
 import OtpVerificationForm from "./OtpVerificationForm";
 import WechatQrLoginPanel from "./WechatQrLoginPanel";
-import { useTheme } from '@/context/theme';
-import { usePortalBranding } from "@/hooks/usePortalBranding";
-import { saveAuthToken } from "@/utils/crossDomainAuth";
-import { AUTH_POPUP_SUCCESS_MESSAGE, buildOauthCallbackBridgeUrl, buildPopupSigninUrl, buildThirdLoginCallbackUrl, buildWechatPopupUrl, resolveThirdLoginFlag } from "@/utils/authRedirect";
+import {useTheme} from '@/context/theme';
+import {usePortalBranding} from "@/hooks/usePortalBranding";
+import {saveAuthToken} from "@/utils/crossDomainAuth";
+import {
+  AUTH_POPUP_SUCCESS_MESSAGE,
+  buildOauthCallbackBridgeUrl,
+  buildPopupSigninUrl,
+  buildThirdLoginCallbackUrl,
+  buildWechatPopupUrl,
+  resolveThirdLoginFlag
+} from "@/utils/authRedirect";
 
 interface SigninClientProps {
   searchParams?: {
@@ -341,6 +348,12 @@ export default function SigninClient({
   };
 
   const handleOtpVerificationComplete = async (loginData: LoginResponse) => {
+    // Check if user needs to reset password after OTP verification
+    if (loginData.temporary_pwd) {
+      setLoginData(loginData);
+      setAuthStep('reset-password');
+      return;
+    }
     await completeAuthentication(loginData);
   };
 

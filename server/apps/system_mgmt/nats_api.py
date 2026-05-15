@@ -1404,6 +1404,7 @@ def get_user_login_token(user, username, skip_token_for_otp=False):
             "domain": user.domain,
             "locale": user.locale,
             "timezone": user.timezone,
+            "temporary_pwd": user.temporary_pwd,
         }
 
         # Include QR code for first-time binding
