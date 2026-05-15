@@ -1,7 +1,8 @@
 {
   "common": {
     "total": "共",
-    "items": "条"
+    "items": "条",
+    "loading": "加载中"
   },
   "topology": {
     "nodeConfig": {
@@ -230,7 +231,7 @@
     "lineColor": "线条颜色",
     "pageSize": "每页条数",
     "selectDataSource": "请选择数据源",
-    "dataFetchFailed": "数据获取失败",
+    "dataFetchFailed": "数据查询失败",
     "inputName": "请输入组件名称",
     "paramSettings": "参数设置",
     "noParamSettings": "暂无需配置参数",

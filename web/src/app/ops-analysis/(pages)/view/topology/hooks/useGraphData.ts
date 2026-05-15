@@ -8,6 +8,7 @@ import { useCallback, useState, useRef } from 'react';
 import type { Graph as X6Graph, Node, Edge } from '@antv/x6';
 import { message } from 'antd';
 import { fetchWidgetData, buildDefaultFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
 import { useTranslation } from '@/utils/i18n';
 import { useTopologyApi } from '@/app/ops-analysis/api/topology';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
@@ -188,27 +189,29 @@ export const useGraphData = (
         filterBindings: effectiveFilterBindings,
         filterDefinitions,
         extraParams: Object.keys(extraParams).length > 0 ? extraParams : undefined,
+        throwError: true,
       });
 
-      if (chartData) {
-        const currentNodeData = node.getData();
-        node.setData({
-          ...currentNodeData,
-          isLoading: false,
-          rawData: chartData,
-          hasError: false,
-          dataSource,
-        }, { overwrite: true });
-      }
-    } catch {
       const currentNodeData = node.getData();
       node.setData({
         ...currentNodeData,
         isLoading: false,
+        rawData: chartData,
+        hasError: false,
+        errorMessage: undefined,
+        dataSource,
+      }, { overwrite: true });
+    } catch (error) {
+      const currentNodeData = node.getData();
+      node.setData({
+        ...currentNodeData,
+        isLoading: false,
+        rawData: null,
         hasError: true,
+        errorMessage: getRequestErrorMessage(error, t('dashboard.dataFetchFailed')),
       }, { overwrite: true });
     }
-  }, [graphInstance, getSourceDataByApiId]);
+  }, [graphInstance, getSourceDataByApiId, t]);
 
   const handleTableQueryChange = useCallback((
     nodeId: string,
@@ -240,7 +243,7 @@ export const useGraphData = (
 
     tableQueryParamsRef.current.set(nodeId, nextQueryParams);
 
-    node.setData({ ...nodeData, isLoading: true, hasError: false }, { overwrite: true });
+    node.setData({ ...nodeData, isLoading: true, hasError: false, errorMessage: undefined }, { overwrite: true });
 
     const dataSource = dataSources?.find(
       (ds) => ds.id === nodeData.valueConfig.dataSource
@@ -389,6 +392,7 @@ export const useGraphData = (
           ...nodeData, 
           isLoading: true, 
           hasError: false,
+          errorMessage: undefined,
           onTableQueryChange: tableQueryHandler,
         }, { overwrite: true });
         const storedQueryParams = getEffectiveTableQueryParams(

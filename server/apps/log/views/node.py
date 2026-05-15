@@ -33,5 +33,6 @@ class NodeViewSet(ViewSet):
     @action(methods=["post"], detail=False, url_path="cloud_region_proxy_address")
     def get_cloud_region_proxy_address(self, request):
         cloud_region_id = request.data.get("cloud_region_id")
-        proxy_address = NodeMgmt().get_cloud_region_proxy_address(cloud_region_id)
+        organization_ids = [] if request.user.is_superuser else [i["id"] for i in request.user.group_list]
+        proxy_address = NodeMgmt().get_cloud_region_proxy_address(cloud_region_id, organization_ids)
         return WebUtils.response_success({"proxy_address": proxy_address or ""})

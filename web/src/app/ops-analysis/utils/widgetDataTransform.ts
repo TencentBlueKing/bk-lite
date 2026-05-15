@@ -119,6 +119,7 @@ export const fetchWidgetData = async ({
   unifiedFilterValues,
   filterBindings,
   filterDefinitions,
+  throwError = false,
 }: {
   config: any;
   dataSource?: any;
@@ -127,6 +128,7 @@ export const fetchWidgetData = async ({
   unifiedFilterValues?: Record<string, FilterValue>;
   filterBindings?: FilterBindings;
   filterDefinitions?: UnifiedFilterDefinition[];
+    throwError?: boolean;
 }) => {
   if (!config?.dataSource) {
     return null;
@@ -146,6 +148,9 @@ export const fetchWidgetData = async ({
     return rawData;
   } catch (err: any) {
     console.error('获取数据失败:', err);
+    if (throwError) {
+      throw err;
+    }
     return null;
   }
 };

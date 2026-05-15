@@ -9,6 +9,7 @@ import styles from './traintask.module.scss';
 
 interface TrainTaskDetailProps {
   metricData: any,
+  trainJobId: number | string | null,
   backToList: () => void,
   activeKey: string
 }
@@ -216,6 +217,7 @@ const LazyChart: React.FC<LazyChartProps> = ({ metricName, runId, status, getMet
 
 const TrainTaskDetail = ({
   metricData,
+  trainJobId,
   activeKey
   // backToList
 }: TrainTaskDetailProps) => {
@@ -226,17 +228,20 @@ const TrainTaskDetail = ({
 
   // 进入页面时获取指标列表
   useEffect(() => {
-    if (metricData?.run_id) {
+    if (trainJobId && metricData?.run_id && activeKey) {
       getMetricsList();
+      return;
     }
-  }, [metricData?.run_id]);
+
+    setMetricsList([]);
+  }, [trainJobId, metricData?.run_id, activeKey]);
 
   const getMetricsList = async () => {
-    if (!metricData?.run_id) return;
+    if (!trainJobId || !metricData?.run_id || !activeKey) return;
 
     setLoading(true);
     try {
-      const response = await getTrainTaskMetrics(metricData.run_id, activeKey);
+      const response = await getTrainTaskMetrics(trainJobId, metricData.run_id, activeKey);
       if (response?.metrics) {
         setMetricsList(response.metrics);
       }
@@ -248,9 +253,13 @@ const TrainTaskDetail = ({
   };
 
   const getMetricsDetail = useCallback(async (runId: string, metricsName: string) => {
-    const data = await getTrainTaskMetricsDetail(runId, metricsName, activeKey);
+    if (!trainJobId || !activeKey) {
+      return { metric_history: [] };
+    }
+
+    const data = await getTrainTaskMetricsDetail(trainJobId, runId, metricsName, activeKey);
     return data;
-  }, [getTrainTaskMetricsDetail]);
+  }, [getTrainTaskMetricsDetail, trainJobId, activeKey]);
 
   return (
     <div className={styles.trainTaskDetail}>

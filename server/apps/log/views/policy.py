@@ -265,7 +265,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
         collect_type_id = request.query_params.get("collect_type") or None
         queryset, policy_permission_map = self._get_accessible_policy_queryset(request, collect_type_id)
         queryset = self.filter_queryset(queryset)
-        queryset = queryset.distinct().select_related("collect_type")
+        queryset = queryset.distinct().select_related("collect_type").prefetch_related("policyorganization_set")
 
         # 获取分页参数
         page = int(request.GET.get("page", 1))
@@ -512,7 +512,12 @@ class AlertViewSet(viewsets.ModelViewSet):
         if not policy_ids:
             return Alert.objects.none()
 
-        return Alert.objects.select_related("policy", "collect_type").filter(policy_id__in=policy_ids).order_by("-created_at")
+        return (
+            Alert.objects.select_related("policy", "collect_type")
+            .prefetch_related("policy__policyorganization_set")
+            .filter(policy_id__in=policy_ids)
+            .order_by("-created_at")
+        )
 
     def list(self, request, *args, **kwargs):
         """

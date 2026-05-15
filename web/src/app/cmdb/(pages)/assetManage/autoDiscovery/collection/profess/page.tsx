@@ -13,6 +13,7 @@ import IPMITask from './components/ipmiTask';
 import ConfigFileTask from './components/configFileTask';
 import PluginCard from './components/pluginCard';
 import TaskDetail from './components/taskDetail';
+import NodeMgmtSyncDetail from './components/nodeMgmtSyncDetail';
 import MarkdownRenderer from '@/components/markdown';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
@@ -69,6 +70,7 @@ const ProfessionalCollection: React.FC = () => {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [categoryList, setCategoryList] = useState<TreeNode[]>([]);
   const [detailVisible, setDetailVisible] = useState(false);
+  const [nodeMgmtSyncVisible, setNodeMgmtSyncVisible] = useState(false);
   const [currentTask, setCurrentTask] = useState<CollectTask | null>(null);
   const [selectedPluginId, setSelectedPluginId] = useState<string>('');
   const [tableData, setTableData] = useState<CollectTask[]>([]);
@@ -968,13 +970,18 @@ const ProfessionalCollection: React.FC = () => {
           <div className="flex items-center justify-center py-2">
             <Spin size="small" />
           </div>
-        ) : (
-          <Tabs
-            activeKey={selectedCategoryRef.current.categoryId}
-            onChange={(key) => handleCategoryChange([key])}
-            items={categoryList.map((category) => {
-              return {
-                key: category.id,
+          ) : (
+            <Tabs
+              activeKey={selectedCategoryRef.current.categoryId}
+              onChange={(key) => handleCategoryChange([key])}
+              tabBarExtraContent={
+                <Button type="link" onClick={() => setNodeMgmtSyncVisible(true)}>
+                  {t('Collection.nodeMgmtSync.entry')}
+                </Button>
+              }
+              items={categoryList.map((category) => {
+                return {
+                  key: category.id,
                 label: category.name,
               };
             })}
@@ -1171,6 +1178,23 @@ const ProfessionalCollection: React.FC = () => {
         ) : (
           <MarkdownRenderer content={pluginDoc} />
         )}
+      </Drawer>
+
+      <Drawer
+        title={t('Collection.nodeMgmtSync.title')}
+        placement="right"
+        width={840}
+        onClose={() => setNodeMgmtSyncVisible(false)}
+        open={nodeMgmtSyncVisible}
+        footer={
+          <div className="flex justify-start">
+            <Button onClick={() => setNodeMgmtSyncVisible(false)}>
+              {t('common.close')}
+            </Button>
+          </div>
+        }
+      >
+        <NodeMgmtSyncDetail open={nodeMgmtSyncVisible} />
       </Drawer>
 
       <Drawer
