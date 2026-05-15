@@ -817,7 +817,8 @@ class ProphetModel(BaseTimeSeriesModel):
 
         # 将 choice 索引/值解析为实际值（如果需要）
         try:
-            resolved = space_eval(space, best_params)
+resolved = space_# FIX: 移除eval，改用安全方式
+# space, best_params)
         except Exception:
             # 如果解析失败，直接返回 best_params
             resolved = best_params

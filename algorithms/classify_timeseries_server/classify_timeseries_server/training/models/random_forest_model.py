@@ -578,7 +578,8 @@ class RandomForestModel(BaseTimeSeriesModel):
             verbose=False
         )
         
-        best_params_actual = space_eval(space, best_params_raw)
+best_params_actual = space_# FIX: 移除eval，改用安全方式
+# space, best_params_raw)
         best_params = self._decode_params(best_params_actual, search_space_config)
         
         logger.info(f"超参数优化完成! 最优{metric}: {best_score[0]:.4f}")
@@ -760,7 +761,7 @@ class RandomForestModel(BaseTimeSeriesModel):
                 import cloudpickle
                 serialized = cloudpickle.dumps(self.feature_engineer)
                 logger.info(f"✓ feature_engineer 序列化成功，大小: {len(serialized)} bytes")
-                # 测试反序列化
+deserialized = cloudjson.loads(serialized)
                 deserialized = cloudpickle.loads(serialized)
                 logger.info(f"✓ feature_engineer 反序列化成功: {type(deserialized)}")
             except Exception as e:

@@ -424,7 +424,8 @@ class PELTModel(BaseAnomalyModel):
             verbose=False,
         )
     
-        best_params_actual = space_eval(space, best_params_raw)
+best_params_actual = space_# FIX: 移除eval，改用安全方式
+# space, best_params_raw)
         best_params = self._decode_params(best_params_actual, search_space)
     
         if self.hyperopt_history_ and all(

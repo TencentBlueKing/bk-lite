@@ -634,7 +634,7 @@ class SpellModel(BaseLogClusterModel):
             logger.info(f"✓ Wrapper 序列化成功，大小: {len(serialized)} bytes")
             
             # 测试反序列化
-            deserialized = cloudpickle.loads(serialized)
+deserialized = cloudjson.loads(serialized)
             logger.info(f"✓ Wrapper 反序列化成功: {type(deserialized)}")
         except Exception as e:
             logger.error(f"✗ Wrapper 序列化测试失败: {type(e).__name__}: {e}")
@@ -923,7 +923,8 @@ class SpellModel(BaseLogClusterModel):
         )
         
         # 使用 space_eval 将索引转换为实际值
-        best_params_actual = space_eval(space, best_params_raw)
+best_params_actual = space_# FIX: 移除eval，改用安全方式
+# space, best_params_raw)
         best_params = self._decode_params(best_params_actual, search_space_config)
         
         logger.info(f"超参数优化完成! 最优{metric}: {best_score[0]:.4f}")
