@@ -1247,6 +1247,26 @@ export default function MysqlDashboardPage() {
   const bufferPoolFreePages = normalizeCountValue(getLatest('mysql_innodb_buffer_pool_pages_free'));
   const bufferPoolDirtyPages = normalizeCountValue(getLatest('mysql_innodb_buffer_pool_pages_dirty'));
   const bufferPoolUsedPages = Math.max(bufferPoolTotalPages - bufferPoolFreePages, 0);
+   const bufferPoolBreakdown = [
+    {
+      name: '已用页',
+      percent: bufferPoolUsedValue,
+      count: bufferPoolUsedPages,
+      color: '#4c8dff'
+    },
+    {
+      name: '脏页',
+      percent: bufferPoolDirtyRatio,
+      count: bufferPoolDirtyPages,
+      color: '#ff9f43'
+    },
+    {
+      name: '空闲页',
+      percent: Math.max(100 - bufferPoolUsedValue, 0),
+      count: bufferPoolFreePages,
+      color: '#cbd5e1'
+    }
+  ];
 
   const connectionErrorStats = [
     { label: CONNECTION_ERROR_LABELS.mysql_aborted_connects, value: abortedConnects, color: '#a855f7' },
@@ -1403,7 +1423,7 @@ export default function MysqlDashboardPage() {
       value: renderFlowValue('mysql_buffer_pool_dirty_ratio', bpDirtyValue.toFixed(1), '%')
     }
   ];
-  const bufferFlowCellCount = 28;
+  const bufferFlowCellCount = 25;
   const bufferFlowUsedCells = Math.round((bufferPoolUsedValue / 100) * bufferFlowCellCount);
   const bufferFlowDirtyCells = Math.round((bpDirtyValue / 100) * bufferFlowCellCount);
 
@@ -2188,13 +2208,22 @@ export default function MysqlDashboardPage() {
                               ))}
                             </div>
                           </div>
-                          <div className={`${styles.ringInfoPanel} ${styles.ringInfoPanelCompact}`}>
-                            <div className={`${styles.metricList} ${styles.metricListCompact}`}>
-                              <div className={`${styles.metricRow} ${styles.metricRowCompact}`}><span className={styles.metricKey}>总页数</span><span className={styles.metricVal}>{bufferPoolTotalPages.toLocaleString()}</span></div>
-                              <div className={`${styles.metricRow} ${styles.metricRowCompact}`}><span className={styles.metricKey}>已用页数</span><span className={styles.metricVal}>{bufferPoolUsedPages.toLocaleString()}</span></div>
-                              <div className={`${styles.metricRow} ${styles.metricRowCompact}`}><span className={styles.metricKey}>空闲页数</span><span className={styles.metricVal}>{bufferPoolFreePages.toLocaleString()}</span></div>
-                              <div className={`${styles.metricRow} ${styles.metricRowCompact}`}><span className={styles.metricKey}>脏页数</span><span className={styles.metricVal}>{bufferPoolDirtyPages.toLocaleString()}</span></div>
-                              <div className={`${styles.metricRow} ${styles.metricRowCompact}`}><span className={styles.metricKey}>命中率</span><span className={styles.metricVal}>{bufferPoolHitRatio.toFixed(1)}%</span></div>
+                          <div className={styles.ringInfoPanel}>
+                            <div className={styles.metricList}>
+                              {bufferPoolBreakdown.map((item) => (
+                                <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`} key={item.name}>
+                                  <span className={styles.metricKey}>
+                                    <span className={styles.metricLabelGroup}>
+                                      <span className={styles.metricDot} style={{ background: item.color }} />
+                                      <span className={styles.metricName}>{item.name}</span>
+                                    </span>
+                                  </span>
+                                  <span className={styles.metricValueGroup}>
+                                    <span className={styles.metricPercent}>{item.percent.toFixed(1)}%</span>
+                                    <span className={styles.metricCount}>({item.count.toLocaleString()})</span>
+                                  </span>
+                                </div>
+                              ))}
                             </div>
                           </div>
                         </div>
