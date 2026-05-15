@@ -1,7 +1,8 @@
 {
   "common": {
     "total": "Total",
-    "items": "items"
+    "items": "items",
+    "loading": "Loading"
   },
   "topology": {
     "nodeConfig": {
@@ -230,7 +231,7 @@
     "lineColor": "Line Color",
     "pageSize": "Page Size",
     "selectDataSource": "Please select data source",
-    "dataFetchFailed": "Data fetch failed",
+    "dataFetchFailed": "Data query failed",
     "inputName": "Please enter widget name",
     "paramSettings": "Parameter Settings",
     "noParamSettings": "No configurable parameters",
