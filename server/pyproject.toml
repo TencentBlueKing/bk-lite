@@ -118,7 +118,7 @@ opspilot = [
     "langgraph==1.0.3",
     "langgraph-prebuilt==1.0.5",
     "langchain-openai==1.0.2",
-    "langchain-anthropic==0.3.10",
+    "langchain-anthropic==1.2.0",
     "graphiti-core==0.23.1",
     "json-repair==0.53.0",
     "duckduckgo-search==8.1.1",
