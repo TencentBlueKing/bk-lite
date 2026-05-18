@@ -17,6 +17,7 @@ import { FormInstance } from 'antd/lib';
 import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
 import useNodeManagerApi from '@/app/node-manager/api';
+import { COLLECTOR_CPU_ARCHITECTURE_OPTIONS } from '@/app/node-manager/constants/cpuArchitecture';
 import { cloneDeep } from 'lodash';
 const { TextArea } = Input;
 const { Dragger } = Upload;
@@ -103,10 +104,11 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         ?.validateFields()
         .then((values) => {
           const param = {
-            id: id || `${values.name}_${values.system}`,
+            id: id || `${values.name}_${values.system}_${values.cpu_architecture || 'x86_64'}`,
             name: values.name,
             service_type: formData.service_type || 'exec',
             node_operating_system: values.system,
+            cpu_architecture: values.cpu_architecture || 'x86_64',
             introduction: values.description,
             executable_path: values.executable_path || '',
             execute_parameters: values.execute_parameters || '',
@@ -249,6 +251,30 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                   ></Select>
                 </Form.Item>
                 <Form.Item
+                  noStyle
+                  shouldUpdate={(prev, cur) => prev.system !== cur.system}
+                >
+                  {({ getFieldValue }) => {
+                    const os = getFieldValue('system') || 'linux';
+                    const options = COLLECTOR_CPU_ARCHITECTURE_OPTIONS[os] || COLLECTOR_CPU_ARCHITECTURE_OPTIONS['linux'];
+                    return (
+                      <Form.Item
+                        label="CPU"
+                        name="cpu_architecture"
+                        rules={[
+                          { required: true, message: t('common.selectMsg') }
+                        ]}
+                      >
+                        <Select
+                          disabled={type !== 'add'}
+                          options={options}
+                          placeholder={t('common.selectMsg')}
+                        />
+                      </Form.Item>
+                    );
+                  }}
+                </Form.Item>
+                <Form.Item
                   label={t('node-manager.collector.executeFilePath')}
                   name="executable_path"
                   rules={[
@@ -286,22 +312,6 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
             )}
             {type === 'upload' && (
               <>
-                <Form.Item
-                  label="CPU架构"
-                  name="cpu_architecture"
-                  rules={[
-                    { required: true, message: t('common.selectMsg') }
-                  ]}
-                  initialValue="x86_64"
-                >
-                  <Select
-                    options={[
-                      { value: 'x86_64', label: 'x86_64' },
-                      { value: 'arm64', label: 'ARM64' }
-                    ]}
-                    placeholder={t('common.selectMsg')}
-                  />
-                </Form.Item>
                 <Form.Item
                   label={t('node-manager.packetManage.importFile')}
                   name="upload"
