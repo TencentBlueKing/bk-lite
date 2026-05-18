@@ -73,6 +73,7 @@ from apps.opspilot.metis.llm.tools.kubernetes.resources import (
     list_kubernetes_nodes,
     list_kubernetes_pods,
     list_kubernetes_services,
+    search_workload_across_namespaces,
 )
 from apps.opspilot.metis.llm.tools.kubernetes.tracing import (
     analyze_pod_restart_pattern,
@@ -107,8 +108,8 @@ __all__ = [
     "get_kubernetes_resource_yaml",
     "get_kubernetes_pod_logs",
     "get_kubernetes_previous_pod_logs",
-    # 故障诊断和监控工具
-    "get_failed_kubernetes_pods",
+    "search_workload_across_namespaces",
+    # 故障诊断和监控工具    "get_failed_kubernetes_pods",
     "get_pending_kubernetes_pods",
     "get_high_restart_kubernetes_pods",
     "get_kubernetes_node_capacity",
