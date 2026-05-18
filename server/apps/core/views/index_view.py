@@ -13,6 +13,7 @@ from apps.core.utils.loader import LanguageLoader
 from apps.rpc.base import RpcClient
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import UserLoginLog
+from apps.system_mgmt.models.login_module import LoginModule
 from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.utils.login_log_utils import log_user_login_from_request
 
@@ -101,15 +102,13 @@ def verify_wechat_code(code: str) -> dict:
         }
     """
     try:
-        # 获取微信配置
-        client = _create_system_mgmt_client()
-        wechat_settings = client.get_wechat_settings()
-
-        if not wechat_settings.get("result") or not wechat_settings.get("data", {}).get("enabled"):
+        # 直接从数据库获取微信配置，避免通过 NATS 接口暴露 app_secret
+        login_module = LoginModule.objects.filter(source_type="wechat", enabled=True).first()
+        if not login_module:
             return {"success": False, "error": "WeChat login is not enabled"}
 
-        app_id = wechat_settings["data"]["app_id"]
-        app_secret = wechat_settings["data"]["app_secret"]
+        app_id = login_module.app_id
+        app_secret = login_module.decrypted_app_secret
 
         # Step 1: code 换 access_token
         token_url = (
