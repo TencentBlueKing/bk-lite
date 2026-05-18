@@ -2,39 +2,30 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from string import Template
-from django.core.cache import cache
-from django.http import HttpResponse
-from django.core.serializers.json import DjangoJSONEncoder
 
+from django.core.cache import cache
+from django.core.serializers.json import DjangoJSONEncoder
+from django.http import HttpResponse
+from jinja2 import Template as JinjaTemplate
+
+from apps.core.logger import node_logger as logger
+from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.database import DatabaseConstants
 from apps.node_mgmt.constants.node import NodeConstants
-from apps.node_mgmt.services.sidecar_cache import build_configuration_etag_cache_key
-from apps.node_mgmt.services.cloudregion import RegionService
-from apps.node_mgmt.utils.crypto_helper import EncryptedJsonResponse
-from apps.node_mgmt.models.sidecar import (
-    Node,
-    Collector,
-    CollectorConfiguration,
-    NodeCollectorConfiguration,
-    NodeOrganization,
-)
 from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTaskNode
 from apps.node_mgmt.models.installer import ControllerTaskNode
+from apps.node_mgmt.models.sidecar import Collector, CollectorConfiguration, Node, NodeCollectorConfiguration, NodeOrganization
+from apps.node_mgmt.services.cloudregion import RegionService
+from apps.node_mgmt.services.sidecar_cache import build_configuration_etag_cache_key
 from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
-from apps.node_mgmt.tasks.installer import (
-    converge_controller_install_connectivity_for_node,
-    _matches_install_connectivity_target,
-)
+from apps.node_mgmt.tasks.installer import _matches_install_connectivity_target, converge_controller_install_connectivity_for_node
+from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
+from apps.node_mgmt.utils.crypto_helper import EncryptedJsonResponse
+from apps.node_mgmt.utils.sidecar import format_tags_dynamic
 from apps.node_mgmt.utils.step_tracker import build_step, now_iso, update_step_by_action
 from apps.node_mgmt.utils.task_result_schema import apply_result_envelope, normalize_task_details
-from apps.node_mgmt.utils.sidecar import format_tags_dynamic
-from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
-from apps.core.utils.crypto.aes_crypto import AESCryptor
-from jinja2 import Template as JinjaTemplate
-
-from apps.core.logger import node_logger as logger
 
 
 class Sidecar:
@@ -248,18 +239,49 @@ class Sidecar:
             if Sidecar._is_debounce_elapsed(debounce_cache_key):
                 converge_controller_install_connectivity_for_node.delay(node_id)
 
-    # @staticmethod
-    # def update_groups(node_id: str, groups: list):
-    #     """
-    #     更新节点关联的组织
-    #     :param node_id: 节点ID
-    #     :param groups: 组织列表
-    #     """
-    #     # 删除现有的组织关联
-    #     NodeOrganization.objects.filter(node_id=node_id).delete()
-    #
-    #     # 重新关联新的组织
-    #     Sidecar.asso_groups(node_id, groups)
+    @staticmethod
+    def sync_groups(node_id: str, expected_groups: list):
+        """
+        Incrementally sync node organization associations.
+        Calculates diff between current and expected groups, then adds/removes as needed.
+
+        :param node_id: Node ID
+        :param expected_groups: List of organization IDs the node should belong to
+        """
+        if not expected_groups:
+            # No groups expected - remove all associations
+            removed_count, _ = NodeOrganization.objects.filter(node_id=node_id).delete()
+            if removed_count > 0:
+                logger.info("Removed all %d organization associations for node %s", removed_count, node_id)
+            return
+
+        expected_set = set(expected_groups)
+        current_orgs = set(NodeOrganization.objects.filter(node_id=node_id).values_list("organization", flat=True))
+
+        to_add = expected_set - current_orgs
+        to_remove = current_orgs - expected_set
+
+        if to_remove:
+            removed_count, _ = NodeOrganization.objects.filter(node_id=node_id, organization__in=to_remove).delete()
+            logger.info(
+                "Removed %d organization associations for node %s: %s",
+                removed_count,
+                node_id,
+                list(to_remove),
+            )
+
+        if to_add:
+            NodeOrganization.objects.bulk_create(
+                [NodeOrganization(node_id=node_id, organization=org) for org in to_add],
+                ignore_conflicts=True,
+                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+            )
+            logger.info(
+                "Added %d organization associations for node %s: %s",
+                len(to_add),
+                node_id,
+                list(to_add),
+            )
 
     @staticmethod
     def _fallback_cpu_architecture(node_id: str, request_data: dict) -> str:
@@ -444,10 +466,8 @@ class Sidecar:
                 node_info.pop("cpu_architecture", None)
             Node.objects.filter(id=node_id).update(**node_info)
 
-            # # 更新组织关联(覆盖)
-            # Sidecar.update_groups(
-            #     node_id, tags_data.get(ControllerConstants.GROUP_TAG, [])
-            # )
+            # Incrementally sync organization associations
+            Sidecar.sync_groups(node_id, tags_data.get(ControllerConstants.GROUP_TAG, []))
 
         # 预取相关数据，减少查询次数
         new_obj = Node.objects.prefetch_related("action_set", "collectorconfiguration_set").get(id=node_id)
@@ -826,7 +846,9 @@ class Sidecar:
                 # 如果已经存在关联的自定义配置则跳过，避免覆盖用户配置
                 if CollectorConfiguration.objects.filter(collector=collector_obj, nodes=node).exists():
                     logger.info(
-                        f"Node {node.id} already has a custom configuration for collector {collector_obj.name}, skipping default configuration creation."
+                        "Node %s already has a custom configuration for collector %s, " "skipping default configuration creation.",
+                        node.id,
+                        collector_obj.name,
                     )
                     continue
 

@@ -137,13 +137,17 @@ class S3JSONField(models.CharField):
         pending_attr = self._pending_value_attr_name
         if pending_attr in model_instance.__dict__:
             file_field = model_instance.__dict__.pop(pending_attr)
-            setattr(model_instance, self.attname, file_field)
+            # 直接设 __dict__，不触发 descriptor 的 __set__（避免重新写入 pending 导致下次 save 覆盖数据）
+            model_instance.__dict__[self.attname] = file_field
 
         # 获取字段当前值
         file_field = getattr(model_instance, self.attname)
 
-        # 处理空值
+        # 处理空值：如果内存中为 None 但 DB 里有路径，保留 DB 值不覆盖
         if file_field is None or file_field == "":
+            db_path = model_instance.__dict__.get(self.attname)
+            if isinstance(db_path, str) and db_path:
+                return db_path
             return ""
 
         # 如果已经是文件路径（字符串），说明已经上传过了，直接返回
@@ -261,15 +265,10 @@ class S3JSONField(models.CharField):
         return saved_path
 
     def from_db_value(self, value, expression, connection):
-        """
-        从数据库读取后的处理 - 透明地从 S3 加载 JSON
-
-        这是实现透明替换的关键：用户读取字段时，自动从 S3 下载并解析
-        """
         if not value:
             return None
-
-        return self._load_from_s3(value)
+        # 返回路径字符串，延迟到 descriptor __get__ 访问时才从 S3 加载
+        return value
 
     def to_python(self, value):
         """
@@ -439,24 +438,18 @@ class S3JSONFieldDescriptor:
         self.field = field
 
     def __get__(self, instance, owner):
-        """
-        获取字段值时调用
-
-        确保从 S3 加载数据
-        """
         if instance is None:
             return self
 
-        # 先从实例中获取原始值
         value = instance.__dict__.get(self.field.attname)
 
-        # 如果是文件路径，尝试从 S3 加载
-        if isinstance(value, str):
+        if isinstance(value, str) and value:
             loaded_value = self.field._load_from_s3(value)
-
-            # 更新实例中的值（避免重复加载）
+            if loaded_value is None:
+                # S3 加载失败时保留路径，避免后续 save 把 DB 中的引用清空
+                logger.warning(f"[S3JSONField] Load failed for {value}, preserving path reference")
+                return None
             instance.__dict__[self.field.attname] = loaded_value
-
             return loaded_value
 
         return value

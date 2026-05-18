@@ -3,8 +3,56 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-
 TERMINAL_TASK_STATUSES = {"success", "failed", "callback_failed"}
+
+# Sensitive credential keys that must be removed from stored payloads
+# to prevent credential leakage via task_query API
+SENSITIVE_CREDENTIAL_KEYS = {
+    "password",
+    "private_key_content",
+    "private_key_passphrase",
+    "ansible_password",
+    "ansible_ssh_passphrase",
+    "ansible_become_password",
+}
+
+
+def _sanitize_payload_for_storage(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    Remove sensitive credential fields from payload before storage.
+
+    This prevents credential leakage via task_query API responses.
+    The executor only needs credentials during execution, not for status queries.
+
+    Args:
+        payload: Original task payload that may contain sensitive credentials
+
+    Returns:
+        Sanitized payload with sensitive fields removed and _redacted marker added
+    """
+    if not payload:
+        return payload
+
+    sanitized = dict(payload)
+
+    # Sanitize host_credentials array
+    if "host_credentials" in sanitized and isinstance(sanitized["host_credentials"], list):
+        sanitized_creds = []
+        for cred in sanitized["host_credentials"]:
+            if not isinstance(cred, dict):
+                continue
+            # Keep only non-sensitive fields
+            sanitized_cred = {k: v for k, v in cred.items() if k not in SENSITIVE_CREDENTIAL_KEYS}
+            # Add marker indicating credentials were redacted
+            sanitized_cred["_redacted"] = True
+            sanitized_creds.append(sanitized_cred)
+        sanitized["host_credentials"] = sanitized_creds
+
+    # Remove top-level sensitive fields
+    for key in SENSITIVE_CREDENTIAL_KEYS:
+        sanitized.pop(key, None)
+
+    return sanitized
 
 
 class TaskStore:
@@ -85,7 +133,7 @@ class TaskStore:
                 (
                     task_id,
                     status,
-                    json.dumps(payload, ensure_ascii=False),
+                    json.dumps(_sanitize_payload_for_storage(payload), ensure_ascii=False),
                     json.dumps(callback or {}, ensure_ascii=False),
                     json.dumps({}, ensure_ascii=False),
                     status,
