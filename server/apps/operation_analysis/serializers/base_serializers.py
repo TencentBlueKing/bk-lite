@@ -4,7 +4,8 @@
 # @Author: windyzhao
 from rest_framework import serializers
 
+
 class BaseFormatTimeSerializer(serializers.ModelSerializer):
     # 格式化时间字段
-    created_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
-    updated_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)

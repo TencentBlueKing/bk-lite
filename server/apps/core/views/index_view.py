@@ -1,5 +1,4 @@
 import json
-import logging
 import os
 
 import requests
@@ -8,15 +7,15 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from rest_framework.decorators import api_view
 
+from apps.core.logger import logger
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.rpc.base import RpcClient
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import UserLoginLog
+from apps.system_mgmt.models.login_module import LoginModule
 from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.utils.login_log_utils import log_user_login_from_request
-
-logger = logging.getLogger(__name__)
 
 PORTAL_BRANDING_KEYS = ("portal_name", "portal_logo_url", "portal_favicon_url", "watermark_enabled", "watermark_text")
 
@@ -103,15 +102,13 @@ def verify_wechat_code(code: str) -> dict:
         }
     """
     try:
-        # 获取微信配置
-        client = _create_system_mgmt_client()
-        wechat_settings = client.get_wechat_settings()
-
-        if not wechat_settings.get("result") or not wechat_settings.get("data", {}).get("enabled"):
+        # 直接从数据库获取微信配置，避免通过 NATS 接口暴露 app_secret
+        login_module = LoginModule.objects.filter(source_type="wechat", enabled=True).first()
+        if not login_module:
             return {"success": False, "error": "WeChat login is not enabled"}
 
-        app_id = wechat_settings["data"]["app_id"]
-        app_secret = wechat_settings["data"]["app_secret"]
+        app_id = login_module.app_id
+        app_secret = login_module.decrypted_app_secret
 
         # Step 1: code 换 access_token
         token_url = (
@@ -161,7 +158,7 @@ def verify_wechat_code(code: str) -> dict:
         logger.error("WeChat API timeout")
         return {"success": False, "error": "WeChat API timeout"}
     except Exception as e:
-        logger.error(f"WeChat verification error: {e}")
+        logger.exception(f"WeChat verification error: {e}")
         return {"success": False, "error": str(e)}
 
 
@@ -248,7 +245,6 @@ def login(request):
                     res["data"] = {}
                 res["data"]["redirect_url"] = c_url
                 logger.info(f"Login successful for user: {username}, redirect to: {c_url}")
-
         response = JsonResponse(res)
 
         # Set bklite_token cookie with secure attributes on successful login

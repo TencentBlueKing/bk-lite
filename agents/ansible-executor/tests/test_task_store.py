@@ -1,4 +1,4 @@
-from service.task_store import TaskStore
+from service.task_store import SENSITIVE_CREDENTIAL_KEYS, TaskStore, _sanitize_payload_for_storage
 
 
 def test_claim_task_blocks_active_lease(tmp_path):
@@ -99,3 +99,130 @@ def test_callback_status_marks_success_task_as_callback_failed(tmp_path):
     assert task["status"] == "callback_failed"
     assert task["execution_status"] == "success"
     assert task["callback_status"] == "failed"
+
+
+# ============================================================================
+# Credential Sanitization Tests (Issue #2880)
+# ============================================================================
+
+
+def test_sanitize_payload_removes_password_from_host_credentials():
+    """Verify passwords are removed from host_credentials array."""
+    payload = {
+        "task_id": "test-1",
+        "module": "shell",
+        "host_credentials": [
+            {"host": "10.0.0.1", "user": "root", "password": "secret123", "port": 22},
+            {"host": "10.0.0.2", "user": "admin", "password": "hunter2", "port": 22},
+        ],
+    }
+
+    sanitized = _sanitize_payload_for_storage(payload)
+
+    assert "password" not in sanitized["host_credentials"][0]
+    assert "password" not in sanitized["host_credentials"][1]
+    assert sanitized["host_credentials"][0]["_redacted"] is True
+    assert sanitized["host_credentials"][1]["_redacted"] is True
+    # Non-sensitive fields preserved
+    assert sanitized["host_credentials"][0]["host"] == "10.0.0.1"
+    assert sanitized["host_credentials"][0]["user"] == "root"
+    assert sanitized["host_credentials"][0]["port"] == 22
+
+
+def test_sanitize_payload_removes_private_key_content():
+    """Verify SSH private keys are removed from host_credentials."""
+    payload = {
+        "task_id": "test-2",
+        "host_credentials": [
+            {
+                "host": "10.0.0.1",
+                "user": "ubuntu",
+                "private_key_content": "-----BEGIN RSA PRIVATE KEY-----\nMIIE...",
+                "private_key_passphrase": "keypass123",
+            },
+        ],
+    }
+
+    sanitized = _sanitize_payload_for_storage(payload)
+
+    assert "private_key_content" not in sanitized["host_credentials"][0]
+    assert "private_key_passphrase" not in sanitized["host_credentials"][0]
+    assert sanitized["host_credentials"][0]["_redacted"] is True
+    assert sanitized["host_credentials"][0]["host"] == "10.0.0.1"
+
+
+def test_sanitize_payload_removes_top_level_sensitive_fields():
+    """Verify top-level sensitive fields are removed."""
+    payload = {
+        "task_id": "test-3",
+        "module": "ping",
+        "password": "should_be_removed",
+        "private_key_content": "-----BEGIN...",
+        "ansible_password": "also_removed",
+    }
+
+    sanitized = _sanitize_payload_for_storage(payload)
+
+    assert "password" not in sanitized
+    assert "private_key_content" not in sanitized
+    assert "ansible_password" not in sanitized
+    # Non-sensitive fields preserved
+    assert sanitized["task_id"] == "test-3"
+    assert sanitized["module"] == "ping"
+
+
+def test_sanitize_payload_handles_empty_payload():
+    """Verify empty/None payloads are handled gracefully."""
+    assert _sanitize_payload_for_storage({}) == {}
+    assert _sanitize_payload_for_storage(None) is None
+
+
+def test_sanitize_payload_handles_missing_host_credentials():
+    """Verify payloads without host_credentials work correctly."""
+    payload = {"task_id": "test-4", "module": "ping", "hosts": "all"}
+
+    sanitized = _sanitize_payload_for_storage(payload)
+
+    assert sanitized == payload
+
+
+def test_create_if_absent_stores_sanitized_payload(tmp_path):
+    """Verify create_if_absent sanitizes payload before storage."""
+    store = TaskStore(str(tmp_path / "task.db"))
+
+    payload_with_creds = {
+        "task_id": "cred-test",
+        "host_credentials": [
+            {"host": "10.0.0.1", "user": "root", "password": "secret"},
+        ],
+    }
+
+    store.create_if_absent(
+        "cred-test",
+        "queued",
+        payload_with_creds,
+        {},
+        "2026-04-23T00:00:00+00:00",
+    )
+
+    task = store.get_task("cred-test")
+
+    # Verify credentials are NOT in stored payload
+    assert "password" not in task["payload"]["host_credentials"][0]
+    assert task["payload"]["host_credentials"][0]["_redacted"] is True
+    # Non-sensitive data preserved
+    assert task["payload"]["host_credentials"][0]["host"] == "10.0.0.1"
+    assert task["payload"]["host_credentials"][0]["user"] == "root"
+
+
+def test_sensitive_credential_keys_is_comprehensive():
+    """Verify all known sensitive patterns are in the constant."""
+    expected_keys = {
+        "password",
+        "private_key_content",
+        "private_key_passphrase",
+        "ansible_password",
+        "ansible_ssh_passphrase",
+        "ansible_become_password",
+    }
+    assert SENSITIVE_CREDENTIAL_KEYS == expected_keys

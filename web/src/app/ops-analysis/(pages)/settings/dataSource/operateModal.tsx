@@ -16,6 +16,7 @@ import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
+import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 import {
   OperateModalProps,
   ParamItem,
@@ -309,7 +310,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           if (!val) {
             newValue = '';
           } else if (val.format) {
-            newValue = val.format('YYYY-MM-DD HH:mm:ss');
+            newValue = formatOpsRequestTime(val);
           } else {
             newValue = val;
           }

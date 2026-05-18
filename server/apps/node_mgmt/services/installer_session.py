@@ -1,13 +1,14 @@
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.installer import InstallerConstants
-from config.components.nats import NATS_NAMESPACE
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import SidecarEnv
 from apps.node_mgmt.services.install_token import InstallTokenService
 from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.token_auth import generate_node_token
+from config.components.nats import NATS_NAMESPACE
 
 
 class InstallerSessionService:
@@ -65,11 +66,22 @@ class InstallerSessionService:
             raise BaseAppException(f"Missing NODE_SERVER_URL in cloud region {token_data['cloud_region_id']}")
 
         nats_servers = envs.get(NodeConstants.NATS_SERVERS_KEY)
-        # TODO: temporary fallback for rollout. Split installer direct-download
-        # access into a dedicated download-only NATS account/bucket permission
-        # model instead of reusing admin credentials.
-        nats_username = envs.get("NATS_ADMIN_USERNAME")
-        nats_password = envs.get(NodeConstants.NATS_ADMIN_PASSWORD_KEY)
+
+        # Prefer dedicated installer credentials; fall back to admin credentials with warning
+        nats_username = envs.get(NodeConstants.NATS_INSTALLER_USERNAME_KEY)
+        nats_password = envs.get(NodeConstants.NATS_INSTALLER_PASSWORD_KEY)
+
+        if not nats_username or not nats_password:
+            # Fallback to admin credentials (legacy deployments)
+            logger.warning(
+                "NATS_INSTALLER_USERNAME/PASSWORD not configured for cloud region %s, "
+                "falling back to NATS_ADMIN credentials. Consider configuring dedicated "
+                "installer credentials with minimal permissions.",
+                token_data["cloud_region_id"],
+            )
+            nats_username = envs.get("NATS_ADMIN_USERNAME")
+            nats_password = envs.get(NodeConstants.NATS_ADMIN_PASSWORD_KEY)
+
         installer_bucket = NATS_NAMESPACE
         if not nats_servers or not nats_username or not nats_password:
             raise BaseAppException("Missing NATS direct download configuration")

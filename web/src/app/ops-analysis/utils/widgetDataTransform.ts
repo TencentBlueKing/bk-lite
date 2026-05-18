@@ -5,6 +5,7 @@ import type {
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
+import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 
 export type BindableParamType = 'string' | 'timeRange';
 
@@ -79,8 +80,8 @@ export const formatTimeRange = (timeParams: any): string[] => {
     startTime = dayjs().subtract(7, 'day').valueOf();
   }
 
-  const startTimeStr = dayjs(startTime).format('YYYY-MM-DD HH:mm:ss');
-  const endTimeStr = dayjs(endTime).format('YYYY-MM-DD HH:mm:ss');
+  const startTimeStr = formatOpsRequestTime(startTime);
+  const endTimeStr = formatOpsRequestTime(endTime);
 
   return [startTimeStr, endTimeStr];
 };
@@ -92,8 +93,8 @@ const formatTimeRangeForSignature = (timeParams: any): unknown => {
 
   if (timeParams && Array.isArray(timeParams) && timeParams.length === 2) {
     return [
-      dayjs(timeParams[0]).format('YYYY-MM-DD HH:mm:ss'),
-      dayjs(timeParams[1]).format('YYYY-MM-DD HH:mm:ss'),
+      formatOpsRequestTime(timeParams[0]),
+      formatOpsRequestTime(timeParams[1]),
     ];
   }
 
@@ -103,8 +104,8 @@ const formatTimeRangeForSignature = (timeParams: any): unknown => {
     }
 
     return {
-      start: dayjs(timeParams.start).format('YYYY-MM-DD HH:mm:ss'),
-      end: dayjs(timeParams.end).format('YYYY-MM-DD HH:mm:ss'),
+      start: formatOpsRequestTime(timeParams.start),
+      end: formatOpsRequestTime(timeParams.end),
     };
   }
 

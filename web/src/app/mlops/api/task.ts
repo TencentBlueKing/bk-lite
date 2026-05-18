@@ -54,13 +54,18 @@ const useMlopsTaskApi = () => {
   };
 
   // 获取状态指标
-  const getTrainTaskMetrics = async (id: string, activeTap: string) => {
-    return await get(`/mlops/${TRAINJOB_MAP[activeTap]}/runs_metrics_list/${id}`)
+  const getTrainTaskMetrics = async (trainJobId: number | string, runId: string, activeTap: string) => {
+    return await get(`/mlops/${TRAINJOB_MAP[activeTap]}/${trainJobId}/runs/${runId}/metrics_list`)
   };
 
   // 获取具体指标信息
-  const getTrainTaskMetricsDetail = async (id: string, metrics_name: string, activeTap: string) => {
-    return await get(`/mlops/${TRAINJOB_MAP[activeTap]}/runs_metrics_history/${id}/${metrics_name}`);
+  const getTrainTaskMetricsDetail = async (
+    trainJobId: number | string,
+    runId: string,
+    metrics_name: string,
+    activeTap: string
+  ) => {
+    return await get(`/mlops/${TRAINJOB_MAP[activeTap]}/${trainJobId}/runs/${runId}/metrics_history/${metrics_name}`);
   };
 
   // 新建异常检测训练任务
@@ -187,8 +192,8 @@ const useMlopsTaskApi = () => {
   };
 
   // 获取时间序列模型文件URL
-  const getTimeseriesPredictModelURL = async (run_id: string) => {
-    return await get(`/mlops/timeseries_predict_train_jobs/download_model/${run_id}/`);
+  const getTimeseriesPredictModelURL = async (trainJobId: number | string, runId: string) => {
+    return await get(`/mlops/timeseries_predict_train_jobs/${trainJobId}/runs/${runId}/download_model/`);
   };
 
 
