@@ -1,5 +1,7 @@
 import uuid
 
+from django.db import transaction
+
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.log.constants.alert_policy import AlertConstants
 from apps.log.constants.database import DatabaseConstants
@@ -717,45 +719,47 @@ class LogPolicyScan:
             snapshot_time: 快照时间
         """
         try:
-            # 获取或创建快照记录
-            snapshot_obj, created = AlertSnapshot.objects.get_or_create(
-                alert_id=alert_id,
-                defaults={
-                    "policy_id": policy_id,
-                    "source_id": source_id,
-                    "snapshots": [],
-                },
-            )
+            with transaction.atomic():
+                snapshot_obj, created = AlertSnapshot.objects.get_or_create(
+                    alert_id=alert_id,
+                    defaults={
+                        "policy_id": policy_id,
+                        "source_id": source_id,
+                        "snapshots": [],
+                    },
+                )
+                if not created:
+                    # Re-fetch with row lock to prevent lost-update on concurrent appends
+                    snapshot_obj = AlertSnapshot.objects.select_for_update().get(pk=snapshot_obj.pk)
 
-            # 如果有事件数据，添加到snapshots列表末尾
-            if event_objs:
-                # 优化：获取已存在的事件ID集合，避免重复查询
-                existing_event_ids = {s.get("event_id") for s in snapshot_obj.snapshots if s.get("type") == "event" and s.get("event_id")}
+                # 如果有事件数据，添加到snapshots列表末尾
+                if event_objs:
+                    # 优化：获取已存在的事件ID集合，避免重复查询
+                    existing_event_ids = {s.get("event_id") for s in snapshot_obj.snapshots if s.get("type") == "event" and s.get("event_id")}
 
-                # 批量构建快照数据
-                new_snapshots = []
-                for event_obj in event_objs:
-                    # 跳过已存在的事件
-                    if event_obj.id in existing_event_ids:
-                        continue
+                    # 批量构建快照数据
+                    new_snapshots = []
+                    for event_obj in event_objs:
+                        # 跳过已存在的事件
+                        if event_obj.id in existing_event_ids:
+                            continue
 
-                    # 获取事件的原始数据
-                    raw_data = event_raw_data_map.get(event_obj.id, {})
+                        # 获取事件的原始数据
+                        raw_data = event_raw_data_map.get(event_obj.id, {})
 
-                    event_snapshot = {
-                        "type": "event",
-                        "event_id": event_obj.id,
-                        "event_time": event_obj.event_time.isoformat() if event_obj.event_time else None,
-                        "snapshot_time": snapshot_time.isoformat(),
-                        "raw_data": raw_data,
-                    }
-                    new_snapshots.append(event_snapshot)
+                        event_snapshot = {
+                            "type": "event",
+                            "event_id": event_obj.id,
+                            "event_time": event_obj.event_time.isoformat() if event_obj.event_time else None,
+                            "snapshot_time": snapshot_time.isoformat(),
+                            "raw_data": raw_data,
+                        }
+                        new_snapshots.append(event_snapshot)
 
-                # 批量添加新快照
-                if new_snapshots:
-                    snapshot_obj.snapshots.extend(new_snapshots)
-                    # 保存更新
-                    snapshot_obj.save(update_fields=["snapshots", "updated_at"])
+                    # 批量添加新快照
+                    if new_snapshots:
+                        snapshot_obj.snapshots.extend(new_snapshots)
+                        snapshot_obj.save(update_fields=["snapshots", "updated_at"])
 
         except Exception as e:
             logger.error(f"Failed to update alert snapshot for alert {alert_id}: {e}")
