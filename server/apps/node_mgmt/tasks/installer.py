@@ -1,3 +1,4 @@
+import logging
 import uuid
 import json
 import queue
@@ -57,6 +58,7 @@ from apps.node_mgmt.utils.task_result_schema import (
 from config.components.nats import NATS_NAMESPACE
 from nats_client.clients import subscribe_lines_sync
 
+logger = logging.getLogger(__name__)
 
 CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS = InstallerConstants.CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS
 
@@ -982,7 +984,27 @@ def install_collector(task_id):
     """安装采集器"""
     task_obj = CollectorTask.objects.filter(id=task_id).first()
     if not task_obj:
-        raise BaseAppException("Task not found")
+        logger.error("install_collector: task_id=%s not found", task_id)
+        return
+
+    try:
+        _install_collector_inner(task_obj)
+    except Exception:
+        logger.exception("install_collector: unhandled exception for task_id=%s", task_id)
+        task_obj.collectortasknode_set.filter(status="waiting").update(
+            status="error",
+            result=apply_result_envelope(
+                {},
+                overall_status="error",
+                final_message="Collector installation failed due to an unexpected error",
+                failure=None,
+            ),
+        )
+        task_obj.status = "finished"
+        task_obj.save()
+
+
+def _install_collector_inner(task_obj):
     package_obj = PackageVersion.objects.filter(id=task_obj.package_version_id).first()
     if not package_obj:
         raise BaseAppException("Package version not found")
