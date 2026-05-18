@@ -4,10 +4,9 @@
 
 - [x] **Task 1**: 新增 `verify_wechat_code()` 函数
   - 文件：`server/apps/core/views/index_view.py`
-  - 实现 `_mock_wechat_verify()` - Mock 模式验证
-  - 实现 `_real_wechat_verify()` - 真实微信 API 验证
-  - 实现 `verify_wechat_code()` - 统一入口，根据配置选择模式
-  - Mock 返回格式与真实 API 一致（openid 28位，支持 emoji 等）
+  - 直接查询 `LoginModule` 数据库获取 `app_id` 和 `app_secret`（不再通过 NATS 接口）
+  - 调用微信 API 验证 code 并获取用户信息
+  - 返回格式：`{success, openid, nickname, unionid?, headimgurl?, error?, errcode?}`
 
 - [x] **Task 2**: 新增 `wechat_login()` 视图
   - 文件：`server/apps/core/views/index_view.py`
@@ -27,6 +26,18 @@
   - 文件：`server/apps/core/urls.py` - 移除路由 ✓
   - 文件：`server/apps/core/views/index_view.py` - 移除视图函数 ✓
 
+- [x] **Task 10**: 禁止 NATS 接口返回 `app_secret`
+  - 文件：`server/apps/system_mgmt/nats_api.py`
+  - `get_wechat_settings()` 不再返回 `app_secret` 字段
+  - 前端只能获取 `app_id` 和 `redirect_uri`
+
+- [x] **Task 11**: `verify_wechat_code()` 改用数据库直接查询
+  - 文件：`server/apps/core/views/index_view.py`
+  - 添加 `from apps.system_mgmt.models.login_module import LoginModule`
+  - 使用 `LoginModule.objects.filter(source_type="wechat", enabled=True).first()` 获取配置
+  - 使用 `login_module.decrypted_app_secret` 获取解密后的 `app_secret`
+  - 不再依赖 NATS 接口获取敏感信息
+
 ## 前端任务
 
 - [x] **Task 6**: 修改 `wechat-popup-login/route.ts`
@@ -42,6 +53,11 @@
   - 移除 profile() 中对 `wechat_user_register` 的调用 ✓
   - 注意：clientSecret 仍在前端配置中，但不再用于 API 调用
 
+- [x] **Task 12**: 更新 `authOptions.ts` 移除 `app_secret` 依赖
+  - 文件：`web/src/constants/authOptions.ts`
+  - L164: 条件检查从 `wechatConfig.app_id && wechatConfig.app_secret` 改为 `wechatConfig.app_id`
+  - L168: `clientSecret` 传空字符串 `""`（不再需要，OAuth 验证已移至后端）
+
 ## 测试任务
 
 - [x] **Task 8**: 添加单元测试
@@ -49,6 +65,7 @@
   - 测试 `verify_wechat_code()` 函数 ✓ (6 tests)
   - 测试 `wechat_login()` 视图 ✓ (6 tests)
   - 所有 12 个测试通过 ✓
+  - 更新 mock 从 `_create_system_mgmt_client` 改为 `LoginModule` ✓
 
 ## 验证任务
 
@@ -56,3 +73,28 @@
   - 部署到测试环境
   - 使用真实微信扫码完成登录流程
   - 确认 token 和 cookie 正确设置
+
+## 安全修复总结
+
+### 修复前（存在漏洞）
+```
+前端 → NATS API (get_wechat_settings) → 返回 app_secret → 前端可获取 ❌
+前端 → 直接调用微信 API（携带 app_secret）→ 敏感信息暴露 ❌
+```
+
+### 修复后（安全）
+```
+前端 → NATS API (get_wechat_settings) → 只返回 app_id + redirect_uri ✓
+前端 → 后端 /api/wechat_login/ (只传 code) → 后端查询数据库获取 app_secret → 后端调用微信 API ✓
+```
+
+### 关键文件变更
+| 文件 | 变更 |
+|------|------|
+| `server/apps/core/views/index_view.py` | 新增 `verify_wechat_code()`, `wechat_login()`；导入 `LoginModule`；直接查询数据库 |
+| `server/apps/core/urls.py` | 新增 `api/wechat_login/` 路由；移除 `api/wechat_user_register/` |
+| `server/apps/system_mgmt/nats_api.py` | `get_wechat_settings()` 不再返回 `app_secret` |
+| `server/apps/core/tests/views/test_wechat_login.py` | 12 个单元测试，mock `LoginModule` |
+| `web/src/app/api/wechat-popup-login/route.ts` | 简化为只传 code 到后端 |
+| `web/src/lib/wechatProvider.ts` | 使用后端 `/api/wechat_login/` |
+| `web/src/constants/authOptions.ts` | 移除 `app_secret` 检查，`clientSecret` 传空字符串 |

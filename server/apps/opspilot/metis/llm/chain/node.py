@@ -1041,11 +1041,11 @@ class ToolsNodes(BasicNode):
             selected_labels = [opt["label"] for opt in options_data if opt["key"] in selected]
 
             if source == "user":
-                return f"用户选择了: {', '.join(selected_labels)} (keys: {selected})"
+                return f"用户选择了: {', '.join(selected_labels)} (keys: {selected})。请根据用户的选择继续执行下一步操作，不要停止。"
             elif source == "timeout":
-                return f"用户未在规定时间内选择，已使用默认选项: " f"{', '.join(selected_labels)} (keys: {selected})"
+                return f"用户未在规定时间内选择，已使用默认选项: " f"{', '.join(selected_labels)} (keys: {selected})。请根据默认选项继续执行下一步操作，不要停止。"
             else:
-                return f"自动选择: {', '.join(selected_labels)} (keys: {selected})"
+                return f"自动选择: {', '.join(selected_labels)} (keys: {selected})。请继续执行下一步操作，不要停止。"
 
         choice_tool = StructuredTool.from_function(
             coroutine=_request_choice,
@@ -1123,6 +1123,8 @@ class ToolsNodes(BasicNode):
         approval_tool_instance = self._build_approval_tool() if (self.all_tools or self.tools) else None
         # 用户选择工具（LLM 需要用户从多个选项中选择时调用）
         choice_tool_instance = self._build_choice_tool() if (self.all_tools or self.tools) else None
+        # 选择后续行追踪（防止 LLM 在 request_user_choice 后停止）
+        choice_continuation = {"retried_at_step": -1}
 
         # ========== 步骤进度发射辅助 ==========
         def _emit_step_progress(max_steps: int, status: str, description: str = "", tool_name: str = None, step_elapsed: float = 0.0):
@@ -1385,6 +1387,41 @@ class ToolsNodes(BasicNode):
                 messages = list(messages) + [HumanMessage(content=wrapup_prompt)]
                 logger.info(f"[{trace_id}] Token 预算软阈值触发 wrap-up (step={step_counter['count']}, {used_pct}%)")
 
+            # ========== 选择后续行预处理：检测 request_user_choice 结果并注入提示 ==========
+            # 策略：检查最近一条 AIMessage 是否调用了 request_user_choice。
+            # 如果是，说明当前步骤紧跟用户选择，需要强制 LLM 继续调用工具。
+            _has_pending_choice = False
+            if choice_tool_instance:
+                for _rmsg in reversed(messages):
+                    _msg_type = getattr(_rmsg, "type", "")
+                    if _msg_type == "ai":
+                        _tool_calls = getattr(_rmsg, "tool_calls", []) or []
+                        for _tc in _tool_calls:
+                            if isinstance(_tc, dict) and _tc.get("name") == "request_user_choice":
+                                _has_pending_choice = True
+                        break  # 只检查最近一条 AIMessage
+
+                if _has_pending_choice:
+                    from langchain_core.messages import SystemMessage as _PreSM
+
+                    messages = list(messages) + [
+                        _PreSM(
+                            content="[系统] 用户已完成选择，请基于选择结果调用下一个工具继续执行任务。"
+                        )
+                    ]
+                    logger.info(
+                        f"[{trace_id}] agent_node: 最近 AIMessage 调用了 request_user_choice，"
+                        f"注入续行提示 (step={step_counter['count']})"
+                    )
+
+                # DEBUG: 写入调试文件（临时）
+                try:
+                    with open("/Users/qiu/projects/bk-lite/logs/choice_debug.log", "a") as _dbg_f:
+                        _dbg_f.write(f"[step={step_counter['count']}] _has_pending_choice={_has_pending_choice}, "
+                                     f"msg_count={len(messages)}\n")
+                except Exception:
+                    pass
+
             # 获取 LLM 并绑定工具
             llm = get_llm_client(graph_request)
             if current_tools:
@@ -1412,6 +1449,13 @@ class ToolsNodes(BasicNode):
                             bind_kwargs["tool_choice"] = "any"
                         elif tool_choice_cfg.mode == "specific" and tool_choice_cfg.tool_name:
                             bind_kwargs["tool_choice"] = tool_choice_cfg.tool_name
+                # 选择后续行：用户刚完成 request_user_choice，强制 LLM 必须调用工具
+                if _has_pending_choice and "tool_choice" not in bind_kwargs:
+                    bind_kwargs["tool_choice"] = "any"
+                    logger.info(
+                        f"[{trace_id}] 选择后续行: 用户刚完成 request_user_choice，"
+                        f"强制 tool_choice='any' (step={step_counter['count']})"
+                    )
                 llm_with_tools = llm.bind_tools(current_tools, **bind_kwargs)
             else:
                 llm_with_tools = llm
@@ -1464,9 +1508,58 @@ class ToolsNodes(BasicNode):
                 f"[{trace_id}] ReAct agent_node 返回: message_type={type(response).__name__}, "
                 f"tool_call_count={len(tool_calls)}, content_preview={str(getattr(response, 'content', ''))[:200]!r}"
             )
+
+            # DEBUG: 写入调试文件（临时）
+            try:
+                with open("/Users/qiu/projects/bk-lite/logs/choice_debug.log", "a") as _dbg_f:
+                    _dbg_f.write(f"[step={step_counter['count']}] LLM returned: tool_call_count={len(tool_calls)}, "
+                                 f"_has_pending_choice={_has_pending_choice}, "
+                                 f"tool_names={[tc.get('name','?') for tc in tool_calls] if tool_calls else 'NONE'}, "
+                                 f"content_preview={str(getattr(response, 'content', ''))[:150]}\n")
+            except Exception:
+                pass
             if tool_calls:
                 logger.info(f"[{trace_id}] ReAct agent_node tool_calls: {tool_calls}")
+                # 重置续行标记
+                choice_continuation["retried_at_step"] = -1
             else:
+                # ========== 选择后强制续行（安全网）==========
+                # 正常情况下，预调用阶段的 tool_choice="any" 已强制 LLM 调用工具。
+                # 此处作为二次保底：若仍无 tool_calls 且刚执行过 request_user_choice，再重试一次。
+                current_step = step_counter["count"]
+                already_retried = choice_continuation["retried_at_step"] == current_step
+
+                if _has_pending_choice and not already_retried:
+                    choice_continuation["retried_at_step"] = current_step
+                    from langchain_core.messages import SystemMessage as _RetrySystemMessage
+
+                    nudge_msg = _RetrySystemMessage(
+                        content="[系统] 用户已完成选择，请根据选择结果调用下一个工具继续执行。"
+                    )
+                    logger.info(
+                        f"[{trace_id}] agent_node: request_user_choice 后 LLM 未调用工具（预调用 tool_choice=any 未生效），"
+                        f"二次重试 (step={current_step})"
+                    )
+                    retry_messages = list(messages) + [response, nudge_msg]
+                    try:
+                        import asyncio as _asyncio_retry
+
+                        forced_llm = llm.bind_tools(current_tools, tool_choice="any")
+                        if llm_timeout:
+                            response = await _asyncio_retry.wait_for(
+                                forced_llm.ainvoke(retry_messages), timeout=llm_timeout
+                            )
+                        else:
+                            response = await forced_llm.ainvoke(retry_messages)
+                        tool_calls = getattr(response, "tool_calls", None) or []
+                        if tool_calls:
+                            logger.info(f"[{trace_id}] agent_node: 续行二次重试成功，tool_calls: {tool_calls}")
+                            return {"messages": [nudge_msg, response]}
+                        else:
+                            logger.warning(f"[{trace_id}] agent_node: 续行二次重试后仍无 tool_calls")
+                    except Exception as e:
+                        logger.warning(f"[{trace_id}] agent_node: 续行二次重试失败: {e}")
+
                 # LLM 未调用工具 → 循环即将自然结束
                 _emit_step_progress(graph_request.max_steps, "completed", description="任务完成")
 

@@ -305,7 +305,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                     t('opsAnalysisSidebar.addDash'),
                     '',
                     item,
-                    'dashboard'
+                    'dashboard',
                   );
                 }}
               >
@@ -377,7 +377,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                   t('opsAnalysisSidebar.addGroup'),
                   '',
                   item,
-                  'directory'
+                  'directory',
                 );
               }}
             >
@@ -431,13 +431,10 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
               key="export"
               onClick={(e) => {
                 stopEventPropagation(e.domEvent);
-                if (!hasPermission(['EditChart'])) return;
                 handleExport(item);
               }}
             >
-              <PermissionWrapper requiredPermissions={['EditChart']}>
-                {t('opsAnalysisSidebar.exportYaml')}
-              </PermissionWrapper>
+              {t('opsAnalysisSidebar.exportYaml')}
             </Menu.Item>
           )}
         </Menu>
