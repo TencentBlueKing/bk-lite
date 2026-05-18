@@ -1,7 +1,7 @@
 {# Macro: Check if all dimensions are non-null #}
 {% macro all_dimensions_present(dimensions) %}
   {%- for dim_name in dimensions -%}
-    {{ dim_name }} IS NOT NULL{{ " OR " if not loop.last else "" }}
+    NULLIF(CAST({{ dim_name }} AS VARCHAR), '') IS NOT NULL{{ " OR " if not loop.last else "" }}
   {%- endfor -%}
 {% endmacro %}
 
@@ -9,12 +9,10 @@
 {% macro effective_dimension(dimensions) %}
 CASE
     WHEN {{ all_dimensions_present(dimensions) }} THEN
-      COALESCE(
       {% for dim_name in dimensions -%}
-        NULLIF(CAST({{ dim_name }} AS VARCHAR), '')
-        {{ ", " if not loop.last else "" }}
+        '{{ dim_name }}=' || COALESCE(NULLIF(CAST({{ dim_name }} AS VARCHAR), ''), '<empty>')
+        {{ " || '|' || " if not loop.last else "" }}
       {%- endfor %}
-    )
     {{ " " }}ELSE external_id
   END
 {%- endmacro %}

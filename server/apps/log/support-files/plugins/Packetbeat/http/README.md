@@ -1,8 +1,8 @@
-# Packetbeat HTTP 协议配置说明
+# Packetbeat HTTP 流量配置说明
 
 ## 概述
 
-HTTP 协议模块用于监控 HTTP 网络流量，捕获 HTTP 请求和响应数据，支持性能分析和安全审计。
+HTTP 流量模块用于监控 HTTP 网络流量，捕获 HTTP 请求和响应数据，支持性能分析和安全审计。
 
 ## 配置参数
 

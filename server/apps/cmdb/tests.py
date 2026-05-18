@@ -217,6 +217,48 @@ def test_instance_association_map_batches_graph_queries_by_direction():
     ]
 
 
+def test_check_instances_permission_limits_query_to_target_instance_ids():
+    from apps.cmdb.services.instance import InstanceManage
+
+    instances = [
+        {"_id": 101, "inst_name": "host-101"},
+        {"_id": 102, "inst_name": "host-102"},
+    ]
+
+    graph_client = MagicMock()
+    graph_client.query_entity.return_value = (instances, None)
+
+    graph_context = MagicMock()
+    graph_context.__enter__.return_value = graph_client
+    graph_context.__exit__.return_value = False
+
+    with (
+        patch(
+            "apps.cmdb.services.instance.InstanceManage.get_permission_params",
+            return_value=[{"field": "organization", "type": "list_any[]", "value": [1]}],
+        ),
+        patch(
+            "apps.cmdb.services.instance.GraphClient",
+            return_value=graph_context,
+        ),
+    ):
+        InstanceManage.check_instances_permission(
+            instances=instances,
+            model_id="host",
+            user_groups=[{"id": 1}],
+            roles=[],
+        )
+
+    graph_client.query_entity.assert_called_once_with(
+        label="instance",
+        params=[
+            {"field": "model_id", "type": "str=", "value": "host"},
+            {"field": "id", "type": "id[]", "value": [101, 102]},
+            {"field": "organization", "type": "list_any[]", "value": [1]},
+        ],
+    )
+
+
 def test_get_relation_instances_falls_back_to_per_instance_when_batch_query_fails():
     from apps.cmdb.services.subscription_trigger import SubscriptionTriggerService
 

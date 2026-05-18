@@ -106,8 +106,7 @@ class LogPolicyScan:
 
         except Exception as e:
             logger.error(f"keyword alert detection failed for policy {self.policy.id}: {e}")
-
-        return events
+            raise
 
     def aggregate_alert_detection(self):
         """聚合告警检测"""
@@ -174,8 +173,7 @@ class LogPolicyScan:
 
         except Exception as e:
             logger.error(f"aggregate alert detection failed for policy {self.policy.id}: {e}")
-
-        return events
+            raise
 
     def _build_query_with_log_groups(self, base_query):
         """构建包含日志分组规则的查询语句

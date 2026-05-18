@@ -2,6 +2,7 @@ import { useState } from 'react';
 import dayjs, { Dayjs } from 'dayjs';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
+import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 
 type FormParamValue = string | number | boolean | Dayjs | [number, number] | null;
 type FormParams = Record<string, FormParamValue>;
@@ -76,9 +77,9 @@ export const useDataSourceManager = () => {
       if (param.type === 'date' && value) {
         // 转换 Dayjs 为字符串
         if (dayjs.isDayjs(value)) {
-          processedParams[param.name] = value.format('YYYY-MM-DD HH:mm:ss');
+          processedParams[param.name] = formatOpsRequestTime(value);
         } else if (typeof value === 'string' || typeof value === 'number') {
-          processedParams[param.name] = value;
+          processedParams[param.name] = formatOpsRequestTime(value);
         }
       } else if (value !== undefined && value !== null) {
         // 其他类型直接使用（已经是正确的类型）

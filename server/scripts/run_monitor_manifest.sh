@@ -15,7 +15,7 @@ KEEP_WORKDIR="${KEEP_WORKDIR:-1}"
 TEMPLATE_DIR="${SCRIPT_DIR}/templates"
 METRIC_READY_LOOKBACK_SECONDS="${METRIC_READY_LOOKBACK_SECONDS:-600}"
 METRIC_READY_RETRIES="${METRIC_READY_RETRIES:-30}"
-METRIC_READY_INTERVAL_SECONDS="${METRIC_READY_INTERVAL_SECONDS:-10}"
+METRIC_READY_INTERVAL_SECONDS="${METRIC_READY_INTERVAL_SECONDS:-20}"
 MYSQL_GROUP_ID="${MYSQL_GROUP_ID:-1}"
 export MYSQL_GROUP_ID
 DEFAULT_NODEMGMT_WORK_NODE="${DEFAULT_NODEMGMT_WORK_NODE:-}"
@@ -226,6 +226,7 @@ PY
 list_registration_keys() {
   MANIFEST_PATH="${MANIFEST_PATH}" "${DJANGO_PYTHON}" <<'PY'
 import os
+import ast
 import yaml
 
 with open(os.environ["MANIFEST_PATH"], "r", encoding="utf-8") as f:
@@ -387,6 +388,15 @@ for index, item in enumerate(reg["instances"]):
     if "group_ids" not in inst:
         inst["group_ids"] = deepcopy(default_group_ids)
     inst["node_ids"] = resolve_single_node(inst, index)
+    if reg["collect_type"] == "host":
+        inst["instance_type"] = "os"
+        instance_id = str(inst.get("instance_id") or "").strip()
+        if not instance_id:
+            fail(
+                f"instances[{index}].instance_id is required for host registrations; "
+                "script will not generate synthetic cmd_* host instance ids"
+            )
+        inst["instance_id"] = instance_id
     inst.pop("install_agent", None)
     inst.pop("node_name", None)
     inst.pop("node_ip", None)
@@ -416,6 +426,7 @@ import django
 django.setup()
 
 from apps.node_mgmt.models import Node, PackageVersion
+from apps.node_mgmt.serializers.installer import ControllerInstallRequestSerializer
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.tasks.installer import (
     install_controller,
@@ -426,7 +437,7 @@ from apps.node_mgmt.tasks.installer import (
 manifest_path = os.environ["MANIFEST_PATH"]
 reg_key = os.environ["REG_KEY"]
 out_path = os.environ["OUT_PATH"]
-default_work_node = os.environ.get("DEFAULT_NODEMGMT_WORK_NODE", "").strip()
+default_work_node = os.environ.get("DEFAULT_NODEMGMT_WORK_NODE", "default").strip() or "default"
 timeout_seconds = int(os.environ.get("INSTALL_AGENT_TIMEOUT_SECONDS", "900"))
 poll_interval_seconds = int(os.environ.get("INSTALL_AGENT_POLL_INTERVAL_SECONDS", "10"))
 
@@ -500,10 +511,48 @@ def validate_install_agent(instance):
         fail("install_agent.cpu_architecture is required")
     if install["os"] != "linux":
         fail("only linux install_agent is supported currently")
+    if install.get("package_id") not in (None, ""):
+        try:
+            install["package_id"] = int(install["package_id"])
+        except (TypeError, ValueError):
+            fail("install_agent.package_id must be an integer when provided")
+    if install.get("package_version") not in (None, ""):
+        install["package_version"] = str(install["package_version"]).strip()
+        if not install["package_version"]:
+            fail("install_agent.package_version cannot be blank when provided")
     return install
 
 
-def get_default_controller_package_id():
+def resolve_controller_package_id(install):
+    explicit_package_id = install.get("package_id")
+    if explicit_package_id:
+        package = PackageVersion.objects.filter(
+            id=explicit_package_id,
+            type="controller",
+            os="linux",
+        ).first()
+        if not package:
+            fail(f"controller package_id not found: {explicit_package_id}")
+        return package.id
+
+    explicit_package_version = install.get("package_version")
+    if explicit_package_version:
+        package = PackageVersion.objects.filter(
+            type="controller",
+            os="linux",
+            version=explicit_package_version,
+            cpu_architecture=install.get("cpu_architecture", ""),
+        ).order_by("-id").first()
+        if not package:
+            package = PackageVersion.objects.filter(
+                type="controller",
+                os="linux",
+                version=explicit_package_version,
+            ).order_by("-id").first()
+        if not package:
+            fail(f"controller package_version not found: {explicit_package_version}")
+        return package.id
+
     package = PackageVersion.objects.filter(type="controller", os="linux", version="latest").order_by("-id").first()
     if package:
         return package.id
@@ -517,18 +566,19 @@ def start_install(instance, install):
     if not default_work_node:
         fail("DEFAULT_NODEMGMT_WORK_NODE is not configured")
 
-    package_id = get_default_controller_package_id()
+    package_id = resolve_controller_package_id(install)
     host = instance.get("node_ip") or defaults.get("node_ip") or instance.get("host")
     if not host:
         fail("instance host is required for install_agent flow")
 
     group_ids = deepcopy(instance.get("group_ids") or defaults.get("group_ids") or [])
     node_name = install.get("node_name") or instance.get("node_name") or instance.get("instance_name") or host
-    task_id = InstallerService.install_controller(
-        cloud_region_id=1,
-        work_node=default_work_node,
-        package_version_id=package_id,
-        nodes=[
+    payload = {
+        "cloud_region_id": 1,
+        "work_node": default_work_node,
+        "package_id": package_id,
+        "cpu_architecture": install.get("cpu_architecture", ""),
+        "nodes": [
             {
                 "ip": host,
                 "node_name": node_name,
@@ -536,13 +586,23 @@ def start_install(instance, install):
                 "organizations": group_ids,
                 "port": int(install.get("port", 22)),
                 "username": install["username"],
-                "password": install.get("password", ""),
+                "password": install.get("private_key") and "" or install.get("password", ""),
                 "private_key": install.get("private_key", ""),
                 "passphrase": install.get("passphrase", ""),
                 "cpu_architecture": install.get("cpu_architecture", ""),
             }
         ],
-        cpu_architecture=install.get("cpu_architecture", ""),
+    }
+    serializer = ControllerInstallRequestSerializer(data=payload)
+    serializer.is_valid(raise_exception=True)
+    validated = serializer.validated_data
+
+    task_id = InstallerService.install_controller(
+        cloud_region_id=validated["cloud_region_id"],
+        work_node=validated["work_node"],
+        package_version_id=validated["package_id"],
+        nodes=validated["nodes"],
+        cpu_architecture=validated["cpu_architecture"],
     )
     install_controller.delay(task_id)
     timeout_controller_install_task.apply_async(
@@ -550,7 +610,6 @@ def start_install(instance, install):
         countdown=CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
     )
     return task_id
-
 
 def wait_for_node(instance, existing_node_ids):
     host = instance.get("node_ip") or defaults.get("node_ip") or instance.get("host")
@@ -625,6 +684,178 @@ run_create_monitor_instance() {
   )
 }
 
+is_existing_collect_config_failure() {
+  local log_file="$1"
+
+  [[ -f "${log_file}" ]] || return 1
+  grep -qE '已存在采集配置，无法重复创建|冲突的配置类型=' "${log_file}"
+}
+
+build_existing_instance_result() {
+  local request_file="$1"
+  local result_file="$2"
+
+REQUEST_FILE="${request_file}" RESULT_FILE="${result_file}" "${DJANGO_PYTHON}" <<'PY'
+import ast
+import os
+import yaml
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "settings")
+import django
+django.setup()
+
+from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization
+from apps.monitor.models.collect_config import CollectConfig
+
+
+def extract_instance_id_values(raw_instance_id):
+    if not raw_instance_id:
+        return []
+    if not isinstance(raw_instance_id, str):
+        return [str(raw_instance_id)]
+    if raw_instance_id.startswith("("):
+        try:
+            parsed = ast.literal_eval(raw_instance_id)
+        except (SyntaxError, ValueError):
+            return [raw_instance_id]
+        if isinstance(parsed, tuple):
+            return [str(item) for item in parsed]
+    return [raw_instance_id]
+
+with open(os.environ["REQUEST_FILE"], "r", encoding="utf-8") as f:
+    request = yaml.safe_load(f) or {}
+
+monitor_object_id = request.get("monitor_object_id")
+instances_out = []
+for inst in request.get("instances") or []:
+    instance_name = inst.get("instance_name")
+    if not instance_name:
+        raise SystemExit("existing monitor instance lookup requires instance_name")
+
+    monitor_instance = (
+        MonitorInstance.objects.select_related("monitor_object")
+        .filter(name=instance_name, monitor_object_id=monitor_object_id)
+        .first()
+    )
+    if not monitor_instance:
+        raise SystemExit(
+            f"existing monitor instance not found for instance_name={instance_name}, monitor_object_id={monitor_object_id}"
+        )
+
+    instance_id = monitor_instance.id
+
+    orgs = list(
+        MonitorInstanceOrganization.objects.filter(monitor_instance_id=instance_id).values_list("organization", flat=True)
+    )
+    configs = []
+    for cfg in CollectConfig.objects.filter(monitor_instance_id=instance_id):
+        configs.append(
+            {
+                "id": cfg.id,
+                "collector": cfg.collector,
+                "collect_type": cfg.collect_type,
+                "config_type": cfg.config_type,
+                "monitor_plugin_id": cfg.monitor_plugin_id,
+                "is_child": cfg.is_child,
+            }
+        )
+
+    instances_out.append(
+        {
+            "instance_id": monitor_instance.id,
+            "instance_id_values": extract_instance_id_values(monitor_instance.id),
+            "instance_name": monitor_instance.name,
+            "monitor_object_id": monitor_instance.monitor_object_id,
+            "monitor_object_name": monitor_instance.monitor_object.name,
+            "organizations": orgs,
+            "interval": getattr(monitor_instance, "interval", 10),
+            "is_active": True,
+            "is_deleted": monitor_instance.is_deleted,
+            "auto": monitor_instance.auto,
+            "configs": configs,
+            "created_at": monitor_instance.created_at.isoformat() if monitor_instance.created_at else None,
+            "updated_at": monitor_instance.updated_at.isoformat() if monitor_instance.updated_at else None,
+        }
+    )
+
+result = {
+    "request": request,
+    "result": {
+        "status": "success",
+        "instances": instances_out,
+    },
+}
+
+with open(os.environ["RESULT_FILE"], "w", encoding="utf-8") as f:
+    yaml.safe_dump(result, f, allow_unicode=True, sort_keys=False)
+PY
+}
+
+finalize_registration_success() {
+  local key="$1"
+  local request_file="$2"
+  local result_file="$3"
+  local meta_file="$4"
+  local oa_widget_file="$5"
+
+  local ids
+  local alarm_status
+  local alarm_error
+  local oa_status
+  local oa_error
+
+  ids="$(extract_instance_ids "${result_file}" | paste -sd, -)"
+  alarm_status="skipped"
+  alarm_error=""
+  if run_alarm_policy_post_step "${key}" "${result_file}"; then
+    alarm_status="success"
+  else
+    rc=$?
+    if [[ ${rc} -eq 2 ]]; then
+      alarm_status="skipped"
+    else
+      alarm_status="failed"
+      alarm_error="alarm policy step failed"
+    fi
+  fi
+  oa_status="skipped"
+  oa_error=""
+  if queue_operation_analysis_widget "${key}" "${result_file}" "${oa_widget_file}"; then
+    oa_status="queued"
+  else
+    rc=$?
+    if [[ ${rc} -eq 2 ]]; then
+      oa_status="skipped"
+    else
+      oa_status="failed"
+      oa_error="operation_analysis step failed"
+    fi
+  fi
+  {
+    printf 'key: %s\n' "${key}"
+    printf 'status: success\n'
+    printf 'request_file: %s\n' "${request_file}"
+    printf 'result_file: %s\n' "${result_file}"
+    printf 'instance_ids:\n'
+    if [[ -n "${ids}" ]]; then
+      for id in ${ids//,/ }; do
+        printf '  - %s\n' "${id}"
+      done
+    fi
+    printf 'alarm_policies:\n'
+    printf '  status: %s\n' "${alarm_status}"
+    if [[ -n "${alarm_error}" ]]; then
+      printf '  error: %s\n' "${alarm_error}"
+    fi
+    printf 'operation_analysis:\n'
+    printf '  status: %s\n' "${oa_status}"
+    if [[ -n "${oa_error}" ]]; then
+      printf '  error: %s\n' "${oa_error}"
+    fi
+  } > "${meta_file}"
+  log "registration succeeded: ${key}"
+}
+
 extract_instance_ids() {
   local result_file="$1"
 
@@ -663,11 +894,16 @@ PY
 }
 
 probe_metric_once() {
-  OA_QUERY_EXPR="${OA_QUERY_EXPR}" OA_QUERY_STEP="${OA_QUERY_STEP}" METRIC_READY_LOOKBACK_SECONDS="${METRIC_READY_LOOKBACK_SECONDS}" \
+  OA_QUERY_EXPR="${OA_QUERY_EXPR}" OA_QUERY_STEP="${OA_QUERY_STEP}" METRIC_READY_LOOKBACK_SECONDS="${METRIC_READY_LOOKBACK_SECONDS}" SERVER_DIR="${SERVER_DIR}" \
   "${DJANGO_PYTHON}" <<'PY'
 import os
 import sys
 import time
+from requests.exceptions import MissingSchema
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.environ["SERVER_DIR"], ".env"))
+
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 query = os.environ["OA_QUERY_EXPR"]
@@ -675,7 +911,20 @@ step = os.environ["OA_QUERY_STEP"]
 lookback = int(os.environ["METRIC_READY_LOOKBACK_SECONDS"])
 end_ts = int(time.time())
 start_ts = end_ts - lookback
-resp = VictoriaMetricsAPI().query_range(query, start_ts, end_ts, step)
+vm_host = os.getenv("VICTORIAMETRICS_HOST")
+if not vm_host:
+    print("config_error: VICTORIAMETRICS_HOST is not set", file=sys.stderr)
+    sys.exit(2)
+
+try:
+    resp = VictoriaMetricsAPI().query_range(query, start_ts, end_ts, step)
+except MissingSchema as exc:
+    print(f"config_error: invalid VictoriaMetrics host: {exc}", file=sys.stderr)
+    sys.exit(2)
+except Exception as exc:
+    print(f"probe_error: {exc}", file=sys.stderr)
+    sys.exit(1)
+
 result = (((resp or {}).get("data") or {}).get("result")) or []
 has_values = any(item.get("values") for item in result)
 print("ready" if has_values else "not_ready")
@@ -685,10 +934,18 @@ PY
 
 wait_metric_ready() {
   local attempt=1
+  local probe_output
+  local probe_rc
   while (( attempt <= METRIC_READY_RETRIES )); do
-    if probe_metric_once >/dev/null 2>&1; then
+    probe_output="$(probe_metric_once 2>&1)"
+    probe_rc=$?
+    if [[ ${probe_rc} -eq 0 ]]; then
       log "metric ready on attempt ${attempt}/${METRIC_READY_RETRIES}"
       return 0
+    fi
+    if [[ ${probe_rc} -eq 2 ]]; then
+      log "metric readiness check failed: ${probe_output}"
+      return 2
     fi
     log "metric not ready yet, retry ${attempt}/${METRIC_READY_RETRIES}"
     sleep "${METRIC_READY_INTERVAL_SECONDS}"
@@ -940,11 +1197,20 @@ update_meta_oa_status() {
 
   META_FILE="${OUTPUT_DIR}/${key}.meta.yaml" OA_STATUS="${status}" OA_ERROR="${error}" "${DJANGO_PYTHON}" <<'PY'
 import os
+from pathlib import Path
 import yaml
 
 path = os.environ["META_FILE"]
-with open(path, "r", encoding="utf-8") as f:
-    data = yaml.safe_load(f) or {}
+meta_path = Path(path)
+if meta_path.exists():
+    with meta_path.open("r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+else:
+    key = meta_path.name.removesuffix(".meta.yaml")
+    data = {
+        "key": key,
+        "status": "pending",
+    }
 
 data.setdefault("operation_analysis", {})
 data["operation_analysis"]["status"] = os.environ["OA_STATUS"]
@@ -953,7 +1219,7 @@ if os.environ.get("OA_ERROR"):
 else:
     data["operation_analysis"].pop("error", None)
 
-with open(path, "w", encoding="utf-8") as f:
+with meta_path.open("w", encoding="utf-8") as f:
     yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
 PY
 }
@@ -1076,7 +1342,8 @@ django.setup()
 from rest_framework.test import APIRequestFactory
 
 from apps.monitor.models.monitor_policy import MonitorPolicy
-from apps.monitor.models.monitor_object import MonitorObject, PolicyOrganization
+from apps.monitor.models.monitor_object import MonitorObject
+from apps.monitor.models.monitor_policy import PolicyOrganization
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.views.monitor_policy import MonitorPolicyViewSet
 
@@ -1177,6 +1444,7 @@ update_meta_alarm_policy_status() {
 
   META_FILE="${OUTPUT_DIR}/${key}.meta.yaml" STATUS="${status}" APPLIED_FILE="${applied_file}" ERROR_MSG="${error}" "${DJANGO_PYTHON}" <<'PY'
 import os
+from pathlib import Path
 import yaml
 
 meta_file = os.environ["META_FILE"]
@@ -1184,8 +1452,16 @@ status = os.environ["STATUS"]
 applied_file = os.environ.get("APPLIED_FILE", "")
 error_msg = os.environ.get("ERROR_MSG", "")
 
-with open(meta_file, "r", encoding="utf-8") as f:
-    data = yaml.safe_load(f) or {}
+meta_path = Path(meta_file)
+if meta_path.exists():
+    with meta_path.open("r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+else:
+    key = meta_path.name.removesuffix(".meta.yaml")
+    data = {
+        "key": key,
+        "status": "pending",
+    }
 
 data.setdefault("alarm_policies", {})
 data["alarm_policies"]["status"] = status
@@ -1200,7 +1476,7 @@ if error_msg:
 else:
     data["alarm_policies"].pop("error", None)
 
-with open(meta_file, "w", encoding="utf-8") as f:
+with meta_path.open("w", encoding="utf-8") as f:
     yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
 PY
 }
@@ -1462,71 +1738,29 @@ main() {
     result_file="${OUTPUT_DIR}/${key}.result.yaml"
     meta_file="${OUTPUT_DIR}/${key}.meta.yaml"
     oa_widget_file="${OUTPUT_DIR}/${key}.oa-widget.yaml"
+    create_log_file="${OUTPUT_DIR}/${key}.create-monitor-instance.log"
 
     log "processing registration: ${key}"
     prepare_instances_with_node_ids "${key}" "${prepared_reg_file}"
     render_request_yaml "${prepared_reg_file}" "${request_file}"
 
-    if run_create_monitor_instance "${request_file}" "${result_file}"; then
-      ids="$(extract_instance_ids "${result_file}" | paste -sd, -)"
-      alarm_status="skipped"
-      alarm_error=""
-      if run_alarm_policy_post_step "${key}" "${result_file}"; then
-        alarm_status="success"
-      else
-        rc=$?
-        if [[ ${rc} -eq 2 ]]; then
-          alarm_status="skipped"
-        else
-          alarm_status="failed"
-          alarm_error="alarm policy step failed"
-        fi
-      fi
-      oa_status="skipped"
-      oa_error=""
-      if queue_operation_analysis_widget "${key}" "${result_file}" "${oa_widget_file}"; then
-        oa_status="queued"
-      else
-        rc=$?
-        if [[ ${rc} -eq 2 ]]; then
-          oa_status="skipped"
-        else
-          oa_status="failed"
-          oa_error="operation_analysis step failed"
-        fi
-      fi
-      {
-        printf 'key: %s\n' "${key}"
-        printf 'status: success\n'
-        printf 'request_file: %s\n' "${request_file}"
-        printf 'result_file: %s\n' "${result_file}"
-        printf 'instance_ids:\n'
-        if [[ -n "${ids}" ]]; then
-          for id in ${ids//,/ }; do
-            printf '  - %s\n' "${id}"
-          done
-        fi
-        printf 'alarm_policies:\n'
-        printf '  status: %s\n' "${alarm_status}"
-        if [[ -n "${alarm_error}" ]]; then
-          printf '  error: %s\n' "${alarm_error}"
-        fi
-        printf 'operation_analysis:\n'
-        printf '  status: %s\n' "${oa_status}"
-        if [[ -n "${oa_error}" ]]; then
-          printf '  error: %s\n' "${oa_error}"
-        fi
-      } > "${meta_file}"
-      log "registration succeeded: ${key}"
+    if run_create_monitor_instance "${request_file}" "${result_file}" >"${create_log_file}" 2>&1; then
+      finalize_registration_success "${key}" "${request_file}" "${result_file}" "${meta_file}" "${oa_widget_file}"
     else
-      {
-        printf 'key: %s\n' "${key}"
-        printf 'status: failed\n'
-        printf 'request_file: %s\n' "${request_file}"
-        printf 'result_file: %s\n' "${result_file}"
-        printf 'error: create_monitor_instance failed\n'
-      } > "${meta_file}"
-      log "registration failed: ${key}"
+      cat "${create_log_file}" >&2 || true
+      if is_existing_collect_config_failure "${create_log_file}" && build_existing_instance_result "${request_file}" "${result_file}"; then
+        log "existing collect config detected for ${key}, reused existing monitor instance"
+        finalize_registration_success "${key}" "${request_file}" "${result_file}" "${meta_file}" "${oa_widget_file}"
+      else
+        {
+          printf 'key: %s\n' "${key}"
+          printf 'status: failed\n'
+          printf 'request_file: %s\n' "${request_file}"
+          printf 'result_file: %s\n' "${result_file}"
+          printf 'error: create_monitor_instance failed\n'
+        } > "${meta_file}"
+        log "registration failed: ${key}"
+      fi
     fi
   done < <(list_registration_keys)
 

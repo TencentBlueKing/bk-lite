@@ -41,3 +41,4 @@ code-reviews/
 /web/src/app/**/(enterprise)/
 .env.dev
 .sisyphus/*
+automation/

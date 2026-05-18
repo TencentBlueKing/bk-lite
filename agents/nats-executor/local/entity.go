@@ -11,11 +11,12 @@ const (
 )
 
 type ExecuteRequest struct {
-	Command        string `json:"command"`
-	ExecuteTimeout int    `json:"execute_timeout"`
-	Shell          string `json:"shell,omitempty"` // 脚本类型，支持：sh, bash, bat, cmd, powershell, pwsh，默认 "sh"
-	LogCommand     string `json:"-"`
-	LogContext     string `json:"-"`
+	Command        string            `json:"command"`
+	ExecuteTimeout int               `json:"execute_timeout"`
+	Shell          string            `json:"shell,omitempty"` // 脚本类型，支持：sh, bash, bat, cmd, powershell, pwsh，默认 "sh"
+	Env            map[string]string `json:"-"`
+	LogCommand     string            `json:"-"`
+	LogContext     string            `json:"-"`
 }
 
 type ExecuteResponse struct {

@@ -256,8 +256,14 @@ class InstanceManage(object):
         roles: list = None,
     ):
         """实例权限校验，用于操作之前"""
+        if not instances:
+            return
+
         permission_params = InstanceManage.get_permission_params(user_groups=user_groups or [], roles=roles or [])
+        inst_ids = [item["_id"] for item in instances if item.get("_id") is not None]
         query_params = [{"field": "model_id", "type": "str=", "value": model_id}]
+        if inst_ids:
+            query_params.append({"field": "id", "type": "id[]", "value": inst_ids})
         if permission_params:
             query_params.extend(permission_params)
 
