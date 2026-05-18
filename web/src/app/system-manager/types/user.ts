@@ -1,4 +1,9 @@
 import type { TableProps } from 'antd';
+import type { Key } from 'react';
+
+type UserStatus = 'normal' | 'disabled' | 'locked' | 'password_expired';
+type ChangeUserStatusAction = 'enable' | 'disable' | 'unlock';
+
 // 定义接口
 interface UserDataType {
   id?: string;
@@ -14,6 +19,24 @@ interface UserDataType {
   group_role_list?: string[];
   groups: Array<any>;
   last_login?: string;
+  status?: UserStatus;
+}
+
+interface ChangeUserStatusParams {
+  user_ids: Key[];
+  action: ChangeUserStatusAction;
+}
+
+interface ChangeUserStatusSkippedItem {
+  id: number;
+  reason: string;
+}
+
+interface ChangeUserStatusResponse {
+  action: ChangeUserStatusAction;
+  total: number;
+  success_ids: number[];
+  skipped: ChangeUserStatusSkippedItem[];
 }
 
 interface Access {
@@ -51,4 +74,15 @@ interface TransmitUserData {
 // 定义组织列表的接口
 type TableRowSelection<T extends object = object> =
     TableProps<T>['rowSelection'];
-export type { UserDataType, TransmitUserData, TableRowSelection,Access, BruteForceStatus };
+export type {
+  Access,
+  BruteForceStatus,
+  ChangeUserStatusAction,
+  ChangeUserStatusParams,
+  ChangeUserStatusResponse,
+  ChangeUserStatusSkippedItem,
+  TableRowSelection,
+  TransmitUserData,
+  UserDataType,
+  UserStatus,
+};
