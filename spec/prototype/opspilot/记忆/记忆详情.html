@@ -919,57 +919,23 @@
         }
 
         .memory-row-actions {
-            position: relative;
             display: flex;
             justify-content: flex-end;
+            align-items: center;
+            gap: 12px;
         }
 
-        .memory-action-trigger {
-            height: 30px;
-            min-width: 48px;
-            border: 1px solid #d7dfeb;
-            border-radius: 8px;
-            padding: 0 10px;
-            background: #fff;
+        .memory-action-link {
+            border: none;
+            padding: 0;
+            background: transparent;
             color: #2b5bff;
             font-size: 12px;
             font-weight: 600;
             cursor: pointer;
         }
 
-        .memory-action-menu {
-            position: absolute;
-            top: calc(100% + 6px);
-            right: 0;
-            z-index: 30;
-            min-width: 88px;
-            border: 1px solid #d8e0ec;
-            border-radius: 10px;
-            background: #fff;
-            box-shadow: 0 10px 24px rgba(20, 38, 70, 0.12);
-            padding: 6px;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .memory-action-item {
-            border: none;
-            border-radius: 8px;
-            background: transparent;
-            height: 32px;
-            padding: 0 10px;
-            text-align: left;
-            color: #435671;
-            font-size: 12px;
-            cursor: pointer;
-        }
-
-        .memory-action-item:hover {
-            background: #f5f8ff;
-        }
-
-        .memory-action-item.danger {
+        .memory-action-link.danger {
             color: #e34b4b;
         }
 
@@ -1485,7 +1451,7 @@
                                     <div>记忆ID</div>
                                     <div>更新时间</div>
                                     <div>摘要</div>
-                                    <div>查看</div>
+                                    <div>操作</div>
                                 </div>
                                 <div id="memoryRows"></div>
                             </section>
@@ -1638,7 +1604,6 @@ tags: [组织, 审核, 共享经验]
             selectedOwners: [],
             ownerKeyword: '',
             userFilterOpen: false,
-            memoryActionOpenId: '',
             isEditingMemory: false,
             configPreviewInput: '发布窗口前，数据库主从延迟升高，发布前检查连续失败。排查发现备份任务与校验任务重叠，导致同步链路短时拥塞。已将备份窗口前移 30 分钟，并为校验增加延迟阈值与重试策略。',
             configPreviewSelectedReferenceId: '',
@@ -1976,9 +1941,6 @@ tags: [组织, 审核, 共享经验]
             if (!list.some((item) => item.id === state.selectedMemoryId)) {
                 state.selectedMemoryId = list.length ? list[0].id : '';
             }
-            if (!list.some((item) => item.id === state.memoryActionOpenId)) {
-                state.memoryActionOpenId = '';
-            }
 
             if (!list.length) {
                 memoryRows.innerHTML = `
@@ -1998,13 +1960,8 @@ tags: [组织, 审核, 共享经验]
                     <div>${item.updatedAt}</div>
                     <div class="summary-cell">${item.summary}</div>
                     <div class="memory-row-actions">
-                        <button class="memory-action-trigger" type="button" data-action-trigger="${item.id}">操作</button>
-                        ${state.memoryActionOpenId === item.id ? `
-                            <div class="memory-action-menu">
-                                <button class="memory-action-item" type="button" data-row-action="view" data-id="${item.id}">查看</button>
-                                <button class="memory-action-item danger" type="button" data-row-action="delete" data-id="${item.id}">删除</button>
-                            </div>
-                        ` : ''}
+                        <button class="memory-action-link" type="button" data-row-action="view" data-id="${item.id}">查看</button>
+                        <button class="memory-action-link danger" type="button" data-row-action="delete" data-id="${item.id}">删除</button>
                     </div>
                 </div>
             `).join('');
@@ -2099,27 +2056,13 @@ tags: [组织, 审核, 共享经验]
             if (!userFilter.contains(event.target)) {
                 setUserFilterOpen(false);
             }
-            if (!event.target.closest('.memory-row-actions')) {
-                state.memoryActionOpenId = '';
-                renderMemoryRows();
-            }
         });
 
         memoryRows.addEventListener('click', (event) => {
-            const actionTrigger = event.target.closest('[data-action-trigger]');
-            if (actionTrigger) {
-                event.stopPropagation();
-                const { actionTrigger: id } = actionTrigger.dataset;
-                state.memoryActionOpenId = state.memoryActionOpenId === id ? '' : id;
-                renderMemoryRows();
-                return;
-            }
-
             const rowAction = event.target.closest('[data-row-action]');
             if (rowAction) {
                 event.stopPropagation();
                 const { id, rowAction: action } = rowAction.dataset;
-                state.memoryActionOpenId = '';
 
                 if (action === 'view') {
                     state.selectedMemoryId = id;
@@ -2153,7 +2096,6 @@ tags: [组织, 审核, 共享经验]
             }
             state.selectedMemoryId = row.dataset.id;
             state.isEditingMemory = false;
-            state.memoryActionOpenId = '';
             syncMemoryActionState();
             renderMemoryRows();
             if (state.currentView === 'memory') {
