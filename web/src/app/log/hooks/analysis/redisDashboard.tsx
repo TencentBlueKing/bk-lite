@@ -23,15 +23,16 @@ export const useRedisDashboard = () => {
         x: 0,
         y: 0,
         i: uuidv4(),
-        name: '日志总量',
+        name: t('log.analysis.redis.totalLogCount'),
         moved: false,
         static: false,
-        description: 'Redis 日志总条数',
+        description: t('log.analysis.redis.totalLogCountDesc'),
         valueConfig: {
           chartType: 'redisKpiCard',
           dataSource: 1,
           displayMaps: { type: 'single', key: '_time', value: 'total_count' },
           dataSourceParams: {
+            searchQuery: `${REDIS_BASE}`,
             query: `${REDIS_BASE} | stats by (_time:\${_time}) count() as total_count`
           }
         }
@@ -42,16 +43,17 @@ export const useRedisDashboard = () => {
         x: 3,
         y: 0,
         i: uuidv4(),
-        name: 'ERR 错误数',
+        name: t('log.analysis.redis.errCount'),
         moved: false,
         static: false,
-        description: '_msg 以 ERR 开头的协议错误',
+        description: t('log.analysis.redis.errCountDesc'),
         valueConfig: {
           chartType: 'redisKpiCard',
           dataSource: 1,
           color: '#EF4444',
           displayMaps: { type: 'single', key: '_time', value: 'err_count' },
           dataSourceParams: {
+            searchQuery: `${REDIS_BASE} _msg:"ERR "`,
             query: `${REDIS_BASE} | stats by (_time:\${_time}) count() if (_msg:"ERR ") as err_count`
           }
         }
@@ -62,10 +64,10 @@ export const useRedisDashboard = () => {
         x: 6,
         y: 0,
         i: uuidv4(),
-        name: '类型 / 集群错误',
+        name: t('log.analysis.redis.typeClusterErrors'),
         moved: false,
         static: false,
-        description: 'WRONGTYPE 数据类型错误与 CLUSTERDOWN 集群宕机',
+        description: t('log.analysis.redis.typeClusterErrorsDesc'),
         valueConfig: {
           chartType: 'redisKpiCard',
           dataSource: 1,
@@ -76,6 +78,7 @@ export const useRedisDashboard = () => {
             value: 'type_err_count'
           },
           dataSourceParams: {
+            searchQuery: `${REDIS_BASE} (_msg:"WRONGTYPE " OR _msg:"CLUSTERDOWN ")`,
             query: `${REDIS_BASE} | stats by (_time:\${_time}) count() if (_msg:"WRONGTYPE " OR _msg:"CLUSTERDOWN ") as type_err_count`
           }
         }
@@ -86,10 +89,10 @@ export const useRedisDashboard = () => {
         x: 9,
         y: 0,
         i: uuidv4(),
-        name: '认证失败数',
+        name: t('log.analysis.redis.authFailures'),
         moved: false,
         static: false,
-        description: 'WRONGPASS / NOAUTH / AUTH failed 安全事件',
+        description: t('log.analysis.redis.authFailuresDesc'),
         valueConfig: {
           chartType: 'redisKpiCard',
           dataSource: 1,
@@ -100,6 +103,7 @@ export const useRedisDashboard = () => {
             value: 'auth_err_count'
           },
           dataSourceParams: {
+            searchQuery: `${REDIS_BASE} (_msg:"WRONGPASS " OR _msg:"NOAUTH " OR _msg:"AUTH failed")`,
             query: `${REDIS_BASE} | stats by (_time:\${_time}) count() if (_msg:"WRONGPASS " OR _msg:"NOAUTH " OR _msg:"AUTH failed") as auth_err_count`
           }
         }
@@ -112,10 +116,10 @@ export const useRedisDashboard = () => {
         x: 0,
         y: 2,
         i: uuidv4(),
-        name: '日志量趋势（总量 & 错误）',
+        name: t('log.analysis.redis.logTrend'),
         moved: false,
         static: false,
-        description: '',
+        description: t('log.analysis.redis.logTrendDesc'),
         valueConfig: {
           chartType: 'redisTrendLine',
           dataSource: 1,
@@ -123,10 +127,11 @@ export const useRedisDashboard = () => {
             key: '_time',
             totalField: 'total_count',
             errField: 'err_count',
-            totalLabel: '日志总量',
-            errLabel: 'ERR 错误'
+            totalLabel: t('log.analysis.redis.totalLogSeries'),
+            errLabel: t('log.analysis.redis.errSeries')
           },
           dataSourceParams: {
+            searchQuery: `${REDIS_BASE}`,
             query: `${REDIS_BASE} | stats by (_time:\${_time}) count() as total_count, count() if (_msg:"ERR ") as err_count`
           }
         }
@@ -137,14 +142,15 @@ export const useRedisDashboard = () => {
         x: 7,
         y: 2,
         i: uuidv4(),
-        name: '日志事件类型分布',
+        name: t('log.analysis.redis.eventTypeDistribution'),
         moved: false,
         static: false,
-        description: '',
+        description: t('log.analysis.redis.eventTypeDistributionDesc'),
         valueConfig: {
           chartType: 'redisDonut',
           dataSource: 1,
           dataSourceParams: {
+            searchQuery: `${REDIS_BASE}`,
             query: `${REDIS_BASE} | stats count() as total_count, count() if (_msg:"ERR ") as err_count, count() if (_msg:"WRONGTYPE " OR _msg:"CLUSTERDOWN ") as type_err_count, count() if (_msg:"WRONGPASS " OR _msg:"NOAUTH " OR _msg:"AUTH failed") as auth_err_count, count() if (_msg:"command: ") as cmd_count`
           }
         }
@@ -157,15 +163,16 @@ export const useRedisDashboard = () => {
         x: 0,
         y: 5,
         i: uuidv4(),
-        name: 'Top 触发命令',
+        name: t('log.analysis.redis.topCommands'),
         moved: false,
         static: false,
-        description: '',
+        description: t('log.analysis.redis.topCommandsDesc'),
         valueConfig: {
           chartType: 'redisInstanceBar',
           dataSource: 1,
           displayMaps: { key: 'redis_cmd', value: 'cmd_count' },
           dataSourceParams: {
+            searchQuery: `${REDIS_BASE} _msg:"command: "`,
             query: `${REDIS_BASE} _msg:"command: " | extract "command: <redis_cmd>" from _msg | stats by (redis_cmd) count() as cmd_count | sort by (cmd_count desc) | limit 10`
           }
         }
@@ -176,15 +183,16 @@ export const useRedisDashboard = () => {
         x: 4,
         y: 5,
         i: uuidv4(),
-        name: 'Top 错误 case',
+        name: t('log.analysis.redis.topErrorCases'),
         moved: false,
         static: false,
-        description: '',
+        description: t('log.analysis.redis.topErrorCasesDesc'),
         valueConfig: {
           chartType: 'redisInstanceBar',
           dataSource: 1,
           displayMaps: { key: 'err_case', value: 'case_count' },
           dataSourceParams: {
+            searchQuery: `${REDIS_BASE} _msg:"case="`,
             query: `${REDIS_BASE} _msg:"case=" | extract "case=<err_case>" from _msg | stats by (err_case) count() as case_count | sort by (case_count desc) | limit 10`
           }
         }
@@ -195,14 +203,15 @@ export const useRedisDashboard = () => {
         x: 8,
         y: 5,
         i: uuidv4(),
-        name: '节点日志量 vs 错误数',
+        name: t('log.analysis.redis.nodeLogVsError'),
         moved: false,
         static: false,
-        description: '',
+        description: t('log.analysis.redis.nodeLogVsErrorDesc'),
         valueConfig: {
           chartType: 'redisNodeCompareBar',
           dataSource: 1,
           dataSourceParams: {
+            searchQuery: `${REDIS_BASE}`,
             query: `${REDIS_BASE} node_ip:* | stats by (node_ip) count() as log_count, count() if (_msg:"ERR ") as err_count | sort by (log_count desc) | limit 10`
           }
         }
@@ -215,15 +224,16 @@ export const useRedisDashboard = () => {
         x: 0,
         y: 8,
         i: uuidv4(),
-        name: '部署类型分布',
+        name: t('log.analysis.redis.deploymentDistribution'),
         moved: false,
         static: false,
-        description: '',
+        description: t('log.analysis.redis.deploymentDistributionDesc'),
         valueConfig: {
           chartType: 'redisInstanceBar',
           dataSource: 1,
           displayMaps: { key: 'deploy_path', value: 'log_count' },
           dataSourceParams: {
+            searchQuery: `${REDIS_BASE}`,
             query: `${REDIS_BASE} | extract "redis/<deploy_path>/" from "log.file.path" | stats by (deploy_path) count() as log_count | sort by (log_count desc) | limit 10`
           }
         }
@@ -234,13 +244,15 @@ export const useRedisDashboard = () => {
         x: 4,
         y: 8,
         i: uuidv4(),
-        name: '最近 Redis 日志明细',
+        name: t('log.analysis.redis.recentLogs'),
         moved: false,
         static: false,
+        description: t('log.analysis.redis.recentLogsDesc'),
         valueConfig: {
           chartType: 'redisLogTable',
           dataSource: 1,
           dataSourceParams: {
+            searchQuery: `${REDIS_BASE}`,
             query: `${REDIS_BASE} | sort by (_time desc) | limit 30`
           }
         }
