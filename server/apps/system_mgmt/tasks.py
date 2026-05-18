@@ -268,6 +268,11 @@ def check_password_expiry_and_notify():
     validity_setting = SystemSettings.objects.filter(key="pwd_set_validity_period").first()
     validity_days = int(validity_setting.value) if validity_setting else 180
 
+    # validity_days <= 0 表示永不过期，跳过过期检查
+    if validity_days <= 0:
+        logger.info("密码有效期设置为永不过期，跳过过期提醒")
+        return {"result": True, "message": "Password never expires, skipping reminder"}
+
     reminder_setting = SystemSettings.objects.filter(key="pwd_set_expiry_reminder_days").first()
     reminder_days = int(reminder_setting.value) if reminder_setting else 7
 
