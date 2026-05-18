@@ -7,6 +7,7 @@ import {
   DatabaseOutlined,
   ThunderboltOutlined,
   ClockCircleOutlined,
+  InfoCircleOutlined,
   RiseOutlined,
   FallOutlined,
   NodeIndexOutlined,
@@ -701,7 +702,7 @@ const StatCard = ({
   bodyClassName,
   extra
 }: {
-  title: string;
+  title: React.ReactNode;
   value: React.ReactNode;
   unit: string;
   icon: React.ReactNode;
@@ -757,17 +758,24 @@ const StatCard = ({
 
 const CollectionStatusCard = ({
   status,
-  timeline,
-  windowLabel
+  timeline
 }: {
   status: ReturnType<typeof getCollectionStatus>;
   timeline: Array<'success' | 'empty' | 'error'>;
-  windowLabel: string;
 }) => {
   return (
     <div className={`${styles.statCard} ${styles.collectionStatusCard}`}>
       <div className={styles.collectionStatusHeader}>
-        <div className={styles.statLabel}>采集状态</div>
+        <div className={styles.statLabel}>
+          <TitleWithGuide
+            title="采集状态"
+            items={[
+              { label: '采集状态', detail: '展示最近一段时间内该实例监控采集是否正常、缺失或异常。' },
+              { label: '状态时间线', detail: '绿色表示采集成功，灰色表示暂无数据，红色表示采集或查询异常。' }
+            ]}
+            className={styles.statTitleWithGuide}
+          />
+        </div>
       </div>
       <div className={styles.collectionStatusBody}>
         <div className={`${styles.collectionStatusValue} ${styles[`collectionStatusValue${status.label === '正常' ? 'Success' : status.label === '异常' ? 'Error' : 'Empty'}`]}`}>
@@ -793,6 +801,39 @@ const CollectionStatusCard = ({
     </div>
   );
 };
+
+interface GuideItem {
+  label: string;
+  detail: string;
+}
+
+const GuideTooltipContent = ({ items }: { items: GuideItem[] }) => (
+  <div className={styles.metricGuideTooltip}>
+    {items.map((item) => (
+      <div key={item.label} className={styles.metricGuideTooltipRow}>
+        <strong>{item.label}</strong>
+        <span>{item.detail}</span>
+      </div>
+    ))}
+  </div>
+);
+
+const TitleWithGuide = ({
+  title,
+  items,
+  className
+}: {
+  title: React.ReactNode;
+  items: GuideItem[];
+  className?: string;
+}) => (
+  <span className={[styles.titleWithGuide, className].filter(Boolean).join(' ')}>
+    <span>{title}</span>
+    <Tooltip overlayClassName="lightMetricTooltip" title={<GuideTooltipContent items={items} />}>
+      <InfoCircleOutlined className={styles.metricGuideIcon} />
+    </Tooltip>
+  </span>
+);
 
 export default function MysqlDashboardPage() {
   const { getInstanceQuery } = useViewApi();
@@ -1277,7 +1318,7 @@ export default function MysqlDashboardPage() {
   const bufferPoolFreePages = normalizeCountValue(getLatest('mysql_innodb_buffer_pool_pages_free'));
   const bufferPoolDirtyPages = normalizeCountValue(getLatest('mysql_innodb_buffer_pool_pages_dirty'));
   const bufferPoolUsedPages = Math.max(bufferPoolTotalPages - bufferPoolFreePages, 0);
-   const bufferPoolBreakdown = [
+  const bufferPoolBreakdown = [
     {
       name: '已用页',
       percent: bufferPoolUsedValue,
@@ -1457,6 +1498,104 @@ export default function MysqlDashboardPage() {
       value: renderFlowValue('mysql_buffer_pool_dirty_ratio', bpDirtyValue.toFixed(1), '%')
     }
   ];
+  const bufferPoolGuide = [
+    { label: '方格含义', detail: '这里固定用 25 个格子做示意图，不代表真实页数。' },
+    { label: '橙色方格', detail: '表示脏页，数量约等于“脏页 × 25”，对应下方“脏页”。如果脏页为 0%，就不会出现橙色格子。' },
+    { label: '蓝色方格', detail: '表示已使用但不是脏页的缓冲页，数量约等于“(使用率 - 脏页) × 25”。' },
+    { label: '灰色方格', detail: '表示空闲页，数量约等于“(100% - 使用率) × 25”。' },
+    { label: '命中率', detail: '命中率和这 25 个格子的分布无关，单独看下方“命中率”。' }
+  ];
+  const redoLogGuide = [
+    { label: 'Redo 日志', detail: '事务提交时会先进入内存中的 Redo 缓冲。' },
+    { label: 'Redo 刷盘', detail: '随后由刷盘动作写入日志文件，数值越高表示落盘更频繁。' }
+  ];
+  const tempTableGuide = [
+    { label: '临时表', detail: '展示 SQL 执行过程中产生的临时表速率。' },
+    { label: '总临时表', detail: '表示所有临时表的总生成速率。' },
+    { label: '磁盘临时表', detail: '表示落到磁盘的临时表速率，升高通常意味着排序、分组或结果集开销增加。' }
+  ];
+  const dataFileGuide = [
+    { label: '数据文件', detail: '表示 InnoDB 数据页最终读写到磁盘数据文件的结果。' },
+    { label: '读 IOPS', detail: '每秒读取数据页的次数。' },
+    { label: '写 IOPS', detail: '每秒写入数据页的次数。' }
+  ];
+  const redoFileGuide = [
+    { label: 'Redo 日志文件', detail: '表示 Redo 最终落盘到日志文件后的结果视角。' },
+    { label: 'Redo 刷盘', detail: '每秒刷盘次数，和左侧日志阶段说明对应，但这里只展示最终落盘结果。' },
+    { label: '复制延迟', detail: '仅主从场景下有效，表示从库落后主库的秒数。' }
+  ];
+  const uptimeGuide = [
+    { label: '运行时长', detail: '基于 `mysql_uptime` 计算实例自上次启动以来持续运行的时间。' },
+    { label: '重启判断', detail: '如果当前观察窗口内 `mysql_uptime` 出现回退，说明期间发生过重启。' }
+  ];
+  const connectionGuide = [
+    { label: '连接使用率', detail: '表示当前连接数占最大连接数上限的比例。' },
+    { label: '排查建议', detail: '当使用率持续升高时，需要结合连接趋势、慢查询和锁等待一起判断是否存在拥塞。' }
+  ];
+  const qpsGuide = [
+    { label: 'QPS', detail: '每秒查询数，反映实例当前承载的查询吞吐。' },
+    { label: '看什么', detail: '适合与慢查询、连接数和磁盘写入一起观察，判断是否是正常业务波动。' }
+  ];
+  const slowGuide = [
+    { label: '慢查询速率', detail: '每分钟慢 SQL 的新增速率。' },
+    { label: '看什么', detail: '如果慢查询升高，再结合锁等待、临时表和磁盘 I/O 判断瓶颈位置。' }
+  ];
+  const hitRatioGuide = [
+    { label: '缓冲池命中率', detail: '表示请求命中 Buffer Pool 的比例，越高通常表示随机读越少落到磁盘。' },
+    { label: '搭配指标', detail: '需要和缓冲池使用率、脏页比例、写 IOPS 一起看，单看命中率不够。' }
+  ];
+  const flowGuide = [
+    { label: '数据流用途', detail: '按照请求入口、SQL 执行、InnoDB 缓冲、日志和落盘的顺序组织指标，帮助定位问题所在环节。' },
+    { label: '排查顺序', detail: '优先从左到右看异常是出在连接、SQL、缓存、临时表还是磁盘持久化。' }
+  ];
+  const qpsTrendGuide = [
+    { label: 'QPS 趋势', detail: '查看查询吞吐在时间维度上的变化，用于识别波峰、波谷与突变。' },
+    { label: '适用场景', detail: '适合判断业务流量波动，或与慢查询、连接数联动排查。' }
+  ];
+  const slowTrendGuide = [
+    { label: '慢查询趋势', detail: '查看慢 SQL 是否持续出现、集中爆发，还是偶发抖动。' },
+    { label: '适用场景', detail: '如果曲线抬升，优先查看锁等待、临时表和 InnoDB 写入。' }
+  ];
+  const connectionTrendGuide = [
+    { label: '连接与线程趋势', detail: '同时观察当前连接数和执行线程数，判断连接堆积与实际执行压力是否匹配。' },
+    { label: '适用场景', detail: '适合识别空闲连接过多、瞬时连接峰值或执行线程突增。' }
+  ];
+  const queryTypeGuide = [
+    { label: '查询类型分布', detail: '展示不同 SQL 命令的占比，帮助识别当前流量主要由读还是写驱动。' },
+    { label: '适用场景', detail: '写请求占比上升时，通常要重点看 Redo 刷盘、临时表和写 IOPS。' }
+  ];
+  const threadStateGuide = [
+    { label: '线程状态分布', detail: '展示当前线程停留在哪类状态，例如 Query、Sleep、Sending data、Locked。' },
+    { label: '适用场景', detail: '如果 Query、Sending data 或 Locked 占比上升，说明执行链路可能存在瓶颈。' }
+  ];
+  const tempCacheGuide = [
+    { label: '临时表与缓存指标', detail: '聚焦临时表、表缓存未命中和打开表速率，帮助识别 SQL 是否触发额外开销。' },
+    { label: '适用场景', detail: '磁盘临时表升高通常意味着排序、分组或大结果集落盘变多。' }
+  ];
+  const lockGuide = [
+    { label: '锁与等待指标', detail: '聚焦行锁等待、等待时间和连接异常，帮助判断是否存在并发争抢。' },
+    { label: '适用场景', detail: '当行锁等待和平均等待时间一起升高时，应重点排查写热点和事务持锁时间。' }
+  ];
+  const innodbTrendGuide = [
+    { label: 'InnoDB 读写趋势', detail: '同时展示读 IOPS、写 IOPS 和 Redo 刷盘速率。' },
+    { label: '适用场景', detail: '适合判断实例当前是读压力、写压力还是刷盘压力更明显。' }
+  ];
+  const bufferUsageGuide = [
+    { label: '缓冲池使用情况', detail: '展示 Buffer Pool 中已用页、脏页和空闲页的占比与页数。' },
+    { label: '适用场景', detail: '用于判断缓存是否接近满载，以及脏页是否积压。' }
+  ];
+  const replicationGuide = [
+    { label: '复制状态', detail: '展示从库复制延迟，以及 IO 线程和 SQL 线程是否正常运行。' },
+    { label: '适用场景', detail: '复制延迟升高时，通常要结合 Redo 刷盘、写 IOPS 和从库线程状态一起看。' }
+  ];
+  const errorHotspotGuide = [
+    { label: '连接异常热点', detail: '汇总当前连接错误速率，并标出主要错误类型。' },
+    { label: '适用场景', detail: '适合快速判断是客户端异常断开、连接尝试失败，还是达到连接上限。' }
+  ];
+  const metricsOverviewGuide = [
+    { label: '监控指标全景', detail: '这里承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。' },
+    { label: '适用场景', detail: '如果仪表盘只给出方向，这里负责补足细节与完整上下文。' }
+  ];
   const bufferFlowCellCount = 25;
   const bufferFlowUsedCells = Math.round((bufferPoolUsedValue / 100) * bufferFlowCellCount);
   const bufferFlowDirtyCells = Math.round((bpDirtyValue / 100) * bufferFlowCellCount);
@@ -1622,10 +1761,9 @@ export default function MysqlDashboardPage() {
                     <CollectionStatusCard
                       status={statusInfo}
                       timeline={collectionStatusTimeline}
-                      windowLabel={collectionStatusWindowLabel}
                     />
                     <StatCard
-                      title="MySQL 运行时长"
+                      title={<TitleWithGuide title="MySQL 运行时长" items={uptimeGuide} />}
                       value={uptimeDisplay}
                       unit=""
                       icon={<ClockCircleOutlined />}
@@ -1662,7 +1800,7 @@ export default function MysqlDashboardPage() {
                       noDataType={getNoDataType('mysql_uptime')}
                     />
                     <StatCard
-                      title="连接使用率"
+                      title={<TitleWithGuide title="连接使用率" items={connectionGuide} />}
                       value={connCardDisplay.value}
                       unit={connCardDisplay.unit}
                       icon={<NodeIndexOutlined />}
@@ -1674,7 +1812,7 @@ export default function MysqlDashboardPage() {
                       noDataType={getNoDataType('mysql_connection_utilization')}
                     />
                     <StatCard
-                      title="QPS（每秒查询数）"
+                      title={<TitleWithGuide title="QPS（每秒查询数）" items={qpsGuide} />}
                       value={qpsCardDisplay.value}
                       unit={qpsCardDisplay.unit}
                       icon={<ThunderboltOutlined />}
@@ -1686,7 +1824,7 @@ export default function MysqlDashboardPage() {
                       noDataType={getNoDataType('mysql_queries_rate')}
                     />
                     <StatCard
-                      title="慢查询速率"
+                      title={<TitleWithGuide title="慢查询速率" items={slowGuide} />}
                       value={slowCardDisplay.value}
                       unit={slowCardDisplay.unit}
                       icon={<ClockCircleOutlined />}
@@ -1698,7 +1836,7 @@ export default function MysqlDashboardPage() {
                       noDataType={getNoDataType('mysql_slow_queries_rate')}
                     />
                     <StatCard
-                      title="缓冲池命中率"
+                      title={<TitleWithGuide title="缓冲池命中率" items={hitRatioGuide} />}
                       value={hitCardDisplay.value}
                       unit={hitCardDisplay.unit}
                       icon={<DatabaseOutlined />}
@@ -1712,9 +1850,9 @@ export default function MysqlDashboardPage() {
                   </div>
 
                   <div className={`${styles.panel} ${styles.dataFlowPanel}`}>
-                    <div className={styles.panelHeader}>
-                      <div className={styles.panelHeading}>
-                        <h3 className={styles.panelTitle}>请求链路与 InnoDB 数据流</h3>
+                      <div className={styles.panelHeader}>
+                        <div className={styles.panelHeading}>
+                        <h3 className={styles.panelTitle}><TitleWithGuide title="请求链路与 InnoDB 数据流" items={flowGuide} className={styles.panelTitleWithGuide} /></h3>
                         <div className={styles.panelSubTitle}>从请求入口到缓存、日志与落盘路径</div>
                       </div>
                     </div>
@@ -1764,7 +1902,24 @@ export default function MysqlDashboardPage() {
                         </div>
                         <div className={styles.innodbInner}>
                           <div className={styles.innodbBufferCard}>
-                            <div className={styles.innodbCardTitle}>缓冲池</div>
+                            <div className={styles.innodbCardTitle}>
+                              缓冲池
+                              <Tooltip
+                                overlayClassName="lightMetricTooltip"
+                                title={
+                                  <div className={styles.metricGuideTooltip}>
+                                    {bufferPoolGuide.map((item) => (
+                                      <div key={item.label} className={styles.metricGuideTooltipRow}>
+                                        <strong>{item.label}</strong>
+                                        <span>{item.detail}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                }
+                              >
+                                <InfoCircleOutlined className={styles.metricGuideIcon} />
+                              </Tooltip>
+                            </div>
                             <div className={styles.innodbBufferGrid}>
                               {Array.from({ length: bufferFlowCellCount }).map((_, index) => (
                                 <span
@@ -1778,6 +1933,20 @@ export default function MysqlDashboardPage() {
                                   key={index}
                                 />
                               ))}
+                            </div>
+                            <div className={styles.innodbBufferLegend}>
+                              <span>
+                                <i className={`${styles.bufferLegendSwatch} ${styles.bufferLegendUsed}`} />
+                                已使用
+                              </span>
+                              <span>
+                                <i className={`${styles.bufferLegendSwatch} ${styles.bufferLegendDirty}`} />
+                                脏页
+                              </span>
+                              <span>
+                                <i className={`${styles.bufferLegendSwatch} ${styles.bufferLegendFree}`} />
+                                空闲
+                              </span>
                             </div>
                             <div className={styles.innodbMetricRows}>
                               {bufferFlowMetrics.map((item) => (
@@ -1798,14 +1967,15 @@ export default function MysqlDashboardPage() {
                           <div className={styles.innodbLogCards}>
                             <div className={styles.innodbColumnTitle}>日志与事务</div>
                             <div className={styles.innodbLogCard}>
-                              <span>Redo 日志</span>
-                              <div className={styles.mysqlNodeMetric}>
-                                <span>Redo 刷盘</span>
-                                <strong>{renderFlowValue('mysql_innodb_os_log_fsyncs_rate', fsyncValue.toFixed(1), '/s')}</strong>
+                              <span><TitleWithGuide title="Redo 日志" items={redoLogGuide} /></span>
+                              <div className={styles.innodbCardHint}>
+                                事务提交先写入 Redo 缓冲，
+                                <br />
+                                再由右侧日志文件展示最终刷盘结果。
                               </div>
                             </div>
                             <div className={styles.innodbLogCard}>
-                              <span>临时表</span>
+                              <span><TitleWithGuide title="临时表" items={tempTableGuide} /></span>
                               <div className={styles.mysqlNodeMetric}>
                                 <span>总临时表</span>
                                 <strong>{renderFlowValue('mysql_created_tmp_tables_rate', (tmpTotalRate * 60).toFixed(tmpTotalRate * 60 >= 10 ? 0 : 1), '/min')}</strong>
@@ -1826,12 +1996,12 @@ export default function MysqlDashboardPage() {
                           <div className={styles.innodbDiskStack}>
                             <div className={styles.innodbColumnTitle}>磁盘持久化</div>
                             <div className={styles.innodbDiskCard}>
-                              <span>数据文件</span>
+                              <span><TitleWithGuide title="数据文件" items={dataFileGuide} /></span>
                               <div className={styles.mysqlNodeMetric}><span>读 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_reads_rate', dataReadValue.toFixed(1), '/s')}</strong></div>
                               <div className={styles.mysqlNodeMetric}><span>写 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_writes_rate', dataWriteValue.toFixed(1), '/s')}</strong></div>
                             </div>
                             <div className={styles.innodbDiskCard}>
-                              <span>Redo 日志文件</span>
+                              <span><TitleWithGuide title="Redo 日志文件" items={redoFileGuide} /></span>
                               <div className={styles.mysqlNodeMetric}><span>Redo 刷盘</span><strong>{renderFlowValue('mysql_innodb_os_log_fsyncs_rate', fsyncValue.toFixed(1), '/s')}</strong></div>
                               <div className={styles.mysqlNodeMetric}><span>复制延迟</span><strong>{replicationApplicable ? renderFlowValue('mysql_slave_seconds_behind_master', replicationDelayDisplay.value, replicationDelayDisplay.unit || 's') : '不适用'}</strong></div>
                             </div>
@@ -1845,7 +2015,7 @@ export default function MysqlDashboardPage() {
                   <div className={styles.mainTrendGrid}>
                     <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
                       <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>QPS 趋势</h3>
+                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide title="QPS 趋势" items={qpsTrendGuide} className={styles.panelTitleWithGuide} /></h3>
                         <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>总查询吞吐</div>
                         <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
                           {TREND_LEGENDS.qps.slice(0, 1).map((item) => (
@@ -1877,7 +2047,7 @@ export default function MysqlDashboardPage() {
 
                     <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
                       <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>慢查询趋势</h3>
+                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide title="慢查询趋势" items={slowTrendGuide} className={styles.panelTitleWithGuide} /></h3>
                         <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>每分钟慢 SQL</div>
                         <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
                           {TREND_LEGENDS.qps.slice(1, 2).map((item) => (
@@ -1909,7 +2079,7 @@ export default function MysqlDashboardPage() {
 
                     <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
                       <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>连接与线程趋势</h3>
+                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide title="连接与线程趋势" items={connectionTrendGuide} className={styles.panelTitleWithGuide} /></h3>
                         <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>连接总量与执行线程</div>
                         <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
                           {TREND_LEGENDS.connection.map((item) => (
@@ -1944,9 +2114,9 @@ export default function MysqlDashboardPage() {
 
                   <div className={styles.detailGrid}>
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                  <div className={styles.panelHeader}>
-                    <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}>查询类型分布</h3>
+                      <div className={styles.panelHeader}>
+                        <div className={styles.panelHeading}>
+                      <h3 className={styles.panelTitle}><TitleWithGuide title="查询类型分布" items={queryTypeGuide} className={styles.panelTitleWithGuide} /></h3>
                       <div className={styles.panelSubTitle}>按命令占比</div>
                     </div>
                   </div>
@@ -2005,7 +2175,7 @@ export default function MysqlDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
                       <div className={styles.panelHeader}>
                         <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}>线程状态分布</h3>
+                          <h3 className={styles.panelTitle}><TitleWithGuide title="线程状态分布" items={threadStateGuide} className={styles.panelTitleWithGuide} /></h3>
                           <div className={styles.panelSubTitle}>Sleep / Query / Sending data / Locked</div>
                         </div>
                       </div>
@@ -2064,7 +2234,7 @@ export default function MysqlDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel} ${styles.fillPanel}`}>
                   <div className={styles.panelHeader}>
                     <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}>临时表与缓存指标</h3>
+                      <h3 className={styles.panelTitle}><TitleWithGuide title="临时表与缓存指标" items={tempCacheGuide} className={styles.panelTitleWithGuide} /></h3>
                       <div className={styles.panelSubTitle}>每分钟</div>
                     </div>
                   </div>
@@ -2116,7 +2286,7 @@ export default function MysqlDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel} ${styles.fillPanel}`}>
                       <div className={styles.panelHeader}>
                         <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}>锁与等待指标</h3>
+                          <h3 className={styles.panelTitle}><TitleWithGuide title="锁与等待指标" items={lockGuide} className={styles.panelTitleWithGuide} /></h3>
                           <div className={styles.panelSubTitle}>事件速率 / 平均值</div>
                         </div>
                       </div>
@@ -2174,7 +2344,7 @@ export default function MysqlDashboardPage() {
 
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
                   <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                    <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>InnoDB 读写趋势</h3>
+                    <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide title="InnoDB 读写趋势" items={innodbTrendGuide} className={styles.panelTitleWithGuide} /></h3>
                     <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>每秒</div>
                     <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
                       {TREND_LEGENDS.innodb.map((item) => (
@@ -2210,7 +2380,7 @@ export default function MysqlDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel} ${styles.fillPanel}`}>
                       <div className={styles.panelHeader}>
                         <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}>缓冲池使用情况</h3>
+                          <h3 className={styles.panelTitle}><TitleWithGuide title="缓冲池使用情况" items={bufferUsageGuide} className={styles.panelTitleWithGuide} /></h3>
                           <div className={styles.panelSubTitle}>缓存页状态</div>
                         </div>
                       </div>
@@ -2275,7 +2445,7 @@ export default function MysqlDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel} ${styles.fillPanel}`}>
                       <div className={styles.panelHeader}>
                     <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}>复制状态</h3>
+                      <h3 className={styles.panelTitle}><TitleWithGuide title="复制状态" items={replicationGuide} className={styles.panelTitleWithGuide} /></h3>
                       <div className={styles.panelSubTitle}>
                         {replicationApplicable ? '从库复制延迟与线程状态' : `${mysqlIdentity.deployment}实例无需复制线程`}
                       </div>
@@ -2341,7 +2511,7 @@ export default function MysqlDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
                       <div className={styles.panelHeader}>
                         <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}>连接异常热点</h3>
+                          <h3 className={styles.panelTitle}><TitleWithGuide title="连接异常热点" items={errorHotspotGuide} className={styles.panelTitleWithGuide} /></h3>
                           <div className={styles.panelSubTitle}>当前 5 分钟平均速率</div>
                         </div>
                       </div>
@@ -2397,7 +2567,7 @@ export default function MysqlDashboardPage() {
                   <div className={`${styles.panel} ${styles.fullPanel}`}>
                     <div className={styles.panelHeader}>
                       <div className={styles.panelHeading}>
-                        <h3 className={styles.panelTitle}>监控指标全景</h3>
+                        <h3 className={styles.panelTitle}><TitleWithGuide title="监控指标全景" items={metricsOverviewGuide} className={styles.panelTitleWithGuide} /></h3>
                       </div>
                     </div>
                     <MetricViews

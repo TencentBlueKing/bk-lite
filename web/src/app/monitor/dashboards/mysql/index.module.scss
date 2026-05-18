@@ -1084,6 +1084,71 @@
   line-height: 1.2;
 }
 
+.metricGuideTooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.metricGuideTooltipRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metricGuideTooltipRow strong {
+  color: #31445c;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.metricGuideTooltipRow span {
+  color: #6f8299;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.metricGuideIcon {
+  margin-left: 6px;
+  color: #91a4bc;
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.metricGuideIcon:hover {
+  color: #2f6bff;
+}
+
+.titleWithGuide {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.panelTitleWithGuide,
+.statTitleWithGuide {
+  max-width: 100%;
+}
+
+.panelTitleWithGuide > span:first-child,
+.statTitleWithGuide > span:first-child {
+  min-width: 0;
+}
+
+.innodbCardHint {
+  margin: -6px 0 12px;
+  color: #7b8da6;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+}
+
 .innodbBufferGrid {
   display: grid;
   grid-template-columns: repeat(5, 13px);
@@ -1096,6 +1161,49 @@
   background: transparent;
   border: 0;
   box-shadow: none;
+}
+
+.innodbBufferLegend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: -4px 0 10px;
+  color: #7387a2;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.innodbBufferLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bufferLegendSwatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.bufferLegendUsed {
+  background: #69a8ff;
+  border: 1px solid #2f7dff;
+  box-shadow: 0 0 0 1px rgba(92, 148, 255, 0.1);
+}
+
+.bufferLegendDirty {
+  background: #ffbf73;
+  border: 1px solid #ff9f43;
+  box-shadow: 0 0 0 1px rgba(255, 159, 67, 0.08);
+}
+
+.bufferLegendFree {
+  background: #eef3f8;
+  border: 1px solid #cad7e6;
 }
 
 .innodbBufferCard .innodbMetricRows {
@@ -1146,12 +1254,12 @@
 }
 
 .innodbForkBottom {
-  top: 68%;
+  top: 74%;
   background: currentColor;
 }
 
 .innodbForkBottomDashed {
-  top: 68%;
+  top: 74%;
   background: currentColor;
 }
 
@@ -1191,7 +1299,7 @@
   gap: 10px;
 }
 
-.innodbLogCard span,
+.innodbLogCard > span,
 .innodbDiskCard > span {
   display: block;
   color: #1e3048;
@@ -1199,6 +1307,16 @@
   font-weight: 850;
   line-height: 1.25;
   margin-bottom: 12px;
+}
+
+.innodbLogCard > span {
+  display: inline-flex;
+  align-items: center;
+}
+
+.innodbLogCard > .innodbCardHint {
+  margin: -4px 0 14px;
+  text-align: left;
 }
 
 .innodbLogCard strong {
