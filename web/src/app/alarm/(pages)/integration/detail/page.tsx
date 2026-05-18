@@ -481,28 +481,38 @@ const IntegrationDetail: FC = () => {
   );
 
   const IntegrationHeader = () => (
-    <div className="flex flex-wrap items-start gap-4">
-      <div className="inline-flex max-w-full shrink-0 items-center gap-3 rounded bg-[#99aaf2] px-6 py-4 text-white">
-        {!logoLoadFailed && source?.logo ? (
-          <img
-            src={source.logo}
-            alt=""
-            className="h-[40px] w-[40px] shrink-0 rounded object-contain"
-            onError={() => setLogoLoadFailed(true)}
-          />
-        ) : null}
-        <span className="min-w-0 break-words text-[24px] font-semibold leading-[32px] whitespace-normal">
-          {source?.name}
-        </span>
+    <div className="rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-5 py-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="flex h-[82px] w-[82px] shrink-0 items-center justify-center rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-2.5">
+          <div className="flex h-full w-full items-center justify-center rounded-lg bg-[var(--color-primary-bg-active)]">
+            {!logoLoadFailed && source?.logo ? (
+              <img
+                src={source.logo}
+                alt=""
+                className="h-14 w-14 shrink-0 rounded object-contain"
+                onError={() => setLogoLoadFailed(true)}
+              />
+            ) : (
+              <span className="px-2 text-center text-base font-semibold leading-5 text-[var(--color-primary)]">
+                {source?.name?.slice(0, 4) || '--'}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[21px] font-semibold leading-[28px] text-[var(--color-text-1)]">
+            {source?.name}
+          </h1>
+          <p className="mt-0.5 break-words text-[13px] leading-5 text-[var(--color-text-2)] sm:text-sm">
+            {source?.description}
+          </p>
+        </div>
       </div>
-      <span className="min-w-0 flex-1 basis-[240px] self-center break-words text-[15px] leading-[24px]">
-        {source?.description}
-      </span>
     </div>
   );
 
   const renderGuideTab = () => (
-    <div className="p-4 max-h-[calc(100vh-330px)] overflow-y-auto">
+    <div className="rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-4 max-h-[calc(100vh-330px)] overflow-y-auto">
       <h4 className="mb-2 font-medium pl-2 border-l-4 border-blue-400 inline-block leading-tight">
         {t('integration.baseInfo')}
       </h4>
@@ -683,10 +693,8 @@ const IntegrationDetail: FC = () => {
               </>
             ) : (
               <>
-                <div className="rounded bg-[var(--color-bg-1)] p-4">
-                  <IntegrationHeader />
-                </div>
-                <div className="mt-4 rounded bg-[var(--color-bg-1)] p-4 pt-0">
+                <IntegrationHeader />
+                <div className="mt-4 rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4 shadow-[0_8px_24px_color-mix(in_srgb,var(--color-text-1)_3%,transparent)]">
                   <Tabs activeKey={activeTab} onChange={setActiveTab}>
                     <Tabs.TabPane key="event" tab={t('integration.eventTab')}>
                       {renderEventFilters()}
