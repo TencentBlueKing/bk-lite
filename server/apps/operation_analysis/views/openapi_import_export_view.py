@@ -18,13 +18,14 @@ from rest_framework.response import Response
 from apps.core.exceptions.base_app_exception import UnauthorizedException
 from apps.core.logger import operation_analysis_logger as logger
 from apps.core.utils.open_base import OpenAPIViewSet
-from apps.operation_analysis.constants.import_export import ConflictAction, ConflictReason, ImportExportErrorCode, ObjectType
+from apps.operation_analysis.constants.import_export import ObjectType
 from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
 from apps.operation_analysis.serializers.import_export_serializers import (
     ExportRequestSerializer,
     ImportPrecheckRequestSerializer,
     ImportSubmitRequestSerializer,
 )
+from apps.operation_analysis.services.import_export.authorization_service import ImportExportAuthorizationService
 from apps.operation_analysis.services.import_export.export_service import ExportService
 from apps.operation_analysis.services.import_export.import_service import ImportService
 from apps.operation_analysis.services.import_export.precheck_service import PrecheckService
@@ -114,24 +115,6 @@ class OpenImportExportViewSet(OpenAPIViewSet):
         data = pyyaml.safe_load(yaml_content)
         return YAMLDocument(**data)
 
-    def _validate_conflict_decisions(self, conflicts: list[dict], conflict_decisions: dict[str, str]) -> list[dict]:
-        errors = []
-        for conflict in conflicts:
-            if conflict["reason"] != ConflictReason.NO_PERMISSION_CONFLICT:
-                continue
-            object_key = conflict["object_key"]
-            action = conflict_decisions.get(object_key, ConflictAction.RENAME.value)
-            if action != ConflictAction.RENAME.value:
-                errors.append(
-                    {
-                        "code": ImportExportErrorCode.IMPORT_PERMISSION_DENIED,
-                        "message": f"对象 '{object_key}' 在其他组织中已存在，只能选择重命名",
-                        "object_key": object_key,
-                        "object_type": conflict["object_type"],
-                    }
-                )
-        return errors
-
     @action(detail=False, methods=["post"], url_path="export")
     def export_objects(self, request):
         """
@@ -181,7 +164,12 @@ class OpenImportExportViewSet(OpenAPIViewSet):
         groups = self._require_groups(request)
         organization_id = groups[0]
 
-        filtered_ids = self._filter_ids_by_org(object_type, object_ids, current_team=organization_id)
+        filtered_ids = ImportExportAuthorizationService.filter_export_object_ids(
+            request,
+            object_type,
+            object_ids,
+            current_team=organization_id,
+        )
 
         logger.info(
             "Open API export request: object_type=%s, object_ids=%s, organization_id=%s",
@@ -273,6 +261,17 @@ class OpenImportExportViewSet(OpenAPIViewSet):
         result = PrecheckService.precheck(
             yaml_content=yaml_content,
             target_directory_id=target_directory_id,
+            current_team=current_team,
+        )
+
+        if not result["valid"]:
+            return Response(result, status=status.HTTP_200_OK)
+
+        doc = self._parse_yaml_to_document(yaml_content)
+        result = ImportExportAuthorizationService.apply_precheck_permissions(
+            request,
+            doc,
+            result,
             current_team=current_team,
         )
 
@@ -381,9 +380,30 @@ class OpenImportExportViewSet(OpenAPIViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        doc = self._parse_yaml_to_document(yaml_content)
+        precheck_result = ImportExportAuthorizationService.apply_precheck_permissions(
+            request,
+            doc,
+            precheck_result,
+            current_team=current_team,
+        )
+
+        if not precheck_result["valid"]:
+            return Response(
+                {
+                    "success": False,
+                    "errors": precheck_result["errors"],
+                    "message": "预检失败，无法执行导入",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         conflict_decisions = {item["object_key"]: item["action"] for item in conflict_decisions_list}
 
-        invalid_decisions = self._validate_conflict_decisions(precheck_result["conflicts"], conflict_decisions)
+        invalid_decisions = ImportExportAuthorizationService.validate_conflict_decisions(
+            precheck_result["conflicts"],
+            conflict_decisions,
+        )
         if invalid_decisions:
             return Response(
                 {
@@ -401,7 +421,13 @@ class OpenImportExportViewSet(OpenAPIViewSet):
                 secret_supplements[key] = {}
             secret_supplements[key][item["field"]] = item["value"]
 
-        doc = self._parse_yaml_to_document(yaml_content)
+        ImportExportAuthorizationService.validate_import_submit_permissions(
+            request,
+            doc,
+            precheck_result["conflicts"],
+            conflict_decisions,
+            current_team=current_team,
+        )
 
         import_service = ImportService(
             doc=doc,
