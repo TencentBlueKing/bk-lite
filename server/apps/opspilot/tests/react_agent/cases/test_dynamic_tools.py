@@ -101,7 +101,9 @@ async def _build_and_run(request, mock_llm_responses, tools_list=None):
     mock_llm = MagicMock()
 
     def track_bind(tools_arg, **kwargs):
-        bound_tool_names_list.append([tool_item.name for tool_item in tools_arg if tool_item.name != "request_human_approval"])
+        # Filter out auto-added tools (request_human_approval, request_user_choice)
+        auto_tools = {"request_human_approval", "request_user_choice"}
+        bound_tool_names_list.append([tool_item.name for tool_item in tools_arg if tool_item.name not in auto_tools])
         bound = MagicMock()
         bound.ainvoke = mock_ainvoke
         return bound
@@ -254,6 +256,7 @@ class TestDynamicToolRemoval:
         _, llm_call_count, bound_tool_names = await _build_and_run(request, responses, [search_tool, calc_tool])
 
         assert llm_call_count == 2
+        # Note: auto-added tools are filtered out in track_bind
         assert bound_tool_names[0] == ["search_tool", "calc_tool"]
         assert bound_tool_names[1] == ["calc_tool"]
 
@@ -287,6 +290,7 @@ class TestDynamicToolRemoval:
         _, llm_call_count, bound_tool_names = await _build_and_run(request, responses, [diagnose_tool, repair_tool])
 
         assert llm_call_count == 3
+        # Note: auto-added tools are filtered out in track_bind
         assert bound_tool_names[0] == ["diagnose_tool", "repair_tool"]
         assert bound_tool_names[1] == ["diagnose_tool", "repair_tool"]
         assert bound_tool_names[2] == ["repair_tool"]
@@ -318,6 +322,7 @@ class TestDynamicToolAddition:
         _, llm_call_count, bound_tool_names = await _build_and_run(request, responses, [search_tool])
 
         assert llm_call_count == 2
+        # Note: auto-added tools (request_human_approval, request_user_choice) are filtered out in track_bind
         assert bound_tool_names[0] == ["search_tool"]
         assert "repair_tool" in bound_tool_names[1]
 
@@ -345,6 +350,7 @@ class TestDynamicToolAddition:
         _, llm_call_count, bound_tool_names = await _build_and_run(request, responses, [search_tool])
 
         assert llm_call_count == 2
+        # Note: auto-added tools are filtered out; hook returns explicit tools list
         assert bound_tool_names[1] == ["search_tool", "repair_tool"]
 
 
@@ -379,7 +385,9 @@ class TestToolSetIntegrity:
         )
 
         assert llm_call_count == 3
+        # Note: auto-added tools are filtered out in track_bind
         assert bound_tool_names[0] == ["search_tool", "repair_tool"]
+        # When hook returns explicit tools list, only those tools are in the filtered list
         assert bound_tool_names[1] == ["repair_tool"]
         assert any(isinstance(message, ToolMessage) and message.name == "search_tool" for message in messages)
         assert any(isinstance(message, ToolMessage) and message.name == "repair_tool" for message in messages)

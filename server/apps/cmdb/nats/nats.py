@@ -1,5 +1,6 @@
 import datetime
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 from django.db.models import Count
 from django.db.models.functions import TruncDate, TruncHour, TruncMonth, TruncWeek
@@ -27,11 +28,11 @@ from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.utils.base import get_default_group_id
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
+from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.system_mgmt.models import Group, User
 from apps.system_mgmt.models.role import Role
 from apps.system_mgmt.utils.group_utils import GroupUtils
-from apps.core.logger import cmdb_logger as logger
 
 
 def _normalize_to_list(value):
@@ -352,7 +353,9 @@ def receive_config_file_result(data: dict):
     """接收 Stargazer 回传的配置文件采集结果并落库。"""
     logger.info("==[ConfigFileCollect] 接收配置文件采集结果")
     result = ConfigFileService.process_collect_result(data)
-    logger.info("==[ConfigFileCollect] 处理配置文件采集结果完成", )
+    logger.info(
+        "==[ConfigFileCollect] 处理配置文件采集结果完成",
+    )
     return {
         "result": True,
         "changed": bool(result.get("changed", False)),
@@ -552,28 +555,60 @@ def _get_trunc_func_and_format(group_by):
     return mapping.get(group_by, (TruncDate, "%Y-%m-%d"))
 
 
-def _generate_time_periods(start_dt, end_dt, group_by, date_format):
+def _resolve_target_timezone(timezone_name=None):
+    if isinstance(timezone_name, str) and timezone_name:
+        try:
+            return ZoneInfo(timezone_name)
+        except Exception:
+            logger.warning("Invalid timezone provided for get_change_trend: %s", timezone_name)
+    return timezone.get_current_timezone()
+
+
+def _parse_client_datetime(value, target_tz):
+    text = str(value).strip()
+    try:
+        parsed = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        parsed = datetime.datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
+
+    if timezone.is_naive(parsed):
+        return timezone.make_aware(parsed, target_tz)
+    return parsed.astimezone(target_tz)
+
+
+def _format_period_value(value, target_tz):
+    if isinstance(value, datetime.date) and not isinstance(value, datetime.datetime):
+        value = datetime.datetime.combine(value, datetime.time.min, tzinfo=target_tz)
+    elif timezone.is_naive(value):
+        value = timezone.make_aware(value, target_tz)
+    else:
+        value = value.astimezone(target_tz)
+
+    return value.isoformat()
+
+
+def _generate_time_periods(start_dt, end_dt, group_by, target_tz):
     periods = []
     if group_by == "hour":
         current = start_dt.replace(minute=0, second=0, microsecond=0)
         while current < end_dt:
-            periods.append(current.strftime(date_format))
+            periods.append(_format_period_value(current, target_tz))
             current += datetime.timedelta(hours=1)
     elif group_by == "day":
         current = start_dt.date()
         end_date = end_dt.date()
         while current <= end_date:
-            periods.append(current.strftime(date_format))
+            periods.append(_format_period_value(current, target_tz))
             current += datetime.timedelta(days=1)
     elif group_by == "week":
         current = start_dt - datetime.timedelta(days=start_dt.weekday())
         while current < end_dt:
-            periods.append(current.strftime(date_format))
+            periods.append(_format_period_value(current, target_tz))
             current += datetime.timedelta(weeks=1)
     elif group_by == "month":
         current = start_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         while current < end_dt:
-            periods.append(current.strftime(date_format))
+            periods.append(_format_period_value(current, target_tz))
             if current.month == 12:
                 current = current.replace(year=current.year + 1, month=1)
             else:
@@ -606,14 +641,15 @@ def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, *
     if not time or len(time) != 2:
         return {"result": False, "data": {}, "message": "time parameter is required as [start_time, end_time]"}
 
+    target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.pop("timezone", None))
     start_time, end_time = time
-    start_dt = datetime.datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
-    end_dt = datetime.datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
-    aware_start = timezone.make_aware(start_dt)
-    aware_end = timezone.make_aware(end_dt)
+    aware_start = _parse_client_datetime(start_time, target_tz)
+    aware_end = _parse_client_datetime(end_time, target_tz)
+    local_start = aware_start.astimezone(target_tz)
+    local_end = aware_end.astimezone(target_tz)
 
-    trunc_func, date_format = _get_trunc_func_and_format(group_by)
-    all_periods = _generate_time_periods(start_dt, end_dt, group_by, date_format)
+    trunc_func, _ = _get_trunc_func_and_format(group_by)
+    all_periods = _generate_time_periods(local_start, local_end, group_by, target_tz)
 
     base_queryset = ChangeRecord.objects.filter(created_at__gte=aware_start, created_at__lt=aware_end)
     if model_id:
@@ -635,7 +671,7 @@ def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, *
     for key, change_type in type_mapping.items():
         queryset = (
             base_queryset.filter(type=change_type)
-            .annotate(period=trunc_func("created_at"))
+            .annotate(period=trunc_func("created_at", tzinfo=target_tz))
             .values("period")
             .annotate(count=Count("id"))
             .order_by("period")
@@ -644,7 +680,7 @@ def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, *
         period_counts = {}
         for item in queryset:
             if item["period"]:
-                period_key = item["period"].strftime(date_format)
+                period_key = _format_period_value(item["period"], target_tz)
                 period_counts[period_key] = item["count"]
 
         display_key = type_display.get(key, key)

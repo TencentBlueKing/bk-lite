@@ -132,7 +132,8 @@ def update_user_base_info(request):
 
 
 def validate_pwd(request):
-    password = request.GET.get("password")
+    body = json.loads(request.body)
+    password = body.get("password")
     username = request.user.username
     domain = request.user.domain
 

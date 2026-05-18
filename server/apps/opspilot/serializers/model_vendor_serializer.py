@@ -31,6 +31,9 @@ class CustomProviderSerializer(TeamSerializer):
 class ModelVendorSerializer(serializers.ModelSerializer):
     # 读取时返回脱敏值
     api_key = serializers.CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
+    # PATCH 请求时这些字段应该是可选的
+    name = serializers.CharField(required=False)
+    vendor_type = serializers.CharField(required=False)
 
     class Meta:
         model = ModelVendor
@@ -38,6 +41,7 @@ class ModelVendorSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "vendor_type",
+            "protocol_type",
             "api_base",
             "api_key",
             "enabled",
@@ -63,6 +67,8 @@ class ModelVendorTestConnectionSerializer(serializers.Serializer):
     api_base = serializers.CharField(required=True, allow_blank=False)
     api_key = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     password_changed = serializers.BooleanField(required=False, default=True)
+    protocol_type = serializers.ChoiceField(choices=["openai", "anthropic"], required=False, default="openai")
+    vendor_type = serializers.CharField(required=False, allow_blank=True, default="")
 
     def validate(self, attrs):
         password_changed = attrs.get("password_changed", True)

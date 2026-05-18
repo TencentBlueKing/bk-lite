@@ -12,6 +12,7 @@ interface CustomToolTipProps extends Omit<TooltipProps<any, string>, 'unit'> {
   metric?: MetricItem;
   maxHeight?: number;
   maxWidth?: number;
+  seriesUnits?: Record<string, string>;
 }
 
 const CustomTooltip: React.FC<CustomToolTipProps> = ({
@@ -22,20 +23,36 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
   unit = '',
   visible = true,
   maxHeight,
-  maxWidth
+  maxWidth,
+  seriesUnits = {}
 }) => {
   const { convertToLocalizedTime } = useLocalizedTime();
   const { findUnitNameById } = useUnitTransform();
 
+  const formatDetailText = useCallback(
+    (detail: { label?: string; value?: string }) => {
+      const labelText = detail.label?.trim() || '';
+      const valueText = detail.value?.trim() || '';
+
+      if (labelText && valueText && labelText !== valueText) {
+        return `${labelText}：${valueText}`;
+      }
+
+      return valueText || labelText;
+    },
+    []
+  );
+
   const getValue = useCallback(
-    (item: TableDataItem) => {
+    (item: TableDataItem & { dataKey?: string }) => {
       const value = getEnumValue(metric as MetricItem, item.value);
       if (value === '--') {
         return value;
       }
-      return `${value} ${findUnitNameById(unit)}`;
+      const currentUnit = (item.dataKey && seriesUnits[item.dataKey]) || unit;
+      return `${value} ${findUnitNameById(currentUnit)}`;
     },
-    [metric, unit, getEnumValue, findUnitNameById]
+    [metric, unit, getEnumValue, findUnitNameById, seriesUnits]
   );
 
   if (active && payload?.length && visible) {
@@ -73,11 +90,8 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
               ></span>
               <span className="flex-1">
                 {(item.payload.details?.[item.dataKey] || [])
-                  .map((detail: any) =>
-                    detail.label
-                      ? `${detail.label}：${detail.value}`
-                      : detail.value
-                  )
+                  .map((detail: any) => formatDetailText(detail))
+                  .filter(Boolean)
                   .join('-')}
               </span>
               <span className="font-[600] ml-[10px] whitespace-nowrap">

@@ -234,7 +234,11 @@ def collect_unique_rule_conflicts(
                 )
                 continue
 
-            batch_map.setdefault(signature, []).append(item)
+            batch_items = batch_map.get(signature)
+            if batch_items is None:
+                batch_items = []
+                batch_map[signature] = batch_items
+            batch_items.append(item)
 
     return conflicts
 

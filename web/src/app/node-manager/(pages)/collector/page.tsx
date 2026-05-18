@@ -36,7 +36,9 @@ const Collector = () => {
   const [selectedAppTag, setSelectedAppTag] = useState<string>('');
   const [selectedOsTags, setSelectedOsTags] = useState<string[]>([]);
   const [selectedSystemTags, setSelectedSystemTags] = useState<string[]>([]);
-  const [selectedArchitectureTags, setSelectedArchitectureTags] = useState<string[]>([]);
+  const [selectedArchitectureTags, setSelectedArchitectureTags] = useState<
+    string[]
+  >([]);
   const [tagEnum, setTagEnum] = useState<Record<string, any>>({});
 
   useEffect(() => {
@@ -60,7 +62,7 @@ const Collector = () => {
     fetchCollectorData({
       searchValue: '',
       appTag: defaultAppTag,
-      tagEnum: newTagEnum,
+      tagEnum: newTagEnum
     });
   };
 
@@ -96,14 +98,17 @@ const Collector = () => {
 
   const architectureTags = [
     { label: 'x86_64', value: 'x86_64' },
-    { label: 'ARM64', value: 'arm64' },
+    { label: 'ARM64', value: 'arm64' }
   ];
 
   const handleResult = (res: any, enumMap?: Record<string, any>) => {
     const currentTagEnum = enumMap || tagEnum;
     const tempdata = (res || []).map((item: any) => {
       const tagList = item.tags || [];
-      const displayTags = tagList.map((tag: string) => {
+      const nonArchitectureTags = tagList.filter(
+        (tag: string) => !['x86_64', 'arm64'].includes(tag)
+      );
+      const displayTags = nonArchitectureTags.map((tag: string) => {
         return currentTagEnum[tag]?.name || (tag === 'arm64' ? 'ARM64' : tag);
       });
       const architectureDisplay =
@@ -125,7 +130,7 @@ const Collector = () => {
         tagList: architectureDisplay
           ? [...displayTags, architectureDisplay]
           : displayTags,
-        originalTags: tagList,
+        originalTags: tagList
       };
     });
     setCollectorCards(tempdata);
@@ -135,14 +140,16 @@ const Collector = () => {
     appTag = selectedAppTag,
     osTags = [],
     kindTags = selectedSystemTags,
-    architectureTags = selectedArchitectureTags,
+    architectureTags = selectedArchitectureTags
   }: {
     appTag?: string;
     osTags?: string[];
     kindTags?: string[];
     architectureTags?: string[];
   }) => {
-    return [appTag, ...osTags, ...kindTags, ...architectureTags].filter(Boolean);
+    return [appTag, ...osTags, ...kindTags, ...architectureTags].filter(
+      Boolean
+    );
   };
 
   const fetchCollectorData = async ({
@@ -151,7 +158,7 @@ const Collector = () => {
     osTags = selectedOsTags,
     sysTags = selectedSystemTags,
     architectureValues = selectedArchitectureTags,
-    tagEnum: enumMap,
+    tagEnum: enumMap
   }: {
     searchValue?: string;
     appTag?: string;
@@ -170,7 +177,7 @@ const Collector = () => {
       appTag,
       osTags,
       kindTags: sysTags,
-      architectureTags: architectureValues,
+      architectureTags: architectureValues
     });
     if (tagsArray.length > 0) {
       requestParams.tags = tagsArray.join(',');
@@ -178,7 +185,7 @@ const Collector = () => {
     try {
       setLoading(true);
       const res = await getCollectorlist(requestParams, {
-        signal: abortController.signal,
+        signal: abortController.signal
       });
       // 只有最新请求才处理数据
       if (currentRequestId !== collectorRequestIdRef.current) return;
@@ -202,7 +209,7 @@ const Collector = () => {
       type: config?.type,
       form,
       key: config?.key,
-      appTag: selectedAppTag,
+      appTag: selectedAppTag
     });
   };
 
@@ -228,7 +235,7 @@ const Collector = () => {
             return resolve(true);
           }
         });
-      },
+      }
     });
   };
 
@@ -281,7 +288,7 @@ const Collector = () => {
       searchValue: search,
       appTag: selectedAppTag,
       osTags: newSelectedTags,
-      sysTags: selectedSystemTags,
+      sysTags: selectedSystemTags
     });
   };
 
@@ -294,7 +301,7 @@ const Collector = () => {
       searchValue: search,
       appTag: selectedAppTag,
       osTags: selectedOsTags,
-      sysTags: newSelectedTags,
+      sysTags: newSelectedTags
     });
   };
 
@@ -306,7 +313,7 @@ const Collector = () => {
       appTag: newAppTag,
       osTags: selectedOsTags,
       sysTags: selectedSystemTags,
-      architectureValues: selectedArchitectureTags,
+      architectureValues: selectedArchitectureTags
     });
   };
 
@@ -320,7 +327,7 @@ const Collector = () => {
       appTag: selectedAppTag,
       osTags: selectedOsTags,
       sysTags: selectedSystemTags,
-      architectureValues: newSelectedTags,
+      architectureValues: newSelectedTags
     });
   };
 
@@ -330,8 +337,8 @@ const Collector = () => {
         openModal({
           title: t('node-manager.collector.addCollector'),
           type: 'add',
-          form: {},
-        }),
+          form: {}
+        })
     };
   };
 
@@ -350,20 +357,22 @@ const Collector = () => {
         search={false}
         operateSection={
           <div className="w-full">
-                {appTags.length > 0 && (
-                  <Segmented
-                    options={appTags}
-                    value={selectedAppTag}
-                    onChange={handleAppTagChange}
-                    className="custom-tabs"
+            {appTags.length > 0 && (
+              <Segmented
+                options={appTags}
+                value={selectedAppTag}
+                onChange={handleAppTagChange}
+                className="custom-tabs"
               />
-                )}
+            )}
             <div className="flex items-center w-full">
               <div className="flex items-center flex-1 mr-[10px] overflow-x-auto">
                 {(osTags || []).map((tag: any) => (
                   <Tag
                     key={tag.value}
-                    color={selectedOsTags.includes(tag.value) ? 'blue' : 'default'}
+                    color={
+                      selectedOsTags.includes(tag.value) ? 'blue' : 'default'
+                    }
                     className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
                     onClick={() => handleOsTagClick(tag.value)}
                   >
@@ -373,7 +382,11 @@ const Collector = () => {
                 {(kindTags || []).map((tag: any) => (
                   <Tag
                     key={tag.value}
-                    color={selectedSystemTags.includes(tag.value) ? 'blue' : 'default'}
+                    color={
+                      selectedSystemTags.includes(tag.value)
+                        ? 'blue'
+                        : 'default'
+                    }
                     className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
                     onClick={() => handleSystemTagClick(tag.value)}
                   >
@@ -383,7 +396,11 @@ const Collector = () => {
                 {architectureTags.map((tag) => (
                   <Tag
                     key={tag.value}
-                    color={selectedArchitectureTags.includes(tag.value) ? 'blue' : 'default'}
+                    color={
+                      selectedArchitectureTags.includes(tag.value)
+                        ? 'blue'
+                        : 'default'
+                    }
                     className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
                     onClick={() => handleArchitectureTagClick(tag.value)}
                   >

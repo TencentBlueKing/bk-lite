@@ -172,10 +172,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
               <span>{item.attr_name}</span>
             </Checkbox>
           ) : (
-            <span className="ml-2">{item.attr_name}</span>
-          )}
-          {item.is_required && type !== 'batchEdit' && (
-            <span className="text-[#ff4d4f] ml-1">*</span>
+            <span className="ml-1">{item.attr_name}</span>
           )}
           {item.user_prompt && (
             <Tooltip title={item.user_prompt}>

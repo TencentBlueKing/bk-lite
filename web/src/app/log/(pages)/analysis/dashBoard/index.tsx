@@ -9,23 +9,11 @@ import React, {
 } from 'react';
 import TimeSelector from '@/components/time-selector';
 import GridLayout, { WidthProvider } from 'react-grid-layout';
-import {
-  Button,
-  Dropdown,
-  Menu,
-  Modal,
-  Spin,
-  Select,
-  Tooltip,
-  message
-} from 'antd';
+import { Button, Dropdown, Menu, Modal, Spin, Select, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { LayoutItem, DirItem } from '@/app/log/types/analysis';
-import {
-  SaveOutlined,
-  MoreOutlined,
-  QuestionCircleOutlined
-} from '@ant-design/icons';
+import { SearchOutlined, SaveOutlined, MoreOutlined } from '@ant-design/icons';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import WidgetWrapper from './components/widgetWrapper';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -60,7 +48,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     ref
   ) => {
     const { t } = useTranslation();
-    const { getLogStreams, getInstanceList } = useIntegrationApi();
+    const { getLogStreams, getInstanceList, getFieldValues } =
+      useIntegrationApi();
     const { isLoading } = useApiClient();
     const timeSelectorRef = useRef<TimeSelectorRef>(null);
     const instanceAbortControllerRef = useRef<AbortController | null>(null);
@@ -80,8 +69,12 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [instanceOptions, setInstanceOptions] = useState<ListItem[]>([]);
     const [instanceIds, setInstanceIds] = useState<React.Key[]>([]);
     const [instanceLoading, setInstanceLoading] = useState(false);
+    const [containerOptions, setContainerOptions] = useState<ListItem[]>([]);
+    const [containerNames, setContainerNames] = useState<React.Key[]>([]);
+    const [containerLoading, setContainerLoading] = useState(false);
     const collectTypeName = selectedDashboard?.collectTypeName || '';
     const showInstanceFilter = !!collectTypeName;
+    const showContainerFilter = collectTypeName === 'docker';
 
     // 初始化分组数据（仅首次加载）
     useEffect(() => {
@@ -133,6 +126,20 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     }, [collectTypeName, isLoading, selectedCollectTypeId, showInstanceFilter]);
 
     useEffect(() => {
+      if (!showContainerFilter || !groups.length) {
+        setContainerNames([]);
+        setContainerOptions([]);
+        setOtherConfig((prev: any) => ({
+          ...prev,
+          containerNames: []
+        }));
+        return;
+      }
+
+      loadDockerContainers();
+    }, [showContainerFilter, groups, otherConfig.timeRange]);
+
+    useEffect(() => {
       return () => {
         instanceAbortControllerRef.current?.abort();
       };
@@ -143,6 +150,127 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         ...prev,
         frequence: val
       }));
+    };
+
+    const buildInstanceFilterQuery = (
+      queryText: string,
+      selectedInstanceIds?: Array<string | number>
+    ) => {
+      if (!selectedInstanceIds?.length) {
+        return queryText;
+      }
+
+      const instanceFilter =
+        selectedInstanceIds.length === 1
+          ? `instance_id:"${String(selectedInstanceIds[0])}"`
+          : `(${selectedInstanceIds.map((id) => `instance_id:"${String(id)}"`).join(' OR ')})`;
+
+      const separatorIndex = queryText.indexOf('|');
+      const baseFilter =
+        separatorIndex >= 0
+          ? queryText.slice(0, separatorIndex).trim()
+          : queryText.trim();
+      const pipeline =
+        separatorIndex >= 0 ? queryText.slice(separatorIndex).trimStart() : '';
+
+      const mergedFilter =
+        !baseFilter || baseFilter === '*'
+          ? instanceFilter
+          : `(${baseFilter}) AND ${instanceFilter}`;
+
+      return pipeline ? `${mergedFilter} ${pipeline}` : mergedFilter;
+    };
+
+    const buildContainerFilterQuery = (
+      queryText: string,
+      selectedContainerNames?: Array<string | number>
+    ) => {
+      if (!selectedContainerNames?.length) {
+        return queryText;
+      }
+
+      const containerFilter =
+        selectedContainerNames.length === 1
+          ? `container_name:"${String(selectedContainerNames[0])}"`
+          : `(${selectedContainerNames.map((name) => `container_name:"${String(name)}"`).join(' OR ')})`;
+
+      const separatorIndex = queryText.indexOf('|');
+      const baseFilter =
+        separatorIndex >= 0
+          ? queryText.slice(0, separatorIndex).trim()
+          : queryText.trim();
+      const pipeline =
+        separatorIndex >= 0 ? queryText.slice(separatorIndex).trimStart() : '';
+
+      const mergedFilter =
+        !baseFilter || baseFilter === '*'
+          ? containerFilter
+          : `(${baseFilter}) AND ${containerFilter}`;
+
+      return pipeline ? `${mergedFilter} ${pipeline}` : mergedFilter;
+    };
+
+    const calculateTimeInterval = (
+      startTime: string,
+      endTime: string
+    ): string => {
+      const start = new Date(startTime);
+      const end = new Date(endTime);
+      const diffInHours =
+        Math.abs(end.getTime() - start.getTime()) / (1000 * 60 * 60);
+
+      if (diffInHours <= 24) {
+        return '1m';
+      } else if (diffInHours <= 720) {
+        return '1h';
+      }
+      return '1d';
+    };
+
+    const buildWidgetSearchQuery = (item: LayoutItem) => {
+      const times = getTimeRange();
+      const startTime = times?.[0] ? new Date(times[0]).toISOString() : '';
+      const endTime = times?.[1] ? new Date(times[1]).toISOString() : '';
+      const dataSourceParams = item.valueConfig?.dataSourceParams as
+        | { query?: string; searchQuery?: string }
+        | undefined;
+      let query =
+        dataSourceParams?.searchQuery || dataSourceParams?.query || '*';
+
+      if (query.includes('${_time}') && startTime && endTime) {
+        query = query.replace(
+          /\$\{_time\}/g,
+          calculateTimeInterval(startTime, endTime)
+        );
+      }
+
+      query = buildInstanceFilterQuery(query, otherConfig.instanceIds);
+      query = buildContainerFilterQuery(query, otherConfig.containerNames);
+
+      return query;
+    };
+
+    const handleOpenSearch = (item: LayoutItem) => {
+      const times = getTimeRange();
+      const params = new URLSearchParams();
+      const query = buildWidgetSearchQuery(item);
+
+      params.set('query', query);
+      if (times?.[0]) {
+        params.set('startTime', String(times[0]));
+      }
+      if (times?.[1]) {
+        params.set('endTime', String(times[1]));
+      }
+      groups.forEach((groupId) => {
+        params.append('log_groups', String(groupId));
+      });
+
+      window.open(
+        `/log/search?${params.toString()}`,
+        '_blank',
+        'noopener,noreferrer'
+      );
     };
 
     // 暴露方法给父组件
@@ -269,6 +397,48 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       }));
     };
 
+    const onContainerChange = (val: React.Key[]) => {
+      setContainerNames(val);
+      setOtherConfig((prev: any) => ({
+        ...prev,
+        containerNames: val
+      }));
+    };
+
+    const loadDockerContainers = async () => {
+      try {
+        setContainerLoading(true);
+        const times = getTimeRange();
+        const values = await getFieldValues({
+          filed: 'container_name',
+          start_time: times?.[0] ? new Date(times[0]).toISOString() : '',
+          end_time: times?.[1] ? new Date(times[1]).toISOString() : '',
+          limit: 100,
+          log_groups: groups
+        });
+
+        const options = (
+          (values?.values as Array<
+            string | { value?: string; hits?: number }
+          >) || []
+        )
+          .map((item) => {
+            if (typeof item === 'string') {
+              return item;
+            }
+            return item?.value || '';
+          })
+          .filter(Boolean)
+          .map((value) => ({ id: value, name: value }));
+
+        setContainerOptions(options);
+      } catch {
+        setContainerOptions([]);
+      } finally {
+        setContainerLoading(false);
+      }
+    };
+
     const handleRefresh = () => {
       if (!groups.length) {
         message.error(t('log.search.searchError'));
@@ -342,55 +512,14 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         )}
         <div className="flex min-h-full flex-col gap-4 p-4">
           <div className="w-full overflow-x-auto rounded-2xl border border-[var(--color-border-2)] bg-[var(--color-bg-1)]/95 px-4 py-3">
-            {selectedDashboard && (
-              <h2 className="mb-3 whitespace-nowrap text-xl font-semibold text-[var(--color-text-1)]">
-                {getDashboardTitle(
-                  selectedDashboardTitle || selectedDashboard.name
-                )}
-              </h2>
-            )}
-            <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 whitespace-nowrap">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <Select
-                  style={{
-                    width: '220px'
-                  }}
-                  loading={pageLoading}
-                  showSearch
-                  mode="multiple"
-                  maxTagCount="responsive"
-                  placeholder={t('log.search.selectGroup')}
-                  value={groups}
-                  onChange={(val) => onGroupChange(val)}
-                >
-                  {groupList.map((item) => (
-                    <Option value={item.id} key={item.id}>
-                      {item.name}
-                    </Option>
-                  ))}
-                </Select>
-                {showInstanceFilter && (
-                  <Select
-                    style={{
-                      width: '220px'
-                    }}
-                    loading={instanceLoading}
-                    showSearch
-                    mode="multiple"
-                    maxTagCount="responsive"
-                    placeholder={t('log.analysis.selectInstance')}
-                    value={instanceIds}
-                    onChange={(val) => onInstanceChange(val)}
-                    optionFilterProp="children"
-                  >
-                    {instanceOptions.map((item) => (
-                      <Option value={item.id} key={item.id}>
-                        {item.name}
-                      </Option>
-                    ))}
-                  </Select>
-                )}
-              </div>
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+              {selectedDashboard && (
+                <h2 className="whitespace-nowrap text-xl font-semibold text-[var(--color-text-1)]">
+                  {getDashboardTitle(
+                    selectedDashboardTitle || selectedDashboard.name
+                  )}
+                </h2>
+              )}
               <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                 <div className="flex flex-none items-center">
                   <TimeSelector
@@ -415,9 +544,83 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                 )}
               </div>
             </div>
+
+            <div className="mt-4 flex min-w-0 flex-wrap gap-2">
+              <div className="w-[200px] max-w-full">
+                <div className="mb-1 text-xs font-medium text-[var(--color-text-3)]">
+                  {t('log.group')}
+                </div>
+                <Select
+                  className="w-full"
+                  loading={pageLoading}
+                  showSearch
+                  mode="multiple"
+                  maxTagCount="responsive"
+                  placeholder={t('log.search.selectGroup')}
+                  value={groups}
+                  onChange={(val) => onGroupChange(val)}
+                >
+                  {groupList.map((item) => (
+                    <Option value={item.id} key={item.id}>
+                      {item.name}
+                    </Option>
+                  ))}
+                </Select>
+              </div>
+
+              {showInstanceFilter && (
+                <div className="w-[200px] max-w-full">
+                  <div className="mb-1 text-xs font-medium text-[var(--color-text-3)]">
+                    {t('log.instance')}
+                  </div>
+                  <Select
+                    className="w-full"
+                    loading={instanceLoading}
+                    showSearch
+                    mode="multiple"
+                    maxTagCount="responsive"
+                    placeholder={t('log.analysis.selectInstance')}
+                    value={instanceIds}
+                    onChange={(val) => onInstanceChange(val)}
+                    optionFilterProp="children"
+                  >
+                    {instanceOptions.map((item) => (
+                      <Option value={item.id} key={item.id}>
+                        {item.name}
+                      </Option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+
+              {showContainerFilter && (
+                <div className="w-[200px] max-w-full">
+                  <div className="mb-1 text-xs font-medium text-[var(--color-text-3)]">
+                    {t('log.analysis.container')}
+                  </div>
+                  <Select
+                    className="w-full"
+                    loading={containerLoading}
+                    showSearch
+                    mode="multiple"
+                    maxTagCount="responsive"
+                    placeholder={t('log.analysis.selectContainer')}
+                    value={containerNames}
+                    onChange={(val) => onContainerChange(val)}
+                    optionFilterProp="children"
+                  >
+                    {containerOptions.map((item) => (
+                      <Option value={item.id} key={item.id}>
+                        {item.name}
+                      </Option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="flex-1 overflow-auto rounded-[20px] bg-[var(--color-fill-1)]/70 p-2">
+          <div className="flex-1 overflow-auto rounded-[20px] p-2">
             {(() => {
               if (pageLoading) {
                 return (
@@ -432,7 +635,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                   layout={layout}
                   onLayoutChange={editable ? onLayoutChange : undefined}
                   cols={12}
-                  rowHeight={100}
+                  rowHeight={88}
                   margin={[14, 14]}
                   containerPadding={[8, 8]}
                   draggableCancel=".no-drag, .widget-body"
@@ -454,36 +657,53 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                     return (
                       <div
                         key={item.i}
-                        className={`widget flex flex-col overflow-hidden rounded-[18px] border border-[var(--color-border-2)] bg-[var(--color-bg-1)] px-4 pb-4 pt-3 shadow-[0_8px_24px_rgba(15,23,42,0.04)] ${
+                        className={`widget flex flex-col overflow-hidden rounded-[18px] border border-[var(--color-border-2)] bg-[var(--color-bg-1)] px-4 pb-4 pt-3 shadow-[0_4px_20px_rgba(15,23,42,0.08)] ${
                           !editable ? 'readonly-widget' : ''
                         }`}
                       >
-                        <div className="widget-header flex items-start justify-between gap-3 pb-3">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1">
-                              <h4 className="truncate text-[15px] font-semibold text-[var(--color-text-1)]">
-                                {item.name}
-                              </h4>
-                              {item.description && (
-                                <Tooltip title={item.description}>
-                                  <QuestionCircleOutlined className="flex-shrink-0 cursor-help text-xs text-[var(--color-text-3)]" />
-                                </Tooltip>
+                        <div className="widget-header pb-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1">
+                                <h4 className="truncate text-[15px] font-semibold text-[var(--color-text-1)]">
+                                  {item.name}
+                                </h4>
+                              </div>
+                            </div>
+                            <div className="no-drag flex items-center gap-1">
+                              <Button
+                                type="link"
+                                className="m-0 p-0"
+                                icon={<SearchOutlined />}
+                                onClick={() => handleOpenSearch(item)}
+                                title={t('log.integration.viewLogs')}
+                              />
+                              {editable && (
+                                <Dropdown overlay={menu} trigger={['click']}>
+                                  <button className="no-drag text-[var(--color-text-2)] hover:text-[var(--color-text-1)] transition-colors">
+                                    <MoreOutlined
+                                      style={{ fontSize: '20px' }}
+                                    />
+                                  </button>
+                                </Dropdown>
                               )}
                             </div>
                           </div>
-                          {editable && (
-                            <Dropdown overlay={menu} trigger={['click']}>
-                              <button className="no-drag text-[var(--color-text-2)] hover:text-[var(--color-text-1)] transition-colors">
-                                <MoreOutlined style={{ fontSize: '20px' }} />
-                              </button>
-                            </Dropdown>
+                          {item.description && (
+                            <EllipsisWithTooltip
+                              text={item.description}
+                              className="truncate text-xs text-[var(--color-text-3)] cursor-default"
+                            />
                           )}
                         </div>
-                        <div className="widget-body h-full flex-1 overflow-hidden rounded-2xl bg-[var(--color-bg-1)]">
+                        <div className="widget-body h-full flex-1 overflow-hidden bg-[var(--color-bg-1)]">
                           <WidgetWrapper
                             key={item.i}
                             chartType={item.valueConfig?.chartType}
-                            config={item.valueConfig}
+                            config={{
+                              ...item.valueConfig,
+                              description: item.description
+                            }}
                             otherConfig={otherConfig}
                             globalTimeRange={getTimeRange()}
                             refreshKey={refreshKey}

@@ -14,9 +14,10 @@ import { ClientProvider } from '@/context/client';
 import { PermissionsProvider, usePermissions } from '@/context/permissions';
 import AuthProvider from '@/context/auth';
 import TopMenu from '@/components/top-menu';
-import { ConfigProvider, Watermark } from 'antd';
+import { ConfigProvider, Watermark, message } from 'antd';
 import Spin from '@/components/spin';
 import { portalBrandingDefaults, usePortalBranding } from '@/hooks/usePortalBranding';
+import { isProfessionalDashboardRoute } from '@/app/monitor/dashboards/utils';
 import '@/styles/globals.css';
 import { MenuItem } from '@/types/index'
 import WithSideMenuLayout from '@/components/sub-layout'
@@ -75,14 +76,16 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const isLoading = isAuthLoading || (isAuthenticated && (permissionsLoading || menusLoading));
   const authPaths = ['/auth/signin', '/auth/signout'];
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
+  const hasResolvedPathname = pathname !== null;
   const isAuthRoute = Boolean(pathname && authPaths.includes(pathname));
+  const isDashboardRoute = isProfessionalDashboardRoute(pathname);
 
   const shouldRenderMenu = useMemo(() => {
-    if (pathname?.startsWith('/ops-console')) {
+    if (pathname?.startsWith('/ops-console') || isDashboardRoute) {
       return false;
     }
     return shouldRenderSecondLayerMenu(pathname, menus);
-  }, [pathname, menus]);
+  }, [pathname, menus, isDashboardRoute]);
 
   const isPathInMenu = useCallback((path: string, menus: MenuItem[]): boolean => {
     for (const menu of menus) {
@@ -131,6 +134,17 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     checkPermission();
   }, [isLoading, pathname, isAuthenticated, status, session, router, configMenus, hasPermission]);
 
+  // Show password expiry reminder after login redirect
+  useEffect(() => {
+    if (isAuthenticated && !isAuthRoute) {
+      const reminder = sessionStorage.getItem('password_expiry_reminder');
+      if (reminder) {
+        sessionStorage.removeItem('password_expiry_reminder');
+        message.warning(reminder, 8);
+      }
+    }
+  }, [isAuthenticated, isAuthRoute]);
+
   const hideTopMenu = useMemo(() => {
     return pathname?.startsWith('/opspilot/studio/chat');
   }, [pathname]);
@@ -154,7 +168,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const layoutContent = (
     <AntdRegistry>
       <div className="flex flex-col min-h-screen">
-        {isAuthenticated && !isAuthRoute && (
+        {isAuthenticated && hasResolvedPathname && !isAuthRoute && (
           <header className="sticky top-0 left-0 right-0 flex justify-between items-center header-bg">
             <TopMenu hideMainMenu={hideTopMenu} />
           </header>

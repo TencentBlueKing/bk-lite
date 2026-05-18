@@ -1,10 +1,10 @@
 import CredentialsProvider from "next-auth/providers/credentials";
-import type { JWT } from "next-auth/jwt";
-import { normalizeLocale, normalizeTimezone } from "@/utils/userPreferences";
+import type {JWT} from "next-auth/jwt";
+import {normalizeLocale, normalizeTimezone} from "@/utils/userPreferences";
+import WeChatProvider from "../lib/wechatProvider";
 
 type AuthOptions = any;
 type ExtendedJWT = JWT & { timezone?: string };
-import WeChatProvider from "../lib/wechatProvider";
 
 const buildAuthUser = (userData: any) => ({
   id: userData.id || userData.username,
@@ -161,11 +161,11 @@ export async function getAuthOptions(): Promise<AuthOptions> {
   ];
   
   console.log("Credentials wechatConfig", wechatConfig);
-  if (wechatConfig && wechatConfig.app_id && wechatConfig.app_secret) {
+  if (wechatConfig && wechatConfig.app_id) {
     providers.push(
       WeChatProvider({
         clientId: wechatConfig.app_id,
-        clientSecret: wechatConfig.app_secret,
+        clientSecret: "", // 不再需要，OAuth 验证已移至后端
         redirectUri: `${wechatConfig.redirect_uri}/api/auth/callback/wechat`,
       }) as unknown as any
     );

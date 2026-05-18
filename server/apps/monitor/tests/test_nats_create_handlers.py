@@ -147,3 +147,40 @@ def test_execute_nats_create_uses_domain_from_user_info_for_string_users(monkeyp
         "operator": "alice",
         "domain": "tenant-b.com",
     }
+
+
+def test_create_monitor_object_payload_generates_derivative_instance_id_keys(monkeypatch):
+    _install_monitor_nats_dependencies(monkeypatch)
+    module = _load_module(
+        "monitor_nats_create_monitor_object_payload_test_module",
+        Path(__file__).resolve().parents[1] / "nats" / "monitor.py",
+    )
+
+    captured = {}
+
+    class StubMonitorObjectSerializer:
+        def __init__(self, data=None):
+            captured["payload"] = data
+            self.data = data
+
+        def is_valid(self, raise_exception=False):
+            return True
+
+        def save(self):
+            return types.SimpleNamespace(id=1)
+
+    class StubMonitorObjectModel:
+        objects = types.SimpleNamespace(bulk_create=lambda objects: captured.setdefault("children", list(objects)))
+
+    monkeypatch.setattr(module, "MonitorObjectSerializer", StubMonitorObjectSerializer)
+    monkeypatch.setattr(module, "MonitorObject", StubMonitorObjectModel)
+
+    module._create_monitor_object_payload(
+        {
+            "name": "host",
+            "children": [{"id": "pod", "name": "Pod"}],
+        }
+    )
+
+    assert captured["payload"]["instance_id_keys"] == ["instance_id"]
+    assert captured["children"][0].instance_id_keys == ["instance_id", "pod"]

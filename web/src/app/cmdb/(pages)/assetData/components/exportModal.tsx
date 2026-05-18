@@ -223,7 +223,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
         });
 
         const blob = new Blob([response.data], {
-          type: response.headers['content-type'],
+          type: response.headers['content-type'] as string,
         });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);

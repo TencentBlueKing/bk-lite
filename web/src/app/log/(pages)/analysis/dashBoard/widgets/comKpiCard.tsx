@@ -1,56 +1,62 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useMemo, useRef } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import { Spin, Empty } from 'antd';
 import { formatNumericValue } from '@/app/log/utils/common';
 
 interface ComKpiCardProps {
   rawData: any;
+  prevData?: any;
   loading?: boolean;
   config?: any;
 }
 
 const ComKpiCard: React.FC<ComKpiCardProps> = ({
   rawData,
+  prevData,
   loading = false,
   config
 }) => {
-  const [currentValue, setCurrentValue] = useState<number>();
-  const [changePercent, setChangePercent] = useState<number | null>(null);
-  const [trendData, setTrendData] = useState<number[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!loading && rawData) {
-      const field = config?.displayMaps?.value;
-      if (field && Array.isArray(rawData) && rawData.length > 0) {
-        const values = rawData.map((item: any) => {
-          const v = parseFloat(item[field]);
-          return isNaN(v) ? 0 : v;
-        });
+  const { currentValue, changePercent, trendData } = useMemo(() => {
+    const field = config?.displayMaps?.value;
+    if (!field || !Array.isArray(rawData) || rawData.length === 0) {
+      return { currentValue: undefined, changePercent: null, trendData: [] };
+    }
 
-        if (values.length > 1) {
-          // 时序数据：sparkline 用所有点，总值用 sum
-          setTrendData(values);
-          const total = values.reduce((sum: number, v: number) => sum + v, 0);
-          setCurrentValue(total);
+    const values = rawData.map((item: any) => {
+      const v = parseFloat(item[field]);
+      return isNaN(v) ? 0 : v;
+    });
 
-          // 环比：最后一个点 vs 倒数第二个点
-          const lastVal = values[values.length - 1];
-          const prevVal = values[values.length - 2];
-          if (prevVal !== 0) {
-            setChangePercent(((lastVal - prevVal) / prevVal) * 100);
-          } else {
-            setChangePercent(null);
-          }
-        } else {
-          const parsed = parseFloat(rawData[0][field]);
-          setCurrentValue(isNaN(parsed) ? undefined : parsed);
-          setTrendData([]);
-          setChangePercent(null);
-        }
+    const total = values.reduce((sum: number, v: number) => sum + v, 0);
+    let pct: number | null = null;
+
+    if (Array.isArray(prevData) && prevData.length > 0) {
+      const prevValues = prevData.map((item: any) => {
+        const v = parseFloat(item[field]);
+        return isNaN(v) ? 0 : v;
+      });
+      const prevTotal = prevValues.reduce((sum: number, v: number) => sum + v, 0);
+      if (prevTotal !== 0) {
+        pct = ((total - prevTotal) / prevTotal) * 100;
+      } else if (total > 0) {
+        pct = 100;
+      }
+    } else if (values.length > 1) {
+      const lastVal = values[values.length - 1];
+      const prevVal = values[values.length - 2];
+      if (prevVal !== 0) {
+        pct = ((lastVal - prevVal) / prevVal) * 100;
       }
     }
-  }, [rawData, loading, config]);
+
+    return {
+      currentValue: total,
+      changePercent: pct,
+      trendData: values.length > 1 ? values : []
+    };
+  }, [rawData, prevData, config]);
 
   const sparklineOption = {
     animation: false,

@@ -70,6 +70,14 @@
         ]
         },
         {
+            "id": "collection_tool",
+            "name": "Collection Tool",
+            "operation": [
+                "View",
+                "Execute"
+            ]
+        },
+        {
           "id": "operation_log",
           "name": "Operation Log",
           "operation": ["View"]

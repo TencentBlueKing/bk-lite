@@ -4,16 +4,45 @@
     metric_version = 2
     interval = "{{ interval }}s"
 
+    # 扩展采集项，用于专业仪表盘与全量指标展示
+    gather_process_list = true
+    gather_user_statistics = false
+    gather_innodb_metrics = true
+    gather_slave_status = true
+    gather_replica_status = false
+    gather_binary_logs = true
+    gather_global_variables = true
+    gather_table_schema = false
+    gather_table_io_waits = true
+    gather_table_lock_waits = true
+
+    # 慢速 SQL 相关采集间隔
+    interval_slow = "10s"
+    table_schema_databases = []
+
     fieldinclude = [
       # 连接状态
+      "uptime",
       "threads_connected",
       "threads_running",
+      "threads_cached",
+      "threads_idle",
+      "threads_executing",
+      "threads_sending_data",
+      "threads_waiting_for_lock",
+      "max_used_connections",
       "aborted_connects",
       "aborted_clients",
+      "connection_errors_internal",
+      "connection_errors_max_connections",
+      "connection_errors_peer_address",
+      "connection_errors_select",
+      "connection_errors_tcpwrap",
 
       # 查询性能
       "slow_queries",
       "queries",
+      "questions",
       "com_select",
       "com_insert",
       "com_update",
@@ -22,8 +51,13 @@
       # InnoDB 性能
       "innodb_row_lock_time_avg",
       "innodb_row_lock_waits",
+      "innodb_data_reads",
+      "innodb_data_writes",
+      "innodb_data_fsyncs",
+      "innodb_os_log_fsyncs",
       "innodb_buffer_pool_read_requests",
       "innodb_buffer_pool_reads",
+      "innodb_buffer_pool_pages_free",
       "innodb_buffer_pool_pages_dirty",
       "innodb_buffer_pool_pages_total",
 
@@ -32,12 +66,36 @@
       "bytes_sent",
 
       # 表缓存
+      "open_tables",
+      "opened_tables",
+      "open_files",
       "table_open_cache_hits",
       "table_open_cache_misses",
 
+      # MyISAM/键缓存
+      "key_reads",
+      "key_read_requests",
+
       # 临时表
       "created_tmp_disk_tables",
-      "created_tmp_tables"
+      "created_tmp_tables",
+
+      # 全局变量
+      "max_connections",
+      "table_open_cache",
+      "open_files_limit",
+      "tmp_table_size",
+      "max_heap_table_size",
+      "innodb_buffer_pool_size",
+
+      # 主从/角色状态
+      "read_only",
+      "super_read_only",
+      "log_bin",
+      "log_slave_updates",
+      "slave_seconds_behind_master",
+      "slave_slave_io_running",
+      "slave_slave_sql_running"
     ]
 
     [inputs.mysql.tags]

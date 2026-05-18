@@ -23,7 +23,7 @@ export const useHttpDashboard = () => {
         name: t('log.analysis.http.totalRequestCount'),
         moved: false,
         static: false,
-        description: t('log.analysis.http.totalRequestCountDesc'),
+        description: '统计请求总数，并与上一周期对比。',
         valueConfig: {
           chartType: 'httpKpiCard',
           dataSource: 1,
@@ -36,6 +36,7 @@ export const useHttpDashboard = () => {
             tooltipField: 'reqcount'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"http"',
             query:
               'collect_type:"http" | stats by (_time:${_time}) count() as reqcount'
           }
@@ -50,7 +51,7 @@ export const useHttpDashboard = () => {
         name: t('log.analysis.http.avgResponseTime'),
         moved: false,
         static: false,
-        description: t('log.analysis.http.avgResponseTimeDesc'),
+        description: '统计平均响应时间，并与上一周期对比。',
         valueConfig: {
           chartType: 'httpKpiCard',
           dataSource: 1,
@@ -64,6 +65,7 @@ export const useHttpDashboard = () => {
             tooltipField: 'avg_duration'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"http" event.duration:>0',
             query:
               'collect_type:"http" event.duration:>0 | stats by (_time:${_time}) avg(event.duration) as avg_duration | math avg_duration / 1000000 as avg_duration'
           }
@@ -75,16 +77,16 @@ export const useHttpDashboard = () => {
         x: 6,
         y: 0,
         i: uuidv4(),
-        name: t('log.analysis.http.totalTraffic'),
+        name: '总流量（KB）',
         moved: false,
         static: false,
-        description: t('log.analysis.http.totalTrafficDesc'),
+        description: '统计 HTTP 总流量，并与上一周期对比。',
         valueConfig: {
           chartType: 'httpKpiCard',
           dataSource: 1,
           icon: 'swap',
           color: '#15B77E',
-          metricLabel: t('log.analysis.http.totalTraffic'),
+          metricLabel: '总流量（KB）',
           displayMaps: {
             type: 'single',
             key: 'network_bytes',
@@ -92,6 +94,7 @@ export const useHttpDashboard = () => {
             tooltipField: 'network_bytes'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"http"',
             query:
               'collect_type:"http" | stats by (_time:${_time}) sum(network.bytes) as network_bytes | math network_bytes / 1024 as network_bytes'
           }
@@ -106,7 +109,7 @@ export const useHttpDashboard = () => {
         name: t('log.analysis.http.captureErrors'),
         moved: false,
         static: false,
-        description: t('log.analysis.http.captureErrorsDesc'),
+        description: '统计采集异常数，并与上一周期对比。',
         valueConfig: {
           chartType: 'httpKpiCard',
           dataSource: 1,
@@ -120,6 +123,7 @@ export const useHttpDashboard = () => {
             tooltipField: 'error_count'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"http" error.message:!=""',
             query:
               'collect_type:"http" | stats by (_time:${_time}) count() if (error.message:!="") as error_count'
           }
@@ -134,7 +138,6 @@ export const useHttpDashboard = () => {
         name: t('log.analysis.http.requestLatencyTrend'),
         moved: false,
         static: false,
-        description: t('log.analysis.http.requestLatencyTrendDesc'),
         valueConfig: {
           chartType: 'httpBarLine',
           dataSource: 1,
@@ -148,6 +151,7 @@ export const useHttpDashboard = () => {
             lineLabel: t('log.analysis.http.avgResponseTime')
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"http"',
             query:
               'collect_type:"http" | stats by (_time:${_time}) count() as reqcount, avg(event.duration) as avg_duration | math avg_duration / 1000000 as avg_duration'
           }
@@ -162,7 +166,6 @@ export const useHttpDashboard = () => {
         name: t('log.analysis.http.statusCodeDistribution'),
         moved: false,
         static: false,
-        description: t('log.analysis.http.statusCodeDistributionDesc'),
         valueConfig: {
           chartType: 'httpDonut',
           dataSource: 1,
@@ -173,6 +176,7 @@ export const useHttpDashboard = () => {
             tooltipField: 'http.response.status_code'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"http"',
             query:
               'collect_type:"http" | stats by (http.response.status_code) count() as reqcount | sort by (reqcount desc)'
           }
@@ -187,7 +191,6 @@ export const useHttpDashboard = () => {
         name: t('log.analysis.http.methodDistribution'),
         moved: false,
         static: false,
-        description: t('log.analysis.http.methodDistributionDesc'),
         valueConfig: {
           chartType: 'httpDonut',
           dataSource: 1,
@@ -198,6 +201,7 @@ export const useHttpDashboard = () => {
             tooltipField: 'http.request.method'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"http"',
             query:
               'collect_type:"http" | stats by (http.request.method) count() as reqcount | sort by (reqcount desc)'
           }
@@ -212,7 +216,6 @@ export const useHttpDashboard = () => {
         name: t('log.analysis.http.topURLs'),
         moved: false,
         static: false,
-        description: t('log.analysis.http.topURLsDesc'),
         valueConfig: {
           chartType: 'httpRequestTable',
           dataSource: 1,
@@ -240,6 +243,7 @@ export const useHttpDashboard = () => {
             }
           ],
           dataSourceParams: {
+            searchQuery: 'collect_type:"http"',
             query:
               'collect_type:"http" | stats by (url.path,http.request.method) count() as reqcount, avg(event.duration) as avg_duration | math avg_duration / 1000000 as avg_duration | sort by (reqcount desc) | limit 15'
           }
@@ -254,7 +258,6 @@ export const useHttpDashboard = () => {
         name: t('log.analysis.http.topSlowRequests'),
         moved: false,
         static: false,
-        description: t('log.analysis.http.topSlowRequestsDesc'),
         valueConfig: {
           chartType: 'httpRequestTable',
           dataSource: 1,
@@ -282,6 +285,7 @@ export const useHttpDashboard = () => {
             }
           ],
           dataSourceParams: {
+            searchQuery: 'collect_type:"http" event.duration:>0',
             query:
               'collect_type:"http" event.duration:>0 | math event.duration / 1000000 as duration_ms | sort by (duration_ms desc) | limit 15'
           }
@@ -296,7 +300,6 @@ export const useHttpDashboard = () => {
         name: t('log.analysis.http.captureIssueDetails'),
         moved: false,
         static: false,
-        description: t('log.analysis.http.captureIssueDetailsDesc'),
         valueConfig: {
           chartType: 'httpRequestTable',
           dataSource: 1,
@@ -324,6 +327,7 @@ export const useHttpDashboard = () => {
             }
           ],
           dataSourceParams: {
+            searchQuery: 'collect_type:"http" error.message:!=""',
             query:
               'collect_type:"http" error.message:!="" | sort by (_time desc) | limit 15'
           }

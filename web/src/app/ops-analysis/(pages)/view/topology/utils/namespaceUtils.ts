@@ -227,6 +227,9 @@ export const buildValueConfig = (
       : values.dataSource,
     dataSourceParams: values.dataSourceParams,
   };
+  if (values.filterBindings && Object.keys(values.filterBindings).length > 0) {
+    valueConfig.filterBindings = values.filterBindings;
+  }
   if (values.chartType === 'single') {
     valueConfig.selectedFields = values.selectedFields;
     valueConfig.thresholdColors = values.thresholdColors;

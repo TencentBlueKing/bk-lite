@@ -8,6 +8,7 @@ export interface CollectorParams {
   executable_path: string;
   execute_parameters: string;
   node_operating_system: string;
+  cpu_architecture?: string;
   introduction?: string;
 }
 
@@ -23,13 +24,15 @@ const useCollectorApi = () => {
     {
       search,
       node_operating_system,
+      cpu_architecture,
       name,
       page,
       page_size,
-      tags,
+      tags
     }: {
       search?: string;
       node_operating_system?: string;
+      cpu_architecture?: string;
       name?: string;
       page?: number;
       page_size?: number;
@@ -38,8 +41,16 @@ const useCollectorApi = () => {
     config?: AxiosRequestConfig
   ) => {
     return await get('/node_mgmt/api/collector/', {
-      params: { search, node_operating_system, name, page, page_size, tags },
-      ...config,
+      params: {
+        search,
+        node_operating_system,
+        cpu_architecture,
+        name,
+        page,
+        page_size,
+        tags
+      },
+      ...config
     });
   };
 
@@ -68,7 +79,7 @@ const useCollectorApi = () => {
     getCollectorDetail,
     addCollector,
     deleteCollector,
-    editCollecttor,
+    editCollecttor
   };
 };
 

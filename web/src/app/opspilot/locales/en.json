@@ -724,7 +724,14 @@
     "approvalTimeout": "Timed Out",
     "approvalTimeRemaining": "Time remaining",
     "approvalReasonPlaceholder": "Optional: reason for decision",
-    "approvalSubmitFailed": "Failed to submit approval decision"
+    "approvalSubmitFailed": "Failed to submit approval decision",
+    "choiceMinSelect": "Please select at least {min} option(s)",
+    "choiceMaxSelect": "You can select at most {max} option(s)",
+    "choiceSubmitFailed": "Failed to submit choice",
+    "choicePlaceholder": "Please select...",
+    "choiceConfirm": "Confirm",
+    "choiceTimeout": "Timed Out",
+    "choiceSelected": "Selected"
   },
   "settings": {
     "secret": {
@@ -1310,7 +1317,9 @@
       "detailTitle": "Basic Information",
       "detailDescription": "Display provider access information",
       "typeLabel": "Type",
-      "enabledStatus": "Enabled Status"
+      "enabledStatus": "Enabled Status",
+      "protocolType": "API Protocol",
+      "protocolTypeRequired": "Please select an API protocol"
     },
     "model": {
       "add": "Add",

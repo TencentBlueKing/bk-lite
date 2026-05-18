@@ -24,7 +24,7 @@ export const usePacketbeatDashboard = () => {
         name: t('log.analysis.packetbeat.totalTrafficVolume'),
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.totalTrafficVolumeDesc'),
+        description: '统计网络总流量，并与上一周期对比。',
         valueConfig: {
           chartType: 'flowKpiCard',
           dataSource: 1,
@@ -36,6 +36,7 @@ export const usePacketbeatDashboard = () => {
             tooltipField: 'networkbytes'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (_time:${_time}) sum(network.bytes) as networkbytes | math networkbytes / 1024 / 1024 as networkbytes'
           }
@@ -50,7 +51,7 @@ export const usePacketbeatDashboard = () => {
         name: t('log.analysis.packetbeat.totalPacketVolume'),
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.totalPacketVolumeDesc'),
+        description: '统计网络总包数，并与上一周期对比。',
         valueConfig: {
           chartType: 'flowKpiCard',
           dataSource: 1,
@@ -63,6 +64,7 @@ export const usePacketbeatDashboard = () => {
             tooltipField: 'networkpackets'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (_time:${_time}) sum(network.packets) as networkpackets'
           }
@@ -77,7 +79,7 @@ export const usePacketbeatDashboard = () => {
         name: t('log.analysis.packetbeat.flowRecordCount'),
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.flowRecordCountDesc'),
+        description: '统计流记录总数，并与上一周期对比。',
         valueConfig: {
           chartType: 'flowKpiCard',
           dataSource: 1,
@@ -90,6 +92,7 @@ export const usePacketbeatDashboard = () => {
             tooltipField: 'flowcount'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (_time:${_time}) count() as flowcount'
           }
@@ -104,7 +107,7 @@ export const usePacketbeatDashboard = () => {
         name: t('log.analysis.packetbeat.longLivedFlows'),
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.longLivedFlowsDesc'),
+        description: '统计长时连接数，并与上一周期对比。',
         valueConfig: {
           chartType: 'flowKpiCard',
           dataSource: 1,
@@ -117,6 +120,7 @@ export const usePacketbeatDashboard = () => {
             tooltipField: 'long_flows'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows" event.duration:>60000000000',
             query:
               'collect_type:"flows" | stats by (_time:${_time}) count() if (event.duration:>60000000000) as long_flows'
           }
@@ -128,12 +132,9 @@ export const usePacketbeatDashboard = () => {
         x: 0,
         y: 2,
         i: uuidv4(),
-        name: t('log.analysis.packetbeat.protocolTrafficDistribution'),
+        name: '协议流量趋势图',
         moved: false,
         static: false,
-        description: t(
-          'log.analysis.packetbeat.protocolTrafficDistributionDesc'
-        ),
         valueConfig: {
           chartType: 'flowTrend',
           dataSource: 1,
@@ -144,6 +145,7 @@ export const usePacketbeatDashboard = () => {
             tooltipField: 'network.transport'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (_time:${_time},network.transport) sum(network.bytes) as networkbytes | math networkbytes / 1024 / 1024 as networkbytes'
           }
@@ -158,7 +160,6 @@ export const usePacketbeatDashboard = () => {
         name: t('log.analysis.packetbeat.transportDistribution'),
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.transportDistributionDesc'),
         valueConfig: {
           chartType: 'flowDonut',
           dataSource: 1,
@@ -169,6 +170,7 @@ export const usePacketbeatDashboard = () => {
             tooltipField: 'network.transport'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (network.transport) count() as flowcount | sort by (flowcount desc)'
           }
@@ -180,10 +182,9 @@ export const usePacketbeatDashboard = () => {
         x: 0,
         y: 5,
         i: uuidv4(),
-        name: t('log.analysis.packetbeat.topSourceIPs'),
+        name: '源 IP 流量 Top 10',
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.topSourceIPsDesc'),
         valueConfig: {
           chartType: 'flowBar',
           dataSource: 1,
@@ -195,6 +196,7 @@ export const usePacketbeatDashboard = () => {
             tooltipField: 'source.ip'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (source.ip) sum(network.bytes) as src_bytes | math src_bytes / 1024 / 1024 as src_bytes | sort by (src_bytes desc) | limit 10'
           }
@@ -206,10 +208,9 @@ export const usePacketbeatDashboard = () => {
         x: 6,
         y: 5,
         i: uuidv4(),
-        name: t('log.analysis.packetbeat.topDestinationPorts'),
+        name: '目标端口流量 Top 10',
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.topDestinationPortsDesc'),
         valueConfig: {
           chartType: 'flowBar',
           dataSource: 1,
@@ -221,6 +222,7 @@ export const usePacketbeatDashboard = () => {
             tooltipField: 'destination.port'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (destination.port) sum(network.bytes) as dst_bytes | math dst_bytes / 1024 / 1024 as dst_bytes | sort by (dst_bytes desc) | limit 10'
           }
@@ -235,7 +237,8 @@ export const usePacketbeatDashboard = () => {
         name: t('log.analysis.packetbeat.highTrafficSankey'),
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.highTrafficSankeyDesc'),
+        description:
+          '展示高流量五元组关系，帮助定位源、目标、协议与端口之间的流量链路。',
         valueConfig: {
           chartType: 'flowSankey',
           dataSource: 1,
@@ -254,6 +257,7 @@ export const usePacketbeatDashboard = () => {
             }
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (source.ip,destination.ip,network.transport,source.port,destination.port) sum(network.bytes) as flow_bytes | math flow_bytes / 1024 / 1024 as flow_bytes | sort by (flow_bytes desc) | limit 20'
           }
@@ -268,7 +272,6 @@ export const usePacketbeatDashboard = () => {
         name: t('log.analysis.packetbeat.topFlowSessions'),
         moved: false,
         static: false,
-        description: t('log.analysis.packetbeat.topFlowSessionsDesc'),
         valueConfig: {
           chartType: 'flowTable',
           dataSource: 1,
@@ -308,6 +311,7 @@ export const usePacketbeatDashboard = () => {
             }
           ],
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (source.ip,destination.ip,network.transport,destination.port) sum(network.bytes) as flow_bytes, max(event.duration) as duration_ns | math flow_bytes / 1024 / 1024 as flow_bytes | math duration_ns / 1000000000 as duration_sec | sort by (flow_bytes desc) | limit 20'
           }

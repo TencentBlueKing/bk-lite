@@ -90,8 +90,14 @@ func TestRegressionDownloadToRemoteComposedContract(t *testing.T) {
 		if !strings.Contains(req.Command, filepath.Join(stagingDir, "demo.txt")) {
 			t.Fatalf("expected composed command to include downloaded file path, got %s", req.Command)
 		}
-		if !strings.Contains(req.LogCommand, "sshpass -p '***'") {
-			t.Fatalf("expected redacted log command, got %s", req.LogCommand)
+		if !strings.Contains(req.LogCommand, "sshpass -e") {
+			t.Fatalf("expected sshpass -e in log command, got %s", req.LogCommand)
+		}
+		if strings.Contains(req.LogCommand, "secret") {
+			t.Fatalf("password should not appear in log command, got %s", req.LogCommand)
+		}
+		if req.Env == nil || req.Env["SSHPASS"] != "secret" {
+			t.Fatalf("expected SSHPASS env var to be set, got %v", req.Env)
 		}
 		return local.ExecuteResponse{Success: true, Output: "done", InstanceId: instanceId}
 	}

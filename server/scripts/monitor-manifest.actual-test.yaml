@@ -25,7 +25,7 @@ registrations:
       target_directory_id: 1
       dashboard_name: "主机与 MySQL 联合画布"
       dashboard_desc: "Host + MySQL shared dashboard"
-      query_metric: "cpu_usage_user"
+      query_metric: "cpu_usage_system"
       query_step: "5m"
       query_time_range: 10080
       widget_id: "host-cpu-widget"
@@ -40,7 +40,7 @@ registrations:
         alert_name: "主机 CPU 过高"
         collect_type: "host"
         query_condition:
-          metric: "cpu_usage_user"
+          metric: "cpu_usage_system"
         source:
           from_registration_instances: true
         schedule:
@@ -71,11 +71,12 @@ registrations:
         install_agent:
           enabled: true
           auth_type: password
-          username: testuser
-          password: password
+          username: root
+          password: CW@roger1117!@#
           port: 22
           os: linux
           cpu_architecture: x86_64
+          package_version: "1.0.1"
 
   - key: mysql-10.11.24.61-3306-shared
     collector: Telegraf

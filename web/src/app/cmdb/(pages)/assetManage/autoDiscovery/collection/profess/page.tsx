@@ -13,6 +13,7 @@ import IPMITask from './components/ipmiTask';
 import ConfigFileTask from './components/configFileTask';
 import PluginCard from './components/pluginCard';
 import TaskDetail from './components/taskDetail';
+import NodeMgmtSyncDetail from './components/nodeMgmtSyncDetail';
 import MarkdownRenderer from '@/components/markdown';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
@@ -44,6 +45,17 @@ type ExtendedColumnItem = ColumnType<CollectTask> & {
   dataIndex?: string;
 };
 
+const getCollectToolProtocol = (pluginId?: string | null) => {
+  const normalizedPluginId = (pluginId || '').toLowerCase();
+  if (normalizedPluginId === 'physcial_server_ipmi') {
+    return 'ipmi';
+  }
+  if (normalizedPluginId === 'network') {
+    return 'snmp';
+  }
+  return null;
+};
+
 const ProfessionalCollection: React.FC = () => {
   const { t } = useTranslation();
   const collectApi = useCollectApi();
@@ -58,6 +70,7 @@ const ProfessionalCollection: React.FC = () => {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [categoryList, setCategoryList] = useState<TreeNode[]>([]);
   const [detailVisible, setDetailVisible] = useState(false);
+  const [nodeMgmtSyncVisible, setNodeMgmtSyncVisible] = useState(false);
   const [currentTask, setCurrentTask] = useState<CollectTask | null>(null);
   const [selectedPluginId, setSelectedPluginId] = useState<string>('');
   const [tableData, setTableData] = useState<CollectTask[]>([]);
@@ -514,6 +527,19 @@ const ProfessionalCollection: React.FC = () => {
     [executingTaskIds]
   );
 
+  const handleGoToCollectTool = useCallback(
+    (record: CollectTask) => {
+      const protocol = getCollectToolProtocol(currentPlugin?.id);
+      if (!protocol) {
+        return;
+      }
+      router.push(
+        `/cmdb/assetManage/autoDiscovery/featureLibrary/collectionTool?category=${selectedCategoryRef.current.categoryId || 'all'}&plugin=${stateRef.current.selectedPluginId || ''}&protocol=${protocol}&sourceTaskId=${record.id}`
+      );
+    },
+    [currentPlugin?.id, router]
+  );
+
   const closeDrawer = () => {
     setEditingId(null);// 编辑任务数据置空
     setCopyTaskData(null); // 复制任务数据置空
@@ -721,14 +747,32 @@ const ProfessionalCollection: React.FC = () => {
         width: 400,
         render: (_value, record: CollectTask) => {
           const digest = (record.message || {}) as CollectTaskMessage;
+          const collectToolProtocol = getCollectToolProtocol(currentPlugin?.id);
+          const canGoToCollectTool =
+            record.exec_status === EXEC_STATUS.ERROR && Boolean(collectToolProtocol);
+
+          const collectToolLink = canGoToCollectTool ? (
+            <Button
+              type="link"
+              danger
+              size="small"
+              onClick={() => handleGoToCollectTool(record)}
+              className="h-auto p-0"
+            >
+              {t('CollectTool.goToCollectTool')}
+            </Button>
+          ) : null;
 
           if (record.exec_status === EXEC_STATUS.ERROR && digest.message) {
             return (
-              <Tooltip title={digest.message}>
-                <div className={`${styles.ellipsis2Lines} text-gray-500`}>
-                  {digest.message}
-                </div>
-              </Tooltip>
+              <div className="flex flex-col items-start gap-1">
+                <Tooltip title={digest.message}>
+                  <div className={`${styles.ellipsis2Lines} text-gray-500`}>
+                    {digest.message}
+                  </div>
+                </Tooltip>
+                {collectToolLink}
+              </div>
             );
           }
 
@@ -738,24 +782,27 @@ const ProfessionalCollection: React.FC = () => {
             (digest.update_error || 0);
 
           return Object.keys(digest).length > 0 ? (
-            <div className="flex gap-2">
-              <Tag color="blue">
-                {t('Collection.overviewLabel.add')}:{' '}
-                {digest.add_success ?? '--'}
-              </Tag>
-              <Tag color="orange">
-                {t('Collection.overviewLabel.update')}:{' '}
-                {digest.update_success ?? '--'}
-              </Tag>
-              <Tag color="volcano">
-                {t('Collection.overviewLabel.delete')}:{' '}
-                {digest.delete_success ?? '--'}
-              </Tag>
-              {errorTotal > 0 && (
-                <Tag color="red">
-                  {t('Collection.overviewLabel.error')}: {errorTotal}
+            <div className="flex flex-col items-start gap-1">
+              <div className="flex flex-wrap gap-2">
+                <Tag color="blue">
+                  {t('Collection.overviewLabel.add')}:{' '}
+                  {digest.add_success ?? '--'}
                 </Tag>
-              )}
+                <Tag color="orange">
+                  {t('Collection.overviewLabel.update')}:{' '}
+                  {digest.update_success ?? '--'}
+                </Tag>
+                <Tag color="volcano">
+                  {t('Collection.overviewLabel.delete')}:{' '}
+                  {digest.delete_success ?? '--'}
+                </Tag>
+                {errorTotal > 0 && (
+                  <Tag color="red">
+                    {t('Collection.overviewLabel.error')}: {errorTotal}
+                  </Tag>
+                )}
+              </div>
+              {collectToolLink}
             </div>
           ) : (
             <span>--</span>
@@ -799,7 +846,7 @@ const ProfessionalCollection: React.FC = () => {
         render: (_, record) => actionRender(record),
       },
     ],
-    [t, actionRender]
+    [t, actionRender, currentPlugin?.id, handleGoToCollectTool]
   );
 
   const handleViewDetail = (record: CollectTask) => {
@@ -846,7 +893,7 @@ const ProfessionalCollection: React.FC = () => {
     setAllColumns(newColumns);
     setDisplayFieldKeys(newColumns.map((col) => col.key as string));
     setCurrentColumns(newColumns);
-  }, [executingTaskIds]);
+  }, [getColumns]);
 
   const handlePluginCardClick = useCallback(
     (pluginId: string) => {
@@ -924,16 +971,21 @@ const ProfessionalCollection: React.FC = () => {
             <Spin size="small" />
           </div>
         ) : (
-          <Tabs
-            activeKey={selectedCategoryRef.current.categoryId}
-            onChange={(key) => handleCategoryChange([key])}
-            items={categoryList.map((category) => {
-              return {
-                key: category.id,
-                label: category.name,
-              };
-            })}
-          />
+            <Tabs
+              activeKey={selectedCategoryRef.current.categoryId}
+              onChange={(key) => handleCategoryChange([key])}
+              tabBarExtraContent={
+                <Button type="link" onClick={() => setNodeMgmtSyncVisible(true)}>
+                  {t('Collection.nodeMgmtSync.entry')}
+                </Button>
+              }
+              items={categoryList.map((category) => {
+                return {
+                  key: category.id,
+                  label: category.name,
+                };
+              })}
+            />
         )}
       </div>
 
@@ -1126,6 +1178,23 @@ const ProfessionalCollection: React.FC = () => {
         ) : (
           <MarkdownRenderer content={pluginDoc} />
         )}
+      </Drawer>
+
+      <Drawer
+        title={t('Collection.nodeMgmtSync.title')}
+        placement="right"
+        width={840}
+        onClose={() => setNodeMgmtSyncVisible(false)}
+        open={nodeMgmtSyncVisible}
+        footer={
+          <div className="flex justify-start">
+            <Button onClick={() => setNodeMgmtSyncVisible(false)}>
+              {t('common.close')}
+            </Button>
+          </div>
+        }
+      >
+        <NodeMgmtSyncDetail open={nodeMgmtSyncVisible} />
       </Drawer>
 
       <Drawer

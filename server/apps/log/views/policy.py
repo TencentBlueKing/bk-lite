@@ -13,6 +13,7 @@ from apps.core.utils.permission_utils import (
     permission_filter,
     check_instance_permission,
     filter_instances_with_permissions,
+    get_instance_permissions,
 )
 from apps.core.utils.web_utils import WebUtils
 from apps.log.constants.permission import PermissionConstants
@@ -23,7 +24,7 @@ from apps.log.filters.policy import (
     EventFilter,
     EventRawDataFilter,
 )
-from apps.log.models.policy import Policy, Alert, Event, EventRawData
+from apps.log.models.policy import Policy, PolicyOrganization, Alert, Event, EventRawData
 from apps.log.serializers.policy import (
     PolicySerializer,
     AlertSerializer,
@@ -83,10 +84,125 @@ def get_accessible_log_policy_ids(request, collect_type_id=None):
 
 
 class PolicyViewSet(viewsets.ModelViewSet):
+    OPERATE_PERMISSION = "Operate"
     queryset = Policy.objects.all()
     serializer_class = PolicySerializer
     filterset_class = PolicyFilter
     pagination_class = CustomPageNumberPagination
+
+    @staticmethod
+    def _normalize_orgs(values):
+        if not values:
+            return set()
+        if not isinstance(values, list):
+            values = [values]
+        organizations = set()
+        for value in values:
+            try:
+                organizations.add(int(value))
+            except (TypeError, ValueError):
+                continue
+        return organizations
+
+    @staticmethod
+    def _validate_organizations_payload(values, required=False):
+        if values is None:
+            values = []
+
+        if not isinstance(values, list):
+            return None, WebUtils.response_error(error_message="organizations must be a list")
+
+        normalized = []
+        seen = set()
+        for value in values:
+            if isinstance(value, bool):
+                return None, WebUtils.response_error(error_message="organizations entries must be integers")
+
+            try:
+                org_id = int(value)
+            except (TypeError, ValueError):
+                return None, WebUtils.response_error(error_message="organizations entries must be integers")
+
+            if org_id not in seen:
+                normalized.append(org_id)
+                seen.add(org_id)
+
+        if required and not normalized:
+            return None, WebUtils.response_error("organizations is required")
+
+        return normalized, None
+
+    def _refresh_response_data(self, response, instance):
+        response.data = self.get_serializer(instance).data
+        return response
+
+    def _get_permission_context(self, request):
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        permissions_result = get_permissions_rules(
+            request.user,
+            request.COOKIES.get("current_team"),
+            "log",
+            PermissionConstants.POLICY_MODULE,
+            include_children=include_children,
+        )
+        if not isinstance(permissions_result, dict):
+            permissions_result = {}
+        return permissions_result.get("data", {}), self._normalize_orgs(permissions_result.get("team", []))
+
+    @staticmethod
+    def _policy_orgs(instance):
+        return {rel.organization for rel in instance.policyorganization_set.all()}
+
+    def _permissions_for_policy(self, instance, permission_data, current_teams):
+        return get_instance_permissions(
+            instance.collect_type_id,
+            instance.id,
+            self._policy_orgs(instance),
+            permission_data,
+            current_teams,
+        )
+
+    def _allowed_organization_scope(self, permission_data, current_teams, collect_type_id=None):
+        allowed = set(current_teams)
+        allowed |= self._normalize_orgs(permission_data.get("all", {}).get("team", []))
+
+        if collect_type_id is not None:
+            type_permission = permission_data.get(str(collect_type_id), {})
+            allowed |= self._normalize_orgs(type_permission.get("team", []))
+        else:
+            for key, type_permission in permission_data.items():
+                if key == "all" or not isinstance(type_permission, dict):
+                    continue
+                allowed |= self._normalize_orgs(type_permission.get("team", []))
+
+        return allowed
+
+    def _authorize_policy(self, request, instance, required_permission=OPERATE_PERMISSION):
+        permission_data, current_teams = self._get_permission_context(request)
+        permissions = self._permissions_for_policy(instance, permission_data, current_teams)
+        if required_permission not in permissions:
+            return WebUtils.response_403("User does not have permission to operate this policy")
+        return None
+
+    def _authorize_target_organizations(self, request, organizations, collect_type_id=None):
+        target_orgs = self._normalize_orgs(organizations)
+        if not target_orgs:
+            return None
+
+        permission_data, current_teams = self._get_permission_context(request)
+        allowed_orgs = self._allowed_organization_scope(permission_data, current_teams, collect_type_id)
+        if not target_orgs.issubset(allowed_orgs):
+            return WebUtils.response_403("User does not have permission to assign policies to these organizations")
+
+        return None
+
+    def get_queryset(self):
+        request = getattr(self, "request", None)
+        if request is None:
+            return Policy.objects.none()
+
+        queryset, _ = self._get_accessible_policy_queryset(request)
+        return queryset.select_related("collect_type").distinct()
 
     def _get_accessible_policy_queryset(self, request, collect_type_id=None):
         include_children = request.COOKIES.get("include_children", "0") == "1"
@@ -149,7 +265,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
         collect_type_id = request.query_params.get("collect_type") or None
         queryset, policy_permission_map = self._get_accessible_policy_queryset(request, collect_type_id)
         queryset = self.filter_queryset(queryset)
-        queryset = queryset.distinct().select_related("collect_type")
+        queryset = queryset.distinct().select_related("collect_type").prefetch_related("policyorganization_set")
 
         # 获取分页参数
         page = int(request.GET.get("page", 1))
@@ -181,16 +297,18 @@ class PolicyViewSet(viewsets.ModelViewSet):
         request.data["updated_by"] = request.user.username
 
         # 提取organizations数据，不传给serializer
-        organizations = request.data.pop("organizations", [])
-        if not organizations:
-            return WebUtils.response_error("organizations is required")
+        organizations, error_response = self._validate_organizations_payload(request.data.pop("organizations", []), required=True)
+        if error_response:
+            return error_response
+
+        error_response = self._authorize_target_organizations(request, organizations, request.data.get("collect_type"))
+        if error_response:
+            return error_response
 
         response = super().create(request, *args, **kwargs)
         policy_id = response.data["id"]
 
         # 创建组织关联
-        from apps.log.models.policy import PolicyOrganization
-
         PolicyOrganization.objects.bulk_create(
             [PolicyOrganization(policy_id=policy_id, organization=org_id) for org_id in organizations],
             ignore_conflicts=True,
@@ -199,9 +317,16 @@ class PolicyViewSet(viewsets.ModelViewSet):
         schedule = request.data.get("schedule")
         if schedule:
             self.update_or_create_task(policy_id, schedule)
-        return response
+
+        instance = self.get_queryset().get(id=policy_id)
+        return self._refresh_response_data(response, instance)
 
     def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        error_response = self._authorize_policy(request, instance)
+        if error_response:
+            return error_response
+
         # 补充更新人
         request.data["updated_by"] = request.user.username
 
@@ -209,15 +334,21 @@ class PolicyViewSet(viewsets.ModelViewSet):
         # 注意：只有当请求中明确包含organizations时才进行更新
         organizations = None
         if "organizations" in request.data:
-            organizations = request.data.pop("organizations", [])
+            organizations, error_response = self._validate_organizations_payload(request.data.pop("organizations", []))
+            if error_response:
+                return error_response
+
+        effective_collect_type_id = request.data.get("collect_type", instance.collect_type_id)
+        effective_organizations = organizations if organizations is not None else list(self._policy_orgs(instance))
+        error_response = self._authorize_target_organizations(request, effective_organizations, effective_collect_type_id)
+        if error_response:
+            return error_response
 
         response = super().update(request, *args, **kwargs)
         policy_id = kwargs["pk"]
 
         # 只有当明确传递了organizations参数时才更新组织关联
         if organizations is not None:
-            from apps.log.models.policy import PolicyOrganization
-
             # 清除旧的组织关联
             PolicyOrganization.objects.filter(policy_id=policy_id).delete()
             # 添加新的组织关联
@@ -229,9 +360,16 @@ class PolicyViewSet(viewsets.ModelViewSet):
         schedule = request.data.get("schedule")
         if schedule:
             self.update_or_create_task(policy_id, schedule)
-        return response
+
+        instance.refresh_from_db()
+        return self._refresh_response_data(response, instance)
 
     def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        error_response = self._authorize_policy(request, instance)
+        if error_response:
+            return error_response
+
         # 补充更新人
         request.data["updated_by"] = request.user.username
 
@@ -239,15 +377,21 @@ class PolicyViewSet(viewsets.ModelViewSet):
         # 注意：只有当请求中明确包含organizations时才进行更新
         organizations = None
         if "organizations" in request.data:
-            organizations = request.data.pop("organizations")
+            organizations, error_response = self._validate_organizations_payload(request.data.pop("organizations"))
+            if error_response:
+                return error_response
+
+        effective_collect_type_id = request.data.get("collect_type", instance.collect_type_id)
+        effective_organizations = organizations if organizations is not None else list(self._policy_orgs(instance))
+        error_response = self._authorize_target_organizations(request, effective_organizations, effective_collect_type_id)
+        if error_response:
+            return error_response
 
         response = super().partial_update(request, *args, **kwargs)
         policy_id = kwargs["pk"]
 
         # 只有当明确传递了organizations参数时才更新组织关联
         if organizations is not None:
-            from apps.log.models.policy import PolicyOrganization
-
             # 清除旧的组织关联
             PolicyOrganization.objects.filter(policy_id=policy_id).delete()
             # 添加新的组织关联
@@ -259,9 +403,16 @@ class PolicyViewSet(viewsets.ModelViewSet):
         schedule = request.data.get("schedule")
         if schedule:
             self.update_or_create_task(policy_id, schedule)
-        return response
+
+        instance.refresh_from_db()
+        return self._refresh_response_data(response, instance)
 
     def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        error_response = self._authorize_policy(request, instance)
+        if error_response:
+            return error_response
+
         policy_id = kwargs["pk"]
         # 删除相关的定时任务
         PeriodicTask.objects.filter(name=f"log_policy_task_{policy_id}").delete()
@@ -321,6 +472,9 @@ class PolicyViewSet(viewsets.ModelViewSet):
     @action(methods=["post"], detail=True, url_path="enable")
     def enable(self, request, pk=None):
         policy = self.get_object()
+        error_response = self._authorize_policy(request, policy)
+        if error_response:
+            return error_response
         enabled = request.data.get("enabled", True)
 
         task_name = f"log_policy_task_{pk}"
@@ -358,7 +512,12 @@ class AlertViewSet(viewsets.ModelViewSet):
         if not policy_ids:
             return Alert.objects.none()
 
-        return Alert.objects.select_related("policy", "collect_type").filter(policy_id__in=policy_ids).order_by("-created_at")
+        return (
+            Alert.objects.select_related("policy", "collect_type")
+            .prefetch_related("policy__policyorganization_set")
+            .filter(policy_id__in=policy_ids)
+            .order_by("-created_at")
+        )
 
     def list(self, request, *args, **kwargs):
         """
@@ -564,6 +723,14 @@ class AlertViewSet(viewsets.ModelViewSet):
         # 按状态过滤
         queryset = queryset.filter(status=status)
 
+        # 默认时间窗口：最近7天
+        start_time_param = request.query_params.get("start_time", "")
+        end_time_param = request.query_params.get("end_time", "")
+        if not start_time_param and not end_time_param:
+            default_end = datetime.now(timezone.utc)
+            default_start = default_end - timedelta(days=7)
+            queryset = queryset.filter(created_at__gte=default_start)
+
         # 生成时间序列统计
         time_series_data, time_range = self._get_step_based_stats(queryset, step_minutes)
 
@@ -579,7 +746,6 @@ class AlertViewSet(viewsets.ModelViewSet):
 
     def _get_step_based_stats(self, queryset, step_minutes):
         """基于step动态分割时间区间进行统计，按告警级别分组"""
-        # 获取数据的时间范围
         time_range_data = queryset.aggregate(min_time=models.Min("created_at"), max_time=models.Max("created_at"))
 
         min_time = time_range_data["min_time"]
@@ -588,43 +754,37 @@ class AlertViewSet(viewsets.ModelViewSet):
         if not min_time or not max_time:
             return [], {"start": None, "end": None}
 
-        # 时间范围信息
         time_range = {"start": min_time.isoformat(), "end": max_time.isoformat()}
 
-        # 生成时间区间
         step_delta = timedelta(minutes=step_minutes)
+        max_buckets = 1000
+        total_span = (max_time - min_time).total_seconds()
+        if step_delta.total_seconds() > 0 and total_span / step_delta.total_seconds() > max_buckets:
+            step_delta = timedelta(seconds=total_span / max_buckets)
+
         current_time = min_time
         time_intervals = []
-
-        # 修复：确保包含最后一个时间点的数据
         while current_time <= max_time:
             interval_end = min(current_time + step_delta, max_time + timedelta(microseconds=1))
             time_intervals.append({"start": current_time, "end": interval_end})
             current_time += step_delta
-
-            # 如果下一个区间的开始时间已经超过最大时间，则停止
             if current_time > max_time:
                 break
 
-        # 关键优化：一次性获取所有数据，然后在Python中分组
-        # 只执行一次数据库查询
-        all_alerts = list(queryset.values("created_at", "level"))
+        interval_results = []
+        alert_list = list(queryset.values_list("created_at", "level").order_by("created_at"))
 
-        # 在Python中按时间区间分组统计
-        result = []
+        alert_idx = 0
         for interval in time_intervals:
-            # 在内存中过滤当前时间区间的数据
-            interval_alerts = [alert for alert in all_alerts if interval["start"] <= alert["created_at"] < interval["end"]]
-
-            # 在内存中按级别统计
             level_data = {}
-            for alert in interval_alerts:
-                level = alert["level"]
-                level_data[level] = level_data.get(level, 0) + 1
+            while alert_idx < len(alert_list) and alert_list[alert_idx][0] < interval["end"]:
+                if alert_list[alert_idx][0] >= interval["start"]:
+                    level = alert_list[alert_idx][1]
+                    level_data[level] = level_data.get(level, 0) + 1
+                alert_idx += 1
 
             total_count = sum(level_data.values())
-
-            result.append(
+            interval_results.append(
                 {
                     "time_start": interval["start"].isoformat(),
                     "time_end": interval["end"].isoformat(),
@@ -633,7 +793,7 @@ class AlertViewSet(viewsets.ModelViewSet):
                 }
             )
 
-        return result, time_range
+        return interval_results, time_range
 
     @action(methods=["get"], detail=False, url_path="snapshots/(?P<alert_id>[^/.]+)")
     def get_snapshots(self, request, alert_id):

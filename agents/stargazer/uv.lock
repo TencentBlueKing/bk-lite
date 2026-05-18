@@ -2077,6 +2077,17 @@ wheels = [
 ]
 
 [[package]]
+name = "psycopg2"
+version = "2.9.11"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/89/8d/9d12bc8677c24dad342ec777529bce705b3e785fa05d85122b5502b9ab55/psycopg2-2.9.11.tar.gz", hash = "sha256:964d31caf728e217c697ff77ea69c2ba0865fa41ec20bb00f0977e62fdcc52e3", size = 379598, upload-time = "2025-10-10T11:14:46.075Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b5/bf/635fbe5dd10ed200afbbfbe98f8602829252ca1cce81cc48fb25ed8dadc0/psycopg2-2.9.11-cp312-cp312-win_amd64.whl", hash = "sha256:e03e4a6dbe87ff81540b434f2e5dc2bddad10296db5eea7bdc995bf5f4162938", size = 2713969, upload-time = "2025-10-10T11:10:15.946Z" },
+    { url = "https://files.pythonhosted.org/packages/88/5a/18c8cb13fc6908dc41a483d2c14d927a7a3f29883748747e8cb625da6587/psycopg2-2.9.11-cp313-cp313-win_amd64.whl", hash = "sha256:8dc379166b5b7d5ea66dcebf433011dfc51a7bb8a5fc12367fa05668e5fc53c8", size = 2714048, upload-time = "2025-10-10T11:10:19.816Z" },
+    { url = "https://files.pythonhosted.org/packages/47/08/737aa39c78d705a7ce58248d00eeba0e9fc36be488f9b672b88736fbb1f7/psycopg2-2.9.11-cp314-cp314-win_amd64.whl", hash = "sha256:f10a48acba5fe6e312b891f290b4d2ca595fc9a06850fe53320beac353575578", size = 2803738, upload-time = "2025-10-10T11:10:23.196Z" },
+]
+
+[[package]]
 name = "pyarmor"
 version = "9.0.7"
 source = { registry = "https://pypi.org/simple" }
@@ -2119,23 +2130,23 @@ wheels = [
 
 [[package]]
 name = "pyasn1"
-version = "0.6.1"
+version = "0.5.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ba/e9/01f1a64245b89f039897cb0130016d79f77d52669aae6ee7b159a6c4c018/pyasn1-0.6.1.tar.gz", hash = "sha256:6f580d2bdd84365380830acf45550f2511469f673cb4a5ae3857a3170128b034", size = 145322, upload-time = "2024-09-10T22:41:42.55Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ce/dc/996e5446a94627fe8192735c20300ca51535397e31e7097a3cc80ccf78b7/pyasn1-0.5.1.tar.gz", hash = "sha256:6d391a96e59b23130a5cfa74d6fd7f388dbbe26cc8f1edf39fdddf08d9d6676c", size = 147134, upload-time = "2023-11-20T20:53:01.453Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c8/f1/d6a797abb14f6283c0ddff96bbdd46937f64122b8c925cab503dd37f8214/pyasn1-0.6.1-py3-none-any.whl", hash = "sha256:0d632f46f2ba09143da3a8afe9e33fb6f92fa2320ab7e886e2d0f7672af84629", size = 83135, upload-time = "2024-09-11T16:00:36.122Z" },
+    { url = "https://files.pythonhosted.org/packages/d1/75/4686d2872bf2fc0b37917cbc8bbf0dd3a5cdb0990799be1b9cbf1e1eb733/pyasn1-0.5.1-py2.py3-none-any.whl", hash = "sha256:4439847c58d40b1d0a573d07e3856e95333f1976294494c325775aeca506eb58", size = 84930, upload-time = "2023-11-20T20:52:56.135Z" },
 ]
 
 [[package]]
 name = "pyasn1-modules"
-version = "0.4.2"
+version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyasn1" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e9/e6/78ebbb10a8c8e4b61a59249394a4a594c1a7af95593dc933a349c8d00964/pyasn1_modules-0.4.2.tar.gz", hash = "sha256:677091de870a80aae844b1ca6134f54652fa2c8c5a52aa396440ac3106e941e6", size = 307892, upload-time = "2025-03-28T02:41:22.17Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3b/e4/7dec823b1b5603c5b3c51e942d5d9e65efd6ff946e713a325ed4146d070f/pyasn1_modules-0.3.0.tar.gz", hash = "sha256:5bd01446b736eb9d31512a30d46c1ac3395d676c6f3cafa4c03eb54b9925631c", size = 307901, upload-time = "2023-04-20T01:31:22.369Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/47/8d/d529b5d697919ba8c11ad626e835d4039be708a35b0d22de83a269a6682c/pyasn1_modules-0.4.2-py3-none-any.whl", hash = "sha256:29253a9207ce32b64c3ac6600edc75368f98473906e8fd1043bd6b5b1de2c14a", size = 181259, upload-time = "2025-03-28T02:41:19.028Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/8e/bea464350e1b8c6ed0da3a312659cb648804a08af6cacc6435867f74f8bd/pyasn1_modules-0.3.0-py2.py3-none-any.whl", hash = "sha256:d3ccd6ed470d9ffbc716be08bd90efbd44d0734bc9303818f7336070984a162d", size = 181306, upload-time = "2023-04-20T01:30:05.837Z" },
 ]
 
 [[package]]
@@ -2241,6 +2252,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ef/fd/24ea4302d7a527d672c5be06e17df16aabfb4e9fdc6e0b345c21580f3d2a/pydantic_core-2.33.1-cp313-cp313t-macosx_11_0_arm64.whl", hash = "sha256:401d7b76e1000d0dd5538e6381d28febdcacb097c8d340dde7d7fc6e13e9f95d", size = 1812963, upload-time = "2025-04-02T09:48:14.553Z" },
     { url = "https://files.pythonhosted.org/packages/5f/95/4fbc2ecdeb5c1c53f1175a32d870250194eb2fdf6291b795ab08c8646d5d/pydantic_core-2.33.1-cp313-cp313t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7aeb055a42d734c0255c9e489ac67e75397d59c6fbe60d155851e9782f276a9c", size = 1986896, upload-time = "2025-04-02T09:48:16.222Z" },
     { url = "https://files.pythonhosted.org/packages/71/ae/fe31e7f4a62431222d8f65a3bd02e3fa7e6026d154a00818e6d30520ea77/pydantic_core-2.33.1-cp313-cp313t-win_amd64.whl", hash = "sha256:338ea9b73e6e109f15ab439e62cb3b78aa752c7fd9536794112e14bee02c8d18", size = 1931810, upload-time = "2025-04-02T09:48:17.97Z" },
+]
+
+[[package]]
+name = "pyghmi"
+version = "1.6.16"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "python-dateutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a7/11/81ed3521165a13d6bebdcdc0440bc84fb731e49852f03e79be13eb9e3865/pyghmi-1.6.16.tar.gz", hash = "sha256:56a310e78331f5f92add401bcc4029ce6d0bb9128419740045ff07187ef267a5", size = 284898, upload-time = "2026-04-24T17:49:04.916Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2e/31/f9ec30a41ee29fffe8f6d7979f192b187d107e5eed7b2fd9b3c87c89ae7a/pyghmi-1.6.16-py3-none-any.whl", hash = "sha256:71ec8aae36bed025ee7c9b55ae0a8124c7e37874ce0f073aeb1cb8605c7fe43d", size = 289893, upload-time = "2026-04-24T17:49:03.242Z" },
 ]
 
 [[package]]
@@ -2881,8 +2905,10 @@ dependencies = [
     { name = "oracledb" },
     { name = "paramiko" },
     { name = "prometheus-client" },
+    { name = "psycopg2" },
     { name = "pyarmor" },
     { name = "pydantic" },
+    { name = "pyghmi" },
     { name = "pymysql" },
     { name = "pyodbc" },
     { name = "python-dotenv" },
@@ -3031,14 +3057,16 @@ requires-dist = [
     { name = "paramiko", specifier = "==3.5.0" },
     { name = "pbr", marker = "extra == 'openstack'", specifier = "==5.5.0" },
     { name = "prometheus-client", specifier = "==0.21.1" },
+    { name = "psycopg2", specifier = "==2.9.11" },
     { name = "pyarmor", specifier = "==9.0.7" },
-    { name = "pyasn1", marker = "extra == 'snmp'", specifier = ">=0.5.0" },
-    { name = "pyasn1-modules", marker = "extra == 'snmp'", specifier = ">=0.3.0" },
+    { name = "pyasn1", marker = "extra == 'snmp'", specifier = "==0.5.1" },
+    { name = "pyasn1-modules", marker = "extra == 'snmp'", specifier = "==0.3.0" },
     { name = "pydantic", specifier = "==2.11.3" },
+    { name = "pyghmi", specifier = ">=1.6.5" },
     { name = "pymysql", specifier = "==1.1.1" },
     { name = "pyodbc", specifier = "==5.2.0" },
     { name = "pyrsistent", marker = "extra == 'openstack'", specifier = "==0.14.0" },
-    { name = "pysnmp", marker = "extra == 'snmp'", specifier = ">=5.1.0" },
+    { name = "pysnmp", marker = "extra == 'snmp'", specifier = "==5.1.0" },
     { name = "python-cinderclient", marker = "extra == 'openstack'", specifier = "==5.0.0" },
     { name = "python-dateutil", marker = "extra == 'openstack'", specifier = "==2.8.2" },
     { name = "python-dotenv", specifier = "==1.0.0" },

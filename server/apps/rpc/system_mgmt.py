@@ -36,8 +36,38 @@ class SystemMgmt(object):
         return_data = self.client.run("verify_otp_code", username=username, otp_code=otp_code)
         return return_data
 
+    def verify_otp_login(self, challenge_id, otp_code, client_ip=""):
+        """
+        Verify OTP code with challenge_id for two-factor authentication.
+
+        :param challenge_id: The challenge ID from password verification
+        :param otp_code: The OTP code from user's authenticator app
+        :param client_ip: Client IP for rate limiting
+        """
+        return_data = self.client.run("verify_otp_login", challenge_id=challenge_id, otp_code=otp_code, client_ip=client_ip)
+        return return_data
+
     def generate_qr_code(self, username):
         return_data = self.client.run("generate_qr_code", username=username)
+        return return_data
+
+    def generate_qr_code_by_user_id(self, user_id):
+        """
+        Generate OTP QR code for a user by user_id.
+
+        :param user_id: The user's database ID
+        """
+        return_data = self.client.run("generate_qr_code_by_user_id", user_id=user_id)
+        return return_data
+
+    def verify_otp_code_by_user_id(self, user_id, otp_code):
+        """
+        Verify OTP code for a user by user_id.
+
+        :param user_id: The user's database ID
+        :param otp_code: The OTP code from user's authenticator app
+        """
+        return_data = self.client.run("verify_otp_code_by_user_id", user_id=user_id, otp_code=otp_code)
         return return_data
 
     def reset_pwd(self, username, domain, password):

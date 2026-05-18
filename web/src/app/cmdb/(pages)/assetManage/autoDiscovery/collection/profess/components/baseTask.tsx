@@ -46,6 +46,18 @@ const COMMON_SELECT_INST_TASK_TYPES = [
 ];
 // 需要单实例选择的任务类型
 const SINGLE_INSTANCE_SELECT_TASK_TYPES = ['vm', 'k8s', 'cloud'];
+// 需要接入点选择的任务类型
+const ACCESS_POINT_TASK_TYPES = [
+  'snmp',
+  'db',
+  'host',
+  'middleware',
+  'protocol',
+  'config_file',
+  'cloud',
+  'vm',
+  'ipmi',
+];
 
 import {
   CaretRightOutlined,
@@ -143,7 +155,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const [collectionType, setCollectionType] = useState('ip');
     const [selectedData, setSelectedData] = useState<TableItem[]>([]);
     const [accessPoints, setAccessPoints] = useState<
-      { label: string; value: string }[]
+      { label: string; value: string; [key: string]: any }[]
     >([]);
     const [accessPointLoading, setAccessPointLoading] = useState(false);
     const [instVisible, setInstVisible] = useState(false);
@@ -158,6 +170,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const [ipRangeOrg, setIpRangeOrg] = useState<number[]>([]);
     const [selectedInstIds, setSelectedInstIds] = useState<number[]>([]);
     const cleanupStrategyValue = Form.useWatch('cleanupStrategy', form);
+    const accessPointId = Form.useWatch('accessPointId', form);
     const [instPagination, setInstPagination] = useState({
       current: 1,
       pageSize: 10,
@@ -177,10 +190,75 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const requiresSingleInstanceSelect = SINGLE_INSTANCE_SELECT_TASK_TYPES.includes(
       normalizedTaskType
     );
+    const requiresAccessPointSelect = ACCESS_POINT_TASK_TYPES.includes(
+      normalizedTaskType
+    );
 
     const isCommonSelectInstTask = COMMON_SELECT_INST_TASK_TYPES.includes(
       normalizedTaskType
     );
+    const isHostTask = normalizedTaskType === 'host';
+    const isHostAssetMode = isHostTask && collectionType === 'asset';
+    const selectedAccessPoint = accessPoints.find(
+      (item: any) => item.value === accessPointId,
+    );
+    const selectedAccessPointCloudRegion =
+      selectedAccessPoint?.origin?.cloud_region;
+    const hasSelectedAccessPoint = Boolean(accessPointId);
+    const hasSelectedAccessPointCloudRegion = ![undefined, null, ''].includes(
+      selectedAccessPointCloudRegion as never,
+    );
+    const canSelectHostAssets =
+      !isHostAssetMode ||
+      (hasSelectedAccessPoint && hasSelectedAccessPointCloudRegion);
+    const hostAssetSelectTooltip = !isHostAssetMode
+      ? undefined
+      : !hasSelectedAccessPoint
+        ? t('Collection.hostAssetSelectionNeedsProxy')
+        : !hasSelectedAccessPointCloudRegion
+          ? t('Collection.proxyCloudUnavailable')
+          : undefined;
+
+    const resetInstPagination = () => {
+      setInstPagination((prev) => ({
+        ...prev,
+        current: 1,
+        total: 0,
+      }));
+    };
+
+    const clearAssetSelection = () => {
+      setSelectedData([]);
+      setDisplaySelectedKeys([]);
+      setSelectedKeys([]);
+      setSelectedRows([]);
+      setInstData([]);
+      setInstVisible(false);
+      form.setFieldValue('assetInst', []);
+      resetInstPagination();
+    };
+
+    const clearIpRangeSelection = () => {
+      setIpRange([]);
+      form.setFieldValue('ipRange', []);
+    };
+
+    const getHostCloudQueryList = () => {
+      if (!isHostTask || !hasSelectedAccessPointCloudRegion) {
+        return [];
+      }
+
+      const rawCloudRegion = selectedAccessPointCloudRegion;
+      const cloudRegionString = String(rawCloudRegion).trim();
+
+      return [
+        {
+          field: 'cloud',
+          type: 'str=',
+          value: cloudRegionString,
+        },
+      ];
+    };
 
     useEffect(() => {
       if (!supportsAssetOnlySelection) {
@@ -225,12 +303,24 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
 
     const fetchInstData = async (modelId: string, page = 1, pageSize = 10) => {
       try {
+        if (isHostTask && !hasSelectedAccessPointCloudRegion) {
+          setInstData([]);
+          resetInstPagination();
+          return;
+        }
+
         setInstLoading(true);
-        const res = await instanceApi.searchInstances({
+        const params: any = {
           model_id: modelId,
           page,
           page_size: pageSize,
-        });
+        };
+
+        if (isHostTask) {
+          params.query_list = getHostCloudQueryList();
+        }
+
+        const res = await instanceApi.searchInstances(params);
         setInstData(res.insts || []);
         setInstPagination((prev) => ({
           ...prev,
@@ -245,9 +335,33 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     };
 
     const handleOpenDrawer = () => {
+      if (isHostAssetMode && !canSelectHostAssets) {
+        return;
+      }
+
       setInstVisible(true);
       if (isCommonSelectInstTask) {
         fetchInstData(instanceModelId);
+      }
+    };
+
+    const handleCollectionTypeChange = (nextType: 'ip' | 'asset') => {
+      if (nextType === collectionType) {
+        return;
+      }
+
+      if (nextType === 'ip') {
+        clearAssetSelection();
+      } else {
+        clearIpRangeSelection();
+      }
+
+      setCollectionType(nextType);
+    };
+
+    const handleAccessPointChange = (value: string) => {
+      if (isHostAssetMode && accessPointId !== value) {
+        clearAssetSelection();
       }
     };
 
@@ -327,13 +441,18 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
 
     useEffect(() => {
       const init = async () => {
-        const selectedInstIds = await fetchSelectedInstances();
-        setSelectedInstIds(selectedInstIds);
-        fetchOptions(selectedInstIds);
-        fetchAccessPoints();
+        if (requiresSingleInstanceSelect) {
+          const selectedIds = (await fetchSelectedInstances()) || [];
+          setSelectedInstIds(selectedIds);
+          fetchOptions(selectedIds);
+        }
+
+        if (requiresAccessPointSelect) {
+          fetchAccessPoints();
+        }
       };
       init();
-    }, []);
+    }, [requiresSingleInstanceSelect, requiresAccessPointSelect]);
 
     const onIpChange = (value: string[]) => {
       setIpRange(value);
@@ -574,6 +693,28 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
               />
             </Form.Item>
 
+            {/* 接入点 */}
+            {requiresAccessPointSelect && (
+              <Form.Item
+                label={t('Collection.accessPoint')}
+                name="accessPointId"
+                required
+                rules={[
+                  {
+                    required: true,
+                    message: t('required'),
+                  },
+                ]}
+              >
+                <Select
+                  placeholder={t('common.selectTip')}
+                  options={accessPoints}
+                  loading={accessPointLoading}
+                  onChange={handleAccessPointChange}
+                />
+              </Form.Item>
+            )}
+
             {/* 实例选择 */}
             {requiresSingleInstanceSelect && (
               <Form.Item label={instPlaceholder} required>
@@ -608,7 +749,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                   <Radio.Group
                     value={collectionType}
                     className="ml-8 mb-6"
-                    onChange={(e) => setCollectionType(e.target.value)}
+                    onChange={(e) => handleCollectionTypeChange(e.target.value)}
                   >
                     <Radio value="ip">{t('Collection.chooseIp')}</Radio>
                     <Radio value="asset">
@@ -677,9 +818,19 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                     <div>
                       <Space>
                         {isCommonSelectInstTask ? (
-                          <Button type="primary" onClick={handleOpenDrawer}>
-                            {t('common.select')}
-                          </Button>
+                          <Tooltip title={hostAssetSelectTooltip}>
+                            <span>
+                              <Button
+                                type="primary"
+                                onClick={handleOpenDrawer}
+                                disabled={
+                                  isHostAssetMode && !canSelectHostAssets
+                                }
+                              >
+                                {t('common.select')}
+                              </Button>
+                            </span>
+                          </Tooltip>
                         ) : (
                           <Dropdown
                             menu={{
@@ -717,27 +868,6 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                   </Form.Item>
                 )}
               </>
-            )}
-            {/* 接入点 */}
-            {normalizedTaskType !== 'k8s' &&
-              normalizedTaskType !== 'kubernetes' && (
-                <Form.Item
-                  label={t('Collection.accessPoint')}
-                  name="accessPointId"
-                  required
-                  rules={[
-                    {
-                      required: true,
-                      message: t('required'),
-                    },
-                  ]}
-                >
-                  <Select
-                    placeholder={t('common.selectTip')}
-                    options={accessPoints}
-                    loading={accessPointLoading}
-                  />
-                </Form.Item>
             )}
           </div>
           {children}

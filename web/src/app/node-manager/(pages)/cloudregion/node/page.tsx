@@ -408,7 +408,11 @@ const Node = () => {
                   />
                 </div>
               </Tooltip>
-              <Tooltip title={`CPU架构: ${cpuArchitectureLabel}`}>
+              <Tooltip
+                title={`${t(
+                  'node-manager.cloudregion.node.cpuArchitecture'
+                )}: ${cpuArchitectureLabel}`}
+              >
                 <div className="flex items-center">
                   <Icon
                     type="cpu"

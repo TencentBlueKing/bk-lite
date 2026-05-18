@@ -875,3 +875,138 @@ def update_graph_task(current_count, all_count, task_id):
             task_id,
         )
         return
+
+
+# ============================================================================
+# 外部渠道消息处理任务（WeChat/DingTalk）
+#
+# 配置项：
+#     max_retries: 最大重试次数，默认 3 次
+#     default_retry_delay: 重试间隔（秒），默认 60 秒
+#
+#     如需调整，修改 @shared_task 装饰器参数：
+#         @shared_task(bind=True, max_retries=5, default_retry_delay=120)
+#
+# 重试机制：
+#     - 任务失败时自动重试，最多 max_retries 次
+#     - 每次重试间隔 default_retry_delay 秒
+#     - 失败时会清除消息去重标记，允许重新处理
+#     - 所有重试耗尽后，消息将被丢弃（可通过 Celery 死信队列监控）
+#
+# 依赖：
+#     - 两阶段去重：调用前需先调用 is_message_processed() 标记为 processing
+#     - 成功后调用 mark_message_completed()
+#     - 失败后调用 mark_message_failed()
+# ============================================================================
+
+
+def _get_bot_chat_flow(bot_id):
+    """获取 Bot 的 ChatFlow 配置
+
+    Args:
+        bot_id: Bot ID
+
+    Returns:
+        BotWorkFlow 对象，如果不存在则返回 None
+    """
+    bot = Bot.objects.filter(id=bot_id, online=True).first()
+    if not bot:
+        return None
+    return BotWorkFlow.objects.filter(bot_id=bot.id).first()
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def process_wechat_message(self, bot_id, msg_id, message, sender_id, config):
+    """处理企业微信消息的 Celery 任务
+
+    使用两阶段去重：
+    - 调用前已标记为 processing
+    - 成功后标记为 completed
+    - 失败后清除标记并触发重试
+
+    Args:
+        bot_id: Bot ID
+        msg_id: 消息唯一标识
+        message: 用户消息内容
+        sender_id: 发送者 ID
+        config: 渠道配置（包含 node_id 等）
+    """
+    from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
+
+    def _execute():
+        handler = WechatChatFlowUtils(bot_id)
+        try:
+            bot_chat_flow = _get_bot_chat_flow(bot_id)
+            if not bot_chat_flow:
+                logger.error(f"微信消息处理失败：Bot {bot_id} 不存在或未配置 ChatFlow")
+                handler.mark_message_failed(msg_id)
+                return
+
+            # 执行 ChatFlow 并发送回复
+            handler.async_process_and_reply(bot_chat_flow, config, message, sender_id, msg_id)
+            logger.info(f"微信消息处理成功: bot_id={bot_id}, msg_id={msg_id}")
+
+        except Exception as e:
+            logger.error(f"微信消息处理失败: bot_id={bot_id}, msg_id={msg_id}, error={str(e)}")
+            # async_process_and_reply 内部已调用 mark_message_failed
+            # 触发 Celery 重试
+            raise
+
+    try:
+        return _run_in_native_thread(_execute)
+    except Exception as e:
+        # Celery 重试
+        raise self.retry(exc=e)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def process_dingtalk_message(self, bot_id, msg_id, text_content, sender_id, webhook_url, config):
+    """处理钉钉消息的 Celery 任务
+
+    使用两阶段去重：
+    - 调用前已标记为 processing
+    - 成功后标记为 completed
+    - 失败后清除标记并触发重试
+
+    Args:
+        bot_id: Bot ID
+        msg_id: 消息唯一标识
+        text_content: 用户消息内容
+        sender_id: 发送者 ID
+        webhook_url: 钉钉 Webhook URL
+        config: 渠道配置（包含 node_id 等）
+    """
+    from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
+
+    def _execute():
+        handler = DingTalkChatFlowUtils(bot_id)
+        try:
+            bot_chat_flow = _get_bot_chat_flow(bot_id)
+            if not bot_chat_flow:
+                logger.error(f"钉钉消息处理失败：Bot {bot_id} 不存在或未配置 ChatFlow")
+                handler.mark_message_failed(msg_id)
+                return
+
+            # 执行 ChatFlow
+            node_id = config.get("node_id")
+            reply_text = handler.execute_chatflow_with_message(bot_chat_flow, node_id, text_content, sender_id)
+
+            # 发送回复
+            if webhook_url and reply_text:
+                markdown_content = {"title": "机器人回复", "text": reply_text}
+                handler.send_message(webhook_url, "markdown", markdown_content)
+
+            # 标记完成
+            handler.mark_message_completed(msg_id)
+            logger.info(f"钉钉消息处理成功: bot_id={bot_id}, msg_id={msg_id}")
+
+        except Exception as e:
+            logger.error(f"钉钉消息处理失败: bot_id={bot_id}, msg_id={msg_id}, error={str(e)}")
+            handler.mark_message_failed(msg_id)
+            raise
+
+    try:
+        return _run_in_native_thread(_execute)
+    except Exception as e:
+        # Celery 重试
+        raise self.retry(exc=e)

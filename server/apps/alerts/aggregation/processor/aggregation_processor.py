@@ -28,7 +28,7 @@ from apps.alerts.aggregation.builder.synthetic_alert_builder import (
     SyntheticAlertBuilder,
 )
 from apps.core.logger import alert_logger as logger
-from apps.alerts.utils.util import str_to_md5
+from apps.alerts.utils.util import parse_aggregation_window_size, str_to_md5
 from apps.alerts.constants.constants import LevelType
 
 
@@ -81,7 +81,19 @@ class AggregationProcessor:
         每个策略有自己的时间窗口和过滤条件
         """
         params = cast(Dict[str, Any], strategy.params or {})
-        window_size = params.get("window_size", 10)
+        raw_window_size = params.get("window_size")
+        window_size, normalization_reason = parse_aggregation_window_size(
+            raw_window_size,
+            clamp=True,
+        )
+
+        if normalization_reason is not None:
+            logger.warning(
+                "策略 %s: window_size=%s 非法或超限，已兜底为 %s 分钟",
+                strategy.name,
+                raw_window_size,
+                window_size,
+            )
 
         cutoff_time = now - timedelta(minutes=window_size)
 
@@ -562,7 +574,7 @@ class AggregationProcessor:
         if not fingerprint:
             return
         global_level = [str(i["level_id"]) for i in alert_levels]
-        raw_fingerprint = fingerprint.split("|")[-1]
+        raw_fingerprint = fingerprint.split("|", 1)[1] if "|" in fingerprint else fingerprint
         now_level = result["alert_level"]
         event_count = int(result.get("event_count") or 0)
         first_event_description = (result.get("first_event_description") or "").strip()

@@ -36,9 +36,9 @@ class NodeMgmt(object):
         return_data = self.client.run("cloud_region_list")
         return return_data
 
-    def get_cloud_region_proxy_address(self, cloud_region_id):
+    def get_cloud_region_proxy_address(self, cloud_region_id, organization_ids=None):
         """获取云区域代理地址。"""
-        return self.client.run("get_cloud_region_proxy_address", cloud_region_id)
+        return self.client.run("get_cloud_region_proxy_address", cloud_region_id, organization_ids)
 
     def node_list(self, query_data):
         """
@@ -62,6 +62,13 @@ class NodeMgmt(object):
         :return: [{"id": "node_id", "name": "node_name"}]
         """
         return self.client.run("get_node_names_by_ids", node_ids)
+
+    def get_nodes_by_ids(self, node_ids):
+        """
+        :param node_ids: 节点ID列表
+        :return: [{"id": "node_id", "cloud_region_id": 1, "cloud_region_name": "default"}]
+        """
+        return self.client.run("get_nodes_by_ids", node_ids)
 
     def batch_create_configs_and_child_configs(self, configs: list, child_configs: list):
         """

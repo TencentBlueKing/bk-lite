@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
-import { Empty, Tag, Timeline } from 'antd';
-import useChartColors from './useChartColors';
+import { Tag } from 'antd';
+import ComTable from '../comTable';
+import { DOCKER_LEVEL_COLORS, normalizeDockerLevel } from './dockerLogLevel';
 
 interface DockerLogTailProps {
   rawData: any;
@@ -8,110 +9,113 @@ interface DockerLogTailProps {
   config?: any;
 }
 
-interface LogEntry {
-  key: string;
-  time: string;
-  container: string;
-  message: string;
-  stream: string;
-}
+/** 列定义（静态，不依赖 hooks，可在模块顶层定义） */
+const LOG_COLUMNS = [
+  {
+    title: '时间',
+    dataIndex: 'time',
+    key: 'time',
+    width: 72,
+    render: (text: string) => (
+      <span className="font-mono text-xs text-[var(--color-text-3)]">
+        {text}
+      </span>
+    )
+  },
+  {
+    title: '容器',
+    dataIndex: 'container',
+    key: 'container',
+    width: 88,
+    ellipsis: true,
+    render: (text: string) => (
+      <span className="text-xs font-medium">{text}</span>
+    )
+  },
+  {
+    title: '日志流',
+    dataIndex: 'stream',
+    key: 'stream',
+    width: 60,
+    render: (text: string) => (
+      <span className="text-xs text-[var(--color-text-3)]">{text}</span>
+    )
+  },
+  {
+    title: '级别',
+    dataIndex: 'level',
+    key: 'level',
+    width: 56,
+    render: (text: string) => {
+      if (!text)
+        return <span className="text-xs text-[var(--color-text-3)]">--</span>;
+      const color =
+        DOCKER_LEVEL_COLORS[text as keyof typeof DOCKER_LEVEL_COLORS] ||
+        '#8c8c8c';
+      return (
+        <Tag
+          className="m-0 border-0 text-[10px] leading-4 px-1"
+          style={{ color, background: `${color}18` }}
+        >
+          {text}
+        </Tag>
+      );
+    }
+  },
+  {
+    title: '日志内容',
+    dataIndex: 'message',
+    key: 'message',
+    ellipsis: true,
+    render: (text: string, record: any) => {
+      const isError = record.level === 'ERROR' || record.level === 'FATAL';
+      return (
+        <span
+          className="text-xs"
+          style={{ color: isError ? '#f5222d' : undefined }}
+        >
+          {text}
+        </span>
+      );
+    }
+  }
+];
 
 const DockerLogTail: React.FC<DockerLogTailProps> = ({
   rawData,
   loading = false,
+  config
 }) => {
-  const colors = useChartColors();
-
-  const entries: LogEntry[] = useMemo(() => {
+  /** 将原始日志数据转换为表格行 */
+  const tableData = useMemo(() => {
     if (!rawData || !Array.isArray(rawData) || rawData.length === 0) return [];
 
     return rawData.slice(0, 50).map((item: any, idx: number) => {
       const t = item._time || '';
-      let formatted = t;
+      let formatted = '--';
       if (t) {
         const d = new Date(t);
         formatted = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
       }
+
+      const level = normalizeDockerLevel(item._msg || item.message || '');
+
       return {
-        key: `${idx}`,
+        id: idx,
         time: formatted,
         container: item.container_name || '--',
-        message: item._msg || item.message || '--',
-        stream: item.stream || 'stdout'
+        stream: item.stream || 'stdout',
+        level,
+        message: item._msg || item.message || '--'
       };
     });
   }, [rawData]);
 
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div
-          className="w-5 h-5 rounded-full border-2 border-t-transparent animate-spin"
-          style={{ borderColor: `${colors.primary}33`, borderTopColor: 'transparent' }}
-        />
-      </div>
-    );
-  }
-
-  if (entries.length === 0) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
-  }
-
-  const timelineItems = entries.map((entry) => {
-    const isStderr = entry.stream === 'stderr';
-
-    return {
-      color: isStderr ? colors.danger : colors.primary,
-      children: (
-        <div
-          className="rounded-md px-3 py-2"
-          style={{
-            background: isStderr ? `${colors.danger}08` : `${colors.primary}08`,
-            border: `1px solid ${isStderr ? `${colors.danger}22` : `${colors.primary}22`}`
-          }}
-        >
-          <div className="mb-1 flex items-center gap-2 text-xs">
-            <span
-              className="shrink-0 font-mono"
-              style={{ color: colors.textTertiary }}
-            >
-              {entry.time}
-            </span>
-            <Tag
-              className="m-0 text-[10px] leading-4 px-1"
-              style={{
-                borderColor: isStderr ? colors.danger : colors.primary,
-                color: isStderr ? colors.danger : colors.primary,
-                background: isStderr ? `${colors.danger}10` : `${colors.primary}10`
-              }}
-            >
-              {entry.container.length > 16
-                ? entry.container.slice(0, 16) + '…'
-                : entry.container}
-            </Tag>
-          </div>
-          <div
-            className="break-all text-xs leading-5"
-            style={{ color: isStderr ? colors.danger : colors.textSecondary }}
-          >
-            {entry.message}
-          </div>
-        </div>
-      )
-    };
-  });
+  /** ComTable 通过 config.columns 接收列定义，rawData 直接传已转换的行 */
+  const tableConfig = { ...(config || {}), columns: LOG_COLUMNS };
 
   return (
-    <div className="h-full overflow-auto px-3 py-2">
-      <Timeline
-        items={timelineItems}
-        className="[&_.ant-timeline-item-content]:min-h-0 [&_.ant-timeline-item-content]:pb-3 [&_.ant-timeline-item-last_.ant-timeline-item-content]:pb-0"
-      />
-    </div>
+    <ComTable rawData={tableData} loading={loading} config={tableConfig} />
   );
 };
 
