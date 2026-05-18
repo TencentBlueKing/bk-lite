@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Descriptions, Empty, Input, Space, Spin, Tag } from 'antd';
+import { Button, Descriptions, Empty, Input, Spin, Tag } from 'antd';
 import { CopyOutlined, DownloadOutlined } from '@ant-design/icons';
-import { useTranslation } from '@/utils/i18n';
-import { useCopy } from '@/hooks/useCopy';
-import { K8sMeta, K8sRenderParams, SourceItem } from '@/app/alarm/types/integration';
+import { useTranslation } from '../../../../utils/i18n';
+import { useCopy } from '../../../../hooks/useCopy';
+import { K8sMeta, K8sRenderParams, SourceItem } from '../../types/integration';
 
 interface K8sGuideProps {
   source?: SourceItem;
@@ -38,6 +38,12 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
     push_source_id: pushSourceId,
   }), [serverUrl, clusterName, pushSourceId]);
 
+  useEffect(() => {
+    if (meta?.push_source_id_default) {
+      setPushSourceId(meta.push_source_id_default);
+    }
+  }, [meta?.push_source_id_default]);
+
   if (loading) {
     return (
       <div className="p-4">
@@ -50,149 +56,231 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
     return <Empty description={t('common.noData')} />;
   }
 
-  return (
-    <div className="p-4 max-h-[calc(100vh-330px)] overflow-y-auto">
-      <h4 className="mb-2 font-medium pl-2 border-l-4 border-blue-400 inline-block leading-tight">
-        {t('integration.deploySteps')}
-      </h4>
-      <div className="rounded border border-[var(--color-border-1)] bg-[var(--color-bg-5)] p-4 space-y-4">
-        <div>
-          <div className="font-medium mb-2">1. {t('integration.fillDeployParams')}</div>
-          <div className="rounded border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-3 space-y-3">
-            <div>
-              <div className="text-sm mb-1">{t('integration.serverUrlLabel')}</div>
-              <Input
-                value={serverUrl}
-                onChange={(event) => setServerUrl(event.target.value)}
-                placeholder="https://10.11.27.147:443"
-              />
+  const deployFile = meta.download_files.find((file) => file.key === 'deploy_yaml');
+
+  const fieldLabelClassName = 'mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-text-3)]';
+  const codeBlockClassName = 'relative overflow-hidden rounded-[16px] border border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-5 py-4';
+  const copyIconClassName = 'absolute top-1/2 right-3 -translate-y-1/2 cursor-pointer text-[var(--color-text-3)] hover:text-[var(--color-primary)]';
+
+  const steps = [
+    {
+      key: 'parameters',
+      title: t('integration.fillDeployParams'),
+      eyebrow: 'Step 01',
+      description: '先填写会写入部署清单的参数，保证下载文件与集群标识一致。',
+      content: (
+        <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+          <div className="lg:col-span-2">
+            <div className={fieldLabelClassName}>
+              {t('integration.serverUrlLabel')}
             </div>
-            <div>
-              <div className="text-sm mb-1">{t('integration.clusterNameLabel')}</div>
-              <Input
-                value={clusterName}
-                onChange={(event) => setClusterName(event.target.value)}
-                placeholder="orbstack-local"
-              />
-            </div>
-            <div>
-              <div className="text-sm mb-1">{t('integration.pushSourceIdLabel')}</div>
-              <Input
-                value={pushSourceId}
-                onChange={(event) => setPushSourceId(event.target.value)}
-                placeholder={meta.push_source_id_default}
-              />
-            </div>
+            <Input
+              value={serverUrl}
+              onChange={(event) => setServerUrl(event.target.value)}
+              placeholder="https://10.11.27.147:443"
+            />
           </div>
-        </div>
-
-        <div>
-          <div className="font-medium mb-2">2. {t('integration.downloadDeployYaml')}</div>
-          <Space wrap>
-            {meta.download_files.filter((file: K8sMeta['download_files'][number]) => file.key === 'deploy_yaml').map((file: K8sMeta['download_files'][number]) => (
-              <Button
-                key={file.key}
-                icon={<DownloadOutlined />}
-                onClick={() => onDownload(file.key, file.file_name, renderParams)}
-                disabled={!serverUrl || !clusterName}
-              >
-                {file.display_name}
-              </Button>
-            ))}
-          </Space>
-        </div>
-
-        <div>
-          <div className="font-medium mb-2">3. {t('integration.prepareImage')}</div>
-          <div className="rounded border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-3 space-y-2">
-            <div className="flex items-center gap-2 break-all">
-              <span>{meta.image_reference}</span>
-              <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => copy(meta.image_reference)} />
+          <div>
+            <div className={fieldLabelClassName}>
+              {t('integration.clusterNameLabel')}
             </div>
-            <div className="relative">
-              <pre className="bg-[var(--color-bg-5)] p-2 pr-10 rounded border border-[var(--color-border-1)] text-[13px] font-mono leading-relaxed whitespace-pre-wrap break-all max-w-full">
-                <code>{`docker pull ${meta.image_reference}`}</code>
-              </pre>
-              <CopyOutlined
-                className="absolute top-3 right-3 cursor-pointer hover:text-blue-500"
-                onClick={() => copy(`docker pull ${meta.image_reference}`)}
-              />
-            </div>
-            <div className="relative">
-              <pre className="bg-[var(--color-bg-5)] p-2 pr-10 rounded border border-[var(--color-border-1)] text-[13px] font-mono leading-relaxed whitespace-pre-wrap break-all max-w-full">
-                <code>docker load -i kubernetes-event-exporter.tar</code>
-              </pre>
-              <CopyOutlined
-                className="absolute top-3 right-3 cursor-pointer hover:text-blue-500"
-                onClick={() => copy('docker load -i kubernetes-event-exporter.tar')}
-              />
-            </div>
+            <Input
+              value={clusterName}
+              onChange={(event) => setClusterName(event.target.value)}
+              placeholder="orbstack-local"
+            />
           </div>
-        </div>
-
-        <div>
-          <div className="font-medium mb-2">4. {t('integration.renderedConfig')}</div>
-          <Descriptions bordered size="small" column={1} labelStyle={{ width: 220 }}>
-            <Descriptions.Item label="CLUSTER_NAME">
-              {t('integration.clusterNameHelp')}
-            </Descriptions.Item>
-            <Descriptions.Item label="BK_LITE_RECEIVER_URL">
-              <div className="flex items-center gap-2 break-all">
-                <span>{meta.receiver_url}</span>
-                <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => copy(meta.receiver_url)} />
-              </div>
-            </Descriptions.Item>
-            <Descriptions.Item label="BK_LITE_SECRET">
-              <div className="flex items-center gap-2">
-                <span>******************</span>
-                <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => copy(source.secret)} />
-              </div>
-            </Descriptions.Item>
-            <Descriptions.Item label="BK_LITE_SOURCE_ID">
-              <Tag color="blue">{meta.source_id}</Tag>
-              <span className="ml-2 text-[var(--color-text-3)]">{t('integration.sourceIdFixed')}</span>
-            </Descriptions.Item>
-            <Descriptions.Item label="BK_LITE_PUSH_SOURCE_ID">
-              <div className="flex items-center gap-2">
-                <Tag color="gold">{meta.push_source_id_default}</Tag>
-                {meta.push_source_id_configurable && (
-                  <span className="text-[var(--color-text-3)]">{t('integration.pushSourceConfigurable')}</span>
-                )}
-              </div>
-            </Descriptions.Item>
-          </Descriptions>
-        </div>
-
-        <div>
-          <div className="font-medium mb-2">5. {t('integration.applyToCluster')}</div>
-          <div className="relative">
-            <pre className="bg-[var(--color-bg-1)] p-2 pr-10 rounded border border-[var(--color-border-1)] text-[13px] font-mono leading-relaxed whitespace-pre-wrap break-all max-w-full">
-              <code>kubectl apply -f bk-lite-k8s-event-exporter.deploy.yaml</code>
-            </pre>
-            <CopyOutlined
-              className="absolute top-3 right-3 cursor-pointer hover:text-blue-500"
-              onClick={() => copy('kubectl apply -f bk-lite-k8s-event-exporter.deploy.yaml')}
+          <div>
+            <div className={fieldLabelClassName}>
+              {t('integration.pushSourceIdLabel')}
+            </div>
+            <Input
+              value={pushSourceId}
+              onChange={(event) => setPushSourceId(event.target.value)}
+              placeholder={meta.push_source_id_default}
             />
           </div>
         </div>
-
-        <div>
-          <div className="font-medium mb-2">6. {t('integration.verifyResult')}</div>
-          <div className="text-sm text-[var(--color-text-2)]">
-            {t('integration.verifyResultHelp')}
+      ),
+    },
+    {
+      key: 'yaml',
+      title: t('integration.downloadDeployYaml'),
+      eyebrow: 'Step 02',
+      description: '下载系统渲染后的部署文件，再进入集群侧执行应用。',
+      content: (
+        <div className="space-y-4">
+          <div>
+            {deployFile ? (
+              <Button
+                icon={<DownloadOutlined />}
+                onClick={() => onDownload(deployFile.key, deployFile.file_name, renderParams)}
+                disabled={!serverUrl || !clusterName}
+              >
+                {deployFile.display_name}
+              </Button>
+            ) : (
+              <div className="text-sm text-[var(--color-text-3)]">{t('common.noData')}</div>
+            )}
+          </div>
+          <div className="max-w-[680px] text-[13px] leading-6 text-[var(--color-text-2)]">
+            下载前请确认接入地址与集群名正确，避免后续重复改 YAML。
           </div>
         </div>
-      </div>
+      ),
+    },
+    {
+      key: 'image',
+      title: t('integration.prepareImage'),
+      eyebrow: 'Step 03',
+      description: '准备事件导出镜像与离线导入命令，保持页面能力与实际部署动作一致。',
+      content: (
+        <div className="space-y-4">
+          <div className="rounded-[16px] bg-[var(--color-fill-1)] px-5 py-4">
+            <div className={fieldLabelClassName}>Image reference</div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 break-all text-[13px] font-medium leading-6 text-[var(--color-text-1)]">
+              <span className="min-w-0 flex-1 break-all">{meta.image_reference}</span>
+              <Button className="self-center" type="link" size="small" icon={<CopyOutlined />} onClick={() => copy(meta.image_reference)} />
+            </div>
+          </div>
+          <div className={codeBlockClassName}>
+            <pre className="overflow-x-auto pr-10 text-[13px] leading-6 text-[var(--color-text-1)] whitespace-pre-wrap break-all">
+              <code>{`docker pull ${meta.image_reference}`}</code>
+            </pre>
+            <CopyOutlined
+              className={copyIconClassName}
+              onClick={() => copy(`docker pull ${meta.image_reference}`)}
+            />
+          </div>
+          <div className={codeBlockClassName}>
+            <pre className="overflow-x-auto pr-10 text-[13px] leading-6 text-[var(--color-text-1)] whitespace-pre-wrap break-all">
+              <code>docker load -i kubernetes-event-exporter.tar</code>
+            </pre>
+            <CopyOutlined
+              className={copyIconClassName}
+              onClick={() => copy('docker load -i kubernetes-event-exporter.tar')}
+            />
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'config',
+      title: t('integration.renderedConfig'),
+      eyebrow: 'Step 04',
+      description: '核对渲染后的关键变量，确认只展示当前真实可配置项。',
+      content: (
+        <div className="overflow-hidden rounded-[16px] border border-[var(--color-border-1)] bg-[var(--color-fill-1)]">
+          <Descriptions bordered size="small" column={1} labelStyle={{ width: 220, fontSize: 12, color: 'var(--color-text-3)' }}>
+          <Descriptions.Item label="CLUSTER_NAME">
+            {t('integration.clusterNameHelp')}
+          </Descriptions.Item>
+          <Descriptions.Item label="BK_LITE_RECEIVER_URL">
+            <div className="flex items-center gap-2 break-all">
+              <span>{meta.receiver_url}</span>
+              <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => copy(meta.receiver_url)} />
+            </div>
+          </Descriptions.Item>
+          <Descriptions.Item label="BK_LITE_SECRET">
+            <div className="flex items-center gap-2">
+              <span>******************</span>
+              <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => copy(source.secret)} />
+            </div>
+          </Descriptions.Item>
+          <Descriptions.Item label="BK_LITE_SOURCE_ID">
+            <Tag color="blue">{meta.source_id}</Tag>
+            <span className="ml-2 text-[var(--color-text-3)]">{t('integration.sourceIdFixed')}</span>
+          </Descriptions.Item>
+          <Descriptions.Item label="BK_LITE_PUSH_SOURCE_ID">
+            <div className="flex items-center gap-2">
+              <Tag color="gold">{meta.push_source_id_default}</Tag>
+              {meta.push_source_id_configurable && (
+                <span className="text-[var(--color-text-3)]">{t('integration.pushSourceConfigurable')}</span>
+              )}
+            </div>
+          </Descriptions.Item>
+          </Descriptions>
+        </div>
+      ),
+    },
+    {
+      key: 'apply',
+      title: t('integration.applyToCluster'),
+      eyebrow: 'Step 05',
+      description: '在集群环境中应用已下载的部署文件。',
+      content: (
+        <div className={codeBlockClassName}>
+          <pre className="overflow-x-auto pr-10 text-[13px] leading-6 text-[var(--color-text-1)] whitespace-pre-wrap break-all">
+            <code>kubectl apply -f bk-lite-k8s-event-exporter.deploy.yaml</code>
+          </pre>
+          <CopyOutlined
+            className={copyIconClassName}
+            onClick={() => copy('kubectl apply -f bk-lite-k8s-event-exporter.deploy.yaml')}
+          />
+        </div>
+      ),
+    },
+    {
+      key: 'verify',
+      title: t('integration.verifyResult'),
+      eyebrow: 'Step 06',
+      description: '完成部署后，用页面已有事件预览与事件表确认是否开始接收上报。',
+      content: (
+        <div className="rounded-[16px] border border-dashed border-[var(--color-border-3)] bg-[var(--color-fill-1)] px-5 py-4 text-[13px] leading-6 text-[var(--color-text-2)]">
+          {t('integration.verifyResultHelp')}
+        </div>
+      ),
+    },
+  ];
 
-      <h4 className="mt-6 mb-2 font-medium pl-2 border-l-4 border-blue-400 inline-block leading-tight">
-        {t('integration.k8sGuideNotes')}
-      </h4>
-      <div className="rounded border border-[var(--color-border-1)] bg-[var(--color-bg-5)] p-4 space-y-2">
-        {meta.notes.map((note: string) => (
-          <div key={note} className="text-sm text-[var(--color-text-2)]">
-            • {note}
+  return (
+    <div className="max-h-[calc(100vh-330px)] overflow-y-auto py-2">
+      <div className="space-y-4">
+        {steps.map((step, index) => (
+          <div key={step.key} className="relative pl-12 md:pl-14">
+            <div className="absolute left-0 top-0 flex h-full w-12 justify-center md:w-14">
+              {index < steps.length - 1 ? (
+                <div className="absolute left-[19px] top-10 bottom-0 w-px bg-[linear-gradient(to_bottom,var(--color-border-3),color-mix(in_srgb,var(--color-border-1)_55%,transparent))] md:left-[23px]" />
+              ) : null}
+              <div className="relative z-10 flex h-8 w-8 items-center justify-center rounded-full border border-[var(--color-border-2)] bg-[var(--color-fill-1)] text-[12px] font-semibold text-[var(--color-primary)]">
+                {index + 1}
+              </div>
+            </div>
+
+            <div className="rounded-[18px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-5 py-5 sm:px-6">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-text-3)]">
+                  {step.eyebrow}
+                </div>
+                <div className="h-px min-w-[72px] flex-1 bg-[var(--color-border-1)]" />
+              </div>
+              <div className="mt-3 text-[18px] font-semibold leading-7 text-[var(--color-text-1)]">
+                {step.title}
+              </div>
+              <div className="mt-1.5 max-w-[760px] text-[13px] leading-6 text-[var(--color-text-2)]">
+                {step.description}
+              </div>
+              <div className="mt-5">{step.content}</div>
+            </div>
           </div>
         ))}
+      </div>
+
+      <div className="mt-5 rounded-[18px] border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-5">
+        <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-primary)]">
+          Notes
+        </div>
+        <h4 className="mt-1 text-[16px] font-semibold leading-6 text-[var(--color-text-1)]">
+          {t('integration.k8sGuideNotes')}
+        </h4>
+        <div className="mt-3 space-y-2">
+          {meta.notes.map((note: string, index: number) => (
+            <div key={`${note}-${index}`} className="flex items-start gap-2 text-[13px] leading-6 text-[var(--color-text-2)]">
+              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-primary)]" />
+              <span>{note}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
