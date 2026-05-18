@@ -132,7 +132,7 @@ export interface NodeMgmtSyncTask {
   last_collect_at: string | null;
 }
 
-export interface NodeMgmtSyncConfig extends NodeMgmtSyncTask {}
+export type NodeMgmtSyncConfig = NodeMgmtSyncTask;
 
 export type NodeMgmtSyncSummary = CollectTaskMessage;
 

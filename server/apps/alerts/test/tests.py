@@ -422,6 +422,67 @@ class MissingDetectionProcessorTestCase(TestCase):
             MAX_AGGREGATION_WINDOW_SIZE_MINUTES,
         )
 
+    def test_normalize_fingerprint_preserves_full_multi_dimension_combination(self):
+        alert_levels = [{"level_id": 1, "level_name": "warning", "level_display_name": "预警"}]
+        beijing_result = {
+            "fingerprint": "42|service=api|location=beijing",
+            "alert_level": 1,
+            "event_count": 1,
+            "first_event_description": "api beijing error",
+            "alert_description": "api-beijing",
+        }
+        shanghai_result = {
+            "fingerprint": "42|service=api|location=shanghai",
+            "alert_level": 1,
+            "event_count": 1,
+            "first_event_description": "api shanghai error",
+            "alert_description": "api-shanghai",
+        }
+
+        AggregationProcessor._normalize_fingerprint(beijing_result, alert_levels)
+        AggregationProcessor._normalize_fingerprint(shanghai_result, alert_levels)
+
+        self.assertNotEqual(beijing_result["fingerprint"], shanghai_result["fingerprint"])
+
+    def test_multi_dimension_group_by_creates_distinct_alerts(self):
+        now = timezone.now()
+        strategy = self.create_strategy(
+            name="smart-multi-dimension-rule",
+            strategy_type=AlarmStrategyType.SMART_DENOISE,
+            params={"group_by": ["service", "location"], "window_size": 5, "time_out": False},
+        )
+        first_event = self.create_event(
+            now - timedelta(minutes=1),
+            event_id="EVENT-MULTI-DIMENSION-1",
+            external_id="multi-dimension-1",
+            service="api",
+            location="beijing",
+            resource_name="api-beijing",
+        )
+        second_event = self.create_event(
+            now - timedelta(minutes=1),
+            event_id="EVENT-MULTI-DIMENSION-2",
+            external_id="multi-dimension-2",
+            service="api",
+            location="shanghai",
+            resource_name="api-shanghai",
+        )
+
+        with patch.object(self.processor, "_schedule_auto_assignment"):
+            success = self.processor._aggregate_for_dimensions(
+                strategy,
+                Event.objects.filter(pk__in=[first_event.pk, second_event.pk]),
+                ["service", "location"],
+                now,
+            )
+
+        self.assertTrue(success)
+        self.assertEqual(Alert.objects.count(), 2)
+        self.assertEqual(
+            Alert.objects.values_list("fingerprint", flat=True).distinct().count(),
+            2,
+        )
+
     def test_first_heartbeat_mode_waits_for_first_event(self):
         now = timezone.make_aware(datetime(2026, 3, 20, 10, 0, 0))
         strategy = self.create_strategy(

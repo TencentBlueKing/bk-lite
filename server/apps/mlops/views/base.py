@@ -1,6 +1,15 @@
+from apps.core.logger import mlops_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.mlops.constants import TrainJobStatus, MLflowRunStatus
 from apps.mlops.utils.group_scope import assert_dataset_version_scope
+from apps.mlops.utils.webhook_client import (
+    WebhookClient,
+    WebhookConnectionError,
+    WebhookError,
+    WebhookTimeoutError,
+)
+from django.http import Http404
+from django.shortcuts import get_object_or_404
 from django.db import transaction
 from rest_framework import serializers, status
 from rest_framework.response import Response
@@ -15,6 +24,133 @@ class TeamModelViewSet(AuthViewSet):
 
     ORGANIZATION_FIELD = "team"
     MLFLOW_PREFIX = ""
+
+    def get_authorized_object(self):
+        queryset = self.filter_queryset(self.get_queryset())
+        request = getattr(self, "request", None)
+
+        if request is not None and not getattr(getattr(request, "user", None), "is_superuser", False):
+            self._validate_current_team_permission(request)
+            _, _, _, query = self.filter_by_group(queryset, request, request.user)
+            queryset = queryset.filter(query)
+
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        lookup_value = self.kwargs.get(lookup_url_kwarg)
+        return get_object_or_404(queryset, **{self.lookup_field: lookup_value})
+
+    def get_authorized_object_or_none(self):
+        try:
+            return self.get_authorized_object()
+        except Http404:
+            return None
+
+    def get_object(self):
+        return self.get_authorized_object()
+
+    def get_train_job_runs(self, train_job):
+        from apps.mlops.utils import mlflow_service
+
+        experiment_name = mlflow_service.build_experiment_name(
+            prefix=self.MLFLOW_PREFIX,
+            algorithm=train_job.algorithm,
+            train_job_id=train_job.id,
+        )
+        experiment = mlflow_service.get_experiment_by_name(experiment_name)
+        experiment_id = getattr(experiment, "experiment_id", None) if experiment else None
+        if not experiment_id:
+            return None
+
+        return mlflow_service.get_experiment_runs(str(experiment_id))
+
+    @staticmethod
+    def has_run_in_runs_frame(runs, run_id):
+        if runs is None or runs.empty:
+            return False
+
+        return str(run_id) in {str(value) for value in runs["run_id"]}
+
+    def train_job_has_run(self, train_job, run_id):
+        runs = self.get_train_job_runs(train_job)
+        return self.has_run_in_runs_frame(runs, run_id)
+
+    @staticmethod
+    def run_not_found_response(run_id):
+        return Response(
+            {
+                "error": "未找到对应的训练运行记录",
+                "code": "run_not_found",
+                "run_id": run_id,
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    def cleanup_serving_runtime(self, serving):
+        """Delete a serving runtime and return an error response on failure."""
+        container_id = f"{self.MLFLOW_PREFIX}_Serving_{serving.id}"
+
+        try:
+            WebhookClient.remove(container_id)
+            logger.info(
+                f"删除 serving 容器成功: container_id={container_id}, serving_id={serving.id}"
+            )
+        except (WebhookConnectionError, WebhookTimeoutError) as e:
+            logger.error(
+                f"删除 serving 容器失败，已阻止数据库记录删除: container_id={container_id}, "
+                f"serving_id={serving.id}, error={str(e)}",
+                exc_info=True,
+            )
+            return Response(
+                {"error": f"删除服务失败：容器清理失败，{str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        except WebhookError as e:
+            if "not found" in str(e).lower() or "does not exist" in str(e).lower():
+                logger.warning(
+                    f"删除 serving 时容器已不存在，继续删除记录: container_id={container_id}, "
+                    f"serving_id={serving.id}"
+                )
+            else:
+                logger.error(
+                    f"删除 serving 容器失败，已阻止数据库记录删除: container_id={container_id}, "
+                    f"serving_id={serving.id}, error={str(e)}",
+                    exc_info=True,
+                )
+                return Response(
+                    {"error": f"删除服务失败：容器清理失败，{str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+        return None
+
+    def destroy_serving_with_runtime_cleanup(self, request, *args, **kwargs):
+        """Delete serving runtime first, then remove the DB record."""
+        instance = self.get_object()
+        cleanup_error = self.cleanup_serving_runtime(instance)
+        if cleanup_error is not None:
+            return cleanup_error
+
+        return super().destroy(request, *args, **kwargs)
+
+    def destroy_train_job_with_runtime_cleanup(self, request, *args, **kwargs):
+        """Delete all related serving runtimes first, then remove the train job."""
+        train_job = self.get_object()
+        related_servings = list(train_job.servings.all())
+
+        for serving in related_servings:
+            cleanup_error = self.cleanup_serving_runtime(serving)
+            if cleanup_error is not None:
+                logger.error(
+                    f"删除训练任务前清理关联 serving 失败，已阻止数据库记录删除: "
+                    f"train_job_id={train_job.id}, serving_id={serving.id}"
+                )
+                return cleanup_error
+
+        logger.info(
+            f"删除训练任务前已完成关联 serving runtime 清理: "
+            f"train_job_id={train_job.id}, serving_count={len(related_servings)}"
+        )
+
+        return super().destroy(request, *args, **kwargs)
 
     # ---- run delete eligibility helpers (shared across all TrainJob viewsets) ----
 
@@ -132,24 +268,11 @@ class TeamModelViewSet(AuthViewSet):
 
         Returns ``(allowed: bool, reason: str | None)``.
         """
-        from apps.mlops.utils import mlflow_service
-
-        experiment_name = mlflow_service.build_experiment_name(
-            prefix=self.MLFLOW_PREFIX,
-            algorithm=train_job.algorithm,
-            train_job_id=train_job.id,
-        )
-        experiment = mlflow_service.get_experiment_by_name(experiment_name)
-        experiment_id = getattr(experiment, "experiment_id", None) if experiment else None
-        if not experiment_id:
+        runs = self.get_train_job_runs(train_job)
+        if runs is None or runs.empty:
             return False, "run_not_found"
 
-        runs = mlflow_service.get_experiment_runs(str(experiment_id))
-        if runs.empty:
-            return False, "run_not_found"
-
-        run_ids = list(runs["run_id"])
-        if run_id not in run_ids:
+        if not self.has_run_in_runs_frame(runs, run_id):
             return False, "run_not_found"
 
         # Build lightweight dicts for the eligibility logic

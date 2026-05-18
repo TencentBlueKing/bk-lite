@@ -92,7 +92,6 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
 
   const syncRun: NodeMgmtSyncRun | null = displayPayload?.run || null;
   const detail = displayPayload?.detail;
-  const displaySource = displayPayload?.display_source;
   const displayMessage: CollectTaskMessage = displayPayload?.message || syncRun?.message || {
     all: 0,
     add: 0,
@@ -109,8 +108,6 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
     association_success: 0,
   };
   const todoItems = detail?.todo || [];
-  const isCollectDisplay = displaySource === 'collect';
-
   useEffect(() => {
     const tabOrder = ['add', 'update', 'delete', 'relation', 'raw_data'] as const;
     const firstWithData = tabOrder.find((key) => (detail?.[key]?.count || 0) > 0);
@@ -277,7 +274,7 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
           {displayMessage.association ? (
             <Alert
               type="warning"
-              message={t('Collection.nodeMgmtSync.conflictNotice', {
+              message={t('Collection.nodeMgmtSync.conflictNotice', undefined, {
                 count: String(displayMessage.association || 0),
               })}
               showIcon

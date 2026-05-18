@@ -17,39 +17,40 @@ from django.test import RequestFactory
 class TestVerifyWechatCode:
     """Tests for verify_wechat_code() function."""
 
-    @patch("apps.core.views.index_view._create_system_mgmt_client")
-    def test_returns_error_when_wechat_not_enabled(self, mock_client):
+    @patch("apps.core.views.index_view.LoginModule")
+    def test_returns_error_when_wechat_not_enabled(self, mock_login_module):
         """Should return error when WeChat login is not enabled."""
         from apps.core.views.index_view import verify_wechat_code
 
-        mock_client.return_value.get_wechat_settings.return_value = {"result": True, "data": {"enabled": False}}
+        mock_login_module.objects.filter.return_value.first.return_value = None
 
         result = verify_wechat_code("test_code")
 
         assert result["success"] is False
         assert "not enabled" in result["error"].lower()
 
-    @patch("apps.core.views.index_view._create_system_mgmt_client")
-    def test_returns_error_when_settings_fetch_fails(self, mock_client):
-        """Should return error when WeChat settings cannot be fetched."""
+    @patch("apps.core.views.index_view.LoginModule")
+    def test_returns_error_when_no_wechat_module(self, mock_login_module):
+        """Should return error when no WeChat login module exists."""
         from apps.core.views.index_view import verify_wechat_code
 
-        mock_client.return_value.get_wechat_settings.return_value = {"result": False, "message": "Settings not found"}
+        mock_login_module.objects.filter.return_value.first.return_value = None
 
         result = verify_wechat_code("test_code")
 
         assert result["success"] is False
+        assert "not enabled" in result["error"].lower()
 
     @patch("apps.core.views.index_view.requests")
-    @patch("apps.core.views.index_view._create_system_mgmt_client")
-    def test_returns_error_on_token_exchange_failure(self, mock_client, mock_requests):
+    @patch("apps.core.views.index_view.LoginModule")
+    def test_returns_error_on_token_exchange_failure(self, mock_login_module, mock_requests):
         """Should return error when WeChat token exchange fails."""
         from apps.core.views.index_view import verify_wechat_code
 
-        mock_client.return_value.get_wechat_settings.return_value = {
-            "result": True,
-            "data": {"enabled": True, "app_id": "test_app", "app_secret": "test_secret"},
-        }
+        mock_module = MagicMock()
+        mock_module.app_id = "test_app"
+        mock_module.decrypted_app_secret = "test_secret"
+        mock_login_module.objects.filter.return_value.first.return_value = mock_module
 
         mock_response = MagicMock()
         mock_response.json.return_value = {"errcode": 40029, "errmsg": "invalid code"}
@@ -61,15 +62,15 @@ class TestVerifyWechatCode:
         assert result["errcode"] == 40029
 
     @patch("apps.core.views.index_view.requests")
-    @patch("apps.core.views.index_view._create_system_mgmt_client")
-    def test_returns_success_on_valid_flow(self, mock_client, mock_requests):
+    @patch("apps.core.views.index_view.LoginModule")
+    def test_returns_success_on_valid_flow(self, mock_login_module, mock_requests):
         """Should return success with user info on valid flow."""
         from apps.core.views.index_view import verify_wechat_code
 
-        mock_client.return_value.get_wechat_settings.return_value = {
-            "result": True,
-            "data": {"enabled": True, "app_id": "test_app", "app_secret": "test_secret"},
-        }
+        mock_module = MagicMock()
+        mock_module.app_id = "test_app"
+        mock_module.decrypted_app_secret = "test_secret"
+        mock_login_module.objects.filter.return_value.first.return_value = mock_module
 
         # First call: token exchange
         token_response = MagicMock()
@@ -89,17 +90,17 @@ class TestVerifyWechatCode:
         assert result["unionid"] == "test_unionid"
 
     @patch("apps.core.views.index_view.requests")
-    @patch("apps.core.views.index_view._create_system_mgmt_client")
-    def test_handles_timeout(self, mock_client, mock_requests):
+    @patch("apps.core.views.index_view.LoginModule")
+    def test_handles_timeout(self, mock_login_module, mock_requests):
         """Should handle timeout gracefully."""
         import requests as real_requests
 
         from apps.core.views.index_view import verify_wechat_code
 
-        mock_client.return_value.get_wechat_settings.return_value = {
-            "result": True,
-            "data": {"enabled": True, "app_id": "test_app", "app_secret": "test_secret"},
-        }
+        mock_module = MagicMock()
+        mock_module.app_id = "test_app"
+        mock_module.decrypted_app_secret = "test_secret"
+        mock_login_module.objects.filter.return_value.first.return_value = mock_module
 
         mock_requests.get.side_effect = real_requests.Timeout("Connection timed out")
         mock_requests.Timeout = real_requests.Timeout
@@ -110,15 +111,15 @@ class TestVerifyWechatCode:
         assert "timeout" in result["error"].lower()
 
     @patch("apps.core.views.index_view.requests")
-    @patch("apps.core.views.index_view._create_system_mgmt_client")
-    def test_returns_error_on_userinfo_failure(self, mock_client, mock_requests):
+    @patch("apps.core.views.index_view.LoginModule")
+    def test_returns_error_on_userinfo_failure(self, mock_login_module, mock_requests):
         """Should return error when userinfo fetch fails."""
         from apps.core.views.index_view import verify_wechat_code
 
-        mock_client.return_value.get_wechat_settings.return_value = {
-            "result": True,
-            "data": {"enabled": True, "app_id": "test_app", "app_secret": "test_secret"},
-        }
+        mock_module = MagicMock()
+        mock_module.app_id = "test_app"
+        mock_module.decrypted_app_secret = "test_secret"
+        mock_login_module.objects.filter.return_value.first.return_value = mock_module
 
         # First call: token exchange success
         token_response = MagicMock()

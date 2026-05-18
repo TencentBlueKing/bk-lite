@@ -4,9 +4,9 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
+from apps.core.logger import monitor_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.web_utils import WebUtils
-from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.models import MonitorInstance
 from apps.monitor.models.monitor_metrics import Metric
@@ -140,9 +140,7 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
             else:
                 _, final_target_unit = UnitConverter.auto_convert(all_numeric_values, source_unit)
 
-            logger.info(
-                f"统一单位转换: {source_unit} -> {final_target_unit}, 基于 {len(all_numeric_values)} 个数据点, 涉及 {len(result_list)} 条时间序列"
-            )
+            logger.info(f"统一单位转换: {source_unit} -> {final_target_unit}, 基于 {len(all_numeric_values)} 个数据点, 涉及 {len(result_list)} 条时间序列")
 
             for item in result_list:
                 values = item.get("values") or item.get("value")
