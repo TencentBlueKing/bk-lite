@@ -611,7 +611,7 @@ class MissingDetectionProcessorTestCase(TestCase):
         self.assertEqual(Alert.objects.count(), 1)
         self.assertEqual(strategy.params["heartbeat_status"], HeartbeatStatus.ALERTING)
 
-    def test_auto_recovery_marks_alert_closed_and_returns_monitoring(self):
+    def test_auto_recovery_marks_alert_closed_and_returns_monitoring_on_created_event(self):
         now = timezone.make_aware(datetime(2026, 3, 20, 10, 10, 0))
         strategy = self.create_strategy(
             params={
@@ -635,6 +635,29 @@ class MissingDetectionProcessorTestCase(TestCase):
             strategy.params["last_heartbeat_time"],
             Event.objects.get(event_id="EVENT-RECOVERY").received_at.isoformat(),
         )
+
+    def test_auto_recovery_ignores_recovery_event_for_missing_detection(self):
+        now = timezone.make_aware(datetime(2026, 3, 20, 10, 10, 0))
+        previous_heartbeat_time = (now - timedelta(minutes=10)).isoformat()
+        strategy = self.create_strategy(
+            params={
+                "heartbeat_status": HeartbeatStatus.ALERTING,
+                "last_heartbeat_time": previous_heartbeat_time,
+                "last_heartbeat_context": {"service": "backup"},
+            }
+        )
+        alert = SyntheticAlertBuilder.create_alert(strategy, strategy.params, now - timedelta(minutes=1))
+        self.create_event(now, event_id="EVENT-ONLY-RECOVERY", action=EventAction.RECOVERY)
+        AlarmStrategy.objects.filter(pk=strategy.pk).update(last_execute_time=now - timedelta(minutes=2))
+        strategy.refresh_from_db()
+
+        self.processor._process_missing_detection_strategy(strategy, now + timedelta(minutes=1))
+        strategy.refresh_from_db()
+        alert.refresh_from_db()
+
+        self.assertNotEqual(alert.status, AlertStatus.AUTO_RECOVERY)
+        self.assertEqual(strategy.params["heartbeat_status"], HeartbeatStatus.ALERTING)
+        self.assertEqual(strategy.params["last_heartbeat_time"], previous_heartbeat_time)
 
 
 class StrategyMatcherTestCase(TestCase):
