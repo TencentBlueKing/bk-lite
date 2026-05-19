@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.http import HttpResponse
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.loader import LanguageLoader
 from apps.node_mgmt.constants.language import LanguageConstants
@@ -45,9 +46,7 @@ class CloudRegionViewSet(
         serializer = self.get_serializer(queryset, many=True)
         results = serializer.data
 
-        lan = LanguageLoader(
-            app=LanguageConstants.APP, default_lang=request.user.locale
-        )
+        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
 
         for result in results:
             name_key = f"{LanguageConstants.CLOUD_REGION}.{result['name']}.name"
@@ -69,6 +68,7 @@ class CloudRegionViewSet(
 
         return Response(result)
 
+    @HasPermission("cloud_region-Edit")
     def partial_update(self, request, *args, **kwargs):
         self.serializer_class = CloudRegionUpdateSerializer
         # 默认云区域default禁止编辑
@@ -94,6 +94,7 @@ class CloudRegionViewSet(
 
         return response
 
+    @HasPermission("cloud_region-Create")
     def create(self, request, *args, **kwargs):
         self.serializer_class = CloudRegionSerializer
         response = super().create(request, *args, **kwargs)
@@ -117,6 +118,7 @@ class CloudRegionViewSet(
 
         return response
 
+    @HasPermission("cloud_region-Delete")
     def destroy(self, request, *args, **kwargs):
         # 校验云区域下是否存在节点
         cloud_region_id = kwargs.get("pk")
@@ -130,6 +132,7 @@ class CloudRegionViewSet(
     #     deployed_cloud_services.delay(request.data)
     #     return WebUtils.response_success()
 
+    @HasPermission("cloud_region-DeployCommand")
     @action(methods=["post"], detail=False, url_path="deploy_command")
     def deploy_command(self, request, *args, **kwargs):
         """
