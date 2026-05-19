@@ -30,7 +30,7 @@ from langgraph.constants import START
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, BasicLLMResponse
-from apps.opspilot.utils.execution_interrupt import is_interrupt_requested
+from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
 
 # Sensitive field patterns for masking in SSE events (logging/frontend display only)
 _SENSITIVE_FIELD_PATTERNS = frozenset(
@@ -815,7 +815,8 @@ class BasicGraph(ABC):
         message_started = False
         thinking_started = False
         show_think = bool((request.extra_config or {}).get("show_think", True))
-        logger.info(f"[BasicGraph] stream_events - extra_config={request.extra_config}, show_think={show_think}")
+        # 只输出 key 列表，避免日志中包含 emoji 导致 Windows GBK 编码错误，同时避免泄露敏感信息（如 SSH 密码）
+        logger.info(f"[BasicGraph] stream_events - extra_config_keys={list((request.extra_config or {}).keys())}, show_think={show_think}")
         execution_id = (request.extra_config or {}).get("execution_id") or request.thread_id
         # 创建浏览器步骤事件队列和回调
         browser_event_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
@@ -858,7 +859,7 @@ class BasicGraph(ABC):
             )
 
             async for stream_type, stream_data in _merge_async_streams(langgraph_stream, browser_event_queue, stop_event):
-                if execution_id and is_interrupt_requested(execution_id):
+                if execution_id and await is_interrupt_requested_async(execution_id):
                     yield encoder.encode(
                         RunErrorEvent(
                             type=EventType.RUN_ERROR,

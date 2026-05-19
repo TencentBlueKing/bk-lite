@@ -15,7 +15,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import LLMModel, SkillRequestLog
 from apps.opspilot.services.chat_service import chat_service
 from apps.opspilot.utils.agent_factory import create_agent_instance, create_sse_response_headers
-from apps.opspilot.utils.execution_interrupt import is_interrupt_requested
+from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
 from apps.opspilot.utils.sse_chat import _process_think_content, _split_think_content
 
 
@@ -389,7 +389,7 @@ async def _generate_agui_stream(
         execution_id = (request.extra_config or {}).get("execution_id") or request.thread_id
 
         async for sse_line in graph.agui_stream(request):
-            if execution_id and is_interrupt_requested(execution_id):
+            if execution_id and await is_interrupt_requested_async(execution_id):
                 interrupt_data = {"type": "INTERRUPTED", "error": "执行已中断", "execution_id": execution_id, "timestamp": int(time.time() * 1000)}
                 yield _build_sse_line(interrupt_data)
                 return
