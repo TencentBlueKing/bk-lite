@@ -528,6 +528,10 @@ class InstanceConfigService:
             updated_count = InstanceConfigService._sync_existing_instance_attrs(existing_instances, deleted_ids)
             logger.info(f"复用已存在实例数量: {len(existing_instances)}, 同步属性并激活: {updated_count}, 恢复已删除实例: {len(deleted_ids)}")
 
+            # 恢复已删除实例时，清除历史组织关联，避免跨组织纳管漂移
+            if deleted_ids:
+                MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=deleted_ids).delete()
+
             # 为已存在的实例创建组织关联（如果还没有）
             for instance in existing_instances:
                 instance_id = instance["instance_id"]
