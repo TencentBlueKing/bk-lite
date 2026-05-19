@@ -36,6 +36,7 @@ export const usePacketbeatDashboard = () => {
             tooltipField: 'networkbytes'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (_time:${_time}) sum(network.bytes) as networkbytes | math networkbytes / 1024 / 1024 as networkbytes'
           }
@@ -63,6 +64,7 @@ export const usePacketbeatDashboard = () => {
             tooltipField: 'networkpackets'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (_time:${_time}) sum(network.packets) as networkpackets'
           }
@@ -90,6 +92,7 @@ export const usePacketbeatDashboard = () => {
             tooltipField: 'flowcount'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (_time:${_time}) count() as flowcount'
           }
@@ -117,6 +120,7 @@ export const usePacketbeatDashboard = () => {
             tooltipField: 'long_flows'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows" event.duration:>60000000000',
             query:
               'collect_type:"flows" | stats by (_time:${_time}) count() if (event.duration:>60000000000) as long_flows'
           }
@@ -141,6 +145,7 @@ export const usePacketbeatDashboard = () => {
             tooltipField: 'network.transport'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (_time:${_time},network.transport) sum(network.bytes) as networkbytes | math networkbytes / 1024 / 1024 as networkbytes'
           }
@@ -165,6 +170,7 @@ export const usePacketbeatDashboard = () => {
             tooltipField: 'network.transport'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (network.transport) count() as flowcount | sort by (flowcount desc)'
           }
@@ -190,6 +196,7 @@ export const usePacketbeatDashboard = () => {
             tooltipField: 'source.ip'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (source.ip) sum(network.bytes) as src_bytes | math src_bytes / 1024 / 1024 as src_bytes | sort by (src_bytes desc) | limit 10'
           }
@@ -215,6 +222,7 @@ export const usePacketbeatDashboard = () => {
             tooltipField: 'destination.port'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (destination.port) sum(network.bytes) as dst_bytes | math dst_bytes / 1024 / 1024 as dst_bytes | sort by (dst_bytes desc) | limit 10'
           }
@@ -249,6 +257,7 @@ export const usePacketbeatDashboard = () => {
             }
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (source.ip,destination.ip,network.transport,source.port,destination.port) sum(network.bytes) as flow_bytes | math flow_bytes / 1024 / 1024 as flow_bytes | sort by (flow_bytes desc) | limit 20'
           }
@@ -302,6 +311,7 @@ export const usePacketbeatDashboard = () => {
             }
           ],
           dataSourceParams: {
+            searchQuery: 'collect_type:"flows"',
             query:
               'collect_type:"flows" | stats by (source.ip,destination.ip,network.transport,destination.port) sum(network.bytes) as flow_bytes, max(event.duration) as duration_ns | math flow_bytes / 1024 / 1024 as flow_bytes | math duration_ns / 1000000000 as duration_sec | sort by (flow_bytes desc) | limit 20'
           }

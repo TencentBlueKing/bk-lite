@@ -19,6 +19,7 @@ import {
   DockerAreaChart,
   DockerDualLine,
   DockerDonutChart,
+  DockerSeverityDonut,
   DockerErrorTable,
   DockerBarChart,
   DockerLogTail
@@ -147,6 +148,7 @@ const componentMap: Record<string, React.ComponentType<any>> = {
   dockerArea: DockerAreaChart,
   dockerDualLine: DockerDualLine,
   dockerDonut: DockerDonutChart,
+  dockerSeverityDonut: DockerSeverityDonut,
   dockerErrorTable: DockerErrorTable,
   dockerBar: DockerBarChart,
   dockerLogTail: DockerLogTail,

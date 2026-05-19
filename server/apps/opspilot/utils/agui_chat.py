@@ -263,9 +263,11 @@ def _handle_tool_transition_event(event_type: str, data_json: dict, state: dict,
     if event_type == "TOOL_CALL_START":
         parent_message_id = data_json.get("parent_message_id")
         if state["buffer_pre_tool_content"] and parent_message_id == state["active_message_id"]:
-            lines = _flush_pending_content_as_thinking(state) if state["emit_pending_as_thinking"] else []
-            if not state["emit_pending_as_thinking"]:
-                state["pending_content_events"].clear()
+            if state["emit_pending_as_thinking"]:
+                lines = _flush_pending_content_as_thinking(state)
+            else:
+                # 将缓冲的文字内容作为正常 TEXT_MESSAGE_CONTENT 发送给前端
+                lines = _flush_pending_content_events(state)
             state["buffer_pre_tool_content"] = False
             return lines
         return []

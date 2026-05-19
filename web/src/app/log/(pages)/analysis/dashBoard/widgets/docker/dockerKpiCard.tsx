@@ -48,6 +48,28 @@ const formatKpiValue = (value: number): string => {
   return formatRawKpiValue(value);
 };
 
+const MAX_SPARKLINE_POINTS = 24;
+
+const limitSparklinePoints = (
+  values: number[],
+  maxPoints = MAX_SPARKLINE_POINTS
+) => {
+  if (values.length <= maxPoints) return values;
+  if (maxPoints <= 2) return [values[0], values[values.length - 1]];
+
+  const lastIndex = values.length - 1;
+  const middleCount = maxPoints - 2;
+  const step = lastIndex / (middleCount + 1);
+  const sampled = [values[0]];
+
+  for (let i = 1; i <= middleCount; i += 1) {
+    sampled.push(values[Math.round(step * i)]);
+  }
+
+  sampled.push(values[lastIndex]);
+  return sampled;
+};
+
 interface DockerKpiCardProps {
   rawData: any;
   prevData?: any;
@@ -100,19 +122,24 @@ const DockerKpiCard: React.FC<DockerKpiCardProps> = ({
     return { currentValue: total, changePercent: pct, trendData: values };
   }, [rawData, prevData, config]);
 
+  const sparklineData = useMemo(
+    () => limitSparklinePoints(trendData),
+    [trendData]
+  );
+
   const sparklineOption = {
     animation: false,
     grid: { top: 2, right: 0, bottom: 2, left: 0 },
     xAxis: {
       type: 'category' as const,
       show: false,
-      data: trendData.map((_, i) => i)
+      data: sparklineData.map((_, i) => i)
     },
     yAxis: { type: 'value' as const, show: false },
     series: [
       {
         type: 'line' as const,
-        data: trendData,
+        data: sparklineData,
         smooth: true,
         symbol: 'none',
         lineStyle: { width: 1.5, color: accentColor },
@@ -191,7 +218,7 @@ const DockerKpiCard: React.FC<DockerKpiCardProps> = ({
 
       {/* 右侧：sparkline，无额外 padding */}
       <div className="flex-shrink-0 w-[45%] min-h-0">
-        {trendData.length > 1 ? (
+        {sparklineData.length > 1 ? (
           <ReactEcharts
             option={sparklineOption}
             style={{ height: '100%', width: '100%' }}
