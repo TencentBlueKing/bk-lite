@@ -134,7 +134,10 @@ class InstallerViewSet(ViewSet):
     @action(detail=False, methods=["post"], url_path="collector/install")
     @HasPermission("cloud_region_node-OperateCollector")
     def collector_install(self, request):
-        node_ids = [node["node_id"] for node in request.data.get("nodes", []) if node.get("node_id")]
+        nodes = request.data.get("nodes", [])
+        node_ids = [
+            (node["node_id"] if isinstance(node, dict) else node) for node in nodes if (node.get("node_id") if isinstance(node, dict) else node)
+        ]
         if node_ids:
             _, error_response = authorize_node_ids(request, node_ids)
             if error_response:
