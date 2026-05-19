@@ -1,4 +1,110 @@
 monitor_object_metric:
+  Dameng:
+    up_gauge:
+      name: Exporter Status
+      desc: Probe status between DM-Exporter and the Dameng database; 0 means scrape failed and 1 means scrape succeeded.
+    dm_exporter_connections_gauge:
+      name: Current Connections
+      desc: Total number of current Dameng database session connections.
+    dm_exporter_session_rests_gauge:
+      name: Free Sessions
+      desc: Number of sessions still available for allocation, used to assess remaining session capacity.
+    dm_exporter_session_used_ratio_gauge:
+      name: Session Usage Ratio
+      desc: Percentage of used sessions; a sustained increase usually means connection capacity is approaching the limit.
+    dm_exporter_memory_used_size_gauge:
+      name: Memory Used
+      desc: Operating system memory currently consumed by the database instance.
+    dm_exporter_buffer_cache_hit_percent_gauge:
+      name: Buffer Cache Hit Ratio
+      desc: Buffer pool hit ratio; a low value often indicates more disk access or an unreasonable cache configuration.
+    dm_exporter_locks_gauge:
+      name: Lock Holders
+      desc: Number of processes currently holding locks.
+    dm_exporter_lock_blocks_gauge:
+      name: Blocked Lock Waiters
+      desc: Number of processes currently waiting for locks and already blocked.
+    dm_exporter_deadlock_count_gauge:
+      name: Deadlock Count
+      desc: Historical cumulative number of deadlocks, useful for identifying transaction conflict trends.
+    dm_exporter_tablespace_total_size_gauge:
+      name: Tablespace Total Size
+      desc: Total capacity size of a single tablespace.
+    dm_exporter_tablespace_used_size_gauge:
+      name: Tablespace Used Size
+      desc: Used space size of a single tablespace.
+    dm_exporter_tablespace_free_size_gauge:
+      name: Tablespace Free Size
+      desc: Remaining available space size of a single tablespace.
+    dm_exporter_tablespace_used_ratio_gauge:
+      name: Tablespace Used Ratio
+      desc: Percentage of used space in a single tablespace, a core indicator for capacity alerts.
+    dm_exporter_checkpoint_dirty_pages_gauge:
+      name: Checkpoint Dirty Pages
+      desc: Checkpoint dirty pages parameter value.
+    dm_exporter_checkpoint_interval_time_gauge:
+      name: Checkpoint Interval
+      desc: Checkpoint interval time.
+    dm_exporter_table_used_space_gauge:
+      name: Table Used Space
+      desc: Block count occupied by business tables.
+    dm_exporter_index_used_space_gauge:
+      name: Index Used Space
+      desc: Block count occupied by business indexes.
+    dm_exporter_shared_pool_size_gauge:
+      name: Shared Pool Size
+      desc: Shared memory pool size parameter value.
+    dm_exporter_redo_file_size_gauge:
+      name: Current Redo File Used Size
+      desc: Used space size of the current redo file.
+    dm_exporter_open_cursor_gauge:
+      name: Open Cursors
+      desc: Number of currently open SELECT cursors.
+    dm_exporter_roll_state_gauge:
+      name: Rollback Segment State
+      desc: Rollback segment state. 0 means ONLINE, 1 means OFFLINE, 2 means RES_OFFLINE, 3 means CORRUPT, and 4 means OTHER.
+    dm_exporter_roll_size_gauge:
+      name: Rollback Segment Size
+      desc: Total page size of the rollback segment.
+    dm_exporter_redo_log_size_gauge:
+      name: Redo Log Size
+      desc: Size and status of redo log files.
+    dm_exporter_2pc_pending_gauge:
+      name: Pending 2PC Transactions
+      desc: Number of long-running two-phase commit transaction locks.
+    dm_exporter_load_five_average_gauge:
+      name: 5-Minute Load
+      desc: Database workload indicator over the last 5 minutes, used to observe overall pressure trends.
+    dm_exporter_executions_total_counter:
+      name: Executed SQL Total
+      desc: Cumulative total number of executed SQL statements.
+    dm_exporter_slow_query_gauge:
+      name: Slow Query Count
+      desc: Number of slow queries whose execution time exceeds 2 seconds.
+    dm_exporter_unusable_index_gauge:
+      name: Unusable Index Count
+      desc: Number of unusable indexes; when greater than 0, indexes usually need repair or rebuild soon.
+    dm_exporter_asm_real_used_percent_gauge:
+      name: ASM Used Ratio
+      desc: Actual ASM space usage ratio.
+    dm_exporter_asm_free_size_gauge:
+      name: ASM Safe Free Size
+      desc: Safe available space size of ASM.
+    dm_exporter_backup_is_status_gauge:
+      name: Replication Instance Status
+      desc: Primary-standby instance status. 0 means OPEN, 1 means MOUNT, and 2 means SUSPEND.
+    dm_exporter_backup_i_mode_gauge:
+      name: Replication Instance Mode
+      desc: Primary-standby instance mode. 0 means PRIMARY, 1 means STANDBY, and 2 means NORMAL.
+    dm_exporter_backup_arch_status_gauge:
+      name: Archive Status
+      desc: Primary-standby archive status. 0 means VALID and 1 means INVALID.
+    dm_exporter_backup_dw_status_gauge:
+      name: Watcher Status
+      desc: Primary-standby database watcher status. 0 means ENABLED and 1 means DISABLED.
+    dm_exporter_backup_late_time_gauge:
+      name: Replication Lag
+      desc: Replication delay time between primary and standby.
   Minio:
     minio_cluster_capacity_usable_total_bytes_gauge:
       name: Cluster Usable Total Capacity
@@ -2625,6 +2731,22 @@ monitor_object_metric:
       name: Probe Process Virtual Memory
       desc: Current virtual memory size of the probe process.
 monitor_object_metric_group:
+  Dameng:
+    Base: Base
+    Session: Session
+    Resource: Resource
+    Lock: Lock
+    Tablespace: Tablespace
+    Checkpoint: Checkpoint
+    Storage: Storage
+    Redo: Redo
+    Cursor: Cursor
+    Rollback: Rollback
+    Transaction: Transaction
+    Performance: Performance
+    Maintenance: Maintenance
+    ASM: ASM
+    Backup: Backup
   Detection Device:
     Status: Status
     Packet Loss: Packet Loss
@@ -2897,6 +3019,9 @@ monitor_object_metric_group:
     Performance: Performance
     Storage: Storage
 monitor_object_plugin:
+  DM-Exporter:
+    name: Dameng Database Monitoring Exporter
+    desc: Deploy the Dameng database monitoring exporter through DM-Exporter to collect core metrics such as sessions, locks, tablespaces, memory usage, and slow queries.
   Detection Device SNMP General:
     name: Detection Device General (SNMP)
     desc: The SNMP universal plugin is used to monitor and manage detected devices
@@ -3095,6 +3220,7 @@ monitor_object_plugin:
     name: Kafka(Exporter)
     desc: Through the Kafka Exporter collector, regularly gather metrics from Kafka clusters, including topic statistics, partition counts, consumer group status, and more, to help monitor the health and performance of Kafka clusters.
 monitor_object:
+  Dameng: Dameng Database
   Apache: Apache
   Firewall: Firewall
   Docker: Docker

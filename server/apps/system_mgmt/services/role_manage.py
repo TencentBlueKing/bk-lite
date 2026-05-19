@@ -1,7 +1,6 @@
 from collections import defaultdict
 
 from apps.system_mgmt.models import Menu
-from apps.system_mgmt.utils.db_utils import SQLExecute
 
 
 class RoleManage(object):
@@ -58,9 +57,3 @@ class RoleManage(object):
             result.append({"name": type_, "display_name": type_, "children": children})
 
         return result
-
-    @staticmethod
-    def get_cache_keys(cache_key):
-        sql = "select * from django_cache where cache_key like %(key)s"
-        data = SQLExecute.execute_sql(sql, {"key": f"%{cache_key}%"})
-        return [i["cache_key"].split(":", 3)[-1] for i in data]

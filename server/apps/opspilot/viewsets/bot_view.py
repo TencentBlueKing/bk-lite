@@ -78,6 +78,8 @@ class BotViewSet(PinMixin, AuthViewSet):
         current_team = self._validate_current_team_permission(request)
         data = request.data
         team = data.get("team", []) or [current_team]
+        # 校验用户是否有目标组织的权限
+        self._validate_org_field_permission(request, team)
         bot_obj = Bot.objects.create(
             name=data.get("name"),
             introduction=data.get("introduction"),

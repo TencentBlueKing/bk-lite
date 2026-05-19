@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import ChartLegend from '../components/chartLegend';
 import { Spin, Empty } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
@@ -8,6 +7,7 @@ import {
   getOpsChartTheme,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
+import ChartLegend from '../components/chartLegend';
 
 interface OsPieProps {
   rawData: any;
@@ -80,7 +80,7 @@ const OsPie: React.FC<OsPieProps> = ({ rawData, loading = false, onReady }) => {
         name: '',
         type: 'pie',
         center: ['50%', '50%'],
-        radius: ['45%', '69%'],
+        radius: ['50%', '78%'],
         avoidLabelOverlap: false,
         selectedMode: 'single',
         label: {
@@ -155,15 +155,15 @@ const OsPie: React.FC<OsPieProps> = ({ rawData, loading = false, onReady }) => {
         />
       </div>
 
-      {/* 图例区域 */}
+      {/* 图例区域 - 带百分比 */}
       {showLegend && (
-        <div className="w-38 shrink-0 h-full">
-          <ChartLegend
-            data={chartData.map((item: any) => ({ name: item.name }))}
-            colors={chartColors}
-            onSelectionChange={handleLegendChange}
-          />
-        </div>
+        <ChartLegend
+          data={chartData.map((item: any) => ({ name: item.name, value: item.value }))}
+          colors={chartColors}
+          layout="vertical"
+          showPercent={true}
+          onSelectionChange={handleLegendChange}
+        />
       )}
     </div>
   );

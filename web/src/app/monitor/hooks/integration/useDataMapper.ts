@@ -247,6 +247,23 @@ export class DataMapper {
             }
           }
         }
+        if (fieldValue !== undefined && transform_on_create?.type) {
+          switch (transform_on_create.type) {
+            case 'number':
+              fieldValue = Number(fieldValue);
+              break;
+            case 'string':
+              fieldValue = String(fieldValue);
+              break;
+          }
+        }
+        if (
+          fieldValue !== undefined &&
+          fieldValue !== null &&
+          transform_on_create?.suffix
+        ) {
+          fieldValue = String(fieldValue) + transform_on_create.suffix;
+        }
         if (fieldValue !== undefined && transform_on_create?.target_path) {
           // 如果字段有 transform_on_create.target_path 配置，设置到指定路径
           // 例如：username -> custom_headers.username

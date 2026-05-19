@@ -4,6 +4,7 @@ from typing import Optional
 from django.http import HttpRequest, HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 from ipware import get_client_ip
+from rest_framework.exceptions import APIException
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.web_utils import WebUtils
@@ -27,6 +28,10 @@ class AppExceptionMiddleware(MiddlewareMixin):
             # 处理用户主动抛出的异常
             if isinstance(exception, BaseAppException):
                 return self._handle_app_exception(request, exception)
+
+            # 处理 DRF APIException（包括 PermissionDenied, AuthenticationFailed 等）
+            if isinstance(exception, APIException):
+                return self._handle_api_exception(request, exception)
 
             # 处理未捕获的系统异常
             return self._handle_system_exception(request, exception)
@@ -60,6 +65,41 @@ class AppExceptionMiddleware(MiddlewareMixin):
         )
 
         return WebUtils.response_error(error_message=exception.message, status_code=exception.STATUS_CODE)
+
+    def _handle_api_exception(self, request: HttpRequest, exception: APIException) -> HttpResponse:
+        """
+        处理 DRF APIException
+
+        Args:
+            request: Django请求对象
+            exception: DRF APIException 对象
+
+        Returns:
+            HttpResponse: 错误响应
+        """
+        client_ip, _ = get_client_ip(request)
+        username = self._get_username(request)
+
+        # 获取异常消息
+        detail = exception.detail
+        if isinstance(detail, dict):
+            error_message = str(detail)
+        elif isinstance(detail, list):
+            error_message = "; ".join(str(d) for d in detail)
+        else:
+            error_message = str(detail)
+
+        logger.warning(
+            "API异常 - %s [%s] %s %s - 用户: %s - %s",
+            type(exception).__name__,
+            client_ip or "unknown",
+            getattr(request, "method", "unknown"),
+            getattr(request, "path", "unknown"),
+            username,
+            error_message,
+        )
+
+        return WebUtils.response_error(error_message=error_message, status_code=exception.status_code)
 
     def _handle_system_exception(self, request: HttpRequest, exception: Exception) -> HttpResponse:
         """

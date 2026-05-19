@@ -5,9 +5,11 @@
 error:
   # User and Authentication Errors
   user_not_found: User not found in request
+  user_not_logged_in: User not logged in
   no_permission_view: User does not have permission to view this instance
   no_permission_delete: User does not have permission to delete this instance
   no_permission_update: User does not have permission to update this instance
+  no_permission_for_groups: "You do not have permission for the following groups, unable to create or modify: {invalid_groups}"
   insufficient_permissions: Insufficient permissions
   token_validation_failed: Token validation failed
   please_provide_token: Please provide Token

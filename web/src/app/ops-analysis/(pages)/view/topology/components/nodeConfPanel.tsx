@@ -475,7 +475,7 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
         currentDataSource,
         requestParams
       );
-      const tree = buildTreeData(data);
+      const tree = buildTreeData(data, selectedDataSource?.field_schema);
       setTreeData(tree);
     } catch (error) {
       console.error('Failed to fetch data fields:', error);

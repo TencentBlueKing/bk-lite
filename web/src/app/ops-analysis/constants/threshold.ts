@@ -6,7 +6,7 @@
 export const DEFAULT_THRESHOLD_COLORS = [
   { color: '#fd666d', value: '70' }, // 红色 - 危险
   { color: '#EAB839', value: '30' }, // 黄色 - 警告
-  { color: '#299C46', value: '0' },  // 绿色 - 正常
+  { color: '#366CE4', value: '0' },  // 蓝色 - 正常
 ];
 
 // 阈值颜色预设方案
