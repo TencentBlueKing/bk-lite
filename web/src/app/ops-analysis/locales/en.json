@@ -207,6 +207,7 @@
     "singleValue": "Single Value",
     "operationFailed": "Operation failed",
     "table": "Table",
+    "topN": "Top N",
     "responseFieldSchemaConfig": "API Field Definition",
     "schemaOptionalAutoGenTip": "This setting is optional. If not configured, default columns are auto-generated from returned fields on first use.",
     "addField": "Add Field",

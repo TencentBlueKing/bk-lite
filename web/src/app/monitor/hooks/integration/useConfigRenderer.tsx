@@ -33,6 +33,14 @@ export const useConfigRenderer = () => {
       editable
     } = fieldConfig;
 
+    if (type === 'hidden') {
+      return (
+        <Form.Item key={name} name={name} initialValue={default_value} hidden>
+          <Input type="hidden" />
+        </Form.Item>
+      );
+    }
+
     const formRules = [
       ...(required ? [{ required: true, message: t('common.required') }] : []),
       ...rules
