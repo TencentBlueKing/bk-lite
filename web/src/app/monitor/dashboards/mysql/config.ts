@@ -658,9 +658,9 @@ export const TREND_LEGENDS: Record<string, TrendLegendItem[]> = {
     { label: '执行线程数', color: '#ff8a1f' }
   ],
   innodb: [
-    { label: 'InnoDB 读 IOPS', color: '#2f6bff', primary: true },
-    { label: 'InnoDB 写 IOPS', color: '#27c274' },
-    { label: 'Redo 刷盘', color: '#ff8a1f' }
+    { label: '读 IOPS', color: '#2f6bff', primary: true },
+    { label: '写 IOPS', color: '#27c274' },
+    { label: 'Redo', color: '#ff8a1f' }
   ],
   network: [
     { label: '接收速率', color: '#2f6bff', primary: true },

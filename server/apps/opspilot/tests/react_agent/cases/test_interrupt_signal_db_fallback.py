@@ -8,6 +8,7 @@ Verifies that:
 - Empty execution_id returns False
 - Database query failure is handled gracefully
 - Dual-check mechanism works correctly
+- Async versions work correctly in async contexts
 """
 
 import sys
@@ -326,3 +327,68 @@ class TestSourceAnalysis:
 
         source = inspect.getsource(_check_interrupt_in_database)
         assert "WorkFlowTaskStatus.INTERRUPTED" in source, "Should use WorkFlowTaskStatus.INTERRUPTED enum"
+
+
+# ---------------------------------------------------------------------------
+# Async Version Tests (Issue #2960 - async context fix)
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncInterruptCheck:
+    """Tests for async versions of interrupt check functions."""
+
+    @pytest.mark.asyncio
+    async def test_async_cache_hit_returns_true(self, mock_cache):
+        """TC-18-19: Async version should return True on cache hit."""
+        from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
+
+        execution_id = "exec_async_cache_hit"
+        request_interrupt(execution_id)
+
+        result = await is_interrupt_requested_async(execution_id)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_async_cache_miss_triggers_db_fallback(self, mock_cache):
+        """TC-18-20: Async version should fallback to DB on cache miss."""
+        from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
+
+        execution_id = "exec_async_db_fallback"
+
+        # Mock DB to return True (interrupted)
+        with patch("apps.opspilot.utils.execution_interrupt._check_interrupt_in_database", return_value=True):
+            result = await is_interrupt_requested_async(execution_id)
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_async_empty_execution_id_returns_false(self, mock_cache):
+        """TC-18-21: Async version should return False for empty execution_id."""
+        from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
+
+        assert await is_interrupt_requested_async("") is False
+        assert await is_interrupt_requested_async(None) is False
+
+    @pytest.mark.asyncio
+    async def test_async_db_check_uses_sync_to_async(self):
+        """TC-18-22: Async DB check should use sync_to_async wrapper."""
+        import inspect
+
+        from apps.opspilot.utils.execution_interrupt import _check_interrupt_in_database_async
+
+        source = inspect.getsource(_check_interrupt_in_database_async)
+        assert "sync_to_async" in source, "Should use sync_to_async wrapper"
+        assert "await" in source, "Should be an async function with await"
+
+    @pytest.mark.asyncio
+    async def test_async_version_callable_from_async_context(self, mock_cache):
+        """TC-18-23: Async version should be safely callable from async context without errors."""
+        from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
+
+        execution_id = "exec_async_context_test"
+
+        # This should NOT raise "You cannot call this from an async context" error
+        with patch("apps.opspilot.utils.execution_interrupt._check_interrupt_in_database", return_value=False):
+            result = await is_interrupt_requested_async(execution_id)
+
+        assert result is False

@@ -20,7 +20,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.enum import WorkFlowExecuteType, WorkFlowTaskStatus
 from apps.opspilot.models import BotWorkFlow
 from apps.opspilot.models.bot_mgmt import WorkFlowConversationHistory, WorkFlowTaskNodeResult, WorkFlowTaskResult
-from apps.opspilot.utils.execution_interrupt import is_interrupt_requested
+from apps.opspilot.utils.execution_interrupt import is_interrupt_requested, is_interrupt_requested_async
 
 from .core.base_executor import BaseNodeExecutor
 from .core.enums import NodeStatus
@@ -105,6 +105,9 @@ class ChatFlowEngine:
 
     def _check_interrupt_requested(self) -> bool:
         return is_interrupt_requested(self.execution_id)
+
+    async def _check_interrupt_requested_async(self) -> bool:
+        return await is_interrupt_requested_async(self.execution_id)
 
     def _finalize_interrupted_execution(self, input_data: Dict[str, Any], result: Any = None, start_node_type: str = None) -> None:
         task_result = self._ensure_execution_result_started(input_data, start_node_type)
@@ -505,7 +508,7 @@ class ChatFlowEngine:
                 chunk_index = 0
                 # 直接迭代异步生成器
                 async for chunk in stream_generator:
-                    if self._check_interrupt_requested():
+                    if await self._check_interrupt_requested_async():
                         interrupt_data = {"type": "INTERRUPTED", "error": "执行已中断", "timestamp": int(time.time() * 1000)}
                         yield f"data: {json.dumps(interrupt_data, ensure_ascii=False)}\n\n"
                         await self._record_execution_result_async(
@@ -560,7 +563,7 @@ class ChatFlowEngine:
                 # 检查是否有后续节点
                 next_nodes = self._get_next_nodes(target_agent_node.get("id"), {"success": True, "data": {}})
 
-                if self._check_interrupt_requested():
+                if await self._check_interrupt_requested_async():
                     await self._record_execution_result_async(
                         input_data,
                         self._interrupt_result(),
