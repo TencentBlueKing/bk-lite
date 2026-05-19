@@ -201,7 +201,9 @@ func TestRunScenarios(t *testing.T) {
 	})
 
 	t.Run("build options failure bubbles up", func(t *testing.T) {
-		loadConfigFn = func(path string) (*Config, error) { return &Config{NATSUrls: "nats://demo:4222"}, nil }
+		loadConfigFn = func(path string) (*Config, error) {
+			return &Config{NATSUrls: "nats://demo:4222", NATSInstanceID: "instance-1"}, nil
+		}
 		buildNATSOptionsFn = func(cfg *Config) ([]nats.Option, error) { return nil, errors.New("bad tls") }
 		err := run([]string{"--config", "/tmp/config.yaml"}, io.Discard, func() {})
 		if err == nil || !strings.Contains(err.Error(), "failed to build NATS options: bad tls") {
@@ -210,7 +212,9 @@ func TestRunScenarios(t *testing.T) {
 	})
 
 	t.Run("connect failure bubbles up", func(t *testing.T) {
-		loadConfigFn = func(path string) (*Config, error) { return &Config{NATSUrls: "nats://demo:4222"}, nil }
+		loadConfigFn = func(path string) (*Config, error) {
+			return &Config{NATSUrls: "nats://demo:4222", NATSInstanceID: "instance-1"}, nil
+		}
 		buildNATSOptionsFn = func(cfg *Config) ([]nats.Option, error) { return []nats.Option{}, nil }
 		connectNATS = func(url string, options ...nats.Option) (*nats.Conn, error) {
 			return nil, errors.New("connect refused")
