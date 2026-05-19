@@ -88,6 +88,9 @@ class LLMViewSet(PinMixin, AuthViewSet):
     @HasPermission("skill_list-Add")
     def create(self, request, *args, **kwargs):
         params = request.data
+        params["team"] = params.get("team", []) or [int(request.COOKIES.get("current_team"))]
+        # 校验用户是否有目标组织的权限
+        self._validate_org_field_permission(request, params["team"])
         validate_msg = self._validate_name(params["name"], request.user.group_list, params["team"])
         if validate_msg:
             message = (
@@ -96,7 +99,6 @@ class LLMViewSet(PinMixin, AuthViewSet):
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
-        params["team"] = params.get("team", []) or [int(request.COOKIES.get("current_team"))]
         params["enable_conversation_history"] = True
         params[
             "skill_prompt"
@@ -434,6 +436,8 @@ class LLMModelViewSet(VendorModelMixin, AuthViewSet):
         if not params.get("team"):
             message = self.loader.get("error.team_empty") if self.loader else "The team is empty."
             return JsonResponse({"result": False, "message": message})
+        # 校验用户是否有目标组织的权限
+        self._validate_org_field_permission(request, params["team"])
         validate_msg = self._validate_llm_model_name(
             params["name"],
             request.user.group_list,

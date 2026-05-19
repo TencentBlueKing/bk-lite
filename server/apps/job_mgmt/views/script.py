@@ -53,9 +53,12 @@ class ScriptViewSet(AuthViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        # 校验用户是否有目标组织的权限
+        team = data.get("team", [])
+        self._validate_org_field_permission(request, team)
+
         # 高危命令检测
         script_content = data.get("content", "")
-        team = data.get("team", [])
         check_result = DangerousChecker.check_command(script_content, team)
         if not check_result.can_execute:
             forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
@@ -79,9 +82,12 @@ class ScriptViewSet(AuthViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        # 校验用户是否有目标组织的权限
+        team = data.get("team", instance.team)
+        self._validate_org_field_permission(request, team)
+
         # 高危命令检测（仅当修改了脚本内容时）
         script_content = data.get("content", instance.content)
-        team = data.get("team", instance.team)
         check_result = DangerousChecker.check_command(script_content, team)
         if not check_result.can_execute:
             forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
