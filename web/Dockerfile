@@ -34,7 +34,8 @@ RUN printf 'packages:\n  - "src/app/*"\n' > pnpm-workspace.yaml
 
 RUN echo 'NEXTAPI_URL="http://bklite-server:8000"' > .env.local
 
-RUN pnpm install
+RUN pnpm install --ignore-scripts
+RUN pnpm rebuild esbuild sharp unrs-resolver
 RUN pnpm run build
 
 FROM node:24-alpine
