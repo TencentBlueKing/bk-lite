@@ -87,6 +87,11 @@ class PlaybookViewSet(AuthViewSet):
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        # 校验用户是否有目标组织的权限
+        team = serializer.validated_data.get("team", [])
+        self._validate_org_field_permission(request, team)
+
         instance = serializer.save()
 
         # 返回完整的对象信息

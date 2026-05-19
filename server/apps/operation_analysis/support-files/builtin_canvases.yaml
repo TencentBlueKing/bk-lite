@@ -7,7 +7,7 @@
 
 meta:
   schema_version: 1.0.0
-  exported_at: '2026-05-13T09:07:36.779440+00:00'
+  exported_at: '2026-05-19T07:12:20.951018+00:00'
   source:
     organization_id: 0
   object_counts:
@@ -25,7 +25,7 @@ dashboards:
       selectValue: 10080
       rangePickerVaule: null
   view_sets:
-  - h: 2
+  - h: 3
     i: 47c8e06b-2023-4f5d-8ca9-e718983234bb
     w: 4
     x: 0
@@ -46,7 +46,7 @@ dashboards:
         value: '30'
       - color: '#299C46'
         value: '0'
-  - h: 2
+  - h: 3
     i: 1a884812-9fd1-4e01-bd95-ef93e58470bf
     w: 4
     x: 4
@@ -67,7 +67,7 @@ dashboards:
         value: '30'
       - color: '#299C46'
         value: '0'
-  - h: 2
+  - h: 3
     i: be09cec0-aac6-4d9e-b44c-d7f7e2d75aee
     w: 4
     x: 8
@@ -92,7 +92,7 @@ dashboards:
     i: 08bebde0-1772-4199-8248-016c30bd2b23
     w: 6
     x: 6
-    y: 2
+    y: 3
     name: 主机操作系统分布
     moved: false
     static: false
@@ -115,7 +115,7 @@ dashboards:
     i: 4df1fa2e-a38d-48e9-b6ca-a16f91f768eb
     w: 6
     x: 0
-    y: 2
+    y: 3
     name: CMDB 变更趋势
     moved: false
     static: false
@@ -142,11 +142,11 @@ dashboards:
         value: ''
         alias_name: 按模型过滤
         filterType: filter
-  - h: 5
+  - h: 6
     i: 7951c963-9fd3-40a4-8169-9463676bdc07
     w: 12
     x: 0
-    y: 6
+    y: 7
     name: 模型实例统计
     moved: false
     static: false
@@ -173,11 +173,11 @@ dashboards:
           title: 数量
           visible: true
       dataSourceParams: []
-  - h: 5
+  - h: 6
     i: 7d86f0ed-53d5-4c7b-b7bd-dad2dc48e653
     w: 12
     x: 0
-    y: 11
+    y: 13
     name: 查询资产实例
     moved: false
     static: false
@@ -239,11 +239,11 @@ dashboards:
         filterType: params
   refs:
     datasource_keys:
-    - 模型/实例/分类总数统计::get_cmdb_statistics
+    - 模型实例统计::get_model_inst_statistics
     - CMDB 变更趋势::get_change_trend
     - 主机操作系统分布::get_instance_group_by
-    - 模型实例统计::get_model_inst_statistics
     - 查询资产实例::cmdb/query_asset_instances
+    - 模型/实例/分类总数统计::get_cmdb_statistics
     namespace_keys: []
   filters:
   - id: time__timeRange
@@ -268,7 +268,7 @@ dashboards:
   desc: ''
   other: {}
   view_sets:
-  - h: 2
+  - h: 3
     i: d0a485b5-9f7c-46ae-9c42-717aa5fca81b
     w: 4
     x: 0
@@ -289,7 +289,7 @@ dashboards:
         value: '5'
       - color: '#299C46'
         value: '0'
-  - h: 2
+  - h: 3
     i: 99ff96a3-2055-4932-b882-bc2b896cc1e7
     w: 4
     x: 4
@@ -311,7 +311,7 @@ dashboards:
       - color: '#299C46'
         value: '0'
       dataSourceParams: []
-  - h: 2
+  - h: 3
     i: 26462803-5d77-4bfa-90b7-909f830075c3
     w: 4
     x: 8
@@ -333,11 +333,11 @@ dashboards:
       - color: '#299C46'
         value: '0'
       dataSourceParams: []
-  - h: 2
+  - h: 3
     i: 5c2735d3-5449-4d29-871d-545eaf7b24b9
     w: 4
     x: 0
-    y: 2
+    y: 3
     name: 告警统计概览-活跃告警
     moved: false
     static: false
@@ -355,11 +355,11 @@ dashboards:
       - color: '#299C46'
         value: '0'
       dataSourceParams: []
-  - h: 2
+  - h: 3
     i: 00529616-16d3-4be3-8a7f-463a175f8c53
     w: 4
     x: 4
-    y: 2
+    y: 3
     name: 告警统计概览-处理中
     moved: false
     static: false
@@ -377,11 +377,11 @@ dashboards:
       - color: '#299C46'
         value: '0'
       dataSourceParams: []
-  - h: 2
+  - h: 3
     i: a6c83255-dab0-4d69-a19e-c54e2c0c3777
     w: 4
     x: 8
-    y: 2
+    y: 3
     name: 告警统计概览-待响应
     moved: false
     static: false
@@ -399,11 +399,11 @@ dashboards:
       - color: '#299C46'
         value: '0'
       dataSourceParams: []
-  - h: 3
+  - h: 4
     i: 586576ee-f427-4c56-9e8a-6777c95c1290
     w: 6
     x: 0
-    y: 4
+    y: 6
     name: 告警趋势数据
     moved: false
     static: false
@@ -424,11 +424,11 @@ dashboards:
         value: 10080
         alias_name: time
         filterType: filter
-  - h: 3
+  - h: 4
     i: 85bfbc48-c2b7-4621-99ca-621818d656f9
     w: 6
     x: 6
-    y: 4
+    y: 6
     name: 告警等级分布
     moved: false
     static: false
@@ -442,11 +442,11 @@ dashboards:
         value: active
         alias_name: 过滤条件
         filterType: params
-  - h: 5
+  - h: 7
     i: 739e9aab-809e-42c6-901a-ca6d664db676
     w: 12
     x: 0
-    y: 7
+    y: 10
     name: 活跃告警 TOP N
     moved: false
     static: false
@@ -493,8 +493,8 @@ dashboards:
   refs:
     datasource_keys:
     - 活跃告警 TOP N::get_active_alert_top
-    - 告警统计概览::get_alert_statistics
     - 告警等级分布::get_alert_level_distribution
+    - 告警统计概览::get_alert_statistics
     - 告警趋势数据::get_alert_trend_data
     namespace_keys: []
   filters:
@@ -696,6 +696,26 @@ datasources:
     title: 事故总数
     value_type: string
     description: ''
+  - key: auto_recovery_count
+    title: 已恢复告警数
+    value_type: string
+    description: ''
+  - key: session_alert_count
+    title: 会话告警数
+    value_type: string
+    description: ''
+  - key: aggregation_ratio
+    title: 聚合倍率
+    value_type: string
+    description: ''
+  - key: session_alert_rate
+    title: 会话告警占比
+    value_type: string
+    description: ''
+  - key: auto_recovery_rate
+    title: 自动恢复占比
+    value_type: string
+    description: ''
   namespace_keys:
   - 默认命名空间
 - key: 告警趋势数据::get_alert_trend_data
@@ -749,9 +769,9 @@ datasources:
 namespaces:
 - key: 默认命名空间
   name: 默认命名空间
-  domain: 127.0.0.1:4222
-  namespace: bklite
+  domain: 10.10.41.149:4222
+  namespace: bklite_hong_local
   account: admin
   password: '******'
-  enable_tls: false
+  enable_tls: true
   desc: 系统初始化创建的默认命名空间

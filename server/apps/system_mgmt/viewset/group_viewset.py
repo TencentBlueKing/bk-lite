@@ -359,3 +359,50 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
                 },
             }
         )
+
+    @action(detail=False, methods=["POST"])
+    @HasPermission("user_group-View")
+    def batch_get_group_detail_with_roles(self, request):
+        """批量获取多个组织的角色详情，避免前端逐个请求"""
+        group_ids = request.data.get("group_ids", [])
+        if not group_ids or not isinstance(group_ids, list):
+            return JsonResponse({"result": False, "message": "group_ids 参数是必填的列表"}, status=400)
+
+        all_groups = {g.id: g for g in Group.objects.prefetch_related("roles").all()}
+
+        results = []
+        for gid in group_ids:
+            gid = int(gid)
+            group = all_groups.get(gid)
+            if not group:
+                continue
+
+            own_role_ids = list(group.roles.values_list("id", flat=True))
+
+            inherited_role_ids = []
+            inherited_role_source_map = {}
+            if group.parent_id:
+                visited = set()
+                current_parent_id = group.parent_id
+                while current_parent_id and current_parent_id not in visited:
+                    visited.add(current_parent_id)
+                    parent = all_groups.get(current_parent_id)
+                    if not parent or not parent.allow_inherit_roles:
+                        break
+                    for role in parent.roles.all():
+                        if role.id not in inherited_role_ids:
+                            inherited_role_ids.append(role.id)
+                            inherited_role_source_map[str(role.id)] = parent.name
+                    current_parent_id = parent.parent_id or 0
+
+            results.append({
+                "group_id": group.id,
+                "group_name": group.name,
+                "allow_inherit_roles": group.allow_inherit_roles,
+                "own_role_ids": own_role_ids,
+                "inherited_role_ids": inherited_role_ids,
+                "inherited_role_source": ", ".join(dict.fromkeys(inherited_role_source_map.values())),
+                "inherited_role_source_map": inherited_role_source_map,
+            })
+
+        return JsonResponse({"result": True, "data": results})

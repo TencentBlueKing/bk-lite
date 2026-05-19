@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import ChartLegend from '../components/chartLegend';
 import { Spin, Empty } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
@@ -9,6 +8,7 @@ import {
   getOpsChartTheme,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
+import ChartLegend from '../components/chartLegend';
 
 interface BarChartProps {
   rawData: any;
@@ -87,10 +87,10 @@ const BarChart: React.FC<BarChartProps> = ({
       },
     },
     grid: {
-      top: 14,
-      left: 18,
-      right: 18,
-      bottom: 20,
+      top: 8,
+      left: 16,
+      right: 16,
+      bottom: 8,
       containLabel: true,
     },
     xAxis: {
@@ -206,9 +206,9 @@ const BarChart: React.FC<BarChartProps> = ({
   }
 
   return (
-    <div className="h-full flex">
+    <div className="h-full flex flex-row">
       {/* 图表区域 */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-h-0">
         <ReactEcharts
           ref={chartRef}
           option={option}
@@ -216,16 +216,14 @@ const BarChart: React.FC<BarChartProps> = ({
           style={{ height: '100%', width: '100%' }}
         />
       </div>
-
-      {/* 图例区域 */}
+      {/* 右侧图例 - 竖排 */}
       {legendData.length > 0 && (
-        <div className="w-38 ml-2 shrink-0 h-full">
-          <ChartLegend
-            data={legendData}
-            colors={chartColors}
-            onSelectionChange={handleLegendChange}
-          />
-        </div>
+        <ChartLegend
+          data={legendData}
+          colors={chartColors}
+          layout="vertical"
+          onSelectionChange={handleLegendChange}
+        />
       )}
     </div>
   );

@@ -10,6 +10,7 @@ export const getChartTypeList = (): ChartTypeItem[] => {
     { label: 'dataSource.pieChart', value: 'pie' },
     { label: 'dataSource.singleValue', value: 'single' },
     { label: 'dataSource.table', value: 'table' },
+    { label: 'dataSource.topN', value: 'topN' },
   ];
 };
 

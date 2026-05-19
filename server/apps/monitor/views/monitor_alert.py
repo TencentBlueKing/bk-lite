@@ -43,6 +43,22 @@ class MonitorAlertViewSet(
     filterset_class = MonitorAlertFilter
     pagination_class = CustomPageNumberPagination
 
+    def get_queryset(self):
+        """Override to enforce object-level permission filtering on retrieve/update."""
+        qs = super().get_queryset()
+        request = self.request
+        if self.action in ("retrieve", "update", "partial_update"):
+            accessible_policy_ids = self._get_all_accessible_policy_ids(request)
+            if not accessible_policy_ids:
+                return qs.none()
+            qs = qs.filter(policy_id__in=accessible_policy_ids)
+        return qs
+
+    def _check_alert_permission(self, request, alert_obj):
+        """Check if the current user has permission to access the given alert."""
+        accessible_policy_ids = self._get_all_accessible_policy_ids(request)
+        return alert_obj.policy_id in accessible_policy_ids
+
     def _get_all_accessible_policy_ids(self, request):
         """
         获取当前用户所有有权限的策略ID
@@ -220,10 +236,12 @@ class MonitorAlertViewSet(
     def get_snapshots(self, request, alert_id):
         """根据告警ID查询指标快照数据"""
         try:
-            # 1. 根据告警ID获取告警对象
             alert_obj = MonitorAlert.objects.get(id=alert_id)
         except MonitorAlert.DoesNotExist:
             return WebUtils.response_error("告警不存在", status_code=404)
+
+        if not self._check_alert_permission(request, alert_obj):
+            return WebUtils.response_error("无权限访问该告警", status_code=403)
 
         # 2. 查询该告警的快照记录
         try:
@@ -271,6 +289,40 @@ class MonitorAlertViewSet(
 
 
 class MonitorEventViewSet(viewsets.ViewSet):
+    def _get_all_accessible_policy_ids(self, request):
+        current_team = request.COOKIES.get("current_team")
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+
+        permissions_result = get_permissions_rules(
+            request.user,
+            current_team,
+            "monitor",
+            PermissionConstants.POLICY_MODULE,
+            include_children=include_children,
+        )
+
+        policy_permissions = permissions_result.get("data", {})
+        cur_team = permissions_result.get("team", [])
+
+        if not policy_permissions:
+            return []
+
+        all_policies = MonitorPolicy.objects.select_related("monitor_object").prefetch_related("policyorganization_set").all()
+
+        accessible_policy_ids = []
+        for policy_obj in all_policies:
+            monitor_object_id = str(policy_obj.monitor_object_id)
+            policy_id = policy_obj.id
+            teams = {org.organization for org in policy_obj.policyorganization_set.all()}
+            if check_instance_permission(monitor_object_id, policy_id, teams, policy_permissions, cur_team):
+                accessible_policy_ids.append(policy_id)
+
+        return accessible_policy_ids
+
+    def _check_alert_permission(self, request, alert_obj):
+        accessible_policy_ids = self._get_all_accessible_policy_ids(request)
+        return alert_obj.policy_id in accessible_policy_ids
+
     @action(methods=["get"], detail=False, url_path="query/(?P<alert_id>[^/.]+)")
     def get_events(self, request, alert_id):
         """查询告警的事件列表 - 优化版：使用外键直接查询"""
@@ -285,6 +337,9 @@ class MonitorEventViewSet(viewsets.ViewSet):
             alert_obj = MonitorAlert.objects.get(id=alert_id)
         except MonitorAlert.DoesNotExist:
             return WebUtils.response_error("告警不存在", status_code=404)
+
+        if not self._check_alert_permission(request, alert_obj):
+            return WebUtils.response_error("无权限访问该告警", status_code=403)
 
         # ✅ 优化：直接通过 alert_id 外键查询，性能更优
         q_set = MonitorEvent.objects.filter(alert_id=alert_id).order_by("-created_at")
@@ -324,10 +379,13 @@ class MonitorEventViewSet(viewsets.ViewSet):
     def get_raw_data(self, request, event_id):
         """根据事件ID获取事件的原始指标数据（从 S3 加载）"""
         try:
-            # 1. 根据事件ID获取事件对象
             event_obj = MonitorEvent.objects.get(id=event_id)
         except MonitorEvent.DoesNotExist:
             return WebUtils.response_error("事件不存在", status_code=404)
+
+        accessible_policy_ids = self._get_all_accessible_policy_ids(request)
+        if event_obj.policy_id not in accessible_policy_ids:
+            return WebUtils.response_error("无权限访问该事件", status_code=403)
 
         # 2. 查询该事件的原始数据
         raw_data_obj = MonitorEventRawData.objects.filter(event_id=event_obj.id).first()

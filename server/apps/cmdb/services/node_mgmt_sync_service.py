@@ -930,7 +930,12 @@ class NodeMgmtSyncService:
                     detail["update"]["data"].append(existing)
                     message["update"] += 1
                     continue
-                created = InstanceManage.instance_create("host", payload, operator="system")
+                created = InstanceManage.instance_create(
+                    "host",
+                    payload,
+                    operator="system",
+                    allowed_org_ids=payload.get("organization", []),
+                )
                 detail["add"]["data"].append(created if isinstance(created, dict) else payload)
                 message["add"] += 1
                 existing_map[key] = created if isinstance(created, dict) else payload

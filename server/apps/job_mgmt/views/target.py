@@ -39,6 +39,7 @@ def _get_executor_node(cloud_region_id: int) -> str:
             "is_container": True,
             "page": 1,
             "page_size": 1,
+            "skip_permission": True,
         }
     )
     if not isinstance(result, dict):
