@@ -94,7 +94,7 @@ export function useUserModalData(): UseUserModalDataReturn {
   const [groupTreeData, setGroupTreeData] = useState<TreeSelectNode[]>([]);
 
   const { addUser, editUser, getUserDetail, getRoleList } = useUserApi();
-  const { getGroupDetailWithRoles } = useGroupApi();
+  const { batchGetGroupDetailWithRoles } = useGroupApi();
 
   const sensitiveBehavior = useSensitiveFieldEditBehavior(formRef);
   const { initField, isAnyFieldEditing, cleanPayload } = sensitiveBehavior;
@@ -124,9 +124,9 @@ export function useUserModalData(): UseUserModalDataReturn {
       }
 
       try {
-        const groupDetails = await Promise.all(
-          groupIds.map((groupId) => getGroupDetailWithRoles({ group_id: String(groupId) }))
-        );
+        const groupDetails = await batchGetGroupDetailWithRoles({
+          group_ids: groupIds.map((id) => String(id)),
+        });
 
         const orgRoleSourceMap = groupDetails.reduce<Record<string, string>>((acc, detail) => {
           [...(detail.own_role_ids || []), ...(detail.inherited_role_ids || [])].forEach((roleId) => {
@@ -159,7 +159,7 @@ export function useUserModalData(): UseUserModalDataReturn {
         return [];
       }
     },
-    [getGroupDetailWithRoles, fetchRoleInfoWithOrgRoles]
+    [batchGetGroupDetailWithRoles, fetchRoleInfoWithOrgRoles]
   );
 
   const fetchUserDetail = useCallback(

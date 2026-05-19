@@ -1,21 +1,13 @@
 import React, { useMemo } from 'react';
 import { Tag } from 'antd';
 import ComTable from '../comTable';
+import { DOCKER_LEVEL_COLORS, normalizeDockerLevel } from './dockerLogLevel';
 
 interface DockerLogTailProps {
   rawData: any;
   loading?: boolean;
   config?: any;
 }
-
-const LEVEL_COLORS: Record<string, string> = {
-  ERROR: '#f5222d',
-  FATAL: '#820014',
-  WARN: '#faad14',
-  WARNING: '#faad14',
-  INFO: '#1677ff',
-  DEBUG: '#8c8c8c'
-};
 
 /** 列定义（静态，不依赖 hooks，可在模块顶层定义） */
 const LOG_COLUMNS = [
@@ -57,7 +49,9 @@ const LOG_COLUMNS = [
     render: (text: string) => {
       if (!text)
         return <span className="text-xs text-[var(--color-text-3)]">--</span>;
-      const color = LEVEL_COLORS[text] || '#8c8c8c';
+      const color =
+        DOCKER_LEVEL_COLORS[text as keyof typeof DOCKER_LEVEL_COLORS] ||
+        '#8c8c8c';
       return (
         <Tag
           className="m-0 border-0 text-[10px] leading-4 px-1"
@@ -104,14 +98,7 @@ const DockerLogTail: React.FC<DockerLogTailProps> = ({
         formatted = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
       }
 
-      let level = item.level || item.Level || '';
-      if (!level) {
-        const match = (item._msg || item.message || '').match(
-          /\b(ERROR|FATAL|WARN(?:ING)?|INFO|DEBUG)\b/i
-        );
-        level = match ? match[1].toUpperCase() : '';
-        if (level === 'WARNING') level = 'WARN';
-      }
+      const level = normalizeDockerLevel(item._msg || item.message || '');
 
       return {
         id: idx,

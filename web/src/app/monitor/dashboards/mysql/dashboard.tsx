@@ -1534,11 +1534,11 @@ export default function MysqlDashboardPage() {
   ];
   const qpsGuide = [
     { label: 'QPS', detail: '每秒查询数，反映实例当前承载的查询吞吐。' },
-    { label: '看什么', detail: '适合与慢查询、连接数和磁盘写入一起观察，判断是否是正常业务波动。' }
+    { label: '关联判断', detail: '通常需要结合慢查询、连接数和磁盘写入一起判断当前波动是否来自正常业务变化。' }
   ];
   const slowGuide = [
     { label: '慢查询速率', detail: '每分钟慢 SQL 的新增速率。' },
-    { label: '看什么', detail: '如果慢查询升高，再结合锁等待、临时表和磁盘 I/O 判断瓶颈位置。' }
+    { label: '关联判断', detail: '如果慢查询升高，通常再结合锁等待、临时表和磁盘 I/O 进一步判断瓶颈位置。' }
   ];
   const hitRatioGuide = [
     { label: '缓冲池命中率', detail: '表示请求命中 Buffer Pool 的比例，越高通常表示随机读越少落到磁盘。' },
@@ -1862,6 +1862,7 @@ export default function MysqlDashboardPage() {
                           {requestFlowNodes.map((node, index) => (
                             <React.Fragment key={node.title}>
                               <div className={[styles.mysqlPathNode, node.className].filter(Boolean).join(' ')}>
+                                <div className={styles.mysqlNodeEyebrow}>{node.subTitle}</div>
                                 <div className={styles.mysqlNodeTitle}>{node.title}</div>
                                 <div className={styles.mysqlNodeIcon}>{node.icon}</div>
                                 <div className={styles.mysqlNodeMetrics}>
@@ -1901,60 +1902,48 @@ export default function MysqlDashboardPage() {
                           </span>
                         </div>
                         <div className={styles.innodbInner}>
-                          <div className={styles.innodbBufferCard}>
-                            <div className={styles.innodbCardTitle}>
-                              缓冲池
-                              <Tooltip
-                                overlayClassName="lightMetricTooltip"
-                                title={
-                                  <div className={styles.metricGuideTooltip}>
-                                    {bufferPoolGuide.map((item) => (
-                                      <div key={item.label} className={styles.metricGuideTooltipRow}>
-                                        <strong>{item.label}</strong>
-                                        <span>{item.detail}</span>
-                                      </div>
-                                    ))}
+                          <div className={`${styles.innodbStage} ${styles.innodbStageBuffer}`}>
+                            <div className={styles.innodbColumnTitle}>缓冲池</div>
+                            <div className={styles.innodbBufferCard}>
+                              <div className={styles.innodbCardTitle}>
+                                <TitleWithGuide title="缓冲池" items={bufferPoolGuide} className={styles.innodbCardTitleWithGuide} />
+                              </div>
+                              <div className={styles.innodbBufferGrid}>
+                                {Array.from({ length: bufferFlowCellCount }).map((_, index) => (
+                                  <span
+                                    className={`${styles.bufferCell} ${
+                                      index < bufferFlowDirtyCells
+                                        ? styles.bufferCellDirty
+                                        : index < bufferFlowUsedCells
+                                          ? styles.bufferCellUsed
+                                          : ''
+                                    }`}
+                                    key={index}
+                                  />
+                                ))}
+                              </div>
+                              <div className={styles.innodbBufferLegend}>
+                                <span>
+                                  <i className={`${styles.bufferLegendSwatch} ${styles.bufferLegendUsed}`} />
+                                  已使用
+                                </span>
+                                <span>
+                                  <i className={`${styles.bufferLegendSwatch} ${styles.bufferLegendDirty}`} />
+                                  脏页
+                                </span>
+                                <span>
+                                  <i className={`${styles.bufferLegendSwatch} ${styles.bufferLegendFree}`} />
+                                  空闲
+                                </span>
+                              </div>
+                              <div className={styles.innodbMetricRows}>
+                                {bufferFlowMetrics.map((item) => (
+                                  <div className={styles.mysqlNodeMetric} key={item.label}>
+                                    <span>{item.label}</span>
+                                    <strong>{item.value}</strong>
                                   </div>
-                                }
-                              >
-                                <InfoCircleOutlined className={styles.metricGuideIcon} />
-                              </Tooltip>
-                            </div>
-                            <div className={styles.innodbBufferGrid}>
-                              {Array.from({ length: bufferFlowCellCount }).map((_, index) => (
-                                <span
-                                  className={`${styles.bufferCell} ${
-                                    index < bufferFlowDirtyCells
-                                      ? styles.bufferCellDirty
-                                      : index < bufferFlowUsedCells
-                                        ? styles.bufferCellUsed
-                                        : ''
-                                  }`}
-                                  key={index}
-                                />
-                              ))}
-                            </div>
-                            <div className={styles.innodbBufferLegend}>
-                              <span>
-                                <i className={`${styles.bufferLegendSwatch} ${styles.bufferLegendUsed}`} />
-                                已使用
-                              </span>
-                              <span>
-                                <i className={`${styles.bufferLegendSwatch} ${styles.bufferLegendDirty}`} />
-                                脏页
-                              </span>
-                              <span>
-                                <i className={`${styles.bufferLegendSwatch} ${styles.bufferLegendFree}`} />
-                                空闲
-                              </span>
-                            </div>
-                            <div className={styles.innodbMetricRows}>
-                              {bufferFlowMetrics.map((item) => (
-                                <div className={styles.mysqlNodeMetric} key={item.label}>
-                                  <span>{item.label}</span>
-                                  <strong>{item.value}</strong>
-                                </div>
-                              ))}
+                                ))}
+                              </div>
                             </div>
                           </div>
 
@@ -1964,25 +1953,31 @@ export default function MysqlDashboardPage() {
                             <span className={styles.innodbForkBottom} />
                           </div>
 
-                          <div className={styles.innodbLogCards}>
+                          <div className={`${styles.innodbStage} ${styles.innodbStageLogs}`}>
                             <div className={styles.innodbColumnTitle}>日志与事务</div>
-                            <div className={styles.innodbLogCard}>
-                              <span><TitleWithGuide title="Redo 日志" items={redoLogGuide} /></span>
-                              <div className={styles.innodbCardHint}>
-                                事务提交先写入 Redo 缓冲，
-                                <br />
-                                再由右侧日志文件展示最终刷盘结果。
+                            <div className={styles.innodbLogCards}>
+                              <div className={`${styles.innodbLogCard} ${styles.innodbCardPrimary}`}>
+                                <div className={styles.innodbCardTitleRow}>
+                                  <TitleWithGuide title="Redo 日志" items={redoLogGuide} className={styles.innodbCardTitleWithGuide} />
+                                </div>
+                                <div className={styles.innodbCardHint}>
+                                  事务提交先写入 Redo 缓冲，
+                                  <br />
+                                  再由右侧日志文件展示最终刷盘结果。
+                                </div>
                               </div>
-                            </div>
-                            <div className={styles.innodbLogCard}>
-                              <span><TitleWithGuide title="临时表" items={tempTableGuide} /></span>
-                              <div className={styles.mysqlNodeMetric}>
-                                <span>总临时表</span>
-                                <strong>{renderFlowValue('mysql_created_tmp_tables_rate', (tmpTotalRate * 60).toFixed(tmpTotalRate * 60 >= 10 ? 0 : 1), '/min')}</strong>
-                              </div>
-                              <div className={styles.mysqlNodeMetric}>
-                                <span>磁盘临时表</span>
-                                <strong>{renderFlowValue('mysql_created_tmp_disk_tables_rate', (tmpDiskRate * 60).toFixed(tmpDiskRate * 60 >= 10 ? 0 : 1), '/min')}</strong>
+                              <div className={`${styles.innodbLogCard} ${styles.innodbCardSecondary}`}>
+                                <div className={styles.innodbCardTitleRow}>
+                                  <TitleWithGuide title="临时表" items={tempTableGuide} className={styles.innodbCardTitleWithGuide} />
+                                </div>
+                                <div className={styles.mysqlNodeMetric}>
+                                  <span>总临时表</span>
+                                  <strong>{renderFlowValue('mysql_created_tmp_tables_rate', (tmpTotalRate * 60).toFixed(tmpTotalRate * 60 >= 10 ? 0 : 1), '/min')}</strong>
+                                </div>
+                                <div className={styles.mysqlNodeMetric}>
+                                  <span>磁盘临时表</span>
+                                  <strong>{renderFlowValue('mysql_created_tmp_disk_tables_rate', (tmpDiskRate * 60).toFixed(tmpDiskRate * 60 >= 10 ? 0 : 1), '/min')}</strong>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -1993,17 +1988,23 @@ export default function MysqlDashboardPage() {
                             <span className={styles.innodbForkBottom} />
                           </div>
 
-                          <div className={styles.innodbDiskStack}>
+                          <div className={`${styles.innodbStage} ${styles.innodbStageDisk}`}>
                             <div className={styles.innodbColumnTitle}>磁盘持久化</div>
-                            <div className={styles.innodbDiskCard}>
-                              <span><TitleWithGuide title="数据文件" items={dataFileGuide} /></span>
-                              <div className={styles.mysqlNodeMetric}><span>读 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_reads_rate', dataReadValue.toFixed(1), '/s')}</strong></div>
-                              <div className={styles.mysqlNodeMetric}><span>写 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_writes_rate', dataWriteValue.toFixed(1), '/s')}</strong></div>
-                            </div>
-                            <div className={styles.innodbDiskCard}>
-                              <span><TitleWithGuide title="Redo 日志文件" items={redoFileGuide} /></span>
-                              <div className={styles.mysqlNodeMetric}><span>Redo 刷盘</span><strong>{renderFlowValue('mysql_innodb_os_log_fsyncs_rate', fsyncValue.toFixed(1), '/s')}</strong></div>
-                              <div className={styles.mysqlNodeMetric}><span>复制延迟</span><strong>{replicationApplicable ? renderFlowValue('mysql_slave_seconds_behind_master', replicationDelayDisplay.value, replicationDelayDisplay.unit || 's') : '不适用'}</strong></div>
+                            <div className={styles.innodbDiskStack}>
+                              <div className={`${styles.innodbDiskCard} ${styles.innodbCardPrimary}`}>
+                                <div className={styles.innodbCardTitleRow}>
+                                  <TitleWithGuide title="数据文件" items={dataFileGuide} className={styles.innodbCardTitleWithGuide} />
+                                </div>
+                                <div className={styles.mysqlNodeMetric}><span>读 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_reads_rate', dataReadValue.toFixed(1), '/s')}</strong></div>
+                                <div className={styles.mysqlNodeMetric}><span>写 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_writes_rate', dataWriteValue.toFixed(1), '/s')}</strong></div>
+                              </div>
+                              <div className={`${styles.innodbDiskCard} ${styles.innodbCardSecondary}`}>
+                                <div className={styles.innodbCardTitleRow}>
+                                  <TitleWithGuide title="Redo 日志文件" items={redoFileGuide} className={styles.innodbCardTitleWithGuide} />
+                                </div>
+                                <div className={styles.mysqlNodeMetric}><span>Redo 刷盘</span><strong>{renderFlowValue('mysql_innodb_os_log_fsyncs_rate', fsyncValue.toFixed(1), '/s')}</strong></div>
+                                <div className={styles.mysqlNodeMetric}><span>复制延迟</span><strong>{replicationApplicable ? renderFlowValue('mysql_slave_seconds_behind_master', replicationDelayDisplay.value, replicationDelayDisplay.unit || 's') : '不适用'}</strong></div>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -2176,7 +2177,7 @@ export default function MysqlDashboardPage() {
                       <div className={styles.panelHeader}>
                         <div className={styles.panelHeading}>
                           <h3 className={styles.panelTitle}><TitleWithGuide title="线程状态分布" items={threadStateGuide} className={styles.panelTitleWithGuide} /></h3>
-                          <div className={styles.panelSubTitle}>Sleep / Query / Sending data / Locked</div>
+                          <div className={styles.panelSubTitle}>按线程当前状态占比</div>
                         </div>
                       </div>
                       <div className={styles.ringCard}>
@@ -2235,7 +2236,7 @@ export default function MysqlDashboardPage() {
                   <div className={styles.panelHeader}>
                     <div className={styles.panelHeading}>
                       <h3 className={styles.panelTitle}><TitleWithGuide title="临时表与缓存指标" items={tempCacheGuide} className={styles.panelTitleWithGuide} /></h3>
-                      <div className={styles.panelSubTitle}>每分钟</div>
+                      <div className={styles.panelSubTitle}>临时表创建与表缓存变化</div>
                     </div>
                   </div>
                       <div className={`${styles.bars} ${styles.compactBars} ${styles.barsFull}`}>
@@ -2345,7 +2346,7 @@ export default function MysqlDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
                   <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
                     <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide title="InnoDB 读写趋势" items={innodbTrendGuide} className={styles.panelTitleWithGuide} /></h3>
-                    <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>每秒</div>
+                    <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>InnoDB 读写与 Redo 刷盘变化</div>
                     <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
                       {TREND_LEGENDS.innodb.map((item) => (
                         <span className={styles.chartLegendItem} key={item.label}>

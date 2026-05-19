@@ -181,8 +181,9 @@ class CwAliyun(object):
         :param region_id:
         :param kwargs:
         """
-        self.AccessKey = params["access_key"]
-        self.AccessSecret = params["access_secret"]
+        print(params)
+        self.AccessKey = params["secret_id"]
+        self.AccessSecret = params["secret_key"]
         self.RegionId = params.get("region_id", "cn-hangzhou")
         self.timeout = int(params.get("timeout", 30))
         

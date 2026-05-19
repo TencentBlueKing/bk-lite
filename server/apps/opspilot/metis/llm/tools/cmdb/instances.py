@@ -7,6 +7,7 @@ from apps.cmdb.services.instance import InstanceManage
 from apps.core.logger import cmdb_logger as logger
 from apps.opspilot.metis.llm.tools.cmdb.utils import (
     _get_user_from_config,
+    _get_user_group_ids,
     _resolve_allow_write,
     _resolve_team_context,
     build_permission_map,
@@ -17,6 +18,7 @@ from apps.opspilot.metis.llm.tools.cmdb.utils import (
     wrap_error,
     wrap_success,
 )
+from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
 @tool(description="Search instances for a model.")
@@ -92,6 +94,8 @@ def cmdb_create_instance(
     model_id: str,
     instance_info: Dict[str, Any],
     allow_write: Optional[bool] = None,
+    team_id: Optional[int] = None,
+    include_children: Optional[bool] = None,
     config: RunnableConfig = None,
 ) -> Dict[str, Any]:
     try:
@@ -101,7 +105,24 @@ def cmdb_create_instance(
             raise ValueError("instance_info must be a dict")
         user = _get_user_from_config(config)
         ensure_write_allowed(user, _resolve_allow_write(config, allow_write))
-        result = InstanceManage.instance_create(model_id, instance_info, user.username)
+        resolved_team, resolved_children = _resolve_team_context(user, config, team_id, include_children)
+        user_group_ids = _get_user_group_ids(user)
+        if getattr(user, "is_superuser", False):
+            allowed_org_ids = GroupUtils.get_group_with_descendants(resolved_team) if resolved_children else [resolved_team]
+        elif resolved_children:
+            allowed_org_ids = GroupUtils.get_user_authorized_child_groups(
+                user_group_ids,
+                resolved_team,
+                include_children=True,
+            )
+        else:
+            allowed_org_ids = [resolved_team] if resolved_team in user_group_ids else []
+        result = InstanceManage.instance_create(
+            model_id,
+            instance_info,
+            user.username,
+            allowed_org_ids=allowed_org_ids,
+        )
         return wrap_success(result)
     except Exception as e:
         logger.exception("cmdb_create_instance failed: %s", e)
