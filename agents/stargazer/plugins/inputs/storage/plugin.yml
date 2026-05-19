@@ -1,0 +1,22 @@
+name: storage
+version: "1.0.0"
+category: storage
+
+metadata:
+  display_name: "Storage"
+  description: "存储设备采集插件，支持多品牌（OceanStor、NetApp 等）"
+  author: "WeOps"
+  tags: [storage, oceanstor, netapp]
+  cloud_protocol: false
+  model_id: storage
+
+executors:
+  protocol:
+    type: protocol
+    timeout: 120
+
+    collector:
+      module: plugins.inputs.storage.storage_info
+      class: StorageCollector
+
+default_executor: protocol
