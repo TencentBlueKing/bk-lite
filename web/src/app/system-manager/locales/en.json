@@ -136,7 +136,18 @@
       "adminList": "Administrator List"
     },
     "user": {
+      "status": {
+        "normal": "Normal",
+        "disabled": "Disabled",
+        "locked": "Locked",
+        "password_expired": "Password Expired",
+        "unlock": "Unlock",
+        "unlockConfirm": "Are you sure you want to unlock this user?",
+        "enableConfirm": "Are you sure you want to enable this user?",
+        "disableConfirm": "Are you sure you want to disable this user?"
+      },
       "table": {
+        "status": "STATUS",
         "lastLogin": "LAST LOGIN",
         "email": "EMAIL",
         "phone": "PHONE",

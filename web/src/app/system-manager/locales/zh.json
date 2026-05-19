@@ -136,7 +136,18 @@
       "adminList": "管理员列表"
     },
     "user": {
+      "status": {
+        "normal": "正常",
+        "disabled": "已禁用",
+        "locked": "已锁定",
+        "password_expired": "密码过期",
+        "unlock": "解锁",
+        "unlockConfirm": "确定要解锁该用户吗？",
+        "enableConfirm": "确定要启用该用户吗？",
+        "disableConfirm": "确定要禁用该用户吗？"
+      },
       "table": {
+        "status": "状态",
         "lastLogin": "最后登录时间",
         "email": "邮箱",
         "phone": "手机号",

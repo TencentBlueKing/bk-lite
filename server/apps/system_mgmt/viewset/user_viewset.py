@@ -5,6 +5,7 @@ from django.core.cache import cache
 from django.db import transaction
 from django.db.models import F, Q
 from django.http import JsonResponse
+from django.utils import timezone
 from rest_framework.decorators import action
 
 try:
@@ -23,6 +24,7 @@ from apps.system_mgmt.models import Group, Role, User, UserRule
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from apps.system_mgmt.utils.password_validator import PasswordValidator
+from apps.system_mgmt.utils.user_status import is_user_locked
 from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
 
 
@@ -181,6 +183,27 @@ class UserViewSet(ViewSetUtils):
         if apply_sensitive_info_mask_to_list is None:
             return data
         return apply_sensitive_info_mask_to_list(data, getattr(request, "user", None))
+
+    @staticmethod
+    def _normalize_user_ids(user_ids):
+        normalized = []
+        invalid = []
+        for user_id in user_ids or []:
+            try:
+                normalized.append(int(user_id))
+            except (TypeError, ValueError):
+                invalid.append(user_id)
+        return normalized, invalid
+
+    @staticmethod
+    def _get_change_status_skip_reason(action, user, now):
+        if action == "enable":
+            return None if user.disabled else "user_not_disabled"
+        if action == "disable":
+            return None if not user.disabled else "user_not_enabled"
+        if action == "unlock":
+            return None if is_user_locked(user, now=now) else "user_not_locked"
+        return "invalid_action"
 
     @action(detail=False, methods=["GET"])
     @HasPermission("user_group-View")
@@ -418,6 +441,89 @@ class UserViewSet(ViewSetUtils):
         # 记录操作日志
         log_operation(request, "delete", "user", f"批量删除用户: {', '.join(usernames)} (共{len(usernames)}个)")
         return JsonResponse({"result": True})
+
+    @action(detail=False, methods=["POST"])
+    @HasPermission("user_group-Edit User")
+    def change_status(self, request):
+        user_ids = request.data.get("user_ids")
+        action_name = request.data.get("action")
+
+        if not isinstance(user_ids, list) or not user_ids:
+            return JsonResponse({"result": False, "message": "user_ids must be a non-empty list"}, status=400)
+
+        if action_name not in {"enable", "disable", "unlock"}:
+            return JsonResponse({"result": False, "message": "action must be one of: enable, disable, unlock"}, status=400)
+
+        normalized_user_ids, invalid_user_ids = self._normalize_user_ids(user_ids)
+        if invalid_user_ids:
+            return JsonResponse(
+                {"result": False, "message": f"Invalid user IDs: {invalid_user_ids}"},
+                status=400,
+            )
+
+        now = timezone.now()
+        users = User.objects.filter(id__in=normalized_user_ids)
+        user_map = {user.id: user for user in users}
+        success_ids = []
+        skipped = []
+        affected_user_info = []
+
+        with transaction.atomic():
+            for user_id in normalized_user_ids:
+                user = user_map.get(user_id)
+                if user is None:
+                    skipped.append({"id": user_id, "reason": "user_not_found"})
+                    continue
+
+                is_valid, error_response = self._validate_target_user_permission(request, user)
+                if not is_valid:
+                    if getattr(error_response, "status_code", None) == 403:
+                        skipped.append({"id": user_id, "reason": "no_permission"})
+                        continue
+                    return error_response
+
+                skip_reason = self._get_change_status_skip_reason(action_name, user, now)
+                if skip_reason is not None:
+                    skipped.append({"id": user_id, "reason": skip_reason})
+                    continue
+
+                if action_name == "enable":
+                    user.disabled = False
+                    update_fields = ["disabled"]
+                elif action_name == "disable":
+                    user.disabled = True
+                    update_fields = ["disabled"]
+                elif action_name == "unlock":
+                    user.account_locked_until = None
+                    user.password_error_count = 0
+                    update_fields = ["account_locked_until", "password_error_count"]
+
+                user.save(update_fields=update_fields)
+                cache.delete(f"menus-user:{user.id}")
+                clear_user_permission_cache(user.username, user.domain)
+                affected_user_info.append({"username": user.username, "domain": user.domain})
+                success_ids.append(user.id)
+
+        if success_ids:
+            usernames = [user_map[user_id].username for user_id in success_ids if user_id in user_map]
+            log_operation(
+                request,
+                "update",
+                "user",
+                f"批量{action_name}用户: {', '.join(usernames)} (共{len(usernames)}个)",
+            )
+
+        return JsonResponse(
+            {
+                "result": True,
+                "data": {
+                    "action": action_name,
+                    "total": len(normalized_user_ids),
+                    "success_ids": success_ids,
+                    "skipped": skipped,
+                },
+            }
+        )
 
     @action(detail=False, methods=["POST"])
     @HasPermission("user_group-Edit User")
