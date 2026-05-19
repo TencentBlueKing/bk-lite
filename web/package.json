@@ -95,6 +95,6 @@
     "*.{js,jsx,ts,tsx}": "eslint --fix"
   },
   "pnpm": {
-    "neverBuiltDependencies": ["@oven/bun", "@pnpm/bun", "bun"]
+    "neverBuiltDependencies": ["@oven/bun", "@pnpm/bun", "bun", "@antv/x6-geometry", "@antv/x6-common", "size-sensor"]
   }
 }
