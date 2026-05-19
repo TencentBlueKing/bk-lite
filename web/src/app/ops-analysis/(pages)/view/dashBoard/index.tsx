@@ -678,6 +678,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             return {
               ...item,
               name: values.name,
+              description: values.description,
               valueConfig: {
                 ...item.valueConfig,
                 dataSource: values.dataSource,
@@ -773,9 +774,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
     return (
       <div
-        className="h-full flex-1 overflow-auto flex flex-col p-2 pb-0"
+        className="h-full flex-1 overflow-auto flex flex-col"
         style={{
-          backgroundColor: isDarkTheme ? 'var(--color-fill-1)' : '#f4f7fb',
+          backgroundColor: isDarkTheme ? 'var(--color-fill-1)' : '#f7f8fa',
         }}
       >
         <div
@@ -784,13 +785,12 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           data-export-expand="true"
         >
           <div
-            className="w-full mb-2 flex items-center justify-between rounded-xl bg-(--color-bg-1) px-4 py-3 border border-(--color-border-2)"
-            style={{ boxShadow: '0 8px 20px rgba(31, 63, 104, 0.05)' }}
+            className="w-full mb-2 flex items-center justify-between bg-(--color-bg-1) px-4 py-2 border-b border-(--color-border-2)"
           >
             <div className="flex-1 mr-8">
               {selectedDashboard && (
-                <div className="pt-0.5">
-                  <h2 className="text-xl leading-7 font-semibold mb-1 text-(--color-text-1)">
+                <div>
+                  <h2 className="text-base leading-6 font-semibold text-(--color-text-1)">
                     {selectedDashboard.name}
                     {selectedDashboard.is_build_in && (
                       <Tag
@@ -801,9 +801,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                       </Tag>
                     )}
                   </h2>
-                  <p className="text-sm leading-5 text-(--color-text-2)">
-                    {selectedDashboard.desc}
-                  </p>
+                  {selectedDashboard.desc && (
+                    <p className="text-xs leading-4 text-(--color-text-3) mt-0.5">
+                      {selectedDashboard.desc}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -904,13 +906,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           </div>
 
           <div
-            className="flex-1 rounded-2xl overflow-hidden flex flex-col"
+            className="flex-1 overflow-hidden flex flex-col"
             style={{
-              border: `1px solid ${chartTheme.panelBorderColor}`,
-              backgroundColor: chartTheme.panelBg,
-              boxShadow: isDarkTheme
-                ? '0 10px 24px rgba(0, 0, 0, 0.18)'
-                : '0 12px 28px rgba(31, 63, 104, 0.06)',
+              backgroundColor: isDarkTheme ? 'var(--color-bg-1)' : '#f7f8fa',
             }}
             data-export-expand="true"
           >
@@ -966,9 +964,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                     layout={layout}
                     onLayoutChange={onLayoutChange}
                     cols={12}
-                    rowHeight={60}
-                    margin={[10, 10]}
-                    containerPadding={[10, 10]}
+                    rowHeight={40}
+                    margin={[8, 8]}
+                    containerPadding={[10, 4]}
                     draggableCancel=".no-drag, .widget-body"
                     isDraggable={isEditMode}
                     isResizable={isEditMode}
@@ -996,25 +994,21 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                       return (
                         <div
                           key={item.i}
-                          className="widget rounded-2xl overflow-hidden p-3 flex flex-col"
+                          className="widget rounded-lg overflow-hidden p-3 flex flex-col"
                           style={{
                             backgroundColor: chartTheme.panelBg,
                             border: `1px solid ${chartTheme.panelBorderColor}`,
-                            boxShadow: '0 6px 18px rgba(31, 63, 104, 0.05)',
                           }}
                         >
                           <div
-                            className="widget-header pb-3 mb-2.5 flex justify-between items-start"
-                            style={{
-                              borderBottom: `1px solid ${chartTheme.panelBorderColor}`,
-                            }}
+                            className="widget-header mb-2 flex justify-between items-center"
                           >
-                            <div className="flex-1">
-                              <h4 className="text-[15px] font-semibold text-(--color-text-1)">
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-[13px] font-medium text-(--color-text-1) truncate">
                                 {item.name}
                               </h4>
                               {item.description?.trim() && (
-                                <p className="text-xs text-(--color-text-2) mt-1">
+                                <p className="text-[11px] text-(--color-text-3) mt-0.5 truncate">
                                   {item.description}
                                 </p>
                               )}
@@ -1022,17 +1016,14 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                             {isEditMode && (
                               <Dropdown overlay={menu} trigger={['click']}>
                                 <button className="no-drag text-(--color-text-2) hover:text-(--color-text-1) transition-colors cursor-pointer">
-                                  <MoreOutlined style={{ fontSize: '20px' }} />
+                                  <MoreOutlined style={{ fontSize: '18px' }} />
                                 </button>
                               </Dropdown>
                             )}
                           </div>
                           <div
-                            className={`widget-body flex-1 h-full ${isTableWidget ? 'rounded-lg' : 'rounded-xl'}`}
+                            className={`widget-body flex-1 h-full`}
                             style={{
-                              backgroundColor: isTableWidget
-                                ? chartTheme.panelBg
-                                : chartTheme.panelSubtleBg,
                               overflow: isTableWidget ? 'visible' : 'hidden',
                             }}
                           >

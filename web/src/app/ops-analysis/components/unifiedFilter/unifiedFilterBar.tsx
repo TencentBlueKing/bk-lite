@@ -172,7 +172,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
       className={
         isEmbedded
           ? `border-b border-(--color-border-2) bg-transparent px-4 py-3 ${containerClassName ?? ''}`
-          : `rounded-lg border border-(--color-border-2) bg-(--color-bg-1) px-3 py-2 ${containerClassName ?? 'mx-2 mt-2'}`
+          : `rounded-lg border border-(--color-border-2) bg-(--color-bg-1) px-3 py-2 ${containerClassName ?? 'mx-[10px] mt-1 mb-2'}`
       }
     >
       <div

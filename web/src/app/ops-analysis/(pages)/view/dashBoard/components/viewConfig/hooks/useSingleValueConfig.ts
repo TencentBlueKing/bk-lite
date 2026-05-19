@@ -158,7 +158,7 @@ export function useSingleValueConfig({
         selectedDataSource.id,
         requestParams,
       );
-      const tree = buildTreeData(data);
+      const tree = buildTreeData(data, selectedDataSource.field_schema);
       setSingleValueTreeData(tree);
     } catch (error) {
       console.error('Failed to fetch data fields:', error);
