@@ -67,9 +67,11 @@ const SummaryStats: React.FC<SummaryStatsProps> = ({ sources, dailyStats }) => {
   const { t } = useTranslation();
 
   const total = sources.length;
+  const H3 = 3 * 60 * 60 * 1000;
+  const now = Date.now();
   const activeSources = sources.filter(s => {
-    const h = getHealth(s);
-    return ['healthy', 'warning', 'stale', 'silent'].includes(h.key);
+    if (!s.last_event_time) return false;
+    return now - new Date(s.last_event_time).getTime() < H3;
   }).length;
 
   const todayCount = dailyStats?.today_count ?? 0;

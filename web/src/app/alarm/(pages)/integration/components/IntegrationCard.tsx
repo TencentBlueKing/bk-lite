@@ -50,8 +50,8 @@ const IntegrationCard: React.FC<IntegrationCardProps> = ({ src }) => {
         <div
           className="w-[42px] h-[42px] rounded-full shrink-0 grid place-items-center overflow-hidden"
           style={{
-            background: `${logoColor}14`,
-            border: `1.5px solid ${logoColor}30`,
+            background: src.logo ? logoColor : `${logoColor}14`,
+            border: src.logo ? 'none' : `1.5px solid ${logoColor}30`,
           }}
         >
           {src.logo ? (
