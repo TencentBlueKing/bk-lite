@@ -79,6 +79,69 @@
       }
     },
     {
+      "name": "ENV_COLLECTOR_REFS",
+      "label": "采集配置名称",
+      "type": "hidden",
+      "required": true,
+      "default_value": "dm_sql",
+      "description": "内置达梦采集配置名称，对应 dm.collector.yml 中的 collector_name",
+      "transform_on_edit": {
+        "origin_path": "child.env_config.COLLECTOR_REFS__{{config_id}}"
+      }
+    },
+    {
+      "name": "ENV_SCRAPE_TIMEOUT",
+      "label": "采集超时时间",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "description": "DM-Exporter 单次 SQL 采集超时时间（单位：秒）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "addonAfter": "s"
+      },
+      "transform_on_create": {
+        "suffix": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.SCRAPE_TIMEOUT__{{config_id}}",
+        "to_form": {
+          "regex": "^(\\d+)s$",
+          "type": "number"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      }
+    },
+    {
+      "name": "ENV_MAX_CONNECTION_LIFETIME",
+      "label": "最长连接时长",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 5,
+      "description": "DM-Exporter 数据库连接最长复用时间（单位：分钟）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "addonAfter": "m"
+      },
+      "transform_on_create": {
+        "suffix": "m"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.MAX_CONNECTION_LIFETIME__{{config_id}}",
+        "to_form": {
+          "regex": "^(\\d+)m$",
+          "type": "number"
+        },
+        "to_api": {
+          "suffix": "m"
+        }
+      }
+    },
+    {
       "name": "interval",
       "label": "间隔",
       "type": "inputNumber",
