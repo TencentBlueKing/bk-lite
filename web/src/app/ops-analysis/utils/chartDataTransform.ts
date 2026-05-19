@@ -106,25 +106,31 @@ export class ChartDataTransformer {
   }
 
   static formatTimeValue(value: any): string {
+    let dateValue: any = null;
+
     if (typeof value === 'number') {
-      return formatOpsDisplayTime(value, 'MM-DD HH:mm:ss');
+      dateValue = dayjs(this.isUnixTimestampLike(value) ? value * 1000 : value);
     } else if (typeof value === 'string') {
       if (this.isUnixTimestampLike(value)) {
-        return formatOpsDisplayTime(value, 'MM-DD HH:mm:ss');
+        dateValue = dayjs(Number(value) * 1000);
+      } else {
+        const trimmed = value.trim();
+        const hasExplicitDateMarkers = /[-/:T\s]/.test(trimmed);
+        if (!hasExplicitDateMarkers) {
+          return value;
+        }
+        dateValue = dayjs(value);
       }
-
-      const trimmed = value.trim();
-      const hasExplicitDateMarkers = /[-/:T\s]/.test(trimmed);
-      if (!hasExplicitDateMarkers) {
-        return value;
-      }
-
-      const dateValue = dayjs(value);
-      if (dateValue.isValid()) {
-        return formatOpsDisplayTime(value, 'MM-DD HH:mm:ss');
-      }
-      return value;
     }
+
+    if (dateValue && dateValue.isValid()) {
+      // 如果时分秒都为0，说明是按天/周/月分组，只显示 MM-DD
+      if (dateValue.hour() === 0 && dateValue.minute() === 0 && dateValue.second() === 0) {
+        return formatOpsDisplayTime(value, 'MM-DD');
+      }
+      return formatOpsDisplayTime(value, 'MM-DD HH:mm');
+    }
+
     return String(value);
   }
 

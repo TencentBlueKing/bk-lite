@@ -1,0 +1,116 @@
+import React, { useEffect } from 'react';
+import { Spin, Empty } from 'antd';
+import { resolveOpsChartThemeName } from '@/app/ops-analysis/utils/chartTheme';
+
+interface TopNProps {
+  rawData: any;
+  loading?: boolean;
+  onReady?: (ready: boolean) => void;
+}
+
+interface TopNItem {
+  name: string;
+  value: number;
+}
+
+const TopN: React.FC<TopNProps> = ({ rawData, loading = false, onReady }) => {
+  const themeName = resolveOpsChartThemeName();
+  const isDark = themeName === 'dark';
+
+  const transformData = (data: any): TopNItem[] => {
+    if (!data) return [];
+
+    // [[name, value], ...] format
+    if (Array.isArray(data) && data.length > 0 && Array.isArray(data[0])) {
+      return data.map((item: any[]) => ({
+        name: String(item[0] ?? ''),
+        value: Number(item[1]) || 0,
+      }));
+    }
+
+    // [{name, value}] format
+    if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object') {
+      return data.map((item: any) => ({
+        name: String(item.name ?? item.label ?? ''),
+        value: Number(item.value ?? item.count ?? 0),
+      }));
+    }
+
+    return [];
+  };
+
+  const items = transformData(rawData);
+  const maxValue = items.length > 0 ? Math.max(...items.map((i) => i.value)) : 0;
+  const isDataReady = items.length > 0;
+
+  useEffect(() => {
+    if (!loading && onReady) {
+      onReady(isDataReady);
+    }
+  }, [isDataReady, loading, onReady]);
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Spin size="small" />
+      </div>
+    );
+  }
+
+  if (!isDataReady) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col px-3 pt-2 pb-1 overflow-y-auto">
+      {items.map((item, index) => {
+        const percent = maxValue > 0 ? (item.value / maxValue) * 100 : 0;
+
+        return (
+          <div
+            key={`${item.name}-${index}`}
+            className="flex items-center gap-2"
+            style={{ height: 30, minHeight: 30 }}
+          >
+            <span
+              className="text-[13px] shrink-0 truncate"
+              style={{
+                color: isDark ? 'var(--color-text-2)' : '#1f2329',
+                width: '22%',
+                maxWidth: 110,
+                minWidth: 50,
+              }}
+              title={item.name}
+            >
+              {item.name}
+            </span>
+            <div className="flex-1 flex items-center h-3">
+              <div
+                className="h-full rounded-sm transition-all duration-300"
+                style={{
+                  width: `${Math.max(percent, 1.5)}%`,
+                  backgroundColor: '#366CE4',
+                }}
+              />
+            </div>
+            <span
+              className="text-[13px] font-medium shrink-0 text-right"
+              style={{
+                color: isDark ? 'var(--color-text-1)' : '#1f2329',
+                minWidth: 45,
+              }}
+            >
+              {item.value.toLocaleString()}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+export default TopN;

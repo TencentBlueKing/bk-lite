@@ -22,6 +22,7 @@ import ComLine from '../widgets/comLine';
 import ComBar from '../widgets/comBar';
 import ComTable from '../widgets/comTable';
 import ComSingle from '../widgets/comSingle';
+import ComTopN from '../widgets/comTopN';
 
 const componentMap: Record<string, React.ComponentType<any>> = {
   line: ComLine,
@@ -29,6 +30,7 @@ const componentMap: Record<string, React.ComponentType<any>> = {
   bar: ComBar,
   table: ComTable,
   single: ComSingle,
+  topN: ComTopN,
 };
 
 const inflightWidgetRequests = new Map<string, Promise<unknown>>();

@@ -207,6 +207,7 @@
     "singleValue": "单值",
     "operationFailed": "操作失败",
     "table": "表格",
+    "topN": "排行榜",
     "responseFieldSchemaConfig": "接口字段定义",
     "schemaOptionalAutoGenTip": "该配置为可选项；如不配置，表格组件首次使用时将按返回字段自动生成默认列。",
     "addField": "添加字段",

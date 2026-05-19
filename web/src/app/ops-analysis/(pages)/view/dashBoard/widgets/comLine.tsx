@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import ChartLegend from '../components/chartLegend';
 import { Spin, Empty } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
@@ -9,6 +8,7 @@ import {
   getOpsChartTheme,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
+import ChartLegend from '../components/chartLegend';
 
 interface EChartsInstance {
   dispatchAction: (payload: Record<string, any>) => void;
@@ -155,8 +155,20 @@ const TrendLine: React.FC<TrendLineProps> = ({
       axisPointer: {
         type: 'cross',
       },
-      enterable: true,
+      enterable: false,
       confine: true,
+      position: function (point: number[], _params: any, _dom: any, _rect: any, size: any) {
+        const tooltipWidth = size.contentSize[0];
+        const chartWidth = size.viewSize[0];
+        // 默认放右上方，离鼠标远一些
+        let x = point[0] + 40;
+        const y = 10;
+        // 如果右边放不下，放左边
+        if (x + tooltipWidth > chartWidth) {
+          x = point[0] - tooltipWidth - 40;
+        }
+        return [x, y];
+      },
       backgroundColor: chartTheme.tooltipBackgroundColor,
       borderWidth: 1,
       borderColor: chartTheme.tooltipBorderColor,
@@ -183,10 +195,10 @@ const TrendLine: React.FC<TrendLineProps> = ({
       },
     },
     grid: {
-      top: 14,
-      left: 24,
-      right: 24,
-      bottom: 20,
+      top: 8,
+      left: 16,
+      right: 16,
+      bottom: 8,
       containLabel: true,
     },
     xAxis: {
@@ -251,13 +263,68 @@ const TrendLine: React.FC<TrendLineProps> = ({
   };
 
   // 根据数据类型设置 series
+  // 自动双Y轴：当多系列最大值差距超过5倍时启用
+  const DUAL_AXIS_THRESHOLD = 5;
+  let useDualAxis = false;
+  let largeSeriesIndices: number[] = [];
+
+  if (chartData && chartData.series && chartData.series.length >= 2) {
+    const seriesMaxValues = chartData.series.map((item: any) => {
+      const nums = (item.data || []).filter((v: any) => typeof v === 'number' && v > 0);
+      return nums.length > 0 ? Math.max(...nums) : 0;
+    });
+    const maxVal = Math.max(...seriesMaxValues);
+    const minVal = Math.min(...seriesMaxValues.filter((v: number) => v > 0));
+    if (minVal > 0 && maxVal / minVal >= DUAL_AXIS_THRESHOLD) {
+      useDualAxis = true;
+      // 把最大值最大的那些系列放左轴，其余放右轴
+      const threshold = maxVal / DUAL_AXIS_THRESHOLD;
+      largeSeriesIndices = seriesMaxValues
+        .map((v: number, i: number) => (v >= threshold ? i : -1))
+        .filter((i: number) => i >= 0);
+    }
+  }
+
+  if (useDualAxis) {
+    // 双Y轴配置
+    option.yAxis = [
+      {
+        type: 'value',
+        minInterval: 1,
+        axisTick: { show: false },
+        axisLine: { show: false },
+        axisLabel: {
+          formatter: (value: number) => value >= 1000 ? (value / 1000).toFixed(1) + 'k' : value.toString(),
+          textStyle: { color: chartTheme.axisLabelColor },
+        },
+        splitLine: {
+          show: true,
+          lineStyle: { color: chartTheme.splitLineColor, type: 'solid' },
+        },
+      },
+      {
+        type: 'value',
+        minInterval: 1,
+        axisTick: { show: false },
+        axisLine: { show: false },
+        axisLabel: {
+          formatter: (value: number) => value >= 1000 ? (value / 1000).toFixed(1) + 'k' : value.toString(),
+          textStyle: { color: chartTheme.axisLabelColor },
+        },
+        splitLine: { show: false },
+      },
+    ];
+    option.grid.right = 40;
+  }
+
   if (chartData && chartData.series) {
-    option.series = chartData.series.map((item: any) => ({
+    option.series = chartData.series.map((item: any, index: number) => ({
       name: item.name,
       type: 'line',
       data: item.data,
       smooth: true,
       symbol: 'none',
+      yAxisIndex: useDualAxis ? (largeSeriesIndices.includes(index) ? 0 : 1) : 0,
       lineStyle: {
         width: chartTheme.lineWidth,
       },
@@ -346,14 +413,14 @@ const TrendLine: React.FC<TrendLineProps> = ({
         />
       </div>
 
+      {/* 右侧图例 */}
       {legendData.length > 0 && (
-        <div className="w-38 ml-2 shrink-0 h-full">
-          <ChartLegend
-            data={legendData}
-            colors={chartColors}
-            onSelectionChange={handleLegendChange}
-          />
-        </div>
+        <ChartLegend
+          data={legendData}
+          colors={chartColors}
+          layout="vertical"
+          onSelectionChange={handleLegendChange}
+        />
       )}
     </div>
   );
