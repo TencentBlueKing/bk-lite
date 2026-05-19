@@ -47,9 +47,9 @@ Get_Nginx_Ports_From_Conf() {
         fi
     done
 
-    # 去重、排序并拼接成 & 分隔的字符串
-    local port_str=$(printf "%s\n" "${ports[@]}" | sort -n | uniq | tr '\n' '&')
-    port_str="${port_str%&}"  # 去掉最后一个 &
+    # 去重、排序并拼接成逗号分隔的字符串
+    local port_str=$(printf "%s\n" "${ports[@]}" | sort -n | uniq | tr '\n' ',')
+    port_str="${port_str%,}"  # 去掉最后一个逗号
     echo "$port_str"
 }
 # Function to get process PID

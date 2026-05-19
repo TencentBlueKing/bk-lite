@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import { useTranslation } from '@/utils/i18n';
-import { Form, Spin } from 'antd';
+import { Form, Spin, Select, Input } from 'antd';
 import {
   getCleanupFormValues,
   getCycleFormValues,
@@ -13,6 +13,9 @@ import { K8S_FORM_INITIAL_VALUES } from '@/app/cmdb/constants/professCollection'
 import { formatTaskValues } from '../hooks/formatTaskValues';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
+import useApiClient from '@/utils/request';
+
+const COLLECTOR_CLUSTER_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 interface K8sTaskFormProps {
   onClose: () => void;
@@ -20,6 +23,15 @@ interface K8sTaskFormProps {
   selectedNode: TreeNode;
   modelItem: ModelItem;
   editId?: number | null;
+  /**
+   * 引导式向导回调：任务保存成功后，由外层接管后续步骤。
+   * 返回 true 表示已接管，组件不再触发默认关闭。
+   */
+  onAfterSave?: (ctx: {
+    collector_cluster_id: string;
+    cloud_region_id: number | string;
+    values: any;
+  }) => boolean | void | Promise<boolean | void>;
 }
 
 const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
@@ -28,11 +40,30 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
   selectedNode,
   modelItem,
   editId,
+  onAfterSave,
 }) => {
   const { t } = useTranslation();
   const baseRef = useRef<BaseTaskRef>(null as any);
   const { model_id: modelId } = modelItem;
   const { copyTaskData, setCopyTaskData } = useAssetManageStore();
+  const { get } = useApiClient();
+  const [cloudRegions, setCloudRegions] = useState<any[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        // 复用 node_mgmt 的云区域接口（CMDB 与 monitor 同一基础设施来源）
+        const data = await get('/node_mgmt/api/cloud_region/');
+        if (!cancelled) {
+          setCloudRegions(Array.isArray(data) ? data : data?.results || []);
+        }
+      } catch (e) {
+        console.error('Failed to load cloud regions:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const {
     form,
@@ -47,10 +78,29 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
     initialValues: K8S_FORM_INITIAL_VALUES,
     onSuccess,
     onClose,
+    afterSubmitSuccess: onAfterSave
+      ? async ({ values }) => {
+        const result = await onAfterSave({
+          collector_cluster_id: values.collector_cluster_id,
+          cloud_region_id: values.cloud_region_id,
+          values,
+        });
+        return result === true;
+      }
+      : undefined,
     formatValues: (values) => {
       const instance = baseRef.current?.instOptions?.find(
         (item: any) => item.value === values.instId
       );
+
+      // collector_cluster_id 和 cloud_region_id 写入到 instance + params，
+      // 后端 BaseCollect.build_plugin_kwargs() 会优先从 instance 读取。
+      const enrichedInstance = instance?.origin
+        ? {
+          ...instance.origin,
+          collector_cluster_id: values.collector_cluster_id,
+        }
+        : undefined;
 
       return {
         ...formatTaskValues({
@@ -61,14 +111,17 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
           modelId,
           formatCycleValue,
         }),
-        instances: instance?.origin && [instance.origin],
+        instances: enrichedInstance ? [enrichedInstance] : [],
         input_method: 0,
         ip_range: '',
+        params: {
+          collector_cluster_id: values.collector_cluster_id,
+          cloud_region_id: values.cloud_region_id,
+        },
       };
     },
   });
 
-  // 构建表单值，用于复制任务和编辑任务中回填表单数据（true:复制任务，false:编辑任务）
   const buildFormValues = (values: any, isCopy: boolean) => ({
     ...getCycleFormValues(values),
     ...getCleanupFormValues(values),
@@ -76,6 +129,11 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
     taskName: isCopy ? '' : values.name,
     organization: values.team || [],
     instId: values.instances?.[0]?._id,
+    collector_cluster_id:
+      values.instances?.[0]?.collector_cluster_id ??
+      values.params?.collector_cluster_id ??
+      '',
+    cloud_region_id: values.params?.cloud_region_id,
     timeout: values.timeout,
   });
 
@@ -83,13 +141,9 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
     const initForm = async () => {
       if (copyTaskData) {
         const values = copyTaskData;
-
-        // 复制任务中回填表单数据（此时任务名称和密码为空，需要用户手动输入）
         form.setFieldsValue(buildFormValues(values, true));
       } else if (editId) {
         const values = await fetchTaskDetail(editId);
-
-        // 编辑任务中回填表单数据
         form.setFieldsValue(buildFormValues(values, false));
       } else {
         form.setFieldsValue(K8S_FORM_INITIAL_VALUES);
@@ -114,12 +168,51 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
           onClose={onClose}
           submitLoading={submitLoading}
           instPlaceholder={`${t('common.select')} ${t('Collection.k8sTask.selectK8S')}`}
+          submitText={onAfterSave ? `${t('common.next')} →` : undefined}
           timeoutProps={{
             min: 0,
             defaultValue: 60,
             addonAfter: t('Collection.k8sTask.second'),
           }}
-        ></BaseTaskForm>
+        >
+          <Form.Item
+            label={t('Collection.k8sTask.collectorClusterId') || 'Collector ID'}
+            name="collector_cluster_id"
+            rules={[
+              { required: true, message: t('common.required') },
+              {
+                validator: (_, value) => {
+                  if (!value) return Promise.resolve();
+                  return COLLECTOR_CLUSTER_ID_PATTERN.test(value)
+                    ? Promise.resolve()
+                    : Promise.reject(
+                      new Error(
+                        t('Collection.k8sTask.collectorClusterIdInvalid') ||
+                        'Only letters, digits, underscore and hyphen are allowed'
+                      )
+                    );
+                },
+              },
+            ]}
+            extra={t('Collection.k8sTask.collectorClusterIdDesc') ||
+              'Used as VictoriaMetrics instance_id; must match collector reporting identity.'}
+          >
+            <Input placeholder="e.g. prod-cluster-1" />
+          </Form.Item>
+          <Form.Item
+            label={t('Collection.k8sTask.cloudRegion') || 'Cloud Region'}
+            name="cloud_region_id"
+            rules={[{ required: true, message: t('common.required') }]}
+          >
+            <Select
+              placeholder={t('common.selectTip')}
+              options={(cloudRegions || []).map((r: any) => ({
+                value: r.id,
+                label: r.display_name || r.name,
+              }))}
+            />
+          </Form.Item>
+        </BaseTaskForm>
       </Form>
     </Spin>
   );

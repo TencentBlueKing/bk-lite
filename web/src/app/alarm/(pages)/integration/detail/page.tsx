@@ -6,6 +6,7 @@ import SearchFilter from '@/app/alarm/components/searchFilter';
 import EventTable from '@/app/alarm/components/eventTable';
 import K8sGuide from '@/app/alarm/components/k8sGuide';
 import SnmpTrapGuide from '@/app/alarm/components/snmpTrapGuide';
+import ZabbixGuide from '@/app/alarm/components/zabbixGuide';
 import CustomBreadcrumb from '@/app/alarm/components/customBreadcrumb';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import {
@@ -18,7 +19,7 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useCommon } from '@/app/alarm/context/common';
-import { K8sMeta, SourceItem } from '@/app/alarm/types/integration';
+import { AlertSourceIntegrationGuide, K8sMeta, SourceItem } from '@/app/alarm/types/integration';
 import { useAlarmApi } from '@/app/alarm/api/alarms';
 import { EventItem } from '@/app/alarm/types/alarms';
 import { useSourceApi } from '@/app/alarm/api/integration';
@@ -29,12 +30,19 @@ const IntegrationDetail: FC = () => {
   const { convertToLocalizedTime } = useLocalizedTime();
   const { levelListEvent, levelMapEvent } = useCommon();
   const searchParams = useSearchParams();
-  const { getAlertSourcesDetail, getK8sMeta, downloadK8sFile } = useSourceApi();
+  const {
+    getAlertSourcesDetail,
+    getAlertSourceIntegrationGuide,
+    getK8sMeta,
+    downloadK8sFile,
+  } = useSourceApi();
   const { getEventList } = useAlarmApi();
   const [loading, setLoading] = useState<boolean>(false);
   const [source, setSource] = useState<SourceItem>();
+  const [integrationGuide, setIntegrationGuide] = useState<AlertSourceIntegrationGuide>();
   const [k8sMeta, setK8sMeta] = useState<K8sMeta>();
   const [k8sMetaLoading, setK8sMetaLoading] = useState<boolean>(false);
+  const [integrationGuideLoading, setIntegrationGuideLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>('event');
   const [eventList, setEventList] = useState<EventItem[]>([]);
   const [eventLoading, setEventLoading] = useState<boolean>(false);
@@ -54,6 +62,7 @@ const IntegrationDetail: FC = () => {
 
   const isK8sSource = source?.source_id === 'k8s';
   const isSnmpTrapSource = source?.source_id === 'snmp_trap';
+  const isZabbixSource = source?.source_type === 'zabbix' || source?.source_id === 'zabbix';
 
   const sourceItemId = searchParams.get('sourceItemId');
 
@@ -89,6 +98,19 @@ const IntegrationDetail: FC = () => {
       console.error(error);
     } finally {
       setK8sMetaLoading(false);
+    }
+  };
+
+  const getIntegrationGuide = async (id: string) => {
+    setIntegrationGuideLoading(true);
+    try {
+      const res = await getAlertSourceIntegrationGuide(id);
+      setIntegrationGuide(res);
+    } catch (error) {
+      console.error(error);
+      setIntegrationGuide(undefined);
+    } finally {
+      setIntegrationGuideLoading(false);
     }
   };
 
@@ -148,6 +170,14 @@ const IntegrationDetail: FC = () => {
       getK8sGuideMeta();
     }
   }, [isK8sSource, k8sMeta, k8sMetaLoading]);
+
+  useEffect(() => {
+    if (sourceItemId && isZabbixSource) {
+      getIntegrationGuide(sourceItemId);
+    } else if (!isZabbixSource) {
+      setIntegrationGuide(undefined);
+    }
+  }, [sourceItemId, isZabbixSource]);
 
   const onFilterSearch = (condition: { field: string; value: string }) => {
     setSearchCondition(condition);
@@ -713,7 +743,13 @@ const IntegrationDetail: FC = () => {
                       />
                     </Tabs.TabPane>
                     <Tabs.TabPane key="guide" tab={t('integration.guideTab')}>
-                      {isSnmpTrapSource ? <SnmpTrapGuide /> : renderGuideTab()}
+                      {isSnmpTrapSource ? (
+                        <SnmpTrapGuide />
+                      ) : isZabbixSource ? (
+                        <Spin spinning={integrationGuideLoading}>
+                          <ZabbixGuide guide={integrationGuide} />
+                        </Spin>
+                      ) : renderGuideTab()}
                     </Tabs.TabPane>
                   </Tabs>
                 </div>
