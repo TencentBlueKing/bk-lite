@@ -2,6 +2,7 @@ from rest_framework.decorators import action
 from rest_framework.viewsets import ViewSet
 from typing import Any, cast
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.models.installer import CollectorTask, CollectorTaskNode
@@ -21,15 +22,22 @@ from apps.node_mgmt.tasks.installer import (
     timeout_controller_install_task,
     CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
 )
+from apps.node_mgmt.utils.permission import authorize_node_ids, get_authorized_node_queryset
 from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read
 
 
 class InstallerViewSet(ViewSet):
     @action(detail=False, methods=["post"], url_path="controller/install")
+    @HasPermission("cloud_region_node-Edit")
     def controller_install(self, request):
         serializer = ControllerInstallRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = cast(dict[str, Any], serializer.validated_data)
+        node_ids = [node["node_id"] for node in data["nodes"] if node.get("node_id")]
+        if node_ids:
+            _, error_response = authorize_node_ids(request, node_ids)
+            if error_response:
+                return error_response
         task_id = InstallerService.install_controller(
             data["cloud_region_id"],
             data["work_node"],
@@ -45,7 +53,13 @@ class InstallerViewSet(ViewSet):
         return WebUtils.response_success(dict(task_id=task_id))
 
     @action(detail=False, methods=["post"], url_path="controller/uninstall")
+    @HasPermission("cloud_region_node-Delete")
     def controller_uninstall(self, request):
+        node_ids = [node["node_id"] for node in request.data.get("nodes", []) if node.get("node_id")]
+        if node_ids:
+            _, error_response = authorize_node_ids(request, node_ids)
+            if error_response:
+                return error_response
         task_id = InstallerService.uninstall_controller(
             request.data["cloud_region_id"],
             request.data["work_node"],
@@ -55,6 +69,7 @@ class InstallerViewSet(ViewSet):
         return WebUtils.response_success(dict(task_id=task_id))
 
     @action(detail=False, methods=["post"], url_path="controller/retry")
+    @HasPermission("cloud_region_node-Edit")
     def controller_retry(self, request):
         retry_controller.delay(
             request.data["task_id"],
@@ -67,6 +82,7 @@ class InstallerViewSet(ViewSet):
 
     # 控制器手动安装
     @action(detail=False, methods=["post"], url_path="controller/manual_install")
+    @HasPermission("cloud_region_node-Edit")
     def controller_manual_install(self, request):
         serializer = ControllerManualInstallRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -89,8 +105,14 @@ class InstallerViewSet(ViewSet):
         return WebUtils.response_success(result)
 
     @action(detail=False, methods=["post"], url_path="controller/manual_install_status")
+    @HasPermission("cloud_region_node-Edit")
     def controller_manual_install_status(self, request):
-        data = InstallerService.get_manual_install_status(request.data["node_ids"])
+        node_ids = request.data.get("node_ids", [])
+        if node_ids:
+            _, error_response = authorize_node_ids(request, node_ids)
+            if error_response:
+                return error_response
+        data = InstallerService.get_manual_install_status(node_ids)
         return WebUtils.response_success(data)
 
     # @action(detail=False, methods=["post"], url_path="controller/restart")
@@ -103,13 +125,20 @@ class InstallerViewSet(ViewSet):
         methods=["post"],
         url_path="controller/task/(?P<task_id>[^/.]+)/nodes",
     )
+    @HasPermission("cloud_region_node-Edit")
     def controller_install_nodes(self, request, task_id):
         data = InstallerService.install_controller_nodes(task_id)
         return WebUtils.response_success(data)
 
     # 采集器
     @action(detail=False, methods=["post"], url_path="collector/install")
+    @HasPermission("cloud_region_node-OperateCollector")
     def collector_install(self, request):
+        node_ids = [node["node_id"] for node in request.data.get("nodes", []) if node.get("node_id")]
+        if node_ids:
+            _, error_response = authorize_node_ids(request, node_ids)
+            if error_response:
+                return error_response
         task_id = InstallerService.install_collector(request.data["collector_package"], request.data["nodes"])
         install_collector.delay(task_id)
         return WebUtils.response_success(dict(task_id=task_id))
@@ -119,12 +148,15 @@ class InstallerViewSet(ViewSet):
         methods=["post"],
         url_path="collector/install/(?P<task_id>[^/.]+)/nodes",
     )
+    @HasPermission("cloud_region_node-OperateCollector")
     def collector_install_nodes(self, request, task_id):
         serializer = TaskNodesQuerySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         validated_data = cast(dict[str, Any], serializer.validated_data)
 
         queryset = CollectorTaskNode.objects.filter(task_id=task_id).select_related("node").prefetch_related("node__nodeorganization_set")
+        authorized_nodes = get_authorized_node_queryset(request)
+        queryset = queryset.filter(node__in=authorized_nodes)
         status_list = validated_data.get("status")
         if status_list:
             queryset = queryset.filter(status__in=status_list)
@@ -150,7 +182,7 @@ class InstallerViewSet(ViewSet):
             for task_node in items
         ]
 
-        summary_queryset = CollectorTaskNode.objects.filter(task_id=task_id)
+        summary_queryset = CollectorTaskNode.objects.filter(task_id=task_id).filter(node__in=authorized_nodes)
         summary = {
             "total": summary_queryset.count(),
             "waiting": summary_queryset.filter(status="waiting").count(),
@@ -178,6 +210,7 @@ class InstallerViewSet(ViewSet):
 
     # 获取安装命令
     @action(detail=False, methods=["post"], url_path="get_install_command")
+    @HasPermission("cloud_region_node-Edit")
     def get_install_command(self, request):
         serializer = InstallCommandRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
