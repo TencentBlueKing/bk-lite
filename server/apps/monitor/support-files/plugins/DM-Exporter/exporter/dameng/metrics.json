@@ -20,7 +20,7 @@
   ],
   "metrics": [
     {
-      "metric_group": "基础",
+      "metric_group": "Base",
       "name": "up_gauge",
       "display_name": "Exporter状态",
       "instance_id_keys": [
@@ -33,7 +33,7 @@
       "query": "up_gauge{__$labels__}"
     },
     {
-      "metric_group": "会话",
+      "metric_group": "Session",
       "name": "dm_exporter_connections_gauge",
       "display_name": "当前连接数",
       "instance_id_keys": [
@@ -46,7 +46,7 @@
       "query": "dm_exporter_connections_gauge{__$labels__}"
     },
     {
-      "metric_group": "会话",
+      "metric_group": "Session",
       "name": "dm_exporter_session_rests_gauge",
       "display_name": "可用会话数",
       "instance_id_keys": [
@@ -59,7 +59,7 @@
       "query": "dm_exporter_session_rests_gauge{__$labels__}"
     },
     {
-      "metric_group": "会话",
+      "metric_group": "Session",
       "name": "dm_exporter_session_used_ratio_gauge",
       "display_name": "会话使用率",
       "instance_id_keys": [
@@ -72,7 +72,7 @@
       "query": "dm_exporter_session_used_ratio_gauge{__$labels__}"
     },
     {
-      "metric_group": "资源",
+      "metric_group": "Resource",
       "name": "dm_exporter_memory_used_size_gauge",
       "display_name": "内存使用量",
       "instance_id_keys": [
@@ -85,7 +85,7 @@
       "query": "dm_exporter_memory_used_size_gauge{__$labels__}"
     },
     {
-      "metric_group": "资源",
+      "metric_group": "Resource",
       "name": "dm_exporter_buffer_cache_hit_percent_gauge",
       "display_name": "缓存命中率",
       "instance_id_keys": [
@@ -103,7 +103,7 @@
       "query": "dm_exporter_buffer_cache_hit_percent_gauge{__$labels__}"
     },
     {
-      "metric_group": "锁",
+      "metric_group": "Lock",
       "name": "dm_exporter_locks_gauge",
       "display_name": "获取锁的进程数",
       "instance_id_keys": [
@@ -116,7 +116,7 @@
       "query": "dm_exporter_locks_gauge{__$labels__}"
     },
     {
-      "metric_group": "锁",
+      "metric_group": "Lock",
       "name": "dm_exporter_lock_blocks_gauge",
       "display_name": "等待锁的进程数",
       "instance_id_keys": [
@@ -129,7 +129,7 @@
       "query": "dm_exporter_lock_blocks_gauge{__$labels__}"
     },
     {
-      "metric_group": "锁",
+      "metric_group": "Lock",
       "name": "dm_exporter_deadlock_count_gauge",
       "display_name": "死锁累计数量",
       "instance_id_keys": [
@@ -142,7 +142,7 @@
       "query": "dm_exporter_deadlock_count_gauge{__$labels__}"
     },
     {
-      "metric_group": "表空间",
+      "metric_group": "Tablespace",
       "name": "dm_exporter_tablespace_total_size_gauge",
       "display_name": "表空间总大小",
       "instance_id_keys": [
@@ -160,7 +160,7 @@
       "query": "dm_exporter_tablespace_total_size_gauge{__$labels__}"
     },
     {
-      "metric_group": "表空间",
+      "metric_group": "Tablespace",
       "name": "dm_exporter_tablespace_used_size_gauge",
       "display_name": "表空间已使用大小",
       "instance_id_keys": [
@@ -178,7 +178,7 @@
       "query": "dm_exporter_tablespace_used_size_gauge{__$labels__}"
     },
     {
-      "metric_group": "表空间",
+      "metric_group": "Tablespace",
       "name": "dm_exporter_tablespace_free_size_gauge",
       "display_name": "表空间剩余大小",
       "instance_id_keys": [
@@ -196,7 +196,7 @@
       "query": "dm_exporter_tablespace_free_size_gauge{__$labels__}"
     },
     {
-      "metric_group": "表空间",
+      "metric_group": "Tablespace",
       "name": "dm_exporter_tablespace_used_ratio_gauge",
       "display_name": "表空间使用率",
       "instance_id_keys": [
@@ -214,7 +214,7 @@
       "query": "dm_exporter_tablespace_used_ratio_gauge{__$labels__}"
     },
     {
-      "metric_group": "检查点",
+      "metric_group": "Checkpoint",
       "name": "dm_exporter_checkpoint_dirty_pages_gauge",
       "display_name": "CheckPoint脏页数",
       "instance_id_keys": [
@@ -227,7 +227,7 @@
       "query": "dm_exporter_checkpoint_dirty_pages_gauge{__$labels__}"
     },
     {
-      "metric_group": "检查点",
+      "metric_group": "Checkpoint",
       "name": "dm_exporter_checkpoint_interval_time_gauge",
       "display_name": "CheckPoint间隔时间",
       "instance_id_keys": [
@@ -240,7 +240,7 @@
       "query": "dm_exporter_checkpoint_interval_time_gauge{__$labels__}"
     },
     {
-      "metric_group": "存储",
+      "metric_group": "Storage",
       "name": "dm_exporter_table_used_space_gauge",
       "display_name": "表占用块数",
       "instance_id_keys": [
@@ -262,7 +262,7 @@
       "query": "dm_exporter_table_used_space_gauge{__$labels__}"
     },
     {
-      "metric_group": "存储",
+      "metric_group": "Storage",
       "name": "dm_exporter_index_used_space_gauge",
       "display_name": "索引占用块数",
       "instance_id_keys": [
@@ -284,7 +284,7 @@
       "query": "dm_exporter_index_used_space_gauge{__$labels__}"
     },
     {
-      "metric_group": "资源",
+      "metric_group": "Resource",
       "name": "dm_exporter_shared_pool_size_gauge",
       "display_name": "共享内存大小",
       "instance_id_keys": [
@@ -297,7 +297,7 @@
       "query": "dm_exporter_shared_pool_size_gauge{__$labels__}"
     },
     {
-      "metric_group": "Redo日志",
+      "metric_group": "Redo",
       "name": "dm_exporter_redo_file_size_gauge",
       "display_name": "当前Redo文件已使用大小",
       "instance_id_keys": [
@@ -315,7 +315,7 @@
       "query": "dm_exporter_redo_file_size_gauge{__$labels__}"
     },
     {
-      "metric_group": "游标",
+      "metric_group": "Cursor",
       "name": "dm_exporter_open_cursor_gauge",
       "display_name": "打开的游标数",
       "instance_id_keys": [
@@ -328,25 +328,25 @@
       "query": "dm_exporter_open_cursor_gauge{__$labels__}"
     },
     {
-      "metric_group": "回滚段",
+      "metric_group": "Rollback",
       "name": "dm_exporter_roll_state_gauge",
       "display_name": "回滚段状态",
       "instance_id_keys": [
         "instance_id"
       ],
-      "data_type": "Number",
-      "unit": "none",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"ONLINE\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"OFFLINE\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"RES_OFFLINE\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"CORRUPT\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"OTHER\",\"id\":4,\"color\":\"#faad14\"}]",
       "dimensions": [
         {
           "name": "ROLL_TYPE",
           "description": "回滚段名称"
         }
       ],
-      "description": "回滚段状态值。",
+      "description": "回滚段状态，0 表示 ONLINE，1 表示 OFFLINE，2 表示 RES_OFFLINE，3 表示 CORRUPT，4 表示 OTHER。",
       "query": "dm_exporter_roll_state_gauge{__$labels__}"
     },
     {
-      "metric_group": "回滚段",
+      "metric_group": "Rollback",
       "name": "dm_exporter_roll_size_gauge",
       "display_name": "回滚段总页大小",
       "instance_id_keys": [
@@ -364,7 +364,7 @@
       "query": "dm_exporter_roll_size_gauge{__$labels__}"
     },
     {
-      "metric_group": "Redo日志",
+      "metric_group": "Redo",
       "name": "dm_exporter_redo_log_size_gauge",
       "display_name": "Redo日志大小",
       "instance_id_keys": [
@@ -386,7 +386,7 @@
       "query": "dm_exporter_redo_log_size_gauge{__$labels__}"
     },
     {
-      "metric_group": "事务",
+      "metric_group": "Transaction",
       "name": "dm_exporter_2pc_pending_gauge",
       "display_name": "长时间二阶段事务锁个数",
       "instance_id_keys": [
@@ -399,7 +399,7 @@
       "query": "dm_exporter_2pc_pending_gauge{__$labels__}"
     },
     {
-      "metric_group": "性能",
+      "metric_group": "Performance",
       "name": "dm_exporter_load_five_average_gauge",
       "display_name": "每5分钟工作负载",
       "instance_id_keys": [
@@ -412,7 +412,7 @@
       "query": "dm_exporter_load_five_average_gauge{__$labels__}"
     },
     {
-      "metric_group": "性能",
+      "metric_group": "Performance",
       "name": "dm_exporter_executions_total_counter",
       "display_name": "执行SQL语句总数",
       "instance_id_keys": [
@@ -425,7 +425,7 @@
       "query": "dm_exporter_executions_total_counter{__$labels__}"
     },
     {
-      "metric_group": "性能",
+      "metric_group": "Performance",
       "name": "dm_exporter_slow_query_gauge",
       "display_name": "慢查询数量",
       "instance_id_keys": [
@@ -438,7 +438,7 @@
       "query": "dm_exporter_slow_query_gauge{__$labels__}"
     },
     {
-      "metric_group": "维护",
+      "metric_group": "Maintenance",
       "name": "dm_exporter_unusable_index_gauge",
       "display_name": "失效索引数量",
       "instance_id_keys": [
@@ -487,14 +487,14 @@
       "query": "dm_exporter_asm_free_size_gauge{__$labels__}"
     },
     {
-      "metric_group": "主备",
+      "metric_group": "Backup",
       "name": "dm_exporter_backup_is_status_gauge",
       "display_name": "主备实例状态",
       "instance_id_keys": [
         "instance_id"
       ],
-      "data_type": "Number",
-      "unit": "none",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"OPEN\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"MOUNT\",\"id\":1,\"color\":\"#faad14\"},{\"name\":\"SUSPEND\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
           "name": "MAL_HOST",
@@ -517,18 +517,18 @@
           "description": "实例唯一标识"
         }
       ],
-      "description": "主备实例状态值。",
+      "description": "主备实例状态，0 表示 OPEN，1 表示 MOUNT，2 表示 SUSPEND。",
       "query": "dm_exporter_backup_is_status_gauge{__$labels__}"
     },
     {
-      "metric_group": "主备",
+      "metric_group": "Backup",
       "name": "dm_exporter_backup_i_mode_gauge",
       "display_name": "主备实例模式",
       "instance_id_keys": [
         "instance_id"
       ],
-      "data_type": "Number",
-      "unit": "none",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"PRIMARY\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"STANDBY\",\"id\":1,\"color\":\"#8c8c8c\"},{\"name\":\"NORMAL\",\"id\":2,\"color\":\"#faad14\"}]",
       "dimensions": [
         {
           "name": "MAL_HOST",
@@ -551,18 +551,18 @@
           "description": "实例唯一标识"
         }
       ],
-      "description": "主备实例模式值。",
+      "description": "主备实例模式，0 表示 PRIMARY，1 表示 STANDBY，2 表示 NORMAL。",
       "query": "dm_exporter_backup_i_mode_gauge{__$labels__}"
     },
     {
-      "metric_group": "主备",
+      "metric_group": "Backup",
       "name": "dm_exporter_backup_arch_status_gauge",
       "display_name": "主备架构状态",
       "instance_id_keys": [
         "instance_id"
       ],
-      "data_type": "Number",
-      "unit": "none",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"VALID\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"INVALID\",\"id\":1,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
           "name": "MAL_HOST",
@@ -585,18 +585,18 @@
           "description": "实例唯一标识"
         }
       ],
-      "description": "主备归档状态值。",
+      "description": "主备归档状态，0 表示 VALID，1 表示 INVALID。",
       "query": "dm_exporter_backup_arch_status_gauge{__$labels__}"
     },
     {
-      "metric_group": "主备",
+      "metric_group": "Backup",
       "name": "dm_exporter_backup_dw_status_gauge",
       "display_name": "主备数据库观测状态",
       "instance_id_keys": [
         "instance_id"
       ],
-      "data_type": "Number",
-      "unit": "none",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"ENABLED\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"DISABLED\",\"id\":1,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
           "name": "MAL_HOST",
@@ -619,11 +619,11 @@
           "description": "实例唯一标识"
         }
       ],
-      "description": "主备数据库观测状态值。",
+      "description": "主备数据库观测状态，0 表示 ENABLED，1 表示 DISABLED。",
       "query": "dm_exporter_backup_dw_status_gauge{__$labels__}"
     },
     {
-      "metric_group": "主备",
+      "metric_group": "Backup",
       "name": "dm_exporter_backup_late_time_gauge",
       "display_name": "主备延迟时间",
       "instance_id_keys": [

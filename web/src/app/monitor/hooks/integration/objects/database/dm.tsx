@@ -1,6 +1,6 @@
 export const useDmConfig = () => {
   return {
-    instance_type: 'dm',
+    instance_type: 'dameng',
     dashboardDisplay: [],
     tableDiaplay: [],
     groupIds: {},

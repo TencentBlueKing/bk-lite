@@ -62,7 +62,7 @@ monitor_object_metric:
       desc: 当前打开的 SELECT 游标数量。
     dm_exporter_roll_state_gauge:
       name: 回滚段状态
-      desc: 回滚段状态值。
+      desc: 回滚段状态，0 表示 ONLINE，1 表示 OFFLINE，2 表示 RES_OFFLINE，3 表示 CORRUPT，4 表示 OTHER。
     dm_exporter_roll_size_gauge:
       name: 回滚段总页大小
       desc: 回滚段总页大小。
@@ -92,16 +92,16 @@ monitor_object_metric:
       desc: ASM 安全可用空间大小。
     dm_exporter_backup_is_status_gauge:
       name: 主备实例状态
-      desc: 主备实例状态值。
+      desc: 主备实例状态，0 表示 OPEN，1 表示 MOUNT，2 表示 SUSPEND。
     dm_exporter_backup_i_mode_gauge:
       name: 主备实例模式
-      desc: 主备实例模式值。
+      desc: 主备实例模式，0 表示 PRIMARY，1 表示 STANDBY，2 表示 NORMAL。
     dm_exporter_backup_arch_status_gauge:
       name: 主备架构状态
-      desc: 主备归档状态值。
+      desc: 主备归档状态，0 表示 VALID，1 表示 INVALID。
     dm_exporter_backup_dw_status_gauge:
       name: 主备数据库观测状态
-      desc: 主备数据库观测状态值。
+      desc: 主备数据库观测状态，0 表示 ENABLED，1 表示 DISABLED。
     dm_exporter_backup_late_time_gauge:
       name: 主备延迟时间
       desc: 主备延迟时间。

@@ -62,7 +62,7 @@ monitor_object_metric:
       desc: Number of currently open SELECT cursors.
     dm_exporter_roll_state_gauge:
       name: Rollback Segment State
-      desc: Rollback segment state value.
+      desc: Rollback segment state. 0 means ONLINE, 1 means OFFLINE, 2 means RES_OFFLINE, 3 means CORRUPT, and 4 means OTHER.
     dm_exporter_roll_size_gauge:
       name: Rollback Segment Size
       desc: Total page size of the rollback segment.
@@ -92,16 +92,16 @@ monitor_object_metric:
       desc: Safe available space size of ASM.
     dm_exporter_backup_is_status_gauge:
       name: Replication Instance Status
-      desc: Status value of the primary-standby instance.
+      desc: Primary-standby instance status. 0 means OPEN, 1 means MOUNT, and 2 means SUSPEND.
     dm_exporter_backup_i_mode_gauge:
       name: Replication Instance Mode
-      desc: Mode value of the primary-standby instance.
+      desc: Primary-standby instance mode. 0 means PRIMARY, 1 means STANDBY, and 2 means NORMAL.
     dm_exporter_backup_arch_status_gauge:
       name: Archive Status
-      desc: Archive status value of the primary-standby architecture.
+      desc: Primary-standby archive status. 0 means VALID and 1 means INVALID.
     dm_exporter_backup_dw_status_gauge:
       name: Watcher Status
-      desc: Observer status value of the primary-standby database.
+      desc: Primary-standby database watcher status. 0 means ENABLED and 1 means DISABLED.
     dm_exporter_backup_late_time_gauge:
       name: Replication Lag
       desc: Replication delay time between primary and standby.
