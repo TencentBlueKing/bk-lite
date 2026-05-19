@@ -8,7 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='mysql'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["mysql_uptime", "mysql_threads_running", "mysql_queries_rate", "mysql_slow_queries_rate", "mysql_buffer_pool_hit_ratio", "mysql_connection_utilization", "mysql_variables_max_connections", "mysql_slave_seconds_behind_master"],
+  "supplementary_indicators": ["mysql_uptime", "mysql_threads_running", "mysql_threads_connected", "mysql_queries_rate", "mysql_slow_queries_rate", "mysql_buffer_pool_hit_ratio", "mysql_connection_utilization", "mysql_variables_max_connections", "mysql_slave_seconds_behind_master"],
   "metrics": [
     {
       "metric_group": "Base",
