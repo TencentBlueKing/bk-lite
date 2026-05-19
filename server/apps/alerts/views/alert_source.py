@@ -1,5 +1,6 @@
 # -- coding: utf-8 --
 from rest_framework.response import Response
+from django.utils.translation import get_language
 
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
 from pathlib import Path
@@ -65,7 +66,8 @@ class AlertSourceModelViewSet(ModelViewSet):
         adapter_class = AlertSourceAdapterFactory.get_adapter(alert_source)
         adapter = adapter_class(alert_source=alert_source)
         base_url = request.build_absolute_uri("/").rstrip("/")
-        return Response(adapter.get_integration_guide(base_url))
+        language = getattr(request, "LANGUAGE_CODE", None) or get_language() or "zh-hans"
+        return Response(adapter.get_integration_guide(base_url, language=language))
 
     @staticmethod
     def _get_k8s_source():

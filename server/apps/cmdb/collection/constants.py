@@ -1,22 +1,22 @@
-K8S_WORKLOAD_REPLICASET = "prometheus_remote_write_kube_replicaset_created"
-K8S_WORKLOAD_REPLICASET_OWNER = "prometheus_remote_write_kube_replicaset_owner"
-K8S_POD_INFO = "prometheus_remote_write_kube_pod_info"
-K8S_POD_CONTAINER_RESOURCE_LIMITS = "prometheus_remote_write_kube_pod_container_resource_limits"
-K8S_POD_CONTAINER_RESOURCE_REQUESTS = "prometheus_remote_write_kube_pod_container_resource_requests"
-K8S_NODE_INFO = "prometheus_remote_write_kube_node_info"
-K8S_NODE_ROLE = "prometheus_remote_write_kube_node_role"
-K8S_NODE_STATUS_CAPACITY = "prometheus_remote_write_kube_node_status_capacity"
+K8S_WORKLOAD_REPLICASET = "prometheus_kube_replicaset_created"
+K8S_WORKLOAD_REPLICASET_OWNER = "prometheus_kube_replicaset_owner"
+K8S_POD_INFO = "prometheus_kube_pod_info"
+K8S_POD_CONTAINER_RESOURCE_LIMITS = "prometheus_kube_pod_container_resource_limits"
+K8S_POD_CONTAINER_RESOURCE_REQUESTS = "prometheus_kube_pod_container_resource_requests"
+K8S_NODE_INFO = "prometheus_kube_node_info"
+K8S_NODE_ROLE = "prometheus_kube_node_role"
+K8S_NODE_STATUS_CAPACITY = "prometheus_kube_node_status_capacity"
 
-K8S_STATEFULSET_REPLICAS = "prometheus_remote_write_kube_statefulset_replicas"
-K8S_REPLICASET_REPLICAS = "prometheus_remote_write_kube_replicaset_spec_replicas"
-K8S_DEPLOYMENT_REPLICAS = "prometheus_remote_write_kube_deployment_spec_replicas"
+K8S_STATEFULSET_REPLICAS = "prometheus_kube_statefulset_replicas"
+K8S_REPLICASET_REPLICAS = "prometheus_kube_replicaset_spec_replicas"
+K8S_DEPLOYMENT_REPLICAS = "prometheus_kube_deployment_spec_replicas"
 
-K8S_DEPLOYMENT_ANNOTATIONS = "prometheus_remote_write_kube_deployment_annotations"
-K8S_DAEMONSET_ANNOTATIONS = "prometheus_remote_write_kube_daemonset_annotations"
-K8S_STATEFULSET_ANNOTATIONS = "prometheus_remote_write_kube_statefulset_annotations"
-K8S_JOB_ANNOTATIONS = "prometheus_remote_write_kube_job_annotations"
-K8S_CRONJOB_ANNOTATIONS = "prometheus_remote_write_kube_cronjob_annotations"
-K8S_REPLICASET_ANNOTATIONS = "prometheus_remote_write_kube_replicaset_annotations"
+K8S_DEPLOYMENT_ANNOTATIONS = "prometheus_kube_deployment_annotations"
+K8S_DAEMONSET_ANNOTATIONS = "prometheus_kube_daemonset_annotations"
+K8S_STATEFULSET_ANNOTATIONS = "prometheus_kube_statefulset_annotations"
+K8S_JOB_ANNOTATIONS = "prometheus_kube_job_annotations"
+K8S_CRONJOB_ANNOTATIONS = "prometheus_kube_cronjob_annotations"
+K8S_REPLICASET_ANNOTATIONS = "prometheus_kube_replicaset_annotations"
 
 REPLICAS_METRICS = {K8S_STATEFULSET_REPLICAS, K8S_REPLICASET_REPLICAS, K8S_DEPLOYMENT_REPLICAS}
 # workload 注解
@@ -30,13 +30,13 @@ ANNOTATIONS_METRICS = [
 ]
 
 COLLECTION_METRICS = {
-    "namespace": ["prometheus_remote_write_kube_namespace_labels"],
+    "namespace": ["prometheus_kube_namespace_labels"],
     "workload": [
-        "prometheus_remote_write_kube_deployment_created",
-        "prometheus_remote_write_kube_daemonset_created",
-        "prometheus_remote_write_kube_statefulset_created",
-        "prometheus_remote_write_kube_job_info",
-        "prometheus_remote_write_kube_cronjob_info",  # 未获取cronjob信息的指标
+        "prometheus_kube_deployment_created",
+        "prometheus_kube_daemonset_created",
+        "prometheus_kube_statefulset_created",
+        "prometheus_kube_job_info",
+        "prometheus_kube_cronjob_info",  # 未获取cronjob信息的指标
         K8S_WORKLOAD_REPLICASET,
         K8S_WORKLOAD_REPLICASET_OWNER,
         # replicas 数量
@@ -50,22 +50,22 @@ COLLECTION_METRICS = {
 COLLECTION_METRICS["workload"].extend(ANNOTATIONS_METRICS)
 
 WORKLOAD_TYPE_DICT = {
-    "prometheus_remote_write_kube_deployment_created": "deployment",
-    "prometheus_remote_write_kube_daemonset_created": "daemonset",
-    "prometheus_remote_write_kube_statefulset_created": "statefulset",
-    "prometheus_remote_write_kube_job_info": "job",
-    "prometheus_remote_write_kube_cronjob_info": "cronjob",
-    "prometheus_remote_write_kube_replicaset_created": "replicaset",
+    "prometheus_kube_deployment_created": "deployment",
+    "prometheus_kube_daemonset_created": "daemonset",
+    "prometheus_kube_statefulset_created": "statefulset",
+    "prometheus_kube_job_info": "job",
+    "prometheus_kube_cronjob_info": "cronjob",
+    "prometheus_kube_replicaset_created": "replicaset",
 }
 
 # workload name dict
 WORKLOAD_NAME_DICT = {
-    "prometheus_remote_write_kube_deployment_created": "deployment",
-    "prometheus_remote_write_kube_daemonset_created": "daemonset",
-    "prometheus_remote_write_kube_statefulset_created": "statefulset",
-    "prometheus_remote_write_kube_job_info": "job_name",
-    "prometheus_remote_write_kube_cronjob_info": "cronjob",
-    "prometheus_remote_write_kube_replicaset_created": "replicaset",
+    "prometheus_kube_deployment_created": "deployment",
+    "prometheus_kube_daemonset_created": "daemonset",
+    "prometheus_kube_statefulset_created": "statefulset",
+    "prometheus_kube_job_info": "job_name",
+    "prometheus_kube_cronjob_info": "cronjob",
+    "prometheus_kube_replicaset_created": "replicaset",
 }
 # 统计副本数量的对象
 REPLICAS_KEY = {"deployment", "replicaset", "statefulset"}
