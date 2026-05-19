@@ -167,6 +167,7 @@ export const useMonitorConfig = () => {
       DataStorage: dataStorageConfig,
       ESXI: esxiConfig,
       VM: vmConfig,
+      Dameng: dmConfig,
       DM: dmConfig,
       DB2: db2Config,
       GreenPlum: greenPlumConfig,
