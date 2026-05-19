@@ -581,6 +581,7 @@ def node_list(query_data: dict):
     is_manual = query_data.get("is_manual")
     is_container = query_data.get("is_container")
     permission_data = query_data.get("permission_data", {})
+    skip_permission = query_data.get("skip_permission", False)
     return NodeService.get_node_list(
         organization_ids,
         cloud_region_id,
@@ -593,6 +594,7 @@ def node_list(query_data: dict):
         is_manual,
         is_container,
         permission_data,
+        skip_permission,
     )
 
 
