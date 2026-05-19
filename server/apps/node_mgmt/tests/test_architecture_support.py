@@ -208,11 +208,15 @@ def test_authorize_node_ids_requires_operate_permission(monkeypatch):
 
 def test_authorize_target_organizations_allows_in_scope_team_org(monkeypatch):
     node = _FakeNode(organizations=[2])
-    monkeypatch.setattr(
-        node_permission,
-        "get_node_permission",
-        lambda request: {"instance": [{"id": node.id, "permission": ["Operate"]}], "team": [2]},
-    )
+
+    class _ScopedSystemMgmt:
+        def __init__(self, is_local_client=True):
+            pass
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            return {"data": [2]}
+
+    monkeypatch.setattr(node_permission, "SystemMgmt", _ScopedSystemMgmt)
 
     response = node_permission.authorize_target_organizations(_make_node_request(), node, [2])
 
@@ -221,11 +225,15 @@ def test_authorize_target_organizations_allows_in_scope_team_org(monkeypatch):
 
 def test_authorize_target_organizations_rejects_new_out_of_scope_org(monkeypatch):
     node = _FakeNode(organizations=[2])
-    monkeypatch.setattr(
-        node_permission,
-        "get_node_permission",
-        lambda request: {"instance": [{"id": node.id, "permission": ["Operate"]}], "team": []},
-    )
+
+    class _ScopedSystemMgmt:
+        def __init__(self, is_local_client=True):
+            pass
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            return {"data": [2]}
+
+    monkeypatch.setattr(node_permission, "SystemMgmt", _ScopedSystemMgmt)
 
     response = node_permission.authorize_target_organizations(_make_node_request(), node, [2, 3])
 
@@ -234,11 +242,15 @@ def test_authorize_target_organizations_rejects_new_out_of_scope_org(monkeypatch
 
 def test_authorize_target_organizations_rejects_existing_org_outside_team_scope(monkeypatch):
     node = _FakeNode(organizations=[2])
-    monkeypatch.setattr(
-        node_permission,
-        "get_node_permission",
-        lambda request: {"instance": [{"id": node.id, "permission": ["Operate"]}], "team": []},
-    )
+
+    class _ScopedSystemMgmt:
+        def __init__(self, is_local_client=True):
+            pass
+
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            return {"data": []}
+
+    monkeypatch.setattr(node_permission, "SystemMgmt", _ScopedSystemMgmt)
 
     response = node_permission.authorize_target_organizations(_make_node_request(), node, [2])
 

@@ -34,6 +34,7 @@ from apps.node_mgmt.utils.installer import (
     unzip_file,
 )
 from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.step_tracker import (
     advance_step,
