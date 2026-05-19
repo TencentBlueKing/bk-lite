@@ -45,9 +45,9 @@ const LOGO_COLORS: Record<string, string> = {
   restful: '#5b8def',
   nats: '#27aae1',
   k8s: '#326ce5',
-  snmp_trap: '#c10d0c',
+  snmp_trap: '#2b3040',
   prometheus: '#e6522c',
-  zabbix: '#d40000',
+  zabbix: '#2b3040',
 };
 
 export function getLogoColor(sourceId: string): string {
