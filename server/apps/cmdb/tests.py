@@ -489,6 +489,51 @@ def test_build_region_query_credential_uses_authorized_task_lookup():
     mock_get_params_class.assert_called_once_with("qcloud", "qcloud")
 
 
+def test_aliyun_account_protocol_model_plugin_name_falls_back_to_normalized_model_id():
+    from apps.cmdb.node_configs.cloud.aliyun import AliyunNodeParams
+
+    instance = SimpleNamespace(
+        model_id="aliyun_account",
+        driver_type="protocol",
+        decrypt_credentials={},
+        params={},
+        timeout=60,
+    )
+
+    node = AliyunNodeParams(instance)
+
+    assert node.model_plugin_name == "aliyun_info"
+
+
+def test_aliyun_node_params_uses_secret_field_names_for_stargazer():
+    from apps.cmdb.node_configs.cloud.aliyun import AliyunNodeParams
+
+    instance = SimpleNamespace(
+        id=281,
+        model_id="aliyun_account",
+        driver_type="protocol",
+        decrypt_credentials={
+            "accessKey": "ak",
+            "accessSecret": "sk",
+            "regions": {"resource_id": "cn-guangzhou"},
+        },
+        params={},
+        timeout=300,
+    )
+
+    node = AliyunNodeParams(instance)
+
+    assert node.set_credential() == {
+        "secret_id": "${PASSWORD_secret_id_cmdb_281}",
+        "secret_key": "${PASSWORD_secret_key_cmdb_281}",
+        "region_id": "cn-guangzhou",
+    }
+    assert node.env_config() == {
+        "PASSWORD_secret_id_cmdb_281": "ak",
+        "PASSWORD_secret_key_cmdb_281": "sk",
+    }
+
+
 def test_collect_model_viewset_hides_system_tasks_from_default_list_queries():
     from apps.cmdb.views.collect import CollectModelViewSet
     from apps.core.utils.viewset_utils import AuthViewSet
