@@ -21,3 +21,12 @@
 .userInfo :global(.sub-layout_sideMenuLayout__LStLh .sub-layout_sectionContext__6mM_M) {
   overflow: hidden;
 }
+
+.batchOperationMenuCentered :global(.ant-dropdown-menu-item .ant-dropdown-menu-title-content) {
+  justify-content: center;
+}
+
+.batchOperationMenuCentered :global(.ant-dropdown-menu-item .ant-dropdown-menu-title-content > span button) {
+  justify-content: center;
+  text-align: center;
+}

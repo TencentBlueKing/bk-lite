@@ -1025,6 +1025,8 @@ def login(username, password):
     user.account_locked_until = None
     user.save()
 
+    is_admin_account = user.username == "admin"
+
     # 检查密码过期
     password_expiry_reminder = ""
     if user.password_last_modified:
@@ -1042,13 +1044,18 @@ def login(username, password):
 
             # 密码已过期，阻止登录
             if days_until_expire <= 0:
-                return {
-                    "result": False,
-                    "message": loader.get(
-                        "login.password_expired_contact_admin",
-                        "Your password has expired. Please contact the administrator to reset your password.",
-                    ),
-                }
+                if is_admin_account:
+                    if not user.temporary_pwd:
+                        user.temporary_pwd = True
+                        user.save()
+                else:
+                    return {
+                        "result": False,
+                        "message": loader.get(
+                            "login.password_expired_contact_admin",
+                            "Your password has expired. Please contact the administrator to reset your password.",
+                        ),
+                    }
 
             # 密码快过期，生成提醒消息
             if days_until_expire <= reminder_days:

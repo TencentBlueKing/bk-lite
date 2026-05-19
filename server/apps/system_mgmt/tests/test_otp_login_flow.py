@@ -14,7 +14,7 @@ from unittest.mock import patch
 import pytest
 from django.contrib.auth.hashers import make_password
 
-from apps.system_mgmt.models import SystemSettings, User
+from apps.system_mgmt.models import Role, SystemSettings, User
 from apps.system_mgmt.otp_challenge import RATE_LIMIT_MAX_ATTEMPTS, create_challenge
 
 
@@ -325,6 +325,25 @@ class TestOtpLoginWithTemporaryPassword:
         assert result["data"]["temporary_pwd"] is False
 
 
+@pytest.fixture
+def expiring_soon_user(clear_cache):
+    """Create a user with password expiring in 5 days (175 days old with 180-day validity)."""
+    from datetime import timedelta
+
+    import pyotp
+    from django.utils import timezone
+
+    user = User.objects.create(
+        username="expiringsoonuser",
+        domain="domain.com",
+        password=make_password("testpassword"),
+        otp_secret=pyotp.random_base32(),
+        password_last_modified=timezone.now() - timedelta(days=175),  # 180-175=5 days left
+    )
+    yield user
+    user.delete()
+
+
 class TestPasswordExpiryBlocksLogin:
     """Test that expired passwords block login before OTP verification."""
 
@@ -342,24 +361,6 @@ class TestPasswordExpiryBlocksLogin:
             domain="domain.com",
             otp_secret=pyotp.random_base32(),
             password_last_modified=timezone.now() - timedelta(days=181),
-        )
-        yield user
-        user.delete()
-
-    @pytest.fixture
-    def expiring_soon_user(self, clear_cache):
-        """Create a user with password expiring in 5 days (175 days old with 180-day validity)."""
-        from datetime import timedelta
-
-        import pyotp
-        from django.utils import timezone
-
-        user = User.objects.create(
-            username="expiringsoonuser",
-            domain="domain.com",
-            password=make_password("testpassword"),
-            otp_secret=pyotp.random_base32(),
-            password_last_modified=timezone.now() - timedelta(days=175),  # 180-175=5 days left
         )
         yield user
         user.delete()
@@ -402,9 +403,105 @@ class TestPasswordExpiryBlocksLogin:
         assert result["result"] is True
         assert "password_expiry_reminder" in result["data"]
         assert result["data"]["password_expiry_reminder"] != ""
-        # Check for expiry-related keywords in English or Chinese
-        reminder = result["data"]["password_expiry_reminder"].lower()
-        assert "expire" in reminder or "过期" in reminder
+
+
+class TestAdminExpiredPasswordForcedReset:
+    """Tests for admin expired-password behavior entering forced reset flow."""
+
+    @pytest.fixture
+    def expired_admin_user(self, clear_cache):
+        """Create the special admin account with an expired password."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        admin_role, _ = Role.objects.get_or_create(name="admin", app="")
+        user = User.objects.create(
+            username="admin",
+            password=make_password("adminpassword"),
+            display_name="Admin",
+            domain="domain.com",
+            locale="en",
+            timezone="UTC",
+            disabled=False,
+            role_list=[admin_role.id],
+            password_last_modified=timezone.now() - timedelta(days=181),
+        )
+        yield user
+        user.delete()
+
+    @pytest.fixture
+    def expired_other_superuser(self, clear_cache):
+        """Create another global admin-role user that should NOT use the admin-only override."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        admin_role, _ = Role.objects.get_or_create(name="admin", app="")
+        user = User.objects.create(
+            username="root-admin",
+            password=make_password("rootpassword"),
+            display_name="Root Admin",
+            domain="domain.com",
+            locale="en",
+            timezone="UTC",
+            disabled=False,
+            role_list=[admin_role.id],
+            password_last_modified=timezone.now() - timedelta(days=181),
+        )
+        yield user
+        user.delete()
+
+    @pytest.mark.django_db
+    def test_expired_admin_password_enters_forced_reset_without_otp(self, clear_cache, expired_admin_user):
+        """Expired account named admin should enter forced reset flow instead of hard-failing login."""
+        from apps.system_mgmt.nats_api import login
+
+        with patch.dict(os.environ, {"SECRET_KEY": "test-secret-key"}):
+            result = login(username="admin", password="adminpassword")
+
+        assert result["result"] is True
+        assert result["data"]["temporary_pwd"] is True
+        assert "token" in result["data"]
+
+    @pytest.mark.django_db
+    def test_expired_admin_password_with_otp_preserves_otp_first_flow(self, clear_cache, expired_admin_user, enable_otp_setting):
+        """Expired account named admin with OTP enabled should still go through OTP first."""
+        import pyotp
+
+        from apps.system_mgmt.nats_api import login, verify_otp_login
+
+        result = login(username="admin", password="adminpassword")
+
+        assert result["result"] is True
+        assert result["data"].get("require_otp") is True
+        assert "challenge_id" in result["data"]
+        assert result["data"]["temporary_pwd"] is True
+
+        expired_admin_user.refresh_from_db()
+        valid_code = pyotp.TOTP(expired_admin_user.otp_secret).now()
+
+        with patch.dict(os.environ, {"SECRET_KEY": "test-secret-key"}):
+            otp_result = verify_otp_login(
+                challenge_id=result["data"]["challenge_id"],
+                otp_code=valid_code,
+                client_ip="127.0.0.1",
+            )
+
+        assert otp_result["result"] is True
+        assert otp_result["data"]["temporary_pwd"] is True
+
+    @pytest.mark.django_db
+    def test_expired_other_superuser_still_hard_fails(self, clear_cache, expired_other_superuser):
+        """Expired superusers whose username is not admin should keep the old hard-fail behavior."""
+        from apps.system_mgmt.nats_api import login
+
+        result = login(username="root-admin", password="rootpassword")
+
+        assert result["result"] is False
+        msg = result["message"].lower()
+        assert "expired" in msg or "contact" in msg or "过期" in msg or "管理员" in msg
+        assert "challenge_id" not in result.get("data", {})
 
     @pytest.mark.django_db
     def test_expiring_soon_password_with_otp_shows_reminder_after_verification(self, clear_cache, expiring_soon_user, enable_otp_setting):

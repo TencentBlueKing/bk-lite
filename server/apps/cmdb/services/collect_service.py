@@ -504,8 +504,8 @@ class CollectModelService(object):
 
     @classmethod
     def list_regions(cls, credential, cloud_name):
-        if settings.DEBUG:
-            cloud_name = f"{cloud_name}_local"
+        # if settings.DEBUG:
+        #     cloud_name = f"{cloud_name}_local"
         instance_id = f"{cloud_name}_stargazer"
         stargazer = Stargazer(instance_id=instance_id)
         result = stargazer.list_regions(credential)

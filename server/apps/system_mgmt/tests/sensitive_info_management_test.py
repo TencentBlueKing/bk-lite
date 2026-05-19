@@ -1,7 +1,9 @@
 import importlib
 import json
+import os
 import types
 from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth.hashers import make_password
@@ -10,9 +12,9 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.system_mgmt.models import Channel, OperationLog, SensitiveInfoAuthorization, SystemSettings, User
+from apps.system_mgmt.models import Channel, Group, OperationLog, SensitiveInfoAuthorization, SystemSettings, User
 from apps.system_mgmt.models.channel import ChannelChoices
-from apps.system_mgmt.nats_api import get_all_users
+from apps.system_mgmt.nats_api import get_all_users, login
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
 from apps.system_mgmt.tasks import check_password_expiry_and_notify
 
@@ -511,3 +513,254 @@ def test_check_password_expiry_and_notify_keeps_raw_email_recipients_when_protec
     args = send_email_mock.call_args.args
     assert args[2] == [expired_user.email]
     assert args[3] == "密码已过期提醒"
+
+
+@pytest.mark.django_db
+def test_user_serializer_exposes_derived_status_with_priority_order():
+    SystemSettings.objects.update_or_create(
+        key="pwd_set_validity_period",
+        defaults={"value": "180"},
+    )
+
+    now = timezone.now()
+    users = [
+        User(
+            username="disabled-user",
+            display_name="禁用用户",
+            email="disabled@example.com",
+            phone="13800010001",
+            password="hashed-password",
+            locale="zh-Hans",
+            disabled=True,
+            account_locked_until=now + timedelta(minutes=30),
+            password_last_modified=now - timedelta(days=400),
+        ),
+        User(
+            username="locked-user",
+            display_name="锁定用户",
+            email="locked@example.com",
+            phone="13800010002",
+            password="hashed-password",
+            locale="zh-Hans",
+            disabled=False,
+            account_locked_until=now + timedelta(minutes=30),
+            password_last_modified=now - timedelta(days=400),
+        ),
+        User(
+            username="expired-user",
+            display_name="过期用户",
+            email="expired@example.com",
+            phone="13800010003",
+            password="hashed-password",
+            locale="zh-Hans",
+            disabled=False,
+            account_locked_until=None,
+            password_last_modified=now - timedelta(days=400),
+        ),
+        User(
+            username="normal-user",
+            display_name="正常用户",
+            email="normal@example.com",
+            phone="13800010004",
+            password="hashed-password",
+            locale="zh-Hans",
+            disabled=False,
+            account_locked_until=None,
+            password_last_modified=now - timedelta(days=10),
+        ),
+    ]
+
+    serializer = UserSerializer(users, many=True)
+    statuses = {item["username"]: item["status"] for item in serializer.data}
+
+    assert statuses == {
+        "disabled-user": "disabled",
+        "locked-user": "locked",
+        "expired-user": "password_expired",
+        "normal-user": "normal",
+    }
+
+
+@pytest.mark.django_db
+def test_user_serializer_treats_missing_password_time_and_non_positive_validity_as_not_expired():
+    SystemSettings.objects.update_or_create(
+        key="pwd_set_validity_period",
+        defaults={"value": "0"},
+    )
+
+    now = timezone.now()
+    users = [
+        User(
+            username="permanent-user",
+            display_name="永久有效用户",
+            email="permanent@example.com",
+            phone="13800010005",
+            password="hashed-password",
+            locale="zh-Hans",
+            disabled=False,
+            account_locked_until=None,
+            password_last_modified=now - timedelta(days=400),
+        ),
+        User(
+            username="missing-password-time-user",
+            display_name="缺少密码时间用户",
+            email="missing@example.com",
+            phone="13800010006",
+            password="hashed-password",
+            locale="zh-Hans",
+            disabled=False,
+            account_locked_until=None,
+            password_last_modified=None,
+        ),
+    ]
+
+    serializer = UserSerializer(users, many=True)
+    statuses = {item["username"]: item["status"] for item in serializer.data}
+
+    assert statuses == {
+        "permanent-user": "normal",
+        "missing-password-time-user": "normal",
+    }
+
+
+@pytest.mark.django_db
+def test_user_viewset_change_status_returns_partial_success_for_mixed_targets():
+    from apps.system_mgmt.viewset.user_viewset import UserViewSet
+
+    editable_group = Group.objects.create(name="group-for-change-status")
+    enabled_user = User.objects.create(
+        username="enabled-user",
+        display_name="启用用户",
+        email="enabled-status@example.com",
+        phone="13800010007",
+        password=make_password("password123"),
+        locale="zh-Hans",
+        group_list=[editable_group.id],
+        disabled=False,
+    )
+    disabled_user = User.objects.create(
+        username="disabled-target-user",
+        display_name="禁用目标用户",
+        email="disabled-target@example.com",
+        phone="13800010008",
+        password=make_password("password123"),
+        locale="zh-Hans",
+        group_list=[editable_group.id],
+        disabled=True,
+    )
+
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "change_status"})
+    save_calls = []
+    original_save = User.save
+
+    def traced_save(self, *args, **kwargs):
+        save_calls.append({"id": self.id, "update_fields": kwargs.get("update_fields")})
+        return original_save(self, *args, **kwargs)
+
+    request = factory.post(
+        "/system_mgmt/api/user/change_status/",
+        {"user_ids": [enabled_user.id, disabled_user.id], "action": "enable"},
+        format="json",
+    )
+    force_authenticate(
+        request,
+        user=_build_authenticated_request_user(
+            username="status-editor",
+            permission={"system-manager": {"user_group-Edit User"}},
+            group_list=[{"id": editable_group.id, "name": editable_group.name}],
+            is_superuser=False,
+        ),
+    )
+
+    with patch.object(User, "save", new=traced_save):
+        response = view(request)
+    payload = json.loads(response.content)
+    enabled_user.refresh_from_db()
+    disabled_user.refresh_from_db()
+
+    assert response.status_code == 200
+    assert payload["result"] is True
+    assert payload["data"]["action"] == "enable"
+    assert payload["data"]["total"] == 2
+    assert payload["data"]["success_ids"] == [disabled_user.id]
+    assert payload["data"]["skipped"] == [{"id": enabled_user.id, "reason": "user_not_disabled"}]
+    assert enabled_user.disabled is False
+    assert disabled_user.disabled is False
+    assert save_calls == [{"id": disabled_user.id, "update_fields": ["disabled"]}]
+
+
+@pytest.mark.django_db
+def test_user_viewset_change_status_unlock_clears_lock_state_only_for_locked_users():
+    from apps.system_mgmt.viewset.user_viewset import UserViewSet
+
+    editable_group = Group.objects.create(name="group-for-unlock-status")
+    now = timezone.now()
+    locked_user = User.objects.create(
+        username="locked-target-user",
+        display_name="锁定目标用户",
+        email="locked-target@example.com",
+        phone="13800010009",
+        password=make_password("password123"),
+        locale="zh-Hans",
+        group_list=[editable_group.id],
+        account_locked_until=now + timedelta(minutes=30),
+        password_error_count=3,
+    )
+    normal_user = User.objects.create(
+        username="normal-target-user",
+        display_name="正常目标用户",
+        email="normal-target@example.com",
+        phone="13800010010",
+        password=make_password("password123"),
+        locale="zh-Hans",
+        group_list=[editable_group.id],
+        account_locked_until=None,
+        password_error_count=1,
+    )
+
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "change_status"})
+    save_calls = []
+    original_save = User.save
+
+    def traced_save(self, *args, **kwargs):
+        save_calls.append({"id": self.id, "update_fields": kwargs.get("update_fields")})
+        return original_save(self, *args, **kwargs)
+
+    request = factory.post(
+        "/system_mgmt/api/user/change_status/",
+        {"user_ids": [locked_user.id, normal_user.id], "action": "unlock"},
+        format="json",
+    )
+    force_authenticate(
+        request,
+        user=_build_authenticated_request_user(
+            username="status-unlocker",
+            permission={"system-manager": {"user_group-Edit User"}},
+            group_list=[{"id": editable_group.id, "name": editable_group.name}],
+            is_superuser=False,
+        ),
+    )
+
+    with patch.object(User, "save", new=traced_save):
+        response = view(request)
+    payload = json.loads(response.content)
+    locked_user.refresh_from_db()
+    normal_user.refresh_from_db()
+
+    assert response.status_code == 200
+    assert payload["result"] is True
+    assert payload["data"]["action"] == "unlock"
+    assert payload["data"]["success_ids"] == [locked_user.id]
+    assert payload["data"]["skipped"] == [{"id": normal_user.id, "reason": "user_not_locked"}]
+    assert locked_user.account_locked_until is None
+    assert locked_user.password_error_count == 0
+    assert normal_user.account_locked_until is None
+    assert normal_user.password_error_count == 1
+    assert save_calls == [
+        {
+            "id": locked_user.id,
+            "update_fields": ["account_locked_until", "password_error_count"],
+        }
+    ]

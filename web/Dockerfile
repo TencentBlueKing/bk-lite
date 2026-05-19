@@ -18,7 +18,7 @@ RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
   echo "Using default npm registry"; \
   fi
 
-RUN npm install -g pnpm@9
+RUN npm install -g pnpm@9.15.4
 
 # 如果提供了 NEXUS_NODEJS_REPOSITY，则切换 pnpm 源
 RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
@@ -38,7 +38,7 @@ RUN pnpm install
 RUN pnpm run build
 
 FROM node:24-alpine
-RUN npm install -g pnpm@9
+RUN npm install -g pnpm@9.15.4
 
 # 在生产环境也设置内存限制
 ENV NODE_OPTIONS="--max-old-space-size=2048"
