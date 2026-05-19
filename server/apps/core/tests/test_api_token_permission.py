@@ -1,0 +1,478 @@
+"""
+API Token 权限填充和权限检查的单元测试
+
+测试覆盖：
+- APISecretAuthBackend._get_user_all_roles: 直接角色、组织角色、继承角色
+- APISecretAuthBackend._populate_user_permissions: 普通用户、超级用户
+- HasRole 装饰器: API Token 请求的权限检查
+- HasPermission 装饰器: API Token 请求的权限检查
+- 缓存命中和缓存未命中
+"""
+
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from apps.core.backends import APISecretAuthBackend
+from apps.core.decorators.api_permission import HasPermission, HasRole
+from apps.core.utils.web_utils import WebUtils
+
+
+class MockUser:
+    """模拟用户对象"""
+
+    def __init__(self, username="testuser", domain="domain.com", group_list=None, role_list=None):
+        self.username = username
+        self.domain = domain
+        self.group_list = group_list or []
+        self.role_list = role_list or []
+        self.roles = []
+        self.permission = {}
+        self.is_superuser = False
+        self.role_ids = []
+        self.locale = "en"
+
+
+class MockGroup:
+    """模拟组织对象"""
+
+    def __init__(self, id, parent_id=None, allow_inherit_roles=True, role_ids=None):
+        self.id = id
+        self.parent_id = parent_id
+        self.allow_inherit_roles = allow_inherit_roles
+        self._role_ids = role_ids or []
+
+    def roles_all(self):
+        return [MockRole(rid) for rid in self._role_ids]
+
+
+class MockRole:
+    """模拟角色对象"""
+
+    def __init__(self, id, app="", name="role"):
+        self.id = id
+        self.app = app
+        self.name = name
+        self.menu_list = []
+
+
+class MockGroupWithRoles:
+    """带 roles 关系的模拟组织"""
+
+    def __init__(self, id, parent_id=None, allow_inherit_roles=True, roles=None):
+        self.id = id
+        self.parent_id = parent_id
+        self.allow_inherit_roles = allow_inherit_roles
+        self._roles = roles or []
+
+    @property
+    def roles(self):
+        return SimpleNamespace(all=lambda: self._roles)
+
+
+# ============================================================================
+# APISecretAuthBackend._get_user_all_roles 测试
+# ============================================================================
+
+
+@pytest.mark.django_db
+class TestGetUserAllRoles:
+    """测试 _get_user_all_roles 方法"""
+
+    def test_user_direct_roles_only(self):
+        """测试用户只有直接授权的角色"""
+        backend = APISecretAuthBackend()
+        user = MockUser(role_list=[1, 2, 3], group_list=[])
+
+        with patch("apps.system_mgmt.models.Group") as MockGroupModel:
+            MockGroupModel.objects.prefetch_related.return_value.all.return_value = []
+            result = backend._get_user_all_roles(user)
+
+        assert result == {1, 2, 3}
+
+    def test_user_group_roles(self):
+        """测试用户通过组织获得的角色"""
+        backend = APISecretAuthBackend()
+        user = MockUser(role_list=[], group_list=[10])
+
+        group = MockGroupWithRoles(id=10, roles=[MockRole(100), MockRole(101)])
+
+        with patch("apps.system_mgmt.models.Group") as MockGroupModel:
+            MockGroupModel.objects.prefetch_related.return_value.all.return_value = [group]
+            result = backend._get_user_all_roles(user)
+
+        assert result == {100, 101}
+
+    def test_user_combined_roles(self):
+        """测试用户直接角色和组织角色的合并"""
+        backend = APISecretAuthBackend()
+        user = MockUser(role_list=[1, 2], group_list=[10])
+
+        group = MockGroupWithRoles(id=10, roles=[MockRole(100)])
+
+        with patch("apps.system_mgmt.models.Group") as MockGroupModel:
+            MockGroupModel.objects.prefetch_related.return_value.all.return_value = [group]
+            result = backend._get_user_all_roles(user)
+
+        assert result == {1, 2, 100}
+
+    def test_role_inheritance_chain(self):
+        """测试角色继承链"""
+        backend = APISecretAuthBackend()
+        user = MockUser(role_list=[], group_list=[10])
+
+        # 组织结构: 10 -> 20 -> 30 (parent)
+        group10 = MockGroupWithRoles(id=10, parent_id=20, allow_inherit_roles=True, roles=[MockRole(100)])
+        group20 = MockGroupWithRoles(id=20, parent_id=30, allow_inherit_roles=True, roles=[MockRole(200)])
+        group30 = MockGroupWithRoles(id=30, parent_id=None, allow_inherit_roles=True, roles=[MockRole(300)])
+
+        with patch("apps.system_mgmt.models.Group") as MockGroupModel:
+            MockGroupModel.objects.prefetch_related.return_value.all.return_value = [group10, group20, group30]
+            result = backend._get_user_all_roles(user)
+
+        # 应该收集所有继承链上的角色
+        assert result == {100, 200, 300}
+
+    def test_inheritance_stops_when_disabled(self):
+        """测试继承在父级 allow_inherit_roles=False 时停止"""
+        backend = APISecretAuthBackend()
+        user = MockUser(role_list=[], group_list=[10])
+
+        # 组织结构: 10 -> 20 (allow_inherit_roles=False) -> 30
+        # 当父级 allow_inherit_roles=False 时，不继承父级角色
+        group10 = MockGroupWithRoles(id=10, parent_id=20, allow_inherit_roles=True, roles=[MockRole(100)])
+        group20 = MockGroupWithRoles(id=20, parent_id=30, allow_inherit_roles=False, roles=[MockRole(200)])
+        group30 = MockGroupWithRoles(id=30, parent_id=None, allow_inherit_roles=True, roles=[MockRole(300)])
+
+        with patch("apps.system_mgmt.models.Group") as MockGroupModel:
+            MockGroupModel.objects.prefetch_related.return_value.all.return_value = [group10, group20, group30]
+            result = backend._get_user_all_roles(user)
+
+        # 继承在 group20 停止（因为 group20.allow_inherit_roles=False），
+        # 所以只收集 group10 的角色，不收集 group20 和 group30 的角色
+        assert result == {100}
+
+    def test_group_list_with_dict_format(self):
+        """测试 group_list 为 [{"id": 1}] 格式"""
+        backend = APISecretAuthBackend()
+        user = MockUser(role_list=[], group_list=[{"id": 10}])
+
+        group = MockGroupWithRoles(id=10, roles=[MockRole(100)])
+
+        with patch("apps.system_mgmt.models.Group") as MockGroupModel:
+            MockGroupModel.objects.prefetch_related.return_value.all.return_value = [group]
+            result = backend._get_user_all_roles(user)
+
+        assert result == {100}
+
+
+# ============================================================================
+# APISecretAuthBackend._populate_user_permissions 测试
+# ============================================================================
+
+
+@pytest.mark.django_db
+class TestPopulateUserPermissions:
+    """测试 _populate_user_permissions 方法"""
+
+    def test_superuser_detection(self):
+        """测试超级用户检测"""
+        backend = APISecretAuthBackend()
+        user = MockUser(username="admin", group_list=[1])
+
+        with patch.object(backend, "_get_user_all_roles", return_value={1}):
+            with patch("apps.system_mgmt.models.Role") as MockRoleModel:
+                mock_role = MagicMock()
+                mock_role.app = ""
+                mock_role.name = "admin"
+                mock_role.menu_list = []
+
+                mock_queryset = MagicMock()
+                mock_queryset.__iter__ = lambda self: iter([mock_role])
+                mock_queryset.values_list.return_value = [[]]
+                MockRoleModel.objects.filter.return_value = mock_queryset
+
+                backend._populate_user_permissions(user, 1)
+
+        assert user.is_superuser is True
+
+    def test_system_manager_admin_is_superuser(self):
+        """测试 system-manager--admin 角色被识别为超级用户"""
+        backend = APISecretAuthBackend()
+        user = MockUser(username="sysadmin", group_list=[1])
+
+        with patch.object(backend, "_get_user_all_roles", return_value={1}):
+            with patch("apps.system_mgmt.models.Role") as MockRoleModel:
+                mock_role = MagicMock()
+                mock_role.app = "system-manager"
+                mock_role.name = "admin"
+                mock_role.menu_list = []
+
+                mock_queryset = MagicMock()
+                mock_queryset.__iter__ = lambda self: iter([mock_role])
+                mock_queryset.values_list.return_value = [[]]
+                MockRoleModel.objects.filter.return_value = mock_queryset
+
+                backend._populate_user_permissions(user, 1)
+
+        assert user.is_superuser is True
+
+    def test_normal_user_permissions(self):
+        """测试普通用户权限填充"""
+        backend = APISecretAuthBackend()
+        user = MockUser(username="normaluser", group_list=[1])
+
+        with patch.object(backend, "_get_user_all_roles", return_value={1, 2}):
+            with patch("apps.system_mgmt.models.Role") as MockRoleModel:
+                mock_role1 = MagicMock()
+                mock_role1.app = "ops-analysis"
+                mock_role1.name = "viewer"
+                mock_role1.menu_list = [1, 2]
+
+                mock_role2 = MagicMock()
+                mock_role2.app = "system-manager"
+                mock_role2.name = "editor"
+                mock_role2.menu_list = [3]
+
+                mock_queryset = MagicMock()
+                mock_queryset.__iter__ = lambda self: iter([mock_role1, mock_role2])
+                mock_queryset.values_list.return_value = [[1, 2], [3]]
+                MockRoleModel.objects.filter.return_value = mock_queryset
+
+                with patch("apps.system_mgmt.models.Menu") as MockMenuModel:
+                    MockMenuModel.objects.filter.return_value.values_list.return_value = [
+                        ("ops-analysis", "view-View"),
+                        ("ops-analysis", "view-AddView"),
+                        ("system-manager", "user-View"),
+                    ]
+
+                    backend._populate_user_permissions(user, 1)
+
+        assert user.is_superuser is False
+        assert "ops-analysis--viewer" in user.roles
+        assert "system-manager--editor" in user.roles
+        assert "view-View" in user.permission.get("ops-analysis", set())
+
+    def test_cache_hit(self):
+        """测试缓存命中"""
+        backend = APISecretAuthBackend()
+        user = MockUser(username="cacheduser", domain="test.com", group_list=[1])
+
+        # Mock cache.get 返回缓存数据
+        cached_data = {
+            "roles": ["cached-role"],
+            "permission": {"app": ["perm1"]},
+            "is_superuser": True,
+            "role_ids": [999],
+        }
+
+        with patch("apps.core.backends.cache") as mock_cache:
+            mock_cache.get.return_value = cached_data
+
+            # 不应该调用数据库查询
+            with patch.object(backend, "_get_user_all_roles") as mock_get_roles:
+                backend._populate_user_permissions(user, 1)
+                mock_get_roles.assert_not_called()
+
+        assert user.roles == ["cached-role"]
+        assert user.is_superuser is True
+        assert user.role_ids == [999]
+
+    def test_cache_miss_then_set(self):
+        """测试缓存未命中后设置缓存"""
+        backend = APISecretAuthBackend()
+        user = MockUser(username="newuser", domain="test.com", group_list=[1])
+
+        with patch("apps.core.backends.cache") as mock_cache:
+            mock_cache.get.return_value = None  # 缓存未命中
+
+            with patch.object(backend, "_get_user_all_roles", return_value=set()):
+                with patch("apps.system_mgmt.models.Role") as MockRoleModel:
+                    mock_queryset = MagicMock()
+                    mock_queryset.__iter__ = lambda self: iter([])
+                    mock_queryset.values_list.return_value = []
+                    MockRoleModel.objects.filter.return_value = mock_queryset
+
+                    backend._populate_user_permissions(user, 1)
+
+            # 验证缓存已设置
+            mock_cache.set.assert_called_once()
+            call_args = mock_cache.set.call_args
+            assert "roles" in call_args[0][1]
+            assert "permission" in call_args[0][1]
+
+    def test_exception_handling(self):
+        """测试异常处理 - 设置空权限"""
+        backend = APISecretAuthBackend()
+        user = MockUser(username="erroruser", group_list=[1])
+
+        with patch.object(backend, "_get_user_all_roles", side_effect=Exception("DB Error")):
+            backend._populate_user_permissions(user, 1)
+
+        # 异常时应该设置空权限
+        assert user.roles == []
+        assert user.permission == {}
+        assert user.is_superuser is False
+        assert user.role_ids == []
+
+
+# ============================================================================
+# HasRole 装饰器测试
+# ============================================================================
+
+
+class TestHasRoleDecorator:
+    """测试 HasRole 装饰器"""
+
+    def _make_request(self, user, api_pass=False):
+        request = SimpleNamespace()
+        request.user = user
+        request.api_pass = api_pass
+        return request
+
+    def test_api_token_with_required_role(self):
+        """测试 API Token 请求有所需角色"""
+
+        @HasRole(["ops-analysis--admin"])
+        def protected_view(request):
+            return "success"
+
+        user = MockUser()
+        user.roles = ["ops-analysis--admin", "other-role"]
+        user.is_superuser = False
+        request = self._make_request(user, api_pass=True)
+
+        result = protected_view(request)
+        assert result == "success"
+
+    def test_api_token_without_required_role(self):
+        """测试 API Token 请求缺少所需角色"""
+
+        @HasRole(["ops-analysis--admin"])
+        def protected_view(request):
+            return "success"
+
+        user = MockUser()
+        user.roles = ["other-role"]
+        user.is_superuser = False
+        request = self._make_request(user, api_pass=True)
+
+        with patch.object(WebUtils, "response_403") as mock_403:
+            mock_403.return_value = "forbidden"
+            result = protected_view(request)
+
+        assert result == "forbidden"
+        mock_403.assert_called_once()
+
+    def test_api_token_superuser_bypass(self):
+        """测试 API Token 超级用户绕过角色检查"""
+
+        @HasRole(["ops-analysis--admin"])
+        def protected_view(request):
+            return "success"
+
+        user = MockUser()
+        user.roles = []  # 没有任何角色
+        user.is_superuser = True
+        request = self._make_request(user, api_pass=True)
+
+        result = protected_view(request)
+        assert result == "success"
+
+    def test_no_role_requirement(self):
+        """测试无角色要求的端点"""
+
+        @HasRole()
+        def open_view(request):
+            return "success"
+
+        user = MockUser()
+        user.roles = []
+        user.is_superuser = False
+        request = self._make_request(user, api_pass=True)
+
+        result = open_view(request)
+        assert result == "success"
+
+
+# ============================================================================
+# HasPermission 装饰器测试
+# ============================================================================
+
+
+class TestHasPermissionDecorator:
+    """测试 HasPermission 装饰器"""
+
+    def _make_request(self, user, api_pass=False):
+        request = SimpleNamespace()
+        request.user = user
+        request.api_pass = api_pass
+        return request
+
+    def test_api_token_with_required_permission(self):
+        """测试 API Token 请求有所需权限"""
+
+        @HasPermission("view-View", app_name="ops-analysis")
+        def protected_view(request):
+            return "success"
+
+        user = MockUser()
+        user.permission = {"ops-analysis": {"view-View", "view-AddView"}}
+        user.is_superuser = False
+        request = self._make_request(user, api_pass=True)
+
+        result = protected_view(request)
+        assert result == "success"
+
+    def test_api_token_without_required_permission(self):
+        """测试 API Token 请求缺少所需权限"""
+
+        @HasPermission("view-AddView", app_name="ops-analysis")
+        def protected_view(request):
+            return "success"
+
+        user = MockUser()
+        user.permission = {"ops-analysis": {"view-View"}}  # 只有 View，没有 AddView
+        user.is_superuser = False
+        request = self._make_request(user, api_pass=True)
+
+        with patch.object(WebUtils, "response_403") as mock_403:
+            mock_403.return_value = "forbidden"
+            result = protected_view(request)
+
+        assert result == "forbidden"
+        mock_403.assert_called_once()
+
+    def test_api_token_superuser_bypass(self):
+        """测试 API Token 超级用户绕过权限检查"""
+
+        @HasPermission("view-AddView", app_name="ops-analysis")
+        def protected_view(request):
+            return "success"
+
+        user = MockUser()
+        user.permission = {}  # 没有任何权限
+        user.is_superuser = True
+        request = self._make_request(user, api_pass=True)
+
+        result = protected_view(request)
+        assert result == "success"
+
+    def test_empty_permission_denied(self):
+        """测试空权限被拒绝"""
+
+        @HasPermission("view-View", app_name="ops-analysis")
+        def protected_view(request):
+            return "success"
+
+        user = MockUser()
+        user.permission = {}
+        user.is_superuser = False
+        request = self._make_request(user, api_pass=True)
+
+        with patch.object(WebUtils, "response_403") as mock_403:
+            mock_403.return_value = "forbidden"
+            result = protected_view(request)
+
+        assert result == "forbidden"
