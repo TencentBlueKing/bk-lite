@@ -9,7 +9,7 @@ const API_ENDPOINTS = {
 } as const;
 
 export const useDirectoryApi = () => {
-  const { get, post, put, del } = useApiClient();
+  const { get, post, patch, del } = useApiClient();
 
   const getDirectoryTree = async (params?: any) => {
     return get('/operation_analysis/api/directory/tree/', { params });
@@ -22,7 +22,7 @@ export const useDirectoryApi = () => {
 
   const updateItem = async (type: DirectoryType, id: number | string, data: any) => {
     const endpoint = API_ENDPOINTS[type as keyof typeof API_ENDPOINTS];
-    return put(`${endpoint}${id}/`, data);
+    return patch(`${endpoint}${id}/`, data);
   };
 
   const deleteItem = async (type: DirectoryType, id: number | string) => {
