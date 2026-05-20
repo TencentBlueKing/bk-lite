@@ -452,7 +452,7 @@ class ConfigFileService(object):
         if pending_count > 0:
             overall_status = "pending"
             exec_status = CollectRunStatusType.RUNNING
-            message = f"配置文件采集结果等待回传中 ({received_count}/{expected_total})"
+            message = f"配置文件采集已触发，等待回传中 ({received_count}/{expected_total})"
         elif error_count > 0:
             overall_status = "error"
             exec_status = CollectRunStatusType.ERROR
