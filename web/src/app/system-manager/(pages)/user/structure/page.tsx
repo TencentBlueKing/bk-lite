@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useCallback, useMemo } from 'react';
-import { Input, Button, Spin, Form } from 'antd';
+import { Input, Button, Spin, Form, Dropdown, Menu } from 'antd';
 import TopSection from '@/components/top-section';
 import UserModal, { ModalRef } from './userModal';
 import PasswordModal, { PasswordModalRef } from '@/app/system-manager/components/user/passwordModal';
@@ -17,14 +17,19 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import GroupTree from '@/app/system-manager/components/user/GroupTree';
 import { createUserTableColumns } from '@/app/system-manager/components/user/tableColumns';
 import { useTreeData, useUserTable, useGroupManagement } from '@/app/system-manager/hooks/useUserStructure';
+import usePermissions from '@/hooks/usePermissions';
+import { DownOutlined } from '@ant-design/icons';
+import commonStyles from '@/app/system-manager/styles/common.module.scss';
 import styles from './index.module.scss';
 
 const { Search } = Input;
+const normalizeUserId = (userId: React.Key) => String(userId);
 
 const User: React.FC = () => {
   const { t } = useTranslation();
   const { clientData } = useClientData();
   const { convertToLocalizedTime } = useLocalizedTime();
+  const { hasPermission } = usePermissions();
 
   const userModalRef = useRef<ModalRef>(null);
   const passwordModalRef = useRef<PasswordModalRef>(null);
@@ -54,7 +59,8 @@ const User: React.FC = () => {
     handleUserSearch,
     handleTableChange,
     handleDeleteUser,
-    handleBatchDelete,
+    handleChangeUserStatus,
+    handleBatchUserStatus,
     setSelectedRowKeys,
     setCurrentPage,
   } = useUserTable(t, selectedTreeKeys);
@@ -92,14 +98,15 @@ const User: React.FC = () => {
     t,
     appIconMap,
     convertToLocalizedTime,
-    onEditUser: (userId: string) => {
-      userModalRef.current?.showModal({ type: 'edit', userId });
+    onEditUser: (userId: React.Key) => {
+      userModalRef.current?.showModal({ type: 'edit', userId: normalizeUserId(userId) });
     },
-    onOpenPasswordModal: (userId: string) => {
-      passwordModalRef.current?.showModal({ userId });
+    onOpenPasswordModal: (userId: React.Key) => {
+      passwordModalRef.current?.showModal({ userId: normalizeUserId(userId) });
     },
     onDeleteUser: handleDeleteUser,
-  }), [t, appIconMap, convertToLocalizedTime, handleDeleteUser]);
+    onChangeUserStatus: handleChangeUserStatus,
+  }), [t, appIconMap, convertToLocalizedTime, handleDeleteUser, handleChangeUserStatus]);
 
   const rowSelection: TableRowSelection<any> = useMemo(() => ({
     selectedRowKeys,
@@ -131,6 +138,9 @@ const User: React.FC = () => {
   }, [fetchTreeData, selectedTreeKeys, fetchUsers, searchValue, currentPage, pageSize]);
 
   const isDeleteDisabled = selectedRowKeys.length === 0;
+  const canEditUser = hasPermission(['Edit User']);
+  const canDeleteUser = hasPermission(['Delete User']);
+  const hasBatchActions = canEditUser || canDeleteUser;
 
   return (
     <>
@@ -167,11 +177,57 @@ const User: React.FC = () => {
                 </Button>
               </PermissionWrapper>
               <UserModal ref={userModalRef} treeData={treeData} onSuccess={onSuccessUserModal} />
-              <PermissionWrapper requiredPermissions={['Delete User']}>
-                <Button onClick={handleBatchDelete} disabled={isDeleteDisabled}>
-                  {t('common.batchDelete')}
-                </Button>
-              </PermissionWrapper>
+              {hasBatchActions && (
+                <Dropdown
+                  overlay={
+                    <Menu className={`${commonStyles.batchOperationMenu} ${styles.batchOperationMenuCentered}`}>
+                      {canEditUser && (
+                        <Menu.Item key="enable">
+                          <PermissionWrapper requiredPermissions={['Edit User']}>
+                            <Button type="text" className="w-full" onClick={() => handleBatchUserStatus('enable')}>
+                              {t('common.enable') || 'Enable'}
+                            </Button>
+                          </PermissionWrapper>
+                        </Menu.Item>
+                      )}
+                      {canEditUser && (
+                        <Menu.Item key="disable">
+                          <PermissionWrapper requiredPermissions={['Edit User']}>
+                            <Button type="text" className="w-full" onClick={() => handleBatchUserStatus('disable')}>
+                              {t('common.disable') || 'Disable'}
+                            </Button>
+                          </PermissionWrapper>
+                        </Menu.Item>
+                      )}
+                      {canEditUser && (
+                        <Menu.Item key="unlock">
+                          <PermissionWrapper requiredPermissions={['Edit User']}>
+                            <Button type="text" className="w-full" onClick={() => handleBatchUserStatus('unlock')}>
+                              {t('system.user.status.unlock') || 'Unlock'}
+                            </Button>
+                          </PermissionWrapper>
+                        </Menu.Item>
+                      )}
+                      {canDeleteUser && (
+                        <Menu.Item key="delete">
+                          <PermissionWrapper requiredPermissions={['Delete User']}>
+                            <Button type="text" className="w-full" onClick={() => handleBatchUserStatus('delete')}>
+                              {t('common.delete') || 'Delete'}
+                            </Button>
+                          </PermissionWrapper>
+                        </Menu.Item>
+                      )}
+                    </Menu>
+                  }
+                  trigger={['click']}
+                  disabled={isDeleteDisabled}
+                >
+                  <Button>
+                    {t('common.batchOperation') || 'Batch Operation'}
+                    <DownOutlined />
+                  </Button>
+                </Dropdown>
+              )}
               <PasswordModal
                 ref={passwordModalRef}
                 onSuccess={() => fetchUsers({ search: searchValue, page: currentPage, page_size: pageSize })}

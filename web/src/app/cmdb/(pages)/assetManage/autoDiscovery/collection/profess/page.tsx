@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import dayjs from 'dayjs';
 import styles from './index.module.scss';
-import K8sTask from './components/k8sTask';
+import K8sTask from './components/k8s/k8sGuidedTask';
 import VMTask from './components/vmTask';
 import SNMPTask from './components/snmpTask';
 import SQLTask from './components/sqlTask';
@@ -1116,7 +1116,9 @@ const ProfessionalCollection: React.FC = () => {
           </div>
         }
         placement="right"
-        width={640}
+        width={
+          (currentPlugin?.task_type || currentPlugin?.type) === 'k8s' ? 960 : 640
+        }
         onClose={closeDrawer}
         open={drawerVisible}
         getContainer={false}
