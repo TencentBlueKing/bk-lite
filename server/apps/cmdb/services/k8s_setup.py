@@ -35,6 +35,39 @@ class K8sSetupService:
         }
 
     @staticmethod
+    def generate_install_command(collector_cluster_id: str, cloud_region_id) -> dict:
+        """
+        后端生成安装命令，URL 直连 Django open_api（不走 Next.js 代理），
+        与 Monitor 的 ManualCollectService.generate_install_command 保持一致。
+        """
+        validate_collector_cluster_id(collector_cluster_id)
+
+        from apps.rpc.node_mgmt import NodeMgmt
+
+        node_mgmt_rpc = NodeMgmt()
+        env_vars = node_mgmt_rpc.get_cloud_region_envconfig(cloud_region_id)
+
+        server_url = env_vars.get("NODE_SERVER_URL")
+        if not server_url:
+            raise BaseAppException(
+                f"Missing NODE_SERVER_URL in cloud region {cloud_region_id}"
+            )
+
+        token = InfraService.generate_install_token(collector_cluster_id, cloud_region_id)
+        api_url = f"{server_url.rstrip('/')}/api/v1/cmdb/open_api/k8s_setup/render/"
+
+        install_command = (
+            f"curl -sSLk -X POST -H 'Content-Type: application/json' "
+            f"{api_url} -d '{{\"token\":\"{token}\"}}' | kubectl apply -f -"
+        )
+        return {
+            "command": install_command,
+            "token": token,
+            "expire_seconds": InfraConstants.TOKEN_EXPIRE_TIME,
+            "max_usage": InfraConstants.TOKEN_MAX_USAGE,
+        }
+
+    @staticmethod
     def render_yaml_by_token(token: str) -> dict:
         token_data = InfraService.validate_and_get_token_data(token)
         yaml_content = InfraService.render_config_from_cloud_region(

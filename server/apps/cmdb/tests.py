@@ -25,6 +25,7 @@ from unittest.mock import MagicMock, patch
 from django.utils import timezone
 from django.test import SimpleTestCase
 from rest_framework.exceptions import ValidationError
+from apps.core.exceptions.base_app_exception import BaseAppException
 
 # 检查是否在Django环境中
 if __name__ == "__main__":
@@ -609,7 +610,43 @@ def test_task_status_excludes_hidden_system_tasks_from_statistics():
 
     assert response.status_code == 200
     filtered_queryset.filter.assert_called_once_with(is_visible=True)
-    visible_queryset.only.assert_called_once_with("model_id", "exec_status")
+    visible_queryset.only.assert_called_once_with("model_id", "driver_type", "exec_status")
+
+
+def test_task_status_splits_same_model_by_driver_type():
+    from apps.cmdb.views.collect import CollectModelViewSet
+
+    request = _make_cmdb_request()
+    request.user.permission = {"auto_collection-View"}
+    view = CollectModelViewSet()
+    view.request = request
+    view.action = "task_status"
+
+    filtered_queryset = MagicMock(name="filtered_queryset")
+    visible_queryset = MagicMock(name="visible_queryset")
+    only_queryset = MagicMock(name="only_queryset")
+    filtered_queryset.filter.return_value = visible_queryset
+    visible_queryset.only.return_value = only_queryset
+
+    serializer_rows = [
+        {"model_id": "physcial_server", "driver_type": "job", "exec_status": "success"},
+        {"model_id": "physcial_server", "driver_type": "protocol", "exec_status": "running"},
+    ]
+
+    with (
+        patch.object(CollectModelViewSet, "get_queryset", return_value=filtered_queryset),
+        patch.object(CollectModelViewSet, "get_queryset_by_permission", return_value=filtered_queryset),
+        patch("apps.cmdb.views.collect.CollectModelIdStatusSerializer") as mock_serializer,
+    ):
+        mock_serializer.return_value.data = serializer_rows
+        response = view.task_status(request)
+
+    payload = _response_json(response)
+    assert payload["result"] is True
+    assert payload["data"] == {
+        "physcial_server__job": {"success": 1, "failed": 0, "running": 0},
+        "physcial_server__protocol": {"success": 0, "failed": 0, "running": 1},
+    }
 
 
 def test_collect_model_service_allows_node_mgmt_empty_value_credential():
@@ -2255,3 +2292,157 @@ class CollectToolPermissionTests(SimpleTestCase):
         self.assertEqual(result["summary"], "maximum payload exceeded")
         self.assertEqual(result["raw_log"], "maximum payload exceeded")
         self.assertEqual(result["stage"], "unknown")
+
+
+def test_config_file_collect_triggers_stargazer_and_returns_pending_result():
+    from apps.cmdb.collection.collect_tasks.config_file_collect import ConfigFileCollect
+
+    task = SimpleNamespace(
+        id=267,
+        params={"config_file_path": "/opt/bk-lite/common.env"},
+        instances=[{"inst_name": "10.0.0.1[default]"}],
+        timeout=30,
+    )
+    node_params = MagicMock()
+    node_params.custom_headers.return_value = {
+        "cmdbplugin_name": "config_file_info",
+        "cmdbhosts": "10.0.0.1[default]",
+        "cmdbcollect_task_id": "267",
+    }
+    node_params.tags = {
+        "instance_id": "cmdb_267",
+        "instance_type": "cmdb_config_file",
+        "collect_type": "http",
+        "config_type": "config_file",
+    }
+    response = MagicMock(status_code=200, headers={"X-Task-Status": "queued"})
+    pending_result = ({"config_file": {"status": "pending"}}, {"all": 0})
+
+    with (
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.CollectModels.objects.get", return_value=task),
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.NodeParamsFactory.get_node_params", return_value=node_params),
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.requests.get", return_value=response) as mock_get,
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.ConfigFileService.build_pending_result", return_value=pending_result) as mock_pending,
+    ):
+        result = ConfigFileCollect(task.id)()
+
+    assert result == pending_result
+    mock_get.assert_called_once_with(
+        "http://stargazer:8083/api/collect/collect_info",
+        params={
+            "plugin_name": "config_file_info",
+            "hosts": "10.0.0.1[default]",
+            "collect_task_id": "267",
+        },
+        headers={
+            "X-Instance-ID": "cmdb_267",
+            "X-Instance-Type": "cmdb_config_file",
+            "X-Collect-Type": "http",
+            "X-Config-Type": "config_file",
+        },
+        timeout=30,
+    )
+    mock_pending.assert_called_once_with(task)
+
+
+def test_config_file_collect_raises_when_stargazer_does_not_accept_trigger():
+    from apps.cmdb.collection.collect_tasks.config_file_collect import ConfigFileCollect
+
+    task = SimpleNamespace(
+        id=267,
+        params={"config_file_path": "/opt/bk-lite/common.env"},
+        instances=[{"inst_name": "10.0.0.1[default]"}],
+        timeout=30,
+    )
+    node_params = MagicMock()
+    node_params.custom_headers.return_value = {
+        "cmdbplugin_name": "config_file_info",
+        "cmdbhosts": "10.0.0.1[default]",
+    }
+    node_params.tags = {
+        "instance_id": "cmdb_267",
+        "instance_type": "cmdb_config_file",
+        "collect_type": "http",
+        "config_type": "config_file",
+    }
+    response = MagicMock(status_code=200, headers={"X-Task-Status": "failed"}, text="failed")
+
+    with (
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.CollectModels.objects.get", return_value=task),
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.NodeParamsFactory.get_node_params", return_value=node_params),
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.requests.get", return_value=response),
+    ):
+        try:
+            ConfigFileCollect(task.id)()
+        except BaseAppException as err:
+            assert "配置文件采集触发失败" in str(err)
+        else:
+            raise AssertionError("Expected BaseAppException when trigger was not accepted")
+
+
+def test_sync_collect_task_skips_pending_save_when_callback_already_wrote_data():
+    from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
+    from apps.cmdb.tasks import celery_tasks
+
+    instance = SimpleNamespace(
+        id=267,
+        is_job=True,
+        task_type=CollectPluginTypes.CONFIG_FILE,
+        exec_status=CollectRunStatusType.RUNNING,
+        exec_time=None,
+        collect_data={},
+        format_data={},
+        collect_digest={},
+        save=MagicMock(),
+    )
+    first_qs = MagicMock()
+    first_qs.first.return_value = instance
+    update_qs = MagicMock()
+    pending_qs = MagicMock()
+    pending_qs.update.return_value = 0
+    manager = MagicMock()
+    manager.filter.side_effect = [first_qs, update_qs, pending_qs]
+    collect_models = SimpleNamespace(_default_manager=manager)
+    collect = MagicMock()
+    collect.main.return_value = ({"config_file": {"status": "pending"}}, {})
+
+    collect_model_service = SimpleNamespace(repair_host_cloud_snapshot=MagicMock())
+
+    with (
+        patch.object(celery_tasks, "CollectModels", collect_models),
+        patch.object(celery_tasks, "JobCollect", return_value=collect),
+        patch.dict(
+            "sys.modules",
+            {"apps.cmdb.services.collect_service": SimpleNamespace(CollectModelService=collect_model_service)},
+        ),
+    ):
+        celery_tasks.sync_collect_task(instance.id)
+
+    update_qs.update.assert_called_once()
+    pending_qs.update.assert_called_once()
+    assert pending_qs.update.call_args.kwargs["collect_digest"]["message"] == "配置文件采集已触发，等待回传中"
+    instance.save.assert_not_called()
+
+
+def test_sync_periodic_update_task_status_sets_config_file_timeout_message():
+    from apps.cmdb.constants.constants import CollectRunStatusType
+    from apps.cmdb.tasks import celery_tasks
+
+    config_file_qs = MagicMock()
+    config_file_qs.update.return_value = 2
+    non_config_qs = MagicMock()
+    exclude_qs = MagicMock()
+    exclude_qs.update.return_value = 3
+    non_config_qs.exclude.return_value = exclude_qs
+    manager = MagicMock()
+    manager.filter.side_effect = [config_file_qs, non_config_qs]
+    collect_models = SimpleNamespace(_default_manager=manager)
+
+    with patch.object(celery_tasks, "CollectModels", collect_models):
+        celery_tasks.sync_periodic_update_task_status()
+
+    config_file_qs.update.assert_called_once_with(
+        exec_status=CollectRunStatusType.ERROR,
+        collect_digest={"message": "配置文件采集已触发，但在 5 分钟内未收到回传结果"},
+    )
+    exclude_qs.update.assert_called_once_with(exec_status=CollectRunStatusType.ERROR)
