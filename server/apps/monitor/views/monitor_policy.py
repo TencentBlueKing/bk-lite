@@ -325,8 +325,11 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         """
         将 schedule 格式化为 CrontabSchedule 实例
         """
+        from django.utils import timezone
+
         schedule_type = schedule.get("type")
         value = schedule.get("value")
+        current_tz = timezone.get_current_timezone()
 
         if schedule_type == "min":
             return CrontabSchedule.objects.get_or_create(
@@ -335,6 +338,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                 day_of_month="*",
                 month_of_year="*",
                 day_of_week="*",
+                timezone=current_tz,
             )[0]
         elif schedule_type == "hour":
             return CrontabSchedule.objects.get_or_create(
@@ -343,6 +347,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                 day_of_month="*",
                 month_of_year="*",
                 day_of_week="*",
+                timezone=current_tz,
             )[0]
         elif schedule_type == "day":
             return CrontabSchedule.objects.get_or_create(
@@ -351,6 +356,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                 day_of_month=f"*/{value}",
                 month_of_year="*",
                 day_of_week="*",
+                timezone=current_tz,
             )[0]
         else:
             raise BaseAppException("Invalid schedule type")
