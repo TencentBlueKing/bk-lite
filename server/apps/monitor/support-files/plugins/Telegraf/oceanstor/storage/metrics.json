@@ -8,14 +8,7 @@
   "description": "",
   "default_metric": "any({instance_type='storage'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": [
-    "oceanstor_pool_count",
-    "oceanstor_drive_count",
-    "oceanstor_volume_count",
-    "api_pool_io_rate",
-    "api_drive_io_rate",
-    "api_volume_io_rate"
-  ],
+  "supplementary_indicators": [],
   "metrics": [
     {
       "metric_group": "Quantity",
