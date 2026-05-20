@@ -463,7 +463,21 @@
             "delete": "Delete",
             "error": "Error"
         },
-        "executeSuccess": "Execute successfully"
+        "executeSuccess": "Execute successfully",
+        "stats": {
+            "totalTasks": "Total Tasks",
+            "normalTasks": "Normal",
+            "errorTasks": "Errors",
+            "recentSync": "Recent Sync",
+            "coveredModels": "Covered Models",
+            "justNow": "just now",
+            "minutesAgo": "{n} min ago",
+            "hoursAgo": "{n} h ago",
+            "daysAgo": "{n} d ago",
+            "never": "none",
+            "expand": "Expand overview",
+            "collapse": "Collapse overview"
+        }
     },
     "OidLibrary": {
         "title": "SOID Library",
