@@ -57,8 +57,10 @@ async def _check_interrupt_in_database_async(execution_id: str) -> bool:
     异步版本的数据库兜底查询。
 
     使用 sync_to_async 包装同步 ORM 调用，安全地在异步上下文中执行。
+    注意：使用 thread_sensitive=False 避免在 LangGraph 异步节点中触发
+    "You cannot submit onto CurrentThreadExecutor from its own thread" 错误。
     """
-    return await sync_to_async(_check_interrupt_in_database, thread_sensitive=True)(execution_id)
+    return await sync_to_async(_check_interrupt_in_database, thread_sensitive=False)(execution_id)
 
 
 def _get_interrupt_cache_key(execution_id: str) -> str:
