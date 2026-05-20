@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import dayjs from 'dayjs';
 import { useTranslation } from '@/utils/i18n';
 import { useCollectApi } from '@/app/cmdb/api';
@@ -45,24 +45,26 @@ const CollectionStats: React.FC = () => {
   const collectApi = useCollectApi();
   const [expanded, setExpanded] = useState<boolean>(readCollapsed);
   const [overview, setOverview] = useState<TaskOverview | null>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-
-  const fetchOverview = useCallback(async () => {
-    try {
-      const data = (await collectApi.getTaskOverview()) as TaskOverview;
-      setOverview(data || null);
-    } catch (err) {
-      console.error('Failed to fetch task overview:', err);
-    }
-  }, [collectApi]);
 
   useEffect(() => {
-    fetchOverview();
-    timerRef.current = setInterval(fetchOverview, REFRESH_INTERVAL_MS);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+    let cancelled = false;
+    const fetchOverview = async () => {
+      try {
+        const data = (await collectApi.getTaskOverview()) as TaskOverview;
+        if (!cancelled) setOverview(data || null);
+      } catch (err) {
+        console.error('Failed to fetch task overview:', err);
+      }
     };
-  }, [fetchOverview]);
+    fetchOverview();
+    const timer = setInterval(fetchOverview, REFRESH_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+    // collectApi 由 hook 在每次渲染返回新引用，这里只在挂载时启动一次轮询
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleExpanded = useCallback(() => {
     setExpanded((prev) => {
