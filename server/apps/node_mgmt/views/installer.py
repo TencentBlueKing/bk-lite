@@ -108,10 +108,6 @@ class InstallerViewSet(ViewSet):
     @HasPermission("cloud_region_node-Edit")
     def controller_manual_install_status(self, request):
         node_ids = request.data.get("node_ids", [])
-        if node_ids:
-            _, error_response = authorize_node_ids(request, node_ids)
-            if error_response:
-                return error_response
         data = InstallerService.get_manual_install_status(node_ids)
         return WebUtils.response_success(data)
 
