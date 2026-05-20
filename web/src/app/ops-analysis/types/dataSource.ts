@@ -1,6 +1,6 @@
 import type { TagItem } from './namespace';
 
-export type ChartType = 'line' | 'bar' | 'pie' | 'single' | 'table';
+export type ChartType = 'line' | 'bar' | 'pie' | 'single' | 'table' | 'topN';
 
 /** 接口返回字段定义（数据源级配置） */
 export interface ResponseFieldDefinition {

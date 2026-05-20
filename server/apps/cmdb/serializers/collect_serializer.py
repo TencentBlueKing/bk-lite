@@ -75,7 +75,7 @@ class CollectModelIdStatusSerializer(AuthSerializer):
 
     class Meta:
         model = CollectModels
-        fields = ("model_id", "exec_status")
+        fields = ("model_id", "driver_type", "exec_status")
 
 
 class CollectModelLIstSerializer(AuthSerializer):

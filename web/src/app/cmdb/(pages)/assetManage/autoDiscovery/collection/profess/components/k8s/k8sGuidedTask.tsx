@@ -16,12 +16,10 @@ interface Props {
 }
 
 /**
- * CMDB k8s 引导式接入容器：
- *   Step 1 接入配置 → 复用既有 K8sTaskForm + 新增 collector_cluster_id / cloud_region_id
- *   Step 2 采集器安装 → 调 CMDB 自己的 install_token / open render / verify 接口
+ * CMDB k8s 引导式接入容器（新建 & 编辑通用）：
+ *   Step 1 接入配置 → 复用既有 K8sTaskForm + collector_cluster_id / cloud_region_id
+ *   Step 2 采集器安装 → 调 CMDB 自己的 install_command / verify 接口
  *   Step 3 接入完成 → 提示采集器已就绪、CMDB 落图按计划进行
- *
- * 编辑态保持单步：直接渲染 K8sTaskForm，避免影响既有运维流程。
  */
 const K8sGuidedTask: React.FC<Props> = ({
   onClose,
@@ -34,19 +32,6 @@ const K8sGuidedTask: React.FC<Props> = ({
   const [step, setStep] = useState(0);
   const [collectorClusterId, setCollectorClusterId] = useState('');
   const [cloudRegionId, setCloudRegionId] = useState<number | string>('');
-
-  if (editId) {
-    // 编辑保留原表单体验
-    return (
-      <K8sTaskForm
-        onClose={onClose}
-        onSuccess={onSuccess}
-        selectedNode={selectedNode}
-        modelItem={modelItem}
-        editId={editId}
-      />
-    );
-  }
 
   const steps = [
     { title: t('Collection.k8sTask.accessConfig') || 'Access Config' },
@@ -70,6 +55,7 @@ const K8sGuidedTask: React.FC<Props> = ({
             onSuccess={onSuccess}
             selectedNode={selectedNode}
             modelItem={modelItem}
+            editId={editId}
             onAfterSave={({ collector_cluster_id, cloud_region_id }) => {
               setCollectorClusterId(collector_cluster_id);
               setCloudRegionId(cloud_region_id);

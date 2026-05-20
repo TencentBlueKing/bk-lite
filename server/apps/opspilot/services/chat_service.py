@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import re
 import uuid
 from typing import Any, Dict, Tuple
@@ -32,6 +33,16 @@ def _is_eventlet_environment() -> bool:
         return bool(eventlet.patcher.is_monkey_patched("socket"))
     except Exception:
         return False
+
+
+def _cancel_all_tasks(loop: asyncio.AbstractEventLoop) -> None:
+    """取消事件循环中所有待处理的任务，确保资源正确释放。"""
+    to_cancel = asyncio.all_tasks(loop)
+    if not to_cancel:
+        return
+    for task in to_cancel:
+        task.cancel()
+    loop.run_until_complete(asyncio.gather(*to_cancel, return_exceptions=True))
 
 
 class ChatService:
@@ -91,10 +102,28 @@ class ChatService:
             graph, request = create_agent_instance(skill_type, chat_kwargs)
 
             if _is_eventlet_environment():
-                raise RuntimeError("当前 Celery worker 使用 eventlet 池，不支持在任务中执行 asyncio.run(graph.execute(...))，请改用 --pool threads 或 solo")
+                raise RuntimeError("当前 Celery worker 使用 eventlet 池，不支持异步执行，请改用 --pool threads 或 solo")
 
             # 调用 agent 的 execute 方法（非流式同步执行）
-            response = asyncio.run(graph.execute(request))
+            # 在独立线程中创建全新事件循环来执行异步代码，避免与 ASGI 主事件循环交互导致死锁
+            def _run_in_new_loop():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    return loop.run_until_complete(graph.execute(request))
+                finally:
+                    # 清理所有待处理的异步资源（如 httpx 连接池）
+                    try:
+                        _cancel_all_tasks(loop)
+                        loop.run_until_complete(loop.shutdown_asyncgens())
+                        loop.run_until_complete(loop.shutdown_default_executor())
+                    except Exception:
+                        pass
+                    loop.close()
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(_run_in_new_loop)
+                response = future.result()
 
             # 构建返回结果
             result = {

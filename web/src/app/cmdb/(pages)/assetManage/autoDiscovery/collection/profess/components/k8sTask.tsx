@@ -176,7 +176,7 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
           }}
         >
           <Form.Item
-            label={t('Collection.k8sTask.collectorClusterId') || 'Collector ID'}
+            label={t('Collection.k8sTask.collectorClusterId') || 'Cluster ID'}
             name="collector_cluster_id"
             rules={[
               { required: true, message: t('common.required') },
@@ -188,14 +188,14 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
                     : Promise.reject(
                       new Error(
                         t('Collection.k8sTask.collectorClusterIdInvalid') ||
-                        'Only letters, digits, underscore and hyphen are allowed'
+                        'Only English letters, digits, underscores and hyphens are allowed'
                       )
                     );
                 },
               },
             ]}
             extra={t('Collection.k8sTask.collectorClusterIdDesc') ||
-              'Used as VictoriaMetrics instance_id; must match collector reporting identity.'}
+              'Important: Do not modify after creation, or deployed collectors will fail to match.'}
           >
             <Input placeholder="e.g. prod-cluster-1" />
           </Form.Item>

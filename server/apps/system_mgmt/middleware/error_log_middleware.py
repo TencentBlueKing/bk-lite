@@ -75,15 +75,11 @@ class ErrorLogMiddleware(MiddlewareMixin):
                             domain = request.user.domain
 
                     # 构建错误信息
-                    error_message = self._build_error_message(request, exception)
+                    error_message, stack_trace = self._build_error_message(request, exception)
 
                     # 异步记录错误日志（避免阻塞主线程）
                     write_error_log_async.delay(
-                        username=username,
-                        app=app,
-                        module=module,
-                        error_message=error_message,
-                        domain=domain,
+                        username=username, app=app, module=module, error_message=error_message, domain=domain, stack_trace=stack_trace
                     )
 
         except Exception as e:
@@ -191,8 +187,4 @@ class ErrorLogMiddleware(MiddlewareMixin):
             f"错误信息: {error_msg}",
         ]
 
-        # 添加堆栈跟踪（如果有）
-        if stack_trace:
-            message_parts.append(f"堆栈跟踪:\n{stack_trace}")
-
-        return "\n".join(message_parts)
+        return "\n".join(message_parts), stack_trace
