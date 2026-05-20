@@ -17,8 +17,8 @@ meta:
     datasources: 5
     namespaces: 1
 dashboards:
-- key: dashboard::CMDB-仪表盘_内置
-  name: CMDB-仪表盘_内置
+- key: dashboard::CMDB仪表盘_内置
+  name: CMDB仪表盘_内置
   desc: CMDB仪表盘
   other:
     timeSelector:
@@ -27,8 +27,8 @@ dashboards:
   view_sets:
   - h: 3
     i: 47c8e06b-2023-4f5d-8ca9-e718983234bb
-    w: 4
-    x: 0
+    w: 2
+    x: 4
     y: 0
     name: cmdb模型分类总数统计
     moved: false
@@ -36,20 +36,20 @@ dashboards:
     description: ''
     valueConfig:
       chartType: single
-      dataSource: 模型/实例/分类总数统计::get_cmdb_statistics
+      dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
       selectedFields:
       - classification_count
       thresholdColors:
-      - color: '#fd666d'
+      - color: '#366ce4'
         value: '70'
-      - color: '#EAB839'
+      - color: '#366ce4'
         value: '30'
-      - color: '#299C46'
+      - color: '#366ce4'
         value: '0'
   - h: 3
     i: 1a884812-9fd1-4e01-bd95-ef93e58470bf
-    w: 4
-    x: 4
+    w: 2
+    x: 0
     y: 0
     name: cmdb模型总数统计
     moved: false
@@ -57,20 +57,20 @@ dashboards:
     description: ''
     valueConfig:
       chartType: single
-      dataSource: 模型/实例/分类总数统计::get_cmdb_statistics
+      dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
       selectedFields:
       - model_count
       thresholdColors:
-      - color: '#fd666d'
+      - color: '#366ce4'
         value: '70'
-      - color: '#EAB839'
+      - color: '#366ce4'
         value: '30'
-      - color: '#299C46'
+      - color: '#366ce4'
         value: '0'
   - h: 3
     i: be09cec0-aac6-4d9e-b44c-d7f7e2d75aee
-    w: 4
-    x: 8
+    w: 2
+    x: 2
     y: 0
     name: cmdb实例总数统计
     moved: false
@@ -78,21 +78,21 @@ dashboards:
     description: ''
     valueConfig:
       chartType: single
-      dataSource: 模型/实例/分类总数统计::get_cmdb_statistics
+      dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
       selectedFields:
       - instance_count
       thresholdColors:
-      - color: '#fd666d'
+      - color: '#366ce4'
         value: '70'
-      - color: '#EAB839'
+      - color: '#366ce4'
         value: '30'
-      - color: '#299C46'
+      - color: '#366ce4'
         value: '0'
-  - h: 4
+  - h: 5
     i: 08bebde0-1772-4199-8248-016c30bd2b23
     w: 6
     x: 6
-    y: 3
+    y: 8
     name: 主机操作系统分布
     moved: false
     static: false
@@ -111,7 +111,7 @@ dashboards:
         value: os_type
         alias_name: 分组字段
         filterType: fixed
-  - h: 4
+  - h: 5
     i: 4df1fa2e-a38d-48e9-b6ca-a16f91f768eb
     w: 6
     x: 0
@@ -122,31 +122,30 @@ dashboards:
     description: ''
     valueConfig:
       chartType: line
-      dataSource: CMDB 变更趋势::get_change_trend
+      dataSource: CMDB 变更趋势::cmdb/get_change_trend
       filterBindings:
         time__timeRange: true
-        model_id__string: true
       dataSourceParams:
       - name: time
         type: timeRange
         value: 10080
-        alias_name: 时间范围 [开始, 结束]
+        alias_name: 时间范围
         filterType: filter
       - name: group_by
         type: string
         value: hour
-        alias_name: '分组方式: day/hour/week/month'
-        filterType: params
+        alias_name: 分组粒度
+        filterType: fixed
       - name: model_id
         type: string
-        value: ''
-        alias_name: 按模型过滤
-        filterType: filter
-  - h: 6
+        value: k8s_cluster
+        alias_name: 模型ID
+        filterType: params
+  - h: 5
     i: 7951c963-9fd3-40a4-8169-9463676bdc07
-    w: 12
+    w: 6
     x: 0
-    y: 7
+    y: 8
     name: 模型实例统计
     moved: false
     static: false
@@ -173,11 +172,11 @@ dashboards:
           title: 数量
           visible: true
       dataSourceParams: []
-  - h: 6
+  - h: 7
     i: 7d86f0ed-53d5-4c7b-b7bd-dad2dc48e653
     w: 12
     x: 0
-    y: 13
+    y: 16
     name: 查询资产实例
     moved: false
     static: false
@@ -237,13 +236,235 @@ dashboards:
         value: k8s_cluster
         alias_name: model_id
         filterType: params
+  - h: 3
+    i: 8461bad1-524b-499c-aebb-af9ed980aa14
+    w: 2
+    x: 6
+    y: 0
+    name: 非空模型数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+      selectedFields:
+      - model_with_instance_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    i: c02d6a5c-39bf-46e2-95b8-f4f4d46e1352
+    w: 2
+    x: 8
+    y: 0
+    name: 空模型数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+      selectedFields:
+      - empty_model_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams: []
+  - h: 3
+    i: 7e5070ee-514c-4247-997b-aaad9ee81382
+    w: 2
+    x: 10
+    y: 0
+    name: 模型覆盖率
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      unit: '%'
+      chartType: single
+      dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+      selectedFields:
+      - model_coverage_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    i: dcbe080f-5973-4215-9ae4-d4c6c1ffd1af
+    w: 2
+    x: 0
+    y: 13
+    name: 采集任务总数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+      selectedFields:
+      - task_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    i: 6fb9eb5e-81cc-4888-b484-6bead0b7ea64
+    w: 2
+    x: 2
+    y: 13
+    name: 周期任务数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+      selectedFields:
+      - interval_task_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    i: e86497c6-99d1-4245-a925-7d941416d384
+    w: 2
+    x: 4
+    y: 13
+    name: 采集成功任务数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+      selectedFields:
+      - success_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams: []
+  - h: 3
+    i: 81fb3757-8c04-4e2c-b603-69372e11168c
+    w: 2
+    x: 6
+    y: 13
+    name: 运行中任务数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+      selectedFields:
+      - running_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams: []
+  - h: 3
+    i: e85bcf55-fe23-4e75-bccb-7f68528ddd4a
+    w: 2
+    x: 8
+    y: 13
+    name: 超时任务数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+      selectedFields:
+      - timeout_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams: []
+  - h: 3
+    i: db83c45b-4476-47a9-bd6f-944159fbd476
+    w: 2
+    x: 10
+    y: 13
+    name: 从未执行的任务数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+      selectedFields:
+      - never_run_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams: []
+  - h: 5
+    i: cef91805-bf1d-4909-a112-4c6a5d7b5823
+    w: 6
+    x: 6
+    y: 3
+    name: CMDB模型实例TOP 5
+    moved: false
+    static: false
+    description: 查询实例数最多的模型排行
+    valueConfig:
+      chartType: topN
+      dataSource: CMDB模型实例TOPN::cmdb/get_cmdb_model_instance_top
+      topNLabelField: model
+      topNValueField: count
+      dataSourceParams:
+      - name: limit
+        type: number
+        value: 5
+        alias_name: 返回条数
+        filterType: fixed
+      - name: classification_id
+        type: string
+        value: ''
+        alias_name: 模型分类ID
+        filterType: params
   refs:
     datasource_keys:
-    - 模型实例统计::get_model_inst_statistics
-    - CMDB 变更趋势::get_change_trend
+    - 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+    - CMDB 变更趋势::cmdb/get_change_trend
     - 主机操作系统分布::get_instance_group_by
+    - 模型实例统计::get_model_inst_statistics
+    - CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+    - CMDB模型实例TOPN::cmdb/get_cmdb_model_instance_top
     - 查询资产实例::cmdb/query_asset_instances
-    - 模型/实例/分类总数统计::get_cmdb_statistics
     namespace_keys: []
   filters:
   - id: time__timeRange
@@ -256,13 +477,6 @@ dashboards:
       end: '2026-04-22T06:10:42.171Z'
       start: '2026-03-23T06:10:42.171Z'
       selectValue: 43200
-  - id: model_id__string
-    key: model_id
-    name: 模型ID
-    type: string
-    order: 1
-    enabled: true
-    defaultValue: k8s_cluster
 - key: dashboard::统一告警中心仪表盘_内置
   name: 统一告警中心仪表盘_内置
   desc: ''
@@ -922,33 +1136,118 @@ dashboards:
 topologies: []
 architectures: []
 datasources:
-- key: CMDB 变更趋势::get_change_trend
+- key: CMDB 变更趋势::cmdb/get_change_trend
   name: CMDB 变更趋势
-  rest_api: get_change_trend
-  desc: ''
+  rest_api: cmdb/get_change_trend
+  desc: 查询 CMDB 在时间范围内的新增、修改、删除趋势
   is_active: true
   params:
   - name: time
     type: timeRange
     value: 10080
-    alias_name: 时间范围 [开始, 结束]
+    alias_name: 时间范围
     filterType: filter
   - name: group_by
     type: string
-    value: ''
-    alias_name: '分组方式: day/hour/week/month'
-    filterType: params
+    value: day
+    alias_name: 分组粒度
+    filterType: fixed
   - name: model_id
     type: string
-    value: k8s_cluster
-    alias_name: 按模型过滤
-    filterType: filter
+    value: ''
+    alias_name: 模型ID
+    filterType: params
   tags:
   - CMDB
   chart_type:
   - line
   - bar
   field_schema: []
+  namespace_keys:
+  - 默认命名空间
+- key: CMDB模型实例TOPN::cmdb/get_cmdb_model_instance_top
+  name: CMDB模型实例TOPN
+  rest_api: cmdb/get_cmdb_model_instance_top
+  desc: 查询实例数最多的模型排行
+  is_active: true
+  params:
+  - name: limit
+    type: number
+    value: 5
+    alias_name: 返回条数
+    filterType: fixed
+  - name: classification_id
+    type: string
+    value: ''
+    alias_name: 模型分类ID
+    filterType: params
+  tags:
+  - CMDB
+  chart_type:
+  - table
+  - topN
+  field_schema:
+  - key: model
+    title: 模型名称
+    value_type: string
+    description: 模型显示名称
+  - key: model_id
+    title: 模型ID
+    value_type: string
+    description: 模型唯一标识
+  - key: classification
+    title: 分类名称
+    value_type: string
+    description: 所属分类显示名称
+  - key: classification_id
+    title: 分类ID
+    value_type: string
+    description: 所属分类标识
+  - key: count
+    title: 实例数
+    value_type: number
+    description: 该模型下实例数量
+  namespace_keys:
+  - 默认命名空间
+- key: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+  name: CMDB采集健康统计
+  rest_api: cmdb/get_cmdb_collect_statistics
+  desc: 查询采集任务总数、周期任务数及各执行状态统计
+  is_active: true
+  params: []
+  tags:
+  - CMDB
+  chart_type:
+  - single
+  field_schema:
+  - key: task_count
+    title: 任务总数
+    value_type: number
+    description: 当前可见采集任务总数
+  - key: interval_task_count
+    title: 周期任务数
+    value_type: number
+    description: 开启周期巡检的采集任务数量
+  - key: success_count
+    title: 成功任务数
+    value_type: number
+    description: 最近状态为成功的任务数
+  - key: error_count
+    title: 异常任务数
+    value_type: number
+    description: 最近状态为异常的任务数
+  - key: running_count
+    title: 运行中任务数
+    value_type: number
+    description: 当前状态为运行中的任务数
+  - key: timeout_count
+    title: 超时任务数
+    value_type: number
+    description: 当前状态为超时的任务数
+  - key: never_run_count
+    title: 从未执行任务数
+    value_type: number
+    description: 当前状态为未执行的任务数
   namespace_keys:
   - 默认命名空间
 - key: 主机操作系统分布::get_instance_group_by
@@ -992,10 +1291,10 @@ datasources:
   field_schema: []
   namespace_keys:
   - 默认命名空间
-- key: 模型/实例/分类总数统计::get_cmdb_statistics
+- key: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
   name: 模型/实例/分类总数统计
-  rest_api: get_cmdb_statistics
-  desc: ''
+  rest_api: cmdb/get_cmdb_statistics
+  desc: 查询 CMDB 分类、模型、实例与模型覆盖率等概览指标
   is_active: true
   params: []
   tags:
@@ -1003,18 +1302,30 @@ datasources:
   chart_type:
   - single
   field_schema:
-  - key: model_count
-    title: 模型总数
-    value_type: string
-    description: ''
-  - key: instance_count
-    title: 实例总数
-    value_type: string
-    description: ''
   - key: classification_count
     title: 分类总数
-    value_type: string
-    description: ''
+    value_type: number
+    description: 当前可见模型分类数量
+  - key: model_count
+    title: 模型总数
+    value_type: number
+    description: 当前可见模型数量
+  - key: instance_count
+    title: 实例总数
+    value_type: number
+    description: 当前可见实例总量
+  - key: model_with_instance_count
+    title: 非空模型数
+    value_type: number
+    description: 实例数大于 0 的模型数量
+  - key: empty_model_count
+    title: 空模型数
+    value_type: number
+    description: 实例数为 0 的模型数量
+  - key: model_coverage_rate
+    title: 模型覆盖率
+    value_type: number
+    description: 非空模型数在全部模型中的占比，单位为 %
   namespace_keys:
   - 默认命名空间
 - key: 模型实例统计::get_model_inst_statistics

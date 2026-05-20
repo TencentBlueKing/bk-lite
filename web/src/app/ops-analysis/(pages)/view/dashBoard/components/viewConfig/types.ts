@@ -17,6 +17,8 @@ export interface FormValues {
   params?: Record<string, string | number | boolean | [number, number] | null>;
   tableConfig?: import('@/app/ops-analysis/types/dashBoard').TableConfig;
   selectedFields?: string[];
+  topNLabelField?: string;
+  topNValueField?: string;
   unit?: string;
   conversionFactor?: number;
   decimalPlaces?: number;

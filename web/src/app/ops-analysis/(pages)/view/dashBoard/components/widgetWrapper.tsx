@@ -17,6 +17,7 @@ import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
 import { datasourceSupportsNamespace } from '@/app/ops-analysis/utils/namespaceFilter';
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
+import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 import ComPie from '../widgets/comPie';
 import ComLine from '../widgets/comLine';
 import ComBar from '../widgets/comBar';
@@ -31,6 +32,50 @@ const componentMap: Record<string, React.ComponentType<any>> = {
   table: ComTable,
   single: ComSingle,
   topN: ComTopN,
+};
+
+const validateTopNData = (
+  data: unknown,
+  config?: ValueConfig,
+  errorMessage?: string,
+): { isValid: boolean; message?: string } => {
+  if (!data || (Array.isArray(data) && data.length === 0)) {
+    return { isValid: true };
+  }
+
+  if (!Array.isArray(data)) {
+    return { isValid: false, message: errorMessage || '数据格式不匹配' };
+  }
+
+  const labelField = config?.topNLabelField;
+  const valueField = config?.topNValueField;
+
+  const hasValidData = data.some((item) => {
+    if (Array.isArray(item) && item.length >= 2) {
+      const name = String(item[0] ?? '').trim();
+      const value = Number(item[1]);
+      return !!name && !Number.isNaN(value);
+    }
+
+    if (!item || typeof item !== 'object') {
+      return false;
+    }
+
+    const rawName = labelField
+      ? getValueByPath(item, labelField)
+      : ((item as Record<string, unknown>).name ?? (item as Record<string, unknown>).label);
+    const rawValue = valueField
+      ? getValueByPath(item, valueField)
+      : ((item as Record<string, unknown>).value ?? (item as Record<string, unknown>).count);
+
+    const name = rawName === undefined || rawName === null ? '' : String(rawName).trim();
+    const value = Number(rawValue);
+    return !!name && !Number.isNaN(value);
+  });
+
+  return hasValidData
+    ? { isValid: true }
+    : { isValid: false, message: errorMessage || '数据格式不匹配' };
 };
 
 const inflightWidgetRequests = new Map<string, Promise<unknown>>();
@@ -271,13 +316,15 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         case 'line':
         case 'bar':
           return ChartDataTransformer.validateLineBarData(data, errorMessage);
+        case 'topN':
+          return validateTopNData(data, config, errorMessage);
         case 'table':
           return { isValid: true };
         default:
           return { isValid: true };
       }
     },
-    [t],
+    [config, t],
   );
 
   const fetchData = useCallback(
