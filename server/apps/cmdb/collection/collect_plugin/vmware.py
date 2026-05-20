@@ -143,10 +143,13 @@ class CollectVmwareMetrics(CollectBase):
                 data = {}
                 for field, key_or_func in mapping.items():
                     if isinstance(key_or_func, tuple):
+                        raw_value = index_data.get(key_or_func[1])
+                        if raw_value in (None, ""):
+                            continue
                         try:
-                            data[field] = key_or_func[0](index_data[key_or_func[1]])
+                            data[field] = key_or_func[0](raw_value)
                         except Exception as e:
-                            logger.error(f"数据转换失败 field:{field}, value:{index_data[key_or_func[1]]}, error:{e}")
+                            logger.error(f"数据转换失败 field:{field}, value:{raw_value}, error:{e}")
                     elif callable(key_or_func):
                         try:
                             data[field] = key_or_func(index_data, index_data.get("inst_name",''))
