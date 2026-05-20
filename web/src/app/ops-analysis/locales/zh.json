@@ -61,7 +61,12 @@
       "uploadedImage": "已上传的图片",
       "confirm": "确认",
       "noColor": "无颜色",
-      "backgroundColor": "背景颜色"
+      "backgroundColor": "背景颜色",
+      "displayField": "展示字段",
+      "valueField": "数值字段",
+      "selectDisplayField": "请选择展示字段",
+      "selectValueField": "请选择数值字段",
+      "noAvailableFields": "当前数据源未配置可用字段"
     },
     "singleValueNodeDefault": "单值节点",
     "bringToBack": "置底",
