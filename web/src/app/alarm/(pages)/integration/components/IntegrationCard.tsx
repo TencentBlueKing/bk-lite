@@ -1,9 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Dropdown } from 'antd';
-import type { MenuProps } from 'antd';
-import { EllipsisOutlined, EyeOutlined } from '@ant-design/icons';
+import { EyeOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { SourceItem } from '@/app/alarm/types/integration';
@@ -22,18 +20,6 @@ const IntegrationCard: React.FC<IntegrationCardProps> = ({ src }) => {
   const logoColor = getLogoColor(src.source_id);
   const monogram = src.name.slice(0, 2).toUpperCase();
 
-  const menuItems: MenuProps['items'] = [
-    { key: 'edit', label: t('integration.editConfig') },
-    { key: 'copy', label: t('integration.copySecret') },
-    { key: 'logs', label: t('integration.viewLogs') },
-    { type: 'divider' },
-    { key: 'delete', label: t('integration.deleteSource'), danger: true },
-  ];
-
-  const handleMenuClick: MenuProps['onClick'] = () => {
-    // Menu actions are no-op stubs per design
-  };
-
   return (
     <div
       className="rounded-xl border bg-[var(--color-bg-1)] p-[20px_20px_16px] relative transition-all duration-200 cursor-default"
@@ -44,7 +30,7 @@ const IntegrationCard: React.FC<IntegrationCardProps> = ({ src }) => {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Header: logo + name + badge + menu */}
+      {/* Header: logo + name + badge */}
       <div className="flex items-center gap-3 mb-4">
         {/* Circular logo */}
         <div
@@ -86,17 +72,6 @@ const IntegrationCard: React.FC<IntegrationCardProps> = ({ src }) => {
             </span>
           </div>
         </div>
-
-        {/* Three-dot menu */}
-        <Dropdown
-          menu={{ items: menuItems, onClick: handleMenuClick }}
-          trigger={['click']}
-          placement="bottomRight"
-        >
-          <div className="w-6 h-6 rounded-md grid place-items-center cursor-pointer text-[var(--color-text-3)] hover:bg-[#f2f3f5] shrink-0">
-            <EllipsisOutlined className="text-base" style={{ transform: 'rotate(90deg)' }} />
-          </div>
-        </Dropdown>
       </div>
 
       {/* Metrics */}

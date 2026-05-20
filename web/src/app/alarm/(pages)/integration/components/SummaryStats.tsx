@@ -3,7 +3,6 @@
 import React from 'react';
 import { useTranslation } from '@/utils/i18n';
 import { SourceItem } from '@/app/alarm/types/integration';
-import { getHealth } from '../utils/health';
 
 interface StatCardProps {
   icon: React.ReactNode;
@@ -55,10 +54,10 @@ function formatTrend(today: number, yesterday: number, t: (key: string) => strin
   const diff = today - yesterday;
   const pct = ((diff / yesterday) * 100).toFixed(1);
   if (diff > 0) {
-    return { text: `↑ ${pct}%`, color: '#00b42a' };
+    return { text: `↑ ${pct}%`, color: '#f53f3f' };
   }
   if (diff < 0) {
-    return { text: `↓ ${Math.abs(parseFloat(pct))}%`, color: '#f53f3f' };
+    return { text: `↓ ${Math.abs(parseFloat(pct))}%`, color: '#00b42a' };
   }
   return { text: '— 0%', color: 'var(--color-text-3)' };
 }
