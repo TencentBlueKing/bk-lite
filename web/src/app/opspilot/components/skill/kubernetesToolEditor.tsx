@@ -85,8 +85,8 @@ const KubernetesToolEditor: React.FC<KubernetesToolEditorProps> = ({
                 <button
                   key={instance.id}
                   type="button"
-                  className={`w-full rounded border p-3 text-left transition ${
-                    isActive ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg)]' : 'border-[var(--color-border)] bg-[var(--color-bg-1)]'
+                  className={`w-full rounded p-3 text-left transition ${
+                    isActive ? 'border-2 border-[var(--color-primary)] bg-[var(--color-primary-bg)]' : 'border border-[var(--color-border)] bg-[var(--color-bg-1)]'
                   }`}
                   onClick={() => onSelect(instance.id)}
                 >
