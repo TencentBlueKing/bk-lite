@@ -1001,14 +1001,14 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                           }}
                         >
                           <div
-                            className="widget-header mb-2 flex justify-between items-center"
+                            className="widget-header mb-2 flex justify-between items-start gap-2"
                           >
                             <div className="flex-1 min-w-0">
                               <h4 className="text-[13px] font-medium text-(--color-text-1) truncate">
                                 {item.name}
                               </h4>
                               {item.description?.trim() && (
-                                <p className="text-[11px] text-(--color-text-3) mt-0.5 truncate">
+                                <p className="text-[11px] leading-[16px] text-(--color-text-3) mt-0.5 break-words whitespace-normal">
                                   {item.description}
                                 </p>
                               )}
