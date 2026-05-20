@@ -31,6 +31,9 @@ export const useSourceApi = () => {
       responseType: 'blob',
     });
 
+  const getDailyEventStats = async (): Promise<{ today_count: number; yesterday_count: number }> =>
+    get('/alerts/api/alert_source/daily_event_stats/');
+
   return {
     getAlertSources,
     getAlertSourcesDetail,
@@ -38,5 +41,6 @@ export const useSourceApi = () => {
     getK8sMeta,
     getAlertSnmpTrapNodeList,
     downloadK8sFile,
+    getDailyEventStats,
   };
 };

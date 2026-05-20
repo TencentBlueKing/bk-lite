@@ -3,17 +3,25 @@
  * 用于将数据源返回的数据结构转换为 Tree 组件所需的树形结构
  */
 
+import { createElement, type ReactNode } from 'react';
 import type { TreeNode } from '@/app/ops-analysis/types/topology';
 import type { ResponseFieldDefinition } from '@/app/ops-analysis/types/dataSource';
 
 /**
  * 根据 field_schema 生成带备注的显示标题
  */
-function getDisplayTitle(key: string, fieldSchema?: ResponseFieldDefinition[]): string {
+function getDisplayTitle(key: string, fieldSchema?: ResponseFieldDefinition[]): ReactNode {
   if (!fieldSchema || fieldSchema.length === 0) return key;
   const field = fieldSchema.find((f) => f.key === key);
   if (field && field.title) {
-    return `${key}（${field.title}）`;
+    return createElement('span', null, [
+      createElement('span', { key: 'key' }, key),
+      createElement(
+        'span',
+        { key: 'title', className: 'text-(--color-text-2)' },
+        `（${field.title}）`,
+      ),
+    ]);
   }
   return key;
 }

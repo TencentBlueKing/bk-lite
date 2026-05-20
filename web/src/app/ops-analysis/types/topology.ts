@@ -226,7 +226,7 @@ export interface SerializedEdge {
 
 // 数据树节点结构
 export interface TreeNode {
-  title: string;
+  title: React.ReactNode;
   key: string;
   value?: string;
   isLeaf?: boolean;

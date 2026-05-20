@@ -2,7 +2,7 @@
   {
     "name": "日志命中数",
     "desc": "",
-    "rest_api": "hits",
+    "rest_api": "log/hits",
     "tag": [
       "log"
     ],
@@ -51,7 +51,7 @@
   {
     "name": "告警趋势",
     "desc": "查询告警趋势的数据",
-    "rest_api": "get_alert_trend_data",
+    "rest_api": "alert/get_alert_trend_data",
     "tag": [
       "alerts"
     ],
@@ -115,7 +115,7 @@
   {
     "name": "日志搜索",
     "desc": "",
-    "rest_api": "search",
+    "rest_api": "log/search",
     "tag": [
       "log"
     ],
