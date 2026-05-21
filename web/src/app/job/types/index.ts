@@ -276,6 +276,14 @@ export interface PlaybookFormData {
   team?: number[];
 }
 
+export interface PlaybookFilePreview {
+  file_name: string;
+  file_path: string;
+  content: string;
+  file_type: string;
+  file_size: number;
+}
+
 // Scheduled Task types
 export type JobType = 'script' | 'playbook' | 'file';
 export type ScheduleType = 'once' | 'cron';
