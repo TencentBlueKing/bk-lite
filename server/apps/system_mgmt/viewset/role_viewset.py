@@ -94,7 +94,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         log_operation(
             request,
             "create",
-            "role",
+            "system-manager",
             f"新增角色: {request.data['name']} (应用: {request.data.get('client_id')})",
         )
 
@@ -125,7 +125,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         Role.objects.filter(id=role_id).delete()
 
         # 记录操作日志
-        log_operation(request, "delete", "role", f"删除角色: {role_name}")
+        log_operation(request, "delete", "system-manager", f"删除角色: {role_name}")
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -135,7 +135,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         Role.objects.filter(id=request.data.get("role_id")).update(name=role_name)
 
         # 记录操作日志
-        log_operation(request, "update", "role", f"更新角色名称: {role_name}")
+        log_operation(request, "update", "system-manager", f"更新角色名称: {role_name}")
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -166,12 +166,12 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
 
         # 记录操作日志
         if is_superuser:
-            log_operation(request, "create", "role", f"新增超级管理员: {', '.join(usernames)}")
+            log_operation(request, "create", "system-manager", f"新增超级管理员: {', '.join(usernames)}")
         else:
             log_operation(
                 request,
                 "create",
-                "role",
+                "system-manager",
                 f"添加用户到角色 {role_name}: {', '.join(usernames)}",
             )
         return JsonResponse({"result": True})
@@ -204,12 +204,12 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
 
         # 记录操作日志
         if is_superuser:
-            log_operation(request, "delete", "role", f"删除超级管理员: {', '.join(usernames)}")
+            log_operation(request, "delete", "system-manager", f"删除超级管理员: {', '.join(usernames)}")
         else:
             log_operation(
                 request,
                 "delete",
-                "role",
+                "system-manager",
                 f"从角色 {role_name} 移除用户: {', '.join(usernames)}",
             )
         return JsonResponse({"result": True})
@@ -242,7 +242,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         log_operation(
             request,
             "update",
-            "role",
+            "system-manager",
             f"设置角色权限: {role_obj.name} (共{len(menus)}个菜单)",
         )
         return JsonResponse({"result": True})
@@ -298,7 +298,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         log_operation(
             request,
             "create",
-            "role",
+            "system-manager",
             f"添加组织到角色 {role.name}: {', '.join(group_names)}",
         )
 
@@ -355,7 +355,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         log_operation(
             request,
             "delete",
-            "role",
+            "system-manager",
             f"从角色 {role.name} 移除组织: {', '.join(group_names)}",
         )
 
