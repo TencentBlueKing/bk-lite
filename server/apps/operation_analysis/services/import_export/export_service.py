@@ -117,6 +117,7 @@ class ExportService:
                 "name": ds.name,
                 "rest_api": ds.rest_api,
                 "desc": ds.desc or "",
+                # [内部预留] is_active 字段仅内部使用，无产品功能依赖
                 "is_active": ds.is_active,
                 "params": ds.params or [],
                 "tags": tag_names,

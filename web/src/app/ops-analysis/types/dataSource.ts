@@ -37,7 +37,7 @@ export interface DatasourceItem {
   name: string;
   rest_api: string;
   desc: string;
-  is_active: boolean;
+  // [内部预留] is_active 字段仅后端/导入导出链路使用，前端不再暴露
   params: ParamItem[];
   chart_type: ChartType[];
   namespaces: number[];
