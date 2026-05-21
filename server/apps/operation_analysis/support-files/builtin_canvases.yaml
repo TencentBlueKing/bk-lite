@@ -172,70 +172,6 @@ dashboards:
           title: 数量
           visible: true
       dataSourceParams: []
-  - h: 7
-    i: 7d86f0ed-53d5-4c7b-b7bd-dad2dc48e653
-    w: 12
-    x: 0
-    y: 16
-    name: 查询资产实例
-    moved: false
-    static: false
-    description: ''
-    valueConfig:
-      chartType: table
-      dataSource: 查询资产实例::cmdb/query_asset_instances
-      tableConfig:
-        columns:
-        - key: organization
-          order: 0
-          title: organization
-          visible: true
-        - key: inst_name
-          order: 1
-          title: inst_name
-          visible: true
-        - key: model_id
-          order: 2
-          title: model_id
-          visible: true
-        - key: time_range
-          order: 3
-          title: time_range
-          visible: true
-        - key: enum_test
-          order: 4
-          title: enum_test
-          visible: true
-        - key: bak_operator
-          order: 5
-          title: bak_operator
-          visible: true
-        - key: apiserver
-          order: 6
-          title: apiserver
-          visible: true
-        - key: comment
-          order: 7
-          title: comment
-          visible: true
-        - key: operator
-          order: 8
-          title: operator
-          visible: true
-        - key: auto_collect
-          order: 9
-          title: auto_collect
-          visible: true
-        filterFields:
-        - key: inst_name
-          label: 实例名称
-          inputType: keyword
-      dataSourceParams:
-      - name: model_id
-        type: string
-        value: k8s_cluster
-        alias_name: model_id
-        filterType: params
   - h: 3
     i: 8461bad1-524b-499c-aebb-af9ed980aa14
     w: 2
@@ -464,7 +400,6 @@ dashboards:
     - 模型实例统计::get_model_inst_statistics
     - CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
     - CMDB模型实例TOPN::cmdb/get_cmdb_model_instance_top
-    - 查询资产实例::cmdb/query_asset_instances
     namespace_keys: []
   filters:
   - id: time__timeRange
@@ -1270,24 +1205,6 @@ datasources:
   - CMDB
   chart_type:
   - pie
-  field_schema: []
-  namespace_keys:
-  - 默认命名空间
-- key: 查询资产实例::cmdb/query_asset_instances
-  name: 查询资产实例
-  rest_api: cmdb/query_asset_instances
-  desc: ''
-  is_active: true
-  params:
-  - name: model_id
-    type: string
-    value: ''
-    alias_name: model_id
-    filterType: params
-  tags:
-  - CMDB
-  chart_type:
-  - table
   field_schema: []
   namespace_keys:
   - 默认命名空间
