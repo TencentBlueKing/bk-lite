@@ -2,8 +2,8 @@
 # @File: falkordb_format.py
 # @Time: 2025/8/29 16:25
 # @Author: windyzhao
-from typing import List, Dict, Any
 import json
+from typing import Any, Dict, List
 
 
 class FormatDBResult:
@@ -22,11 +22,10 @@ class FormatDBResult:
         self.headers = []
         self.records = []
 
-        if hasattr(result_set, 'header') and result_set.header:
-            self.headers = [header[1] if isinstance(header, tuple) and len(header) > 1 else header
-                            for header in result_set.header]
+        if hasattr(result_set, "header") and result_set.header:
+            self.headers = [header[1] if isinstance(header, tuple) and len(header) > 1 else header for header in result_set.header]
 
-        if hasattr(result_set, 'result_set'):
+        if hasattr(result_set, "result_set"):
             self.records = result_set.result_set
 
     def to_list_of_dicts(self) -> List[Dict[str, Any]]:
@@ -56,7 +55,15 @@ class FormatDBResult:
 
         result = {}
         for record in self.records:
-            result[record[0]] = record[1]
+            key = record[0]
+            if isinstance(key, list):
+                if len(key) == 1 and not isinstance(key[0], (list, dict)):
+                    key = key[0]
+                else:
+                    key = json.dumps(key, ensure_ascii=False)
+            elif isinstance(key, dict):
+                key = json.dumps(key, ensure_ascii=False, sort_keys=True)
+            result[key] = record[1]
         return result
 
     def to_list_of_lists(self) -> List[dict]:
@@ -92,20 +99,20 @@ class FormatDBResult:
             Dict[str, int]: 统计信息字典
         """
         stats = {}
-        if hasattr(self.result_set, 'get_statistics'):
+        if hasattr(self.result_set, "get_statistics"):
             stats_obj = self.result_set.get_statistics()
             if stats_obj:
                 stats = {
-                    'nodes_created': getattr(stats_obj, 'nodes_created', 0),
-                    'nodes_deleted': getattr(stats_obj, 'nodes_deleted', 0),
-                    'relationships_created': getattr(stats_obj, 'relationships_created', 0),
-                    'relationships_deleted': getattr(stats_obj, 'relationships_deleted', 0),
-                    'properties_set': getattr(stats_obj, 'properties_set', 0),
-                    'labels_added': getattr(stats_obj, 'labels_added', 0),
-                    'labels_removed': getattr(stats_obj, 'labels_removed', 0),
-                    'indices_created': getattr(stats_obj, 'indices_created', 0),
-                    'indices_deleted': getattr(stats_obj, 'indices_deleted', 0),
-                    'internal_execution_time': getattr(stats_obj, 'internal_execution_time', 0)
+                    "nodes_created": getattr(stats_obj, "nodes_created", 0),
+                    "nodes_deleted": getattr(stats_obj, "nodes_deleted", 0),
+                    "relationships_created": getattr(stats_obj, "relationships_created", 0),
+                    "relationships_deleted": getattr(stats_obj, "relationships_deleted", 0),
+                    "properties_set": getattr(stats_obj, "properties_set", 0),
+                    "labels_added": getattr(stats_obj, "labels_added", 0),
+                    "labels_removed": getattr(stats_obj, "labels_removed", 0),
+                    "indices_created": getattr(stats_obj, "indices_created", 0),
+                    "indices_deleted": getattr(stats_obj, "indices_deleted", 0),
+                    "internal_execution_time": getattr(stats_obj, "internal_execution_time", 0),
                 }
         return stats
 
@@ -164,20 +171,20 @@ class FormatDBResult:
             return None
 
         # 处理节点对象
-        if hasattr(value, 'properties'):
-            _id = getattr(value, 'id', "")
-            labels = list(value.labels) if hasattr(value, 'labels') else []
-            properties = dict(value.properties) if hasattr(value, 'properties') else {}
-            properties['_id'] = _id
-            properties['_labels'] = labels[0] if labels else ""
+        if hasattr(value, "properties"):
+            _id = getattr(value, "id", "")
+            labels = list(value.labels) if hasattr(value, "labels") else []
+            properties = dict(value.properties) if hasattr(value, "properties") else {}
+            properties["_id"] = _id
+            properties["_labels"] = labels[0] if labels else ""
             return properties
 
         # 处理路径对象
-        if hasattr(value, 'nodes') and hasattr(value, 'edges'):
+        if hasattr(value, "nodes") and hasattr(value, "edges"):
             return {
-                'type': 'path',
-                'nodes': [self._format_value(node) for node in value.nodes],
-                'relationships': [self._format_value(edge) for edge in value.edges]
+                "type": "path",
+                "nodes": [self._format_value(node) for node in value.nodes],
+                "relationships": [self._format_value(edge) for edge in value.edges],
             }
 
         return value
@@ -192,24 +199,24 @@ class FormatDBResult:
                     "edge": {},
                     "dst": {},
                 }
-                _edges = getattr(_re, '_edges', [])
+                _edges = getattr(_re, "_edges", [])
                 if not _edges:
                     continue
 
                 _edge = _edges[0]
-                _id = getattr(_edge, 'id', 0)
-                properties = getattr(_edge, 'properties', {})
-                properties['_id'] = _id
+                _id = getattr(_edge, "id", 0)
+                properties = getattr(_edge, "properties", {})
+                properties["_id"] = _id
                 edge_info["edge"] = _edge
                 edge_info["edge"] = properties
                 src_model = properties["src_model_id"]
                 dst_model = properties["dst_model_id"]
 
-                _nodes = getattr(_re, '_nodes', [])
+                _nodes = getattr(_re, "_nodes", [])
                 for _node in _nodes:
-                    _id = getattr(_node, 'id', 0)
-                    properties = getattr(_node, 'properties', {})
-                    properties['_id'] = _id
+                    _id = getattr(_node, "id", 0)
+                    properties = getattr(_node, "properties", {})
+                    properties["_id"] = _id
                     if properties.get("model_id") == src_model:
                         edge_info["src"] = properties
                     elif properties.get("model_id") == dst_model:
