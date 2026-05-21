@@ -6,6 +6,7 @@ from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.opspilot.models import KnowledgeDocument, ManualKnowledge
 from apps.opspilot.serializers import ManualKnowledgeSerializer
 from apps.opspilot.utils.team_permission_mixin import TeamPermissionMixin
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class ManualKnowledgeViewSet(TeamPermissionMixin, LanguageViewSet):
@@ -36,4 +37,5 @@ class ManualKnowledgeViewSet(TeamPermissionMixin, LanguageViewSet):
             knowledge_document_id=new_doc.id,
             content=kwargs.get("content", ""),
         )
+        log_operation(request, "create", "opspilot", f"创建手动知识文档: {kwargs.get('name', '')}")
         return JsonResponse({"result": True, "data": knowledge_obj.knowledge_document_id})

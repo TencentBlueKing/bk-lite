@@ -21,6 +21,7 @@ from apps.job_mgmt.serializers.playbook import (
     PlaybookUpgradeSerializer,
     extract_file_from_archive,
 )
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class PlaybookViewSet(AuthViewSet):
@@ -97,6 +98,7 @@ class PlaybookViewSet(AuthViewSet):
 
         # 返回完整的对象信息
         response_serializer = PlaybookDetailSerializer(instance, context={"request": request})
+        log_operation(request, "create", "job", f"新增作业: {instance.name}")
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["post"])
@@ -118,6 +120,7 @@ class PlaybookViewSet(AuthViewSet):
 
         # 再批量删除数据库记录
         deleted_count, _ = playbooks.delete()
+        log_operation(request, "delete", "job", f"批量删除作业: (共{deleted_count}个)")
 
         return Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
 
@@ -142,6 +145,7 @@ class PlaybookViewSet(AuthViewSet):
         instance = serializer.update(instance, serializer.validated_data)
 
         response_serializer = PlaybookDetailSerializer(instance, context={"request": request})
+        log_operation(request, "update", "job", f"升级作业: {instance.name}")
         return Response(response_serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"])
