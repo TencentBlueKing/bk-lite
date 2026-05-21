@@ -555,7 +555,7 @@ def set_channel_type_line(end_time, queryset, start_time):
 @api_exempt
 async def execute_chat_flow(request, bot_id, node_id):
     """执行ChatFlow流程（支持流式响应）"""
-    loader = get_loader(request)
+    loader = await sync_to_async(get_loader, thread_sensitive=True)(request)
     if not bot_id or not node_id:
         return JsonResponse({"result": False, "message": loader.get("error.bot_node_id_required", "Bot ID and Node ID are required.")})
 
