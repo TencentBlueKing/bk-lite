@@ -170,13 +170,37 @@
         flex-wrap: wrap;
       }
 
-      .search {
+      .search-wrap {
         width: 240px;
         height: 36px;
         border: 1px solid var(--line);
         border-radius: 10px;
         padding: 0 12px;
         background: #fff;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        overflow: hidden;
+      }
+
+      .search-icon {
+        color: #7f8a9c;
+        font-size: 14px;
+        flex-shrink: 0;
+      }
+
+      .search {
+        width: 100%;
+        height: 36px;
+        border: 0;
+        border-radius: 10px;
+        padding: 0;
+        background: #fff;
+        outline: none;
+        min-width: 0;
+        display: block;
+        font: inherit;
+        color: var(--text-1);
       }
 
       .btn {
@@ -201,21 +225,22 @@
 
       .grid {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 24px;
       }
 
       .integration-card {
         border: 1px solid var(--line-soft);
-        border-radius: 14px;
-        background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
-        padding: 18px;
-        min-height: 208px;
+        border-radius: 16px;
+        background: #fff;
+        padding: 20px;
+        min-height: 200px;
         display: flex;
         flex-direction: column;
-        gap: 16px;
+        gap: 14px;
         cursor: pointer;
         transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        box-shadow: 0 10px 24px rgba(33, 59, 99, 0.05);
       }
 
       .integration-card:hover {
@@ -226,7 +251,7 @@
 
       .integration-head {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: space-between;
         gap: 12px;
       }
@@ -279,7 +304,7 @@
       }
 
       .integration-name {
-        font-size: 16px;
+        font-size: 17px;
         font-weight: 700;
       }
 
@@ -289,39 +314,84 @@
         margin-top: 2px;
       }
 
-      .capability-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-
-      .chip {
-        height: 28px;
-        padding: 0 10px;
+      .card-status-pill {
+        height: 32px;
+        padding: 0 12px;
         border-radius: 999px;
         display: inline-flex;
         align-items: center;
-        font-size: 12px;
-        font-weight: 600;
-        border: 1px solid transparent;
+        font-size: 13px;
+        font-weight: 700;
+        white-space: nowrap;
+        flex-shrink: 0;
       }
 
-      .chip.draft {
-        color: #7a8699;
-        background: #f2f4f8;
-        border-color: #e5e8ef;
-      }
-
-      .chip.ready {
-        color: #2f6fed;
-        background: #edf4ff;
-        border-color: #d8e6ff;
-      }
-
-      .chip.active {
+      .card-status-pill.active {
         color: var(--success);
         background: #e8faf3;
-        border-color: #c9ebd8;
+      }
+
+      .card-status-pill.draft {
+        color: #7f8795;
+        background: #f2f4f8;
+      }
+
+      .card-divider {
+        border-top: 1px solid var(--line-soft);
+      }
+
+      .capability-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+
+      .capability-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #657287;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #b8bec9;
+      }
+
+      .status-dot.active {
+        background: #2db36c;
+      }
+
+      .capability-state.active {
+        color: var(--success);
+      }
+
+      .capability-state.inactive {
+        color: #7f8795;
+      }
+
+      .card-foot {
+        margin-top: auto;
+        padding-top: 14px;
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .card-link {
+        height: 32px;
+        padding: 0 14px;
+        border-radius: 10px;
+        border: 1px solid #d6e0ef;
+        background: #fff;
+        color: var(--primary);
+        font-size: 13px;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
       }
 
       .integration-modal-mask {
@@ -621,7 +691,7 @@
 
       @media (max-width: 1280px) {
         .grid {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
+          grid-template-columns: repeat(3, minmax(0, 1fr));
         }
 
         .integration-market-grid {
@@ -638,7 +708,7 @@
           grid-template-columns: 1fr;
         }
 
-        .search {
+        .search-wrap {
           width: 100%;
         }
 
@@ -670,7 +740,7 @@
     <main class="container">
       <section class="hero">
         <div class="hero-title">集成中心</div>
-        <div class="hero-desc">统一管理企业微信、钉钉、目录服务和代码平台等外部接入。卡片按能力状态汇总信息，点击卡片进入详情完成配置与启用。</div>
+        <div class="hero-desc">统一管理企业微信、钉钉、目录服务和代码平台等外部接入。卡片展示各集成能力的启动状态，点击进入详情进行管理。</div>
       </section>
 
       <section class="panel">
@@ -679,7 +749,10 @@
             <div class="panel-title">已接入系统</div>
           </div>
           <div class="toolbar">
-            <input class="search" type="text" placeholder="搜索集成" />
+            <div class="search-wrap">
+              <span class="search-icon">⌕</span>
+              <input class="search" type="text" placeholder="搜索集成" />
+            </div>
             <button class="btn btn-primary" onclick="openAddIntegrationModal()">+ 添加集成</button>
           </div>
         </div>
@@ -694,11 +767,16 @@
                     <div class="integration-type">企业微信</div>
                   </div>
                 </div>
+                <span id="wechatOverallStatus" class="card-status-pill active">已启动</span>
               </div>
+              <div class="card-divider"></div>
               <div id="wechatCapabilityRow" class="capability-row">
-                <span id="wechatSyncChip" class="chip draft">身份同步 未配置</span>
-                <span id="wechatAuthChip" class="chip active">登录认证 已启用</span>
-                <span id="wechatNotifyChip" class="chip ready">通知渠道 已配置</span>
+                <span id="wechatSyncChip" class="capability-item">身份同步 <span class="status-dot"></span><span class="capability-state inactive">未启动</span></span>
+                <span id="wechatAuthChip" class="capability-item">登录认证 <span class="status-dot active"></span><span class="capability-state active">已启动</span></span>
+                <span id="wechatNotifyChip" class="capability-item">通知渠道 <span class="status-dot active"></span><span class="capability-state active">已启动</span></span>
+              </div>
+              <div class="card-foot">
+                <span class="card-link">管理</span>
               </div>
             </article>
 
@@ -711,11 +789,16 @@
                     <div class="integration-type">钉钉</div>
                   </div>
                 </div>
+                <span class="card-status-pill active">已启动</span>
               </div>
+              <div class="card-divider"></div>
               <div class="capability-row">
-                <span class="chip draft">身份同步 未配置</span>
-                <span class="chip ready">登录认证 已配置</span>
-                <span class="chip draft">通知渠道 未配置</span>
+                <span class="capability-item">身份同步 <span class="status-dot"></span><span class="capability-state inactive">未启动</span></span>
+                <span class="capability-item">登录认证 <span class="status-dot active"></span><span class="capability-state active">已启动</span></span>
+                <span class="capability-item">通知渠道 <span class="status-dot"></span><span class="capability-state inactive">未启动</span></span>
+              </div>
+              <div class="card-foot">
+                <span class="card-link">管理</span>
               </div>
             </article>
 
@@ -728,10 +811,15 @@
                     <div class="integration-type">LDAP</div>
                   </div>
                 </div>
+                <span class="card-status-pill active">已启动</span>
               </div>
+              <div class="card-divider"></div>
               <div class="capability-row">
-                <span class="chip ready">身份同步 已配置</span>
-                <span class="chip ready">登录认证 已配置</span>
+                <span class="capability-item">身份同步 <span class="status-dot active"></span><span class="capability-state active">已启动</span></span>
+                <span class="capability-item">登录认证 <span class="status-dot active"></span><span class="capability-state active">已启动</span></span>
+              </div>
+              <div class="card-foot">
+                <span class="card-link">管理</span>
               </div>
             </article>
 
@@ -744,9 +832,14 @@
                     <div class="integration-type">OIDC</div>
                   </div>
                 </div>
+                <span class="card-status-pill active">已启动</span>
               </div>
+              <div class="card-divider"></div>
               <div class="capability-row">
-                <span class="chip active">登录认证 已启用</span>
+                <span class="capability-item">登录认证 <span class="status-dot active"></span><span class="capability-state active">已启动</span></span>
+              </div>
+              <div class="card-foot">
+                <span class="card-link">管理</span>
               </div>
             </article>
 
@@ -759,9 +852,14 @@
                     <div class="integration-type">SAML</div>
                   </div>
                 </div>
+                <span class="card-status-pill draft">未启动</span>
               </div>
+              <div class="card-divider"></div>
               <div class="capability-row">
-                <span class="chip draft">登录认证 未配置</span>
+                <span class="capability-item">登录认证 <span class="status-dot"></span><span class="capability-state inactive">未启动</span></span>
+              </div>
+              <div class="card-foot">
+                <span class="card-link">管理</span>
               </div>
             </article>
 
@@ -774,9 +872,14 @@
                     <div class="integration-type">GitHub</div>
                   </div>
                 </div>
+                <span class="card-status-pill active">已启动</span>
               </div>
+              <div class="card-divider"></div>
               <div class="capability-row">
-                <span class="chip active">登录认证 已启用</span>
+                <span class="capability-item">登录认证 <span class="status-dot active"></span><span class="capability-state active">已启动</span></span>
+              </div>
+              <div class="card-foot">
+                <span class="card-link">管理</span>
               </div>
             </article>
           </div>
@@ -985,8 +1088,12 @@
       }
 
       function statusText(status) {
-        const map = { draft: '未配置', ready: '已配置', active: '已启用' };
+        const map = { draft: '未启动', ready: '已启动', active: '已启动' };
         return map[status];
+      }
+
+      function overallText(status) {
+        return status === 'draft' ? '未启动' : '已启动';
       }
 
       function renderEnterpriseCard() {
@@ -996,12 +1103,16 @@
         updateChip('wechatSyncChip', '身份同步', statuses.sync);
         updateChip('wechatAuthChip', '登录认证', statuses.auth);
         updateChip('wechatNotifyChip', '通知渠道', statuses.notify);
+        const overall = document.getElementById('wechatOverallStatus');
+        overall.className = 'card-status-pill ' + (statuses.overall === 'draft' ? 'draft' : 'active');
+        overall.textContent = overallText(statuses.overall);
       }
 
       function updateChip(id, label, status) {
         const node = document.getElementById(id);
-        node.className = 'chip ' + status;
-        node.textContent = label + ' ' + statusText(status);
+        const active = status !== 'draft';
+        node.className = 'capability-item';
+        node.innerHTML = label + ' <span class="status-dot ' + (active ? 'active' : '') + '"></span><span class="capability-state ' + (active ? 'active' : 'inactive') + '">' + statusText(status) + '</span>';
       }
 
       function goDetail(event) {

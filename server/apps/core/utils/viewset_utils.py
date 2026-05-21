@@ -1,16 +1,14 @@
-import logging
-
 from django.db.models import Q
 from django.http import JsonResponse
 from rest_framework import viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from apps.core.logger import logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import delete_instance_rules, get_permission_rules
 from apps.core.utils.user_group import normalize_user_group_ids
-
-logger = logging.getLogger(__name__)
+from apps.system_mgmt.models import Group
 
 
 class GenericViewSetFun(object):
@@ -237,6 +235,20 @@ class AuthViewSet(MaintainerViewSet):
     ORDERING_FIELD = "-id"
     ORGANIZATION_FIELD = "team"  # 默认使用 team 字段,子类可覆盖为 groups 或其他字段名
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.core_loader = None
+
+    def initialize_request(self, request, *args, **kwargs):
+        request = super().initialize_request(request, *args, **kwargs)
+        # 初始化 core 模块的 loader，用于通用错误消息
+        if hasattr(request, "user") and request.user:
+            locale = getattr(request.user, "locale", "en") or "en"
+        else:
+            locale = "en"
+        self.core_loader = LanguageLoader(app="core", default_lang=locale)
+        return request
+
     def _validate_current_team_permission(self, request):
         """验证用户有权限访问 current_team，返回 current_team 值
 
@@ -251,6 +263,68 @@ class AuthViewSet(MaintainerViewSet):
             if current_team not in user_group_ids:
                 raise PermissionDenied(self.loader.get("error.no_permission_access_team") if self.loader else "无权访问该团队数据")
         return current_team
+
+    def _validate_org_field_permission(self, request, org_values):
+        """校验目标组织是否在当前用户可管理范围内
+
+        Args:
+            request: HTTP 请求对象
+            org_values: 需要校验的组织 ID（可以是单个整数、字符串或列表）
+
+        Raises:
+            PermissionDenied: 当存在无权管理的组织时
+        """
+        if not org_values:
+            return
+
+        # 规范化输入：支持单个整数、字符串或列表
+        if isinstance(org_values, (int, str)):
+            org_values = [org_values]
+
+        # 转换为整数列表
+        normalized_values = []
+        for v in org_values:
+            if v is None:
+                continue
+            if isinstance(v, int):
+                normalized_values.append(v)
+            elif isinstance(v, str) and v.strip().isdigit():
+                normalized_values.append(int(v.strip()))
+
+        if not normalized_values:
+            return
+
+        user = getattr(request, "user", None)
+        if not user:
+            message = self.core_loader.get("error.user_not_logged_in", "用户未登录") if self.core_loader else "用户未登录"
+            raise PermissionDenied(message)
+
+        # 超级管理员跳过校验
+        if getattr(user, "is_superuser", False):
+            return
+
+        # 获取用户可管理的组织 ID 集合
+        user_group_ids = {g["id"] for g in getattr(user, "group_list", [])}
+
+        # 检查是否有无权管理的组织
+        invalid_group_ids = set(normalized_values) - user_group_ids
+        if invalid_group_ids:
+            # 查询数据库获取组名，用于友好的错误提示
+
+            group_names = []
+            groups = Group.objects.filter(id__in=invalid_group_ids).values("id", "name")
+            group_name_map = {g["id"]: g["name"] for g in groups}
+            for gid in invalid_group_ids:
+                name = group_name_map.get(gid)
+                if name:
+                    group_names.append(f"{name}(ID:{gid})")
+                else:
+                    group_names.append(f"ID:{gid}")
+
+            default_message = "您没有以下组织的权限，无法创建或修改: {invalid_groups}"
+            message = self.core_loader.get("error.no_permission_for_groups", default_message) if self.core_loader else default_message
+            message = message.format(invalid_groups=", ".join(group_names))
+            raise PermissionDenied(message)
 
     def filter_rules(self, rules):
         """根据规则过滤查询集"""
@@ -267,6 +341,18 @@ class AuthViewSet(MaintainerViewSet):
         if 0 in rule_ids:
             return []
         return rule_ids
+
+    def create(self, request, *args, **kwargs):
+        """重写创建方法以支持组织权限校验"""
+        org_field = self.ORGANIZATION_FIELD
+        data = request.data
+
+        # 校验提交的组织字段是否在用户可管理范围内
+        if org_field in data:
+            org_values = self._normalize_org_values(data, org_field)
+            self._validate_org_field_permission(request, org_values)
+
+        return super().create(request, *args, **kwargs)
 
     def list(self, request, *args, **kwargs):
         """重写列表方法以支持权限过滤"""
@@ -319,7 +405,8 @@ class AuthViewSet(MaintainerViewSet):
             logger.error(f"Error in _list method: {e}")
             raise
 
-    def _normalize_org_values(self, data, org_field):
+    @staticmethod
+    def _normalize_org_values(data, org_field):
         """规范化组织字段为 int 列表，兼容 QueryDict / str / list / int"""
         values = []
 
@@ -459,6 +546,10 @@ class AuthViewSet(MaintainerViewSet):
                     return self.value_error(message)
             if org_field in data:
                 org_values = self._normalize_org_values(data, org_field)
+                # 校验新增的组织是否在用户可管理范围内
+                new_groups = set(org_values) - set(instance_org_value)
+                if new_groups:
+                    self._validate_org_field_permission(request, list(new_groups))
                 delete_team = [i for i in instance_org_value if i not in org_values]
                 self.delete_rules(instance.id, delete_team)
             serializer = self.get_serializer(instance, data=data, partial=partial)

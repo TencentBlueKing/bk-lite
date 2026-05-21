@@ -318,3 +318,47 @@ def test_s3jsonfield_pre_save_uses_pending_assigned_value(monkeypatch):
     assert field._pending_value_attr_name not in instance.__dict__
     tasks = getattr(instance, module.S3JSONField.CLEANUP_TASKS_ATTR)
     assert tasks[0]["old_path"] == "old.json.gz"
+
+
+def test_pre_save_does_not_leave_residual_pending(monkeypatch):
+    module, _, _, _, _ = _load_s3json_module(monkeypatch, rows_by_alias={"default": [("old.json.gz",)]})
+    field = module.S3JSONField(bucket_name="bucket", delete_previous_on_update=True)
+    field.attname = "payload"
+    field.column = "payload"
+    instance = _build_instance(field, initial_value="current.json.gz")
+    instance.__dict__[field._pending_value_attr_name] = [{"metric": "cpu"}]
+
+    field.pre_save(instance, add=False)
+
+    assert field._pending_value_attr_name not in instance.__dict__
+
+
+def test_from_db_value_returns_path_string_without_downloading(monkeypatch):
+    module, _, _, _, _ = _load_s3json_module(monkeypatch)
+    field = module.S3JSONField(bucket_name="bucket")
+    field.attname = "payload"
+
+    result = field.from_db_value("snapshots/abc.json.gz", None, None)
+
+    assert result == "snapshots/abc.json.gz"
+
+
+def test_from_db_value_returns_none_for_empty(monkeypatch):
+    module, _, _, _, _ = _load_s3json_module(monkeypatch)
+    field = module.S3JSONField(bucket_name="bucket")
+    field.attname = "payload"
+
+    assert field.from_db_value("", None, None) is None
+    assert field.from_db_value(None, None, None) is None
+
+
+def test_pre_save_preserves_path_when_value_is_none(monkeypatch):
+    module, _, _, _, _ = _load_s3json_module(monkeypatch, rows_by_alias={"default": []})
+    field = module.S3JSONField(bucket_name="bucket")
+    field.attname = "payload"
+    field.column = "payload"
+    instance = _build_instance(field, initial_value="snapshots/existing.json.gz")
+
+    result = field.pre_save(instance, add=False)
+
+    assert result == "snapshots/existing.json.gz"

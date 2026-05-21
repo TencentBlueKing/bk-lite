@@ -33,7 +33,7 @@ export interface ItemData {
   name: string;
   desc?: string;
   directory?: number;
-  parent_id?: number;
+  parent?: number | null;
   groups?: number[];
 }
 

@@ -21,6 +21,26 @@ from apps.system_mgmt.utils.group_utils import GroupUtils
 
 class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @staticmethod
+    def _get_allowed_org_ids(request) -> list[int]:
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children") == "1"
+        user_group_ids = [i["id"] for i in request.user.group_list]
+
+        if getattr(request.user, "is_superuser", False):
+            return GroupUtils.get_all_child_groups(current_team, include_self=True, group_list=None) if include_children else [
+                current_team
+            ]
+
+        allowed_org_ids = GroupUtils.get_user_authorized_child_groups(
+            user_group_list=user_group_ids,
+            target_group_id=current_team,
+            include_children=include_children,
+        )
+        if not allowed_org_ids:
+            raise BaseAppException("抱歉！您没有该组织的权限或组织选择无效")
+        return allowed_org_ids
+
+    @staticmethod
     def _parse_positive_int(value, field_name, default):
         if value in (None, ""):
             return default
@@ -243,10 +263,12 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @HasPermission("asset_info-Add")
     def create(self, request):
         model_id = request.data.get("model_id")
+        allowed_org_ids = self._get_allowed_org_ids(request)
         inst = InstanceManage.instance_create(
             model_id,
             request.data.get("instance_info"),
             request.user.username,
+            allowed_org_ids=allowed_org_ids,
         )
         return WebUtils.response_success(inst)
 
@@ -356,6 +378,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             user_groups = format_groups_params(team_ids)
         else:
             user_groups = format_group_params(current_team)
+        allowed_org_ids = self._get_allowed_org_ids(request)
 
         inst = InstanceManage.instance_update(
             user_groups,
@@ -363,6 +386,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             int(pk),
             request.data,
             request.user.username,
+            allowed_org_ids=allowed_org_ids,
         )
         return WebUtils.response_success(inst)
 
@@ -411,6 +435,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             user_groups = format_groups_params(team_ids)
         else:
             user_groups = format_group_params(current_team)
+        allowed_org_ids = self._get_allowed_org_ids(request)
 
         try:
             InstanceManage.batch_instance_update(
@@ -419,6 +444,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 request.data["inst_ids"],
                 request.data["update_data"],
                 request.user.username,
+                allowed_org_ids=allowed_org_ids,
             )
         except BaseAppException as e:
             return WebUtils.response_error(error_message=e.message, status_code=status.HTTP_403_FORBIDDEN)

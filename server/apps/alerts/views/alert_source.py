@@ -1,4 +1,8 @@
 # -- coding: utf-8 --
+from datetime import timedelta
+
+from django.utils import timezone
+from django.utils.translation import get_language
 from rest_framework.response import Response
 
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
@@ -12,6 +16,7 @@ from rest_framework import status
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.alerts.filters import AlertSourceModelFilter
 from apps.alerts.models.alert_source import AlertSource
+from apps.alerts.models.models import Event
 from apps.alerts.serializers import AlertSourceModelSerializer
 from apps.alerts.service.k8s_install import K8sInstallService
 from apps.core.decorators.api_permission import HasPermission
@@ -65,7 +70,8 @@ class AlertSourceModelViewSet(ModelViewSet):
         adapter_class = AlertSourceAdapterFactory.get_adapter(alert_source)
         adapter = adapter_class(alert_source=alert_source)
         base_url = request.build_absolute_uri("/").rstrip("/")
-        return Response(adapter.get_integration_guide(base_url))
+        language = getattr(request, "LANGUAGE_CODE", None) or get_language() or "zh-hans"
+        return Response(adapter.get_integration_guide(base_url, language=language))
 
     @staticmethod
     def _get_k8s_source():
@@ -241,3 +247,22 @@ class AlertSourceModelViewSet(ModelViewSet):
             push_source_id=payload["push_source_id"],
         )
         return WebUtils.response_file(yaml_content.encode("utf-8"), file_meta["file_name"])
+
+    @HasPermission("Integration-View")
+    @action(methods=["get"], detail=False, url_path="daily_event_stats")
+    def daily_event_stats(self, request):
+        """Return today's and yesterday's total event counts across all sources."""
+        now = timezone.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        yesterday_start = today_start - timedelta(days=1)
+
+        today_count = Event.objects.filter(received_at__gte=today_start).count()
+        yesterday_count = Event.objects.filter(
+            received_at__gte=yesterday_start,
+            received_at__lt=today_start,
+        ).count()
+
+        return WebUtils.response_success({
+            "today_count": today_count,
+            "yesterday_count": yesterday_count,
+        })

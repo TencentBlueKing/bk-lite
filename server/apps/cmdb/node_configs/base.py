@@ -22,6 +22,12 @@ class BaseNodeParams(metaclass=ABCMeta):
     def build_registry_key(cls, model_id, driver_type=None):
         return model_id, driver_type
 
+    @classmethod
+    def normalize_model_id(cls, model_id):
+        if not model_id:
+            return model_id
+        return model_id.replace("_account", "")
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         plugin_name = getattr(cls, "plugin_name", None)
@@ -64,16 +70,21 @@ class BaseNodeParams(metaclass=ABCMeta):
         """
         获取插件名称，如果找不到则抛出异常
         """
-        registry_key = self.build_registry_key(self.model_id, self.instance.driver_type)
-        try:
-            return self.PLUGIN_MAP[registry_key]
-        except KeyError:
-            # 向后兼容：旧的 NodeParams 只按 model_id 注册，没有显式 driver_type。
-            try:
-                return self.PLUGIN_MAP[self.build_registry_key(self.model_id)]
-            except KeyError as err:
-                raise KeyError(
-                    f"未在 PLUGIN_MAP 中找到对应 {self.model_id} / {self.instance.driver_type} 的插件配置") from err
+        normalized_model_id = self.normalize_model_id(self.model_id)
+        candidate_keys = [
+            self.build_registry_key(self.model_id, self.instance.driver_type),
+            self.build_registry_key(normalized_model_id, self.instance.driver_type),
+            self.build_registry_key(self.model_id),
+            self.build_registry_key(normalized_model_id),
+        ]
+
+        for registry_key in dict.fromkeys(candidate_keys):
+            plugin_name = self.PLUGIN_MAP.get(registry_key)
+            if plugin_name:
+                return plugin_name
+
+        raise KeyError(
+            f"未在 PLUGIN_MAP 中找到对应 {self.model_id} / {self.instance.driver_type} 的插件配置")
 
     @abstractmethod
     def set_credential(self, *args, **kwargs):
@@ -206,4 +217,3 @@ class BaseNodeParams(metaclass=ABCMeta):
             return self.push_params()
 
         return self.delete_params()
-

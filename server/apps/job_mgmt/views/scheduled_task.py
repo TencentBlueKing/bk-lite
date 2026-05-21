@@ -58,6 +58,11 @@ class ScheduledTaskViewSet(AuthViewSet):
     def create(self, request, *args, **kwargs):
         serializer = ScheduledTaskCreateSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
+
+        # 校验用户是否有目标组织的权限
+        team = serializer.validated_data.get("team", [])
+        self._validate_org_field_permission(request, team)
+
         instance = serializer.save()
         return Response(
             ScheduledTaskDetailSerializer(instance).data,
@@ -70,6 +75,11 @@ class ScheduledTaskViewSet(AuthViewSet):
         instance = self.get_object()
         serializer = ScheduledTaskUpdateSerializer(instance, data=request.data, partial=partial, context={"request": request})
         serializer.is_valid(raise_exception=True)
+
+        # 校验用户是否有目标组织的权限
+        team = serializer.validated_data.get("team", instance.team)
+        self._validate_org_field_permission(request, team)
+
         instance = serializer.save()
         return Response(ScheduledTaskDetailSerializer(instance).data)
 

@@ -53,7 +53,9 @@ class KnowledgeBaseViewSet(AuthViewSet):
     def create(self, request, *args, **kwargs):
         params = request.data
         if not params.get("team"):
-            return JsonResponse({"result": False, "message": self.loader.get("error.team_required")})
+            params["team"] = [int(request.COOKIES.get("current_team"))]
+        # 校验用户是否有目标组织的权限
+        self._validate_org_field_permission(request, params["team"])
         if "embed_model" not in params:
             params["embed_model"] = EmbedProvider.objects.get(name="FastEmbed(BAAI/bge-small-zh-v1.5)").id
         if KnowledgeBase.objects.filter(name=params["name"]).exists():
@@ -61,8 +63,6 @@ class KnowledgeBaseViewSet(AuthViewSet):
         params["created_by"] = request.user.username
         if params.get("enable_rerank") is None:
             params["enable_rerank"] = False
-        if not params.get("team"):
-            params["team"] = [int(request.COOKIES.get("current_team"))]
         params["score_threshold"] = 0.3
         params["search_type"] = "mmr"
         serializer = self.get_serializer(data=params)

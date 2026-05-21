@@ -13,6 +13,12 @@ interface UseTaskFormProps {
   onClose: () => void;
   formatValues: (values: any) => any;
   initialValues: Record<string, any>;
+  /**
+   * 任务保存成功后的钩子。
+   * 当提供时，会在 onSuccess/onClose 之前触发；
+   * 返回 true 表示由调用方接管后续流程（不再自动调用 onClose），用于引导式向导。
+   */
+  afterSubmitSuccess?: (ctx: { values: any; editId?: number | null }) => boolean | void | Promise<boolean | void>;
 }
 
 export const getCycleFormValues = (data: any) => {
@@ -40,6 +46,7 @@ export const useTaskForm = ({
   onSuccess,
   onClose,
   formatValues,
+  afterSubmitSuccess,
 }: UseTaskFormProps) => {
   const { t } = useTranslation();
   const collectApi = useCollectApi();
@@ -110,13 +117,20 @@ export const useTaskForm = ({
       }
 
       onSuccess?.();
-      onClose();
+      let takeover = false;
+      if (afterSubmitSuccess) {
+        const result = await afterSubmitSuccess({ values, editId });
+        takeover = result === true;
+      }
+      if (!takeover) {
+        onClose();
+      }
     } catch (error) {
       console.error('Failed to save task:', error);
     } finally {
       setSubmitLoading(false);
     }
-  }, [collectApi, editId, formatValues, onClose, onSuccess, t]);
+  }, [collectApi, editId, formatValues, onClose, onSuccess, afterSubmitSuccess, t]);
 
   return {
     form,

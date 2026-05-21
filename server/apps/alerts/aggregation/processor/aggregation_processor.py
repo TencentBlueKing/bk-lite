@@ -214,7 +214,7 @@ class AggregationProcessor:
         return params
 
     def _query_candidate_events(self, strategy: AlarmStrategy, now: datetime):
-        queryset = Event.objects.all()
+        queryset = Event.objects.filter(action=EventAction.CREATED)
         if strategy.last_execute_time:
             queryset = queryset.filter(received_at__gt=strategy.last_execute_time)
             logger.debug(

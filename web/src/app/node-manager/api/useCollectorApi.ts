@@ -8,6 +8,7 @@ export interface CollectorParams {
   executable_path: string;
   execute_parameters: string;
   node_operating_system: string;
+  cpu_architecture?: string;
   introduction?: string;
 }
 

@@ -40,6 +40,7 @@ export const useMysqlDashboard = () => {
             value: 'slow_count'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"mysql" event.dataset:"mysql.slowlog"',
             query:
               'collect_type:"mysql" event.dataset:"mysql.slowlog" | stats by (_time:${_time}) count() as slow_count'
           }
@@ -64,6 +65,7 @@ export const useMysqlDashboard = () => {
             value: 'avg_time'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"mysql" event.dataset:"mysql.slowlog"',
             query: `collect_type:"mysql" event.dataset:"mysql.slowlog" | ${MYSQL_EXTRACT_QUERY_TIME} | stats by (_time:\${_time}) avg(query_time) as avg_time`
           }
         }
@@ -88,6 +90,8 @@ export const useMysqlDashboard = () => {
             value: 'lock_count'
           },
           dataSourceParams: {
+            searchQuery:
+              'collect_type:"mysql" event.dataset:"mysql.slowlog" _msg:"Lock_time:"',
             query: `collect_type:"mysql" event.dataset:"mysql.slowlog" | ${MYSQL_EXTRACT_LOCK_TIME} | stats by (_time:\${_time}) count() if (lock_time:>0) as lock_count`
           }
         }
@@ -112,6 +116,7 @@ export const useMysqlDashboard = () => {
             value: 'error_count'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"mysql" event.dataset:"mysql.error"',
             query:
               'collect_type:"mysql" event.dataset:"mysql.error" | stats by (_time:${_time}) count() as error_count'
           }
@@ -141,6 +146,7 @@ export const useMysqlDashboard = () => {
             lineLabel: '平均耗时(s)'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"mysql" event.dataset:"mysql.slowlog"',
             query: `collect_type:"mysql" event.dataset:"mysql.slowlog" | ${MYSQL_EXTRACT_QUERY_TIME} | stats by (_time:\${_time}) count() as slow_count, avg(query_time) as avg_time`
           }
         }
@@ -167,6 +173,8 @@ export const useMysqlDashboard = () => {
             lineLabel: '平均锁时(s)'
           },
           dataSourceParams: {
+            searchQuery:
+              'collect_type:"mysql" event.dataset:"mysql.slowlog" _msg:"Lock_time:"',
             query: `collect_type:"mysql" event.dataset:"mysql.slowlog" | ${MYSQL_EXTRACT_LOCK_TIME} | stats by (_time:\${_time}) count() if (lock_time:>0) as lock_count, avg(lock_time) as avg_lock_time`
           }
         }
@@ -191,6 +199,7 @@ export const useMysqlDashboard = () => {
             value: 'cnt'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"mysql" event.dataset:"mysql.slowlog"',
             query: `collect_type:"mysql" event.dataset:"mysql.slowlog" | ${MYSQL_EXTRACT_QUERY_TIME} | stats count() if (query_time:<0.1) as cnt_lt01, count() if (query_time:>=0.1 query_time:<1) as cnt_01_1, count() if (query_time:>=1 query_time:<10) as cnt_1_10, count() if (query_time:>=10) as cnt_gt10`
           }
         }
@@ -208,6 +217,7 @@ export const useMysqlDashboard = () => {
           chartType: 'mysqlSlowTable',
           dataSource: 1,
           dataSourceParams: {
+            searchQuery: 'collect_type:"mysql" event.dataset:"mysql.slowlog"',
             query: `collect_type:"mysql" event.dataset:"mysql.slowlog" | ${MYSQL_EXTRACT_QUERY_TIME} | stats by (_msg) count() as exec_count, avg(query_time) as avg_time, max(query_time) as max_time | sort by (avg_time desc) | limit 15`
           }
         }
@@ -231,6 +241,7 @@ export const useMysqlDashboard = () => {
             value: 'slow_count'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"mysql" event.dataset:"mysql.slowlog"',
             query: `collect_type:"mysql" event.dataset:"mysql.slowlog" | ${MYSQL_EXTRACT_USER} | stats by (mysql_user) count() as slow_count | sort by (slow_count desc) | limit 10`
           }
         }
@@ -252,6 +263,7 @@ export const useMysqlDashboard = () => {
             value: 'slow_count'
           },
           dataSourceParams: {
+            searchQuery: 'collect_type:"mysql" event.dataset:"mysql.slowlog"',
             query:
               'collect_type:"mysql" event.dataset:"mysql.slowlog" node_ip:* | stats by (node_ip) count() as slow_count | sort by (slow_count desc) | limit 10'
           }
@@ -273,6 +285,7 @@ export const useMysqlDashboard = () => {
           dataSource: 1,
           variant: 'slowlog',
           dataSourceParams: {
+            searchQuery: 'collect_type:"mysql" event.dataset:"mysql.slowlog"',
             query:
               'collect_type:"mysql" event.dataset:"mysql.slowlog" | sort by (_time desc) | limit 20'
           }
@@ -292,6 +305,7 @@ export const useMysqlDashboard = () => {
           dataSource: 1,
           variant: 'errorlog',
           dataSourceParams: {
+            searchQuery: 'collect_type:"mysql" event.dataset:"mysql.error"',
             query:
               'collect_type:"mysql" event.dataset:"mysql.error" | sort by (_time desc) | limit 20'
           }

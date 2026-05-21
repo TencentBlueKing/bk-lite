@@ -1,49 +1,97 @@
-from apps.cmdb.constants.constants import (
-    INSTANCE,
-    INSTANCE_ASSOCIATION,
-    OPERATOR_INSTANCE,
-    ENUM_SELECT_MODE_DEFAULT,
-)
+from apps.cmdb.constants.constants import ENUM_SELECT_MODE_DEFAULT, INSTANCE, INSTANCE_ASSOCIATION, OPERATOR_INSTANCE
 from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
 from apps.cmdb.display_field.constants import (
     DISPLAY_FIELD_TYPES,
     DISPLAY_SUFFIX,
-    FIELD_TYPE_ORGANIZATION,
-    FIELD_TYPE_USER,
     FIELD_TYPE_ENUM,
-    FIELD_TYPE_TAG,
+    FIELD_TYPE_ORGANIZATION,
     FIELD_TYPE_TABLE,
+    FIELD_TYPE_TAG,
+    FIELD_TYPE_USER,
 )
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.graph.format_type import ParameterCollector
-from apps.cmdb.models.change_record import (
-    CREATE_INST,
-    CREATE_INST_ASST,
-    DELETE_INST,
-    DELETE_INST_ASST,
-    UPDATE_INST,
-)
+from apps.cmdb.models.change_record import CREATE_INST, CREATE_INST_ASST, DELETE_INST, DELETE_INST_ASST, UPDATE_INST
 from apps.cmdb.models.show_field import ShowField
+from apps.cmdb.permissions.instance_permission import PermissionManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.unique_rule import build_unique_rule_context
-from apps.cmdb.utils.change_record import (
-    batch_create_change_record,
-    create_change_record,
-    create_change_record_by_asso,
-)
+from apps.cmdb.utils.change_record import batch_create_change_record, create_change_record, create_change_record_by_asso
 from apps.cmdb.utils.export import Export
 from apps.cmdb.utils.Import import Import
-from apps.cmdb.permissions.instance_permission import PermissionManage
 from apps.cmdb.validators.field_validator import (
     TagFieldConfig,
-    normalize_tag_input_values,
-    normalize_tag_field_option,
-    validate_tag_values,
     normalize_enum_values,
+    normalize_tag_field_option,
+    normalize_tag_input_values,
     validate_enum_values,
+    validate_tag_values,
 )
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
+
+
+def _normalize_allowed_org_ids(user_groups: list | None = None, allowed_org_ids: list | None = None) -> set[int]:
+    if allowed_org_ids is not None:
+        normalized_allowed_org_ids: set[int] = set()
+        for org_id in allowed_org_ids:
+            if org_id is None:
+                continue
+            try:
+                normalized_allowed_org_ids.add(int(org_id))
+            except (TypeError, ValueError) as exc:
+                raise BaseAppException("organization 必须是整数数组") from exc
+        return normalized_allowed_org_ids
+
+    normalized_org_ids: set[int] = set()
+    for item in user_groups or []:
+        if isinstance(item, dict):
+            org_id = item.get("id")
+        else:
+            org_id = item
+        if org_id is None:
+            continue
+        try:
+            normalized_org_ids.add(int(org_id))
+        except (TypeError, ValueError) as exc:
+            raise BaseAppException("organization 必须是整数数组") from exc
+    return normalized_org_ids
+
+
+def validate_instance_organization_scope(
+    instance_data: dict,
+    *,
+    user_groups: list | None = None,
+    allowed_org_ids: list | None = None,
+) -> None:
+    if not isinstance(instance_data, dict) or "organization" not in instance_data:
+        return
+
+    organization_ids = instance_data.get("organization")
+    if organization_ids in (None, ""):
+        return
+
+    if not isinstance(organization_ids, list):
+        raise BaseAppException("organization 必须是数组")
+
+    normalized_target_org_ids: set[int] = set()
+    for org_id in organization_ids:
+        if org_id in (None, ""):
+            continue
+        try:
+            normalized_target_org_ids.add(int(org_id))
+        except (TypeError, ValueError) as exc:
+            raise BaseAppException("organization 必须是整数数组") from exc
+    if not normalized_target_org_ids:
+        return
+
+    normalized_allowed_org_ids = _normalize_allowed_org_ids(user_groups=user_groups, allowed_org_ids=allowed_org_ids)
+    if not normalized_allowed_org_ids:
+        raise BaseAppException("缺少 organization 范围上下文，请刷新后重试")
+
+    invalid_org_ids = sorted(normalized_target_org_ids - normalized_allowed_org_ids)
+    if invalid_org_ids:
+        raise BaseAppException(f"organization {invalid_org_ids} 不在当前选择组织范围内")
 
 
 def apply_tag_validation_for_instance(instance_data: dict, attrs: list[dict], model_id: str | None = None) -> dict:
@@ -317,12 +365,13 @@ class InstanceManage(object):
         return inst_list, count
 
     @staticmethod
-    def instance_create(model_id: str, instance_info: dict, operator: str):
+    def instance_create(model_id: str, instance_info: dict, operator: str, allowed_org_ids: list | None = None):
         """创建实例"""
         instance_info.update(model_id=model_id)
         attrs = ModelManage.search_model_attr(model_id)
         instance_info = apply_tag_validation_for_instance(instance_info, attrs, model_id)
         instance_info = apply_enum_validation_for_instance(instance_info, attrs)
+        validate_instance_organization_scope(instance_info, allowed_org_ids=allowed_org_ids)
         check_attr_map = InstanceManage._build_unique_rule_check_attr_map(
             model_id,
             attrs,
@@ -355,7 +404,14 @@ class InstanceManage(object):
         return result
 
     @staticmethod
-    def instance_update(user_groups: list, roles: list, inst_id: int, update_attr: dict, operator: str):
+    def instance_update(
+        user_groups: list,
+        roles: list,
+        inst_id: int,
+        update_attr: dict,
+        operator: str,
+        allowed_org_ids: list | None = None,
+    ):
         """修改实例属性"""
         inst_info = InstanceManage.query_entity_by_id(inst_id)
 
@@ -374,6 +430,7 @@ class InstanceManage(object):
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
         update_attr = apply_tag_validation_for_instance(update_attr, attrs, inst_info["model_id"])
         update_attr = apply_enum_validation_for_instance(update_attr, attrs)
+        validate_instance_organization_scope(update_attr, user_groups=user_groups, allowed_org_ids=allowed_org_ids)
         check_attr_map = InstanceManage._build_unique_rule_check_attr_map(
             inst_info["model_id"],
             attrs,
@@ -422,6 +479,7 @@ class InstanceManage(object):
         inst_ids: list,
         update_attr: dict,
         operator: str,
+        allowed_org_ids: list | None = None,
     ):
         """批量修改实例属性"""
 
@@ -442,6 +500,7 @@ class InstanceManage(object):
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
         update_attr = apply_tag_validation_for_instance(update_attr, attrs, model_info["model_id"])
         update_attr = apply_enum_validation_for_instance(update_attr, attrs)
+        validate_instance_organization_scope(update_attr, user_groups=user_groups, allowed_org_ids=allowed_org_ids)
         check_attr_map = InstanceManage._build_unique_rule_check_attr_map(
             model_info["model_id"],
             attrs,
@@ -750,7 +809,11 @@ class InstanceManage(object):
                     raise BaseAppException("instance association repetition")
 
         asso_info = InstanceManage.instance_association_by_asso_id(edge["_id"])
-        message = f"创建模型关联关系. 原模型: {asso_info['src']['model_id']} 原模型实例: {asso_info['src']['inst_name']}  目标模型ID: {asso_info['dst']['model_id']} 目标模型实例: {asso_info['dst'].get('inst_name') or asso_info['dst'].get('ip_addr', '')}"
+        message = (
+            f"创建模型关联关系. 原模型: {asso_info['src']['model_id']} 原模型实例: {asso_info['src']['inst_name']} "
+            f"目标模型ID: {asso_info['dst']['model_id']} 目标模型实例: "
+            f"{asso_info['dst'].get('inst_name') or asso_info['dst'].get('ip_addr', '')}"
+        )
         create_change_record_by_asso(
             INSTANCE_ASSOCIATION,
             CREATE_INST_ASST,
@@ -770,7 +833,12 @@ class InstanceManage(object):
         with GraphClient() as ag:
             ag.delete_edge(asso_id)
 
-        message = f"删除模型关联关系. 原模型: {asso_info['src']['model_id']} 原模型实例: {asso_info['src'].get('inst_name') or asso_info['src'].get('ip_addr', '')}  目标模型ID: {asso_info['dst']['model_id']} 目标模型实例: {asso_info['dst'].get('inst_name') or asso_info['dst'].get('ip_addr', '')}"
+        message = (
+            f"删除模型关联关系. 原模型: {asso_info['src']['model_id']} 原模型实例: "
+            f"{asso_info['src'].get('inst_name') or asso_info['src'].get('ip_addr', '')} "
+            f"目标模型ID: {asso_info['dst']['model_id']} 目标模型实例: "
+            f"{asso_info['dst'].get('inst_name') or asso_info['dst'].get('ip_addr', '')}"
+        )
         create_change_record_by_asso(
             INSTANCE_ASSOCIATION,
             DELETE_INST_ASST,
@@ -1222,8 +1290,7 @@ class InstanceManage(object):
             }
         """
         logger.info(
-            f"[InstanceManage.fulltext_search_by_model] 搜索关键词: {search}, 模型: {model_id}, "
-            f"页码: {page}, 每页: {page_size}, 区分大小写: {case_sensitive}"
+            f"[InstanceManage.fulltext_search_by_model] 搜索关键词: {search}, 模型: {model_id}, " f"页码: {page}, 每页: {page_size}, 区分大小写: {case_sensitive}"
         )
 
         # 构建权限参数（统一逻辑）

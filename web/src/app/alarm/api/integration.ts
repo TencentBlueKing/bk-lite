@@ -1,5 +1,9 @@
 import useApiClient from '@/utils/request';
-import { K8sRenderParams, SnmpTrapNodeListResponse } from '@/app/alarm/types/integration';
+import {
+  AlertSourceIntegrationGuide,
+  K8sRenderParams,
+  SnmpTrapNodeListResponse,
+} from '@/app/alarm/types/integration';
 
 export const useSourceApi = () => {
   const { get, post } = useApiClient();
@@ -8,6 +12,9 @@ export const useSourceApi = () => {
 
   const getAlertSourcesDetail = async (id: number | string) =>
     get(`/alerts/api/alert_source/${id}`);
+
+  const getAlertSourceIntegrationGuide = async (id: number | string): Promise<AlertSourceIntegrationGuide> =>
+    get(`/alerts/api/alert_source/${id}/integration-guide/`);
 
   const getK8sMeta = async () => get('/alerts/api/alert_source/k8s_meta/');
 
@@ -24,11 +31,16 @@ export const useSourceApi = () => {
       responseType: 'blob',
     });
 
+  const getDailyEventStats = async (): Promise<{ today_count: number; yesterday_count: number }> =>
+    get('/alerts/api/alert_source/daily_event_stats/');
+
   return {
     getAlertSources,
     getAlertSourcesDetail,
+    getAlertSourceIntegrationGuide,
     getK8sMeta,
     getAlertSnmpTrapNodeList,
     downloadK8sFile,
+    getDailyEventStats,
   };
 };

@@ -101,6 +101,7 @@ interface BaseTaskFormProps {
   };
   onClose: () => void;
   onTest?: () => void;
+  submitText?: string;
 }
 
 export interface BaseTaskRef {
@@ -130,6 +131,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       assetOptionLabel,
       onClose,
       onTest,
+      submitText,
     },
     ref
   ) => {
@@ -989,7 +991,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         <div className={`${styles.taskFooter} space-x-4`}>
           {onTest && <Button onClick={onTest}>{t('Collection.test')}</Button>}
           <Button type="primary" htmlType="submit" loading={submitLoading}>
-            {t('Collection.confirm')}
+            {submitText || t('Collection.confirm')}
           </Button>
           <Button onClick={onClose} disabled={submitLoading}>
             {t('Collection.cancel')}

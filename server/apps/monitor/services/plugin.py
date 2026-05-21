@@ -12,6 +12,24 @@ from apps.monitor.utils.instance_id_keys import (
 
 class MonitorPluginService:
     @staticmethod
+    def _extract_monitor_object_names(data: dict) -> list[str]:
+        if data.get("is_compound_object"):
+            return [item.get("name") for item in data.get("objects", []) if item.get("name")]
+        return [data.get("name")] if data.get("name") else []
+
+    @staticmethod
+    def _sync_plugin_monitor_objects(plugin_name: str, monitor_object_names: list[str]):
+        if not plugin_name:
+            return
+
+        plugin_obj = MonitorPlugin.objects.filter(name=plugin_name).first()
+        if not plugin_obj:
+            return
+
+        monitor_objects = MonitorObject.objects.filter(name__in=monitor_object_names)
+        plugin_obj.monitor_object.set(monitor_objects)
+
+    @staticmethod
     def get_ui_template_by_params(collector, collect_type, monitor_object_id):
         """获取插件的 UI 模板"""
         obj = MonitorPluginUITemplate.objects.filter(
@@ -25,10 +43,15 @@ class MonitorPluginService:
     @staticmethod
     def import_monitor_plugin(data: dict):
         """Import monitor plugin"""
+        plugin_name = data.get("plugin", "")
+        monitor_object_names = MonitorPluginService._extract_monitor_object_names(data)
+
         if data.get("is_compound_object"):
             MonitorPluginService.import_compound_monitor_object(data)
         else:
             MonitorPluginService.import_basic_monitor_object(data)
+
+        MonitorPluginService._sync_plugin_monitor_objects(plugin_name, monitor_object_names)
 
     @staticmethod
     def import_basic_monitor_object(data: dict):

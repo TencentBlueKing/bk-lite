@@ -228,6 +228,10 @@ func run(args []string, stdout io.Writer, wait func()) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	if cfg.NATSInstanceID == "" || isPlaceholder(cfg.NATSInstanceID) {
+		return fmt.Errorf("invalid NATSInstanceID %q: must be a resolved non-empty value", cfg.NATSInstanceID)
+	}
+
 	opts, err := buildNATSOptionsFn(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to build NATS options: %w", err)

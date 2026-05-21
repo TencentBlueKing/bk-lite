@@ -82,7 +82,7 @@ class JobExecutionViewSet(AuthViewSet):
         username = request.user.username if request.user else ""
         name = data["name"]
         timeout = data.get("timeout", 600)
-        team = data.get("team", [])
+        team = data.get("team") or [int(request.COOKIES.get("current_team", 1))]
         params = data.get("params", [])
 
         # 处理新格式参数：解析 is_modified=False 的参数

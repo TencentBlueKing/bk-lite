@@ -13,43 +13,21 @@ Tech Plan参考：
 - 5.3 导入执行流程
 """
 
-from typing import Any
-
 from django.db import transaction
 
 from apps.core.logger import operation_analysis_logger as logger
-from apps.operation_analysis.constants.import_export import (
-    ObjectType,
-    ConflictAction,
-    ImportStatus,
-    RENAME_SUFFIX,
-    SENSITIVE_PLACEHOLDER,
-    BUSINESS_KEY_SEPARATOR,
-    ImportExportErrorCode,
-)
-from apps.operation_analysis.models.datasource_models import (
-    DataSourceAPIModel,
-    DataSourceTag,
-    NameSpace,
-)
-from apps.operation_analysis.models.models import (
-    Architecture,
-    Dashboard,
-    Directory,
-    Topology,
-)
+from apps.operation_analysis.constants.import_export import RENAME_SUFFIX, SENSITIVE_PLACEHOLDER, ConflictAction, ImportStatus, ObjectType
+from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
+from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Topology
 from apps.operation_analysis.schemas.import_export_schema import (
-    YAMLDocument,
+    ArchitectureItem,
+    DashboardItem,
     DatasourceItem,
     NamespaceItem,
-    DashboardItem,
     TopologyItem,
-    ArchitectureItem,
+    YAMLDocument,
 )
-from apps.operation_analysis.services.import_export.view_sets import (
-    normalize_canvas_view_sets_for_storage,
-    rewrite_canvas_view_sets_refs_for_storage,
-)
+from apps.operation_analysis.services.import_export.view_sets import normalize_canvas_view_sets_for_storage, rewrite_canvas_view_sets_refs_for_storage
 
 
 class ImportService:
@@ -306,6 +284,7 @@ class ImportService:
 
             elif action == ConflictAction.OVERWRITE.value:
                 existing.desc = ds_item.desc
+                # [内部预留] is_active 字段仅内部使用，无产品功能依赖
                 existing.is_active = ds_item.is_active
                 existing.params = ds_item.params
                 existing.chart_type = ds_item.chart_type
@@ -329,6 +308,7 @@ class ImportService:
                     name=new_name,
                     rest_api=ds_item.rest_api,
                     desc=ds_item.desc,
+                    # [内部预留] is_active 字段仅内部使用，无产品功能依赖
                     is_active=ds_item.is_active,
                     params=ds_item.params,
                     chart_type=ds_item.chart_type,
@@ -353,6 +333,7 @@ class ImportService:
                 name=ds_item.name,
                 rest_api=ds_item.rest_api,
                 desc=ds_item.desc,
+                # [内部预留] is_active 字段仅内部使用，无产品功能依赖
                 is_active=ds_item.is_active,
                 params=ds_item.params,
                 chart_type=ds_item.chart_type,

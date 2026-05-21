@@ -6,8 +6,8 @@ from sanic.log import logger
 
 class AWSManager:
     def __init__(self, params: dict):
-        self.access_key_id = params.get("access_key_id")
-        self.secret_access_key = params.get("secret_access_key")
+        self.access_key_id = params.get("secret_id")
+        self.secret_access_key = params.get("secret_key")
         self.default_region = params.get('region', 'us-east-1')
         self.connect_timeout = int(params.get('timeout', 10))
         self.read_timeout = self.connect_timeout * 6

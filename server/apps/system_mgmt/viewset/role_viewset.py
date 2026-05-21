@@ -224,16 +224,19 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         menu_ids = Menu.objects.filter(app=role_obj.app, name__in=menus).values_list("id", flat=True)
         role_obj.menu_list = list(menu_ids)
         role_obj.save()
-        cache_key = f"all_menus_{role_obj.app}"
-        keys = RoleManage.get_cache_keys(cache_key)
-        user_menu_cache = "menus-user:"
-        keys.extend(RoleManage.get_cache_keys(user_menu_cache))
-        cache.delete_many(keys)
 
-        # 清除所有拥有此角色的用户的权限缓存
-        affected_users = User.objects.filter(role_list__contains=int(role_id)).values("username", "domain")
-        if affected_users:
-            clear_users_permission_cache(list(affected_users))
+        # 清除受影响用户的菜单缓存和权限缓存
+        affected_users = User.objects.filter(role_list__contains=int(role_id))
+
+        # 直接构造缓存键并删除 (兼容 Redis 缓存后端)
+        menu_cache_keys = [f"menus-user:{user.id}" for user in affected_users]
+        if menu_cache_keys:
+            cache.delete_many(menu_cache_keys)
+
+        # 清除用户权限缓存
+        affected_user_info = list(affected_users.values("username", "domain"))
+        if affected_user_info:
+            clear_users_permission_cache(affected_user_info)
 
         # 记录操作日志
         log_operation(

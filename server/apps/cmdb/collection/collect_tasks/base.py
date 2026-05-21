@@ -30,6 +30,17 @@ class BaseCollect(object):
         self.task = CollectModels.objects.get(id=instance_id)
         self.default_metrics = default_metrics
         self.model_id, self.inst_name, self.organization, self.inst_id, self.filter_collect_task = self.format_params()
+        self.plugin_kwargs = self.build_plugin_kwargs()
+
+    def build_plugin_kwargs(self) -> dict:
+        """k8s 任务把 collector_cluster_id 透传给采集插件（VM 查询身份与显示名解耦）。"""
+        kwargs = {}
+        if self.task.is_k8s and self.task.instances:
+            instance = self.task.instances[0]
+            collector_cluster_id = instance.get("collector_cluster_id") or self.task.params.get("collector_cluster_id")
+            if collector_cluster_id:
+                kwargs["collector_cluster_id"] = collector_cluster_id
+        return kwargs
 
     def format_params(self):
         if not self.task.instances:
@@ -74,6 +85,7 @@ class BaseCollect(object):
             default_metrics=self.default_metrics,
             filter_collect_task=self.filter_collect_task,
             data_cleanup_strategy=self.task.data_cleanup_strategy,
+            plugin_kwargs=self.plugin_kwargs,
         )
         result = metrics_cannula.collect_controller()
         format_data = self.format_collect_data(result)

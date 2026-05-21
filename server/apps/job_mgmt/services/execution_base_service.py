@@ -102,7 +102,8 @@ class ExecutionTaskBaseService(object):
             execution.finished_at = timezone.now()
             execution.save(update_fields=["finished_at", "updated_at"])
             logger.info(
-                f"[{task_name}] 任务被取消，保留已完成结果: execution_id={execution.id}, " f"success={execution.success_count}, failed={execution.failed_count}"
+                f"[{task_name}] 任务被取消，保留已完成结果: execution_id={execution.id}, "
+                f"success={execution.success_count}, failed={execution.failed_count}"
             )
             # 取消时也发送回调通知，让第三方系统知道任务被取消
             execution.refresh_from_db()
@@ -246,7 +247,7 @@ class ExecutionTaskBaseService(object):
             ValueError: 未找到可用的 Ansible 执行节点
         """
         node_mgmt = NodeMgmt()
-        result = node_mgmt.node_list({"cloud_region_id": cloud_region_id, "is_container": True, "page": 1, "page_size": 1})
+        result = node_mgmt.node_list({"cloud_region_id": cloud_region_id, "is_container": True, "page": 1, "page_size": 1, "skip_permission": True})
         if not isinstance(result, dict):
             raise ValueError(f"云区域 {cloud_region_id} 下未找到可用的 Ansible 执行节点")
         nodes = result.get("nodes", [])
@@ -269,7 +270,9 @@ class ExecutionTaskBaseService(object):
         for target in targets:
             # 凭据来源检查：credential 模式暂未实现，记录警告并跳过
             if target.credential_source == CredentialSource.CREDENTIAL:
-                logger.warning(f"[_build_host_credentials] 目标 {target.ip} 使用凭据管理(credential_id={target.credential_id})，" f"该模式暂未实现，跳过此目标")
+                logger.warning(
+                    f"[_build_host_credentials] 目标 {target.ip} 使用凭据管理(credential_id={target.credential_id})，该模式暂未实现，跳过此目标"
+                )
                 continue
 
             cred = {

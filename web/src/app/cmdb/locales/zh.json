@@ -348,7 +348,27 @@
             "second": "秒",
             "intervalRequired": "请输入执行间隔时间",
             "timeRequired": "请选择执行时间",
-            "timeoutRequired": "请输入超时时间"
+            "timeoutRequired": "请输入超时时间",
+            "accessConfig": "接入配置",
+            "collectorInstall": "采集器安装",
+            "accessComplete": "接入完成",
+            "collectorClusterId": "集群标识",
+            "collectorClusterIdDesc": "重要：该标识是采集器上报数据的唯一凭证，创建后请勿随意修改，否则会导致已部署的采集器数据无法匹配。仅支持英文字母、数字、下划线和短横线。",
+            "collectorClusterIdInvalid": "仅支持英文字母、数字、下划线和短横线",
+            "cloudRegion": "云区域",
+            "installCollector": "安装采集器",
+            "installCommandDesc": "点击「生成安装命令」，得到一段限时有效的安装命令，复制到具备 kubectl 访问目标集群权限的机器上执行。",
+            "generateCommand": "生成安装命令",
+            "verifyStatus": "验证采集状态",
+            "verify": "验证",
+            "verifyWaitingDesc": "采集器部署完成后点击验证，CMDB 会查询 VictoriaMetrics 中对应上报身份的指标。",
+            "verifySuccess": "采集器已就绪",
+            "verifySuccessDesc": "已收到上报数据，CMDB 将按所配置的调度周期写入 k8s 资源拓扑。",
+            "verifyFailed": "尚未收到上报",
+            "verifyFailedDesc": "请确认 YAML 已部署、目标集群网络可达 NATS，稍后重试。",
+            "accessCompleteTitle": "采集器接入完成",
+            "accessCompleteDesc": "采集器已上报到 VictoriaMetrics。CMDB 会按计划任务将 k8s 节点 / Pod / Workload / 命名空间等资源写入图谱；如需立即执行，可到任务详情手动触发一次。",
+            "addAnotherCluster": "再接入一个集群"
         },
         "VMTask": {
             "chooseVCenter": "vCenter",
@@ -441,7 +461,21 @@
             "delete": "删除",
             "error": "异常"
         },
-        "executeSuccess": "执行成功"
+        "executeSuccess": "执行成功",
+        "stats": {
+            "totalTasks": "任务总数",
+            "normalTasks": "正常任务",
+            "errorTasks": "异常任务",
+            "recentSync": "最近同步",
+            "coveredModels": "覆盖模型",
+            "justNow": "刚刚",
+            "minutesAgo": "{n} 分钟前",
+            "hoursAgo": "{n} 小时前",
+            "daysAgo": "{n} 天前",
+            "never": "暂无",
+            "expand": "展开概览",
+            "collapse": "收起概览"
+        }
     },
     "OidLibrary": {
         "title": "SOID库",

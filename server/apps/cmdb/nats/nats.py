@@ -1,13 +1,23 @@
 import datetime
+from functools import reduce
+from operator import or_
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.db.models.functions import TruncDate, TruncHour, TruncMonth, TruncWeek
 from django.utils import timezone
 
 import nats_client
-from apps.cmdb.constants.constants import APP_NAME, INSTANCE, PERMISSION_INSTANCES, PERMISSION_MODEL, PERMISSION_TASK, CollectPluginTypes
+from apps.cmdb.constants.constants import (
+    APP_NAME,
+    INSTANCE,
+    PERMISSION_INSTANCES,
+    PERMISSION_MODEL,
+    PERMISSION_TASK,
+    CollectPluginTypes,
+    CollectRunStatusType,
+)
 from apps.cmdb.display_field.cache import ExcludeFieldsCache
 from apps.cmdb.display_field.constants import (
     DISPLAY_SUFFIX,
@@ -143,6 +153,23 @@ def _build_nats_model_permission_map(user_info):
         }
 
     return permission_map
+
+
+def _get_collect_task_queryset(user_info):
+    user_info = user_info or {}
+    team = user_info.get("team")
+    include_children = user_info.get("include_children", False)
+
+    if team is None:
+        return CollectModels.objects.none()
+
+    current_team = int(team)
+    team_ids = GroupUtils.get_group_with_descendants(current_team) if include_children else [current_team]
+    team_queries = [Q(team__contains=[team_id]) | Q(team__contains=[str(team_id)]) for team_id in team_ids]
+    if not team_queries:
+        return CollectModels.objects.none()
+
+    return CollectModels.objects.filter(reduce(or_, team_queries)).distinct()
 
 
 def _build_authoritative_maps(instances, attrs):
@@ -364,120 +391,6 @@ def receive_config_file_result(data: dict):
 
 
 @nats_client.register
-def query_asset_instances(
-    model_id=None,
-    query_list=None,
-    page=1,
-    page_size=20,
-    user_info=None,
-    **kwargs,
-):
-    """
-    查询 CMDB 资产实例（最简分页版）
-    :param model_id: 模型ID（必填）
-    :param query_list: 查询条件列表（可选，格式同 cmdb/api/instance/search）
-    :param page: 页码
-    :param page_size: 每页条数
-    :param user_info: 当前用户信息（由 operation_analysis 自动注入）
-    :return: {result: bool, data: {count: int, items: [...]}, message: str}
-    """
-    if not model_id:
-        return {"result": True, "data": {"count": 0, "items": []}, "message": ""}
-
-    page = int(page or 1)
-    page_size = int(page_size or 20)
-    if page <= 0:
-        page = 1
-    if page_size <= 0:
-        page_size = 20
-
-    def normalize_query_list(raw_query_list):
-        if raw_query_list is None:
-            return []
-
-        if isinstance(raw_query_list, dict):
-            raw_query_list = [raw_query_list]
-
-        if not isinstance(raw_query_list, list):
-            return []
-
-        normalized = []
-
-        def add_condition(item):
-            if not item or not isinstance(item, dict):
-                return
-
-            field = item.get("field")
-            condition_type = item.get("type")
-            if not field or not condition_type:
-                return
-
-            if condition_type == "time":
-                start = item.get("start")
-                end = item.get("end")
-                if start and end:
-                    normalized.append({"field": field, "type": "time", "start": start, "end": end})
-                return
-
-            if "value" not in item:
-                return
-
-            value = item.get("value")
-            if value is None:
-                return
-            if isinstance(value, str) and value == "":
-                return
-            if isinstance(value, list) and not value:
-                return
-
-            normalized.append({"field": field, "type": condition_type, "value": value})
-
-        def walk(node):
-            if node is None:
-                return
-            if isinstance(node, dict):
-                add_condition(node)
-                return
-            if isinstance(node, list):
-                for sub in node:
-                    walk(sub)
-
-        walk(raw_query_list)
-        return normalized
-
-    query_params = []
-
-    normalized_query_list = normalize_query_list(query_list)
-    if normalized_query_list:
-        query_params.extend(normalized_query_list)
-
-    permission_map = _build_nats_permission_map(user_info, model_id=model_id)
-    if permission_map is None:
-        return {"result": True, "data": {"count": 0, "items": []}, "message": ""}
-
-    instances, count = InstanceManage.instance_list(
-        model_id=model_id,
-        params=query_params,
-        page=page,
-        page_size=page_size,
-        order="",
-        creator="",
-        permission_map=permission_map,
-    )
-
-    formatted_instances = _format_asset_instances_response(model_id, instances)
-
-    return {
-        "result": True,
-        "data": {
-            "count": count,
-            "items": formatted_instances,
-        },
-        "message": "",
-    }
-
-
-@nats_client.register
 def sync_display_fields(organizations=None, users=None):
     """
     同步组织/用户的 _display 字段
@@ -533,6 +446,9 @@ def get_cmdb_statistics(user_info=None, **kwargs):
     instance_count = sum(model_counts.values())
     model_count = len(visible_models)
     classification_count = len(classifications)
+    model_with_instance_count = sum(1 for model in visible_models if model_counts.get(model.get("model_id"), 0) > 0)
+    empty_model_count = max(model_count - model_with_instance_count, 0)
+    model_coverage_rate = round((model_with_instance_count / model_count) * 100, 1) if model_count else 0
 
     return {
         "result": True,
@@ -540,6 +456,9 @@ def get_cmdb_statistics(user_info=None, **kwargs):
             "model_count": model_count,
             "instance_count": instance_count,
             "classification_count": classification_count,
+            "model_with_instance_count": model_with_instance_count,
+            "empty_model_count": empty_model_count,
+            "model_coverage_rate": model_coverage_rate,
         },
         "message": "",
     }
@@ -805,6 +724,77 @@ def get_model_inst_statistics(user_info=None, **kwargs):
     result_data.sort(key=lambda x: (-x["count"], x["classification"], x["model"]))
 
     return {"result": True, "data": result_data, "message": ""}
+
+
+@nats_client.register
+def get_cmdb_model_instance_top(limit=5, classification_id=None, user_info=None, **kwargs):
+    """
+    获取模型实例数 TOP N（用于 TopN / 柱状图）
+    """
+    try:
+        limit = int(limit or 5)
+    except (TypeError, ValueError):
+        limit = 5
+    if limit <= 0:
+        limit = 5
+
+    classifications = ClassificationManage.search_model_classification()
+    classification_map = {c["classification_id"]: c["classification_name"] for c in classifications}
+
+    model_permissions_map = _build_nats_model_permission_map(user_info)
+    instance_permissions_map = _build_nats_permission_map(user_info)
+    if model_permissions_map is None or instance_permissions_map is None:
+        return {"result": True, "data": [], "message": ""}
+
+    models = ModelManage.search_model(permissions_map=model_permissions_map)
+    if classification_id:
+        models = [model for model in models if model.get("classification_id") == classification_id]
+
+    model_counts = InstanceManage.model_inst_count(permissions_map=instance_permissions_map)
+
+    result_data = []
+    for model in models:
+        model_id = model.get("model_id")
+        count = model_counts.get(model_id, 0)
+        result_data.append(
+            {
+                "model": model.get("model_name"),
+                "model_id": model_id,
+                "classification": classification_map.get(model.get("classification_id"), model.get("classification_id")),
+                "classification_id": model.get("classification_id"),
+                "count": count,
+            }
+        )
+
+    result_data.sort(key=lambda x: (-x["count"], x["classification"], x["model"]))
+
+    return {"result": True, "data": result_data[:limit], "message": ""}
+
+
+@nats_client.register
+def get_cmdb_collect_statistics(user_info=None, **kwargs):
+    """
+    获取 CMDB 采集健康概览
+    """
+    task_queryset = _get_collect_task_queryset(user_info)
+    status_counts = dict(task_queryset.values("exec_status").annotate(count=Count("id")).values_list("exec_status", "count"))
+
+    task_count = task_queryset.count()
+    interval_task_count = task_queryset.filter(is_interval=True).count()
+
+    return {
+        "result": True,
+        "data": {
+            "task_count": task_count,
+            "interval_task_count": interval_task_count,
+            "success_count": status_counts.get(CollectRunStatusType.SUCCESS, 0),
+            "error_count": status_counts.get(CollectRunStatusType.ERROR, 0),
+            "running_count": status_counts.get(CollectRunStatusType.RUNNING, 0),
+            "timeout_count": status_counts.get(CollectRunStatusType.TIME_OUT, 0),
+            "never_run_count": status_counts.get(CollectRunStatusType.NOT_START, 0),
+        },
+        "message": "",
+    }
 
 
 @nats_client.register

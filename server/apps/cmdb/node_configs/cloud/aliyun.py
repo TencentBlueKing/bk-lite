@@ -16,20 +16,20 @@ class AliyunNodeParams(BaseNodeParams):
         self.host_field = "endpoint"
 
     def set_credential(self, *args, **kwargs):
-        _access_key = f"PASSWORD_access_key_{self._instance_id}"
-        _access_secret = f"PASSWORD_access_secret_{self._instance_id}"
+        _access_key = f"PASSWORD_secret_id_{self._instance_id}"
+        _access_secret = f"PASSWORD_secret_key_{self._instance_id}"
         regions_id = self.credential["regions"]["resource_id"]
         credential_data = {
-            "access_key": "${" + _access_key + "}",
-            "access_secret": "${" + _access_secret + "}",
+            "secret_id": "${" + _access_key + "}",
+            "secret_key": "${" + _access_secret + "}",
             "region_id": regions_id
         }
         return credential_data
 
     def env_config(self, *args, **kwargs):
         env_config = {
-            f"PASSWORD_access_key_{self._instance_id}": self.credential.get("accessKey", ""),
-            f"PASSWORD_access_secret_{self._instance_id}": self.credential.get("accessSecret", ""),
+            f"PASSWORD_secret_id_{self._instance_id}": self.credential.get("accessKey", ""),
+            f"PASSWORD_secret_key_{self._instance_id}": self.credential.get("accessSecret", ""),
         }
         return env_config
 

@@ -19,6 +19,7 @@ from apps.job_mgmt.serializers.playbook import (
     PlaybookListSerializer,
     PlaybookUpdateSerializer,
     PlaybookUpgradeSerializer,
+    extract_file_from_archive,
 )
 
 
@@ -87,6 +88,11 @@ class PlaybookViewSet(AuthViewSet):
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        # 校验用户是否有目标组织的权限
+        team = serializer.validated_data.get("team", [])
+        self._validate_org_field_permission(request, team)
+
         instance = serializer.save()
 
         # 返回完整的对象信息
@@ -194,3 +200,56 @@ class PlaybookViewSet(AuthViewSet):
 
         buffer.seek(0)
         return FileResponse(buffer, as_attachment=True, filename="playbook-template.zip", content_type="application/zip")
+
+    @action(detail=True, methods=["get"])
+    @HasPermission("playbook_library-View")
+    def preview_file(self, request, pk=None):
+        """
+        预览 Playbook 压缩包内的单个文件
+
+        请求参数:
+            file_path (query): 文件在压缩包内的相对路径
+
+        返回:
+        {
+            "file_name": "main.yml",
+            "file_path": "roles/example/tasks/main.yml",
+            "content": "---\\n- name: Print hello\\n  debug:\\n    msg: \\"{{ message }}\\"",
+            "file_type": "yaml",
+            "file_size": 128
+        }
+
+        错误码:
+            400: 缺少参数、非法路径、二进制文件
+            404: 文件不存在
+            413: 文件过大
+        """
+        instance = self.get_object()
+
+        # 获取 file_path 参数
+        file_path = request.query_params.get("file_path")
+        if not file_path:
+            return Response({"detail": "缺少 file_path 参数"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 检查文件是否存在
+        if not instance.file:
+            return Response({"detail": "Playbook 文件不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            result = extract_file_from_archive(instance.file, file_path)
+            return Response(result, status=status.HTTP_200_OK)
+        except ValueError as e:
+            error_msg = str(e)
+            # 解析特殊错误格式
+            if "|" in error_msg:
+                msg, file_size = error_msg.split("|", 1)
+                return Response(
+                    {"detail": msg, "file_size": int(file_size)},
+                    status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                )
+            elif "不存在" in error_msg:
+                return Response({"detail": error_msg}, status=status.HTTP_404_NOT_FOUND)
+            else:
+                return Response({"detail": error_msg}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"detail": f"预览失败: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

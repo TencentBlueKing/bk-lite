@@ -347,6 +347,7 @@ class NodeService:
         is_manual,
         is_container,
         permission_data={},
+        skip_permission=False,
     ):
         """获取节点列表"""
         if permission_data:
@@ -360,9 +361,12 @@ class NodeService:
                 team_key="nodeorganization__organization__in",
                 id_key="id__in",
             )
-        else:
-            # 兼容原有调用方式
+        elif skip_permission or organization_ids:
+            # 系统级调用显式跳过权限检查，或通过 organization_ids 限定范围
             qs = Node.objects.all()
+        else:
+            # 无权限上下文且无组织限定时，拒绝返回数据（fail-closed）
+            qs = Node.objects.none()
 
         if cloud_region_id:
             qs = qs.filter(cloud_region_id=cloud_region_id)
