@@ -400,7 +400,7 @@
       "dockerTimeoutMsTooltip": "等待下一行的最长时间，超时后当前缓冲区内容将被强制输出",
       "httpPortsPlaceholder": "输入端口号后按回车，如：80",
       "httpListenPorts": "监听端口",
-      "httpListenPortsHint": "多个端口用逗号分隔",
+      "httpListenPortsHint": "输入端口号后按回车添加，支持添加多个端口",
       "httpCaptureBody": "抓取请求体",
       "httpCaptureBodyHint": "启用后会记录请求和响应的 Body 内容",
       "captureBody": "抓取请求体",

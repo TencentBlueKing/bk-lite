@@ -400,7 +400,7 @@
       "dockerTimeoutMsTooltip": "Maximum time to wait for next line, buffer content will be flushed after timeout",
       "httpPortsPlaceholder": "Enter port and press Enter, e.g.: 80",
       "httpListenPorts": "Listen Ports",
-      "httpListenPortsHint": "Separate multiple ports with commas",
+      "httpListenPortsHint": "Enter a port and press Enter to add, multiple ports supported",
       "httpCaptureBody": "Capture Body",
       "httpCaptureBodyHint": "Record request and response body content when enabled",
       "captureBody": "Capture Body",
