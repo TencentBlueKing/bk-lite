@@ -6,6 +6,7 @@ from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.opspilot.models import KnowledgeDocument, WebPageKnowledge
 from apps.opspilot.serializers import WebPageKnowledgeSerializer
 from apps.opspilot.utils.team_permission_mixin import TeamPermissionMixin
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class WebPageKnowledgeViewSet(TeamPermissionMixin, LanguageViewSet):
@@ -45,4 +46,5 @@ class WebPageKnowledgeViewSet(TeamPermissionMixin, LanguageViewSet):
         )
         if knowledge_obj.sync_enabled:
             knowledge_obj.create_sync_periodic_task()
+        log_operation(request, "create", "opspilot", f"创建网页知识文档: {kwargs.get('url', '').strip()}")
         return JsonResponse({"result": True, "data": knowledge_obj.knowledge_document_id})

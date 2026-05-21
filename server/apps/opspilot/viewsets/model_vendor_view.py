@@ -10,6 +10,7 @@ from apps.opspilot.models import EmbedProvider, LLMModel, OCRProvider, RerankPro
 from apps.opspilot.models.model_provider_mgmt import ModelVendor
 from apps.opspilot.serializers.model_vendor_serializer import ModelVendorSerializer, ModelVendorTestConnectionSerializer
 from apps.opspilot.services.model_vendor_sync_service import ModelVendorSyncService
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class ModelVendorViewSet(AuthViewSet):
@@ -50,15 +51,33 @@ class ModelVendorViewSet(AuthViewSet):
 
     @HasPermission("provide_list-Add")
     def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            vendor_name = response.data.get("name") if isinstance(response.data, dict) else None
+            if not vendor_name:
+                vendor_name = request.data.get("name", "")
+            log_operation(request, "create", "opspilot", f"新增模型供应商: {vendor_name}")
+        return response
 
     @HasPermission("provide_list-Setting")
     def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            vendor_name = response.data.get("name") if isinstance(response.data, dict) else None
+            if not vendor_name:
+                vendor_name = request.data.get("name", "")
+            log_operation(request, "update", "opspilot", f"编辑模型供应商: {vendor_name}")
+        return response
 
     @HasPermission("provide_list-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            vendor_name = response.data.get("name") if isinstance(response.data, dict) else None
+            if not vendor_name:
+                vendor_name = request.data.get("name", "")
+            log_operation(request, "delete", "opspilot", f"删除模型供应商: {vendor_name}")
+        return response
 
     @action(methods=["POST"], detail=False)
     @HasPermission("provide_list-Add")

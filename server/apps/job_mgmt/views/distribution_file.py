@@ -14,6 +14,7 @@ from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.models import DistributionFile
 from apps.job_mgmt.serializers.distribution_file import DistributionFileSerializer, DistributionFileUploadSerializer
 from apps.node_mgmt.utils.s3 import upload_file_to_s3
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class DistributionFileViewSet(AuthViewSet):
@@ -66,6 +67,7 @@ class DistributionFileViewSet(AuthViewSet):
             original_name=original_name,
             file_key=file_key,
         )
+        log_operation(request, "create", "job", f"上传分发文件: {distribution_file.original_name}")
 
         return Response(
             {

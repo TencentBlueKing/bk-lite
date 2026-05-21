@@ -24,7 +24,7 @@ class AppViewSet(LanguageViewSet):
 
         # 记录操作日志
         if response.status_code == 204:
-            log_operation(request, "delete", "app", f"删除应用: {app_name}")
+            log_operation(request, "delete", "system-manager", f"删除应用: {app_name}")
 
         return response
 
@@ -35,7 +35,7 @@ class AppViewSet(LanguageViewSet):
         if response.status_code == 201:
             app_name = response.data.get("name", "")
             Role.objects.get_or_create(name="user", app=app_name)
-            log_operation(request, "create", "app", f"新增应用: {app_name}")
+            log_operation(request, "create", "system-manager", f"新增应用: {app_name}")
 
         return response
 
@@ -49,7 +49,7 @@ class AppViewSet(LanguageViewSet):
             new_name = response.data.get("name", "")
             if old_name != new_name:
                 Role.objects.filter(app=old_name).update(app=new_name)
-            log_operation(request, "update", "app", f"编辑应用: {new_name}")
+            log_operation(request, "update", "system-manager", f"编辑应用: {new_name}")
 
         return response
 
