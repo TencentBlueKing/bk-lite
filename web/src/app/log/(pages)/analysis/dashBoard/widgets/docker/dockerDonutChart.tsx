@@ -7,6 +7,11 @@ import { formatNumericValue } from '@/app/log/utils/common';
 const trimTrailingZeros = (value: string) =>
   value.replace(/\.0+$|(?<=\.\d*[1-9])0+$/g, '');
 
+const getDisplayName = (value: unknown, fallback: string) => {
+  const text = String(value ?? '').trim();
+  return text || fallback;
+};
+
 const formatDonutCenterValue = (value: number): string => {
   if (!isFinite(value)) return '--';
 
@@ -16,6 +21,22 @@ const formatDonutCenterValue = (value: number): string => {
     return `${trimTrailingZeros((value / 1_000_000).toFixed(absValue >= 10_000_000 ? 1 : 2))}M`;
   }
 
+  if (absValue >= 1_000) {
+    return `${trimTrailingZeros((value / 1_000).toFixed(absValue >= 100_000 ? 0 : 1))}k`;
+  }
+
+  return Number.isInteger(value)
+    ? String(value)
+    : trimTrailingZeros(value.toFixed(2));
+};
+
+const formatLegendValue = (value: number): string => {
+  if (!isFinite(value)) return '--';
+
+  const absValue = Math.abs(value);
+  if (absValue >= 1_000_000) {
+    return `${trimTrailingZeros((value / 1_000_000).toFixed(absValue >= 10_000_000 ? 1 : 2))}M`;
+  }
   if (absValue >= 1_000) {
     return `${trimTrailingZeros((value / 1_000).toFixed(absValue >= 100_000 ? 0 : 1))}k`;
   }
@@ -64,9 +85,10 @@ const DockerDonutChart: React.FC<DockerDonutChartProps> = ({
     const displayMaps = config?.displayMaps || {};
     const nameField = displayMaps.key || 'name';
     const valueField = displayMaps.value || 'count';
+    const fallbackName = displayMaps.emptyLabel || 'Unknown';
 
-    const pieData = rawData.map((item: any, idx: number) => ({
-      name: item[nameField] || `item-${idx}`,
+    const pieData = rawData.map((item: any) => ({
+      name: getDisplayName(item[nameField], fallbackName),
       value: parseFloat(item[valueField]) || 0
     }));
     const visiblePieData = pieData.filter((item: any) => item.value > 0);
@@ -79,8 +101,8 @@ const DockerDonutChart: React.FC<DockerDonutChartProps> = ({
     const showLegend = finalPieData.length >= 1;
 
     // 用绝对像素确保圆形不变形
-    // 预留 legend 宽度 ~115px（10px icon + 100px text + 5px gap），剩余区域取最小边的一半做半径
-    const legendWidth = showLegend ? 115 : 0;
+    // 预留更多 legend 宽度给百分比和数量，避免右侧文本被截断。
+    const legendWidth = showLegend ? 176 : 0;
     const chartAreaW = size.w > 0 ? size.w - legendWidth : 200;
     const chartAreaH = size.h > 0 ? size.h - 16 : 180; // 留顶底少量间距
     const minSide = Math.min(chartAreaW, chartAreaH);
@@ -118,7 +140,7 @@ const DockerDonutChart: React.FC<DockerDonutChartProps> = ({
             itemHeight: 10,
             itemGap: 6,
             // 固定宽度 + overflow truncate，文字过长自动截断
-            width: 100,
+            width: 160,
             formatter: (name: string) => {
               const item = finalPieData.find((d: any) => d.name === name);
               if (!item) return name;
@@ -126,7 +148,7 @@ const DockerDonutChart: React.FC<DockerDonutChartProps> = ({
                 totalVal > 0
                   ? ((item.value / totalVal) * 100).toFixed(1)
                   : '0.0';
-              return `${name}  ${pct}%`;
+              return `${name}  ${pct}% (${formatLegendValue(item.value)})`;
             },
             tooltip: {
               show: true,
@@ -139,10 +161,10 @@ const DockerDonutChart: React.FC<DockerDonutChartProps> = ({
                   totalVal > 0
                     ? ((item.value / totalVal) * 100).toFixed(2)
                     : '0.00';
-                return `${params.name}: ${item.value} (${pct}%)`;
+                return `${params.name}: ${formatLegendValue(item.value)} (${pct}%)`;
               }
             }
-          } 
+          }
           : { show: false },
         series: [
           {
