@@ -11,7 +11,7 @@ export interface NamespaceItem {
   account: string;
   password: string;
   describe: string;
-  is_active: boolean;
+  // [内部预留] is_active 字段仅后端/导入导出链路使用，前端不再暴露
   enable_tls?: boolean;
 }
 
