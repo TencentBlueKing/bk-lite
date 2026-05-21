@@ -45,7 +45,6 @@ import { useClusterConfig } from './objects/k8s/cluster';
 import { useNodeConfig } from './objects/k8s/node';
 import { usePodConfig } from './objects/k8s/pod';
 import { useDockerContainerConfig } from './objects/containerManagement/dockerContainer';
-import { useDmConfig } from './objects/database/dm';
 import { useDb2Config } from './objects/database/db2';
 import { useGreenPlumConfig } from './objects/database/greenPlum';
 import { useOpenGaussConfig } from './objects/database/openGauss';
@@ -111,7 +110,6 @@ export const useMonitorConfig = () => {
   const podConfig = usePodConfig();
   const nodeConfig = useNodeConfig();
   const dockerContainerConfig = useDockerContainerConfig();
-  const dmConfig = useDmConfig();
   const db2Config = useDb2Config();
   const greenPlumConfig = useGreenPlumConfig();
   const openGaussConfig = useOpenGaussConfig();
@@ -167,8 +165,6 @@ export const useMonitorConfig = () => {
       DataStorage: dataStorageConfig,
       ESXI: esxiConfig,
       VM: vmConfig,
-      Dameng: dmConfig,
-      DM: dmConfig,
       DB2: db2Config,
       GreenPlum: greenPlumConfig,
       OpenGauss: openGaussConfig,
