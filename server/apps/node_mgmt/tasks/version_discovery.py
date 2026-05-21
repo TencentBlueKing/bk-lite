@@ -84,7 +84,8 @@ def _discover_controller_version(node: Node, latest_versions_map: dict):
 
         # 使用 Executor 执行版本命令
         executor = Executor(node.id)
-        response = executor.execute_local(command=controller.version_command, timeout=10)
+        shell = "powershell" if node.operating_system == NodeConstants.WINDOWS_OS else None
+        response = executor.execute_local(command=controller.version_command, timeout=10, shell=shell)
 
         # response 直接是字符串，不是字典
         if response:
