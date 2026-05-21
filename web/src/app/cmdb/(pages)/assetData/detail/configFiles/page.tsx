@@ -23,6 +23,7 @@ import type {
   ConfigFileItem,
   ConfigFileVersion,
 } from '@/app/cmdb/types/configFile';
+import { isConfigFileSupportedModel } from '@/app/cmdb/constants/configFile';
 
 const { Paragraph, Text } = Typography;
 
@@ -229,6 +230,8 @@ const buildInlineSegments = (leftText: string, rightText: string) => {
 const ConfigFilesPage = () => {
   const searchParams = useSearchParams();
   const instanceId = searchParams.get('inst_id') || '';
+  const modelId = searchParams.get('model_id') || '';
+  const isSupportedModel = isConfigFileSupportedModel(modelId);
   const configFileApi = useConfigFileApi();
   const {
     getConfigFileList,
@@ -246,7 +249,6 @@ const ConfigFilesPage = () => {
   const [compareDrawerOpen, setCompareDrawerOpen] = useState(false);
   const [compareTarget, setCompareTarget] = useState<ConfigFileItem | null>(null);
   const [versionList, setVersionList] = useState<ConfigFileVersion[]>([]);
-  const [versionListLoading, setVersionListLoading] = useState(false);
   const [leftCompareVersionId, setLeftCompareVersionId] = useState<number | undefined>();
   const [rightCompareVersionId, setRightCompareVersionId] = useState<number | undefined>();
   const [leftCompareContent, setLeftCompareContent] = useState('');
@@ -259,7 +261,7 @@ const ConfigFilesPage = () => {
   const [expandedVersionsLoading, setExpandedVersionsLoading] = useState<Record<string, boolean>>({});
 
   const fetchFileList = async () => {
-    if (!instanceId) {
+    if (!instanceId || !isSupportedModel) {
       setFileList([]);
       return;
     }
@@ -274,9 +276,8 @@ const ConfigFilesPage = () => {
 
   useEffect(() => {
     void fetchFileList();
-  }, [getConfigFileList, instanceId]);
+  }, [getConfigFileList, instanceId, isSupportedModel]);
 
-  const [activeVersionId, setActiveVersionId] = useState<number | null>(null);
   const [activeVersionLabel, setActiveVersionLabel] = useState<string>('');
 
   const fetchContent = async (record: ConfigFileItem, encoding = 'utf-8') => {
@@ -284,7 +285,6 @@ const ConfigFilesPage = () => {
       setContentLoading(true);
       const data = await getConfigFileContent(record.latest_version_id, encoding);
       setActiveFile(record);
-      setActiveVersionId(record.latest_version_id);
       setActiveVersionLabel('');
       setContentData(data || null);
       setContentEncoding(data?.encoding || encoding);
@@ -299,7 +299,6 @@ const ConfigFilesPage = () => {
       setContentLoading(true);
       const data = await getConfigFileContent(version.id, encoding);
       setActiveFile({ latest_version_id: version.id, file_path: version.file_path, file_name: version.file_name, collect_task_id: version.collect_task_id, latest_version: version.version, latest_status: version.status, latest_created_at: version.created_at });
-      setActiveVersionId(version.id);
       setActiveVersionLabel(version.version);
       setContentData(data || null);
       setContentEncoding(data?.encoding || encoding);
@@ -332,27 +331,6 @@ const ConfigFilesPage = () => {
       message.success('文件内容已复制');
     } catch {
       message.error('复制失败');
-    }
-  };
-
-  const openCompareDrawer = async (record: ConfigFileItem) => {
-    try {
-      setVersionListLoading(true);
-      const data = await getConfigFileVersions(instanceId, record.file_path);
-      const items = Array.isArray(data) ? data : data?.items || [];
-      if (items.length < 2) {
-        message.warning('当前文件只有一个版本，无法进行版本对比');
-        return;
-      }
-      setCompareTarget(record);
-      setVersionList(items);
-      setLeftCompareVersionId(items[0]?.id);
-      setRightCompareVersionId(items[1]?.id);
-      setLeftCompareContent('');
-      setRightCompareContent('');
-      setCompareDrawerOpen(true);
-    } finally {
-      setVersionListLoading(false);
     }
   };
 
@@ -618,6 +596,10 @@ const ConfigFilesPage = () => {
     return <Empty description="缺少实例信息" />;
   }
 
+  if (!isSupportedModel) {
+    return <Empty description="当前模型暂未开放配置文件" />;
+  }
+
   return (
     <>
       <div className="rounded-xl border border-[var(--color-border)] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
@@ -708,7 +690,6 @@ const ConfigFilesPage = () => {
                   placeholder="选择左侧版本"
                   value={leftCompareVersionId}
                   options={versionOptions}
-                  loading={versionListLoading}
                   style={{ width: 330 }}
                   onChange={setLeftCompareVersionId}
                 />
@@ -716,7 +697,6 @@ const ConfigFilesPage = () => {
                   placeholder="选择右侧版本"
                   value={rightCompareVersionId}
                   options={versionOptions.filter((option) => option.value !== leftCompareVersionId)}
-                  loading={versionListLoading}
                   style={{ width: 330 }}
                   onChange={setRightCompareVersionId}
                   allowClear
@@ -730,7 +710,7 @@ const ConfigFilesPage = () => {
             </Flex>
           </div>
 
-          <Spin spinning={versionListLoading || compareLoading}>
+          <Spin spinning={compareLoading}>
             <div className="grid h-[calc(100vh-220px)] grid-cols-2 gap-4">
               <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
                 <div className="border-b border-[var(--color-border)] bg-[var(--color-fill-1)] px-4 py-3">
