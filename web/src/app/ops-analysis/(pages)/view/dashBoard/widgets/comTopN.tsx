@@ -1,10 +1,13 @@
 import React, { useEffect } from 'react';
 import { Spin, Empty } from 'antd';
 import { resolveOpsChartThemeName } from '@/app/ops-analysis/utils/chartTheme';
+import { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 
 interface TopNProps {
   rawData: any;
   loading?: boolean;
+  config?: ValueConfig;
   onReady?: (ready: boolean) => void;
 }
 
@@ -13,7 +16,7 @@ interface TopNItem {
   value: number;
 }
 
-const TopN: React.FC<TopNProps> = ({ rawData, loading = false, onReady }) => {
+const TopN: React.FC<TopNProps> = ({ rawData, loading = false, config, onReady }) => {
   const themeName = resolveOpsChartThemeName();
   const isDark = themeName === 'dark';
 
@@ -30,10 +33,27 @@ const TopN: React.FC<TopNProps> = ({ rawData, loading = false, onReady }) => {
 
     // [{name, value}] format
     if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object') {
-      return data.map((item: any) => ({
-        name: String(item.name ?? item.label ?? ''),
-        value: Number(item.value ?? item.count ?? 0),
-      }));
+      return data
+        .map((item: any) => {
+          const rawName = config?.topNLabelField
+            ? getValueByPath(item, config.topNLabelField)
+            : (item.name ?? item.label);
+          const rawValue = config?.topNValueField
+            ? getValueByPath(item, config.topNValueField)
+            : (item.value ?? item.count);
+
+          const name = rawName === undefined || rawName === null ? '' : String(rawName).trim();
+          const value = Number(rawValue);
+          if (!name || Number.isNaN(value)) {
+            return null;
+          }
+
+          return {
+            name,
+            value,
+          };
+        })
+        .filter((item: TopNItem | null): item is TopNItem => item !== null);
     }
 
     return [];

@@ -1,13 +1,23 @@
 import datetime
+from functools import reduce
+from operator import or_
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.db.models.functions import TruncDate, TruncHour, TruncMonth, TruncWeek
 from django.utils import timezone
 
 import nats_client
-from apps.cmdb.constants.constants import APP_NAME, INSTANCE, PERMISSION_INSTANCES, PERMISSION_MODEL, PERMISSION_TASK, CollectPluginTypes
+from apps.cmdb.constants.constants import (
+    APP_NAME,
+    INSTANCE,
+    PERMISSION_INSTANCES,
+    PERMISSION_MODEL,
+    PERMISSION_TASK,
+    CollectPluginTypes,
+    CollectRunStatusType,
+)
 from apps.cmdb.display_field.cache import ExcludeFieldsCache
 from apps.cmdb.display_field.constants import (
     DISPLAY_SUFFIX,
@@ -143,6 +153,23 @@ def _build_nats_model_permission_map(user_info):
         }
 
     return permission_map
+
+
+def _get_collect_task_queryset(user_info):
+    user_info = user_info or {}
+    team = user_info.get("team")
+    include_children = user_info.get("include_children", False)
+
+    if team is None:
+        return CollectModels.objects.none()
+
+    current_team = int(team)
+    team_ids = GroupUtils.get_group_with_descendants(current_team) if include_children else [current_team]
+    team_queries = [Q(team__contains=[team_id]) | Q(team__contains=[str(team_id)]) for team_id in team_ids]
+    if not team_queries:
+        return CollectModels.objects.none()
+
+    return CollectModels.objects.filter(reduce(or_, team_queries)).distinct()
 
 
 def _build_authoritative_maps(instances, attrs):
@@ -533,6 +560,9 @@ def get_cmdb_statistics(user_info=None, **kwargs):
     instance_count = sum(model_counts.values())
     model_count = len(visible_models)
     classification_count = len(classifications)
+    model_with_instance_count = sum(1 for model in visible_models if model_counts.get(model.get("model_id"), 0) > 0)
+    empty_model_count = max(model_count - model_with_instance_count, 0)
+    model_coverage_rate = round((model_with_instance_count / model_count) * 100, 1) if model_count else 0
 
     return {
         "result": True,
@@ -540,6 +570,9 @@ def get_cmdb_statistics(user_info=None, **kwargs):
             "model_count": model_count,
             "instance_count": instance_count,
             "classification_count": classification_count,
+            "model_with_instance_count": model_with_instance_count,
+            "empty_model_count": empty_model_count,
+            "model_coverage_rate": model_coverage_rate,
         },
         "message": "",
     }
@@ -805,6 +838,77 @@ def get_model_inst_statistics(user_info=None, **kwargs):
     result_data.sort(key=lambda x: (-x["count"], x["classification"], x["model"]))
 
     return {"result": True, "data": result_data, "message": ""}
+
+
+@nats_client.register
+def get_cmdb_model_instance_top(limit=5, classification_id=None, user_info=None, **kwargs):
+    """
+    获取模型实例数 TOP N（用于 TopN / 柱状图）
+    """
+    try:
+        limit = int(limit or 5)
+    except (TypeError, ValueError):
+        limit = 5
+    if limit <= 0:
+        limit = 5
+
+    classifications = ClassificationManage.search_model_classification()
+    classification_map = {c["classification_id"]: c["classification_name"] for c in classifications}
+
+    model_permissions_map = _build_nats_model_permission_map(user_info)
+    instance_permissions_map = _build_nats_permission_map(user_info)
+    if model_permissions_map is None or instance_permissions_map is None:
+        return {"result": True, "data": [], "message": ""}
+
+    models = ModelManage.search_model(permissions_map=model_permissions_map)
+    if classification_id:
+        models = [model for model in models if model.get("classification_id") == classification_id]
+
+    model_counts = InstanceManage.model_inst_count(permissions_map=instance_permissions_map)
+
+    result_data = []
+    for model in models:
+        model_id = model.get("model_id")
+        count = model_counts.get(model_id, 0)
+        result_data.append(
+            {
+                "model": model.get("model_name"),
+                "model_id": model_id,
+                "classification": classification_map.get(model.get("classification_id"), model.get("classification_id")),
+                "classification_id": model.get("classification_id"),
+                "count": count,
+            }
+        )
+
+    result_data.sort(key=lambda x: (-x["count"], x["classification"], x["model"]))
+
+    return {"result": True, "data": result_data[:limit], "message": ""}
+
+
+@nats_client.register
+def get_cmdb_collect_statistics(user_info=None, **kwargs):
+    """
+    获取 CMDB 采集健康概览
+    """
+    task_queryset = _get_collect_task_queryset(user_info)
+    status_counts = dict(task_queryset.values("exec_status").annotate(count=Count("id")).values_list("exec_status", "count"))
+
+    task_count = task_queryset.count()
+    interval_task_count = task_queryset.filter(is_interval=True).count()
+
+    return {
+        "result": True,
+        "data": {
+            "task_count": task_count,
+            "interval_task_count": interval_task_count,
+            "success_count": status_counts.get(CollectRunStatusType.SUCCESS, 0),
+            "error_count": status_counts.get(CollectRunStatusType.ERROR, 0),
+            "running_count": status_counts.get(CollectRunStatusType.RUNNING, 0),
+            "timeout_count": status_counts.get(CollectRunStatusType.TIME_OUT, 0),
+            "never_run_count": status_counts.get(CollectRunStatusType.NOT_START, 0),
+        },
+        "message": "",
+    }
 
 
 @nats_client.register

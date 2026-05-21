@@ -39,7 +39,16 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Enum",
       "unit": "none",
-      "dimensions": ["address", "id"],
+      "dimensions": [
+        {
+          "name": "address",
+          "description": "Broker Address"
+        },
+        {
+          "name": "id",
+          "description": "Broker ID"
+        }
+      ],
       "description": "Information about Kafka node, including node address and ID.",
       "query": "kafka_broker_info_gauge{__$labels__}"
     },
@@ -50,7 +59,12 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["topic"],
+      "dimensions": [
+        {
+          "name": "topic",
+          "description": "Topic"
+        }
+      ],
       "description": "Number of partitions for a given Kafka topic.",
       "query": "sum by (topic) (kafka_topic_partitions_gauge{__$labels__})"
     },
@@ -61,7 +75,16 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["partition", "topic"],
+      "dimensions": [
+        {
+          "name": "partition",
+          "description": "Partition"
+        },
+        {
+          "name": "topic",
+          "description": "Topic"
+        }
+      ],
       "description": "Current offset for the specified topic and partition.",
       "query": "kafka_topic_partition_current_offset_gauge{__$labels__}"
     },
@@ -72,7 +95,16 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["partition", "topic"],
+      "dimensions": [
+        {
+          "name": "partition",
+          "description": "Partition"
+        },
+        {
+          "name": "topic",
+          "description": "Topic"
+        }
+      ],
       "description": "Oldest offset for the specified topic and partition.",
       "query": "kafka_topic_partition_oldest_offset_gauge{__$labels__}"
     },
@@ -83,7 +115,16 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["partition", "topic"],
+      "dimensions": [
+        {
+          "name": "partition",
+          "description": "Partition"
+        },
+        {
+          "name": "topic",
+          "description": "Topic"
+        }
+      ],
       "description": "Number of in-sync replicas for the specified topic and partition.",
       "query": "kafka_topic_partition_in_sync_replica_gauge{__$labels__}"
     },
@@ -94,7 +135,16 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Enum",
       "unit": "[{\"name\":\"其它节点\",\"id\":0,\"color\":\"#faad14\"},{\"name\":\"首选Broker节点\",\"id\":1,\"color\":\"#1ac44a\"}]",
-      "dimensions": ["partition", "topic"],
+      "dimensions": [
+        {
+          "name": "partition",
+          "description": "Partition"
+        },
+        {
+          "name": "topic",
+          "description": "Topic"
+        }
+      ],
       "description": "Value is 1 if the preferred Broker node is in use for the topic/partition, otherwise 0.",
       "query": "kafka_topic_partition_leader_is_preferred_gauge{__$labels__}"
     },
@@ -105,7 +155,16 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["partition", "topic"],
+      "dimensions": [
+        {
+          "name": "partition",
+          "description": "Partition"
+        },
+        {
+          "name": "topic",
+          "description": "Topic"
+        }
+      ],
       "description": "Number of replicas for the specified topic and partition.",
       "query": "kafka_topic_partition_replicas_gauge{__$labels__}"
     },
@@ -116,7 +175,16 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"副本不足\",\"id\":1,\"color\":\"#ff4d4f\"}]",
-      "dimensions": ["partition", "topic"],
+      "dimensions": [
+        {
+          "name": "partition",
+          "description": "Partition"
+        },
+        {
+          "name": "topic",
+          "description": "Topic"
+        }
+      ],
       "description": "Value is 1 if the topic/partition is under-replicated, otherwise 0.",
       "query": "kafka_topic_partition_under_replicated_partition_gauge{__$labels__}"
     },
@@ -127,7 +195,20 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["consumergroup", "partition", "topic"],
+      "dimensions": [
+        {
+          "name": "consumergroup",
+          "description": "Consumer Group"
+        },
+        {
+          "name": "partition",
+          "description": "Partition"
+        },
+        {
+          "name": "topic",
+          "description": "Topic"
+        }
+      ],
       "description": "Current offset for the consumer group in the specified topic and partition.",
       "query": "kafka_consumergroup_current_offset_gauge{__$labels__}"
     },
@@ -138,7 +219,20 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["consumergroup", "partition", "topic"],
+      "dimensions": [
+        {
+          "name": "consumergroup",
+          "description": "Consumer Group"
+        },
+        {
+          "name": "partition",
+          "description": "Partition"
+        },
+        {
+          "name": "topic",
+          "description": "Topic"
+        }
+      ],
       "description": "Current approximate lag of the consumer group in the specified topic and partition.",
       "query": "kafka_consumergroup_lag_gauge{__$labels__}"
     },

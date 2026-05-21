@@ -83,6 +83,8 @@ export interface ValueConfig {
   tableConfig?: TableConfig;
   filterBindings?: FilterBindings;
   selectedFields?: string[];
+  topNLabelField?: string;
+  topNValueField?: string;
   unit?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
