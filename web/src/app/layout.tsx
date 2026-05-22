@@ -14,7 +14,7 @@ import { ClientProvider } from '@/context/client';
 import { PermissionsProvider, usePermissions } from '@/context/permissions';
 import AuthProvider from '@/context/auth';
 import TopMenu from '@/components/top-menu';
-import { ConfigProvider, Watermark } from 'antd';
+import { ConfigProvider, Watermark, message } from 'antd';
 import Spin from '@/components/spin';
 import { portalBrandingDefaults, usePortalBranding } from '@/hooks/usePortalBranding';
 import { isProfessionalDashboardRoute } from '@/app/monitor/dashboards/utils';
@@ -133,6 +133,17 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
 
     checkPermission();
   }, [isLoading, pathname, isAuthenticated, status, session, router, configMenus, hasPermission]);
+
+  // Show password expiry reminder after login redirect
+  useEffect(() => {
+    if (isAuthenticated && !isAuthRoute) {
+      const reminder = sessionStorage.getItem('password_expiry_reminder');
+      if (reminder) {
+        sessionStorage.removeItem('password_expiry_reminder');
+        message.warning(reminder, 8);
+      }
+    }
+  }, [isAuthenticated, isAuthRoute]);
 
   const hideTopMenu = useMemo(() => {
     return pathname?.startsWith('/opspilot/studio/chat');

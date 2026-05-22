@@ -107,7 +107,7 @@ async def _build_and_run(request, mock_llm_responses, tools=None, execution_id="
     # Mock is_interrupt_requested based on step
     interrupt_check_count = {"n": 0}
 
-    def mock_is_interrupt(exec_id):
+    async def mock_is_interrupt(exec_id):
         interrupt_check_count["n"] += 1
         if interrupt_at_step is not None and interrupt_check_count["n"] >= interrupt_at_step:
             return True
@@ -117,7 +117,7 @@ async def _build_and_run(request, mock_llm_responses, tools=None, execution_id="
         "apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template",
         return_value="You are a test assistant.",
     ), patch(
-        "apps.opspilot.metis.llm.chain.node.is_interrupt_requested",
+        "apps.opspilot.metis.llm.chain.node.is_interrupt_requested_async",
         side_effect=mock_is_interrupt,
     ):
         result = await graph.ainvoke(

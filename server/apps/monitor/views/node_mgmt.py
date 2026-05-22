@@ -8,6 +8,7 @@ from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.utils.pagination import parse_page_params
+from apps.monitor.utils.node_selector import merge_node_query_with_selector
 
 
 def _build_actor_context(request):
@@ -44,25 +45,28 @@ class NodeMgmtView(ViewSet):
         page, page_size = parse_page_params(request.data, default_page=1, default_page_size=10, allow_page_size_all=True)
 
         organization_ids = [] if request.user.is_superuser else list(orgs)
-        data = NodeMgmt().node_list(
-            dict(
-                cloud_region_id=request.data.get("cloud_region_id", 1),
-                organization_ids=organization_ids,
-                name=request.data.get("name"),
-                ip=request.data.get("ip"),
-                os=request.data.get("os"),
-                page=page,
-                page_size=page_size,
-                is_active=request.data.get("is_active"),
-                is_manual=request.data.get("is_manual"),
-                is_container=request.data.get("is_container"),
-                permission_data={
-                    "username": request.user.username,
-                    "domain": request.user.domain,
-                    "current_team": actor_context["current_team"],
-                },
-            )
+        query_data = dict(
+            cloud_region_id=request.data.get("cloud_region_id", 1),
+            organization_ids=organization_ids,
+            name=request.data.get("name"),
+            ip=request.data.get("ip"),
+            os=request.data.get("os"),
+            page=page,
+            page_size=page_size,
+            is_active=request.data.get("is_active"),
+            is_manual=request.data.get("is_manual"),
+            is_container=request.data.get("is_container"),
+            permission_data={
+                "username": request.user.username,
+                "domain": request.user.domain,
+                "current_team": actor_context["current_team"],
+            },
         )
+        monitor_plugin_id = request.data.get("monitor_plugin_id")
+        if monitor_plugin_id and hasattr(InstanceConfigService, "_get_plugin_node_selector"):
+            node_selector = InstanceConfigService._get_plugin_node_selector(monitor_plugin_id)
+            query_data = merge_node_query_with_selector(query_data, node_selector)
+        data = NodeMgmt().node_list(query_data)
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="batch_setting_node_child_config")

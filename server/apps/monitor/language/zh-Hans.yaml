@@ -1,4 +1,110 @@
 monitor_object_metric:
+  Dameng:
+    up_gauge:
+      name: Exporter状态
+      desc: DM-Exporter 与达梦数据库的探测状态，0 表示抓取失败，1 表示抓取成功。
+    dm_exporter_connections_gauge:
+      name: 当前连接数
+      desc: 当前达梦数据库会话连接总数。
+    dm_exporter_session_rests_gauge:
+      name: 可用会话数
+      desc: 当前仍可分配的会话数量，用于评估会话资源余量。
+    dm_exporter_session_used_ratio_gauge:
+      name: 会话使用率
+      desc: 会话使用率百分比，持续升高通常意味着连接容量逼近上限。
+    dm_exporter_memory_used_size_gauge:
+      name: 内存使用量
+      desc: 数据库实例当前消耗的操作系统内存大小。
+    dm_exporter_buffer_cache_hit_percent_gauge:
+      name: 缓存命中率
+      desc: 缓存池命中率，较低时通常意味着更多磁盘访问或缓存配置不合理。
+    dm_exporter_locks_gauge:
+      name: 获取锁的进程数
+      desc: 当前持有锁的进程数量。
+    dm_exporter_lock_blocks_gauge:
+      name: 等待锁的进程数
+      desc: 当前等待锁且已发生阻塞的进程数量。
+    dm_exporter_deadlock_count_gauge:
+      name: 死锁累计数量
+      desc: 死锁历史累计数量，可用于识别并发事务冲突趋势。
+    dm_exporter_tablespace_total_size_gauge:
+      name: 表空间总大小
+      desc: 单个表空间总容量大小。
+    dm_exporter_tablespace_used_size_gauge:
+      name: 表空间已使用大小
+      desc: 单个表空间已使用空间大小。
+    dm_exporter_tablespace_free_size_gauge:
+      name: 表空间剩余大小
+      desc: 单个表空间剩余可用空间大小。
+    dm_exporter_tablespace_used_ratio_gauge:
+      name: 表空间使用率
+      desc: 单个表空间使用率百分比，是容量预警的核心指标。
+    dm_exporter_checkpoint_dirty_pages_gauge:
+      name: CheckPoint脏页数
+      desc: CheckPoint 脏页参数值。
+    dm_exporter_checkpoint_interval_time_gauge:
+      name: CheckPoint间隔时间
+      desc: CheckPoint 间隔时间。
+    dm_exporter_table_used_space_gauge:
+      name: 表占用块数
+      desc: 业务表占用块数。
+    dm_exporter_index_used_space_gauge:
+      name: 索引占用块数
+      desc: 业务索引占用块数。
+    dm_exporter_shared_pool_size_gauge:
+      name: 共享内存大小
+      desc: 共享内存池大小参数值。
+    dm_exporter_redo_file_size_gauge:
+      name: 当前Redo文件已使用大小
+      desc: 当前 ReDo 文件已使用空间大小。
+    dm_exporter_open_cursor_gauge:
+      name: 打开的游标数
+      desc: 当前打开的 SELECT 游标数量。
+    dm_exporter_roll_state_gauge:
+      name: 回滚段状态
+      desc: 回滚段状态，0 表示 ONLINE，1 表示 OFFLINE，2 表示 RES_OFFLINE，3 表示 CORRUPT，4 表示 OTHER。
+    dm_exporter_roll_size_gauge:
+      name: 回滚段总页大小
+      desc: 回滚段总页大小。
+    dm_exporter_redo_log_size_gauge:
+      name: Redo日志大小
+      desc: Redo 日志文件大小及状态。
+    dm_exporter_2pc_pending_gauge:
+      name: 长时间二阶段事务锁个数
+      desc: 长时间二阶段事务锁数量。
+    dm_exporter_load_five_average_gauge:
+      name: 每5分钟工作负载
+      desc: 数据库最近 5 分钟工作负载指标，用于观察整体压力趋势。
+    dm_exporter_executions_total_counter:
+      name: 执行SQL语句总数
+      desc: 累计执行 SQL 语句总数。
+    dm_exporter_slow_query_gauge:
+      name: 慢查询数量
+      desc: 当前执行时长超过 2 秒的慢查询数量。
+    dm_exporter_unusable_index_gauge:
+      name: 失效索引数量
+      desc: 当前失效索引数量，非 0 时通常需要尽快修复或重建索引。
+    dm_exporter_asm_real_used_percent_gauge:
+      name: ASM实际空间使用率
+      desc: ASM 实际空间使用率。
+    dm_exporter_asm_free_size_gauge:
+      name: ASM安全使用空间大小
+      desc: ASM 安全可用空间大小。
+    dm_exporter_backup_is_status_gauge:
+      name: 主备实例状态
+      desc: 主备实例状态，0 表示 OPEN，1 表示 MOUNT，2 表示 SUSPEND。
+    dm_exporter_backup_i_mode_gauge:
+      name: 主备实例模式
+      desc: 主备实例模式，0 表示 PRIMARY，1 表示 STANDBY，2 表示 NORMAL。
+    dm_exporter_backup_arch_status_gauge:
+      name: 主备架构状态
+      desc: 主备归档状态，0 表示 VALID，1 表示 INVALID。
+    dm_exporter_backup_dw_status_gauge:
+      name: 主备数据库观测状态
+      desc: 主备数据库观测状态，0 表示 ENABLED，1 表示 DISABLED。
+    dm_exporter_backup_late_time_gauge:
+      name: 主备延迟时间
+      desc: 主备延迟时间。
   Minio:
     minio_cluster_capacity_usable_total_bytes_gauge:
       name: 集群可用总容量
@@ -954,6 +1060,87 @@ monitor_object_metric:
     iftotalOutOctets:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
       name: 设备每秒发送总流量
+    oceanstor_pool_count:
+      name: 存储池数量
+      desc: OceanStor系统中存储池的总数量
+    oceanstor_drive_count:
+      name: 硬盘数量
+      desc: OceanStor系统中物理硬盘的总数量
+    oceanstor_volume_count:
+      name: LUN卷数量
+      desc: OceanStor系统中LUN卷的总数量
+    api_pool_io_rate:
+      name: 存储池总IOPS
+      desc: 每个存储池的每秒总I/O操作数
+    api_pool_read_io:
+      name: 存储池读IOPS
+      desc: 每个存储池的每秒读I/O操作数
+    api_pool_write_io:
+      name: 存储池写IOPS
+      desc: 每个存储池的每秒写I/O操作数
+    api_pool_read:
+      name: 存储池读吞吐量
+      desc: 每个存储池的每秒读取吞吐量（字节/秒）
+    api_pool_write:
+      name: 存储池写吞吐量
+      desc: 每个存储池的每秒写入吞吐量（字节/秒）
+    api_pool_resp_t:
+      name: 存储池平均响应时间
+      desc: 每个存储池的平均I/O响应时间（毫秒）
+    api_pool_resp_t_r:
+      name: 存储池读响应时间
+      desc: 每个存储池的平均读响应时间（毫秒）
+    api_pool_resp_t_w:
+      name: 存储池写响应时间
+      desc: 每个存储池的平均写响应时间（毫秒）
+    api_drive_io_rate:
+      name: 硬盘总IOPS
+      desc: 每块硬盘的每秒总I/O操作数
+    api_drive_read_io:
+      name: 硬盘读IOPS
+      desc: 每块硬盘的每秒读I/O操作数
+    api_drive_write_io:
+      name: 硬盘写IOPS
+      desc: 每块硬盘的每秒写I/O操作数
+    api_drive_read:
+      name: 硬盘读吞吐量
+      desc: 每块硬盘的每秒读取吞吐量（字节/秒）
+    api_drive_write:
+      name: 硬盘写吞吐量
+      desc: 每块硬盘的每秒写入吞吐量（字节/秒）
+    api_drive_resp_t:
+      name: 硬盘平均响应时间
+      desc: 每块硬盘的平均I/O响应时间（毫秒）
+    api_drive_resp_t_r:
+      name: 硬盘读响应时间
+      desc: 每块硬盘的平均读响应时间（毫秒）
+    api_drive_resp_t_w:
+      name: 硬盘写响应时间
+      desc: 每块硬盘的平均写响应时间（毫秒）
+    api_volume_io_rate:
+      name: LUN卷总IOPS
+      desc: 每个LUN卷的每秒总I/O操作数
+    api_volume_read_io:
+      name: LUN卷读IOPS
+      desc: 每个LUN卷的每秒读I/O操作数
+    api_volume_write_io:
+      name: LUN卷写IOPS
+      desc: 每个LUN卷的每秒写I/O操作数
+    api_volume_read:
+      name: LUN卷读吞吐量
+      desc: 每个LUN卷的每秒读取吞吐量（字节/秒）
+    api_volume_write:
+      name: LUN卷写吞吐量
+      desc: 每个LUN卷的每秒写入吞吐量（字节/秒）
+    api_volume_resp_t:
+      name: LUN卷平均响应时间
+      desc: 每个LUN卷的平均I/O响应时间（毫秒）
+    api_volume_resp_t_r:
+      name: LUN卷读响应时间
+      desc: 每个LUN卷的平均读响应时间（毫秒）
+    api_volume_resp_t_w:
+      name: LUN卷写响应时间
+      desc: 每个LUN卷的平均写响应时间（毫秒）
   Docker Container:
     docker_container_status:
       name: 容器状态
@@ -2283,6 +2470,22 @@ monitor_object_metric:
       name: 探针进程虚拟内存大小
       desc: 监控探针进程当前虚拟内存的大小。
 monitor_object_metric_group:
+  Dameng:
+    Base: 基础
+    Session: 会话
+    Resource: 资源
+    Lock: 锁
+    Tablespace: 表空间
+    Checkpoint: 检查点
+    Storage: 存储
+    Redo: Redo日志
+    Cursor: 游标
+    Rollback: 回滚段
+    Transaction: 事务
+    Performance: 性能
+    Maintenance: 维护
+    ASM: ASM
+    Backup: 主备
   Detection Device:
     Status: 状态
     Packet Loss: 数据包丢失
@@ -2420,6 +2623,16 @@ monitor_object_metric_group:
     Base: 基础
     Bandwidth: 带宽
     Packet Error: 数据包错误
+    Quantity: 数量概览
+    Pool IOPS: 存储池IOPS
+    Pool Throughput: 存储池吞吐量
+    Pool Latency: 存储池时延
+    Drive IOPS: 硬盘IOPS
+    Drive Throughput: 硬盘吞吐量
+    Drive Latency: 硬盘时延
+    Volume IOPS: LUN卷IOPS
+    Volume Throughput: LUN卷吞吐量
+    Volume Latency: LUN卷时延
   WebLogic-JMX:
     Threadpool: 线程池
     Application: 应用
@@ -2557,12 +2770,18 @@ monitor_object_metric_group:
     Connection: 连接
     Wait: 等待时间
 monitor_object_plugin:
+  DM-Exporter:
+    name: 达梦数据库监控探针
+    desc: 通过 DM-Exporter 下发达梦数据库监控探针，采集会话、锁、表空间、内存、慢查询等核心监控指标，帮助快速掌握数据库运行状态与性能变化。
   Detection Device SNMP General:
     name: 检测设备通用（SNMP）
     desc: SNMP 通用插件用于通过 SNMP 监控和管理检测设备的监控情况。管理员可以获取有关设备的关键信息，例如 接口流量、错误统计和状态信息等，从而优化网络性能和提高管理效率。
   Storage IPMI:
     desc: 通过Telegraf采集器利用IPMI协议定期收集存储设备的电源状态、风扇转速、温度等关键指标。
     name: 存储设备IPMI通用（Telegraf）
+  OceanStor:
+    name: OceanStor存储（Telegraf）
+    desc: 通过Telegraf采集器利用DeviceManager REST API定期收集华为OceanStor存储池、硬盘、LUN卷的IOPS、吞吐量和响应时间等性能指标。
   Tencent Cloud:
     name: 腾讯云
     desc: 实时采集腾讯云各类监控指标数据，涵盖计算资源、网络性能、存储使用等维度，助力用户深入了解资源状态，精准定位异常，高效完成运维管理与成本优化。
@@ -2681,6 +2900,7 @@ monitor_object_plugin:
     name: Kafka（Exporter）
     desc: 通过Kafka Exporter采集器定期收集Kafka集群的主题统计、分区数量、消费者组状态等指标，帮助监控Kafka集群的健康和性能。
 monitor_object:
+  Dameng: 达梦数据库
   Apache: Apache
   Firewall: 防火墙
   Docker: Docker

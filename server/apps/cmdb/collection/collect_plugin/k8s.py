@@ -30,6 +30,8 @@ class CollectK8sMetrics:
 
     def __init__(self, cluster_name, *args, **kwargs):
         self.cluster_name = cluster_name
+        # collector_cluster_id 是采集器上报使用的 VM 查询身份；如未单独提供则退化为 cluster_name（旧任务兼容）
+        self.collector_cluster_id = kwargs.get("collector_cluster_id") or cluster_name
         self.metrics = self.get_metrics()
         self.collection_metrics_dict = {i: [] for i in COLLECTION_METRICS.keys()}
         self.timestamp_gt = False
@@ -69,7 +71,7 @@ class CollectK8sMetrics:
     def query_data(self):
         """查询数据"""
         sql = " or ".join(
-            "{}{{instance_id=\"{}\"}}".format(j, self.cluster_name) for m in COLLECTION_METRICS.values() for j in m)
+            "{}{{instance_id=\"{}\"}}".format(j, self.collector_cluster_id) for m in COLLECTION_METRICS.values() for j in m)
         data = Collection().query(sql)
         self.raw_data = data.get("data", []).get("result", [])
         return data.get("data", [])
@@ -135,7 +137,7 @@ class CollectK8sMetrics:
         """查询副本数量"""
         replicas_metrics = []
         sql = " or ".join(
-            "{}{{instance_id=\"{}\"}}".format(m, self.cluster_name) for m in REPLICAS_METRICS)
+            "{}{{instance_id=\"{}\"}}".format(m, self.collector_cluster_id) for m in REPLICAS_METRICS)
         data = Collection().query(sql)
         replicas_data = data.get("data", [])
         for index_data in replicas_data["result"]:

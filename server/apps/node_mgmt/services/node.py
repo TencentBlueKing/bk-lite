@@ -122,9 +122,9 @@ class NodeService:
                 if collector["status"] == 2 and collector_obj:  # status=2 表示失败
                     # 检查是否是需要忽略错误的采集器
                     if collector_obj.name in CollectorConstants.IGNORE_ERROR_COLLECTORS:
-                        # 检查错误信息是否匹配需要忽略的消息
+                        # 检查错误信息是否匹配需要忽略的消息（使用 contains 匹配，兼容动态路径）
                         verbose_msg = collector.get("verbose_message", "")
-                        if verbose_msg in CollectorConstants.IGNORE_ERROR_COLLECTORS_MESSAGES:
+                        if any(msg in verbose_msg for msg in CollectorConstants.IGNORE_ERROR_COLLECTORS_MESSAGES):
                             # 将状态从失败改为正常
                             collector["status"] = 0
                             collector["message"] = "Running"
@@ -347,6 +347,7 @@ class NodeService:
         is_manual,
         is_container,
         permission_data={},
+        skip_permission=False,
     ):
         """获取节点列表"""
         if permission_data:
@@ -360,9 +361,12 @@ class NodeService:
                 team_key="nodeorganization__organization__in",
                 id_key="id__in",
             )
-        else:
-            # 兼容原有调用方式
+        elif skip_permission or organization_ids:
+            # 系统级调用显式跳过权限检查，或通过 organization_ids 限定范围
             qs = Node.objects.all()
+        else:
+            # 无权限上下文且无组织限定时，拒绝返回数据（fail-closed）
+            qs = Node.objects.none()
 
         if cloud_region_id:
             qs = qs.filter(cloud_region_id=cloud_region_id)
@@ -439,6 +443,7 @@ class NodeService:
         return [
             {
                 "id": node.id,
+                "node_type": node.node_type,
                 "organization_ids": [rel.organization for rel in node.nodeorganization_set.all()],
             }
             for node in nodes

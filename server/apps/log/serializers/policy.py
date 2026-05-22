@@ -20,7 +20,7 @@ class PolicySerializer(serializers.ModelSerializer):
 
     def get_organizations(self, obj):
         """通过外键关系获取组织列表"""
-        return list(obj.policyorganization_set.values_list("organization", flat=True))
+        return [org.organization for org in obj.policyorganization_set.all()]
 
     def _get_collect_type_scope(self):
         if self.instance:
@@ -83,7 +83,7 @@ class AlertSerializer(serializers.ModelSerializer):
 
     def get_organizations(self, obj):
         """通过外键关系获取策略的组织列表"""
-        return list(obj.policy.policyorganization_set.values_list("organization", flat=True))
+        return [org.organization for org in obj.policy.policyorganization_set.all()]
 
     def get_collect_type_name(self, obj):
         if not obj.collect_type:

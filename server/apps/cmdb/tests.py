@@ -22,9 +22,10 @@ from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from django.utils import timezone
 from django.test import SimpleTestCase
+from django.utils import timezone
 from rest_framework.exceptions import ValidationError
+from apps.core.exceptions.base_app_exception import BaseAppException
 
 # 检查是否在Django环境中
 if __name__ == "__main__":
@@ -260,6 +261,146 @@ def test_check_instances_permission_limits_query_to_target_instance_ids():
     )
 
 
+def test_falkordb_entity_count_applies_base_params_before_grouping():
+    from apps.cmdb.graph.falkordb import FalkorDBClient
+
+    client = FalkorDBClient.__new__(FalkorDBClient)
+    client.ENABLE_PARAMETERIZATION = False
+    client._param_collector = None
+    client._execute_query = MagicMock(
+        return_value=SimpleNamespace(
+            header=[("", "os_type"), ("", "count")],
+            result_set=[["1", 2]],
+        )
+    )
+
+    result = client.entity_count(
+        label="instance",
+        group_by_attr="os_type",
+        params=[{"field": "model_id", "type": "str=", "value": "host"}],
+        format_permission_dict={1: []},
+    )
+
+    assert result == {"1": 2}
+    sql = client._execute_query.call_args.args[0]
+    assert "model_id" in sql
+    assert "organization" in sql
+    assert "COUNT(n) AS count" in sql
+
+
+def test_group_inst_count_passes_base_params_and_permission_scope_to_graph_client():
+    from apps.cmdb.services.instance import InstanceManage
+
+    graph_client = MagicMock()
+    graph_client.entity_count.return_value = {"host": 3}
+
+    graph_context = MagicMock()
+    graph_context.__enter__.return_value = graph_client
+    graph_context.__exit__.return_value = False
+
+    with patch("apps.cmdb.services.instance.GraphClient", return_value=graph_context):
+        result = InstanceManage.group_inst_count(
+            group_by_attr="model_id",
+            permissions_map={1: {"inst_names": ["host-1", "host-2"], "permission_instances_map": {}}},
+            params=[{"field": "model_id", "type": "str=", "value": "host"}],
+            creator="alice",
+        )
+
+    assert result == {"host": 3}
+    graph_client.entity_count.assert_called_once_with(
+        label="instance",
+        group_by_attr="model_id",
+        params=[{"field": "model_id", "type": "str=", "value": "host"}],
+        format_permission_dict={
+            1: [
+                {"field": "inst_name", "type": "str[]", "value": ["host-1", "host-2"]},
+                {"field": "_creator", "type": "str=", "value": "alice"},
+            ]
+        },
+    )
+
+
+def test_get_instance_group_by_uses_graph_aggregation_for_enum_field():
+    from apps.cmdb.nats.nats import get_instance_group_by
+
+    with (
+        patch("apps.cmdb.nats.nats._build_nats_permission_map", return_value={1: {"inst_names": [], "permission_instances_map": {}}}),
+        patch(
+            "apps.cmdb.nats.nats.ModelManage.search_model_attr",
+            return_value=[
+                {
+                    "attr_id": "os_type",
+                    "attr_type": "enum",
+                    "enum_select_mode": "single",
+                    "option": [{"id": 1, "name": "Linux"}],
+                }
+            ],
+        ),
+        patch("apps.cmdb.nats.nats.GraphClient") as mock_graph_client,
+        patch("apps.cmdb.nats.nats.InstanceManage.group_inst_count", return_value={"1": 2, None: 1}) as mock_group_inst_count,
+    ):
+        result = get_instance_group_by(model_id="host", field="os_type", user_info={"team": 1, "user": "alice"})
+
+    assert result == {
+        "result": True,
+        "data": [
+            {"name": "Linux", "value": 2},
+            {"name": "unknown", "value": 1},
+        ],
+        "message": "",
+    }
+    mock_graph_client.assert_not_called()
+    mock_group_inst_count.assert_called_once_with(
+        group_by_attr="os_type",
+        permissions_map={1: {"inst_names": [], "permission_instances_map": {}}},
+        params=[{"field": "model_id", "type": "str=", "value": "host"}],
+    )
+
+
+def test_get_instance_group_by_falls_back_to_raw_enum_values_when_display_may_be_missing():
+    from apps.cmdb.nats.nats import get_instance_group_by
+
+    with (
+        patch("apps.cmdb.nats.nats._build_nats_permission_map", return_value={1: {"inst_names": [], "permission_instances_map": {}}}),
+        patch(
+            "apps.cmdb.nats.nats.ModelManage.search_model_attr",
+            return_value=[
+                {
+                    "attr_id": "os_type",
+                    "attr_type": "enum",
+                    "enum_select_mode": "single",
+                    "option": [{"id": 1, "name": "Linux"}, {"id": "other", "name": "Other"}],
+                }
+            ],
+        ),
+        patch("apps.cmdb.nats.nats.InstanceManage.group_inst_count", return_value={"1": 2, "other": 1, None: 1}) as mock_group_inst_count,
+    ):
+        result = get_instance_group_by(model_id="host", field="os_type", user_info={"team": 1, "user": "alice"})
+
+    assert result == {
+        "result": True,
+        "data": [
+            {"name": "Linux", "value": 2},
+            {"name": "Other", "value": 1},
+            {"name": "unknown", "value": 1},
+        ],
+        "message": "",
+    }
+    mock_group_inst_count.assert_called_once_with(
+        group_by_attr="os_type",
+        permissions_map={1: {"inst_names": [], "permission_instances_map": {}}},
+        params=[{"field": "model_id", "type": "str=", "value": "host"}],
+    )
+
+
+def test_falkordb_count_formatter_normalizes_list_keys():
+    from apps.cmdb.graph.falkordb_format import FormatDBResult
+
+    result = FormatDBResult(SimpleNamespace(result_set=[[["1"], 2]], header=[])).to_result_of_count()
+
+    assert result == {"1": 2}
+
+
 def test_get_relation_instances_falls_back_to_per_instance_when_batch_query_fails():
     from apps.cmdb.services.subscription_trigger import SubscriptionTriggerService
 
@@ -490,6 +631,51 @@ def test_build_region_query_credential_uses_authorized_task_lookup():
     mock_get_params_class.assert_called_once_with("qcloud", "qcloud")
 
 
+def test_aliyun_account_protocol_model_plugin_name_falls_back_to_normalized_model_id():
+    from apps.cmdb.node_configs.cloud.aliyun import AliyunNodeParams
+
+    instance = SimpleNamespace(
+        model_id="aliyun_account",
+        driver_type="protocol",
+        decrypt_credentials={},
+        params={},
+        timeout=60,
+    )
+
+    node = AliyunNodeParams(instance)
+
+    assert node.model_plugin_name == "aliyun_info"
+
+
+def test_aliyun_node_params_uses_secret_field_names_for_stargazer():
+    from apps.cmdb.node_configs.cloud.aliyun import AliyunNodeParams
+
+    instance = SimpleNamespace(
+        id=281,
+        model_id="aliyun_account",
+        driver_type="protocol",
+        decrypt_credentials={
+            "accessKey": "ak",
+            "accessSecret": "sk",
+            "regions": {"resource_id": "cn-guangzhou"},
+        },
+        params={},
+        timeout=300,
+    )
+
+    node = AliyunNodeParams(instance)
+
+    assert node.set_credential() == {
+        "secret_id": "${PASSWORD_secret_id_cmdb_281}",
+        "secret_key": "${PASSWORD_secret_key_cmdb_281}",
+        "region_id": "cn-guangzhou",
+    }
+    assert node.env_config() == {
+        "PASSWORD_secret_id_cmdb_281": "ak",
+        "PASSWORD_secret_key_cmdb_281": "sk",
+    }
+
+
 def test_collect_model_viewset_hides_system_tasks_from_default_list_queries():
     from apps.cmdb.views.collect import CollectModelViewSet
     from apps.core.utils.viewset_utils import AuthViewSet
@@ -565,7 +751,43 @@ def test_task_status_excludes_hidden_system_tasks_from_statistics():
 
     assert response.status_code == 200
     filtered_queryset.filter.assert_called_once_with(is_visible=True)
-    visible_queryset.only.assert_called_once_with("model_id", "exec_status")
+    visible_queryset.only.assert_called_once_with("model_id", "driver_type", "exec_status")
+
+
+def test_task_status_splits_same_model_by_driver_type():
+    from apps.cmdb.views.collect import CollectModelViewSet
+
+    request = _make_cmdb_request()
+    request.user.permission = {"auto_collection-View"}
+    view = CollectModelViewSet()
+    view.request = request
+    view.action = "task_status"
+
+    filtered_queryset = MagicMock(name="filtered_queryset")
+    visible_queryset = MagicMock(name="visible_queryset")
+    only_queryset = MagicMock(name="only_queryset")
+    filtered_queryset.filter.return_value = visible_queryset
+    visible_queryset.only.return_value = only_queryset
+
+    serializer_rows = [
+        {"model_id": "physcial_server", "driver_type": "job", "exec_status": "success"},
+        {"model_id": "physcial_server", "driver_type": "protocol", "exec_status": "running"},
+    ]
+
+    with (
+        patch.object(CollectModelViewSet, "get_queryset", return_value=filtered_queryset),
+        patch.object(CollectModelViewSet, "get_queryset_by_permission", return_value=filtered_queryset),
+        patch("apps.cmdb.views.collect.CollectModelIdStatusSerializer") as mock_serializer,
+    ):
+        mock_serializer.return_value.data = serializer_rows
+        response = view.task_status(request)
+
+    payload = _response_json(response)
+    assert payload["result"] is True
+    assert payload["data"] == {
+        "physcial_server__job": {"success": 1, "failed": 0, "running": 0},
+        "physcial_server__protocol": {"success": 0, "failed": 0, "running": 1},
+    }
 
 
 def test_collect_model_service_allows_node_mgmt_empty_value_credential():
@@ -2347,3 +2569,155 @@ class CmdbPermissionScopeRegressionTests(SimpleTestCase):
 
         mock_build.assert_called_once_with(user_teams=[1, 2], permission_rules={"team": [1], "instance": []}, fallback_team_id=1)
         self.assertEqual(result[2]["inst_names"], [DENY_PERMISSION_PLACEHOLDER])
+def test_config_file_collect_triggers_stargazer_and_returns_pending_result():
+    from apps.cmdb.collection.collect_tasks.config_file_collect import ConfigFileCollect
+
+    task = SimpleNamespace(
+        id=267,
+        params={"config_file_path": "/opt/bk-lite/common.env"},
+        instances=[{"inst_name": "10.0.0.1[default]"}],
+        timeout=30,
+    )
+    node_params = MagicMock()
+    node_params.custom_headers.return_value = {
+        "cmdbplugin_name": "config_file_info",
+        "cmdbhosts": "10.0.0.1[default]",
+        "cmdbcollect_task_id": "267",
+    }
+    node_params.tags = {
+        "instance_id": "cmdb_267",
+        "instance_type": "cmdb_config_file",
+        "collect_type": "http",
+        "config_type": "config_file",
+    }
+    response = MagicMock(status_code=200, headers={"X-Task-Status": "queued"})
+    pending_result = ({"config_file": {"status": "pending"}}, {"all": 0})
+
+    with (
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.CollectModels.objects.get", return_value=task),
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.NodeParamsFactory.get_node_params", return_value=node_params),
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.requests.get", return_value=response) as mock_get,
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.ConfigFileService.build_pending_result", return_value=pending_result) as mock_pending,
+    ):
+        result = ConfigFileCollect(task.id)()
+
+    assert result == pending_result
+    mock_get.assert_called_once_with(
+        "http://stargazer:8083/api/collect/collect_info",
+        params={
+            "plugin_name": "config_file_info",
+            "hosts": "10.0.0.1[default]",
+            "collect_task_id": "267",
+        },
+        headers={
+            "X-Instance-ID": "cmdb_267",
+            "X-Instance-Type": "cmdb_config_file",
+            "X-Collect-Type": "http",
+            "X-Config-Type": "config_file",
+        },
+        timeout=30,
+    )
+    mock_pending.assert_called_once_with(task)
+
+
+def test_config_file_collect_raises_when_stargazer_does_not_accept_trigger():
+    from apps.cmdb.collection.collect_tasks.config_file_collect import ConfigFileCollect
+
+    task = SimpleNamespace(
+        id=267,
+        params={"config_file_path": "/opt/bk-lite/common.env"},
+        instances=[{"inst_name": "10.0.0.1[default]"}],
+        timeout=30,
+    )
+    node_params = MagicMock()
+    node_params.custom_headers.return_value = {
+        "cmdbplugin_name": "config_file_info",
+        "cmdbhosts": "10.0.0.1[default]",
+    }
+    node_params.tags = {
+        "instance_id": "cmdb_267",
+        "instance_type": "cmdb_config_file",
+        "collect_type": "http",
+        "config_type": "config_file",
+    }
+    response = MagicMock(status_code=200, headers={"X-Task-Status": "failed"}, text="failed")
+
+    with (
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.CollectModels.objects.get", return_value=task),
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.NodeParamsFactory.get_node_params", return_value=node_params),
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.requests.get", return_value=response),
+    ):
+        try:
+            ConfigFileCollect(task.id)()
+        except BaseAppException as err:
+            assert "配置文件采集触发失败" in str(err)
+        else:
+            raise AssertionError("Expected BaseAppException when trigger was not accepted")
+
+
+def test_sync_collect_task_skips_pending_save_when_callback_already_wrote_data():
+    from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
+    from apps.cmdb.tasks import celery_tasks
+
+    instance = SimpleNamespace(
+        id=267,
+        is_job=True,
+        task_type=CollectPluginTypes.CONFIG_FILE,
+        exec_status=CollectRunStatusType.RUNNING,
+        exec_time=None,
+        collect_data={},
+        format_data={},
+        collect_digest={},
+        save=MagicMock(),
+    )
+    first_qs = MagicMock()
+    first_qs.first.return_value = instance
+    update_qs = MagicMock()
+    pending_qs = MagicMock()
+    pending_qs.update.return_value = 0
+    manager = MagicMock()
+    manager.filter.side_effect = [first_qs, update_qs, pending_qs]
+    collect_models = SimpleNamespace(_default_manager=manager)
+    collect = MagicMock()
+    collect.main.return_value = ({"config_file": {"status": "pending"}}, {})
+
+    collect_model_service = SimpleNamespace(repair_host_cloud_snapshot=MagicMock())
+
+    with (
+        patch.object(celery_tasks, "CollectModels", collect_models),
+        patch.object(celery_tasks, "JobCollect", return_value=collect),
+        patch.dict(
+            "sys.modules",
+            {"apps.cmdb.services.collect_service": SimpleNamespace(CollectModelService=collect_model_service)},
+        ),
+    ):
+        celery_tasks.sync_collect_task(instance.id)
+
+    update_qs.update.assert_called_once()
+    pending_qs.update.assert_called_once()
+    assert pending_qs.update.call_args.kwargs["collect_digest"]["message"] == "配置文件采集已触发，等待回传中"
+    instance.save.assert_not_called()
+
+
+def test_sync_periodic_update_task_status_sets_config_file_timeout_message():
+    from apps.cmdb.constants.constants import CollectRunStatusType
+    from apps.cmdb.tasks import celery_tasks
+
+    config_file_qs = MagicMock()
+    config_file_qs.update.return_value = 2
+    non_config_qs = MagicMock()
+    exclude_qs = MagicMock()
+    exclude_qs.update.return_value = 3
+    non_config_qs.exclude.return_value = exclude_qs
+    manager = MagicMock()
+    manager.filter.side_effect = [config_file_qs, non_config_qs]
+    collect_models = SimpleNamespace(_default_manager=manager)
+
+    with patch.object(celery_tasks, "CollectModels", collect_models):
+        celery_tasks.sync_periodic_update_task_status()
+
+    config_file_qs.update.assert_called_once_with(
+        exec_status=CollectRunStatusType.ERROR,
+        collect_digest={"message": "配置文件采集已触发，但在 5 分钟内未收到回传结果"},
+    )
+    exclude_qs.update.assert_called_once_with(exec_status=CollectRunStatusType.ERROR)

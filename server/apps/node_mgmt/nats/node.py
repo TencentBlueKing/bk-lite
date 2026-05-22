@@ -19,6 +19,7 @@ from apps.node_mgmt.models import (
     Collector,
     Node,
     NodeCollectorConfiguration,
+    NodeOrganization,
 )
 from apps.node_mgmt.services.sidecar_cache import (
     invalidate_bulk_child_config_etags,
@@ -529,13 +530,22 @@ def get_cloud_region_envconfig(cloud_region_id: str):
 
 
 @nats_client.register
-def get_cloud_region_proxy_address(cloud_region_id: str):
+def get_cloud_region_proxy_address(cloud_region_id: str, organization_ids: list = None):
     """
     获取云区域代理地址
     优先从 CloudRegion.proxy_address 读取，若为空则回退到环境变量 PROXY_ADDRESS
     :param cloud_region_id: 云区域 ID
+    :param organization_ids: 组织 ID 列表，非空时校验云区域归属
     :return: 代理地址
     """
+    if organization_ids:
+        has_access = NodeOrganization.objects.filter(
+            node__cloud_region_id=cloud_region_id,
+            organization__in=organization_ids,
+        ).exists()
+        if not has_access:
+            return ""
+
     proxy_address = CloudRegion.objects.filter(id=cloud_region_id).values_list("proxy_address", flat=True).first() or ""
     if proxy_address:
         return proxy_address
@@ -571,6 +581,7 @@ def node_list(query_data: dict):
     is_manual = query_data.get("is_manual")
     is_container = query_data.get("is_container")
     permission_data = query_data.get("permission_data", {})
+    skip_permission = query_data.get("skip_permission", False)
     return NodeService.get_node_list(
         organization_ids,
         cloud_region_id,
@@ -583,6 +594,7 @@ def node_list(query_data: dict):
         is_manual,
         is_container,
         permission_data,
+        skip_permission,
     )
 
 

@@ -25,13 +25,15 @@ def prepare_class_mappings(
     """
     准备全局classes和各split的映射表
 
-    新策略：从 metadata.classes 合并三个数据集的完整类别列表，构建恒等映射
+    新策略：从 metadata.classes 合并三个数据集的完整类别列表，构建恒等映射。
+    如果同一 class_id 在不同 split 中对应不同类别名，则视为不可恢复的数据语义冲突，
+    必须直接失败而不是继续发布。
 
     设计理念：
     1. 保留完整类别空间，支持预训练模型权重直接加载和微调
     2. 合并三个数据集的 classes，优先使用 train 的类别名称
     3. 构建恒等映射 {0→0, 1→1, ..., N→N}，保持原始 class_id 不变
-    4. 检测类别名称冲突（同一 class_id 对应不同名称），优先保留 train 的定义
+    4. 检测类别名称冲突（同一 class_id 对应不同名称），发现冲突立即失败
 
     Args:
         train_meta: train数据的metadata，必须包含"classes"字段
@@ -47,7 +49,7 @@ def prepare_class_mappings(
             - warnings: Dict - 包含类别冲突信息（如有）
 
     Raises:
-        ValueError: 当metadata格式不正确时
+        ValueError: 当 metadata 格式不正确或类别定义冲突时
     """
     # 1. 验证 metadata 格式
     if not train_meta or not isinstance(train_meta, dict):
@@ -74,7 +76,7 @@ def prepare_class_mappings(
 
     # 2. 合并三个数据集的 classes，构建全局类别字典
     # 策略：以 train 为基准，补充 val 和 test 的类别
-    # 冲突处理：同一 class_id 对应不同名称时，优先保留 train 的定义
+    # 冲突处理：同一 class_id 对应不同名称时直接失败，避免静默污染标签语义
     global_classes_dict = {}  # {class_id: class_name}
     conflicts = []  # 记录类别名称冲突
 
@@ -96,8 +98,7 @@ def prepare_class_mappings(
                 )
                 logger.warning(
                     f"类别名称冲突: class_id={class_id}, "
-                    f"train='{global_classes_dict[class_id]}', val='{class_name}' "
-                    f"→ 保留 train 的定义"
+                    f"train='{global_classes_dict[class_id]}', val='{class_name}'"
                 )
         else:
             # val 中有新的 class_id，添加到全局字典
@@ -118,8 +119,7 @@ def prepare_class_mappings(
                     )
                     logger.warning(
                         f"类别名称冲突: class_id={class_id}, "
-                        f"已有='{global_classes_dict[class_id]}', test='{class_name}' "
-                        f"→ 保留已有定义"
+                        f"已有='{global_classes_dict[class_id]}', test='{class_name}'"
                     )
             else:
                 # test 中有新的 class_id
@@ -127,6 +127,20 @@ def prepare_class_mappings(
 
     if not global_classes_dict:
         raise ValueError("所有数据集的 classes 都为空")
+
+    if conflicts:
+        conflict_messages = []
+        for conflict in conflicts:
+            class_id = conflict["class_id"]
+            expected_name = conflict.get("train_name") or conflict.get("existing_name")
+            actual_name = conflict.get("val_name") or conflict.get("test_name")
+            conflict_messages.append(
+                f"class_id={class_id}: expected='{expected_name}', actual='{actual_name}'"
+            )
+
+        raise ValueError(
+            "类别名称冲突，无法发布数据集版本: " + "; ".join(conflict_messages)
+        )
 
     # 3. 按 class_id 排序，构建全局类别列表
     # 处理可能的 class_id 不连续情况（如 COCO 删除了某些类别）
@@ -163,9 +177,6 @@ def prepare_class_mappings(
     logger.info(f"全局classes: {global_classes}")
     logger.info(f"映射策略: 恒等映射（保持原始 class_id）")
     logger.info(f"映射示例: {dict(list(identity_mapping.items())[:5])}")
-
-    if conflicts:
-        logger.info(f"检测到 {len(conflicts)} 个类别名称冲突，已按 train 优先原则处理")
 
     return global_classes, train_mapping, val_mapping, test_mapping, warnings
 

@@ -265,7 +265,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
         collect_type_id = request.query_params.get("collect_type") or None
         queryset, policy_permission_map = self._get_accessible_policy_queryset(request, collect_type_id)
         queryset = self.filter_queryset(queryset)
-        queryset = queryset.distinct().select_related("collect_type")
+        queryset = queryset.distinct().select_related("collect_type").prefetch_related("policyorganization_set")
 
         # 获取分页参数
         page = int(request.GET.get("page", 1))
@@ -422,8 +422,11 @@ class PolicyViewSet(viewsets.ModelViewSet):
         """
         将 schedule 格式化为 CrontabSchedule 实例
         """
+        from django.utils import timezone
+
         schedule_type = schedule.get("type")
         value = schedule.get("value")
+        current_tz = timezone.get_current_timezone()
 
         if schedule_type == "min":
             return CrontabSchedule.objects.get_or_create(
@@ -432,6 +435,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
                 day_of_month="*",
                 month_of_year="*",
                 day_of_week="*",
+                timezone=current_tz,
             )[0]
         elif schedule_type == "hour":
             return CrontabSchedule.objects.get_or_create(
@@ -440,6 +444,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
                 day_of_month="*",
                 month_of_year="*",
                 day_of_week="*",
+                timezone=current_tz,
             )[0]
         elif schedule_type == "day":
             return CrontabSchedule.objects.get_or_create(
@@ -448,6 +453,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
                 day_of_month=f"*/{value}",
                 month_of_year="*",
                 day_of_week="*",
+                timezone=current_tz,
             )[0]
         else:
             raise BaseAppException("Invalid schedule type")
@@ -512,7 +518,12 @@ class AlertViewSet(viewsets.ModelViewSet):
         if not policy_ids:
             return Alert.objects.none()
 
-        return Alert.objects.select_related("policy", "collect_type").filter(policy_id__in=policy_ids).order_by("-created_at")
+        return (
+            Alert.objects.select_related("policy", "collect_type")
+            .prefetch_related("policy__policyorganization_set")
+            .filter(policy_id__in=policy_ids)
+            .order_by("-created_at")
+        )
 
     def list(self, request, *args, **kwargs):
         """
@@ -718,6 +729,14 @@ class AlertViewSet(viewsets.ModelViewSet):
         # 按状态过滤
         queryset = queryset.filter(status=status)
 
+        # 默认时间窗口：最近7天
+        start_time_param = request.query_params.get("start_time", "")
+        end_time_param = request.query_params.get("end_time", "")
+        if not start_time_param and not end_time_param:
+            default_end = datetime.now(timezone.utc)
+            default_start = default_end - timedelta(days=7)
+            queryset = queryset.filter(created_at__gte=default_start)
+
         # 生成时间序列统计
         time_series_data, time_range = self._get_step_based_stats(queryset, step_minutes)
 
@@ -733,7 +752,6 @@ class AlertViewSet(viewsets.ModelViewSet):
 
     def _get_step_based_stats(self, queryset, step_minutes):
         """基于step动态分割时间区间进行统计，按告警级别分组"""
-        # 获取数据的时间范围
         time_range_data = queryset.aggregate(min_time=models.Min("created_at"), max_time=models.Max("created_at"))
 
         min_time = time_range_data["min_time"]
@@ -742,43 +760,37 @@ class AlertViewSet(viewsets.ModelViewSet):
         if not min_time or not max_time:
             return [], {"start": None, "end": None}
 
-        # 时间范围信息
         time_range = {"start": min_time.isoformat(), "end": max_time.isoformat()}
 
-        # 生成时间区间
         step_delta = timedelta(minutes=step_minutes)
+        max_buckets = 1000
+        total_span = (max_time - min_time).total_seconds()
+        if step_delta.total_seconds() > 0 and total_span / step_delta.total_seconds() > max_buckets:
+            step_delta = timedelta(seconds=total_span / max_buckets)
+
         current_time = min_time
         time_intervals = []
-
-        # 修复：确保包含最后一个时间点的数据
         while current_time <= max_time:
             interval_end = min(current_time + step_delta, max_time + timedelta(microseconds=1))
             time_intervals.append({"start": current_time, "end": interval_end})
             current_time += step_delta
-
-            # 如果下一个区间的开始时间已经超过最大时间，则停止
             if current_time > max_time:
                 break
 
-        # 关键优化：一次性获取所有数据，然后在Python中分组
-        # 只执行一次数据库查询
-        all_alerts = list(queryset.values("created_at", "level"))
+        interval_results = []
+        alert_list = list(queryset.values_list("created_at", "level").order_by("created_at"))
 
-        # 在Python中按时间区间分组统计
-        result = []
+        alert_idx = 0
         for interval in time_intervals:
-            # 在内存中过滤当前时间区间的数据
-            interval_alerts = [alert for alert in all_alerts if interval["start"] <= alert["created_at"] < interval["end"]]
-
-            # 在内存中按级别统计
             level_data = {}
-            for alert in interval_alerts:
-                level = alert["level"]
-                level_data[level] = level_data.get(level, 0) + 1
+            while alert_idx < len(alert_list) and alert_list[alert_idx][0] < interval["end"]:
+                if alert_list[alert_idx][0] >= interval["start"]:
+                    level = alert_list[alert_idx][1]
+                    level_data[level] = level_data.get(level, 0) + 1
+                alert_idx += 1
 
             total_count = sum(level_data.values())
-
-            result.append(
+            interval_results.append(
                 {
                     "time_start": interval["start"].isoformat(),
                     "time_end": interval["end"].isoformat(),
@@ -787,7 +799,7 @@ class AlertViewSet(viewsets.ModelViewSet):
                 }
             )
 
-        return result, time_range
+        return interval_results, time_range
 
     @action(methods=["get"], detail=False, url_path="snapshots/(?P<alert_id>[^/.]+)")
     def get_snapshots(self, request, alert_id):

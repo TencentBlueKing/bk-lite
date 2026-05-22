@@ -101,7 +101,7 @@ async def _build_and_run(request, mock_llm_responses, interrupt_at=None):
 
     interrupt_call = {"n": 0}
 
-    def mock_interrupt(exec_id):
+    async def mock_interrupt(exec_id):
         if not exec_id or interrupt_at is None:
             return False
         interrupt_call["n"] += 1
@@ -114,7 +114,7 @@ async def _build_and_run(request, mock_llm_responses, interrupt_at=None):
         "langchain_core.callbacks.dispatch_custom_event",
         side_effect=capture_event,
     ), patch(
-        "apps.opspilot.metis.llm.chain.node.is_interrupt_requested",
+        "apps.opspilot.metis.llm.chain.node.is_interrupt_requested_async",
         side_effect=mock_interrupt,
     ):
         result = await graph.ainvoke(

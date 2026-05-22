@@ -411,7 +411,7 @@ func TestBuildSCPCommandEscapesIntoTemporaryKeyFile(t *testing.T) {
 	}
 }
 
-func TestBuildSCPCommandPasswordPreservesLiteralValue(t *testing.T) {
+func TestBuildSCPCommandPasswordUsesEnvMode(t *testing.T) {
 	password := "pa'ss $(rm -rf /)"
 	cmd, cleanup, err := buildSCPCommand("testuser", "192.168.1.100", password, "", 22, "/local/file", "/remote/path", true, profileModern)
 	if err != nil {
@@ -419,13 +419,12 @@ func TestBuildSCPCommandPasswordPreservesLiteralValue(t *testing.T) {
 	}
 	defer cleanup()
 
-	expectedEscaped := "sshpass -p 'pa'\"'\"'ss $(rm -rf /)'"
-	if !strings.Contains(cmd, expectedEscaped) {
-		t.Fatalf("password should be shell-escaped, got: %s", cmd)
+	if !strings.Contains(cmd, "sshpass -e") {
+		t.Fatalf("command should use sshpass -e mode, got: %s", cmd)
 	}
 
-	if strings.Contains(cmd, "sshpass -p 'pa'ss") {
-		t.Fatalf("password should not appear with broken quoting: %s", cmd)
+	if strings.Contains(cmd, password) {
+		t.Fatalf("password should not appear in command: %s", cmd)
 	}
 }
 

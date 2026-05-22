@@ -26,6 +26,7 @@ import {CustomChatSSEProps, GuideParseResult} from '@/app/opspilot/types/chat';
 import {useSSEStream} from './hooks/useSSEStream';
 import {useSendMessage} from './hooks/useSendMessage';
 import {useReferenceHandler} from './hooks/useReferenceHandler';
+import {initToolCallTooltips} from './toolCallRenderer';
 
 const normalizeThinkingText = (value?: string) => {
   if (!value) return '';
@@ -107,7 +108,7 @@ const md = new MarkdownIt({
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
     ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button', 'style'],
-    ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'data-ref-number', 'data-chunk-id', 'data-knowledge-id', 'data-chunk-type', 'data-content', 'data-suggestion', 'src', 'alt', 'width', 'height', 'aria-hidden'],
+    ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'data-ref-number', 'data-chunk-id', 'data-knowledge-id', 'data-chunk-type', 'data-content', 'data-suggestion', 'data-expanded', 'data-tool-id', 'src', 'alt', 'width', 'height', 'aria-hidden'],
     ALLOW_DATA_ATTR: true,
   });
 };
@@ -152,6 +153,11 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   useEffect(() => {
     setMessages(initialMessages.length ? initialMessages : []);
   }, [initialMessages]);
+
+  // 初始化工具调用事件处理
+  useEffect(() => {
+    initToolCallTooltips();
+  }, []);
 
   // Auto scroll
   const scrollToBottom = useCallback(() => {
@@ -330,6 +336,40 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     [sendMessage]
   );
 
+  // 处理工具调用组的展开/折叠
+  const handleToolCallClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement;
+      
+      // 处理工具组头部点击（展开/折叠工具列表）
+      const groupHeader = target.closest('.tool-call-group-header') as HTMLElement | null;
+      if (groupHeader) {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        const group = groupHeader.closest('.tool-call-group') as HTMLElement | null;
+        if (group) {
+          group.classList.toggle('expanded');
+        }
+        return;
+      }
+      
+      // 处理单个工具项点击（展开/折叠工具详情）
+      const itemHeader = target.closest('.tool-call-item-header') as HTMLElement | null;
+      if (itemHeader) {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        const item = itemHeader.closest('.tool-call-item') as HTMLElement | null;
+        if (item && item.getAttribute('data-has-detail') === 'true') {
+          item.classList.toggle('expanded');
+        }
+        return;
+      }
+    },
+    []
+  );
+
   const handleFullscreenToggle = () => setIsFullscreen(!isFullscreen);
 
   const handleClearMessages = () => {
@@ -473,6 +513,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             dangerouslySetInnerHTML={{ __html: html }}
             className={styles.markdownBody}
             onClick={e => {
+              handleToolCallClick(e);
               handleReferenceClick(e);
               handleSuggestionClick(e);
             }}

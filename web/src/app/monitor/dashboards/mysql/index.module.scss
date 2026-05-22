@@ -509,6 +509,19 @@
   line-height: 1.2;
 }
 
+.uptimeStatusMainWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.uptimeStatusInfoIcon {
+  color: #8fa0b3;
+  font-size: 14px;
+  cursor: help;
+}
+
 .uptimeStatusDetail {
   min-width: 0;
   color: #7d8fa7;
@@ -519,6 +532,33 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.uptimeStatusTooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 240px;
+}
+
+.uptimeStatusTooltipRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.uptimeStatusTooltipRow strong {
+  color: #31445c;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.uptimeStatusTooltipRow span {
+  color: #6f8299;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
 }
 
 .uptimeStatusSuccess .uptimeStatusDot {
@@ -680,73 +720,71 @@
 
 .mysqlFlowModel {
   display: grid;
-  grid-template-columns: minmax(720px, 0.95fr) minmax(720px, 1.05fr);
-  gap: 16px;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 18px;
   align-items: stretch;
 }
 
 .mysqlFlowScene {
   position: relative;
   min-width: 0;
-  align-self: start;
-  padding: 18px;
-  border-radius: 16px;
-  border: 1px solid #dfe8f3;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(248, 251, 255, 0.92) 100%),
-    radial-gradient(circle at 12% 14%, rgba(47, 107, 255, 0.08), transparent 34%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.8),
-    0 16px 34px rgba(24, 48, 84, 0.07);
-}
-
-.mysqlFlowScene::before {
-  content: '';
-  position: absolute;
-  left: 18px;
-  right: 18px;
-  bottom: 8px;
-  height: 10px;
-  border-radius: 50%;
-  background: radial-gradient(ellipse at center, rgba(62, 89, 130, 0.08), transparent 70%);
-  pointer-events: none;
+  align-self: stretch;
+  padding: 8px 4px;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .mysqlInnoScene {
-  padding: 14px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(249, 252, 255, 0.96) 100%),
-    radial-gradient(circle at 50% 8%, rgba(39, 194, 116, 0.08), transparent 38%);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.mysqlInnoScene::before {
+  content: none;
 }
 
 .mysqlRequestScene {
   display: flex;
   align-items: center;
-  min-height: 322px;
-  padding-top: 26px;
-  padding-bottom: 26px;
+  min-height: 290px;
+  padding-top: 10px;
+  padding-bottom: 10px;
 }
 
 .mysqlRequestPath {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(142px, 1fr) 34px minmax(142px, 1fr) 34px minmax(142px, 1fr) 34px minmax(142px, 1fr);
   gap: 12px;
   align-items: center;
   width: 100%;
+  height: 100%;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(249, 251, 255, 0.92) 0%, rgba(245, 248, 253, 0.9) 100%);
+  box-shadow: inset 0 0 0 1px rgba(226, 234, 244, 0.88);
 }
 
 .mysqlPathNode {
   position: relative;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
   min-width: 0;
-  min-height: 230px;
-  padding: 16px 16px 14px;
-  border-radius: 12px;
-  border: 1px solid #dce6f3;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  min-height: 252px;
+  padding: 18px 18px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(235, 240, 246, 0.82);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.56) 0%, rgba(255, 255, 255, 0.34) 100%);
+  backdrop-filter: blur(8px);
   box-shadow:
-    0 18px 32px rgba(30, 52, 88, 0.08),
-    0 2px 0 rgba(255, 255, 255, 0.88) inset;
+    0 6px 16px rgba(30, 52, 88, 0.022),
+    0 1px 0 rgba(255, 255, 255, 0.62) inset;
 }
 
 .mysqlPathNode.flowNodeBlue,
@@ -754,17 +792,26 @@
 .mysqlPathNode.flowNodeGreen,
 .mysqlPathNode.flowNodeOrange,
 .mysqlPathNode.flowNodeRed {
-  border-color: #dce6f3;
+  border-color: rgba(229, 236, 244, 0.84);
 }
 
 .mysqlPathNodeEngine {
-  border-color: rgba(88, 141, 249, 0.72);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 251, 255, 0.98) 100%),
-    radial-gradient(circle at 50% 10%, rgba(47, 107, 255, 0.1), transparent 48%);
+  border-color: rgba(216, 228, 247, 0.9);
+  background: linear-gradient(180deg, rgba(248, 252, 255, 0.72) 0%, rgba(241, 248, 255, 0.56) 100%);
   box-shadow:
-    0 18px 32px rgba(47, 107, 255, 0.08),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.78);
+    0 8px 18px rgba(47, 107, 255, 0.04),
+    0 1px 0 rgba(255, 255, 255, 0.66) inset;
+}
+
+.mysqlNodeEyebrow {
+  margin-bottom: 10px;
+  color: #91a2b7;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
 }
 
 .mysqlFlowConnector {
@@ -803,24 +850,25 @@
   font-weight: 850;
   line-height: 1.2;
   text-align: center;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .mysqlNodeIcon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 46px;
-  height: 46px;
-  margin: 0 auto 18px;
-  border-radius: 12px;
-  background: #eef4ff;
+  width: 50px;
+  height: 50px;
+  margin: 0 auto;
+  border-radius: 14px;
+  background: rgba(238, 244, 255, 0.72);
   color: #2f6bff;
   font-size: 24px;
+  box-shadow: inset 0 0 0 1px rgba(223, 233, 248, 0.72);
 }
 
 .mysqlPathNode .mysqlNodeIcon {
-  background: #eef4ff;
+  background: rgba(238, 244, 255, 0.72);
   color: #2f6bff;
 }
 
@@ -829,6 +877,10 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.mysqlPathNode .mysqlNodeMetrics {
+  margin-top: 34px;
 }
 
 .mysqlNodeMetric {
@@ -911,15 +963,11 @@
   position: relative;
   min-width: 0;
   min-height: 220px;
-  padding: 16px 18px 18px;
-  border-radius: 14px;
-  border: 1px solid #d7e2ef;
-  background:
-    linear-gradient(180deg, #ffffff 0%, #fbfdff 100%),
-    linear-gradient(90deg, rgba(47, 107, 255, 0.035), rgba(39, 194, 116, 0.03), rgba(102, 123, 150, 0.035));
-  box-shadow:
-    0 12px 28px rgba(30, 52, 88, 0.055),
-    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  padding: 10px 2px 10px;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .innodbBoxTitle {
@@ -928,7 +976,7 @@
   font-weight: 850;
   line-height: 1.2;
   text-align: center;
-  margin-bottom: 6px;
+  margin-bottom: 12px;
 }
 
 .innodbInner {
@@ -936,6 +984,33 @@
   grid-template-columns: minmax(190px, 0.9fr) 38px minmax(190px, 0.85fr) 38px minmax(206px, 1fr);
   gap: 12px;
   align-items: stretch;
+  padding: 8px 0 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.innodbStage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.innodbStageBuffer {
+  background: transparent;
+}
+
+.innodbStageLogs {
+  background: transparent;
+}
+
+.innodbStageDisk {
+  background: transparent;
 }
 
 .innodbBufferCard,
@@ -946,17 +1021,25 @@
   overflow: hidden;
   padding: 16px;
   border-radius: 16px;
-  border: 1px solid rgba(215, 226, 240, 0.95);
-  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(226, 233, 242, 0.96);
+  background: rgba(255, 255, 255, 0.72);
   box-shadow:
-    0 16px 30px rgba(30, 52, 88, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    0 8px 20px rgba(30, 52, 88, 0.035),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
 
 .innodbBufferCard {
-  min-height: 196px;
-  background: linear-gradient(180deg, rgba(242, 248, 255, 0.98) 0%, rgba(255, 255, 255, 0.94) 100%);
-  border-color: rgba(196, 216, 242, 0.95);
+  display: flex;
+  flex-direction: column;
+  min-height: 186px;
+  padding: 14px 14px 18px;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(76, 141, 255, 0.06), transparent 32%),
+    linear-gradient(180deg, rgba(248, 251, 255, 0.76) 0%, rgba(255, 255, 255, 0.64) 100%);
+  border-color: rgba(220, 231, 245, 0.88);
+  box-shadow:
+    0 6px 16px rgba(47, 107, 255, 0.028),
+    0 1px 0 rgba(255, 255, 255, 0.74) inset;
 }
 
 .innodbBufferCard::before,
@@ -974,8 +1057,8 @@
 }
 
 .innodbLogCard {
-  background: linear-gradient(180deg, rgba(255, 248, 240, 0.98) 0%, rgba(255, 255, 255, 0.94) 100%);
-  border-color: rgba(242, 221, 194, 0.98);
+  background: linear-gradient(180deg, rgba(255, 250, 244, 0.98) 0%, rgba(255, 255, 255, 0.92) 100%);
+  border-color: rgba(245, 224, 198, 0.96);
 }
 
 .innodbLogCard::before {
@@ -983,8 +1066,8 @@
 }
 
 .innodbDiskCard {
-  background: linear-gradient(180deg, rgba(245, 249, 255, 0.98) 0%, rgba(255, 255, 255, 0.94) 100%);
-  border-color: rgba(216, 226, 240, 0.98);
+  background: linear-gradient(180deg, rgba(247, 250, 255, 0.98) 0%, rgba(255, 255, 255, 0.92) 100%);
+  border-color: rgba(216, 226, 240, 0.94);
 }
 
 .innodbDiskCard::before {
@@ -994,28 +1077,23 @@
 .innodbBufferCard::after,
 .innodbLogCard::after,
 .innodbDiskCard::after {
-  content: '';
-  position: absolute;
-  inset: auto -24px -36px auto;
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0) 72%);
-  pointer-events: none;
+  content: none;
 }
 
 
 .innodbColumnTitle {
-  margin: 0 0 12px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(215, 226, 240, 0.92);
-  background: rgba(255, 255, 255, 0.72);
-  color: #566c87;
-  font-size: 12px;
-  font-weight: 850;
+  margin: 0 0 6px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: #8a9bb0;
+  font-size: 10px;
+  font-weight: 800;
   line-height: 1.2;
   text-align: center;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.9;
 }
 
 .innodbCardTitle {
@@ -1031,18 +1109,136 @@
   line-height: 1.2;
 }
 
+.metricGuideTooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.metricGuideTooltipRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metricGuideTooltipRow strong {
+  color: #31445c;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.metricGuideTooltipRow span {
+  color: #6f8299;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.metricGuideIcon {
+  margin-left: 0;
+  color: #91a4bc;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  flex-shrink: 0;
+  transform: translateY(-1px);
+}
+
+.metricGuideIcon:hover {
+  color: #2f6bff;
+}
+
+.titleWithGuide {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.panelTitleWithGuide,
+.statTitleWithGuide {
+  max-width: 100%;
+}
+
+.panelTitleWithGuide > span:first-child,
+.statTitleWithGuide > span:first-child {
+  min-width: 0;
+}
+
+.innodbCardHint {
+  margin: -6px 0 12px;
+  color: #7b8da6;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+}
+
 .innodbBufferGrid {
   display: grid;
-  grid-template-columns: repeat(7, 12px);
+  grid-template-columns: repeat(5, 13px);
   justify-content: center;
-  gap: 6px;
+  gap: 7px;
   width: fit-content;
-  margin: 0 auto 16px;
+  margin: 8px auto 18px;
   padding: 0;
   border-radius: 0;
   background: transparent;
   border: 0;
   box-shadow: none;
+}
+
+.innodbBufferLegend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: -2px 0 8px;
+  color: #7387a2;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.innodbBufferLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bufferLegendSwatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.bufferLegendUsed {
+  background: #69a8ff;
+  border: 1px solid #2f7dff;
+  box-shadow: 0 0 0 1px rgba(92, 148, 255, 0.1);
+}
+
+.bufferLegendDirty {
+  background: #ffbf73;
+  border: 1px solid #ff9f43;
+  box-shadow: 0 0 0 1px rgba(255, 159, 67, 0.08);
+}
+
+.bufferLegendFree {
+  background: #eef3f8;
+  border: 1px solid #cad7e6;
+}
+
+.innodbBufferCard .innodbMetricRows {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(225, 234, 244, 0.76);
 }
 
 .innodbFork {
@@ -1089,13 +1285,13 @@
 }
 
 .innodbForkBottom {
-  top: 68%;
+  top: 74%;
   background: currentColor;
 }
 
 .innodbForkBottomDashed {
-  top: 68%;
-  border-top: 2px dashed currentColor;
+  top: 74%;
+  background: currentColor;
 }
 
 .innodbForkWrite .innodbForkTop {
@@ -1110,6 +1306,7 @@
   color: #2f6bff;
 }
 
+.innodbForkPersist .innodbForkBottom,
 .innodbForkPersist .innodbForkBottomDashed {
   color: #f59e0b;
 }
@@ -1118,7 +1315,7 @@
 .innodbDiskStack {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -1128,19 +1325,67 @@
   text-align: left;
 }
 
-.innodbLogCards,
-.innodbDiskStack {
-  gap: 10px;
+.innodbCardPrimary {
+  min-height: 118px;
+  padding-top: 18px;
+  padding-bottom: 18px;
 }
 
-.innodbLogCard span,
-.innodbDiskCard > span {
-  display: block;
+.innodbCardSecondary {
+  min-height: 92px;
+  padding-top: 14px;
+  padding-bottom: 14px;
+  background: rgba(255, 255, 255, 0.66);
+  box-shadow:
+    0 5px 14px rgba(30, 52, 88, 0.026),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.innodbLogCards,
+.innodbDiskStack {
+  gap: 8px;
+}
+
+.innodbCardTitleRow {
+  display: flex;
+  align-items: center;
+  min-height: 22px;
+  margin-bottom: 12px;
+}
+
+.innodbCardSecondary .innodbCardTitleRow {
+  margin-bottom: 10px;
+}
+
+.innodbCardTitleWithGuide {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: #1e3048;
   font-size: 12px;
   font-weight: 850;
   line-height: 1.25;
-  margin-bottom: 12px;
+  white-space: nowrap;
+}
+
+.innodbCardTitleWithGuide > span:first-child {
+  display: inline-flex;
+  align-items: center;
+}
+
+.innodbLogCard > .innodbCardTitleRow,
+.innodbDiskCard > .innodbCardTitleRow {
+  display: flex;
+  align-items: center;
+}
+
+.innodbLogCard > .innodbCardHint {
+  margin: -4px 0 14px;
+  text-align: left;
+}
+
+.innodbCardPrimary > .innodbCardHint {
+  max-width: 250px;
 }
 
 .innodbLogCard strong {
@@ -1157,6 +1402,10 @@
 .innodbDiskCard .mysqlNodeMetric {
   padding: 10px 0 0;
   border-top: 1px solid rgba(213, 223, 237, 0.72);
+}
+
+.innodbCardSecondary .mysqlNodeMetric {
+  padding-top: 8px;
 }
 
 .innodbLogCard .mysqlNodeMetric:first-of-type {
@@ -1192,7 +1441,7 @@
   color: #6f8199;
   font-size: 12px;
   font-weight: 800;
-  line-height: 1.2;
+  line-height: 1;
 }
 
 .mysqlFlowLegendInno {
@@ -1203,6 +1452,7 @@
 .mysqlFlowLegend span {
   display: inline-flex;
   align-items: center;
+  line-height: 1;
   gap: 8px;
 }
 
@@ -1210,54 +1460,50 @@
   display: inline-block;
   position: relative;
   width: 30px;
-  height: 0;
+  height: 14px;
+  color: #7fa6ed;
+  border-top: 0;
   border-radius: 999px;
+}
+
+.mysqlFlowLegend i::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 1px;
+  top: 50%;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translateY(-50%);
 }
 
 .mysqlFlowLegend i::after {
   content: '';
   position: absolute;
   right: -1px;
-  top: -4px;
+  top: 50%;
   width: 7px;
   height: 7px;
-  transform: rotate(45deg);
+  transform: translateY(-50%) rotate(45deg);
+  border-top: 2px solid currentColor;
+  border-right: 2px solid currentColor;
 }
 
-.mysqlLegendRequest {
-  border-top: 2px solid #7fa6ed;
+.mysqlFlowLegend i.mysqlLegendRequest {
+  color: #7fa6ed;
 }
 
-.mysqlLegendRequest::after {
-  border-top: 2px solid #7fa6ed;
-  border-right: 2px solid #7fa6ed;
+.mysqlFlowLegend i.mysqlLegendWrite {
+  color: #22b86f;
 }
 
-.mysqlLegendWrite {
-  border-top: 2px solid #22b86f;
+.mysqlFlowLegend i.mysqlLegendBackground {
+  color: #f59e0b;
 }
 
-.mysqlLegendWrite::after {
-  border-top: 2px solid #22b86f;
-  border-right: 2px solid #22b86f;
-}
-
-.mysqlLegendBackground {
-  border-top: 2px dashed #f59e0b;
-}
-
-.mysqlLegendBackground::after {
-  border-top: 2px solid #f59e0b;
-  border-right: 2px solid #f59e0b;
-}
-
-.mysqlLegendPersist {
-  border-top: 2px solid #2f6bff;
-}
-
-.mysqlLegendPersist::after {
-  border-top: 2px solid #2f6bff;
-  border-right: 2px solid #2f6bff;
+.mysqlFlowLegend i.mysqlLegendPersist {
+  color: #2f6bff;
 }
 
 .dataFlow {
@@ -1383,7 +1629,7 @@
 
 .bufferCellGrid {
   display: grid;
-  grid-template-columns: repeat(7, 12px);
+  grid-template-columns: repeat(5, 12px);
   gap: 7px;
   margin: 5px 0 14px;
 }
@@ -1753,6 +1999,26 @@
   margin-bottom: 12px;
 }
 
+.chartPanelHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'title'
+    'subtitle'
+    'legend';
+  align-items: start;
+  column-gap: 0;
+  row-gap: 6px;
+}
+
+.chartHeaderTitle {
+  grid-area: title;
+}
+
+.chartHeaderSubTitle {
+  grid-area: subtitle;
+}
+
 .fillPanel {
   display: flex;
   flex-direction: column;
@@ -1820,14 +2086,26 @@
   margin-top: 0;
 }
 
+.chartLegendHeader {
+  grid-area: legend;
+  justify-content: flex-end;
+  align-items: center;
+  align-self: flex-start;
+  flex-wrap: nowrap;
+  gap: 8px;
+  max-width: none;
+  white-space: nowrap;
+}
+
 .chartLegendItem {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #93a3b6;
-  font-size: 13px;
-  font-weight: 500;
+  color: #7f93ad;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .chartLegendDot {
@@ -1884,10 +2162,10 @@
 
   strong {
     color: #1c2b43;
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 700;
-    line-height: 1.15;
-    letter-spacing: -0.02em;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
   }
 }
 
@@ -1919,8 +2197,8 @@
 .barLabel {
   color: #42556d;
   font-size: 14px;
-  font-weight: 600;
-  line-height: 1.35;
+  font-weight: 700;
+  line-height: 1.3;
 }
 
 .barTrack {
@@ -1941,9 +2219,9 @@
 
 .barValue {
   text-align: right;
-  color: #8fa0b3;
-  font-size: 13px;
-  font-weight: 500;
+  color: #7388a5;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
@@ -1984,18 +2262,18 @@
 }
 
 .replicationDelayLabel {
-  color: #96a6b8;
+  color: #7f93ad;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.2;
 }
 
 .replicationDelayValue {
   color: #2f6bff;
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
-  line-height: 0.95;
-  letter-spacing: -0.03em;
+  line-height: 1;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2036,7 +2314,7 @@
   margin-inline-end: 0;
   padding: 2px 8px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1.3;
 }
@@ -2070,24 +2348,24 @@
   border-radius: 999px;
   background: #eef4ff;
   color: #2f6bff;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
   line-height: 1;
 }
 
 .replicationStandaloneTitle {
   color: #1e3048;
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 800;
-  line-height: 1.15;
+  line-height: 1.25;
 }
 
 .replicationStandaloneDesc {
   max-width: 320px;
   color: #71839a;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 .replicationStandaloneTags {
@@ -2103,7 +2381,7 @@
   gap: 12px;
   margin-bottom: 10px;
   color: #7a8ca4;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -2186,7 +2464,7 @@
   width: 190px;
   transform: translateX(-50%);
   color: #6f8299;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
   line-height: 1.2;
   white-space: nowrap;
@@ -2241,7 +2519,7 @@
 
 .ringCenterOverlay .ringCaption {
   margin-top: 5px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -2293,7 +2571,7 @@
   grid-template-columns: minmax(72px, 1fr) 88px minmax(64px, 80px);
   gap: 10px;
   color: #41546c;
-  font-size: 13px;
+  font-size: 14px;
   align-items: center;
 }
 
@@ -2318,6 +2596,7 @@
   color: #4f647e;
   font-weight: 600;
   font-size: 14px;
+  line-height: 1.3;
   min-width: 0;
 }
 
@@ -2339,9 +2618,9 @@
 .metricName {
   min-width: 0;
   color: #31445c;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.3;
 }
 
 .metricValueGroup {
@@ -2355,16 +2634,17 @@
 .metricPercent {
   color: #2d3f58;
   font-weight: 700;
-  font-size: 15px;
+  font-size: 14px;
   text-align: right;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .metricCount {
   color: #a1afbf;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -2375,7 +2655,7 @@
   font-weight: 700;
   text-align: right;
   font-variant-numeric: tabular-nums;
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.2;
   white-space: nowrap;
 }
@@ -2412,17 +2692,17 @@
 }
 
 .errorOverviewLabel {
-  color: #92a2b5;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.2;
+  color: #42556d;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
 }
 
 .errorOverviewValue {
-  color: #1b2b42;
-  font-size: 20px;
+  color: #2d3f58;
+  font-size: 16px;
   font-weight: 700;
-  line-height: 1;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2430,9 +2710,9 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #8395ad;
-  font-size: 13px;
-  font-weight: 500;
+  color: #7f93ad;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.3;
 }
 
@@ -2461,17 +2741,18 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  color: #31445c;
+  color: #42556d;
   font-size: 14px;
-  line-height: 1.45;
+  font-weight: 700;
+  line-height: 1.3;
   word-break: break-word;
 }
 
 .errorMeta {
   display: block;
   margin-top: 2px;
-  color: #8a9bae;
-  font-size: 12px;
+  color: #8fa0b3;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.3;
 }
@@ -2484,10 +2765,10 @@
 }
 
 .errorValue {
-  color: #1b2b42;
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1;
+  color: #7388a5;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -2585,14 +2866,14 @@
   line-height: 1.5;
 }
 
-:global(.ant-tooltip).lightMetricTooltip :global(.ant-tooltip-inner) {
+:global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-inner) {
   background: #ffffff;
   color: #44566f;
   border: 1px solid #dbe6f3;
   box-shadow: 0 14px 34px rgba(23, 42, 79, 0.12);
 }
 
-:global(.ant-tooltip).lightMetricTooltip :global(.ant-tooltip-arrow::before) {
+:global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-arrow::before) {
   background: #ffffff;
   border: 1px solid #dbe6f3;
 }
@@ -2804,6 +3085,12 @@
   border-color: rgba(80, 134, 255, 0.24);
 }
 
+:global(html.dark) .innodbCardSecondary {
+  background:
+    linear-gradient(180deg, rgba(24, 35, 49, 0.9) 0%, rgba(16, 26, 38, 0.92) 100%);
+  box-shadow: none;
+}
+
 :global(html.dark) .innodbBufferCard::before,
 :global(html.dark) .innodbLogCard::before,
 :global(html.dark) .innodbDiskCard::before {
@@ -2813,10 +3100,10 @@
 :global(html.dark) .mysqlNodeTitle,
 :global(html.dark) .innodbBoxTitle,
 :global(html.dark) .innodbCardTitle,
+:global(html.dark) .innodbCardTitleWithGuide,
 :global(html.dark) .mysqlNodeMetric strong,
 :global(html.dark) .innodbLogCard strong,
-:global(html.dark) .innodbLogCard span,
-:global(html.dark) .innodbDiskCard > span {
+:global(html.dark) .innodbCardTitleRow {
   color: rgba(255, 255, 255, 0.9);
 }
 
@@ -2838,8 +3125,8 @@
 }
 
 :global(html.dark) .innodbCardTitle,
-:global(html.dark) .innodbLogCard span,
-:global(html.dark) .innodbDiskCard > span,
+:global(html.dark) .innodbCardTitleRow,
+:global(html.dark) .innodbCardTitleWithGuide,
 :global(html.dark) .innodbMetricRows {
   background: transparent;
   border-color: transparent;
@@ -2982,14 +3269,14 @@
   color: rgba(255, 255, 255, 0.42) !important;
 }
 
-:global(html.dark) :global(.ant-tooltip).lightMetricTooltip :global(.ant-tooltip-inner) {
+:global(html.dark) :global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-inner) {
   background: #101926;
   color: rgba(255, 255, 255, 0.74);
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
 }
 
-:global(html.dark) :global(.ant-tooltip).lightMetricTooltip :global(.ant-tooltip-arrow::before) {
+:global(html.dark) :global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-arrow::before) {
   background: #101926;
   border-color: rgba(255, 255, 255, 0.08);
 }
@@ -3036,8 +3323,12 @@
     grid-template-columns: minmax(150px, 1fr) 34px minmax(150px, 1fr) 34px minmax(150px, 1fr) 34px minmax(150px, 1fr);
   }
 
+  .innodbInner {
+    grid-template-columns: minmax(0, 0.9fr) 38px minmax(0, 0.85fr) 38px minmax(0, 1fr);
+  }
+
   .mysqlPathNode {
-    min-height: 216px;
+    min-height: 252px;
   }
 
   .flowPipeline {

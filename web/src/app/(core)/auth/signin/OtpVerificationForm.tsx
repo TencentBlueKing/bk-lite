@@ -1,6 +1,6 @@
 "use client";
-import { useState } from "react";
-import { Input, Button } from "antd";
+import {useState} from "react";
+import {Button, Input} from "antd";
 
 interface LoginResponse {
   temporary_pwd?: boolean;
@@ -11,6 +11,7 @@ interface LoginResponse {
   id?: string;
   locale?: string;
   timezone?: string;
+  password_expiry_reminder?: string;
   // OTP two-phase authentication fields
   require_otp?: boolean;
   challenge_id?: string;
@@ -75,6 +76,8 @@ export default function OtpVerificationForm({
           id: responseData.data.id || loginData.id,
           locale: responseData.data.locale || loginData.locale,
           timezone: responseData.data.timezone || loginData.timezone,
+          temporary_pwd: responseData.data.temporary_pwd ?? loginData.temporary_pwd,
+          password_expiry_reminder: responseData.data.password_expiry_reminder,
           // Clear challenge_id as it's been used
           challenge_id: undefined,
           require_otp: false,

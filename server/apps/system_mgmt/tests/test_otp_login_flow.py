@@ -14,7 +14,7 @@ from unittest.mock import patch
 import pytest
 from django.contrib.auth.hashers import make_password
 
-from apps.system_mgmt.models import SystemSettings, User
+from apps.system_mgmt.models import Role, SystemSettings, User
 from apps.system_mgmt.otp_challenge import RATE_LIMIT_MAX_ATTEMPTS, create_challenge
 
 
@@ -225,3 +225,304 @@ class TestVerifyOtpLogin:
 
         assert result["result"] is False
         assert "rate" in result["message"].lower() or "limit" in result["message"].lower() or "attempts" in result["message"].lower()
+
+
+class TestOtpLoginWithTemporaryPassword:
+    """Tests for OTP login flow with temporary_pwd flag (Issue #2981)."""
+
+    @pytest.fixture
+    def temporary_pwd_user(self, db):
+        """Create a user with temporary password flag set."""
+        user = User.objects.create(
+            username="temppwduser",
+            password=make_password("temppass123"),
+            display_name="Temp Password User",
+            domain="domain.com",
+            locale="en",
+            timezone="UTC",
+            disabled=False,
+            temporary_pwd=True,
+            otp_secret="JBSWY3DPEHPK3PXP",  # OTP configured
+        )
+        return user
+
+    @pytest.mark.django_db
+    def test_otp_first_phase_includes_temporary_pwd_true(self, clear_cache, temporary_pwd_user, enable_otp_setting):
+        """OTP first phase response should include temporary_pwd=True for temp password users."""
+        from apps.system_mgmt.nats_api import get_user_login_token
+
+        result = get_user_login_token(user=temporary_pwd_user, username=temporary_pwd_user.username, skip_token_for_otp=True)
+
+        assert result["result"] is True
+        assert "challenge_id" in result["data"]
+        assert result["data"]["require_otp"] is True
+        # Critical: temporary_pwd must be included in first phase response
+        assert "temporary_pwd" in result["data"]
+        assert result["data"]["temporary_pwd"] is True
+
+    @pytest.mark.django_db
+    def test_otp_first_phase_includes_temporary_pwd_false(self, clear_cache, otp_enabled_user, enable_otp_setting):
+        """OTP first phase response should include temporary_pwd=False for normal users."""
+        from apps.system_mgmt.nats_api import get_user_login_token
+
+        # Ensure user has temporary_pwd=False
+        otp_enabled_user.temporary_pwd = False
+        otp_enabled_user.save()
+
+        result = get_user_login_token(user=otp_enabled_user, username=otp_enabled_user.username, skip_token_for_otp=True)
+
+        assert result["result"] is True
+        assert "challenge_id" in result["data"]
+        assert result["data"]["require_otp"] is True
+        # temporary_pwd should be included and be False
+        assert "temporary_pwd" in result["data"]
+        assert result["data"]["temporary_pwd"] is False
+
+    @pytest.mark.django_db
+    def test_verify_otp_returns_temporary_pwd_true(self, clear_cache, temporary_pwd_user, enable_otp_setting):
+        """OTP verification response should include temporary_pwd=True for temp password users."""
+        import pyotp
+
+        from apps.system_mgmt.nats_api import verify_otp_login
+
+        challenge_id = create_challenge(user_id=temporary_pwd_user.id, username=temporary_pwd_user.username)
+
+        totp = pyotp.TOTP(temporary_pwd_user.otp_secret)
+        valid_code = totp.now()
+
+        with patch.dict(os.environ, {"SECRET_KEY": "test-secret-key"}):
+            result = verify_otp_login(challenge_id=challenge_id, otp_code=valid_code, client_ip="127.0.0.1")
+
+        assert result["result"] is True
+        assert "token" in result["data"]
+        # Critical: temporary_pwd must be included in OTP verification response
+        assert "temporary_pwd" in result["data"]
+        assert result["data"]["temporary_pwd"] is True
+
+    @pytest.mark.django_db
+    def test_verify_otp_returns_temporary_pwd_false(self, clear_cache, otp_enabled_user, enable_otp_setting):
+        """OTP verification response should include temporary_pwd=False for normal users."""
+        import pyotp
+
+        from apps.system_mgmt.nats_api import verify_otp_login
+
+        # Ensure user has temporary_pwd=False
+        otp_enabled_user.temporary_pwd = False
+        otp_enabled_user.save()
+
+        challenge_id = create_challenge(user_id=otp_enabled_user.id, username=otp_enabled_user.username)
+
+        totp = pyotp.TOTP(otp_enabled_user.otp_secret)
+        valid_code = totp.now()
+
+        with patch.dict(os.environ, {"SECRET_KEY": "test-secret-key"}):
+            result = verify_otp_login(challenge_id=challenge_id, otp_code=valid_code, client_ip="127.0.0.1")
+
+        assert result["result"] is True
+        assert "token" in result["data"]
+        # temporary_pwd should be included and be False
+        assert "temporary_pwd" in result["data"]
+        assert result["data"]["temporary_pwd"] is False
+
+
+@pytest.fixture
+def expiring_soon_user(clear_cache):
+    """Create a user with password expiring in 5 days (175 days old with 180-day validity)."""
+    from datetime import timedelta
+
+    import pyotp
+    from django.utils import timezone
+
+    user = User.objects.create(
+        username="expiringsoonuser",
+        domain="domain.com",
+        password=make_password("testpassword"),
+        otp_secret=pyotp.random_base32(),
+        password_last_modified=timezone.now() - timedelta(days=175),  # 180-175=5 days left
+    )
+    yield user
+    user.delete()
+
+
+class TestPasswordExpiryBlocksLogin:
+    """Test that expired passwords block login before OTP verification."""
+
+    @pytest.fixture
+    def expired_password_user(self, clear_cache):
+        """Create a user with an expired password (181 days old to exceed 180-day validity)."""
+        from datetime import timedelta
+
+        import pyotp
+        from django.utils import timezone
+
+        user = User.objects.create(
+            username="expireduser",
+            password=make_password("testpassword"),
+            domain="domain.com",
+            otp_secret=pyotp.random_base32(),
+            password_last_modified=timezone.now() - timedelta(days=181),
+        )
+        yield user
+        user.delete()
+
+    @pytest.mark.django_db
+    def test_expired_password_blocks_login_without_otp(self, clear_cache, expired_password_user):
+        """Login should be blocked for expired password users (no OTP)."""
+        from apps.system_mgmt.nats_api import login
+
+        result = login(username="expireduser", password="testpassword")
+
+        assert result["result"] is False
+        # Check for expiry-related keywords in English or Chinese
+        msg = result["message"].lower()
+        assert "expired" in msg or "contact" in msg or "过期" in msg or "管理员" in msg
+
+    @pytest.mark.django_db
+    def test_expired_password_blocks_login_before_otp(self, clear_cache, expired_password_user, enable_otp_setting):
+        """Login should be blocked for expired password users BEFORE OTP verification."""
+        from apps.system_mgmt.nats_api import login
+
+        result = login(username="expireduser", password="testpassword")
+
+        # Should be blocked immediately, not proceed to OTP
+        assert result["result"] is False
+        # Check for expiry-related keywords in English or Chinese
+        msg = result["message"].lower()
+        assert "expired" in msg or "contact" in msg or "过期" in msg or "管理员" in msg
+        # Should NOT have challenge_id (OTP phase should not be reached)
+        assert "challenge_id" not in result.get("data", {})
+
+    @pytest.mark.django_db
+    def test_expiring_soon_password_allows_login_with_reminder(self, clear_cache, expiring_soon_user):
+        """Login should succeed for expiring-soon password with reminder."""
+        from apps.system_mgmt.nats_api import login
+
+        with patch.dict(os.environ, {"SECRET_KEY": "test-secret-key"}):
+            result = login(username="expiringsoonuser", password="testpassword")
+
+        assert result["result"] is True
+        assert "password_expiry_reminder" in result["data"]
+        assert result["data"]["password_expiry_reminder"] != ""
+
+
+class TestAdminExpiredPasswordForcedReset:
+    """Tests for admin expired-password behavior entering forced reset flow."""
+
+    @pytest.fixture
+    def expired_admin_user(self, clear_cache):
+        """Create the special admin account with an expired password."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        admin_role, _ = Role.objects.get_or_create(name="admin", app="")
+        user = User.objects.create(
+            username="admin",
+            password=make_password("adminpassword"),
+            display_name="Admin",
+            domain="domain.com",
+            locale="en",
+            timezone="UTC",
+            disabled=False,
+            role_list=[admin_role.id],
+            password_last_modified=timezone.now() - timedelta(days=181),
+        )
+        yield user
+        user.delete()
+
+    @pytest.fixture
+    def expired_other_superuser(self, clear_cache):
+        """Create another global admin-role user that should NOT use the admin-only override."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        admin_role, _ = Role.objects.get_or_create(name="admin", app="")
+        user = User.objects.create(
+            username="root-admin",
+            password=make_password("rootpassword"),
+            display_name="Root Admin",
+            domain="domain.com",
+            locale="en",
+            timezone="UTC",
+            disabled=False,
+            role_list=[admin_role.id],
+            password_last_modified=timezone.now() - timedelta(days=181),
+        )
+        yield user
+        user.delete()
+
+    @pytest.mark.django_db
+    def test_expired_admin_password_enters_forced_reset_without_otp(self, clear_cache, expired_admin_user):
+        """Expired account named admin should enter forced reset flow instead of hard-failing login."""
+        from apps.system_mgmt.nats_api import login
+
+        with patch.dict(os.environ, {"SECRET_KEY": "test-secret-key"}):
+            result = login(username="admin", password="adminpassword")
+
+        assert result["result"] is True
+        assert result["data"]["temporary_pwd"] is True
+        assert "token" in result["data"]
+
+    @pytest.mark.django_db
+    def test_expired_admin_password_with_otp_preserves_otp_first_flow(self, clear_cache, expired_admin_user, enable_otp_setting):
+        """Expired account named admin with OTP enabled should still go through OTP first."""
+        import pyotp
+
+        from apps.system_mgmt.nats_api import login, verify_otp_login
+
+        result = login(username="admin", password="adminpassword")
+
+        assert result["result"] is True
+        assert result["data"].get("require_otp") is True
+        assert "challenge_id" in result["data"]
+        assert result["data"]["temporary_pwd"] is True
+
+        expired_admin_user.refresh_from_db()
+        valid_code = pyotp.TOTP(expired_admin_user.otp_secret).now()
+
+        with patch.dict(os.environ, {"SECRET_KEY": "test-secret-key"}):
+            otp_result = verify_otp_login(
+                challenge_id=result["data"]["challenge_id"],
+                otp_code=valid_code,
+                client_ip="127.0.0.1",
+            )
+
+        assert otp_result["result"] is True
+        assert otp_result["data"]["temporary_pwd"] is True
+
+    @pytest.mark.django_db
+    def test_expired_other_superuser_still_hard_fails(self, clear_cache, expired_other_superuser):
+        """Expired superusers whose username is not admin should keep the old hard-fail behavior."""
+        from apps.system_mgmt.nats_api import login
+
+        result = login(username="root-admin", password="rootpassword")
+
+        assert result["result"] is False
+        msg = result["message"].lower()
+        assert "expired" in msg or "contact" in msg or "过期" in msg or "管理员" in msg
+        assert "challenge_id" not in result.get("data", {})
+
+    @pytest.mark.django_db
+    def test_expiring_soon_password_with_otp_shows_reminder_after_verification(self, clear_cache, expiring_soon_user, enable_otp_setting):
+        """OTP verification should include password expiry reminder for expiring-soon users."""
+        import pyotp
+
+        from apps.system_mgmt.nats_api import login, verify_otp_login
+
+        # First phase: should proceed to OTP
+        result = login(username="expiringsoonuser", password="testpassword")
+        assert result["result"] is True
+        assert result["data"].get("require_otp") is True
+        challenge_id = result["data"]["challenge_id"]
+
+        # Second phase: OTP verification should include reminder
+        totp = pyotp.TOTP(expiring_soon_user.otp_secret)
+        valid_code = totp.now()
+
+        with patch.dict(os.environ, {"SECRET_KEY": "test-secret-key"}):
+            result = verify_otp_login(challenge_id=challenge_id, otp_code=valid_code, client_ip="127.0.0.1")
+
+        assert result["result"] is True
+        assert "password_expiry_reminder" in result["data"]
+        assert result["data"]["password_expiry_reminder"] != ""

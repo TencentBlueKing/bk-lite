@@ -7,7 +7,7 @@
 
 meta:
   schema_version: 1.0.0
-  exported_at: '2026-05-13T09:07:36.779440+00:00'
+  exported_at: '2026-05-19T07:12:20.951018+00:00'
   source:
     organization_id: 0
   object_counts:
@@ -17,18 +17,18 @@ meta:
     datasources: 5
     namespaces: 1
 dashboards:
-- key: dashboard::CMDB-仪表盘_内置
-  name: CMDB-仪表盘_内置
+- key: dashboard::CMDB仪表盘_内置
+  name: CMDB仪表盘_内置
   desc: CMDB仪表盘
   other:
     timeSelector:
       selectValue: 10080
       rangePickerVaule: null
   view_sets:
-  - h: 2
+  - h: 3
     i: 47c8e06b-2023-4f5d-8ca9-e718983234bb
-    w: 4
-    x: 0
+    w: 2
+    x: 4
     y: 0
     name: cmdb模型分类总数统计
     moved: false
@@ -36,20 +36,20 @@ dashboards:
     description: ''
     valueConfig:
       chartType: single
-      dataSource: 模型/实例/分类总数统计::get_cmdb_statistics
+      dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
       selectedFields:
       - classification_count
       thresholdColors:
-      - color: '#fd666d'
+      - color: '#366ce4'
         value: '70'
-      - color: '#EAB839'
+      - color: '#366ce4'
         value: '30'
-      - color: '#299C46'
+      - color: '#366ce4'
         value: '0'
-  - h: 2
+  - h: 3
     i: 1a884812-9fd1-4e01-bd95-ef93e58470bf
-    w: 4
-    x: 4
+    w: 2
+    x: 0
     y: 0
     name: cmdb模型总数统计
     moved: false
@@ -57,20 +57,20 @@ dashboards:
     description: ''
     valueConfig:
       chartType: single
-      dataSource: 模型/实例/分类总数统计::get_cmdb_statistics
+      dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
       selectedFields:
       - model_count
       thresholdColors:
-      - color: '#fd666d'
+      - color: '#366ce4'
         value: '70'
-      - color: '#EAB839'
+      - color: '#366ce4'
         value: '30'
-      - color: '#299C46'
+      - color: '#366ce4'
         value: '0'
-  - h: 2
+  - h: 3
     i: be09cec0-aac6-4d9e-b44c-d7f7e2d75aee
-    w: 4
-    x: 8
+    w: 2
+    x: 2
     y: 0
     name: cmdb实例总数统计
     moved: false
@@ -78,21 +78,21 @@ dashboards:
     description: ''
     valueConfig:
       chartType: single
-      dataSource: 模型/实例/分类总数统计::get_cmdb_statistics
+      dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
       selectedFields:
       - instance_count
       thresholdColors:
-      - color: '#fd666d'
+      - color: '#366ce4'
         value: '70'
-      - color: '#EAB839'
+      - color: '#366ce4'
         value: '30'
-      - color: '#299C46'
+      - color: '#366ce4'
         value: '0'
-  - h: 4
+  - h: 5
     i: 08bebde0-1772-4199-8248-016c30bd2b23
     w: 6
     x: 6
-    y: 2
+    y: 8
     name: 主机操作系统分布
     moved: false
     static: false
@@ -111,42 +111,41 @@ dashboards:
         value: os_type
         alias_name: 分组字段
         filterType: fixed
-  - h: 4
+  - h: 5
     i: 4df1fa2e-a38d-48e9-b6ca-a16f91f768eb
     w: 6
     x: 0
-    y: 2
+    y: 3
     name: CMDB 变更趋势
     moved: false
     static: false
     description: ''
     valueConfig:
       chartType: line
-      dataSource: CMDB 变更趋势::get_change_trend
+      dataSource: CMDB 变更趋势::cmdb/get_change_trend
       filterBindings:
         time__timeRange: true
-        model_id__string: true
       dataSourceParams:
       - name: time
         type: timeRange
         value: 10080
-        alias_name: 时间范围 [开始, 结束]
+        alias_name: 时间范围
         filterType: filter
       - name: group_by
         type: string
         value: hour
-        alias_name: '分组方式: day/hour/week/month'
-        filterType: params
+        alias_name: 分组粒度
+        filterType: fixed
       - name: model_id
         type: string
-        value: ''
-        alias_name: 按模型过滤
-        filterType: filter
+        value: k8s_cluster
+        alias_name: 模型ID
+        filterType: params
   - h: 5
     i: 7951c963-9fd3-40a4-8169-9463676bdc07
-    w: 12
+    w: 6
     x: 0
-    y: 6
+    y: 8
     name: 模型实例统计
     moved: false
     static: false
@@ -173,77 +172,234 @@ dashboards:
           title: 数量
           visible: true
       dataSourceParams: []
-  - h: 5
-    i: 7d86f0ed-53d5-4c7b-b7bd-dad2dc48e653
-    w: 12
-    x: 0
-    y: 11
-    name: 查询资产实例
+  - h: 3
+    i: 8461bad1-524b-499c-aebb-af9ed980aa14
+    w: 2
+    x: 6
+    y: 0
+    name: 非空模型数
     moved: false
     static: false
     description: ''
     valueConfig:
-      chartType: table
-      dataSource: 查询资产实例::cmdb/query_asset_instances
-      tableConfig:
-        columns:
-        - key: organization
-          order: 0
-          title: organization
-          visible: true
-        - key: inst_name
-          order: 1
-          title: inst_name
-          visible: true
-        - key: model_id
-          order: 2
-          title: model_id
-          visible: true
-        - key: time_range
-          order: 3
-          title: time_range
-          visible: true
-        - key: enum_test
-          order: 4
-          title: enum_test
-          visible: true
-        - key: bak_operator
-          order: 5
-          title: bak_operator
-          visible: true
-        - key: apiserver
-          order: 6
-          title: apiserver
-          visible: true
-        - key: comment
-          order: 7
-          title: comment
-          visible: true
-        - key: operator
-          order: 8
-          title: operator
-          visible: true
-        - key: auto_collect
-          order: 9
-          title: auto_collect
-          visible: true
-        filterFields:
-        - key: inst_name
-          label: 实例名称
-          inputType: keyword
+      chartType: single
+      dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+      selectedFields:
+      - model_with_instance_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    i: c02d6a5c-39bf-46e2-95b8-f4f4d46e1352
+    w: 2
+    x: 8
+    y: 0
+    name: 空模型数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+      selectedFields:
+      - empty_model_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams: []
+  - h: 3
+    i: 7e5070ee-514c-4247-997b-aaad9ee81382
+    w: 2
+    x: 10
+    y: 0
+    name: 模型覆盖率
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      unit: '%'
+      chartType: single
+      dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+      selectedFields:
+      - model_coverage_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    i: dcbe080f-5973-4215-9ae4-d4c6c1ffd1af
+    w: 2
+    x: 0
+    y: 13
+    name: 采集任务总数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+      selectedFields:
+      - task_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    i: 6fb9eb5e-81cc-4888-b484-6bead0b7ea64
+    w: 2
+    x: 2
+    y: 13
+    name: 周期任务数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+      selectedFields:
+      - interval_task_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    i: e86497c6-99d1-4245-a925-7d941416d384
+    w: 2
+    x: 4
+    y: 13
+    name: 采集成功任务数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+      selectedFields:
+      - success_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams: []
+  - h: 3
+    i: 81fb3757-8c04-4e2c-b603-69372e11168c
+    w: 2
+    x: 6
+    y: 13
+    name: 运行中任务数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+      selectedFields:
+      - running_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams: []
+  - h: 3
+    i: e85bcf55-fe23-4e75-bccb-7f68528ddd4a
+    w: 2
+    x: 8
+    y: 13
+    name: 超时任务数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+      selectedFields:
+      - timeout_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams: []
+  - h: 3
+    i: db83c45b-4476-47a9-bd6f-944159fbd476
+    w: 2
+    x: 10
+    y: 13
+    name: 从未执行的任务数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+      selectedFields:
+      - never_run_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams: []
+  - h: 5
+    i: cef91805-bf1d-4909-a112-4c6a5d7b5823
+    w: 6
+    x: 6
+    y: 3
+    name: CMDB模型实例TOP 5
+    moved: false
+    static: false
+    description: 查询实例数最多的模型排行
+    valueConfig:
+      chartType: topN
+      dataSource: CMDB模型实例TOPN::cmdb/get_cmdb_model_instance_top
+      topNLabelField: model
+      topNValueField: count
       dataSourceParams:
-      - name: model_id
+      - name: limit
+        type: number
+        value: 5
+        alias_name: 返回条数
+        filterType: fixed
+      - name: classification_id
         type: string
-        value: k8s_cluster
-        alias_name: model_id
+        value: ''
+        alias_name: 模型分类ID
         filterType: params
   refs:
     datasource_keys:
-    - 模型/实例/分类总数统计::get_cmdb_statistics
-    - CMDB 变更趋势::get_change_trend
+    - 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+    - CMDB 变更趋势::cmdb/get_change_trend
     - 主机操作系统分布::get_instance_group_by
     - 模型实例统计::get_model_inst_statistics
-    - 查询资产实例::cmdb/query_asset_instances
+    - CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+    - CMDB模型实例TOPN::cmdb/get_cmdb_model_instance_top
     namespace_keys: []
   filters:
   - id: time__timeRange
@@ -256,24 +412,17 @@ dashboards:
       end: '2026-04-22T06:10:42.171Z'
       start: '2026-03-23T06:10:42.171Z'
       selectValue: 43200
-  - id: model_id__string
-    key: model_id
-    name: 模型ID
-    type: string
-    order: 1
-    enabled: true
-    defaultValue: k8s_cluster
-- key: dashboard::告警-仪表盘_内置
-  name: 告警-仪表盘_内置
+- key: dashboard::统一告警中心仪表盘_内置
+  name: 统一告警中心仪表盘_内置
   desc: ''
   other: {}
   view_sets:
-  - h: 2
+  - h: 3
     i: d0a485b5-9f7c-46ae-9c42-717aa5fca81b
-    w: 4
-    x: 0
+    w: 3
+    x: 3
     y: 0
-    name: 告警统计概览-总数
+    name: 告警总数
     moved: false
     static: false
     description: ''
@@ -283,18 +432,18 @@ dashboards:
       selectedFields:
       - total_count
       thresholdColors:
-      - color: '#EAB839'
-        value: '10'
       - color: '#fd666d'
-        value: '5'
-      - color: '#299C46'
+        value: '20000'
+      - color: '#EAB839'
+        value: '10000'
+      - color: '#366CE4'
         value: '0'
-  - h: 2
+  - h: 3
     i: 99ff96a3-2055-4932-b882-bc2b896cc1e7
-    w: 4
-    x: 4
+    w: 3
+    x: 0
     y: 0
-    name: 告警统计概览-event总数
+    name: 告警事件总数
     moved: false
     static: false
     description: ''
@@ -304,106 +453,61 @@ dashboards:
       selectedFields:
       - event_count
       thresholdColors:
-      - color: '#fd666d'
-        value: '70'
       - color: '#EAB839'
-        value: '30'
-      - color: '#299C46'
-        value: '0'
-      dataSourceParams: []
-  - h: 2
-    i: 26462803-5d77-4bfa-90b7-909f830075c3
-    w: 4
-    x: 8
-    y: 0
-    name: 告警统计概览-事故总数
-    moved: false
-    static: false
-    description: ''
-    valueConfig:
-      chartType: single
-      dataSource: 告警统计概览::get_alert_statistics
-      selectedFields:
-      - incident_count
-      thresholdColors:
+        value: '10000'
       - color: '#fd666d'
-        value: '70'
-      - color: '#EAB839'
-        value: '30'
-      - color: '#299C46'
+        value: '7000'
+      - color: '#366CE4'
         value: '0'
-      dataSourceParams: []
-  - h: 2
-    i: 5c2735d3-5449-4d29-871d-545eaf7b24b9
-    w: 4
-    x: 0
-    y: 2
-    name: 告警统计概览-活跃告警
-    moved: false
-    static: false
-    description: ''
-    valueConfig:
-      chartType: single
-      dataSource: 告警统计概览::get_alert_statistics
-      selectedFields:
-      - active_count
-      thresholdColors:
-      - color: '#fd666d'
-        value: '70'
-      - color: '#EAB839'
-        value: '30'
-      - color: '#299C46'
-        value: '0'
-      dataSourceParams: []
-  - h: 2
-    i: 00529616-16d3-4be3-8a7f-463a175f8c53
-    w: 4
-    x: 4
-    y: 2
-    name: 告警统计概览-处理中
-    moved: false
-    static: false
-    description: ''
-    valueConfig:
-      chartType: single
-      dataSource: 告警统计概览::get_alert_statistics
-      selectedFields:
-      - pending_count
-      thresholdColors:
-      - color: '#fd666d'
-        value: '70'
-      - color: '#EAB839'
-        value: '30'
-      - color: '#299C46'
-        value: '0'
-      dataSourceParams: []
-  - h: 2
-    i: a6c83255-dab0-4d69-a19e-c54e2c0c3777
-    w: 4
-    x: 8
-    y: 2
-    name: 告警统计概览-待响应
-    moved: false
-    static: false
-    description: ''
-    valueConfig:
-      chartType: single
-      dataSource: 告警统计概览::get_alert_statistics
-      selectedFields:
-      - pending_count
-      thresholdColors:
-      - color: '#fd666d'
-        value: '70'
-      - color: '#EAB839'
-        value: '30'
-      - color: '#299C46'
-        value: '0'
-      dataSourceParams: []
   - h: 3
+    i: 5c2735d3-5449-4d29-871d-545eaf7b24b9
+    w: 3
+    x: 9
+    y: 3
+    name: 会话告警占比
+    moved: false
+    static: false
+    description: 会话类告警在全部告警中的占比
+    valueConfig:
+      unit: '%'
+      chartType: single
+      dataSource: 告警统计概览::get_alert_statistics
+      selectedFields:
+      - session_alert_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '7000'
+      - color: '#000000'
+        value: '3000'
+      - color: '#000000'
+        value: '0'
+  - h: 3
+    i: 00529616-16d3-4be3-8a7f-463a175f8c53
+    w: 3
+    x: 3
+    y: 3
+    name: 自动恢复占比
+    moved: false
+    static: false
+    description: 自动恢复状态告警在全部告警中的占比
+    valueConfig:
+      unit: '%'
+      chartType: single
+      dataSource: 告警统计概览::get_alert_statistics
+      selectedFields:
+      - auto_recovery_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#000000'
+        value: '30'
+      - color: '#000000'
+        value: '0'
+  - h: 4
     i: 586576ee-f427-4c56-9e8a-6777c95c1290
-    w: 6
+    w: 7
     x: 0
-    y: 4
+    y: 6
     name: 告警趋势数据
     moved: false
     static: false
@@ -424,11 +528,11 @@ dashboards:
         value: 10080
         alias_name: time
         filterType: filter
-  - h: 3
+  - h: 4
     i: 85bfbc48-c2b7-4621-99ca-621818d656f9
-    w: 6
-    x: 6
-    y: 4
+    w: 5
+    x: 7
+    y: 6
     name: 告警等级分布
     moved: false
     static: false
@@ -442,12 +546,12 @@ dashboards:
         value: active
         alias_name: 过滤条件
         filterType: params
-  - h: 5
+  - h: 8
     i: 739e9aab-809e-42c6-901a-ca6d664db676
     w: 12
     x: 0
-    y: 7
-    name: 活跃告警 TOP N
+    y: 25
+    name: 活跃告警 TOP 10
     moved: false
     static: false
     description: ''
@@ -490,54 +594,595 @@ dashboards:
         value: '10'
         alias_name: 返回数量
         filterType: params
+  - h: 6
+    i: ad522899-2fc5-4b7a-875e-19004c33a425
+    w: 6
+    x: 6
+    y: 10
+    name: 告警源事件数 TOP 5
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: topN
+      dataSource: 告警源事件数 TOP N::alert/get_alert_source_event_top
+      dataSourceParams:
+      - name: limit
+        type: string
+        value: '5'
+        alias_name: 限制
+        filterType: params
+  - h: 3
+    i: 0488514c-4381-408f-95c3-a645b010bdb1
+    w: 3
+    x: 0
+    y: 3
+    name: 自动恢复告警数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 告警统计概览::get_alert_statistics
+      selectedFields:
+      - auto_recovery_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    i: e7b15832-9734-4eff-ae1b-96dc5148d286
+    w: 3
+    x: 0
+    y: 10
+    name: 告警源总数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
+      selectedFields:
+      - total_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams:
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: 时间范围
+        filterType: params
+  - h: 3
+    i: a3538b40-7c46-475d-a3d9-927b8f2d7098
+    w: 3
+    x: 3
+    y: 13
+    name: 告警源启用率
+    moved: false
+    static: false
+    description: 已启用告警源在全部告警源中的占比
+    valueConfig:
+      unit: '%'
+      chartType: single
+      dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
+      selectedFields:
+      - enabled_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '200'
+      - color: '#EAB839'
+        value: '100'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams:
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: 时间范围
+        filterType: params
+  - h: 3
+    i: 083e3d04-08d6-4100-9d02-6bdb4a4e5a6f
+    w: 3
+    x: 0
+    y: 13
+    name: 活跃告警源数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
+      selectedFields:
+      - active_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams:
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: 时间范围
+        filterType: params
+  - h: 3
+    i: 063b6d01-ec91-4218-b6ad-9f34c82ea94b
+    w: 3
+    x: 0
+    y: 16
+    name: 通知成功数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
+      selectedFields:
+      - success_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#67a567'
+        value: '0'
+      dataSourceParams:
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: 时间
+        filterType: params
+  - h: 3
+    i: af0ee431-54a4-4fcb-8ae4-43a7666a5aed
+    w: 3
+    x: 0
+    y: 19
+    name: 通知失败数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
+      selectedFields:
+      - failed_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams:
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: 时间
+        filterType: params
+  - h: 3
+    i: 38cbdb62-671c-48a6-a883-2c41a97882f2
+    w: 3
+    x: 3
+    y: 19
+    name: 通知失败率
+    moved: false
+    static: false
+    description: 发送失败的通知在全部通知中的占比
+    valueConfig:
+      unit: '%'
+      chartType: single
+      dataSource: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
+      selectedFields:
+      - failed_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams:
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: 时间
+        filterType: params
+  - h: 6
+    i: 80a6b436-a8c3-44f0-a054-905fb3f08a3d
+    w: 6
+    x: 6
+    y: 16
+    name: 按渠道通知成功率
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: bar
+      dataSource: 按渠道通知成功率::alert/get_notification_channel_stats
+      dataSourceParams:
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: 时间
+        filterType: params
+  - h: 3
+    i: aede04f0-83f3-4fc6-b804-a2772c640623
+    w: 3
+    x: 0
+    y: 22
+    name: 缺少资源ID事件占比
+    moved: false
+    static: false
+    description: 缺少资源 ID 的告警在全部告警中的占比
+    valueConfig:
+      unit: '%'
+      chartType: single
+      dataSource: 数据完整性（缺失率）::alert/get_alert_data_quality
+      selectedFields:
+      - missing_resource_id_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '700'
+      - color: '#EAB839'
+        value: '300'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams:
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: 时间
+        filterType: params
+  - h: 3
+    i: 9fb91936-d18b-4583-b14b-d9ae04d6bb10
+    w: 3
+    x: 3
+    y: 22
+    name: 缺少规则ID事件占比
+    moved: false
+    static: false
+    description: 缺少规则 ID 的告警在全部告警中的占比
+    valueConfig:
+      unit: '%'
+      chartType: single
+      dataSource: 数据完整性（缺失率）::alert/get_alert_data_quality
+      selectedFields:
+      - missing_rule_id_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams:
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: 时间
+        filterType: params
+  - h: 3
+    i: 8c4c5cb4-dfd9-4b01-9baa-33a9f758a4b6
+    w: 3
+    x: 9
+    y: 22
+    name: 缺少外部事件ID占比
+    moved: false
+    static: false
+    description: 缺少外部事件 ID 的事件在全部事件中的占比
+    valueConfig:
+      unit: '%'
+      chartType: single
+      dataSource: 数据完整性（缺失率）::alert/get_alert_data_quality
+      selectedFields:
+      - missing_external_id_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams:
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: 时间
+        filterType: params
+  - h: 3
+    i: 356ec2d9-0bf2-4d03-aa0b-dda3d9d7cf87
+    w: 3
+    x: 6
+    y: 22
+    name: 缺少指标项事件占比
+    moved: false
+    static: false
+    description: 缺少指标项的事件在全部事件中的占比
+    valueConfig:
+      unit: '%'
+      chartType: single
+      dataSource: 数据完整性（缺失率）::alert/get_alert_data_quality
+      selectedFields:
+      - missing_item_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '700'
+      - color: '#EAB839'
+        value: '300'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams:
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: 时间
+        filterType: params
+  - h: 3
+    i: f6ddd2a0-2adc-4e20-9513-f6ebb7426211
+    w: 3
+    x: 6
+    y: 3
+    name: 聚合倍率
+    moved: false
+    static: false
+    description: 事件总数 / 告警总数，用于反映事件聚合程度
+    valueConfig:
+      chartType: single
+      dataSource: 告警统计概览::get_alert_statistics
+      selectedFields:
+      - aggregation_ratio
+      thresholdColors:
+      - color: '#fd666d'
+        value: '700'
+      - color: '#000000'
+        value: '300'
+      - color: '#000000'
+        value: '0'
+  - h: 3
+    i: 8b710945-88a5-42d3-8fdd-a52507f54fe4
+    w: 3
+    x: 6
+    y: 0
+    name: 事故总数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 告警统计概览::get_alert_statistics
+      selectedFields:
+      - incident_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    i: 02ed505a-d71b-4bbc-82c8-4a5338596c37
+    w: 3
+    x: 9
+    y: 0
+    name: 活跃告警数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 告警统计概览::get_alert_statistics
+      selectedFields:
+      - active_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams: []
+  - h: 3
+    i: 190cbce2-33d1-4755-a85d-ea781c898920
+    w: 3
+    x: 3
+    y: 10
+    name: 已启用告警源数
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
+      selectedFields:
+      - enabled_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams:
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: 时间范围
+        filterType: params
+  - h: 3
+    i: fb51e119-3763-4a99-844f-274fa6c50577
+    w: 3
+    x: 3
+    y: 16
+    name: 通知成功率
+    moved: false
+    static: false
+    description: ''
+    valueConfig:
+      chartType: single
+      dataSource: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
+      selectedFields:
+      - success_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#67a567'
+        value: '0'
+      dataSourceParams:
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: 时间
+        filterType: params
   refs:
     datasource_keys:
-    - 活跃告警 TOP N::get_active_alert_top
-    - 告警统计概览::get_alert_statistics
     - 告警等级分布::get_alert_level_distribution
+    - 告警统计概览::get_alert_statistics
     - 告警趋势数据::get_alert_trend_data
+    - 告警源事件数 TOP N::alert/get_alert_source_event_top
+    - 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
+    - 按渠道通知成功率::alert/get_notification_channel_stats
+    - 数据完整性（缺失率）::alert/get_alert_data_quality
+    - 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
+    - 活跃告警 TOP N::get_active_alert_top
     namespace_keys: []
   filters:
   - id: time__timeRange
     key: time
-    name: time
+    name: 时间范围
     type: timeRange
     order: 0
     enabled: true
     defaultValue:
-      end: '2026-05-13T03:45:44.807Z'
-      start: '2026-05-06T03:45:44.807Z'
-      selectValue: 10080
+      end: '2026-05-18T09:16:29.990Z'
+      start: '2026-04-18T09:16:29.990Z'
+      selectValue: 43200
 topologies: []
 architectures: []
 datasources:
-- key: CMDB 变更趋势::get_change_trend
+- key: CMDB 变更趋势::cmdb/get_change_trend
   name: CMDB 变更趋势
-  rest_api: get_change_trend
-  desc: ''
+  rest_api: cmdb/get_change_trend
+  desc: 查询 CMDB 在时间范围内的新增、修改、删除趋势
   is_active: true
   params:
   - name: time
     type: timeRange
     value: 10080
-    alias_name: 时间范围 [开始, 结束]
+    alias_name: 时间范围
     filterType: filter
   - name: group_by
     type: string
-    value: ''
-    alias_name: '分组方式: day/hour/week/month'
-    filterType: params
+    value: day
+    alias_name: 分组粒度
+    filterType: fixed
   - name: model_id
     type: string
-    value: k8s_cluster
-    alias_name: 按模型过滤
-    filterType: filter
+    value: ''
+    alias_name: 模型ID
+    filterType: params
   tags:
   - CMDB
   chart_type:
   - line
   - bar
   field_schema: []
+  namespace_keys:
+  - 默认命名空间
+- key: CMDB模型实例TOPN::cmdb/get_cmdb_model_instance_top
+  name: CMDB模型实例TOPN
+  rest_api: cmdb/get_cmdb_model_instance_top
+  desc: 查询实例数最多的模型排行
+  is_active: true
+  params:
+  - name: limit
+    type: number
+    value: 5
+    alias_name: 返回条数
+    filterType: fixed
+  - name: classification_id
+    type: string
+    value: ''
+    alias_name: 模型分类ID
+    filterType: params
+  tags:
+  - CMDB
+  chart_type:
+  - table
+  - topN
+  field_schema:
+  - key: model
+    title: 模型名称
+    value_type: string
+    description: 模型显示名称
+  - key: model_id
+    title: 模型ID
+    value_type: string
+    description: 模型唯一标识
+  - key: classification
+    title: 分类名称
+    value_type: string
+    description: 所属分类显示名称
+  - key: classification_id
+    title: 分类ID
+    value_type: string
+    description: 所属分类标识
+  - key: count
+    title: 实例数
+    value_type: number
+    description: 该模型下实例数量
+  namespace_keys:
+  - 默认命名空间
+- key: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+  name: CMDB采集健康统计
+  rest_api: cmdb/get_cmdb_collect_statistics
+  desc: 查询采集任务总数、周期任务数及各执行状态统计
+  is_active: true
+  params: []
+  tags:
+  - CMDB
+  chart_type:
+  - single
+  field_schema:
+  - key: task_count
+    title: 任务总数
+    value_type: number
+    description: 当前可见采集任务总数
+  - key: interval_task_count
+    title: 周期任务数
+    value_type: number
+    description: 开启周期巡检的采集任务数量
+  - key: success_count
+    title: 成功任务数
+    value_type: number
+    description: 最近状态为成功的任务数
+  - key: error_count
+    title: 异常任务数
+    value_type: number
+    description: 最近状态为异常的任务数
+  - key: running_count
+    title: 运行中任务数
+    value_type: number
+    description: 当前状态为运行中的任务数
+  - key: timeout_count
+    title: 超时任务数
+    value_type: number
+    description: 当前状态为超时的任务数
+  - key: never_run_count
+    title: 从未执行任务数
+    value_type: number
+    description: 当前状态为未执行的任务数
   namespace_keys:
   - 默认命名空间
 - key: 主机操作系统分布::get_instance_group_by
@@ -563,28 +1208,10 @@ datasources:
   field_schema: []
   namespace_keys:
   - 默认命名空间
-- key: 查询资产实例::cmdb/query_asset_instances
-  name: 查询资产实例
-  rest_api: cmdb/query_asset_instances
-  desc: ''
-  is_active: true
-  params:
-  - name: model_id
-    type: string
-    value: ''
-    alias_name: model_id
-    filterType: params
-  tags:
-  - CMDB
-  chart_type:
-  - table
-  field_schema: []
-  namespace_keys:
-  - 默认命名空间
-- key: 模型/实例/分类总数统计::get_cmdb_statistics
+- key: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
   name: 模型/实例/分类总数统计
-  rest_api: get_cmdb_statistics
-  desc: ''
+  rest_api: cmdb/get_cmdb_statistics
+  desc: 查询 CMDB 分类、模型、实例与模型覆盖率等概览指标
   is_active: true
   params: []
   tags:
@@ -592,18 +1219,30 @@ datasources:
   chart_type:
   - single
   field_schema:
-  - key: model_count
-    title: 模型总数
-    value_type: string
-    description: ''
-  - key: instance_count
-    title: 实例总数
-    value_type: string
-    description: ''
   - key: classification_count
     title: 分类总数
-    value_type: string
-    description: ''
+    value_type: number
+    description: 当前可见模型分类数量
+  - key: model_count
+    title: 模型总数
+    value_type: number
+    description: 当前可见模型数量
+  - key: instance_count
+    title: 实例总数
+    value_type: number
+    description: 当前可见实例总量
+  - key: model_with_instance_count
+    title: 非空模型数
+    value_type: number
+    description: 实例数大于 0 的模型数量
+  - key: empty_model_count
+    title: 空模型数
+    value_type: number
+    description: 实例数为 0 的模型数量
+  - key: model_coverage_rate
+    title: 模型覆盖率
+    value_type: number
+    description: 非空模型数在全部模型中的占比，单位为 %
   namespace_keys:
   - 默认命名空间
 - key: 模型实例统计::get_model_inst_statistics
@@ -633,6 +1272,42 @@ datasources:
     title: 数量
     value_type: string
     description: ''
+  namespace_keys:
+  - 默认命名空间
+- key: 告警源事件数 TOP N::alert/get_alert_source_event_top
+  name: 告警源事件数 TOP N
+  rest_api: alert/get_alert_source_event_top
+  desc: ''
+  is_active: true
+  params:
+  - name: limit
+    type: string
+    value: '5'
+    alias_name: 限制
+    filterType: params
+  tags:
+  - 告警
+  chart_type:
+  - topN
+  field_schema: []
+  namespace_keys:
+  - 默认命名空间
+- key: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
+  name: 告警源总数/启用率/活跃数
+  rest_api: alert/get_alert_source_statistics
+  desc: ''
+  is_active: true
+  params:
+  - name: time
+    type: timeRange
+    value: 10080
+    alias_name: 时间范围
+    filterType: params
+  tags:
+  - 告警
+  chart_type:
+  - single
+  field_schema: []
   namespace_keys:
   - 默认命名空间
 - key: 告警等级分布::get_alert_level_distribution
@@ -696,6 +1371,26 @@ datasources:
     title: 事故总数
     value_type: string
     description: ''
+  - key: auto_recovery_count
+    title: 已恢复告警数
+    value_type: string
+    description: ''
+  - key: session_alert_count
+    title: 会话告警数
+    value_type: string
+    description: ''
+  - key: aggregation_ratio
+    title: 聚合倍率
+    value_type: string
+    description: ''
+  - key: session_alert_rate
+    title: 会话告警占比
+    value_type: string
+    description: ''
+  - key: auto_recovery_rate
+    title: 自动恢复占比
+    value_type: string
+    description: ''
   namespace_keys:
   - 默认命名空间
 - key: 告警趋势数据::get_alert_trend_data
@@ -724,6 +1419,42 @@ datasources:
   field_schema: []
   namespace_keys:
   - 默认命名空间
+- key: 按渠道通知成功率::alert/get_notification_channel_stats
+  name: 按渠道通知成功率
+  rest_api: alert/get_notification_channel_stats
+  desc: ''
+  is_active: true
+  params:
+  - name: time
+    type: timeRange
+    value: 10080
+    alias_name: 时间
+    filterType: params
+  tags:
+  - 告警
+  chart_type:
+  - bar
+  field_schema: []
+  namespace_keys:
+  - 默认命名空间
+- key: 数据完整性（缺失率）::alert/get_alert_data_quality
+  name: 数据完整性（缺失率）
+  rest_api: alert/get_alert_data_quality
+  desc: ''
+  is_active: true
+  params:
+  - name: time
+    type: timeRange
+    value: 10080
+    alias_name: 时间
+    filterType: params
+  tags:
+  - 告警
+  chart_type:
+  - single
+  field_schema: []
+  namespace_keys:
+  - 默认命名空间
 - key: 活跃告警 TOP N::get_active_alert_top
   name: 活跃告警 TOP N
   rest_api: get_active_alert_top
@@ -746,12 +1477,50 @@ datasources:
     description: ''
   namespace_keys:
   - 默认命名空间
+- key: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
+  name: 通知总数/成功率/失败率/按渠道分组
+  rest_api: alert/get_notification_statistics
+  desc: ''
+  is_active: true
+  params:
+  - name: time
+    type: timeRange
+    value: 10080
+    alias_name: 时间
+    filterType: params
+  tags:
+  - 告警
+  chart_type:
+  - single
+  field_schema:
+  - key: total_count
+    title: 通知总数
+    value_type: number
+    description: 统计周期内的通知总量
+  - key: success_count
+    title: 通知成功数
+    value_type: number
+    description: 统计周期内发送成功的通知数量
+  - key: failed_count
+    title: 通知失败数
+    value_type: number
+    description: 统计周期内发送失败的通知数量
+  - key: success_rate
+    title: 通知成功率
+    value_type: number
+    description: 成功发送的通知在全部通知中的占比，单位为 %
+  - key: failed_rate
+    title: 通知失败率
+    value_type: number
+    description: 发送失败的通知在全部通知中的占比，单位为 %
+  namespace_keys:
+  - 默认命名空间
 namespaces:
 - key: 默认命名空间
   name: 默认命名空间
-  domain: 127.0.0.1:4222
-  namespace: bklite
+  domain: 10.10.41.149:4222
+  namespace: bklite_hong_local
   account: admin
   password: '******'
-  enable_tls: false
+  enable_tls: true
   desc: 系统初始化创建的默认命名空间

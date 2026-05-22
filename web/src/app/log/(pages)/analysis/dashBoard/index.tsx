@@ -23,6 +23,7 @@ import useIntegrationApi from '@/app/log/api/integration';
 import useApiClient from '@/utils/request';
 
 const { Option } = Select;
+const ResponsiveGridLayout = WidthProvider(GridLayout);
 
 interface DashboardProps {
   selectedDashboard?: DirItem | null;
@@ -34,8 +35,6 @@ interface DashboardProps {
 export interface DashboardRef {
   hasUnsavedChanges: () => boolean;
 }
-
-const ResponsiveGridLayout = WidthProvider(GridLayout);
 
 const Dashboard = forwardRef<DashboardRef, DashboardProps>(
   (
@@ -232,9 +231,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       const startTime = times?.[0] ? new Date(times[0]).toISOString() : '';
       const endTime = times?.[1] ? new Date(times[1]).toISOString() : '';
       const dataSourceParams = item.valueConfig?.dataSourceParams as
-        | { query?: string }
+        | { query?: string; searchQuery?: string }
         | undefined;
-      let query = dataSourceParams?.query || '*';
+      let query =
+        dataSourceParams?.searchQuery || dataSourceParams?.query || '*';
 
       if (query.includes('${_time}') && startTime && endTime) {
         query = query.replace(
@@ -619,7 +619,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto rounded-[20px] bg-[var(--color-fill-1)]/70 p-2">
+          <div className="flex-1 overflow-auto">
             {(() => {
               if (pageLoading) {
                 return (
@@ -631,7 +631,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               return (
                 <ResponsiveGridLayout
                   className="layout w-full flex-1"
-                  layout={layout}
+                  layout={layout as LayoutItem[]}
                   onLayoutChange={editable ? onLayoutChange : undefined}
                   cols={12}
                   rowHeight={88}
@@ -641,7 +641,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                   isDraggable={editable}
                   isResizable={editable}
                 >
-                  {layout.map((item) => {
+                  {(layout as LayoutItem[]).map((item) => {
                     const menu = (
                       <Menu>
                         <Menu.Item
@@ -656,7 +656,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                     return (
                       <div
                         key={item.i}
-                        className={`widget flex flex-col overflow-hidden rounded-[18px] bg-[var(--color-bg-1)] px-4 pb-4 pt-3 shadow-[0_4px_20px_rgba(15,23,42,0.08)] ${
+                        className={`widget flex flex-col overflow-hidden rounded-[18px] border border-[var(--color-border-2)] bg-[var(--color-bg-1)] px-4 pb-4 pt-3 shadow-[0_4px_20px_rgba(15,23,42,0.08)] ${
                           !editable ? 'readonly-widget' : ''
                         }`}
                       >

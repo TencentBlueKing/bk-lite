@@ -38,6 +38,7 @@ from apps.opspilot.utils.pin_mixin import PinMixin
 from apps.opspilot.utils.skill_execution_params import resolve_request_tools
 from apps.opspilot.utils.sse_chat import stream_chat
 from apps.opspilot.utils.vendor_model_mixin import VendorModelMixin
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class LLMFilter(FilterSet):
@@ -83,11 +84,19 @@ class LLMViewSet(PinMixin, AuthViewSet):
 
     @HasPermission("skill_list-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        instance = self.get_object()
+        skill_name = instance.name
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            log_operation(request, "delete", "opspilot", f"删除智能体: {skill_name}")
+        return response
 
     @HasPermission("skill_list-Add")
     def create(self, request, *args, **kwargs):
         params = request.data
+        params["team"] = params.get("team", []) or [int(request.COOKIES.get("current_team"))]
+        # 校验用户是否有目标组织的权限
+        self._validate_org_field_permission(request, params["team"])
         validate_msg = self._validate_name(params["name"], request.user.group_list, params["team"])
         if validate_msg:
             message = (
@@ -96,7 +105,6 @@ class LLMViewSet(PinMixin, AuthViewSet):
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
-        params["team"] = params.get("team", []) or [int(request.COOKIES.get("current_team"))]
         params["enable_conversation_history"] = True
         params[
             "skill_prompt"
@@ -112,7 +120,12 @@ class LLMViewSet(PinMixin, AuthViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        response = Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        skill_name = response.data.get("name") if isinstance(response.data, dict) else None
+        if not skill_name:
+            skill_name = request.data.get("name", "")
+        log_operation(request, "create", "opspilot", f"新增智能体: {skill_name}")
+        return response
 
     @HasPermission("skill_setting-Edit")
     def update(self, request, *args, **kwargs):
@@ -183,6 +196,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             instance.knowledge_base.clear()
             instance.rag_score_threshold_map = {}
         instance.save()
+        log_operation(request, "update", "opspilot", f"编辑智能体: {instance.name}")
         return JsonResponse({"result": True})
 
     @staticmethod
@@ -434,6 +448,8 @@ class LLMModelViewSet(VendorModelMixin, AuthViewSet):
         if not params.get("team"):
             message = self.loader.get("error.team_empty") if self.loader else "The team is empty."
             return JsonResponse({"result": False, "message": message})
+        # 校验用户是否有目标组织的权限
+        self._validate_org_field_permission(request, params["team"])
         validate_msg = self._validate_llm_model_name(
             params["name"],
             request.user.group_list,
@@ -458,7 +474,9 @@ class LLMModelViewSet(VendorModelMixin, AuthViewSet):
             label=params.get("label"),
             is_build_in=False,
         )
-        return JsonResponse({"result": True})
+        response = JsonResponse({"result": True})
+        log_operation(request, "create", "opspilot", f"新增模型: {params['name']}")
+        return response
 
     @HasPermission("provide_list-Setting")
     def update(self, request, *args, **kwargs):
@@ -482,11 +500,23 @@ class LLMModelViewSet(VendorModelMixin, AuthViewSet):
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            model_name = response.data.get("name") if isinstance(response.data, dict) else None
+            if not model_name:
+                model_name = params.get("name", instance.name)
+            log_operation(request, "update", "opspilot", f"编辑模型: {model_name}")
+        return response
 
     @HasPermission("provide_list-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            model_name = response.data.get("name") if isinstance(response.data, dict) else None
+            if not model_name:
+                model_name = request.data.get("name", "")
+            log_operation(request, "delete", "opspilot", f"删除模型: {model_name}")
+        return response
 
 
 class LogFilter(FilterSet):
@@ -562,15 +592,33 @@ class SkillToolsViewSet(AuthViewSet):
 
     @HasPermission("tool_list-Add")
     def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            tool_name = response.data.get("name") if isinstance(response.data, dict) else None
+            if not tool_name:
+                tool_name = request.data.get("name", "")
+            log_operation(request, "create", "opspilot", f"新增工具: {tool_name}")
+        return response
 
     @HasPermission("tool_list-Setting")
     def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            tool_name = response.data.get("name") if isinstance(response.data, dict) else None
+            if not tool_name:
+                tool_name = request.data.get("name", "")
+            log_operation(request, "update", "opspilot", f"编辑工具: {tool_name}")
+        return response
 
     @HasPermission("tool_list-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            tool_name = response.data.get("name") if isinstance(response.data, dict) else None
+            if not tool_name:
+                tool_name = request.data.get("name", "")
+            log_operation(request, "delete", "opspilot", f"删除工具: {tool_name}")
+        return response
 
     @action(methods=["POST"], detail=False)
     @HasPermission("tool_list-View")

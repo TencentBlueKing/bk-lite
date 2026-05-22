@@ -69,7 +69,19 @@ class RetryConfig(BaseModel):
     enabled: bool = True
     max_retries_per_tool: int = 2  # 单个工具调用最大重试次数
     retry_on_error_keywords: List[str] = Field(
-        default_factory=lambda: ["timeout", "connection", "rate_limit", "500", "502", "503", "504"],
+        default_factory=lambda: [
+            "timeout",
+            "connection refused",
+            "rate_limit",
+            "status 500",
+            "status 502",
+            "status 503",
+            "status 504",
+            "http 500",
+            "http 502",
+            "http 503",
+            "http 504",
+        ],
         description="触发重试的错误关键词（不区分大小写）",
     )
     backoff_seconds: float = 1.0  # 重试间隔基数（指数退避: base * 2^attempt）

@@ -3,9 +3,12 @@ from typing import Optional
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
-from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.utils.web_utils import WebUtils
+from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
 from apps.core.logger import monitor_logger as logger
+from apps.core.utils.permission_utils import get_permission_rules, permission_filter
+from apps.core.utils.web_utils import WebUtils
+from apps.monitor.constants.permission import PermissionConstants
+from apps.monitor.models import MonitorInstance
 from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.services.metrics import Metrics as MetricsService
 from apps.monitor.utils.unit_converter import UnitConverter
@@ -137,9 +140,7 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
             else:
                 _, final_target_unit = UnitConverter.auto_convert(all_numeric_values, source_unit)
 
-            logger.info(
-                f"统一单位转换: {source_unit} -> {final_target_unit}, 基于 {len(all_numeric_values)} 个数据点, 涉及 {len(result_list)} 条时间序列"
-            )
+            logger.info(f"统一单位转换: {source_unit} -> {final_target_unit}, 基于 {len(all_numeric_values)} 个数据点, 涉及 {len(result_list)} 条时间序列")
 
             for item in result_list:
                 values = item.get("values") or item.get("value")
@@ -266,6 +267,26 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
 
         if not all([monitor_object_id, metric_id, instance_id]):
             raise BaseAppException("monitor_object_id, metric_id, instance_id are required")
+
+        current_team = request.COOKIES.get("current_team")
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+
+        if not request.user.is_superuser:
+            permission = get_permission_rules(
+                request.user,
+                current_team,
+                "monitor",
+                f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
+                include_children=include_children,
+            )
+            authorized_qs = permission_filter(
+                MonitorInstance,
+                permission,
+                team_key="monitorinstanceorganization__organization__in",
+                id_key="id__in",
+            ).filter(id=instance_id)
+            if not authorized_qs.exists():
+                raise UnauthorizedException("无权访问该监控实例")
 
         metric = Metric.objects.filter(id=metric_id, monitor_object_id=monitor_object_id).select_related("monitor_object").first()
         if not metric:

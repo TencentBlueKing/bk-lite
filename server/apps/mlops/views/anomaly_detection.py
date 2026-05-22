@@ -79,6 +79,10 @@ class AnomalyDetectionTrainJobViewSet(TeamModelViewSet):
 
     MLFLOW_PREFIX = "AnomalyDetection"  # MLflow 命名前缀
 
+    @HasPermission("anomaly_detection-Delete")
+    def destroy(self, request, *args, **kwargs):
+        return self.destroy_train_job_with_runtime_cleanup(request, *args, **kwargs)
+
     @action(detail=True, methods=["post"], url_path="train")
     @HasPermission("anomaly_detection-Train")
     def train(self, request, pk=None):
@@ -414,10 +418,16 @@ class AnomalyDetectionTrainJobViewSet(TeamModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @action(detail=False, methods=["get"], url_path="runs_metrics_list/(?P<run_id>.+?)")
+    @action(detail=True, methods=["get"], url_path="runs/(?P<run_id>[^/]+)/metrics_list")
     @HasPermission("anomaly_detection-View")
-    def get_runs_metrics_list(self, request, run_id: str):
+    def get_runs_metrics_list(self, request, pk=None, run_id: str = ""):
         try:
+            train_job = self.get_authorized_object_or_none()
+            if train_job is None:
+                return self.run_not_found_response(run_id)
+            if not self.train_job_has_run(train_job, run_id):
+                return self.run_not_found_response(run_id)
+
             # 获取运行的指标列表（过滤系统指标）
             model_metrics = mlflow_service.get_run_metrics(run_id=run_id, filter_system=True)
 
@@ -430,16 +440,22 @@ class AnomalyDetectionTrainJobViewSet(TeamModelViewSet):
             )
 
     @action(
-        detail=False,
+        detail=True,
         methods=["get"],
-        url_path="runs_metrics_history/(?P<run_id>.+?)/(?P<metric_name>.+?)",
+        url_path="runs/(?P<run_id>[^/]+)/metrics_history/(?P<metric_name>.+?)",
     )
     @HasPermission("anomaly_detection-View")
-    def get_metric_data(self, request, run_id: str, metric_name: str):
+    def get_metric_data(self, request, pk=None, run_id: str = "", metric_name: str = ""):
         """
         获取指定 run 的指定指标的历史数据
         """
         try:
+            train_job = self.get_authorized_object_or_none()
+            if train_job is None:
+                return self.run_not_found_response(run_id)
+            if not self.train_job_has_run(train_job, run_id):
+                return self.run_not_found_response(run_id)
+
             # 获取指标历史数据（自动处理排序）
             metric_data = mlflow_service.get_metric_history(run_id, metric_name)
 
@@ -469,13 +485,19 @@ class AnomalyDetectionTrainJobViewSet(TeamModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @action(detail=False, methods=["get"], url_path="run_params/(?P<run_id>.+?)")
+    @action(detail=True, methods=["get"], url_path="runs/(?P<run_id>[^/]+)/run_params")
     @HasPermission("anomaly_detection-View")
-    def get_run_params(self, request, run_id: str):
+    def get_run_params(self, request, pk=None, run_id: str = ""):
         """
         获取指定 run 的配置参数（用于查看历史训练的配置）
         """
         try:
+            train_job = self.get_authorized_object_or_none()
+            if train_job is None:
+                return self.run_not_found_response(run_id)
+            if not self.train_job_has_run(train_job, run_id):
+                return self.run_not_found_response(run_id)
+
             # 获取运行信息和参数
             run = mlflow_service.get_run_info(run_id)
             params = mlflow_service.get_run_params(run_id)
@@ -542,9 +564,9 @@ class AnomalyDetectionTrainJobViewSet(TeamModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @action(detail=False, methods=["get"], url_path="download_model/(?P<run_id>[^/]+)")
+    @action(detail=True, methods=["get"], url_path="runs/(?P<run_id>[^/]+)/download_model")
     @HasPermission("anomaly_detection-View")
-    def download_model(self, request, run_id: str):
+    def download_model(self, request, pk=None, run_id: str = ""):
         """
         从 MLflow 下载模型并直接返回 ZIP 文件
 
@@ -553,6 +575,12 @@ class AnomalyDetectionTrainJobViewSet(TeamModelViewSet):
         from io import BytesIO
 
         try:
+            train_job = self.get_authorized_object_or_none()
+            if train_job is None:
+                return self.run_not_found_response(run_id)
+            if not self.train_job_has_run(train_job, run_id):
+                return self.run_not_found_response(run_id)
+
             # 获取 run 信息（用于文件命名）
             run = mlflow_service.get_run_info(run_id)
             run_name = run.data.tags.get("mlflow.runName", run_id)
@@ -588,10 +616,6 @@ class AnomalyDetectionTrainJobViewSet(TeamModelViewSet):
     @HasPermission("anomaly_detection-Add")
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
-
-    @HasPermission("anomaly_detection-Delete")
-    def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
 
     @HasPermission("anomaly_detection-Edit")
     def update(self, request, *args, **kwargs):
@@ -875,7 +899,7 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
 
     @HasPermission("anomaly_detection-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        return self.destroy_serving_with_runtime_cleanup(request, *args, **kwargs)
 
     @HasPermission("anomaly_detection-Add")
     def create(self, request, *args, **kwargs):

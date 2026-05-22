@@ -18,6 +18,7 @@ import os
 import time
 from typing import Any, Dict, Optional
 
+from asgiref.sync import sync_to_async
 from django.core.cache import cache
 
 from apps.core.logger import opspilot_logger as logger
@@ -49,6 +50,17 @@ def _check_interrupt_in_database(execution_id: str) -> bool:
             str(e),
         )
         return False
+
+
+async def _check_interrupt_in_database_async(execution_id: str) -> bool:
+    """
+    异步版本的数据库兜底查询。
+
+    使用 sync_to_async 包装同步 ORM 调用，安全地在异步上下文中执行。
+    注意：使用 thread_sensitive=False 避免在 LangGraph 异步节点中触发
+    "You cannot submit onto CurrentThreadExecutor from its own thread" 错误。
+    """
+    return await sync_to_async(_check_interrupt_in_database, thread_sensitive=False)(execution_id)
 
 
 def _get_interrupt_cache_key(execution_id: str) -> str:
@@ -99,6 +111,35 @@ def is_interrupt_requested(execution_id: str) -> bool:
     if db_result:
         logger.info(
             "Interrupt check hit database (cache expired): execution_id=%s",
+            execution_id,
+        )
+    return db_result
+
+
+async def is_interrupt_requested_async(execution_id: str) -> bool:
+    """
+    异步版本的中断检查。
+
+    在异步上下文中使用此函数，避免 "You cannot call this from an async context" 错误。
+
+    双重检查机制：
+    1. 优先查询缓存（快速路径）
+    2. 缓存未命中时回退到数据库查询 WorkFlowTaskResult.status == INTERRUPTED
+    """
+    if not execution_id:
+        return False
+
+    # 快速路径：缓存命中
+    cache_result = get_interrupt_request(execution_id)
+    if cache_result is not None:
+        logger.debug("Interrupt check hit cache (async): execution_id=%s", execution_id)
+        return True
+
+    # 慢速路径：数据库兜底（使用异步版本）
+    db_result = await _check_interrupt_in_database_async(execution_id)
+    if db_result:
+        logger.info(
+            "Interrupt check hit database (cache expired, async): execution_id=%s",
             execution_id,
         )
     return db_result

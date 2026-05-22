@@ -1025,36 +1025,49 @@ def login(username, password):
     user.account_locked_until = None
     user.save()
 
-    # 检查密码过期提醒
+    is_admin_account = user.username == "admin"
+
+    # 检查密码过期
     password_expiry_reminder = ""
     if user.password_last_modified:
         # 获取密码有效期和提醒提前天数
         validity_period_setting = SystemSettings.objects.filter(key="pwd_set_validity_period").first()
         validity_period_days = int(validity_period_setting.value) if validity_period_setting else 90
 
-        reminder_days_setting = SystemSettings.objects.filter(key="pwd_set_expiry_reminder_days").first()
-        reminder_days = int(reminder_days_setting.value) if reminder_days_setting else 7
+        # validity_period_days <= 0 表示永不过期，跳过过期检查
+        if validity_period_days > 0:
+            reminder_days_setting = SystemSettings.objects.filter(key="pwd_set_expiry_reminder_days").first()
+            reminder_days = int(reminder_days_setting.value) if reminder_days_setting else 7
 
-        password_expire_date = user.password_last_modified + timedelta(days=validity_period_days)
-        days_until_expire = (password_expire_date - now).days
+            password_expire_date = user.password_last_modified + timedelta(days=validity_period_days)
+            days_until_expire = (password_expire_date - now).days
 
-        # 如果在提醒期内且未过期，生成提醒消息
-        if 0 < days_until_expire <= reminder_days:
-            password_expiry_reminder = loader.get(
-                "login.password_expiring_soon",
-                "Your password will expire in {days} day(s). Please change it soon.",
-            ).format(days=days_until_expire)
-        elif days_until_expire <= 0:
-            password_expiry_reminder = loader.get(
-                "login.password_expired",
-                "Your password has expired. Please change it immediately.",
-            )
+            # 密码已过期，阻止登录
+            if days_until_expire <= 0:
+                if is_admin_account:
+                    if not user.temporary_pwd:
+                        user.temporary_pwd = True
+                        user.save()
+                else:
+                    return {
+                        "result": False,
+                        "message": loader.get(
+                            "login.password_expired_contact_admin",
+                            "Your password has expired. Please contact the administrator to reset your password.",
+                        ),
+                    }
+
+            # 密码快过期，生成提醒消息
+            if days_until_expire <= reminder_days:
+                password_expiry_reminder = loader.get(
+                    "login.password_expiring_soon",
+                    "Your password will expire in {days} day(s). Please change it soon.",
+                ).format(days=days_until_expire)
 
     result = get_user_login_token(user, username, skip_token_for_otp=True)
     if result.get("result"):
-        # Only add password_expiry_reminder if not requiring OTP (has token)
-        if not result.get("data", {}).get("require_otp"):
-            result["data"]["password_expiry_reminder"] = password_expiry_reminder
+        # Add password_expiry_reminder to response
+        result["data"]["password_expiry_reminder"] = password_expiry_reminder
     return result
 
 
@@ -1313,6 +1326,30 @@ def verify_otp_login(challenge_id, otp_code, client_ip=""):
     user.last_login = timezone.now()
     user.save()
 
+    # Check password expiry reminder (expired users already blocked in login phase)
+    password_expiry_reminder = ""
+    if user.password_last_modified:
+        # Initialize language loader for user's locale
+        loader = LanguageLoader(app="system_mgmt", default_lang=user.locale or "en")
+
+        validity_period_setting = SystemSettings.objects.filter(key="pwd_set_validity_period").first()
+        validity_period_days = int(validity_period_setting.value) if validity_period_setting else 90
+
+        # validity_period_days <= 0 表示永不过期，跳过过期检查
+        if validity_period_days > 0:
+            reminder_days_setting = SystemSettings.objects.filter(key="pwd_set_expiry_reminder_days").first()
+            reminder_days = int(reminder_days_setting.value) if reminder_days_setting else 7
+
+            now = timezone.now()
+            password_expire_date = user.password_last_modified + timedelta(days=validity_period_days)
+            days_until_expire = (password_expire_date - now).days
+
+            if 0 < days_until_expire <= reminder_days:
+                password_expiry_reminder = loader.get(
+                    "login.password_expiring_soon",
+                    "Your password will expire in {days} day(s). Please change it soon.",
+                ).format(days=days_until_expire)
+
     return {
         "result": True,
         "data": {
@@ -1324,6 +1361,7 @@ def verify_otp_login(challenge_id, otp_code, client_ip=""):
             "locale": user.locale,
             "timezone": user.timezone,
             "temporary_pwd": user.temporary_pwd,
+            "password_expiry_reminder": password_expiry_reminder,
         },
     }
 
@@ -1404,6 +1442,7 @@ def get_user_login_token(user, username, skip_token_for_otp=False):
             "domain": user.domain,
             "locale": user.locale,
             "timezone": user.timezone,
+            "temporary_pwd": user.temporary_pwd,
         }
 
         # Include QR code for first-time binding

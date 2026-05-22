@@ -2,6 +2,8 @@
 
 from datetime import datetime, timezone, timedelta
 
+from django.db import transaction
+
 from apps.monitor.models import MonitorEventRawData, MonitorAlertMetricSnapshot
 from apps.monitor.tasks.utils.policy_methods import METHOD, period_to_seconds
 from apps.core.logger import celery_logger as logger
@@ -117,73 +119,77 @@ class SnapshotRecorder:
         is_no_data_alert=False,
     ):
         """更新告警的快照数据"""
-        snapshot_obj, created = MonitorAlertMetricSnapshot.objects.get_or_create(
-            alert_id=alert.id,
-            defaults={
-                "policy_id": self.policy.id,
-                "monitor_instance_id": alert.monitor_instance_id,
-                "snapshots": [],
-            },
-        )
+        with transaction.atomic():
+            snapshot_obj, created = MonitorAlertMetricSnapshot.objects.get_or_create(
+                alert_id=alert.id,
+                defaults={
+                    "policy_id": self.policy.id,
+                    "monitor_instance_id": alert.monitor_instance_id,
+                    "snapshots": [],
+                },
+            )
+            if not created:
+                # Re-fetch with row lock to prevent lost-update on concurrent appends
+                snapshot_obj = MonitorAlertMetricSnapshot.objects.select_for_update().get(pk=snapshot_obj.pk)
 
-        has_new_snapshot = False
+            has_new_snapshot = False
 
-        if is_new_alert and created:
-            metric_id = self._get_alert_metric_instance_id(alert)
-            pre_alert_snapshot = self._build_pre_alert_snapshot(metric_id, snapshot_time)
-            if pre_alert_snapshot:
-                snapshot_obj.snapshots.append(pre_alert_snapshot)
-                has_new_snapshot = True
-                logger.info(f"Added pre-alert snapshot for alert {alert.id}, metric_instance {metric_id}")
-
-        if event_objs and raw_data:
-            for event_obj in event_objs:
-                event_snapshot = {
-                    "type": "event",
-                    "event_id": event_obj.id,
-                    "event_time": event_obj.event_time.isoformat() if event_obj.event_time else None,
-                    "snapshot_time": snapshot_time.isoformat(),
-                    "raw_data": raw_data,
-                }
-
-                existing_event_ids = [s.get("event_id") for s in snapshot_obj.snapshots if s.get("type") == "event"]
-                if event_obj.id not in existing_event_ids:
-                    snapshot_obj.snapshots.append(event_snapshot)
+            if is_new_alert and created:
+                metric_id = self._get_alert_metric_instance_id(alert)
+                pre_alert_snapshot = self._build_pre_alert_snapshot(metric_id, snapshot_time)
+                if pre_alert_snapshot:
+                    snapshot_obj.snapshots.append(pre_alert_snapshot)
                     has_new_snapshot = True
-                    logger.debug(f"Added event snapshot for alert {alert.id}, event {event_obj.id}")
+                    logger.info(f"Added pre-alert snapshot for alert {alert.id}, metric_instance {metric_id}")
 
-        elif raw_data:
-            snapshot_time_str = snapshot_time.isoformat()
-            existing_snapshot_times = [s.get("snapshot_time") for s in snapshot_obj.snapshots if s.get("type") == "info"]
-            if snapshot_time_str not in existing_snapshot_times:
-                info_snapshot = {
-                    "type": "info",
-                    "snapshot_time": snapshot_time_str,
-                    "raw_data": raw_data,
-                }
-                snapshot_obj.snapshots.append(info_snapshot)
-                has_new_snapshot = True
-                logger.debug(f"Added info snapshot for alert {alert.id}, time {snapshot_time_str}")
+            if event_objs and raw_data:
+                for event_obj in event_objs:
+                    event_snapshot = {
+                        "type": "event",
+                        "event_id": event_obj.id,
+                        "event_time": event_obj.event_time.isoformat() if event_obj.event_time else None,
+                        "snapshot_time": snapshot_time.isoformat(),
+                        "raw_data": raw_data,
+                    }
 
-        elif is_no_data_alert:
-            snapshot_time_str = snapshot_time.isoformat()
-            existing_snapshot_times = [s.get("snapshot_time") for s in snapshot_obj.snapshots if s.get("type") == "no_data"]
-            if snapshot_time_str not in existing_snapshot_times:
-                no_data_snapshot = {
-                    "type": "no_data",
-                    "event_time": snapshot_time_str,
-                    "snapshot_time": snapshot_time_str,
-                    "raw_data": {},
-                }
-                snapshot_obj.snapshots.append(no_data_snapshot)
-                has_new_snapshot = True
-                logger.debug(f"Added no_data snapshot for alert {alert.id}, time {snapshot_time_str}")
+                    existing_event_ids = [s.get("event_id") for s in snapshot_obj.snapshots if s.get("type") == "event"]
+                    if event_obj.id not in existing_event_ids:
+                        snapshot_obj.snapshots.append(event_snapshot)
+                        has_new_snapshot = True
+                        logger.debug(f"Added event snapshot for alert {alert.id}, event {event_obj.id}")
 
-        if has_new_snapshot:
-            snapshot_obj.save(update_fields=["snapshots", "updated_at"])
-            logger.info(f"Saved snapshot for alert {alert.id}, total snapshots: {len(snapshot_obj.snapshots)}")
-        else:
-            logger.debug(f"No new snapshot data for alert {alert.id}, skipping save")
+            elif raw_data:
+                snapshot_time_str = snapshot_time.isoformat()
+                existing_snapshot_times = [s.get("snapshot_time") for s in snapshot_obj.snapshots if s.get("type") == "info"]
+                if snapshot_time_str not in existing_snapshot_times:
+                    info_snapshot = {
+                        "type": "info",
+                        "snapshot_time": snapshot_time_str,
+                        "raw_data": raw_data,
+                    }
+                    snapshot_obj.snapshots.append(info_snapshot)
+                    has_new_snapshot = True
+                    logger.debug(f"Added info snapshot for alert {alert.id}, time {snapshot_time_str}")
+
+            elif is_no_data_alert:
+                snapshot_time_str = snapshot_time.isoformat()
+                existing_snapshot_times = [s.get("snapshot_time") for s in snapshot_obj.snapshots if s.get("type") == "no_data"]
+                if snapshot_time_str not in existing_snapshot_times:
+                    no_data_snapshot = {
+                        "type": "no_data",
+                        "event_time": snapshot_time_str,
+                        "snapshot_time": snapshot_time_str,
+                        "raw_data": {},
+                    }
+                    snapshot_obj.snapshots.append(no_data_snapshot)
+                    has_new_snapshot = True
+                    logger.debug(f"Added no_data snapshot for alert {alert.id}, time {snapshot_time_str}")
+
+            if has_new_snapshot:
+                snapshot_obj.save(update_fields=["snapshots", "updated_at"])
+                logger.info(f"Saved snapshot for alert {alert.id}, total snapshots: {len(snapshot_obj.snapshots)}")
+            else:
+                logger.debug(f"No new snapshot data for alert {alert.id}, skipping save")
 
     def _build_pre_alert_snapshot(self, metric_instance_id, current_snapshot_time):
         """构建告警前快照数据"""

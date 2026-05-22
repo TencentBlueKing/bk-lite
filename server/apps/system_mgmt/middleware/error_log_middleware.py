@@ -7,8 +7,9 @@
 import re
 import traceback
 
-from django.http import JsonResponse, Http404
+from django.http import JsonResponse
 from django.utils.deprecation import MiddlewareMixin
+from rest_framework.exceptions import APIException
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import system_mgmt_logger
@@ -74,15 +75,11 @@ class ErrorLogMiddleware(MiddlewareMixin):
                             domain = request.user.domain
 
                     # 构建错误信息
-                    error_message = self._build_error_message(request, exception)
+                    error_message, stack_trace = self._build_error_message(request, exception)
 
                     # 异步记录错误日志（避免阻塞主线程）
                     write_error_log_async.delay(
-                        username=username,
-                        app=app,
-                        module=module,
-                        error_message=error_message,
-                        domain=domain,
+                        username=username, app=app, module=module, error_message=error_message, domain=domain, stack_trace=stack_trace
                     )
 
         except Exception as e:
@@ -94,9 +91,21 @@ class ErrorLogMiddleware(MiddlewareMixin):
 
         # 获取异常抛出的错误信息
         exception_message = ""
+        status_code = 500
         if isinstance(exception, BaseAppException):
-            exception_message = getattr(exception,"message","")
-        
+            exception_message = getattr(exception, "message", "")
+            status_code = getattr(exception, "STATUS_CODE", 500)
+        elif isinstance(exception, APIException):
+            # 处理 DRF APIException（包括 PermissionDenied, AuthenticationFailed 等）
+            detail = exception.detail
+            if isinstance(detail, dict):
+                exception_message = str(detail)
+            elif isinstance(detail, list):
+                exception_message = "; ".join(str(d) for d in detail)
+            else:
+                exception_message = str(detail)
+            status_code = exception.status_code
+
         # 判断是否有自定义的错误信息
         # 如果异常有明确的错误信息，直接使用；否则返回通用错误
         if exception_message:
@@ -110,8 +119,8 @@ class ErrorLogMiddleware(MiddlewareMixin):
             loader = LanguageLoader(app="system_mgmt", default_lang=locale)
             # 没有自定义错误信息时，返回通用错误
             error_message = loader.get("error.system_error", "System error, please contact administrator")
-        
-        return JsonResponse({"result": False, "message": error_message}, status=500)
+
+        return JsonResponse({"result": False, "message": error_message}, status=status_code)
 
     def _parse_path(self, path):
         """
@@ -178,8 +187,4 @@ class ErrorLogMiddleware(MiddlewareMixin):
             f"错误信息: {error_msg}",
         ]
 
-        # 添加堆栈跟踪（如果有）
-        if stack_trace:
-            message_parts.append(f"堆栈跟踪:\n{stack_trace}")
-
-        return "\n".join(message_parts)
+        return "\n".join(message_parts), stack_trace

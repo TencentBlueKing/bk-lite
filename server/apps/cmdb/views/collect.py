@@ -53,6 +53,7 @@ class CollectModelViewSet(AuthViewSet):
         "destroy",
         "info",
         "exec_task",
+        "task_overview",
     }
 
     @staticmethod
@@ -315,18 +316,56 @@ class CollectModelViewSet(AuthViewSet):
         queryset = self.get_queryset()
         filter_queryset = self.get_queryset_by_permission(request=request, queryset=queryset)
         filter_queryset = self.apply_visibility_filter(filter_queryset)
-        filter_queryset = filter_queryset.only("model_id", "exec_status")
+        filter_queryset = filter_queryset.only("model_id", "driver_type", "exec_status")
         serializer = CollectModelIdStatusSerializer(filter_queryset, many=True, context={"request": request})
         data = {}
         for model_data in serializer.data:
-            if not data.get(model_data["model_id"], False):
-                data[model_data["model_id"]] = {"success": 0, "failed": 0, "running": 0}
+            driver_type = model_data.get("driver_type") or ""
+            status_key = f"{model_data['model_id']}__{driver_type}" if driver_type else model_data["model_id"]
+            if not data.get(status_key, False):
+                data[status_key] = {"success": 0, "failed": 0, "running": 0}
             if model_data["exec_status"] == CollectRunStatusType.SUCCESS:
-                data[model_data["model_id"]]["success"] += 1
+                data[status_key]["success"] += 1
             elif model_data["exec_status"] == CollectRunStatusType.ERROR:
-                data[model_data["model_id"]]["failed"] += 1
+                data[status_key]["failed"] += 1
             elif model_data["exec_status"] == CollectRunStatusType.RUNNING:
-                data[model_data["model_id"]]["running"] += 1
+                data[status_key]["running"] += 1
+        return WebUtils.response_success(data)
+
+    @HasPermission("auto_collection-View")
+    @action(methods=["get"], detail=False, url_path="task_overview")
+    def task_overview(self, request, *args, **kwargs):
+        # 采集任务页面顶部概览卡片所需的聚合统计；零数据库变更，全部从已有字段计算。
+        queryset = self.get_queryset()
+        filter_queryset = self.get_queryset_by_permission(request=request, queryset=queryset)
+        filter_queryset = self.apply_visibility_filter(filter_queryset).only(
+            "model_id", "exec_status", "exec_time",
+        )
+
+        total = normal = error = 0
+        recent_sync_at = None
+        covered_models = set()
+
+        for task in filter_queryset:
+            total += 1
+            if task.model_id:
+                covered_models.add(task.model_id)
+
+            if task.exec_status == CollectRunStatusType.SUCCESS:
+                normal += 1
+            elif task.exec_status == CollectRunStatusType.ERROR:
+                error += 1
+
+            if task.exec_time is not None and (recent_sync_at is None or task.exec_time > recent_sync_at):
+                recent_sync_at = task.exec_time
+
+        data = {
+            "total": total,
+            "normal": normal,
+            "error": error,
+            "recent_sync_at": recent_sync_at.isoformat() if recent_sync_at else None,
+            "covered_models": len(covered_models),
+        }
         return WebUtils.response_success(data)
 
     @HasPermission("auto_collection-View")

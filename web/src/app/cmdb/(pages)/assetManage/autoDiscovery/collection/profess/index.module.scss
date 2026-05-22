@@ -62,11 +62,14 @@
 .taskFooter {
     display: flex;
     justify-content: start;
-    position: absolute;
-    bottom: -50px;
+    position: sticky;
+    bottom: 0;
     border-top: var(--color-border) solid 1px;
     padding-top: 8px;
+    padding-bottom: 8px;
     width: 100%;
+    background: var(--color-bg-layout, #fff);
+    z-index: 1;
 }
 
 .ellipsis2Lines {

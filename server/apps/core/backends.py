@@ -1,8 +1,9 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import pytz
 from django.contrib.auth.backends import ModelBackend
+from django.core.cache import cache
 from django.core.exceptions import MultipleObjectsReturned, ObjectDoesNotExist
 from django.db import IntegrityError
 from django.utils import timezone as django_timezone
@@ -25,6 +26,10 @@ CLIENT_ID_ENV_KEY = "CLIENT_ID"
 class APISecretAuthBackend(ModelBackend):
     """API密钥认证后端"""
 
+    # 缓存配置
+    PERMISSION_CACHE_TTL = 60  # 权限缓存 TTL（秒）
+    PERMISSION_CACHE_KEY_PREFIX = "api_token_permissions"
+
     def authenticate(self, request=None, username=None, password=None, api_token=None, **kwargs) -> Optional[User]:
         """使用API token进行用户认证"""
         if not api_token:
@@ -35,6 +40,10 @@ class APISecretAuthBackend(ModelBackend):
             user_secret = UserAPISecret._default_manager.get(api_secret=api_token)
             user = User._default_manager.get(username=user_secret.username, domain=user_secret.domain)
             user.group_list = [user_secret.team]
+
+            # 填充用户权限信息
+            self._populate_user_permissions(user, user_secret.team)
+
             return user
 
         except ObjectDoesNotExist:
@@ -48,6 +57,131 @@ class APISecretAuthBackend(ModelBackend):
             else:
                 logger.error(f"API token authentication failed: {e}")
             return None
+
+    def _get_permission_cache_key(self, username: str, domain: str, team: int) -> str:
+        """生成权限缓存 key"""
+        return f"{self.PERMISSION_CACHE_KEY_PREFIX}:{username}:{domain}:{team}"
+
+    def _populate_user_permissions(self, user: User, team: int) -> None:
+        """
+        为 API Token 用户填充权限信息
+
+        复用 system_mgmt/nats_api.py 中的权限计算逻辑，
+        确保 API Token 用户与 Web Token 用户的权限模型一致。
+        """
+        try:
+            # 尝试从缓存获取
+            cache_key = self._get_permission_cache_key(user.username, user.domain, team)
+            cached = cache.get(cache_key)
+            if cached:
+                user.roles = cached.get("roles", [])
+                user.permission = {k: set(v) for k, v in cached.get("permission", {}).items()}
+                user.is_superuser = cached.get("is_superuser", False)
+                user.role_ids = cached.get("role_ids", [])
+                return
+
+            # 获取用户所有角色
+            all_role_ids = self._get_user_all_roles(user)
+
+            # 延迟导入避免循环依赖
+            from apps.system_mgmt.models import Menu, Role
+
+            # 获取角色名称
+            role_list = Role.objects.filter(id__in=all_role_ids)
+            role_names = [f"{role.app}--{role.name}" if role.app else role.name for role in role_list]
+
+            # 判断是否超级用户
+            is_superuser = "admin" in role_names or "system-manager--admin" in role_names
+
+            # 获取权限（菜单）
+            permission: Dict[str, Set[str]] = {}
+            if not is_superuser:
+                menu_list = role_list.values_list("menu_list", flat=True)
+                menu_ids: List[int] = []
+                for i in menu_list:
+                    if i:
+                        menu_ids.extend(i)
+                menu_data = Menu.objects.filter(id__in=list(set(menu_ids))).values_list("app", "name")
+                for app, name in menu_data:
+                    permission.setdefault(app, set()).add(name)
+
+            # 设置到用户对象
+            user.roles = role_names
+            user.permission = permission
+            user.is_superuser = is_superuser
+            user.role_ids = list(all_role_ids)
+
+            # 缓存结果
+            cache.set(
+                cache_key,
+                {
+                    "roles": role_names,
+                    "permission": {k: list(v) for k, v in permission.items()},
+                    "is_superuser": is_superuser,
+                    "role_ids": list(all_role_ids),
+                },
+                self.PERMISSION_CACHE_TTL,
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to populate user permissions for {user.username}@{user.domain}: {e}")
+            # 设置空权限，让权限检查正常拒绝
+            user.roles = []
+            user.permission = {}
+            user.is_superuser = False
+            user.role_ids = []
+
+    def _get_user_all_roles(self, user: User) -> Set[int]:
+        """
+        获取用户的所有角色（个人角色 + 组角色，含完整继承链）
+
+        继承规则：沿 parent_id 链向上追溯，只要父级 allow_inherit_roles=True，
+        就收集该父级的角色并继续向上，直到某层 allow_inherit_roles=False 或到达根节点为止。
+
+        复用 system_mgmt/nats_api.py 中 get_user_all_roles 的逻辑。
+        """
+        # 延迟导入避免循环依赖
+        from apps.system_mgmt.models import Group
+
+        # 用户直接授权的角色
+        personal_role_ids = set(getattr(user, "role_list", []) or [])
+
+        group_role_ids: Set[int] = set()
+        user_groups = user.group_list or []
+
+        if user_groups:
+            # 单次查询所有组织，内存中完成递归，避免 N+1
+            all_groups = {g.id: g for g in Group.objects.prefetch_related("roles").all()}
+            visited: Set[int] = set()
+
+            def collect_roles(group_id: int) -> None:
+                if group_id in visited:
+                    return
+                visited.add(group_id)
+
+                group = all_groups.get(group_id)
+                if not group:
+                    return
+
+                # 收集自身角色
+                for role in group.roles.all():
+                    group_role_ids.add(role.id)
+
+                # 向上追溯：父级 allow_inherit_roles=True 才继续继承
+                parent_id = group.parent_id
+                if parent_id:
+                    parent = all_groups.get(parent_id)
+                    if parent and parent.allow_inherit_roles:
+                        collect_roles(parent_id)
+
+            for gid in user_groups:
+                # 处理 group_list 可能是 [{"id": 1}] 或 [1] 的情况
+                if isinstance(gid, dict):
+                    gid = gid.get("id")
+                if gid:
+                    collect_roles(gid)
+
+        return personal_role_ids | group_role_ids
 
 
 class AuthBackend(ModelBackend):

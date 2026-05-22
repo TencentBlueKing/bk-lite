@@ -8,6 +8,7 @@ from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.opspilot.models import FileKnowledge, KnowledgeDocument
 from apps.opspilot.serializers import FileKnowledgeSerializer
 from apps.opspilot.utils.team_permission_mixin import TeamPermissionMixin
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class FileKnowledgeViewSet(TeamPermissionMixin, LanguageViewSet):
@@ -34,6 +35,11 @@ class FileKnowledgeViewSet(TeamPermissionMixin, LanguageViewSet):
 
         files = request.FILES.getlist("files")
         result = self.import_file_knowledge(files, kwargs, request.user.username, request.user.domain)
+        if result.get("result"):
+            file_names = ", ".join([f.name for f in files[:3]])
+            if len(files) > 3:
+                file_names += f" 等{len(files)}个文件"
+            log_operation(request, "create", "opspilot", f"创建文件知识文档: {file_names}")
         return JsonResponse(result)
 
     def import_file_knowledge(self, files, kwargs, username, domain):

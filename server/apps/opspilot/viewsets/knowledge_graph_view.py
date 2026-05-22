@@ -10,6 +10,7 @@ from apps.opspilot.models import KnowledgeBase, KnowledgeGraph
 from apps.opspilot.serializers.knowledge_graph_serializers import KnowledgeGraphSerializer
 from apps.opspilot.tasks import rebuild_graph_community_by_instance
 from apps.opspilot.utils.graph_utils import GraphUtils
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class KnowledgeGraphFilter(FilterSet):
@@ -42,6 +43,26 @@ class KnowledgeGraphViewSet(MaintainerViewSet):
     def list(self, request, *args, **kwargs):
         """禁用 list 接口"""
         return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
+
+    @HasPermission("knowledge_document-Add")
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        if response.status_code == 201:
+            data = response.data
+            kb = KnowledgeBase.objects.filter(id=data.get("knowledge_base_id") or request.data.get("knowledge_base_id")).first()
+            kb_name = kb.name if kb else str(request.data.get("knowledge_base_id"))
+            graph_name = data.get("name", request.data.get("name", ""))
+            log_operation(request, "create", "opspilot", f"创建知识库（{kb_name}）的知识图谱: {graph_name}")
+        return response
+
+    @HasPermission("knowledge_document-Set")
+    def partial_update(self, request, *args, **kwargs):
+        obj = self.get_object()
+        response = super().partial_update(request, *args, **kwargs)
+        if response.status_code == 200:
+            kb_name = obj.knowledge_base.name if obj.knowledge_base else str(obj.knowledge_base_id)
+            log_operation(request, "update", "opspilot", f"更新知识库（{kb_name}）的知识图谱: {obj.name}")
+        return response
 
     @action(methods=["GET"], detail=False)
     @HasPermission("knowledge_document-View")
@@ -100,7 +121,10 @@ class KnowledgeGraphViewSet(MaintainerViewSet):
             GraphUtils.delete_graph(instance)
         except Exception as e:
             return JsonResponse({"result": False, "message": str(e)}, status=500)
+        graph_name = instance.name
+        kb_name = knowledge_base.name
         instance.delete()
+        log_operation(request, "delete", "opspilot", f"删除知识库（{kb_name}）的知识图谱: {graph_name}")
         return JsonResponse({"result": True})
 
     @action(methods=["POST"], detail=False)

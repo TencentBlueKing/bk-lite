@@ -12,7 +12,7 @@ from apps.system_mgmt.utils.channel_utils import send_email_to_user
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def write_error_log_async(self, username, app, module, error_message, domain):
+def write_error_log_async(self, username, app, module, error_message, domain, stack_trace):
     """
     异步写入错误日志到数据库
 
@@ -27,14 +27,7 @@ def write_error_log_async(self, username, app, module, error_message, domain):
         dict: 执行结果
     """
     try:
-        ErrorLog.objects.create(
-            username=username,
-            app=app,
-            module=module,
-            error_message=error_message,
-            domain=domain,
-        )
-        logger.debug(f"Successfully logged error for {username}@{domain} in {app}/{module}")
+        ErrorLog.objects.create(username=username, app=app, module=module, error_message=error_message, domain=domain, stack_trace=stack_trace)
         return {"result": True, "message": "Error log written successfully"}
     except Exception as exc:
         logger.error(f"Failed to write error log: {str(exc)}")
@@ -267,6 +260,11 @@ def check_password_expiry_and_notify():
     # 读取密码策略配置
     validity_setting = SystemSettings.objects.filter(key="pwd_set_validity_period").first()
     validity_days = int(validity_setting.value) if validity_setting else 180
+
+    # validity_days <= 0 表示永不过期，跳过过期检查
+    if validity_days <= 0:
+        logger.info("密码有效期设置为永不过期，跳过过期提醒")
+        return {"result": True, "message": "Password never expires, skipping reminder"}
 
     reminder_setting = SystemSettings.objects.filter(key="pwd_set_expiry_reminder_days").first()
     reminder_days = int(reminder_setting.value) if reminder_setting else 7

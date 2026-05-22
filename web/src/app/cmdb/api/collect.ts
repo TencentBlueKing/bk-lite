@@ -56,6 +56,10 @@ export const useCollectApi = () => {
   const getTaskStatus = () =>
     get('/cmdb/api/collect/task_status');
 
+  // 获取采集任务聚合概览（卡片用）
+  const getTaskOverview = () =>
+    get('/cmdb/api/collect/task_overview/');
+
   const getCollectTaskNames = () =>
     get('/cmdb/api/collect/collect_task_names/');
 
@@ -73,6 +77,7 @@ export const useCollectApi = () => {
     getCollectRegions,
     getCollectModelDoc,
     getTaskStatus,
+    getTaskOverview,
     getCollectTaskNames,
   };
 };

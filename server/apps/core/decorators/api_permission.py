@@ -68,12 +68,12 @@ class HasRole(object):
                 loader = LanguageLoader(app="core", default_lang="en")
                 return WebUtils.response_403(loader.get("error.insufficient_permissions", "Insufficient permissions"))
 
-            # 检查API通行证
-            if getattr(request, "api_pass", False):
-                return task_definition(*args, **kwargs)
-
             # 如果没有指定角色要求，直接通过
             if not self.roles:
+                return task_definition(*args, **kwargs)
+
+            # 检查超级用户
+            if getattr(request.user, "is_superuser", False):
                 return task_definition(*args, **kwargs)
 
             # 获取用户角色并检查权限
@@ -134,10 +134,6 @@ class HasPermission(object):
             if request is None:
                 loader = LanguageLoader(app="core", default_lang="en")
                 return WebUtils.response_403(loader.get("error.insufficient_permissions", "Insufficient permissions"))
-
-            # 检查API通行证
-            if getattr(request, "api_pass", False):
-                return task_definition(*args, **kwargs)
 
             # 检查超级用户
             if getattr(request.user, "is_superuser", False):

@@ -11,6 +11,7 @@ import {
   getOpsChartTheme,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
+import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 
 interface ComSingleProps {
   rawData: unknown;
@@ -18,54 +19,6 @@ interface ComSingleProps {
   config?: ValueConfig;
   onReady?: (ready: boolean) => void;
 }
-
-const toAlphaColor = (inputColor: string, alpha: number) => {
-  if (inputColor.startsWith('#')) {
-    const normalized = inputColor.replace('#', '');
-    const hex =
-      normalized.length === 3
-        ? normalized
-          .split('')
-          .map((char) => `${char}${char}`)
-          .join('')
-        : normalized;
-    const red = parseInt(hex.slice(0, 2), 16);
-    const green = parseInt(hex.slice(2, 4), 16);
-    const blue = parseInt(hex.slice(4, 6), 16);
-    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
-  }
-
-  const matched = inputColor.match(/rgba?\(([^)]+)\)/);
-  if (matched) {
-    const [red, green, blue] = matched[1]
-      .split(',')
-      .slice(0, 3)
-      .map((part) => part.trim());
-    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
-  }
-
-  return inputColor;
-};
-
-const getValueByPathForSingle = (obj: unknown, path: string): unknown => {
-  if (!obj || !path) return undefined;
-
-  return path.split('.').reduce((current, key) => {
-    if (current === null || current === undefined) return undefined;
-
-    if (Array.isArray(current)) {
-      const index = parseInt(key, 10);
-      if (!isNaN(index) && index >= 0 && index < current.length) {
-        return current[index];
-      }
-      return current.length > 0 && current[0] && typeof current[0] === 'object'
-        ? (current[0] as Record<string, unknown>)[key]
-        : undefined;
-    }
-
-    return (current as Record<string, unknown>)[key];
-  }, obj);
-};
 
 const ComSingle: React.FC<ComSingleProps> = ({
   rawData,
@@ -85,7 +38,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
     const selectedField = config?.selectedFields?.[0];
 
     if (selectedField) {
-      const extracted = getValueByPathForSingle(data, selectedField);
+      const extracted = getValueByPath(data, selectedField);
       if (extracted !== undefined && extracted !== null) {
         return typeof extracted === 'number' || typeof extracted === 'string'
           ? extracted
@@ -130,10 +83,11 @@ const ComSingle: React.FC<ComSingleProps> = ({
   const isDataReady = rawValue !== null;
   const displayValue = formatDisplayValue(
     numericValue,
-    config?.unit,
+    undefined,
     config?.decimalPlaces,
     config?.conversionFactor
   );
+  const unitText = config?.unit?.trim() || '';
 
   useEffect(() => {
     if (!loading) {
@@ -176,40 +130,52 @@ const ComSingle: React.FC<ComSingleProps> = ({
     );
   }
 
-  const displayText = String(displayValue);
-  const textLength = Math.max(displayText.length, 1);
+  // Format number with thousands separator
+  const formatWithThousands = (value: string | number | null): string => {
+    if (value === null) return '--';
+    const strVal = String(value);
+    // If it's a pure number (possibly with decimals), add thousands separator
+    const parts = strVal.split('.');
+    const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return parts.length > 1 ? `${intPart}.${parts[1]}` : intPart;
+  };
+
+  const displayText = formatWithThousands(displayValue);
+  const textLength = Math.max(displayText.length + (unitText.length * 0.5), 1);
   const metricColor = color || chartTheme.singleValueColor;
   const adaptiveFontSize = (() => {
     const { width, height } = containerSize;
-    if (!width || !height) return 42;
+    if (!width || !height) return 32;
 
-    const heightBasedSize = height * 0.42;
-    const widthBasedSize = width / Math.max(textLength * 0.6, 2.6);
-    return Math.max(36, Math.min(104, Math.min(heightBasedSize, widthBasedSize)));
+    const heightBasedSize = height * 0.45;
+    const widthBasedSize = width / Math.max(textLength * 0.55, 2.4);
+    return Math.max(24, Math.min(48, Math.min(heightBasedSize, widthBasedSize)));
   })();
 
   return (
     <div
       ref={containerRef}
-      className="relative h-full overflow-hidden flex flex-col items-center justify-center px-5 py-4"
-      style={{
-        background: `linear-gradient(180deg, ${chartTheme.singleValueSurface} 0%, ${chartTheme.panelSubtleBg} 100%)`,
-        borderRadius: 14,
-        border: `1px solid ${toAlphaColor(metricColor, 0.08)}`,
-      }}
+      className="h-full overflow-hidden flex flex-col justify-center px-2"
     >
-      <div className="relative z-10 flex flex-col items-center justify-center text-center">
-        <div
-          className="font-bold transition-colors duration-300 leading-none text-center"
-          style={{
-            color: metricColor,
-            fontSize: adaptiveFontSize,
-            textShadow: chartTheme.singleValueGlow,
-            letterSpacing: '-0.04em',
-          }}
-        >
-          {displayText}
-        </div>
+      <div
+        className="font-semibold leading-none"
+        style={{
+          color: metricColor,
+          fontSize: adaptiveFontSize,
+          letterSpacing: '-0.02em',
+        }}
+      >
+        {displayText}
+        {unitText && (
+          <span
+            style={{
+              fontSize: adaptiveFontSize * 0.55,
+              marginLeft: 2,
+            }}
+          >
+            {unitText}
+          </span>
+        )}
       </div>
     </div>
   );

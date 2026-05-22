@@ -1,0 +1,11 @@
+[[inputs.prometheus]]
+    startup_error_behavior = "retry"
+    urls = ["http://127.0.0.1:${LISTEN_PORT__{{ config_id }}}/metrics"]
+    interval = "{{ interval }}s"
+    timeout = "{{ ENV_SCRAPE_TIMEOUT | default('10s', true) }}"
+    response_timeout = "{{ ENV_SCRAPE_TIMEOUT | default('10s', true) }}"
+    [inputs.prometheus.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "exporter"
+        config_type = "dameng"

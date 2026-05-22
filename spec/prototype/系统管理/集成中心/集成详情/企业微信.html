@@ -174,8 +174,6 @@
         margin-top: 8px;
         display: inline-flex;
         align-items: center;
-        height: 28px;
-        padding: 0 10px;
         border-radius: 999px;
         border: 1px solid #dce8fb;
         background: #f0f6ff;
@@ -287,9 +285,9 @@
       }
 
       .toggle-btn.active {
-        color: var(--primary);
-        border-color: #bcd3fb;
-        background: var(--primary-weak);
+        color: var(--danger);
+        border-color: #f3cbcb;
+        background: #fff8f8;
       }
 
       .tabs {
@@ -325,10 +323,15 @@
         padding: 18px 20px 14px;
         border-bottom: 1px solid var(--line-soft);
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         justify-content: space-between;
         gap: 16px;
         flex-wrap: wrap;
+      }
+
+      .content-copy {
+        flex: 1;
+        min-width: 320px;
       }
 
       .content-title {
@@ -345,18 +348,69 @@
       .content-status-wrap {
         display: flex;
         align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
+        gap: 16px;
+        flex-wrap: nowrap;
         justify-content: flex-end;
+      }
+
+      .status-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--text-3);
+        white-space: nowrap;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #b8bec9;
+      }
+
+      .status-dot.success {
+        background: var(--success);
+      }
+
+      .status-text.success {
+        color: var(--success);
+        font-weight: 600;
+      }
+
+      .status-text.pending {
+        color: #7f8795;
+        font-weight: 600;
+      }
+
+      .content-actions-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: nowrap;
+        justify-content: flex-end;
+      }
+
+      .content-desc-link {
+        color: var(--primary);
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      .content-desc-link:hover {
+        text-decoration: underline;
+      }
+
+      .content-action-btn {
+        min-width: 88px;
       }
 
       .content-status-wrap.hidden {
         display: none;
       }
 
-      .content-status-label {
-        font-size: 12px;
-        color: var(--text-3);
+      .hidden {
+        display: none !important;
       }
 
       .content-body {
@@ -405,6 +459,23 @@
         border-radius: 0;
         background: transparent;
         padding: 0;
+      }
+
+      .form-section {
+        display: grid;
+        gap: 12px;
+      }
+
+      .section-label {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--text-2);
+      }
+
+      .section-split {
+        height: 1px;
+        background: var(--line-soft);
+        margin: 6px 0 2px;
       }
 
       .ability-head {
@@ -740,6 +811,16 @@
           grid-template-columns: 1fr;
         }
 
+        .content-status-wrap {
+          width: 100%;
+          flex-wrap: wrap;
+          justify-content: flex-start;
+        }
+
+        .content-actions-group {
+          flex-wrap: wrap;
+        }
+
         .main-nav {
           display: none;
         }
@@ -785,154 +866,153 @@
 
       <section class="content-card">
         <div class="content-head">
-          <div>
+          <div class="content-copy">
             <div class="content-title" id="contentTitle">基础连接</div>
             <div class="content-desc" id="contentDesc">基础连接通过测试后，其他能力才能继续保存与测试。</div>
           </div>
           <div id="contentStatusWrap" class="content-status-wrap">
-            <span id="contentStatusLabel" class="content-status-label">测试状态</span>
-            <span id="contentStatusBadge" class="ability-badge active">测试成功</span>
-            <button id="contentEnableButton" class="primary-btn hidden" type="button" onclick="toggleCapability()">启动</button>
+            <span id="contentTestMeta" class="status-meta">
+              <span>测试状态：</span>
+              <span class="status-dot success"></span>
+              <span id="contentTestText" class="status-text success">测试成功</span>
+            </span>
+            <span id="contentActiveMeta" class="status-meta hidden">
+              <span>平台状态：</span>
+              <span id="contentActiveDot" class="status-dot"></span>
+              <span id="contentActiveText" class="status-text pending">未启用</span>
+            </span>
+            <div class="content-actions-group">
+              <button id="contentSaveButton" class="secondary-btn content-action-btn" type="button">保存</button>
+              <button id="contentTestButton" class="ghost-btn content-action-btn" type="button">测试连接</button>
+              <button id="contentEnableButton" class="primary-btn hidden" type="button" onclick="toggleCapability()">启用能力</button>
+            </div>
           </div>
         </div>
         <div class="content-body">
           <div id="panel-base" class="panel active stack">
             <div class="section-card">
-              <div class="ability-head" style="margin-bottom: 16px;">
-                <div>
-                  <div class="ability-title">连接配置</div>
+              <div class="form-section">
+                <div class="section-label">应用凭证</div>
+                <div class="form-grid base-form-grid">
+                  <div class="field">
+                    <label class="label" for="corpId">企业微信 CorpID</label>
+                    <input id="corpId" class="input" value="wwc1a23b6d9e" />
+                  </div>
+                  <div class="field">
+                    <label class="label" for="agentId">企业微信 AgentID</label>
+                    <input id="agentId" class="input" value="1000042" />
+                  </div>
+                  <div class="field full">
+                    <label class="label" for="secret">企业微信密钥</label>
+                    <input id="secret" class="input" type="password" value="1234567890abcdef" />
+                  </div>
                 </div>
-              </div>
-              <div class="form-grid base-form-grid">
-                <div class="field">
-                  <label class="label" for="corpId">企业微信 CorpID</label>
-                  <input id="corpId" class="input" value="wwc1a23b6d9e" />
+                <div class="section-split"></div>
+                <div class="section-label">请求配置</div>
+                <div class="form-grid base-form-grid">
+                  <div class="field full">
+                    <label class="label" for="scope">应用授权作用域</label>
+                    <input id="scope" class="input" value="snsapi_privateinfo" />
+                  </div>
+                  <div class="field full">
+                    <label class="label" for="tokenUrl">获取 access_token 的请求地址</label>
+                    <input id="tokenUrl" class="input" value="https://qyapi.weixin.qq.com/cgi-bin/gettoken" />
+                  </div>
+                  <div class="field full">
+                    <label class="label" for="proxyUrl">代理地址</label>
+                    <input id="proxyUrl" class="input" placeholder="选填，例如 http://127.0.0.1:8080" />
+                  </div>
                 </div>
-                <div class="field">
-                  <label class="label" for="agentId">企业微信 AgentID</label>
-                  <input id="agentId" class="input" value="1000042" />
-                </div>
-                <div class="field full">
-                  <label class="label" for="secret">企业微信密钥</label>
-                  <input id="secret" class="input" type="password" value="1234567890abcdef" />
-                </div>
-                <div class="field full">
-                  <label class="label" for="scope">应用授权作用域</label>
-                  <input id="scope" class="input" value="snsapi_privateinfo" />
-                </div>
-                <div class="field full">
-                  <label class="label" for="tokenUrl">获取 access_token 的请求地址</label>
-                  <input id="tokenUrl" class="input" value="https://qyapi.weixin.qq.com/cgi-bin/gettoken" />
-                </div>
-                <div class="field full">
-                  <label class="label" for="proxyUrl">代理地址</label>
-                  <input id="proxyUrl" class="input" placeholder="选填，例如 http://127.0.0.1:8080" />
-                </div>
-              </div>
-              <div class="actions">
-                <button class="ghost-btn" onclick="testConnection(true)">测试连接</button>
-                <button class="secondary-btn" onclick="saveBaseConfig()">保存</button>
               </div>
             </div>
           </div>
 
           <div id="panel-sync" class="panel stack">
             <div class="section-card">
-              <div class="ability-head">
-                <div>
-                  <div class="ability-title">同步配置</div>
-                </div>
-              </div>
 
-              <div class="form-grid base-form-grid">
-                <div class="field">
-                  <label class="label" for="syncOrgListUrl">获取组织列表</label>
-                  <input id="syncOrgListUrl" class="input" placeholder="选填，未填写时使用公有企微接口" />
-                  <div class="hint">私有部署企微可通过该地址替换默认组织列表接口。</div>
+              <div class="form-section">
+                <div class="section-label">同步配置</div>
+                <div class="form-grid base-form-grid">
+                  <div class="field">
+                    <label class="label" for="syncOrgListUrl">获取组织列表</label>
+                    <input id="syncOrgListUrl" class="input" placeholder="选填，未填写时使用公有企微接口" />
+                    <div class="hint">私有部署企微可通过该地址替换默认组织列表接口。</div>
+                  </div>
+                  <div class="field full">
+                    <label class="label" for="syncUserInfoUrl">获取用户信息</label>
+                    <input id="syncUserInfoUrl" class="input" placeholder="选填，未填写时使用公有企微接口" />
+                    <div class="hint">私有部署企微可通过该地址替换默认用户信息接口。</div>
+                  </div>
                 </div>
-                <div class="field full">
-                  <label class="label" for="syncUserInfoUrl">获取用户信息</label>
-                  <input id="syncUserInfoUrl" class="input" placeholder="选填，未填写时使用公有企微接口" />
-                  <div class="hint">私有部署企微可通过该地址替换默认用户信息接口。</div>
-                </div>
-              </div>
-              <div class="actions">
-                <button class="ghost-btn" onclick="testSyncConfig(true)">测试连接</button>
-                <button class="secondary-btn" onclick="saveSyncConfig()">保存配置</button>
               </div>
             </div>
           </div>
 
           <div id="panel-auth" class="panel stack">
             <div class="section-card">
-              <div class="ability-head">
-                <div>
-                  <div class="ability-title">登录认证</div>
+              <div class="form-section">
+                <div class="section-label">认证接口</div>
+                <div class="form-grid base-form-grid">
+                  <div class="field full">
+                    <label class="label" for="authRedirectUrl">企业微信重定向请求地址</label>
+                    <input id="authRedirectUrl" class="input" value="https://open.weixin.qq.com/connect/oauth2/authorize" />
+                  </div>
+                  <div class="field full">
+                    <label class="label" for="authUserInfoUrl">获取访问用户身份</label>
+                    <input id="authUserInfoUrl" class="input" value="https://qyapi.weixin.qq.com/cgi-bin/user/getuserinfo" />
+                  </div>
+                  <div class="field full">
+                    <label class="label" for="authUserDetailUrl">获取访问用户敏感信息</label>
+                    <input id="authUserDetailUrl" class="input" value="https://qyapi.weixin.qq.com/cgi-bin/user/getuserdetail" />
+                  </div>
                 </div>
-              </div>
-
-              <div class="form-grid base-form-grid">
-                <div class="field full">
-                  <label class="label" for="authRedirectUrl">企业微信重定向请求地址</label>
-                  <input id="authRedirectUrl" class="input" value="https://open.weixin.qq.com/connect/oauth2/authorize" />
+                <div class="section-split"></div>
+                <div class="section-label">访问地址</div>
+                <div class="form-grid base-form-grid">
+                  <div class="field full">
+                    <label class="label" for="authMobileUrl">移动端外网地址</label>
+                    <input id="authMobileUrl" class="input" value="https://weops.deadgay.cn:443/o/weops_saas/mobile/?im_code=qywx_mobile" />
+                  </div>
+                  <div class="field full">
+                    <label class="label" for="authPcUrl">PC 端外网地址</label>
+                    <input id="authPcUrl" class="input" value="https://weops.deadgay.cn:443/o/weops_saas/?im_code=qywx_web" />
+                  </div>
+                  <div class="field full">
+                    <label class="label" for="authPcAgent">PC User-Agent 识别标识</label>
+                    <input id="authPcAgent" class="input" value="wxwork" />
+                  </div>
+                  <div class="field full">
+                    <label class="label" for="authUserMapping">用户映射字段(XXX:XXX)</label>
+                    <input id="authUserMapping" class="input" value="telephone:mobile" />
+                  </div>
                 </div>
-                <div class="field full">
-                  <label class="label" for="authUserInfoUrl">获取访问用户身份</label>
-                  <input id="authUserInfoUrl" class="input" value="https://qyapi.weixin.qq.com/cgi-bin/user/getuserinfo" />
-                </div>
-                <div class="field full">
-                  <label class="label" for="authUserDetailUrl">获取访问用户敏感信息</label>
-                  <input id="authUserDetailUrl" class="input" value="https://qyapi.weixin.qq.com/cgi-bin/user/getuserdetail" />
-                </div>
-                <div class="field full">
-                  <label class="label" for="authMobileUrl">移动端外网地址</label>
-                  <input id="authMobileUrl" class="input" value="https://weops.deadgay.cn:443/o/weops_saas/mobile/?im_code=qywx_mobile" />
-                </div>
-                <div class="field full">
-                  <label class="label" for="authPcUrl">pc端外网地址</label>
-                  <input id="authPcUrl" class="input" value="https://weops.deadgay.cn:443/o/weops_saas/?im_code=qywx_web" />
-                </div>
-                <div class="field full">
-                  <label class="label" for="authPcAgent">pc端User-Agent识别标识</label>
-                  <input id="authPcAgent" class="input" value="wxwork" />
-                </div>
-                <div class="field full">
-                  <label class="label" for="authUserMapping">用户映射字段(XXX:XXX)</label>
-                  <input id="authUserMapping" class="input" value="telephone:mobile" />
-                </div>
-              </div>
-              <div class="actions">
-                <button class="ghost-btn" onclick="testAuthConfig(true)">测试连接</button>
-                <button class="secondary-btn" onclick="saveAuthConfig()">保存配置</button>
               </div>
             </div>
           </div>
 
           <div id="panel-notify" class="panel stack">
             <div class="section-card">
-              <div class="ability-head">
-                <div>
-                  <div class="ability-title">通知渠道</div>
-                </div>
-              </div>
 
-              <div class="form-grid base-form-grid">
-                <div class="field full">
-                  <label class="label" for="notifySendUrl">发送通知接口</label>
-                  <input id="notifySendUrl" class="input" value="https://qyapi.weixin.qq.com/cgi-bin/message/send" />
+              <div class="form-section">
+                <div class="section-label">发送配置</div>
+                <div class="form-grid base-form-grid">
+                  <div class="field full">
+                    <label class="label" for="notifySendUrl">发送通知接口</label>
+                    <input id="notifySendUrl" class="input" value="https://qyapi.weixin.qq.com/cgi-bin/message/send" />
+                  </div>
+                  <div class="field full">
+                    <label class="label" for="notifyTicketUrl">获取 ticket 的请求地址</label>
+                    <input id="notifyTicketUrl" class="input" value="https://qyapi.weixin.qq.com/cgi-bin/get_jsapi_ticket" />
+                  </div>
                 </div>
-                <div class="field full">
-                  <label class="label" for="notifyTicketUrl">获取ticket的请求地址</label>
-                  <input id="notifyTicketUrl" class="input" value="https://qyapi.weixin.qq.com/cgi-bin/get_jsapi_ticket" />
+                <div class="section-split"></div>
+                <div class="section-label">字段映射</div>
+                <div class="form-grid base-form-grid">
+                  <div class="field full">
+                    <label class="label" for="notifyFieldMapping">通知字段映射</label>
+                    <input id="notifyFieldMapping" class="input" value="userid" />
+                  </div>
                 </div>
-                <div class="field full">
-                  <label class="label" for="notifyFieldMapping">通知字段映射</label>
-                  <input id="notifyFieldMapping" class="input" value="userid" />
-                </div>
-              </div>
-              <div class="actions">
-                <button class="ghost-btn" onclick="testNotifyConfig(true)">测试连接</button>
-                <button class="secondary-btn" onclick="saveNotifyConfig()">保存配置</button>
               </div>
             </div>
           </div>
@@ -1053,6 +1133,36 @@
         return map[status];
       }
 
+      function bindHeaderActions(name) {
+        const testButton = document.getElementById('contentTestButton');
+        const saveButton = document.getElementById('contentSaveButton');
+        const actionMap = {
+          base: {
+            test: function () { testConnection(true); },
+            save: saveBaseConfig,
+            saveText: '保存'
+          },
+          sync: {
+            test: function () { testSyncConfig(true); },
+            save: saveSyncConfig,
+            saveText: '保存配置'
+          },
+          auth: {
+            test: function () { testAuthConfig(true); },
+            save: saveAuthConfig,
+            saveText: '保存配置'
+          },
+          notify: {
+            test: function () { testNotifyConfig(true); },
+            save: saveNotifyConfig,
+            saveText: '保存配置'
+          }
+        };
+        testButton.onclick = actionMap[name].test;
+        saveButton.onclick = actionMap[name].save;
+        saveButton.textContent = actionMap[name].saveText;
+      }
+
       function confirmSaveWhenPending(isReady) {
         if (isReady) {
           return true;
@@ -1071,43 +1181,67 @@
         document.getElementById('panel-' + name).classList.add('active');
         const content = {
           base: ['基础连接', '基础连接通过测试后，其他能力才能继续保存与测试。'],
-          sync: ['用户同步', '仅维护企微用户同步的接口配置。保存后可测试连通性，实际生效范围由后续业务配置决定。'],
-          auth: ['登录认证', '仅维护企微登录认证的接口与地址配置。保存并测试通过后，可作为后续登录接入配置的基础。'],
-          notify: ['通知渠道', '仅维护企微通知渠道的接口配置。保存并测试通过后，可作为后续通知接入配置的基础。']
+          sync: ['用户同步', '仅维护企微用户同步的接口配置。启用能力后，还需前往<a class="content-desc-link" href="javascript:void(0)">用户同步</a>完成启动。'],
+          auth: ['登录认证', '仅维护企微登录认证的接口与地址配置。启用能力后，还需前往<a class="content-desc-link" href="javascript:void(0)">认证源</a>完成启动。'],
+          notify: ['通知渠道', '仅维护企微通知渠道的接口配置。启用能力后，还需前往<a class="content-desc-link" href="javascript:void(0)">通知渠道</a>完成启动。']
         };
         document.getElementById('contentTitle').textContent = content[name][0];
-        document.getElementById('contentDesc').textContent = content[name][1];
+        document.getElementById('contentDesc').innerHTML = content[name][1];
         const wrap = document.getElementById('contentStatusWrap');
-        const label = document.getElementById('contentStatusLabel');
-        const badge = document.getElementById('contentStatusBadge');
+        const testMeta = document.getElementById('contentTestMeta');
+        const testText = document.getElementById('contentTestText');
+        const activeMeta = document.getElementById('contentActiveMeta');
+        const activeDot = document.getElementById('contentActiveDot');
+        const activeText = document.getElementById('contentActiveText');
+        const testButton = document.getElementById('contentTestButton');
+        const saveButton = document.getElementById('contentSaveButton');
         const enableButton = document.getElementById('contentEnableButton');
-        wrap.classList.toggle('hidden', name !== 'base' && name !== 'sync' && name !== 'auth' && name !== 'notify');
+        wrap.classList.remove('hidden');
+        testButton.classList.remove('hidden');
+        saveButton.classList.remove('hidden');
+        testMeta.classList.remove('hidden');
+        activeMeta.classList.add('hidden');
         enableButton.classList.add('hidden');
+        bindHeaderActions(name);
+        const statuses = computeStatuses();
         if (name === 'base') {
-          const statuses = computeStatuses();
-          label.textContent = '测试状态';
-          badge.className = 'ability-badge ' + (statuses.baseReady ? 'active' : 'draft');
-          badge.textContent = statuses.baseReady ? '测试成功' : '待测试';
+          testText.className = 'status-text ' + (statuses.baseReady ? 'success' : 'pending');
+          testText.textContent = statuses.baseReady ? '测试成功' : '待测试';
         }
         if (name === 'sync') {
-          const statuses = computeStatuses();
-          label.textContent = '测试状态';
-          badge.className = 'ability-badge ' + (statuses.syncReady ? 'active' : 'draft');
-          badge.textContent = statuses.syncReady ? '测试成功' : '待测试';
+          testText.className = 'status-text ' + (statuses.syncReady ? 'success' : 'pending');
+          testText.textContent = statuses.syncReady ? '测试成功' : '待测试';
+          activeMeta.classList.remove('hidden');
+          activeDot.className = 'status-dot ' + (state.syncActive ? 'success' : '');
+          activeText.className = 'status-text ' + (state.syncActive ? 'success' : 'pending');
+          activeText.textContent = state.syncActive ? '已启用' : '未启用';
+          enableButton.className = (state.syncActive ? 'toggle-btn active' : 'primary-btn') + '';
+          enableButton.disabled = !statuses.syncReady;
+          enableButton.textContent = state.syncActive ? '取消启用' : '启用能力';
           enableButton.classList.remove('hidden');
         }
         if (name === 'auth') {
-          const statuses = computeStatuses();
-          label.textContent = '测试状态';
-          badge.className = 'ability-badge ' + (statuses.authReady ? 'active' : 'draft');
-          badge.textContent = statuses.authReady ? '测试成功' : '待测试';
+          testText.className = 'status-text ' + (statuses.authReady ? 'success' : 'pending');
+          testText.textContent = statuses.authReady ? '测试成功' : '待测试';
+          activeMeta.classList.remove('hidden');
+          activeDot.className = 'status-dot ' + (state.authActive ? 'success' : '');
+          activeText.className = 'status-text ' + (state.authActive ? 'success' : 'pending');
+          activeText.textContent = state.authActive ? '已启用' : '未启用';
+          enableButton.className = (state.authActive ? 'toggle-btn active' : 'primary-btn') + '';
+          enableButton.disabled = !statuses.authReady;
+          enableButton.textContent = state.authActive ? '取消启用' : '启用能力';
           enableButton.classList.remove('hidden');
         }
         if (name === 'notify') {
-          const statuses = computeStatuses();
-          label.textContent = '测试状态';
-          badge.className = 'ability-badge ' + (statuses.notifyReady ? 'active' : 'draft');
-          badge.textContent = statuses.notifyReady ? '测试成功' : '待测试';
+          testText.className = 'status-text ' + (statuses.notifyReady ? 'success' : 'pending');
+          testText.textContent = statuses.notifyReady ? '测试成功' : '待测试';
+          activeMeta.classList.remove('hidden');
+          activeDot.className = 'status-dot ' + (state.notifyActive ? 'success' : '');
+          activeText.className = 'status-text ' + (state.notifyActive ? 'success' : 'pending');
+          activeText.textContent = state.notifyActive ? '已启用' : '未启用';
+          enableButton.className = (state.notifyActive ? 'toggle-btn active' : 'primary-btn') + '';
+          enableButton.disabled = !statuses.notifyReady;
+          enableButton.textContent = state.notifyActive ? '取消启用' : '启用能力';
           enableButton.classList.remove('hidden');
         }
       }
@@ -1169,13 +1303,13 @@
         }
         const statuses = computeStatuses();
         if (!statuses[config.ready]) {
-          showToast(config.label + '尚未测试成功，暂不能启动');
+          showToast(config.label + '尚未测试成功，暂不能启用能力');
           return;
         }
         state[config.active] = !state[config.active];
         saveState();
         renderStatuses();
-        showToast(state[config.active] ? config.label + '已启动' : config.label + '已停用');
+        showToast(state[config.active] ? config.label + '能力已启用' : config.label + '能力已取消启用');
       }
 
       function saveSyncConfig() {
@@ -1258,43 +1392,58 @@
       function renderStatuses() {
         const statuses = computeStatuses();
         const contentStatusWrap = document.getElementById('contentStatusWrap');
-        const contentStatusLabel = document.getElementById('contentStatusLabel');
-        const contentStatusBadge = document.getElementById('contentStatusBadge');
+        const contentTestButton = document.getElementById('contentTestButton');
+        const contentSaveButton = document.getElementById('contentSaveButton');
         const contentEnableButton = document.getElementById('contentEnableButton');
         if (!contentStatusWrap.classList.contains('hidden')) {
           const activeTab = document.querySelector('.tab.active');
           const activeTabText = activeTab ? activeTab.textContent.trim() : '基础连接';
+          const contentTestText = document.getElementById('contentTestText');
+          const contentActiveMeta = document.getElementById('contentActiveMeta');
+          const contentActiveDot = document.getElementById('contentActiveDot');
+          const contentActiveText = document.getElementById('contentActiveText');
+          contentTestButton.classList.remove('hidden');
+          contentSaveButton.classList.remove('hidden');
+          contentActiveMeta.classList.add('hidden');
           if (activeTabText === '基础连接') {
-            contentStatusLabel.textContent = '测试状态';
-            contentStatusBadge.className = 'ability-badge ' + (statuses.baseReady ? 'active' : 'draft');
-            contentStatusBadge.textContent = statuses.baseReady ? '测试成功' : '待测试';
+            contentTestText.className = 'status-text ' + (statuses.baseReady ? 'success' : 'pending');
+            contentTestText.textContent = statuses.baseReady ? '测试成功' : '待测试';
             contentEnableButton.classList.add('hidden');
           }
           if (activeTabText === '用户同步') {
-            contentStatusLabel.textContent = '测试状态';
-            contentStatusBadge.className = 'ability-badge ' + (statuses.syncReady ? 'active' : 'draft');
-            contentStatusBadge.textContent = statuses.syncReady ? '测试成功' : '待测试';
+            contentTestText.className = 'status-text ' + (statuses.syncReady ? 'success' : 'pending');
+            contentTestText.textContent = statuses.syncReady ? '测试成功' : '待测试';
+            contentActiveMeta.classList.remove('hidden');
+            contentActiveDot.className = 'status-dot ' + (state.syncActive ? 'success' : '');
+            contentActiveText.className = 'status-text ' + (state.syncActive ? 'success' : 'pending');
+            contentActiveText.textContent = state.syncActive ? '已启用' : '未启用';
             contentEnableButton.className = (state.syncActive ? 'toggle-btn active' : 'primary-btn') + '';
             contentEnableButton.disabled = !statuses.syncReady;
-            contentEnableButton.textContent = state.syncActive ? '已启动' : '启动';
+            contentEnableButton.textContent = state.syncActive ? '取消启用' : '启用能力';
             contentEnableButton.classList.remove('hidden');
           }
           if (activeTabText === '登录认证') {
-            contentStatusLabel.textContent = '测试状态';
-            contentStatusBadge.className = 'ability-badge ' + (statuses.authReady ? 'active' : 'draft');
-            contentStatusBadge.textContent = statuses.authReady ? '测试成功' : '待测试';
+            contentTestText.className = 'status-text ' + (statuses.authReady ? 'success' : 'pending');
+            contentTestText.textContent = statuses.authReady ? '测试成功' : '待测试';
+            contentActiveMeta.classList.remove('hidden');
+            contentActiveDot.className = 'status-dot ' + (state.authActive ? 'success' : '');
+            contentActiveText.className = 'status-text ' + (state.authActive ? 'success' : 'pending');
+            contentActiveText.textContent = state.authActive ? '已启用' : '未启用';
             contentEnableButton.className = (state.authActive ? 'toggle-btn active' : 'primary-btn') + '';
             contentEnableButton.disabled = !statuses.authReady;
-            contentEnableButton.textContent = state.authActive ? '已启动' : '启动';
+            contentEnableButton.textContent = state.authActive ? '取消启用' : '启用能力';
             contentEnableButton.classList.remove('hidden');
           }
           if (activeTabText === '通知渠道') {
-            contentStatusLabel.textContent = '测试状态';
-            contentStatusBadge.className = 'ability-badge ' + (statuses.notifyReady ? 'active' : 'draft');
-            contentStatusBadge.textContent = statuses.notifyReady ? '测试成功' : '待测试';
+            contentTestText.className = 'status-text ' + (statuses.notifyReady ? 'success' : 'pending');
+            contentTestText.textContent = statuses.notifyReady ? '测试成功' : '待测试';
+            contentActiveMeta.classList.remove('hidden');
+            contentActiveDot.className = 'status-dot ' + (state.notifyActive ? 'success' : '');
+            contentActiveText.className = 'status-text ' + (state.notifyActive ? 'success' : 'pending');
+            contentActiveText.textContent = state.notifyActive ? '已启用' : '未启用';
             contentEnableButton.className = (state.notifyActive ? 'toggle-btn active' : 'primary-btn') + '';
             contentEnableButton.disabled = !statuses.notifyReady;
-            contentEnableButton.textContent = state.notifyActive ? '已启动' : '启动';
+            contentEnableButton.textContent = state.notifyActive ? '取消启用' : '启用能力';
             contentEnableButton.classList.remove('hidden');
           }
         }

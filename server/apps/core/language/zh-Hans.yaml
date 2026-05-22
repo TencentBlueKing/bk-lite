@@ -5,9 +5,11 @@
 error:
   # 用户与认证错误
   user_not_found: 请求中未找到用户
+  user_not_logged_in: 用户未登录
   no_permission_view: 你没有权限查看此实例
   no_permission_delete: 你没有权限删除此实例
   no_permission_update: 你没有权限更新此实例
+  no_permission_for_groups: 您没有以下组织的权限，无法创建或修改：{invalid_groups}
   insufficient_permissions: 权限不足
   token_validation_failed: 令牌验证失败
   please_provide_token: 请提供令牌

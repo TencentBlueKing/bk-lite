@@ -128,7 +128,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         group = Group.objects.create(parent_id=parent_id, name=group_name, is_virtual=is_virtual)
 
         # 记录操作日志
-        log_operation(request, "create", "group", f"新增组织: {group_name}")
+        log_operation(request, "create", "system-manager", f"新增组织: {group_name}")
 
         # 返回结果
         return JsonResponse(
@@ -252,7 +252,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
             logger.exception(e)
 
         # 记录操作日志
-        log_operation(request, "update", "group", f"编辑组织: {request.data.get('group_name')}")
+        log_operation(request, "update", "system-manager", f"编辑组织: {request.data.get('group_name')}")
 
         return JsonResponse({"result": True})
 
@@ -307,7 +307,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         Group.objects.filter(id__in=groups_to_delete).delete()
 
         # 记录操作日志
-        log_operation(request, "delete", "group", f"删除组织: {obj.name} (包含{len(groups_to_delete)}个子组)")
+        log_operation(request, "delete", "system-manager", f"删除组织: {obj.name} (包含{len(groups_to_delete)}个子组)")
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -359,3 +359,52 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
                 },
             }
         )
+
+    @action(detail=False, methods=["POST"])
+    @HasPermission("user_group-View")
+    def batch_get_group_detail_with_roles(self, request):
+        """批量获取多个组织的角色详情，避免前端逐个请求"""
+        group_ids = request.data.get("group_ids", [])
+        if not group_ids or not isinstance(group_ids, list):
+            return JsonResponse({"result": False, "message": "group_ids 参数是必填的列表"}, status=400)
+
+        all_groups = {g.id: g for g in Group.objects.prefetch_related("roles").all()}
+
+        results = []
+        for gid in group_ids:
+            gid = int(gid)
+            group = all_groups.get(gid)
+            if not group:
+                continue
+
+            own_role_ids = list(group.roles.values_list("id", flat=True))
+
+            inherited_role_ids = []
+            inherited_role_source_map = {}
+            if group.parent_id:
+                visited = set()
+                current_parent_id = group.parent_id
+                while current_parent_id and current_parent_id not in visited:
+                    visited.add(current_parent_id)
+                    parent = all_groups.get(current_parent_id)
+                    if not parent or not parent.allow_inherit_roles:
+                        break
+                    for role in parent.roles.all():
+                        if role.id not in inherited_role_ids:
+                            inherited_role_ids.append(role.id)
+                            inherited_role_source_map[str(role.id)] = parent.name
+                    current_parent_id = parent.parent_id or 0
+
+            results.append(
+                {
+                    "group_id": group.id,
+                    "group_name": group.name,
+                    "allow_inherit_roles": group.allow_inherit_roles,
+                    "own_role_ids": own_role_ids,
+                    "inherited_role_ids": inherited_role_ids,
+                    "inherited_role_source": ", ".join(dict.fromkeys(inherited_role_source_map.values())),
+                    "inherited_role_source_map": inherited_role_source_map,
+                }
+            )
+
+        return JsonResponse({"result": True, "data": results})

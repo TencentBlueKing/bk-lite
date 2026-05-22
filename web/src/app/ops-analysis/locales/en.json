@@ -61,7 +61,12 @@
       "uploadedImage": "Uploaded Image",
       "confirm": "Confirm",
       "noColor": "No Color",
-      "backgroundColor": "Background Color"
+      "backgroundColor": "Background Color",
+      "displayField": "Display Field",
+      "valueField": "Value Field",
+      "selectDisplayField": "Please select a display field",
+      "selectValueField": "Please select a value field",
+      "noAvailableFields": "No available fields are configured for this data source"
     },
     "singleValueNodeDefault": "Single Value Node",
     "bringToBack": "Bring to Back",
@@ -207,6 +212,7 @@
     "singleValue": "Single Value",
     "operationFailed": "Operation failed",
     "table": "Table",
+    "topN": "Top N",
     "responseFieldSchemaConfig": "API Field Definition",
     "schemaOptionalAutoGenTip": "This setting is optional. If not configured, default columns are auto-generated from returned fields on first use.",
     "addField": "Add Field",

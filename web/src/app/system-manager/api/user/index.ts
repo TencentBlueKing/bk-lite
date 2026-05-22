@@ -1,4 +1,9 @@
 import useApiClient from '@/utils/request';
+import type {
+  ChangeUserStatusParams,
+  ChangeUserStatusResponse,
+} from '@/app/system-manager/types/user';
+
 export const useUserApi = () => {
   const { get, post } = useApiClient();
 
@@ -29,6 +34,9 @@ export const useUserApi = () => {
   async function setUserPassword(params: any) {
     return await post(`/system_mgmt/user/reset_password/`, params)
   }
+  async function changeUserStatus(params: ChangeUserStatusParams) {
+    return await post<ChangeUserStatusResponse>(`/system_mgmt/user/change_status/`, params)
+  }
   return {
     getUsersList,
     getOrgTree,
@@ -39,5 +47,6 @@ export const useUserApi = () => {
     addUser,
     deleteUser,
     setUserPassword,
+    changeUserStatus,
   }
 }

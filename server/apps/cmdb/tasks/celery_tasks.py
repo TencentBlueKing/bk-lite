@@ -2,7 +2,7 @@
 # @File: tasks.py
 # @Time: 2025/3/3 15:34
 # @Author: windyzhao
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from celery import shared_task
 from django.utils.timezone import now
@@ -61,6 +61,7 @@ def sync_collect_task(instance_id):
     )
     exec_error_message = ""
     task_exec_status = CollectRunStatusType.SUCCESS
+    config_file_pending = False
     try:
         if instance.is_job:
             # 脚本采集
@@ -71,7 +72,11 @@ def sync_collect_task(instance_id):
             collect = ProtocolCollect(task=instance)
             result, format_data = collect.main()
 
-        if instance.task_type == CollectPluginTypes.CONFIG_FILE and (result.get("config_file") or {}).get("status") == "pending":
+        config_file_pending = (
+            instance.task_type == CollectPluginTypes.CONFIG_FILE
+            and (result.get("config_file") or {}).get("status") == "pending"
+        )
+        if config_file_pending:
             instance.exec_status = CollectRunStatusType.RUNNING
         else:
             instance.exec_status = CollectRunStatusType.SUCCESS
@@ -108,8 +113,8 @@ def sync_collect_task(instance_id):
         # 如果任务执行失败，添加错误信息提示
         if task_exec_status == CollectRunStatusType.ERROR:
             collect_digest["message"] = exec_error_message
-        elif instance.task_type == CollectPluginTypes.CONFIG_FILE and (result.get("config_file") or {}).get("status") == "pending":
-            collect_digest["message"] = "配置文件采集结果等待回传中"
+        elif config_file_pending:
+            collect_digest["message"] = "配置文件采集已触发，等待回传中"
         elif format_data.get("__raw_data__", []).__len__() == 0:
             collect_digest["message"] = "没有发现任何有效数据!"
             instance.exec_status = CollectRunStatusType.ERROR
@@ -122,7 +127,17 @@ def sync_collect_task(instance_id):
                         last_time = i["__time__"]
             collect_digest["last_time"] = last_time
         instance.collect_digest = collect_digest
-        instance.save()
+        if config_file_pending:
+            updated = CollectModels._default_manager.filter(id=instance_id, collect_data={}).update(
+                collect_data=result,
+                format_data=format_data,
+                collect_digest=collect_digest,
+                updated_at=now(),
+            )
+            if not updated:
+                logger.info("配置文件采集结果已由回调更新，跳过本地 pending 覆盖 task_id=%s", instance_id)
+        else:
+            instance.save()
     except Exception as err:
         import traceback
 
@@ -143,11 +158,22 @@ def sync_periodic_update_task_status():
     :return:
     """
     logger.info("==开始周期执行修改采集状态==")
-    five_minutes_ago = datetime.now() - timedelta(minutes=5)
-    rows = CollectModels._default_manager.filter(exec_status=CollectRunStatusType.RUNNING, exec_time__lt=five_minutes_ago).update(
+    five_minutes_ago = now() - timedelta(minutes=5)
+    config_file_rows = CollectModels._default_manager.filter(
+        task_type=CollectPluginTypes.CONFIG_FILE,
+        exec_status=CollectRunStatusType.RUNNING,
+        exec_time__lt=five_minutes_ago,
+    ).update(
+        exec_status=CollectRunStatusType.ERROR,
+        collect_digest={"message": "配置文件采集已触发，但在 5 分钟内未收到回传结果"},
+    )
+    rows = CollectModels._default_manager.filter(
+        exec_status=CollectRunStatusType.RUNNING,
+        exec_time__lt=five_minutes_ago,
+    ).exclude(task_type=CollectPluginTypes.CONFIG_FILE).update(
         exec_status=CollectRunStatusType.ERROR
     )
-    logger.info("开始周期执行修改采集状态完成, rows={}".format(rows))
+    logger.info("开始周期执行修改采集状态完成, rows={}, config_file_rows={}".format(rows, config_file_rows))
 
 
 @shared_task

@@ -1,3 +1,5 @@
+import re
+
 from celery import shared_task
 
 from apps.core.logger import logger
@@ -7,6 +9,9 @@ from apps.node_mgmt.services.version_upgrade import VersionUpgradeService
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.version_utils import VersionUtils
+
+# 版本号格式校验：支持 x.y.z、x.y.z.w、带预发布标签（如 1.2.3-beta.1）
+VERSION_FORMAT_PATTERN = re.compile(r"^\d+\.\d+\.\d+(\.\d+)?(-[\w.]+)?$")
 
 
 @shared_task
@@ -79,14 +84,15 @@ def _discover_controller_version(node: Node, latest_versions_map: dict):
 
         # 使用 Executor 执行版本命令
         executor = Executor(node.id)
-        response = executor.execute_local(command=controller.version_command, timeout=10)
+        shell = "powershell" if node.operating_system == NodeConstants.WINDOWS_OS else None
+        response = executor.execute_local(command=controller.version_command, timeout=10, shell=shell)
 
         # response 直接是字符串，不是字典
         if response:
             # 去除首尾空白字符（包括换行符）
             version = response.strip()
 
-            if version:
+            if version and VERSION_FORMAT_PATTERN.match(version):
                 # 计算升级信息（传递 component_name 用于查询最新版本）
                 latest_version, upgradeable = _calculate_upgrade_info(
                     current_version=version,
@@ -104,6 +110,13 @@ def _discover_controller_version(node: Node, latest_versions_map: dict):
                     upgradeable=upgradeable,
                 )
                 logger.info(f"节点 {node.name} 控制器版本: {version}, 最新版本: {latest_version}, 可升级: {upgradeable}")
+            elif version:
+                _save_controller_version_failure(
+                    node=node,
+                    component_id=component_id,
+                    message=f"返回内容不是有效版本号: {version[:100]}",
+                )
+                logger.warning(f"节点 {node.name} 控制器版本命令返回非版本号内容: {version[:100]}")
             else:
                 # 命令返回了空字符串
                 _save_controller_version_failure(node=node, component_id=component_id, message="命令执行成功但返回了空结果")

@@ -32,6 +32,18 @@ export const useGroupApi = () => {
     return await post('/system_mgmt/group/get_group_detail_with_roles/', params);
   }
 
+  async function batchGetGroupDetailWithRoles(params: { group_ids: (number | string)[] }): Promise<{
+    group_id: number;
+    group_name: string;
+    allow_inherit_roles: boolean;
+    own_role_ids: number[];
+    inherited_role_ids: number[];
+    inherited_role_source: string;
+    inherited_role_source_map: Record<string, string>;
+  }[]> {
+    return await post('/system_mgmt/group/batch_get_group_detail_with_roles/', params);
+  }
+
   return {
     getTeamData,
     addTeamData,
@@ -39,5 +51,6 @@ export const useGroupApi = () => {
     deleteTeam,
     getGroupRoles,
     getGroupDetailWithRoles,
+    batchGetGroupDetailWithRoles,
   };
 };

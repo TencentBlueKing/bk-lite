@@ -111,6 +111,7 @@ class LogClusteringDatasetReleaseSerializer(AuthSerializer):
     class Meta:
         model = LogClusteringDatasetRelease
         fields = "__all__"
+        validators = []
         extra_kwargs = {
             "name": {"required": False},  # 创建时可选，会自动生成
             "dataset_file": {"required": False},  # 创建时不需要直接提供文件
@@ -122,6 +123,26 @@ class LogClusteringDatasetReleaseSerializer(AuthSerializer):
         request = self.context["request"]
         assert_team_ownership(value, get_current_team(request), "dataset", request=request)
         return value
+
+    def validate(self, attrs):
+        dataset = attrs.get("dataset")
+        version = attrs.get("version")
+        train_file_id = attrs.get("train_file_id")
+        val_file_id = attrs.get("val_file_id")
+        test_file_id = attrs.get("test_file_id")
+
+        if dataset and version:
+            existing_releases = LogClusteringDatasetRelease.objects.filter(dataset=dataset, version=version)
+            if self.instance:
+                existing_releases = existing_releases.exclude(pk=self.instance.pk)
+
+            existing = existing_releases.first()
+            allow_failed_retry = bool(train_file_id and val_file_id and test_file_id) and existing and existing.status == "failed"
+
+            if existing and not allow_failed_retry:
+                raise serializers.ValidationError({"version": f"数据集 {dataset.name} 的版本 {version} 已存在"})
+
+        return attrs
 
     def create(self, validated_data):
         """
@@ -160,30 +181,46 @@ class LogClusteringDatasetReleaseSerializer(AuthSerializer):
             val_obj = LogClusteringTrainData.objects.get(id=val_file_id, dataset=dataset)
             test_obj = LogClusteringTrainData.objects.get(id=test_file_id, dataset=dataset)
 
-            # 检查是否已有相同版本的记录（幂等性保护）
-            existing = LogClusteringDatasetRelease.objects.filter(dataset=dataset, version=version).exclude(status="failed").first()
+            # 检查是否已有相同版本的记录（失败记录允许重试）
+            existing = LogClusteringDatasetRelease.objects.filter(dataset=dataset, version=version).first()
 
             if existing:
-                logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
-                return existing
+                if existing.status == "failed":
+                    release = existing
+                    release.status = "pending"
+                    release.file_size = 0
+                    release.metadata = {}
+                    release.save(update_fields=["status", "file_size", "metadata"])
+                else:
+                    logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
+                    raise serializers.ValidationError(f"数据集 {dataset.name} 的版本 {version} 已存在或正在处理中")
+            else:
+                # 创建 pending 状态的发布记录
+                validated_data["status"] = "pending"
+                validated_data["file_size"] = 0
+                validated_data["metadata"] = {}
 
-            # 创建 pending 状态的发布记录
-            validated_data["status"] = "pending"
-            validated_data["file_size"] = 0
-            validated_data["metadata"] = {}
+                if not name:
+                    validated_data["name"] = f"{dataset.name}_v{version}"
 
-            if not name:
-                validated_data["name"] = f"{dataset.name}_v{version}"
+                if not description:
+                    validated_data["description"] = f"从数据集文件手动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
 
-            if not description:
-                validated_data["description"] = f"从数据集文件手动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
-
-            release = LogClusteringDatasetRelease.objects.create(**validated_data)
+                release = LogClusteringDatasetRelease.objects.create(**validated_data)
 
             # 触发异步任务
             from apps.mlops.tasks.log_clustering import publish_dataset_release_async
 
-            publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)
+            try:
+                publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)
+            except Exception as task_error:
+                logger.error(
+                    f"投递 Celery 任务失败 - Release ID: {release.id}, Error: {str(task_error)}",
+                    exc_info=True,
+                )
+                release.status = "failed"
+                release.save(update_fields=["status"])
+                raise serializers.ValidationError("投递异步任务失败")
 
             logger.info(f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}")
 
@@ -192,9 +229,11 @@ class LogClusteringDatasetReleaseSerializer(AuthSerializer):
         except LogClusteringTrainData.DoesNotExist as e:
             logger.error(f"训练数据文件不存在 - {str(e)}")
             raise serializers.ValidationError(f"训练数据文件不存在或不属于该数据集")
+        except serializers.ValidationError:
+            raise
         except Exception as e:
             logger.error(f"创建数据集发布任务失败 - {str(e)}", exc_info=True)
-            raise serializers.ValidationError(f"创建发布任务失败: {str(e)}")
+            raise serializers.ValidationError("创建发布任务失败")
 
 
 class LogClusteringTrainJobSerializer(AuthSerializer):

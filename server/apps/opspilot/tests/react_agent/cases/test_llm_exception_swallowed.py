@@ -47,7 +47,7 @@ class TestInvokeChatExceptionHandler:
         to a successful response, with no success/error/status field.
         """
         source_path = "apps/opspilot/services/chat_service.py"
-        source = _read_source(source_path, 116, 132)
+        source = _read_source(source_path, 145, 165)
 
         # The except block currently returns {"message": message}
         # After fix, it should include at least one of:
@@ -74,7 +74,7 @@ class TestInvokeChatExceptionHandler:
         compared to the success return, so callers can tell them apart.
         """
         source_path = "apps/opspilot/services/chat_service.py"
-        source = _read_source(source_path, 92, 121)
+        source = _read_source(source_path, 145, 165)
 
         except_section = source[source.index("except") :]
 

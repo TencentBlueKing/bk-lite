@@ -7,6 +7,7 @@ import nats_client
 from rest_framework import serializers
 from django.db.models import Count, Q
 from apps.core.utils.time_util import format_timestamp
+from apps.core.utils.loader import LanguageLoader
 
 from apps.monitor.models import MonitorAlert, MonitorInstance, MonitorObject, MonitorObjectType, Metric, MetricGroup, MonitorPlugin
 from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, MetricSerializer
@@ -24,6 +25,7 @@ from apps.core.utils.permission_utils import (
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.core.logger import nats_logger as logger
+from apps.monitor.constants.language import LanguageConstants
 
 
 def _normalize_monitor_query_data(query_data: dict) -> dict:
@@ -534,7 +536,15 @@ def monitor_metrics(monitor_obj_id: str, *args, **kwargs):
     metrics = Metric.objects.filter(monitor_object=monitor_obj).order_by("metric_group__sort_order", "sort_order")
 
     serializer = MetricSerializer(metrics, many=True)
-    return {"result": True, "data": serializer.data, "message": ""}
+    results = serializer.data
+    user_info = kwargs.get("user_info", {}) or {}
+    locale = user_info.get("locale", "en")
+    lan = LanguageLoader(app=LanguageConstants.APP, default_lang=locale)
+    for result in results:
+        lan_key = f"{LanguageConstants.MONITOR_OBJECT_METRIC}.{monitor_obj.name}.{result['name']}"
+        result["display_name"] = lan.get(f"{lan_key}.name") or result.get("display_name") or result["name"]
+        result["display_description"] = lan.get(f"{lan_key}.desc") or result.get("description")
+    return {"result": True, "data": results, "message": ""}
 
 
 @nats_client.register
