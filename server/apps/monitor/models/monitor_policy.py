@@ -56,7 +56,7 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
 
     notice = models.BooleanField(default=True, verbose_name="是否通知")
     notice_type = models.CharField(max_length=50, default="", verbose_name="通知方式")
-    notice_type_id = models.IntegerField(default=0, verbose_name="通知方式ID")
+    notice_type_ids = models.JSONField(default=list, verbose_name="通知方式ID列表")
     notice_users = models.JSONField(default=list, verbose_name="通知人")
 
     # 是否启动策略
@@ -159,8 +159,9 @@ class MonitorAlert(TimeInfo):
     operator = models.CharField(blank=True, null=True, max_length=50, verbose_name="告警处理人")
     info_event_count = models.IntegerField(default=0, verbose_name="信息事件数量")
     operation_logs = models.JSONField(default=list, verbose_name="操作记录")
-    notice_type_id = models.IntegerField(default=0, verbose_name="通知方式ID")
+    notice_type_ids = models.JSONField(default=list, verbose_name="通知方式ID列表")
     notice_users = models.JSONField(default=list, verbose_name="通知人")
+    notice_logs = models.JSONField(default=list, verbose_name="通知记录")
 
     class Meta:
         verbose_name = "监控告警"

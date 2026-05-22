@@ -186,7 +186,7 @@ class EventAlertManager:
                     status="new",
                     start_event_time=self.policy.last_run_time,
                     operator="",
-                    notice_type_id=self.policy.notice_type_id,
+                    notice_type_ids=self.policy.notice_type_ids,
                     notice_users=self.policy.notice_users,
                 )
             )
