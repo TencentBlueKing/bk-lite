@@ -6,7 +6,7 @@
       "name": "服务存活状态",
       "alert_name": "Apache实例 ${resource_name} 服务中断",
       "description": "监测Apache服务持续运行时间，异常重启会导致连接中断。需检查错误日志和系统资源。",
-      "metric_name": "apache_uptime",
+      "metric_name": "apache_ServerUptimeSeconds",
       "algorithm": "last_over_time",
       "threshold": [
         {
@@ -20,7 +20,7 @@
       "name": "请求速率突增",
       "alert_name": "Apache实例 ${resource_name} 请求过载",
       "description": "检测每秒请求数，异常增长可能表明CC攻击或流量激增。需启用限流模块。",
-      "metric_name": "apache_req_per_sec",
+      "metric_name": "apache_ReqPerSec",
       "algorithm": "max",
       "threshold": [
         {
@@ -68,7 +68,7 @@
       "name": "CPU负载过高",
       "alert_name": "Apache实例 ${resource_name} CPU过载",
       "description": "监控工作进程CPU使用率，持续高负载会导致性能下降。需优化代码或扩容。",
-      "metric_name": "apache_cpu_load",
+      "metric_name": "apache_CPULoad",
       "algorithm": "avg",
       "threshold": [
         {
