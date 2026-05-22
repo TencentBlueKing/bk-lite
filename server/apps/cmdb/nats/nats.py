@@ -11,7 +11,7 @@ from django.utils import timezone
 import nats_client
 from apps.cmdb.constants.constants import (
     APP_NAME,
-    INSTANCE,
+    ENUM_SELECT_MODE_MULTIPLE,
     PERMISSION_INSTANCES,
     PERMISSION_MODEL,
     PERMISSION_TASK,
@@ -20,6 +20,7 @@ from apps.cmdb.constants.constants import (
 )
 from apps.cmdb.display_field.cache import ExcludeFieldsCache
 from apps.cmdb.display_field.constants import (
+    DISPLAY_FIELD_TYPES,
     DISPLAY_SUFFIX,
     FIELD_TYPE_ENUM,
     FIELD_TYPE_ORGANIZATION,
@@ -29,7 +30,6 @@ from apps.cmdb.display_field.constants import (
     USER_DISPLAY_FORMAT,
 )
 from apps.cmdb.display_field.handler import DisplayFieldConverter, DisplayFieldHandler
-from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.change_record import CREATE_INST, DELETE_INST, OPERATE_TYPE_CHOICES, UPDATE_INST, ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.services.classification import ClassificationManage
@@ -637,37 +637,34 @@ def get_instance_group_by(model_id=None, field=None, user_info=None, **kwargs):
     permission_map = _build_nats_permission_map(user_info, model_id=model_id)
     if permission_map is None:
         return {"result": True, "data": [], "message": ""}
-    format_permission_dict = InstanceManage._build_format_permission_dict(permission_map)
-
-    with GraphClient() as ag:
-        instances, _ = ag.query_entity(
-            label=INSTANCE,
-            params=params,
-            format_permission_dict=format_permission_dict,
-        )
-
-    display_field = f"{field}{DISPLAY_SUFFIX}"
-    group_counts = {}
-    for inst in instances:
-        value = inst.get(display_field)
-        if value in (None, "", []):
-            value = inst.get(field)
-        if value is None:
-            value = "unknown"
-        key = str(value)
-        group_counts[key] = group_counts.get(key, 0) + 1
 
     attrs = ModelManage.search_model_attr(model_id)
     field_attr = next((attr for attr in attrs if attr.get("attr_id") == field), None)
+    group_by_attr = field
+    if field_attr:
+        attr_type = field_attr.get("attr_type")
+        enum_select_mode = field_attr.get("enum_select_mode")
+        if attr_type in DISPLAY_FIELD_TYPES and not (attr_type == FIELD_TYPE_ENUM and enum_select_mode != ENUM_SELECT_MODE_MULTIPLE):
+            group_by_attr = f"{field}{DISPLAY_SUFFIX}"
+
+    group_counts = InstanceManage.group_inst_count(
+        group_by_attr=group_by_attr,
+        permissions_map=permission_map,
+        params=params,
+    )
 
     enum_map = {}
-    if field_attr and field_attr.get("attr_type") == "enum":
+    if field_attr and field_attr.get("attr_type") == FIELD_TYPE_ENUM and group_by_attr == field:
         options = field_attr.get("option", [])
         enum_map = {str(opt.get("id")): opt.get("name") for opt in options if opt}
 
     result_data = []
     for key, count in group_counts.items():
-        display_name = enum_map.get(key, key) if enum_map else key
+        if key in (None, ""):
+            display_name = "unknown"
+        else:
+            normalized_key = str(key)
+            display_name = enum_map.get(normalized_key, normalized_key) if enum_map else normalized_key
         result_data.append({"name": display_name, "value": count})
 
     result_data.sort(key=lambda x: x["value"], reverse=True)

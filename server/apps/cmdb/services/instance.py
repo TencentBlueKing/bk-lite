@@ -1110,16 +1110,21 @@ class InstanceManage(object):
         return f"n.inst_name IN {inst_names}"
 
     @classmethod
-    def model_inst_count(cls, permissions_map: dict, creator: str = ""):
+    def group_inst_count(cls, group_by_attr: str, permissions_map: dict, params: list = None, creator: str = ""):
         format_permission_dict = cls._build_format_permission_dict(permissions_map, creator)
 
         with GraphClient() as ag:
             data = ag.entity_count(
                 label=INSTANCE,
-                group_by_attr="model_id",
+                group_by_attr=group_by_attr,
+                params=params or [],
                 format_permission_dict=format_permission_dict,
             )
         return data
+
+    @classmethod
+    def model_inst_count(cls, permissions_map: dict, creator: str = ""):
+        return cls.group_inst_count(group_by_attr="model_id", permissions_map=permissions_map, creator=creator)
 
     @classmethod
     def _build_permission_params(cls, permission_map: dict, creator: str = ""):
