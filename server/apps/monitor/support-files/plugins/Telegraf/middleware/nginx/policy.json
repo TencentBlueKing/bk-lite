@@ -6,7 +6,7 @@
       "name": "Nginx 请求处理速率过低",
       "alert_name": "Nginx ${resource_name} 请求处理速率过低",
       "description": "监控 Nginx 每秒处理的请求数（requests），若持续过低可能表明服务吞吐量下降或客户端请求减少，需检查后端服务状态或网络连接。",
-      "metric_name": "nginx_requests",
+      "metric_name": "nginx_requests_rate",
       "algorithm": "avg",
       "threshold": [
         {

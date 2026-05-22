@@ -6,7 +6,7 @@
       "name": "磁盘剩余空间告警",
       "alert_name": "ES 节点 ${resource_name} 磁盘空间不足",
       "description": "监测数据节点磁盘剩余空间，空间不足会导致索引自动设为只读甚至节点离线。建议设置预留缓冲空间，及时清理旧索引或扩容存储。",
-      "metric_name": "elasticsearch_fs_total_free_in_bytes",
+      "metric_name": "elasticsearch_fs_data_0_available_in_bytes",
       "algorithm": "last_over_time",
       "threshold": [
         {
@@ -140,7 +140,7 @@
       "name": "Fielddata断路器触发",
       "alert_name": "ES 节点 ${resource_name} Fielddata 超限",
       "description": "检测Fielddata内存断路器触发，会导致字段数据操作失败。需优化字段数据类型或增加堆内存。",
-      "metric_name": "elasticsearch_breakers_fielddata_tripped",
+      "metric_name": "elasticsearch_breakers_fielddata_tripped_rate",
       "algorithm": "last_over_time",
       "threshold": [
         {

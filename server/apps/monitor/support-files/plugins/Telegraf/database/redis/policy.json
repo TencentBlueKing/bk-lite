@@ -54,7 +54,7 @@
       "name": "缓存命中率低",
       "alert_name": "Redis 实例 ${resource_name} 缓存失效",
       "description": "检测key查找未命中次数，高未命中率导致后端压力。需优化缓存策略或预热数据。",
-      "metric_name": "redis_keyspace_misses",
+      "metric_name": "redis_keyspace_misses_rate",
       "algorithm": "max",
       "threshold": [
         {
@@ -78,7 +78,7 @@
       "name": "数据逐出告警",
       "alert_name": "Redis 实例 ${resource_name} 数据被逐出",
       "description": "监控因内存不足被逐出的key数量，突增表明内存压力。需扩容或设置合理淘汰策略。",
-      "metric_name": "redis_evicted_keys",
+      "metric_name": "redis_evicted_keys_rate",
       "algorithm": "max",
       "threshold": [
         {
