@@ -6,11 +6,8 @@ import SearchFilter from '@/app/alarm/components/searchFilter';
 import EventTable from '@/app/alarm/components/eventTable';
 import K8sGuide from '@/app/alarm/components/k8sGuide';
 import SnmpTrapGuide from '@/app/alarm/components/snmpTrapGuide';
-<<<<<<< HEAD
 import TeamSecretsManager from '@/app/alarm/components/teamSecretsManager';
-=======
 import ZabbixGuide from '@/app/alarm/components/zabbixGuide';
->>>>>>> 24882f1dfdbdd9aaa43a0fb20de18fae19bcd85e
 import CustomBreadcrumb from '@/app/alarm/components/customBreadcrumb';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import {
@@ -718,7 +715,6 @@ const IntegrationDetail: FC = () => {
                       },
                     ]} />
                   </div>
-<<<<<<< HEAD
                   <EventTable
                     dataSource={eventList}
                     loading={eventLoading}
@@ -794,7 +790,6 @@ const IntegrationDetail: FC = () => {
                 </div>
               </>
             )}
->>>>>>> 24882f1dfdbdd9aaa43a0fb20de18fae19bcd85e
           </>
         )}
       </Spin>
