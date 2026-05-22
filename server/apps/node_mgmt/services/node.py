@@ -122,9 +122,9 @@ class NodeService:
                 if collector["status"] == 2 and collector_obj:  # status=2 表示失败
                     # 检查是否是需要忽略错误的采集器
                     if collector_obj.name in CollectorConstants.IGNORE_ERROR_COLLECTORS:
-                        # 检查错误信息是否匹配需要忽略的消息
+                        # 检查错误信息是否匹配需要忽略的消息（使用 contains 匹配，兼容动态路径）
                         verbose_msg = collector.get("verbose_message", "")
-                        if verbose_msg in CollectorConstants.IGNORE_ERROR_COLLECTORS_MESSAGES:
+                        if any(msg in verbose_msg for msg in CollectorConstants.IGNORE_ERROR_COLLECTORS_MESSAGES):
                             # 将状态从失败改为正常
                             collector["status"] = 0
                             collector["message"] = "Running"
