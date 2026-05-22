@@ -63,8 +63,8 @@ class BaseCollect(object):
 
     @property
     def task_id(self):
-        if self.task.is_k8s:
-            return self.inst_name
+        # if self.task.is_k8s:
+        #     return self.inst_name
         return self.task.id
 
     def get_collect_plugin(self):
