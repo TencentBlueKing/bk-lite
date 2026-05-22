@@ -16,6 +16,7 @@ from wechatpy.messages import MESSAGE_TYPES, UnknownMessage
 from wechatpy.utils import check_signature, to_binary, to_text
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.tasks import process_wechat_official_message
 from apps.opspilot.utils.base_chat_flow_utils import BaseChatFlowUtils
 
 
@@ -239,17 +240,16 @@ class WechatOfficialChatFlowUtils(BaseChatFlowUtils):
                 logger.info(f"微信公众号消息已处理，跳过重复消息，Bot {self.bot_id}，MsgId {msg_id}")
                 return HttpResponse("success")
 
-            # 异步处理消息（使用基类方法，立即返回避免超时）
-            self.process_message_async(
-                self.async_process_and_reply,
-                bot_chat_flow,
-                wechat_config,
+            # 使用 Celery 任务异步处理（替代不存在的 process_message_async）
+            process_wechat_official_message.delay(
+                self.bot_id,
+                msg_id,
                 message,
                 openid,
-                msg_id,
+                wechat_config,
             )
 
-            logger.info(f"微信公众号消息已接收，异步处理中，Bot {self.bot_id}，MsgId {msg_id}")
+            logger.info(f"微信公众号消息已接收，Celery 任务已投递，Bot {self.bot_id}，MsgId {msg_id}")
             return HttpResponse("success")
 
         except InvalidSignatureException:

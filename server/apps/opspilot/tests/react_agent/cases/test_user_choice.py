@@ -30,7 +30,7 @@ _falkordb_asyncio.FalkorDB = type("FalkorDB", (), {})
 sys.modules.setdefault("falkordb.asyncio", _falkordb_asyncio)
 
 from typing import Annotated  # noqa: E402
-from unittest.mock import MagicMock, patch  # noqa: E402
+from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage  # noqa: E402
@@ -143,7 +143,8 @@ async def _build_and_run(
             side_effect=mock_wait_for_choice,
         ),
         patch(
-            "apps.opspilot.metis.llm.chain.node.is_interrupt_requested",
+            "apps.opspilot.metis.llm.chain.node.is_interrupt_requested_async",
+            new_callable=AsyncMock,
             return_value=False,
         ),
         patch(
@@ -302,7 +303,8 @@ class TestChoiceTimeout:
             mock_choice_result={"selected": ["opt_a"], "source": "timeout"},
         )
 
-        assert llm_calls == 2
+        # LLM calls: Step 1 + forced tool_choice='any' after choice tool + Step 2
+        assert llm_calls == 3
         tool_msgs = [m for m in messages if isinstance(m, ToolMessage)]
         # Choice tool returned timeout text
         assert any("默认选项" in str(m.content) or "未在规定时间" in str(m.content) for m in tool_msgs)
@@ -425,7 +427,7 @@ class TestUnattendedMode:
             trigger_type="unattended",
         )
 
-        assert llm_calls == 2
+        assert llm_calls == 3  # 3 calls: initial + forced tool_choice='any' after choice + final
         tool_msgs = [m for m in messages if isinstance(m, ToolMessage)]
         # Choice tool returned auto-select text
         assert any("自动选择" in str(m.content) for m in tool_msgs)
