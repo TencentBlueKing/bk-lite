@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import datetime, timezone
 
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
@@ -29,6 +30,8 @@ class AlertLifecycleNotifier:
         if not alerts:
             return
 
+        alert_log_entries = defaultdict(list)
+
         groups = defaultdict(list)
         for alert in alerts:
             channel_ids = self._resolve_notice_type_ids(alert)
@@ -42,12 +45,43 @@ class AlertLifecycleNotifier:
         for (channel_id, notice_users_tuple), group_alerts in groups.items():
             notice_users = list(notice_users_tuple)
             try:
-                self._send_to_channel(channel_id, notice_users, group_alerts, action, operator, reason)
+                results = self._send_to_channel(channel_id, notice_users, group_alerts, action, operator, reason)
+                for alert, log_entry in results:
+                    alert_log_entries[alert.id].append(log_entry)
             except Exception as e:
                 logger.error(
                     f"Lifecycle notify exception: action={action}, channel_id={channel_id}, error={e}",
                     exc_info=True,
                 )
+                now = datetime.now(timezone.utc).isoformat()
+                for alert in group_alerts:
+                    alert_log_entries[alert.id].append(
+                        {
+                            "time": now,
+                            "action": action,
+                            "channel_id": channel_id,
+                            "success": False,
+                            "error": str(e),
+                        }
+                    )
+
+        self._persist_notice_logs(alerts, alert_log_entries)
+
+    def _persist_notice_logs(self, alerts, alert_log_entries):
+        if not alert_log_entries:
+            return
+        from apps.monitor.models import MonitorAlert
+
+        alerts_to_update = []
+        for alert in alerts:
+            entries = alert_log_entries.get(alert.id)
+            if not entries:
+                continue
+            alert.notice_logs = (alert.notice_logs or []) + entries
+            alerts_to_update.append(alert)
+
+        if alerts_to_update:
+            MonitorAlert.objects.bulk_update(alerts_to_update, fields=["notice_logs"])
 
     def _resolve_notice_type_ids(self, alert):
         if alert.notice_type_ids:
@@ -67,29 +101,47 @@ class AlertLifecycleNotifier:
         channel = Channel.objects.filter(id=channel_id).first()
         if not channel:
             logger.warning(f"Channel {channel_id} not found, skip notification for {len(alerts)} alerts")
-            return
+            now = datetime.now(timezone.utc).isoformat()
+            return [
+                (alert, {"time": now, "action": action, "channel_id": channel_id, "success": False, "error": "channel_not_found"}) for alert in alerts
+            ]
 
         is_alert_center = channel.channel_type == "nats" and channel.config.get("method_name") == "receive_alert_events"
+        channel_name = channel.name or str(channel_id)
 
         if is_alert_center:
-            self._push_to_alert_center(channel_id, alerts, action, operator, reason)
+            return self._push_to_alert_center(channel_id, channel_name, alerts, action, operator, reason)
         else:
-            self._send_normal_notice(channel_id, notice_users, alerts, action, operator, reason)
+            return self._send_normal_notice(channel_id, channel_name, notice_users, alerts, action, operator, reason)
 
-    def _send_normal_notice(self, channel_id, notice_users, alerts, action, operator, reason):
+    def _send_normal_notice(self, channel_id, channel_name, notice_users, alerts, action, operator, reason):
+        results = []
         for alert in alerts:
+            now = datetime.now(timezone.utc).isoformat()
             title = self._build_title(alert, action)
             content = self._build_content(alert, action, operator, reason)
             try:
                 send_result = SystemMgmtUtils.send_msg_with_channel(channel_id, title, content, notice_users)
-                if send_result.get("result") is False:
-                    logger.error(f"Normal notify failed: alert={alert.id}, action={action}, message={send_result.get('message', 'Unknown error')}")
+                success = send_result.get("result") is not False
+                log_entry = {"time": now, "action": action, "channel_id": channel_id, "channel_name": channel_name, "success": success}
+                if not success:
+                    log_entry["error"] = send_result.get("message", "Unknown error")
+                    logger.error(f"Normal notify failed: alert={alert.id}, action={action}, message={log_entry['error']}")
                 else:
                     logger.info(f"Normal notify success: alert={alert.id}, action={action}")
+                results.append((alert, log_entry))
             except Exception as e:
                 logger.error(f"Normal notify exception: alert={alert.id}, action={action}, error={e}", exc_info=True)
+                results.append(
+                    (
+                        alert,
+                        {"time": now, "action": action, "channel_id": channel_id, "channel_name": channel_name, "success": False, "error": str(e)},
+                    )
+                )
+        return results
 
-    def _push_to_alert_center(self, channel_id, alerts, action, operator, reason):
+    def _push_to_alert_center(self, channel_id, channel_name, alerts, action, operator, reason):
+        now = datetime.now(timezone.utc).isoformat()
         content = {
             "source_id": "nats",
             "pusher": "lite-monitor",
@@ -97,15 +149,24 @@ class AlertLifecycleNotifier:
         }
         try:
             send_result = SystemMgmtUtils.send_msg_with_channel(channel_id, "", content, [])
-            if send_result.get("result") is False:
-                logger.error(
-                    f"Lifecycle push to alert center failed: action={action}, "
-                    f"count={len(alerts)}, message={send_result.get('message', 'Unknown error')}"
-                )
+            success = send_result.get("result") is not False
+            error_msg = "" if success else send_result.get("message", "Unknown error")
+            if not success:
+                logger.error(f"Lifecycle push to alert center failed: action={action}, count={len(alerts)}, message={error_msg}")
             else:
                 logger.info(f"Lifecycle push to alert center success: action={action}, count={len(alerts)}")
         except Exception as e:
+            success = False
+            error_msg = str(e)
             logger.error(f"Lifecycle push to alert center exception: action={action}, error={e}", exc_info=True)
+
+        results = []
+        for alert in alerts:
+            log_entry = {"time": now, "action": action, "channel_id": channel_id, "channel_name": channel_name, "success": success}
+            if not success:
+                log_entry["error"] = error_msg
+            results.append((alert, log_entry))
+        return results
 
     def _build_alert_center_payload(self, alert, action, operator, reason):
         alert_center_action = ACTION_TO_ALERT_CENTER.get(action, "created")

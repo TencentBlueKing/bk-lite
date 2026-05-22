@@ -30,6 +30,11 @@ class Migration(migrations.Migration):
             name="notice_type_ids",
             field=models.JSONField(default=list, verbose_name="通知方式ID列表"),
         ),
+        migrations.AddField(
+            model_name="monitoralert",
+            name="notice_logs",
+            field=models.JSONField(default=list, verbose_name="通知记录"),
+        ),
         migrations.RunPython(migrate_notice_type_id_to_ids, migrations.RunPython.noop),
         migrations.RemoveField(
             model_name="monitorpolicy",

@@ -161,6 +161,7 @@ class MonitorAlert(TimeInfo):
     operation_logs = models.JSONField(default=list, verbose_name="操作记录")
     notice_type_ids = models.JSONField(default=list, verbose_name="通知方式ID列表")
     notice_users = models.JSONField(default=list, verbose_name="通知人")
+    notice_logs = models.JSONField(default=list, verbose_name="通知记录")
 
     class Meta:
         verbose_name = "监控告警"
