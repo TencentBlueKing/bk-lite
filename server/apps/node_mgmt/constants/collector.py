@@ -24,10 +24,11 @@ class CollectorConstants:
     # 容器节点才会默认初始化的采集器配置
     DEFAULT_CONTAINER_COLLECTOR_CONFIGS = ["Snmptrapd", "Ansible-Executor"]
 
-    IGNORE_ERROR_COLLECTORS = ["Metricbeat", "Auditbeat", "Filebeat", "Packetbeat"]
+    IGNORE_ERROR_COLLECTORS = ["Metricbeat", "Auditbeat", "Filebeat", "Packetbeat", "Winlogbeat"]
     IGNORE_ERROR_COLLECTORS_MESSAGES = [
         "Exiting: one or more modules must be configured\n",
         "Exiting: no modules or inputs enabled and configuration reloading disabled. What files do you want me to watch?\n",
+        "at least one event log must be configured as part of event_logs",
     ]
 
     # 忽略的采集器
