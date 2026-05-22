@@ -17,6 +17,7 @@ export interface IncidentTableDataItem {
   note: string | null
   operate: any
   operator: string[]
-  fingerprint: any,
+  fingerprint: any
+  team: string[]
   [key: string]: any
 }

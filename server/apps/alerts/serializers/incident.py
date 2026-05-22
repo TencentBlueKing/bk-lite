@@ -2,16 +2,21 @@
 from django.utils import timezone
 from rest_framework import serializers
 
+from apps.alerts.constants import PERMISSION_INCIDENT
 from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models.models import Alert, Incident
 from apps.alerts.utils.operator_scope import normalize_usernames, validate_incident_operators
+from apps.alerts.utils.permission_scope import get_authorized_group_ids, normalize_team_ids
+from apps.core.utils.serializers import AuthSerializer
 from apps.system_mgmt.models.user import User
 
 
-class IncidentModelSerializer(serializers.ModelSerializer):
+class IncidentModelSerializer(AuthSerializer):
     """
     Serializer for Incident model.
     """
+
+    permission_key = PERMISSION_INCIDENT
 
     # 持续时间
     duration = serializers.SerializerMethodField()
@@ -29,6 +34,7 @@ class IncidentModelSerializer(serializers.ModelSerializer):
     sources = serializers.SerializerMethodField()
     alert_count = serializers.SerializerMethodField()
     operator_users = serializers.SerializerMethodField()
+    team = serializers.ListField(child=serializers.IntegerField(), required=False, default=list)
 
     class Meta:
         model = Incident
@@ -67,6 +73,22 @@ class IncidentModelSerializer(serializers.ModelSerializer):
         if validation_message:
             raise serializers.ValidationError(validation_message)
         return normalized_operators
+
+    def validate_team(self, value):
+        value = normalize_team_ids(value)
+        if not value:
+            return value
+        request = self.context.get("request")
+        if request is None:
+            return value
+        user = getattr(request, "user", None)
+        if user and getattr(user, "is_superuser", False):
+            return value
+        authorized_group_ids = get_authorized_group_ids(request)
+        unauthorized_teams = set(value) - set(authorized_group_ids)
+        if unauthorized_teams:
+            raise serializers.ValidationError(f"You are not authorized to assign teams: {list(unauthorized_teams)}")
+        return value
 
     def update(self, instance, validated_data):
         """

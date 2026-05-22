@@ -6,6 +6,7 @@ import SearchFilter from '@/app/alarm/components/searchFilter';
 import EventTable from '@/app/alarm/components/eventTable';
 import K8sGuide from '@/app/alarm/components/k8sGuide';
 import SnmpTrapGuide from '@/app/alarm/components/snmpTrapGuide';
+import TeamSecretsManager from '@/app/alarm/components/teamSecretsManager';
 import CustomBreadcrumb from '@/app/alarm/components/customBreadcrumb';
 import { CopyOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
@@ -336,6 +337,9 @@ const IntegrationDetail: FC = () => {
                   ) : (
                     renderGuideTab()
                   )}
+                </Tabs.TabPane>
+                <Tabs.TabPane key="teamSecrets" tab={t('integration.teamSecrets')}>
+                  <TeamSecretsManager sourceId={source.id} />
                 </Tabs.TabPane>
               </Tabs>
             </div>

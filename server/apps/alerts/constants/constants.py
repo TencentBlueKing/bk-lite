@@ -5,6 +5,10 @@
 
 SYSTEM_OPERATOR_USER = "admin"
 
+PERMISSION_EVENT = "event"
+PERMISSION_ALERT = "alert"
+PERMISSION_INCIDENT = "incident"
+
 
 class AlertAccessType:
     """告警源接入类型"""

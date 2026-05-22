@@ -5,28 +5,27 @@ from django.db import transaction
 from django.db.models import Count, Prefetch
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from apps.alerts.constants import PERMISSION_ALERT, PERMISSION_INCIDENT
 from apps.alerts.constants.constants import LogAction, LogTargetType
 from apps.alerts.filters import IncidentModelFilter
 from apps.alerts.models.models import Alert, Incident
 from apps.alerts.models.operator_log import OperatorLog
-from apps.alerts.serializers import IncidentModelSerializer
+from apps.alerts.serializers import AlertModelSerializer, IncidentModelSerializer
 from apps.alerts.service.incident_operator import IncidentOperator
 from apps.alerts.utils.operator_scope import normalize_usernames
-from apps.alerts.utils.permission_scope import (
-    filter_alert_queryset_for_request,
-    filter_incident_queryset_for_request,
-)
+from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import alert_logger as logger
 from apps.core.utils.web_utils import WebUtils
+from apps.core.utils.viewset_utils import AuthViewSet
 from apps.system_mgmt.models.user import User
 from config.drf.pagination import CustomPageNumberPagination
-from config.drf.viewsets import ModelViewSet
 
 
-class IncidentModelViewSet(ModelViewSet):
+class IncidentModelViewSet(AuthViewSet):
     """
     事故视图集
     """
@@ -37,30 +36,66 @@ class IncidentModelViewSet(ModelViewSet):
     ordering = ["-created_at"]  # 默认按创建时间降序排序
     filterset_class = IncidentModelFilter
     pagination_class = CustomPageNumberPagination
+    ORGANIZATION_FIELD = "team"
+    permission_key = PERMISSION_INCIDENT
 
     def get_queryset(self):
         alert_prefetch = Prefetch(
             "alert",
             queryset=Alert.objects.prefetch_related("events__source"),
         )
-        queryset = Incident.objects.annotate(alert_count=Count("alert", distinct=True)).prefetch_related(alert_prefetch)
-        request = getattr(self, "request", None)
-        if request is None:
-            return queryset
-        return filter_incident_queryset_for_request(queryset, request).distinct()
+        return Incident.objects.annotate(alert_count=Count("alert", distinct=True)).prefetch_related(alert_prefetch)
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
         request = context.get("request")
         if request is not None:
-            context["allowed_alert_queryset"] = filter_alert_queryset_for_request(Alert.objects.all(), request)
+            context["allowed_alert_queryset"] = self.get_queryset_by_permission(request, Alert.objects.all(),
+                                                                                permission_key=PERMISSION_ALERT)
         return context
 
     def _get_allowed_alert_ids(self):
         request = getattr(self, "request", None)
         if request is None:
             return set()
-        return set(filter_alert_queryset_for_request(Alert.objects.all(), request).values_list("id", flat=True))
+        return set(
+            self.get_queryset_by_permission(request, Alert.objects.all(), permission_key=PERMISSION_ALERT).values_list(
+                "id", flat=True))
+
+    def _get_permission_filtered_queryset(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+        return self.get_queryset_by_permission(request, queryset)
+
+    def _get_authorized_incident(self, request, *, check_view_permission=False, denied_message=None):
+        instance = self.get_object()
+        user = getattr(request, "user", None)
+        if getattr(user, "is_superuser", False):
+            return instance, None
+
+        try:
+            current_team = self._validate_current_team_permission(request)
+        except PermissionDenied:
+            raise
+
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        has_permission = self.get_has_permission(
+            user,
+            instance,
+            current_team,
+            is_check=check_view_permission,
+            include_children=include_children,
+        )
+        if has_permission:
+            return instance, None
+
+        return None, self.value_error(denied_message or "您没有权限访问此事故")
+
+    @staticmethod
+    def _normalize_team_payload(payload):
+        if "team" not in payload:
+            return None
+        payload["team"] = normalize_team_ids(payload.get("team"))
+        return payload["team"]
 
     @staticmethod
     def _parse_alert_ids(payload, required=False):
@@ -108,7 +143,7 @@ class IncidentModelViewSet(ModelViewSet):
 
     @HasPermission("Incidents-View")
     def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
+        queryset = self._get_permission_filtered_queryset(request)
         page = self.paginate_queryset(queryset)
         if page is not None:
             operator_user_map = self._build_operator_user_map(page)
@@ -135,7 +170,13 @@ class IncidentModelViewSet(ModelViewSet):
 
     @HasPermission("Incidents-View")
     def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
+        instance, error_response = self._get_authorized_incident(
+            request,
+            check_view_permission=True,
+            denied_message="您没有权限查看此事故",
+        )
+        if error_response is not None:
+            return error_response
         serializer = self.get_serializer(
             instance,
             context={
@@ -149,6 +190,10 @@ class IncidentModelViewSet(ModelViewSet):
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         data = request.data
+        try:
+            self._normalize_team_payload(data)
+        except ValueError as err:
+            return Response({"detail": str(err)}, status=status.HTTP_400_BAD_REQUEST)
         incident_id = f"INCIDENT-{uuid.uuid4().hex}"
         data["incident_id"] = incident_id
         alert_ids, error_response = self._parse_alert_ids(data, required=True)
@@ -163,7 +208,8 @@ class IncidentModelViewSet(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        has_incident_alert_ids = list(Alert.objects.filter(id__in=alert_ids, incident__isnull=False).values_list("id", flat=True))
+        has_incident_alert_ids = list(
+            Alert.objects.filter(id__in=alert_ids, incident__isnull=False).values_list("id", flat=True))
         not_incident_alert_ids = set(alert_ids) - set(has_incident_alert_ids)
         data["alert"] = list(not_incident_alert_ids)
         if not not_incident_alert_ids:
@@ -200,7 +246,16 @@ class IncidentModelViewSet(ModelViewSet):
     @transaction.atomic
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
-        instance = self.get_object()
+        instance, error_response = self._get_authorized_incident(
+            request,
+            denied_message="您没有权限修改此事故",
+        )
+        if error_response is not None:
+            return error_response
+        try:
+            self._normalize_team_payload(request.data)
+        except ValueError as err:
+            return Response({"detail": str(err)}, status=status.HTTP_400_BAD_REQUEST)
         requested_alert_ids, error_response = self._parse_alert_ids(request.data)
         if error_response is not None:
             return error_response
@@ -242,7 +297,12 @@ class IncidentModelViewSet(ModelViewSet):
     @HasPermission("Incidents-Delete")
     @transaction.atomic
     def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
+        instance, error_response = self._get_authorized_incident(
+            request,
+            denied_message="您没有权限删除此事故",
+        )
+        if error_response is not None:
+            return error_response
         self.perform_destroy(instance)
 
         log_data = {
@@ -276,7 +336,8 @@ class IncidentModelViewSet(ModelViewSet):
         result_list = {}
         status_list = []
         allowed_incident_ids = set(
-            self.filter_queryset(self.get_queryset()).filter(incident_id__in=incident_id_list).values_list("incident_id", flat=True)
+            self._get_permission_filtered_queryset(request).filter(incident_id__in=incident_id_list).values_list(
+                "incident_id", flat=True)
         )
 
         for incident_id in incident_id_list:
@@ -299,3 +360,131 @@ class IncidentModelViewSet(ModelViewSet):
             )
         else:
             return WebUtils.response_success(response_data=result_list, message="部分操作成功")
+
+    @HasPermission("Incidents-Edit")
+    @action(methods=["post"], detail=True, url_path="alerts/add", url_name="add_alerts")
+    @transaction.atomic
+    def add_alerts(self, request, *args, **kwargs):
+        instance, error_response = self._get_authorized_incident(
+            request,
+            denied_message="您没有权限修改此事故",
+        )
+        if error_response is not None:
+            return error_response
+        alert_ids, error_response = self._parse_alert_ids(request.data, required=True)
+        if error_response is not None:
+            return error_response
+
+        allowed_alert_ids = self._get_allowed_alert_ids()
+        unauthorized_alert_ids = set(alert_ids) - allowed_alert_ids
+        if unauthorized_alert_ids:
+            return Response(
+                {"detail": "Some alerts are out of your authorized scope."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        already_in_incident = set(instance.alert.values_list("id", flat=True))
+        has_other_incident = set(
+            Alert.objects.filter(id__in=alert_ids, incident__isnull=False)
+            .exclude(incident=instance)
+            .values_list("id", flat=True)
+        )
+        if has_other_incident:
+            return Response(
+                {"detail": f"Alerts {list(has_other_incident)} are already associated with another incident."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        new_alert_ids = set(alert_ids) - already_in_incident
+        if new_alert_ids:
+            instance.alert.add(*new_alert_ids)
+            OperatorLog.objects.create(
+                action=LogAction.MODIFY,
+                target_type=LogTargetType.INCIDENT,
+                operator=request.user.username,
+                operator_object="事故-添加告警",
+                target_id=instance.incident_id,
+                overview=f"添加告警到事故[{instance.title}]: {list(new_alert_ids)}",
+            )
+
+        return Response({"added": list(new_alert_ids), "skipped": list(set(alert_ids) & already_in_incident)})
+
+    @HasPermission("Incidents-Edit")
+    @action(methods=["post"], detail=True, url_path="alerts/remove", url_name="remove_alerts")
+    @transaction.atomic
+    def remove_alerts(self, request, *args, **kwargs):
+        instance, error_response = self._get_authorized_incident(
+            request,
+            denied_message="您没有权限修改此事故",
+        )
+        if error_response is not None:
+            return error_response
+        alert_ids, error_response = self._parse_alert_ids(request.data, required=True)
+        if error_response is not None:
+            return error_response
+
+        allowed_alert_ids = self._get_allowed_alert_ids()
+        unauthorized_alert_ids = set(alert_ids) - allowed_alert_ids
+        if unauthorized_alert_ids:
+            return Response(
+                {"detail": "Some alerts are out of your authorized scope."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        current_alert_ids = set(instance.alert.values_list("id", flat=True))
+        to_remove = set(alert_ids) & current_alert_ids
+        not_in_incident = set(alert_ids) - current_alert_ids
+
+        if to_remove:
+            instance.alert.remove(*to_remove)
+            OperatorLog.objects.create(
+                action=LogAction.MODIFY,
+                target_type=LogTargetType.INCIDENT,
+                operator=request.user.username,
+                operator_object="事故-移除告警",
+                target_id=instance.incident_id,
+                overview=f"从事故[{instance.title}]移除告警: {list(to_remove)}",
+            )
+
+        return Response({"removed": list(to_remove), "not_in_incident": list(not_in_incident)})
+
+    @HasPermission("Incidents-View")
+    @action(methods=["get"], detail=True, url_path="alerts", url_name="alerts")
+    def alerts(self, request, *args, **kwargs):
+        incident, error_response = self._get_authorized_incident(
+            request,
+            check_view_permission=True,
+            denied_message="您没有权限查看此事故",
+        )
+        if error_response is not None:
+            return error_response
+        queryset = self.get_queryset_by_permission(
+            request,
+            Alert.objects.filter(incident=incident).prefetch_related("events__source", "incident_set"),
+            permission_key=PERMISSION_ALERT,
+        ).order_by("-created_at")
+
+        from apps.alerts.views import AlertModelViewSet
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            operator_user_map = AlertModelViewSet._build_operator_user_map(page)
+            serializer = AlertModelSerializer(
+                page,
+                many=True,
+                context={
+                    **self.get_serializer_context(),
+                    "operator_user_map": operator_user_map,
+                },
+            )
+            return self.get_paginated_response(serializer.data)
+
+        operator_user_map = AlertModelViewSet._build_operator_user_map(queryset)
+        serializer = AlertModelSerializer(
+            queryset,
+            many=True,
+            context={
+                **self.get_serializer_context(),
+                "operator_user_map": operator_user_map,
+            },
+        )
+        return Response(serializer.data)

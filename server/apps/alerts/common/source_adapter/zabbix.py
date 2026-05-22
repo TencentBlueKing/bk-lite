@@ -5,16 +5,10 @@ from abc import ABC
 from typing import Dict, Any, List
 
 from apps.alerts.common.source_adapter.base import AlertSourceAdapter
-from apps.alerts.error import AuthenticationSourceError
 
 
 class ZabbixAdapter(AlertSourceAdapter, ABC):
     """Zabbix 告警源适配器"""
-
-    def authenticate(self) -> bool:
-        if self.secret == self.alert_source.secret:
-            return True
-        raise AuthenticationSourceError("Authentication failed")
 
     def fetch_alerts(self) -> List[Dict[str, Any]]:
         return []
@@ -29,9 +23,9 @@ class ZabbixAdapter(AlertSourceAdapter, ABC):
             normalized_event = dict(single_event)
             if not normalized_event.get("external_id"):
                 problem_id = (
-                    normalized_event.get("problem_id")
-                    or normalized_event.get("problemId")
-                    or normalized_event.get("labels", {}).get("problem_id")
+                        normalized_event.get("problem_id")
+                        or normalized_event.get("problemId")
+                        or normalized_event.get("labels", {}).get("problem_id")
                 )
                 if not problem_id:
                     raise ValueError("Zabbix event missing ProblemId/external_id.")
