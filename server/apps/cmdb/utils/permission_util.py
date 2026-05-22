@@ -1,3 +1,5 @@
+import uuid
+
 from apps.cmdb.constants.constants import OPERATE, VIEW, PERMISSION_INSTANCES, APP_NAME
 from apps.cmdb.utils.base import get_current_team_from_request
 from apps.core.utils.permission_utils import get_permission_rules
@@ -21,6 +23,19 @@ class CmdbRulesFormatUtil:
         return result
 
     @staticmethod
+    def _normalize_team_rule_ids(team_rules):
+        result = set()
+        for item in team_rules or []:
+            team_id = item.get("id") if isinstance(item, dict) else item
+            if team_id is None:
+                continue
+            try:
+                result.add(int(team_id))
+            except (TypeError, ValueError):
+                continue
+        return result
+
+    @staticmethod
     def get_authorized_team_ids(user, current_team, include_children):
         current_team = int(current_team)
         if getattr(user, "is_superuser", False):
@@ -38,14 +53,15 @@ class CmdbRulesFormatUtil:
 
     @staticmethod
     def build_deny_permission_data():
+        deny_value = f"{DENY_PERMISSION_PLACEHOLDER}:{uuid.uuid4().hex}"
         return {
-            "permission_instances_map": {DENY_PERMISSION_PLACEHOLDER: []},
-            "inst_names": [DENY_PERMISSION_PLACEHOLDER],
+            "permission_instances_map": {deny_value: []},
+            "inst_names": [deny_value],
         }
 
     @staticmethod
     def build_permission_rule_map(user_teams, permission_rules, fallback_team_id=None):
-        teams = {int(team_id) for team_id in permission_rules.get("team", [])}
+        teams = CmdbRulesFormatUtil._normalize_team_rule_ids(permission_rules.get("team", []))
         instance = permission_rules.get("instance", [])
         permission_instances_map = CmdbRulesFormatUtil.format_permission_instances_list(instances=instance)
         inst_names = list(permission_instances_map.keys())

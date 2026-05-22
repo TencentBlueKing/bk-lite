@@ -2247,8 +2247,9 @@ class CmdbPermissionScopeRegressionTests(SimpleTestCase):
             )
 
         self.assertEqual(permission_map[1]["inst_names"], [])
-        self.assertEqual(permission_map[2]["inst_names"], [DENY_PERMISSION_PLACEHOLDER])
-        self.assertEqual(permission_map[2]["permission_instances_map"], {DENY_PERMISSION_PLACEHOLDER: []})
+        deny_inst_name = permission_map[2]["inst_names"][0]
+        self.assertTrue(deny_inst_name.startswith(f"{DENY_PERMISSION_PLACEHOLDER}:"))
+        self.assertEqual(permission_map[2]["permission_instances_map"], {deny_inst_name: []})
 
     def test_format_user_groups_permissions_preserves_instance_level_permissions(self):
         request = self._make_request()
@@ -2295,7 +2296,9 @@ class CmdbPermissionScopeRegressionTests(SimpleTestCase):
                 permission_type=PERMISSION_INSTANCES,
             )
 
-        self.assertEqual(permission_map, {9: {"permission_instances_map": {DENY_PERMISSION_PLACEHOLDER: []}, "inst_names": [DENY_PERMISSION_PLACEHOLDER]}})
+        deny_inst_name = permission_map[9]["inst_names"][0]
+        self.assertTrue(deny_inst_name.startswith(f"{DENY_PERMISSION_PLACEHOLDER}:"))
+        self.assertEqual(permission_map, {9: {"permission_instances_map": {deny_inst_name: []}, "inst_names": [deny_inst_name]}})
 
     def test_build_permission_map_reuses_safe_permission_rule_builder(self):
         from apps.opspilot.metis.llm.tools.cmdb.utils import build_permission_map
