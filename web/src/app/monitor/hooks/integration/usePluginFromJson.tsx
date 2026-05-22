@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useConfigRenderer } from './useConfigRenderer';
 import { DataMapper } from './useDataMapper';
 import useIntegrationApi from '@/app/monitor/api/integration';
@@ -46,9 +46,13 @@ export const usePluginFromJson = () => {
           pluginId = pluginIdOrParams as string | number;
           data = await getUiTemplate({ id: pluginId });
         }
-        setConfig(data);
+        const resolvedConfig =
+          data && typeof data === 'object' && 'ui_template' in data
+            ? data.ui_template || {}
+            : data;
+        setConfig(resolvedConfig);
         setCurrentPluginId(pluginId);
-        return data;
+        return resolvedConfig;
       } catch {
         // 异常时返回默认配置
         const defaultConfig = {
@@ -69,7 +73,7 @@ export const usePluginFromJson = () => {
         return defaultConfig;
       }
     },
-    [isLoading]
+    [getUiTemplate, getUiTemplateByParams, getUiTemplateByPlugin, isLoading]
   );
 
   const buildPluginUI = useCallback(
@@ -333,8 +337,11 @@ export const usePluginFromJson = () => {
     [config, currentPluginId, renderFormField, renderTableColumn]
   );
 
-  return {
-    buildPluginUI,
-    getPluginConfig
-  };
+  return useMemo(
+    () => ({
+      buildPluginUI,
+      getPluginConfig
+    }),
+    [buildPluginUI, getPluginConfig]
+  );
 };
