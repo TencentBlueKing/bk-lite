@@ -136,6 +136,9 @@ class CustomSnmpPluginService:
             if not (plugin.description or "").strip() and (source_plugin.description or "").strip():
                 plugin.description = source_plugin.description
                 update_fields.append("description")
+            if not plugin.node_selector and source_plugin.node_selector:
+                plugin.node_selector = copy.deepcopy(source_plugin.node_selector)
+                update_fields.append("node_selector")
             if update_fields:
                 plugin.save(update_fields=[*update_fields, "updated_at"])
 

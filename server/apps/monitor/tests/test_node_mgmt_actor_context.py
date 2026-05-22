@@ -144,6 +144,40 @@ def test_get_nodes_keeps_opspilot_guest_group_ids(monkeypatch):
     assert set(captured["payload"]["organization_ids"]) == {8, 10}
 
 
+def test_get_nodes_applies_plugin_node_selector(monkeypatch):
+    captured = {}
+
+    class NodeMgmt:
+        def node_list(self, payload):
+            captured["payload"] = payload
+            return payload
+
+    class InstanceConfigService:
+        @staticmethod
+        def _get_plugin_node_selector(plugin_id):
+            assert plugin_id == 12
+            return {"is_container": True}
+
+    module = _load_node_mgmt_view(monkeypatch)
+    module.NodeMgmt = NodeMgmt
+    module.InstanceConfigService = InstanceConfigService
+
+    request = types.SimpleNamespace(
+        COOKIES={"current_team": "7"},
+        data={"monitor_plugin_id": 12},
+        user=types.SimpleNamespace(
+            username="api-user",
+            domain="domain.com",
+            is_superuser=False,
+            group_list=[7],
+        ),
+    )
+
+    module.NodeMgmtView().get_nodes(request)
+
+    assert captured["payload"]["is_container"] is True
+
+
 class _MonitorInstanceQuerySet:
     def __init__(self, rows):
         self.rows = rows

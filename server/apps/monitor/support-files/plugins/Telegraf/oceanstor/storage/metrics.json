@@ -2,6 +2,9 @@
   "plugin": "OceanStor",
   "plugin_desc": "Huawei OceanStor storage monitoring plugin. Collects performance metrics from storage pools, drives, and volumes via the DeviceManager REST API.",
   "status_query": "any({instance_type='storage', collect_type='oceanstor'}) by (instance_id)",
+  "node_selector": {
+    "is_container": true
+  },
   "name": "Storage",
   "icon": "mm-storage_储存设备",
   "type": "Hardware Device",
