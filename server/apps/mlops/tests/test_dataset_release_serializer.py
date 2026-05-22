@@ -40,6 +40,7 @@ from apps.mlops.serializers.image_classification import ImageClassificationDatas
 from apps.mlops.serializers.log_clustering import LogClusteringDatasetReleaseSerializer
 from apps.mlops.serializers.object_detection import ObjectDetectionDatasetReleaseSerializer
 from apps.mlops.serializers.timeseries_predict import TimeSeriesPredictDatasetReleaseSerializer
+from apps.mlops.tasks.object_detection import publish_dataset_release_async
 from .conftest import create_dataset_release_fixture, make_serializer_context
 
 
@@ -377,3 +378,48 @@ def test_image_like_dataset_release_create_reuses_failed_same_version_with_datas
     assert failed_release.status == "pending"
     assert failed_release.file_size == 0
     assert failed_release.metadata == {}
+
+
+def test_object_detection_publish_dataset_release_marks_failed_on_class_conflicts(
+    monkeypatch,
+):
+    class FakeStorage:
+        def __init__(self, bucket_name):
+            self.bucket_name = bucket_name
+
+        def save(self, path, file_obj):
+            return path
+
+        def url(self, saved_path):
+            return f"https://example.com/{saved_path}"
+
+    monkeypatch.setattr("apps.mlops.tasks.object_detection.MinioBackend", FakeStorage)
+
+    dataset, train, val, test = create_dataset_release_fixture(
+        ObjectDetectionDataset,
+        ObjectDetectionTrainData,
+    )
+    train.metadata = {"classes": ["person"]}
+    val.metadata = {"classes": ["vehicle"]}
+    test.metadata = {"classes": ["person"]}
+    train.save(update_fields=["metadata"])
+    val.save(update_fields=["metadata"])
+    test.save(update_fields=["metadata"])
+
+    release = ObjectDetectionDatasetRelease.objects.create(
+        name="release-conflict",
+        description="",
+        dataset=dataset,
+        version="v4.0.0",
+        dataset_file="pending.zip",
+        status="pending",
+        metadata={},
+        file_size=0,
+    )
+
+    result = publish_dataset_release_async(release.id, train.id, val.id, test.id)
+    release.refresh_from_db()
+
+    assert result["result"] is False
+    assert release.status == "failed"
+    assert "类别名称冲突" in release.metadata["error"]
