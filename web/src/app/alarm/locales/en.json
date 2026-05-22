@@ -19,7 +19,10 @@
     "incidents": {
         "table": "Table",
         "gantt": "Gantt",
-        "alarmCount": "Alert Count"
+        "alarmCount": "Alert Count",
+        "team": "Team",
+        "selectTeam": "Select Team",
+        "teamRequired": "Please select at least one team"
     },
     "alarms": {
         "monitor": "Monitor",
@@ -171,6 +174,16 @@
         "snmpTrapStep2": "Configure MIB Files",
         "snmpTrapStep2Des": "Obtain the MIB files from the device vendor and place them in the following directory on the node",
         "snmpTrapMibPath": "MIB File Path",
+        "teamSecrets": "Team Secrets",
+        "teamSecretsDesc": "Manage team-specific secrets for this alert source. Each team can have a unique secret for event attribution.",
+        "addTeamSecret": "Add Team Secret",
+        "regenerateSecret": "Regenerate",
+        "removeTeamSecret": "Remove",
+        "confirmRemoveTeamSecret": "Are you sure you want to remove this team secret?",
+        "teamSecretAdded": "Team secret added successfully",
+        "teamSecretRegenerated": "Team secret regenerated successfully",
+        "teamSecretRemoved": "Team secret removed successfully",
+        "noTeamSecrets": "No team secrets configured"
         "zabbixGuideOverview": "Guide Overview",
         "zabbixConnectionValues": "Webhook & Header Values",
         "zabbixConnectionValuesHelp": "Configure the following values in the Zabbix media type so requests can reach the current BK-Lite source.",

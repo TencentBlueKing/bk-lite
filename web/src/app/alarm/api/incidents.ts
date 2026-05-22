@@ -1,7 +1,7 @@
 import useApiClient from '@/utils/request';
 
 export const useIncidentsApi = () => {
-  const { get, post, patch } = useApiClient();
+  const { get, post, patch, del } = useApiClient();
 
   const getIncidentList = async (params: any) => {
     return get('/alerts/api/incident/', { params });
@@ -23,11 +23,21 @@ export const useIncidentsApi = () => {
     return post(`/alerts/api/incident/operator/${actionType}/`, params);
   };
 
+  const addAlertsToIncident = async (incidentId: string, alertIds: number[]) => {
+    return post(`/alerts/api/incident/${incidentId}/alerts/`, { alert_ids: alertIds });
+  };
+
+  const removeAlertsFromIncident = async (incidentId: string, alertIds: number[]) => {
+    return del(`/alerts/api/incident/${incidentId}/alerts/`, { data: { alert_ids: alertIds } });
+  };
+
   return {
     getIncidentList,
     getIncidentDetail,
     createIncidentDetail,
     modifyIncidentDetail,
     incidentActionOperate,
+    addAlertsToIncident,
+    removeAlertsFromIncident,
   };
 };

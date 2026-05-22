@@ -19,7 +19,10 @@
     "incidents": {
         "table": "表格",
         "gantt": "甘特图",
-        "alarmCount": "告警数量"
+        "alarmCount": "告警数量",
+        "team": "管理组织",
+        "selectTeam": "选择组织",
+        "teamRequired": "请至少选择一个组织"
     },
     "alarms": {
         "monitor": "监控",
@@ -173,6 +176,16 @@
         "snmpTrapStep2": "配置 MIB 文件",
         "snmpTrapStep2Des": "从设备官方获取 MIB 文件，放至节点以下目录",
         "snmpTrapMibPath": "MIB 文件路径",
+        "teamSecrets": "组织密钥",
+        "teamSecretsDesc": "管理此告警源的组织密钥。每个组织可以拥有唯一的密钥用于事件归属。",
+        "addTeamSecret": "添加组织密钥",
+        "regenerateSecret": "重新生成",
+        "removeTeamSecret": "移除",
+        "confirmRemoveTeamSecret": "确定要移除此组织密钥吗？",
+        "teamSecretAdded": "组织密钥添加成功",
+        "teamSecretRegenerated": "组织密钥重新生成成功",
+        "teamSecretRemoved": "组织密钥移除成功",
+        "noTeamSecrets": "暂无组织密钥"
         "zabbixGuideOverview": "指引概览",
         "zabbixConnectionValues": "Webhook 与请求头配置",
         "zabbixConnectionValuesHelp": "请将以下配置写入 Zabbix 媒体类型，确保请求能够准确发送到当前 BK-Lite 集成来源。",

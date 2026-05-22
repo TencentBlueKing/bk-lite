@@ -1,4 +1,5 @@
 import useApiClient from '@/utils/request';
+import { K8sRenderParams, SnmpTrapNodeListResponse, TeamSecretsResponse, TeamSecretResponse } from '@/app/alarm/types/integration';
 import {
   AlertSourceIntegrationGuide,
   K8sRenderParams,
@@ -31,6 +32,17 @@ export const useSourceApi = () => {
       responseType: 'blob',
     });
 
+  const listTeamSecrets = async (sourceId: number | string): Promise<TeamSecretsResponse> =>
+    get(`/alerts/api/alert_source/${sourceId}/team_secrets/`);
+
+  const addTeamSecret = async (sourceId: number | string, teamId: string): Promise<TeamSecretResponse> =>
+    post(`/alerts/api/alert_source/${sourceId}/team_secrets/add/`, { team_id: teamId });
+
+  const regenerateTeamSecret = async (sourceId: number | string, teamId: string): Promise<TeamSecretResponse> =>
+    post(`/alerts/api/alert_source/${sourceId}/team_secrets/regenerate/`, { team_id: teamId });
+
+  const removeTeamSecret = async (sourceId: number | string, teamId: string): Promise<void> =>
+    post(`/alerts/api/alert_source/${sourceId}/team_secrets/remove/`, { team_id: teamId });
   const getDailyEventStats = async (): Promise<{ today_count: number; yesterday_count: number }> =>
     get('/alerts/api/alert_source/daily_event_stats/');
 
@@ -41,6 +53,10 @@ export const useSourceApi = () => {
     getK8sMeta,
     getAlertSnmpTrapNodeList,
     downloadK8sFile,
+    listTeamSecrets,
+    addTeamSecret,
+    regenerateTeamSecret,
+    removeTeamSecret,
     getDailyEventStats,
   };
 };

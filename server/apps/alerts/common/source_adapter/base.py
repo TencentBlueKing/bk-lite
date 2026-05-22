@@ -15,11 +15,12 @@ from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
 from apps.alerts.common.shield import execute_shield_check_for_events
 from apps.alerts.constants.constants import LevelType, EventAction, AlertStatus
 from apps.alerts.constants.init_data import INIT_ALERT_ENRICH
+from apps.alerts.error import AuthenticationSourceError
 from apps.alerts.models.sys_setting import SystemSetting
 from apps.alerts.models.models import Alert, Event, Level
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.common.source_adapter import logger
-from apps.alerts.utils.util import split_list
+from apps.alerts.utils.util import decode_team_secret, split_list
 from apps.rpc.cmdb import CMDB
 
 
@@ -33,8 +34,10 @@ class AlertSourceAdapter(ABC):
         self.events = events
         self.mapping = self.alert_source.config.get("event_fields_mapping", {})
         self.unique_fields = ["title"]
-        self.info_level, self.levels = self.get_event_level()  # 默认级别为最低级别
+        self.info_level, self.levels = self.get_event_level()
         self.enable_rich_event = self.enable_enrich()
+        self.resolved_team = self._resolve_team_from_secret(secret)
+        self.team_secrets = set(self.alert_source.team_secrets.values())
 
     @staticmethod
     def enable_enrich():
@@ -47,17 +50,43 @@ class AlertSourceAdapter(ABC):
             return False
         return instance.value.get("enable", False)
 
+    def _resolve_team_from_secret(self, secret: str) -> List:
+        if not secret:
+            return []
+        team_secrets = getattr(self.alert_source, "team_secrets", None) or {}
+        for team_id, team_secret in team_secrets.items():
+            if team_secret != secret:
+                continue
+            payload = decode_team_secret(team_secret)
+            if not payload:
+                continue
+            if payload.get("source_secret") != self.alert_source.secret:
+                continue
+            payload_team_id = payload.get("team_id")
+            if payload_team_id not in {str(team_id), team_id}:
+                continue
+            try:
+                return [int(payload_team_id)]
+            except (TypeError, ValueError):
+                try:
+                    return [int(team_id)]
+                except (TypeError, ValueError):
+                    return [team_id]
+        return []
+
     @staticmethod
     def get_event_level() -> tuple:
         """获取事件级别"""
-        instance = list(Level.objects.filter(level_type=LevelType.EVENT).order_by("level_id").values_list("level_id", flat=True))
+        instance = list(
+            Level.objects.filter(level_type=LevelType.EVENT).order_by("level_id").values_list("level_id", flat=True))
 
         return str(max(instance)), [str(i) for i in instance]
 
-    @abstractmethod
-    def authenticate(self, *args, **kwargs) -> bool:
-        """认证告警源"""
-        pass
+    def authenticate(self) -> bool:
+        # 这里可以实现一些通用的认证逻辑
+        if self.secret in self.team_secrets:
+            return True
+        raise AuthenticationSourceError("Authentication failed")
 
     @abstractmethod
     def fetch_alerts(self) -> List[Dict[str, Any]]:
@@ -195,10 +224,10 @@ class AlertSourceAdapter(ABC):
                 existing_event.external_id
                 for existing_event in alert.events.all()
                 if existing_event.action == EventAction.CREATED
-                and existing_event.source_id == self.alert_source.id
-                and self._normalize_lookup_value(existing_event.item) == item
-                and self._normalize_lookup_value(existing_event.resource_name) == resource_name
-                and existing_event.external_id
+                   and existing_event.source_id == self.alert_source.id
+                   and self._normalize_lookup_value(existing_event.item) == item
+                   and self._normalize_lookup_value(existing_event.resource_name) == resource_name
+                   and existing_event.external_id
             }
             if len(created_external_ids) == 1:
                 matched_external_ids.append(next(iter(created_external_ids)))
@@ -231,6 +260,7 @@ class AlertSourceAdapter(ABC):
         event.push_source_id = getattr(event, "push_source_id", None) or alert.get("source_id") or "default"
         event.raw_data = alert
         event.event_id = f"EVENT-{uuid.uuid4().hex}"
+        event.team = self.resolved_team
 
         if not event.external_id or not str(event.external_id).strip():
             event.external_id = self.resolve_recovery_external_id(event) or self.generate_external_id(
