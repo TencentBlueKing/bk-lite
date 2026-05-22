@@ -1,9 +1,78 @@
 from apps.cmdb.constants.constants import OPERATE, VIEW, PERMISSION_INSTANCES, APP_NAME
-from apps.cmdb.utils.base import format_groups_params, get_organization_and_children_ids, get_current_team_from_request
+from apps.cmdb.utils.base import get_current_team_from_request
 from apps.core.utils.permission_utils import get_permission_rules
+from apps.system_mgmt.utils.group_utils import GroupUtils
+
+
+DENY_PERMISSION_PLACEHOLDER = "__cmdb_no_permission__"
 
 
 class CmdbRulesFormatUtil:
+
+    @staticmethod
+    def _normalize_user_group_ids(group_list):
+        group_list = group_list or []
+        result = []
+        for item in group_list:
+            group_id = item.get("id") if isinstance(item, dict) else item
+            if group_id is None:
+                continue
+            result.append(int(group_id))
+        return result
+
+    @staticmethod
+    def get_authorized_team_ids(user, current_team, include_children):
+        current_team = int(current_team)
+        if getattr(user, "is_superuser", False):
+            return GroupUtils.get_group_with_descendants(current_team) if include_children else [current_team]
+
+        user_group_ids = CmdbRulesFormatUtil._normalize_user_group_ids(getattr(user, "group_list", []))
+        if not user_group_ids:
+            return []
+
+        return GroupUtils.get_user_authorized_child_groups(
+            user_group_list=user_group_ids,
+            target_group_id=current_team,
+            include_children=include_children,
+        )
+
+    @staticmethod
+    def build_deny_permission_data():
+        return {
+            "permission_instances_map": {DENY_PERMISSION_PLACEHOLDER: []},
+            "inst_names": [DENY_PERMISSION_PLACEHOLDER],
+        }
+
+    @staticmethod
+    def build_permission_rule_map(user_teams, permission_rules, fallback_team_id=None):
+        teams = {int(team_id) for team_id in permission_rules.get("team", [])}
+        instance = permission_rules.get("instance", [])
+        permission_instances_map = CmdbRulesFormatUtil.format_permission_instances_list(instances=instance)
+        inst_names = list(permission_instances_map.keys())
+
+        permission_rule_map = {}
+        for team in user_teams:
+            team = int(team)
+            if team in teams:
+                permission_rule_map[team] = {
+                    "permission_instances_map": {},
+                    "inst_names": [],
+                }
+                continue
+
+            if permission_instances_map:
+                permission_rule_map[team] = {
+                    "permission_instances_map": permission_instances_map,
+                    "inst_names": inst_names,
+                }
+                continue
+
+            permission_rule_map[team] = CmdbRulesFormatUtil.build_deny_permission_data()
+
+        if not permission_rule_map and fallback_team_id is not None:
+            permission_rule_map[int(fallback_team_id)] = CmdbRulesFormatUtil.build_deny_permission_data()
+
+        return permission_rule_map
 
     @staticmethod
     def has_object_permission(obj_type, operator, model_id, permission_instances_map, instance, team_id=None,
@@ -134,11 +203,11 @@ class CmdbRulesFormatUtil:
 
         current_team = get_current_team_from_request(request)
         include_children = request.COOKIES.get("include_children") == "1"
-        user_teams = get_organization_and_children_ids(
-            tree_data=request.user.group_tree, target_id=current_team
+        user_teams = CmdbRulesFormatUtil.get_authorized_team_ids(
+            user=request.user,
+            current_team=current_team,
+            include_children=include_children,
         )
-        if not user_teams:
-            user_teams = [current_team]
         permission_key = f"{permission_type}.{model_id}" if model_id else permission_type
         permission_rules = get_permission_rules(
             user=request.user,
@@ -150,28 +219,11 @@ class CmdbRulesFormatUtil:
         if not isinstance(permission_rules, dict):
             permission_rules = {}
 
-        teams = permission_rules.get("team", [])
-        instance = permission_rules.get("instance", [])
-        permission_instances_map = CmdbRulesFormatUtil().format_permission_instances_list(instances=instance)
-        inst_names = list(permission_instances_map.keys())
-        permission_rule_map = {}
-        for team in user_teams:
-            if not include_children and team not in teams:
-                # 不包含子组织的情况下跳过非当前的组织
-                continue
-            if team in teams:
-                # 全部权限
-                permission_rule_map[team] = {
-                    "permission_instances_map": {},
-                    "inst_names": []
-                }
-            else:
-                permission_rule_map[team] = {
-                    "permission_instances_map": permission_instances_map,
-                    "inst_names": inst_names
-                }
-
-        return permission_rule_map
+        return CmdbRulesFormatUtil.build_permission_rule_map(
+            user_teams=user_teams,
+            permission_rules=permission_rules,
+            fallback_team_id=current_team,
+        )
 
     @staticmethod
     def format_organizations_instances_map(permission_instances_map):
