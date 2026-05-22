@@ -26,18 +26,18 @@ class AlertLifecycleNotifier:
         self.policy = policy
 
     def notify_alerts(self, alerts, action, operator="", reason=""):
-        """发送告警生命周期通知。从 alert 自身取通知配置，alert.notice_type_id == 0 时 fallback 到 policy。"""
         if not alerts:
             return
 
         groups = defaultdict(list)
         for alert in alerts:
-            channel_id = self._resolve_notice_type_id(alert)
+            channel_ids = self._resolve_notice_type_ids(alert)
             notice_users = self._resolve_notice_users(alert)
-            if not channel_id:
-                logger.warning(f"Alert {alert.id} has no notice_type_id configured, skip notification")
+            if not channel_ids:
+                logger.warning(f"Alert {alert.id} has no notice_type_ids configured, skip notification")
                 continue
-            groups[(channel_id, tuple(notice_users) if notice_users else ())].append(alert)
+            for channel_id in channel_ids:
+                groups[(channel_id, tuple(notice_users) if notice_users else ())].append(alert)
 
         for (channel_id, notice_users_tuple), group_alerts in groups.items():
             notice_users = list(notice_users_tuple)
@@ -49,12 +49,12 @@ class AlertLifecycleNotifier:
                     exc_info=True,
                 )
 
-    def _resolve_notice_type_id(self, alert):
-        if alert.notice_type_id:
-            return alert.notice_type_id
-        if self.policy and self.policy.notice and self.policy.notice_type_id:
-            return self.policy.notice_type_id
-        return 0
+    def _resolve_notice_type_ids(self, alert):
+        if alert.notice_type_ids:
+            return alert.notice_type_ids
+        if self.policy and self.policy.notice and self.policy.notice_type_ids:
+            return self.policy.notice_type_ids
+        return []
 
     def _resolve_notice_users(self, alert):
         if alert.notice_users:

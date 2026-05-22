@@ -707,12 +707,12 @@ def test_alert_center_created_and_recovery_events_share_same_external_id(monkeyp
         dimensions={"instance_id": "host-1"},
         metric_instance_id="('host-1',)",
         status="recovered",
-        notice_type_id=9,
+        notice_type_ids=[9],
         notice_users=[],
     )
 
     lifecycle_notifier = object.__new__(lifecycle_module.AlertLifecycleNotifier)
-    lifecycle_notifier.policy = types.SimpleNamespace(id=1011, name="alert-center-policy", notice_type_id=9)
+    lifecycle_notifier.policy = types.SimpleNamespace(id=1011, name="alert-center-policy", notice_type_ids=[9])
 
     created_payload = lifecycle_notifier._build_alert_center_payload(alert, "created", operator="", reason="")
     recovery_payload = lifecycle_notifier._build_alert_center_payload(alert, "recovered", operator="tester", reason="auto")
