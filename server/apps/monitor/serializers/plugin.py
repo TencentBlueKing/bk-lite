@@ -81,7 +81,7 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
         if monitor_object and isinstance(monitor_object.instance_id_keys, list):
             instance_id_keys = [str(key) for key in monitor_object.instance_id_keys if key not in (None, "")]
         group_by = ", ".join(instance_id_keys or ["instance_id"])
-        return f"any({{plugin_id='{plugin.id}'}}) by ({group_by})"
+        return f"any({{plugin_id='{plugin.template_id}'}}) by ({group_by})"
 
     def create(self, validated_data):
         """
