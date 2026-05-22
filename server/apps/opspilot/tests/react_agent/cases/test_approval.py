@@ -30,7 +30,7 @@ _falkordb_asyncio.FalkorDB = type("FalkorDB", (), {})
 sys.modules.setdefault("falkordb.asyncio", _falkordb_asyncio)
 
 from typing import Annotated  # noqa: E402
-from unittest.mock import MagicMock, patch  # noqa: E402
+from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage  # noqa: E402
@@ -137,7 +137,8 @@ async def _build_and_run(
         "apps.opspilot.utils.approval.wait_for_approval",
         side_effect=mock_wait_for_approval,
     ), patch(
-        "apps.opspilot.metis.llm.chain.node.is_interrupt_requested",
+        "apps.opspilot.metis.llm.chain.node.is_interrupt_requested_async",
+        new_callable=AsyncMock,
         return_value=False,
     ), patch(
         "langchain_core.callbacks.dispatch_custom_event",

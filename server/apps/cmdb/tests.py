@@ -22,8 +22,8 @@ from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from django.utils import timezone
 from django.test import SimpleTestCase
+from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 from apps.core.exceptions.base_app_exception import BaseAppException
 
@@ -258,6 +258,146 @@ def test_check_instances_permission_limits_query_to_target_instance_ids():
             {"field": "organization", "type": "list_any[]", "value": [1]},
         ],
     )
+
+
+def test_falkordb_entity_count_applies_base_params_before_grouping():
+    from apps.cmdb.graph.falkordb import FalkorDBClient
+
+    client = FalkorDBClient.__new__(FalkorDBClient)
+    client.ENABLE_PARAMETERIZATION = False
+    client._param_collector = None
+    client._execute_query = MagicMock(
+        return_value=SimpleNamespace(
+            header=[("", "os_type"), ("", "count")],
+            result_set=[["1", 2]],
+        )
+    )
+
+    result = client.entity_count(
+        label="instance",
+        group_by_attr="os_type",
+        params=[{"field": "model_id", "type": "str=", "value": "host"}],
+        format_permission_dict={1: []},
+    )
+
+    assert result == {"1": 2}
+    sql = client._execute_query.call_args.args[0]
+    assert "model_id" in sql
+    assert "organization" in sql
+    assert "COUNT(n) AS count" in sql
+
+
+def test_group_inst_count_passes_base_params_and_permission_scope_to_graph_client():
+    from apps.cmdb.services.instance import InstanceManage
+
+    graph_client = MagicMock()
+    graph_client.entity_count.return_value = {"host": 3}
+
+    graph_context = MagicMock()
+    graph_context.__enter__.return_value = graph_client
+    graph_context.__exit__.return_value = False
+
+    with patch("apps.cmdb.services.instance.GraphClient", return_value=graph_context):
+        result = InstanceManage.group_inst_count(
+            group_by_attr="model_id",
+            permissions_map={1: {"inst_names": ["host-1", "host-2"], "permission_instances_map": {}}},
+            params=[{"field": "model_id", "type": "str=", "value": "host"}],
+            creator="alice",
+        )
+
+    assert result == {"host": 3}
+    graph_client.entity_count.assert_called_once_with(
+        label="instance",
+        group_by_attr="model_id",
+        params=[{"field": "model_id", "type": "str=", "value": "host"}],
+        format_permission_dict={
+            1: [
+                {"field": "inst_name", "type": "str[]", "value": ["host-1", "host-2"]},
+                {"field": "_creator", "type": "str=", "value": "alice"},
+            ]
+        },
+    )
+
+
+def test_get_instance_group_by_uses_graph_aggregation_for_enum_field():
+    from apps.cmdb.nats.nats import get_instance_group_by
+
+    with (
+        patch("apps.cmdb.nats.nats._build_nats_permission_map", return_value={1: {"inst_names": [], "permission_instances_map": {}}}),
+        patch(
+            "apps.cmdb.nats.nats.ModelManage.search_model_attr",
+            return_value=[
+                {
+                    "attr_id": "os_type",
+                    "attr_type": "enum",
+                    "enum_select_mode": "single",
+                    "option": [{"id": 1, "name": "Linux"}],
+                }
+            ],
+        ),
+        patch("apps.cmdb.nats.nats.GraphClient") as mock_graph_client,
+        patch("apps.cmdb.nats.nats.InstanceManage.group_inst_count", return_value={"1": 2, None: 1}) as mock_group_inst_count,
+    ):
+        result = get_instance_group_by(model_id="host", field="os_type", user_info={"team": 1, "user": "alice"})
+
+    assert result == {
+        "result": True,
+        "data": [
+            {"name": "Linux", "value": 2},
+            {"name": "unknown", "value": 1},
+        ],
+        "message": "",
+    }
+    mock_graph_client.assert_not_called()
+    mock_group_inst_count.assert_called_once_with(
+        group_by_attr="os_type",
+        permissions_map={1: {"inst_names": [], "permission_instances_map": {}}},
+        params=[{"field": "model_id", "type": "str=", "value": "host"}],
+    )
+
+
+def test_get_instance_group_by_falls_back_to_raw_enum_values_when_display_may_be_missing():
+    from apps.cmdb.nats.nats import get_instance_group_by
+
+    with (
+        patch("apps.cmdb.nats.nats._build_nats_permission_map", return_value={1: {"inst_names": [], "permission_instances_map": {}}}),
+        patch(
+            "apps.cmdb.nats.nats.ModelManage.search_model_attr",
+            return_value=[
+                {
+                    "attr_id": "os_type",
+                    "attr_type": "enum",
+                    "enum_select_mode": "single",
+                    "option": [{"id": 1, "name": "Linux"}, {"id": "other", "name": "Other"}],
+                }
+            ],
+        ),
+        patch("apps.cmdb.nats.nats.InstanceManage.group_inst_count", return_value={"1": 2, "other": 1, None: 1}) as mock_group_inst_count,
+    ):
+        result = get_instance_group_by(model_id="host", field="os_type", user_info={"team": 1, "user": "alice"})
+
+    assert result == {
+        "result": True,
+        "data": [
+            {"name": "Linux", "value": 2},
+            {"name": "Other", "value": 1},
+            {"name": "unknown", "value": 1},
+        ],
+        "message": "",
+    }
+    mock_group_inst_count.assert_called_once_with(
+        group_by_attr="os_type",
+        permissions_map={1: {"inst_names": [], "permission_instances_map": {}}},
+        params=[{"field": "model_id", "type": "str=", "value": "host"}],
+    )
+
+
+def test_falkordb_count_formatter_normalizes_list_keys():
+    from apps.cmdb.graph.falkordb_format import FormatDBResult
+
+    result = FormatDBResult(SimpleNamespace(result_set=[[["1"], 2]], header=[])).to_result_of_count()
+
+    assert result == {"1": 2}
 
 
 def test_get_relation_instances_falls_back_to_per_instance_when_batch_query_fails():

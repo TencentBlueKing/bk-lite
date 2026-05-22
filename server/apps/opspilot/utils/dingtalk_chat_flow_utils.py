@@ -8,11 +8,11 @@ from urllib.parse import unquote, urlparse
 
 import dingtalk_stream
 import requests
-from django.core.cache import cache
 from django.http import JsonResponse
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import Bot, BotWorkFlow
+from apps.opspilot.utils.base_chat_flow_utils import BaseChatFlowUtils
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 
 # 钉钉官方域名白名单
@@ -20,10 +20,6 @@ DINGTALK_ALLOWED_DOMAINS = [
     "oapi.dingtalk.com",
     "api.dingtalk.com",
 ]
-
-# 两阶段去重缓存过期时间
-MESSAGE_PROCESSING_EXPIRE_SECONDS = 300  # 处理中状态 5 分钟超时（允许超时后重试）
-MESSAGE_COMPLETED_EXPIRE_SECONDS = 86400  # 已完成状态 24 小时（防止重复处理）
 
 
 def is_valid_dingtalk_url(url: str) -> bool:
@@ -55,14 +51,24 @@ def is_valid_dingtalk_url(url: str) -> bool:
         return False
 
 
-class DingTalkChatFlowUtils(object):
+class DingTalkChatFlowUtils(BaseChatFlowUtils):
+    """钉钉 ChatFlow 工具类
+
+    继承 BaseChatFlowUtils，实现钉钉特定的消息发送逻辑
+    """
+
+    # 渠道配置
+    channel_name = "钉钉"
+    channel_code = "dingtalk"
+    cache_key_prefix = "dingtalk_msg"
+
     def __init__(self, bot_id):
         """初始化钉钉ChatFlow工具类
 
         Args:
             bot_id: Bot ID
         """
-        self.bot_id = bot_id
+        super().__init__(bot_id)
 
     def validate_bot_and_workflow(self):
         """验证Bot和ChatFlow配置
@@ -246,52 +252,28 @@ class DingTalkChatFlowUtils(object):
             logger.error(f"钉钉发送消息异常，Bot {self.bot_id}，错误: {str(e)}")
             return False
 
-    def _is_message_processed(self, msg_id: str) -> bool:
-        """检查消息是否已处理（两阶段去重）
-
-        状态转换：
-        - None → processing (5min TTL) → completed (24h TTL)
-        - 失败时清除 → None（允许 Celery 重试或平台重试）
+    def send_reply(self, reply_text: str, sender_id: str, config: dict):
+        """发送回复消息到钉钉（实现基类抽象方法）
 
         Args:
-            msg_id: 消息唯一标识
-
-        Returns:
-            bool: True 表示已处理或处理中，False 表示可以处理
+            reply_text: 回复文本
+            sender_id: 发送者ID（钉钉用户ID）
+            config: 钉钉配置，包含 webhook_url
         """
-        cache_key = f"dingtalk_msg:{self.bot_id}:{msg_id}"
-        status = cache.get(cache_key)
+        if not reply_text:
+            logger.warning(f"钉钉回复消息为空，Bot {self.bot_id}")
+            return
 
-        if status == "completed":
-            logger.debug(f"钉钉消息已完成处理，跳过: msg_id={msg_id}")
-            return True
-        if status == "processing":
-            logger.debug(f"钉钉消息处理中，跳过: msg_id={msg_id}")
-            return True
+        webhook_url = config.get("webhook_url")
+        if not webhook_url:
+            logger.error(f"钉钉发送回复失败：缺少 webhook_url，Bot {self.bot_id}")
+            return
 
-        # 标记为处理中（短 TTL，超时后允许重试）
-        cache.set(cache_key, "processing", MESSAGE_PROCESSING_EXPIRE_SECONDS)
-        return False
+        # 处理换行符
+        reply_text = reply_text.replace("\r\n", "\n").replace("\r", "\n")
 
-    def mark_message_completed(self, msg_id: str):
-        """标记消息处理完成
-
-        Args:
-            msg_id: 消息唯一标识
-        """
-        cache_key = f"dingtalk_msg:{self.bot_id}:{msg_id}"
-        cache.set(cache_key, "completed", MESSAGE_COMPLETED_EXPIRE_SECONDS)
-        logger.debug(f"钉钉消息处理完成: msg_id={msg_id}")
-
-    def mark_message_failed(self, msg_id: str):
-        """标记消息处理失败，清除去重标记允许重试
-
-        Args:
-            msg_id: 消息唯一标识
-        """
-        cache_key = f"dingtalk_msg:{self.bot_id}:{msg_id}"
-        cache.delete(cache_key)
-        logger.info(f"钉钉消息处理失败，已清除去重标记: msg_id={msg_id}")
+        # 使用 text 类型发送消息
+        self.send_message(webhook_url, "text", {"content": reply_text})
 
     def handle_dingtalk_message(self, request, bot_chat_flow, dingtalk_config):
         """处理钉钉消息
@@ -332,8 +314,8 @@ class DingTalkChatFlowUtils(object):
                 logger.warning(f"钉钉收到空消息，Bot {self.bot_id}")
                 return JsonResponse({"success": True})
 
-            # 两阶段去重检查（标记为 processing）
-            if self._is_message_processed(msg_id):
+            # 两阶段去重检查（使用基类原子操作）
+            if self.is_message_processed(msg_id):
                 logger.info(f"钉钉消息已处理或处理中，跳过，Bot {self.bot_id}，MsgId {msg_id}")
                 return JsonResponse({"success": True})
 
