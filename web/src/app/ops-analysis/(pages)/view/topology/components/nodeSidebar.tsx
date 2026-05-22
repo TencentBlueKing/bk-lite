@@ -167,8 +167,10 @@ const Sidebar: React.FC<NodeSidebarProps> = ({
   return (
     <>
       <div
-        className={`h-full border-r border-(--color-border-1) bg-(--color-fill-1) transition-[width] duration-300 shrink-0 relative ${
-          collapsed ? 'w-0' : 'w-42'
+        className={`h-full bg-(--color-fill-1) transition-[width] duration-300 shrink-0 relative ${
+          collapsed
+            ? 'w-0 border-r-0'
+            : 'w-42 border-r border-(--color-border-1)'
         }`}
         style={{
           background:
