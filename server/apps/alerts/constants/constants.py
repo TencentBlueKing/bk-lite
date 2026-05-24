@@ -307,6 +307,22 @@ class LogTargetType:
     )
 
 
+class IncidentUpdateType:
+    """协作更新类型"""
+
+    OBSERVATION = "observation"
+    PROGRESS = "progress"
+    CONCLUSION = "conclusion"
+    NEXT_STEP = "next_step"
+
+    CHOICES = (
+        (OBSERVATION, "观察"),
+        (PROGRESS, "进展"),
+        (CONCLUSION, "结论"),
+        (NEXT_STEP, "下一步"),
+    )
+
+
 class LogAction:
     """
     日志操作类型

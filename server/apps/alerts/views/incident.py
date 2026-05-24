@@ -98,13 +98,15 @@ class IncidentModelViewSet(ModelViewSet):
 
     @staticmethod
     def _build_operator_user_map(objects):
-        operator_usernames = set()
+        usernames = set()
         for incident in objects:
             if incident.operator:
-                operator_usernames.update(incident.operator)
-        if not operator_usernames:
+                usernames.update(incident.operator)
+            if incident.collaborators:
+                usernames.update(incident.collaborators)
+        if not usernames:
             return {}
-        return dict(User.objects.filter(username__in=operator_usernames).values_list("username", "display_name"))
+        return dict(User.objects.filter(username__in=usernames).values_list("username", "display_name"))
 
     @HasPermission("Incidents-View")
     def list(self, request, *args, **kwargs):
