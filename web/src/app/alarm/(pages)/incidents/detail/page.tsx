@@ -7,6 +7,7 @@ import styles from './page.module.scss';
 import AlarmTable from '@/app/alarm/(pages)/alarms/components/alarmTable';
 import GanttChart from '../components/ganttChart';
 import LinkModal from '../components/linkModal';
+import CollaborationTab from '../components/collaboration';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import AlarmAction from '@/app/alarm/(pages)/alarms/components/alarmAction';
 import SearchFilter from '@/app/alarm/components/searchFilter';
@@ -703,6 +704,13 @@ const IncidentDetail: React.FC = () => {
                   />
                 )}
               </div>
+            </TabPane>
+            <TabPane tab={t('incidents.collaboration')} key="collaboration">
+              <CollaborationTab
+                incidentDetail={incidentDetail}
+                incidentPk={rowDetailId}
+                onRefresh={onRefresh}
+              />
             </TabPane>
             <TabPane tab={t('alarms.changes')} key="timeline">
               <Spin spinning={recordLoading}>
