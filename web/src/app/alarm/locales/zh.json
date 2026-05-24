@@ -56,7 +56,7 @@
         "expandReplies": "展开 {count} 条回复",
         "searchContent": "搜索内容或发布者",
         "searchUser": "搜索用户",
-        "noCollaborator": "暂无协作者"
+        "noCollaborator": "暂无协作者",
         "team": "管理组织",
         "selectTeam": "选择组织",
         "teamRequired": "请至少选择一个组织"
@@ -222,7 +222,7 @@
         "teamSecretAdded": "组织密钥添加成功",
         "teamSecretRegenerated": "组织密钥重新生成成功",
         "teamSecretRemoved": "组织密钥移除成功",
-        "noTeamSecrets": "暂无组织密钥"
+        "noTeamSecrets": "暂无组织密钥",
         "zabbixGuideOverview": "指引概览",
         "zabbixConnectionValues": "Webhook 与请求头配置",
         "zabbixConnectionValuesHelp": "请将以下配置写入 Zabbix 媒体类型，确保请求能够准确发送到当前 BK-Lite 集成来源。",
