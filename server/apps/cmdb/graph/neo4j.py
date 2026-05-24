@@ -1,5 +1,5 @@
-import os
 import json
+import os
 from typing import List, Union
 
 from dotenv import load_dotenv
@@ -231,7 +231,10 @@ class Neo4jClient:
         # 校验边是否已经存在
         check_asst_val = properties.get(check_asst_key)
         edge_count = self.session.run(
-            f"MATCH (a:{a_label})-[e]-(b:{b_label}) WHERE id(a) = {a_id} AND id(b) = {b_id} AND e.{check_asst_key} = '{check_asst_val}' RETURN COUNT(e) AS count"
+            f"MATCH (a:{a_label})-[e]-(b:{b_label}) "
+            f"WHERE id(a) = {a_id} AND id(b) = {b_id} "
+            f"AND e.{check_asst_key} = '{check_asst_val}' "
+            "RETURN COUNT(e) AS count"
             # noqa
         ).single()["count"]
         if edge_count > 0:
@@ -241,7 +244,9 @@ class Neo4jClient:
         properties_str = self.format_properties(properties)
         edge = self.session.run(
             # f"MATCH (a:{a_label}), (b:{b_label}) WHERE id(a) = {a_id} AND id(b) = {b_id} CREATE (a)-[e:{label} {properties_str}]->(b) RETURN e"  # noqa
-            f"MATCH (a:{a_label}) WHERE id(a) = {a_id} WITH a MATCH (b:{b_label}) WHERE id(b) = {b_id} CREATE (a)-[e:{label} {properties_str}]->(b) RETURN e"
+            f"MATCH (a:{a_label}) WHERE id(a) = {a_id} "
+            f"WITH a MATCH (b:{b_label}) WHERE id(b) = {b_id} "
+            f"CREATE (a)-[e:{label} {properties_str}]->(b) RETURN e"
             # noqa
         ).single()
 
@@ -459,7 +464,7 @@ class Neo4jClient:
         properties_str = ""
         for key, value in properties.items():
             target = f"{alias}.{key}"
-            if type(value) == str:
+            if isinstance(value, str):
                 properties_str += f"{target}='{value}',"
             elif value is None:
                 properties_str += f"{target}=null,"
@@ -562,9 +567,7 @@ class Neo4jClient:
         properties_str = self.format_properties_set(properties, alias="e")
         if not properties_str:
             raise BaseAppException("properties is empty")
-        edge = self.session.run(
-            f"MATCH ()-[e]->() WHERE id(e) = {edge_id} SET {properties_str} RETURN e"
-        ).single()
+        edge = self.session.run(f"MATCH ()-[e]->() WHERE id(e) = {edge_id} SET {properties_str} RETURN e").single()
         if not edge:
             raise BaseAppException("edge not found")
         return self.edge_to_dict(edge)
@@ -887,9 +890,35 @@ class Neo4jClient:
         return instance_condition_str
 
     def entity_count(
-        self, label: str, group_by_attr: str, params: list, permission_params: str = "", instance_permission_params: list = {}, created: str = ""
+        self,
+        label: str,
+        group_by_attr: str,
+        params: list = None,
+        format_permission_dict: dict = None,
+        permission_params: str = "",
+        instance_permission_params: list = None,
+        created: str = "",
     ):
+        params = params or []
+        format_permission_dict = format_permission_dict or {}
+        instance_permission_params = instance_permission_params or {}
         label_str = f":{label}" if label else ""
+
+        if format_permission_dict:
+            permission_filters = []
+            for organization_id, query_list in format_permission_dict.items():
+                organization_query = [{"field": "organization", "type": "list[]", "value": [organization_id]}]
+                base_permission_str = self.format_search_params(organization_query, param_type="AND")
+                org_permission_str = self.format_search_params(query_list, param_type="OR")
+
+                if base_permission_str and org_permission_str:
+                    permission_filters.append(f"({base_permission_str} AND {org_permission_str})")
+                elif base_permission_str:
+                    permission_filters.append(base_permission_str)
+
+            if permission_filters:
+                formatted_permission = permission_filters[0] if len(permission_filters) == 1 else f"({' OR '.join(permission_filters)})"
+                permission_params = f"{permission_params} AND {formatted_permission}" if permission_params else formatted_permission
 
         # 首先应用基础查询参数和组织权限
         final_params_str = self.format_final_params(params, permission_params=permission_params)
@@ -898,7 +927,7 @@ class Neo4jClient:
         instance_permission_str = self.format_instance_permission_params(instance_permission_params, created)
 
         if instance_permission_str:
-            final_params_str += f" AND ({instance_permission_str})"
+            final_params_str = f"{final_params_str} AND ({instance_permission_str})" if final_params_str else f"({instance_permission_str})"
 
         if final_params_str:
             final_params_str = f"WHERE {final_params_str}"
@@ -958,13 +987,13 @@ class Neo4jClient:
         if unique_key:
             properties_map = {}
             for properties in properties_list:
-                properties_key = tuple([properties.get(k) for k in unique_key if k in properties])
+                properties_key = tuple(properties.get(k) for k in unique_key if k in properties)
                 # 对参数中的节点按唯一键进行去重
                 properties_map[properties_key] = properties
             # 已有节点处理
             item_map = {}
             for item in exist_items:
-                item_key = tuple([item.get(k) for k in unique_key if k in item])
+                item_key = tuple(item.get(k) for k in unique_key if k in item)
                 item_map[item_key] = item
             for properties_key, properties in properties_map.items():
                 node = item_map.get(properties_key)

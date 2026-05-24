@@ -6,6 +6,7 @@ import SearchFilter from '@/app/alarm/components/searchFilter';
 import EventTable from '@/app/alarm/components/eventTable';
 import K8sGuide from '@/app/alarm/components/k8sGuide';
 import SnmpTrapGuide from '@/app/alarm/components/snmpTrapGuide';
+import TeamSecretsManager from '@/app/alarm/components/teamSecretsManager';
 import ZabbixGuide from '@/app/alarm/components/zabbixGuide';
 import CustomBreadcrumb from '@/app/alarm/components/customBreadcrumb';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
@@ -714,6 +715,40 @@ const IntegrationDetail: FC = () => {
                       },
                     ]} />
                   </div>
+                  <EventTable
+                    dataSource={eventList}
+                    loading={eventLoading}
+                    pagination={pagination}
+                    tableScrollY="calc(100vh - 490px)"
+                    onChange={(pag) =>
+                      setPagination({
+                        current: pag.current || 1,
+                        pageSize: pag.pageSize || pagination.pageSize,
+                        total: pagination.total,
+                      })
+                    }
+                  />
+                </Tabs.TabPane>
+                <Tabs.TabPane key="guide" tab={t('integration.guideTab')}>
+                  {isK8sSource ? (
+                    <K8sGuide
+                      source={source}
+                      meta={k8sMeta}
+                      loading={k8sMetaLoading}
+                      onDownload={handleK8sDownload}
+                    />
+                  ) : isSnmpTrapSource ? (
+                    <SnmpTrapGuide />
+                  ) : (
+                    renderGuideTab()
+                  )}
+                </Tabs.TabPane>
+                <Tabs.TabPane key="teamSecrets" tab={t('integration.teamSecrets')}>
+                  <TeamSecretsManager sourceId={source.id} />
+                </Tabs.TabPane>
+              </Tabs>
+            </div>
+=======
                   {activeTab === 'guide' ? (
                     <div className="min-w-0">
                       <K8sSidebar />

@@ -5,7 +5,6 @@ from abc import ABC
 from typing import Dict, Any, List
 
 from apps.alerts.common.source_adapter.base import AlertSourceAdapter
-from apps.alerts.error import AuthenticationSourceError
 
 
 class ZabbixAdapter(AlertSourceAdapter, ABC):
@@ -14,11 +13,6 @@ class ZabbixAdapter(AlertSourceAdapter, ABC):
     @staticmethod
     def _is_english(language: str | None) -> bool:
         return str(language or "").lower().startswith("en")
-
-    def authenticate(self) -> bool:
-        if self.secret == self.alert_source.secret:
-            return True
-        raise AuthenticationSourceError("Authentication failed")
 
     def fetch_alerts(self) -> List[Dict[str, Any]]:
         return []
@@ -33,9 +27,9 @@ class ZabbixAdapter(AlertSourceAdapter, ABC):
             normalized_event = dict(single_event)
             if not normalized_event.get("external_id"):
                 problem_id = (
-                    normalized_event.get("problem_id")
-                    or normalized_event.get("problemId")
-                    or normalized_event.get("labels", {}).get("problem_id")
+                        normalized_event.get("problem_id")
+                        or normalized_event.get("problemId")
+                        or normalized_event.get("labels", {}).get("problem_id")
                 )
                 if not problem_id:
                     raise ValueError("Zabbix event missing ProblemId/external_id.")
@@ -205,22 +199,38 @@ return \"OK\";
         ]
 
         parameter_guidance = [
-            {"name": "Interface requirements" if is_english else "接口要求", "required": True, "description": "Use POST with Content-Type: application/json and a SECRET header." if is_english else "请求方法使用 POST，请求头至少包含 Content-Type: application/json 和 SECRET。"},
-            {"name": "webhook_url", "required": True, "description": "The URL must be /api/v1/alerts/api/source/{source_id}/webhook/, and source_id must match the BK-Lite source configuration." if is_english else "地址必须是 /api/v1/alerts/api/source/{source_id}/webhook/，其中 source_id 与 BK-Lite 中配置的一致。"},
-            {"name": "SECRET", "required": True, "description": "The SECRET header must exactly match the secret stored in the BK-Lite alert source." if is_english else "Header 中 SECRET 的值必须与 BK-Lite 告警源中保存的 secret 完全一致。"},
-            {"name": "SOURCE_ID", "required": True, "description": "Pass it explicitly as a script parameter and keep it consistent with the source_id in the URL." if is_english else "建议作为脚本参数显式传入，并与 URL 中的 source_id 保持一致。"},
-            {"name": "ProblemId", "required": True, "description": "This is the recovery correlation key and must stay the same across both Problem and Recovery notifications." if is_english else "这是恢复闭环主键，Problem / Recovery 两次通知必须保持一致。"},
-            {"name": "EventId", "required": True, "description": "Unique event identifier; keep it aligned with the original Zabbix event when possible." if is_english else "事件唯一标识，建议与原始 Zabbix 事件保持一致。"},
-            {"name": "RecoveryEventId", "required": False, "description": "Recommended for Recovery so the recovery event ID is preserved." if is_english else "建议在 Recovery 场景传递，用于记录恢复事件 ID。"},
-            {"name": "TriggerId", "required": True, "description": "Trigger ID used to locate the corresponding alert rule." if is_english else "触发器 ID，用于定位对应告警规则。"},
-            {"name": "HostId", "required": True, "description": "Identifier of the alerting host." if is_english else "告警主机标识。"},
-            {"name": "HostName", "required": True, "description": "Display name of the alerting host." if is_english else "告警主机名称。"},
-            {"name": "Severity", "required": True, "description": "Use a numeric string where possible, for example 0/1/2/3." if is_english else "建议使用数字字符串，例如 0/1/2/3。"},
-            {"name": "Subject", "required": True, "description": "Alert title used by BK-Lite as the event title." if is_english else "告警标题，BK-Lite 会用它生成 title。"},
-            {"name": "Message", "required": True, "description": "Alert body used by BK-Lite as the event description." if is_english else "告警详情，BK-Lite 会用它生成 description。"},
-            {"name": "EventValue", "required": True, "description": "Recovery must be 0; any other value is treated as created." if is_english else "Recovery 阶段必须为 0；其他值会被视为 created。"},
-            {"name": "TriggerName", "required": False, "description": "Recommended so BK-Lite can show a readable item field." if is_english else "建议传递，便于在 BK-Lite 中展示 item。"},
-            {"name": "ResourceType", "required": False, "description": "Recommended for additional resource type context." if is_english else "建议传递，便于补充资源类型信息。"},
+            {"name": "Interface requirements" if is_english else "接口要求", "required": True,
+             "description": "Use POST with Content-Type: application/json and a SECRET header." if is_english else "请求方法使用 POST，请求头至少包含 Content-Type: application/json 和 SECRET。"},
+            {"name": "webhook_url", "required": True,
+             "description": "The URL must be /api/v1/alerts/api/source/{source_id}/webhook/, and source_id must match the BK-Lite source configuration." if is_english else "地址必须是 /api/v1/alerts/api/source/{source_id}/webhook/，其中 source_id 与 BK-Lite 中配置的一致。"},
+            {"name": "SECRET", "required": True,
+             "description": "The SECRET header must exactly match the secret stored in the BK-Lite alert source." if is_english else "Header 中 SECRET 的值必须与 BK-Lite 告警源中保存的 secret 完全一致。"},
+            {"name": "SOURCE_ID", "required": True,
+             "description": "Pass it explicitly as a script parameter and keep it consistent with the source_id in the URL." if is_english else "建议作为脚本参数显式传入，并与 URL 中的 source_id 保持一致。"},
+            {"name": "ProblemId", "required": True,
+             "description": "This is the recovery correlation key and must stay the same across both Problem and Recovery notifications." if is_english else "这是恢复闭环主键，Problem / Recovery 两次通知必须保持一致。"},
+            {"name": "EventId", "required": True,
+             "description": "Unique event identifier; keep it aligned with the original Zabbix event when possible." if is_english else "事件唯一标识，建议与原始 Zabbix 事件保持一致。"},
+            {"name": "RecoveryEventId", "required": False,
+             "description": "Recommended for Recovery so the recovery event ID is preserved." if is_english else "建议在 Recovery 场景传递，用于记录恢复事件 ID。"},
+            {"name": "TriggerId", "required": True,
+             "description": "Trigger ID used to locate the corresponding alert rule." if is_english else "触发器 ID，用于定位对应告警规则。"},
+            {"name": "HostId", "required": True,
+             "description": "Identifier of the alerting host." if is_english else "告警主机标识。"},
+            {"name": "HostName", "required": True,
+             "description": "Display name of the alerting host." if is_english else "告警主机名称。"},
+            {"name": "Severity", "required": True,
+             "description": "Use a numeric string where possible, for example 0/1/2/3." if is_english else "建议使用数字字符串，例如 0/1/2/3。"},
+            {"name": "Subject", "required": True,
+             "description": "Alert title used by BK-Lite as the event title." if is_english else "告警标题，BK-Lite 会用它生成 title。"},
+            {"name": "Message", "required": True,
+             "description": "Alert body used by BK-Lite as the event description." if is_english else "告警详情，BK-Lite 会用它生成 description。"},
+            {"name": "EventValue", "required": True,
+             "description": "Recovery must be 0; any other value is treated as created." if is_english else "Recovery 阶段必须为 0；其他值会被视为 created。"},
+            {"name": "TriggerName", "required": False,
+             "description": "Recommended so BK-Lite can show a readable item field." if is_english else "建议传递，便于在 BK-Lite 中展示 item。"},
+            {"name": "ResourceType", "required": False,
+             "description": "Recommended for additional resource type context." if is_english else "建议传递，便于补充资源类型信息。"},
         ]
 
         verification = {
@@ -262,15 +272,24 @@ return \"OK\";
         }
 
         field_mappings = [
-            {"bk_lite_field": "title", "zabbix_field": "Subject or event.title" if is_english else "Subject 或 event.title"},
-            {"bk_lite_field": "description", "zabbix_field": "Message or event.description" if is_english else "Message 或 event.description"},
-            {"bk_lite_field": "level", "zabbix_field": "Severity or event.level" if is_english else "Severity 或 event.level"},
-            {"bk_lite_field": "item", "zabbix_field": "TriggerName or event.item" if is_english else "TriggerName 或 event.item"},
-            {"bk_lite_field": "rule_id", "zabbix_field": "TriggerId or event.rule_id" if is_english else "TriggerId 或 event.rule_id"},
-            {"bk_lite_field": "external_id", "zabbix_field": "ProblemId or event.external_id" if is_english else "ProblemId 或 event.external_id"},
-            {"bk_lite_field": "resource_id", "zabbix_field": "HostId or event.resource_id" if is_english else "HostId 或 event.resource_id"},
-            {"bk_lite_field": "resource_name", "zabbix_field": "HostName or event.resource_name" if is_english else "HostName 或 event.resource_name"},
-            {"bk_lite_field": "action", "zabbix_field": "EventValue=0 -> recovery, otherwise -> created" if is_english else "EventValue=0 -> recovery，其他 -> created"},
+            {"bk_lite_field": "title",
+             "zabbix_field": "Subject or event.title" if is_english else "Subject 或 event.title"},
+            {"bk_lite_field": "description",
+             "zabbix_field": "Message or event.description" if is_english else "Message 或 event.description"},
+            {"bk_lite_field": "level",
+             "zabbix_field": "Severity or event.level" if is_english else "Severity 或 event.level"},
+            {"bk_lite_field": "item",
+             "zabbix_field": "TriggerName or event.item" if is_english else "TriggerName 或 event.item"},
+            {"bk_lite_field": "rule_id",
+             "zabbix_field": "TriggerId or event.rule_id" if is_english else "TriggerId 或 event.rule_id"},
+            {"bk_lite_field": "external_id",
+             "zabbix_field": "ProblemId or event.external_id" if is_english else "ProblemId 或 event.external_id"},
+            {"bk_lite_field": "resource_id",
+             "zabbix_field": "HostId or event.resource_id" if is_english else "HostId 或 event.resource_id"},
+            {"bk_lite_field": "resource_name",
+             "zabbix_field": "HostName or event.resource_name" if is_english else "HostName 或 event.resource_name"},
+            {"bk_lite_field": "action",
+             "zabbix_field": "EventValue=0 -> recovery, otherwise -> created" if is_english else "EventValue=0 -> recovery，其他 -> created"},
         ]
 
         troubleshooting = [

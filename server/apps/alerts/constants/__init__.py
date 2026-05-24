@@ -6,6 +6,9 @@ Alerts Constants
 """
 
 from .constants import (
+    PERMISSION_EVENT,
+    PERMISSION_ALERT,
+    PERMISSION_INCIDENT,
     # 告警源相关
     AlertAccessType,
     AlertsSourceTypes,
@@ -44,6 +47,9 @@ from .constants import (
 )
 
 __all__ = [
+    "PERMISSION_EVENT",
+    "PERMISSION_ALERT",
+    "PERMISSION_INCIDENT",
     # 告警源相关
     "AlertAccessType",
     "AlertsSourceTypes",

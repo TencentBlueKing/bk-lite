@@ -349,6 +349,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     setNodesLoading(true);
     try {
       const data = await getMonitorNodeList({
+        monitor_plugin_id: Number(pluginId),
         cloud_region_id: 0,
         page: 1,
         page_size: -1,

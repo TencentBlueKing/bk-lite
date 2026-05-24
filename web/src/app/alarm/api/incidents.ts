@@ -45,6 +45,12 @@ export const useIncidentsApi = () => {
 
   const getDiagnosis = async (incidentPk: string) => {
     return get(`/alerts/api/incident/${incidentPk}/updates/diagnosis/`);
+  const addAlertsToIncident = async (incidentId: string, alertIds: number[]) => {
+    return post(`/alerts/api/incident/${incidentId}/alerts/`, { alert_ids: alertIds });
+  };
+
+  const removeAlertsFromIncident = async (incidentId: string, alertIds: number[]) => {
+    return del(`/alerts/api/incident/${incidentId}/alerts/`, { data: { alert_ids: alertIds } });
   };
 
   return {
@@ -59,5 +65,7 @@ export const useIncidentsApi = () => {
     deleteIncidentUpdate,
     toggleKeyInfo,
     getDiagnosis,
+    addAlertsToIncident,
+    removeAlertsFromIncident,
   };
 };

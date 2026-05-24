@@ -2,30 +2,26 @@
 # @File: falkordb.py
 # @Time: 2025/8/29 14:48
 # @Author: windyzhao
+import json
 import os
 import time
-import json
 from typing import List, Union
 
 from dotenv import load_dotenv
 from falkordb import falkordb
 
 from apps.cmdb.constants.constants import INSTANCE, ModelConstraintKey
-from apps.cmdb.graph.falkordb_format import FormatDBResult
-from apps.cmdb.graph.format_type import (
-    FORMAT_TYPE,
-    ParameterCollector,
-    FORMAT_TYPE_PARAMS,
-)
 from apps.cmdb.constants.field_constraints import (
-    USER_PROMPT,
-    DEFAULT_USER_PROMPT,
-    DEFAULT_STRING_CONSTRAINT,
     DEFAULT_NUMBER_CONSTRAINT,
+    DEFAULT_STRING_CONSTRAINT,
     DEFAULT_TIME_CONSTRAINT,
+    DEFAULT_USER_PROMPT,
+    USER_PROMPT,
 )
-from apps.cmdb.graph.validators import CQLValidator
 from apps.cmdb.display_field import ExcludeFieldsCache
+from apps.cmdb.graph.falkordb_format import FormatDBResult
+from apps.cmdb.graph.format_type import FORMAT_TYPE, FORMAT_TYPE_PARAMS, ParameterCollector
+from apps.cmdb.graph.validators import CQLValidator
 from apps.cmdb.services.unique_rule import raise_unique_rule_conflict_if_needed
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
@@ -511,7 +507,10 @@ class FalkorDBClient:
         else:
             # 旧逻辑
             result = self._execute_query(
-                f"MATCH (a:{validated_a_label})-[e]-(b:{validated_b_label}) WHERE ID(a) = {validated_a_id} AND ID(b) = {validated_b_id} AND e.{validated_check_key} = '{check_asst_val}' RETURN COUNT(e) AS count"
+                f"MATCH (a:{validated_a_label})-[e]-(b:{validated_b_label}) "
+                f"WHERE ID(a) = {validated_a_id} AND ID(b) = {validated_b_id} "
+                f"AND e.{validated_check_key} = '{check_asst_val}' "
+                "RETURN COUNT(e) AS count"
             )
 
         result = FormatDBResult(result).to_list_of_lists()
@@ -540,7 +539,9 @@ class FalkorDBClient:
             # 旧逻辑
             properties_str = self.format_properties(properties)
             edge = self._execute_query(
-                f"MATCH (a:{validated_a_label}) WHERE ID(a) = {validated_a_id} WITH a MATCH (b:{validated_b_label}) WHERE ID(b) = {validated_b_id} CREATE (a)-[e:{validated_label} {properties_str}]->(b) RETURN e"
+                f"MATCH (a:{validated_a_label}) WHERE ID(a) = {validated_a_id} "
+                f"WITH a MATCH (b:{validated_b_label}) WHERE ID(b) = {validated_b_id} "
+                f"CREATE (a)-[e:{validated_label} {properties_str}]->(b) RETURN e"
             )
 
         return self.edge_to_dict(edge)
@@ -904,7 +905,7 @@ class FalkorDBClient:
         - label == "instance": 校验实例数据是否符合模型字段约束
         - label == "model": 确保模型字段定义包含必要的默认值
         """
-        from apps.cmdb.constants.constants import MODEL, INSTANCE
+        from apps.cmdb.constants.constants import INSTANCE, MODEL
 
         if check:
             # 校验唯一属性
@@ -1293,7 +1294,7 @@ class FalkorDBClient:
         # 构建参数化查询
         if self.ENABLE_PARAMETERIZATION:
             query_params = {"inst_id": inst_id}
-            params_str = f"AND ID(n) = $inst_id"
+            params_str = "AND ID(n) = $inst_id"
         else:
             params_str, _ = self.format_search_params([{"field": "id", "type": "id=", "value": inst_id}])
             if params_str:
@@ -1503,13 +1504,14 @@ class FalkorDBClient:
                 return entity
         return None
 
-    def entity_count(self, label: str, group_by_attr: str, format_permission_dict: dict):
+    def entity_count(self, label: str, group_by_attr: str, params: list = None, format_permission_dict: dict = None):
         """
         按指定字段分组统计实体数量（参数化版本）
 
         Args:
             label: 实体标签
             group_by_attr: 分组字段
+            params: 基础过滤参数列表
             format_permission_dict: 权限过滤字典 {organization_id: query_list}
 
         Returns:
@@ -1521,10 +1523,18 @@ class FalkorDBClient:
         if self.ENABLE_PARAMETERIZATION:
             CQLValidator.validate_field(group_by_attr)
 
+        params = params or []
+        format_permission_dict = format_permission_dict or {}
         label_str = f":{label}" if label else ""
 
         # 参数收集器
         param_collector = ParameterCollector() if self.ENABLE_PARAMETERIZATION else None
+
+        base_params_str, _ = self.format_search_params(
+            params,
+            param_type="AND",
+            param_collector=param_collector,
+        )
 
         # 构建权限参数 这里的参数是在基础参数基础上做AND 查询的 每个for的数据之间的关系是OR的关系
         permission_filters = []
@@ -1552,6 +1562,8 @@ class FalkorDBClient:
 
         # 组合最终查询条件：基础参数 AND (权限条件1 OR 权限条件2 OR ...)
         final_conditions = []
+        if base_params_str:
+            final_conditions.append(base_params_str)
         if permission_filters:
             # 多个组织的权限条件用 OR 连接
             if len(permission_filters) == 1:
@@ -1566,11 +1578,12 @@ class FalkorDBClient:
 
         count_sql = f"MATCH (n{label_str}) {filter_str} RETURN n.{group_by_attr} AS {group_by_attr}, COUNT(n) AS count"
 
-        query_params = param_collector.params if self.ENABLE_PARAMETERIZATION else None
+        query_params = param_collector.get_params() if self.ENABLE_PARAMETERIZATION and param_collector else None
 
         # 调试日志：打印 entity_count 的查询
         logger.debug(f"[entity_count] SQL: {count_sql}")
         logger.debug(f"[entity_count] Params: {query_params}")
+        logger.debug(f"[entity_count] base params: {params}")
         logger.debug(f"[entity_count] format_permission_dict: {format_permission_dict}")
 
         data = self._execute_query(count_sql, params=query_params)
@@ -1768,7 +1781,7 @@ class FalkorDBClient:
         if created:
             if self.ENABLE_PARAMETERIZATION:
                 query_params["created_by"] = created
-                conditions.append(f"n._creator = $created_by")
+                conditions.append("n._creator = $created_by")
             else:
                 validated_created = self.escape_cql_string(created)
                 conditions.append(f"n._creator = '{validated_created}'")
@@ -1777,7 +1790,7 @@ class FalkorDBClient:
         if self.ENABLE_PARAMETERIZATION:
             CQLValidator.validate_field(model_id)  # 验证模型ID格式
             query_params["model_id"] = model_id
-            conditions.append(f"n.model_id = $model_id")
+            conditions.append("n.model_id = $model_id")
         else:
             escaped_model_id = self.escape_cql_string(model_id)
             conditions.append(f"n.model_id = '{escaped_model_id}'")
@@ -1896,7 +1909,7 @@ class FalkorDBClient:
         if created:
             if self.ENABLE_PARAMETERIZATION:
                 query_params["created_by"] = created
-                conditions.append(f"n._creator = $created_by")
+                conditions.append("n._creator = $created_by")
             else:
                 validated_created = self.escape_cql_string(created)
                 conditions.append(f"n._creator = '{validated_created}'")
@@ -1966,13 +1979,13 @@ class FalkorDBClient:
         if unique_key:
             properties_map = {}
             for properties in properties_list:
-                properties_key = tuple([properties.get(k) for k in unique_key if k in properties])
+                properties_key = tuple(properties.get(k) for k in unique_key if k in properties)
                 # 对参数中的节点按唯一键进行去重
                 properties_map[properties_key] = properties
             # 已有节点处理
             item_map = {}
             for item in exist_items:
-                item_key = tuple([item.get(k) for k in unique_key if k in item])
+                item_key = tuple(item.get(k) for k in unique_key if k in item)
                 item_map[item_key] = item
             for properties_key, properties in properties_map.items():
                 node = item_map.get(properties_key)

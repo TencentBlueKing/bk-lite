@@ -22,8 +22,8 @@ from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from django.utils import timezone
 from django.test import SimpleTestCase
+from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 from apps.core.exceptions.base_app_exception import BaseAppException
 
@@ -41,9 +41,10 @@ if __name__ == "__main__":
 
     django.setup()
 
-from apps.cmdb.constants.constants import VIEW
+from apps.cmdb.constants.constants import PERMISSION_INSTANCES, VIEW
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.collect_tool_service import CollectToolService
+from apps.cmdb.utils.permission_util import DENY_PERMISSION_PLACEHOLDER, CmdbRulesFormatUtil
 from apps.core.logger import cmdb_logger as logger
 
 
@@ -258,6 +259,146 @@ def test_check_instances_permission_limits_query_to_target_instance_ids():
             {"field": "organization", "type": "list_any[]", "value": [1]},
         ],
     )
+
+
+def test_falkordb_entity_count_applies_base_params_before_grouping():
+    from apps.cmdb.graph.falkordb import FalkorDBClient
+
+    client = FalkorDBClient.__new__(FalkorDBClient)
+    client.ENABLE_PARAMETERIZATION = False
+    client._param_collector = None
+    client._execute_query = MagicMock(
+        return_value=SimpleNamespace(
+            header=[("", "os_type"), ("", "count")],
+            result_set=[["1", 2]],
+        )
+    )
+
+    result = client.entity_count(
+        label="instance",
+        group_by_attr="os_type",
+        params=[{"field": "model_id", "type": "str=", "value": "host"}],
+        format_permission_dict={1: []},
+    )
+
+    assert result == {"1": 2}
+    sql = client._execute_query.call_args.args[0]
+    assert "model_id" in sql
+    assert "organization" in sql
+    assert "COUNT(n) AS count" in sql
+
+
+def test_group_inst_count_passes_base_params_and_permission_scope_to_graph_client():
+    from apps.cmdb.services.instance import InstanceManage
+
+    graph_client = MagicMock()
+    graph_client.entity_count.return_value = {"host": 3}
+
+    graph_context = MagicMock()
+    graph_context.__enter__.return_value = graph_client
+    graph_context.__exit__.return_value = False
+
+    with patch("apps.cmdb.services.instance.GraphClient", return_value=graph_context):
+        result = InstanceManage.group_inst_count(
+            group_by_attr="model_id",
+            permissions_map={1: {"inst_names": ["host-1", "host-2"], "permission_instances_map": {}}},
+            params=[{"field": "model_id", "type": "str=", "value": "host"}],
+            creator="alice",
+        )
+
+    assert result == {"host": 3}
+    graph_client.entity_count.assert_called_once_with(
+        label="instance",
+        group_by_attr="model_id",
+        params=[{"field": "model_id", "type": "str=", "value": "host"}],
+        format_permission_dict={
+            1: [
+                {"field": "inst_name", "type": "str[]", "value": ["host-1", "host-2"]},
+                {"field": "_creator", "type": "str=", "value": "alice"},
+            ]
+        },
+    )
+
+
+def test_get_instance_group_by_uses_graph_aggregation_for_enum_field():
+    from apps.cmdb.nats.nats import get_instance_group_by
+
+    with (
+        patch("apps.cmdb.nats.nats._build_nats_permission_map", return_value={1: {"inst_names": [], "permission_instances_map": {}}}),
+        patch(
+            "apps.cmdb.nats.nats.ModelManage.search_model_attr",
+            return_value=[
+                {
+                    "attr_id": "os_type",
+                    "attr_type": "enum",
+                    "enum_select_mode": "single",
+                    "option": [{"id": 1, "name": "Linux"}],
+                }
+            ],
+        ),
+        patch("apps.cmdb.nats.nats.GraphClient") as mock_graph_client,
+        patch("apps.cmdb.nats.nats.InstanceManage.group_inst_count", return_value={"1": 2, None: 1}) as mock_group_inst_count,
+    ):
+        result = get_instance_group_by(model_id="host", field="os_type", user_info={"team": 1, "user": "alice"})
+
+    assert result == {
+        "result": True,
+        "data": [
+            {"name": "Linux", "value": 2},
+            {"name": "unknown", "value": 1},
+        ],
+        "message": "",
+    }
+    mock_graph_client.assert_not_called()
+    mock_group_inst_count.assert_called_once_with(
+        group_by_attr="os_type",
+        permissions_map={1: {"inst_names": [], "permission_instances_map": {}}},
+        params=[{"field": "model_id", "type": "str=", "value": "host"}],
+    )
+
+
+def test_get_instance_group_by_falls_back_to_raw_enum_values_when_display_may_be_missing():
+    from apps.cmdb.nats.nats import get_instance_group_by
+
+    with (
+        patch("apps.cmdb.nats.nats._build_nats_permission_map", return_value={1: {"inst_names": [], "permission_instances_map": {}}}),
+        patch(
+            "apps.cmdb.nats.nats.ModelManage.search_model_attr",
+            return_value=[
+                {
+                    "attr_id": "os_type",
+                    "attr_type": "enum",
+                    "enum_select_mode": "single",
+                    "option": [{"id": 1, "name": "Linux"}, {"id": "other", "name": "Other"}],
+                }
+            ],
+        ),
+        patch("apps.cmdb.nats.nats.InstanceManage.group_inst_count", return_value={"1": 2, "other": 1, None: 1}) as mock_group_inst_count,
+    ):
+        result = get_instance_group_by(model_id="host", field="os_type", user_info={"team": 1, "user": "alice"})
+
+    assert result == {
+        "result": True,
+        "data": [
+            {"name": "Linux", "value": 2},
+            {"name": "Other", "value": 1},
+            {"name": "unknown", "value": 1},
+        ],
+        "message": "",
+    }
+    mock_group_inst_count.assert_called_once_with(
+        group_by_attr="os_type",
+        permissions_map={1: {"inst_names": [], "permission_instances_map": {}}},
+        params=[{"field": "model_id", "type": "str=", "value": "host"}],
+    )
+
+
+def test_falkordb_count_formatter_normalizes_list_keys():
+    from apps.cmdb.graph.falkordb_format import FormatDBResult
+
+    result = FormatDBResult(SimpleNamespace(result_set=[[["1"], 2]], header=[])).to_result_of_count()
+
+    assert result == {"1": 2}
 
 
 def test_get_relation_instances_falls_back_to_per_instance_when_batch_query_fails():
@@ -2294,6 +2435,140 @@ class CollectToolPermissionTests(SimpleTestCase):
         self.assertEqual(result["stage"], "unknown")
 
 
+class CmdbPermissionScopeRegressionTests(SimpleTestCase):
+    def _make_request(self, current_team="1", include_children="1", group_list=None, is_superuser=False):
+        return SimpleNamespace(
+            user=SimpleNamespace(
+                username="alice",
+                domain="default",
+                group_list=group_list or [{"id": 1}, {"id": 2}],
+                group_tree=[],
+                is_superuser=is_superuser,
+            ),
+            COOKIES={"current_team": current_team, "include_children": include_children},
+        )
+
+    def test_format_user_groups_permissions_uses_authorized_children_only(self):
+        request = self._make_request()
+        permission_rules = {"team": [1], "instance": []}
+
+        with (
+            patch(
+                "apps.cmdb.utils.permission_util.CmdbRulesFormatUtil.get_authorized_team_ids",
+                return_value=[1, 2],
+            ),
+            patch(
+                "apps.cmdb.utils.permission_util.get_permission_rules",
+                return_value=permission_rules,
+            ),
+        ):
+            permission_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+                request,
+                model_id="host",
+                permission_type=PERMISSION_INSTANCES,
+            )
+
+        self.assertEqual(permission_map[1]["inst_names"], [])
+        deny_inst_name = permission_map[2]["inst_names"][0]
+        self.assertTrue(deny_inst_name.startswith(f"{DENY_PERMISSION_PLACEHOLDER}:"))
+        self.assertEqual(permission_map[2]["permission_instances_map"], {deny_inst_name: []})
+
+    def test_format_user_groups_permissions_preserves_instance_level_permissions(self):
+        request = self._make_request()
+        permission_rules = {
+            "team": [],
+            "instance": [{"id": "host-a", "permission": [VIEW]}],
+        }
+
+        with (
+            patch(
+                "apps.cmdb.utils.permission_util.CmdbRulesFormatUtil.get_authorized_team_ids",
+                return_value=[2],
+            ),
+            patch(
+                "apps.cmdb.utils.permission_util.get_permission_rules",
+                return_value=permission_rules,
+            ),
+        ):
+            permission_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+                request,
+                model_id="host",
+                permission_type=PERMISSION_INSTANCES,
+            )
+
+        self.assertEqual(permission_map[2]["inst_names"], ["host-a"])
+        self.assertEqual(permission_map[2]["permission_instances_map"], {"host-a": [VIEW]})
+
+    def test_format_user_groups_permissions_falls_back_to_deny_placeholder_when_no_authorized_team(self):
+        request = self._make_request(current_team="9", group_list=[{"id": 1}])
+
+        with (
+            patch(
+                "apps.cmdb.utils.permission_util.CmdbRulesFormatUtil.get_authorized_team_ids",
+                return_value=[],
+            ),
+            patch(
+                "apps.cmdb.utils.permission_util.get_permission_rules",
+                return_value={},
+            ),
+        ):
+            permission_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+                request,
+                model_id="host",
+                permission_type=PERMISSION_INSTANCES,
+            )
+
+        deny_inst_name = permission_map[9]["inst_names"][0]
+        self.assertTrue(deny_inst_name.startswith(f"{DENY_PERMISSION_PLACEHOLDER}:"))
+        self.assertEqual(permission_map, {9: {"permission_instances_map": {deny_inst_name: []}, "inst_names": [deny_inst_name]}})
+
+    def test_build_permission_map_reuses_safe_permission_rule_builder(self):
+        from apps.opspilot.metis.llm.tools.cmdb.utils import build_permission_map
+
+        user = SimpleNamespace(group_list=[{"id": 1}, {"id": 2}])
+        permission_rules = {"team": [1], "instance": []}
+
+        with (
+            patch(
+                "apps.opspilot.metis.llm.tools.cmdb.utils.get_permission_rules",
+                return_value=permission_rules,
+            ),
+            patch(
+                "apps.opspilot.metis.llm.tools.cmdb.utils.CmdbRulesFormatUtil.build_permission_rule_map",
+                return_value={2: {"permission_instances_map": {DENY_PERMISSION_PLACEHOLDER: []}, "inst_names": [DENY_PERMISSION_PLACEHOLDER]}},
+            ) as mock_build,
+        ):
+            result = build_permission_map(
+                user=user,
+                current_team=1,
+                include_children=True,
+                permission_type=PERMISSION_INSTANCES,
+                model_id="host",
+            )
+
+        mock_build.assert_called_once()
+        self.assertEqual(result[2]["inst_names"], [DENY_PERMISSION_PLACEHOLDER])
+
+    def test_nats_permission_map_uses_safe_permission_rule_builder(self):
+        from apps.cmdb.nats.nats import _build_nats_permission_map
+
+        user_info = {"team": 1, "user": "alice", "domain": "default", "include_children": True}
+        real_user = SimpleNamespace(username="alice", domain="default", group_list=[{"id": 1}, {"id": 2}])
+
+        with (
+            patch("apps.cmdb.nats.nats.User.objects.filter") as mock_filter,
+            patch("apps.cmdb.nats.nats._get_authorized_team_ids", return_value=[1, 2]),
+            patch("apps.cmdb.nats.nats.get_permission_rules", return_value={"team": [1], "instance": []}),
+            patch(
+                "apps.cmdb.nats.nats.CmdbRulesFormatUtil.build_permission_rule_map",
+                return_value={2: {"permission_instances_map": {DENY_PERMISSION_PLACEHOLDER: []}, "inst_names": [DENY_PERMISSION_PLACEHOLDER]}},
+            ) as mock_build,
+        ):
+            mock_filter.return_value.first.return_value = real_user
+            result = _build_nats_permission_map(user_info)
+
+        mock_build.assert_called_once_with(user_teams=[1, 2], permission_rules={"team": [1], "instance": []}, fallback_team_id=1)
+        self.assertEqual(result[2]["inst_names"], [DENY_PERMISSION_PLACEHOLDER])
 def test_config_file_collect_triggers_stargazer_and_returns_pending_result():
     from apps.cmdb.collection.collect_tasks.config_file_collect import ConfigFileCollect
 

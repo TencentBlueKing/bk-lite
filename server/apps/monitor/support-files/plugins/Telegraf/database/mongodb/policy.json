@@ -6,7 +6,7 @@
       "name": "命令执行延迟告警",
       "alert_name": "MongoDB 实例 ${resource_name} 操作延迟超标",
       "description": "监控命令执行P99延迟，高延迟表明数据库负载过重。需优化慢查询或检查硬件资源瓶颈。",
-      "metric_name": "mongodb_latency_commands",
+      "metric_name": "mongodb_latency_commands_avg",
       "algorithm": "max",
       "threshold": [
         {

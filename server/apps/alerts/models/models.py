@@ -68,6 +68,7 @@ class Event(models.Model):
     assignee = JSONField(default=list, blank=True, help_text="事件责任人")
     # note = models.TextField(null=True, blank=True, help_text="事件备注")
     value = models.FloatField(blank=True, null=True, verbose_name="事件值")
+    team = JSONField(default=list, help_text="归属组织")
 
     class Meta:
         db_table = "alerts_event"
@@ -200,6 +201,7 @@ class Incident(MaintainerInfo):
     collaborators = JSONField(default=list, blank=True, help_text="协作者")
     # 核心指纹字段（用于聚合）
     fingerprint = models.CharField(max_length=32, null=True, blank=True, db_index=True, help_text="事件指纹")
+    team = JSONField(default=list, help_text="管理组织")
 
     class Meta:
         db_table = "alerts_incident"

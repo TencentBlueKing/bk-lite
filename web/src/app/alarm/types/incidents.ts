@@ -19,7 +19,8 @@ export interface IncidentTableDataItem {
   operator: string[]
   collaborators: string[]
   collaborator_users: CollaboratorUser[]
-  fingerprint: any,
+  fingerprint: any
+  team: string[]
   [key: string]: any
 }
 

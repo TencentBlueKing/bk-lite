@@ -42,6 +42,8 @@ import {
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { TimeLineItem } from '@/app/alarm/types/types';
+import { useUserInfoContext } from '@/context/userInfo';
+import GroupTreeSelect from '@/components/group-tree-select';
 
 const { TabPane } = Tabs;
 
@@ -49,6 +51,7 @@ const IncidentDetail: React.FC = () => {
   const { t } = useTranslation();
   const { getLogList } = useSettingApi();
   const { convertToLocalizedTime } = useLocalizedTime();
+  const { flatGroups } = useUserInfoContext();
   const abortControllerRef = useRef<AbortController | null>(null);
   const [timeLineData, setTimeLineData] = useState<TimeLineItem[]>([]);
   const [recordLoading, setRecordLoading] = useState<boolean>(false);
@@ -78,6 +81,10 @@ const IncidentDetail: React.FC = () => {
   const [noteValue, setNoteValue] = useState('');
   const [preNote, setPreNote] = useState('');
   const [noteLoading, setNoteLoading] = useState(false);
+  const [editingTeam, setEditingTeam] = useState(false);
+  const [selectedTeams, setSelectedTeams] = useState<number[]>([]);
+  const [preTeams, setPreTeams] = useState<number[]>([]);
+  const [teamLoading, setTeamLoading] = useState(false);
 
   const alarmAttrList = useMemo(() => [
     {
@@ -166,6 +173,14 @@ const IncidentDetail: React.FC = () => {
     }
   }, [incidentDetail?.note]);
 
+  useEffect(() => {
+    if (incidentDetail?.team) {
+      const teamIds = incidentDetail.team.map(Number);
+      setSelectedTeams(teamIds);
+      setPreTeams(teamIds);
+    }
+  }, [incidentDetail?.team]);
+
   const confirmAssignee = async () => {
     setAssigneeLoading(true);
     try {
@@ -204,6 +219,33 @@ const IncidentDetail: React.FC = () => {
     setNoteValue(preNote);
     setEditingNote(false);
   }, [preNote]);
+
+  const confirmTeam = async () => {
+    setTeamLoading(true);
+    try {
+      await modifyIncidentDetail(rowDetailId, { team: selectedTeams.map(String) });
+      message.success(t('common.saveSuccess'));
+      setPreTeams(selectedTeams);
+      setEditingTeam(false);
+      fetchTimeline();
+    } catch {
+      message.error(t('common.saveFailed'));
+    } finally {
+      setTeamLoading(false);
+    }
+  };
+
+  const cancelTeam = useCallback(() => {
+    setSelectedTeams(preTeams);
+    setEditingTeam(false);
+  }, [preTeams]);
+
+  const getTeamDisplay = useCallback(() => {
+    if (!preTeams.length) return '--';
+    return preTeams
+      .map(id => flatGroups.find(g => Number(g.id) === id)?.name || id)
+      .join(', ');
+  }, [preTeams, flatGroups]);
 
   const onTabTableChange = useCallback(() => {
     fetchAlarmList();
@@ -444,6 +486,60 @@ const IncidentDetail: React.FC = () => {
           </Descriptions.Item>
         );
       }
+      if (key === 'team') {
+        return (
+          <Descriptions.Item label={label} key={idx}>
+            <div
+              className={
+                styles.descContent + ' flex-1 flex items-center overflow-hidden'
+              }
+            >
+              {editingTeam ? (
+                <>
+                  <GroupTreeSelect
+                    value={selectedTeams}
+                    onChange={(val) => setSelectedTeams(Array.isArray(val) ? val : val ? [val] : [])}
+                    placeholder={t('incidents.selectTeam')}
+                    multiple={true}
+                    mode="ownership"
+                    style={{ width: 220, marginRight: 10 }}
+                  />
+                  <Button
+                    size="small"
+                    type="link"
+                    icon={<CheckOutlined />}
+                    loading={teamLoading}
+                    disabled={!selectedTeams.length}
+                    onClick={confirmTeam}
+                  />
+                  <Button
+                    size="small"
+                    type="link"
+                    icon={<CloseOutlined />}
+                    onClick={cancelTeam}
+                  />
+                </>
+              ) : (
+                <>
+                  <EllipsisWithTooltip
+                    className="whitespace-nowrap overflow-hidden text-ellipsis mr-[6px]"
+                    text={getTeamDisplay()}
+                  />
+                  <PermissionWrapper requiredPermissions={['Edit']}>
+                    <Button
+                      size="small"
+                      type="link"
+                      icon={<EditOutlined />}
+                      className="mr-[10px]"
+                      onClick={() => setEditingTeam(true)}
+                    />
+                  </PermissionWrapper>
+                </>
+              )}
+            </div>
+          </Descriptions.Item>
+        );
+      }
       return (
         <Descriptions.Item label={label} key={idx}>
           <div className={styles.descContent}>
@@ -461,6 +557,7 @@ const IncidentDetail: React.FC = () => {
       key: 'status',
     },
     { label: t('alarms.assignee'), key: 'operator_users' },
+    { label: t('incidents.team'), key: 'team' },
     { label: t('alarms.note'), key: 'note' },
   ];
 

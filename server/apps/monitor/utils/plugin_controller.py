@@ -5,7 +5,7 @@ from jinja2 import Environment, BaseLoader, DebugUndefined
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.database import DatabaseConstants
-from apps.monitor.models import CollectConfig, MonitorPluginConfigTemplate
+from apps.monitor.models import CollectConfig, MonitorPlugin, MonitorPluginConfigTemplate
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -160,6 +160,11 @@ class Controller:
             raise ValueError(f"输入数据缺少必需字段: {e}") from e
 
         plugin_id = self.data.get("monitor_plugin_id")
+        plugin_template_id = None
+        if plugin_id:
+            plugin_obj = MonitorPlugin.objects.filter(id=plugin_id).only("template_id").first()
+            if plugin_obj:
+                plugin_template_id = plugin_obj.template_id
         configs = self.format_configs()
         node_configs, node_child_configs, collect_configs = [], [], []
 
@@ -198,7 +203,7 @@ class Controller:
                         {
                             **config_info,
                             "config_id": config_id.upper(),
-                            "plugin_id": plugin_id,
+                            "plugin_id": plugin_template_id or plugin_id,
                             "monitor_plugin_id": plugin_id,
                         },
                     )

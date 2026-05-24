@@ -234,7 +234,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         src_has_permission = CmdbRulesFormatUtil.has_object_permission(
             obj_type=PERMISSION_MODEL,
-            operator=VIEW,
+            operator=OPERATE,
             model_id=src_model_id,
             permission_instances_map=permissions_map,
             instance=src_model_info,
@@ -257,7 +257,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         dst_has_permission = CmdbRulesFormatUtil.has_object_permission(
             obj_type=PERMISSION_MODEL,
-            operator=VIEW,
+            operator=OPERATE,
             model_id=dst_model_id,
             permission_instances_map=permissions_map,
             instance=dst_model_info,

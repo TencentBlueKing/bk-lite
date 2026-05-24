@@ -8,6 +8,7 @@ from apps.monitor.utils.instance_id_keys import (
     resolve_metric_instance_id_keys,
     resolve_monitor_object_instance_id_keys,
 )
+from apps.monitor.utils.node_selector import normalize_node_selector
 
 
 class MonitorPluginService:
@@ -32,13 +33,20 @@ class MonitorPluginService:
     @staticmethod
     def get_ui_template_by_params(collector, collect_type, monitor_object_id):
         """获取插件的 UI 模板"""
-        obj = MonitorPluginUITemplate.objects.filter(
-            plugin__monitor_object__id=monitor_object_id,
-            plugin__collector=collector,
-            plugin__collect_type=collect_type,
-            plugin__template_type="builtin",
-        ).first()
-        return obj.content if obj else None
+        obj = (
+            MonitorPluginUITemplate.objects.filter(
+                plugin__monitor_object__id=monitor_object_id,
+                plugin__collector=collector,
+                plugin__collect_type=collect_type,
+                plugin__template_type="builtin",
+            )
+            .select_related("plugin")
+            .first()
+        )
+        return {
+            "ui_template": obj.content if obj else None,
+            "node_selector": getattr(obj.plugin, "node_selector", {}) if obj else {},
+        }
 
     @staticmethod
     def import_monitor_plugin(data: dict):
@@ -62,6 +70,7 @@ class MonitorPluginService:
         status_query = data.pop("status_query", "")
         collector = data.pop("collector", "")
         collect_type = data.pop("collect_type", "")
+        node_selector = normalize_node_selector(data.pop("node_selector", {}))
 
         # 处理type字段：确保MonitorObjectType存在
         type_value = data.get("type")
@@ -99,7 +108,14 @@ class MonitorPluginService:
         with transaction.atomic():
             plugin_obj, _ = MonitorPlugin.objects.update_or_create(
                 name=plugin,
-                defaults=dict(name=plugin, description=desc, status_query=status_query, collector=collector, collect_type=collect_type),
+                defaults=dict(
+                    name=plugin,
+                    description=desc,
+                    status_query=status_query,
+                    collector=collector,
+                    collect_type=collect_type,
+                    node_selector=node_selector,
+                ),
             )
             plugin_obj.monitor_object.add(monitor_obj)
 
@@ -189,6 +205,7 @@ class MonitorPluginService:
         derivative_objects = []
         collector = data.get("collector", "")
         collect_type = data.get("collect_type", "")
+        node_selector = data.get("node_selector", {})
 
         for object_info in data.get("objects", []):
             object_info.update(
@@ -197,6 +214,7 @@ class MonitorPluginService:
                 status_query=data["status_query"],
                 collector=collector,
                 collect_type=collect_type,
+                node_selector=node_selector,
             )
             if object_info.get("level") == "base":
                 base_object = object_info
@@ -232,6 +250,7 @@ class MonitorPluginService:
             "plugin_desc": plugin_obj.description,
             "collector": plugin_obj.collector,
             "collect_type": plugin_obj.collect_type,
+            "node_selector": plugin_obj.node_selector or {},
             "name": monitor_obj.name,
             "type": monitor_obj.type_id if monitor_obj.type else None,  # 导出type的id值
             "description": monitor_obj.description,
@@ -260,6 +279,7 @@ class MonitorPluginService:
             "plugin_desc": plugin_obj.description,
             "collector": plugin_obj.collector,
             "collect_type": plugin_obj.collector,
+            "node_selector": plugin_obj.node_selector or {},
             "is_compound_object": True,
             "objects": [],
         }
