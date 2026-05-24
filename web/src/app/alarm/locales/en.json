@@ -56,7 +56,7 @@
         "expandReplies": "Expand {count} replies",
         "searchContent": "Search content or author",
         "searchUser": "Search user",
-        "noCollaborator": "No collaborators"
+        "noCollaborator": "No collaborators",
         "team": "Team",
         "selectTeam": "Select Team",
         "teamRequired": "Please select at least one team"
@@ -220,7 +220,7 @@
         "teamSecretAdded": "Team secret added successfully",
         "teamSecretRegenerated": "Team secret regenerated successfully",
         "teamSecretRemoved": "Team secret removed successfully",
-        "noTeamSecrets": "No team secrets configured"
+        "noTeamSecrets": "No team secrets configured",
         "zabbixGuideOverview": "Guide Overview",
         "zabbixConnectionValues": "Webhook & Header Values",
         "zabbixConnectionValuesHelp": "Configure the following values in the Zabbix media type so requests can reach the current BK-Lite source.",
