@@ -1218,6 +1218,96 @@ class AlertSourceIngressTestCase(TestCase):
         self.assertFalse(result["result"])
         self.assertEqual(Event.objects.count(), 0)
 
+    def test_nats_ingress_sets_push_source_id_from_pusher(self):
+        source = AlertSource.objects.create(
+            name="NATS Source",
+            source_id="nats",
+            source_type=AlertsSourceTypes.NATS,
+            secret="nats-secret",
+            config={
+                "event_fields_mapping": {
+                    "title": "title",
+                    "description": "description",
+                    "level": "level",
+                    "item": "item",
+                    "start_time": "start_time",
+                    "action": "action",
+                    "resource_id": "resource_id",
+                    "resource_name": "resource_name",
+                    "resource_type": "resource_type",
+                }
+            },
+        )
+
+        result = receive_alert_events(
+            source_id=source.source_id,
+            pusher="lite-monitor",
+            events=[
+                {
+                    "title": "cpu high",
+                    "description": "cpu > 90%",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "action": "created",
+                    "resource_id": "gateway-01",
+                    "resource_name": "API 网关",
+                    "resource_type": "service",
+                }
+            ],
+        )
+
+        self.assertTrue(result["result"])
+        event = Event.objects.get(source=source)
+        self.assertEqual(event.push_source_id, "lite-monitor")
+        self.assertEqual(event.raw_data["push_source_id"], "lite-monitor")
+
+    def test_nats_ingress_preserves_event_push_source_id(self):
+        source = AlertSource.objects.create(
+            name="NATS Source",
+            source_id="nats",
+            source_type=AlertsSourceTypes.NATS,
+            secret="nats-secret",
+            config={
+                "event_fields_mapping": {
+                    "title": "title",
+                    "description": "description",
+                    "level": "level",
+                    "item": "item",
+                    "start_time": "start_time",
+                    "action": "action",
+                    "resource_id": "resource_id",
+                    "resource_name": "resource_name",
+                    "resource_type": "resource_type",
+                    "push_source_id": "push_source_id",
+                }
+            },
+        )
+
+        result = receive_alert_events(
+            source_id=source.source_id,
+            pusher="lite-monitor",
+            events=[
+                {
+                    "title": "cpu high",
+                    "description": "cpu > 90%",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "action": "created",
+                    "resource_id": "gateway-01",
+                    "resource_name": "API 网关",
+                    "resource_type": "service",
+                    "push_source_id": "custom-upstream",
+                }
+            ],
+        )
+
+        self.assertTrue(result["result"])
+        event = Event.objects.get(source=source)
+        self.assertEqual(event.push_source_id, "custom-upstream")
+        self.assertEqual(event.raw_data["push_source_id"], "custom-upstream")
+
 
 class TestAlarmStrategySessionDisable(TestCase):
     def setUp(self):

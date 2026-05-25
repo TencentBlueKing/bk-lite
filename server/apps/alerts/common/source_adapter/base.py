@@ -257,7 +257,12 @@ class AlertSourceAdapter(ABC):
         """添加基础字段"""
 
         event.source = self.alert_source
-        event.push_source_id = getattr(event, "push_source_id", None) or alert.get("source_id") or "default"
+        event.push_source_id = (
+            alert.get("push_source_id")
+            or getattr(event, "push_source_id", None)
+            or alert.get("source_id")
+            or "default"
+        )
         event.raw_data = alert
         event.event_id = f"EVENT-{uuid.uuid4().hex}"
         event.team = self.resolved_team
