@@ -171,6 +171,7 @@ const ViewPage: React.FC = () => {
         ) : selectedType === 'topology' ? (
           <Topology
             ref={topologyRef}
+            key={selectedItem.topology?.data_id ?? 'topology-empty'}
             selectedTopology={selectedItem.topology}
           />
         ) : selectedType === 'dashboard' ? (

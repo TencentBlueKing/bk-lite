@@ -1,9 +1,10 @@
 import useApiClient from '@/utils/request';
-import { K8sRenderParams, SnmpTrapNodeListResponse, TeamSecretsResponse, TeamSecretResponse } from '@/app/alarm/types/integration';
 import {
   AlertSourceIntegrationGuide,
   K8sRenderParams,
   SnmpTrapNodeListResponse,
+  TeamSecretsResponse,
+  TeamSecretResponse,
 } from '@/app/alarm/types/integration';
 
 export const useSourceApi = () => {
