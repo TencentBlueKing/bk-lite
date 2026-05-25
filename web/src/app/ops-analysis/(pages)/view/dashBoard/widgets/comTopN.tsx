@@ -194,10 +194,11 @@ const TopN: React.FC<TopNProps> = ({
   return (
     <div className="h-full px-3 pt-2 pb-1 overflow-y-auto">
       <div
-        className="grid items-center gap-x-2"
+        className="grid items-center"
         style={{
           gridTemplateColumns: 'fit-content(40%) minmax(0, 1fr) auto',
-          rowGap: 8,
+          columnGap: 6,
+          rowGap: 4,
         }}
       >
         {items.map((item, index) => {
@@ -215,7 +216,7 @@ const TopN: React.FC<TopNProps> = ({
               >
                 {item.name}
               </span>
-              <div className="flex items-center h-[30px] min-w-0">
+              <div className="flex items-center h-6 min-w-0">
                 <div
                   className="h-3 rounded-sm transition-all duration-300"
                   style={{
@@ -228,7 +229,7 @@ const TopN: React.FC<TopNProps> = ({
                 className="text-[13px] font-medium text-right"
                 style={{
                   color: isDark ? 'var(--color-text-1)' : '#1f2329',
-                  minWidth: 45,
+                  minWidth: 32,
                 }}
               >
                 {item.value.toLocaleString()}

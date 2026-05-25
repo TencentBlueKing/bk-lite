@@ -713,42 +713,13 @@ const IntegrationDetail: FC = () => {
                           </>
                         ),
                       },
+                      {
+                        key: 'teamSecrets',
+                        label: t('integration.teamSecrets'),
+                        children: <TeamSecretsManager sourceId={source.id} />,
+                      },
                     ]} />
                   </div>
-                  <EventTable
-                    dataSource={eventList}
-                    loading={eventLoading}
-                    pagination={pagination}
-                    tableScrollY="calc(100vh - 490px)"
-                    onChange={(pag) =>
-                      setPagination({
-                        current: pag.current || 1,
-                        pageSize: pag.pageSize || pagination.pageSize,
-                        total: pagination.total,
-                      })
-                    }
-                  />
-                </Tabs.TabPane>
-                <Tabs.TabPane key="guide" tab={t('integration.guideTab')}>
-                  {isK8sSource ? (
-                    <K8sGuide
-                      source={source}
-                      meta={k8sMeta}
-                      loading={k8sMetaLoading}
-                      onDownload={handleK8sDownload}
-                    />
-                  ) : isSnmpTrapSource ? (
-                    <SnmpTrapGuide />
-                  ) : (
-                    renderGuideTab()
-                  )}
-                </Tabs.TabPane>
-                <Tabs.TabPane key="teamSecrets" tab={t('integration.teamSecrets')}>
-                  <TeamSecretsManager sourceId={source.id} />
-                </Tabs.TabPane>
-              </Tabs>
-            </div>
-=======
                   {activeTab === 'guide' ? (
                     <div className="min-w-0">
                       <K8sSidebar />
