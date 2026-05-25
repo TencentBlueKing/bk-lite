@@ -3,19 +3,23 @@ import { Tag } from 'antd';
 import Icon from '@/components/icon';
 import { CardItem, SelectCardProps } from '@/app/monitor/types/event';
 
-// 根据 CSS 变量生成带透明度的颜色
 const getColorWithOpacity = (cssVar: string, opacity: number): string => {
   return `color-mix(in srgb, var(${cssVar}) ${opacity * 100}%, transparent)`;
 };
 
 const SelectCard: React.FC<SelectCardProps> = ({
   data = [],
-  value,
+  value = [],
   onChange,
   cardWidth
 }) => {
   const handleCardClick = (item: CardItem) => {
-    onChange?.(item.value);
+    const currentValue = value || [];
+    const exists = currentValue.includes(item.value);
+    const newValue = exists
+      ? currentValue.filter((v) => v !== item.value)
+      : [...currentValue, item.value];
+    onChange?.(newValue);
   };
 
   return (
@@ -29,7 +33,7 @@ const SelectCard: React.FC<SelectCardProps> = ({
       }}
     >
       {data.map((item, index) => {
-        const isSelected = value === item.value;
+        const isSelected = (value || []).includes(item.value);
         return (
           <div
             key={index}
@@ -47,14 +51,12 @@ const SelectCard: React.FC<SelectCardProps> = ({
             } shadow-md transition-all duration-300 ease-in-out rounded-lg p-3 cursor-pointer group hover:shadow-lg`}
           >
             <div className="flex gap-3 h-full">
-              {/* 左侧图标 */}
               {item.icon && (
                 <Icon
                   type={item.icon}
                   className="text-2xl flex-shrink-0 mt-1"
                 />
               )}
-              {/* 右侧内容 */}
               <div className="flex-1 min-w-0 flex flex-col">
                 <h2
                   className="text-[14px] font-bold m-0 truncate"

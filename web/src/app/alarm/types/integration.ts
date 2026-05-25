@@ -181,3 +181,18 @@ export interface EventTableItem {
     value: number;
     source: number;
 }
+
+export interface TeamSecretItem {
+    team_id: string;
+    team_name: string;
+    secret: string;
+}
+
+export interface TeamSecretsResponse {
+    team_secrets: TeamSecretItem[];
+}
+
+export interface TeamSecretResponse {
+    team_id: string;
+    secret: string;
+}

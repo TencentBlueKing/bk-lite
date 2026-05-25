@@ -318,6 +318,8 @@
         "confirm": "Confirm",
         "cancel": "Cancel",
         "accessPoint": "Proxy",
+        "accessPointHelp": "A proxy is the container node that starts the collection task. Configure it under the matching cloud region in Node Management.",
+        "accessPointLink": "Go to Node Management",
         "syncSuccess": "Sync Successfully!",
         "syncFailed": "Sync Failed",
         "ipRange": "IP Range",

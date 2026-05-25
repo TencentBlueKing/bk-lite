@@ -50,6 +50,12 @@ class SSHPlugin:
         self.node_info = params.get("node_info", {})
         self.model_id = params.get("model_id")
 
+        # NATS 请求超时 = 脚本执行超时 × 最大并发数
+        # 原因：nats-executor 串行处理请求，排在队列后面的任务需要等待前面的任务完成
+        # execute_timeout 仅控制单个脚本的执行时间，nats_timeout 需要覆盖排队等待时间
+        max_jobs = int(os.getenv("TASK_MAX_JOBS", "10"))
+        self.nats_timeout = self.execute_timeout * max_jobs
+
         if not script_path:
             raise ValueError("script_path is required for SSHPlugin")
         self.script_path = script_path
@@ -122,6 +128,7 @@ class SSHPlugin:
                     "username": self.username,
                     "password": self.password,
                     "port": int(self.port),
+                    "connection_test": True,
                 }
             )
         else:
@@ -185,7 +192,7 @@ class SSHPlugin:
             # 4. 通过 NATS 执行
             payload = json.dumps({"args": [exec_params], "kwargs": {}}).encode()
             response = await nats_request(
-                subject, payload=payload, timeout=self.execute_timeout
+                subject, payload=payload, timeout=self.nats_timeout
             )
             if response.get("success"):
                 if need_raw:
@@ -200,8 +207,10 @@ class SSHPlugin:
                 else:
                     result = {"result": {}, "success": True}
             else:
+                # nats-executor 的错误信息在 "error" 字段，"result" 字段是命令输出（探测失败时为空）
+                error_msg = response.get("error") or response.get("result") or "Unknown error"
                 result = {
-                    "result": {"cmdb_collect_error": response.get("result")},
+                    "result": {"cmdb_collect_error": error_msg},
                     "success": False,
                 }
             logger.info(

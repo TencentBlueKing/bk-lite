@@ -954,6 +954,87 @@ monitor_object_metric:
     iftotalOutOctets:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
       name: 设备每秒发送总流量
+    oceanstor_pool_count:
+      name: 存储池数量
+      desc: OceanStor系统中存储池的总数量
+    oceanstor_drive_count:
+      name: 硬盘数量
+      desc: OceanStor系统中物理硬盘的总数量
+    oceanstor_volume_count:
+      name: LUN卷数量
+      desc: OceanStor系统中LUN卷的总数量
+    api_pool_io_rate:
+      name: 存储池总IOPS
+      desc: 每个存储池的每秒总I/O操作数
+    api_pool_read_io:
+      name: 存储池读IOPS
+      desc: 每个存储池的每秒读I/O操作数
+    api_pool_write_io:
+      name: 存储池写IOPS
+      desc: 每个存储池的每秒写I/O操作数
+    api_pool_read:
+      name: 存储池读吞吐量
+      desc: 每个存储池的每秒读取吞吐量（字节/秒）
+    api_pool_write:
+      name: 存储池写吞吐量
+      desc: 每个存储池的每秒写入吞吐量（字节/秒）
+    api_pool_resp_t:
+      name: 存储池平均响应时间
+      desc: 每个存储池的平均I/O响应时间（毫秒）
+    api_pool_resp_t_r:
+      name: 存储池读响应时间
+      desc: 每个存储池的平均读响应时间（毫秒）
+    api_pool_resp_t_w:
+      name: 存储池写响应时间
+      desc: 每个存储池的平均写响应时间（毫秒）
+    api_drive_io_rate:
+      name: 硬盘总IOPS
+      desc: 每块硬盘的每秒总I/O操作数
+    api_drive_read_io:
+      name: 硬盘读IOPS
+      desc: 每块硬盘的每秒读I/O操作数
+    api_drive_write_io:
+      name: 硬盘写IOPS
+      desc: 每块硬盘的每秒写I/O操作数
+    api_drive_read:
+      name: 硬盘读吞吐量
+      desc: 每块硬盘的每秒读取吞吐量（字节/秒）
+    api_drive_write:
+      name: 硬盘写吞吐量
+      desc: 每块硬盘的每秒写入吞吐量（字节/秒）
+    api_drive_resp_t:
+      name: 硬盘平均响应时间
+      desc: 每块硬盘的平均I/O响应时间（毫秒）
+    api_drive_resp_t_r:
+      name: 硬盘读响应时间
+      desc: 每块硬盘的平均读响应时间（毫秒）
+    api_drive_resp_t_w:
+      name: 硬盘写响应时间
+      desc: 每块硬盘的平均写响应时间（毫秒）
+    api_volume_io_rate:
+      name: LUN卷总IOPS
+      desc: 每个LUN卷的每秒总I/O操作数
+    api_volume_read_io:
+      name: LUN卷读IOPS
+      desc: 每个LUN卷的每秒读I/O操作数
+    api_volume_write_io:
+      name: LUN卷写IOPS
+      desc: 每个LUN卷的每秒写I/O操作数
+    api_volume_read:
+      name: LUN卷读吞吐量
+      desc: 每个LUN卷的每秒读取吞吐量（字节/秒）
+    api_volume_write:
+      name: LUN卷写吞吐量
+      desc: 每个LUN卷的每秒写入吞吐量（字节/秒）
+    api_volume_resp_t:
+      name: LUN卷平均响应时间
+      desc: 每个LUN卷的平均I/O响应时间（毫秒）
+    api_volume_resp_t_r:
+      name: LUN卷读响应时间
+      desc: 每个LUN卷的平均读响应时间（毫秒）
+    api_volume_resp_t_w:
+      name: LUN卷写响应时间
+      desc: 每个LUN卷的平均写响应时间（毫秒）
   Docker Container:
     docker_container_status:
       name: 容器状态
@@ -2436,6 +2517,16 @@ monitor_object_metric_group:
     Base: 基础
     Bandwidth: 带宽
     Packet Error: 数据包错误
+    Quantity: 数量概览
+    Pool IOPS: 存储池IOPS
+    Pool Throughput: 存储池吞吐量
+    Pool Latency: 存储池时延
+    Drive IOPS: 硬盘IOPS
+    Drive Throughput: 硬盘吞吐量
+    Drive Latency: 硬盘时延
+    Volume IOPS: LUN卷IOPS
+    Volume Throughput: LUN卷吞吐量
+    Volume Latency: LUN卷时延
   WebLogic-JMX:
     Threadpool: 线程池
     Application: 应用
@@ -2582,6 +2673,9 @@ monitor_object_plugin:
   Storage IPMI:
     desc: 通过Telegraf采集器利用IPMI协议定期收集存储设备的电源状态、风扇转速、温度等关键指标。
     name: 存储设备IPMI通用（Telegraf）
+  OceanStor:
+    name: OceanStor存储（Telegraf）
+    desc: 通过Telegraf采集器利用DeviceManager REST API定期收集华为OceanStor存储池、硬盘、LUN卷的IOPS、吞吐量和响应时间等性能指标。
   Tencent Cloud:
     name: 腾讯云
     desc: 实时采集腾讯云各类监控指标数据，涵盖计算资源、网络性能、存储使用等维度，助力用户深入了解资源状态，精准定位异常，高效完成运维管理与成本优化。

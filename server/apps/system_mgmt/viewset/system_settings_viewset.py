@@ -70,7 +70,7 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
 
         # 记录操作日志
         updated_keys = list(kwargs.keys())
-        log_operation(request, "update", "system_settings", f"编辑系统设置: {', '.join(updated_keys)}")
+        log_operation(request, "update", "system-manager", f"编辑系统设置: {', '.join(updated_keys)}")
 
         return JsonResponse({"result": True})
 

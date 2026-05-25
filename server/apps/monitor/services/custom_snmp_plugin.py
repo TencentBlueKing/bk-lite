@@ -136,6 +136,9 @@ class CustomSnmpPluginService:
             if not (plugin.description or "").strip() and (source_plugin.description or "").strip():
                 plugin.description = source_plugin.description
                 update_fields.append("description")
+            if not plugin.node_selector and source_plugin.node_selector:
+                plugin.node_selector = copy.deepcopy(source_plugin.node_selector)
+                update_fields.append("node_selector")
             if update_fields:
                 plugin.save(update_fields=[*update_fields, "updated_at"])
 
@@ -196,8 +199,8 @@ class CustomSnmpPluginService:
             "instance_type": monitor_object.name.lower(),
             "type": child_template.type,
             "config_id": "SNMPVALIDATION",
-            "plugin_id": plugin.id,
-            "monitor_plugin_id": plugin.id,
+            "plugin_id": plugin.template_id,
+            "monitor_plugin_id": plugin.template_id,
         }
 
     @staticmethod
@@ -234,7 +237,7 @@ class CustomSnmpPluginService:
             child_config = child_config_map.get(config_obj.id)
             if not child_config:
                 raise BaseAppException(f"未找到实例 {config_obj.id} 的已下发采集配置")
-            render_context = CustomSnmpPluginService._build_child_render_context(config_obj, child_config)
+            render_context = CustomSnmpPluginService._build_child_render_context(config_obj, child_config, plugin.template_id)
             try:
                 rendered_content = controller.render_template(template_content, render_context)
             except Exception as exc:
@@ -268,7 +271,7 @@ class CustomSnmpPluginService:
         return rollback_failures
 
     @staticmethod
-    def _build_child_render_context(config_obj: CollectConfig, child_config: dict):
+    def _build_child_render_context(config_obj: CollectConfig, child_config: dict, plugin_template_id: str):
         child_content = child_config.get("content") or ""
         parsed_content = ConfigFormat.toml_to_dict(child_content)
         config = copy.deepcopy(parsed_content.get("config") or {})
@@ -284,8 +287,8 @@ class CustomSnmpPluginService:
         config["timeout"] = CustomSnmpPluginService._normalize_duration(config.get("timeout"))
         config["type"] = config_obj.config_type
         config["config_id"] = config_obj.id.upper()
-        config["plugin_id"] = config_obj.monitor_plugin_id
-        config["monitor_plugin_id"] = config_obj.monitor_plugin_id
+        config["plugin_id"] = plugin_template_id
+        config["monitor_plugin_id"] = plugin_template_id
         return config
 
     @staticmethod

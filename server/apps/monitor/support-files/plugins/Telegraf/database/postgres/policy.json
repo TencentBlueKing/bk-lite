@@ -6,7 +6,7 @@
       "name": "缓存命中率下降",
       "alert_name": "PostgreSQL 实例 ${resource_name} 缓存效率低",
       "description": "监控数据块缓存命中率，低命中率会导致大量物理IO。需优化shared_buffers配置或检查查询模式。",
-      "metric_name": "postgresql_blks_hit_ratio",
+      "metric_name": "postgresql_blks_hit_rate",
       "algorithm": "min",
       "threshold": [
         {
@@ -54,7 +54,7 @@
       "name": "检查点频繁触发",
       "alert_name": "PostgreSQL 实例 ${resource_name} 检查点过频",
       "description": "监控检查点缓冲区写入数速率，频繁检查点影响性能。需调整checkpoint_segments/wal配置。",
-      "metric_name": "postgresql_buffers_checkpoint",
+      "metric_name": "postgresql_buffers_checkpoint_rate",
       "algorithm": "max",
       "threshold": [
         {
@@ -102,7 +102,7 @@
       "name": "物理读过高",
       "alert_name": "PostgreSQL 实例 ${resource_name} 物理 IO 压力",
       "description": "检测块缓存命中率，反映缓存的有效性",
-      "metric_name": "postgresql_blks_read",
+      "metric_name": "postgresql_blks_read_rate",
       "algorithm": "max",
       "threshold": [
         {

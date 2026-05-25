@@ -16,6 +16,7 @@ from apps.job_mgmt.serializers.script import (
     ScriptUpdateSerializer,
 )
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class ScriptViewSet(AuthViewSet):
@@ -72,7 +73,10 @@ class ScriptViewSet(AuthViewSet):
         # 返回完整的对象信息
         instance = Script.objects.get(pk=serializer.instance.pk)
         response_serializer = ScriptSerializer(instance)
-        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        response = Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        if response.status_code == status.HTTP_201_CREATED:
+            log_operation(request, "create", "job", f"新增脚本: {response.data.get('name')}")
+        return response
 
     @HasPermission("script_library-Edit")
     def update(self, request, *args, **kwargs):
@@ -97,7 +101,10 @@ class ScriptViewSet(AuthViewSet):
             )
 
         self.perform_update(serializer)
-        return Response(ScriptSerializer(instance).data)
+        response = Response(ScriptSerializer(instance).data)
+        if response.status_code == status.HTTP_200_OK:
+            log_operation(request, "update", "job", f"编辑脚本: {response.data.get('name')}")
+        return response
 
     @action(detail=False, methods=["post"])
     @HasPermission("script_library-Delete")
@@ -110,5 +117,7 @@ class ScriptViewSet(AuthViewSet):
         # 只删除当前用户有权限的脚本
         queryset = self.filter_queryset(self.get_queryset())
         deleted_count, _ = queryset.filter(id__in=ids).delete()
-
-        return Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
+        response = Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
+        if response.status_code == status.HTTP_200_OK:
+            log_operation(request, "delete", "job", f"批量删除脚本: (共{deleted_count}个)")
+        return response

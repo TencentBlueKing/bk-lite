@@ -21,6 +21,9 @@ from apps.monitor.utils.plugin_controller import Controller
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.system_mgmt.models import User
 from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.node_mgmt.constants.controller import ControllerConstants
+from apps.monitor.models import MonitorPlugin
+from apps.monitor.utils.node_selector import normalize_node_selector
 
 
 class InstanceConfigService:
@@ -189,6 +192,43 @@ class InstanceConfigService:
             sanitized_instance["group_ids"] = sorted(group_ids)
             sanitized_instances.append(sanitized_instance)
         return sanitized_instances
+
+    @staticmethod
+    def _get_plugin_node_selector(monitor_plugin_id):
+        if not monitor_plugin_id:
+            return {}
+
+        plugin = MonitorPlugin.objects.filter(id=monitor_plugin_id).only("id", "node_selector").first()
+        if not plugin:
+            raise BaseAppException("监控插件不存在")
+        return normalize_node_selector(plugin.node_selector or {})
+
+    @staticmethod
+    def _validate_nodes_against_selector(nodes, node_selector):
+        if not node_selector:
+            return
+
+        if node_selector.get("is_container") is True:
+            invalid_nodes = [str(node.get("id")) for node in nodes if node.get("node_type") != ControllerConstants.NODE_TYPE_CONTAINER]
+            if invalid_nodes:
+                raise BaseAppException(f"当前插件仅允许选择容器节点: {', '.join(invalid_nodes)}")
+
+    @staticmethod
+    def _validate_instances_with_plugin_selector(instances, monitor_plugin_id, actor_context=None):
+        node_selector = InstanceConfigService._get_plugin_node_selector(monitor_plugin_id)
+        if not node_selector:
+            return
+
+        requested_node_ids = []
+        for instance in instances:
+            requested_node_ids.extend(instance.get("node_ids", []))
+
+        if not requested_node_ids:
+            return
+
+        permission_data = InstanceConfigService._build_permission_data(actor_context) if actor_context is not None else None
+        nodes = NodeMgmt().get_authorized_nodes_by_ids(requested_node_ids, permission_data)
+        InstanceConfigService._validate_nodes_against_selector(nodes, node_selector)
 
     @classmethod
     def _get_default_group_metric(cls, child_obj):
@@ -528,15 +568,18 @@ class InstanceConfigService:
             updated_count = InstanceConfigService._sync_existing_instance_attrs(existing_instances, deleted_ids)
             logger.info(f"复用已存在实例数量: {len(existing_instances)}, 同步属性并激活: {updated_count}, 恢复已删除实例: {len(deleted_ids)}")
 
-            # 恢复已删除实例时，清除历史组织关联，避免跨组织纳管漂移
-            if deleted_ids:
-                MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=deleted_ids).delete()
+            # 清除所有复用实例的历史组织关联，以当前 group_ids 为唯一真值，避免跨组织纳管漂移
+            all_existing_ids = [inst["instance_id"] for inst in existing_instances]
+            MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=all_existing_ids).delete()
 
-            # 为已存在的实例创建组织关联（如果还没有）
-            for instance in existing_instances:
-                instance_id = instance["instance_id"]
-                for group_id in instance["group_ids"]:
-                    MonitorInstanceOrganization.objects.get_or_create(monitor_instance_id=instance_id, organization=group_id)
+            # 以当前 group_ids 重建组织关联
+            org_objs = [
+                MonitorInstanceOrganization(monitor_instance_id=inst["instance_id"], organization=group_id)
+                for inst in existing_instances
+                for group_id in inst["group_ids"]
+            ]
+            if org_objs:
+                MonitorInstanceOrganization.objects.bulk_create(org_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
         # 批量创建实例的默认分组规则（优化：一次性查询+批量创建）
         instances_to_process = new_instances + existing_instances
@@ -590,7 +633,6 @@ class InstanceConfigService:
         collect_type = data.get("collect_type", "")
         collector = data.get("collector", "")
         monitor_plugin_id = data.get("monitor_plugin_id")
-
         # 快速失败:无实例直接返回
         if not instances:
             logger.info("没有需要创建的实例")
@@ -599,6 +641,12 @@ class InstanceConfigService:
         sanitized_instances = instances
         if actor_context is not None:
             sanitized_instances = InstanceConfigService._sanitize_instances_for_onboarding(instances, actor_context)
+
+        InstanceConfigService._validate_instances_with_plugin_selector(
+            sanitized_instances,
+            monitor_plugin_id,
+            actor_context,
+        )
 
         # ============ 阶段1: 参数预校验与数据准备 ============
         try:

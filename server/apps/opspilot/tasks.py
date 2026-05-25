@@ -1010,3 +1010,47 @@ def process_dingtalk_message(self, bot_id, msg_id, text_content, sender_id, webh
     except Exception as e:
         # Celery 重试
         raise self.retry(exc=e)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def process_wechat_official_message(self, bot_id, msg_id, message, sender_id, config):
+    """处理微信公众号消息的 Celery 任务
+
+    使用两阶段去重：
+    - 调用前已标记为 processing
+    - 成功后标记为 completed
+    - 失败后清除标记并触发重试
+
+    Args:
+        bot_id: Bot ID
+        msg_id: 消息唯一标识
+        message: 用户消息内容
+        sender_id: 发送者 ID（OpenID）
+        config: 渠道配置（包含 node_id, appid, secret 等）
+    """
+    from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
+
+    def _execute():
+        handler = WechatOfficialChatFlowUtils(bot_id)
+        try:
+            bot_chat_flow = _get_bot_chat_flow(bot_id)
+            if not bot_chat_flow:
+                logger.error(f"微信公众号消息处理失败：Bot {bot_id} 不存在或未配置 ChatFlow")
+                handler.mark_message_failed(msg_id)
+                return
+
+            # 执行 ChatFlow 并发送回复
+            handler.async_process_and_reply(bot_chat_flow, config, message, sender_id, msg_id)
+            logger.info(f"微信公众号消息处理成功: bot_id={bot_id}, msg_id={msg_id}")
+
+        except Exception as e:
+            logger.error(f"微信公众号消息处理失败: bot_id={bot_id}, msg_id={msg_id}, error={str(e)}")
+            # async_process_and_reply 内部已调用 mark_message_failed
+            # 触发 Celery 重试
+            raise
+
+    try:
+        return _run_in_native_thread(_execute)
+    except Exception as e:
+        # Celery 重试
+        raise self.retry(exc=e)

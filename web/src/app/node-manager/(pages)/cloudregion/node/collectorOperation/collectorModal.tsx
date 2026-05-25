@@ -275,11 +275,17 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       try {
         setConfirmLoading(true);
         const data = await callback(params);
+        const collectorName =
+          collectorlist.find(
+            (item: TableDataItem) =>
+              item.id === (extraConfig?.collectorId || collector)
+          )?.name || '';
         const config = {
           taskId: data.task_id || '',
           type,
           collectorId: extraConfig?.collectorId || collector || '',
-          collectorPackageId: extraConfig?.collectorPackageId
+          collectorPackageId: extraConfig?.collectorPackageId,
+          collectorName
         };
         if (!keepLoading) {
           message.success(t('common.operationSuccessful'));

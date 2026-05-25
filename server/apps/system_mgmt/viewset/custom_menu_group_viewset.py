@@ -54,7 +54,7 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         # 记录操作日志
         if response.status_code == 201:
             menu_name = response.data.get("display_name", "")
-            log_operation(request, "create", "menu", f"新增菜单: {menu_name}")
+            log_operation(request, "create", "system-manager", f"新增菜单: {menu_name}")
 
         return response
 
@@ -72,7 +72,7 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         # 记录操作日志
         if response.status_code == 200:
             menu_name = response.data.get("display_name", "")
-            log_operation(request, "update", "menu", f"编辑菜单: {menu_name}")
+            log_operation(request, "update", "system-manager", f"编辑菜单: {menu_name}")
 
         return response
 
@@ -101,7 +101,7 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
 
         # 记录操作日志
         if response.status_code == 204:
-            log_operation(request, "delete", "menu", f"删除菜单: {menu_name}")
+            log_operation(request, "delete", "system-manager", f"删除菜单: {menu_name}")
 
         return response
 
@@ -139,7 +139,7 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
             message = self.loader.get("success.menu_group_enabled")
 
             # 记录操作日志
-            log_operation(request, "execute", "menu", f"启用菜单: {instance.display_name}")
+            log_operation(request, "execute", "system-manager", f"启用菜单: {instance.display_name}")
         else:
             # 禁用当前菜单组
             instance.is_enabled = False
@@ -192,7 +192,7 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         )
 
         # 记录操作日志
-        log_operation(request, "create", "menu", f"复制菜单: {instance.display_name} -> {new_display_name}")
+        log_operation(request, "create", "system-manager", f"复制菜单: {instance.display_name} -> {new_display_name}")
 
         return JsonResponse({"result": True, "data": CustomMenuGroupSerializer(new_instance).data, "message": "菜单组复制成功"})
 

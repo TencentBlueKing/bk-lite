@@ -110,7 +110,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
 
         # 记录操作日志
         if response.status_code == 204:
-            log_operation(request, "delete", "data_rule", f"删除数据权限: {rule_name}")
+            log_operation(request, "delete", "system-manager", f"删除数据权限: {rule_name}")
             # 清除受影响用户的权限缓存
             if affected_users:
                 clear_users_permission_cache(affected_users)
@@ -131,7 +131,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
         # 记录操作日志
         if response.status_code == 201:
             rule_name = response.data.get("name", "")
-            log_operation(request, "create", "data_rule", f"新增数据权限: {rule_name}")
+            log_operation(request, "create", "system-manager", f"新增数据权限: {rule_name}")
 
         return response
 
@@ -158,7 +158,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
         # 记录操作日志
         if response.status_code == 200:
             rule_name = response.data.get("name", "")
-            log_operation(request, "update", "data_rule", f"编辑数据权限: {rule_name}")
+            log_operation(request, "update", "system-manager", f"编辑数据权限: {rule_name}")
             # 清除绑定到此规则的用户的权限缓存
             affected_users = list(UserRule.objects.filter(group_rule_id=rule_id).values("username", "domain"))
             if affected_users:

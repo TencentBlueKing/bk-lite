@@ -1127,6 +1127,87 @@ monitor_object_metric:
         administrators to comprehensively assess the sending performance of the entire
         system, enabling more effective traffic management and optimization.
       name: Device Total Outgoing Traffic (per second)
+    oceanstor_pool_count:
+      name: Number of Pools
+      desc: Total number of storage pools in the OceanStor system
+    oceanstor_drive_count:
+      name: Number of Drives
+      desc: Total number of physical drives in the OceanStor system
+    oceanstor_volume_count:
+      name: Number of Volumes
+      desc: Total number of LUN volumes in the OceanStor system
+    api_pool_io_rate:
+      name: Pool Total IOPS
+      desc: Total I/O operations per second of each storage pool
+    api_pool_read_io:
+      name: Pool Read IOPS
+      desc: Read I/O operations per second of each storage pool
+    api_pool_write_io:
+      name: Pool Write IOPS
+      desc: Write I/O operations per second of each storage pool
+    api_pool_read:
+      name: Pool Read Throughput
+      desc: Read throughput of each storage pool in bytes per second
+    api_pool_write:
+      name: Pool Write Throughput
+      desc: Write throughput of each storage pool in bytes per second
+    api_pool_resp_t:
+      name: Pool Average Response Time
+      desc: Average I/O response time of each storage pool in milliseconds
+    api_pool_resp_t_r:
+      name: Pool Read Response Time
+      desc: Average read response time of each storage pool in milliseconds
+    api_pool_resp_t_w:
+      name: Pool Write Response Time
+      desc: Average write response time of each storage pool in milliseconds
+    api_drive_io_rate:
+      name: Drive Total IOPS
+      desc: Total I/O operations per second of each drive
+    api_drive_read_io:
+      name: Drive Read IOPS
+      desc: Read I/O operations per second of each drive
+    api_drive_write_io:
+      name: Drive Write IOPS
+      desc: Write I/O operations per second of each drive
+    api_drive_read:
+      name: Drive Read Throughput
+      desc: Read throughput of each drive in bytes per second
+    api_drive_write:
+      name: Drive Write Throughput
+      desc: Write throughput of each drive in bytes per second
+    api_drive_resp_t:
+      name: Drive Average Response Time
+      desc: Average I/O response time of each drive in milliseconds
+    api_drive_resp_t_r:
+      name: Drive Read Response Time
+      desc: Average read response time of each drive in milliseconds
+    api_drive_resp_t_w:
+      name: Drive Write Response Time
+      desc: Average write response time of each drive in milliseconds
+    api_volume_io_rate:
+      name: Volume Total IOPS
+      desc: Total I/O operations per second of each volume
+    api_volume_read_io:
+      name: Volume Read IOPS
+      desc: Read I/O operations per second of each volume
+    api_volume_write_io:
+      name: Volume Write IOPS
+      desc: Write I/O operations per second of each volume
+    api_volume_read:
+      name: Volume Read Throughput
+      desc: Read throughput of each volume in bytes per second
+    api_volume_write:
+      name: Volume Write Throughput
+      desc: Write throughput of each volume in bytes per second
+    api_volume_resp_t:
+      name: Volume Average Response Time
+      desc: Average I/O response time of each volume in milliseconds
+    api_volume_resp_t_r:
+      name: Volume Read Response Time
+      desc: Average read response time of each volume in milliseconds
+    api_volume_resp_t_w:
+      name: Volume Write Response Time
+      desc: Average write response time of each volume in milliseconds
   Docker Container:
     docker_container_status:
       name: Container Status
@@ -2778,6 +2859,16 @@ monitor_object_metric_group:
     Base: Base
     Bandwidth: Bandwidth
     Packet Error: Packet Error
+    Quantity: Quantity
+    Pool IOPS: Pool IOPS
+    Pool Throughput: Pool Throughput
+    Pool Latency: Pool Latency
+    Drive IOPS: Drive IOPS
+    Drive Throughput: Drive Throughput
+    Drive Latency: Drive Latency
+    Volume IOPS: Volume IOPS
+    Volume Throughput: Volume Throughput
+    Volume Latency: Volume Latency
   WebLogic-JMX:
     Threadpool: Thread Pool
     Application: Application
@@ -2926,6 +3017,11 @@ monitor_object_plugin:
     desc: Through the Telegraf collector, utilize the IPMI protocol to regularly collect
       key metrics from storage devices, including power status, fan speed, and temperature.
     name: Storage IPMI General (Telegraf)
+  OceanStor:
+    name: OceanStor Storage (Telegraf)
+    desc: Through the Telegraf collector, utilize the DeviceManager REST API to regularly
+      collect performance metrics from Huawei OceanStor storage pools, drives, and
+      LUN volumes, including IOPS, throughput, and response time.
   Tencent Cloud:
     name: Tencent Cloud
     desc: Real-time collection of Tencent Cloud monitoring metrics spans dimensions

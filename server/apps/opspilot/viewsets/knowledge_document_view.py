@@ -30,6 +30,7 @@ from apps.opspilot.tasks import general_embed, general_embed_by_document_list
 from apps.opspilot.utils.chunk_helper import ChunkHelper
 from apps.opspilot.utils.graph_utils import GraphUtils
 from apps.opspilot.utils.team_permission_mixin import TeamPermissionMixin
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class ObjFilter(FilterSet):
@@ -52,7 +53,21 @@ class KnowledgeDocumentViewSet(TeamPermissionMixin, LanguageViewSet):
 
     def create(self, request, *args, **kwargs):
         """禁用 create 接口 - 文档通过 file_knowledge/manual_knowledge/web_page_knowledge 创建"""
-        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
+        response_data = {"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}
+        response = JsonResponse(response_data, status=405)
+        if response.status_code == 201:
+            doc_name = response_data.get("name", "")
+            log_operation(request, "create", "opspilot", f"新增知识文档: {doc_name}")
+        return response
+
+    @HasPermission("knowledge_document-Edit")
+    def update(self, request, *args, **kwargs):
+        instance: KnowledgeDocument = self.get_object()
+        response = super().update(request, *args, **kwargs)
+        if response.status_code == 200:
+            doc_name = response.data.get("name", instance.name)
+            log_operation(request, "update", "opspilot", f"编辑知识文档: {doc_name}")
+        return response
 
     def get_queryset(self):
         """根据 knowledge_base.team 过滤文档"""
@@ -69,6 +84,7 @@ class KnowledgeDocumentViewSet(TeamPermissionMixin, LanguageViewSet):
     @HasPermission("knowledge_document-Delete")
     def destroy(self, request, *args, **kwargs):
         instance: KnowledgeDocument = self.get_object()
+        doc_name = instance.name
         if instance.train_status == DocumentStatus.TRAINING:
             message = self.loader.get("error.training_document_no_delete")
             return JsonResponse({"result": False, "message": message})
@@ -77,7 +93,10 @@ class KnowledgeDocumentViewSet(TeamPermissionMixin, LanguageViewSet):
             for i in QAPairs.objects.filter(document_id=instance.id):
                 i.delete()
             instance.delete()
-        return JsonResponse({"result": True})
+        response = JsonResponse({"result": True})
+        if response.status_code == 200:
+            log_operation(request, "delete", "opspilot", f"删除知识文档: {doc_name}")
+        return response
 
     @action(methods=["POST"], detail=False)
     @HasPermission("knowledge_document-Train")
@@ -310,6 +329,12 @@ class KnowledgeDocumentViewSet(TeamPermissionMixin, LanguageViewSet):
         knowledge_base_id = request.data.get("knowledge_base_id", 0)
         if KnowledgeDocument.objects.filter(id__in=doc_ids, train_status=DocumentStatus.TRAINING).exists():
             return JsonResponse({"result": False, "message": "training document can not be deleted"})
+
+        # 获取知识库名称和文档名称用于日志记录
+        kb = KnowledgeBase.objects.filter(id=knowledge_base_id).first()
+        kb_name = kb.name if kb else str(knowledge_base_id)
+        doc_names = list(KnowledgeDocument.objects.filter(id__in=doc_ids).values_list("name", flat=True))
+
         KnowledgeDocument.objects.filter(id__in=doc_ids).delete()
         index_name = f"knowledge_base_{knowledge_base_id}"
         try:
@@ -318,6 +343,8 @@ class KnowledgeDocumentViewSet(TeamPermissionMixin, LanguageViewSet):
         except Exception as e:
             logger.exception(e)
             return JsonResponse({"result": False, "message": self.loader.get("error.delete_failed")})
+        doc_names_str = ", ".join(doc_names) if doc_names else "无"
+        log_operation(request, "delete", "opspilot", f"批量删除知识库（{kb_name}）的文档：【{doc_names_str}】")
         return JsonResponse({"result": True})
 
     @action(methods=["GET"], detail=True)
