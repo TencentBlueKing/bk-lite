@@ -8,7 +8,7 @@ from apps.system_mgmt.models import Channel
 
 ACTION_TO_ALERT_CENTER = {
     "created": "created",
-    "upgraded": "updated",
+    "upgraded": "created",
     "recovered": "recovery",
     "closed": "closed",
 }
