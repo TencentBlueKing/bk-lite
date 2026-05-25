@@ -1720,6 +1720,40 @@ class RecoveryFallbackTestCase(TestCase):
 
         self.assertEqual(alert.status, AlertStatus.AUTO_RECOVERY)
 
+    def test_out_of_order_recovery_event_does_not_recover_active_alert(self):
+        created_at = timezone.now()
+        created_event = self.create_event(
+            "EVENT-CREATED-OUT-OF-ORDER-1",
+            EventAction.CREATED,
+            "ext-out-of-order-1",
+            created_at,
+            start_time=created_at,
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+        alert = self.create_alert("ALERT-OUT-OF-ORDER-1", AlertStatus.UNASSIGNED, created_event)
+        recovery_event = self.create_event(
+            "EVENT-RECOVERY-OUT-OF-ORDER-1",
+            EventAction.RECOVERY,
+            "ext-out-of-order-1",
+            created_at + timedelta(minutes=10),
+            start_time=created_at - timedelta(minutes=10),
+            end_time=created_at - timedelta(minutes=5),
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+
+        RecoveryHandler.handle_recovery_events([recovery_event])
+        self._run_pending_on_commit_callbacks()
+        alert.refresh_from_db()
+
+        self.assertTrue(alert.events.filter(event_id="EVENT-RECOVERY-OUT-OF-ORDER-1").exists())
+        self.assertEqual(alert.status, AlertStatus.UNASSIGNED)
+
     def test_integration_guide_returns_prometheus_template(self):
         source = AlertSource.objects.create(
             name="Prometheus Prod",
