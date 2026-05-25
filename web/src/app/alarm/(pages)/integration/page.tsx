@@ -52,9 +52,9 @@ const IntegrationPage: React.FC = () => {
   };
 
   return (
-    <div className="w-full flex-1 h-[calc(100vh-56px)] overflow-y-auto">
+    <div className="w-full flex-1 min-h-0">
       <Spin spinning={loading}>
-        <div className="p-[24px_28px_40px] max-w-[1440px] mx-auto w-full">
+        <div className="w-full p-[24px_28px_32px]">
           {/* Page header */}
           <div className="mb-5">
             <h1 className="text-xl font-semibold text-[var(--color-text-1)] m-0">
