@@ -46,27 +46,26 @@ class Command(BaseCommand):
                     continue
 
                 manager = AlgorithmConfig.objects
-                existing = manager.filter(
+                _, created = manager.get_or_create(
                     algorithm_type=algorithm_type_dir.name,
                     name=payload["name"],
-                ).exists()
-                if existing:
-                    skipped_existing_count += 1
-                    self.stdout.write(f"已存在，跳过: {algorithm_type_dir.name}/{payload['name']}")
-                    logger.info("已存在，跳过: %s/%s", algorithm_type_dir.name, payload["name"])
+                    defaults={
+                        "display_name": payload["display_name"],
+                        "image": payload["image"],
+                        "scenario_description": payload["scenario_description"],
+                        "form_config": payload["form_config"],
+                    },
+                )
+
+                if created:
+                    created_count += 1
+                    self.stdout.write(f"已创建: {algorithm_type_dir.name}/{payload['name']}")
+                    logger.info("已创建: %s/%s", algorithm_type_dir.name, payload["name"])
                     continue
 
-                manager.create(
-                    algorithm_type=algorithm_type_dir.name,
-                    name=payload["name"],
-                    display_name=payload["display_name"],
-                    image=payload["image"],
-                    scenario_description=payload["scenario_description"],
-                    form_config=payload["form_config"],
-                )
-                created_count += 1
-                self.stdout.write(f"已创建: {algorithm_type_dir.name}/{payload['name']}")
-                logger.info("已创建: %s/%s", algorithm_type_dir.name, payload["name"])
+                skipped_existing_count += 1
+                self.stdout.write(f"已存在，跳过: {algorithm_type_dir.name}/{payload['name']}")
+                logger.info("已存在，跳过: %s/%s", algorithm_type_dir.name, payload["name"])
 
         self._write_summary(created_count, skipped_existing_count, skipped_invalid_count)
 

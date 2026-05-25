@@ -12,6 +12,7 @@
 - [x] 2.3 Implement file validation for JSON parsing, top-level object shape, required fields, unknown fields, `form_config` object type, and `name`/filename consistency.
 - [x] 2.4 Implement first-write initialization logic using `(algorithm_type, name)` so missing records are created and existing records are skipped without updates.
 - [x] 2.5 Implement command output for per-file invalid reasons, plus final `created / skipped_existing / skipped_invalid` summary reporting and `mlops_logger` lifecycle logging.
+- [x] 2.6 Replace the non-atomic existence-check-plus-create flow with an atomic first-write operation so concurrent bootstrap runs do not fail on duplicate `(algorithm_type, name)` creation.
 
 ## 3. Integrate with batch initialization
 
@@ -25,3 +26,4 @@
 - [x] 4.2 Run the bootstrap command again and verify existing `(algorithm_type, name)` records are skipped without overwriting data.
 - [x] 4.3 Verify invalid JSON files and unknown top-level fields are reported through command output while other valid files in the same run still import successfully.
 - [x] 4.4 Verify the batch initialization flow invokes the MLOPS bootstrap command when `mlops` is included.
+- [x] 4.5 Verify that concurrent bootstrap runs for the same default config preserve first-write semantics and do not abort the command.

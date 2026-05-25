@@ -42,6 +42,12 @@ The bootstrap command SHALL use `(algorithm_type, name)` as the identity of a de
 - **THEN** the command skips creation for that file
 - **THEN** the command does not overwrite existing database values
 
+#### Scenario: Concurrent bootstrap runs preserve first-write semantics
+- **WHEN** two bootstrap runs process the same valid default config concurrently
+- **THEN** at most one `AlgorithmConfig` record is created for the same `(algorithm_type, name)`
+- **THEN** the other run treats the record as existing rather than failing the whole import
+- **THEN** later files in the same command run continue to be processed
+
 ### Requirement: Bootstrap command does not block global batch initialization on file-level failures
 File-level import failures SHALL NOT abort the bootstrap command or prevent other valid files from being processed.
 
