@@ -1602,6 +1602,34 @@ class RecoveryFallbackTestCase(TestCase):
         self.assertTrue(alert.events.filter(event_id="EVENT-RECOVERY-COMPAT-3").exists())
         self.assertEqual(alert.status, AlertStatus.AUTO_RECOVERY)
 
+    def test_mapping_fields_to_event_keeps_missing_end_time_empty(self):
+        self.source.config = {
+            "event_fields_mapping": {
+                "title": "title",
+                "description": "description",
+                "level": "level",
+                "start_time": "start_time",
+                "end_time": "end_time",
+                "action": "action",
+            }
+        }
+        self.source.save(update_fields=["config"])
+
+        adapter = self.adapter_class(alert_source=self.source)
+        payload = {
+            "title": "cpu high",
+            "description": "cpu recovered",
+            "level": "3",
+            "start_time": str(int(timezone.now().timestamp())),
+            "end_time": "",
+            "action": "recovery",
+        }
+
+        mapped = adapter.mapping_fields_to_event(payload)
+
+        self.assertIn("start_time", mapped)
+        self.assertNotIn("end_time", mapped)
+
     def test_closed_event_immediately_recovers_active_alert(self):
         created_at = timezone.now() - timedelta(minutes=5)
         created_event = self.create_event(

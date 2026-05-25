@@ -144,7 +144,7 @@ class AlertSourceAdapter(ABC):
                         # 如果元数据里也没有，直接跳过
                         continue
 
-            if _value and key == "start_time" or key == "end_time":
+            if _value and (key == "start_time" or key == "end_time"):
                 _value = self.timestamp_to_datetime(_value)
 
             if key == "value":
