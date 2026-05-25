@@ -757,6 +757,9 @@ const IntegrationDetail: FC = () => {
                         </Spin>
                       ) : renderGuideTab()}
                     </Tabs.TabPane>
+                    <Tabs.TabPane key="teamSecrets" tab={t('integration.teamSecrets')}>
+                      <TeamSecretsManager sourceId={source.id} />
+                    </Tabs.TabPane>
                   </Tabs>
                 </div>
               </>
