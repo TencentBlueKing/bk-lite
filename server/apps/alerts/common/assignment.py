@@ -10,7 +10,7 @@ from django.db import transaction
 from apps.alerts.error import AlertNotFoundError
 from apps.alerts.models.operator_log import OperatorLog
 from apps.alerts.models.models import Alert
-from apps.alerts.models.alert_operator import AlertAssignment
+from apps.alerts.models.alert_operator import AlertAssignment, AlertReminderTask
 from apps.alerts.constants.constants import (
     AlertStatus,
     AlertAssignmentMatchType,
@@ -318,8 +318,13 @@ class AlertAssignmentOperator:
                             )
                         )
                         # 分派成功后 立即发送提醒通知
+                        reminder_id = AlertReminderTask.objects.filter(
+                            alert=alert
+                        ).values_list("alert_id", flat=True).first()
                         ReminderService._send_reminder_notification(
-                            assignment=assignment, alert=alert
+                            assignment=assignment,
+                            alert=alert,
+                            reminder_id=reminder_id,
                         )
                         logger.info(
                             "== assignment alert notify end ==, assignment={}, alert_id={}".format(
