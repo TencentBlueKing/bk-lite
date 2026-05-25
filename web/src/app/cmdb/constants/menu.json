@@ -34,17 +34,17 @@
           "withParentPermission": true
         },
         {
-          "title": "变更记录",
-          "icon": "shujumoxingguanli",
-          "url": "/cmdb/assetData/detail/changeRecords",
-          "name": "asset_change_records",
-          "withParentPermission": true
-        },
-        {
           "title": "配置文件",
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetData/detail/configFiles",
           "name": "asset_config_files",
+          "withParentPermission": true
+        },
+        {
+          "title": "变更记录",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/assetData/detail/changeRecords",
+          "name": "asset_change_records",
           "withParentPermission": true
         }
       ]
@@ -162,17 +162,17 @@
           "withParentPermission": true
         },
         {
-          "title": "Change Records",
-          "icon": "shujumoxingguanli",
-          "url": "/cmdb/assetData/detail/changeRecords",
-          "name": "asset_change_records",
-          "withParentPermission": true
-        },
-        {
           "title": "Config Files",
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetData/detail/configFiles",
           "name": "asset_config_files",
+          "withParentPermission": true
+        },
+        {
+          "title": "Change Records",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/assetData/detail/changeRecords",
+          "name": "asset_change_records",
           "withParentPermission": true
         }
       ]

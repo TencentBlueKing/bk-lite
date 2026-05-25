@@ -452,7 +452,7 @@ class ConfigFileService(object):
         if pending_count > 0:
             overall_status = "pending"
             exec_status = CollectRunStatusType.RUNNING
-            message = f"配置文件采集结果等待回传中 ({received_count}/{expected_total})"
+            message = f"配置文件采集已触发，等待回传中 ({received_count}/{expected_total})"
         elif error_count > 0:
             overall_status = "error"
             exec_status = CollectRunStatusType.ERROR
@@ -487,8 +487,23 @@ class ConfigFileService(object):
             "file_name": latest_item.get("file_name") or extract_file_name((task.params or {}).get("config_file_path", "")),
         }
 
+        add_items = []
+        add_error_count = 0
+        for item in raw_items:
+            is_success = item.get("status") == ConfigFileVersionStatus.SUCCESS
+            add_entry = {
+                "_status": "success" if is_success else "failed",
+                "instance_id": item.get("instance_id", ""),
+                "file_path": item.get("file_path") or (task.params or {}).get("config_file_path", ""),
+                "file_name": item.get("file_name") or extract_file_name((task.params or {}).get("config_file_path", "")),
+            }
+            if not is_success:
+                add_entry["_error"] = item.get("error_message", "")
+                add_error_count += 1
+            add_items.append(add_entry)
+
         format_data = {
-            "add": [],
+            "add": add_items,
             "update": [],
             "delete": [],
             "association": [],
@@ -504,15 +519,15 @@ class ConfigFileService(object):
         }
 
         collect_digest = {
-            "add": 0,
-            "add_error": 0,
+            "add": len(add_items),
+            "add_error": add_error_count,
             "update": 0,
             "update_error": 0,
             "delete": 0,
             "delete_error": 0,
             "association": 0,
             "association_error": 0,
-            "add_success": 0,
+            "add_success": len(add_items) - add_error_count,
             "update_success": 0,
             "delete_success": 0,
             "association_success": 0,

@@ -5,6 +5,10 @@
 
 SYSTEM_OPERATOR_USER = "admin"
 
+PERMISSION_EVENT = "event"
+PERMISSION_ALERT = "alert"
+PERMISSION_INCIDENT = "incident"
+
 
 class AlertAccessType:
     """告警源接入类型"""
@@ -304,6 +308,22 @@ class LogTargetType:
         (ALERT, "告警"),
         (INCIDENT, "事故"),
         (SYSTEM, "系统"),
+    )
+
+
+class IncidentUpdateType:
+    """协作更新类型"""
+
+    OBSERVATION = "observation"
+    PROGRESS = "progress"
+    CONCLUSION = "conclusion"
+    NEXT_STEP = "next_step"
+
+    CHOICES = (
+        (OBSERVATION, "观察"),
+        (PROGRESS, "进展"),
+        (CONCLUSION, "结论"),
+        (NEXT_STEP, "下一步"),
     )
 
 

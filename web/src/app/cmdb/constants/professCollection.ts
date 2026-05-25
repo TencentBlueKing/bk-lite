@@ -94,7 +94,7 @@ export const K8S_FORM_INITIAL_VALUES = {
   intervalMinutes: 30,
   intervalValue: 30,
   timeout: 300,
-  cleanupStrategy: 'no_cleanup',
+  cleanupStrategy: 'immediately',
   cleanupDays: 3,
 };
 
@@ -106,7 +106,7 @@ export const VM_FORM_INITIAL_VALUES = {
   port: '443',
   timeout: 300,
   sslVerify: false,
-  cleanupStrategy: 'no_cleanup',
+  cleanupStrategy: 'after_expiration',
   cleanupDays: 3,
 };
 
@@ -117,7 +117,7 @@ export const SNMP_FORM_INITIAL_VALUES = {
   enterType: ENTER_TYPE.AUTOMATIC,
   version: 'v2',
   snmp_port: '161',
-  timeout: 10,
+  timeout: 20,
   level: 'authNoPriv',
   integrity: 'sha',
   privacy: 'aes',
@@ -135,7 +135,7 @@ export const SQL_FORM_INITIAL_VALUES = {
   database: '',
   password: '',
   port: '3306',
-  timeout: 10,
+  timeout: 20,
   cleanupStrategy: 'no_cleanup',
   cleanupDays: 3,
 };
@@ -149,7 +149,7 @@ export const CLOUD_FORM_INITIAL_VALUES = {
   accessSecret: '',
   regionId: '',
   timeout: 300,
-  cleanupStrategy: 'no_cleanup',
+  cleanupStrategy: 'after_expiration',
   cleanupDays: 3,
 };
 
@@ -161,14 +161,14 @@ export const HOST_FORM_INITIAL_VALUES = {
   username: '',
   password: '',
   port: '22',
-  timeout: 10,
+  timeout: 20,
   cleanupStrategy: 'no_cleanup',
   cleanupDays: 3,
 };
 
 export const CONFIG_FILE_FORM_INITIAL_VALUES = {
   ...HOST_FORM_INITIAL_VALUES,
-  intervalValue: 10,
+  intervalValue: 15,
   configFilePath: '',
 };
 

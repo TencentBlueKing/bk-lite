@@ -6,29 +6,18 @@ import useApiClient from '@/utils/request';
 export const useK8sSetupApi = () => {
   const { post } = useApiClient();
 
-  // 生成安装 token
-  const generateInstallToken = (params: {
+  // 后端生成安装命令（URL 直连 Django open_api，不走 Next.js 代理）
+  const generateInstallCommand = (params: {
     collector_cluster_id: string;
     cloud_region_id: number | string;
-  }) => post('/cmdb/api/k8s_setup/install_token/', params);
+  }) => post('/cmdb/api/k8s_setup/install_command/', params);
 
   // 探测采集器是否已上报到 VictoriaMetrics
   const verifyCollectorReporting = (params: { collector_cluster_id: string }) =>
     post('/cmdb/api/k8s_setup/verify/', params);
 
   return {
-    generateInstallToken,
+    generateInstallCommand,
     verifyCollectorReporting,
   };
-};
-
-/**
- * 给定 token，构造给用户复制的安装命令。
- * 注：open API 端点无需鉴权，由 kubectl 直接拉取 YAML。
- */
-export const buildK8sInstallCommand = (token: string, originBase?: string): string => {
-  const base = (originBase || (typeof window !== 'undefined' ? window.location.origin : '')).replace(/\/$/, '');
-  // OpenAPI 通过 Next.js 代理转发到后端 /api/v1/cmdb/open_api/k8s_setup/render/
-  const url = `${base}/api/proxy/cmdb/open_api/k8s_setup/render/`;
-  return `curl -s -X POST -H "Content-Type: application/json" \\\n  -d '{"token":"${token}"}' \\\n  ${url} | kubectl apply -f -`;
 };

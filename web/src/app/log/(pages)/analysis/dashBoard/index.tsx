@@ -23,6 +23,7 @@ import useIntegrationApi from '@/app/log/api/integration';
 import useApiClient from '@/utils/request';
 
 const { Option } = Select;
+const ResponsiveGridLayout = WidthProvider(GridLayout);
 
 interface DashboardProps {
   selectedDashboard?: DirItem | null;
@@ -34,8 +35,6 @@ interface DashboardProps {
 export interface DashboardRef {
   hasUnsavedChanges: () => boolean;
 }
-
-const ResponsiveGridLayout = WidthProvider(GridLayout);
 
 const Dashboard = forwardRef<DashboardRef, DashboardProps>(
   (
@@ -620,7 +619,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto rounded-[20px] p-2">
+          <div className="flex-1 overflow-auto">
             {(() => {
               if (pageLoading) {
                 return (
@@ -632,7 +631,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               return (
                 <ResponsiveGridLayout
                   className="layout w-full flex-1"
-                  layout={layout}
+                  layout={layout as LayoutItem[]}
                   onLayoutChange={editable ? onLayoutChange : undefined}
                   cols={12}
                   rowHeight={88}
@@ -642,7 +641,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                   isDraggable={editable}
                   isResizable={editable}
                 >
-                  {layout.map((item) => {
+                  {(layout as LayoutItem[]).map((item) => {
                     const menu = (
                       <Menu>
                         <Menu.Item

@@ -204,6 +204,7 @@ class ObjectDetectionDatasetReleaseSerializer(AuthSerializer):
     class Meta:
         model = ObjectDetectionDatasetRelease
         fields = "__all__"
+        validators = []
         extra_kwargs = {
             "name": {"required": False},
             "dataset_file": {"required": False},
@@ -229,10 +230,21 @@ class ObjectDetectionDatasetReleaseSerializer(AuthSerializer):
         train_file_id = validated_data.pop("train_file_id", None)
         val_file_id = validated_data.pop("val_file_id", None)
         test_file_id = validated_data.pop("test_file_id", None)
+        dataset = validated_data.get("dataset")
+        version = validated_data.get("version")
 
         if train_file_id and val_file_id and test_file_id:
             return self._create_from_files(validated_data, train_file_id, val_file_id, test_file_id)
         else:
+            existing = ObjectDetectionDatasetRelease._default_manager.filter(dataset=dataset, version=version).first()
+            if existing and existing.status == "failed":
+                existing.dataset_file = validated_data.get("dataset_file")
+                existing.status = "pending"
+                existing.file_size = 0
+                existing.metadata = {}
+                existing.save(update_fields=["dataset_file", "status", "file_size", "metadata"])
+                return existing
+
             return super().create(validated_data)
 
     def _create_from_files(self, validated_data, train_file_id, val_file_id, test_file_id):
@@ -247,27 +259,43 @@ class ObjectDetectionDatasetReleaseSerializer(AuthSerializer):
             val_obj = ObjectDetectionTrainData.objects.get(id=val_file_id, dataset=dataset)
             test_obj = ObjectDetectionTrainData.objects.get(id=test_file_id, dataset=dataset)
 
-            existing = ObjectDetectionDatasetRelease.objects.filter(dataset=dataset, version=version).exclude(status="failed").first()
+            existing = ObjectDetectionDatasetRelease.objects.filter(dataset=dataset, version=version).first()
 
             if existing:
-                logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
-                return existing
+                if existing.status == "failed":
+                    release = existing
+                    release.status = "pending"
+                    release.file_size = 0
+                    release.metadata = {}
+                    release.save(update_fields=["status", "file_size", "metadata"])
+                else:
+                    logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
+                    raise serializers.ValidationError(f"数据集 {dataset.name} 的版本 {version} 已存在或正在处理中")
+            else:
+                validated_data["status"] = "pending"
+                validated_data["file_size"] = 0
+                validated_data["metadata"] = {}
 
-            validated_data["status"] = "pending"
-            validated_data["file_size"] = 0
-            validated_data["metadata"] = {}
+                if not name:
+                    validated_data["name"] = f"{dataset.name}_{version}"
 
-            if not name:
-                validated_data["name"] = f"{dataset.name}_{version}"
+                if not description:
+                    validated_data["description"] = f"从数据集文件自动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
 
-            if not description:
-                validated_data["description"] = f"从数据集文件自动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
-
-            release = ObjectDetectionDatasetRelease.objects.create(**validated_data)
+                release = ObjectDetectionDatasetRelease.objects.create(**validated_data)
 
             from apps.mlops.tasks.object_detection import publish_dataset_release_async
 
-            publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)
+            try:
+                publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)
+            except Exception as task_error:
+                logger.error(
+                    f"投递 Celery 任务失败 - Release ID: {release.id}, Error: {str(task_error)}",
+                    exc_info=True,
+                )
+                release.status = "failed"
+                release.save(update_fields=["status"])
+                raise serializers.ValidationError("投递异步任务失败")
 
             logger.info(f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}")
 
@@ -276,9 +304,11 @@ class ObjectDetectionDatasetReleaseSerializer(AuthSerializer):
         except ObjectDetectionTrainData.DoesNotExist as e:
             logger.error(f"训练数据文件不存在 - {str(e)}")
             raise serializers.ValidationError(f"训练数据文件不存在或不属于该数据集")
+        except serializers.ValidationError:
+            raise
         except Exception as e:
             logger.error(f"创建数据集发布任务失败 - {str(e)}", exc_info=True)
-            raise serializers.ValidationError(f"创建发布任务失败: {str(e)}")
+            raise serializers.ValidationError("创建发布任务失败")
 
     def validate(self, attrs):
         """验证数据集和版本的唯一性"""
@@ -294,12 +324,16 @@ class ObjectDetectionDatasetReleaseSerializer(AuthSerializer):
                 raise serializers.ValidationError({"dataset_file": "必须提供数据集文件或训练数据文件ID"})
 
         if dataset and version:
+            existing_releases = ObjectDetectionDatasetRelease._default_manager.filter(dataset=dataset, version=version)
             if self.instance:
-                exists = ObjectDetectionDatasetRelease.objects.filter(dataset=dataset, version=version).exclude(pk=self.instance.pk).exists()
-            else:
-                exists = ObjectDetectionDatasetRelease.objects.filter(dataset=dataset, version=version).exists()
+                existing_releases = existing_releases.exclude(pk=self.instance.pk)
 
-            if exists:
+            existing = existing_releases.first()
+            has_file_ids = bool(train_file_id and val_file_id and test_file_id)
+            has_dataset_file = bool(attrs.get("dataset_file"))
+            allow_failed_retry = bool(existing and existing.status == "failed" and (has_file_ids or has_dataset_file))
+
+            if existing and not allow_failed_retry:
                 raise serializers.ValidationError({"version": f"数据集 {dataset.name} 的版本 {version} 已存在"})
 
         return attrs

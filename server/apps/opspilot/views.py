@@ -4,6 +4,7 @@ import time
 import uuid
 from typing import Any
 
+from asgiref.sync import sync_to_async
 from django.db.models import Count
 from django.db.models.functions import TruncDate
 from django.http import HttpResponse, JsonResponse
@@ -552,9 +553,9 @@ def set_channel_type_line(end_time, queryset, start_time):
 
 
 @api_exempt
-def execute_chat_flow(request, bot_id, node_id):
+async def execute_chat_flow(request, bot_id, node_id):
     """执行ChatFlow流程（支持流式响应）"""
-    loader = get_loader(request)
+    loader = await sync_to_async(get_loader, thread_sensitive=True)(request)
     if not bot_id or not node_id:
         return JsonResponse({"result": False, "message": loader.get("error.bot_node_id_required", "Bot ID and Node ID are required.")})
 
@@ -572,7 +573,7 @@ def execute_chat_flow(request, bot_id, node_id):
 
     # 验证token
     token = extract_api_token(request)
-    is_valid, msg = validate_openai_token(token, request.COOKIES.get("current_team") or None, is_mobile)
+    is_valid, msg = await sync_to_async(validate_openai_token, thread_sensitive=False)(token, request.COOKIES.get("current_team") or None, is_mobile)
     if not is_valid:
         return JsonResponse(msg)
 
@@ -587,12 +588,12 @@ def execute_chat_flow(request, bot_id, node_id):
 
     if not is_test:
         filter_dict["online"] = True
-    bot_obj = Bot.objects.filter(**filter_dict).first()
+    bot_obj = await sync_to_async(Bot.objects.filter(**filter_dict).first, thread_sensitive=False)()
     if not bot_obj:
         return JsonResponse({"result": False, "message": loader.get("error.bot_not_online", "No bot online")})
 
     # 获取Bot的工作流配置
-    bot_chat_flow = BotWorkFlow.objects.filter(bot_id=bot_obj.id).first()
+    bot_chat_flow = await sync_to_async(BotWorkFlow.objects.filter(bot_id=bot_obj.id).first, thread_sensitive=False)()
     if not bot_chat_flow:
         return JsonResponse({"result": False, "message": loader.get("error.no_chat_flow_configured", "No chat flow configured for this bot.")})
 
@@ -623,7 +624,10 @@ def execute_chat_flow(request, bot_id, node_id):
         logger.info(f"开始执行ChatFlow流程，bot_id: {bot_id}, node_id: {node_id}, user: {user.username}, node_type: {node_type}")
 
         if is_test:
-            has_running_test = WorkFlowTaskResult.objects.filter(bot_work_flow__bot_id=bot_obj.id, status=WorkFlowTaskStatus.RUNNING).exists()
+            has_running_test = await sync_to_async(
+                WorkFlowTaskResult.objects.filter(bot_work_flow__bot_id=bot_obj.id, status=WorkFlowTaskStatus.RUNNING).exists,
+                thread_sensitive=False,
+            )()
             if has_running_test:
                 msg = loader.get("error.chat_flow_test_running", "A workflow test execution is already running for this bot.")
                 return JsonResponse({"result": False, "message": msg})
@@ -643,10 +647,10 @@ def execute_chat_flow(request, bot_id, node_id):
 
             # 直接返回 engine.sse_execute 的 StreamingHttpResponse（与 execute_agui 保持一致）
             logger.info(f"[ChatFlow] 调用流式执行 - bot_id: {bot_id}, node_id: {node_id}, node_type: {node_type}")
-            return engine.sse_execute(input_data)
+            return await sync_to_async(engine.sse_execute, thread_sensitive=False)(input_data)
 
-        # 非流式节点，使用普通执行
-        result = engine.execute(input_data)
+        # 非流式节点，使用普通执行（在线程池中执行，不阻塞事件循环）
+        result = await sync_to_async(engine.execute, thread_sensitive=False)(input_data)
         return JsonResponse({"result": True, "data": {"content": result, "execution_time": time.time()}})
 
     except Exception as e:

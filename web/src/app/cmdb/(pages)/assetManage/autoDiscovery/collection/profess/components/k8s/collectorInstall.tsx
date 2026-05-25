@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Button, Alert, message, Input } from 'antd';
 import { SearchOutlined, CopyOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import { useK8sSetupApi, buildK8sInstallCommand } from '@/app/cmdb/api';
+import { useK8sSetupApi } from '@/app/cmdb/api';
 
 interface Props {
   collectorClusterId: string;
@@ -23,7 +23,7 @@ const CollectorInstall: React.FC<Props> = ({
   onPrev,
 }) => {
   const { t } = useTranslation();
-  const { generateInstallToken, verifyCollectorReporting } = useK8sSetupApi();
+  const { generateInstallCommand, verifyCollectorReporting } = useK8sSetupApi();
   const [tokenLoading, setTokenLoading] = useState(false);
   const [command, setCommand] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
@@ -33,16 +33,16 @@ const CollectorInstall: React.FC<Props> = ({
   const fetchInstallCommand = async () => {
     try {
       setTokenLoading(true);
-      const data = await generateInstallToken({
+      const data = await generateInstallCommand({
         collector_cluster_id: collectorClusterId,
         cloud_region_id: cloudRegionId,
       });
-      const token = data?.token;
-      if (!token) {
-        message.error('Failed to generate install token');
+      const cmd = data?.command;
+      if (!cmd) {
+        message.error('Failed to generate install command');
         return;
       }
-      setCommand(buildK8sInstallCommand(token));
+      setCommand(cmd);
       setVerificationStatus('waiting');
     } catch (e) {
       console.error(e);

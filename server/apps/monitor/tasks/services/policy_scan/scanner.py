@@ -34,12 +34,8 @@ class MonitorPolicyScan:
             self.active_alerts,
             self.metric_query_service,
         )
-        self.event_alert_manager = EventAlertManager(
-            policy, self.instances_map, self.active_alerts
-        )
-        self.snapshot_recorder = SnapshotRecorder(
-            policy, self.instances_map, self.active_alerts, self.metric_query_service
-        )
+        self.event_alert_manager = EventAlertManager(policy, self.instances_map, self.active_alerts)
+        self.snapshot_recorder = SnapshotRecorder(policy, self.instances_map, self.active_alerts, self.metric_query_service)
 
     def _get_active_alerts(self):
         """获取策略的活动告警"""
@@ -134,14 +130,7 @@ class MonitorPolicyScan:
             return None, None
 
         event_objs, new_alerts = result
-        logger.info(
-            f"Created {len(event_objs)} events and {len(new_alerts)} new alerts"
-        )
-
-        if self.policy.notice and event_objs:
-            self._execute_step(
-                "Send notifications", self.event_alert_manager.notify_events, event_objs
-            )
+        logger.info(f"Created {len(event_objs)} events and {len(new_alerts)} new alerts")
 
         return event_objs, new_alerts
 
@@ -205,9 +194,7 @@ class MonitorPolicyScan:
     def _pre_check(self):
         """前置检查"""
         if self.policy.source and not self.instances_map:
-            logger.warning(
-                f"Policy {self.policy.id} has source but no instances, skipping scan"
-            )
+            logger.warning(f"Policy {self.policy.id} has source but no instances, skipping scan")
             return False
 
         self._execute_step(
@@ -230,9 +217,7 @@ class MonitorPolicyScan:
             )
             if success and result is not None:
                 alert_events, info_events = result
-                logger.info(
-                    f"Threshold alerts: {len(alert_events)} alerts, {len(info_events)} info events"
-                )
+                logger.info(f"Threshold alerts: {len(alert_events)} alerts, {len(info_events)} info events")
 
         if AlertConstants.NO_DATA in self.policy.enable_alerts:
             success, result = self._execute_step(

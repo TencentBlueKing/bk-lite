@@ -79,13 +79,9 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       }
     }, [getControllerList]);
 
-    useEffect(() => {
-      fetchArchitectureOptions();
-    }, [fetchArchitectureOptions]);
-
     useImperativeHandle(ref, () => ({
       showModal: ({ type, form, title, key, appTag }) => {
-        console.log(type);
+        fetchArchitectureOptions();
         // 新增时使用初始值，编辑时使用传入的 form 数据
         const info =
           type === 'add'

@@ -12,7 +12,7 @@ from apps.system_mgmt.utils.channel_utils import send_email_to_user
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def write_error_log_async(self, username, app, module, error_message, domain):
+def write_error_log_async(self, username, app, module, error_message, domain, stack_trace):
     """
     异步写入错误日志到数据库
 
@@ -27,14 +27,7 @@ def write_error_log_async(self, username, app, module, error_message, domain):
         dict: 执行结果
     """
     try:
-        ErrorLog.objects.create(
-            username=username,
-            app=app,
-            module=module,
-            error_message=error_message,
-            domain=domain,
-        )
-        logger.debug(f"Successfully logged error for {username}@{domain} in {app}/{module}")
+        ErrorLog.objects.create(username=username, app=app, module=module, error_message=error_message, domain=domain, stack_trace=stack_trace)
         return {"result": True, "message": "Error log written successfully"}
     except Exception as exc:
         logger.error(f"Failed to write error log: {str(exc)}")

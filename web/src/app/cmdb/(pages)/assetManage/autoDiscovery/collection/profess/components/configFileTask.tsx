@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Alert, Collapse, Form, Input, InputNumber, Spin } from 'antd';
 import { CaretRightOutlined } from '@ant-design/icons';
 import { useLocale } from '@/context/locale';
+import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import { useTaskForm, getCleanupFormValues, getCycleFormValues } from '../hooks/useTaskForm';
@@ -57,15 +58,23 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
 }) => {
   const { t } = useTranslation();
   const localeContext = useLocale();
+  const { selectedGroup } = useUserInfoContext();
   const baseRef = useRef<BaseTaskRef>(null as any);
   const copyTaskData = useAssetManageStore((state) => state.copyTaskData);
   const { model_id: modelId } = modelItem;
+  const initialFormValues = useMemo(
+    () => ({
+      ...CONFIG_FILE_FORM_INITIAL_VALUES,
+      organization: selectedGroup ? [Number(selectedGroup.id)] : [],
+    }),
+    [selectedGroup]
+  );
 
   const { form, loading, submitLoading, fetchTaskDetail, formatCycleValue, onFinish } =
     useTaskForm({
       modelId,
       editId,
-      initialValues: CONFIG_FILE_FORM_INITIAL_VALUES,
+      initialValues: initialFormValues,
       onSuccess,
       onClose,
       formatValues: (values) => {
@@ -128,12 +137,12 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
         form.setFieldsValue(buildFormValues(values, false));
       } else {
         baseRef.current?.initCollectionType([], 'asset');
-        form.setFieldsValue(CONFIG_FILE_FORM_INITIAL_VALUES);
+        form.setFieldsValue(initialFormValues);
       }
     };
 
     initForm();
-  }, [modelId, copyTaskData, editId]);
+  }, [modelId, copyTaskData, editId, form, initialFormValues]);
 
   return (
     <Spin spinning={loading}>
@@ -142,7 +151,7 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
         layout="horizontal"
         labelCol={{ span: localeContext.locale === 'en' ? 6 : 5 }}
         onFinish={onFinish}
-        initialValues={CONFIG_FILE_FORM_INITIAL_VALUES}
+        initialValues={initialFormValues}
       >
         <BaseTaskForm
           ref={baseRef}

@@ -1,10 +1,10 @@
 {
-  "object_name": "OceanStor",
-  "instance_type": "oceanstor",
-  "collect_type": "http",
+  "object_name": "Storage",
+  "instance_type": "storage",
+  "collect_type": "oceanstor",
   "config_type": ["oceanstor"],
   "collector": "Telegraf",
-  "instance_id": "{{cloud_region}_oceanstor_{{base_url}}",
+  "instance_id": "{{cloud_region}}_storage_oceanstor_{{base_url}}",
   "form_fields": [
     {
       "name": "base_url",

@@ -347,7 +347,7 @@ class CollectionService:
             return
 
         try:
-            exec_params = {"args": [{"page_size": -1}], "kwargs": {}}
+            exec_params = {"args": [{"page_size": -1, "skip_permission": True}], "kwargs": {}}
             subject = f"{self.namespace}.node_list"
             payload = json.dumps(exec_params).encode()
 

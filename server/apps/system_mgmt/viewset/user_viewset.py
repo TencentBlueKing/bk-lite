@@ -368,7 +368,7 @@ class UserViewSet(ViewSetUtils):
                 UserRule.objects.bulk_create(add_rule, batch_size=100)
 
             # 记录操作日志
-            log_operation(request, "create", "user", f"新增用户: {kwargs['username']} ({kwargs['lastName']})")
+            log_operation(request, "create", "system-manager", f"新增用户: {kwargs['username']} ({kwargs['lastName']})")
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -399,7 +399,7 @@ class UserViewSet(ViewSetUtils):
         user.save()  # 使用save方法自动更新password_last_modified
 
         # 记录操作日志
-        log_operation(request, "update", "user", f"重置用户密码: {user.username}")
+        log_operation(request, "update", "system-manager", f"重置用户密码: {user.username}")
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -439,7 +439,7 @@ class UserViewSet(ViewSetUtils):
             clear_users_permission_cache(user_info_list)
 
         # 记录操作日志
-        log_operation(request, "delete", "user", f"批量删除用户: {', '.join(usernames)} (共{len(usernames)}个)")
+        log_operation(request, "delete", "system-manager", f"批量删除用户: {', '.join(usernames)} (共{len(usernames)}个)")
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -509,7 +509,7 @@ class UserViewSet(ViewSetUtils):
             log_operation(
                 request,
                 "update",
-                "user",
+                "system-manager",
                 f"批量{action_name}用户: {', '.join(usernames)} (共{len(usernames)}个)",
             )
 
@@ -584,7 +584,7 @@ class UserViewSet(ViewSetUtils):
             except Exception as e:
                 logger.exception(e)
             # 记录操作日志
-            log_operation(request, "update", "user", f"编辑用户: {params['username']}")
+            log_operation(request, "update", "system-manager", f"编辑用户: {params['username']}")
 
             # 清除权限缓存
             clear_user_permission_cache(params["username"], params.get("domain", "domain.com"))

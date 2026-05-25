@@ -21,6 +21,7 @@ from apps.job_mgmt.serializers.scheduled_task import (
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_playbook_task, execute_script_task
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class ScheduledTaskViewSet(AuthViewSet):
@@ -64,6 +65,7 @@ class ScheduledTaskViewSet(AuthViewSet):
         self._validate_org_field_permission(request, team)
 
         instance = serializer.save()
+        log_operation(request, "create", "job", f"新增定时任务: {instance.name}")
         return Response(
             ScheduledTaskDetailSerializer(instance).data,
             status=status.HTTP_201_CREATED,
@@ -81,6 +83,7 @@ class ScheduledTaskViewSet(AuthViewSet):
         self._validate_org_field_permission(request, team)
 
         instance = serializer.save()
+        log_operation(request, "update", "job", f"编辑定时任务: {instance.name}")
         return Response(ScheduledTaskDetailSerializer(instance).data)
 
     @action(detail=True, methods=["post"])
@@ -99,6 +102,7 @@ class ScheduledTaskViewSet(AuthViewSet):
 
         # 同步更新 celery-beat PeriodicTask 的启用状态
         ScheduledTaskService.toggle_periodic_task(instance.id, instance.is_enabled)
+        log_operation(request, "execute", "job", f"切换定时任务状态: {instance.name}")
 
         return Response(
             {
@@ -156,6 +160,8 @@ class ScheduledTaskViewSet(AuthViewSet):
         elif instance.job_type == JobType.PLAYBOOK:
             execute_playbook_task.delay(execution.id)
 
+        log_operation(request, "execute", "job", f"立即执行定时任务: {instance.name}")
+
         return Response(
             {
                 "message": "已触发执行",
@@ -171,6 +177,7 @@ class ScheduledTaskViewSet(AuthViewSet):
         ScheduledTaskService.delete_periodic_task(instance.id)
 
         instance.delete()
+        log_operation(request, "delete", "job", f"删除定时任务: {instance.name}")
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["post"])
@@ -190,6 +197,7 @@ class ScheduledTaskViewSet(AuthViewSet):
             ScheduledTaskService.delete_periodic_task(task.id)
 
         deleted_count, _ = tasks.delete()
+        log_operation(request, "delete", "job", f"批量删除定时任务: (共{deleted_count}个)")
 
         return Response(
             {

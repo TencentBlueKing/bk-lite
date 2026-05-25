@@ -646,7 +646,7 @@ class LogPolicyScan:
 
         except Exception as e:
             logger.error(f"create events failed for policy {self.policy.id}: {e}")
-            return []
+            raise
 
     def _create_snapshots_for_alerts(self, event_objs, new_alerts, raw_events, event_id_to_raw_data=None):
         """为告警创建或更新快照数据
@@ -698,6 +698,7 @@ class LogPolicyScan:
 
         except Exception as e:
             logger.error(f"Failed to create snapshots for alerts: {e}")
+            raise
 
     def _update_alert_snapshot(
         self,
@@ -763,6 +764,7 @@ class LogPolicyScan:
 
         except Exception as e:
             logger.error(f"Failed to update alert snapshot for alert {alert_id}: {e}")
+            raise
 
     def _format_notice_content(self, event_obj):
         """格式化通知内容

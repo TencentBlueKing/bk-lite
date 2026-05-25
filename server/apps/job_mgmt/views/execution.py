@@ -22,6 +22,7 @@ from apps.job_mgmt.serializers.execution import (
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_playbook_task, execute_script_task
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class JobExecutionViewSet(AuthViewSet):
@@ -82,7 +83,7 @@ class JobExecutionViewSet(AuthViewSet):
         username = request.user.username if request.user else ""
         name = data["name"]
         timeout = data.get("timeout", 600)
-        team = data.get("team", [])
+        team = data.get("team", []) or [int(request.COOKIES.get("current_team") or 0)]
         params = data.get("params", [])
 
         # 处理新格式参数：解析 is_modified=False 的参数
@@ -157,6 +158,9 @@ class JobExecutionViewSet(AuthViewSet):
         result = task_func.delay(execution.id)
         execution.celery_task_id = result.id
         execution.save(update_fields=["celery_task_id", "updated_at"])
+
+        playbook_name = playbook.name if data.get("playbook_id") else name
+        log_operation(request, "execute", "job", f"快速执行作业: {playbook_name}")
 
         return Response(
             JobExecutionDetailSerializer(execution).data,
@@ -252,6 +256,8 @@ class JobExecutionViewSet(AuthViewSet):
         execution.celery_task_id = result.id
         execution.save(update_fields=["celery_task_id", "updated_at"])
 
+        log_operation(request, "execute", "job", "文件分发")
+
         return Response(
             JobExecutionDetailSerializer(execution).data,
             status=status.HTTP_201_CREATED,
@@ -295,6 +301,7 @@ class JobExecutionViewSet(AuthViewSet):
         execution.status = ExecutionStatus.CANCELLED
         execution.save(update_fields=["status", "updated_at"])
         logger.info(f"[cancel] 执行已取消: execution_id={execution.id}")
+        log_operation(request, "execute", "job", f"取消执行: {execution.id}")
 
         return Response({"message": "已取消执行"})
 

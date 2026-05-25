@@ -11,12 +11,12 @@ class OceanStorCollector(BaseCollector):
 
         username = self.params["username"]
         password = self.params["password"]
-        host = self.params["host"]
+        host = self.params.get("host") or self.params.get("base_url", "")
         instance_id = self.params.get("instance_id", host)
 
         logger.info(f"[OceanStor Collector] Host={host}, User={username}")
 
-        base_url = f"https://{host}" if not host.startswith("http") else host
+        base_url = f"https://{host}" if host and not host.startswith("http") else host
 
         monitor_input = {
             "config": {
