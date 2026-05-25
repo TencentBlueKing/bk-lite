@@ -9,6 +9,8 @@ import { useIncidentsApi } from '@/app/alarm/api/incidents';
 import { useTranslation } from '@/utils/i18n';
 import { IncidentTableDataItem } from '@/app/alarm/types/incidents';
 import { useSession } from 'next-auth/react';
+import { useUserInfoContext } from '@/context/userInfo';
+import GroupTreeSelect from '@/components/group-tree-select';
 
 interface DeclareModalProps {
   rowData: any[];
@@ -18,6 +20,7 @@ interface DeclareModalProps {
 const DeclareModal: React.FC<DeclareModalProps> = ({ rowData, onSuccess }) => {
   const { t } = useTranslation();
   const { userList, levelListIncident } = useCommon();
+  const { selectedGroup } = useUserInfoContext();
   const { data: session } = useSession();
   const currentUsername = (session?.user as any)?.username || '';
   const assigneeOptions = userList.map((u) => ({
@@ -61,6 +64,7 @@ const DeclareModal: React.FC<DeclareModalProps> = ({ rowData, onSuccess }) => {
           title: values.title,
           level: values.level,
           operator: values.assignee,
+          team: (values.team || []).map(String),
         });
         message.success(
           t('alarms.createAndLinkIncident') + t('alarmCommon.success')
@@ -133,6 +137,7 @@ const DeclareModal: React.FC<DeclareModalProps> = ({ rowData, onSuccess }) => {
           initialValues={{
             mode: 'create',
             assignee: currentUsername ? [currentUsername] : [],
+            team: selectedGroup?.id ? [Number(selectedGroup.id)] : [],
           }}
         >
           <Radio.Group
@@ -191,6 +196,20 @@ const DeclareModal: React.FC<DeclareModalProps> = ({ rowData, onSuccess }) => {
                       ?.toLowerCase()
                       .includes(input.toLowerCase())
                   }
+                />
+              </Form.Item>
+
+              <Form.Item
+                name="team"
+                label={t('incidents.team')}
+                labelCol={{ span: 4 }}
+                wrapperCol={{ span: 20 }}
+                rules={[{ required: true, message: t('incidents.teamRequired') }]}
+              >
+                <GroupTreeSelect
+                  placeholder={t('incidents.selectTeam')}
+                  multiple={true}
+                  mode="ownership"
                 />
               </Form.Item>
             </>

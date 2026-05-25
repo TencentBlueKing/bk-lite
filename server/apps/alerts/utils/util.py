@@ -6,11 +6,14 @@ import hashlib
 import json
 import os
 import base64
-from functools import wraps
 from typing import Dict, Any, List, Optional, Tuple
+
+from cryptography.fernet import InvalidToken
+from functools import wraps
 
 from django.utils.crypto import get_random_string
 
+from apps.cmdb.utils.credential import Credential
 from apps.core.backends import logger
 
 
@@ -21,6 +24,48 @@ MAX_AGGREGATION_WINDOW_SIZE_MINUTES = 1440
 def gen_app_secret():
     """生成app_secret方法"""
     return get_random_string(32)
+
+
+def build_team_secret_payload(source_secret: str, team_id: str) -> str:
+    return json.dumps(
+        {
+            "source_secret": source_secret,
+            "team_id": str(team_id),
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+
+
+def encode_team_secret(source_secret: str, team_id: str) -> str:
+    credential = Credential()
+    payload = build_team_secret_payload(source_secret, team_id)
+    return credential.encrypt_data(payload)
+
+
+def decode_team_secret(team_secret: str) -> Optional[Dict[str, str]]:
+    if not team_secret:
+        return None
+
+    credential = Credential()
+    try:
+        payload = credential.decrypt_data(team_secret)
+    except InvalidToken:
+        return None
+
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+
+    source_secret = data.get("source_secret")
+    team_id = data.get("team_id")
+    if not source_secret or team_id in (None, ""):
+        return None
+    return {
+        "source_secret": str(source_secret),
+        "team_id": str(team_id),
+    }
 
 
 def catch_exception(func):

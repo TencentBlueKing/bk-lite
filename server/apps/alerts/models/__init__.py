@@ -13,6 +13,7 @@ from .models import (
     Event,
     Alert,
     Incident,
+    IncidentUpdate,
     Level,
 )
 
@@ -39,6 +40,7 @@ __all__ = [
     "Event",
     "Alert",
     "Incident",
+    "IncidentUpdate",
     "Level",
     
     # 告警操作相关

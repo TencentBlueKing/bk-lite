@@ -114,23 +114,11 @@ def _build_nats_permission_map(user_info, model_id="", permission_type=PERMISSIO
     if not isinstance(permission_rules, dict):
         permission_rules = {}
 
-    teams = [int(team_id) for team_id in permission_rules.get("team", [])]
-    instance = permission_rules.get("instance", [])
-    permission_instances_map = CmdbRulesFormatUtil.format_permission_instances_list(instances=instance)
-    inst_names = list(permission_instances_map.keys())
-
-    permission_map = {}
-    for team_id in authorized_team_ids:
-        if team_id in teams:
-            permission_map[team_id] = {
-                "permission_instances_map": {},
-                "inst_names": [],
-            }
-        else:
-            permission_map[team_id] = {
-                "permission_instances_map": permission_instances_map,
-                "inst_names": inst_names,
-            }
+    permission_map = CmdbRulesFormatUtil.build_permission_rule_map(
+        user_teams=authorized_team_ids,
+        permission_rules=permission_rules,
+        fallback_team_id=current_team,
+    )
 
     if not permission_map:
         return None

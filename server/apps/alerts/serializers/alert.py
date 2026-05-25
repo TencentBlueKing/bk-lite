@@ -4,16 +4,21 @@ from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.fields import empty
 
+from apps.alerts.constants import PERMISSION_ALERT
 from apps.alerts.constants.constants import AlertStatus, NotifyResultStatus
 from apps.alerts.models.models import Alert
+from apps.alerts.utils.permission_scope import get_authorized_group_ids, normalize_team_ids
 from apps.core.logger import alert_logger as logger
+from apps.core.utils.serializers import AuthSerializer
 from apps.system_mgmt.models.user import User
 
 
-class AlertModelSerializer(serializers.ModelSerializer):
+class AlertModelSerializer(AuthSerializer):
     """
     Serializer for Alert model.
     """
+
+    permission_key = PERMISSION_ALERT
 
     event_count = serializers.SerializerMethodField()
     source_names = serializers.SerializerMethodField()
@@ -47,6 +52,20 @@ class AlertModelSerializer(serializers.ModelSerializer):
             # "operator": {"write_only": True},
             "labels": {"write_only": True},
         }
+
+    def validate_team(self, value):
+        team_ids = normalize_team_ids(value)
+        request = self.context.get("request")
+        if request is None:
+            return team_ids
+        user = getattr(request, "user", None)
+        if user and getattr(user, "is_superuser", False):
+            return team_ids
+        authorized_group_ids = get_authorized_group_ids(request)
+        unauthorized_teams = sorted(set(team_ids) - set(authorized_group_ids))
+        if unauthorized_teams:
+            raise serializers.ValidationError(f"You are not authorized to assign teams: {unauthorized_teams}")
+        return team_ids
 
     @staticmethod
     def set_alert_notify_result_map(instance):

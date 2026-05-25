@@ -41,9 +41,10 @@ if __name__ == "__main__":
 
     django.setup()
 
-from apps.cmdb.constants.constants import VIEW
+from apps.cmdb.constants.constants import PERMISSION_INSTANCES, VIEW
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.collect_tool_service import CollectToolService
+from apps.cmdb.utils.permission_util import DENY_PERMISSION_PLACEHOLDER, CmdbRulesFormatUtil
 from apps.core.logger import cmdb_logger as logger
 
 
@@ -2434,6 +2435,140 @@ class CollectToolPermissionTests(SimpleTestCase):
         self.assertEqual(result["stage"], "unknown")
 
 
+class CmdbPermissionScopeRegressionTests(SimpleTestCase):
+    def _make_request(self, current_team="1", include_children="1", group_list=None, is_superuser=False):
+        return SimpleNamespace(
+            user=SimpleNamespace(
+                username="alice",
+                domain="default",
+                group_list=group_list or [{"id": 1}, {"id": 2}],
+                group_tree=[],
+                is_superuser=is_superuser,
+            ),
+            COOKIES={"current_team": current_team, "include_children": include_children},
+        )
+
+    def test_format_user_groups_permissions_uses_authorized_children_only(self):
+        request = self._make_request()
+        permission_rules = {"team": [1], "instance": []}
+
+        with (
+            patch(
+                "apps.cmdb.utils.permission_util.CmdbRulesFormatUtil.get_authorized_team_ids",
+                return_value=[1, 2],
+            ),
+            patch(
+                "apps.cmdb.utils.permission_util.get_permission_rules",
+                return_value=permission_rules,
+            ),
+        ):
+            permission_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+                request,
+                model_id="host",
+                permission_type=PERMISSION_INSTANCES,
+            )
+
+        self.assertEqual(permission_map[1]["inst_names"], [])
+        deny_inst_name = permission_map[2]["inst_names"][0]
+        self.assertTrue(deny_inst_name.startswith(f"{DENY_PERMISSION_PLACEHOLDER}:"))
+        self.assertEqual(permission_map[2]["permission_instances_map"], {deny_inst_name: []})
+
+    def test_format_user_groups_permissions_preserves_instance_level_permissions(self):
+        request = self._make_request()
+        permission_rules = {
+            "team": [],
+            "instance": [{"id": "host-a", "permission": [VIEW]}],
+        }
+
+        with (
+            patch(
+                "apps.cmdb.utils.permission_util.CmdbRulesFormatUtil.get_authorized_team_ids",
+                return_value=[2],
+            ),
+            patch(
+                "apps.cmdb.utils.permission_util.get_permission_rules",
+                return_value=permission_rules,
+            ),
+        ):
+            permission_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+                request,
+                model_id="host",
+                permission_type=PERMISSION_INSTANCES,
+            )
+
+        self.assertEqual(permission_map[2]["inst_names"], ["host-a"])
+        self.assertEqual(permission_map[2]["permission_instances_map"], {"host-a": [VIEW]})
+
+    def test_format_user_groups_permissions_falls_back_to_deny_placeholder_when_no_authorized_team(self):
+        request = self._make_request(current_team="9", group_list=[{"id": 1}])
+
+        with (
+            patch(
+                "apps.cmdb.utils.permission_util.CmdbRulesFormatUtil.get_authorized_team_ids",
+                return_value=[],
+            ),
+            patch(
+                "apps.cmdb.utils.permission_util.get_permission_rules",
+                return_value={},
+            ),
+        ):
+            permission_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+                request,
+                model_id="host",
+                permission_type=PERMISSION_INSTANCES,
+            )
+
+        deny_inst_name = permission_map[9]["inst_names"][0]
+        self.assertTrue(deny_inst_name.startswith(f"{DENY_PERMISSION_PLACEHOLDER}:"))
+        self.assertEqual(permission_map, {9: {"permission_instances_map": {deny_inst_name: []}, "inst_names": [deny_inst_name]}})
+
+    def test_build_permission_map_reuses_safe_permission_rule_builder(self):
+        from apps.opspilot.metis.llm.tools.cmdb.utils import build_permission_map
+
+        user = SimpleNamespace(group_list=[{"id": 1}, {"id": 2}])
+        permission_rules = {"team": [1], "instance": []}
+
+        with (
+            patch(
+                "apps.opspilot.metis.llm.tools.cmdb.utils.get_permission_rules",
+                return_value=permission_rules,
+            ),
+            patch(
+                "apps.opspilot.metis.llm.tools.cmdb.utils.CmdbRulesFormatUtil.build_permission_rule_map",
+                return_value={2: {"permission_instances_map": {DENY_PERMISSION_PLACEHOLDER: []}, "inst_names": [DENY_PERMISSION_PLACEHOLDER]}},
+            ) as mock_build,
+        ):
+            result = build_permission_map(
+                user=user,
+                current_team=1,
+                include_children=True,
+                permission_type=PERMISSION_INSTANCES,
+                model_id="host",
+            )
+
+        mock_build.assert_called_once()
+        self.assertEqual(result[2]["inst_names"], [DENY_PERMISSION_PLACEHOLDER])
+
+    def test_nats_permission_map_uses_safe_permission_rule_builder(self):
+        from apps.cmdb.nats.nats import _build_nats_permission_map
+
+        user_info = {"team": 1, "user": "alice", "domain": "default", "include_children": True}
+        real_user = SimpleNamespace(username="alice", domain="default", group_list=[{"id": 1}, {"id": 2}])
+
+        with (
+            patch("apps.cmdb.nats.nats.User.objects.filter") as mock_filter,
+            patch("apps.cmdb.nats.nats._get_authorized_team_ids", return_value=[1, 2]),
+            patch("apps.cmdb.nats.nats.get_permission_rules", return_value={"team": [1], "instance": []}),
+            patch(
+                "apps.cmdb.nats.nats.CmdbRulesFormatUtil.build_permission_rule_map",
+                return_value={2: {"permission_instances_map": {DENY_PERMISSION_PLACEHOLDER: []}, "inst_names": [DENY_PERMISSION_PLACEHOLDER]}},
+            ) as mock_build,
+        ):
+            mock_filter.return_value.first.return_value = real_user
+            result = _build_nats_permission_map(user_info)
+
+        mock_build.assert_called_once_with(user_teams=[1, 2], permission_rules={"team": [1], "instance": []}, fallback_team_id=1)
+        self.assertEqual(result[2]["inst_names"], [DENY_PERMISSION_PLACEHOLDER])
 def test_config_file_collect_triggers_stargazer_and_returns_pending_result():
     from apps.cmdb.collection.collect_tasks.config_file_collect import ConfigFileCollect
 
