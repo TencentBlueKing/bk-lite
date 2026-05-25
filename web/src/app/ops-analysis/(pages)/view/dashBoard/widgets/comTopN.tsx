@@ -1,10 +1,15 @@
 import React, { useEffect } from 'react';
 import { Spin, Empty } from 'antd';
 import { resolveOpsChartThemeName } from '@/app/ops-analysis/utils/chartTheme';
+import { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
+import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 
 interface TopNProps {
   rawData: any;
   loading?: boolean;
+  config?: ValueConfig;
+  dataSource?: DatasourceItem;
   onReady?: (ready: boolean) => void;
 }
 
@@ -13,27 +18,148 @@ interface TopNItem {
   value: number;
 }
 
-const TopN: React.FC<TopNProps> = ({ rawData, loading = false, onReady }) => {
+const unwrapTopNData = (data: any): any[] => {
+  if (Array.isArray(data)) {
+    return data;
+  }
+
+  if (data && typeof data === 'object') {
+    if (Array.isArray(data.items)) {
+      return data.items;
+    }
+    if (Array.isArray(data.data)) {
+      return data.data;
+    }
+  }
+
+  return [];
+};
+
+const getFallbackLabel = (item: Record<string, any>) => {
+  const preferredKeys = ['name', 'label', 'title', 'model', 'model_name', 'model_id', 'id'];
+
+  for (const key of preferredKeys) {
+    const value = item[key];
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+
+  for (const value of Object.values(item)) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return '';
+};
+
+const getFallbackValue = (item: Record<string, any>) => {
+  const preferredKeys = ['value', 'count', 'total', 'num', 'amount', 'metric', 'size'];
+
+  for (const key of preferredKeys) {
+    const value = Number(item[key]);
+    if (!Number.isNaN(value)) {
+      return value;
+    }
+  }
+
+  for (const rawValue of Object.values(item)) {
+    const value = Number(rawValue);
+    if (!Number.isNaN(value)) {
+      return value;
+    }
+  }
+
+  return NaN;
+};
+
+const isUsableLabel = (value: unknown) => {
+  return value !== undefined && value !== null && String(value).trim() !== '';
+};
+
+const isUsableValue = (value: unknown) => {
+  return !Number.isNaN(Number(value));
+};
+
+const TopN: React.FC<TopNProps> = ({
+  rawData,
+  loading = false,
+  config,
+  dataSource,
+  onReady,
+}) => {
   const themeName = resolveOpsChartThemeName();
   const isDark = themeName === 'dark';
 
+  const inferredLabelField = dataSource?.field_schema?.find(
+    (field) => field.value_type !== 'number',
+  )?.key;
+  const inferredValueField = dataSource?.field_schema?.find(
+    (field) => field.value_type === 'number',
+  )?.key;
+
   const transformData = (data: any): TopNItem[] => {
-    if (!data) return [];
+    const rows = unwrapTopNData(data);
+    if (rows.length === 0) return [];
 
     // [[name, value], ...] format
-    if (Array.isArray(data) && data.length > 0 && Array.isArray(data[0])) {
-      return data.map((item: any[]) => ({
+    if (Array.isArray(rows[0])) {
+      return rows.map((item: any[]) => ({
         name: String(item[0] ?? ''),
         value: Number(item[1]) || 0,
       }));
     }
 
     // [{name, value}] format
-    if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object') {
-      return data.map((item: any) => ({
-        name: String(item.name ?? item.label ?? ''),
-        value: Number(item.value ?? item.count ?? 0),
-      }));
+    if (typeof rows[0] === 'object') {
+      return rows
+        .map((item: any) => {
+          const explicitName = config?.topNLabelField
+            ? getValueByPath(item, config.topNLabelField)
+            : undefined;
+          const explicitValue = config?.topNValueField
+            ? getValueByPath(item, config.topNValueField)
+            : undefined;
+
+          const inferredName = inferredLabelField
+            ? getValueByPath(item, inferredLabelField)
+            : undefined;
+          const inferredValue = inferredValueField
+            ? getValueByPath(item, inferredValueField)
+            : undefined;
+
+          const rawName = isUsableLabel(explicitName)
+            ? explicitName
+            : isUsableLabel(item.name)
+              ? item.name
+              : isUsableLabel(item.label)
+                ? item.label
+                : isUsableLabel(inferredName)
+                  ? inferredName
+                  : getFallbackLabel(item);
+          const rawValue = isUsableValue(explicitValue)
+            ? explicitValue
+            : isUsableValue(item.value)
+              ? item.value
+              : isUsableValue(item.count)
+                ? item.count
+                : isUsableValue(inferredValue)
+                  ? inferredValue
+                  : getFallbackValue(item);
+
+          const name = rawName === undefined || rawName === null ? '' : String(rawName).trim();
+          const value = Number(rawValue);
+          if (!name || Number.isNaN(value)) {
+            return null;
+          }
+
+          return {
+            name,
+            value,
+          };
+        })
+        .filter((item: TopNItem | null): item is TopNItem => item !== null);
     }
 
     return [];
@@ -66,49 +192,52 @@ const TopN: React.FC<TopNProps> = ({ rawData, loading = false, onReady }) => {
   }
 
   return (
-    <div className="h-full flex flex-col px-3 pt-2 pb-1 overflow-y-auto">
-      {items.map((item, index) => {
-        const percent = maxValue > 0 ? (item.value / maxValue) * 100 : 0;
+    <div className="h-full px-3 pt-2 pb-1 overflow-y-auto">
+      <div
+        className="grid items-center"
+        style={{
+          gridTemplateColumns: 'fit-content(40%) minmax(0, 1fr) auto',
+          columnGap: 6,
+          rowGap: 4,
+        }}
+      >
+        {items.map((item, index) => {
+          const percent = maxValue > 0 ? (item.value / maxValue) * 100 : 0;
 
-        return (
-          <div
-            key={`${item.name}-${index}`}
-            className="flex items-center gap-2"
-            style={{ height: 30, minHeight: 30 }}
-          >
-            <span
-              className="text-[13px] shrink-0 truncate"
-              style={{
-                color: isDark ? 'var(--color-text-2)' : '#1f2329',
-                width: '22%',
-                maxWidth: 110,
-                minWidth: 50,
-              }}
-              title={item.name}
-            >
-              {item.name}
-            </span>
-            <div className="flex-1 flex items-center h-3">
-              <div
-                className="h-full rounded-sm transition-all duration-300"
+          return (
+            <React.Fragment key={`${item.name}-${index}`}>
+              <span
+                className="text-[13px] truncate"
                 style={{
-                  width: `${Math.max(percent, 1.5)}%`,
-                  backgroundColor: '#366CE4',
+                  color: isDark ? 'var(--color-text-2)' : '#1f2329',
+                  minWidth: 0,
                 }}
-              />
-            </div>
-            <span
-              className="text-[13px] font-medium shrink-0 text-right"
-              style={{
-                color: isDark ? 'var(--color-text-1)' : '#1f2329',
-                minWidth: 45,
-              }}
-            >
-              {item.value.toLocaleString()}
-            </span>
-          </div>
-        );
-      })}
+                title={item.name}
+              >
+                {item.name}
+              </span>
+              <div className="flex items-center h-6 min-w-0">
+                <div
+                  className="h-3 rounded-sm transition-all duration-300"
+                  style={{
+                    width: `${Math.max(percent, 1.5)}%`,
+                    backgroundColor: '#366CE4',
+                  }}
+                />
+              </div>
+              <span
+                className="text-[13px] font-medium text-right"
+                style={{
+                  color: isDark ? 'var(--color-text-1)' : '#1f2329',
+                  minWidth: 32,
+                }}
+              >
+                {item.value.toLocaleString()}
+              </span>
+            </React.Fragment>
+          );
+        })}
+      </div>
     </div>
   );
 };

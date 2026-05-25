@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -17,7 +18,6 @@ import { FormInstance } from 'antd/lib';
 import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
 import useNodeManagerApi from '@/app/node-manager/api';
-import { COLLECTOR_CPU_ARCHITECTURE_OPTIONS } from '@/app/node-manager/constants/cpuArchitecture';
 import { cloneDeep } from 'lodash';
 const { TextArea } = Input;
 const { Dragger } = Upload;
@@ -34,7 +34,7 @@ const initData = {
 const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
     const { t } = useTranslation();
-    const { addCollector, editCollecttor, uploadPackage } = useNodeManagerApi();
+    const { addCollector, editCollecttor, uploadPackage, getControllerList } = useNodeManagerApi();
     const formRef = useRef<FormInstance>(null);
     const [form] = Form.useForm();
     const [title, setTitle] = useState<string>('editCollector');
@@ -47,9 +47,41 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     const [fileList, setFileList] = useState<any>([]);
     const [tags, setTags] = useState<string[]>([]); //编辑时的tags
 
+    const [architectureOptions, setArchitectureOptions] = useState<Record<string, { label: string; value: string }[]>>({
+      linux: [{ label: 'x86_64', value: 'x86_64' }],
+      windows: [{ label: 'x86_64', value: 'x86_64' }],
+    });
+
+    const fetchArchitectureOptions = useCallback(async () => {
+      try {
+        const response = await getControllerList({});
+        const controllerList = Array.isArray(response)
+          ? response
+          : response?.items || response?.results || [];
+        const archMap: Record<string, Set<string>> = {};
+        controllerList.forEach((item: any) => {
+          const os = item.node_operating_system || item.os || 'linux';
+          const arch = item.cpu_architecture || 'x86_64';
+          if (!archMap[os]) archMap[os] = new Set();
+          archMap[os].add(arch);
+        });
+        const options: Record<string, { label: string; value: string }[]> = {};
+        for (const [os, archSet] of Object.entries(archMap)) {
+          options[os] = Array.from(archSet).map((arch) => ({
+            label: arch === 'arm64' ? 'ARM64' : arch,
+            value: arch,
+          }));
+        }
+        if (!options['linux']) options['linux'] = [{ label: 'x86_64', value: 'x86_64' }];
+        if (!options['windows']) options['windows'] = [{ label: 'x86_64', value: 'x86_64' }];
+        setArchitectureOptions(options);
+      } catch {
+      }
+    }, [getControllerList]);
+
     useImperativeHandle(ref, () => ({
       showModal: ({ type, form, title, key, appTag }) => {
-        console.log(type);
+        fetchArchitectureOptions();
         // 新增时使用初始值，编辑时使用传入的 form 数据
         const info =
           type === 'add'
@@ -256,7 +288,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                 >
                   {({ getFieldValue }) => {
                     const os = getFieldValue('system') || 'linux';
-                    const options = COLLECTOR_CPU_ARCHITECTURE_OPTIONS[os] || COLLECTOR_CPU_ARCHITECTURE_OPTIONS['linux'];
+                    const options = architectureOptions[os] || architectureOptions['linux'];
                     return (
                       <Form.Item
                         label="CPU"

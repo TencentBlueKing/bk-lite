@@ -318,6 +318,8 @@
         "confirm": "Confirm",
         "cancel": "Cancel",
         "accessPoint": "Proxy",
+        "accessPointHelp": "A proxy is the container node that starts the collection task. Configure it under the matching cloud region in Node Management.",
+        "accessPointLink": "Go to Node Management",
         "syncSuccess": "Sync Successfully!",
         "syncFailed": "Sync Failed",
         "ipRange": "IP Range",
@@ -350,7 +352,27 @@
             "second": "seconds",
             "intervalRequired": "Please enter execution interval",
             "timeRequired": "Please select execution time",
-            "timeoutRequired": "Please enter timeout"
+            "timeoutRequired": "Please enter timeout",
+            "accessConfig": "Access Config",
+            "collectorInstall": "Collector Install",
+            "accessComplete": "Complete",
+            "collectorClusterId": "Cluster ID",
+            "collectorClusterIdDesc": "Important: This ID uniquely identifies the cluster for data collection. Do not modify it after creation, or deployed collectors will fail to match. Only English letters, digits, underscores and hyphens are allowed.",
+            "collectorClusterIdInvalid": "Only English letters, digits, underscores and hyphens are allowed",
+            "cloudRegion": "Cloud Region",
+            "installCollector": "Install Collector",
+            "installCommandDesc": "Generate a short-lived install command, then run it on a host with kubectl access to the target cluster.",
+            "generateCommand": "Generate Install Command",
+            "verifyStatus": "Verify Reporting",
+            "verify": "Verify",
+            "verifyWaitingDesc": "After deploying the YAML, click verify; CMDB will query VictoriaMetrics for the configured collector id.",
+            "verifySuccess": "Collector is reporting",
+            "verifySuccessDesc": "Metrics received. CMDB resource discovery will run on the configured schedule.",
+            "verifyFailed": "Not reporting yet",
+            "verifyFailedDesc": "Verify the YAML was applied and that the cluster can reach the configured NATS endpoint.",
+            "accessCompleteTitle": "Collector setup completed",
+            "accessCompleteDesc": "The collector is reporting to VictoriaMetrics. CMDB will materialize k8s resources (nodes / pods / workloads / namespaces) on the configured schedule. Open the task detail to trigger a one-off run if needed.",
+            "addAnotherCluster": "Add another cluster"
         },
         "VMTask": {
             "chooseVCenter": "vCenter",
@@ -443,7 +465,21 @@
             "delete": "Delete",
             "error": "Error"
         },
-        "executeSuccess": "Execute successfully"
+        "executeSuccess": "Execute successfully",
+        "stats": {
+            "totalTasks": "Total Tasks",
+            "normalTasks": "Normal",
+            "errorTasks": "Errors",
+            "recentSync": "Recent Sync",
+            "coveredModels": "Covered Models",
+            "justNow": "just now",
+            "minutesAgo": "{n} min ago",
+            "hoursAgo": "{n} h ago",
+            "daysAgo": "{n} d ago",
+            "never": "none",
+            "expand": "Expand overview",
+            "collapse": "Collapse overview"
+        }
     },
     "OidLibrary": {
         "title": "SOID Library",

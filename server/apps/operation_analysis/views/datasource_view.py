@@ -2,6 +2,8 @@
 # @File: datasource_view.py
 # @Time: 2025/11/3 15:48
 # @Author: windyzhao
+from datetime import datetime, timedelta
+
 from django.http import Http404
 from rest_framework import status
 from rest_framework.decorators import action
@@ -15,11 +17,16 @@ from apps.operation_analysis.filters.datasource_filters import DataSourceAPIMode
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.serializers.datasource_serializers import (
     DataSourceAPIModelSerializer,
+    DataSourceBriefSerializer,
+    DataSourceDetailSerializer,
     DataSourceTagModelSerializer,
     NameSpaceModelSerializer,
 )
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
+
+TIME_RANGE_FORMAT = "%Y-%m-%d %H:%M:%S"
+RUNTIME_ALLOWED_KEYS = {"namespace_id", "page", "page_size", "query_list"}
 
 
 def _normalize_downstream_result(result):
@@ -66,11 +73,181 @@ def _classify_runtime_exception(error):
     message = str(error).strip()
     if message == "未找到可用的命名空间":
         return status.HTTP_500_INTERNAL_SERVER_ERROR, "未找到可用命名空间"
+    if message == "数据源未关联命名空间":
+        return status.HTTP_400_BAD_REQUEST, "数据源未关联命名空间"
+    if message == "数据源未关联所选命名空间":
+        return status.HTTP_400_BAD_REQUEST, "数据源未关联所选命名空间"
+    if message == "命名空间参数无效":
+        return status.HTTP_400_BAD_REQUEST, "命名空间参数无效"
     if "未配置服务器连接" in message:
         return status.HTTP_500_INTERNAL_SERVER_ERROR, "命名空间未配置连接信息"
     if "Module not found func" in message:
         return status.HTTP_500_INTERNAL_SERVER_ERROR, "数据源配置异常"
     return status.HTTP_500_INTERNAL_SERVER_ERROR, "数据查询失败"
+
+
+def _parse_time_value(value):
+    if isinstance(value, datetime):
+        return value
+
+    if isinstance(value, (int, float)):
+        timestamp = float(value)
+        # 13 位时间戳视为毫秒
+        if abs(timestamp) > 10**11:
+            timestamp = timestamp / 1000.0
+        return datetime.fromtimestamp(timestamp)
+
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            raise ValueError("timeRange 时间不能为空")
+
+        # 兼容 ISO8601，例如 2026-04-19T09:34:13.712Z / +08:00
+        iso_text = text[:-1] + "+00:00" if text.endswith("Z") else text
+        try:
+            parsed = datetime.fromisoformat(iso_text)
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone().replace(tzinfo=None)
+            return parsed
+        except ValueError:
+            pass
+
+        for fmt in (
+            TIME_RANGE_FORMAT,
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%dT%H:%M:%S.%f",
+        ):
+            try:
+                return datetime.strptime(text, fmt)
+            except ValueError:
+                continue
+
+    raise ValueError("timeRange 时间格式错误，需为 yyyy-MM-dd HH:mm:ss")
+
+
+def _normalize_time_range(value):
+    now = datetime.now()
+
+    if isinstance(value, (int, float)):
+        minutes = int(value)
+        if minutes <= 0:
+            raise ValueError("timeRange 必须为正整数分钟数")
+        start = now - timedelta(minutes=minutes)
+        return [start.strftime(TIME_RANGE_FORMAT), now.strftime(TIME_RANGE_FORMAT)]
+
+    if isinstance(value, list) and len(value) == 2:
+        start = _parse_time_value(value[0])
+        end = _parse_time_value(value[1])
+        if start >= end:
+            raise ValueError("timeRange 开始时间必须小于结束时间")
+        return [start.strftime(TIME_RANGE_FORMAT), end.strftime(TIME_RANGE_FORMAT)]
+
+    if isinstance(value, dict) and value.get("start") and value.get("end"):
+        start = _parse_time_value(value["start"])
+        end = _parse_time_value(value["end"])
+        if start >= end:
+            raise ValueError("timeRange 开始时间必须小于结束时间")
+        return [start.strftime(TIME_RANGE_FORMAT), end.strftime(TIME_RANGE_FORMAT)]
+
+    raise ValueError("timeRange 参数格式错误")
+
+
+def _normalize_param_value(param_name, param_type, raw_value):
+    if param_type == "number":
+        if raw_value in (None, ""):
+            return raw_value
+
+        if isinstance(raw_value, bool):
+            raise ValueError(f"参数 {param_name} 必须是数值")
+
+        if isinstance(raw_value, (int, float)):
+            number_value = float(raw_value)
+        else:
+            try:
+                number_value = float(str(raw_value).strip())
+            except (TypeError, ValueError):
+                raise ValueError(f"参数 {param_name} 必须是数值")
+
+        if number_value.is_integer():
+            return int(number_value)
+
+        try:
+            return number_value
+        except (TypeError, ValueError):
+            raise ValueError(f"参数 {param_name} 必须是数值")
+
+    if param_type == "timeRange":
+        return _normalize_time_range(raw_value)
+
+    return raw_value
+
+
+def _normalize_runtime_params(request_data):
+    runtime_params = {}
+
+    if "namespace_id" in request_data:
+        runtime_params["namespace_id"] = request_data["namespace_id"]
+
+    if "page" in request_data:
+        try:
+            page = int(request_data["page"])
+        except (TypeError, ValueError):
+            raise ValueError("参数 page 必须是整数")
+        if page <= 0:
+            raise ValueError("参数 page 必须大于 0")
+        runtime_params["page"] = page
+
+    if "page_size" in request_data:
+        try:
+            page_size = int(request_data["page_size"])
+        except (TypeError, ValueError):
+            raise ValueError("参数 page_size 必须是整数")
+        if page_size <= 0:
+            raise ValueError("参数 page_size 必须大于 0")
+        runtime_params["page_size"] = page_size
+
+    if "query_list" in request_data:
+        query_list = request_data["query_list"]
+        if not isinstance(query_list, (list, dict)):
+            raise ValueError("参数 query_list 必须是数组或对象")
+        runtime_params["query_list"] = query_list
+
+    return runtime_params
+
+
+def _resolve_request_params(instance, request_data):
+    configured_params = instance.params if isinstance(instance.params, list) else []
+    allowed_specs = {
+        item.get("name"): item
+        for item in configured_params
+        if isinstance(item, dict) and isinstance(item.get("name"), str) and item.get("name").strip()
+    }
+
+    allowed_request_keys = set(allowed_specs.keys()) | RUNTIME_ALLOWED_KEYS
+    unknown_keys = sorted(str(key) for key in request_data.keys() if key not in allowed_request_keys)
+    if unknown_keys:
+        raise ValueError(f"存在未声明参数: {', '.join(unknown_keys)}")
+
+    resolved = {}
+    for param_name, spec in allowed_specs.items():
+        filter_type = spec.get("filterType")
+        default_value = spec.get("value")
+        param_type = spec.get("type")
+
+        if filter_type == "fixed":
+            raw_value = default_value
+        elif param_name in request_data:
+            raw_value = request_data[param_name]
+        elif default_value not in (None, ""):
+            raw_value = default_value
+        else:
+            continue
+
+        resolved[param_name] = _normalize_param_value(param_name, param_type, raw_value)
+
+    resolved.update(_normalize_runtime_params(request_data))
+
+    return resolved
 
 
 class DataSourceTagModelViewSet(ModelViewSet):
@@ -104,7 +281,18 @@ class NameSpaceModelViewSet(ModelViewSet):
 
     @HasPermission("namespace-View")
     def list(self, request, *args, **kwargs):
-        return super(NameSpaceModelViewSet, self).list(request, *args, **kwargs)
+        queryset = self.filter_queryset(self.get_queryset())
+        ids = [item.strip() for item in (request.query_params.get("ids") or "").split(",") if item.strip()]
+        if ids:
+            queryset = queryset.filter(id__in=ids)
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     @HasPermission("namespace-Add")
     def create(self, request, *args, **kwargs):
@@ -124,7 +312,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
     数据源
     """
 
-    queryset = DataSourceAPIModel.objects.all()
+    queryset = DataSourceAPIModel.objects.prefetch_related("namespaces", "tag").all()
     serializer_class = DataSourceAPIModelSerializer
     ordering_fields = ["id"]
     ordering = ["id"]
@@ -132,6 +320,18 @@ class DataSourceAPIModelViewSet(AuthViewSet):
     pagination_class = CustomPageNumberPagination
     permission_key = "datasource"
     ORGANIZATION_FIELD = "groups"  # 使用 groups 字段作为组织字段
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            mode = (self.request.query_params.get("mode") or "").strip().lower()
+            if mode == "brief":
+                return DataSourceBriefSerializer
+            return DataSourceDetailSerializer
+
+        if self.action == "retrieve":
+            return DataSourceDetailSerializer
+
+        return super().get_serializer_class()
 
     @HasPermission("data_source-View")
     @action(detail=False, methods=["post"], url_path=r"get_source_data/(?P<pk>[^/.]+)")
@@ -152,7 +352,11 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 status.HTTP_403_FORBIDDEN,
             )
 
-        params = dict(request.data)
+        try:
+            params = _resolve_request_params(instance, dict(request.data))
+        except ValueError as exc:
+            return _build_error_response(str(exc), status.HTTP_400_BAD_REQUEST)
+
         namespace_list = instance.namespaces.all()
         if "/" not in instance.rest_api:
             namespace = "default"
@@ -186,6 +390,9 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         queryset = self.filter_queryset(self.get_queryset())
         _, _, _, query = self.filter_by_group(queryset, request, request.user)
         queryset = queryset.filter(query).order_by(self.ORDERING_FIELD)
+        ids = [item.strip() for item in (request.query_params.get("ids") or "").split(",") if item.strip()]
+        if ids:
+            queryset = queryset.filter(id__in=ids)
         return self._list(queryset)
 
     @HasPermission("data_source-Add")

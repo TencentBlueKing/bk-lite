@@ -259,8 +259,20 @@ def authorize_target_organizations(request, node, organizations):
     if not target_orgs:
         return None
 
-    permission = get_node_permission(request)
-    allowed_orgs = normalize_orgs(permission.get("team", []))
+    user = get_request_user(request)
+    if user is None:
+        return WebUtils.response_403("User does not have permission to assign nodes to these organizations")
+
+    if getattr(user, "is_superuser", False):
+        return None
+
+    user_group_list = getattr(user, "group_list", []) or []
+    if not user_group_list:
+        return WebUtils.response_403("User does not have permission to assign nodes to these organizations")
+
+    from apps.system_mgmt.utils.group_utils import GroupUtils
+    allowed_orgs = set(GroupUtils.get_group_with_descendants(user_group_list))
+
     if not target_orgs.issubset(allowed_orgs):
         return WebUtils.response_403("User does not have permission to assign nodes to these organizations")
 

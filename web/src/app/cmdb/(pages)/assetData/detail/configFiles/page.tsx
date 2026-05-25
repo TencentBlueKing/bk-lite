@@ -23,6 +23,7 @@ import type {
   ConfigFileItem,
   ConfigFileVersion,
 } from '@/app/cmdb/types/configFile';
+import { isConfigFileSupportedModel } from '@/app/cmdb/constants/configFile';
 
 const { Paragraph, Text } = Typography;
 
@@ -229,6 +230,8 @@ const buildInlineSegments = (leftText: string, rightText: string) => {
 const ConfigFilesPage = () => {
   const searchParams = useSearchParams();
   const instanceId = searchParams.get('inst_id') || '';
+  const modelId = searchParams.get('model_id') || '';
+  const isSupportedModel = isConfigFileSupportedModel(modelId);
   const configFileApi = useConfigFileApi();
   const {
     getConfigFileList,
@@ -246,7 +249,6 @@ const ConfigFilesPage = () => {
   const [compareDrawerOpen, setCompareDrawerOpen] = useState(false);
   const [compareTarget, setCompareTarget] = useState<ConfigFileItem | null>(null);
   const [versionList, setVersionList] = useState<ConfigFileVersion[]>([]);
-  const [versionListLoading, setVersionListLoading] = useState(false);
   const [leftCompareVersionId, setLeftCompareVersionId] = useState<number | undefined>();
   const [rightCompareVersionId, setRightCompareVersionId] = useState<number | undefined>();
   const [leftCompareContent, setLeftCompareContent] = useState('');
@@ -255,9 +257,11 @@ const ConfigFilesPage = () => {
   const leftPaneRef = useRef<HTMLDivElement | null>(null);
   const rightPaneRef = useRef<HTMLDivElement | null>(null);
   const syncingScrollRef = useRef(false);
+  const [expandedVersions, setExpandedVersions] = useState<Record<string, ConfigFileVersion[]>>({});
+  const [expandedVersionsLoading, setExpandedVersionsLoading] = useState<Record<string, boolean>>({});
 
   const fetchFileList = async () => {
-    if (!instanceId) {
+    if (!instanceId || !isSupportedModel) {
       setFileList([]);
       return;
     }
@@ -272,18 +276,46 @@ const ConfigFilesPage = () => {
 
   useEffect(() => {
     void fetchFileList();
-  }, [getConfigFileList, instanceId]);
+  }, [getConfigFileList, instanceId, isSupportedModel]);
+
+  const [activeVersionLabel, setActiveVersionLabel] = useState<string>('');
 
   const fetchContent = async (record: ConfigFileItem, encoding = 'utf-8') => {
     try {
       setContentLoading(true);
       const data = await getConfigFileContent(record.latest_version_id, encoding);
       setActiveFile(record);
+      setActiveVersionLabel('');
       setContentData(data || null);
       setContentEncoding(data?.encoding || encoding);
       setContentDrawerOpen(true);
     } finally {
       setContentLoading(false);
+    }
+  };
+
+  const fetchVersionContent = async (version: ConfigFileVersion, encoding = 'utf-8') => {
+    try {
+      setContentLoading(true);
+      const data = await getConfigFileContent(version.id, encoding);
+      setActiveFile({ latest_version_id: version.id, file_path: version.file_path, file_name: version.file_name, collect_task_id: version.collect_task_id, latest_version: version.version, latest_status: version.status, latest_created_at: version.created_at });
+      setActiveVersionLabel(version.version);
+      setContentData(data || null);
+      setContentEncoding(data?.encoding || encoding);
+      setContentDrawerOpen(true);
+    } finally {
+      setContentLoading(false);
+    }
+  };
+
+  const fetchExpandedVersions = async (filePath: string) => {
+    try {
+      setExpandedVersionsLoading((prev) => ({ ...prev, [filePath]: true }));
+      const data = await getConfigFileVersions(instanceId, filePath);
+      const items = Array.isArray(data) ? data : data?.items || [];
+      setExpandedVersions((prev) => ({ ...prev, [filePath]: items }));
+    } finally {
+      setExpandedVersionsLoading((prev) => ({ ...prev, [filePath]: false }));
     }
   };
 
@@ -299,27 +331,6 @@ const ConfigFilesPage = () => {
       message.success('文件内容已复制');
     } catch {
       message.error('复制失败');
-    }
-  };
-
-  const openCompareDrawer = async (record: ConfigFileItem) => {
-    try {
-      setVersionListLoading(true);
-      const data = await getConfigFileVersions(instanceId, record.file_path);
-      const items = Array.isArray(data) ? data : data?.items || [];
-      if (items.length < 2) {
-        message.warning('当前文件只有一个版本，无法进行版本对比');
-        return;
-      }
-      setCompareTarget(record);
-      setVersionList(items);
-      setLeftCompareVersionId(items[0]?.id);
-      setRightCompareVersionId(items[1]?.id);
-      setLeftCompareContent('');
-      setRightCompareContent('');
-      setCompareDrawerOpen(true);
-    } finally {
-      setVersionListLoading(false);
     }
   };
 
@@ -421,6 +432,102 @@ const ConfigFilesPage = () => {
     );
   }, [diffRows]);
 
+  const versionStatusTag = (status: string) => {
+    const map: Record<string, { color: string; label: string }> = {
+      success: { color: 'green', label: '成功' },
+      file_not_found: { color: 'red', label: '文件不存在' },
+      permission_denied: { color: 'red', label: '权限不足' },
+      file_too_large: { color: 'orange', label: '文件超限' },
+      not_text: { color: 'orange', label: '非文本' },
+      error: { color: 'red', label: '异常' },
+    };
+    const info = map[status] || { color: 'default', label: status };
+    return <Tag color={info.color}>{info.label}</Tag>;
+  };
+
+  const expandedRowRender = (record: ConfigFileItem) => {
+    const versions = expandedVersions[record.file_path] || [];
+    const loading = expandedVersionsLoading[record.file_path] || false;
+
+    const versionColumns: ColumnsType<ConfigFileVersion> = [
+      {
+        title: '版本号',
+        dataIndex: 'version',
+        key: 'version',
+        width: 240,
+        render: (value: string) => <Text className="font-mono text-[13px]">{value}</Text>,
+      },
+      {
+        title: '状态',
+        dataIndex: 'status',
+        key: 'status',
+        width: 180,
+        render: (value: string) => versionStatusTag(value),
+      },
+      {
+        title: '文件大小',
+        dataIndex: 'file_size',
+        key: 'file_size',
+        width: 240,
+        render: (value: number) => {
+          if (!value) return '--';
+          if (value < 1024) return `${value} B`;
+          if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+          return `${(value / 1024 / 1024).toFixed(1)} MB`;
+        },
+      },
+      {
+        title: '采集时间',
+        dataIndex: 'created_at',
+        key: 'created_at',
+        width: 200,
+        render: (value: string) => formatDateTime(value),
+      },
+      {
+        title: '操作',
+        key: 'actions',
+        render: (_: unknown, versionRecord: ConfigFileVersion, index: number) => (
+          <Space size={0} split={<Text type="secondary">|</Text>}>
+            {versionRecord.status === 'success' && (
+              <Button type="link" size="small" onClick={() => void fetchVersionContent(versionRecord)}>
+                查看内容
+              </Button>
+            )}
+            {versionRecord.status === 'success' && index < versions.length - 1 && versions[index + 1]?.status === 'success' && (
+              <Button
+                type="link"
+                size="small"
+                onClick={() => {
+                  setCompareTarget(record);
+                  setVersionList(versions);
+                  setLeftCompareVersionId(versionRecord.id);
+                  setRightCompareVersionId(versions[index + 1].id);
+                  setLeftCompareContent('');
+                  setRightCompareContent('');
+                  setCompareDrawerOpen(true);
+                }}
+              >
+                与上版本对比
+              </Button>
+            )}
+          </Space>
+        ),
+      },
+    ];
+
+    return (
+      <Table
+        rowKey="id"
+        columns={versionColumns}
+        dataSource={versions}
+        loading={loading}
+        pagination={false}
+        size="small"
+        locale={{ emptyText: <Empty description="暂无版本记录" /> }}
+      />
+    );
+  };
+
   const columns: ColumnsType<ConfigFileItem> = [
     {
       title: '名称',
@@ -428,14 +535,11 @@ const ConfigFilesPage = () => {
       key: 'file_name',
       width: 240,
       render: (_, record) => (
-        <div className="py-1">
-          <div className="font-medium text-[14px] text-[var(--color-text-primary)]">{record.file_name}</div>
-          <Text type="secondary">任务 #{record.collect_task_id}</Text>
-        </div>
+        <div className="font-medium text-[14px] text-[var(--color-text-primary)]">{record.file_name}</div>
       ),
     },
     {
-      title: '版本号',
+      title: '最新版本号',
       dataIndex: 'latest_version',
       key: 'latest_version',
       width: 180,
@@ -456,7 +560,7 @@ const ConfigFilesPage = () => {
       ),
     },
     {
-      title: '创建时间',
+      title: '最新采集时间',
       dataIndex: 'latest_created_at',
       key: 'latest_created_at',
       width: 200,
@@ -470,10 +574,7 @@ const ConfigFilesPage = () => {
       render: (_, record) => (
         <Space size={0} split={<Text type="secondary">|</Text>}>
           <Button type="link" size="small" onClick={() => void fetchContent(record)}>
-            查看文件内容
-          </Button>
-          <Button type="link" size="small" onClick={() => void openCompareDrawer(record)}>
-            版本对比
+            查看最新内容
           </Button>
           <Popconfirm
             title="确认删除当前最新版本记录？"
@@ -495,6 +596,10 @@ const ConfigFilesPage = () => {
     return <Empty description="缺少实例信息" />;
   }
 
+  if (!isSupportedModel) {
+    return <Empty description="当前模型暂未开放配置文件" />;
+  }
+
   return (
     <>
       <div className="rounded-xl border border-[var(--color-border)] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
@@ -510,6 +615,14 @@ const ConfigFilesPage = () => {
           loading={fileListLoading}
           dataSource={fileList}
           columns={columns}
+          expandable={{
+            expandedRowRender,
+            onExpand: (expanded, record) => {
+              if (expanded && !expandedVersions[record.file_path]) {
+                void fetchExpandedVersions(record.file_path);
+              }
+            },
+          }}
           pagination={{
             showSizeChanger: true,
             pageSizeOptions: ['10', '20', '50', '100'],
@@ -522,7 +635,7 @@ const ConfigFilesPage = () => {
       </div>
 
       <Drawer
-        title={activeFile ? `文件内容 · ${activeFile.file_name}` : '文件内容'}
+        title={activeFile ? `文件内容 · ${activeFile.file_name}${activeVersionLabel ? ` · 版本 ${activeVersionLabel}` : ''}` : '文件内容'}
         placement="right"
         width={760}
         open={contentDrawerOpen}
@@ -577,7 +690,6 @@ const ConfigFilesPage = () => {
                   placeholder="选择左侧版本"
                   value={leftCompareVersionId}
                   options={versionOptions}
-                  loading={versionListLoading}
                   style={{ width: 330 }}
                   onChange={setLeftCompareVersionId}
                 />
@@ -585,7 +697,6 @@ const ConfigFilesPage = () => {
                   placeholder="选择右侧版本"
                   value={rightCompareVersionId}
                   options={versionOptions.filter((option) => option.value !== leftCompareVersionId)}
-                  loading={versionListLoading}
                   style={{ width: 330 }}
                   onChange={setRightCompareVersionId}
                   allowClear
@@ -599,7 +710,7 @@ const ConfigFilesPage = () => {
             </Flex>
           </div>
 
-          <Spin spinning={versionListLoading || compareLoading}>
+          <Spin spinning={compareLoading}>
             <div className="grid h-[calc(100vh-220px)] grid-cols-2 gap-4">
               <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
                 <div className="border-b border-[var(--color-border)] bg-[var(--color-fill-1)] px-4 py-3">

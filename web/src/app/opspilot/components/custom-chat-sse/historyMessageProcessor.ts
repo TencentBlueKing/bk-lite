@@ -4,7 +4,7 @@
  */
 
 import { BrowserStepProgressData, BrowserStepsHistory, BrowserTaskReceivedData } from '@/app/opspilot/types/global';
-import { renderToolCallCard, renderErrorMessage, ToolCallInfo } from './toolCallRenderer';
+import { initToolCallTooltips, renderAllToolCalls, renderErrorMessage, ToolCallInfo } from './toolCallRenderer';
 
 const escapeNewlinesInStrings = (raw: string) => {
   let result = '';
@@ -389,19 +389,10 @@ const buildFromEvents = (events: any[], finalize = true) => {
         break;
 
       case 'TOOL_CALL_END':
-        if (msg.toolCallId) {
-          const tool = toolCalls.get(msg.toolCallId);
-          if (tool) {
-            const toolCard = renderToolCallCard(msg.toolCallId, tool);
-            if (parts.length > 0 && lastBlockType === 'toolCall') {
-              parts.push(toolCard);
-            } else if (parts.length > 0) {
-              parts.push('\n\n' + toolCard);
-            } else {
-              parts.push(toolCard);
-            }
-            lastBlockType = 'toolCall';
-          }
+        // 不在这里渲染，等所有工具调用完成后统一渲染
+        // 标记有工具调用需要渲染
+        if (msg.toolCallId && toolCalls.has(msg.toolCallId)) {
+          lastBlockType = 'toolCall';
         }
         break;
 
@@ -478,6 +469,16 @@ const buildFromEvents = (events: any[], finalize = true) => {
     }
   });
 
+  // 渲染所有工具调用（作为一个可折叠的组，历史消息默认收起）
+  if (toolCalls.size > 0) {
+    const toolCallsHtml = renderAllToolCalls(toolCalls, false);
+    if (parts.length > 0) {
+      parts.push('\n\n' + toolCallsHtml);
+    } else {
+      parts.push(toolCallsHtml);
+    }
+  }
+
   if (currentText) {
     if (parts.length > 0 && lastBlockType !== 'text') {
       parts.push('\n\n' + currentText);
@@ -509,6 +510,11 @@ const buildFromEvents = (events: any[], finalize = true) => {
  * @returns 处理后的 HTML 内容
  */
 export const processHistoryMessageContent = (content: string, role: string): string => {
+  // 确保工具调用事件处理器已初始化
+  if (typeof window !== 'undefined') {
+    initToolCallTooltips();
+  }
+
   // 非 bot 消息直接返回
   if (role !== 'bot') return typeof content === 'string' ? content : String(content ?? '');
 

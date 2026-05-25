@@ -14,7 +14,7 @@ export interface WidgetConfig {
   chartType?: string;
   dataSource?: string | number;
   params?: { [key: string]: any };
-  dataSourceParams?: any[];
+  dataSourceParams?: any;
   color?: string;
   [key: string]: any;
 }

@@ -8,6 +8,7 @@ from django.db import DEFAULT_DB_ALIAS, connections
 from django.test import Client
 from django.test import TestCase
 from django.utils import timezone
+from django.utils import translation
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.alerts.aggregation.builder.synthetic_alert_builder import (
@@ -36,6 +37,7 @@ from apps.alerts.constants.constants import (
     LogTargetType,
     SessionStatus,
 )
+from apps.alerts.utils.util import str_to_md5
 from apps.alerts.models import Alert, AlertSource, AlarmStrategy, Event, Level, OperatorLog
 from apps.alerts.models.models import Incident
 from apps.alerts.serializers.event import EventModelSerializer
@@ -443,6 +445,28 @@ class MissingDetectionProcessorTestCase(TestCase):
         AggregationProcessor._normalize_fingerprint(shanghai_result, alert_levels)
 
         self.assertNotEqual(beijing_result["fingerprint"], shanghai_result["fingerprint"])
+
+    def test_normalize_fingerprint_uses_macro_filtered_title(self):
+        alert_levels = [{"level_id": 1, "level_name": "warning", "level_display_name": "预警"}]
+        result = {
+            "fingerprint": "42|resource_name=172.18.0.19|item=snmp_trap:unknown_trap",
+            "alert_level": 1,
+            "event_count": 2,
+            "first_event_description": "",
+            "alert_description": "172.18.0.19",
+        }
+
+        AggregationProcessor._normalize_fingerprint(result, alert_levels)
+
+        self.assertEqual(
+            result["alert_title"],
+            "resource_name=172.18.0.19|item=snmp_trap:unknown_trap 检测到异常",
+        )
+        self.assertEqual(result["alert_description"], "影响范围：172.18.0.19")
+        self.assertEqual(
+            result["fingerprint"],
+            str_to_md5("resource_name=172.18.0.19|item=snmp_trap:unknown_trap"),
+        )
 
     def test_multi_dimension_group_by_creates_distinct_alerts(self):
         now = timezone.now()
@@ -1757,7 +1781,50 @@ class RecoveryFallbackTestCase(TestCase):
         payload = response.data
         self.assertEqual(payload["source_type"], AlertsSourceTypes.ZABBIX)
         self.assertIn(f"/api/v1/alerts/api/source/{source.source_id}/webhook/", payload["webhook_url"])
+        self.assertEqual(payload["headers"], {"SECRET": source.secret})
+        self.assertIn("setup_steps", payload)
+        self.assertEqual(len(payload["setup_steps"]), 2)
+        self.assertEqual(payload["setup_steps"][0]["title"], "准备 BK-Lite 告警源")
+        self.assertIn("parameter_guidance", payload)
+        self.assertTrue(any(item["name"] == "ProblemId" and item["required"] for item in payload["parameter_guidance"]))
+        self.assertIn("verification", payload)
+        self.assertIn("curl_check", payload["verification"])
+        self.assertIn("field_mappings", payload)
+        self.assertTrue(any(item["bk_lite_field"] == "external_id" for item in payload["field_mappings"]))
+        self.assertIn("troubleshooting", payload)
+        self.assertTrue(any(item["symptom"] == "created 有，recovery 没有" for item in payload["troubleshooting"]))
+        self.assertIn("key_reminders", payload)
+        self.assertGreaterEqual(len(payload["key_reminders"]), 3)
         self.assertIn("script_template", payload)
+
+    def test_integration_guide_returns_zabbix_template_in_english(self):
+        source = AlertSource.objects.create(
+            name="Zabbix Prod",
+            source_id="zabbix-prod-en",
+            source_type=AlertsSourceTypes.ZABBIX,
+            secret="zbx-secret-en",
+            config={},
+        )
+        user = build_permission_test_user("integration-reader-zbx-en", [1], {"alarm": {"Integration-View"}})
+
+        request = APIRequestFactory().get(
+            f"/api/v1/alerts/api/alert_source/{source.id}/integration-guide/",
+            HTTP_ACCEPT_LANGUAGE="en-US,en;q=0.9",
+        )
+        request.LANGUAGE_CODE = "en-us"
+        force_authenticate(request, user=user)
+
+        with translation.override("en"):
+            response = AlertSourceModelViewSet.as_view({"get": "integration_guide"})(request, pk=source.pk)
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.data
+        self.assertEqual(payload["source_type"], AlertsSourceTypes.ZABBIX)
+        self.assertEqual(payload["setup_steps"][0]["title"], "1. Determine the three BK-Lite values first")
+        self.assertEqual(payload["parameter_guidance"][0]["name"], "Interface requirements")
+        self.assertEqual(payload["verification"]["curl_check"]["title"], "CURL connectivity check")
+        self.assertEqual(payload["troubleshooting"][0]["symptom"], "Missing source_id returned")
+        self.assertTrue(payload["key_reminders"][0].startswith("Confirm the interface requirements first"))
 
 
 class IncidentQueryPathTestCase(TestCase):

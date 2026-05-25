@@ -9,19 +9,8 @@ import {
   getOpsChartTheme,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
-import ComLine from '../../dashBoard/widgets/comLine';
-import ComPie from '../../dashBoard/widgets/comPie';
-import ComBar from '../../dashBoard/widgets/comBar';
-import ComTable from '../../dashBoard/widgets/comTable';
-import ComSingle from '../../dashBoard/widgets/comSingle';
-
-const componentMap: Record<string, React.ComponentType<any>> = {
-  line: ComLine,
-  pie: ComPie,
-  bar: ComBar,
-  table: ComTable,
-  single: ComSingle,
-};
+import WidgetRenderer from '@/app/ops-analysis/components/widgetRenderer';
+import WidgetErrorState from '@/app/ops-analysis/components/widgetErrorState';
 
 interface ChartNodeProps {
   node: Node;
@@ -75,8 +64,6 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
   const shouldShowLoading = (isLoading || (!rawData && !hasError)) && chartType !== 'table';
   const shouldShowError = hasError && !isLoading;
   const normalizedDescription = description?.trim();
-
-  const Component = chartType ? componentMap[chartType] : null;
 
   return (
     <div
@@ -142,12 +129,10 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
             </div>
           </div>
         ) : shouldShowError ? (
-          <div className="h-full flex flex-col items-center justify-center">
-            <div className="text-xs text-red-500 text-center wrap-break-word">
-              {errorMessage || t('dashboard.dataFetchFailed')}
-            </div>
-          </div>
-        ) : Component ? (
+          <WidgetErrorState
+            message={errorMessage || t('dashboard.dataFetchFailed')}
+          />
+        ) : (
           <div
             className="h-full w-full"
             onClick={(e) => {
@@ -167,14 +152,18 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
             }}
           >
             <ConfigProvider getPopupContainer={() => document.body}>
-              <Component {...widgetProps} />
+              <WidgetRenderer
+                chartType={chartType}
+                {...widgetProps}
+                fallback={(
+                  <div className="h-full flex flex-col items-center justify-center">
+                    <div className="text-xs text-gray-500">
+                      Unknown chart type: {chartType}
+                    </div>
+                  </div>
+                )}
+              />
             </ConfigProvider>
-          </div>
-        ) : (
-          <div className="h-full flex flex-col items-center justify-center">
-            <div className="text-xs text-gray-500">
-              Unknown chart type: {chartType}
-            </div>
           </div>
         )}
       </div>

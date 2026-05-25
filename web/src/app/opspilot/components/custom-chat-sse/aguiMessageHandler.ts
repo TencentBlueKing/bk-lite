@@ -23,8 +23,8 @@ import {
 import {
   closeActiveToolCallPanel,
   initToolCallTooltips,
+  renderAllToolCalls,
   renderErrorMessage,
-  renderToolCallCard,
   syncActiveToolCallPanel,
   ToolCallInfo
 } from './toolCallRenderer';
@@ -44,6 +44,7 @@ export class AGUIMessageHandler {
   private currentTextBlock: string = '';
   private thinkingContent: string = '';
   private isThinking: boolean = false;
+  private isStreaming: boolean = true;  // 流式回复状态，默认为 true
   private toolCallsRef: Map<string, ToolCallInfo>;
   private botMessage: CustomChatMessage;
   private updateMessages: MessageUpdateFn;
@@ -111,46 +112,57 @@ export class AGUIMessageHandler {
 
   /**
    * 获取完整内容 - 按照内容块的顺序渲染
+   * 连续的工具调用会被合并成一个可折叠的组
    */
   private getFullContent(): string {
     const parts: string[] = [];
     let lastBlockType: string | null = null;
+    let pendingToolCalls: Map<string, ToolCallInfo> = new Map();
+
+    const flushToolCalls = () => {
+      if (pendingToolCalls.size > 0) {
+        // 传入 isStreaming 状态，控制工具列表是否展开
+        const toolCallsHtml = renderAllToolCalls(pendingToolCalls, this.isStreaming);
+        if (parts.length > 0) {
+          parts.push('\n\n' + toolCallsHtml);
+        } else {
+          parts.push(toolCallsHtml);
+        }
+        pendingToolCalls = new Map();
+        lastBlockType = 'toolCall';
+      }
+    };
 
     for (const block of this.contentBlocks) {
-      let content = '';
-
       if (block.type === 'text') {
-        content = block.content;
+        // 遇到文本块，先输出累积的工具调用
+        flushToolCalls();
+        if (parts.length > 0) {
+          parts.push('\n\n' + block.content);
+        } else {
+          parts.push(block.content);
+        }
+        lastBlockType = 'text';
       } else if (block.type === 'toolCall') {
+        // 累积工具调用
         const toolInfo = this.toolCallsRef.get(block.id);
         if (toolInfo) {
-          content = renderToolCallCard(block.id, toolInfo);
+          pendingToolCalls.set(block.id, toolInfo);
         }
       } else if (block.type === 'thinking') {
-        content = '';
-      }
-
-      if (content) {
-        // 工具调用之间不换行，其他情况换行
-        if (parts.length > 0) {
-          if (lastBlockType === 'toolCall' && block.type === 'toolCall') {
-            // 工具调用之间直接拼接，不加换行
-            parts.push(content);
-          } else {
-            // 其他情况加换行
-            parts.push('\n\n' + content);
-          }
-        } else {
-          parts.push(content);
-        }
-        lastBlockType = block.type;
+        // 忽略 thinking 块
       }
     }
+
+    // 输出剩余的工具调用
+    flushToolCalls();
 
     // 添加当前正在累积的文本
     if (this.currentTextBlock) {
       if (parts.length > 0 && lastBlockType !== 'text') {
         parts.push('\n\n' + this.currentTextBlock);
+      } else if (parts.length > 0) {
+        parts.push(this.currentTextBlock);
       } else {
         parts.push(this.currentTextBlock);
       }
@@ -491,7 +503,11 @@ export class AGUIMessageHandler {
         return true;
 
       case 'RUN_FINISHED':
+        // 流式回复结束，设置 isStreaming 为 false 并更新内容（收起工具列表）
+        this.isStreaming = false;
         this.handleBrowserStepComplete();
+        // 重新渲染内容以收起工具列表
+        this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, false);
         return true;
 
       case 'CUSTOM':

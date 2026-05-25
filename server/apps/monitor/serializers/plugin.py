@@ -4,6 +4,7 @@ from django.db import transaction
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.services.custom_pull_plugin import CustomPullPluginService
 from apps.monitor.services.custom_snmp_plugin import CustomSnmpPluginService
+from apps.monitor.utils.node_selector import normalize_node_selector
 
 
 class MonitorPluginSerializer(serializers.ModelSerializer):
@@ -43,6 +44,14 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
             if monitor_objects is not None and len(monitor_objects) != 1:
                 raise serializers.ValidationError({"monitor_object": "自定义模板必须且只能绑定一个监控对象"})
 
+        if "node_selector" in attrs:
+            try:
+                attrs["node_selector"] = normalize_node_selector(attrs.get("node_selector"))
+            except Exception as exc:
+                raise serializers.ValidationError({"node_selector": str(exc)})
+        elif instance is not None:
+            attrs["node_selector"] = normalize_node_selector(getattr(instance, "node_selector", {}))
+
         return attrs
 
     def validate_template_type(self, value):
@@ -72,7 +81,7 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
         if monitor_object and isinstance(monitor_object.instance_id_keys, list):
             instance_id_keys = [str(key) for key in monitor_object.instance_id_keys if key not in (None, "")]
         group_by = ", ".join(instance_id_keys or ["instance_id"])
-        return f"any({{plugin_id='{plugin.id}'}}) by ({group_by})"
+        return f"any({{plugin_id='{plugin.template_id}'}}) by ({group_by})"
 
     def create(self, validated_data):
         """

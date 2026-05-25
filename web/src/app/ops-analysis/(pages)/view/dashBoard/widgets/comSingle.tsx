@@ -11,6 +11,7 @@ import {
   getOpsChartTheme,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
+import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 
 interface ComSingleProps {
   rawData: unknown;
@@ -18,26 +19,6 @@ interface ComSingleProps {
   config?: ValueConfig;
   onReady?: (ready: boolean) => void;
 }
-
-const getValueByPathForSingle = (obj: unknown, path: string): unknown => {
-  if (!obj || !path) return undefined;
-
-  return path.split('.').reduce((current, key) => {
-    if (current === null || current === undefined) return undefined;
-
-    if (Array.isArray(current)) {
-      const index = parseInt(key, 10);
-      if (!isNaN(index) && index >= 0 && index < current.length) {
-        return current[index];
-      }
-      return current.length > 0 && current[0] && typeof current[0] === 'object'
-        ? (current[0] as Record<string, unknown>)[key]
-        : undefined;
-    }
-
-    return (current as Record<string, unknown>)[key];
-  }, obj);
-};
 
 const ComSingle: React.FC<ComSingleProps> = ({
   rawData,
@@ -57,7 +38,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
     const selectedField = config?.selectedFields?.[0];
 
     if (selectedField) {
-      const extracted = getValueByPathForSingle(data, selectedField);
+      const extracted = getValueByPath(data, selectedField);
       if (extracted !== undefined && extracted !== null) {
         return typeof extracted === 'number' || typeof extracted === 'string'
           ? extracted

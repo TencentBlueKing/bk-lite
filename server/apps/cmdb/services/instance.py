@@ -1,4 +1,11 @@
-from apps.cmdb.constants.constants import ENUM_SELECT_MODE_DEFAULT, INSTANCE, INSTANCE_ASSOCIATION, OPERATOR_INSTANCE
+from apps.cmdb.constants.constants import (
+    ENUM_SELECT_MODE_DEFAULT,
+    INSTANCE,
+    INSTANCE_ASSOCIATION,
+    OPERATOR_INSTANCE,
+    PERMISSION_INSTANCES,
+    VIEW,
+)
 from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
 from apps.cmdb.display_field.constants import (
     DISPLAY_FIELD_TYPES,
@@ -19,6 +26,7 @@ from apps.cmdb.services.unique_rule import build_unique_rule_context
 from apps.cmdb.utils.change_record import batch_create_change_record, create_change_record, create_change_record_by_asso
 from apps.cmdb.utils.export import Export
 from apps.cmdb.utils.Import import Import
+from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.cmdb.validators.field_validator import (
     TagFieldConfig,
     normalize_enum_values,
@@ -209,6 +217,134 @@ def apply_enum_validation_for_instance(instance_data: dict, attrs: list[dict]) -
 
 
 class InstanceManage(object):
+    @staticmethod
+    def _query_instance_map_by_ids(inst_ids: set[int]) -> dict[int, dict]:
+        normalized_ids = []
+        for inst_id in inst_ids:
+            try:
+                normalized_ids.append(int(inst_id))
+            except (TypeError, ValueError):
+                continue
+        if not normalized_ids:
+            return {}
+
+        with GraphClient() as ag:
+            inst_list, _ = ag.query_entity(INSTANCE, [{"field": "id", "type": "id[]", "value": sorted(normalized_ids)}])
+
+        result = {}
+        for instance in inst_list:
+            if instance.get("_id") is None:
+                continue
+            try:
+                result[int(instance["_id"])] = instance
+            except (TypeError, ValueError):
+                continue
+        return result
+
+    @staticmethod
+    def _has_topology_view_permission(instance: dict | None, permission_map: dict | None, user=None) -> bool:
+        if instance is None:
+            return False
+        if not permission_map:
+            return True
+
+        username = getattr(user, "username", "") if user is not None else ""
+        if username and instance.get("_creator") == username:
+            allowed_org_ids = set()
+            for org_id in permission_map.keys():
+                try:
+                    allowed_org_ids.add(int(org_id))
+                except (TypeError, ValueError):
+                    continue
+            instance_org_ids = set()
+            for org_id in instance.get("organization", []) or []:
+                try:
+                    instance_org_ids.add(int(org_id))
+                except (TypeError, ValueError):
+                    continue
+            if allowed_org_ids & instance_org_ids:
+                return True
+
+        return CmdbRulesFormatUtil.has_object_permission(
+            obj_type=PERMISSION_INSTANCES,
+            operator=VIEW,
+            model_id=instance.get("model_id", ""),
+            permission_instances_map=permission_map,
+            instance=instance,
+        )
+
+    @classmethod
+    def _collect_topology_node_ids(cls, node: dict | None) -> set[int]:
+        if not isinstance(node, dict):
+            return set()
+
+        result = set()
+        node_id = node.get("_id")
+        try:
+            if node_id is not None:
+                result.add(int(node_id))
+        except (TypeError, ValueError):
+            pass
+
+        for child in node.get("children") or []:
+            result.update(cls._collect_topology_node_ids(child))
+        return result
+
+    @classmethod
+    def _prune_topology_node(cls, node: dict | None, visible_ids: set[int], center_id: int) -> dict:
+        if not isinstance(node, dict):
+            return {}
+
+        node_id = node.get("_id")
+        try:
+            normalized_node_id = int(node_id) if node_id is not None else None
+        except (TypeError, ValueError):
+            normalized_node_id = None
+
+        if normalized_node_id is None:
+            return {}
+        if normalized_node_id != center_id and normalized_node_id not in visible_ids:
+            return {}
+
+        filtered_node = dict(node)
+        filtered_children = []
+        for child in node.get("children") or []:
+            filtered_child = cls._prune_topology_node(child, visible_ids, center_id)
+            if filtered_child:
+                filtered_children.append(filtered_child)
+        filtered_node["children"] = filtered_children
+        return filtered_node
+
+    @classmethod
+    def _filter_topology_result(
+        cls,
+        result: dict,
+        center_id: int,
+        permission_map: dict | None = None,
+        user=None,
+    ) -> dict:
+        if not isinstance(result, dict) or not permission_map:
+            return result
+
+        node_ids = set()
+        for key in ("src_result", "dst_result"):
+            node_ids.update(cls._collect_topology_node_ids(result.get(key)))
+        if not node_ids:
+            return result
+
+        instances_map = cls._query_instance_map_by_ids(node_ids)
+        visible_ids = {int(center_id)}
+        for node_id in node_ids:
+            if node_id == center_id:
+                continue
+            if cls._has_topology_view_permission(instances_map.get(node_id), permission_map, user=user):
+                visible_ids.add(node_id)
+
+        filtered_result = dict(result)
+        for key in ("src_result", "dst_result"):
+            filtered_result[key] = cls._prune_topology_node(result.get(key), visible_ids, int(center_id))
+        return filtered_result
+
     @staticmethod
     def _build_format_permission_dict(permission_map: dict, creator: str = "") -> dict:
         format_permission_dict = {}
@@ -988,19 +1124,26 @@ class InstanceManage(object):
             add_mgs = ""
         return res_status, add_mgs
 
-    @staticmethod
-    def topo_search_lite(inst_id: int, depth: int = 3):
+    @classmethod
+    def topo_search_lite(cls, inst_id: int, depth: int = 3, permission_map: dict | None = None, user=None):
         """拓扑查询（轻量）：限制返回层级，避免一次返回全量树"""
         with GraphClient() as ag:
             result = ag.query_topo_lite(INSTANCE, inst_id, depth=depth)
-        return result
+        return cls._filter_topology_result(result, int(inst_id), permission_map=permission_map, user=user)
 
-    @staticmethod
-    def topo_search_expand(inst_id: int, parent_ids: list, depth: int = 2):
+    @classmethod
+    def topo_search_expand(
+        cls,
+        inst_id: int,
+        parent_ids: list,
+        depth: int = 2,
+        permission_map: dict | None = None,
+        user=None,
+    ):
         """拓扑展开：从指定节点向后展开一层，并过滤父节点列表"""
         with GraphClient() as ag:
             result = ag.query_topo_lite(INSTANCE, inst_id, depth=depth, exclude_ids=parent_ids)
-        return result
+        return cls._filter_topology_result(result, int(inst_id), permission_map=permission_map, user=user)
 
     @staticmethod
     def inst_export(
@@ -1110,16 +1253,21 @@ class InstanceManage(object):
         return f"n.inst_name IN {inst_names}"
 
     @classmethod
-    def model_inst_count(cls, permissions_map: dict, creator: str = ""):
+    def group_inst_count(cls, group_by_attr: str, permissions_map: dict, params: list = None, creator: str = ""):
         format_permission_dict = cls._build_format_permission_dict(permissions_map, creator)
 
         with GraphClient() as ag:
             data = ag.entity_count(
                 label=INSTANCE,
-                group_by_attr="model_id",
+                group_by_attr=group_by_attr,
+                params=params or [],
                 format_permission_dict=format_permission_dict,
             )
         return data
+
+    @classmethod
+    def model_inst_count(cls, permissions_map: dict, creator: str = ""):
+        return cls.group_inst_count(group_by_attr="model_id", permissions_map=permissions_map, creator=creator)
 
     @classmethod
     def _build_permission_params(cls, permission_map: dict, creator: str = ""):

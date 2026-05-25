@@ -148,8 +148,10 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             ) {
               itemData.directory = parseInt(currentDir.data_id, 10);
             } else if (newItemType === 'directory') {
-              itemData.parent_id = parseInt(currentDir.data_id, 10);
+              itemData.parent = parseInt(currentDir.data_id, 10);
             }
+          } else if (newItemType === 'directory') {
+            itemData.parent = null;
           }
           await createItem(newItemType, itemData);
         }

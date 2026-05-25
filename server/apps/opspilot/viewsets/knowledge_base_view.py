@@ -24,6 +24,7 @@ from apps.opspilot.services.knowledge_search_service import KnowledgeSearchServi
 from apps.opspilot.tasks import retrain_all
 from apps.opspilot.utils.chunk_helper import ChunkHelper
 from apps.opspilot.utils.graph_utils import GraphUtils
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class KnowledgeBaseViewSet(AuthViewSet):
@@ -70,7 +71,10 @@ class KnowledgeBaseViewSet(AuthViewSet):
         with atomic():
             self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        response = Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        if response.status_code >= 200 and response.status_code < 300:
+            log_operation(request, "create", "opspilot", f"新增知识库: {serializer.data.get('name', '')}")
+        return response
 
     @HasPermission("knowledge_list-Edit")
     def update(self, request, *args, **kwargs):
@@ -81,7 +85,13 @@ class KnowledgeBaseViewSet(AuthViewSet):
                 return JsonResponse({"result": False, "message": self.loader.get("error.knowledge_base_training")})
             delete_qa_pairs = params.pop("delete_qa_pairs", False)
             retrain_all.delay(instance.id, request.user.username, request.user.domain, delete_qa_pairs)
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            kb_name = response.data.get("name") if isinstance(response.data, dict) else None
+            if not kb_name:
+                kb_name = instance.name
+            log_operation(request, "update", "opspilot", f"编辑知识库: {kb_name}")
+        return response
 
     @action(methods=["POST"], detail=True)
     @HasPermission("knowledge_setting-Edit")
@@ -157,7 +167,10 @@ class KnowledgeBaseViewSet(AuthViewSet):
         except Exception as e:
             logger.exception(e)
             return JsonResponse({"result": False, "message": self.loader.get("error.knowledge_base_delete_related_data_failed")})
-        return super().destroy(request, *args, **kwargs)
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            log_operation(request, "delete", "opspilot", f"删除知识库: {instance.name}")
+        return response
 
     @action(detail=False, methods=["GET"])
     def get_teams(self, request):

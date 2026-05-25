@@ -83,6 +83,8 @@ export interface ValueConfig {
   tableConfig?: TableConfig;
   filterBindings?: FilterBindings;
   selectedFields?: string[];
+  topNLabelField?: string;
+  topNValueField?: string;
   unit?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
@@ -113,6 +115,7 @@ export interface ViewConfigProps {
   item: ViewConfigItem;
   onConfirm?: (values: WidgetConfig) => void;
   onClose?: () => void;
+  builtinNamespaceId?: number;
 }
 
 export interface ComponentSelectorProps {

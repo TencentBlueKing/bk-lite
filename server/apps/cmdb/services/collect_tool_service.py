@@ -176,13 +176,11 @@ class CollectToolService:
                     if cr:
                         cloud_name = cr.name or ""
 
-            if cloud_name:
-                if settings.DEBUG:
-                    cloud_name = f"{cloud_name}_local"
-                return f"{cloud_name}_stargazer"
-            else:
-                # 直连节点无云区域，回退到默认 stargazer
-                return "stargazer"
+            if not cloud_name:
+                cloud_name = "default"
+            # if settings.DEBUG:
+            #     cloud_name = f"{cloud_name}_local"
+            return f"{cloud_name}_stargazer"
         except ValidationError:
             raise
         except Exception as e:

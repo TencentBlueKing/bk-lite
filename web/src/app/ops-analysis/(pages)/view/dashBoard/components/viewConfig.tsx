@@ -45,6 +45,7 @@ import { useTableConfig } from './viewConfig/hooks/useTableConfig';
 import { useSingleValueConfig } from './viewConfig/hooks/useSingleValueConfig';
 import { TableSettingsSection } from './viewConfig/sections/tableSettingsSection';
 import { SingleValueSettingsSection } from './viewConfig/sections/singleValueSettingsSection';
+import { TopNSettingsSection } from './viewConfig/sections/topNSettingsSection';
 import {
   buildDisplayColumnsFromSchema,
   isDisplayableDefaultField,
@@ -59,6 +60,8 @@ interface FormValues {
   params?: Record<string, string | number | boolean | [number, number] | null>;
   tableConfig?: TableConfig;
   selectedFields?: string[];
+  topNLabelField?: string;
+  topNValueField?: string;
   unit?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
@@ -78,6 +81,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   dataSourceManager,
   filterDefinitions = [],
   unifiedFilterValues = {},
+  builtinNamespaceId,
 }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
@@ -86,10 +90,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const { getSourceDataByApiId } = useDataSourceApi();
 
   const {
-    dataSources,
     selectedDataSource,
     setSelectedDataSource,
-    findDataSource,
+    ensureDataSource,
     setDefaultParamValues,
     restoreUserParamValues,
     processFormParamsForSubmit,
@@ -157,6 +160,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     unifiedFilterValues,
     filterBindings,
     filterDefinitions: previewFilterDefinitions,
+    builtinNamespaceId,
     t,
   });
 
@@ -164,7 +168,17 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     form,
     selectedDataSource,
     getSourceDataByApiId,
+    builtinNamespaceId,
   });
+
+  const topNFieldOptions = useMemo(
+    () =>
+      availableFields.map((field) => ({
+        label: field.title ? `${field.key} (${field.title})` : field.key,
+        value: field.key,
+      })),
+    [availableFields],
+  );
 
   const filterFieldOptions = useMemo(() => {
     const columnOptions = tableConfig.displayColumns
@@ -246,7 +260,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       tableConfig.setFilterFields([]);
     }
 
-    const targetDataSource = findDataSource(formValues.dataSource);
+    const targetDataSource = await ensureDataSource(formValues.dataSource);
     if (targetDataSource) {
       setSelectedDataSource(targetDataSource);
       formValues.params = formValues.params || {};
@@ -341,6 +355,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       singleValueConfig.setSelectedFields([]);
     }
 
+    if (valueConfig?.topNLabelField !== undefined) {
+      formValues.topNLabelField = valueConfig.topNLabelField;
+    }
+    if (valueConfig?.topNValueField !== undefined) {
+      formValues.topNValueField = valueConfig.topNValueField;
+    }
+
     if (valueConfig?.unit !== undefined) {
       formValues.unit = valueConfig.unit;
     }
@@ -385,12 +406,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   };
 
   useEffect(() => {
-    if (open && dataSources.length > 0) {
+    if (open) {
       void initializeItemForm(widgetItem);
     } else if (!open) {
       resetForm();
     }
-  }, [open, widgetItem, form, dataSources]);
+  }, [open, widgetItem, form]);
 
   useEffect(() => {
     if (!tableConfig.displayColumnsError) {
@@ -498,6 +519,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           result.decimalPlaces = decimalPlacesValue;
       }
 
+      if (chartType === 'topN') {
+        result.topNLabelField = values.topNLabelField;
+        result.topNValueField = values.topNValueField;
+      }
+
       if (filterBindings && Object.keys(filterBindings).length > 0) {
         result = { ...result, filterBindings };
       }
@@ -562,7 +588,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           >
             <DataSourceSelect
               placeholder={t('common.selectTip')}
-              dataSources={dataSources}
+              dataSources={selectedDataSource ? [selectedDataSource] : []}
               disabled
               onDataSourceChange={setSelectedDataSource}
             />
@@ -668,6 +694,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             onThresholdBlur={singleValueConfig.handleThresholdBlur}
             onAddThreshold={singleValueConfig.addThreshold}
             onRemoveThreshold={singleValueConfig.removeThreshold}
+          />
+        )}
+
+        {chartType === 'topN' && (
+          <TopNSettingsSection
+            t={t}
+            selectedDataSource={selectedDataSource}
+            topNFieldOptions={topNFieldOptions}
           />
         )}
       </Form>

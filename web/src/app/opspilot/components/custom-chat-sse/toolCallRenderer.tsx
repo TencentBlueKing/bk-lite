@@ -1,6 +1,10 @@
 /**
  * 工具调用渲染器
  * 负责生成工具调用和错误消息的 HTML
+ * 
+ * 设计：所有工具默认收敛成一行提示，点击展开显示工具列表
+ * 每个工具显示：状态图标 + 工具名 + 调用目的概要
+ * 样式：无深背景、无边框、小字号、简洁紧凑
  */
 
 import { BrowserTaskReceivedData } from '@/app/opspilot/types/global';
@@ -14,13 +18,9 @@ export interface ToolCallInfo {
 }
 
 /**
- * 初始化全局工具详情交互（只执行一次）
+ * 全局事件委托初始化标记
  */
-let tooltipInitialized = false;
-let tooltipPanelElement: HTMLDivElement | null = null;
-let activeTriggerElement: HTMLElement | null = null;
-let activeToolId: string | null = null;
-let positionAnimationFrameId: number | null = null;
+let cardEventInitialized = false;
 
 const escapeHtml = (text: string) => {
   return text
@@ -31,458 +31,609 @@ const escapeHtml = (text: string) => {
     .replace(/'/g, '&#39;');
 };
 
-const formatDetailValue = (value: unknown) => {
-  if (value === null || value === undefined) {
-    return '';
+/**
+ * 从工具参数中提取调用目的/概要
+ * 尝试多种常见字段名
+ */
+const extractSummary = (args: string, toolName?: string): string => {
+  if (!args || args === '{}' || args === '""' || args === 'null') {
+    // 如果没有参数，根据工具名生成默认描述
+    return generateDefaultSummary(toolName);
   }
-
-  if (typeof value === 'string') {
-    return value;
-  }
-
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-
   try {
-    return JSON.stringify(value, null, 2);
+    const parsed = JSON.parse(args);
+    
+    // 如果解析后是空对象
+    if (typeof parsed === 'object' && parsed !== null && Object.keys(parsed).length === 0) {
+      return generateDefaultSummary(toolName);
+    }
+    
+    // 常见的概要/目的字段（按优先级排序）
+    const summaryFields = [
+      'reason', 'goal', 'thought', 'purpose', 'objective',
+      'description', 'summary', 'intent', 'action',
+      'query', 'question', 'prompt', 'message', 'content', 'text',
+      'command', 'instruction', 'task', 'input'
+    ];
+    
+    for (const field of summaryFields) {
+      const value = parsed[field];
+      if (typeof value === 'string' && value.trim()) {
+        const trimmed = value.trim();
+        return trimmed.length > 100 ? trimmed.slice(0, 100) + '...' : trimmed;
+      }
+    }
+    
+    // 如果没有找到概要字段，尝试获取第一个有意义的字符串值
+    for (const [key, value] of Object.entries(parsed)) {
+      // 跳过一些不适合作为概要的字段
+      if (['id', 'name', 'type', 'format', 'encoding', 'tool', 'tool_name'].includes(key)) continue;
+      if (typeof value === 'string' && value.trim() && value.length >= 3 && value.length < 300) {
+        const trimmed = value.trim();
+        return trimmed.length > 100 ? trimmed.slice(0, 100) + '...' : trimmed;
+      }
+    }
+    
+    // 如果还是没有，尝试将整个参数对象简化显示
+    const keys = Object.keys(parsed);
+    if (keys.length > 0 && keys.length <= 5) {
+      const preview = keys.map(k => {
+        const v = parsed[k];
+        if (typeof v === 'string') return `${k}: ${v.slice(0, 20)}${v.length > 20 ? '...' : ''}`;
+        if (typeof v === 'number' || typeof v === 'boolean') return `${k}: ${v}`;
+        return `${k}: ...`;
+      }).join(', ');
+      if (preview.length > 0) return preview;
+    }
   } catch {
-    return String(value);
-  }
-};
-
-const formatBrowserTaskReceived = (data?: BrowserTaskReceivedData) => {
-  if (!data) return '';
-
-  return formatDetailValue(data.task_final);
-};
-
-const buildToolDetailSections = (info: ToolCallInfo) => {
-  const sections: Array<{ title: string; content: string }> = [];
-
-  const browserTaskContent = formatBrowserTaskReceived(info.browserTaskReceived);
-  if (browserTaskContent) {
-    sections.push({
-      title: 'browser_task_received',
-      content: browserTaskContent,
-    });
-  }
-
-  if (info.result) {
-    sections.push({
-      title: 'result',
-      content: info.result,
-    });
-  }
-
-  return sections;
-};
-
-const encodeToolDetails = (info: ToolCallInfo) => {
-  const detailSections = buildToolDetailSections(info);
-  if (!detailSections.length) return '';
-
-  try {
-    return encodeURIComponent(JSON.stringify(detailSections));
-  } catch {
-    return '';
-  }
-};
-
-const renderFloatingPanelContent = (detailSections: Array<{ title: string; content: string }>) => {
-  if (!tooltipPanelElement) return;
-
-  tooltipPanelElement.innerHTML = `<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px;"><span style="font-size: 12px; font-weight: 600; color: var(--color-text-2);">工具详情</span><button type="button" class="tool-call-copy" aria-label="复制内容" title="复制内容" style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; border: 1px solid rgba(15, 23, 42, 0.1); background: var(--color-bg-1); color: var(--color-text-2); font-size: 14px; cursor: pointer; flex-shrink: 0;"><span class="tool-call-copy-label">⧉</span></button></div>${detailSections.map(section => `<div class="tool-call-panel-section" style="margin-top: 10px;"><div class="tool-call-panel-section-title" style="font-size: 12px; line-height: 18px; color: var(--color-text-3); margin-bottom: 6px;">${escapeHtml(section.title)}</div><pre class="tool-call-panel-section-content" style="margin: 0; padding: 10px 12px; white-space: pre-wrap; word-break: break-word; background: var(--color-fill-2); border-radius: 6px; color: var(--color-text-1); font-size: 12px; line-height: 1.6; overflow-x: auto; user-select: text;">${escapeHtml(section.content)}</pre></div>`).join('')}`;
-};
-
-export const syncActiveToolCallPanel = (toolId: string, info: ToolCallInfo) => {
-  if (!tooltipInitialized || !tooltipPanelElement || activeToolId !== toolId || tooltipPanelElement.style.display !== 'block') {
-    return;
-  }
-
-  const detailSections = buildToolDetailSections(info);
-  if (!detailSections.length) {
-    tooltipPanelElement.style.display = 'none';
-    tooltipPanelElement.innerHTML = '';
-    return;
-  }
-
-  renderFloatingPanelContent(detailSections);
-
-  const nextTrigger = document.querySelector(`.tool-call-trigger[data-tool-id="${CSS.escape(toolId)}"]`) as HTMLElement | null;
-  if (nextTrigger) {
-    activeTriggerElement = nextTrigger;
-    const rect = nextTrigger.getBoundingClientRect();
-    if (rect.width > 0 || rect.height > 0) {
-      let top = rect.bottom + 8;
-      let left = rect.left;
-      const panelRect = tooltipPanelElement.getBoundingClientRect();
-
-      if (left + panelRect.width > window.innerWidth - 8) {
-        left = Math.max(8, window.innerWidth - panelRect.width - 8);
-      }
-
-      if (top + panelRect.height > window.innerHeight - 8) {
-        top = Math.max(8, rect.top - panelRect.height - 8);
-      }
-
-      tooltipPanelElement.style.top = `${top}px`;
-      tooltipPanelElement.style.left = `${left}px`;
+    // 解析失败，尝试直接使用 args 字符串
+    if (args.length > 3 && args.length < 200) {
+      return args.length > 100 ? args.slice(0, 100) + '...' : args;
     }
   }
-};
-
-export const closeActiveToolCallPanel = (toolId?: string) => {
-  if (!tooltipInitialized || !tooltipPanelElement) {
-    return;
-  }
-
-  if (toolId && activeToolId !== toolId) {
-    return;
-  }
-
-  if (positionAnimationFrameId !== null) {
-    window.cancelAnimationFrame(positionAnimationFrameId);
-    positionAnimationFrameId = null;
-  }
-
-  tooltipPanelElement.style.display = 'none';
-  tooltipPanelElement.innerHTML = '';
-
-  if (activeTriggerElement) {
-    activeTriggerElement.setAttribute('data-open', 'false');
-    const icon = activeTriggerElement.querySelector('.tool-call-expand-icon');
-    if (icon) {
-      icon.textContent = '▾';
-    }
-  }
-
-  activeTriggerElement = null;
-  activeToolId = null;
-};
-
-const initGlobalTooltip = () => {
-  if (tooltipInitialized) return;
-  tooltipInitialized = true;
-
-  tooltipPanelElement = document.createElement('div');
-  tooltipPanelElement.className = 'tool-call-floating-panel';
-  tooltipPanelElement.style.cssText = [
-    'position: fixed',
-    'display: none',
-    'z-index: 10000',
-    'width: min(680px, calc(100vw - 32px))',
-    'max-height: min(420px, calc(100vh - 32px))',
-    'overflow: auto',
-    'padding: 12px',
-    'background: var(--color-fill-1)',
-    'border: 1px solid rgba(15, 23, 42, 0.08)',
-    'border-radius: 8px',
-    'box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12)',
-    'user-select: text',
-    'pointer-events: auto'
-  ].join(';');
-  document.body.appendChild(tooltipPanelElement);
-
-  const closeAllPanels = () => {
-    if (positionAnimationFrameId !== null) {
-      window.cancelAnimationFrame(positionAnimationFrameId);
-      positionAnimationFrameId = null;
-    }
-
-    if (tooltipPanelElement) {
-      tooltipPanelElement.style.display = 'none';
-      tooltipPanelElement.innerHTML = '';
-    }
-
-    if (activeTriggerElement) {
-      activeTriggerElement.setAttribute('data-open', 'false');
-      const icon = activeTriggerElement.querySelector('.tool-call-expand-icon');
-      if (icon) {
-        icon.textContent = '▾';
-      }
-      activeTriggerElement = null;
-    }
-
-    activeToolId = null;
-  };
-
-  const keepPanelAligned = () => {
-    const trigger = syncActiveTriggerElement();
-    if (trigger && tooltipPanelElement?.style.display === 'block') {
-      updatePanelPosition(trigger);
-      positionAnimationFrameId = window.requestAnimationFrame(keepPanelAligned);
-      return;
-    }
-
-    if (positionAnimationFrameId !== null) {
-      window.cancelAnimationFrame(positionAnimationFrameId);
-      positionAnimationFrameId = null;
-    }
-  };
-
-  const syncActiveTriggerElement = () => {
-    if (!activeToolId) return null;
-
-    if (activeTriggerElement?.isConnected) {
-      return activeTriggerElement;
-    }
-
-    const nextTrigger = document.querySelector(`.tool-call-trigger[data-tool-id="${CSS.escape(activeToolId)}"]`) as HTMLElement | null;
-    activeTriggerElement = nextTrigger;
-    if (!nextTrigger) {
-      closeAllPanels();
-      return null;
-    }
-
-    nextTrigger.setAttribute('data-open', 'true');
-    const icon = nextTrigger.querySelector('.tool-call-expand-icon');
-    if (icon) {
-      icon.textContent = '▴';
-    }
-
-    return nextTrigger;
-  };
-
-  const updatePanelPosition = (trigger: HTMLElement) => {
-    if (!tooltipPanelElement) return;
-
-    const triggerRect = trigger.getBoundingClientRect();
-    const panelRect = tooltipPanelElement.getBoundingClientRect();
-    const gap = 8;
-
-    if (triggerRect.width === 0 && triggerRect.height === 0) {
-      const syncedTrigger = syncActiveTriggerElement();
-      if (!syncedTrigger || syncedTrigger === trigger) {
-        closeAllPanels();
-        return;
-      }
-
-      updatePanelPosition(syncedTrigger);
-      return;
-    }
-
-    let top = triggerRect.bottom + gap;
-    let left = triggerRect.left;
-
-    if (left + panelRect.width > window.innerWidth - 8) {
-      left = Math.max(8, window.innerWidth - panelRect.width - 8);
-    }
-
-    if (top + panelRect.height > window.innerHeight - 8) {
-      top = Math.max(8, triggerRect.top - panelRect.height - gap);
-    }
-
-    tooltipPanelElement.style.top = `${top}px`;
-    tooltipPanelElement.style.left = `${left}px`;
-  };
-
-  const parseToolDetails = (encodedDetails: string) => {
-    if (!encodedDetails) return [] as Array<{ title: string; content: string }>;
-
-    try {
-      const decoded = decodeURIComponent(encodedDetails);
-      const parsed = JSON.parse(decoded);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  };
-
-  const renderFloatingPanel = (trigger: HTMLElement) => {
-    if (!tooltipPanelElement) return false;
-
-    const detailSections = parseToolDetails(trigger.getAttribute('data-tool-details') || '');
-    if (!detailSections.length) return false;
-
-    renderFloatingPanelContent(detailSections);
-    tooltipPanelElement.style.display = 'block';
-    updatePanelPosition(trigger);
-    return true;
-  };
-
-  const copyPanelContent = async (panel: HTMLElement) => {
-    const sections = Array.from(panel.querySelectorAll<HTMLElement>('.tool-call-panel-section'));
-    const copyText = sections
-      .map((section) => {
-        const title = section.querySelector<HTMLElement>('.tool-call-panel-section-title')?.textContent?.trim() || '';
-        const content = section.querySelector<HTMLElement>('.tool-call-panel-section-content')?.textContent?.trim() || '';
-        return title && content ? `${title}\n${content}` : content;
-      })
-      .filter(Boolean)
-      .join('\n\n');
-
-    if (!copyText) return false;
-
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(copyText);
-        return true;
-      }
-    } catch {}
-
-    const textarea = document.createElement('textarea');
-    textarea.value = copyText;
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
-    textarea.focus();
-    textarea.select();
-
-    try {
-      const success = document.execCommand('copy');
-      document.body.removeChild(textarea);
-      return success;
-    } catch {
-      document.body.removeChild(textarea);
-      return false;
-    }
-  };
-
-  document.addEventListener('click', async (e) => {
-    const target = e.target as HTMLElement;
-    const copyButton = target.closest('.tool-call-copy') as HTMLElement | null;
-
-    if (copyButton) {
-      e.preventDefault();
-      e.stopPropagation();
-
-      const panel = tooltipPanelElement;
-      if (!panel) return;
-
-      const copied = await copyPanelContent(panel);
-      const label = copyButton.querySelector('.tool-call-copy-label');
-      if (copied && label) {
-        const originalText = label.textContent;
-        const originalTitle = copyButton.getAttribute('title');
-        const originalAriaLabel = copyButton.getAttribute('aria-label');
-        label.textContent = '✓';
-        copyButton.setAttribute('title', '已复制');
-        copyButton.setAttribute('aria-label', '已复制');
-        window.setTimeout(() => {
-          label.textContent = originalText;
-          if (originalTitle) {
-            copyButton.setAttribute('title', originalTitle);
-          }
-          if (originalAriaLabel) {
-            copyButton.setAttribute('aria-label', originalAriaLabel);
-          }
-        }, 1200);
-      }
-      return;
-    }
-
-    const trigger = target.closest('.tool-call-trigger') as HTMLElement | null;
-    if (trigger) {
-      e.preventDefault();
-
-      const isOpen = trigger.getAttribute('data-open') === 'true';
-      closeAllPanels();
-
-      if (!isOpen) {
-        const rendered = renderFloatingPanel(trigger);
-        if (!rendered) return;
-        trigger.setAttribute('data-open', 'true');
-        activeTriggerElement = trigger;
-        activeToolId = trigger.getAttribute('data-tool-id');
-        if (positionAnimationFrameId !== null) {
-          window.cancelAnimationFrame(positionAnimationFrameId);
-        }
-        positionAnimationFrameId = window.requestAnimationFrame(keepPanelAligned);
-        const icon = trigger.querySelector('.tool-call-expand-icon') as HTMLElement | null;
-        if (icon) {
-          icon.textContent = '▴';
-        }
-      }
-      return;
-    }
-
-    if (!target.closest('.tool-call-floating-panel')) {
-      closeAllPanels();
-    }
-  });
-
-  window.addEventListener('resize', () => {
-    const trigger = syncActiveTriggerElement();
-    if (trigger && tooltipPanelElement?.style.display === 'block') {
-      updatePanelPosition(trigger);
-    }
-  });
-
-  window.addEventListener('scroll', () => {
-    const trigger = syncActiveTriggerElement();
-    if (trigger && tooltipPanelElement?.style.display === 'block') {
-      updatePanelPosition(trigger);
-    }
-  }, true);
+  return generateDefaultSummary(toolName);
 };
 
 /**
- * 确保 tooltip 已初始化
+ * 根据工具名生成默认描述
+ */
+const generateDefaultSummary = (toolName?: string): string => {
+  if (!toolName) return '';
+  
+  // 将工具名转换为可读的描述
+  // 例如: check_database_health -> 检查数据库健康状态
+  //       get_user_info -> 获取用户信息
+  const words = toolName.toLowerCase().split(/[_-]/);
+  
+  // 常见动词映射
+  const verbMap: Record<string, string> = {
+    'check': '检查',
+    'get': '获取',
+    'set': '设置',
+    'create': '创建',
+    'delete': '删除',
+    'update': '更新',
+    'list': '列出',
+    'search': '搜索',
+    'find': '查找',
+    'query': '查询',
+    'fetch': '获取',
+    'send': '发送',
+    'read': '读取',
+    'write': '写入',
+    'execute': '执行',
+    'run': '运行',
+    'start': '启动',
+    'stop': '停止',
+    'activate': '激活',
+    'deactivate': '停用',
+    'enable': '启用',
+    'disable': '禁用',
+    'validate': '验证',
+    'verify': '验证',
+    'test': '测试',
+    'analyze': '分析',
+    'process': '处理',
+    'generate': '生成',
+    'calculate': '计算',
+    'convert': '转换',
+    'export': '导出',
+    'import': '导入',
+    'upload': '上传',
+    'download': '下载',
+    'connect': '连接',
+    'disconnect': '断开',
+    'open': '打开',
+    'close': '关闭',
+    'load': '加载',
+    'save': '保存',
+    'backup': '备份',
+    'restore': '恢复',
+    'sync': '同步',
+    'refresh': '刷新',
+    'reset': '重置',
+    'clear': '清除',
+    'add': '添加',
+    'remove': '移除',
+    'insert': '插入',
+    'append': '追加',
+    'merge': '合并',
+    'split': '拆分',
+    'filter': '过滤',
+    'sort': '排序',
+    'group': '分组',
+    'count': '统计',
+    'sum': '求和',
+    'avg': '平均',
+    'max': '最大',
+    'min': '最小'
+  };
+  
+  // 常见名词映射
+  const nounMap: Record<string, string> = {
+    'database': '数据库',
+    'db': '数据库',
+    'health': '健康状态',
+    'status': '状态',
+    'info': '信息',
+    'information': '信息',
+    'data': '数据',
+    'user': '用户',
+    'users': '用户',
+    'file': '文件',
+    'files': '文件',
+    'config': '配置',
+    'configuration': '配置',
+    'setting': '设置',
+    'settings': '设置',
+    'log': '日志',
+    'logs': '日志',
+    'error': '错误',
+    'errors': '错误',
+    'message': '消息',
+    'messages': '消息',
+    'result': '结果',
+    'results': '结果',
+    'report': '报告',
+    'reports': '报告',
+    'list': '列表',
+    'table': '表',
+    'tables': '表',
+    'record': '记录',
+    'records': '记录',
+    'item': '项目',
+    'items': '项目',
+    'task': '任务',
+    'tasks': '任务',
+    'job': '作业',
+    'jobs': '作业',
+    'process': '进程',
+    'service': '服务',
+    'services': '服务',
+    'server': '服务器',
+    'servers': '服务器',
+    'client': '客户端',
+    'connection': '连接',
+    'connections': '连接',
+    'session': '会话',
+    'sessions': '会话',
+    'cache': '缓存',
+    'memory': '内存',
+    'disk': '磁盘',
+    'cpu': 'CPU',
+    'network': '网络',
+    'metrics': '指标',
+    'metric': '指标',
+    'performance': '性能',
+    'tools': '工具',
+    'tool': '工具',
+    'cluster': '集群',
+    'node': '节点',
+    'nodes': '节点',
+    'instance': '实例',
+    'instances': '实例',
+    'resource': '资源',
+    'resources': '资源',
+    'permission': '权限',
+    'permissions': '权限',
+    'role': '角色',
+    'roles': '角色',
+    'group': '组',
+    'groups': '组',
+    'team': '团队',
+    'project': '项目',
+    'projects': '项目',
+    'api': 'API',
+    'endpoint': '端点',
+    'url': 'URL',
+    'path': '路径',
+    'query': '查询',
+    'response': '响应',
+    'request': '请求',
+    'token': '令牌',
+    'key': '密钥',
+    'secret': '密钥',
+    'password': '密码',
+    'credential': '凭证',
+    'credentials': '凭证',
+    'auth': '认证',
+    'authentication': '认证',
+    'authorization': '授权'
+  };
+  
+  // 尝试翻译
+  const translated = words.map(word => {
+    if (verbMap[word]) return verbMap[word];
+    if (nounMap[word]) return nounMap[word];
+    return word;
+  });
+  
+  // 如果第一个词是动词，调整语序
+  if (verbMap[words[0]] && translated.length > 1) {
+    return translated.join('');
+  }
+  
+  return translated.join(' ');
+};
+
+/**
+ * 初始化全局事件委托
+ */
+const initCardEvents = () => {
+  if (cardEventInitialized) return;
+  cardEventInitialized = true;
+
+  // 添加全局样式 - 使用 CSS 类控制展开/折叠
+  const styleEl = document.createElement('style');
+  styleEl.textContent = `
+    @keyframes tool-spin { 
+      0% { transform: rotate(0deg); } 
+      100% { transform: rotate(360deg); } 
+    }
+    .tool-call-group-header:hover {
+      background: var(--color-fill-1);
+    }
+    .tool-call-group-body {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease-out;
+    }
+    .tool-call-group.expanded .tool-call-group-body {
+      max-height: 2000px;
+    }
+    .tool-call-expand-icon {
+      transition: transform 0.2s ease;
+    }
+    .tool-call-group.expanded .tool-call-expand-icon {
+      transform: rotate(90deg);
+    }
+    .tool-call-item-header {
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .tool-call-item-header:hover {
+      background: var(--color-fill-1);
+    }
+    .tool-call-item-detail {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease-out;
+    }
+    .tool-call-item.expanded .tool-call-item-detail {
+      max-height: 5000px;
+    }
+    .tool-call-item-expand-icon {
+      transition: transform 0.2s ease;
+    }
+    .tool-call-item.expanded .tool-call-item-expand-icon {
+      transform: rotate(90deg);
+    }
+  `;
+  document.head.appendChild(styleEl);
+
+  // 点击事件委托 - 展开/折叠工具组
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const header = target.closest('.tool-call-group-header') as HTMLElement | null;
+
+    if (header) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const group = header.closest('.tool-call-group') as HTMLElement | null;
+      if (group) {
+        const body = group.querySelector('.tool-call-group-body') as HTMLElement | null;
+        const icon = group.querySelector('.tool-call-expand-icon') as HTMLElement | null;
+        
+        const isExpanded = group.getAttribute('data-expanded') === 'true';
+        const newExpanded = !isExpanded;
+        
+        group.setAttribute('data-expanded', newExpanded ? 'true' : 'false');
+        
+        // 直接操作样式
+        if (body) {
+          body.style.maxHeight = newExpanded ? '2000px' : '0';
+          body.style.overflow = 'hidden';
+        }
+        if (icon) {
+          icon.style.transform = newExpanded ? 'rotate(90deg)' : 'rotate(0deg)';
+        }
+      }
+    }
+  });
+};
+
+/**
+ * 确保事件已初始化
  */
 export const initToolCallTooltips = () => {
   if (typeof window !== 'undefined') {
-    initGlobalTooltip();
+    initCardEvents();
   }
 };
 
 /**
- * 渲染单个工具调用 Tag
+ * 同步更新工具调用状态（用于实时更新）
  */
-export const renderToolCallCard = (id: string, info: ToolCallInfo): string => {
-  const isCalling = info.status === 'calling';
-  const detailSections = buildToolDetailSections(info);
-  const hasDetails = detailSections.length > 0;
-  const encodedToolDetails = hasDetails ? encodeToolDetails(info) : '';
+export const syncActiveToolCallPanel = (toolId: string, info: ToolCallInfo) => {
+  // 更新单个工具项的状态图标
+  const toolItem = document.querySelector(`.tool-call-item[data-tool-id="${CSS.escape(toolId)}"]`) as HTMLElement | null;
+  if (toolItem) {
+    const statusIcon = toolItem.querySelector('.tool-call-status-icon');
+    if (statusIcon) {
+      const isCalling = info.status === 'calling';
+      if (isCalling) {
+        statusIcon.innerHTML = `<span style="display: inline-block; width: 10px; height: 10px; border: 1.5px solid #1677ff; border-top-color: transparent; border-radius: 50%; animation: tool-spin 0.8s linear infinite;"></span>`;
+      } else {
+        statusIcon.innerHTML = `<span style="color: #52c41a; font-size: 12px;">✓</span>`;
+      }
+    }
+    
+    // 更新概要（如果 args 有变化）
+    const summarySpan = toolItem.querySelector('.tool-call-summary');
+    if (summarySpan) {
+      const summary = extractSummary(info.args);
+      if (summary) {
+        summarySpan.innerHTML = `<span style="color: var(--color-text-3);">· ${escapeHtml(summary)}</span>`;
+      }
+    }
+  }
 
-  // 根据状态决定颜色
-  const bgColor = isCalling ? 'rgba(22, 119, 255, 0.1)' : 'rgba(82, 196, 26, 0.1)';
-  const borderColor = isCalling ? '#1677ff' : '#52c41a';
-  const textColor = isCalling ? '#1677ff' : '#52c41a';
+  // 更新组头部的状态
+  const group = document.querySelector('.tool-call-group') as HTMLElement | null;
+  if (group) {
+    const items = group.querySelectorAll('.tool-call-item');
+    const completedCount = Array.from(items).filter(item => {
+      const icon = item.querySelector('.tool-call-status-icon span');
+      return icon && icon.textContent === '✓';
+    }).length;
+    const totalCount = items.length;
 
-  // Spin 动画样式
-  const spinStyle = isCalling ? '<style>@keyframes tool-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>' : '';
-
-  // 状态图标
-  const statusIcon = isCalling
-    ? `<span style="display: inline-block; width: 12px; height: 12px; margin-left: 6px; border: 2px solid ${textColor}; border-top-color: transparent; border-radius: 50%; animation: tool-spin 0.8s linear infinite;"></span>`
-    : `<span style="display: inline-block; margin-left: 6px; color: ${textColor};">✓</span>`;
-
-  const expandIcon = hasDetails
-    ? `<span class="tool-call-expand-icon" style="display: inline-block; margin-left: 2px; font-size: 11px; color: ${textColor};">▾</span>`
-    : '';
-
-  return `${spinStyle}<span class="tool-call-wrapper" data-tool-id="${escapeHtml(id)}" style="display: inline-block; margin-right: 8px; margin-bottom: 8px; vertical-align: top; max-width: 100%;"><button type="button" class="tool-call-trigger" data-tool-id="${escapeHtml(id)}" data-open="false" ${hasDetails ? `data-tool-details="${escapeHtml(encodedToolDetails)}"` : ''} style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; font-size: 13px; line-height: 20px; background: ${bgColor}; border: 1px solid ${borderColor}; border-radius: 4px; color: ${textColor}; font-weight: 500; cursor: ${hasDetails ? 'pointer' : 'default'}; vertical-align: middle; max-width: 100%;"><span>🔧 ${escapeHtml(info.name)}</span>${statusIcon}${expandIcon}</button></span>`;
+    // 更新组状态图标
+    const groupStatusIcon = group.querySelector('.tool-call-group-status');
+    if (groupStatusIcon) {
+      const hasRunning = completedCount < totalCount;
+      if (hasRunning) {
+        groupStatusIcon.innerHTML = `<span style="display: inline-block; width: 10px; height: 10px; border: 1.5px solid #1677ff; border-top-color: transparent; border-radius: 50%; animation: tool-spin 0.8s linear infinite;"></span>`;
+      } else {
+        groupStatusIcon.innerHTML = `<span style="color: #52c41a; font-size: 12px;">✓</span>`;
+      }
+    }
+  }
 };
 
 /**
- * 渲染所有工具调用
+ * 关闭工具调用面板（兼容旧 API）
  */
-export const renderAllToolCalls = (toolCalls: Map<string, ToolCallInfo>): string => {
-  return Array.from(toolCalls.entries())
-    .map(([id, info]) => renderToolCallCard(id, info))
-    .join('');
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export const closeActiveToolCallPanel = (_toolId?: string) => {
+  // 新设计中不需要关闭单个面板，保留空实现以兼容
+};
+
+/**
+ * 渲染单个工具项（一行显示：状态 + 工具名 + 概要，点击展开详情）
+ */
+const renderToolItem = (id: string, info: ToolCallInfo): string => {
+  const isCalling = info.status === 'calling';
+  const summary = extractSummary(info.args, info.name);
+
+  // 状态图标
+  const statusIcon = isCalling
+    ? `<span style="display: inline-block; width: 10px; height: 10px; border: 1.5px solid #1677ff; border-top-color: transparent; border-radius: 50%; animation: tool-spin 0.8s linear infinite;"></span>`
+    : `<span style="color: #52c41a; font-size: 12px;">✓</span>`;
+
+  // 概要显示（调用目的）- 放在工具名右边
+  const summaryHtml = summary 
+    ? `<span class="tool-call-summary" style="margin-left: 8px;"><span style="color: var(--color-text-3);">· ${escapeHtml(summary)}</span></span>` 
+    : `<span class="tool-call-summary"></span>`;
+
+  // 格式化 JSON 用于详情显示
+  const formatJson = (str: string): string => {
+    if (!str || str === '{}' || str === '""' || str === 'null') return '';
+    try {
+      const parsed = JSON.parse(str);
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      return str;
+    }
+  };
+
+  // 提取结果中的 content 字段（如果存在）并格式化
+  const extractResultContent = (str: string): string => {
+    if (!str || str === '{}' || str === '""' || str === 'null') return '';
+    
+    // 辅助函数：尝试解析并格式化 JSON
+    const tryParseAndFormat = (content: string): string | null => {
+      // 处理转义字符：将 \n, \t 等字面字符串转换为实际字符
+      const unescaped = content
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t')
+        .replace(/\\r/g, '\r')
+        .replace(/\\"/g, '"')
+        .replace(/\\'/g, "'");
+      
+      try {
+        const parsed = JSON.parse(unescaped);
+        return JSON.stringify(parsed, null, 2);
+      } catch {
+        // 如果解析失败，返回处理过转义的内容
+        return null;
+      }
+    };
+    
+    // 首先尝试解析为 JSON
+    try {
+      const parsed = JSON.parse(str);
+      // 如果有 content 字段，只返回 content 的内容
+      if (parsed && typeof parsed === 'object' && 'content' in parsed) {
+        const content = parsed.content;
+        // content 可能是字符串或对象
+        if (typeof content === 'string') {
+          const formatted = tryParseAndFormat(content);
+          return formatted || content;
+        } else {
+          return JSON.stringify(content, null, 2);
+        }
+      }
+      // 没有 content 字段，返回整个对象
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      // JSON 解析失败，尝试提取 Python repr 格式的 content
+      // 格式: content='...' name='...' tool_call_id='...'
+      
+      // 匹配 content='...' 或 content="..."，捕获到 name= 或 tool_call_id= 之前的内容
+      let content = '';
+      
+      // 查找 content= 的位置
+      const contentStart = str.indexOf('content=');
+      if (contentStart !== -1) {
+        // 找到 content= 后面的引号类型
+        const afterEqual = str.substring(contentStart + 8);
+        const quoteChar = afterEqual[0];
+        
+        if (quoteChar === "'" || quoteChar === '"') {
+          // 找到匹配的结束位置（考虑到内容中可能有嵌套的引号）
+          let depth = 0;
+          let endPos = 1;
+          for (let i = 1; i < afterEqual.length; i++) {
+            const char = afterEqual[i];
+            if (char === '{' || char === '[') depth++;
+            else if (char === '}' || char === ']') depth--;
+            else if (char === quoteChar && depth === 0 && afterEqual[i - 1] !== '\\') {
+              endPos = i;
+              break;
+            }
+          }
+          content = afterEqual.substring(1, endPos);
+        } else {
+          // 没有引号，找到空格或结尾
+          const spacePos = afterEqual.search(/\s+(?:name=|tool_call_id=)/);
+          content = spacePos !== -1 ? afterEqual.substring(0, spacePos) : afterEqual;
+        }
+      }
+      
+      if (content) {
+        const formatted = tryParseAndFormat(content);
+        if (formatted) return formatted;
+        
+        // 如果不是 JSON，至少处理转义字符
+        return content
+          .replace(/\\n/g, '\n')
+          .replace(/\\t/g, '\t')
+          .replace(/\\r/g, '\r')
+          .replace(/\\"/g, '"')
+          .replace(/\\'/g, "'");
+      }
+      
+      // 都失败了，返回原始字符串
+      return str;
+    }
+  };
+
+  // 详情内容：参数和结果
+  const argsFormatted = formatJson(info.args);
+  const resultFormatted = info.result ? extractResultContent(info.result) : '';
+  
+  let detailContent = '';
+  if (argsFormatted) {
+    detailContent += `<div style="margin-bottom: 8px;"><div style="font-weight: 500; color: var(--color-text-2); margin-bottom: 4px;">参数:</div><pre style="margin: 0; padding: 8px; background: var(--color-fill-2); border-radius: 4px; font-size: 11px; overflow-x: auto; white-space: pre-wrap; word-break: break-word;">${escapeHtml(argsFormatted)}</pre></div>`;
+  }
+  if (resultFormatted) {
+    detailContent += `<div><div style="font-weight: 500; color: var(--color-text-2); margin-bottom: 4px;">结果:</div><pre style="margin: 0; padding: 8px; background: var(--color-fill-2); border-radius: 4px; font-size: 11px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; max-height: 300px; overflow-y: auto;">${escapeHtml(resultFormatted)}</pre></div>`;
+  }
+
+  // 如果没有详情内容，不显示展开图标
+  const hasDetail = detailContent.length > 0;
+  const expandIcon = hasDetail 
+    ? `<span class="tool-call-item-expand-icon" style="font-size: 8px; width: 12px; display: inline-flex; align-items: center; justify-content: center; color: var(--color-text-4);">▶</span>`
+    : `<span style="width: 12px;"></span>`;
+
+  const header = `<div class="tool-call-item-header" style="display: flex; align-items: center; gap: 6px; padding: 4px 0;"><span class="tool-call-status-icon" style="flex-shrink: 0; width: 16px; display: inline-flex; align-items: center; justify-content: center;">${statusIcon}</span>${expandIcon}<span style="flex: 1; min-width: 0; font-size: 12px; line-height: 1.5;"><span style="color: var(--color-text-1); font-weight: 500;">${escapeHtml(info.name)}</span>${summaryHtml}</span></div>`;
+
+  const detail = hasDetail 
+    ? `<div class="tool-call-item-detail" style="padding-left: 34px; font-size: 12px;">${detailContent}</div>`
+    : '';
+
+  return `<div class="tool-call-item" data-tool-id="${escapeHtml(id)}" data-has-detail="${hasDetail}">${header}${detail}</div>`;
+};
+
+/**
+ * 渲染单个工具调用卡片（兼容旧 API）
+ */
+export const renderToolCallCard = (id: string, info: ToolCallInfo): string => {
+  return renderToolItem(id, info);
+};
+
+/**
+ * 渲染所有工具调用（回复过程中默认展开，回复结束后收起）
+ * @param toolCalls 工具调用信息
+ * @param isStreaming 是否正在流式回复中（可选，默认根据工具状态判断）
+ */
+export const renderAllToolCalls = (toolCalls: Map<string, ToolCallInfo>, isStreaming?: boolean): string => {
+  if (toolCalls.size === 0) return '';
+
+  const toolsArray = Array.from(toolCalls.entries());
+  const totalCount = toolsArray.length;
+  const completedCount = toolsArray.filter(([, info]) => info.status === 'completed').length;
+  const hasRunning = completedCount < totalCount;
+
+  // 如果传入了 isStreaming 参数，使用它；否则根据工具状态判断
+  const shouldExpand = isStreaming !== undefined ? isStreaming : hasRunning;
+
+  // 组头部状态图标
+  const groupStatusIcon = hasRunning
+    ? `<span style="display: inline-block; width: 10px; height: 10px; border: 1.5px solid #1677ff; border-top-color: transparent; border-radius: 50%; animation: tool-spin 0.8s linear infinite;"></span>`
+    : `<span style="color: #52c41a; font-size: 12px;">✓</span>`;
+
+  // 渲染所有工具项
+  const toolItems = toolsArray.map(([id, info]) => renderToolItem(id, info)).join('');
+
+  // 提示文字：流式回复中显示"执行中"，完成后显示"点击展开查看详情"
+  const hintText = shouldExpand ? '执行中...' : '点击展开查看详情';
+
+  // 组头部
+  const header = `<div class="tool-call-group-header" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; cursor: pointer; user-select: none; font-size: 12px; color: var(--color-text-3); border-radius: 4px; margin: 2px 0;"><span class="tool-call-expand-icon" style="font-size: 8px; width: 12px; display: inline-flex; align-items: center; justify-content: center;">▶</span><span class="tool-call-group-status" style="display: inline-flex; align-items: center;">${groupStatusIcon}</span><span>已调用 ${totalCount} 个工具</span><span style="color: var(--color-text-4);">${hintText}</span></div>`;
+
+  // 组内容
+  const body = `<div class="tool-call-group-body" style="padding-left: 20px; margin-top: 4px;">${toolItems}</div>`;
+
+  // 流式回复中默认展开，回复结束后收起
+  const expandedClass = shouldExpand ? ' expanded' : '';
+
+  return `<div class="tool-call-group${expandedClass}" style="margin: 4px 0;">${header}${body}</div>`;
 };
 
 /**
  * 渲染错误消息卡片
  */
-export const renderErrorMessage = (error: string, type: 'error' | 'run_error' = 'error', errorCode?: string): string => {
-  const config = type === 'run_error'
-    ? {
-      icon: '⚠️',
-      title: `运行错误${errorCode ? ` (${errorCode})` : ''}`
-    }
-    : {
-      icon: '❌',
-      title: '执行出错'
-    };
+export const renderErrorMessage = (error: string, type: 'error' | 'run_error' = 'error', code?: string): string => {
+  const bgColor = 'rgba(255, 77, 79, 0.05)';
+  const textColor = '#ff4d4f';
+  const icon = type === 'run_error' ? '⚠️' : '❌';
+  const title = type === 'run_error' ? '运行错误' : '错误';
+  const codeDisplay = code ? ` (${code})` : '';
+  // 移除连续空行，避免破坏 HTML 块解析
+  const sanitizedError = error.replace(/\n\s*\n/g, '\n');
 
-  return `<div class="my-3 p-4 rounded-lg border-l-4 border-red-500 bg-linear-to-br from-(--color-fill-2) to-red-50/5 shadow-md">
-    <div class="flex items-center gap-2 mb-2">
-      <span class="text-lg">${config.icon}</span>
-      <span class="flex-1 font-semibold text-sm text-red-500">${config.title}</span>
-    </div>
-    <div class="p-2 bg-(--color-fill-3) rounded text-xs text-(--color-text-2) font-mono">${error}</div>
-  </div>`;
+  return `<div style="margin: 4px 0; padding: 8px 12px; background: ${bgColor}; border-radius: 6px; font-size: 12px;"><div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;"><span>${icon}</span><span style="color: ${textColor}; font-weight: 500;">${title}${codeDisplay}</span></div><pre style="margin: 0; font-family: monospace; font-size: 11px; color: var(--color-text-2); white-space: pre-wrap; word-break: break-word;">${escapeHtml(sanitizedError)}</pre></div>`;
 };

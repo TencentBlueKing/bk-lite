@@ -8,6 +8,7 @@ export interface CollectorOperationProps {
   operationType: OperationType;
   taskId: string;
   collectorId?: string;
+  collectorName?: string;
   collectorPackageId?: number;
   cancel: () => void;
 }
@@ -16,6 +17,7 @@ const CollectorOperation: React.FC<CollectorOperationProps> = ({
   operationType,
   taskId,
   collectorId,
+  collectorName,
   collectorPackageId,
   cancel
 }) => {
@@ -81,7 +83,13 @@ const CollectorOperation: React.FC<CollectorOperationProps> = ({
         <div className="p-[10px]">
           <div className="mb-8 px-[20px]">
             <Steps current={currentStep} size="default">
-              <Steps.Step title={operationName} />
+              <Steps.Step
+                title={
+                  collectorName
+                    ? `${operationName}（${collectorName}）`
+                    : operationName
+                }
+              />
               <Steps.Step
                 title={t('node-manager.controller.operationComplete')}
               />

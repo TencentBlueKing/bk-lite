@@ -1,22 +1,24 @@
 # -- coding: utf-8 --
 from django.db import connection, transaction
 from django.db.models import Count
+from rest_framework.response import Response
 from rest_framework.decorators import action
 
-from apps.alerts.constants.constants import SessionStatus
+from apps.alerts.constants import PERMISSION_ALERT
+from apps.alerts.constants.constants import SessionStatus, PERMISSION_EVENT
 from apps.alerts.filters import AlertModelFilter
-from apps.alerts.models.models import Alert
-from apps.alerts.serializers import AlertModelSerializer
+from apps.alerts.models.models import Alert, Event
+from apps.alerts.serializers import AlertModelSerializer, EventModelSerializer
 from apps.alerts.service.alter_operator import AlertOperator
-from apps.alerts.utils.permission_scope import filter_alert_queryset_for_request
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
+from apps.core.utils.viewset_utils import AuthViewSet
 from apps.system_mgmt.models.user import User
 from config.drf.pagination import CustomPageNumberPagination
-from config.drf.viewsets import ModelViewSet
 
 
-class AlertModelViewSet(ModelViewSet):
+
+class AlertModelViewSet(AuthViewSet):
     # -level 告警等级排序
     queryset = Alert.objects.exclude(session_status__in=SessionStatus.NO_CONFIRMED)
     serializer_class = AlertModelSerializer
@@ -24,6 +26,8 @@ class AlertModelViewSet(ModelViewSet):
     ordering = ["-created_at"]
     filterset_class = AlertModelFilter
     pagination_class = CustomPageNumberPagination
+    ORGANIZATION_FIELD = "team"
+    permission_key = PERMISSION_ALERT
 
     def get_queryset(self):
         queryset = (
@@ -49,12 +53,9 @@ class AlertModelViewSet(ModelViewSet):
                     incident_title_annotated=StringAgg("incident__title", delimiter=", ", distinct=True),
                 )
                 .prefetch_related("events__source", "incident_set")
-            )
+        )
 
-        request = getattr(self, "request", None)
-        if request is None:
-            return queryset
-        return filter_alert_queryset_for_request(queryset, request)
+        return queryset
 
     @staticmethod
     def _build_operator_user_map(page):
@@ -66,9 +67,13 @@ class AlertModelViewSet(ModelViewSet):
             return {}
         return dict(User.objects.filter(username__in=operator_usernames).values_list("username", "display_name"))
 
+    def _get_permission_filtered_queryset(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+        return self.get_queryset_by_permission(request, queryset)
+
     @HasPermission("Alarms-View")
     def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
+        queryset = self._get_permission_filtered_queryset(request)
         page = self.paginate_queryset(queryset)
         if page is not None:
             operator_user_map = self._build_operator_user_map(page)
@@ -112,6 +117,22 @@ class AlertModelViewSet(ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
+    @HasPermission("Alarms-View")
+    @action(methods=["get"], detail=True, url_path="events", url_name="events")
+    def events(self, request, *args, **kwargs):
+        alert_queryset = self.get_queryset_by_permission(request, self.get_queryset())
+        alert = alert_queryset.get(pk=kwargs["pk"])
+        queryset = self.get_queryset_by_permission(request, Event.objects.select_related("source").filter(alert=alert), permission_key=PERMISSION_EVENT)
+        queryset = queryset.order_by("-received_at")
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = EventModelSerializer(page, many=True, context=self.get_serializer_context())
+            return self.get_paginated_response(serializer.data)
+
+        serializer = EventModelSerializer(queryset, many=True, context=self.get_serializer_context())
+        return Response(serializer.data)
+
     @HasPermission("Alarms-Edit")
     @action(
         methods=["post"],
@@ -125,7 +146,9 @@ class AlertModelViewSet(ModelViewSet):
         Custom operator method to handle alert operations.
         """
         alert_id_list = request.data["alert_id"]
-        allowed_alert_ids = set(self.filter_queryset(self.get_queryset()).filter(alert_id__in=alert_id_list).values_list("alert_id", flat=True))
+        allowed_alert_ids = set(
+            self._get_permission_filtered_queryset(request).filter(alert_id__in=alert_id_list).values_list("alert_id", flat=True)
+        )
         operator = AlertOperator(user=self.request.user.username)
         result_list = {}
         status_list = []

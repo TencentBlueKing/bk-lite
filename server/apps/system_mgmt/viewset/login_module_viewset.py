@@ -51,7 +51,7 @@ class LoginModuleViewSet(LanguageViewSet):
         # 记录操作日志
         if response.status_code == 201:
             module_name = response.data.get("name", "")
-            log_operation(request, "create", "login_module", f"新增认证源: {module_name}")
+            log_operation(request, "create", "system-manager", f"新增认证源: {module_name}")
 
         return response
 
@@ -86,7 +86,7 @@ class LoginModuleViewSet(LanguageViewSet):
         # 记录操作日志
         if response.status_code == 200:
             module_name = response.data.get("name", "")
-            log_operation(request, "update", "login_module", f"编辑认证源: {module_name}")
+            log_operation(request, "update", "system-manager", f"编辑认证源: {module_name}")
 
         return response
 
@@ -114,7 +114,7 @@ class LoginModuleViewSet(LanguageViewSet):
 
         # 记录操作日志
         if response.status_code == 204:
-            log_operation(request, "delete", "login_module", f"删除认证源: {module_name}")
+            log_operation(request, "delete", "system-manager", f"删除认证源: {module_name}")
 
         return response
 
@@ -124,7 +124,7 @@ class LoginModuleViewSet(LanguageViewSet):
         sync_user_and_group_by_login_module.delay(obj.id)
 
         # 记录操作日志
-        log_operation(request, "execute", "login_module", f"开启认证源: {obj.name}")
+        log_operation(request, "execute", "system-manager", f"开启认证源: {obj.name}")
 
         message = self.loader.get("success.sync_task_initiated") if self.loader else "Sync task has been initiated."
         return JsonResponse({"result": True, "message": message})

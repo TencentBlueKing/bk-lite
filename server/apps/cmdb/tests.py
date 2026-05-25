@@ -22,9 +22,10 @@ from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from django.utils import timezone
 from django.test import SimpleTestCase
+from django.utils import timezone
 from rest_framework.exceptions import ValidationError
+from apps.core.exceptions.base_app_exception import BaseAppException
 
 # 检查是否在Django环境中
 if __name__ == "__main__":
@@ -40,9 +41,10 @@ if __name__ == "__main__":
 
     django.setup()
 
-from apps.cmdb.constants.constants import VIEW
+from apps.cmdb.constants.constants import PERMISSION_INSTANCES, VIEW
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.collect_tool_service import CollectToolService
+from apps.cmdb.utils.permission_util import DENY_PERMISSION_PLACEHOLDER, CmdbRulesFormatUtil
 from apps.core.logger import cmdb_logger as logger
 
 
@@ -71,6 +73,21 @@ def _make_instance(inst_id=1001, creator="bob", organizations=None):
         "organization": organizations or [1],
         "_creator": creator,
     }
+
+
+def _make_topology_node(inst_id, inst_name, model_id="host", children=None, **extra):
+    node = {
+        "_id": inst_id,
+        "model_id": model_id,
+        "inst_name": inst_name,
+        "children": children or [],
+    }
+    node.update(extra)
+    return node
+
+
+def _topology_child_ids(node):
+    return [child.get("_id") for child in (node or {}).get("children", [])]
 
 
 def _response_json(response):
@@ -155,6 +172,172 @@ def test_instance_association_instance_list_denies_user_without_object_permissio
     assert _response_json(response)["result"] is False
     mock_check_permission.assert_called_once()
     mock_association_list.assert_not_called()
+
+
+def test_topo_search_denies_user_without_object_permission():
+    from apps.cmdb.views.instance import InstanceViewSet
+
+    request = _make_cmdb_request(username="alice")
+    instance = _make_instance()
+
+    with (
+        patch(
+            "apps.cmdb.views.instance.InstanceManage.query_entity_by_id",
+            return_value=instance,
+        ),
+        patch.object(
+            InstanceViewSet,
+            "check_instance_permission",
+            return_value=False,
+        ) as mock_check_permission,
+        patch("apps.cmdb.views.instance.InstanceManage.topo_search_lite") as mock_topo_search,
+    ):
+        response = InstanceViewSet().topo_search(request, "host", 1001)
+
+    assert response.status_code == 403
+    assert _response_json(response)["result"] is False
+    mock_check_permission.assert_called_once_with(request, instance, VIEW)
+    mock_topo_search.assert_not_called()
+
+
+def test_topo_search_filters_unauthorized_neighbors_from_response():
+    from apps.cmdb.views.instance import InstanceViewSet
+
+    request = _make_cmdb_request(username="alice")
+    center = _make_instance(inst_id=1001)
+    visible_child = _make_instance(inst_id=1002)
+    hidden_child = _make_instance(inst_id=1003, organizations=[2])
+    topology = {
+        "src_result": _make_topology_node(
+            1001,
+            "host-1001",
+            children=[
+                _make_topology_node(1002, "host-1002", children=[]),
+                _make_topology_node(1003, "secret-host", children=[]),
+            ],
+        ),
+        "dst_result": _make_topology_node(1001, "host-1001", children=[]),
+    }
+
+    with (
+        patch(
+            "apps.cmdb.views.instance.InstanceManage.query_entity_by_id",
+            return_value=center,
+        ),
+        patch.object(
+            InstanceViewSet,
+            "check_instance_permission",
+            return_value=True,
+        ) as mock_check_permission,
+        patch(
+            "apps.cmdb.views.instance.CmdbRulesFormatUtil.format_user_groups_permissions",
+            return_value={1: {"inst_names": ["host-1002"], "permission_instances_map": {"host-1002": ["View"]}}},
+        ) as mock_permissions,
+        patch(
+            "apps.cmdb.services.instance.InstanceManage._query_instance_map_by_ids",
+            return_value={1001: center, 1002: visible_child, 1003: hidden_child},
+        ),
+        patch("apps.cmdb.services.instance.GraphClient") as mock_graph_client,
+    ):
+        graph_context = MagicMock()
+        graph_context.__enter__.return_value.query_topo_lite.return_value = topology
+        graph_context.__exit__.return_value = False
+        mock_graph_client.return_value = graph_context
+        response = InstanceViewSet().topo_search(request, "host", 1001)
+
+    payload = _response_json(response)
+    assert response.status_code == 200
+    assert payload["data"]["src_result"]["inst_name"] == "host-1001"
+    assert _topology_child_ids(payload["data"]["src_result"]) == [1002]
+    assert "secret-host" not in json.dumps(payload["data"], ensure_ascii=False)
+    mock_check_permission.assert_called_once_with(request, center, VIEW)
+    mock_permissions.assert_called_once_with(request=request, model_id="host")
+
+
+def test_topo_search_expand_filters_reintroduced_unauthorized_nodes():
+    from apps.cmdb.views.instance import InstanceViewSet
+
+    request = _make_cmdb_request(username="alice")
+    center = _make_instance(inst_id=1001)
+    visible_child = _make_instance(inst_id=1002)
+    hidden_grandchild = _make_instance(inst_id=1004, organizations=[2])
+    topology = {
+        "src_result": _make_topology_node(
+            1001,
+            "host-1001",
+            children=[
+                _make_topology_node(
+                    1002,
+                    "host-1002",
+                    children=[_make_topology_node(1004, "hidden-child")],
+                )
+            ],
+        ),
+        "dst_result": _make_topology_node(1001, "host-1001", children=[]),
+    }
+
+    with (
+        patch(
+            "apps.cmdb.views.instance.InstanceManage.query_entity_by_id",
+            return_value=center,
+        ),
+        patch.object(
+            InstanceViewSet,
+            "check_instance_permission",
+            return_value=True,
+        ) as mock_check_permission,
+        patch(
+            "apps.cmdb.views.instance.CmdbRulesFormatUtil.format_user_groups_permissions",
+            return_value={1: {"inst_names": ["host-1002"], "permission_instances_map": {"host-1002": ["View"]}}},
+        ) as mock_permissions,
+        patch(
+            "apps.cmdb.services.instance.InstanceManage._query_instance_map_by_ids",
+            return_value={1001: center, 1002: visible_child, 1004: hidden_grandchild},
+        ),
+        patch("apps.cmdb.services.instance.GraphClient") as mock_graph_client,
+    ):
+        graph_context = MagicMock()
+        graph_context.__enter__.return_value.query_topo_lite.return_value = topology
+        graph_context.__exit__.return_value = False
+        mock_graph_client.return_value = graph_context
+        expand_request = SimpleNamespace(
+            **request.__dict__,
+            data={"inst_id": 1001, "parent_id": [1001, 1002]},
+        )
+        response = InstanceViewSet().topo_search_expand_post(expand_request)
+
+    payload = _response_json(response)
+    assert response.status_code == 200
+    assert _topology_child_ids(payload["data"]["src_result"]) == [1002]
+    assert payload["data"]["src_result"]["children"][0]["children"] == []
+    assert "hidden-child" not in json.dumps(payload["data"], ensure_ascii=False)
+    mock_check_permission.assert_called_once_with(expand_request, center, VIEW)
+    mock_permissions.assert_called_once_with(request=expand_request, model_id="host")
+
+
+def test_instance_manage_topology_filter_preserves_authorized_topology():
+    from apps.cmdb.services.instance import InstanceManage
+
+    center = _make_instance(inst_id=1001)
+    visible_child = _make_instance(inst_id=1002)
+    topology = {
+        "src_result": _make_topology_node(1001, "host-1001", children=[_make_topology_node(1002, "host-1002")]),
+        "dst_result": _make_topology_node(1001, "host-1001", children=[]),
+    }
+
+    with patch.object(
+        InstanceManage,
+        "_query_instance_map_by_ids",
+        return_value={1001: center, 1002: visible_child},
+    ):
+        filtered = InstanceManage._filter_topology_result(
+            topology,
+            center_id=1001,
+            permission_map={1: {"inst_names": [], "permission_instances_map": {}}},
+            user=SimpleNamespace(username="alice"),
+        )
+
+    assert filtered == topology
 
 
 def test_instance_association_map_batches_graph_queries_by_direction():
@@ -257,6 +440,146 @@ def test_check_instances_permission_limits_query_to_target_instance_ids():
             {"field": "organization", "type": "list_any[]", "value": [1]},
         ],
     )
+
+
+def test_falkordb_entity_count_applies_base_params_before_grouping():
+    from apps.cmdb.graph.falkordb import FalkorDBClient
+
+    client = FalkorDBClient.__new__(FalkorDBClient)
+    client.ENABLE_PARAMETERIZATION = False
+    client._param_collector = None
+    client._execute_query = MagicMock(
+        return_value=SimpleNamespace(
+            header=[("", "os_type"), ("", "count")],
+            result_set=[["1", 2]],
+        )
+    )
+
+    result = client.entity_count(
+        label="instance",
+        group_by_attr="os_type",
+        params=[{"field": "model_id", "type": "str=", "value": "host"}],
+        format_permission_dict={1: []},
+    )
+
+    assert result == {"1": 2}
+    sql = client._execute_query.call_args.args[0]
+    assert "model_id" in sql
+    assert "organization" in sql
+    assert "COUNT(n) AS count" in sql
+
+
+def test_group_inst_count_passes_base_params_and_permission_scope_to_graph_client():
+    from apps.cmdb.services.instance import InstanceManage
+
+    graph_client = MagicMock()
+    graph_client.entity_count.return_value = {"host": 3}
+
+    graph_context = MagicMock()
+    graph_context.__enter__.return_value = graph_client
+    graph_context.__exit__.return_value = False
+
+    with patch("apps.cmdb.services.instance.GraphClient", return_value=graph_context):
+        result = InstanceManage.group_inst_count(
+            group_by_attr="model_id",
+            permissions_map={1: {"inst_names": ["host-1", "host-2"], "permission_instances_map": {}}},
+            params=[{"field": "model_id", "type": "str=", "value": "host"}],
+            creator="alice",
+        )
+
+    assert result == {"host": 3}
+    graph_client.entity_count.assert_called_once_with(
+        label="instance",
+        group_by_attr="model_id",
+        params=[{"field": "model_id", "type": "str=", "value": "host"}],
+        format_permission_dict={
+            1: [
+                {"field": "inst_name", "type": "str[]", "value": ["host-1", "host-2"]},
+                {"field": "_creator", "type": "str=", "value": "alice"},
+            ]
+        },
+    )
+
+
+def test_get_instance_group_by_uses_graph_aggregation_for_enum_field():
+    from apps.cmdb.nats.nats import get_instance_group_by
+
+    with (
+        patch("apps.cmdb.nats.nats._build_nats_permission_map", return_value={1: {"inst_names": [], "permission_instances_map": {}}}),
+        patch(
+            "apps.cmdb.nats.nats.ModelManage.search_model_attr",
+            return_value=[
+                {
+                    "attr_id": "os_type",
+                    "attr_type": "enum",
+                    "enum_select_mode": "single",
+                    "option": [{"id": 1, "name": "Linux"}],
+                }
+            ],
+        ),
+        patch("apps.cmdb.nats.nats.GraphClient") as mock_graph_client,
+        patch("apps.cmdb.nats.nats.InstanceManage.group_inst_count", return_value={"1": 2, None: 1}) as mock_group_inst_count,
+    ):
+        result = get_instance_group_by(model_id="host", field="os_type", user_info={"team": 1, "user": "alice"})
+
+    assert result == {
+        "result": True,
+        "data": [
+            {"name": "Linux", "value": 2},
+            {"name": "unknown", "value": 1},
+        ],
+        "message": "",
+    }
+    mock_graph_client.assert_not_called()
+    mock_group_inst_count.assert_called_once_with(
+        group_by_attr="os_type",
+        permissions_map={1: {"inst_names": [], "permission_instances_map": {}}},
+        params=[{"field": "model_id", "type": "str=", "value": "host"}],
+    )
+
+
+def test_get_instance_group_by_falls_back_to_raw_enum_values_when_display_may_be_missing():
+    from apps.cmdb.nats.nats import get_instance_group_by
+
+    with (
+        patch("apps.cmdb.nats.nats._build_nats_permission_map", return_value={1: {"inst_names": [], "permission_instances_map": {}}}),
+        patch(
+            "apps.cmdb.nats.nats.ModelManage.search_model_attr",
+            return_value=[
+                {
+                    "attr_id": "os_type",
+                    "attr_type": "enum",
+                    "enum_select_mode": "single",
+                    "option": [{"id": 1, "name": "Linux"}, {"id": "other", "name": "Other"}],
+                }
+            ],
+        ),
+        patch("apps.cmdb.nats.nats.InstanceManage.group_inst_count", return_value={"1": 2, "other": 1, None: 1}) as mock_group_inst_count,
+    ):
+        result = get_instance_group_by(model_id="host", field="os_type", user_info={"team": 1, "user": "alice"})
+
+    assert result == {
+        "result": True,
+        "data": [
+            {"name": "Linux", "value": 2},
+            {"name": "Other", "value": 1},
+            {"name": "unknown", "value": 1},
+        ],
+        "message": "",
+    }
+    mock_group_inst_count.assert_called_once_with(
+        group_by_attr="os_type",
+        permissions_map={1: {"inst_names": [], "permission_instances_map": {}}},
+        params=[{"field": "model_id", "type": "str=", "value": "host"}],
+    )
+
+
+def test_falkordb_count_formatter_normalizes_list_keys():
+    from apps.cmdb.graph.falkordb_format import FormatDBResult
+
+    result = FormatDBResult(SimpleNamespace(result_set=[[["1"], 2]], header=[])).to_result_of_count()
+
+    assert result == {"1": 2}
 
 
 def test_get_relation_instances_falls_back_to_per_instance_when_batch_query_fails():
@@ -397,6 +720,162 @@ def test_relation_snapshot_skips_unknown_relations_when_no_previous_snapshot_exi
     assert events == []
 
 
+def test_relation_change_build_related_change_map_short_circuits_when_related_ids_empty():
+    from apps.cmdb.services.subscription_trigger import SubscriptionTriggerService
+
+    now = datetime.now()
+    rule = SimpleNamespace(
+        id=1,
+        name="rule-1",
+        model_id="host",
+        trigger_types=["relation_change"],
+        trigger_config={"relation_change": {"related_model": "service", "fields": []}},
+        snapshot_data={},
+        last_check_time=now,
+        created_at=now,
+    )
+
+    with patch(
+        "apps.cmdb.services.subscription_trigger.ModelManage.search_model_info",
+        return_value={"model_name": "主机"},
+    ):
+        service = SubscriptionTriggerService(rule)
+
+    result = service._build_related_change_map(
+        related_model="service",
+        related_instance_ids=[],
+        watch_fields=set(),
+        checkpoint=now,
+    )
+
+    assert result == ({}, 0)
+
+
+def test_relation_change_build_related_change_map_scopes_query_to_related_instance_ids():
+    from apps.cmdb.services.subscription_trigger import SubscriptionTriggerService
+
+    now = datetime.now()
+    rule = SimpleNamespace(
+        id=1,
+        name="rule-1",
+        model_id="host",
+        trigger_types=["relation_change"],
+        trigger_config={"relation_change": {"related_model": "service", "fields": ["status"]}},
+        snapshot_data={},
+        last_check_time=now,
+        created_at=now,
+    )
+    record = SimpleNamespace(
+        inst_id=201,
+        before_data={"status": "old"},
+        after_data={"status": "new"},
+    )
+
+    with (
+        patch(
+            "apps.cmdb.services.subscription_trigger.ModelManage.search_model_info",
+            return_value={"model_name": "主机"},
+        ),
+        patch("apps.cmdb.services.subscription_trigger.ChangeRecord.objects.filter") as mock_filter,
+    ):
+        mock_filter.return_value.order_by.return_value = [record]
+        service = SubscriptionTriggerService(rule)
+        result = service._build_related_change_map(
+            related_model="service",
+            related_instance_ids=[201, 202],
+            watch_fields={"status"},
+            checkpoint=now,
+        )
+
+    assert result == ({201: ["字段变化: status: old → new"]}, 1)
+    _, kwargs = mock_filter.call_args
+    assert kwargs["model_id"] == "service"
+    assert kwargs["inst_id__in"] == [201, 202]
+
+
+def test_relation_change_scopes_related_ids_from_previous_and_current_snapshots():
+    from apps.cmdb.services.subscription_trigger import SubscriptionTriggerService
+
+    now = datetime.now()
+    rule = SimpleNamespace(
+        id=1,
+        name="rule-1",
+        model_id="host",
+        trigger_types=["relation_change"],
+        trigger_config={"relation_change": {"related_model": "service", "fields": []}},
+        snapshot_data={"relations": {"101": {"service": [201]}, "102": {"service": [202]}}},
+        last_check_time=now,
+        created_at=now,
+    )
+    instances = [{"_id": 101, "inst_name": "host-101"}, {"_id": 102, "inst_name": "host-102"}]
+    current_snapshot = {"relations": {"101": {"service": [203]}, "102": {"service": [202]}}}
+
+    with (
+        patch(
+            "apps.cmdb.services.subscription_trigger.ModelManage.search_model_info",
+            return_value={"model_name": "主机"},
+        ),
+        patch.object(
+            SubscriptionTriggerService,
+            "_build_related_change_map",
+            return_value=({}, 0),
+        ) as mock_change_map,
+        patch.object(
+            SubscriptionTriggerService,
+            "_build_related_inst_name_map",
+            return_value={},
+        ),
+    ):
+        service = SubscriptionTriggerService(rule)
+        service._check_relation_change(current_snapshot, instances, now)
+
+    assert mock_change_map.call_count == 1
+    assert mock_change_map.call_args.kwargs["related_instance_ids"] == [201, 202, 203]
+
+
+def test_relation_change_ignores_unrelated_changes_but_keeps_add_remove_events():
+    from apps.cmdb.services.subscription_trigger import SubscriptionTriggerService
+
+    now = datetime.now()
+    rule = SimpleNamespace(
+        id=1,
+        name="rule-1",
+        model_id="host",
+        trigger_types=["relation_change"],
+        trigger_config={"relation_change": {"related_model": "service", "fields": ["status"]}},
+        snapshot_data={"relations": {"101": {"service": [201]}}},
+        last_check_time=now,
+        created_at=now,
+    )
+    instances = [{"_id": 101, "inst_name": "host-101"}]
+    current_snapshot = {"relations": {"101": {"service": [202]}}}
+
+    with (
+        patch(
+            "apps.cmdb.services.subscription_trigger.ModelManage.search_model_info",
+            return_value={"model_name": "主机"},
+        ),
+        patch.object(
+            SubscriptionTriggerService,
+            "_build_related_change_map",
+            return_value=({}, 0),
+        ),
+        patch.object(
+            SubscriptionTriggerService,
+            "_build_related_inst_name_map",
+            return_value={201: "svc-201", 202: "svc-202"},
+        ),
+    ):
+        service = SubscriptionTriggerService(rule)
+        events = service._check_relation_change(current_snapshot, instances, now)
+
+    assert len(events) == 1
+    summary = events[0].change_summary
+    assert "关联模型[service]变化:" in summary
+    assert "新增关联: [202]" in summary
+    assert "删除关联: [201]" in summary
+
+
 def test_collect_model_viewset_scopes_detail_queryset_by_permission():
     from apps.cmdb.views.collect import CollectModelViewSet
 
@@ -489,6 +968,51 @@ def test_build_region_query_credential_uses_authorized_task_lookup():
     mock_get_params_class.assert_called_once_with("qcloud", "qcloud")
 
 
+def test_aliyun_account_protocol_model_plugin_name_falls_back_to_normalized_model_id():
+    from apps.cmdb.node_configs.cloud.aliyun import AliyunNodeParams
+
+    instance = SimpleNamespace(
+        model_id="aliyun_account",
+        driver_type="protocol",
+        decrypt_credentials={},
+        params={},
+        timeout=60,
+    )
+
+    node = AliyunNodeParams(instance)
+
+    assert node.model_plugin_name == "aliyun_info"
+
+
+def test_aliyun_node_params_uses_secret_field_names_for_stargazer():
+    from apps.cmdb.node_configs.cloud.aliyun import AliyunNodeParams
+
+    instance = SimpleNamespace(
+        id=281,
+        model_id="aliyun_account",
+        driver_type="protocol",
+        decrypt_credentials={
+            "accessKey": "ak",
+            "accessSecret": "sk",
+            "regions": {"resource_id": "cn-guangzhou"},
+        },
+        params={},
+        timeout=300,
+    )
+
+    node = AliyunNodeParams(instance)
+
+    assert node.set_credential() == {
+        "secret_id": "${PASSWORD_secret_id_cmdb_281}",
+        "secret_key": "${PASSWORD_secret_key_cmdb_281}",
+        "region_id": "cn-guangzhou",
+    }
+    assert node.env_config() == {
+        "PASSWORD_secret_id_cmdb_281": "ak",
+        "PASSWORD_secret_key_cmdb_281": "sk",
+    }
+
+
 def test_collect_model_viewset_hides_system_tasks_from_default_list_queries():
     from apps.cmdb.views.collect import CollectModelViewSet
     from apps.core.utils.viewset_utils import AuthViewSet
@@ -564,7 +1088,43 @@ def test_task_status_excludes_hidden_system_tasks_from_statistics():
 
     assert response.status_code == 200
     filtered_queryset.filter.assert_called_once_with(is_visible=True)
-    visible_queryset.only.assert_called_once_with("model_id", "exec_status")
+    visible_queryset.only.assert_called_once_with("model_id", "driver_type", "exec_status")
+
+
+def test_task_status_splits_same_model_by_driver_type():
+    from apps.cmdb.views.collect import CollectModelViewSet
+
+    request = _make_cmdb_request()
+    request.user.permission = {"auto_collection-View"}
+    view = CollectModelViewSet()
+    view.request = request
+    view.action = "task_status"
+
+    filtered_queryset = MagicMock(name="filtered_queryset")
+    visible_queryset = MagicMock(name="visible_queryset")
+    only_queryset = MagicMock(name="only_queryset")
+    filtered_queryset.filter.return_value = visible_queryset
+    visible_queryset.only.return_value = only_queryset
+
+    serializer_rows = [
+        {"model_id": "physcial_server", "driver_type": "job", "exec_status": "success"},
+        {"model_id": "physcial_server", "driver_type": "protocol", "exec_status": "running"},
+    ]
+
+    with (
+        patch.object(CollectModelViewSet, "get_queryset", return_value=filtered_queryset),
+        patch.object(CollectModelViewSet, "get_queryset_by_permission", return_value=filtered_queryset),
+        patch("apps.cmdb.views.collect.CollectModelIdStatusSerializer") as mock_serializer,
+    ):
+        mock_serializer.return_value.data = serializer_rows
+        response = view.task_status(request)
+
+    payload = _response_json(response)
+    assert payload["result"] is True
+    assert payload["data"] == {
+        "physcial_server__job": {"success": 1, "failed": 0, "running": 0},
+        "physcial_server__protocol": {"success": 0, "failed": 0, "running": 1},
+    }
 
 
 def test_collect_model_service_allows_node_mgmt_empty_value_credential():
@@ -2210,3 +2770,291 @@ class CollectToolPermissionTests(SimpleTestCase):
         self.assertEqual(result["summary"], "maximum payload exceeded")
         self.assertEqual(result["raw_log"], "maximum payload exceeded")
         self.assertEqual(result["stage"], "unknown")
+
+
+class CmdbPermissionScopeRegressionTests(SimpleTestCase):
+    def _make_request(self, current_team="1", include_children="1", group_list=None, is_superuser=False):
+        return SimpleNamespace(
+            user=SimpleNamespace(
+                username="alice",
+                domain="default",
+                group_list=group_list or [{"id": 1}, {"id": 2}],
+                group_tree=[],
+                is_superuser=is_superuser,
+            ),
+            COOKIES={"current_team": current_team, "include_children": include_children},
+        )
+
+    def test_format_user_groups_permissions_uses_authorized_children_only(self):
+        request = self._make_request()
+        permission_rules = {"team": [1], "instance": []}
+
+        with (
+            patch(
+                "apps.cmdb.utils.permission_util.CmdbRulesFormatUtil.get_authorized_team_ids",
+                return_value=[1, 2],
+            ),
+            patch(
+                "apps.cmdb.utils.permission_util.get_permission_rules",
+                return_value=permission_rules,
+            ),
+        ):
+            permission_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+                request,
+                model_id="host",
+                permission_type=PERMISSION_INSTANCES,
+            )
+
+        self.assertEqual(permission_map[1]["inst_names"], [])
+        deny_inst_name = permission_map[2]["inst_names"][0]
+        self.assertTrue(deny_inst_name.startswith(f"{DENY_PERMISSION_PLACEHOLDER}:"))
+        self.assertEqual(permission_map[2]["permission_instances_map"], {deny_inst_name: []})
+
+    def test_format_user_groups_permissions_preserves_instance_level_permissions(self):
+        request = self._make_request()
+        permission_rules = {
+            "team": [],
+            "instance": [{"id": "host-a", "permission": [VIEW]}],
+        }
+
+        with (
+            patch(
+                "apps.cmdb.utils.permission_util.CmdbRulesFormatUtil.get_authorized_team_ids",
+                return_value=[2],
+            ),
+            patch(
+                "apps.cmdb.utils.permission_util.get_permission_rules",
+                return_value=permission_rules,
+            ),
+        ):
+            permission_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+                request,
+                model_id="host",
+                permission_type=PERMISSION_INSTANCES,
+            )
+
+        self.assertEqual(permission_map[2]["inst_names"], ["host-a"])
+        self.assertEqual(permission_map[2]["permission_instances_map"], {"host-a": [VIEW]})
+
+    def test_format_user_groups_permissions_falls_back_to_deny_placeholder_when_no_authorized_team(self):
+        request = self._make_request(current_team="9", group_list=[{"id": 1}])
+
+        with (
+            patch(
+                "apps.cmdb.utils.permission_util.CmdbRulesFormatUtil.get_authorized_team_ids",
+                return_value=[],
+            ),
+            patch(
+                "apps.cmdb.utils.permission_util.get_permission_rules",
+                return_value={},
+            ),
+        ):
+            permission_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+                request,
+                model_id="host",
+                permission_type=PERMISSION_INSTANCES,
+            )
+
+        deny_inst_name = permission_map[9]["inst_names"][0]
+        self.assertTrue(deny_inst_name.startswith(f"{DENY_PERMISSION_PLACEHOLDER}:"))
+        self.assertEqual(permission_map, {9: {"permission_instances_map": {deny_inst_name: []}, "inst_names": [deny_inst_name]}})
+
+    def test_build_permission_map_reuses_safe_permission_rule_builder(self):
+        from apps.opspilot.metis.llm.tools.cmdb.utils import build_permission_map
+
+        user = SimpleNamespace(group_list=[{"id": 1}, {"id": 2}])
+        permission_rules = {"team": [1], "instance": []}
+
+        with (
+            patch(
+                "apps.opspilot.metis.llm.tools.cmdb.utils.get_permission_rules",
+                return_value=permission_rules,
+            ),
+            patch(
+                "apps.opspilot.metis.llm.tools.cmdb.utils.CmdbRulesFormatUtil.build_permission_rule_map",
+                return_value={2: {"permission_instances_map": {DENY_PERMISSION_PLACEHOLDER: []}, "inst_names": [DENY_PERMISSION_PLACEHOLDER]}},
+            ) as mock_build,
+        ):
+            result = build_permission_map(
+                user=user,
+                current_team=1,
+                include_children=True,
+                permission_type=PERMISSION_INSTANCES,
+                model_id="host",
+            )
+
+        mock_build.assert_called_once()
+        self.assertEqual(result[2]["inst_names"], [DENY_PERMISSION_PLACEHOLDER])
+
+    def test_nats_permission_map_uses_safe_permission_rule_builder(self):
+        from apps.cmdb.nats.nats import _build_nats_permission_map
+
+        user_info = {"team": 1, "user": "alice", "domain": "default", "include_children": True}
+        real_user = SimpleNamespace(username="alice", domain="default", group_list=[{"id": 1}, {"id": 2}])
+
+        with (
+            patch("apps.cmdb.nats.nats.User.objects.filter") as mock_filter,
+            patch("apps.cmdb.nats.nats._get_authorized_team_ids", return_value=[1, 2]),
+            patch("apps.cmdb.nats.nats.get_permission_rules", return_value={"team": [1], "instance": []}),
+            patch(
+                "apps.cmdb.nats.nats.CmdbRulesFormatUtil.build_permission_rule_map",
+                return_value={2: {"permission_instances_map": {DENY_PERMISSION_PLACEHOLDER: []}, "inst_names": [DENY_PERMISSION_PLACEHOLDER]}},
+            ) as mock_build,
+        ):
+            mock_filter.return_value.first.return_value = real_user
+            result = _build_nats_permission_map(user_info)
+
+        mock_build.assert_called_once_with(user_teams=[1, 2], permission_rules={"team": [1], "instance": []}, fallback_team_id=1)
+        self.assertEqual(result[2]["inst_names"], [DENY_PERMISSION_PLACEHOLDER])
+def test_config_file_collect_triggers_stargazer_and_returns_pending_result():
+    from apps.cmdb.collection.collect_tasks.config_file_collect import ConfigFileCollect
+
+    task = SimpleNamespace(
+        id=267,
+        params={"config_file_path": "/opt/bk-lite/common.env"},
+        instances=[{"inst_name": "10.0.0.1[default]"}],
+        timeout=30,
+    )
+    node_params = MagicMock()
+    node_params.custom_headers.return_value = {
+        "cmdbplugin_name": "config_file_info",
+        "cmdbhosts": "10.0.0.1[default]",
+        "cmdbcollect_task_id": "267",
+    }
+    node_params.tags = {
+        "instance_id": "cmdb_267",
+        "instance_type": "cmdb_config_file",
+        "collect_type": "http",
+        "config_type": "config_file",
+    }
+    response = MagicMock(status_code=200, headers={"X-Task-Status": "queued"})
+    pending_result = ({"config_file": {"status": "pending"}}, {"all": 0})
+
+    with (
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.CollectModels.objects.get", return_value=task),
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.NodeParamsFactory.get_node_params", return_value=node_params),
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.requests.get", return_value=response) as mock_get,
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.ConfigFileService.build_pending_result", return_value=pending_result) as mock_pending,
+    ):
+        result = ConfigFileCollect(task.id)()
+
+    assert result == pending_result
+    mock_get.assert_called_once_with(
+        "http://stargazer:8083/api/collect/collect_info",
+        params={
+            "plugin_name": "config_file_info",
+            "hosts": "10.0.0.1[default]",
+            "collect_task_id": "267",
+        },
+        headers={
+            "X-Instance-ID": "cmdb_267",
+            "X-Instance-Type": "cmdb_config_file",
+            "X-Collect-Type": "http",
+            "X-Config-Type": "config_file",
+        },
+        timeout=30,
+    )
+    mock_pending.assert_called_once_with(task)
+
+
+def test_config_file_collect_raises_when_stargazer_does_not_accept_trigger():
+    from apps.cmdb.collection.collect_tasks.config_file_collect import ConfigFileCollect
+
+    task = SimpleNamespace(
+        id=267,
+        params={"config_file_path": "/opt/bk-lite/common.env"},
+        instances=[{"inst_name": "10.0.0.1[default]"}],
+        timeout=30,
+    )
+    node_params = MagicMock()
+    node_params.custom_headers.return_value = {
+        "cmdbplugin_name": "config_file_info",
+        "cmdbhosts": "10.0.0.1[default]",
+    }
+    node_params.tags = {
+        "instance_id": "cmdb_267",
+        "instance_type": "cmdb_config_file",
+        "collect_type": "http",
+        "config_type": "config_file",
+    }
+    response = MagicMock(status_code=200, headers={"X-Task-Status": "failed"}, text="failed")
+
+    with (
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.CollectModels.objects.get", return_value=task),
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.NodeParamsFactory.get_node_params", return_value=node_params),
+        patch("apps.cmdb.collection.collect_tasks.config_file_collect.requests.get", return_value=response),
+    ):
+        try:
+            ConfigFileCollect(task.id)()
+        except BaseAppException as err:
+            assert "配置文件采集触发失败" in str(err)
+        else:
+            raise AssertionError("Expected BaseAppException when trigger was not accepted")
+
+
+def test_sync_collect_task_skips_pending_save_when_callback_already_wrote_data():
+    from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
+    from apps.cmdb.tasks import celery_tasks
+
+    instance = SimpleNamespace(
+        id=267,
+        is_job=True,
+        task_type=CollectPluginTypes.CONFIG_FILE,
+        exec_status=CollectRunStatusType.RUNNING,
+        exec_time=None,
+        collect_data={},
+        format_data={},
+        collect_digest={},
+        save=MagicMock(),
+    )
+    first_qs = MagicMock()
+    first_qs.first.return_value = instance
+    update_qs = MagicMock()
+    pending_qs = MagicMock()
+    pending_qs.update.return_value = 0
+    manager = MagicMock()
+    manager.filter.side_effect = [first_qs, update_qs, pending_qs]
+    collect_models = SimpleNamespace(_default_manager=manager)
+    collect = MagicMock()
+    collect.main.return_value = ({"config_file": {"status": "pending"}}, {})
+
+    collect_model_service = SimpleNamespace(repair_host_cloud_snapshot=MagicMock())
+
+    with (
+        patch.object(celery_tasks, "CollectModels", collect_models),
+        patch.object(celery_tasks, "JobCollect", return_value=collect),
+        patch.dict(
+            "sys.modules",
+            {"apps.cmdb.services.collect_service": SimpleNamespace(CollectModelService=collect_model_service)},
+        ),
+    ):
+        celery_tasks.sync_collect_task(instance.id)
+
+    update_qs.update.assert_called_once()
+    pending_qs.update.assert_called_once()
+    assert pending_qs.update.call_args.kwargs["collect_digest"]["message"] == "配置文件采集已触发，等待回传中"
+    instance.save.assert_not_called()
+
+
+def test_sync_periodic_update_task_status_sets_config_file_timeout_message():
+    from apps.cmdb.constants.constants import CollectRunStatusType
+    from apps.cmdb.tasks import celery_tasks
+
+    config_file_qs = MagicMock()
+    config_file_qs.update.return_value = 2
+    non_config_qs = MagicMock()
+    exclude_qs = MagicMock()
+    exclude_qs.update.return_value = 3
+    non_config_qs.exclude.return_value = exclude_qs
+    manager = MagicMock()
+    manager.filter.side_effect = [config_file_qs, non_config_qs]
+    collect_models = SimpleNamespace(_default_manager=manager)
+
+    with patch.object(celery_tasks, "CollectModels", collect_models):
+        celery_tasks.sync_periodic_update_task_status()
+
+    config_file_qs.update.assert_called_once_with(
+        exec_status=CollectRunStatusType.ERROR,
+        collect_digest={"message": "配置文件采集已触发，但在 5 分钟内未收到回传结果"},
+    )
+    exclude_qs.update.assert_called_once_with(exec_status=CollectRunStatusType.ERROR)

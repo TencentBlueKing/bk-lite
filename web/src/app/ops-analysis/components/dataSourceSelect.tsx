@@ -13,6 +13,8 @@ interface DataSourceSelectProps {
   dataSources?: DatasourceItem[];
   onChange?: (value: number) => void;
   onDataSourceChange?: (dataSource: DatasourceItem | undefined) => void;
+  showSearch?: boolean;
+  onSearch?: (value: string) => void;
 }
 
 const DataSourceSelect: React.FC<DataSourceSelectProps> = ({
@@ -24,6 +26,8 @@ const DataSourceSelect: React.FC<DataSourceSelectProps> = ({
   dataSources = [],
   onChange,
   onDataSourceChange,
+  showSearch = false,
+  onSearch,
 }) => {
   const { t } = useTranslation();
 
@@ -60,6 +64,9 @@ const DataSourceSelect: React.FC<DataSourceSelectProps> = ({
       value={value}
       disabled={disabled}
       onChange={handleChange}
+      showSearch={showSearch}
+      filterOption={onSearch ? false : undefined}
+      onSearch={onSearch}
     />
   );
 };

@@ -89,9 +89,14 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
 
         try:
             ui_template = MonitorPluginUITemplate.objects.get(plugin=plugin)
-            return WebUtils.response_success(ui_template.content)
+            return WebUtils.response_success(
+                {
+                    "ui_template": ui_template.content,
+                    "node_selector": plugin.node_selector or {},
+                }
+            )
         except MonitorPluginUITemplate.DoesNotExist:
-            return WebUtils.response_success({})
+            return WebUtils.response_success({"ui_template": {}, "node_selector": plugin.node_selector or {}})
 
     @action(methods=["get"], detail=False, url_path="ui_template_by_params")
     def get_ui_template_by_params(self, request):

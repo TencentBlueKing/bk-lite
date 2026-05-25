@@ -92,7 +92,7 @@
       "name": "回滚率异常",
       "alert_name": "Oracle 实例 ${resource_name} 事务回滚突增",
       "description": "监控事务回滚速率，异常增长表明应用逻辑错误或死锁。需检查业务事务逻辑。",
-      "metric_name": "oracledb_activity_user_rollbacks_rate",
+      "metric_name": "oracledb_activity_user_rollbacks_gauge_rate",
       "algorithm": "max",
       "threshold": [
         {

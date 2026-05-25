@@ -94,7 +94,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         log_operation(
             request,
             "create",
-            "role",
+            "system-manager",
             f"新增角色: {request.data['name']} (应用: {request.data.get('client_id')})",
         )
 
@@ -125,7 +125,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         Role.objects.filter(id=role_id).delete()
 
         # 记录操作日志
-        log_operation(request, "delete", "role", f"删除角色: {role_name}")
+        log_operation(request, "delete", "system-manager", f"删除角色: {role_name}")
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -135,7 +135,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         Role.objects.filter(id=request.data.get("role_id")).update(name=role_name)
 
         # 记录操作日志
-        log_operation(request, "update", "role", f"更新角色名称: {role_name}")
+        log_operation(request, "update", "system-manager", f"更新角色名称: {role_name}")
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
@@ -166,12 +166,12 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
 
         # 记录操作日志
         if is_superuser:
-            log_operation(request, "create", "role", f"新增超级管理员: {', '.join(usernames)}")
+            log_operation(request, "create", "system-manager", f"新增超级管理员: {', '.join(usernames)}")
         else:
             log_operation(
                 request,
                 "create",
-                "role",
+                "system-manager",
                 f"添加用户到角色 {role_name}: {', '.join(usernames)}",
             )
         return JsonResponse({"result": True})
@@ -204,12 +204,12 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
 
         # 记录操作日志
         if is_superuser:
-            log_operation(request, "delete", "role", f"删除超级管理员: {', '.join(usernames)}")
+            log_operation(request, "delete", "system-manager", f"删除超级管理员: {', '.join(usernames)}")
         else:
             log_operation(
                 request,
                 "delete",
-                "role",
+                "system-manager",
                 f"从角色 {role_name} 移除用户: {', '.join(usernames)}",
             )
         return JsonResponse({"result": True})
@@ -224,22 +224,25 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         menu_ids = Menu.objects.filter(app=role_obj.app, name__in=menus).values_list("id", flat=True)
         role_obj.menu_list = list(menu_ids)
         role_obj.save()
-        cache_key = f"all_menus_{role_obj.app}"
-        keys = RoleManage.get_cache_keys(cache_key)
-        user_menu_cache = "menus-user:"
-        keys.extend(RoleManage.get_cache_keys(user_menu_cache))
-        cache.delete_many(keys)
 
-        # 清除所有拥有此角色的用户的权限缓存
-        affected_users = User.objects.filter(role_list__contains=int(role_id)).values("username", "domain")
-        if affected_users:
-            clear_users_permission_cache(list(affected_users))
+        # 清除受影响用户的菜单缓存和权限缓存
+        affected_users = User.objects.filter(role_list__contains=int(role_id))
+
+        # 直接构造缓存键并删除 (兼容 Redis 缓存后端)
+        menu_cache_keys = [f"menus-user:{user.id}" for user in affected_users]
+        if menu_cache_keys:
+            cache.delete_many(menu_cache_keys)
+
+        # 清除用户权限缓存
+        affected_user_info = list(affected_users.values("username", "domain"))
+        if affected_user_info:
+            clear_users_permission_cache(affected_user_info)
 
         # 记录操作日志
         log_operation(
             request,
             "update",
-            "role",
+            "system-manager",
             f"设置角色权限: {role_obj.name} (共{len(menus)}个菜单)",
         )
         return JsonResponse({"result": True})
@@ -295,7 +298,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         log_operation(
             request,
             "create",
-            "role",
+            "system-manager",
             f"添加组织到角色 {role.name}: {', '.join(group_names)}",
         )
 
@@ -352,7 +355,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         log_operation(
             request,
             "delete",
-            "role",
+            "system-manager",
             f"从角色 {role.name} 移除组织: {', '.join(group_names)}",
         )
 

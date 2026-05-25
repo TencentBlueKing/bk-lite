@@ -6,6 +6,8 @@ import SearchFilter from '@/app/alarm/components/searchFilter';
 import EventTable from '@/app/alarm/components/eventTable';
 import K8sGuide from '@/app/alarm/components/k8sGuide';
 import SnmpTrapGuide from '@/app/alarm/components/snmpTrapGuide';
+import TeamSecretsManager from '@/app/alarm/components/teamSecretsManager';
+import ZabbixGuide from '@/app/alarm/components/zabbixGuide';
 import CustomBreadcrumb from '@/app/alarm/components/customBreadcrumb';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import {
@@ -18,7 +20,7 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useCommon } from '@/app/alarm/context/common';
-import { K8sMeta, SourceItem } from '@/app/alarm/types/integration';
+import { AlertSourceIntegrationGuide, K8sMeta, SourceItem } from '@/app/alarm/types/integration';
 import { useAlarmApi } from '@/app/alarm/api/alarms';
 import { EventItem } from '@/app/alarm/types/alarms';
 import { useSourceApi } from '@/app/alarm/api/integration';
@@ -29,12 +31,19 @@ const IntegrationDetail: FC = () => {
   const { convertToLocalizedTime } = useLocalizedTime();
   const { levelListEvent, levelMapEvent } = useCommon();
   const searchParams = useSearchParams();
-  const { getAlertSourcesDetail, getK8sMeta, downloadK8sFile } = useSourceApi();
+  const {
+    getAlertSourcesDetail,
+    getAlertSourceIntegrationGuide,
+    getK8sMeta,
+    downloadK8sFile,
+  } = useSourceApi();
   const { getEventList } = useAlarmApi();
   const [loading, setLoading] = useState<boolean>(false);
   const [source, setSource] = useState<SourceItem>();
+  const [integrationGuide, setIntegrationGuide] = useState<AlertSourceIntegrationGuide>();
   const [k8sMeta, setK8sMeta] = useState<K8sMeta>();
   const [k8sMetaLoading, setK8sMetaLoading] = useState<boolean>(false);
+  const [integrationGuideLoading, setIntegrationGuideLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>('event');
   const [eventList, setEventList] = useState<EventItem[]>([]);
   const [eventLoading, setEventLoading] = useState<boolean>(false);
@@ -54,6 +63,7 @@ const IntegrationDetail: FC = () => {
 
   const isK8sSource = source?.source_id === 'k8s';
   const isSnmpTrapSource = source?.source_id === 'snmp_trap';
+  const isZabbixSource = source?.source_type === 'zabbix' || source?.source_id === 'zabbix';
 
   const sourceItemId = searchParams.get('sourceItemId');
 
@@ -89,6 +99,19 @@ const IntegrationDetail: FC = () => {
       console.error(error);
     } finally {
       setK8sMetaLoading(false);
+    }
+  };
+
+  const getIntegrationGuide = async (id: string) => {
+    setIntegrationGuideLoading(true);
+    try {
+      const res = await getAlertSourceIntegrationGuide(id);
+      setIntegrationGuide(res);
+    } catch (error) {
+      console.error(error);
+      setIntegrationGuide(undefined);
+    } finally {
+      setIntegrationGuideLoading(false);
     }
   };
 
@@ -148,6 +171,14 @@ const IntegrationDetail: FC = () => {
       getK8sGuideMeta();
     }
   }, [isK8sSource, k8sMeta, k8sMetaLoading]);
+
+  useEffect(() => {
+    if (sourceItemId && isZabbixSource) {
+      getIntegrationGuide(sourceItemId);
+    } else if (!isZabbixSource) {
+      setIntegrationGuide(undefined);
+    }
+  }, [sourceItemId, isZabbixSource]);
 
   const onFilterSearch = (condition: { field: string; value: string }) => {
     setSearchCondition(condition);
@@ -481,28 +512,38 @@ const IntegrationDetail: FC = () => {
   );
 
   const IntegrationHeader = () => (
-    <div className="flex flex-wrap items-start gap-4">
-      <div className="inline-flex max-w-full shrink-0 items-center gap-3 rounded bg-[#99aaf2] px-6 py-4 text-white">
-        {!logoLoadFailed && source?.logo ? (
-          <img
-            src={source.logo}
-            alt=""
-            className="h-[40px] w-[40px] shrink-0 rounded object-contain"
-            onError={() => setLogoLoadFailed(true)}
-          />
-        ) : null}
-        <span className="min-w-0 break-words text-[24px] font-semibold leading-[32px] whitespace-normal">
-          {source?.name}
-        </span>
+    <div className="rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-5 py-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="flex h-[82px] w-[82px] shrink-0 items-center justify-center rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-2.5">
+          <div className="flex h-full w-full items-center justify-center rounded-lg bg-[var(--color-primary-bg-active)]">
+            {!logoLoadFailed && source?.logo ? (
+              <img
+                src={source.logo}
+                alt=""
+                className="h-14 w-14 shrink-0 rounded object-contain"
+                onError={() => setLogoLoadFailed(true)}
+              />
+            ) : (
+              <span className="px-2 text-center text-base font-semibold leading-5 text-[var(--color-primary)]">
+                {source?.name?.slice(0, 4) || '--'}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[21px] font-semibold leading-[28px] text-[var(--color-text-1)]">
+            {source?.name}
+          </h1>
+          <p className="mt-0.5 break-words text-[13px] leading-5 text-[var(--color-text-2)] sm:text-sm">
+            {source?.description}
+          </p>
+        </div>
       </div>
-      <span className="min-w-0 flex-1 basis-[240px] self-center break-words text-[15px] leading-[24px]">
-        {source?.description}
-      </span>
     </div>
   );
 
   const renderGuideTab = () => (
-    <div className="p-4 max-h-[calc(100vh-330px)] overflow-y-auto">
+    <div className="rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-4 max-h-[calc(100vh-330px)] overflow-y-auto">
       <h4 className="mb-2 font-medium pl-2 border-l-4 border-blue-400 inline-block leading-tight">
         {t('integration.baseInfo')}
       </h4>
@@ -672,6 +713,11 @@ const IntegrationDetail: FC = () => {
                           </>
                         ),
                       },
+                      {
+                        key: 'teamSecrets',
+                        label: t('integration.teamSecrets'),
+                        children: <TeamSecretsManager sourceId={source.id} />,
+                      },
                     ]} />
                   </div>
                   {activeTab === 'guide' ? (
@@ -683,10 +729,8 @@ const IntegrationDetail: FC = () => {
               </>
             ) : (
               <>
-                <div className="rounded bg-[var(--color-bg-1)] p-4">
-                  <IntegrationHeader />
-                </div>
-                <div className="mt-4 rounded bg-[var(--color-bg-1)] p-4 pt-0">
+                <IntegrationHeader />
+                <div className="mt-4 rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4 shadow-[0_8px_24px_color-mix(in_srgb,var(--color-text-1)_3%,transparent)]">
                   <Tabs activeKey={activeTab} onChange={setActiveTab}>
                     <Tabs.TabPane key="event" tab={t('integration.eventTab')}>
                       {renderEventFilters()}
@@ -705,7 +749,16 @@ const IntegrationDetail: FC = () => {
                       />
                     </Tabs.TabPane>
                     <Tabs.TabPane key="guide" tab={t('integration.guideTab')}>
-                      {isSnmpTrapSource ? <SnmpTrapGuide /> : renderGuideTab()}
+                      {isSnmpTrapSource ? (
+                        <SnmpTrapGuide />
+                      ) : isZabbixSource ? (
+                        <Spin spinning={integrationGuideLoading}>
+                          <ZabbixGuide guide={integrationGuide} />
+                        </Spin>
+                      ) : renderGuideTab()}
+                    </Tabs.TabPane>
+                    <Tabs.TabPane key="teamSecrets" tab={t('integration.teamSecrets')}>
+                      <TeamSecretsManager sourceId={source.id} />
                     </Tabs.TabPane>
                   </Tabs>
                 </div>

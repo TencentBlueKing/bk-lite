@@ -263,7 +263,12 @@ def cmdb_topo_search(
             model_id=instance.get("model_id", ""),
         )
         ensure_instance_permission(user, instance, permissions_map, operator="View")
-        result = InstanceManage.topo_search_lite(int(inst_id), depth=int(depth))
+        result = InstanceManage.topo_search_lite(
+            int(inst_id),
+            depth=int(depth),
+            permission_map=permissions_map,
+            user=user,
+        )
         return wrap_success(result)
     except Exception as e:
         logger.exception("cmdb_topo_search failed: %s", e)
@@ -295,7 +300,13 @@ def cmdb_topo_expand(
             model_id=instance.get("model_id", ""),
         )
         ensure_instance_permission(user, instance, permissions_map, operator="View")
-        result = InstanceManage.topo_search_expand(int(inst_id), parent_ids, depth=int(depth))
+        result = InstanceManage.topo_search_expand(
+            int(inst_id),
+            parent_ids,
+            depth=int(depth),
+            permission_map=permissions_map,
+            user=user,
+        )
         return wrap_success(result)
     except Exception as e:
         logger.exception("cmdb_topo_expand failed: %s", e)

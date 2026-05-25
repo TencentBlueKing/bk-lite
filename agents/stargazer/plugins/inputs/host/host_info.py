@@ -13,7 +13,7 @@ class HostInfo(SSHPlugin):
         try:
             logger.info(" start collect host info! host={} model_id={}".format(self.host, self.model_id))
             data = await super().list_all_resources(need_raw=True)
-            logger.info(" start collect host info data={}, host={}, model_id={}".format(data, self.host, self.model_id))
+            # logger.info(" start collect host info data={}, host={}, model_id={}".format(data, self.host, self.model_id))
 
             if need_raw:
                 return data

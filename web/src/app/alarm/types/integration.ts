@@ -55,6 +55,72 @@ export interface SnmpTrapNodeListResponse {
   nodes?: SnmpTrapNodeItem[];
 }
 
+export interface IntegrationGuideStepItem {
+  title?: string;
+  description?: string;
+  content?: string;
+}
+
+export interface IntegrationGuideSetupStep {
+  title?: string;
+  items?: string[];
+}
+
+export interface IntegrationGuideParameterMappingItem {
+  parameter?: string;
+  name?: string;
+  target_field?: string;
+  field?: string;
+  value?: string;
+  description?: string;
+  required?: boolean;
+}
+
+export interface IntegrationGuideVerificationCheck {
+  title?: string;
+  summary?: string;
+  expected_results?: string[];
+  steps?: string[];
+}
+
+export interface IntegrationGuideVerification {
+  curl_check?: IntegrationGuideVerificationCheck;
+  problem_check?: IntegrationGuideVerificationCheck;
+  recovery_check?: IntegrationGuideVerificationCheck;
+}
+
+export interface IntegrationGuideFieldMappingItem {
+  bk_lite_field?: string;
+  zabbix_field?: string;
+  upstream_source?: string;
+}
+
+export interface IntegrationGuideTroubleshootingItem {
+  symptom?: string;
+  cause?: string;
+  action?: string;
+  possible_causes?: string[];
+  resolutions?: string[];
+}
+
+export interface AlertSourceIntegrationGuide {
+  source_type: string;
+  source_id: string;
+  webhook_url?: string;
+  headers?: Record<string, string>;
+  description?: string;
+  media_type_parameters?: string[];
+  setup_steps?: IntegrationGuideSetupStep[];
+  parameter_guidance?: IntegrationGuideParameterMappingItem[];
+  parameter_mapping?: IntegrationGuideParameterMappingItem[];
+  field_mappings?: IntegrationGuideFieldMappingItem[];
+  script_template?: string;
+  steps?: Array<string | IntegrationGuideStepItem>;
+  verification?: IntegrationGuideVerification | Array<string | IntegrationGuideStepItem>;
+  troubleshooting?: IntegrationGuideTroubleshootingItem[] | Array<string | IntegrationGuideStepItem>;
+  key_reminders?: string[];
+}
+
 export interface SourceItem {
   id: number;
   event_count: number | null | undefined | string;
@@ -114,4 +180,19 @@ export interface EventTableItem {
     assignee: string[];
     value: number;
     source: number;
+}
+
+export interface TeamSecretItem {
+    team_id: string;
+    team_name: string;
+    secret: string;
+}
+
+export interface TeamSecretsResponse {
+    team_secrets: TeamSecretItem[];
+}
+
+export interface TeamSecretResponse {
+    team_id: string;
+    secret: string;
 }
