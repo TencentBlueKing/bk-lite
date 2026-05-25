@@ -568,15 +568,18 @@ class InstanceConfigService:
             updated_count = InstanceConfigService._sync_existing_instance_attrs(existing_instances, deleted_ids)
             logger.info(f"复用已存在实例数量: {len(existing_instances)}, 同步属性并激活: {updated_count}, 恢复已删除实例: {len(deleted_ids)}")
 
-            # 恢复已删除实例时，清除历史组织关联，避免跨组织纳管漂移
-            if deleted_ids:
-                MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=deleted_ids).delete()
+            # 清除所有复用实例的历史组织关联，以当前 group_ids 为唯一真值，避免跨组织纳管漂移
+            all_existing_ids = [inst["instance_id"] for inst in existing_instances]
+            MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=all_existing_ids).delete()
 
-            # 为已存在的实例创建组织关联（如果还没有）
-            for instance in existing_instances:
-                instance_id = instance["instance_id"]
-                for group_id in instance["group_ids"]:
-                    MonitorInstanceOrganization.objects.get_or_create(monitor_instance_id=instance_id, organization=group_id)
+            # 以当前 group_ids 重建组织关联
+            org_objs = [
+                MonitorInstanceOrganization(monitor_instance_id=inst["instance_id"], organization=group_id)
+                for inst in existing_instances
+                for group_id in inst["group_ids"]
+            ]
+            if org_objs:
+                MonitorInstanceOrganization.objects.bulk_create(org_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
         # 批量创建实例的默认分组规则（优化：一次性查询+批量创建）
         instances_to_process = new_instances + existing_instances
