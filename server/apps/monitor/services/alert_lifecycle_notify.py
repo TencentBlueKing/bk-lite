@@ -118,6 +118,35 @@ class AlertLifecycleNotifier:
         else:
             return self._send_normal_notice(channel_id, channel_name, notice_users, alerts, action, operator, reason)
 
+    @staticmethod
+    def _parse_channel_result(send_result):
+        """Normalize channel send result into (success, error_message).
+
+        Handles both the normalized contract (``result: False``) and raw bot
+        API responses that carry ``errcode``/``code`` without a ``result`` field.
+        """
+        if not isinstance(send_result, dict):
+            return False, "invalid response"
+
+        # Explicit normalized failure
+        if send_result.get("result") is False:
+            error = send_result.get("message") or send_result.get("errmsg") or send_result.get("msg") or "Unknown error"
+            return False, error
+
+        # Raw bot-style failure: errcode != 0 (WeCom/DingTalk)
+        errcode = send_result.get("errcode")
+        if errcode is not None and errcode != 0:
+            error = send_result.get("errmsg") or send_result.get("msg") or send_result.get("message") or f"errcode={errcode}"
+            return False, error
+
+        # Raw bot-style failure: code != 0 (Feishu)
+        code = send_result.get("code")
+        if code is not None and code != 0:
+            error = send_result.get("msg") or send_result.get("message") or send_result.get("errmsg") or f"code={code}"
+            return False, error
+
+        return True, ""
+
     def _send_normal_notice(self, channel_id, channel_name, notice_users, alerts, action, operator, reason):
         results = []
         for alert in alerts:
@@ -126,11 +155,11 @@ class AlertLifecycleNotifier:
             content = self._build_content(alert, action, operator, reason)
             try:
                 send_result = SystemMgmtUtils.send_msg_with_channel(channel_id, title, content, notice_users)
-                success = send_result.get("result") is not False
+                success, error_msg = self._parse_channel_result(send_result)
                 log_entry = {"time": now, "action": action, "channel_id": channel_id, "channel_name": channel_name, "success": success}
                 if not success:
-                    log_entry["error"] = send_result.get("message", "Unknown error")
-                    logger.error(f"Normal notify failed: alert={alert.id}, action={action}, message={log_entry['error']}")
+                    log_entry["error"] = error_msg
+                    logger.error(f"Normal notify failed: alert={alert.id}, action={action}, message={error_msg}")
                 else:
                     logger.info(f"Normal notify success: alert={alert.id}, action={action}")
                 results.append((alert, log_entry))
@@ -153,8 +182,7 @@ class AlertLifecycleNotifier:
         }
         try:
             send_result = SystemMgmtUtils.send_msg_with_channel(channel_id, "", content, [])
-            success = send_result.get("result") is not False
-            error_msg = "" if success else send_result.get("message", "Unknown error")
+            success, error_msg = self._parse_channel_result(send_result)
             if not success:
                 logger.error(f"Lifecycle push to alert center failed: action={action}, count={len(alerts)}, message={error_msg}")
             else:
