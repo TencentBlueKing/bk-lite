@@ -4,6 +4,7 @@ import React, {
   useState,
   useEffect,
   useRef,
+  useCallback,
   forwardRef,
   useImperativeHandle,
 } from 'react';
@@ -18,6 +19,7 @@ import { useTranslation } from '@/utils/i18n';
 import { ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useAssetManageStore } from '@/app/cmdb/store';
+import { useUserInfoContext } from '@/context/userInfo';
 
 import {
   CYCLE_OPTIONS,
@@ -147,6 +149,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const form = Form.useFormInstance();
     const fieldRef = useRef<FieldModalRef>(null);
     const commonContext = useCommon();
+    const { selectedGroup } = useUserInfoContext();
     const users = useRef(commonContext?.userList || []);
     const userList = users.current;
     const [instOptLoading, setOptLoading] = useState(false);
@@ -173,6 +176,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const [selectedInstIds, setSelectedInstIds] = useState<number[]>([]);
     const cleanupStrategyValue = Form.useWatch('cleanupStrategy', form);
     const accessPointId = Form.useWatch('accessPointId', form);
+    const organizationValue = Form.useWatch('organization', form);
     const [instPagination, setInstPagination] = useState({
       current: 1,
       pageSize: 10,
@@ -180,6 +184,20 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     });
     const dropdownItems = {
       items: NETWORK_DEVICE_OPTIONS,
+    };
+
+    const normalizeOrganizationValue = useCallback((value: any): number[] => {
+      const values = Array.isArray(value) ? value : value ? [value] : [];
+      return values
+        .map((item) => Number(item))
+        .filter((item) => !Number.isNaN(item));
+    }, []);
+
+    const isSameOrganizationValue = (current: number[], next: number[]) => {
+      if (current.length !== next.length) {
+        return false;
+      }
+      return current.every((item, index) => item === next[index]);
     };
 
     const supportsIpSelection = IP_SELECTION_TASK_TYPES.includes(
@@ -220,6 +238,34 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         : !hasSelectedAccessPointCloudRegion
           ? t('Collection.proxyCloudUnavailable')
           : undefined;
+
+    useEffect(() => {
+      const orgArray = normalizeOrganizationValue(organizationValue);
+      if (!isSameOrganizationValue(ipRangeOrg, orgArray)) {
+        setIpRangeOrg(orgArray);
+      }
+    }, [organizationValue, ipRangeOrg, normalizeOrganizationValue]);
+
+    useEffect(() => {
+      if (editingId || !selectedGroup?.id) {
+        return;
+      }
+
+      const currentOrganization = normalizeOrganizationValue(
+        form.getFieldValue('organization')
+      );
+      if (currentOrganization.length > 0) {
+        return;
+      }
+
+      const defaultOrganization = normalizeOrganizationValue(selectedGroup.id);
+      if (!defaultOrganization.length) {
+        return;
+      }
+
+      setIpRangeOrg(defaultOrganization);
+      form.setFieldValue('organization', defaultOrganization);
+    }, [editingId, form, normalizeOrganizationValue, selectedGroup?.id]);
 
     const resetInstPagination = () => {
       setInstPagination((prev) => ({
@@ -701,6 +747,19 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                 label={t('Collection.accessPoint')}
                 name="accessPointId"
                 required
+                extra={
+                  <div className="text-xs leading-5">
+                    <span>{t('Collection.accessPointHelp')}</span>
+                    <a
+                      className="ml-2 text-blue-500 hover:text-blue-600"
+                      href="/node-manager/cloudregion"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {t('Collection.accessPointLink')}
+                    </a>
+                  </div>
+                }
                 rules={[
                   {
                     required: true,

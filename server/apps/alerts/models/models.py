@@ -16,6 +16,7 @@ from apps.alerts.constants.constants import (
     EventType,
     IncidentOperate,
     IncidentStatus,
+    IncidentUpdateType,
     LevelType,
     SessionStatus,
 )
@@ -197,6 +198,7 @@ class Incident(MaintainerInfo):
         help_text="操作",
     )
     operator = JSONField(default=list, blank=True, help_text="处理人")
+    collaborators = JSONField(default=list, blank=True, help_text="协作者")
     # 核心指纹字段（用于聚合）
     fingerprint = models.CharField(max_length=32, null=True, blank=True, db_index=True, help_text="事件指纹")
     team = JSONField(default=list, help_text="管理组织")
@@ -238,3 +240,24 @@ class Level(models.Model):
 
     def __str__(self):
         return f"{self.level_name}({self.level_id})"
+
+
+class IncidentUpdate(models.Model):
+    """事故协作更新"""
+
+    incident = models.ForeignKey(Incident, on_delete=models.CASCADE, related_name="updates", help_text="关联事故")
+    parent = models.ForeignKey("self", on_delete=models.CASCADE, null=True, blank=True, related_name="replies", help_text="回复的父更新")
+    author = models.CharField(max_length=64, help_text="发布者")
+    update_type = models.CharField(max_length=32, choices=IncidentUpdateType.CHOICES, help_text="更新类型")
+    content = models.TextField(max_length=1000, help_text="更新内容")
+    attachments = JSONField(default=list, blank=True, help_text="附件列表")
+    is_key_info = models.BooleanField(default=False, help_text="是否标记为关键信息")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True, help_text="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, help_text="更新时间")
+
+    class Meta:
+        db_table = "alerts_incident_update"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.author} - {self.get_update_type_display()} ({self.created_at})"
