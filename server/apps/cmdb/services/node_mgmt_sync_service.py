@@ -15,6 +15,7 @@ from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
 from apps.core.utils.celery_utils import CeleryUtils
 from apps.rpc.node_mgmt import NodeMgmt
+from apps.core.logger import cmdb_logger as logger
 
 
 class NodeMgmtSyncService:
@@ -403,7 +404,9 @@ class NodeMgmtSyncService:
 
     @classmethod
     def _fetch_non_container_nodes(cls) -> list[dict[str, Any]]:
+        logger.info("[NodeMgmtSync] 开始获取非容器节点列表")
         cloud_region_names = cls._cloud_region_name_map()
+        logger.debug("[NodeMgmtSync] 获取到云区域名称映射, region_count=%d", len(cloud_region_names))
         rows = cls._node_mgmt_client().node_list(
                 {
                     "page": 1,
@@ -411,10 +414,14 @@ class NodeMgmtSyncService:
                     "is_container": False,
                 }
             )
+        total_nodes = len(rows.get("nodes", []))
+        logger.info("[NodeMgmtSync] 从节点管理获取到节点数据, total=%d", total_nodes)
         result: list[dict[str, Any]] = []
+        skipped_count = 0
         for node in rows["nodes"]:
             cloud_region_id = cls._safe_int(node.get("cloud_region_id") or node.get("cloud_region"))
             if cloud_region_id is None:
+                skipped_count += 1
                 continue
             result.append(
                 {
@@ -436,6 +443,7 @@ class NodeMgmtSyncService:
                     "_error": "",
                 }
             )
+        logger.info("[NodeMgmtSync] 非容器节点过滤完成, valid=%d, skipped=%d", len(result), skipped_count)
         return result
 
     @classmethod
@@ -450,6 +458,7 @@ class NodeMgmtSyncService:
 
     @classmethod
     def _pick_access_point(cls, cloud_region_id: int) -> dict[str, Any] | None:
+        logger.debug("[NodeMgmtSync] 查找云区域接入点, cloud_region_id=%d", cloud_region_id)
         cloud_region_name = cls._cloud_region_name_map().get(int(cloud_region_id), "")
         nodes = cls._extract_nodes(
             cls._node_mgmt_client().node_list(
@@ -462,8 +471,11 @@ class NodeMgmtSyncService:
             )
         )
         if not nodes:
+            logger.warning("[NodeMgmtSync] 云区域无可用容器节点作为接入点, cloud_region_id=%d", cloud_region_id)
             return None
         node = max(nodes, key=lambda item: str(item.get("updated_at") or ""))
+        logger.debug("[NodeMgmtSync] 选中接入点, cloud_region_id=%d, node_id=%s, node_name=%s",
+                     cloud_region_id, node.get("id"), node.get("name"))
         return {
             "id": node.get("id"),
             "name": node.get("name"),
@@ -563,6 +575,8 @@ class NodeMgmtSyncService:
     ) -> CollectModels:
         from apps.cmdb.services.collect_service import CollectModelService
 
+        logger.debug("[NodeMgmtSync] 确保区域采集任务存在, cloud_region_id=%d, cloud_region_name=%s, instances_count=%d",
+                     cloud_region_id, cloud_region_name, len(instances))
         auto_collect_enabled = bool(getattr(cls.get_task(), "auto_collect_enabled", False))
 
         payload = cls._collect_task_payload(
@@ -575,6 +589,7 @@ class NodeMgmtSyncService:
         )
         task = CollectModels.objects.filter(system_code=cls._system_code(cloud_region_id)).first()
         if task:
+            logger.debug("[NodeMgmtSync] 更新已有采集任务, task_id=%d, cloud_region_id=%d", task.id, cloud_region_id)
             old_task = copy.deepcopy(task)
             for key, value in payload.items():
                 setattr(task, key, value)
@@ -588,9 +603,11 @@ class NodeMgmtSyncService:
                     and CollectModelService.should_sync_node_params(task)
                     and cls._should_repush_collect_task_node_params(old_task, task)
             ):
+                logger.info("[NodeMgmtSync] 采集任务参数变更, 重新推送节点参数, task_id=%d", task.id)
                 CollectModelService.delete_butch_node_params(old_task)
                 CollectModelService.push_butch_node_params(task)
             return task
+        logger.info("[NodeMgmtSync] 创建新采集任务, cloud_region_id=%d, cloud_region_name=%s", cloud_region_id, cloud_region_name)
         task = CollectModels.objects.create(
             **payload,
             created_by="system",
@@ -602,7 +619,9 @@ class NodeMgmtSyncService:
             cycle_value=str(interval_minutes),
             scan_cycle=cls._build_cycle(interval_minutes),
         )
+        logger.info("[NodeMgmtSync] 采集任务创建成功, task_id=%d, cloud_region_id=%d", task.id, cloud_region_id)
         if auto_collect_enabled and CollectModelService.should_sync_node_params(task):
+            logger.debug("[NodeMgmtSync] 推送新任务节点参数, task_id=%d", task.id)
             CollectModelService.push_butch_node_params(task)
         return task
 
@@ -715,10 +734,13 @@ class NodeMgmtSyncService:
     def _execute_collect_task(task):
         from apps.cmdb.services.collect_service import CollectModelService
 
-        return CollectModelService.exec_task(
+        logger.info("[NodeMgmtSync] 执行采集任务, task_id=%d, task_name=%s", task.id, task.name)
+        result = CollectModelService.exec_task(
             task,
             "system",
         )
+        logger.info("[NodeMgmtSync] 采集任务执行完成, task_id=%d", task.id)
+        return result
 
     @classmethod
     def _build_collect_display_payload(cls, source: str) -> dict[str, Any] | None:
@@ -907,20 +929,42 @@ class NodeMgmtSyncService:
 
     @classmethod
     def sync_hosts(cls) -> dict[str, Any]:
+        logger.info("[NodeMgmtSync] ========== 开始同步节点管理主机 ==========")
         task_config = cls.get_task()
+        logger.info("[NodeMgmtSync] 同步配置: auto_sync_enabled=%s, sync_interval=%d分钟, auto_collect_enabled=%s",
+                    task_config.auto_sync_enabled, task_config.sync_interval_minutes, task_config.auto_collect_enabled)
         run = cls._build_sync_run(task=task_config)
+        logger.debug("[NodeMgmtSync] 创建同步运行记录, run_id=%d", run.id)
+
+        logger.info("[NodeMgmtSync] 开始获取节点管理主机数据")
         nodes = cls._fetch_non_container_nodes()
+        logger.info("[NodeMgmtSync] 获取节点完成, total_nodes=%d", len(nodes))
+
         grouped_nodes = cls._group_nodes_by_region(nodes)
+        logger.info("[NodeMgmtSync] 节点按云区域分组完成, region_count=%d", len(grouped_nodes))
 
         detail = cls._empty_display_detail()
         message = cls._empty_display_message()
 
         for cloud_region_id, region_nodes in grouped_nodes.items():
             cloud_region_name = str(region_nodes[0].get("cloud_region_name") or cloud_region_id)
+            logger.info("[NodeMgmtSync] 处理云区域: cloud_region_id=%d, cloud_region_name=%s, node_count=%d",
+                        cloud_region_id, cloud_region_name, len(region_nodes))
+
             access_point = cls._pick_access_point(cloud_region_id)
+            if access_point:
+                logger.debug("[NodeMgmtSync] 云区域接入点: cloud_region_id=%d, access_point_id=%s",
+                             cloud_region_id, access_point.get("id"))
+            else:
+                logger.warning("[NodeMgmtSync] 云区域无接入点: cloud_region_id=%d", cloud_region_id)
+
             team = cls._normalize_org_ids(
                 [org_id for node in region_nodes for org_id in node.get("organization_ids", [])])
             existing_map = cls._load_existing_host_map(task_id=0)
+            logger.debug("[NodeMgmtSync] 加载已有主机映射, existing_count=%d", len(existing_map))
+
+            add_count = 0
+            update_count = 0
             for node in region_nodes:
                 payload = cls._build_host_instance_payload(node=node, collect_task_id=0)
                 detail["raw_data"]["data"].append(payload)
@@ -929,6 +973,7 @@ class NodeMgmtSyncService:
                 if existing:
                     detail["update"]["data"].append(existing)
                     message["update"] += 1
+                    update_count += 1
                     continue
                 created = InstanceManage.instance_create(
                     "host",
@@ -938,9 +983,15 @@ class NodeMgmtSyncService:
                 )
                 detail["add"]["data"].append(created if isinstance(created, dict) else payload)
                 message["add"] += 1
+                add_count += 1
                 existing_map[key] = created if isinstance(created, dict) else payload
 
+            logger.info("[NodeMgmtSync] 云区域主机同步完成: cloud_region_id=%d, add=%d, update=%d",
+                        cloud_region_id, add_count, update_count)
+
             region_instances = cls._query_region_host_instances(cloud_region_id, region_nodes)
+            logger.debug("[NodeMgmtSync] 查询区域主机实例, cloud_region_id=%d, instance_count=%d",
+                         cloud_region_id, len(region_instances))
 
             collect_task = cls._ensure_region_collect_task(
                 cloud_region_id=cloud_region_id,
@@ -981,19 +1032,35 @@ class NodeMgmtSyncService:
         run.save()
         task_config.last_sync_at = run.finished_at
         task_config.save(update_fields=["last_sync_at", "updated_at"])
+
+        logger.info("[NodeMgmtSync] ========== 同步完成 ==========")
+        logger.info("[NodeMgmtSync] 同步结果: status=%s, all=%d, add=%d, update=%d, delete=%d, todo_count=%d",
+                    run.status, message["all"], message["add"], message["update"], message["delete"], len(detail["todo"]))
         return cls.serialize_run(run)
 
     @classmethod
     def collect_hosts(cls) -> dict[str, Any]:
+        logger.info("[NodeMgmtSync] ========== 开始采集节点管理主机 ==========")
         task_config = cls.get_task()
+        logger.info("[NodeMgmtSync] 采集配置: auto_collect_enabled=%s, collect_interval=%d分钟",
+                    task_config.auto_collect_enabled, task_config.collect_interval_minutes)
         run = cls._build_collect_run(task=task_config)
+        logger.debug("[NodeMgmtSync] 创建采集运行记录, run_id=%d", run.id)
+
         detail = {"todo": [], "executed": []}
         message = cls._empty_display_message()
 
-        for collect_task in cls._list_region_collect_tasks():
+        collect_tasks = cls._list_region_collect_tasks()
+        logger.info("[NodeMgmtSync] 获取区域采集任务列表, task_count=%d", len(collect_tasks))
+
+        for collect_task in collect_tasks:
             message["all"] += 1
             access_point = collect_task.access_point if isinstance(collect_task.access_point, list) else []
+            logger.debug("[NodeMgmtSync] 检查采集任务: task_id=%d, task_name=%s, has_access_point=%s",
+                         collect_task.id, collect_task.name, bool(access_point))
             if not access_point:
+                logger.warning("[NodeMgmtSync] 采集任务无接入点, 跳过执行: task_id=%d, task_name=%s",
+                               collect_task.id, collect_task.name)
                 detail["todo"].append(
                     {
                         "task_id": collect_task.id,
@@ -1001,8 +1068,10 @@ class NodeMgmtSyncService:
                     }
                 )
                 continue
+            logger.info("[NodeMgmtSync] 开始执行采集任务: task_id=%d, task_name=%s", collect_task.id, collect_task.name)
             cls._execute_collect_task(collect_task)
             detail["executed"].append({"task_id": collect_task.id, "name": collect_task.name})
+            logger.info("[NodeMgmtSync] 采集任务已提交: task_id=%d", collect_task.id)
 
         run.status = NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS if detail["todo"] else NodeMgmtSyncRun.STATUS_SUCCESS
         run.summary_json = message
@@ -1011,6 +1080,10 @@ class NodeMgmtSyncService:
         run.save()
         task_config.last_collect_at = run.finished_at
         task_config.save(update_fields=["last_collect_at", "updated_at"])
+
+        logger.info("[NodeMgmtSync] ========== 采集完成 ==========")
+        logger.info("[NodeMgmtSync] 采集结果: status=%s, total_tasks=%d, executed=%d, skipped=%d",
+                    run.status, message["all"], len(detail["executed"]), len(detail["todo"]))
         return cls.serialize_run(run)
 
     @classmethod
