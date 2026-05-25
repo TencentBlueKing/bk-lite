@@ -883,6 +883,8 @@ export const useGraphOperations = (
         chartType: values.chartType || valueConfig?.chartType,
         dataSource: values.dataSource || valueConfig?.dataSource,
         dataSourceParams: values.dataSourceParams || valueConfig?.dataSourceParams,
+        topNLabelField: values.topNLabelField ?? valueConfig?.topNLabelField,
+        topNValueField: values.topNValueField ?? valueConfig?.topNValueField,
       },
       styleConfig: {
         textColor: values.textColor !== undefined ? values.textColor : styleConfig?.textColor,

@@ -5,8 +5,14 @@
 from rest_framework import serializers
 
 from apps.core.utils.serializers import AuthSerializer
+from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.serializers.base_serializers import BaseFormatTimeSerializer
-from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace, DataSourceTag
+
+
+class DataSourceTagModelSerializer(BaseFormatTimeSerializer):
+    class Meta:
+        model = DataSourceTag
+        fields = "__all__"
 
 
 class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
@@ -36,6 +42,20 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
         return value
 
 
+class DataSourceBriefSerializer(BaseFormatTimeSerializer, AuthSerializer):
+    permission_key = "datasource"
+    tag = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+
+    class Meta:
+        model = DataSourceAPIModel
+        fields = ["id", "name", "rest_api", "desc", "chart_type", "tag", "groups"]
+
+
+class DataSourceDetailSerializer(DataSourceAPIModelSerializer):
+    namespaces = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    tag = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+
+
 class NameSpaceModelSerializer(BaseFormatTimeSerializer):
     class Meta:
         model = NameSpace
@@ -43,9 +63,3 @@ class NameSpaceModelSerializer(BaseFormatTimeSerializer):
         extra_kwargs = {
             "password": {"write_only": True},
         }
-
-
-class DataSourceTagModelSerializer(BaseFormatTimeSerializer):
-    class Meta:
-        model = DataSourceTag
-        fields = "__all__"

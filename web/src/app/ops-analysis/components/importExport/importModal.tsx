@@ -19,7 +19,6 @@ import {
 } from '@ant-design/icons';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
-import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import {
   useImportExportApi,
   PrecheckResponse,
@@ -47,7 +46,6 @@ const ImportModal: React.FC<ImportModalProps> = ({
   onSuccess,
 }) => {
   const { t } = useTranslation();
-  const { refreshDataSources, refreshNamespaces } = useOpsAnalysis();
   const { importPrecheck, importSubmit } = useImportExportApi();
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -165,10 +163,6 @@ const ImportModal: React.FC<ImportModalProps> = ({
         setCurrentStep(2);
         setFileList([]);
         setUploadKey((prev) => prev + 1);
-        await Promise.all([
-          refreshDataSources(),
-          refreshNamespaces(),
-        ]);
         if (onSuccess) {
           await onSuccess();
         }

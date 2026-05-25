@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Spin, Tooltip } from 'antd';
-import { ExclamationCircleOutlined, WarningOutlined } from '@ant-design/icons';
+import { WarningOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import {
   FilterValue,
@@ -15,24 +15,10 @@ import {
 } from '../../../../utils/widgetDataTransform';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
-import { datasourceSupportsNamespace } from '@/app/ops-analysis/utils/namespaceFilter';
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
-import ComPie from '../widgets/comPie';
-import ComLine from '../widgets/comLine';
-import ComBar from '../widgets/comBar';
-import ComTable from '../widgets/comTable';
-import ComSingle from '../widgets/comSingle';
-import ComTopN from '../widgets/comTopN';
-
-const componentMap: Record<string, React.ComponentType<any>> = {
-  line: ComLine,
-  pie: ComPie,
-  bar: ComBar,
-  table: ComTable,
-  single: ComSingle,
-  topN: ComTopN,
-};
+import WidgetRenderer from '@/app/ops-analysis/components/widgetRenderer';
+import WidgetErrorState from '@/app/ops-analysis/components/widgetErrorState';
 
 const validateTopNData = (
   data: unknown,
@@ -155,16 +141,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       Array.isArray(dataSource?.namespaces) && dataSource.namespaces.length > 0,
     [dataSource?.namespaces],
   );
-  const nsSupported = useMemo(
-    () => datasourceSupportsNamespace(dataSource, builtinNamespaceId),
-    [dataSource, builtinNamespaceId],
-  );
-  const canFetchInCurrentNamespace = !widgetUsesNamespace || nsSupported;
   const requestEnabled =
     Boolean(normalizedDataSourceId) &&
+    Boolean(dataSource) &&
     dataSource?.hasAuth !== false &&
-    (!widgetUsesNamespace || builtinNamespaceId !== undefined) &&
-    canFetchInCurrentNamespace;
+    (!widgetUsesNamespace || builtinNamespaceId !== undefined);
 
   const requestParams = useMemo(() => {
     if (!requestEnabled) {
@@ -394,6 +375,14 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       return;
     }
 
+    if (!dataSource) {
+      setRawData(null);
+      setLoading(false);
+      setTableLoading(false);
+      setDataValidation(null);
+      return;
+    }
+
     if (dataSource?.hasAuth === false) {
       setRawData(null);
       setLoading(false);
@@ -405,16 +394,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       return;
     }
 
-    if (!canFetchInCurrentNamespace) {
-      setRawData(null);
-      setLoading(false);
-      setTableLoading(false);
-      setDataValidation(null);
-    }
   }, [
     normalizedDataSourceId,
+    dataSource,
     dataSource?.hasAuth,
-    canFetchInCurrentNamespace,
     t,
   ]);
 
@@ -436,6 +419,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
   useEffect(() => {
     const previousRequest = previousRequestRef.current;
+    const signatureChanged = previousRequest.signature !== requestSignature;
     const filterSearchChanged =
       previousRequest.filterSearchVersion !== filterSearchVersion;
     const namespaceSearchChanged =
@@ -463,6 +447,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
     const shouldFetch =
       isInitialRequest ||
+      signatureChanged ||
       reloadChanged ||
       shouldFetchForFilterSearch ||
       shouldFetchForNamespaceSearch ||
@@ -555,12 +540,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   };
 
   const renderError = (message: string) => (
-    <div className="h-full flex flex-col items-center justify-center">
-      <ExclamationCircleOutlined
-        style={{ color: '#faad14', fontSize: '24px', marginBottom: '12px' }}
-      />
-      <span style={{ fontSize: '14px', color: '#666' }}>{message}</span>
-    </div>
+    <WidgetErrorState message={message} />
   );
 
   if (loading && chartType !== 'table') {
@@ -571,11 +551,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     );
   }
 
-  const Component = chartType ? componentMap[chartType] : null;
-  if (!Component) {
-    return renderError(`${t('dashboard.unknownComponentType')}: ${chartType}`);
-  }
-
   // 如果数据校验失败，显示错误提示
   if (dataValidation && !dataValidation.isValid) {
     return renderError(
@@ -583,14 +558,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     );
   }
 
-  if (builtinNamespaceId !== undefined && !nsSupported) {
-    return renderError(t('dashboard.namespaceNotSupported'));
-  }
-
   return (
     <div style={{ position: 'relative', height: '100%' }}>
       {renderBindingWarning()}
-      <Component
+      <WidgetRenderer
+        chartType={chartType}
         rawData={rawData}
         loading={chartType === 'table' ? tableLoading : loading}
         config={config}
@@ -599,6 +571,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         onQueryChange={
           chartType === 'table' ? handleTableQueryChange : undefined
         }
+        fallback={renderError(`${t('dashboard.unknownComponentType')}: ${chartType}`)}
       />
     </div>
   );

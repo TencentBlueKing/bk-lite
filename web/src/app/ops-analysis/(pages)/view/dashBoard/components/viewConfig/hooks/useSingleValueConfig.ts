@@ -11,6 +11,7 @@ import { buildTreeData } from '../../../../topology/utils/dataTreeUtils';
 interface UseSingleValueConfigProps {
   form: FormInstance;
   selectedDataSource: DatasourceItem | undefined;
+  builtinNamespaceId?: number;
   getSourceDataByApiId: (
     id: number,
     params: Record<string, any>,
@@ -20,6 +21,7 @@ interface UseSingleValueConfigProps {
 export function useSingleValueConfig({
   form,
   selectedDataSource,
+  builtinNamespaceId,
   getSourceDataByApiId,
 }: UseSingleValueConfigProps) {
   const { t } = useTranslation();
@@ -154,6 +156,13 @@ export function useSingleValueConfig({
           }
         }
       });
+      if (
+        builtinNamespaceId !== undefined &&
+        Array.isArray(selectedDataSource.namespaces) &&
+        selectedDataSource.namespaces.length > 0
+      ) {
+        requestParams.namespace_id = builtinNamespaceId;
+      }
       const data = await getSourceDataByApiId(
         selectedDataSource.id,
         requestParams,
@@ -166,7 +175,7 @@ export function useSingleValueConfig({
     } finally {
       setLoadingSingleValueData(false);
     }
-  }, [selectedDataSource, form, getSourceDataByApiId]);
+  }, [selectedDataSource, form, getSourceDataByApiId, builtinNamespaceId]);
 
   const handleSingleValueFieldChange = useCallback(
     (checkedKeys: any) => {

@@ -25,6 +25,7 @@ import {
 } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
+import { useCanvasResources } from '@/app/ops-analysis/hooks/useCanvasResources';
 import dayjs from 'dayjs';
 import {
   LayoutItem,
@@ -60,7 +61,13 @@ import {
   getBindableFilterParams,
   buildDefaultFilterBindings,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
-import { collectNamespaceOptions } from '@/app/ops-analysis/utils/namespaceFilter';
+import {
+  collectNamespaceOptions,
+} from '@/app/ops-analysis/utils/namespaceFilter';
+import {
+  collectDashboardDataSourceIds,
+  collectDashboardNamespaceIds,
+} from '@/app/ops-analysis/utils/canvasResources';
 import {
   getOpsChartTheme,
   resolveOpsChartThemeName,
@@ -87,7 +94,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const isDarkTheme = themeName === 'dark';
     const { getDashboardDetail, saveDashboard } = useDashBoardApi();
     const dataSourceManager = useDataSourceManager();
-    const { fetchDataSources, namespaceList, fetchNamespaces } = useOpsAnalysis();
+    const {
+      namespaceList,
+      loadCanvasNamespaces,
+    } = useOpsAnalysis();
+    const { syncCanvasResources } = useCanvasResources();
     const [isEditMode, setIsEditMode] = useState(false);
     const [addModalVisible, setAddModalVisible] = useState(false);
     const [layout, setLayout] = useState<LayoutItem[]>([]);
@@ -122,7 +133,12 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [filterSearchVersion, setFilterSearchVersion] = useState(0);
     const [namespaceSearchVersion, setNamespaceSearchVersion] = useState(0);
     const exportRef = useRef<HTMLDivElement>(null);
+    const getDashboardDetailRef = useRef(getDashboardDetail);
     const [exporting, setExporting] = useState(false);
+
+    useEffect(() => {
+      getDashboardDetailRef.current = getDashboardDetail;
+    }, [getDashboardDetail]);
 
     const {
       definitions,
@@ -158,6 +174,33 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       },
       [setDefinitions, setFilterValues, applyQueryState, appliedNamespaceId],
     );
+
+    const syncDashboardCanvasResources = useCallback(async (
+      nextLayout: LayoutItem[],
+    ) => {
+      return syncCanvasResources({
+        source: nextLayout,
+        getDataSourceIds: collectDashboardDataSourceIds,
+        getNamespaceIds: collectDashboardNamespaceIds,
+      });
+    }, [syncCanvasResources]);
+
+    const resolveLayoutNamespaceId = useCallback((
+      nextLayout: LayoutItem[],
+      canvasDataSources: DatasourceItem[],
+    ) => {
+      if (namespaceDraftId !== undefined) {
+        return namespaceDraftId;
+      }
+      if (appliedNamespaceId !== undefined) {
+        return appliedNamespaceId;
+      }
+
+      const namespaceIds = Array.from(
+        collectDashboardNamespaceIds(nextLayout, canvasDataSources),
+      );
+      return namespaceIds[0];
+    }, [appliedNamespaceId, namespaceDraftId]);
 
     const buildFiltersFromLayout = (
       nextLayout: LayoutItem[],
@@ -322,14 +365,6 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       return updatedValues;
     };
 
-    useEffect(() => {
-      void fetchDataSources();
-    }, [fetchDataSources]);
-
-    useEffect(() => {
-      void fetchNamespaces();
-    }, [fetchNamespaces]);
-
     const namespaceOptions = useMemo(() => {
       return collectNamespaceOptions(layout, dataSourceManager.dataSources, namespaceList);
     }, [layout, dataSourceManager.dataSources, namespaceList]);
@@ -391,18 +426,24 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         }
         try {
           setLoading(true);
-          const dashboardData = await getDashboardDetail(
+          const dashboardData = await getDashboardDetailRef.current(
             selectedDashboard.data_id,
           );
+          const nextLayout =
+            dashboardData.view_sets && Array.isArray(dashboardData.view_sets)
+              ? dashboardData.view_sets
+              : [];
+          await syncDashboardCanvasResources(nextLayout);
           if (
             dashboardData.view_sets &&
             Array.isArray(dashboardData.view_sets)
           ) {
-            setLayout(dashboardData.view_sets);
-            setOriginalLayout([...dashboardData.view_sets]);
+            setLayout(nextLayout);
+            setOriginalLayout([...nextLayout]);
           } else {
             setLayout([]);
             setOriginalLayout([]);
+            void loadCanvasNamespaces([]);
           }
 
           const savedOtherConfig = dashboardData.other || {};
@@ -438,7 +479,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         }
       };
       loadDashboardData();
-    }, [selectedDashboard?.data_id]);
+    }, [selectedDashboard?.data_id, loadCanvasNamespaces, syncDashboardCanvasResources]);
 
     // 监听 selectedDashboard 的变化，重置状态
     useEffect(() => {
@@ -563,12 +604,30 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       );
 
       setLayout(syncedLayout);
-      syncFilterStateAfterLayoutChange(
-        nextDefinitions,
-        nextFilterValues,
-        nextAppliedValues,
-      );
-      setAddModalVisible(false);
+      void syncDashboardCanvasResources(syncedLayout).then((canvasDataSources) => {
+        const nextNamespaceId = resolveLayoutNamespaceId(
+          syncedLayout,
+          canvasDataSources,
+        );
+        const shouldApplyNamespace =
+          nextNamespaceId !== undefined || appliedNamespaceId === undefined;
+
+        setDefinitions(nextDefinitions);
+        setFilterValues(nextFilterValues);
+        applyQueryState(
+          nextDefinitions,
+          nextAppliedValues,
+          shouldApplyNamespace ? nextNamespaceId : appliedNamespaceId,
+        );
+
+        if (shouldApplyNamespace) {
+          setNamespaceDraftId(nextNamespaceId);
+        }
+        if ((shouldApplyNamespace ? nextNamespaceId : appliedNamespaceId) !== appliedNamespaceId) {
+          setNamespaceSearchVersion((prev) => prev + 1);
+        }
+        setAddModalVisible(false);
+      });
     };
 
     const handleSave = async () => {
@@ -610,6 +669,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       );
 
       setLayout([...originalLayout]);
+      void syncDashboardCanvasResources([...originalLayout]);
       setOtherConfig({ ...originalOtherConfig });
       setDefinitions([...originalDefinitions]);
       setFilterValues(revertedFilterValues);
@@ -636,11 +696,13 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       );
 
       setLayout(syncedLayout);
-      syncFilterStateAfterLayoutChange(
-        nextDefinitions,
-        nextFilterValues,
-        nextAppliedValues,
-      );
+      void syncDashboardCanvasResources(syncedLayout).then(() => {
+        syncFilterStateAfterLayoutChange(
+          nextDefinitions,
+          nextFilterValues,
+          nextAppliedValues,
+        );
+      });
     };
 
     const handleEdit = (id: string) => {
@@ -710,11 +772,13 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         );
 
         setLayout(syncedLayout);
-        syncFilterStateAfterLayoutChange(
-          nextDefinitions,
-          nextFilterValues,
-          nextAppliedValues,
-        );
+        void syncDashboardCanvasResources(syncedLayout).then(() => {
+          syncFilterStateAfterLayoutChange(
+            nextDefinitions,
+            nextFilterValues,
+            nextAppliedValues,
+          );
+        });
         
         // Only refresh the edited widget, not all widgets
         if (editedWidgetId) {
@@ -1067,6 +1131,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           item={currentConfigItem as LayoutItem}
           onConfirm={handleConfigConfirm}
           onClose={handleConfigClose}
+          builtinNamespaceId={namespaceDraftId}
           dataSourceManager={dataSourceManager}
           filterDefinitions={definitions}
           unifiedFilterValues={filterValues}
