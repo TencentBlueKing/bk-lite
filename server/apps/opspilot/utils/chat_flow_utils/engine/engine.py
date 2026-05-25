@@ -276,12 +276,18 @@ class ChatFlowEngine:
         """异步记录节点执行明细（用于 async 上下文）
 
         使用 sync_to_async 包装同步的 ORM 操作，避免在异步上下文中直接调用同步数据库操作。
+        注意：使用 thread_sensitive=False 避免在 LangGraph 异步节点中触发
+        "You cannot submit onto CurrentThreadExecutor from its own thread" 错误。
         """
-        await sync_to_async(self._record_node_execution_result, thread_sensitive=True)(node_id, context)
+        await sync_to_async(self._record_node_execution_result, thread_sensitive=False)(node_id, context)
 
     async def _record_execution_result_async(self, input_data: Dict[str, Any], result: Any, success: bool, start_node_type: str = None) -> None:
-        """异步记录工作流执行结果（用于 async 上下文）"""
-        await sync_to_async(self._record_execution_result, thread_sensitive=True)(input_data, result, success, start_node_type)
+        """异步记录工作流执行结果（用于 async 上下文）
+
+        注意：使用 thread_sensitive=False 避免在 LangGraph 异步节点中触发
+        "You cannot submit onto CurrentThreadExecutor from its own thread" 错误。
+        """
+        await sync_to_async(self._record_execution_result, thread_sensitive=False)(input_data, result, success, start_node_type)
 
     def _get_start_node(self) -> Optional[Dict[str, Any]]:
         """获取起始节点
@@ -574,8 +580,9 @@ class ChatFlowEngine:
                     # 有后续节点：不在此处记录，让后续节点执行完成后统一记录
                     pass
                 else:
-                    # 没有后续节点：直接记录成功执行结果（流已结束，同步执行不会阻塞）
-                    self._record_execution_result(
+                    # 没有后续节点：记录成功执行结果
+                    # 注意：必须使用异步版本，因为当前在 async 上下文中
+                    await self._record_execution_result_async(
                         input_data,
                         final_message,
                         True,
@@ -600,8 +607,9 @@ class ChatFlowEngine:
                 error_data = {"type": "ERROR", "error": f"流处理错误: {str(e)}", "timestamp": int(time.time() * 1000)}
                 yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 
-                # 记录失败执行结果到 WorkFlowTaskResult（流已结束，同步执行不会阻塞）
-                self._record_execution_result(
+                # 记录失败执行结果到 WorkFlowTaskResult
+                # 注意：必须使用异步版本，因为当前在 async 上下文中
+                await self._record_execution_result_async(
                     input_data,
                     {"success": False, "error": str(e), "error_type": type(e).__name__},
                     False,

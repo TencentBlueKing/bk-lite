@@ -18,6 +18,7 @@ import {
   PlaybookListResponse,
   Playbook,
   PlaybookFormData,
+  PlaybookFilePreview,
   ScheduledTaskParams,
   ScheduledTaskListResponse,
   ScheduledTask,
@@ -301,6 +302,17 @@ const useJobApi = () => {
     return await post('/job_mgmt/api/playbook/batch_delete/', { ids });
   };
 
+  const previewPlaybookFile = async (
+    id: number,
+    filePath: string,
+    config?: AxiosRequestConfig
+  ): Promise<PlaybookFilePreview> => {
+    return await get(`/job_mgmt/api/playbook/${id}/preview_file/`, {
+      params: { file_path: filePath },
+      ...config,
+    });
+  };
+
   // File distribution - upload file first
   const uploadDistributionFile = async (
     file: File
@@ -498,6 +510,7 @@ const useJobApi = () => {
     downloadPlaybook,
     downloadPlaybookTemplate,
     batchDeletePlaybook,
+    previewPlaybookFile,
     uploadDistributionFile,
     createFileDistribution,
     getScheduledTaskList,

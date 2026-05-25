@@ -66,12 +66,13 @@ class LogGroupQueryBuilder:
             return f"({connector.join(expressions)})"
 
     @staticmethod
-    def build_query_with_groups(user_query, log_group_ids):
+    def build_query_with_groups(user_query, log_group_ids, resolved_groups=None):
         """构建包含日志分组规则的查询语句
 
         Args:
             user_query (str): 用户输入的查询语句
             log_group_ids (list): 日志分组ID列表
+            resolved_groups (list, optional): 已解析的 LogGroup 对象列表，传入时跳过数据库查询
 
         Returns:
             tuple: (final_query, group_info)
@@ -84,8 +85,10 @@ class LogGroupQueryBuilder:
         normalized_ids = [str(group_id).strip() for group_id in log_group_ids if str(group_id).strip()]
         has_default = "default" in normalized_ids
 
-        # 获取有效的日志分组（非default情况）
-        valid_groups = LogGroupQueryBuilder._get_valid_groups(normalized_ids)
+        if resolved_groups is not None:
+            valid_groups = resolved_groups
+        else:
+            valid_groups = LogGroupQueryBuilder._get_valid_groups(normalized_ids)
 
         if not valid_groups:
             return LogGroupQueryBuilder.DENY_ALL_QUERY, []

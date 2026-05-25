@@ -9,4 +9,4 @@ export { useConfigFileApi } from './configFile';
 export { useUserConfigApi, useSavedFiltersApi, type SavedFilterItem, type SavedFilterCondition } from './userConfig';
 export { useSubscriptionApi } from './subscription';
 export { useCollectToolApi } from './collectTool';
-export { useK8sSetupApi, buildK8sInstallCommand } from './k8sSetup';
+export { useK8sSetupApi } from './k8sSetup';

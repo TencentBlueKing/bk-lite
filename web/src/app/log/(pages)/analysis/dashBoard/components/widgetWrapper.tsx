@@ -28,7 +28,11 @@ import {
   HttpKpiCard,
   HttpBarLine,
   HttpDonut,
-  HttpRequestTable
+  HttpRequestTable,
+  HttpRequestTrend,
+  HttpStatusCategoryDonut,
+  HttpLatencyBar,
+  HttpStatusTrend
 } from '../widgets/http';
 import {
   FlowKpiCard,
@@ -156,6 +160,10 @@ const componentMap: Record<string, React.ComponentType<any>> = {
   httpBarLine: HttpBarLine,
   httpDonut: HttpDonut,
   httpRequestTable: HttpRequestTable,
+  httpRequestTrend: HttpRequestTrend,
+  httpStatusCategoryDonut: HttpStatusCategoryDonut,
+  httpLatencyBar: HttpLatencyBar,
+  httpStatusTrend: HttpStatusTrend,
   flowKpiCard: FlowKpiCard,
   flowTrend: FlowTrend,
   flowDonut: FlowDonut,
@@ -404,6 +412,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       prevData={isKpiCard ? prevData : undefined}
       loading={loading}
       config={config}
+      otherConfig={otherConfig}
       globalTimeRange={globalTimeRange}
       refreshKey={refreshKey}
       onReady={onReady}

@@ -96,7 +96,7 @@ async def _build_and_run(request, mock_llm_responses, interrupt_at_step=None, in
     # Build interrupt mock logic
     call_sites = {"count": 0}
 
-    def mock_is_interrupt(exec_id):
+    async def mock_is_interrupt(exec_id):
         if not exec_id:
             return False
         call_sites["count"] += 1
@@ -126,7 +126,7 @@ async def _build_and_run(request, mock_llm_responses, interrupt_at_step=None, in
         "apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template",
         return_value="You are a test assistant.",
     ), patch(
-        "apps.opspilot.metis.llm.chain.node.is_interrupt_requested",
+        "apps.opspilot.metis.llm.chain.node.is_interrupt_requested_async",
         side_effect=mock_is_interrupt,
     ):
         result = await graph.ainvoke(

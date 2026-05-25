@@ -25,11 +25,14 @@ async def publish_callback_to_nats(
         logger.warning(f"[NATS Helper] callback_subject missing for task {task_id}")
         return
 
-    payload = dict(result or {})
-    if payload.get("collect_task_id") in (None, ""):
-        payload["collect_task_id"] = params.get("collect_task_id")
+    callback_data = dict(result or {})
+    if callback_data.get("collect_task_id") in (None, ""):
+        callback_data["collect_task_id"] = params.get("collect_task_id")
     nats_namespace = os.getenv("NATS_NAMESPACE", "bklite")
     subject = f"{nats_namespace}.{callback_subject}"
+
+    # server 端 NATS handler 按 {"args": [], "kwargs": {}} 格式分发参数
+    payload = {"args": [], "kwargs": {"data": callback_data}}
 
     try:
         await nats_publish(subject, payload)

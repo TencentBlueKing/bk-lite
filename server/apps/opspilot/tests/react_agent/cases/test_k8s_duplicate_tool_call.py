@@ -32,7 +32,7 @@ _falkordb_asyncio.FalkorDB = type("FalkorDB", (), {})
 sys.modules.setdefault("falkordb.asyncio", _falkordb_asyncio)
 
 from typing import Annotated  # noqa: E402
-from unittest.mock import MagicMock, patch  # noqa: E402
+from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
 from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
@@ -119,7 +119,8 @@ async def _build_and_run_react(request, mock_llm_responses, tools_list):
         "apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template",
         side_effect=_mock_render,
     ), patch(
-        "apps.opspilot.metis.llm.chain.node.is_interrupt_requested",
+        "apps.opspilot.metis.llm.chain.node.is_interrupt_requested_async",
+        new_callable=AsyncMock,
         return_value=False,
     ):
         result = await graph.ainvoke(

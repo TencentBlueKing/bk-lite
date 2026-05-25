@@ -77,7 +77,7 @@ class TemplateAccessGuideService:
         tag_parts = [
             f"organization_id={organization_id}",
             f"instance_type={monitor_object.name}",
-            f"plugin_id={getattr(plugin, 'pk', None)}",
+            f"plugin_id={plugin.template_id}",
         ]
         tag_parts.extend([f"{key}=demo_{key}" for key in instance_id_keys])
         line_without_timestamp = f"{metric_name},{','.join(tag_parts)} value=1"

@@ -422,8 +422,11 @@ class PolicyViewSet(viewsets.ModelViewSet):
         """
         将 schedule 格式化为 CrontabSchedule 实例
         """
+        from django.utils import timezone
+
         schedule_type = schedule.get("type")
         value = schedule.get("value")
+        current_tz = timezone.get_current_timezone()
 
         if schedule_type == "min":
             return CrontabSchedule.objects.get_or_create(
@@ -432,6 +435,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
                 day_of_month="*",
                 month_of_year="*",
                 day_of_week="*",
+                timezone=current_tz,
             )[0]
         elif schedule_type == "hour":
             return CrontabSchedule.objects.get_or_create(
@@ -440,6 +444,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
                 day_of_month="*",
                 month_of_year="*",
                 day_of_week="*",
+                timezone=current_tz,
             )[0]
         elif schedule_type == "day":
             return CrontabSchedule.objects.get_or_create(
@@ -448,6 +453,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
                 day_of_month=f"*/{value}",
                 month_of_year="*",
                 day_of_week="*",
+                timezone=current_tz,
             )[0]
         else:
             raise BaseAppException("Invalid schedule type")
@@ -500,8 +506,40 @@ class AlertViewSet(viewsets.ModelViewSet):
     filterset_class = AlertFilter
     pagination_class = CustomPageNumberPagination
 
+    OPERATE_PERMISSION = "Operate"
+
     def _get_all_accessible_policy_ids(self, request):
         return get_accessible_log_policy_ids(request)
+
+    def _authorize_alert_operate(self, request, alert):
+        policy = alert.policy
+        if not policy:
+            return WebUtils.response_403("Alert has no associated policy")
+
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        permissions_result = get_permissions_rules(
+            request.user,
+            request.COOKIES.get("current_team"),
+            "log",
+            PermissionConstants.POLICY_MODULE,
+            include_children=include_children,
+        )
+        if not isinstance(permissions_result, dict):
+            permissions_result = {}
+        permission_data = permissions_result.get("data", {})
+        current_teams = PolicyViewSet._normalize_orgs(permissions_result.get("team", []))
+
+        policy_orgs = {rel.organization for rel in policy.policyorganization_set.all()}
+        permissions = get_instance_permissions(
+            policy.collect_type_id,
+            policy.id,
+            policy_orgs,
+            permission_data,
+            current_teams,
+        )
+        if self.OPERATE_PERMISSION not in permissions:
+            return WebUtils.response_403("User does not have permission to operate this alert")
+        return None
 
     def get_queryset(self):
         request = getattr(self, "request", None)
@@ -621,8 +659,12 @@ class AlertViewSet(viewsets.ModelViewSet):
     @action(methods=["post"], detail=True, url_path="closed")
     def closed(self, request, pk=None):
         alert = self.get_object()
-        operator = request.user.username
 
+        auth_error = self._authorize_alert_operate(request, alert)
+        if auth_error:
+            return auth_error
+
+        operator = request.user.username
         alert.status = AlertConstants.STATUS_CLOSED
         alert.operator = operator
         alert.save()

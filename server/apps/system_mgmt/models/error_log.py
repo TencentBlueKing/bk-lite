@@ -18,6 +18,7 @@ class ErrorLog(models.Model):
     app = models.CharField("应用", max_length=100, db_index=True, help_text="发生错误的应用模块")
     module = models.CharField("模块", max_length=200, db_index=True, help_text="具体的功能模块")
     error_message = models.TextField("错误信息", help_text="详细的错误描述")
+    stack_trace = models.TextField("堆栈信息", help_text="详细的堆栈错误", default="")
     domain = models.CharField("域名", max_length=100, default="domain.com", db_index=True)
 
     class Meta:

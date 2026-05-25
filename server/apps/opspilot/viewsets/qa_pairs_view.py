@@ -14,6 +14,7 @@ from apps.opspilot.serializers.qa_pairs_serializers import QAPairsSerializer
 from apps.opspilot.tasks import create_qa_pairs, create_qa_pairs_by_chunk, create_qa_pairs_by_custom, create_qa_pairs_by_json, generate_answer
 from apps.opspilot.utils.chunk_helper import ChunkHelper
 from apps.opspilot.utils.permission_check import CheckKnowledgePermission
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class QAPairsFilter(FilterSet):
@@ -85,7 +86,12 @@ class QAPairsViewSet(MaintainerViewSet):
         if obj.status == "generating" or obj.status == "pending":
             message = self.loader.get("error.qa_pairs_generating") if self.loader else "QA pairs is generating, cannot delete"
             return JsonResponse({"result": False, "message": message})
-        return super().destroy(request, *args, **kwargs)
+        qa_name = obj.name
+        kb_name = obj.knowledge_base.name if obj.knowledge_base else str(obj.knowledge_base_id)
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code == 204:
+            log_operation(request, "delete", "opspilot", f"删除知识库（{kb_name}）的问答对: {qa_name}")
+        return response
 
     def _check_user_permission(self, knowledge_base_id, request):
         knowledge_base = KnowledgeBase.objects.get(id=knowledge_base_id)
@@ -240,12 +246,24 @@ class QAPairsViewSet(MaintainerViewSet):
             )
         add_list = QAPairs.objects.bulk_create(qa_list, batch_size=100)
         create_qa_pairs.delay([instance.id for instance in add_list], params.get("only_question", False))
+        if add_list:
+            kb = KnowledgeBase.objects.filter(id=params["knowledge_base_id"]).first()
+            kb_name = kb.name if kb else str(params["knowledge_base_id"])
+            qa_names = ", ".join([i.name for i in add_list[:3]])
+            if len(add_list) > 3:
+                qa_names += f" 等{len(add_list)}个"
+            log_operation(request, "create", "opspilot", f"创建知识库（{kb_name}）的问答对: {qa_names}")
         return JsonResponse({"result": True})
 
     @HasPermission("knowledge_document-Set")
     @CheckKnowledgePermission(QAPairs)
     def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
+        obj = self.get_object()
+        response = super().update(request, *args, **kwargs)
+        if response.status_code == 200:
+            kb_name = obj.knowledge_base.name if obj.knowledge_base else str(obj.knowledge_base_id)
+            log_operation(request, "update", "opspilot", f"更新知识库（{kb_name}）的问答对: {obj.name}")
+        return response
 
     @action(methods=["POST"], detail=False)
     @HasPermission("knowledge_document-Add")
@@ -280,6 +298,10 @@ class QAPairsViewSet(MaintainerViewSet):
             request.user.username,
             request.user.domain,
         )
+        kb = KnowledgeBase.objects.filter(id=params["knowledge_base_id"]).first()
+        kb_name = kb.name if kb else str(params["knowledge_base_id"])
+        file_names = ", ".join([f.name for f in files])
+        log_operation(request, "create", "opspilot", f"导入知识库（{kb_name}）的问答对: {file_names}")
         return JsonResponse({"result": True, "message": "QA pairs import started."})
 
     def set_file_data(self, files):
@@ -379,6 +401,10 @@ class QAPairsViewSet(MaintainerViewSet):
         if not result:
             message = self.loader.get("error.qa_pair_update_failed") if self.loader else "Failed to update QA pair."
             return JsonResponse({"result": False, "message": message})
+        qa_pairs_obj = QAPairs.objects.filter(id=params.get("qa_pairs_id")).first()
+        if qa_pairs_obj:
+            kb_name = qa_pairs_obj.knowledge_base.name if qa_pairs_obj.knowledge_base else str(qa_pairs_obj.knowledge_base_id)
+            log_operation(request, "update", "opspilot", f"更新知识库（{kb_name}）的问答对: {question[:30]}")
         return JsonResponse({"result": True})
 
     @action(methods=["POST"], detail=False)
@@ -399,6 +425,8 @@ class QAPairsViewSet(MaintainerViewSet):
         if result["result"]:
             qa_paris.generate_count += 1
             qa_paris.save()
+            kb_name = qa_paris.knowledge_base.name if qa_paris.knowledge_base else str(qa_paris.knowledge_base_id)
+            log_operation(request, "create", "opspilot", f"创建知识库（{kb_name}）的问答对: {question[:30]}")
         return JsonResponse(result)
 
     @action(methods=["POST"], detail=False)
@@ -413,6 +441,10 @@ class QAPairsViewSet(MaintainerViewSet):
             return JsonResponse({"result": False, "message": message})
         # if params["base_chunk_id"]:
         #     ChunkHelper.update_document_qa_pairs_count(index_name, -1, params["base_chunk_id"])
+        qa_pairs_obj = QAPairs.objects.filter(id=params.get("qa_pairs_id")).first()
+        if qa_pairs_obj:
+            kb_name = qa_pairs_obj.knowledge_base.name if qa_pairs_obj.knowledge_base else str(qa_pairs_obj.knowledge_base_id)
+            log_operation(request, "delete", "opspilot", f"删除知识库（{kb_name}）的问答对: {params.get('question', '')[:30]}")
         return JsonResponse({"result": True})
 
     @action(methods=["POST"], detail=False)
@@ -432,6 +464,9 @@ class QAPairsViewSet(MaintainerViewSet):
             domain=request.user.domain,
         )
         create_qa_pairs_by_custom.delay(qa_pairs.id, params["qa_pairs"])
+        kb = KnowledgeBase.objects.filter(id=params["knowledge_base_id"]).first()
+        kb_name = kb.name if kb else str(params["knowledge_base_id"])
+        log_operation(request, "create", "opspilot", f"自定义创建知识库（{kb_name}）的问答对: {params['name']}")
         return JsonResponse({"result": True})
 
     @action(methods=["POST"], detail=False)
@@ -466,6 +501,9 @@ class QAPairsViewSet(MaintainerViewSet):
             "only_question": params.get("only_question", False),
         }
         create_qa_pairs_by_chunk.delay(qa_pairs.id, kwargs)
+        kb = KnowledgeBase.objects.filter(id=params["knowledge_base_id"]).first()
+        kb_name = kb.name if kb else str(params["knowledge_base_id"])
+        log_operation(request, "create", "opspilot", f"按chunk创建知识库（{kb_name}）的问答对: {params['name']}")
         return JsonResponse({"result": True, "data": {"qa_pairs_id": qa_pairs.id}})
 
     @action(methods=["GET"], detail=False)

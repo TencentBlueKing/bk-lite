@@ -20,6 +20,16 @@ class K8sSetupViewSet(ViewSet):
         data = K8sSetupService.generate_install_token(collector_cluster_id, cloud_region_id)
         return WebUtils.response_success(data)
 
+    @action(methods=["post"], detail=False, url_path="install_command")
+    def install_command(self, request):
+        """后端生成安装命令（URL 直连 Django open_api，不走 Next.js 代理）"""
+        collector_cluster_id = request.data.get("collector_cluster_id")
+        cloud_region_id = request.data.get("cloud_region_id")
+        if cloud_region_id in (None, ""):
+            raise BaseAppException("cloud_region_id is required")
+        data = K8sSetupService.generate_install_command(collector_cluster_id, cloud_region_id)
+        return WebUtils.response_success(data)
+
     @action(methods=["post"], detail=False, url_path="verify")
     def verify(self, request):
         collector_cluster_id = request.data.get("collector_cluster_id")

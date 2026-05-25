@@ -318,6 +318,8 @@
         "confirm": "Confirm",
         "cancel": "Cancel",
         "accessPoint": "Proxy",
+        "accessPointHelp": "A proxy is the container node that starts the collection task. Configure it under the matching cloud region in Node Management.",
+        "accessPointLink": "Go to Node Management",
         "syncSuccess": "Sync Successfully!",
         "syncFailed": "Sync Failed",
         "ipRange": "IP Range",
@@ -354,9 +356,9 @@
             "accessConfig": "Access Config",
             "collectorInstall": "Collector Install",
             "accessComplete": "Complete",
-            "collectorClusterId": "Collector Cluster ID",
-            "collectorClusterIdDesc": "Reporting identity used for VictoriaMetrics lookups; must match the cluster_name configured in the collector (letters, digits, underscore and hyphen only).",
-            "collectorClusterIdInvalid": "Only letters, digits, underscore and hyphen are allowed",
+            "collectorClusterId": "Cluster ID",
+            "collectorClusterIdDesc": "Important: This ID uniquely identifies the cluster for data collection. Do not modify it after creation, or deployed collectors will fail to match. Only English letters, digits, underscores and hyphens are allowed.",
+            "collectorClusterIdInvalid": "Only English letters, digits, underscores and hyphens are allowed",
             "cloudRegion": "Cloud Region",
             "installCollector": "Install Collector",
             "installCommandDesc": "Generate a short-lived install command, then run it on a host with kubectl access to the target cluster.",
@@ -463,7 +465,21 @@
             "delete": "Delete",
             "error": "Error"
         },
-        "executeSuccess": "Execute successfully"
+        "executeSuccess": "Execute successfully",
+        "stats": {
+            "totalTasks": "Total Tasks",
+            "normalTasks": "Normal",
+            "errorTasks": "Errors",
+            "recentSync": "Recent Sync",
+            "coveredModels": "Covered Models",
+            "justNow": "just now",
+            "minutesAgo": "{n} min ago",
+            "hoursAgo": "{n} h ago",
+            "daysAgo": "{n} d ago",
+            "never": "none",
+            "expand": "Expand overview",
+            "collapse": "Collapse overview"
+        }
     },
     "OidLibrary": {
         "title": "SOID Library",

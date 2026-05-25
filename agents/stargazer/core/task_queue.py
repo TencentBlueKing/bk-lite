@@ -138,6 +138,16 @@ class TaskQueue:
             "collect_type": params.get("collect_type"),
         }
 
+        # 配置文件采集任务需要按 CMDB 任务与文件路径维度区分，
+        # 否则同一主机上的不同文件采集会被错误去重。
+        collect_task_id = params.get("collect_task_id")
+        if collect_task_id is not None:
+            key_params["collect_task_id"] = collect_task_id
+
+        config_file_path = str(params.get("config_file_path") or "").strip()
+        if config_file_path:
+            key_params["config_file_path"] = config_file_path
+
         # 移除空值
         key_params = {k: v for k, v in key_params.items() if v is not None}
 

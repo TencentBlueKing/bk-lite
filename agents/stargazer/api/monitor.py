@@ -265,13 +265,14 @@ async def oceanstor_metrics(request):
 
     username = request.headers.get("username")
     password = request.headers.get("password")
-    host = request.headers.get("host")
+    base_url = request.headers.get("base_url")
+    host = request.headers.get("host") or base_url
     instance_id = request.headers.get("instance_id", "")
 
     agent_id = request.headers.get("agent_id", "")
-    instance_type = request.headers.get("instance_type", "oceanstor")
-    collect_type = request.headers.get("collect_type", "monitor")
-    config_type = request.headers.get("config_type", "auto")
+    instance_type = request.headers.get("instance_type", "storage")
+    collect_type = request.headers.get("collect_type", "oceanstor")
+    config_type = request.headers.get("config_type", "oceanstor")
 
     logger.info(f"Request: Host={host}, User={username}, instance_id={instance_id}")
 
@@ -281,6 +282,7 @@ async def oceanstor_metrics(request):
             "username": username,
             "password": password,
             "host": host,
+            "base_url": base_url,
             "instance_id": instance_id,
             "tags": {
                 "agent_id": agent_id,

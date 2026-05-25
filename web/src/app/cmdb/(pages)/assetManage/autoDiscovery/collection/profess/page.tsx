@@ -14,6 +14,7 @@ import ConfigFileTask from './components/configFileTask';
 import PluginCard from './components/pluginCard';
 import TaskDetail from './components/taskDetail';
 import NodeMgmtSyncDetail from './components/nodeMgmtSyncDetail';
+import CollectionStats from './components/collectionStats';
 import MarkdownRenderer from '@/components/markdown';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
@@ -54,6 +55,13 @@ const getCollectToolProtocol = (pluginId?: string | null) => {
     return 'snmp';
   }
   return null;
+};
+
+const getTaskStatusKey = (tab: ModelItem) => {
+  if (tab.model_id && tab.type) {
+    return `${tab.model_id}__${tab.type}`;
+  }
+  return tab.model_id || tab.id;
 };
 
 const ProfessionalCollection: React.FC = () => {
@@ -965,6 +973,7 @@ const ProfessionalCollection: React.FC = () => {
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
+      <CollectionStats />
       <div className="bg-white border-b border-gray-200 ml-2">
         {categoryLoading ? (
           <div className="flex items-center justify-center py-2">
@@ -1007,12 +1016,20 @@ const ProfessionalCollection: React.FC = () => {
                   successLabel={t('Collection.statusLabel.syncSuccess')}
                   failedLabel={t('Collection.statusLabel.syncFailed')}
                   runningCount={
-                    taskStatus[tab.model_id || tab.id]?.running || 0
+                    taskStatus[getTaskStatusKey(tab)]?.running ||
+                    taskStatus[tab.model_id || tab.id]?.running ||
+                    0
                   }
                   successCount={
-                    taskStatus[tab.model_id || tab.id]?.success || 0
+                    taskStatus[getTaskStatusKey(tab)]?.success ||
+                    taskStatus[tab.model_id || tab.id]?.success ||
+                    0
                   }
-                  failedCount={taskStatus[tab.model_id || tab.id]?.failed || 0}
+                  failedCount={
+                    taskStatus[getTaskStatusKey(tab)]?.failed ||
+                    taskStatus[tab.model_id || tab.id]?.failed ||
+                    0
+                  }
                 />
               ))}
             </div>

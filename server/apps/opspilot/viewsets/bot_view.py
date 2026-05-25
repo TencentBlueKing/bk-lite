@@ -17,6 +17,7 @@ from apps.opspilot.utils.bot_utils import set_time_range
 from apps.opspilot.utils.celery_task_utils import create_celery_task, delete_celery_task
 from apps.opspilot.utils.pin_mixin import PinMixin
 from apps.opspilot.utils.schedule_utils import get_crontab_next_runs
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class BotFilter(FilterSet):
@@ -90,7 +91,10 @@ class BotViewSet(PinMixin, AuthViewSet):
             bot_type=data.get("bot_type", BotTypeChoice.PILOT),
         )
         BotWorkFlow.objects.create(bot_id=bot_obj.id)
-        return JsonResponse({"result": True})
+        response = JsonResponse({"result": True})
+        if response.status_code >= 200 and response.status_code < 300:
+            log_operation(request, "create", "opspilot", f"新增工作台: {bot_obj.name}")
+        return response
 
     @HasPermission("bot_settings-Edit")
     def update(self, request, *args, **kwargs):
@@ -138,7 +142,10 @@ class BotViewSet(PinMixin, AuthViewSet):
             obj.online = is_publish
             obj.save()
 
-        return JsonResponse({"result": True})
+        response = JsonResponse({"result": True})
+        if response.status_code >= 200 and response.status_code < 300:
+            log_operation(request, "update", "opspilot", f"编辑工作台: {obj.name}")
+        return response
 
     @HasPermission("bot_channel-View")
     @action(methods=["GET"], detail=False)
@@ -191,7 +198,10 @@ class BotViewSet(PinMixin, AuthViewSet):
         obj = self.get_object()
         # 只有 CHAT_FLOW 类型,删除 Celery 任务
         delete_celery_task(obj.id)
-        return super().destroy(request, *args, **kwargs)
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            log_operation(request, "delete", "opspilot", f"删除工作台: {obj.name}")
+        return response
 
     @action(methods=["POST"], detail=False)
     @HasPermission("bot_settings-Save&Publish")
@@ -215,7 +225,11 @@ class BotViewSet(PinMixin, AuthViewSet):
                 create_celery_task(bot.id, workflow_data.web_json)
             bot.online = True
             bot.save()
-        return JsonResponse({"result": True})
+        response = JsonResponse({"result": True})
+        if response.status_code >= 200 and response.status_code < 300:
+            bot_name = "、".join(bots.values_list("name", flat=True))
+            log_operation(request, "execute", "opspilot", f"启动工作台: {bot_name}")
+        return response
 
     @action(methods=["POST"], detail=False)
     @HasPermission("bot_settings-Save&Publish")
@@ -236,7 +250,11 @@ class BotViewSet(PinMixin, AuthViewSet):
             bot.api_token = ""
             bot.online = False
             bot.save()
-        return JsonResponse({"result": True})
+        response = JsonResponse({"result": True})
+        if response.status_code >= 200 and response.status_code < 300:
+            bot_name = "、".join(bots.values_list("name", flat=True))
+            log_operation(request, "execute", "opspilot", f"停止工作台: {bot_name}")
+        return response
 
     @action(methods=["GET"], detail=False)
     @HasPermission("bot_conversation_log-View")

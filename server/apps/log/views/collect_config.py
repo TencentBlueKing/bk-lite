@@ -172,7 +172,7 @@ class CollectTypeViewSet(ModelViewSet):
         except ValueError as exc:
             return WebUtils.response_error(error_message=str(exc), status_code=403)
 
-        data = SearchService.all_field_names(query, start_time, end_time, scope.log_groups)
+        data = SearchService.all_field_names(query, start_time, end_time, scope.log_groups, resolved_groups=scope.resolved_group_objects)
 
         return WebUtils.response_success(data)
 

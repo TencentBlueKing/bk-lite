@@ -49,7 +49,13 @@ class ConfigFileVersionViewSet(GenericViewSet):
         if not instance.content:
             return WebUtils.response_error(error_message="当前版本没有可查看的内容", status_code=status.HTTP_400_BAD_REQUEST)
         encoding = (request.GET.get("encoding") or "utf-8").strip().lower()
-        raw_content = instance.read_content_bytes()
+        try:
+            raw_content = instance.read_content_bytes()
+        except Exception as err:
+            return WebUtils.response_error(
+                error_message=f"读取配置文件内容失败: {err}",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
         try:
             content = raw_content.decode(encoding, errors="replace")
         except LookupError:

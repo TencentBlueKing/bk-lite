@@ -29,6 +29,7 @@ class AlertSource(MaintainerInfo, TimeInfo):
     )
     config = JSONField(default=dict, help_text="告警源配置")
     secret = models.CharField("密钥", max_length=100, default=gen_app_secret)
+    team_secrets = JSONField(default=dict, help_text="组织密钥映射 {team_id: secret}")
     logo = models.TextField(null=True, blank=True, help_text="告警源logo")  # base64
     access_type = models.CharField(
         max_length=64,

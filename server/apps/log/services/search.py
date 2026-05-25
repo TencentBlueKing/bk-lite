@@ -67,11 +67,11 @@ class SearchService:
         return float(ratio.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
 
     @staticmethod
-    def field_values(start_time, end_time, field, limit=100, query="*", log_groups=None):
+    def field_values(start_time, end_time, field, limit=100, query="*", log_groups=None, resolved_groups=None):
         """获取字段值列表"""
         start_time, end_time = SearchService._apply_default_time_window(start_time, end_time)
         value_filter_query = SearchService._append_filter(query, f"{field}:*")
-        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(value_filter_query, log_groups)
+        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(value_filter_query, log_groups, resolved_groups=resolved_groups)
         SearchService._log_query_context(
             "field_values",
             query,
@@ -96,10 +96,10 @@ class SearchService:
         return SearchService.field_values(start_time, end_time, field, limit, query=query, log_groups=log_groups)
 
     @staticmethod
-    def all_field_names(query, start_time, end_time, log_groups=None):
+    def all_field_names(query, start_time, end_time, log_groups=None, resolved_groups=None):
         """根据当前搜索条件获取字段名列表"""
         start_time, end_time = SearchService._apply_default_time_window(start_time, end_time)
-        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups)
+        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups, resolved_groups=resolved_groups)
         SearchService._log_query_context(
             "all_field_names",
             query,
@@ -123,7 +123,7 @@ class SearchService:
         return sorted(set(field_names))
 
     @staticmethod
-    def search_logs(query, start_time, end_time, limit=10, log_groups=None):
+    def search_logs(query, start_time, end_time, limit=10, log_groups=None, resolved_groups=None):
         """搜索日志，支持日志分组过滤
 
         Args:
@@ -132,10 +132,11 @@ class SearchService:
             end_time: 结束时间
             limit: 返回结果限制
             log_groups: 日志分组ID列表
+            resolved_groups: 已解析的 LogGroup 对象列表
         """
         start_time, end_time = SearchService._apply_default_time_window(start_time, end_time)
         # 处理日志分组规则
-        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups)
+        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups, resolved_groups=resolved_groups)
         SearchService._log_query_context(
             "search_logs",
             query,
@@ -158,11 +159,11 @@ class SearchService:
         return response
 
     @staticmethod
-    def search_hits(query, start_time, end_time, field, fields_limit=5, step="5m", log_groups=None):
+    def search_hits(query, start_time, end_time, field, fields_limit=5, step="5m", log_groups=None, resolved_groups=None):
         """搜索命中统计，支持日志分组过滤"""
         start_time, end_time = SearchService._apply_default_time_window(start_time, end_time)
         # 处理日志分组规则
-        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups)
+        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups, resolved_groups=resolved_groups)
         SearchService._log_query_context(
             "search_hits",
             query,
@@ -187,11 +188,11 @@ class SearchService:
         return response
 
     @staticmethod
-    def top_stats(query, start_time, end_time, attr, top_num=5, log_groups=None):
+    def top_stats(query, start_time, end_time, attr, top_num=5, log_groups=None, resolved_groups=None):
         """按字段返回 TopN 统计结果，支持日志分组过滤。"""
         start_time, end_time = SearchService._apply_default_time_window(start_time, end_time)
         value_filter_query = SearchService._append_filter(query, f"{attr}:*")
-        final_filter_query, group_info = LogGroupQueryBuilder.build_query_with_groups(value_filter_query, log_groups)
+        final_filter_query, group_info = LogGroupQueryBuilder.build_query_with_groups(value_filter_query, log_groups, resolved_groups=resolved_groups)
         SearchService._log_query_context(
             "top_stats",
             query,
@@ -235,10 +236,10 @@ class SearchService:
         return response
 
     @staticmethod
-    def tail(query, log_groups=None):
+    def tail(query, log_groups=None, resolved_groups=None):
         """实时日志流，支持日志分组过滤 - ASGI兼容版本"""
         # 处理日志分组规则
-        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups)
+        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups, resolved_groups=resolved_groups)
         SearchService._log_query_context(
             "tail",
             query,
