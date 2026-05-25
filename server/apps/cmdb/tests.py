@@ -75,6 +75,21 @@ def _make_instance(inst_id=1001, creator="bob", organizations=None):
     }
 
 
+def _make_topology_node(inst_id, inst_name, model_id="host", children=None, **extra):
+    node = {
+        "_id": inst_id,
+        "model_id": model_id,
+        "inst_name": inst_name,
+        "children": children or [],
+    }
+    node.update(extra)
+    return node
+
+
+def _topology_child_ids(node):
+    return [child.get("_id") for child in (node or {}).get("children", [])]
+
+
 def _response_json(response):
     return json.loads(response.content)
 
@@ -157,6 +172,172 @@ def test_instance_association_instance_list_denies_user_without_object_permissio
     assert _response_json(response)["result"] is False
     mock_check_permission.assert_called_once()
     mock_association_list.assert_not_called()
+
+
+def test_topo_search_denies_user_without_object_permission():
+    from apps.cmdb.views.instance import InstanceViewSet
+
+    request = _make_cmdb_request(username="alice")
+    instance = _make_instance()
+
+    with (
+        patch(
+            "apps.cmdb.views.instance.InstanceManage.query_entity_by_id",
+            return_value=instance,
+        ),
+        patch.object(
+            InstanceViewSet,
+            "check_instance_permission",
+            return_value=False,
+        ) as mock_check_permission,
+        patch("apps.cmdb.views.instance.InstanceManage.topo_search_lite") as mock_topo_search,
+    ):
+        response = InstanceViewSet().topo_search(request, "host", 1001)
+
+    assert response.status_code == 403
+    assert _response_json(response)["result"] is False
+    mock_check_permission.assert_called_once_with(request, instance, VIEW)
+    mock_topo_search.assert_not_called()
+
+
+def test_topo_search_filters_unauthorized_neighbors_from_response():
+    from apps.cmdb.views.instance import InstanceViewSet
+
+    request = _make_cmdb_request(username="alice")
+    center = _make_instance(inst_id=1001)
+    visible_child = _make_instance(inst_id=1002)
+    hidden_child = _make_instance(inst_id=1003, organizations=[2])
+    topology = {
+        "src_result": _make_topology_node(
+            1001,
+            "host-1001",
+            children=[
+                _make_topology_node(1002, "host-1002", children=[]),
+                _make_topology_node(1003, "secret-host", children=[]),
+            ],
+        ),
+        "dst_result": _make_topology_node(1001, "host-1001", children=[]),
+    }
+
+    with (
+        patch(
+            "apps.cmdb.views.instance.InstanceManage.query_entity_by_id",
+            return_value=center,
+        ),
+        patch.object(
+            InstanceViewSet,
+            "check_instance_permission",
+            return_value=True,
+        ) as mock_check_permission,
+        patch(
+            "apps.cmdb.views.instance.CmdbRulesFormatUtil.format_user_groups_permissions",
+            return_value={1: {"inst_names": ["host-1002"], "permission_instances_map": {"host-1002": ["View"]}}},
+        ) as mock_permissions,
+        patch(
+            "apps.cmdb.services.instance.InstanceManage._query_instance_map_by_ids",
+            return_value={1001: center, 1002: visible_child, 1003: hidden_child},
+        ),
+        patch("apps.cmdb.services.instance.GraphClient") as mock_graph_client,
+    ):
+        graph_context = MagicMock()
+        graph_context.__enter__.return_value.query_topo_lite.return_value = topology
+        graph_context.__exit__.return_value = False
+        mock_graph_client.return_value = graph_context
+        response = InstanceViewSet().topo_search(request, "host", 1001)
+
+    payload = _response_json(response)
+    assert response.status_code == 200
+    assert payload["data"]["src_result"]["inst_name"] == "host-1001"
+    assert _topology_child_ids(payload["data"]["src_result"]) == [1002]
+    assert "secret-host" not in json.dumps(payload["data"], ensure_ascii=False)
+    mock_check_permission.assert_called_once_with(request, center, VIEW)
+    mock_permissions.assert_called_once_with(request=request, model_id="host")
+
+
+def test_topo_search_expand_filters_reintroduced_unauthorized_nodes():
+    from apps.cmdb.views.instance import InstanceViewSet
+
+    request = _make_cmdb_request(username="alice")
+    center = _make_instance(inst_id=1001)
+    visible_child = _make_instance(inst_id=1002)
+    hidden_grandchild = _make_instance(inst_id=1004, organizations=[2])
+    topology = {
+        "src_result": _make_topology_node(
+            1001,
+            "host-1001",
+            children=[
+                _make_topology_node(
+                    1002,
+                    "host-1002",
+                    children=[_make_topology_node(1004, "hidden-child")],
+                )
+            ],
+        ),
+        "dst_result": _make_topology_node(1001, "host-1001", children=[]),
+    }
+
+    with (
+        patch(
+            "apps.cmdb.views.instance.InstanceManage.query_entity_by_id",
+            return_value=center,
+        ),
+        patch.object(
+            InstanceViewSet,
+            "check_instance_permission",
+            return_value=True,
+        ) as mock_check_permission,
+        patch(
+            "apps.cmdb.views.instance.CmdbRulesFormatUtil.format_user_groups_permissions",
+            return_value={1: {"inst_names": ["host-1002"], "permission_instances_map": {"host-1002": ["View"]}}},
+        ) as mock_permissions,
+        patch(
+            "apps.cmdb.services.instance.InstanceManage._query_instance_map_by_ids",
+            return_value={1001: center, 1002: visible_child, 1004: hidden_grandchild},
+        ),
+        patch("apps.cmdb.services.instance.GraphClient") as mock_graph_client,
+    ):
+        graph_context = MagicMock()
+        graph_context.__enter__.return_value.query_topo_lite.return_value = topology
+        graph_context.__exit__.return_value = False
+        mock_graph_client.return_value = graph_context
+        expand_request = SimpleNamespace(
+            **request.__dict__,
+            data={"inst_id": 1001, "parent_id": [1001, 1002]},
+        )
+        response = InstanceViewSet().topo_search_expand_post(expand_request)
+
+    payload = _response_json(response)
+    assert response.status_code == 200
+    assert _topology_child_ids(payload["data"]["src_result"]) == [1002]
+    assert payload["data"]["src_result"]["children"][0]["children"] == []
+    assert "hidden-child" not in json.dumps(payload["data"], ensure_ascii=False)
+    mock_check_permission.assert_called_once_with(expand_request, center, VIEW)
+    mock_permissions.assert_called_once_with(request=expand_request, model_id="host")
+
+
+def test_instance_manage_topology_filter_preserves_authorized_topology():
+    from apps.cmdb.services.instance import InstanceManage
+
+    center = _make_instance(inst_id=1001)
+    visible_child = _make_instance(inst_id=1002)
+    topology = {
+        "src_result": _make_topology_node(1001, "host-1001", children=[_make_topology_node(1002, "host-1002")]),
+        "dst_result": _make_topology_node(1001, "host-1001", children=[]),
+    }
+
+    with patch.object(
+        InstanceManage,
+        "_query_instance_map_by_ids",
+        return_value={1001: center, 1002: visible_child},
+    ):
+        filtered = InstanceManage._filter_topology_result(
+            topology,
+            center_id=1001,
+            permission_map={1: {"inst_names": [], "permission_instances_map": {}}},
+            user=SimpleNamespace(username="alice"),
+        )
+
+    assert filtered == topology
 
 
 def test_instance_association_map_batches_graph_queries_by_direction():
@@ -537,6 +718,162 @@ def test_relation_snapshot_skips_unknown_relations_when_no_previous_snapshot_exi
 
     assert current_snapshot["relations"] == {"101": {}}
     assert events == []
+
+
+def test_relation_change_build_related_change_map_short_circuits_when_related_ids_empty():
+    from apps.cmdb.services.subscription_trigger import SubscriptionTriggerService
+
+    now = datetime.now()
+    rule = SimpleNamespace(
+        id=1,
+        name="rule-1",
+        model_id="host",
+        trigger_types=["relation_change"],
+        trigger_config={"relation_change": {"related_model": "service", "fields": []}},
+        snapshot_data={},
+        last_check_time=now,
+        created_at=now,
+    )
+
+    with patch(
+        "apps.cmdb.services.subscription_trigger.ModelManage.search_model_info",
+        return_value={"model_name": "主机"},
+    ):
+        service = SubscriptionTriggerService(rule)
+
+    result = service._build_related_change_map(
+        related_model="service",
+        related_instance_ids=[],
+        watch_fields=set(),
+        checkpoint=now,
+    )
+
+    assert result == ({}, 0)
+
+
+def test_relation_change_build_related_change_map_scopes_query_to_related_instance_ids():
+    from apps.cmdb.services.subscription_trigger import SubscriptionTriggerService
+
+    now = datetime.now()
+    rule = SimpleNamespace(
+        id=1,
+        name="rule-1",
+        model_id="host",
+        trigger_types=["relation_change"],
+        trigger_config={"relation_change": {"related_model": "service", "fields": ["status"]}},
+        snapshot_data={},
+        last_check_time=now,
+        created_at=now,
+    )
+    record = SimpleNamespace(
+        inst_id=201,
+        before_data={"status": "old"},
+        after_data={"status": "new"},
+    )
+
+    with (
+        patch(
+            "apps.cmdb.services.subscription_trigger.ModelManage.search_model_info",
+            return_value={"model_name": "主机"},
+        ),
+        patch("apps.cmdb.services.subscription_trigger.ChangeRecord.objects.filter") as mock_filter,
+    ):
+        mock_filter.return_value.order_by.return_value = [record]
+        service = SubscriptionTriggerService(rule)
+        result = service._build_related_change_map(
+            related_model="service",
+            related_instance_ids=[201, 202],
+            watch_fields={"status"},
+            checkpoint=now,
+        )
+
+    assert result == ({201: ["字段变化: status: old → new"]}, 1)
+    _, kwargs = mock_filter.call_args
+    assert kwargs["model_id"] == "service"
+    assert kwargs["inst_id__in"] == [201, 202]
+
+
+def test_relation_change_scopes_related_ids_from_previous_and_current_snapshots():
+    from apps.cmdb.services.subscription_trigger import SubscriptionTriggerService
+
+    now = datetime.now()
+    rule = SimpleNamespace(
+        id=1,
+        name="rule-1",
+        model_id="host",
+        trigger_types=["relation_change"],
+        trigger_config={"relation_change": {"related_model": "service", "fields": []}},
+        snapshot_data={"relations": {"101": {"service": [201]}, "102": {"service": [202]}}},
+        last_check_time=now,
+        created_at=now,
+    )
+    instances = [{"_id": 101, "inst_name": "host-101"}, {"_id": 102, "inst_name": "host-102"}]
+    current_snapshot = {"relations": {"101": {"service": [203]}, "102": {"service": [202]}}}
+
+    with (
+        patch(
+            "apps.cmdb.services.subscription_trigger.ModelManage.search_model_info",
+            return_value={"model_name": "主机"},
+        ),
+        patch.object(
+            SubscriptionTriggerService,
+            "_build_related_change_map",
+            return_value=({}, 0),
+        ) as mock_change_map,
+        patch.object(
+            SubscriptionTriggerService,
+            "_build_related_inst_name_map",
+            return_value={},
+        ),
+    ):
+        service = SubscriptionTriggerService(rule)
+        service._check_relation_change(current_snapshot, instances, now)
+
+    assert mock_change_map.call_count == 1
+    assert mock_change_map.call_args.kwargs["related_instance_ids"] == [201, 202, 203]
+
+
+def test_relation_change_ignores_unrelated_changes_but_keeps_add_remove_events():
+    from apps.cmdb.services.subscription_trigger import SubscriptionTriggerService
+
+    now = datetime.now()
+    rule = SimpleNamespace(
+        id=1,
+        name="rule-1",
+        model_id="host",
+        trigger_types=["relation_change"],
+        trigger_config={"relation_change": {"related_model": "service", "fields": ["status"]}},
+        snapshot_data={"relations": {"101": {"service": [201]}}},
+        last_check_time=now,
+        created_at=now,
+    )
+    instances = [{"_id": 101, "inst_name": "host-101"}]
+    current_snapshot = {"relations": {"101": {"service": [202]}}}
+
+    with (
+        patch(
+            "apps.cmdb.services.subscription_trigger.ModelManage.search_model_info",
+            return_value={"model_name": "主机"},
+        ),
+        patch.object(
+            SubscriptionTriggerService,
+            "_build_related_change_map",
+            return_value=({}, 0),
+        ),
+        patch.object(
+            SubscriptionTriggerService,
+            "_build_related_inst_name_map",
+            return_value={201: "svc-201", 202: "svc-202"},
+        ),
+    ):
+        service = SubscriptionTriggerService(rule)
+        events = service._check_relation_change(current_snapshot, instances, now)
+
+    assert len(events) == 1
+    summary = events[0].change_summary
+    assert "关联模型[service]变化:" in summary
+    assert "新增关联: [202]" in summary
+    assert "删除关联: [201]" in summary
 
 
 def test_collect_model_viewset_scopes_detail_queryset_by_permission():
