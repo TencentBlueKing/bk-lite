@@ -12,6 +12,7 @@ from apps.alerts.views import (
     K8sOpenAPIViewSet,
     LevelModelViewSet,
     IncidentModelViewSet,
+    IncidentUpdateViewSet,
     SystemSettingModelViewSet,
     SystemLogModelViewSet,
     AlertAssignmentModelViewSet,
@@ -31,6 +32,11 @@ router.register(r"api/settings", SystemSettingModelViewSet, basename="settings")
 router.register(r"api/assignment", AlertAssignmentModelViewSet, basename="assignment")
 router.register(r"api/shield", AlertShieldModelViewSet, basename="shield")
 router.register(r"api/incident", IncidentModelViewSet, basename="incident")
+router.register(
+    r"api/incident/(?P<incident_pk>\d+)/updates",
+    IncidentUpdateViewSet,
+    basename="incident-updates",
+)
 router.register(
     r"api/alarm_strategy", AlarmStrategyModelViewSet, basename="alarm_strategy"
 )

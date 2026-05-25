@@ -34,6 +34,7 @@ class IncidentModelSerializer(AuthSerializer):
     sources = serializers.SerializerMethodField()
     alert_count = serializers.SerializerMethodField()
     operator_users = serializers.SerializerMethodField()
+    collaborator_users = serializers.SerializerMethodField()
     team = serializers.ListField(child=serializers.IntegerField(), required=False, default=list)
 
     class Meta:
@@ -191,3 +192,14 @@ class IncidentModelSerializer(AuthSerializer):
             return ", ".join(list(user_name_list))
 
         return ""
+
+    def get_collaborator_users(self, obj):
+        if not obj.collaborators:
+            return []
+        if not isinstance(obj.collaborators, list):
+            return []
+        operator_user_map = self.context.get("operator_user_map")
+        if operator_user_map is not None:
+            return [{"username": u, "display_name": operator_user_map.get(u, u)} for u in obj.collaborators]
+        user_map = dict(User.objects.filter(username__in=obj.collaborators).values_list("username", "display_name"))
+        return [{"username": u, "display_name": user_map.get(u, u)} for u in obj.collaborators]
