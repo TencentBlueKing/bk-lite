@@ -30,6 +30,10 @@ class AlertLifecycleNotifier:
         if not alerts:
             return
 
+        if self.policy and not self.policy.notice:
+            logger.info(f"Policy {self.policy.id} notice is disabled, skip lifecycle notify: action={action}")
+            return
+
         alert_log_entries = defaultdict(list)
 
         groups = defaultdict(list)
