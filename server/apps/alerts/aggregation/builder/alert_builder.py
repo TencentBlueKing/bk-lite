@@ -5,6 +5,7 @@ from apps.alerts.models.models import Alert, Event, Level
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.constants.constants import AlertStatus, SessionStatus, LevelType
 from apps.alerts.aggregation.window.factory import WindowFactory
+from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.core.logger import alert_logger as logger
 
 
@@ -90,6 +91,42 @@ class AlertBuilder:
         return str(mapped_level)
 
     @staticmethod
+    def _get_safe_strategy_team(strategy: AlarmStrategy) -> List[int]:
+        try:
+            strategy_team = normalize_team_ids(strategy.team)
+        except ValueError:
+            logger.warning(
+                "告警策略 team 非法，回退为空列表: strategy_id=%s team=%s",
+                strategy.id,
+                strategy.team,
+            )
+            strategy_team = []
+
+        try:
+            dispatch_team = normalize_team_ids(strategy.dispatch_team)
+        except ValueError:
+            logger.warning(
+                "告警策略 dispatch_team 非法，回退为策略组织: strategy_id=%s dispatch_team=%s",
+                strategy.id,
+                strategy.dispatch_team,
+            )
+            return strategy_team
+
+        if not dispatch_team:
+            return strategy_team
+
+        if set(dispatch_team).issubset(set(strategy_team)):
+            return dispatch_team
+
+        logger.warning(
+            "告警策略 dispatch_team 越界，回退为策略组织: strategy_id=%s team=%s dispatch_team=%s",
+            strategy.id,
+            strategy_team,
+            dispatch_team,
+        )
+        return strategy_team
+
+    @staticmethod
     def create_or_update_alert(
         aggregation_result: Dict[str, Any],
         strategy: AlarmStrategy,
@@ -163,7 +200,7 @@ class AlertBuilder:
             if session_timeout_minutes
             else None,
             rule_id=strategy.id,  # 软关联告警策略
-            team=strategy.dispatch_team,
+            team=AlertBuilder._get_safe_strategy_team(strategy),
         )
 
         if event_ids:
