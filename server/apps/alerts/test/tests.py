@@ -340,7 +340,7 @@ class MissingDetectionProcessorTestCase(TestCase):
 
     def create_event(self, received_at, **overrides):
         event = Event.objects.create(
-            source=self.source,
+            source=overrides.pop("source", self.source),
             raw_data={},
             title=overrides.pop("title", "heartbeat"),
             description=overrides.pop("description", "heartbeat ok"),
@@ -509,6 +509,114 @@ class MissingDetectionProcessorTestCase(TestCase):
             Alert.objects.values_list("fingerprint", flat=True).distinct().count(),
             2,
         )
+
+    def test_smart_denoise_alert_inherits_unique_standard_fields(self):
+        now = timezone.now()
+        strategy = self.create_strategy(
+            name="smart-unique-standard-fields",
+            strategy_type=AlarmStrategyType.SMART_DENOISE,
+            params={"group_by": ["service"], "window_size": 5, "time_out": False},
+        )
+        first_event = self.create_event(
+            now - timedelta(minutes=1),
+            event_id="EVENT-STANDARD-FIELDS-1",
+            external_id="standard-fields-1",
+            service="backup",
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_name="node-1",
+            resource_type="host",
+            labels={"env": "prod"},
+        )
+        second_event = self.create_event(
+            now - timedelta(seconds=30),
+            event_id="EVENT-STANDARD-FIELDS-2",
+            external_id="standard-fields-2",
+            service="backup",
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_name="node-1",
+            resource_type="host",
+            labels={"env": "prod"},
+        )
+
+        with patch.object(self.processor, "_schedule_auto_assignment"):
+            success = self.processor._aggregate_for_dimensions(
+                strategy,
+                Event.objects.filter(pk__in=[first_event.pk, second_event.pk]),
+                ["service"],
+                now,
+            )
+
+        self.assertTrue(success)
+        alert = Alert.objects.get()
+        self.assertEqual(alert.source_name, self.source.name)
+        self.assertEqual(alert.resource_id, "node-1")
+        self.assertEqual(alert.resource_name, "node-1")
+        self.assertEqual(alert.resource_type, "host")
+        self.assertEqual(alert.item, "cpu_usage")
+        self.assertEqual(alert.labels, {"env": "prod"})
+
+    def test_smart_denoise_alert_clears_non_unique_standard_fields_on_update(self):
+        now = timezone.now()
+        strategy = self.create_strategy(
+            name="smart-clear-standard-fields",
+            strategy_type=AlarmStrategyType.SMART_DENOISE,
+            params={"group_by": ["service"], "window_size": 5, "time_out": False},
+        )
+        first_event = self.create_event(
+            now - timedelta(minutes=1),
+            event_id="EVENT-CLEAR-FIELDS-1",
+            external_id="clear-fields-1",
+            service="backup",
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_name="node-1",
+            resource_type="host",
+            labels={"env": "prod"},
+        )
+
+        with patch.object(self.processor, "_schedule_auto_assignment"):
+            self.processor._aggregate_for_dimensions(
+                strategy,
+                Event.objects.filter(pk=first_event.pk),
+                ["service"],
+                now,
+            )
+
+        second_source = AlertSource.objects.create(
+            name="other-source",
+            source_id="source-2",
+            source_type=AlertsSourceTypes.WEBHOOK,
+        )
+        second_event = self.create_event(
+            now - timedelta(seconds=20),
+            source=second_source,
+            event_id="EVENT-CLEAR-FIELDS-2",
+            external_id="clear-fields-2",
+            service="backup",
+            item="memory_usage",
+            resource_id="node-2",
+            resource_name="node-2",
+            resource_type="service",
+            labels={"env": "staging"},
+        )
+
+        with patch.object(self.processor, "_schedule_auto_assignment"):
+            self.processor._aggregate_for_dimensions(
+                strategy,
+                Event.objects.filter(pk__in=[first_event.pk, second_event.pk]),
+                ["service"],
+                now,
+            )
+
+        alert = Alert.objects.get()
+        self.assertIsNone(alert.source_name)
+        self.assertIsNone(alert.resource_id)
+        self.assertIsNone(alert.resource_name)
+        self.assertIsNone(alert.resource_type)
+        self.assertIsNone(alert.item)
+        self.assertEqual(alert.labels, {})
 
     def test_first_heartbeat_mode_waits_for_first_event(self):
         now = timezone.make_aware(datetime(2026, 3, 20, 10, 0, 0))
