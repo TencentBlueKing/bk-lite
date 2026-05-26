@@ -473,11 +473,12 @@ def cloudregion_tls_env_by_node_id(node_id):
         return {
             "NATS_PROTOCOL": "nats",
             "NATS_TLS_CA_FILE": "",
+            "NATS_TLS_CA_WIN_FILE": "",
         }
 
     # 查询该云区域下的所有环境变量
     objs = SidecarEnv.objects.filter(
-        key__in=["NATS_PROTOCOL", "NATS_TLS_CA_FILE"],
+        key__in=["NATS_PROTOCOL", "NATS_TLS_CA_FILE", "NATS_TLS_CA_WIN_FILE"],
         cloud_region_id=node.cloud_region_id,
     )
 
@@ -485,6 +486,7 @@ def cloudregion_tls_env_by_node_id(node_id):
     result = {
         "NATS_PROTOCOL": "nats",
         "NATS_TLS_CA_FILE": "",
+        "NATS_TLS_CA_WIN_FILE": "",
     }
 
     # 用查询到的值覆盖默认值

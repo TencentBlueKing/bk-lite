@@ -57,7 +57,7 @@ const getCollectToolProtocol = (pluginId?: string | null) => {
   return null;
 };
 
-const getTaskStatusKey = (tab: ModelItem) => {
+const getTaskStatusKey = (tab: Pick<TreeNode, 'id' | 'model_id' | 'type'>) => {
   if (tab.model_id && tab.type) {
     return `${tab.model_id}__${tab.type}`;
   }

@@ -443,6 +443,7 @@ class NodeService:
         return [
             {
                 "id": node.id,
+                "node_type": node.node_type,
                 "organization_ids": [rel.organization for rel in node.nodeorganization_set.all()],
             }
             for node in nodes

@@ -131,3 +131,107 @@ def test_sync_plugin_monitor_objects_replaces_stale_relations(monkeypatch):
     assert monitor_plugin_manager.filter_kwargs == {"name": "OceanStor"}
     assert monitor_object_manager.filter_kwargs == {"name__in": ["Storage"]}
     assert [obj.name for obj in relation.received] == ["Storage"]
+
+
+def test_extract_monitor_object_names_ignores_node_selector(monkeypatch):
+    _install_module(monkeypatch, "django")
+    _install_module(monkeypatch, "django.db", transaction=types.SimpleNamespace(atomic=lambda: None))
+    _install_module(monkeypatch, "apps")
+    _install_module(monkeypatch, "apps.monitor")
+    _install_module(monkeypatch, "apps.monitor.constants")
+    _install_module(monkeypatch, "apps.monitor.constants.database", DatabaseConstants=types.SimpleNamespace())
+    _install_module(
+        monkeypatch,
+        "apps.monitor.models",
+        MonitorPlugin=types.SimpleNamespace(objects=types.SimpleNamespace(filter=lambda **kwargs: None)),
+        MonitorPluginUITemplate=types.SimpleNamespace(objects=types.SimpleNamespace(filter=lambda **kwargs: None)),
+    )
+    _install_module(monkeypatch, "apps.monitor.models.monitor_metrics", MetricGroup=object, Metric=object)
+    _install_module(monkeypatch, "apps.monitor.models.monitor_object", MonitorObject=object, MonitorObjectType=object)
+    _install_module(monkeypatch, "apps.monitor.utils")
+    _install_module(
+        monkeypatch,
+        "apps.monitor.utils.instance_id_keys",
+        resolve_metric_instance_id_keys=lambda *args, **kwargs: [],
+        resolve_monitor_object_instance_id_keys=lambda keys, **kwargs: keys or ["instance_id"],
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.utils.node_selector",
+        normalize_node_selector=lambda value: value or {},
+    )
+
+    plugin_module = _load_module(
+        "monitor_plugin_service_node_selector_test_module",
+        Path(__file__).resolve().parents[1] / "services" / "plugin.py",
+    )
+
+    names = plugin_module.MonitorPluginService._extract_monitor_object_names(
+        {"plugin": "Docker", "name": "Docker", "node_selector": {"is_container": True}}
+    )
+
+    assert names == ["Docker"]
+
+
+def test_import_compound_monitor_object_propagates_node_selector(monkeypatch):
+    _install_module(monkeypatch, "django")
+    _install_module(monkeypatch, "django.db", transaction=types.SimpleNamespace(atomic=lambda: None))
+    _install_module(monkeypatch, "apps")
+    _install_module(monkeypatch, "apps.monitor")
+    _install_module(monkeypatch, "apps.monitor.constants")
+    _install_module(monkeypatch, "apps.monitor.constants.database", DatabaseConstants=types.SimpleNamespace())
+    _install_module(
+        monkeypatch,
+        "apps.monitor.models",
+        MonitorPlugin=types.SimpleNamespace(objects=types.SimpleNamespace(filter=lambda **kwargs: None)),
+        MonitorPluginUITemplate=types.SimpleNamespace(objects=types.SimpleNamespace(filter=lambda **kwargs: None)),
+    )
+    _install_module(monkeypatch, "apps.monitor.models.monitor_metrics", MetricGroup=object, Metric=object)
+    _install_module(monkeypatch, "apps.monitor.models.monitor_object", MonitorObject=object, MonitorObjectType=object)
+    _install_module(monkeypatch, "apps.monitor.utils")
+    _install_module(
+        monkeypatch,
+        "apps.monitor.utils.instance_id_keys",
+        resolve_metric_instance_id_keys=lambda *args, **kwargs: [],
+        resolve_monitor_object_instance_id_keys=lambda keys, **kwargs: keys or ["instance_id"],
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.utils.node_selector",
+        normalize_node_selector=lambda value: value or {},
+    )
+
+    plugin_module = _load_module(
+        "monitor_plugin_service_compound_node_selector_test_module",
+        Path(__file__).resolve().parents[1] / "services" / "plugin.py",
+    )
+
+    captured = []
+
+    def fake_import_basic_monitor_object(data):
+        captured.append(data.copy())
+        if data.get("level") == "base":
+            return types.SimpleNamespace(id=99)
+        return types.SimpleNamespace(id=100)
+
+    plugin_module.MonitorPluginService.import_basic_monitor_object = staticmethod(fake_import_basic_monitor_object)
+
+    plugin_module.MonitorPluginService.import_compound_monitor_object(
+        {
+            "plugin": "VMWare",
+            "plugin_desc": "desc",
+            "status_query": "status",
+            "collector": "Telegraf",
+            "collect_type": "http",
+            "node_selector": {"is_container": True},
+            "objects": [
+                {"name": "vCenter", "level": "base", "metrics": []},
+                {"name": "ESXI", "level": "derivative", "metrics": []},
+            ],
+        }
+    )
+
+    assert len(captured) == 2
+    assert captured[0]["node_selector"] == {"is_container": True}
+    assert captured[1]["node_selector"] == {"is_container": True}
+    assert captured[1]["parent_id"] == 99

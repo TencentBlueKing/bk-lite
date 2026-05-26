@@ -6,6 +6,7 @@ import SearchFilter from '@/app/alarm/components/searchFilter';
 import EventTable from '@/app/alarm/components/eventTable';
 import K8sGuide from '@/app/alarm/components/k8sGuide';
 import SnmpTrapGuide from '@/app/alarm/components/snmpTrapGuide';
+import TeamSecretsManager from '@/app/alarm/components/teamSecretsManager';
 import ZabbixGuide from '@/app/alarm/components/zabbixGuide';
 import CustomBreadcrumb from '@/app/alarm/components/customBreadcrumb';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
@@ -712,6 +713,11 @@ const IntegrationDetail: FC = () => {
                           </>
                         ),
                       },
+                      {
+                        key: 'teamSecrets',
+                        label: t('integration.teamSecrets'),
+                        children: <TeamSecretsManager sourceId={source.id} />,
+                      },
                     ]} />
                   </div>
                   {activeTab === 'guide' ? (
@@ -750,6 +756,9 @@ const IntegrationDetail: FC = () => {
                           <ZabbixGuide guide={integrationGuide} />
                         </Spin>
                       ) : renderGuideTab()}
+                    </Tabs.TabPane>
+                    <Tabs.TabPane key="teamSecrets" tab={t('integration.teamSecrets')}>
+                      <TeamSecretsManager sourceId={source.id} />
                     </Tabs.TabPane>
                   </Tabs>
                 </div>

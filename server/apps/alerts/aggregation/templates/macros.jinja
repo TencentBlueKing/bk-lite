@@ -5,14 +5,25 @@
   {%- endfor -%}
 {% endmacro %}
 
+{# Macro: Build dimension segment only for non-empty values #}
+{% macro present_dimension_segment(dim_name) %}
+  CASE
+    WHEN NULLIF(CAST({{ dim_name }} AS VARCHAR), '') IS NOT NULL THEN
+      '{{ dim_name }}=' || CAST({{ dim_name }} AS VARCHAR)
+    ELSE NULL
+  END
+{% endmacro %}
+
 {# Macro: Build effective grouping dimension (降级逻辑) #}
 {% macro effective_dimension(dimensions) %}
 CASE
     WHEN {{ all_dimensions_present(dimensions) }} THEN
-      {% for dim_name in dimensions -%}
-        '{{ dim_name }}=' || COALESCE(NULLIF(CAST({{ dim_name }} AS VARCHAR), ''), '<empty>')
-        {{ " || '|' || " if not loop.last else "" }}
-      {%- endfor %}
+      CONCAT_WS(
+        '|'
+        {%- for dim_name in dimensions -%}
+          , {{ present_dimension_segment(dim_name) }}
+        {%- endfor -%}
+      )
     {{ " " }}ELSE external_id
   END
 {%- endmacro %}

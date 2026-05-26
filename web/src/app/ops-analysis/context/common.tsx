@@ -7,6 +7,7 @@ import {
   ReactNode,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
 } from 'react';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
@@ -14,23 +15,20 @@ import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
 import { useUserInfoContext } from '@/context/userInfo';
 import { addAuthToDataSources } from '@/app/ops-analysis/utils/permissionChecker';
 import type {
-  TagItem,
   NamespaceItem,
 } from '@/app/ops-analysis/types/namespace';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 
 interface OpsAnalysisContextType {
-  tagList: TagItem[];
-  tagsLoading: boolean;
   namespaceList: NamespaceItem[];
   namespacesLoading: boolean;
   dataSources: DatasourceItem[];
   dataSourcesLoading: boolean;
-  fetchTags: () => Promise<void>;
-  fetchNamespaces: () => Promise<void>;
+  fetchNamespaces: (ids?: Array<number | string>) => Promise<NamespaceItem[]>;
+  loadCanvasNamespaces: (ids?: Array<number | string>) => Promise<NamespaceItem[]>;
   refreshNamespaces: () => Promise<void>;
-  fetchDataSources: () => Promise<void>;
-  refreshDataSources: () => Promise<void>;
+  fetchDataSources: (ids?: Array<number | string>) => Promise<DatasourceItem[]>;
+  loadCanvasDataSources: (ids?: Array<number | string>) => Promise<DatasourceItem[]>;
 }
 
 const OpsAnalysisContext = createContext<OpsAnalysisContextType | undefined>(
@@ -38,23 +36,23 @@ const OpsAnalysisContext = createContext<OpsAnalysisContextType | undefined>(
 );
 
 export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
-  const [tagList, setTagList] = useState<TagItem[]>([]);
-  const [tagsLoading, setTagsLoading] = useState(false);
-  const [namespaceList, setNamespaceList] = useState<NamespaceItem[]>([]);
+  const [rawNamespaces, setRawNamespaces] = useState<NamespaceItem[]>([]);
   const [namespacesLoading, setNamespacesLoading] = useState(false);
   const [rawDataSources, setRawDataSources] = useState<DatasourceItem[]>([]);
-  const [dataSources, setDataSources] = useState<DatasourceItem[]>([]);
   const [dataSourcesLoading, setDataSourcesLoading] = useState(false);
 
-  const hasFetchedTagsRef = useRef(false);
-  const tagsRequestingRef = useRef(false);
-  const hasFetchedNamespacesRef = useRef(false);
+  const namespaceRequestCountRef = useRef(0);
+  const dataSourceRequestCountRef = useRef(0);
+  const canvasNamespaceRequestIdRef = useRef(0);
+  const canvasDataSourceRequestIdRef = useRef(0);
+  const canvasNamespaceKeyRef = useRef('');
   const namespacesRequestingRef = useRef(false);
-  const hasFetchedDataSourcesRef = useRef(false);
   const dataSourcesRequestingRef = useRef(false);
+  const rawNamespacesRef = useRef<NamespaceItem[]>([]);
+  const rawDataSourcesRef = useRef<DatasourceItem[]>([]);
 
-  const { getDataSourceList } = useDataSourceApi();
-  const { getTagList, getNamespaceList } = useNamespaceApi();
+  const { getDataSourceDetails } = useDataSourceApi();
+  const { getNamespaceList } = useNamespaceApi();
   const { selectedGroup } = useUserInfoContext();
 
   const normalizeDataSources = useCallback((response: any): DatasourceItem[] => {
@@ -69,51 +67,145 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
     return [];
   }, []);
 
+  const normalizeIds = useCallback((ids: Array<number | string> = []) => {
+    return Array.from(
+      new Set(
+        ids
+          .map((id) => (typeof id === 'string' ? parseInt(id, 10) : id))
+          .filter((id) => Number.isFinite(id))
+      )
+    ) as number[];
+  }, []);
+
+  const buildStableIdsKey = useCallback((ids: number[]) => {
+    return [...ids].sort((a, b) => a - b).join(',');
+  }, []);
+
   const applyDataSourceAuth = useCallback(
     (list: DatasourceItem[]) =>
       addAuthToDataSources(list || [], selectedGroup?.id),
     [selectedGroup?.id],
   );
 
-  const fetchTags = useCallback(async () => {
-    if (hasFetchedTagsRef.current || tagsRequestingRef.current) {
-      return;
+  const mergeDataSources = useCallback((incoming: DatasourceItem[]) => {
+    setRawDataSources((prev) => {
+      const nextMap = new Map<number, DatasourceItem>();
+      prev.forEach((item) => nextMap.set(item.id, item));
+      incoming.forEach((item) => nextMap.set(item.id, item));
+      return Array.from(nextMap.values());
+    });
+  }, []);
+
+  useEffect(() => {
+    rawNamespacesRef.current = rawNamespaces;
+  }, [rawNamespaces]);
+
+  useEffect(() => {
+    rawDataSourcesRef.current = rawDataSources;
+  }, [rawDataSources]);
+
+  const mergeNamespaces = useCallback((incoming: NamespaceItem[]) => {
+    setRawNamespaces((prev) => {
+      const nextMap = new Map<number, NamespaceItem>();
+      prev.forEach((item) => nextMap.set(item.id, item));
+      incoming.forEach((item) => nextMap.set(item.id, item));
+      return Array.from(nextMap.values());
+    });
+  }, []);
+
+  const finishNamespaceRequest = useCallback(() => {
+    namespaceRequestCountRef.current = Math.max(0, namespaceRequestCountRef.current - 1);
+    namespacesRequestingRef.current = namespaceRequestCountRef.current > 0;
+    setNamespacesLoading(namespaceRequestCountRef.current > 0);
+  }, []);
+
+  const finishDataSourceRequest = useCallback(() => {
+    dataSourceRequestCountRef.current = Math.max(0, dataSourceRequestCountRef.current - 1);
+    dataSourcesRequestingRef.current = dataSourceRequestCountRef.current > 0;
+    setDataSourcesLoading(dataSourceRequestCountRef.current > 0);
+  }, []);
+
+  const fetchNamespaces = useCallback(async (ids: Array<number | string> = []) => {
+    const requestedIds = Array.isArray(ids) ? ids : [];
+    const normalizedIds = normalizeIds(requestedIds);
+
+    if (normalizedIds.length === 0) {
+      return [];
+    }
+
+    const currentNamespaces = rawNamespacesRef.current;
+    const existingIds = new Set(currentNamespaces.map((item) => item.id));
+    const missingIds = normalizedIds.filter((id) => !existingIds.has(id));
+    if (missingIds.length === 0) {
+      return currentNamespaces.filter((item) => normalizedIds.includes(item.id));
     }
 
     try {
-      tagsRequestingRef.current = true;
-      setTagsLoading(true);
-      const response = await getTagList({ page: 1, page_size: 10000 });
-      const responseTagList = response?.items || [];
-      setTagList(responseTagList);
-      hasFetchedTagsRef.current = true;
-    } catch (err) {
-      console.error('获取标签列表失败:', err);
-    } finally {
-      tagsRequestingRef.current = false;
-      setTagsLoading(false);
-    }
-  }, [getTagList]);
-
-  const fetchNamespaces = useCallback(async () => {
-    if (hasFetchedNamespacesRef.current || namespacesRequestingRef.current) {
-      return;
-    }
-
-    try {
+      namespaceRequestCountRef.current += 1;
       namespacesRequestingRef.current = true;
       setNamespacesLoading(true);
-      const response = await getNamespaceList({ page: 1, page_size: 10000 });
-      const responseNamespaceList = response?.items || [];
-      setNamespaceList(responseNamespaceList);
-      hasFetchedNamespacesRef.current = true;
+      const response = await getNamespaceList({ ids: missingIds.join(',') });
+      const responseNamespaceList = Array.isArray(response) ? response : [];
+      mergeNamespaces(responseNamespaceList);
+      return normalizedIds
+        .map((id) => {
+          return (
+            currentNamespaces.find((item) => item.id === id) ||
+            responseNamespaceList.find((item) => item.id === id)
+          );
+        })
+        .filter((item): item is NamespaceItem => Boolean(item));
     } catch (err) {
       console.error('获取命名空间列表失败:', err);
+      return [];
     } finally {
-      namespacesRequestingRef.current = false;
-      setNamespacesLoading(false);
+      finishNamespaceRequest();
     }
-  }, [getNamespaceList]);
+  }, [finishNamespaceRequest, getNamespaceList, mergeNamespaces, normalizeIds]);
+
+  const loadCanvasNamespaces = useCallback(async (ids: Array<number | string> = []) => {
+    const requestedIds = Array.isArray(ids) ? ids : [];
+    const normalizedIds = normalizeIds(requestedIds);
+    const normalizedKey = buildStableIdsKey(normalizedIds);
+    const requestId = canvasNamespaceRequestIdRef.current + 1;
+
+    if (normalizedIds.length === 0) {
+      canvasNamespaceKeyRef.current = '';
+      setRawNamespaces([]);
+      return [];
+    }
+
+    const currentNamespaces = rawNamespacesRef.current;
+    const currentIds = currentNamespaces.map((item) => item.id);
+    const currentKey = buildStableIdsKey(currentIds);
+    if (canvasNamespaceKeyRef.current === normalizedKey && currentKey === normalizedKey) {
+      return currentNamespaces;
+    }
+
+    canvasNamespaceRequestIdRef.current = requestId;
+    canvasNamespaceKeyRef.current = normalizedKey;
+
+    try {
+      namespaceRequestCountRef.current += 1;
+      namespacesRequestingRef.current = true;
+      setNamespacesLoading(true);
+      const response = await getNamespaceList({ ids: normalizedIds.join(',') });
+      const responseNamespaceList = Array.isArray(response) ? response : [];
+      if (canvasNamespaceRequestIdRef.current === requestId) {
+        setRawNamespaces(responseNamespaceList);
+      }
+      return responseNamespaceList;
+    } catch (err) {
+      console.error('加载画布命名空间失败:', err);
+      if (canvasNamespaceRequestIdRef.current === requestId) {
+        canvasNamespaceKeyRef.current = currentKey;
+        setRawNamespaces([]);
+      }
+      return [];
+    } finally {
+      finishNamespaceRequest();
+    }
+  }, [buildStableIdsKey, finishNamespaceRequest, getNamespaceList, normalizeIds]);
 
   const refreshNamespaces = useCallback(async () => {
     if (namespacesRequestingRef.current) {
@@ -121,90 +213,130 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
+      namespaceRequestCountRef.current += 1;
       namespacesRequestingRef.current = true;
       setNamespacesLoading(true);
-      const response = await getNamespaceList({ page: 1, page_size: 10000 });
-      const responseNamespaceList = response?.items || [];
-      setNamespaceList(responseNamespaceList);
-      hasFetchedNamespacesRef.current = true;
+      const response = await getNamespaceList({ page_size: -1 });
+      const responseNamespaceList = Array.isArray(response) ? response : [];
+      setRawNamespaces(responseNamespaceList);
     } catch (err) {
       console.error('刷新命名空间列表失败:', err);
     } finally {
-      namespacesRequestingRef.current = false;
-      setNamespacesLoading(false);
+      finishNamespaceRequest();
     }
-  }, [getNamespaceList]);
+  }, [finishNamespaceRequest, getNamespaceList]);
 
-  const fetchDataSources = useCallback(async () => {
-    if (hasFetchedDataSourcesRef.current || dataSourcesRequestingRef.current) {
-      return;
+  const fetchDataSources = useCallback(async (ids: Array<number | string> = []) => {
+    const requestedIds = Array.isArray(ids) ? ids : [];
+    const normalizedIds = normalizeIds(requestedIds);
+
+    if (normalizedIds.length === 0) {
+      return [];
+    }
+
+    const currentDataSources = rawDataSourcesRef.current;
+    const existingIds = new Set(currentDataSources.map((item) => item.id));
+    const missingIds = normalizedIds.filter((id) => !existingIds.has(id));
+    if (missingIds.length === 0) {
+      return applyDataSourceAuth(
+        currentDataSources.filter((item) => normalizedIds.includes(item.id))
+      );
     }
 
     try {
+      dataSourceRequestCountRef.current += 1;
       dataSourcesRequestingRef.current = true;
       setDataSourcesLoading(true);
-      const response = await getDataSourceList({
-        page: 1,
-        page_size: 10000,
-      });
+      const response = await getDataSourceDetails(missingIds);
       const responseDataSources = normalizeDataSources(response);
-      setRawDataSources(responseDataSources);
-      setDataSources(applyDataSourceAuth(responseDataSources));
-      hasFetchedDataSourcesRef.current = true;
+      const mergedRequestedDataSources = normalizedIds
+        .map((id) => {
+          return (
+            currentDataSources.find((item) => item.id === id) ||
+            responseDataSources.find((item) => item.id === id)
+          );
+        })
+        .filter((item): item is DatasourceItem => Boolean(item));
+      mergeDataSources(responseDataSources);
+      return applyDataSourceAuth(mergedRequestedDataSources);
     } catch (err) {
-      console.error('获取数据源列表失败:', err);
+      console.error('获取数据源详情失败:', err);
+      return [];
+    } finally {
+      finishDataSourceRequest();
+    }
+  }, [applyDataSourceAuth, finishDataSourceRequest, getDataSourceDetails, mergeDataSources, normalizeDataSources, normalizeIds]);
+
+  const loadCanvasDataSources = useCallback(async (ids: Array<number | string> = []) => {
+    const requestedIds = Array.isArray(ids) ? ids : [];
+    const normalizedIds = normalizeIds(requestedIds);
+    const requestId = canvasDataSourceRequestIdRef.current + 1;
+    canvasDataSourceRequestIdRef.current = requestId;
+
+    if (normalizedIds.length === 0) {
       setRawDataSources([]);
-      setDataSources([]);
-    } finally {
-      dataSourcesRequestingRef.current = false;
-      setDataSourcesLoading(false);
+      return [];
     }
-  }, [applyDataSourceAuth, getDataSourceList, normalizeDataSources]);
 
-  const refreshDataSources = useCallback(async () => {
-    if (dataSourcesRequestingRef.current) {
-      return;
+    const currentDataSources = rawDataSourcesRef.current;
+    const currentMap = new Map<number, DatasourceItem>();
+    currentDataSources.forEach((item) => currentMap.set(item.id, item));
+    const missingIds = normalizedIds.filter((id) => !currentMap.has(id));
+
+    if (missingIds.length === 0) {
+      const scopedDataSources = normalizedIds
+        .map((id) => currentMap.get(id))
+        .filter((item): item is DatasourceItem => Boolean(item));
+      setRawDataSources(scopedDataSources);
+      return applyDataSourceAuth(scopedDataSources);
     }
 
     try {
+      dataSourceRequestCountRef.current += 1;
       dataSourcesRequestingRef.current = true;
       setDataSourcesLoading(true);
-      const response = await getDataSourceList({
-        page: 1,
-        page_size: 10000,
-      });
+      const response = await getDataSourceDetails(missingIds);
       const responseDataSources = normalizeDataSources(response);
-      setRawDataSources(responseDataSources);
-      setDataSources(applyDataSourceAuth(responseDataSources));
-      hasFetchedDataSourcesRef.current = true;
+      const nextMap = new Map<number, DatasourceItem>(currentMap);
+      responseDataSources.forEach((item) => nextMap.set(item.id, item));
+      const scopedDataSources = normalizedIds
+        .map((id) => nextMap.get(id))
+        .filter((item): item is DatasourceItem => Boolean(item));
+      if (canvasDataSourceRequestIdRef.current === requestId) {
+        setRawDataSources(scopedDataSources);
+      }
+      return applyDataSourceAuth(scopedDataSources);
     } catch (err) {
-      console.error('刷新数据源列表失败:', err);
+      console.error('加载画布数据源详情失败:', err);
+      if (canvasDataSourceRequestIdRef.current === requestId) {
+        setRawDataSources([]);
+      }
+      return [];
     } finally {
-      dataSourcesRequestingRef.current = false;
-      setDataSourcesLoading(false);
+      finishDataSourceRequest();
     }
-  }, [applyDataSourceAuth, getDataSourceList, normalizeDataSources]);
+  }, [applyDataSourceAuth, finishDataSourceRequest, getDataSourceDetails, normalizeDataSources, normalizeIds]);
 
-  useEffect(() => {
-    if (!hasFetchedDataSourcesRef.current) {
-      return;
-    }
+  const dataSources = useMemo(
+    () => applyDataSourceAuth(rawDataSources),
+    [applyDataSourceAuth, rawDataSources],
+  );
 
-    setDataSources(applyDataSourceAuth(rawDataSources));
-  }, [applyDataSourceAuth, rawDataSources]);
+  const namespaceList = useMemo(
+    () => rawNamespaces,
+    [rawNamespaces],
+  );
 
   const value: OpsAnalysisContextType = {
-    tagList,
-    tagsLoading,
     namespaceList,
     namespacesLoading,
     dataSources,
     dataSourcesLoading,
-    fetchTags,
     fetchNamespaces,
+    loadCanvasNamespaces,
     refreshNamespaces,
     fetchDataSources,
-    refreshDataSources,
+    loadCanvasDataSources,
   };
 
   return (

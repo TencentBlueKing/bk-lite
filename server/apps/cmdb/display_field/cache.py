@@ -20,16 +20,17 @@
 - 按需构建：根据 cache_key 选择对应的数据构建策略
 """
 
-from typing import List, Set, Dict, Any
+from typing import Any, Dict, List, Set
+
 from django.core.cache import cache
 
 from apps.cmdb.constants.constants import MODEL
 from apps.cmdb.display_field.constants import (
-    DISPLAY_FIELD_TYPES,
     CACHE_KEY_EXCLUDE_FIELDS,
-    CACHE_KEY_MODEL_FIELDS_MAPPING,
     CACHE_KEY_MODEL_ATTRS_PREFIX,
+    CACHE_KEY_MODEL_FIELDS_MAPPING,
     CACHE_TTL_SECONDS,
+    DISPLAY_FIELD_TYPES,
 )
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.core.logger import cmdb_logger as logger
@@ -155,14 +156,10 @@ class ExcludeFieldsCache:
             cached_attrs = cache.get(cache_key)
 
             if cached_attrs is not None:
-                logger.debug(
-                    f"[ExcludeFieldsCache] 模型 attrs 缓存命中, model_id={model_id}"
-                )
+                logger.debug(f"[ExcludeFieldsCache] 模型 attrs 缓存命中, model_id={model_id}")
                 return cached_attrs
 
-            logger.debug(
-                f"[ExcludeFieldsCache] 模型 attrs 缓存未命中, 查询并缓存, model_id={model_id}"
-            )
+            logger.debug(f"[ExcludeFieldsCache] 模型 attrs 缓存未命中, 查询并缓存, model_id={model_id}")
             from apps.cmdb.services.model import ModelManage
 
             attrs = ModelManage.search_model_attr(model_id)
@@ -171,9 +168,7 @@ class ExcludeFieldsCache:
             return attrs
 
         except Exception as e:
-            logger.error(
-                f"[ExcludeFieldsCache] 获取模型 attrs 失败, model_id={model_id}, 错误: {e}"
-            )
+            logger.error(f"[ExcludeFieldsCache] 获取模型 attrs 失败, model_id={model_id}, 错误: {e}")
             return []
 
     @classmethod
@@ -257,9 +252,7 @@ class ExcludeFieldsCache:
                     "cache_key": cls.MODEL_FIELDS_MAPPING_KEY,
                     "ttl": cls.CACHE_TTL,
                     "is_cached": model_fields_mapping is not None,
-                    "model_count": len(model_fields_mapping)
-                    if model_fields_mapping
-                    else 0,
+                    "model_count": len(model_fields_mapping) if model_fields_mapping else 0,
                     "mapping": model_fields_mapping if model_fields_mapping else {},
                 },
             }
@@ -287,9 +280,7 @@ class ExcludeFieldsCache:
     # ========== 内部统一缓存管理逻辑 ==========
 
     @classmethod
-    def _get_or_load_cache(
-        cls, cache_key: str, default_value: Any, cache_name: str
-    ) -> Any:
+    def _get_or_load_cache(cls, cache_key: str, default_value: Any, cache_name: str) -> Any:
         """
         统一的缓存获取逻辑
 
@@ -309,9 +300,7 @@ class ExcludeFieldsCache:
                 return cached_value
 
             # 缓存未命中，重新加载所有缓存
-            logger.warning(
-                f"[ExcludeFieldsCache] {cache_name}缓存未命中，重新加载所有缓存..."
-            )
+            logger.warning(f"[ExcludeFieldsCache] {cache_name}缓存未命中，重新加载所有缓存...")
             cls._refresh_all_caches()
 
             # 再次尝试获取
@@ -319,9 +308,7 @@ class ExcludeFieldsCache:
             return cached_value if cached_value is not None else default_value
 
         except Exception as e:
-            logger.error(
-                f"[ExcludeFieldsCache] 获取{cache_name}失败: {e}", exc_info=True
-            )
+            logger.error(f"[ExcludeFieldsCache] 获取{cache_name}失败: {e}", exc_info=True)
             return default_value
 
     @classmethod
@@ -343,9 +330,7 @@ class ExcludeFieldsCache:
 
             # 3. 保存全局缓存
             success1 = cls._save_cache(cls.EXCLUDE_FIELDS_KEY, exclude_fields)
-            success2 = cls._save_cache(
-                cls.MODEL_FIELDS_MAPPING_KEY, model_fields_mapping
-            )
+            success2 = cls._save_cache(cls.MODEL_FIELDS_MAPPING_KEY, model_fields_mapping)
 
             success = success1 and success2
 
@@ -377,10 +362,11 @@ class ExcludeFieldsCache:
 
             # 清除所有模型属性缓存
             pattern = f"{cls.MODEL_ATTRS_KEY_PREFIX}*"
-            keys = cache.keys(pattern)
-            if keys:
-                cache.delete_many(keys)
-                logger.info(f"[ExcludeFieldsCache] 已清除 {len(keys)} 个模型属性缓存")
+            if hasattr(cache, "delete_pattern"):
+                cache.delete_pattern(pattern)
+                logger.info(f"[ExcludeFieldsCache] 已按模式清除模型属性缓存: {pattern}")
+            else:
+                logger.warning("[ExcludeFieldsCache] 当前缓存后端不支持按模式删除模型属性缓存，" "将依赖 TTL 自动过期")
 
             logger.info("[ExcludeFieldsCache] 所有缓存已清除")
             return True
@@ -405,9 +391,7 @@ class ExcludeFieldsCache:
             return models
 
         except Exception as e:
-            logger.error(
-                f"[ExcludeFieldsCache] 从数据库加载模型失败: {e}", exc_info=True
-            )
+            logger.error(f"[ExcludeFieldsCache] 从数据库加载模型失败: {e}", exc_info=True)
             return []
 
     @classmethod
@@ -441,21 +425,15 @@ class ExcludeFieldsCache:
                         all_exclude_fields.add(attr_id)
 
             except Exception as e:
-                logger.warning(
-                    f"[ExcludeFieldsCache] 解析模型 {model_id} 字段失败: {e}"
-                )
+                logger.warning(f"[ExcludeFieldsCache] 解析模型 {model_id} 字段失败: {e}")
                 continue
 
         result = list(all_exclude_fields)
-        logger.debug(
-            f"[ExcludeFieldsCache] 构建排除字段列表完成, 字段数: {len(result)}"
-        )
+        logger.debug(f"[ExcludeFieldsCache] 构建排除字段列表完成, 字段数: {len(result)}")
         return result
 
     @classmethod
-    def _build_model_fields_mapping(
-        cls, models: List[Dict[str, Any]]
-    ) -> Dict[str, Dict[str, List[str]]]:
+    def _build_model_fields_mapping(cls, models: List[Dict[str, Any]]) -> Dict[str, Dict[str, List[str]]]:
         """
         构建模型字段映射（从模型数据中提取）
 
@@ -501,15 +479,10 @@ class ExcludeFieldsCache:
                     model_fields_mapping[model_id] = model_mapping
 
             except Exception as e:
-                logger.warning(
-                    f"[ExcludeFieldsCache] 解析模型 {model_id} 字段映射失败: {e}"
-                )
+                logger.warning(f"[ExcludeFieldsCache] 解析模型 {model_id} 字段映射失败: {e}")
                 continue
 
-        logger.debug(
-            f"[ExcludeFieldsCache] 构建模型字段映射完成, "
-            f"有映射字段的模型数: {len(model_fields_mapping)}"
-        )
+        logger.debug(f"[ExcludeFieldsCache] 构建模型字段映射完成, " f"有映射字段的模型数: {len(model_fields_mapping)}")
         return model_fields_mapping
 
     @classmethod
@@ -539,15 +512,10 @@ class ExcludeFieldsCache:
                 cached_count += 1
 
             except Exception as e:
-                logger.warning(
-                    f"[ExcludeFieldsCache] 缓存模型 {model_id} attrs 失败: {e}"
-                )
+                logger.warning(f"[ExcludeFieldsCache] 缓存模型 {model_id} attrs 失败: {e}")
                 continue
 
-        logger.debug(
-            f"[ExcludeFieldsCache] 构建并缓存模型 attrs 完成, "
-            f"成功缓存模型数: {cached_count}/{len(models)}"
-        )
+        logger.debug(f"[ExcludeFieldsCache] 构建并缓存模型 attrs 完成, " f"成功缓存模型数: {cached_count}/{len(models)}")
         return cached_count
 
     @classmethod
@@ -564,9 +532,7 @@ class ExcludeFieldsCache:
         """
         try:
             cache.set(cache_key, data, timeout=cls.CACHE_TTL)
-            logger.debug(
-                f"[ExcludeFieldsCache] 缓存已更新, key: {cache_key}, TTL: {cls.CACHE_TTL}s"
-            )
+            logger.debug(f"[ExcludeFieldsCache] 缓存已更新, key: {cache_key}, TTL: {cls.CACHE_TTL}s")
             return True
 
         except Exception as e:
