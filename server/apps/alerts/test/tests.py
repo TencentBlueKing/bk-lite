@@ -18,6 +18,7 @@ from apps.alerts.aggregation.processor.aggregation_processor import AggregationP
 from apps.alerts.aggregation.window.factory import WindowFactory
 from apps.alerts.aggregation.strategy.matcher import StrategyMatcher
 from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
+from apps.alerts.common.assignment import AlertAssignmentOperator
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
 from apps.alerts.nats.nats import receive_alert_events
 from apps.alerts.constants import (
@@ -32,12 +33,14 @@ from apps.alerts.constants import (
     LevelType,
 )
 from apps.alerts.constants.constants import (
+    AlertAssignmentMatchType,
     IncidentStatus,
     LogAction,
     LogTargetType,
     SessionStatus,
 )
 from apps.alerts.models import Alert, AlertSource, AlarmStrategy, Event, Level, OperatorLog
+from apps.alerts.models.alert_operator import AlertAssignment
 from apps.alerts.models.models import Incident
 from apps.alerts.serializers.event import EventModelSerializer
 from apps.alerts.serializers.incident import IncidentModelSerializer
@@ -1427,6 +1430,177 @@ class TestAlarmStrategySessionDisable(TestCase):
         self.assertFalse(inactive_result["result"])
         self.assertFalse(ineffective_result["result"])
         self.assertEqual(Event.objects.count(), 0)
+
+
+class AutoAssignmentTaskTestCase(TestCase):
+    def test_async_auto_assignment_for_alerts_deduplicates_before_execution(self):
+        from apps.alerts.tasks.tasks import async_auto_assignment_for_alerts
+
+        with patch(
+            "apps.alerts.common.assignment.execute_auto_assignment_for_alerts"
+        ) as execute_assignment:
+            execute_assignment.return_value = {
+                "total_alerts": 2,
+                "assigned_alerts": 1,
+                "failed_alerts": 0,
+                "assignment_results": [],
+            }
+
+            result = async_auto_assignment_for_alerts(["ALERT-1", "ALERT-1", "ALERT-2"])
+
+        self.assertFalse(result.get("chunked", False))
+        execute_assignment.assert_called_once_with(["ALERT-1", "ALERT-2"])
+
+    def test_async_auto_assignment_for_alerts_chunks_large_batches(self):
+        from apps.alerts.tasks.tasks import (
+            AUTO_ASSIGNMENT_CHUNK_SIZE,
+            async_auto_assignment_for_alerts,
+        )
+
+        alert_ids = [f"ALERT-{i}" for i in range(AUTO_ASSIGNMENT_CHUNK_SIZE + 3)]
+
+        with patch(
+            "apps.alerts.tasks.tasks.async_auto_assignment_for_alerts.delay"
+        ) as delay_mock, patch(
+            "apps.alerts.common.assignment.execute_auto_assignment_for_alerts"
+        ) as execute_assignment:
+            result = async_auto_assignment_for_alerts(alert_ids)
+
+        self.assertTrue(result["chunked"])
+        self.assertEqual(result["chunk_count"], 2)
+        self.assertEqual(delay_mock.call_count, 2)
+        self.assertEqual(len(delay_mock.call_args_list[0].args[0]), AUTO_ASSIGNMENT_CHUNK_SIZE)
+        self.assertEqual(len(delay_mock.call_args_list[1].args[0]), 3)
+        execute_assignment.assert_not_called()
+
+
+class AlertAssignmentOperatorTestCase(TestCase):
+    def setUp(self):
+        self.source = AlertSource.objects.create(
+            name="Assignment Source",
+            source_id="assignment-source",
+            source_type=AlertsSourceTypes.RESTFUL,
+            secret="assignment-secret",
+            config={},
+        )
+        Level.objects.create(
+            level_id=3,
+            level_name="info",
+            level_display_name="提醒",
+            color="#1677FF",
+            icon="",
+            description="",
+            level_type=LevelType.EVENT,
+        )
+
+    def create_event(self, event_id, title, resource_id):
+        return Event.objects.create(
+            source=self.source,
+            raw_data={},
+            title=title,
+            description="desc",
+            level="3",
+            service=None,
+            event_type=EventType.ALERT,
+            tags={},
+            location=None,
+            external_id=f"ext-{event_id}",
+            start_time=timezone.now(),
+            end_time=None,
+            labels={},
+            action=EventAction.CREATED,
+            rule_id=None,
+            event_id=event_id,
+            item="cpu_usage",
+            resource_id=resource_id,
+            resource_type="host",
+            resource_name=resource_id,
+            status="received",
+            assignee=[],
+            value=None,
+        )
+
+    def create_alert(self, alert_id, title, resource_id):
+        event = self.create_event(f"EVENT-{alert_id}", title, resource_id)
+        alert = Alert.objects.create(
+            alert_id=alert_id,
+            status=AlertStatus.UNASSIGNED,
+            level="3",
+            title=title,
+            content="content",
+            labels={},
+            first_event_time=event.received_at,
+            last_event_time=event.received_at,
+            item=event.item,
+            resource_id=event.resource_id,
+            resource_name=event.resource_name,
+            resource_type=event.resource_type,
+            operator=[],
+            source_name=self.source.name,
+            fingerprint=f"fp-{alert_id}",
+        )
+        alert.events.add(event)
+        return alert
+
+    def test_execute_auto_assignment_excludes_alerts_assigned_by_previous_rule(self):
+        first_alert = self.create_alert("ALERT-FIRST", "cpu high", "node-1")
+        second_alert = self.create_alert("ALERT-SECOND", "disk high", "node-2")
+
+        first_assignment = AlertAssignment.objects.create(
+            name="assignment-first",
+            match_type=AlertAssignmentMatchType.ALL,
+            match_rules=[],
+            personnel=["alice"],
+            notify_channels=[],
+            notification_scenario=[],
+            config={},
+            is_active=True,
+        )
+        second_assignment = AlertAssignment.objects.create(
+            name="assignment-second",
+            match_type=AlertAssignmentMatchType.ALL,
+            match_rules=[],
+            personnel=["bob"],
+            notify_channels=[],
+            notification_scenario=[],
+            config={},
+            is_active=True,
+        )
+
+        operator = AlertAssignmentOperator([first_alert.alert_id, second_alert.alert_id])
+
+        with patch.object(
+            AlertAssignmentOperator,
+            "_batch_execute_assignment",
+            side_effect=[
+                [
+                    {
+                        "alert_id": first_alert.alert_id,
+                        "alert_pk": first_alert.id,
+                        "success": True,
+                        "assignment_id": first_assignment.id,
+                        "assigned_to": ["alice"],
+                    }
+                ],
+                [
+                    {
+                        "alert_id": second_alert.alert_id,
+                        "alert_pk": second_alert.id,
+                        "success": True,
+                        "assignment_id": second_assignment.id,
+                        "assigned_to": ["bob"],
+                    }
+                ],
+            ],
+        ) as execute_mock, patch.object(
+            AlertAssignmentOperator, "_batch_create_log"
+        ):
+            result = operator.execute_auto_assignment()
+
+        self.assertEqual(result["assigned_alerts"], 2)
+        self.assertEqual(execute_mock.call_count, 2)
+        self.assertEqual(execute_mock.call_args_list[0].args[0], [first_alert.id, second_alert.id])
+        self.assertEqual(execute_mock.call_args_list[1].args[0], [second_alert.id])
 
 
 class RecoveryFallbackTestCase(TestCase):
