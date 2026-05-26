@@ -1281,38 +1281,41 @@ class InstanceManage(object):
         Returns:
             permission_params: 权限过滤字符串
         """
-        # 构建所有有权限模型的权限过滤条件（与 instance_list 一致）
-        format_permission_dict = {}
-
-        for organization_id, organization_permission_data in permission_map.items():
-            # 为每个组织构建查询条件（与 instance_list 保持一致）
-            _query_list = [{"field": "organization", "type": "list[]", "value": [organization_id]}]
-
-            inst_names = organization_permission_data["inst_names"]
-            if inst_names:
-                _query_list.append({"field": "inst_name", "type": "str[]", "value": inst_names})
-
-                if creator:
-                    _query_list.append({"field": "_creator", "type": "str=", "value": creator})
-
-            # 使用 organization_id 作为 key（多个模型可能共享同一组织）
-            if organization_id not in format_permission_dict:
-                format_permission_dict[organization_id] = _query_list
-
-        # 将 format_permission_dict 转换为 full_text 需要的参数格式
         with GraphClient() as ag:
             # 使用共享的参数收集器（参数化模式）
             param_collector = ParameterCollector() if ag.ENABLE_PARAMETERIZATION else None
 
-            # 构建权限过滤字符串（与 query_entity 的逻辑一致）
+            # 构建权限过滤字符串：组织边界必须保留在单组织分支内，
+            # 仅在该分支内部组合实例名/创建人条件；多个组织分支之间再 OR。
             permission_filters = []
-            for query_list in format_permission_dict.values():
-                if not query_list:
+            for organization_id, organization_permission_data in permission_map.items():
+                organization_query = [{"field": "organization", "type": "list[]", "value": [organization_id]}]
+                organization_str, _ = ag.format_search_params(
+                    organization_query,
+                    param_type="AND",
+                    param_collector=param_collector,
+                )
+                if not organization_str:
                     continue
-                # 使用共享的 param_collector 累积参数
-                org_permission_str, _ = ag.format_search_params(query_list, param_type="OR", param_collector=param_collector)
-                if org_permission_str:
-                    permission_filters.append(org_permission_str)
+
+                branch_conditions = []
+                inst_names = organization_permission_data.get("inst_names", [])
+                if inst_names:
+                    branch_conditions.append({"field": "inst_name", "type": "str[]", "value": inst_names})
+                    if creator:
+                        branch_conditions.append({"field": "_creator", "type": "str=", "value": creator})
+
+                if branch_conditions:
+                    branch_str, _ = ag.format_search_params(
+                        branch_conditions,
+                        param_type="OR",
+                        param_collector=param_collector,
+                    )
+                    if branch_str:
+                        permission_filters.append(f"({organization_str} AND {branch_str})")
+                        continue
+
+                permission_filters.append(organization_str)
 
             # 多个组织的权限条件用 OR 连接
             permission_params = " OR ".join(permission_filters) if permission_filters else ""
