@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import PermissionWrapper from '@/components/permission';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { useCommon } from '@/app/alarm/context/common';
 import { useTranslation } from '@/utils/i18n';
@@ -12,66 +11,14 @@ import {
   NotifyOption,
   LevelFormItem,
 } from '@/app/alarm/types/settings';
-import {
-  DEFAULT_LEVEL_COLORS,
-  DEFAULT_LEVEL_ICONS,
-  renderLevelIconOption,
-} from '@/app/alarm/constants/level';
-import LevelIcon from '@/app/alarm/components/levelIcon';
-import {
-  Card,
-  Typography,
-  Grid,
-  Form,
-  InputNumber,
-  Select,
-  ColorPicker,
-  Checkbox,
-  Button,
-  Space,
-  Segmented,
-  Switch,
-  Spin,
-  Row,
-  Col,
-  Table,
-  Modal,
-  Input,
-  Upload,
-  Tag,
-  message,
-} from 'antd';
-import type { ColumnsType } from 'antd/es/table';
-import { CheckOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons';
+import { Card, Form, Spin, Modal, message } from 'antd';
 import { LevelItem } from '@/app/alarm/types/index';
-
-const LEVEL_TYPE_ACCENT: Record<'event' | 'alert' | 'incident', string> = {
-  event: '#2F6BFF',
-  alert: '#FFAD42',
-  incident: '#7A45FF',
-};
-
-const isCustomIconValue = (icon?: string) => !!icon?.startsWith('data:image/');
-
-const getLevelTagStyle = (color?: string, compact?: boolean) => ({
-  backgroundColor: color || '#FFAD42',
-  color: '#fff',
-  border: 'none',
-  borderRadius: compact ? 7 : 8,
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: compact ? 2 : 4,
-  paddingInline: compact ? 5 : 7,
-  paddingBlock: compact ? 2 : 3,
-  marginInlineEnd: 0,
-  fontSize: compact ? 11 : 12,
-  lineHeight: 1.4,
-  maxWidth: '100%',
-});
+import NoDispatchConfigCard from './components/noDispatchConfigCard';
+import LevelManagementPanel from './components/levelManagementPanel';
+import LevelFormModal from './components/levelFormModal';
 
 export default function UnallocatedNotificationConfig() {
   const { t } = useTranslation();
-  const screens = Grid.useBreakpoint();
   const { userList, levelMeta, refreshLevels } = useCommon();
   const [editMode, setEditMode] = useState(false);
   const [expanded, setExpanded] = useState(true);
@@ -84,7 +31,6 @@ export default function UnallocatedNotificationConfig() {
   const [levelModalOpen, setLevelModalOpen] = useState(false);
   const [levelSubmitLoading, setLevelSubmitLoading] = useState(false);
   const [editingLevel, setEditingLevel] = useState<LevelItem | null>(null);
-  const [iconMode, setIconMode] = useState<'preset' | 'upload'>('preset');
   const [currentLevelType, setCurrentLevelType] = useState<
     'event' | 'alert' | 'incident'
   >('event');
@@ -218,19 +164,6 @@ export default function UnallocatedNotificationConfig() {
     }
   };
 
-  const levelTypeTitles: Record<'event' | 'alert' | 'incident', string> = {
-    event: t('settings.globalConfig.eventLevel'),
-    alert: t('settings.globalConfig.alertLevel'),
-    incident: t('settings.globalConfig.incidentLevel'),
-  };
-  const addLevelButtonText = t('settings.globalConfig.addLevel')
-    .replace(/\s*等级$/u, '')
-    .replace(/\s+levels?$/iu, '')
-    .trim();
-  const isCompactLevelView = !screens.md || !!screens.xl;
-  const levelNameTextMaxWidth = isCompactLevelView ? 78 : 126;
-  const isCompactModalForm = !screens.sm;
-
   const openLevelModal = (
     levelType: 'event' | 'alert' | 'incident',
     row?: LevelItem,
@@ -241,68 +174,21 @@ export default function UnallocatedNotificationConfig() {
     const nextId = list.length
       ? Math.max(...list.map((item) => item.level_id)) + 1
       : 0;
-    levelForm.setFieldsValue({
-      level_id: row?.level_id ?? nextId,
-      level_display_name: row?.level_display_name ?? '',
-      color: row?.color || DEFAULT_LEVEL_COLORS[0],
-      icon: row?.icon || DEFAULT_LEVEL_ICONS[0],
-      level_type: levelType,
-      built_in: row?.built_in,
-    });
-    setIconMode(isCustomIconValue(row?.icon) ? 'upload' : 'preset');
+      levelForm.setFieldsValue({
+        level_id: row?.level_id ?? nextId,
+        level_display_name: row?.level_display_name ?? '',
+        color: row?.color || '#F43B2C',
+        icon: row?.icon || 'huoyanhuodongtuijian',
+        level_type: levelType,
+        built_in: row?.built_in,
+      });
     setLevelModalOpen(true);
   };
 
   const closeLevelModal = () => {
     setEditingLevel(null);
-    setIconMode('preset');
     setLevelModalOpen(false);
     levelForm.resetFields();
-  };
-
-  const beforeIconUpload = async (file: File) => {
-    const isAllowed = [
-      'image/png',
-      'image/jpeg',
-      'image/jpg',
-      'image/svg+xml',
-    ].includes(file.type);
-    if (!isAllowed) {
-      message.error(t('settings.globalConfig.uploadTip'));
-      return Upload.LIST_IGNORE;
-    }
-
-    const isLt200Kb = file.size / 1024 <= 200;
-    if (!isLt200Kb) {
-      message.error(t('settings.globalConfig.uploadTip'));
-      return Upload.LIST_IGNORE;
-    }
-
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.onerror = () => reject(new Error('read-failed'));
-      reader.readAsDataURL(file);
-    });
-    levelForm.setFieldValue('icon', dataUrl);
-    setIconMode('upload');
-    return Upload.LIST_IGNORE;
-  };
-
-  const handleIconModeChange = (nextMode: 'preset' | 'upload') => {
-    setIconMode(nextMode);
-    const currentIcon = levelForm.getFieldValue('icon');
-
-    if (nextMode === 'preset') {
-      if (!currentIcon || isCustomIconValue(currentIcon)) {
-        levelForm.setFieldValue('icon', DEFAULT_LEVEL_ICONS[0]);
-      }
-      return;
-    }
-
-    if (!isCustomIconValue(currentIcon)) {
-      levelForm.setFieldValue('icon', '');
-    }
   };
 
   const submitLevel = async () => {
@@ -347,135 +233,6 @@ export default function UnallocatedNotificationConfig() {
       },
     });
   };
-
-  const levelColumns: ColumnsType<LevelItem> = [
-    {
-      title: t('settings.globalConfig.levelId'),
-      dataIndex: 'level_id',
-      key: 'level_id',
-      width: isCompactLevelView ? 64 : 84,
-      align: 'center',
-    },
-    {
-      title: t('settings.globalConfig.levelDisplayEffect'),
-      dataIndex: 'level_display_name',
-      key: 'level_display_name',
-      width: isCompactLevelView ? 140 : 228,
-      render: (_value, record) => (
-        <Tag style={getLevelTagStyle(record.color, isCompactLevelView)}>
-          <span
-            className={
-              isCompactLevelView
-                ? 'flex h-3 w-3 shrink-0 items-center justify-center leading-none'
-                : 'flex h-3.5 w-3.5 shrink-0 items-center justify-center leading-none'
-            }
-          >
-            <LevelIcon
-              icon={record.icon}
-              className={isCompactLevelView ? 'h-3 w-3' : 'h-3.5 w-3.5'}
-              style={{ color: '#fff', lineHeight: 1 }}
-            />
-          </span>
-          <span
-            className="truncate"
-            style={{ maxWidth: levelNameTextMaxWidth }}
-            title={record.level_display_name}
-          >
-            {record.level_display_name}
-          </span>
-        </Tag>
-      ),
-    },
-    {
-      title: t('settings.globalConfig.levelActions'),
-      key: 'actions',
-      width: isCompactLevelView ? 98 : 124,
-      render: (_value, record) => (
-        <Space size={isCompactLevelView ? 8 : 10}>
-          <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button
-              type="link"
-              size="small"
-              className="px-0 text-[#2F6BFF]"
-              onClick={() =>
-                openLevelModal(
-                  record.level_type as 'event' | 'alert' | 'incident',
-                  record,
-                )
-              }
-            >
-              {t('common.edit')}
-            </Button>
-          </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button
-              type="link"
-              size="small"
-              className="px-0 text-[#2F6BFF]"
-              onClick={() => handleDeleteLevel(record)}
-            >
-              {t('common.delete')}
-            </Button>
-          </PermissionWrapper>
-        </Space>
-      ),
-    },
-  ];
-
-  const levelCards = (['event', 'alert', 'incident'] as const).map(
-    (levelType) => {
-      const group = levelMeta[levelType];
-      return (
-        <Col xs={24} lg={12} xl={8} key={levelType} className="flex">
-          <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-(--color-border-1) bg-(--color-bg-1)">
-            <div
-              className="flex items-center justify-between border-b border-(--color-border-1) px-2.5 py-1.5 sm:px-3 sm:py-2"
-              style={{
-                background:
-                  'color-mix(in srgb, var(--color-fill-1) 58%, white)',
-              }}
-            >
-              <div className="flex items-center gap-2">
-                <span
-                  className="inline-block h-2 w-2 rounded-full"
-                  style={{ backgroundColor: LEVEL_TYPE_ACCENT[levelType] }}
-                />
-                <span className="text-[14px] font-medium text-(--color-text-1) sm:text-[15px]">
-                  {levelTypeTitles[levelType]}
-                </span>
-              </div>
-              <PermissionWrapper requiredPermissions={['Edit']}>
-                <Button
-                  type="link"
-                  size="small"
-                  className="px-0"
-                  onClick={() => openLevelModal(levelType)}
-                >
-                  <span className="inline-flex items-center gap-0.5">
-                    <PlusOutlined className="text-[10px]" />
-                    <span>{addLevelButtonText}</span>
-                  </span>
-                </Button>
-              </PermissionWrapper>
-            </div>
-            <div className="px-2.5 py-1.5 sm:px-3 sm:py-2">
-              <Table
-                className="level-table-clean"
-                rowKey="id"
-                size="small"
-                pagination={false}
-                tableLayout="fixed"
-                sticky
-                scroll={{ y: 280 }}
-                columns={levelColumns}
-                dataSource={group?.list || []}
-              />
-            </div>
-          </div>
-        </Col>
-      );
-    },
-  );
 
   return (
     <Card style={{ height: '100%' }}>
@@ -527,428 +284,39 @@ export default function UnallocatedNotificationConfig() {
         </div>
       ) : (
         <div className="h-full">
-          <div className="rounded-2xl border border-(--color-border-1) bg-(--color-bg-1) p-3 pb-1 sm:p-3.5 sm:pb-1.5">
-            <div className="mb-2.5 flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-4 w-1 rounded-full bg-[#2F6BFF]" />
-                <Typography.Title
-                  level={4}
-                  style={{ margin: 0, fontSize: '15px' }}
-                >
-                  {t('settings.globalConfig.title')}
-                </Typography.Title>
-              </div>
-              <Switch
-                size="small"
-                checked={expanded}
-                loading={activationLoading}
-                onChange={(checked) => handleToggleActivation(checked)}
-              />
-            </div>
-            {expanded && (
-              <div className="max-w-[640px]">
-                <div className="mb-2.5 pl-3 text-[12px] leading-5 text-(--color-text-3)">
-                  {t('settings.globalConfig.description')}
-                </div>
-                <Form
-                  form={form}
-                  className="compact-config-form"
-                  layout="horizontal"
-                  initialValues={config}
-                  labelCol={{ flex: '108px' }}
-                  wrapperCol={{ flex: '1' }}
-                  style={{ maxWidth: 500 }}
-                >
-                  <Form.Item
-                    name="notify_every"
-                    label={t('settings.globalConfig.intervalLabel')}
-                    rules={[
-                      {
-                        required: true,
-                        message:
-                          t('common.inputTip') +
-                          t('settings.globalConfig.intervalLabel'),
-                      },
-                    ]}
-                  >
-                    <InputNumber
-                      min={1}
-                      addonAfter={t('settings.globalConfig.intervalMinutes')}
-                      disabled={!editMode}
-                      style={{ width: '160px' }}
-                    />
-                  </Form.Item>
+          <NoDispatchConfigCard
+            expanded={expanded}
+            activationLoading={activationLoading}
+            editMode={editMode}
+            form={form}
+            config={config}
+            assigneeOptions={assigneeOptions}
+            notifyOptions={notifyOptions}
+            channelLoading={channelLoading}
+            updateLoading={updateLoading}
+            onToggleActivation={handleToggleActivation}
+            onEnterEdit={enterEdit}
+            onCancelEdit={cancelEdit}
+            onConfirmEdit={confirmEdit}
+          />
 
-                  <Form.Item
-                    name="notify_people"
-                    label={t('settings.globalConfig.personnelLabel')}
-                    rules={[
-                      {
-                        required: true,
-                        message:
-                          t('common.selectTip') +
-                          t('settings.globalConfig.personnelLabel'),
-                      },
-                    ]}
-                  >
-                    <Select
-                      mode="multiple"
-                      showSearch
-                      allowClear
-                      options={assigneeOptions}
-                      disabled={!editMode}
-                      placeholder={t(
-                        'settings.globalConfig.personnelPlaceholder',
-                      )}
-                      filterOption={(input: string, option?: any) =>
-                        !!option?.label
-                          ?.toLowerCase()
-                          .includes(input.toLowerCase())
-                      }
-                    />
-                  </Form.Item>
-
-                  <Form.Item
-                    name="notify_channel"
-                    className="mb-2"
-                    label={t('settings.globalConfig.notificationMethodLabel')}
-                    rules={[
-                      {
-                        required: true,
-                        message:
-                          t('common.selectTip') +
-                          t('settings.globalConfig.notificationMethodLabel'),
-                      },
-                    ]}
-                  >
-                    <Checkbox.Group
-                      options={notifyOptions}
-                      disabled={!editMode || channelLoading}
-                    />
-                    {channelLoading && (
-                      <div className="mt-2 flex h-8 justify-center">
-                        <Spin spinning={channelLoading} />
-                      </div>
-                    )}
-                  </Form.Item>
-
-                  <Form.Item className="mb-0 ml-3">
-                    <Space>
-                      {editMode ? (
-                        <>
-                          <Button
-                            type="primary"
-                            size="small"
-                            onClick={confirmEdit}
-                            loading={updateLoading}
-                          >
-                            {t('common.confirm')}
-                          </Button>
-                          <Button size="small" onClick={cancelEdit}>
-                            {t('common.cancel')}
-                          </Button>
-                        </>
-                      ) : (
-                        <PermissionWrapper requiredPermissions={['Edit']}>
-                          <Button
-                            type="primary"
-                            size="small"
-                            className="px-2"
-                            onClick={enterEdit}
-                          >
-                            {t('common.edit')}
-                          </Button>
-                        </PermissionWrapper>
-                      )}
-                    </Space>
-                  </Form.Item>
-                </Form>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-(--color-border-1) bg-(--color-bg-1) p-3 sm:p-3.5">
-            <div className="mb-3">
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-4 w-1 rounded-full bg-[#2F6BFF]" />
-                <Typography.Title
-                  level={4}
-                  style={{ margin: 0, fontSize: '15px' }}
-                >
-                  {t('settings.globalConfig.levelPanelTitle')}
-                </Typography.Title>
-              </div>
-              <div className="mt-1 pl-3 text-[12px] leading-5 text-(--color-text-3)">
-                {t('settings.globalConfig.levelPanelDescription')}
-              </div>
-            </div>
-            <div className="overflow-hidden">
-              <Row gutter={[24, 24]} align="stretch">
-                {levelCards}
-              </Row>
-            </div>
-          </div>
+          <LevelManagementPanel
+            levelMeta={levelMeta}
+            onOpenLevelModal={openLevelModal}
+            onDeleteLevel={handleDeleteLevel}
+          />
         </div>
       )}
 
-      <Modal
-        title={
-          editingLevel
-            ? t('settings.globalConfig.editLevelTitle')
-            : t('settings.globalConfig.addLevelTitle')
-        }
-        width={580}
-        centered
+      <LevelFormModal
         open={levelModalOpen}
+        form={levelForm}
+        editingLevel={editingLevel}
+        currentLevelType={currentLevelType}
+        submitting={levelSubmitLoading}
         onCancel={closeLevelModal}
-        onOk={submitLevel}
-        confirmLoading={levelSubmitLoading}
-        styles={{ body: { paddingTop: 20, paddingBottom: 20 } }}
-        destroyOnHidden
-      >
-        <Form
-          form={levelForm}
-          layout={isCompactModalForm ? 'vertical' : 'horizontal'}
-          labelCol={isCompactModalForm ? undefined : { flex: '90px' }}
-          wrapperCol={isCompactModalForm ? undefined : { flex: 'auto' }}
-          labelAlign="right"
-          style={{ marginTop: 4 }}
-        >
-          <Form.Item
-            name="level_id"
-            label={t('settings.globalConfig.levelId')}
-            style={{ marginBottom: 24 }}
-            rules={[
-              {
-                required: true,
-                message: t('settings.globalConfig.nonNegativeInteger'),
-              },
-              {
-                validator: async (_, value) => {
-                  if (value === undefined || value === null || value === '') {
-                    return;
-                  }
-                  if (
-                    Number.isNaN(Number(value)) ||
-                    Number(value) < 0 ||
-                    !Number.isInteger(Number(value))
-                  ) {
-                    throw new Error(
-                      t('settings.globalConfig.nonNegativeInteger'),
-                    );
-                  }
-                },
-              },
-            ]}
-          >
-            <InputNumber
-              min={0}
-              precision={0}
-              style={{ width: '100%' }}
-              disabled={!!editingLevel}
-            />
-          </Form.Item>
-          <Form.Item
-            name="level_display_name"
-            label={t('settings.globalConfig.levelName')}
-            style={{ marginBottom: 24 }}
-            rules={[
-              {
-                required: true,
-                message:
-                  t('common.inputTip') + t('settings.globalConfig.levelName'),
-              },
-            ]}
-          >
-            <Input maxLength={32} />
-          </Form.Item>
-          <Form.Item
-            name="color"
-            rules={[
-              {
-                required: true,
-                message:
-                  t('common.selectTip') + t('settings.globalConfig.levelColor'),
-              },
-            ]}
-            hidden
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            required
-            label={t('settings.globalConfig.levelColor')}
-            style={{ marginBottom: 24 }}
-          >
-            <Form.Item shouldUpdate noStyle>
-              {() => {
-                const selectedColor =
-                  levelForm.getFieldValue('color') || DEFAULT_LEVEL_COLORS[0];
-                return (
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={selectedColor}
-                      className="flex-1"
-                      onChange={(value) =>
-                        levelForm.setFieldValue('color', value)
-                      }
-                      options={DEFAULT_LEVEL_COLORS.map((color) => ({
-                        value: color,
-                        label: (
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="inline-block h-4 w-4 rounded-full border border-[#E5E7EB]"
-                              style={{ backgroundColor: color }}
-                            />
-                            <span>{color}</span>
-                          </div>
-                        ),
-                      }))}
-                    />
-                    <ColorPicker
-                      value={selectedColor}
-                      presets={[
-                        {
-                          label: t('settings.globalConfig.levelColor'),
-                          colors: DEFAULT_LEVEL_COLORS,
-                        },
-                      ]}
-                      onChange={(color) =>
-                        levelForm.setFieldValue(
-                          'color',
-                          color.toHexString().toUpperCase(),
-                        )
-                      }
-                    />
-                  </div>
-                );
-              }}
-            </Form.Item>
-          </Form.Item>
-          <Form.Item
-            label={t('settings.globalConfig.levelIcon')}
-            required
-            style={{ marginBottom: 0 }}
-            className="align-top"
-          >
-            <Form.Item
-              name="icon"
-              rules={[
-                {
-                  required: true,
-                  message: t('settings.globalConfig.iconRequired'),
-                },
-              ]}
-              noStyle
-            >
-              <input type="hidden" />
-            </Form.Item>
-            <div className="w-full">
-              <div className="mb-6 flex items-start">
-                <Segmented
-                  size="middle"
-                  className="h-9 items-center"
-                  style={{ alignSelf: 'flex-start' }}
-                  value={iconMode}
-                  onChange={(value) =>
-                    handleIconModeChange(value as 'preset' | 'upload')
-                  }
-                  options={[
-                    {
-                      label: t('settings.globalConfig.defaultIcons'),
-                      value: 'preset',
-                    },
-                    {
-                      label: t('settings.globalConfig.customUpload'),
-                      value: 'upload',
-                    },
-                  ]}
-                />
-              </div>
-              {iconMode === 'preset' ? (
-                <Form.Item shouldUpdate noStyle>
-                  {() => {
-                    const selectedIcon = levelForm.getFieldValue('icon');
-                    const selectedColor = levelForm.getFieldValue('color');
-                    return (
-                      <div className="grid grid-cols-5 gap-3">
-                        {DEFAULT_LEVEL_ICONS.map((icon) => {
-                          const isActive = selectedIcon === icon;
-                          return (
-                            <button
-                              key={icon}
-                              type="button"
-                              className={`relative flex h-12 cursor-pointer items-center justify-center rounded-xl border transition-all ${
-                                isActive
-                                  ? 'border-[#BFD3FF] bg-[#F7FAFF]'
-                                  : 'border-(--color-border-1) bg-white hover:border-[#9DBBFF] hover:bg-[#FAFBFF]'
-                              }`}
-                              onClick={() =>
-                                levelForm.setFieldValue('icon', icon)
-                              }
-                            >
-                              {isActive && (
-                                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#2F6BFF] text-white shadow-sm ring-2 ring-white">
-                                  <CheckOutlined className="text-[9px]" />
-                                </span>
-                              )}
-                              {renderLevelIconOption(icon, selectedColor)}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    );
-                  }}
-                </Form.Item>
-              ) : (
-                <div>
-                  <Upload
-                    showUploadList={false}
-                    beforeUpload={(file) => beforeIconUpload(file as File)}
-                  >
-                    <Button icon={<UploadOutlined />}>
-                      {t('settings.globalConfig.uploadIcon')}
-                    </Button>
-                  </Upload>
-                  <div className="mt-4 text-[12px] text-[var(--color-text-3)]">
-                    {t('settings.globalConfig.uploadTip')}
-                  </div>
-                  <Form.Item shouldUpdate noStyle>
-                    {() => {
-                      const icon = levelForm.getFieldValue('icon');
-                      const selectedColor =
-                        levelForm.getFieldValue('color') ||
-                        DEFAULT_LEVEL_COLORS[0];
-                      return isCustomIconValue(icon) ? (
-                        <div className="mt-4">
-                          <div
-                            className="inline-flex h-12 min-w-12 items-center justify-center rounded-xl border border-[#BFD3FF] bg-[#F7FAFF] px-4"
-                            style={{
-                              borderColor:
-                                'color-mix(in srgb, var(--color-primary) 22%, white)',
-                            }}
-                          >
-                            <span
-                              className="flex h-7 w-7 items-center justify-center rounded-md"
-                              style={{ backgroundColor: selectedColor }}
-                            >
-                              <LevelIcon
-                                icon={icon}
-                                className="h-4 w-4"
-                                style={{ color: '#fff' }}
-                              />
-                            </span>
-                          </div>
-                        </div>
-                      ) : null;
-                    }}
-                  </Form.Item>
-                </div>
-              )}
-            </div>
-          </Form.Item>
-        </Form>
-      </Modal>
+        onSubmit={submitLevel}
+      />
     </Card>
   );
 }
