@@ -342,7 +342,8 @@
             "timeout": "超时",
             "writing": "正在写入",
             "forceStop": "强制终止",
-            "pendingApproval": "待审批"
+            "pendingApproval": "待审批",
+            "partialSuccess": "部分成功"
         },
         "k8sTask": {
             "title": "添加任务",
@@ -468,6 +469,7 @@
             "totalTasks": "任务总数",
             "normalTasks": "正常任务",
             "errorTasks": "异常任务",
+            "partialTasks": "部分成功",
             "recentSync": "最近同步",
             "coveredModels": "覆盖模型",
             "justNow": "刚刚",
