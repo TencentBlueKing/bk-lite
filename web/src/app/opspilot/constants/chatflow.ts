@@ -14,6 +14,8 @@ export const nodeConfig = {
   enterprise_wechat: { icon: 'qiwei2', color: 'green' as const },
   dingtalk: { icon: 'dingding', color: 'blue' as const },
   wechat_official: { icon: 'weixingongzhonghao', color: 'green' as const },
+  memory_read: { icon: 'zhishiku2', color: 'teal' as const },
+  memory_write: { icon: 'bianji', color: 'indigo' as const },
 } as const;
 
 export const TRIGGER_NODE_TYPES = ['celery', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'dingtalk', 'wechat_official'] as const;
@@ -117,6 +119,18 @@ export const getDefaultConfig = (nodeType: string) => {
     case 'restful':
     case 'openai':
       return baseConfig;
+    case 'memory_read':
+      return {
+        ...baseConfig,
+        memory_space_id: null,
+        top_k: 5
+      };
+    case 'memory_write':
+      return {
+        ...baseConfig,
+        memory_space_id: null,
+        title: ''
+      };
     default:
       return baseConfig;
   }
