@@ -10,6 +10,7 @@ from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.models import LLMModel
 from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
 from apps.opspilot.serializers.memory_serializer import MemorySerializer, MemorySpaceSerializer
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class MemorySpaceViewSet(AuthViewSet):
@@ -34,19 +35,35 @@ class MemorySpaceViewSet(AuthViewSet):
         if not params.get("team"):
             params["team"] = [int(request.COOKIES.get("current_team"))]
         self._validate_org_field_permission(request, params["team"])
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            space_name = response.data.get("name") if isinstance(response.data, dict) else params.get("name", "")
+            log_operation(request, "create", "opspilot", f"新增记忆空间: {space_name}")
+        return response
 
     @HasPermission("memory_list-Edit")
     def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            space_name = response.data.get("name") if isinstance(response.data, dict) else request.data.get("name", "")
+            log_operation(request, "update", "opspilot", f"编辑记忆空间: {space_name}")
+        return response
 
     @HasPermission("memory_list-Edit")
     def partial_update(self, request, *args, **kwargs):
-        return super().partial_update(request, *args, **kwargs)
+        response = super().partial_update(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            space_name = response.data.get("name") if isinstance(response.data, dict) else request.data.get("name", "")
+            log_operation(request, "update", "opspilot", f"编辑记忆空间: {space_name}")
+        return response
 
     @HasPermission("memory_list-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        obj = self.get_object()
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            log_operation(request, "delete", "opspilot", f"删除记忆空间: {obj.name}")
+        return response
 
     @HasPermission("memory_list-Edit")
     @action(methods=["POST"], detail=False, url_path="test_write")
@@ -129,16 +146,32 @@ class MemoryViewSet(AuthViewSet):
     def create(self, request, *args, **kwargs):
         request.data["owner_username"] = request.user.username
         request.data["owner_domain"] = getattr(request.user, "domain", "")
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            memory_title = response.data.get("title") if isinstance(response.data, dict) else request.data.get("title", "")
+            log_operation(request, "create", "opspilot", f"新增记忆: {memory_title}")
+        return response
 
     @HasPermission("memory_list-Edit")
     def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            memory_title = response.data.get("title") if isinstance(response.data, dict) else request.data.get("title", "")
+            log_operation(request, "update", "opspilot", f"编辑记忆: {memory_title}")
+        return response
 
     @HasPermission("memory_list-Edit")
     def partial_update(self, request, *args, **kwargs):
-        return super().partial_update(request, *args, **kwargs)
+        response = super().partial_update(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            memory_title = response.data.get("title") if isinstance(response.data, dict) else request.data.get("title", "")
+            log_operation(request, "update", "opspilot", f"编辑记忆: {memory_title}")
+        return response
 
     @HasPermission("memory_list-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        obj = self.get_object()
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            log_operation(request, "delete", "opspilot", f"删除记忆: {obj.title}")
+        return response
