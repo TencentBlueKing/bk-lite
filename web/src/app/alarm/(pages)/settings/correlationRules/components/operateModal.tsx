@@ -721,6 +721,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 }
               >
                 <RulesMatch
+                  levelType="event"
                   ruleOptions={
                     strategyType === 'missing_detection'
                       ? MISSING_DETECTION_FORM_RULE_LIST
