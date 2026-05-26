@@ -349,13 +349,18 @@ class SubscriptionTriggerService:
     def _build_related_change_map(
         self,
         related_model: str,
+        related_instance_ids: list[int],
         watch_fields: set[str],
         checkpoint: datetime,
     ) -> tuple[dict[int, list[str]], int]:
+        if not related_instance_ids:
+            return {}, 0
+
         last_check = self.rule.last_check_time or self.rule.created_at
         related_change_records = list(
             ChangeRecord.objects.filter(
                 model_id=related_model,
+                inst_id__in=related_instance_ids,
                 type__in=[UPDATE_INST, CREATE_INST, DELETE_INST],
                 created_at__gt=last_check,
                 created_at__lte=checkpoint,
@@ -588,8 +593,18 @@ class SubscriptionTriggerService:
                 continue
             failed_instance_ids = failed_relation_instance_ids_by_model.get(related_model, set())
             watch_fields = set(relation_model.get("fields", []) or [])
+            related_instance_ids = sorted(
+                {
+                    int(rel_id)
+                    for relations in (previous_relations.values(), current_relations.values())
+                    for relation_item in relations
+                    for rel_id in (relation_item.get(related_model, []) or [])
+                    if rel_id is not None
+                }
+            )
             related_change_map, related_record_count = self._build_related_change_map(
                 related_model=related_model,
+                related_instance_ids=related_instance_ids,
                 watch_fields=watch_fields,
                 checkpoint=checkpoint,
             )
