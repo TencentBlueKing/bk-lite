@@ -50,14 +50,6 @@ export interface detailRef {
   }) => void;
 }
 
-export interface RecordDetailProps {
-  userList: Array<any>;
-  propertyList: AttrFieldType[];
-  modelList: ModelItem[];
-  enumList: RecordsEnum;
-  connectTypeList: Array<AssoTypeItem>;
-}
-
 export interface FieldConfig {
   subTitle: string;
   title: string;
