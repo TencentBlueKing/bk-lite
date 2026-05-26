@@ -493,7 +493,7 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
         StreamingHttpResponse: AGUI协议格式的流式响应
     """
     llm_model = LLMModel.objects.get(id=params["llm_model"])
-    show_think = params.pop("show_think", True)
+    show_think = params.get("show_think", True)  # 使用 get 而不是 pop，保留值给 format_chat_server_kwargs
     skill_type = params.get("skill_type")
     params.pop("group", 0)
     params["execution_id"] = params.get("execution_id") or params.get("thread_id") or str(int(time.time() * 1000))
