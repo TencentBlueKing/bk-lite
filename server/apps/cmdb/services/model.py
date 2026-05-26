@@ -59,6 +59,7 @@ from apps.cmdb.services.auto_relation_rule import (
     validate_auto_relation_rule_payload,
     validate_auto_relation_rule_set_payload,
 )
+from apps.cmdb.models.change_record import MODEL_MANAGEMENT_CHANGE
 from apps.cmdb.utils.change_record import create_change_record
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.services.user_group import UserGroup
@@ -556,6 +557,7 @@ class ModelManage(object):
             message=f"创建模型. 模型名称: {data['model_name']}",
             inst_id=result["_id"],
             model_object=OPERATOR_MODEL,
+            scenario=MODEL_MANAGEMENT_CHANGE,
         )
         return result
 
@@ -719,6 +721,7 @@ class ModelManage(object):
                 message=f"复制模型. 源模型: {src_model_info['model_name']}, 新模型: {new_model_name}",
                 inst_id=new_model["_id"],
                 model_object=OPERATOR_MODEL,
+                scenario=MODEL_MANAGEMENT_CHANGE,
             )
 
             return new_model
@@ -879,6 +882,7 @@ class ModelManage(object):
             message=f"创建模型属性. 模型名称: {model_info['model_name']}",
             inst_id=model_info["_id"],
             model_object=OPERATOR_MODEL,
+            scenario=MODEL_MANAGEMENT_CHANGE,
         )
 
         return attr
@@ -981,6 +985,7 @@ class ModelManage(object):
             message=f"修改模型属性. 模型名称: {model_info['model_name']}",
             inst_id=model_info["_id"],
             model_object=OPERATOR_MODEL,
+            scenario=MODEL_MANAGEMENT_CHANGE,
         )
 
         return attr
@@ -1095,6 +1100,7 @@ class ModelManage(object):
             message=f"删除模型属性. 模型名称: {model_info['model_name']}",
             inst_id=model_info["_id"],
             model_object=OPERATOR_MODEL,
+            scenario=MODEL_MANAGEMENT_CHANGE,
         )
 
         return updated_attrs

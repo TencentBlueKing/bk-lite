@@ -18,5 +18,6 @@ class ChangeRecordSerializer(serializers.ModelSerializer):
             "created_at",
             "model_object",
             "message",
+            "scenario",
         )
         read_only_fields = ("id", "created_at")

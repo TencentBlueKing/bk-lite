@@ -23,6 +23,7 @@ from apps.cmdb.models.show_field import ShowField
 from apps.cmdb.permissions.instance_permission import PermissionManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.unique_rule import build_unique_rule_context
+from apps.cmdb.models.change_record import ORDINARY_ATTRIBUTE_CHANGE
 from apps.cmdb.utils.change_record import batch_create_change_record, create_change_record, create_change_record_by_asso
 from apps.cmdb.utils.export import Export
 from apps.cmdb.utils.Import import Import
@@ -547,6 +548,7 @@ class InstanceManage(object):
         update_attr: dict,
         operator: str,
         allowed_org_ids: list | None = None,
+        scenario: str = ORDINARY_ATTRIBUTE_CHANGE,
     ):
         """修改实例属性"""
         inst_info = InstanceManage.query_entity_by_id(inst_id)
@@ -600,6 +602,7 @@ class InstanceManage(object):
             operator=operator,
             model_object=OPERATOR_INSTANCE,
             message=f"修改模型实例属性. 模型:{model_info['model_name']} 实例:{result[0]['inst_name']}",
+            scenario=scenario,
         )
 
         from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
@@ -1025,7 +1028,7 @@ class InstanceManage(object):
             dict(
                 inst_id=i["data"]["_id"],
                 model_id=i["data"]["model_id"],
-                before_data=i["data"],
+                after_data=i["data"],
                 model_object=OPERATOR_INSTANCE,
                 message=f"导入模型实例. 模型:{model_info['model_name']} 实例:{i['data'].get('inst_name') or i['data'].get('ip_addr', '')}",
             )
@@ -1072,7 +1075,7 @@ class InstanceManage(object):
             dict(
                 inst_id=i["data"]["_id"],
                 model_id=i["data"]["model_id"],
-                before_data=i["data"],
+                after_data=i["data"],
                 model_object=OPERATOR_INSTANCE,
                 message=f"导入模型实例. 模型:{model_info['model_name']} 新增模型实例:{i['data'].get('inst_name') or i['data'].get('ip_addr', '')}",
             )
@@ -1085,6 +1088,7 @@ class InstanceManage(object):
                 inst_id=i["data"]["_id"],
                 model_id=i["data"]["model_id"],
                 before_data=exist_items__id_map[i["data"]["_id"]],
+                after_data=i["data"],
                 model_object=OPERATOR_INSTANCE,
                 message=f"导入模型实例. 模型:{model_info['model_name']} 更新模型实例:{i['data'].get('inst_name') or i['data'].get('ip_addr', '')}",
             )

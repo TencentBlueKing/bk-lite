@@ -259,7 +259,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
     const cancelRelate = async (id: unknown, targetAssoId: string) => {
       confirm({
         title: t('disassociationTitle'),
-        content: t('common.deleteContent'),
+        content: t('common.disassociationContent'),
         centered: true,
         onOk() {
           return new Promise(async (resolve) => {
