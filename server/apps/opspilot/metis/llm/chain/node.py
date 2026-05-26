@@ -1,14 +1,7 @@
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
-import asyncio
-import inspect
-import json
-import time
-import uuid
-from collections import Counter
 
 import json_repair
-import openai
 
 # ---------------------------------------------------------------------------
 # DeepSeek/Qwen thinking mode fix:
@@ -26,10 +19,8 @@ import openai
 # ---------------------------------------------------------------------------
 import langchain_openai.chat_models.base as _lc_openai_base  # noqa: E402
 from deepagents import create_deep_agent
-from langchain_core.callbacks import dispatch_custom_event
-from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai.chat_models.base import BaseChatOpenAI as _BaseChatOpenAI
 from langchain_openai.chat_models.base import _convert_delta_to_message_chunk as _original_convert_delta_to_message_chunk
@@ -38,11 +29,11 @@ from langchain_openai.chat_models.base import _convert_message_to_dict as _origi
 from langgraph.constants import END
 from langgraph.graph import StateGraph
 from langgraph.prebuilt import ToolNode
-from pydantic import BaseModel, Field as PydanticField
-from apps.core.logger import opspilot_logger as logger
+from loguru import logger
+from pydantic import BaseModel
+
 from apps.opspilot.metis.llm.chain.compaction import CompactionConfig, compact_messages
-from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, DoneToolConfig, PrepareStepContext, PrepareStepResult, StopConditionContext, StopConditionResult
-from apps.opspilot.metis.llm.chain.message_trim import trim_messages
+from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, PrepareStepContext, PrepareStepResult, StopConditionContext, StopConditionResult
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
 from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
@@ -50,29 +41,6 @@ from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import Pgvector
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
 from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
-from apps.opspilot.utils.approval import wait_for_approval
-from apps.opspilot.utils.user_choice import wait_for_choice
-from apps.opspilot.utils.rollback import get_rollback_spec, take_snapshot, execute_rollback
-from apps.opspilot.utils.verification import get_verification_spec, run_verification
-
-
-def _safe_log_preview(content: str, max_len: int = 200) -> str:
-    """
-    安全地截取日志预览内容，移除可能导致 Windows GBK 编码错误的字符（如 emoji）。
-    
-    Args:
-        content: 原始内容
-        max_len: 最大长度
-    
-    Returns:
-        安全的日志预览字符串
-    """
-    if not content:
-        return ""
-    preview = str(content)[:max_len]
-    # 移除非 ASCII 字符中可能导致 GBK 编码错误的字符（主要是 emoji）
-    # 保留中文等常见字符，只移除 emoji 范围的字符
-    return preview.encode('gbk', errors='replace').decode('gbk')
 
 
 def normalize_messages_for_llm(messages: List[Any]) -> List[Any]:
@@ -138,9 +106,11 @@ _original_create_chat_result = _BaseChatOpenAI._create_chat_result
 
 def _patched_create_chat_result(self, response, generation_info=None):
     """Intercept _create_chat_result to extract reasoning_content from the raw response object."""
+    import openai as _openai
+
     # If response is an openai BaseModel, try to get reasoning content from the raw object
     reasoning_contents = {}
-    if isinstance(response, openai.BaseModel) and hasattr(response, "choices"):
+    if isinstance(response, _openai.BaseModel) and hasattr(response, "choices"):
         for i, choice in enumerate(response.choices):
             msg = getattr(choice, "message", None)
             if msg is not None:
@@ -349,6 +319,8 @@ class BasicNode:
         km_info = config["configurable"]["km_info"]
 
         # 创建临时请求对象用于知识路由
+        from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
+
         km_request = BasicLLMRequest(
             model=config["configurable"]["km_route_llm_model"],
             openai_api_base=config["configurable"]["km_route_llm_api_base"],
@@ -828,6 +800,8 @@ class ToolsNodes(BasicNode):
 
     def _build_activate_tools_meta_tool(self):
         """构建 activate_tools meta-tool，供 LLM 按需激活工具类别"""
+        from langchain_core.tools import StructuredTool
+
         # 构建工具目录描述
         catalog_lines = []
         for category, tool_names in self.tool_catalog.items():
@@ -888,11 +862,17 @@ class ToolsNodes(BasicNode):
     def _build_done_tool(self, done_cfg=None):
         """构建 done tool 用于显式终止 ReAct 循环并返回结构化结果"""
         if done_cfg is None:
+            from apps.opspilot.metis.llm.chain.entity import DoneToolConfig
+
             done_cfg = DoneToolConfig()
         if not done_cfg.enabled:
             return None
 
-        class DoneToolInput(BaseModel):
+        from langchain_core.tools import StructuredTool
+        from pydantic import BaseModel as PydanticBaseModel
+        from pydantic import Field as PydanticField
+
+        class DoneToolInput(PydanticBaseModel):
             result: str = PydanticField(description="任务的最终结构化结果（JSON 字符串）")
 
         def _done_func(result: str) -> str:
@@ -909,18 +889,29 @@ class ToolsNodes(BasicNode):
 
     def _build_approval_tool(self):
         """构建 request_human_approval 工具，供 LLM 在判断操作高危时主动调用"""
-        class ApprovalToolInput(BaseModel):
+        from langchain_core.tools import StructuredTool
+        from pydantic import BaseModel as PydanticBaseModel
+        from pydantic import Field as PydanticField
+
+        class ApprovalToolInput(PydanticBaseModel):
             action: str = PydanticField(description="即将执行的操作描述，包括工具名和关键参数")
             reason: str = PydanticField(description="为什么需要人工审批（风险说明）")
             risk_level: str = PydanticField(default="medium", description="风险等级: low / medium / high / critical")
 
         async def _request_approval(action: str, reason: str, risk_level: str = "medium") -> str:
+            import time as _t
+            import uuid
+
+            from langchain_core.callbacks import dispatch_custom_event
+
+            from apps.opspilot.utils.approval import wait_for_approval
+
             # 从 RunnableConfig 中获取上下文信息（通过闭包不可行，工具执行时由 ToolNode 调用）
             # 使用唯一标识作为 tool_call_id 的替代
             request_id = str(uuid.uuid4())[:8]
             # 从当前执行上下文获取 execution_id
             # 注意：ToolNode 执行工具时不传 config，所以用模块级的上下文
-            execution_id = getattr(_request_approval, "_execution_id", "") or str(int(time.time() * 1000))
+            execution_id = getattr(_request_approval, "_execution_id", "") or str(int(_t.time() * 1000))
             node_id = getattr(_request_approval, "_node_id", "skill_test")
 
             approval_request_data = {
@@ -970,13 +961,19 @@ class ToolsNodes(BasicNode):
 
     def _build_choice_tool(self):
         """构建 request_user_choice 工具，供 LLM 需要用户从多个选项中选择时调用"""
-        class ChoiceOption(BaseModel):
+        from typing import List
+
+        from langchain_core.tools import StructuredTool
+        from pydantic import BaseModel as PydanticBaseModel
+        from pydantic import Field as PydanticField
+
+        class ChoiceOption(PydanticBaseModel):
             key: str = PydanticField(description="选项唯一标识，将返回给你")
             label: str = PydanticField(description="选项显示文本")
             description: str = PydanticField(default="", description="选项详细描述（可选）")
             recommended: bool = PydanticField(default=False, description="是否为推荐选项")
 
-        class ChoiceToolInput(BaseModel):
+        class ChoiceToolInput(PydanticBaseModel):
             title: str = PydanticField(description="选择标题，如'请选择要查询的表'")
             options: List[ChoiceOption] = PydanticField(description="可选项列表，至少2个")
             description: str = PydanticField(default="", description="补充说明（可选）")
@@ -999,8 +996,15 @@ class ToolsNodes(BasicNode):
             timeout_seconds: int = 60,
             default_keys: List[str] = None,
         ) -> str:
+            import time as _t
+            import uuid
+
+            from langchain_core.callbacks import dispatch_custom_event
+
+            from apps.opspilot.utils.user_choice import wait_for_choice
+
             choice_id = str(uuid.uuid4())[:8]
-            execution_id = getattr(_request_choice, "_execution_id", "") or str(int(time.time() * 1000))
+            execution_id = getattr(_request_choice, "_execution_id", "") or str(int(_t.time() * 1000))
             node_id = getattr(_request_choice, "_node_id", "skill_test")
 
             options_data = [opt.model_dump() for opt in options]
@@ -1164,7 +1168,11 @@ class ToolsNodes(BasicNode):
         # ========== 步骤进度发射辅助 ==========
         def _emit_step_progress(max_steps: int, status: str, description: str = "", tool_name: str = None, step_elapsed: float = 0.0):
             """发射 agent_step_progress 自定义事件"""
-            total_elapsed = (time.monotonic() - start_time["value"]) if start_time["value"] else 0.0
+            import time as _t
+
+            from langchain_core.callbacks import dispatch_custom_event
+
+            total_elapsed = (_t.monotonic() - start_time["value"]) if start_time["value"] else 0.0
             try:
                 dispatch_custom_event(
                     "agent_step_progress",
@@ -1243,6 +1251,8 @@ class ToolsNodes(BasicNode):
             # 消息裁剪：在 compaction 之前执行轻量级裁剪（截断过长消息、清理早期图片）
             trim_cfg = graph_request.message_trim_config
             if trim_cfg.enabled and (tools or dynamic_mode):
+                from apps.opspilot.metis.llm.chain.message_trim import trim_messages
+
                 messages = trim_messages(messages, trim_cfg, model_name=graph_request.model)
 
             # 上下文 Compaction：检测 token 是否超限，自动压缩历史消息
@@ -1276,12 +1286,14 @@ class ToolsNodes(BasicNode):
                 return {"messages": [AIMessage(content="任务已被中断。")]}
 
             # ========== 总超时检查 ==========
+            import time as _time
+
             timeout_cfg = graph_request.timeout_config
             if timeout_cfg.enabled:
                 if start_time["value"] is None:
-                    start_time["value"] = time.monotonic()
+                    start_time["value"] = _time.monotonic()
                 elif timeout_cfg.total_timeout_seconds > 0:
-                    elapsed = time.monotonic() - start_time["value"]
+                    elapsed = _time.monotonic() - start_time["value"]
                     if elapsed >= timeout_cfg.total_timeout_seconds:
                         logger.warning(
                             f"[{trace_id}] agent_node 总超时 (step={step_counter['count']}, "
@@ -1323,6 +1335,8 @@ class ToolsNodes(BasicNode):
                 )
                 for hook in graph_request.prepare_step_hooks:
                     try:
+                        import inspect
+
                         if inspect.iscoroutinefunction(hook):
                             result = await hook(ctx)
                         else:
@@ -1373,6 +1387,8 @@ class ToolsNodes(BasicNode):
                     history = reflection_tracker["tool_call_history"]
                     window = history[-reflection_cfg.repetition_window :] if len(history) >= reflection_cfg.repetition_window else history
                     if window:
+                        from collections import Counter
+
                         counts = Counter(window)
                         most_common_name, most_common_count = counts.most_common(1)[0]
                         if most_common_count >= reflection_cfg.repetition_threshold:
@@ -1425,8 +1441,17 @@ class ToolsNodes(BasicNode):
                         break  # 只检查最近一条 AIMessage
 
                 if _has_pending_choice:
-                    messages = list(messages) + [SystemMessage(content="[系统] 用户已完成选择，请基于选择结果调用下一个工具继续执行任务。")]
+                    from langchain_core.messages import SystemMessage as _PreSM
+
+                    messages = list(messages) + [_PreSM(content="[系统] 用户已完成选择，请基于选择结果调用下一个工具继续执行任务。")]
                     logger.info(f"[{trace_id}] agent_node: 最近 AIMessage 调用了 request_user_choice，" f"注入续行提示 (step={step_counter['count']})")
+
+                # DEBUG: 写入调试文件（临时）
+                try:
+                    with open("/Users/qiu/projects/bk-lite/logs/choice_debug.log", "a") as _dbg_f:
+                        _dbg_f.write(f"[step={step_counter['count']}] _has_pending_choice={_has_pending_choice}, " f"msg_count={len(messages)}\n")
+                except Exception:
+                    pass
 
             # 获取 LLM 并绑定工具
             llm = get_llm_client(graph_request)
@@ -1459,20 +1484,6 @@ class ToolsNodes(BasicNode):
                 if _has_pending_choice and "tool_choice" not in bind_kwargs:
                     bind_kwargs["tool_choice"] = "any"
                     logger.info(f"[{trace_id}] 选择后续行: 用户刚完成 request_user_choice，" f"强制 tool_choice='any' (step={step_counter['count']})")
-                
-                # Thinking 模式兼容性处理：
-                # DeepSeek V4 和 Qwen 在 thinking 模式下只支持 tool_choice="auto" 或 "none"，
-                # 不支持 "any"/"required"/specific tool。检测 thinking 模式并转换。
-                if bind_kwargs.get("tool_choice") in ("any", "required"):
-                    extra_body = getattr(llm, 'extra_body', None) or {}
-                    # DeepSeek: extra_body.thinking.type == "enabled"
-                    # Qwen: extra_body.enable_thinking == True
-                    deepseek_thinking = extra_body.get("thinking", {}).get("type") == "enabled"
-                    qwen_thinking = extra_body.get("enable_thinking") is True
-                    is_thinking_enabled = deepseek_thinking or qwen_thinking
-                    if is_thinking_enabled:
-                        bind_kwargs["tool_choice"] = "auto"
-
                 llm_with_tools = llm.bind_tools(current_tools, **bind_kwargs)
             else:
                 llm_with_tools = llm
@@ -1482,12 +1493,14 @@ class ToolsNodes(BasicNode):
 
             # 调用 LLM（带超时保护）
             try:
+                import asyncio as _asyncio
+
                 llm_timeout = timeout_cfg.llm_timeout_seconds if (timeout_cfg.enabled and timeout_cfg.llm_timeout_seconds > 0) else None
                 if llm_timeout:
-                    response = await asyncio.wait_for(llm_with_tools.ainvoke(messages), timeout=llm_timeout)
+                    response = await _asyncio.wait_for(llm_with_tools.ainvoke(messages), timeout=llm_timeout)
                 else:
                     response = await llm_with_tools.ainvoke(messages)
-            except asyncio.TimeoutError:
+            except _asyncio.TimeoutError:
                 logger.warning(f"[{trace_id}] ReAct agent_node LLM 调用超时 ({timeout_cfg.llm_timeout_seconds}s)")
                 return {"messages": [AIMessage(content=f"LLM 调用超时（{timeout_cfg.llm_timeout_seconds}s），请稍后重试或简化问题。")]}
             except Exception as e:
@@ -1504,12 +1517,14 @@ class ToolsNodes(BasicNode):
             if done_tool_name and tool_calls:
                 for tc in tool_calls:
                     if tc.get("name") == done_tool_name:
+                        import json as _json
+
                         done_result = tc.get("args", {}).get("result", "")
                         try:
-                            parsed = json.loads(done_result) if isinstance(done_result, str) else done_result
+                            parsed = _json.loads(done_result) if isinstance(done_result, str) else done_result
                         except (ValueError, TypeError):
                             parsed = done_result
-                        structured_output = json.dumps(parsed, ensure_ascii=False) if not isinstance(parsed, str) else parsed
+                        structured_output = _json.dumps(parsed, ensure_ascii=False) if not isinstance(parsed, str) else parsed
                         logger.info(f"[{trace_id}] agent_node 检测到 done tool 调用，返回结构化结果, " f"result_preview={str(structured_output)[:200]!r}")
                         # 返回无 tool_calls 的 AIMessage，should_continue 会自然终止
                         _emit_step_progress(graph_request.max_steps, "completed", description="任务完成（done tool）")
@@ -1522,9 +1537,20 @@ class ToolsNodes(BasicNode):
 
             logger.info(
                 f"[{trace_id}] ReAct agent_node 返回: message_type={type(response).__name__}, "
-                f"tool_call_count={len(tool_calls)}, content_preview={_safe_log_preview(str(getattr(response, 'content', '')))!r}"
+                f"tool_call_count={len(tool_calls)}, content_preview={str(getattr(response, 'content', ''))[:200]!r}"
             )
 
+            # DEBUG: 写入调试文件（临时）
+            try:
+                with open("/Users/qiu/projects/bk-lite/logs/choice_debug.log", "a") as _dbg_f:
+                    _dbg_f.write(
+                        f"[step={step_counter['count']}] LLM returned: tool_call_count={len(tool_calls)}, "
+                        f"_has_pending_choice={_has_pending_choice}, "
+                        f"tool_names={[tc.get('name', '?') for tc in tool_calls] if tool_calls else 'NONE'}, "
+                        f"content_preview={str(getattr(response, 'content', ''))[:150]}\n"
+                    )
+            except Exception:
+                pass
             if tool_calls:
                 logger.info(f"[{trace_id}] ReAct agent_node tool_calls: {tool_calls}")
                 # 重置续行标记
@@ -1538,24 +1564,17 @@ class ToolsNodes(BasicNode):
 
                 if _has_pending_choice and not already_retried:
                     choice_continuation["retried_at_step"] = current_step
-                    nudge_msg = SystemMessage(content="[系统] 用户已完成选择，请根据选择结果调用下一个工具继续执行。")
+                    from langchain_core.messages import SystemMessage as _RetrySystemMessage
+
+                    nudge_msg = _RetrySystemMessage(content="[系统] 用户已完成选择，请根据选择结果调用下一个工具继续执行。")
                     logger.info(f"[{trace_id}] agent_node: request_user_choice 后 LLM 未调用工具（预调用 tool_choice=any 未生效），" f"二次重试 (step={current_step})")
                     retry_messages = list(messages) + [response, nudge_msg]
                     try:
-                        # Thinking 模式兼容：检测并转换 tool_choice
-                        retry_tool_choice = "any"
-                        extra_body = getattr(llm, 'extra_body', None) or {}
-                        # DeepSeek: extra_body.thinking.type == "enabled"
-                        # Qwen: extra_body.enable_thinking == True
-                        deepseek_thinking = extra_body.get("thinking", {}).get("type") == "enabled"
-                        qwen_thinking = extra_body.get("enable_thinking") is True
-                        if deepseek_thinking or qwen_thinking:
-                            retry_tool_choice = "auto"
-                            logger.info(f"[{trace_id}] 二次重试: Thinking 模式，tool_choice 'any' -> 'auto'")
-                        
-                        forced_llm = llm.bind_tools(current_tools, tool_choice=retry_tool_choice)
+                        import asyncio as _asyncio_retry
+
+                        forced_llm = llm.bind_tools(current_tools, tool_choice="any")
                         if llm_timeout:
-                            response = await asyncio.wait_for(forced_llm.ainvoke(retry_messages), timeout=llm_timeout)
+                            response = await _asyncio_retry.wait_for(forced_llm.ainvoke(retry_messages), timeout=llm_timeout)
                         else:
                             response = await forced_llm.ainvoke(retry_messages)
                         tool_calls = getattr(response, "tool_calls", None) or []
@@ -1591,6 +1610,8 @@ class ToolsNodes(BasicNode):
 
         async def logged_tool_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
             """带日志和自适应重试的工具节点包装器。"""
+            import asyncio
+
             trace_id = config["configurable"].get("trace_id", "unknown")
             graph_request = config["configurable"]["graph_request"]
             retry_cfg = graph_request.retry_config
@@ -1603,6 +1624,8 @@ class ToolsNodes(BasicNode):
             # ========== 中断检查：工具执行前检查是否被请求中断 ==========
             execution_id = config["configurable"].get("execution_id", "")
             if execution_id and await is_interrupt_requested_async(execution_id):
+                from langchain_core.messages import ToolMessage
+
                 logger.info(f"[{trace_id}] logged_tool_node 检测到中断请求，跳过工具执行")
                 # 返回空 ToolMessage 以满足 LangGraph 对 tool_call_id 配对的要求
                 interrupted_msgs = []
@@ -1616,6 +1639,8 @@ class ToolsNodes(BasicNode):
             snapshots: Dict[str, str] = {}  # tool_call_id -> snapshot_result
             rollback_specs: Dict[str, Any] = {}  # tool_call_id -> ToolRollbackSpec
             if rollback_cfg.enabled and tool_calls:
+                from apps.opspilot.utils.rollback import get_rollback_spec, take_snapshot
+
                 all_tools_for_snapshot = list(self.tools) + (list(self.all_tools) if hasattr(self, "all_tools") else [])
                 for tc in tool_calls:
                     tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
@@ -1644,6 +1669,8 @@ class ToolsNodes(BasicNode):
                             logger.info(f"[{trace_id}] 快照完成: tool={tc_name}, tc_id={tc_id}")
 
             # ========== 工具执行（带单步超时保护）==========
+            import asyncio as _asyncio
+
             timeout_cfg = graph_request.timeout_config
             step_timeout = timeout_cfg.step_timeout_seconds if (timeout_cfg.enabled and timeout_cfg.step_timeout_seconds > 0) else None
 
@@ -1658,12 +1685,14 @@ class ToolsNodes(BasicNode):
 
             try:
                 if step_timeout:
-                    result = await asyncio.wait_for(tool_node.ainvoke(state, config=config), timeout=step_timeout)
+                    result = await _asyncio.wait_for(tool_node.ainvoke(state, config=config), timeout=step_timeout)
                 else:
                     result = await tool_node.ainvoke(state, config=config)
-            except asyncio.TimeoutError:
+            except _asyncio.TimeoutError:
                 logger.warning(f"[{trace_id}] logged_tool_node 工具执行超时 ({step_timeout}s)")
                 # 返回超时错误 ToolMessage
+                from langchain_core.messages import ToolMessage
+
                 timeout_msgs = []
                 for tc in tool_calls:
                     tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
@@ -1673,6 +1702,8 @@ class ToolsNodes(BasicNode):
 
             # ========== 自适应重试：检测工具错误并重试 ==========
             if retry_cfg.enabled and result_messages:
+                from langchain_core.messages import ToolMessage
+
                 retried_any = False
                 for idx, msg in enumerate(result_messages):
                     if not isinstance(msg, ToolMessage):
@@ -1745,6 +1776,8 @@ class ToolsNodes(BasicNode):
                     result = {"messages": result_messages}
 
             # ========== 反思追踪：记录工具执行结果 ==========
+            from langchain_core.messages import ToolMessage
+
             has_failure = False
             for msg in result_messages:
                 if isinstance(msg, ToolMessage):
@@ -1786,6 +1819,8 @@ class ToolsNodes(BasicNode):
             # ========== 执行后验证 ==========
             verify_cfg = graph_request.verification_config
             if verify_cfg.enabled and result_messages:
+                from apps.opspilot.utils.verification import get_verification_spec, run_verification
+
                 verification_msgs = []
                 for msg in result_messages:
                     if not isinstance(msg, ToolMessage):
@@ -1818,6 +1853,8 @@ class ToolsNodes(BasicNode):
 
                     # 发射验证事件
                     try:
+                        from langchain_core.callbacks import dispatch_custom_event
+
                         dispatch_custom_event(
                             "verification_started",
                             {
@@ -1850,7 +1887,9 @@ class ToolsNodes(BasicNode):
                     )
                     # 使用相同的 tool_call_id 不行（会冲突），需要让 LLM 通过上下文关联
                     # 改为追加为 HumanMessage 或 SystemMessage（不是 ToolMessage）
-                    verification_msgs.append(SystemMessage(content=verify_content))
+                    from langchain_core.messages import SystemMessage as _SysMsg
+
+                    verification_msgs.append(_SysMsg(content=verify_content))
 
                     try:
                         dispatch_custom_event(
@@ -1872,6 +1911,8 @@ class ToolsNodes(BasicNode):
 
             # ========== 操作回滚（验证失败时触发）==========
             if rollback_cfg.enabled and rollback_specs:
+                from apps.opspilot.utils.rollback import execute_rollback
+
                 rollback_msgs = []
 
                 for tc_id, rb_spec in rollback_specs.items():
@@ -1886,6 +1927,8 @@ class ToolsNodes(BasicNode):
                         logger.info(f"[{trace_id}] 自动回滚触发: action={tc_name}, strategy=auto")
 
                         try:
+                            from langchain_core.callbacks import dispatch_custom_event
+
                             dispatch_custom_event(
                                 "rollback_started",
                                 {
@@ -1912,7 +1955,9 @@ class ToolsNodes(BasicNode):
                             f"回滚结果: {'成功' if rb_result['rolled_back'] else '失败'}\n"
                             f"详情:\n{rb_result['rollback_result'][:1000]}\n"
                         )
-                        rollback_msgs.append(SystemMessage(content=rb_content))
+                        from langchain_core.messages import SystemMessage as _SysMsg
+
+                        rollback_msgs.append(_SysMsg(content=rb_content))
 
                         try:
                             dispatch_custom_event(
@@ -1936,7 +1981,9 @@ class ToolsNodes(BasicNode):
                             prompt_content += f"操作前快照:\n{snapshot[:800]}\n"
                         if rb_spec.description:
                             prompt_content += f"说明: {rb_spec.description}\n"
-                        rollback_msgs.append(SystemMessage(content=prompt_content))
+                        from langchain_core.messages import SystemMessage as _SysMsg
+
+                        rollback_msgs.append(_SysMsg(content=prompt_content))
 
                 if rollback_msgs:
                     result_messages = result.get("messages", []) if isinstance(result, dict) else []
@@ -1958,7 +2005,7 @@ class ToolsNodes(BasicNode):
             if not (hasattr(last_message, "tool_calls") and last_message.tool_calls):
                 logger.info(
                     "ReAct should_continue: 未检测到 tool_calls，结束循环, "
-                    f"last_message_type={type(last_message).__name__}, content_preview={_safe_log_preview(str(getattr(last_message, 'content', '')))!r}"
+                    f"last_message_type={type(last_message).__name__}, content_preview={str(getattr(last_message, 'content', ''))[:200]!r}"
                 )
                 return "end"
 

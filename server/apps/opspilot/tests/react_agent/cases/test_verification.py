@@ -140,7 +140,7 @@ async def _build_and_run(request, mock_llm_responses, tools_list):
         "apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template",
         return_value="You are a test assistant.",
     ), patch(
-        "apps.opspilot.metis.llm.chain.node.dispatch_custom_event",
+        "langchain_core.callbacks.dispatch_custom_event",
         side_effect=capture_event,
     ), patch(
         "apps.opspilot.metis.llm.chain.node.is_interrupt_requested_async",

@@ -134,14 +134,14 @@ async def _build_and_run(
         "apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template",
         return_value="You are a test assistant.",
     ), patch(
-        "apps.opspilot.metis.llm.chain.node.wait_for_approval",
+        "apps.opspilot.utils.approval.wait_for_approval",
         side_effect=mock_wait_for_approval,
     ), patch(
         "apps.opspilot.metis.llm.chain.node.is_interrupt_requested_async",
         new_callable=AsyncMock,
         return_value=False,
     ), patch(
-        "apps.opspilot.metis.llm.chain.node.dispatch_custom_event",
+        "langchain_core.callbacks.dispatch_custom_event",
         side_effect=capture_event,
     ):
         result = await graph.ainvoke(
