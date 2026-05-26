@@ -2,7 +2,7 @@
   {
     "name": "日志命中数",
     "desc": "",
-    "rest_api": "log/hits",
+    "rest_api": "log/log_hits",
     "tag": [
       "log"
     ],
@@ -115,7 +115,7 @@
   {
     "name": "日志搜索",
     "desc": "",
-    "rest_api": "log/search",
+    "rest_api": "log/log_search",
     "tag": [
       "log"
     ],
