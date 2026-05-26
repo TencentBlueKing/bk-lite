@@ -1,0 +1,9 @@
+#!/bin/sh
+# Delegate to .git/hooks/pre-commit to avoid Windows file lock issues
+# when Python pre-commit framework tries to stash/restore.
+HOOK="$(git rev-parse --git-dir)/hooks/pre-commit-main"
+if [ -x "$HOOK" ]; then
+    exec "$HOOK" "$@"
+elif [ -f "$HOOK" ]; then
+    exec sh "$HOOK" "$@"
+fi

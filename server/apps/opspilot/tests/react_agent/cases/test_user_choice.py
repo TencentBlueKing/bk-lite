@@ -139,7 +139,7 @@ async def _build_and_run(
             return_value="You are a test assistant.",
         ),
         patch(
-            "apps.opspilot.utils.user_choice.wait_for_choice",
+            "apps.opspilot.metis.llm.chain.node.wait_for_choice",
             side_effect=mock_wait_for_choice,
         ),
         patch(
@@ -148,7 +148,7 @@ async def _build_and_run(
             return_value=False,
         ),
         patch(
-            "langchain_core.callbacks.dispatch_custom_event",
+            "apps.opspilot.metis.llm.chain.node.dispatch_custom_event",
             side_effect=capture_event,
         ),
     ):
