@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Icon from '@/components/icon';
+import LevelIcon from '@/app/alarm/components/levelIcon';
 import AlarmFilters from '@/app/alarm/components/alarmFilters';
 import CustomTable from '@/components/custom-table';
 import alertStyle from './index.module.scss';
@@ -23,7 +23,7 @@ const IncidentsPage: React.FC = () => {
   const { getIncidentList } = useIncidentsApi();
   const { t } = useTranslation();
   const router = useRouter();
-  const { levelList, levelMap } = useCommon();
+  const { levelListIncident, levelMapIncident } = useCommon();
   const [searchText, setSearchText] = useState('');
   const [data, setData] = useState<IncidentTableDataItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -59,13 +59,13 @@ const IncidentsPage: React.FC = () => {
       key: 'level',
       width: 100,
       render: (_: any, { level }: IncidentTableDataItem) => {
-        const target = levelList.find(
+        const target = levelListIncident.find(
           (item) => item.level_id === Number(level)
         );
         return (
-          <Tag color={levelMap[level || '']}>
+          <Tag color={levelMapIncident[level || '']}>
             <div className="flex items-center">
-              <Icon type={target?.icon || ''} className="mr-1" />
+              <LevelIcon icon={target?.icon || ''} className="mr-1 w-4 h-4" />
               {target?.level_display_name || '--'}
             </div>
           </Tag>
