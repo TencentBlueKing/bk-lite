@@ -28,13 +28,7 @@ def _build_actor_context(request):
 class SystemMgmtView(ViewSet):
     @action(methods=["get"], detail=False, url_path="user_all")
     def get_user_all(self, request):
-        actor_context = _build_actor_context(request)
-        include_children = request.COOKIES.get("include_children", "0") == "1"
-        data = SystemMgmtUtils.get_user_all(
-            actor_context,
-            group=actor_context["current_team"],
-            include_children=include_children,
-        )
+        data = SystemMgmtUtils.get_user_all()
         return WebUtils.response_success(data)
 
     @action(methods=["get"], detail=False, url_path="search_channel_list")
