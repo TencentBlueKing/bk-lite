@@ -380,7 +380,11 @@ const normalizeDisplayText = (value?: string | null) => {
     return '';
   }
 
-  if (/^[A-Za-z0-9+/=_-]{12,}$/.test(withoutQuotes) && !/[.:/]/.test(withoutQuotes)) {
+  if (
+    /^[A-Za-z0-9+/=_-]{12,}$/.test(withoutQuotes) &&
+    !/[.:/]/.test(withoutQuotes) &&
+    !/[a-z]+-[a-z]/.test(withoutQuotes)
+  ) {
     return '';
   }
 
@@ -393,7 +397,7 @@ const isOpaqueIdentifier = (value?: string | null) => {
     return true;
   }
 
-  return /^[A-Za-z0-9+/=_-]{12,}$/.test(normalized) && !/[.:/]/.test(normalized);
+  return /^[A-Za-z0-9+/=_-]{12,}$/.test(normalized) && !/[.:/]/.test(normalized) && !/[a-z]+-[a-z]/.test(normalized);
 };
 
 const buildInstanceDisplayName = (item: any) => {
