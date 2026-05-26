@@ -82,6 +82,7 @@ const Node = () => {
   const [collectorOperationType, setCollectorOperationType] =
     useState<string>('');
   const [collectorId, setCollectorId] = useState<string>('');
+  const [collectorName, setCollectorName] = useState<string>('');
   const [collectorPackageId, setCollectorPackageId] = useState<
     number | undefined
   >();
@@ -126,6 +127,7 @@ const Node = () => {
     setShowNodeTable(true);
     setShowCollectorOperation(false);
     setCollectorOperationType('');
+    setCollectorName('');
     getNodes(searchFilters);
   }, [searchFilters]);
 
@@ -622,7 +624,8 @@ const Node = () => {
       type: '',
       taskId: '',
       collectorId: '',
-      collectorPackageId: undefined as number | undefined
+      collectorPackageId: undefined as number | undefined,
+      collectorName: ''
     }
   ) => {
     getNodes(searchFilters);
@@ -638,6 +641,7 @@ const Node = () => {
       setTaskId(config.taskId);
       setCollectorOperationType(config.type);
       setCollectorId(config.collectorId || '');
+      setCollectorName(config.collectorName || '');
       setCollectorPackageId(config.collectorPackageId);
       setShowNodeTable(false);
       setShowCollectorOperation(true);
@@ -761,6 +765,7 @@ const Node = () => {
               operationType={collectorOperationType as any}
               taskId={taskId}
               collectorId={collectorId}
+              collectorName={collectorName}
               collectorPackageId={collectorPackageId}
               cancel={cancelCollectorOperation}
             />

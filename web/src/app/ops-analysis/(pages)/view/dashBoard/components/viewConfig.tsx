@@ -81,6 +81,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   dataSourceManager,
   filterDefinitions = [],
   unifiedFilterValues = {},
+  builtinNamespaceId,
 }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
@@ -89,10 +90,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const { getSourceDataByApiId } = useDataSourceApi();
 
   const {
-    dataSources,
     selectedDataSource,
     setSelectedDataSource,
-    findDataSource,
+    ensureDataSource,
     setDefaultParamValues,
     restoreUserParamValues,
     processFormParamsForSubmit,
@@ -160,6 +160,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     unifiedFilterValues,
     filterBindings,
     filterDefinitions: previewFilterDefinitions,
+    builtinNamespaceId,
     t,
   });
 
@@ -167,6 +168,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     form,
     selectedDataSource,
     getSourceDataByApiId,
+    builtinNamespaceId,
   });
 
   const topNFieldOptions = useMemo(
@@ -258,7 +260,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       tableConfig.setFilterFields([]);
     }
 
-    const targetDataSource = findDataSource(formValues.dataSource);
+    const targetDataSource = await ensureDataSource(formValues.dataSource);
     if (targetDataSource) {
       setSelectedDataSource(targetDataSource);
       formValues.params = formValues.params || {};
@@ -404,12 +406,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   };
 
   useEffect(() => {
-    if (open && dataSources.length > 0) {
+    if (open) {
       void initializeItemForm(widgetItem);
     } else if (!open) {
       resetForm();
     }
-  }, [open, widgetItem, form, dataSources]);
+  }, [open, widgetItem, form]);
 
   useEffect(() => {
     if (!tableConfig.displayColumnsError) {
@@ -586,7 +588,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           >
             <DataSourceSelect
               placeholder={t('common.selectTip')}
-              dataSources={dataSources}
+              dataSources={selectedDataSource ? [selectedDataSource] : []}
               disabled
               onDataSourceChange={setSelectedDataSource}
             />

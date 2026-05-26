@@ -68,7 +68,7 @@
       "name": "发布速率突增",
       "alert_name": "RabbitMQ交换器 ${resource_name} 写入过载",
       "description": "检测消息发布速率，异常增长可能导致积压。需评估生产者流量。",
-      "metric_name": "rabbitmq_exchange_publish_in_rate",
+      "metric_name": "rabbitmq_overview_messages_published_rate",
       "algorithm": "max",
       "threshold": [
         {

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import dayjs, { Dayjs } from 'dayjs';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
+import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 
@@ -13,8 +14,8 @@ export const useDataSourceManager = () => {
     dataSources,
     dataSourcesLoading,
     fetchDataSources,
-    refreshDataSources,
   } = useOpsAnalysis();
+  const { getDataSourceDetail } = useDataSourceApi();
 
   const findDataSource = (
     dataSourceId?: string | number
@@ -24,6 +25,26 @@ export const useDataSourceManager = () => {
       return dataSources.find((ds) => ds.id === id);
     }
     return undefined;
+  };
+
+  const ensureDataSource = async (
+    dataSourceId?: string | number
+  ): Promise<DatasourceItem | undefined> => {
+    if (!dataSourceId) {
+      return undefined;
+    }
+
+    const existing = findDataSource(dataSourceId);
+    if (existing) {
+      return existing;
+    }
+
+    const id = typeof dataSourceId === 'string' ? parseInt(dataSourceId, 10) : dataSourceId;
+    try {
+      return await getDataSourceDetail(id);
+    } catch {
+      return undefined;
+    }
   };
 
   const setDefaultParamValues = (params: ParamItem[], formParams: FormParams): void => {
@@ -102,8 +123,8 @@ export const useDataSourceManager = () => {
     selectedDataSource,
     setSelectedDataSource,
     fetchDataSources,
-    refreshDataSources,
     findDataSource,
+    ensureDataSource,
     setDefaultParamValues,
     restoreUserParamValues,
     processFormParamsForSubmit,

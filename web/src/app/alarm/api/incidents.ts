@@ -1,7 +1,7 @@
 import useApiClient from '@/utils/request';
 
 export const useIncidentsApi = () => {
-  const { get, post, patch } = useApiClient();
+  const { get, post, patch, del } = useApiClient();
 
   const getIncidentList = async (params: any) => {
     return get('/alerts/api/incident/', { params });
@@ -23,11 +23,51 @@ export const useIncidentsApi = () => {
     return post(`/alerts/api/incident/operator/${actionType}/`, params);
   };
 
+  const getIncidentUpdates = async (incidentPk: string, params?: any) => {
+    return get(`/alerts/api/incident/${incidentPk}/updates/`, { params });
+  };
+
+  const createIncidentUpdate = async (incidentPk: string, data: any) => {
+    return post(`/alerts/api/incident/${incidentPk}/updates/`, data);
+  };
+
+  const editIncidentUpdate = async (incidentPk: string, updateId: number, data: any) => {
+    return patch(`/alerts/api/incident/${incidentPk}/updates/${updateId}/`, data);
+  };
+
+  const deleteIncidentUpdate = async (incidentPk: string, updateId: number) => {
+    return del(`/alerts/api/incident/${incidentPk}/updates/${updateId}/`);
+  };
+
+  const toggleKeyInfo = async (incidentPk: string, updateId: number) => {
+    return post(`/alerts/api/incident/${incidentPk}/updates/${updateId}/key_info/`);
+  };
+
+  const getDiagnosis = async (incidentPk: string) => {
+    return get(`/alerts/api/incident/${incidentPk}/updates/diagnosis/`);
+  };
+
+  const addAlertsToIncident = async (incidentId: string, alertIds: number[]) => {
+    return post(`/alerts/api/incident/${incidentId}/alerts/`, { alert_ids: alertIds });
+  };
+
+  const removeAlertsFromIncident = async (incidentId: string, alertIds: number[]) => {
+    return del(`/alerts/api/incident/${incidentId}/alerts/`, { data: { alert_ids: alertIds } });
+  };
+
   return {
     getIncidentList,
     getIncidentDetail,
     createIncidentDetail,
     modifyIncidentDetail,
     incidentActionOperate,
+    getIncidentUpdates,
+    createIncidentUpdate,
+    editIncidentUpdate,
+    deleteIncidentUpdate,
+    toggleKeyInfo,
+    getDiagnosis,
+    addAlertsToIncident,
+    removeAlertsFromIncident,
   };
 };

@@ -1,17 +1,18 @@
-import types
-
 import pytest
 from rest_framework import status
-from rest_framework.test import APIClient
 
-from apps.base.tests.factories import UserFactory
-from apps.mlops.constants import TrainJobStatus
 from apps.mlops.models.anomaly_detection import AnomalyDetectionTrainJob
 from apps.mlops.models.classification import ClassificationTrainJob
 from apps.mlops.models.image_classification import ImageClassificationTrainJob
 from apps.mlops.models.log_clustering import LogClusteringTrainJob
-from apps.mlops.models.object_detection import ObjectDetectionServing, ObjectDetectionTrainJob
+from apps.mlops.models.object_detection import ObjectDetectionTrainJob
 from apps.mlops.models.timeseries_predict import TimeSeriesPredictTrainJob
+from .conftest import (
+    allow_owned_run,
+    attach_mlflow_mocks,
+    create_train_job,
+    set_delete_run_eligibility,
+)
 
 
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
@@ -45,144 +46,6 @@ DOWNLOAD_MODEL_CASES = [
     ("image_classification_train_jobs", ImageClassificationTrainJob, "apps.mlops.views.image_classification", 0),
     ("object_detection_train_jobs", ObjectDetectionTrainJob, "apps.mlops.views.object_detection", 0),
 ]
-
-
-@pytest.fixture
-def mlops_user():
-    user = UserFactory(
-        username="mlops-viewer",
-        domain="domain.com",
-        group_list=[{"id": 1, "name": "Team 1"}, {"id": 2, "name": "Team 2"}],
-        roles=[],
-    )
-    user.permission = {
-        "mlops": {
-            "classification-View",
-            "anomaly_detection-View",
-            "timeseries_predict-View",
-            "log_clustering-View",
-            "image_classification-View",
-            "object_detection-View",
-        }
-    }
-    return user
-
-
-@pytest.fixture
-def mlops_api_client(mlops_user):
-    client = APIClient()
-    client.force_authenticate(user=mlops_user)
-    client.cookies["current_team"] = "1"
-    return client
-
-
-@pytest.fixture
-def mlops_delete_user():
-    user = UserFactory(
-        username="mlops-deleter",
-        domain="domain.com",
-        group_list=[{"id": 1, "name": "Team 1"}, {"id": 2, "name": "Team 2"}],
-        roles=[],
-    )
-    user.permission = {
-        "mlops": {
-            "classification-Delete",
-            "anomaly_detection-Delete",
-            "timeseries_predict-Delete",
-            "log_clustering-Delete",
-            "image_classification-Delete",
-            "object_detection-Delete",
-        }
-    }
-    return user
-
-
-@pytest.fixture
-def mlops_delete_api_client(mlops_delete_user):
-    client = APIClient()
-    client.force_authenticate(user=mlops_delete_user)
-    client.cookies["current_team"] = "1"
-    return client
-
-
-def create_train_job(train_job_model, team):
-    return train_job_model.objects.create(
-        name=f"job-{team}",
-        description="",
-        team=[team],
-        status=TrainJobStatus.COMPLETED,
-        algorithm="demo-algorithm",
-        dataset_version=None,
-        hyperopt_config={},
-    )
-
-
-def create_object_detection_serving(train_job, team, *, status_value="inactive", container_info=None):
-    return ObjectDetectionServing.objects.create(
-        name=f"serving-{team}",
-        description="",
-        team=[team],
-        train_job=train_job,
-        model_version="latest",
-        status=status_value,
-        container_info=container_info or {},
-    )
-
-
-def attach_mlflow_mocks(monkeypatch, module_path):
-    calls = {"metrics": 0, "history": 0, "run_info": 0, "run_params": 0, "download": 0, "delete_run": 0}
-
-    def get_run_metrics(run_id, filter_system=True):
-        calls["metrics"] += 1
-        return ["accuracy"]
-
-    def get_metric_history(run_id, metric_name):
-        calls["history"] += 1
-        return [{"step": 1, "value": 0.99, "timestamp": 123}]
-
-    def get_run_info(run_id):
-        calls["run_info"] += 1
-        return types.SimpleNamespace(
-            data=types.SimpleNamespace(tags={"mlflow.runName": "demo-run"}),
-            info=types.SimpleNamespace(status="FINISHED", start_time=1000, end_time=2000),
-        )
-
-    def get_run_params(run_id):
-        calls["run_params"] += 1
-        return {"epochs": "5"}
-
-    def download_model_artifact(run_id, artifact_path=None):
-        from io import BytesIO
-
-        calls["download"] += 1
-        return BytesIO(b"zip-data")
-
-    def delete_run(run_id):
-        calls["delete_run"] += 1
-
-    monkeypatch.setattr(f"{module_path}.mlflow_service.get_run_metrics", get_run_metrics)
-    monkeypatch.setattr(f"{module_path}.mlflow_service.get_metric_history", get_metric_history)
-    monkeypatch.setattr(f"{module_path}.mlflow_service.get_run_info", get_run_info)
-    monkeypatch.setattr(f"{module_path}.mlflow_service.get_run_params", get_run_params)
-    monkeypatch.setattr(f"{module_path}.mlflow_service.download_model_artifact", download_model_artifact)
-    monkeypatch.setattr(f"{module_path}.mlflow_service.delete_run", delete_run)
-    return calls
-
-
-def allow_owned_run(monkeypatch, module_path, train_job):
-    monkeypatch.setattr(
-        f"{module_path}.{train_job.__class__.__name__}ViewSet.train_job_has_run",
-        lambda self, current_train_job, run_id: run_id == "owned-run",
-        raising=False,
-    )
-
-
-def set_delete_run_eligibility(monkeypatch, module_path, train_job, allowed, reason):
-    monkeypatch.setattr(
-        f"{module_path}.{train_job.__class__.__name__}ViewSet.check_run_delete_eligibility",
-        lambda self, run_id, current_train_job: (allowed, reason),
-        raising=False,
-    )
 
 
 @pytest.mark.parametrize(
@@ -490,55 +353,3 @@ def test_scoped_delete_run_allows_eligible_owned_run(
     assert response.data["deleted"] is True
     assert response.data["deletion_type"] == "mlflow_soft_delete"
     assert calls["delete_run"] == 1
-
-
-def test_object_detection_predict_uses_container_info_even_when_serving_status_is_inactive(
-    mlops_api_client,
-    mlops_user,
-    monkeypatch,
-):
-    mlops_user.permission["mlops"].add("object_detection-Predict")
-    train_job = create_train_job(ObjectDetectionTrainJob, team=1)
-    serving = create_object_detection_serving(
-        train_job,
-        team=1,
-        status_value="inactive",
-        container_info={"port": 3000, "state": "running", "status": "success"},
-    )
-
-    build_predict_url_calls = {"count": 0}
-    requests_post_calls = {"count": 0}
-
-    def fake_build_predict_url(serving_id, container_info):
-        build_predict_url_calls["count"] += 1
-        assert serving_id == f"ObjectDetection_Serving_{serving.id}"
-        assert container_info["port"] == 3000
-        return "http://fake-service/predict"
-
-    class FakeResponse:
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return {"success": True, "predictions": []}
-
-    def fake_post(url, json, timeout):
-        requests_post_calls["count"] += 1
-        assert url == "http://fake-service/predict"
-        assert json == {"images": ["base64-image"]}
-        assert timeout == 60
-        return FakeResponse()
-
-    monkeypatch.setattr("apps.mlops.views.object_detection.build_predict_url", fake_build_predict_url)
-    monkeypatch.setattr("apps.mlops.views.object_detection.requests.post", fake_post)
-
-    response = mlops_api_client.post(
-        f"/api/v1/mlops/object_detection_servings/{serving.id}/predict/",
-        {"images": ["base64-image"]},
-        format="json",
-    )
-
-    assert response.status_code == status.HTTP_200_OK
-    assert response.data == {"success": True, "predictions": []}
-    assert build_predict_url_calls["count"] == 1
-    assert requests_post_calls["count"] == 1

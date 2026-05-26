@@ -26,9 +26,10 @@ class CollectorConstants:
 
     IGNORE_ERROR_COLLECTORS = ["Metricbeat", "Auditbeat", "Filebeat", "Packetbeat", "Winlogbeat"]
     IGNORE_ERROR_COLLECTORS_MESSAGES = [
-        "Exiting: one or more modules must be configured\n",
-        "Exiting: no modules or inputs enabled and configuration reloading disabled. What files do you want me to watch?\n",
+        "one or more modules must be configured",
+        "no modules or inputs enabled and configuration reloading disabled. What files do you want me to watch?",
         "at least one event log must be configured as part of event_logs",
+        "Unable to start collector after 3 tries, giving up!",
     ]
 
     # 忽略的采集器

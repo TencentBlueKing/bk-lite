@@ -10,8 +10,8 @@ export interface CardItem {
 
 export interface SelectCardProps {
   data: CardItem[];
-  value?: string | number;
-  onChange?: (value: string | number) => void;
+  value?: (string | number)[];
+  onChange?: (value: (string | number)[]) => void;
   cardWidth?: number;
 }
 
@@ -59,7 +59,7 @@ export interface StrategyFields {
   no_data_level?: string;
   notice?: boolean;
   notice_type?: string;
-  notice_type_id?: number;
+  notice_type_ids?: number[];
   notice_users?: string[];
   monitor_object?: number;
   id?: number;

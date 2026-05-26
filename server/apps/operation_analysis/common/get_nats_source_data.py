@@ -84,18 +84,22 @@ class GetNatsData:
         从 params 中取出 namespace_id（同时移除，避免透传给 NATS 接口），
         返回本次需要查询的单个 namespace 对象。
         若未指定则返回第一个可用 namespace。
+        若显式指定但数据源未关联该命名空间，则直接报错。
         """
         namespace_id = self.params.pop("namespace_id", None)
         if namespace_id is not None:
             try:
                 namespace_id = int(namespace_id)
             except (TypeError, ValueError):
-                namespace_id = None
+                raise RuntimeError("命名空间参数无效")
 
         if namespace_id is not None:
+            if not self.namespace_list:
+                raise RuntimeError("数据源未关联命名空间")
             for ns in self.namespace_list:
                 if ns.id == namespace_id:
                     return ns
+            raise RuntimeError("数据源未关联所选命名空间")
 
         # 未指定或未匹配到，返回第一个
         return self.namespace_list[0] if self.namespace_list else None

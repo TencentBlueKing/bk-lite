@@ -794,7 +794,13 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        result = InstanceManage.topo_search_lite(int(inst_id), depth=3)
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
+        result = InstanceManage.topo_search_lite(
+            int(inst_id),
+            depth=3,
+            permission_map=permissions_map,
+            user=request.user,
+        )
         return WebUtils.response_success(result)
 
     @action(
@@ -829,7 +835,14 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        result = InstanceManage.topo_search_expand(inst_id, parent_ids, depth=2)
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
+        result = InstanceManage.topo_search_expand(
+            inst_id,
+            parent_ids,
+            depth=2,
+            permission_map=permissions_map,
+            user=request.user,
+        )
         return WebUtils.response_success(result)
 
     @action(

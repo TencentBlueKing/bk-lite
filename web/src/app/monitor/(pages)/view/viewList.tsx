@@ -327,8 +327,13 @@ const ViewList: React.FC<ViewListProps> = ({
                     <Progress
                       className="flex"
                       strokeLinecap="butt"
+                      strokeColor="var(--color-primary)"
                       showInfo={!!record[item.key]?.value}
-                      format={(percent) => `${percent?.toFixed(2)}%`}
+                      format={(percent) => (
+                        <span style={{ color: 'var(--color-text-1)' }}>
+                          {percent?.toFixed(2)}%
+                        </span>
+                      )}
                       percent={getPercent(record[item.key]?.value || 0)}
                       percentPosition={{ align: 'start', type: 'outer' }}
                       size={size}
@@ -507,8 +512,13 @@ const ViewList: React.FC<ViewListProps> = ({
         : 'instance_id'
     };
     const params = new URLSearchParams(row);
-    const professionalDashboardUrl = getProfessionalDashboardUrl(monitorItem?.name, monitorItem?.display_name, params.toString());
-    const targetUrl = professionalDashboardUrl || `/monitor/view/detail?${params.toString()}`;
+    const professionalDashboardUrl = getProfessionalDashboardUrl(
+      monitorItem?.name,
+      monitorItem?.display_name,
+      params.toString()
+    );
+    const targetUrl =
+      professionalDashboardUrl || `/monitor/view/detail?${params.toString()}`;
     router.push(targetUrl);
   };
 
