@@ -1512,6 +1512,37 @@ class RecoveryFallbackTestCase(TestCase):
             else:
                 callback()
 
+    def build_unsaved_event(self, action, start_time, external_id=None, **kwargs):
+        event = Event(
+            title=kwargs.pop("title", "cpu high"),
+            description=kwargs.pop("description", "cpu > 90%"),
+            level=kwargs.pop("level", "3"),
+            start_time=start_time,
+            action=action,
+            item=kwargs.pop("item", "cpu_usage"),
+            resource_id=kwargs.pop("resource_id", "node-1"),
+            resource_type=kwargs.pop("resource_type", "host"),
+            resource_name=kwargs.pop("resource_name", "node-1"),
+            service=kwargs.pop("service", None),
+            event_type=kwargs.pop("event_type", EventType.ALERT),
+            tags=kwargs.pop("tags", {}),
+            location=kwargs.pop("location", None),
+            end_time=kwargs.pop("end_time", None),
+            labels=kwargs.pop("labels", {}),
+            rule_id=kwargs.pop("rule_id", None),
+            status=kwargs.pop("status", "received"),
+            assignee=kwargs.pop("assignee", []),
+            value=kwargs.pop("value", None),
+        )
+        if external_id is not None:
+            event.external_id = external_id
+        return event
+
+    def save_ingress_event(self, event, payload=None):
+        adapter = self.adapter_class(alert_source=self.source)
+        adapter.add_base_fields(event, payload or {"action": event.action})
+        return adapter.bulk_save_events([event])
+
     def test_recovery_fallback_recovers_when_candidate_is_unique(self):
         created_at = timezone.now() - timedelta(minutes=1)
         created_event = self.create_event(
@@ -1541,6 +1572,101 @@ class RecoveryFallbackTestCase(TestCase):
 
         self.assertTrue(alert.events.filter(event_id="EVENT-RECOVERY-1").exists())
         self.assertEqual(alert.status, AlertStatus.UNASSIGNED)
+
+    def test_duplicate_created_ingress_event_is_deduplicated_before_persistence(self):
+        start_time = timezone.now()
+
+        first_event = self.build_unsaved_event(
+            EventAction.CREATED,
+            start_time,
+            external_id="dup-created-ext",
+            resource_id="node-dup-1",
+            resource_type="host",
+            resource_name="node-dup-1",
+        )
+        second_event = self.build_unsaved_event(
+            EventAction.CREATED,
+            start_time,
+            external_id="dup-created-ext",
+            resource_id="node-dup-1",
+            resource_type="host",
+            resource_name="node-dup-1",
+        )
+
+        self.save_ingress_event(first_event, {"action": "created", "external_id": "dup-created-ext"})
+        self.save_ingress_event(second_event, {"action": "created", "external_id": "dup-created-ext"})
+
+        events = Event.objects.filter(
+            source=self.source,
+            external_id="dup-created-ext",
+            action=EventAction.CREATED,
+            start_time=start_time,
+        )
+        self.assertEqual(events.count(), 1)
+        self.assertTrue(events.first().ingest_key)
+
+    def test_duplicate_recovery_ingress_event_is_deduplicated_before_persistence(self):
+        start_time = timezone.now()
+
+        first_event = self.build_unsaved_event(
+            EventAction.RECOVERY,
+            start_time,
+            external_id="dup-recovery-ext",
+            resource_id="node-dup-2",
+            resource_type="host",
+            resource_name="node-dup-2",
+            description="cpu recovered",
+        )
+        second_event = self.build_unsaved_event(
+            EventAction.RECOVERY,
+            start_time,
+            external_id="dup-recovery-ext",
+            resource_id="node-dup-2",
+            resource_type="host",
+            resource_name="node-dup-2",
+            description="cpu recovered",
+        )
+
+        self.save_ingress_event(first_event, {"action": "recovery", "external_id": "dup-recovery-ext"})
+        self.save_ingress_event(second_event, {"action": "recovery", "external_id": "dup-recovery-ext"})
+
+        events = Event.objects.filter(
+            source=self.source,
+            external_id="dup-recovery-ext",
+            action=EventAction.RECOVERY,
+            start_time=start_time,
+        )
+        self.assertEqual(events.count(), 1)
+        self.assertTrue(events.first().ingest_key)
+
+    def test_ingest_key_distinguishes_created_and_recovery_events(self):
+        created_at = timezone.now()
+        recovery_at = created_at + timedelta(minutes=1)
+
+        created_event = self.build_unsaved_event(
+            EventAction.CREATED,
+            created_at,
+            external_id="shared-ext-id",
+            resource_id="node-ingest-1",
+            resource_type="host",
+            resource_name="node-ingest-1",
+        )
+        recovery_event = self.build_unsaved_event(
+            EventAction.RECOVERY,
+            recovery_at,
+            external_id="shared-ext-id",
+            resource_id="node-ingest-1",
+            resource_type="host",
+            resource_name="node-ingest-1",
+        )
+
+        self.save_ingress_event(created_event, {"action": "created", "external_id": "shared-ext-id"})
+        self.save_ingress_event(recovery_event, {"action": "recovery", "external_id": "shared-ext-id"})
+
+        created_record = Event.objects.get(source=self.source, external_id="shared-ext-id", action=EventAction.CREATED)
+        recovery_record = Event.objects.get(source=self.source, external_id="shared-ext-id", action=EventAction.RECOVERY)
+
+        self.assertNotEqual(created_record.ingest_key, recovery_record.ingest_key)
 
     def test_recovery_event_reuses_created_external_id_when_legacy_match_is_unique(self):
         created_at = timezone.now() - timedelta(minutes=1)
