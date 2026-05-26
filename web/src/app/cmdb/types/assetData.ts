@@ -33,6 +33,7 @@ export interface RecordItemList {
   created_at: string;
   operator: string;
   id: number;
+  scenario?: string;
   [key: string]: unknown;
 }
 

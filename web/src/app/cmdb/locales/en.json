@@ -515,6 +515,17 @@
             "create_edge": "Create Association",
             "delete_edge": "Delete Association",
             "execute": "Execute"
+        },
+        "scenario": "Scenario",
+        "export": "Export",
+        "exportSuccess": "Exported successfully",
+        "exportFailed": "Export failed",
+        "scenarioOpts": {
+            "device_lifecycle": "Device Lifecycle",
+            "relation_change": "Relation Change",
+            "ordinary_attribute_change": "Ordinary Attribute Change",
+            "collect_automation_change": "Collect Automation",
+            "model_management_change": "Model Management Change"
         }
     },
     "subscription": {

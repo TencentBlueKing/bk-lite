@@ -3,6 +3,10 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.cmdb.constants.constants import PERMISSION_INSTANCES, OPERATE, VIEW
+from apps.cmdb.models.change_record import (
+    INSTANCE_EDIT_CORRECTABLE_SCENARIOS,
+    ORDINARY_ATTRIBUTE_CHANGE,
+)
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.utils.base import (
     format_group_params,
@@ -380,13 +384,19 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             user_groups = format_group_params(current_team)
         allowed_org_ids = self._get_allowed_org_ids(request)
 
+        update_attr = {k: v for k, v in request.data.items() if k != "_scenario"}
+        scenario = request.data.get("_scenario") or ORDINARY_ATTRIBUTE_CHANGE
+        if scenario not in INSTANCE_EDIT_CORRECTABLE_SCENARIOS:
+            scenario = ORDINARY_ATTRIBUTE_CHANGE
+
         inst = InstanceManage.instance_update(
             user_groups,
             request.user.roles,
             int(pk),
-            request.data,
+            update_attr,
             request.user.username,
             allowed_org_ids=allowed_org_ids,
+            scenario=scenario,
         )
         return WebUtils.response_success(inst)
 

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import changeRecordsStyle from './index.module.scss';
 import { useChangeRecordApi, useModelApi } from '@/app/cmdb/api';
 import RecordDetail from './recordDetail';
-import { DatePicker, Timeline, Spin, Empty } from 'antd';
+import { DatePicker, Timeline, Spin, Empty, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
 import { useCommon } from '@/app/cmdb/context/common';
@@ -22,6 +22,13 @@ import {
 
 const { RangePicker } = DatePicker;
 
+// 实例历史默认只展示高信号场景，避免被自动采集 / 模型管理变更淹没
+const DEFAULT_INSTANCE_SCENARIOS = [
+  'device_lifecycle',
+  'relation_change',
+  'ordinary_attribute_change',
+];
+
 const ChangeRecords: React.FC = () => {
   const changeRecordApi = useChangeRecordApi();
   const modelApi = useModelApi();
@@ -33,16 +40,19 @@ const ChangeRecords: React.FC = () => {
   const detailRef = useRef<detailRef>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [enumList, setEnumList] = useState<RecordsEnum>({});
+  const [scenarioEnum, setScenarioEnum] = useState<Record<string, string>>({});
   const [recordList, setRecordList] = useState<RecordItem[]>([]);
   const [attrList, setAttrList] = useState<AttrFieldType[]>([]);
   const [assoTypes, setAssoTypes] = useState<AssoTypeItem[]>([]);
+  const [scenarios, setScenarios] = useState<string[]>(DEFAULT_INSTANCE_SCENARIOS);
+  const [dateRange, setDateRange] = useState<[string, string] | null>(null);
   const searchParams = useSearchParams();
   const modelId: string = searchParams.get('model_id') || '';
   const instId: string = searchParams.get('inst_id') || '';
 
   useEffect(() => {
-    // 初始加载数据
     initData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const showDetailModal = (log: RecordItemList) => {
@@ -58,19 +68,28 @@ const ChangeRecords: React.FC = () => {
   };
 
   const initData = async () => {
-    const getChangeRecordLists = changeRecordApi.getChangeRecords(getParams());
+    const getChangeRecordLists = changeRecordApi.getChangeRecords(
+      getParams(scenarios, dateRange)
+    );
     const getEnumData = changeRecordApi.getChangeRecordEnumData();
+    const getScenarioEnum = changeRecordApi.getChangeRecordScenarioEnum();
     const getAttrList = modelApi.getModelAttrList(modelId);
     const getAssoType = modelApi.getModelAssociationTypes();
     try {
       setLoading(true);
-      Promise.all([getChangeRecordLists, getEnumData, getAttrList, getAssoType])
+      Promise.all([
+        getChangeRecordLists,
+        getEnumData,
+        getAttrList,
+        getAssoType,
+        getScenarioEnum,
+      ])
         .then((res) => {
-          const enumData = res[1];
-          setEnumList(enumData);
+          setEnumList(res[1]);
           dealRecordList(res[0]);
           setAttrList(res[2] || []);
           setAssoTypes(res[3] || []);
+          setScenarioEnum(res[4] || {});
         })
         .finally(() => {
           setLoading(false);
@@ -80,11 +99,35 @@ const ChangeRecords: React.FC = () => {
     }
   };
 
-  const getParams = () => {
-    return {
+  const getParams = (
+    scenarioList: string[] = scenarios,
+    range: [string, string] | null = dateRange
+  ) => {
+    const params: any = {
       model_id: modelId,
       inst_id: instId,
     };
+    if (scenarioList?.length) {
+      params.scenarios = scenarioList.join(',');
+    }
+    if (range && range[0]) params.created_at_after = range[0];
+    if (range && range[1]) params.created_at_before = range[1];
+    return params;
+  };
+
+  const reload = async (
+    nextScenarios: string[] = scenarios,
+    nextRange: [string, string] | null = dateRange
+  ) => {
+    setLoading(true);
+    try {
+      const data = await changeRecordApi.getChangeRecords(
+        getParams(nextScenarios, nextRange)
+      );
+      dealRecordList(data);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const dealRecordList = (data: RecordItemList[]) => {
@@ -94,7 +137,7 @@ const ChangeRecords: React.FC = () => {
         created_at: new Date(item.created_at),
       }))
       .reduce((acc: any, item: any) => {
-        const yearMonth = item.created_at.toISOString().slice(0, 7); // 获取年-月
+        const yearMonth = item.created_at.toISOString().slice(0, 7);
         if (!acc[yearMonth]) {
           acc[yearMonth] = [];
         }
@@ -115,31 +158,48 @@ const ChangeRecords: React.FC = () => {
             (a: any, b: any) =>
               new Date(b.created_at).getTime() -
               new Date(a.created_at).getTime()
-          ), // 按内部列表时间倒序排序
+          ),
       }))
       .sort(
         (a: any, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-      ); // 按外部列表时间倒序排序
+      );
     setRecordList(records);
   };
 
   const handleDateChange = async (dateString: any = []) => {
-    const params: any = getParams();
-    params.created_at_after = dateString[0] || '';
-    params.created_at_before = dateString[1] || '';
-    setLoading(true);
-    try {
-      const data = await changeRecordApi.getChangeRecords(params);
-      dealRecordList(data);
-    } finally {
-      setLoading(false);
-    }
+    const range: [string, string] | null =
+      dateString && (dateString[0] || dateString[1])
+        ? [dateString[0] || '', dateString[1] || '']
+        : null;
+    setDateRange(range);
+    reload(scenarios, range);
   };
+
+  const handleScenarioChange = (value: string[]) => {
+    const next = value || [];
+    setScenarios(next);
+    reload(next, dateRange);
+  };
+
+  const scenarioOptions = Object.keys(scenarioEnum).map((key) => ({
+    label: scenarioEnum[key],
+    value: key,
+  }));
 
   return (
     <Spin spinning={loading}>
       <div className={changeRecordsStyle.changeRecords}>
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-4 gap-4 flex-wrap">
+          <Select
+            mode="multiple"
+            className="w-[360px]"
+            placeholder={t('OperationLog.scenario')}
+            value={scenarios}
+            onChange={handleScenarioChange}
+            options={scenarioOptions}
+            allowClear
+            maxTagCount="responsive"
+          />
           <RangePicker
             className="w-[400px]"
             showTime
@@ -164,6 +224,11 @@ const ChangeRecords: React.FC = () => {
                       >
                         <div className="mb-[4px]">
                           {enumList[log.type] + showModelName(log.model_id)}
+                          {log.scenario && scenarioEnum[log.scenario] ? (
+                            <span className="ml-2 text-[12px] text-[var(--color-text-3)]">
+                              [{scenarioEnum[log.scenario]}]
+                            </span>
+                          ) : null}
                         </div>
                         <div className="flex items-center text-[12px]">
                           <span className="text-[var(--color-text-3)]">
