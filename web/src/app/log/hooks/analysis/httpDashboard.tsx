@@ -224,9 +224,18 @@ export const getHttpDashboardSections = (
         valueFormatter: formatMs,
         dataSourceParams: {
           searchQuery: durationQuery,
-          query:
-            `${durationQuery} | stats by (_time:\${_time}) count() as reqcount, quantile(0.95, event.duration) if (event.duration:*) as p95_duration ` +
-            `| math p95_duration / 1000000 as p95_duration`
+          queries: [
+            {
+              key: 'count',
+              query: `${durationQuery} | stats by (_time:\${_time}) count() as reqcount`
+            },
+            {
+              key: 'p95',
+              query:
+                `${durationQuery} | stats by (_time:\${_time}) quantile(0.95, event.duration) if (event.duration:*) as p95_duration ` +
+                `| math p95_duration / 1000000 as p95_duration`
+            }
+          ]
         }
       }
     },
@@ -386,11 +395,19 @@ export const getHttpDashboardSections = (
         ],
         dataSourceParams: {
           searchQuery: urlScopedQuery,
-          query:
-            `${urlScopedQuery} | stats by (url.path) count() as reqcount, avg(event.duration) as avg_duration, quantile(0.95, event.duration) if (event.duration:*) as p95_duration ` +
-            `| math avg_duration / 1000000 as avg_duration | math p95_duration / 1000000 as p95_duration ` +
-            `| total_stats sum(reqcount) as total_reqcount | math reqcount / total_reqcount * 100 as req_ratio ` +
-            `| sort by (reqcount desc) | limit 10`
+          queries: [
+            {
+              key: 'detail',
+              query:
+                `${urlScopedQuery} | stats by (url.path) count() as reqcount, avg(event.duration) as avg_duration, quantile(0.95, event.duration) if (event.duration:*) as p95_duration ` +
+                `| math avg_duration / 1000000 as avg_duration | math p95_duration / 1000000 as p95_duration ` +
+                `| sort by (reqcount desc) | limit 10`
+            },
+            {
+              key: 'total',
+              query: `${urlScopedQuery} | stats count() as total_reqcount`
+            }
+          ]
         }
       }
     },
@@ -433,10 +450,22 @@ export const getHttpDashboardSections = (
         ],
         dataSourceParams: {
           searchQuery: urlScopedDurationQuery,
-          query:
-            `${urlScopedDurationQuery} | stats by (url.path) count() as reqcount, avg(event.duration) as avg_duration, quantile(0.95, event.duration) if (event.duration:*) as p95_duration ` +
-            `| math avg_duration / 1000000 as avg_duration | math p95_duration / 1000000 as p95_duration ` +
-            `| sort by (p95_duration desc) | limit 10`
+          queries: [
+            {
+              key: 'base',
+              query:
+                `${urlScopedDurationQuery} | stats by (url.path) count() as reqcount, avg(event.duration) as avg_duration ` +
+                `| math avg_duration / 1000000 as avg_duration ` +
+                `| sort by (avg_duration desc) | limit 20`
+            },
+            {
+              key: 'p95',
+              query:
+                `${urlScopedDurationQuery} | stats by (url.path) quantile(0.95, event.duration) as p95_duration ` +
+                `| math p95_duration / 1000000 as p95_duration ` +
+                `| sort by (p95_duration desc) | limit 20`
+            }
+          ]
         }
       }
     },
@@ -486,15 +515,22 @@ export const getHttpDashboardSections = (
         ],
         dataSourceParams: {
           searchQuery: `${urlScopedQuery} status:"Error"`,
-          query:
-            `${urlScopedQuery} | stats by (url.path) count() as reqcount, count() if (status:"Error") as error_count ` +
-            `| filter error_count:>0 | math error_count / reqcount * 100 as error_rate ` +
-            `| join by (url.path) (${urlScopedQuery} status:"Error" http.response.status_code:* ` +
-            `| stats by (url.path,http.response.status_code) count() as status_count ` +
-            `| first 1 by (status_count desc, http.response.status_code) partition by (url.path) ` +
-            `| rename http.response.status_code as primary_status_code ` +
-            `| keep url.path, primary_status_code) ` +
-            `| sort by (error_rate desc) | limit 10`
+          queries: [
+            {
+              key: 'errors',
+              query:
+                `${urlScopedQuery} | stats by (url.path) count() as reqcount, count() if (status:"Error") as error_count ` +
+                `| filter error_count:>0 | math error_count / reqcount * 100 as error_rate ` +
+                `| sort by (error_rate desc) | limit 10`
+            },
+            {
+              key: 'status',
+              query:
+                `${urlScopedQuery} status:"Error" http.response.status_code:* ` +
+                `| stats by (url.path, http.response.status_code) count() as status_count ` +
+                `| sort by (status_count desc)`
+            }
+          ]
         }
       }
     },

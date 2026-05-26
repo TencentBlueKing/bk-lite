@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>门户 - BlueKing Lite</title>
+    <title>门户设置 - BlueKing Lite</title>
     <style>
         :root {
             --bg: #f5f7fa;
@@ -97,11 +97,18 @@
             display: inline-flex;
             align-items: center;
             gap: 5px;
+            text-decoration: none;
         }
 
         .nav-item.active {
             color: var(--primary-0);
             background: var(--primary-1);
+        }
+
+        .nav-item[disabled] {
+            color: #a3adbf;
+            cursor: not-allowed;
+            opacity: 0.7;
         }
 
         .top-right {
@@ -1124,11 +1131,11 @@
         </div>
 
         <nav class="main-nav" aria-label="系统管理主导航">
-            <button class="nav-item" type="button">◉ 组织</button>
-            <button class="nav-item" type="button">◉ 应用</button>
-            <button class="nav-item" type="button">◉ 通知渠道</button>
-            <button class="nav-item" type="button">◉ 安全管理</button>
-            <button class="nav-item active" type="button">◉ 设置</button>
+            <button class="nav-item" type="button" onclick="window.location.href='../用户管理/组织架构.html'">◉ 用户管理</button>
+            <button class="nav-item" type="button" disabled>◉ 应用管理</button>
+            <a class="nav-item" href="../通知渠道/通知渠道.html">◉ 通知渠道</a>
+            <button class="nav-item" type="button" onclick="window.location.href='../集成中心/集成中心.html'">◉ 集成中心</button>
+            <button class="nav-item active" type="button">◉ 平台设置</button>
         </nav>
 
         <div class="top-right">
@@ -1138,10 +1145,11 @@
 
     <main class="main-container">
         <div class="content-wrapper">
-            <div class="settings-page-tabs" aria-label="设置页签">
-                <a class="settings-page-tab active" href="./门户.html" aria-current="page">门户</a>
-                <a class="settings-page-tab" href="../组织/组织架构.html#settings">密钥</a>
-                <a class="settings-page-tab" href="./许可.html">许可</a>
+            <div class="settings-page-tabs" aria-label="平台设置页签">
+                <a class="settings-page-tab active" href="./门户设置.html" aria-current="page">门户设置</a>
+                <a class="settings-page-tab" href="./审计日志.html">审计日志</a>
+                <a class="settings-page-tab" href="./错误日志.html">错误日志</a>
+                <a class="settings-page-tab" href="./API密钥.html">API密钥</a>
             </div>
 
             <div class="section-card intro-card">

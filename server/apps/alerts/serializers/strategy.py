@@ -8,6 +8,7 @@ from apps.alerts.constants import (
     HeartbeatStatus,
 )
 from apps.alerts.models.alert_operator import AlarmStrategy
+from apps.alerts.utils.permission_scope import get_authorized_group_ids, normalize_team_ids
 from apps.alerts.utils.util import parse_aggregation_window_size
 
 
@@ -24,7 +25,58 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at", "updated_at", "last_execute_time"]
         extra_kwargs = {}
 
+    def _validate_authorized_team_ids(self, value, field_name):
+        try:
+            team_ids = normalize_team_ids(value)
+        except ValueError as error:
+            raise serializers.ValidationError(str(error))
+
+        request = self.context.get("request")
+        if request is None:
+            return team_ids
+
+        user = getattr(request, "user", None)
+        if user and getattr(user, "is_superuser", False):
+            return team_ids
+
+        authorized_group_ids = get_authorized_group_ids(request)
+        unauthorized_teams = sorted(set(team_ids) - set(authorized_group_ids))
+        if unauthorized_teams:
+            raise serializers.ValidationError(
+                f"You are not authorized to assign {field_name}: {unauthorized_teams}"
+            )
+        return team_ids
+
+    def validate_team(self, value):
+        return self._validate_authorized_team_ids(value, "teams")
+
+    def validate_dispatch_team(self, value):
+        return self._validate_authorized_team_ids(value, "dispatch_team")
+
     def validate(self, attrs):
+        if "team" in attrs or "dispatch_team" in attrs:
+            team_ids = attrs.get("team")
+            dispatch_team_ids = attrs.get("dispatch_team")
+            if team_ids is None and self.instance is not None:
+                team_ids = self.instance.team or []
+            if dispatch_team_ids is None and self.instance is not None:
+                dispatch_team_ids = self.instance.dispatch_team or []
+
+            normalized_team_ids = set(team_ids or [])
+            normalized_dispatch_team_ids = set(dispatch_team_ids or [])
+            unauthorized_dispatch = sorted(
+                normalized_dispatch_team_ids - normalized_team_ids
+            )
+            if unauthorized_dispatch:
+                raise serializers.ValidationError(
+                    {
+                        "dispatch_team": (
+                            "dispatch_team must be a subset of team: "
+                            f"{unauthorized_dispatch}"
+                        )
+                    }
+                )
+
         strategy_type = attrs.get(
             "strategy_type",
             getattr(self.instance, "strategy_type", AlarmStrategyType.SMART_DENOISE),

@@ -1,0 +1,395 @@
+{
+  "name": "GradientBoosting",
+  "display_name": "GradientBoosting",
+  "image": "bklite/classify_timeseries_server:latest",
+  "scenario_description": "短期预测，适用于有滞后特征、波动较大的时序数据。",
+  "form_config": {
+    "groups": {
+      "hyperparams": [
+        {
+          "title": "训练配置",
+          "fields": [
+            {
+              "name": [
+                "hyperparams",
+                "metric"
+              ],
+              "type": "select",
+              "label": "优化指标",
+              "options": [
+                {
+                  "label": "RMSE (均方根误差)",
+                  "value": "rmse"
+                },
+                {
+                  "label": "MAE (平均绝对误差)",
+                  "value": "mae"
+                },
+                {
+                  "label": "MAPE (平均绝对百分比误差)",
+                  "value": "mape"
+                }
+              ],
+              "required": true,
+              "placeholder": "选择优化目标指标",
+              "defaultValue": "rmse"
+            },
+            {
+              "max": 2147483647,
+              "min": 0,
+              "name": [
+                "hyperparams",
+                "random_state"
+              ],
+              "step": 1,
+              "type": "inputNumber",
+              "label": "随机种子",
+              "tooltip": "控制随机性，确保实验可复现。相同种子+相同参数=相同结果",
+              "required": true,
+              "placeholder": "例: 42",
+              "defaultValue": 42
+            }
+          ]
+        },
+        {
+          "title": "搜索空间 (Search Space)",
+          "fields": [
+            {
+              "name": [
+                "hyperparams",
+                "search_space",
+                "n_estimators"
+              ],
+              "type": "stringArray",
+              "label": "树的数量",
+              "required": true,
+              "placeholder": "例: 50,100,200,300",
+              "defaultValue": "50,100,200,300"
+            },
+            {
+              "name": [
+                "hyperparams",
+                "search_space",
+                "max_depth"
+              ],
+              "type": "stringArray",
+              "label": "树最大深度",
+              "required": true,
+              "placeholder": "例: 3,5,7,10",
+              "defaultValue": "3,5,7,10"
+            },
+            {
+              "name": [
+                "hyperparams",
+                "search_space",
+                "learning_rate"
+              ],
+              "type": "stringArray",
+              "label": "学习率",
+              "required": true,
+              "placeholder": "例: 0.01,0.05,0.1,0.2",
+              "defaultValue": "0.01,0.05,0.1,0.2"
+            }
+          ],
+          "subtitle": "树结构参数"
+        },
+        {
+          "title": "",
+          "fields": [
+            {
+              "name": [
+                "hyperparams",
+                "search_space",
+                "min_samples_split"
+              ],
+              "type": "stringArray",
+              "label": "最小分裂样本数",
+              "required": true,
+              "placeholder": "例: 2,5,10",
+              "defaultValue": "2,5,10"
+            },
+            {
+              "name": [
+                "hyperparams",
+                "search_space",
+                "min_samples_leaf"
+              ],
+              "type": "stringArray",
+              "label": "叶节点最小样本数",
+              "required": true,
+              "placeholder": "例: 1,2,4",
+              "defaultValue": "1,2,4"
+            },
+            {
+              "name": [
+                "hyperparams",
+                "search_space",
+                "subsample"
+              ],
+              "type": "stringArray",
+              "label": "子采样比例",
+              "required": true,
+              "placeholder": "例: 0.7,0.8,0.9,1.0",
+              "defaultValue": "0.7,0.8,0.9,1.0"
+            }
+          ],
+          "subtitle": "采样控制参数"
+        },
+        {
+          "title": "",
+          "fields": [
+            {
+              "name": [
+                "hyperparams",
+                "use_feature_engineering"
+              ],
+              "type": "switch",
+              "label": "启用特征工程",
+              "layout": "horizontal",
+              "tooltip": "启用完整特征工程（滚动窗口、时间特征等）或仅使用简单滞后特征",
+              "defaultValue": true
+            },
+            {
+              "name": [
+                "hyperparams",
+                "search_space",
+                "lag_features"
+              ],
+              "type": "stringArray",
+              "label": "滞后特征数量",
+              "tooltip": "仅在 use_feature_engineering=false 时使用",
+              "required": true,
+              "placeholder": "例: 6,12,24",
+              "defaultValue": "6,12,24"
+            }
+          ],
+          "subtitle": "特征参数"
+        }
+      ],
+      "preprocessing": [
+        {
+          "title": "数据预处理 (Preprocessing)",
+          "fields": [
+            {
+              "name": [
+                "preprocessing",
+                "handle_missing"
+              ],
+              "type": "select",
+              "label": "缺失值处理",
+              "options": [
+                {
+                  "label": "线性插值 (interpolate)",
+                  "value": "interpolate"
+                },
+                {
+                  "label": "前向填充 (ffill)",
+                  "value": "ffill"
+                },
+                {
+                  "label": "后向填充 (bfill)",
+                  "value": "bfill"
+                },
+                {
+                  "label": "删除 (drop)",
+                  "value": "drop"
+                },
+                {
+                  "label": "中位数填充 (median)",
+                  "value": "median"
+                }
+              ],
+              "required": true,
+              "placeholder": "选择缺失值处理方式",
+              "defaultValue": "interpolate"
+            },
+            {
+              "max": 1,
+              "min": 0,
+              "name": [
+                "preprocessing",
+                "max_missing_ratio"
+              ],
+              "step": 0.1,
+              "type": "inputNumber",
+              "label": "最大缺失率",
+              "required": true,
+              "placeholder": "0.0 - 1.0",
+              "defaultValue": 0.3
+            },
+            {
+              "min": 1,
+              "name": [
+                "preprocessing",
+                "interpolation_limit"
+              ],
+              "type": "inputNumber",
+              "label": "插值限制",
+              "required": true,
+              "placeholder": "最多填充的连续缺失点数",
+              "defaultValue": 3
+            }
+          ]
+        }
+      ],
+      "feature_engineering": [
+        {
+          "title": "特征工程 (Feature Engineering)",
+          "fields": [
+            {
+              "name": [
+                "feature_engineering",
+                "lag_periods"
+              ],
+              "type": "stringArray",
+              "label": "滞后期",
+              "required": true,
+              "placeholder": "例: 1,2,3,7,14",
+              "defaultValue": "1,2,3,7,14",
+              "dependencies": [
+                [
+                  "hyperparams",
+                  "use_feature_engineering"
+                ]
+              ]
+            },
+            {
+              "name": [
+                "feature_engineering",
+                "rolling_windows"
+              ],
+              "type": "stringArray",
+              "label": "滚动窗口大小",
+              "required": true,
+              "placeholder": "例: 7,14,30",
+              "defaultValue": "7,14,30",
+              "dependencies": [
+                [
+                  "hyperparams",
+                  "use_feature_engineering"
+                ]
+              ]
+            },
+            {
+              "name": [
+                "feature_engineering",
+                "rolling_features"
+              ],
+              "type": "multiSelect",
+              "label": "滚动窗口统计",
+              "options": [
+                {
+                  "label": "均值 (mean)",
+                  "value": "mean"
+                },
+                {
+                  "label": "标准差 (std)",
+                  "value": "std"
+                },
+                {
+                  "label": "最小值 ('min')",
+                  "value": "min"
+                },
+                {
+                  "label": "最大值 ('max')",
+                  "value": "max"
+                },
+                {
+                  "label": "中位数 (median)",
+                  "value": "median"
+                },
+                {
+                  "label": "求和 (sum)",
+                  "value": "sum"
+                }
+              ],
+              "required": true,
+              "placeholder": "选择统计函数",
+              "defaultValue": [
+                "mean",
+                "std",
+                "min",
+                "max"
+              ],
+              "dependencies": [
+                [
+                  "hyperparams",
+                  "use_feature_engineering"
+                ]
+              ]
+            },
+            {
+              "name": [
+                "feature_engineering",
+                "use_temporal_features"
+              ],
+              "type": "switch",
+              "label": "时间特征",
+              "layout": "horizontal",
+              "defaultValue": true,
+              "dependencies": [
+                [
+                  "hyperparams",
+                  "use_feature_engineering"
+                ]
+              ]
+            },
+            {
+              "name": [
+                "feature_engineering",
+                "use_cyclical_features"
+              ],
+              "type": "switch",
+              "label": "周期性编码",
+              "layout": "horizontal",
+              "defaultValue": false,
+              "dependencies": [
+                [
+                  "hyperparams",
+                  "use_feature_engineering"
+                ]
+              ]
+            },
+            {
+              "name": [
+                "feature_engineering",
+                "use_diff_features"
+              ],
+              "type": "switch",
+              "label": "差分特征",
+              "layout": "horizontal",
+              "defaultValue": true,
+              "dependencies": [
+                [
+                  "hyperparams",
+                  "use_feature_engineering"
+                ]
+              ]
+            },
+            {
+              "name": [
+                "feature_engineering",
+                "diff_periods"
+              ],
+              "type": "stringArray",
+              "label": "差分期数",
+              "required": true,
+              "placeholder": "例: 1",
+              "defaultValue": "1",
+              "dependencies": [
+                [
+                  "hyperparams",
+                  "use_feature_engineering"
+                ],
+                [
+                  "feature_engineering",
+                  "use_diff_features"
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

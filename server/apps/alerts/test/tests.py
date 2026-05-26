@@ -18,6 +18,7 @@ from apps.alerts.aggregation.processor.aggregation_processor import AggregationP
 from apps.alerts.aggregation.window.factory import WindowFactory
 from apps.alerts.aggregation.strategy.matcher import StrategyMatcher
 from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
+from apps.alerts.common.assignment import AlertAssignmentOperator
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
 from apps.alerts.nats.nats import receive_alert_events
 from apps.alerts.constants import (
@@ -32,6 +33,7 @@ from apps.alerts.constants import (
     LevelType,
 )
 from apps.alerts.constants.constants import (
+    AlertAssignmentMatchType,
     IncidentStatus,
     LogAction,
     LogTargetType,
@@ -39,6 +41,7 @@ from apps.alerts.constants.constants import (
 )
 from apps.alerts.utils.util import str_to_md5
 from apps.alerts.models import Alert, AlertSource, AlarmStrategy, Event, Level, OperatorLog
+from apps.alerts.models.alert_operator import AlertAssignment
 from apps.alerts.models.models import Incident
 from apps.alerts.serializers.event import EventModelSerializer
 from apps.alerts.serializers.incident import IncidentModelSerializer
@@ -337,7 +340,7 @@ class MissingDetectionProcessorTestCase(TestCase):
 
     def create_event(self, received_at, **overrides):
         event = Event.objects.create(
-            source=self.source,
+            source=overrides.pop("source", self.source),
             raw_data={},
             title=overrides.pop("title", "heartbeat"),
             description=overrides.pop("description", "heartbeat ok"),
@@ -506,6 +509,114 @@ class MissingDetectionProcessorTestCase(TestCase):
             Alert.objects.values_list("fingerprint", flat=True).distinct().count(),
             2,
         )
+
+    def test_smart_denoise_alert_inherits_unique_standard_fields(self):
+        now = timezone.now()
+        strategy = self.create_strategy(
+            name="smart-unique-standard-fields",
+            strategy_type=AlarmStrategyType.SMART_DENOISE,
+            params={"group_by": ["service"], "window_size": 5, "time_out": False},
+        )
+        first_event = self.create_event(
+            now - timedelta(minutes=1),
+            event_id="EVENT-STANDARD-FIELDS-1",
+            external_id="standard-fields-1",
+            service="backup",
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_name="node-1",
+            resource_type="host",
+            labels={"env": "prod"},
+        )
+        second_event = self.create_event(
+            now - timedelta(seconds=30),
+            event_id="EVENT-STANDARD-FIELDS-2",
+            external_id="standard-fields-2",
+            service="backup",
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_name="node-1",
+            resource_type="host",
+            labels={"env": "prod"},
+        )
+
+        with patch.object(self.processor, "_schedule_auto_assignment"):
+            success = self.processor._aggregate_for_dimensions(
+                strategy,
+                Event.objects.filter(pk__in=[first_event.pk, second_event.pk]),
+                ["service"],
+                now,
+            )
+
+        self.assertTrue(success)
+        alert = Alert.objects.get()
+        self.assertEqual(alert.source_name, self.source.name)
+        self.assertEqual(alert.resource_id, "node-1")
+        self.assertEqual(alert.resource_name, "node-1")
+        self.assertEqual(alert.resource_type, "host")
+        self.assertEqual(alert.item, "cpu_usage")
+        self.assertEqual(alert.labels, {"env": "prod"})
+
+    def test_smart_denoise_alert_clears_non_unique_standard_fields_on_update(self):
+        now = timezone.now()
+        strategy = self.create_strategy(
+            name="smart-clear-standard-fields",
+            strategy_type=AlarmStrategyType.SMART_DENOISE,
+            params={"group_by": ["service"], "window_size": 5, "time_out": False},
+        )
+        first_event = self.create_event(
+            now - timedelta(minutes=1),
+            event_id="EVENT-CLEAR-FIELDS-1",
+            external_id="clear-fields-1",
+            service="backup",
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_name="node-1",
+            resource_type="host",
+            labels={"env": "prod"},
+        )
+
+        with patch.object(self.processor, "_schedule_auto_assignment"):
+            self.processor._aggregate_for_dimensions(
+                strategy,
+                Event.objects.filter(pk=first_event.pk),
+                ["service"],
+                now,
+            )
+
+        second_source = AlertSource.objects.create(
+            name="other-source",
+            source_id="source-2",
+            source_type=AlertsSourceTypes.WEBHOOK,
+        )
+        second_event = self.create_event(
+            now - timedelta(seconds=20),
+            source=second_source,
+            event_id="EVENT-CLEAR-FIELDS-2",
+            external_id="clear-fields-2",
+            service="backup",
+            item="memory_usage",
+            resource_id="node-2",
+            resource_name="node-2",
+            resource_type="service",
+            labels={"env": "staging"},
+        )
+
+        with patch.object(self.processor, "_schedule_auto_assignment"):
+            self.processor._aggregate_for_dimensions(
+                strategy,
+                Event.objects.filter(pk__in=[first_event.pk, second_event.pk]),
+                ["service"],
+                now,
+            )
+
+        alert = Alert.objects.get()
+        self.assertIsNone(alert.source_name)
+        self.assertIsNone(alert.resource_id)
+        self.assertIsNone(alert.resource_name)
+        self.assertIsNone(alert.resource_type)
+        self.assertIsNone(alert.item)
+        self.assertEqual(alert.labels, {})
 
     def test_first_heartbeat_mode_waits_for_first_event(self):
         now = timezone.make_aware(datetime(2026, 3, 20, 10, 0, 0))
@@ -1241,6 +1352,96 @@ class AlertSourceIngressTestCase(TestCase):
         self.assertFalse(result["result"])
         self.assertEqual(Event.objects.count(), 0)
 
+    def test_nats_ingress_sets_push_source_id_from_pusher(self):
+        source = AlertSource.objects.create(
+            name="NATS Source",
+            source_id="nats",
+            source_type=AlertsSourceTypes.NATS,
+            secret="nats-secret",
+            config={
+                "event_fields_mapping": {
+                    "title": "title",
+                    "description": "description",
+                    "level": "level",
+                    "item": "item",
+                    "start_time": "start_time",
+                    "action": "action",
+                    "resource_id": "resource_id",
+                    "resource_name": "resource_name",
+                    "resource_type": "resource_type",
+                }
+            },
+        )
+
+        result = receive_alert_events(
+            source_id=source.source_id,
+            pusher="lite-monitor",
+            events=[
+                {
+                    "title": "cpu high",
+                    "description": "cpu > 90%",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "action": "created",
+                    "resource_id": "gateway-01",
+                    "resource_name": "API 网关",
+                    "resource_type": "service",
+                }
+            ],
+        )
+
+        self.assertTrue(result["result"])
+        event = Event.objects.get(source=source)
+        self.assertEqual(event.push_source_id, "lite-monitor")
+        self.assertEqual(event.raw_data["push_source_id"], "lite-monitor")
+
+    def test_nats_ingress_preserves_event_push_source_id(self):
+        source = AlertSource.objects.create(
+            name="NATS Source",
+            source_id="nats",
+            source_type=AlertsSourceTypes.NATS,
+            secret="nats-secret",
+            config={
+                "event_fields_mapping": {
+                    "title": "title",
+                    "description": "description",
+                    "level": "level",
+                    "item": "item",
+                    "start_time": "start_time",
+                    "action": "action",
+                    "resource_id": "resource_id",
+                    "resource_name": "resource_name",
+                    "resource_type": "resource_type",
+                    "push_source_id": "push_source_id",
+                }
+            },
+        )
+
+        result = receive_alert_events(
+            source_id=source.source_id,
+            pusher="lite-monitor",
+            events=[
+                {
+                    "title": "cpu high",
+                    "description": "cpu > 90%",
+                    "level": "3",
+                    "item": "cpu_usage",
+                    "start_time": str(int(timezone.now().timestamp())),
+                    "action": "created",
+                    "resource_id": "gateway-01",
+                    "resource_name": "API 网关",
+                    "resource_type": "service",
+                    "push_source_id": "custom-upstream",
+                }
+            ],
+        )
+
+        self.assertTrue(result["result"])
+        event = Event.objects.get(source=source)
+        self.assertEqual(event.push_source_id, "custom-upstream")
+        self.assertEqual(event.raw_data["push_source_id"], "custom-upstream")
+
 
 class TestAlarmStrategySessionDisable(TestCase):
     def setUp(self):
@@ -1362,6 +1563,177 @@ class TestAlarmStrategySessionDisable(TestCase):
         self.assertEqual(Event.objects.count(), 0)
 
 
+class AutoAssignmentTaskTestCase(TestCase):
+    def test_async_auto_assignment_for_alerts_deduplicates_before_execution(self):
+        from apps.alerts.tasks.tasks import async_auto_assignment_for_alerts
+
+        with patch(
+            "apps.alerts.common.assignment.execute_auto_assignment_for_alerts"
+        ) as execute_assignment:
+            execute_assignment.return_value = {
+                "total_alerts": 2,
+                "assigned_alerts": 1,
+                "failed_alerts": 0,
+                "assignment_results": [],
+            }
+
+            result = async_auto_assignment_for_alerts(["ALERT-1", "ALERT-1", "ALERT-2"])
+
+        self.assertFalse(result.get("chunked", False))
+        execute_assignment.assert_called_once_with(["ALERT-1", "ALERT-2"])
+
+    def test_async_auto_assignment_for_alerts_chunks_large_batches(self):
+        from apps.alerts.tasks.tasks import (
+            AUTO_ASSIGNMENT_CHUNK_SIZE,
+            async_auto_assignment_for_alerts,
+        )
+
+        alert_ids = [f"ALERT-{i}" for i in range(AUTO_ASSIGNMENT_CHUNK_SIZE + 3)]
+
+        with patch(
+            "apps.alerts.tasks.tasks.async_auto_assignment_for_alerts.delay"
+        ) as delay_mock, patch(
+            "apps.alerts.common.assignment.execute_auto_assignment_for_alerts"
+        ) as execute_assignment:
+            result = async_auto_assignment_for_alerts(alert_ids)
+
+        self.assertTrue(result["chunked"])
+        self.assertEqual(result["chunk_count"], 2)
+        self.assertEqual(delay_mock.call_count, 2)
+        self.assertEqual(len(delay_mock.call_args_list[0].args[0]), AUTO_ASSIGNMENT_CHUNK_SIZE)
+        self.assertEqual(len(delay_mock.call_args_list[1].args[0]), 3)
+        execute_assignment.assert_not_called()
+
+
+class AlertAssignmentOperatorTestCase(TestCase):
+    def setUp(self):
+        self.source = AlertSource.objects.create(
+            name="Assignment Source",
+            source_id="assignment-source",
+            source_type=AlertsSourceTypes.RESTFUL,
+            secret="assignment-secret",
+            config={},
+        )
+        Level.objects.create(
+            level_id=3,
+            level_name="info",
+            level_display_name="提醒",
+            color="#1677FF",
+            icon="",
+            description="",
+            level_type=LevelType.EVENT,
+        )
+
+    def create_event(self, event_id, title, resource_id):
+        return Event.objects.create(
+            source=self.source,
+            raw_data={},
+            title=title,
+            description="desc",
+            level="3",
+            service=None,
+            event_type=EventType.ALERT,
+            tags={},
+            location=None,
+            external_id=f"ext-{event_id}",
+            start_time=timezone.now(),
+            end_time=None,
+            labels={},
+            action=EventAction.CREATED,
+            rule_id=None,
+            event_id=event_id,
+            item="cpu_usage",
+            resource_id=resource_id,
+            resource_type="host",
+            resource_name=resource_id,
+            status="received",
+            assignee=[],
+            value=None,
+        )
+
+    def create_alert(self, alert_id, title, resource_id):
+        event = self.create_event(f"EVENT-{alert_id}", title, resource_id)
+        alert = Alert.objects.create(
+            alert_id=alert_id,
+            status=AlertStatus.UNASSIGNED,
+            level="3",
+            title=title,
+            content="content",
+            labels={},
+            first_event_time=event.received_at,
+            last_event_time=event.received_at,
+            item=event.item,
+            resource_id=event.resource_id,
+            resource_name=event.resource_name,
+            resource_type=event.resource_type,
+            operator=[],
+            source_name=self.source.name,
+            fingerprint=f"fp-{alert_id}",
+        )
+        alert.events.add(event)
+        return alert
+
+    def test_execute_auto_assignment_excludes_alerts_assigned_by_previous_rule(self):
+        first_alert = self.create_alert("ALERT-FIRST", "cpu high", "node-1")
+        second_alert = self.create_alert("ALERT-SECOND", "disk high", "node-2")
+
+        first_assignment = AlertAssignment.objects.create(
+            name="assignment-first",
+            match_type=AlertAssignmentMatchType.ALL,
+            match_rules=[],
+            personnel=["alice"],
+            notify_channels=[],
+            notification_scenario=[],
+            config={},
+            is_active=True,
+        )
+        second_assignment = AlertAssignment.objects.create(
+            name="assignment-second",
+            match_type=AlertAssignmentMatchType.ALL,
+            match_rules=[],
+            personnel=["bob"],
+            notify_channels=[],
+            notification_scenario=[],
+            config={},
+            is_active=True,
+        )
+
+        operator = AlertAssignmentOperator([first_alert.alert_id, second_alert.alert_id])
+
+        with patch.object(
+            AlertAssignmentOperator,
+            "_batch_execute_assignment",
+            side_effect=[
+                [
+                    {
+                        "alert_id": first_alert.alert_id,
+                        "alert_pk": first_alert.id,
+                        "success": True,
+                        "assignment_id": first_assignment.id,
+                        "assigned_to": ["alice"],
+                    }
+                ],
+                [
+                    {
+                        "alert_id": second_alert.alert_id,
+                        "alert_pk": second_alert.id,
+                        "success": True,
+                        "assignment_id": second_assignment.id,
+                        "assigned_to": ["bob"],
+                    }
+                ],
+            ],
+        ) as execute_mock, patch.object(
+            AlertAssignmentOperator, "_batch_create_log"
+        ):
+            result = operator.execute_auto_assignment()
+
+        self.assertEqual(result["assigned_alerts"], 2)
+        self.assertEqual(execute_mock.call_count, 2)
+        self.assertEqual(execute_mock.call_args_list[0].args[0], [first_alert.id, second_alert.id])
+        self.assertEqual(execute_mock.call_args_list[1].args[0], [second_alert.id])
+
+
 class RecoveryFallbackTestCase(TestCase):
     def setUp(self):
         self.source = AlertSource.objects.create(
@@ -1445,6 +1817,37 @@ class RecoveryFallbackTestCase(TestCase):
             else:
                 callback()
 
+    def build_unsaved_event(self, action, start_time, external_id=None, **kwargs):
+        event = Event(
+            title=kwargs.pop("title", "cpu high"),
+            description=kwargs.pop("description", "cpu > 90%"),
+            level=kwargs.pop("level", "3"),
+            start_time=start_time,
+            action=action,
+            item=kwargs.pop("item", "cpu_usage"),
+            resource_id=kwargs.pop("resource_id", "node-1"),
+            resource_type=kwargs.pop("resource_type", "host"),
+            resource_name=kwargs.pop("resource_name", "node-1"),
+            service=kwargs.pop("service", None),
+            event_type=kwargs.pop("event_type", EventType.ALERT),
+            tags=kwargs.pop("tags", {}),
+            location=kwargs.pop("location", None),
+            end_time=kwargs.pop("end_time", None),
+            labels=kwargs.pop("labels", {}),
+            rule_id=kwargs.pop("rule_id", None),
+            status=kwargs.pop("status", "received"),
+            assignee=kwargs.pop("assignee", []),
+            value=kwargs.pop("value", None),
+        )
+        if external_id is not None:
+            event.external_id = external_id
+        return event
+
+    def save_ingress_event(self, event, payload=None):
+        adapter = self.adapter_class(alert_source=self.source)
+        adapter.add_base_fields(event, payload or {"action": event.action})
+        return adapter.bulk_save_events([event])
+
     def test_recovery_fallback_recovers_when_candidate_is_unique(self):
         created_at = timezone.now() - timedelta(minutes=1)
         created_event = self.create_event(
@@ -1474,6 +1877,101 @@ class RecoveryFallbackTestCase(TestCase):
 
         self.assertTrue(alert.events.filter(event_id="EVENT-RECOVERY-1").exists())
         self.assertEqual(alert.status, AlertStatus.UNASSIGNED)
+
+    def test_duplicate_created_ingress_event_is_deduplicated_before_persistence(self):
+        start_time = timezone.now()
+
+        first_event = self.build_unsaved_event(
+            EventAction.CREATED,
+            start_time,
+            external_id="dup-created-ext",
+            resource_id="node-dup-1",
+            resource_type="host",
+            resource_name="node-dup-1",
+        )
+        second_event = self.build_unsaved_event(
+            EventAction.CREATED,
+            start_time,
+            external_id="dup-created-ext",
+            resource_id="node-dup-1",
+            resource_type="host",
+            resource_name="node-dup-1",
+        )
+
+        self.save_ingress_event(first_event, {"action": "created", "external_id": "dup-created-ext"})
+        self.save_ingress_event(second_event, {"action": "created", "external_id": "dup-created-ext"})
+
+        events = Event.objects.filter(
+            source=self.source,
+            external_id="dup-created-ext",
+            action=EventAction.CREATED,
+            start_time=start_time,
+        )
+        self.assertEqual(events.count(), 1)
+        self.assertTrue(events.first().ingest_key)
+
+    def test_duplicate_recovery_ingress_event_is_deduplicated_before_persistence(self):
+        start_time = timezone.now()
+
+        first_event = self.build_unsaved_event(
+            EventAction.RECOVERY,
+            start_time,
+            external_id="dup-recovery-ext",
+            resource_id="node-dup-2",
+            resource_type="host",
+            resource_name="node-dup-2",
+            description="cpu recovered",
+        )
+        second_event = self.build_unsaved_event(
+            EventAction.RECOVERY,
+            start_time,
+            external_id="dup-recovery-ext",
+            resource_id="node-dup-2",
+            resource_type="host",
+            resource_name="node-dup-2",
+            description="cpu recovered",
+        )
+
+        self.save_ingress_event(first_event, {"action": "recovery", "external_id": "dup-recovery-ext"})
+        self.save_ingress_event(second_event, {"action": "recovery", "external_id": "dup-recovery-ext"})
+
+        events = Event.objects.filter(
+            source=self.source,
+            external_id="dup-recovery-ext",
+            action=EventAction.RECOVERY,
+            start_time=start_time,
+        )
+        self.assertEqual(events.count(), 1)
+        self.assertTrue(events.first().ingest_key)
+
+    def test_ingest_key_distinguishes_created_and_recovery_events(self):
+        created_at = timezone.now()
+        recovery_at = created_at + timedelta(minutes=1)
+
+        created_event = self.build_unsaved_event(
+            EventAction.CREATED,
+            created_at,
+            external_id="shared-ext-id",
+            resource_id="node-ingest-1",
+            resource_type="host",
+            resource_name="node-ingest-1",
+        )
+        recovery_event = self.build_unsaved_event(
+            EventAction.RECOVERY,
+            recovery_at,
+            external_id="shared-ext-id",
+            resource_id="node-ingest-1",
+            resource_type="host",
+            resource_name="node-ingest-1",
+        )
+
+        self.save_ingress_event(created_event, {"action": "created", "external_id": "shared-ext-id"})
+        self.save_ingress_event(recovery_event, {"action": "recovery", "external_id": "shared-ext-id"})
+
+        created_record = Event.objects.get(source=self.source, external_id="shared-ext-id", action=EventAction.CREATED)
+        recovery_record = Event.objects.get(source=self.source, external_id="shared-ext-id", action=EventAction.RECOVERY)
+
+        self.assertNotEqual(created_record.ingest_key, recovery_record.ingest_key)
 
     def test_recovery_event_reuses_created_external_id_when_legacy_match_is_unique(self):
         created_at = timezone.now() - timedelta(minutes=1)
@@ -1625,6 +2123,34 @@ class RecoveryFallbackTestCase(TestCase):
         self.assertTrue(alert.events.filter(event_id="EVENT-RECOVERY-COMPAT-3").exists())
         self.assertEqual(alert.status, AlertStatus.AUTO_RECOVERY)
 
+    def test_mapping_fields_to_event_keeps_missing_end_time_empty(self):
+        self.source.config = {
+            "event_fields_mapping": {
+                "title": "title",
+                "description": "description",
+                "level": "level",
+                "start_time": "start_time",
+                "end_time": "end_time",
+                "action": "action",
+            }
+        }
+        self.source.save(update_fields=["config"])
+
+        adapter = self.adapter_class(alert_source=self.source)
+        payload = {
+            "title": "cpu high",
+            "description": "cpu recovered",
+            "level": "3",
+            "start_time": str(int(timezone.now().timestamp())),
+            "end_time": "",
+            "action": "recovery",
+        }
+
+        mapped = adapter.mapping_fields_to_event(payload)
+
+        self.assertIn("start_time", mapped)
+        self.assertNotIn("end_time", mapped)
+
     def test_closed_event_immediately_recovers_active_alert(self):
         created_at = timezone.now() - timedelta(minutes=5)
         created_event = self.create_event(
@@ -1742,6 +2268,40 @@ class RecoveryFallbackTestCase(TestCase):
         alert.refresh_from_db()
 
         self.assertEqual(alert.status, AlertStatus.AUTO_RECOVERY)
+
+    def test_out_of_order_recovery_event_does_not_recover_active_alert(self):
+        created_at = timezone.now()
+        created_event = self.create_event(
+            "EVENT-CREATED-OUT-OF-ORDER-1",
+            EventAction.CREATED,
+            "ext-out-of-order-1",
+            created_at,
+            start_time=created_at,
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+        alert = self.create_alert("ALERT-OUT-OF-ORDER-1", AlertStatus.UNASSIGNED, created_event)
+        recovery_event = self.create_event(
+            "EVENT-RECOVERY-OUT-OF-ORDER-1",
+            EventAction.RECOVERY,
+            "ext-out-of-order-1",
+            created_at + timedelta(minutes=10),
+            start_time=created_at - timedelta(minutes=10),
+            end_time=created_at - timedelta(minutes=5),
+            item="cpu_usage",
+            resource_id="node-1",
+            resource_type="host",
+            resource_name="node-1",
+        )
+
+        RecoveryHandler.handle_recovery_events([recovery_event])
+        self._run_pending_on_commit_callbacks()
+        alert.refresh_from_db()
+
+        self.assertTrue(alert.events.filter(event_id="EVENT-RECOVERY-OUT-OF-ORDER-1").exists())
+        self.assertEqual(alert.status, AlertStatus.UNASSIGNED)
 
     def test_integration_guide_returns_prometheus_template(self):
         source = AlertSource.objects.create(

@@ -6,6 +6,42 @@ const toNumber = (value: unknown) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
+/**
+ * 将多查询结果（keyed object）按 _time 合并为单一行数组。
+ * 单查询结果（普通数组）直接返回。
+ */
+const normalizeMultiQueryData = (data: any): any[] => {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== 'object') return [];
+
+  const keys = Object.keys(data);
+  if (keys.length === 0) return [];
+
+  // 按 _time 聚合所有子查询的字段
+  const timeMap = new Map<string, Record<string, unknown>>();
+  for (const key of keys) {
+    const rows = data[key];
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      const time = String(row._time ?? '');
+      if (!timeMap.has(time)) {
+        timeMap.set(time, { _time: time });
+      }
+      const merged = timeMap.get(time)!;
+      for (const [field, value] of Object.entries(row)) {
+        if (field !== '_time') {
+          merged[field] = value;
+        }
+      }
+    }
+  }
+
+  // 按 _time 排序返回
+  return Array.from(timeMap.values()).sort((a, b) =>
+    String(a._time).localeCompare(String(b._time))
+  );
+};
+
 const calculateMetricValue = (rows: any[], config: any) => {
   const calculation = config?.calculation || 'sum';
 
@@ -62,8 +98,8 @@ const calculateMetricValue = (rows: any[], config: any) => {
 };
 
 const calculateHttpMetric = (rawData: any, prevData: any, config: any) => {
-  const currentResult = calculateMetricValue(rawData, config);
-  const previousResult = calculateMetricValue(prevData, config);
+  const currentResult = calculateMetricValue(normalizeMultiQueryData(rawData), config);
+  const previousResult = calculateMetricValue(normalizeMultiQueryData(prevData), config);
 
   let pct: number | null = null;
   if (

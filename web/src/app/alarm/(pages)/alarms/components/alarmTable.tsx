@@ -4,7 +4,7 @@ import React, { useRef } from 'react';
 import CustomTable from '@/components/custom-table';
 import AlarmAction from './alarmAction';
 import AlertDetail from './alarmDetail';
-import Icon from '@/components/icon';
+import LevelIcon from '@/app/alarm/components/levelIcon';
 import UserAvatar from '@/components/user-avatar';
 import type { ColumnsType } from 'antd/es/table';
 import { Tag, Button } from 'antd';
@@ -50,7 +50,7 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
         return (
           <Tag color={levelMap[level || '']}>
             <div className="flex items-center">
-              <Icon type={target?.icon || ''} className="mr-1" />
+              <LevelIcon icon={target?.icon || ''} className="mr-1 w-4 h-4" />
               {target?.level_display_name || '--'}
             </div>
           </Tag>

@@ -176,6 +176,7 @@
                 display: inline-flex;
                 align-items: center;
                 gap: 5px;
+                text-decoration: none;
             }
             .main-nav .nav-item.active {
                 color: #3a84ff;
@@ -244,12 +245,12 @@
         </div>
       </div>
 
-      <nav class="main-nav" id="mainNav">
-        <button class="nav-item" data-module="organization">◉ 组织</button>
-        <button class="nav-item" data-module="application">◉ 应用</button>
-        <button class="nav-item" data-module="channel">◉ 通知渠道</button>
-        <button class="nav-item" data-module="security">◉ 安全管理</button>
-                <button class="nav-item active" data-module="settings">◉ 设置</button>
+            <nav class="main-nav" id="mainNav" aria-label="系统管理主导航">
+                <button class="nav-item" type="button" onclick="window.location.href='../用户管理/组织架构.html'">◉ 用户管理</button>
+                <button class="nav-item" type="button" disabled>◉ 应用管理</button>
+                <a class="nav-item" href="../通知渠道/通知渠道.html">◉ 通知渠道</a>
+                <button class="nav-item" type="button" onclick="window.location.href='../集成中心/集成中心.html'">◉ 集成中心</button>
+                <button class="nav-item active" type="button">◉ 平台设置</button>
       </nav>
 
       <div class="top-right">
@@ -260,10 +261,12 @@
     <!-- 主内容区域 -->
     <div class="main-container">
         <div class="content-wrapper">
-            <div class="settings-page-tabs" aria-label="设置页签">
-                <a class="settings-page-tab" href="./门户.html">门户</a>
-                <a class="settings-page-tab" href="../组织/组织架构.html#settings">密钥</a>
-                <a class="settings-page-tab active" href="./许可.html" aria-current="page">许可</a>
+            <div class="settings-page-tabs" aria-label="平台设置页签">
+                <a class="settings-page-tab" href="./门户设置.html">门户设置</a>
+                <a class="settings-page-tab" href="./审计日志.html">审计日志</a>
+                <a class="settings-page-tab" href="./错误日志.html">错误日志</a>
+                <a class="settings-page-tab" href="./API密钥.html">API密钥</a>
+                <a class="settings-page-tab active" href="./许可管理.html" aria-current="page">许可管理</a>
             </div>
 
             <div class="section-card intro-card">
