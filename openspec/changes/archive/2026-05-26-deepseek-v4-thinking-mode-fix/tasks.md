@@ -34,6 +34,6 @@
 
 ## 6. 验证
 
-- [ ] 6.1 运行 `lsp_diagnostics` 确认无新增错误
-- [ ] 6.2 重启服务器测试 DeepSeek V4 thinking mode 工具调用
-- [ ] 6.3 验证 `show_think` 配置从数据库正确传递
+- [x] 6.1 运行 `lsp_diagnostics` 确认无新增错误
+- [x] 6.2 重启服务器测试 DeepSeek V4 thinking mode 工具调用
+- [x] 6.3 验证 `show_think` 配置从数据库正确传递
