@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>系统管理原型</title>
+    <title>用户管理 - 超级管理员</title>
     <style>
       :root {
         --bg: #f5f7fa;
@@ -216,11 +216,18 @@
         display: inline-flex;
         align-items: center;
         gap: 5px;
+        text-decoration: none;
       }
 
       .main-nav .nav-item.active {
         color: var(--primary);
         background: var(--primary-weak);
+      }
+
+      .main-nav .nav-item[disabled] {
+        color: #a3adbf;
+        cursor: not-allowed;
+        opacity: 0.7;
       }
 
       .top-right {
@@ -2037,11 +2044,11 @@
         </div>
 
         <nav class="main-nav" id="mainNav">
-          <button class="nav-item active" data-module="organization">◉ 组织</button>
-          <button class="nav-item" data-module="application">◉ 应用</button>
-          <button class="nav-item" data-module="channel">◉ 通知渠道</button>
-          <button class="nav-item" data-module="security">◉ 安全管理</button>
-          <button class="nav-item" data-module="settings">◉ 设置</button>
+          <button class="nav-item active" data-module="user">◉ 用户管理</button>
+          <button class="nav-item" type="button" disabled>◉ 应用管理</button>
+          <a class="nav-item" href="../通知渠道/通知渠道.html">◉ 通知渠道</a>
+          <button class="nav-item" data-href="../集成中心/集成中心.html">◉ 集成中心</button>
+          <button class="nav-item" data-module="platform">◉ 平台设置</button>
         </nav>
 
         <div class="top-right">
@@ -2057,8 +2064,8 @@
           </div>
 
           <div class="top-section" id="topSection">
-            <h2 id="sectionTitle">组织架构</h2>
-            <p id="sectionDesc">显示组织架构和用户的所有信息，您可以维护各级组织、增删改查、也可以设置用户信息并分配角色、分组</p>
+            <h2 id="sectionTitle">管理员管理</h2>
+            <p id="sectionDesc">管理系统超级管理员，可以查看所有管理员用户，并可以取消用户的管理员权限</p>
           </div>
 
           <div class="page-body">
@@ -2614,11 +2621,6 @@
             </section>
 
             <section class="page" id="page-settings">
-              <div style="margin-bottom:12px; border:1px solid var(--line-soft); border-radius:6px; padding:14px; background:#fff">
-                <h3 style="margin:0 0 8px; font-size:16px">密钥管理</h3>
-                <p style="margin:0; color:var(--text-3); font-size:12px">用于 API 访问鉴权，建议定期轮换并妥善保管。</p>
-              </div>
-
               <div style="border:1px solid var(--line-soft); border-radius:6px; background:#fff; display:flex; flex-direction:column">
                 <div style="padding:12px; border-bottom:1px solid var(--line-soft); display:flex; justify-content:flex-end">
                   <button class="btn primary" id="createKeyBtn">+ 创建新密钥</button>
@@ -3019,38 +3021,94 @@
     <script src="../../../../web/public/iconfont.js"></script>
 
     <script>
+      const userTabs = ["组织架构", "超级管理员", "用户同步", "登录认证", "安全策略", "敏感信息"];
+      const platformTabs = ["门户设置", "审计日志", "错误日志", "API密钥"];
+      const userPageFiles = {
+        "组织架构": "组织架构.html",
+        "超级管理员": "超级管理员.html",
+        "用户同步": "用户同步.html",
+        "登录认证": "登录认证.html",
+        "安全策略": "安全策略.html",
+        "敏感信息": "敏感信息.html",
+      };
+      const platformPageFiles = {
+        "门户设置": "门户设置.html",
+        "审计日志": "审计日志.html",
+        "错误日志": "错误日志.html",
+        "API密钥": "API密钥.html",
+        "许可管理": "许可管理.html",
+      };
+      const pageConfigs = {
+        "组织架构.html": { module: "user", tab: "组织架构", title: "用户管理 - 组织架构" },
+        "超级管理员.html": { module: "user", tab: "超级管理员", title: "用户管理 - 超级管理员" },
+        "用户同步.html": { module: "user", tab: "用户同步", title: "用户管理 - 用户同步" },
+        "登录认证.html": { module: "user", tab: "登录认证", title: "用户管理 - 登录认证" },
+        "安全策略.html": { module: "user", tab: "安全策略", title: "用户管理 - 安全策略" },
+        "敏感信息.html": { module: "user", tab: "敏感信息", title: "用户管理 - 敏感信息" },
+        "API密钥.html": { module: "platform", tab: "API密钥", title: "平台设置 - API密钥" },
+        "审计日志.html": { module: "platform", tab: "审计日志", title: "平台设置 - 审计日志" },
+        "错误日志.html": { module: "platform", tab: "错误日志", title: "平台设置 - 错误日志" },
+      };
+      const currentPath = decodeURIComponent(window.location.pathname || '');
+      const currentDirName = currentPath.split('/').slice(-2, -1)[0] || '用户管理';
+      const currentFileName = currentPath.split('/').pop() || '组织架构.html';
+      const currentPageConfig = pageConfigs[currentFileName] || pageConfigs['组织架构.html'];
       const moduleMeta = {
-        organization: {
-          title: "组织架构",
-          desc: "显示组织架构和用户的所有信息，您可以维护各级组织、增删改查、也可以设置用户信息并分配角色、分组",
-          subtabs: ["组织架构", "超级管理员"],
+        user: {
+          title: "用户管理",
+          desc: "统一管理组织架构、超级管理员、用户同步、登录认证与安全策略",
+          subtabs: userTabs,
           actions: '',
         },
-        application: {
-          title: "应用",
-          desc: "应用列表与角色、数据权限、自定义菜单配置",
-          subtabs: ["应用列表"],
-          actions: '',
-        },
-        channel: {
-          title: "通知渠道",
-          desc: "支持邮件、企业微信机器人、NATS 等渠道配置",
-          subtabs: ["渠道列表", "设置"],
-          actions: '<input class="search" placeholder="搜索渠道..." /><button class="btn primary">搜索</button>',
-        },
-        security: {
-          title: "安全管理",
-          desc: "登录设置、认证源、登录日志、操作日志、错误日志",
-          subtabs: ["登录设置", "认证源", "登录日志", "操作日志", "错误日志"],
-          actions: '<button class="btn primary">保存配置</button>',
-        },
-        settings: {
-          title: "设置",
-          desc: "管理 API 密钥、门户与许可等平台级配置",
-          subtabs: ["密钥", "门户", "许可"],
+        platform: {
+          title: "平台设置",
+          desc: "统一管理门户设置、审计日志、错误日志与 API 密钥",
+          subtabs: platformTabs,
           actions: '',
         },
       };
+
+      function getUserPageHref(tabName) {
+        const fileName = userPageFiles[tabName] || '组织架构.html';
+        return currentDirName === '用户管理' ? './' + fileName : '../用户管理/' + fileName;
+      }
+
+      function getPlatformPageHref(tabName) {
+        const fileName = platformPageFiles[tabName] || 'API密钥.html';
+        return currentDirName === '平台设置' ? './' + fileName : '../平台设置/' + fileName;
+      }
+
+      function getTabHref(module, tabName) {
+        if (module === 'user') {
+          return getUserPageHref(tabName);
+        }
+        if (module === 'platform') {
+          return getPlatformPageHref(tabName);
+        }
+        return '';
+      }
+
+      function resolveLegacyRoute(route) {
+        if (!route) {
+          return '';
+        }
+        if (route === 'settings' || route === 'settings-密钥' || route === 'platform' || route === 'platform-API密钥') {
+          return getPlatformPageHref('API密钥');
+        }
+        if (route.startsWith('user-')) {
+          const tabName = route.slice('user-'.length);
+          if (userTabs.includes(tabName)) {
+            return getUserPageHref(tabName);
+          }
+        }
+        if (route.startsWith('platform-')) {
+          const tabName = route.slice('platform-'.length);
+          if (platformTabs.includes(tabName)) {
+            return getPlatformPageHref(tabName);
+          }
+        }
+        return '';
+      }
 
       const users = [
         { id: "u1", color: "c-green", username: "o-eXO6xaI79cxcG803X1RR_NvLag", name: "陈盐a", email: "--", lastLogin: "2026-03-24 16:00:52", timezone: "亚洲/上海 (UTC+08:00)", language: "中文", groups: ["Default"], roles: ["opspilot:guest", "ops-console:guest"], inheritOrgRoles: true },
@@ -3590,24 +3648,103 @@
         }
       }
 
+      function activateRenderedSubtab(tabName) {
+        subtabs.querySelectorAll('.subtab').forEach((item) => {
+          item.classList.toggle('active', item.dataset.subtab === tabName);
+        });
+      }
+
+      function showPage(pageKey, options = {}) {
+        const { hideTopSection = false, channelClean = false } = options;
+        shell.classList.toggle('channel-clean', channelClean);
+        shell.classList.remove('security-clean');
+        topSection.style.display = hideTopSection ? 'none' : 'block';
+
+        Object.keys(pages).forEach((key) => {
+          pages[key].classList.toggle('active', key === pageKey);
+        });
+      }
+
+      function switchUserTab(tabName) {
+        if (tabName === '认证源') {
+          showPage('security', { hideTopSection: true });
+          switchSecurityTab('认证源');
+          sectionTitle.textContent = '认证源';
+          sectionDesc.textContent = '统一管理 LDAP、OIDC、SAML 等认证源接入与启停状态';
+          return;
+        }
+
+        if (tabName === '安全策略') {
+          showPage('security', { hideTopSection: true });
+          switchSecurityTab('登录设置');
+          sectionTitle.textContent = '安全策略';
+          sectionDesc.textContent = '统一配置登录安全、密码策略与会话有效期等平台安全规则';
+          return;
+        }
+
+        showPage('organization');
+        switchOrganizationTab(tabName === '超级管理员' ? '超级管理员' : '组织架构');
+      }
+
+      function switchAuditLogView() {
+        securityPanes.forEach((pane) => {
+          const isAuditPane = ['登录日志', '操作日志'].includes(pane.dataset.securityTab);
+          pane.classList.toggle('active', isAuditPane);
+        });
+        pageActions.innerHTML = '';
+        renderLoginLogs();
+        renderOperationLogs();
+        sectionTitle.textContent = '审计日志';
+        sectionDesc.textContent = '统一查看登录日志与操作日志，便于审计追踪与问题回溯';
+      }
+
+      function switchPlatformTab(tabName) {
+        if (tabName === '门户设置') {
+          window.location.href = '../平台设置/门户设置.html';
+          return;
+        }
+
+        if (tabName === '审计日志') {
+          showPage('security', { hideTopSection: true });
+          switchAuditLogView();
+          return;
+        }
+
+        if (tabName === '错误日志') {
+          showPage('security', { hideTopSection: true });
+          switchSecurityTab('错误日志');
+          sectionTitle.textContent = '错误日志';
+          sectionDesc.textContent = '统一记录认证、登录与系统配置异常，便于快速定位平台故障';
+          return;
+        }
+
+        showPage('settings');
+        pageActions.innerHTML = '';
+        sectionTitle.textContent = 'API密钥';
+        sectionDesc.textContent = '管理平台 API 密钥的创建、授权范围与生命周期';
+      }
+
       function switchSettingsTab(tabName) {
         if (tabName === '门户') {
-          window.location.href = '../设置/门户.html';
+          window.location.href = '../平台设置/门户设置.html';
           return;
         }
 
         if (tabName === '许可') {
-          window.location.href = '../设置/许可管理.html';
+          window.location.href = '../平台设置/许可管理.html';
         }
       }
 
       function applyInitialRoute() {
         const route = decodeURIComponent(window.location.hash || '').replace(/^#/, '');
-        if (route === 'settings' || route === 'settings-密钥') {
-          switchModule('settings');
+        const legacyHref = resolveLegacyRoute(route);
+        if (legacyHref) {
+          window.location.href = legacyHref;
           return;
         }
-        switchModule('organization');
+
+        document.title = currentPageConfig.title + ' - BlueKing Lite';
+        switchModule(currentPageConfig.module);
       }
 
       function parseTime(timeText) {
@@ -4128,8 +4265,12 @@
         subtabs.innerHTML = "";
         meta.subtabs.forEach((name, idx) => {
           const btn = document.createElement("button");
-          btn.className = "subtab" + (idx === 0 ? " active" : "");
+          const isActive = module === currentPageConfig.module
+            ? currentPageConfig.tab === name
+            : idx === 0;
+          btn.className = "subtab" + (isActive ? " active" : "");
           btn.dataset.subtab = name;
+          btn.dataset.href = getTabHref(module, name);
           btn.textContent = name;
           subtabs.appendChild(btn);
         });
@@ -4138,64 +4279,54 @@
       }
 
       function switchModule(module) {
-        shell.classList.toggle('channel-clean', module === 'channel');
-        shell.classList.remove('security-clean');
-        if (module !== 'channel' && module !== 'security') {
-          topSection.style.display = 'block';
+        if (module === 'user' && currentPageConfig.module !== 'user') {
+          window.location.href = getUserPageHref('组织架构');
+          return;
         }
-        if (module === 'security') {
-          topSection.style.display = 'none';
+        if (module === 'platform' && currentPageConfig.module !== 'platform') {
+          window.location.href = getPlatformPageHref('API密钥');
+          return;
         }
-
-        Object.keys(pages).forEach((key) => {
-          pages[key].classList.toggle("active", key === module);
-        });
 
         document.querySelectorAll("#mainNav .nav-item").forEach((item) => {
           item.classList.toggle("active", item.dataset.module === module);
         });
 
         renderHead(module);
-        if (module === 'organization') {
-          switchOrganizationTab('组织架构');
+        if (module === 'user') {
+          switchUserTab(currentPageConfig.module === 'user' ? currentPageConfig.tab : '组织架构');
         }
-        if (module === 'application') {
-          switchApplicationTab();
-        }
-        if (module === 'channel') {
-          switchChannelTab('渠道列表');
-        }
-        if (module === 'security') {
-          switchSecurityTab('登录设置');
+        if (module === 'platform') {
+          switchPlatformTab(currentPageConfig.module === 'platform' ? currentPageConfig.tab : 'API密钥');
         }
       }
 
       mainNav.addEventListener("click", (e) => {
         const btn = e.target.closest(".nav-item");
         if (!btn) return;
+        if (btn.disabled) return;
+        if (btn.dataset.href) {
+          window.location.href = btn.dataset.href;
+          return;
+        }
         switchModule(btn.dataset.module);
       });
 
       subtabs.addEventListener('click', (e) => {
         const btn = e.target.closest('.subtab');
         if (!btn) return;
+        if (btn.dataset.href) {
+          window.location.href = btn.dataset.href;
+          return;
+        }
         subtabs.querySelectorAll('.subtab').forEach((x) => x.classList.remove('active'));
         btn.classList.add('active');
         const activeModule = document.querySelector('#mainNav .nav-item.active')?.dataset.module;
-        if (activeModule === 'organization') {
-          switchOrganizationTab(btn.dataset.subtab || '组织架构');
+        if (activeModule === 'user') {
+          switchUserTab(btn.dataset.subtab || '组织架构');
         }
-        if (activeModule === 'application') {
-          switchApplicationTab(btn.dataset.subtab || '应用列表');
-        }
-        if (activeModule === 'channel') {
-          switchChannelTab(btn.dataset.subtab || '渠道列表');
-        }
-        if (activeModule === 'security') {
-          switchSecurityTab(btn.dataset.subtab || '登录设置');
-        }
-        if (activeModule === 'settings') {
-          switchSettingsTab(btn.dataset.subtab || '密钥');
+        if (activeModule === 'platform') {
+          switchPlatformTab(btn.dataset.subtab || 'API密钥');
         }
       });
 
@@ -5034,10 +5165,14 @@
         const appName = btn.dataset.launchApp || '';
         closeAppLauncher();
         if (appName === 'Setting') {
-          switchModule('settings');
+          switchModule('platform');
           return;
         }
-        switchModule('application');
+        document.querySelectorAll("#mainNav .nav-item").forEach((item) => {
+          item.classList.remove('active');
+        });
+        showPage('application');
+        switchApplicationTab();
         const targetCard = Array.from(appGrid.querySelectorAll('.app-card')).find((card) => {
           return (card.dataset.app || '').toLowerCase() === appName.toLowerCase();
         });
