@@ -45,6 +45,7 @@
     "error": "错误",
     "delConfirm": "你确定要删除选中的项吗？",
     "delConfirmCxt": "删除后，数据无法恢复。",
+    "disassociationContent": "取消后数据无法恢复。",
     "delSuccess": "删除成功",
     "delFailed": "删除失败",
     "valFailed": "验证失败",

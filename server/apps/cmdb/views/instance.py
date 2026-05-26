@@ -500,7 +500,34 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @HasPermission("asset_info-Delete Associate")
     @action(detail=False, methods=["delete"], url_path="association/(?P<id>.+?)")
     def instance_association_delete(self, request, id: int):
-        InstanceManage.instance_association_delete(int(id), request.user.username)
+        asso_id = int(id)
+        # 删除前必须做与 instance_association_create 对称的对象级权限校验，
+        # 否则仅凭菜单级 "asset_info-Delete Associate" 权限即可越权清除跨组织边。
+        asso_info = InstanceManage.instance_association_by_asso_id(asso_id)
+        if not asso_info:
+            return WebUtils.response_error("关联关系不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        for endpoint_key, endpoint_label in (("src", "源"), ("dst", "目标")):
+            endpoint_inst = asso_info.get(endpoint_key)
+            if not endpoint_inst:
+                return WebUtils.response_error(
+                    f"{endpoint_label}实例不存在",
+                    status_code=status.HTTP_404_NOT_FOUND,
+                )
+            if self.check_creator_and_organizations(request, endpoint_inst):
+                continue
+            if not self.organizations(request, endpoint_inst):
+                return WebUtils.response_error(
+                    f"抱歉！您没有此实例[{endpoint_inst.get('inst_name')}]的权限",
+                    status_code=status.HTTP_403_FORBIDDEN,
+                )
+            if not self.check_instance_permission(request, endpoint_inst, operator=OPERATE):
+                return WebUtils.response_error(
+                    f"抱歉！您没有此实例[{endpoint_inst.get('inst_name')}]的权限",
+                    status_code=status.HTTP_403_FORBIDDEN,
+                )
+
+        InstanceManage.instance_association_delete(asso_id, request.user.username)
         return WebUtils.response_success()
 
     @action(
