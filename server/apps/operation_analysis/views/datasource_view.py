@@ -5,7 +5,7 @@
 from datetime import datetime, timedelta
 
 from django.http import Http404
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -250,7 +250,7 @@ def _resolve_request_params(instance, request_data):
     return resolved
 
 
-class DataSourceTagModelViewSet(ModelViewSet):
+class DataSourceTagModelViewSet(viewsets.ReadOnlyModelViewSet):
     """
     数据源标签
     """
