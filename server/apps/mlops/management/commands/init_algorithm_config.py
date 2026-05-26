@@ -20,7 +20,7 @@ class Command(BaseCommand):
         skipped_invalid_count = 0
 
         self.stdout.write("开始初始化 MLOPS 算法配置")
-        logger.info("开始初始化 MLOPS 算法配置: %s", config_root)
+        logger.info("开始初始化 MLOPS 算法配置")
 
         if not config_root.exists():
             self.stdout.write(f"未找到算法配置目录: {config_root}")
