@@ -31,9 +31,15 @@ class AlertOperator(object):
     未分派——待响应——处理中——转派——待响应——处理中——关闭
     """
 
-    def __init__(self, user):
+    def __init__(self, user, allowed_alert_ids=None):
         self.user = user
         self.status_map = dict(AlertStatus.CHOICES)
+        self.allowed_alert_ids = None if allowed_alert_ids is None else {str(item) for item in allowed_alert_ids}
+
+    def _is_alert_allowed(self, alert_id: str) -> bool:
+        if self.allowed_alert_ids is None:
+            return True
+        return str(alert_id) in self.allowed_alert_ids
 
     def operate(self, action: str, alert_id: str, data: dict) -> dict:
         """
@@ -52,6 +58,10 @@ class AlertOperator(object):
         if not func:
             logger.error(f"不支持的操作类型: {action}")
             raise ValueError(f"Unsupported action: {action}")
+
+        if not self._is_alert_allowed(alert_id):
+            logger.warning(f"用户 {self.user} 无权限操作告警: alert_id={alert_id}")
+            return {"result": False, "message": "您没有权限操作此告警", "data": {}}
 
         try:
             result = func(alert_id, data)
