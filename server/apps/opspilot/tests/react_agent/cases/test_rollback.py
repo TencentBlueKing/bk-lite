@@ -183,7 +183,7 @@ async def _build_and_run(request, mock_llm_responses, tools_list, registry_patch
             return_value="You are a test assistant.",
         ),
         patch(
-            "langchain_core.callbacks.dispatch_custom_event",
+            "apps.opspilot.metis.llm.chain.node.dispatch_custom_event",
             side_effect=capture_event,
         ),
         patch(
