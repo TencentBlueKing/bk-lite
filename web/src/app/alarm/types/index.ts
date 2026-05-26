@@ -136,6 +136,13 @@ export interface LevelItem {
     icon: string;
     description: string;
     level_type: string;
+    built_in?: boolean;
+}
+
+export interface LevelMetaGroup {
+    list: LevelItem[];
+    byId: Record<string, LevelItem>;
+    colorMap: Record<string, string>;
 }
 
 export interface CommonContextType {
@@ -146,4 +153,7 @@ export interface CommonContextType {
     levelMapEvent: Record<string, string>;
     levelListIncident: LevelItem[];
     levelMapIncident: Record<string, string>;
+    levelMeta: Record<string, LevelMetaGroup>;
+    refreshLevels: () => Promise<void>;
+    getLevelMeta: (type: string, levelId: string | number | null | undefined) => LevelItem | undefined;
 }

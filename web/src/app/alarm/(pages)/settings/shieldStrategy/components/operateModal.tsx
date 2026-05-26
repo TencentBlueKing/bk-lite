@@ -174,7 +174,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
               },
             ]}
           >
-            <MatchRule />
+            <MatchRule levelType="event" />
           </Form.Item>
         )}
 
