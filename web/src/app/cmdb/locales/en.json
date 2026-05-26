@@ -344,7 +344,8 @@
             "timeout": "Timeout",
             "writing": "Writing",
             "forceStop": "Force Stop",
-            "pendingApproval": "Pending Approval"
+            "pendingApproval": "Pending Approval",
+            "partialSuccess": "Partial Success"
         },
         "k8sTask": {
             "title": "Add Task",
@@ -470,6 +471,7 @@
             "totalTasks": "Total Tasks",
             "normalTasks": "Normal",
             "errorTasks": "Errors",
+            "partialTasks": "Partial Success",
             "recentSync": "Recent Sync",
             "coveredModels": "Covered Models",
             "justNow": "just now",
