@@ -1958,3 +1958,10 @@ ChangeRecordType:
   update_entity: Update
   create_edge: Create Association
   delete_edge: Delete Association
+
+ChangeRecordScenario:
+  device_lifecycle: Device Lifecycle
+  relation_change: Relation Change
+  ordinary_attribute_change: Ordinary Attribute Change
+  collect_automation_change: Collect Automation
+  model_management_change: Model Management Change

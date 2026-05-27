@@ -10,7 +10,7 @@ ENV NATS_CONNECT_TIMEOUT="5"
 ENV ANSIBLE_COLLECTIONS_PATH="/opt/collections"
 
 RUN apt-get update && \
-    apt-get install -y python3 python3-venv python3-pip supervisor ansible && \
+    apt-get install -y python3 python3-venv python3-pip supervisor ansible sshpass && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

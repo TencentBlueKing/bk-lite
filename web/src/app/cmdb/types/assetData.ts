@@ -33,6 +33,7 @@ export interface RecordItemList {
   created_at: string;
   operator: string;
   id: number;
+  scenario?: string;
   [key: string]: unknown;
 }
 
@@ -47,14 +48,6 @@ export interface detailRef {
     title: string;
     recordRow: any;
   }) => void;
-}
-
-export interface RecordDetailProps {
-  userList: Array<any>;
-  propertyList: AttrFieldType[];
-  modelList: ModelItem[];
-  enumList: RecordsEnum;
-  connectTypeList: Array<AssoTypeItem>;
 }
 
 export interface FieldConfig {

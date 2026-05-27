@@ -43,6 +43,7 @@ if __name__ == "__main__":
 
 from apps.cmdb.constants.constants import PERMISSION_INSTANCES, VIEW
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.collect_tool_service import CollectToolService
 from apps.cmdb.utils.permission_util import DENY_PERMISSION_PLACEHOLDER, CmdbRulesFormatUtil
 from apps.core.logger import cmdb_logger as logger
@@ -2858,6 +2859,105 @@ class CmdbPermissionScopeRegressionTests(SimpleTestCase):
         deny_inst_name = permission_map[9]["inst_names"][0]
         self.assertTrue(deny_inst_name.startswith(f"{DENY_PERMISSION_PLACEHOLDER}:"))
         self.assertEqual(permission_map, {9: {"permission_instances_map": {deny_inst_name: []}, "inst_names": [deny_inst_name]}})
+
+    def test_build_permission_params_keeps_single_org_boundary_for_instance_permissions(self):
+        permission_map = {2: {"permission_instances_map": {"host-a": [VIEW]}, "inst_names": ["host-a"]}}
+
+        with patch.object(GraphClient, "_get_driver_type", return_value=GraphClient.DRIVER_FALKORDB):
+            permission_params, permission_params_dict = InstanceManage._build_permission_params(permission_map, creator="alice")
+
+        self.assertIn("n.organization", permission_params)
+        self.assertIn(" AND ", permission_params)
+        self.assertIn("n.inst_name", permission_params)
+        self.assertIn("n._creator", permission_params)
+        self.assertGreaterEqual(len(permission_params_dict), 3)
+
+    def test_build_permission_params_ors_across_orgs_but_keeps_branch_boundaries(self):
+        deny_inst_name = f"{DENY_PERMISSION_PLACEHOLDER}:placeholder"
+        permission_map = {
+            1: {"permission_instances_map": {}, "inst_names": []},
+            2: {"permission_instances_map": {deny_inst_name: []}, "inst_names": [deny_inst_name]},
+        }
+
+        with patch.object(GraphClient, "_get_driver_type", return_value=GraphClient.DRIVER_FALKORDB):
+            permission_params, permission_params_dict = InstanceManage._build_permission_params(permission_map, creator="alice")
+
+        self.assertIn(" OR ", permission_params)
+        self.assertIn(" AND ", permission_params)
+        self.assertIn("n.organization", permission_params)
+        self.assertGreaterEqual(len(permission_params_dict), 4)
+
+    @staticmethod
+    def _build_graph_client_context_with_driver_methods(method_name, return_value):
+        with patch.object(GraphClient, "_get_driver_type", return_value=GraphClient.DRIVER_FALKORDB):
+            graph_client = GraphClient()
+        driver = graph_client._client
+        setattr(driver, method_name, MagicMock(return_value=return_value))
+        graph_client.__enter__()
+        return graph_client, getattr(driver, method_name)
+
+    def test_fulltext_search_passes_branch_scoped_permission_params_to_driver(self):
+        permission_map = {2: {"permission_instances_map": {"host-a": [VIEW]}, "inst_names": ["host-a"]}}
+        graph_client, full_text_mock = self._build_graph_client_context_with_driver_methods("full_text", [])
+
+        with (
+            patch.object(GraphClient, "_get_driver_type", return_value=GraphClient.DRIVER_FALKORDB),
+            patch("apps.cmdb.services.instance.GraphClient", return_value=graph_client),
+        ):
+            InstanceManage.fulltext_search(search="host-a", permission_map=permission_map, creator="alice")
+
+        full_text_mock.assert_called_once()
+        kwargs = full_text_mock.call_args.kwargs
+        self.assertIn("n.organization", kwargs["permission_params"])
+        self.assertIn(" AND ", kwargs["permission_params"])
+        self.assertEqual(kwargs["inst_name_params"], "")
+        self.assertEqual(kwargs["created"], "")
+
+    def test_fulltext_search_stats_passes_deny_placeholder_inside_org_branch(self):
+        deny_inst_name = f"{DENY_PERMISSION_PLACEHOLDER}:placeholder"
+        permission_map = {
+            1: {"permission_instances_map": {}, "inst_names": []},
+            2: {"permission_instances_map": {deny_inst_name: []}, "inst_names": [deny_inst_name]},
+        }
+        graph_client, full_text_stats_mock = self._build_graph_client_context_with_driver_methods(
+            "full_text_stats", {"total": 0, "model_stats": []}
+        )
+
+        with (
+            patch.object(GraphClient, "_get_driver_type", return_value=GraphClient.DRIVER_FALKORDB),
+            patch("apps.cmdb.services.instance.GraphClient", return_value=graph_client),
+        ):
+            InstanceManage.fulltext_search_stats(search="host-a", permission_map=permission_map, creator="alice")
+
+        kwargs = full_text_stats_mock.call_args.kwargs
+        self.assertIn("placeholder", kwargs["permission_params"])
+        self.assertIn(" AND ", kwargs["permission_params"])
+        self.assertIn(" OR ", kwargs["permission_params"])
+        self.assertIsInstance(kwargs["permission_params_dict"], dict)
+
+    def test_fulltext_search_by_model_uses_same_branch_scoped_permission_params(self):
+        permission_map = {2: {"permission_instances_map": {"host-a": [VIEW]}, "inst_names": ["host-a"]}}
+        graph_client, full_text_by_model_mock = self._build_graph_client_context_with_driver_methods(
+            "full_text_by_model", {"model_id": "host", "total": 0, "page": 1, "page_size": 10, "data": []}
+        )
+
+        with (
+            patch.object(GraphClient, "_get_driver_type", return_value=GraphClient.DRIVER_FALKORDB),
+            patch("apps.cmdb.services.instance.GraphClient", return_value=graph_client),
+        ):
+            InstanceManage.fulltext_search_by_model(
+                search="host-a",
+                model_id="host",
+                permission_map=permission_map,
+                creator="alice",
+                page=1,
+                page_size=10,
+            )
+
+        kwargs = full_text_by_model_mock.call_args.kwargs
+        self.assertIn("n.organization", kwargs["permission_params"])
+        self.assertIn(" AND ", kwargs["permission_params"])
+        self.assertEqual(kwargs["created"], "")
 
     def test_build_permission_map_reuses_safe_permission_rule_builder(self):
         from apps.opspilot.metis.llm.tools.cmdb.utils import build_permission_map

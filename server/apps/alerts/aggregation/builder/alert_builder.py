@@ -128,6 +128,46 @@ class AlertBuilder:
         return strategy_team
 
     @staticmethod
+    def _validate_events_team_scope(events: List[Event], strategy: AlarmStrategy) -> None:
+        strategy_team = set(AlertBuilder._get_safe_strategy_team(strategy))
+        if not strategy_team:
+            logger.warning(
+                "告警策略缺少有效 team，拒绝基于事件落库: strategy_id=%s",
+                strategy.id,
+            )
+            raise ValueError("Strategy team scope is empty.")
+
+        for event in events:
+            try:
+                event_team = set(normalize_team_ids(event.team))
+            except ValueError as error:
+                logger.warning(
+                    "事件 team 非法，拒绝告警落库: strategy_id=%s event_id=%s team=%s",
+                    strategy.id,
+                    event.event_id,
+                    event.team,
+                )
+                raise ValueError("Event team scope is invalid.") from error
+
+            if not event_team:
+                logger.warning(
+                    "事件 team 为空，拒绝告警落库: strategy_id=%s event_id=%s",
+                    strategy.id,
+                    event.event_id,
+                )
+                raise ValueError("Event team scope is empty.")
+
+            if not event_team.issubset(strategy_team):
+                logger.warning(
+                    "事件 team 超出策略范围，拒绝告警落库: strategy_id=%s event_id=%s strategy_team=%s event_team=%s",
+                    strategy.id,
+                    event.event_id,
+                    sorted(strategy_team),
+                    sorted(event_team),
+                )
+                raise ValueError("Event team scope exceeds strategy team scope.")
+
+    @staticmethod
     def _get_unique_scalar_value(values: List[Any]) -> Any:
         unique_values = {value for value in values}
         if len(unique_values) == 1:
@@ -239,6 +279,7 @@ class AlertBuilder:
     ) -> Alert:
         alert_id = f"ALERT-{uuid.uuid4().hex.upper()}"
         events = AlertBuilder._get_events_by_ids(event_ids) if event_ids else []
+        AlertBuilder._validate_events_team_scope(events, strategy)
         standard_fields = AlertBuilder._resolve_standard_fields(events)
 
         window_config = WindowFactory.create_from_strategy(strategy)
@@ -289,6 +330,8 @@ class AlertBuilder:
         event_ids: List,
         strategy: AlarmStrategy,
     ) -> Alert:
+        events_to_validate = AlertBuilder._get_events_by_ids(event_ids) if event_ids else []
+        AlertBuilder._validate_events_team_scope(events_to_validate, strategy)
         alert.last_event_time = result["last_event_time"]
         # 确保level在ALERT类型的有效范围内
         alert.level = AlertBuilder._map_event_level_to_alert(result["alert_level"])

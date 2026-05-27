@@ -35,6 +35,7 @@ export const EXEC_STATUS = {
   WRITING: 5,
   FORCE_STOP: 6,
   PENDING_APPROVAL: 7,
+  PARTIAL_SUCCESS: 8,
 } as const;
 
 export type ExecStatusType = (typeof EXEC_STATUS)[keyof typeof EXEC_STATUS];
@@ -70,6 +71,10 @@ export const getExecStatusConfig = (t: (key: string) => string) => ({
   },
   [EXEC_STATUS.PENDING_APPROVAL]: {
     text: t('Collection.syncStatus.pendingApproval'),
+    color: '#F7BA1E',
+  },
+  [EXEC_STATUS.PARTIAL_SUCCESS]: {
+    text: t('Collection.syncStatus.partialSuccess'),
     color: '#F7BA1E',
   },
 });

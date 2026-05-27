@@ -126,6 +126,22 @@ def sync_collect_task(instance_id):
                     if i["__time__"] > last_time:
                         last_time = i["__time__"]
             collect_digest["last_time"] = last_time
+
+            # 根据写入失败数升级任务状态：
+            # - 任一操作有数据但全部写入失败 → ERROR（写入侧完全失败，掩盖真实问题最危险）
+            # - 否则只要存在 *_error > 0 → PARTIAL_SUCCESS（部分写入失败，需运维感知）
+            # - 全部成功 → 保持 SUCCESS
+            op_keys = ("add", "update", "delete", "association")
+            totals = {k: collect_digest.get(k, 0) for k in op_keys}
+            errors = {k: collect_digest.get(f"{k}_error", 0) for k in op_keys}
+            has_full_failure = any(totals[k] > 0 and totals[k] == errors[k] for k in op_keys)
+            has_any_failure = any(errors[k] > 0 for k in op_keys)
+            if has_full_failure:
+                instance.exec_status = CollectRunStatusType.ERROR
+                collect_digest["message"] = "存在写入完全失败的操作，请检查 add/update/delete/association 错误数"
+            elif has_any_failure:
+                instance.exec_status = CollectRunStatusType.PARTIAL_SUCCESS
+                collect_digest["message"] = "部分数据写入失败，请检查 add/update/delete/association 错误数"
         instance.collect_digest = collect_digest
         if config_file_pending:
             updated = CollectModels._default_manager.filter(id=instance_id, collect_data={}).update(

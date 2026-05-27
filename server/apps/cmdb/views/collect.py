@@ -323,13 +323,15 @@ class CollectModelViewSet(AuthViewSet):
             driver_type = model_data.get("driver_type") or ""
             status_key = f"{model_data['model_id']}__{driver_type}" if driver_type else model_data["model_id"]
             if not data.get(status_key, False):
-                data[status_key] = {"success": 0, "failed": 0, "running": 0}
+                data[status_key] = {"success": 0, "failed": 0, "running": 0, "partial_success": 0}
             if model_data["exec_status"] == CollectRunStatusType.SUCCESS:
                 data[status_key]["success"] += 1
             elif model_data["exec_status"] == CollectRunStatusType.ERROR:
                 data[status_key]["failed"] += 1
             elif model_data["exec_status"] == CollectRunStatusType.RUNNING:
                 data[status_key]["running"] += 1
+            elif model_data["exec_status"] == CollectRunStatusType.PARTIAL_SUCCESS:
+                data[status_key]["partial_success"] += 1
         return WebUtils.response_success(data)
 
     @HasPermission("auto_collection-View")
@@ -342,7 +344,7 @@ class CollectModelViewSet(AuthViewSet):
             "model_id", "exec_status", "exec_time",
         )
 
-        total = normal = error = 0
+        total = normal = error = partial = 0
         recent_sync_at = None
         covered_models = set()
 
@@ -355,6 +357,8 @@ class CollectModelViewSet(AuthViewSet):
                 normal += 1
             elif task.exec_status == CollectRunStatusType.ERROR:
                 error += 1
+            elif task.exec_status == CollectRunStatusType.PARTIAL_SUCCESS:
+                partial += 1
 
             if task.exec_time is not None and (recent_sync_at is None or task.exec_time > recent_sync_at):
                 recent_sync_at = task.exec_time
@@ -363,6 +367,7 @@ class CollectModelViewSet(AuthViewSet):
             "total": total,
             "normal": normal,
             "error": error,
+            "partial": partial,
             "recent_sync_at": recent_sync_at.isoformat() if recent_sync_at else None,
             "covered_models": len(covered_models),
         }

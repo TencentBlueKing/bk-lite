@@ -7,7 +7,8 @@ import dayjs from 'dayjs';
 import CustomTable from '@/components/custom-table';
 import Introduction from '@/app/cmdb/components/introduction';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import { Input, Select, DatePicker, message } from 'antd';
+import { Input, Select, DatePicker, message, Button } from 'antd';
+import { DownloadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useCommon } from '@/app/cmdb/context/common';
 import { UserItem } from '@/app/cmdb/types/assetManage';
@@ -25,22 +26,34 @@ interface ListItem {
 interface Filters {
   operator: undefined | string;
   type: undefined | string;
+  scenarios: string[];
   message: string;
   dateRange: [Dayjs | null, Dayjs | null] | null;
 }
+
+// 操作日志默认筛除模型管理变更，保持实例主线视图
+const DEFAULT_SCENARIOS = [
+  'device_lifecycle',
+  'relation_change',
+  'ordinary_attribute_change',
+  'collect_automation_change',
+];
 
 const OperationLog: React.FC = () => {
   const { t } = useTranslation();
   const commonContext = useCommon();
 
-  const { getChangeRecords } = useChangeRecordApi();
+  const { getChangeRecords, getChangeRecordScenarioEnum, exportChangeRecords } =
+    useChangeRecordApi();
 
   const users = useRef(commonContext?.userList || []);
   const userList: UserItem[] = users.current;
   const [tableLoading, setTableLoading] = useState<boolean>(false);
+  const [exporting, setExporting] = useState<boolean>(false);
   const [dataList, setDataList] = useState<ListItem[]>([]);
   const [columns, setColumns] = useState<any[]>([]);
   const [inputValue, setInputValue] = useState('');
+  const [scenarioEnum, setScenarioEnum] = useState<Record<string, string>>({});
   const [pagination, setPagination] = useState({
     current: 1,
     total: 0,
@@ -49,6 +62,7 @@ const OperationLog: React.FC = () => {
   const [filters, setFilters] = useState<Filters>({
     operator: undefined,
     type: undefined,
+    scenarios: DEFAULT_SCENARIOS,
     message: '',
     dateRange: null,
   });
@@ -77,6 +91,11 @@ const OperationLog: React.FC = () => {
     },
   ];
 
+  const scenarioOptions = Object.keys(scenarioEnum).map((key) => ({
+    label: scenarioEnum[key],
+    value: key,
+  }));
+
   const operators = userList.map((user: UserItem) => {
     const labelText = `${user.display_name}(${user.username})`;
     return {
@@ -92,8 +111,35 @@ const OperationLog: React.FC = () => {
 
   useEffect(() => {
     setColumns(buildColumns());
+    initScenarioEnum();
     getTableList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    setColumns(buildColumns());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scenarioEnum]);
+
+  const initScenarioEnum = async () => {
+    try {
+      const data = await getChangeRecordScenarioEnum();
+      setScenarioEnum(data || {});
+    } catch {
+      // ignore
+    }
+  };
+
+  const buildQueryParams = (allParams: any) => ({
+    page: allParams.current,
+    page_size: allParams.pageSize,
+    operator: allParams.operator,
+    type: allParams.type,
+    scenarios: allParams.scenarios?.length ? allParams.scenarios.join(',') : undefined,
+    message: allParams.message,
+    created_at_after: allParams.dateRange?.[0]?.format('YYYY-MM-DD HH:mm:ss'),
+    created_at_before: allParams.dateRange?.[1]?.format('YYYY-MM-DD HH:mm:ss'),
+  });
 
   const getTableList = async (params: any = {}) => {
     try {
@@ -103,20 +149,7 @@ const OperationLog: React.FC = () => {
         ...filters,
         ...params,
       };
-      const queryParams = {
-        page: allParams.current,
-        page_size: allParams.pageSize,
-        operator: allParams.operator,
-        type: allParams.type,
-        message: allParams.message,
-        created_at_after: allParams.dateRange?.[0]?.format(
-          'YYYY-MM-DD HH:mm:ss'
-        ),
-        created_at_before: allParams.dateRange?.[1]?.format(
-          'YYYY-MM-DD HH:mm:ss'
-        ),
-      };
-      const data = await getChangeRecords(queryParams);
+      const data = await getChangeRecords(buildQueryParams(allParams));
       setDataList(data.items || []);
       setPagination((prev) => ({
         ...prev,
@@ -161,6 +194,30 @@ const OperationLog: React.FC = () => {
     });
   };
 
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const params = buildQueryParams({ ...pagination, ...filters });
+      // 导出不分页
+      delete (params as any).page;
+      delete (params as any).page_size;
+      const blob = await exportChangeRecords(params);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `change_record_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      message.success(t('OperationLog.exportSuccess'));
+    } catch {
+      message.error(t('OperationLog.exportFailed'));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const buildColumns = () => {
     return [
       {
@@ -181,6 +238,15 @@ const OperationLog: React.FC = () => {
         key: 'type',
         width: 120,
         render: (type: string) => t(`OperationLog.operationOpts.${type}`),
+      },
+      {
+        title: t('OperationLog.scenario'),
+        dataIndex: 'scenario',
+        key: 'scenario',
+        width: 140,
+        render: (scenario: string) =>
+          scenarioEnum[scenario] ||
+          (scenario ? t(`OperationLog.scenarioOpts.${scenario}`) : '--'),
       },
       {
         title: t('OperationLog.operationTime'),
@@ -206,7 +272,7 @@ const OperationLog: React.FC = () => {
       />
       <div className={styles.content}>
         <div className={`${styles.filterWrapper} mb-[20px]`}>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center">
               <label className="mr-2 whitespace-nowrap">
                 {t('OperationLog.operator')}:
@@ -244,6 +310,21 @@ const OperationLog: React.FC = () => {
             </div>
             <div className="flex items-center">
               <label className="mr-2 whitespace-nowrap">
+                {t('OperationLog.scenario')}:
+              </label>
+              <Select
+                mode="multiple"
+                style={{ minWidth: 220, maxWidth: 360 }}
+                placeholder={t('common.selectTip')}
+                options={scenarioOptions}
+                value={filters.scenarios}
+                onChange={(value) => handleFilterChange('scenarios', value || [])}
+                allowClear
+                maxTagCount="responsive"
+              />
+            </div>
+            <div className="flex items-center">
+              <label className="mr-2 whitespace-nowrap">
                 {t('OperationLog.summary')}:
               </label>
               <Input
@@ -266,6 +347,15 @@ const OperationLog: React.FC = () => {
                 value={filters.dateRange}
                 onChange={(dates) => handleFilterChange('dateRange', dates)}
               />
+            </div>
+            <div className="flex items-center ml-auto">
+              <Button
+                icon={<DownloadOutlined />}
+                loading={exporting}
+                onClick={handleExport}
+              >
+                {t('OperationLog.export')}
+              </Button>
             </div>
           </div>
         </div>

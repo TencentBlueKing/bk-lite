@@ -326,8 +326,8 @@ class MissingDetectionProcessorTestCase(TestCase):
         return AlarmStrategy.objects.create(
             name=overrides.pop("name", "strategy-%s" % timezone.now().timestamp()),
             strategy_type=overrides.pop("strategy_type", AlarmStrategyType.MISSING_DETECTION),
-            team=[1],
-            dispatch_team=[1],
+            team=overrides.pop("team", [1]),
+            dispatch_team=overrides.pop("dispatch_team", [1]),
             match_rules=overrides.pop(
                 "match_rules",
                 [[{"key": "service", "operator": "eq", "value": "backup"}]],
@@ -363,6 +363,7 @@ class MissingDetectionProcessorTestCase(TestCase):
             status=overrides.pop("status", "received"),
             assignee=overrides.pop("assignee", []),
             value=overrides.pop("value", None),
+            team=overrides.pop("team", [1]),
         )
         Event.objects.filter(pk=event.pk).update(received_at=received_at)
         event.refresh_from_db()
@@ -412,6 +413,67 @@ class MissingDetectionProcessorTestCase(TestCase):
             transform=lambda value: value,
         )
         self.assertFalse(events.filter(pk=old_event.pk).exists())
+
+    def test_get_events_for_strategy_scopes_events_by_strategy_team(self):
+        now = timezone.now()
+        strategy = self.create_strategy(
+            name="smart-team-scope",
+            strategy_type=AlarmStrategyType.SMART_DENOISE,
+            team=[1],
+            dispatch_team=[1],
+            params={"group_by": ["service"], "window_size": 5, "time_out": False},
+        )
+        scoped_event = self.create_event(
+            now - timedelta(minutes=1),
+            event_id="EVENT-TEAM-SCOPED",
+            team=[1],
+            external_id="team-scoped-1",
+        )
+        self.create_event(
+            now - timedelta(minutes=1),
+            event_id="EVENT-TEAM-OUTSIDE",
+            team=[2],
+            external_id="team-outside-2",
+        )
+
+        events = self.processor.get_events_for_strategy(strategy, now)
+
+        self.assertQuerySetEqual(
+            events.order_by("event_id").values_list("event_id", flat=True),
+            [scoped_event.event_id],
+            transform=lambda value: value,
+        )
+
+    def test_query_candidate_events_scopes_events_by_strategy_team(self):
+        strategy = self.create_strategy(
+            name="missing-team-scope",
+            strategy_type=AlarmStrategyType.MISSING_DETECTION,
+            team=[1],
+            dispatch_team=[1],
+        )
+        now = timezone.now()
+        scoped_event = self.create_event(
+            now,
+            event_id="EVENT-MISSING-SCOPED",
+            team=[1],
+            action=EventAction.CREATED,
+            external_id="missing-scoped-1",
+        )
+        self.create_event(
+            now,
+            event_id="EVENT-MISSING-OUTSIDE",
+            team=[2],
+            action=EventAction.CREATED,
+            external_id="missing-outside-2",
+        )
+
+        events = self.processor._query_candidate_events(strategy, now)
+
+        self.assertQuerySetEqual(
+            events.order_by("event_id").values_list("event_id", flat=True),
+            [scoped_event.event_id],
+            transform=lambda value: value,
+        )
 
     def test_window_factory_clamps_oversized_window_size(self):
         strategy = self.create_strategy(
