@@ -1370,6 +1370,18 @@ monitor_object_metric:
     mysql_threads_cached:
       name: Cached Threads
       desc: Number of reusable cached threads, reflecting connection reuse efficiency
+    mysql_process_list_threads_idle:
+      name: Idle Process List Threads
+      desc: Number of process list threads in idle state, used to identify idle connection accumulation
+    mysql_process_list_threads_executing:
+      name: Executing Process List Threads
+      desc: Number of process list threads currently executing queries, used to assess active query concurrency
+    mysql_process_list_threads_sending_data:
+      name: Sending Data Process List Threads
+      desc: Number of process list threads in Sending data state, often related to large scans or slow result processing
+    mysql_process_list_threads_waiting_for_lock:
+      name: Lock Waiting Process List Threads
+      desc: Number of process list threads waiting for locks, used to identify blocking and lock contention
     mysql_variables_max_connections:
       name: Max Connections Setting
       desc: Configured max_connections value used as the true connection capacity baseline
@@ -1379,15 +1391,24 @@ monitor_object_metric:
     mysql_aborted_connects:
       name: Aborted Connections
       desc: Number of failed connection attempts, possibly due to permissions, network, or configuration
+    mysql_aborted_connects_rate:
+      name: Aborted Connections Rate
+      desc: Rate of failed connection attempts, useful for detecting authentication, network, or configuration issues
     mysql_aborted_clients:
       name: Aborted Clients
       desc: Number of clients disconnected abnormally, often related to network instability or timeouts
+    mysql_aborted_clients_rate:
+      name: Aborted Clients Rate
+      desc: Rate of abnormal client disconnects, useful for identifying network instability, timeout, or connection pool issues
     mysql_connection_errors_internal:
       name: Internal Connection Errors
       desc: Connection failures caused by internal MySQL server errors
     mysql_connection_errors_max_connections:
       name: Max Connections Errors
       desc: Number of connection failures caused by reaching max_connections
+    mysql_connection_errors_max_connections_rate:
+      name: Max Connections Errors Rate
+      desc: Rate of connection failures caused by reaching max_connections, indicating immediate connection saturation impact
     mysql_connection_errors_peer_address:
       name: Peer Address Connection Errors
       desc: Number of connection failures caused by invalid or rejected peer addresses
@@ -1412,6 +1433,18 @@ monitor_object_metric:
     mysql_slave_sql_running:
       name: Replication SQL Thread
       desc: Replica SQL thread status; usually 1 means running and 0 means abnormal
+    mysql_variables_read_only:
+      name: Read Only Setting
+      desc: MySQL read_only setting, commonly used with replication signals to infer instance role
+    mysql_variables_super_read_only:
+      name: Super Read Only Setting
+      desc: MySQL super_read_only setting, commonly enabled on replicas to prevent accidental writes
+    mysql_variables_log_bin:
+      name: Binary Log Enabled
+      desc: Whether binary logging is enabled, used to identify primary or replication-capable instances
+    mysql_variables_log_slave_updates:
+      name: Log Replica Updates Enabled
+      desc: Whether replayed replication changes are written to binary logs, useful for chained replication role analysis
     mysql_slow_queries_rate:
       name: Slow Query Request Trigger Rate
       desc: Number of slow query requests, reflecting the frequency of slow queries
@@ -1523,6 +1556,9 @@ monitor_object_metric:
     mysql_created_tmp_tables_rate:
       name: Total Temporary Tables Create Rate
       desc: Total number of temporary tables (memory + disk) created
+    mysql_created_tmp_memory_tables_rate:
+      name: Memory Temporary Tables Create Rate
+      desc: Estimated rate of temporary tables created in memory, derived from total temporary tables minus disk temporary tables
     mysql_tmp_disk_table_ratio:
       name: Disk Temp Table Ratio
       desc: Ratio of temporary tables created on disk; high values usually indicate SQL or memory tuning issues
@@ -2895,7 +2931,9 @@ monitor_object_metric_group:
     InnoDBPerf: InnoDB Performance
     NetTraffic: Network Traffic
     TableCache: Table Cache
+    KeyCache: Key Cache
     TempTable: Temporary Tables
+    Replication: Replication
   Minio:
     Cluster Monitoring: Cluster Monitoring
     Resource Monitoring: Resource Monitoring
