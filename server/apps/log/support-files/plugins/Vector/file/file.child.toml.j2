@@ -9,7 +9,11 @@ include = [{{ include | map('tojson') | join(', ') }}]
 {% if exclude %}
 exclude = [{{ exclude | map('tojson') | join(', ') }}]
 {% endif %}
+{% if operating_system == "windows" %}
+data_dir = "C:\\fusion-collectors"
+{% else %}
 data_dir = "/opt/fusion-collectors"
+{% endif %}
 {% if ignore_older_secs %}
 ignore_older_secs = {{ ignore_older_secs }}
 {% endif %}

@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
+import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import { NodeConfPanelProps } from '@/app/ops-analysis/types/topology';
 import { iconList } from '@/app/cmdb/utils/common';
 import { NODE_DEFAULTS } from '../constants/nodeDefaults';
@@ -53,6 +54,7 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
   editingNodeData,
   visible = false,
   title,
+  builtinNamespaceId,
   onClose,
   onConfirm,
   onCancel,
@@ -73,27 +75,22 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
       color: string;
     }>
   >(DEFAULT_THRESHOLD_COLORS);
+  const [filteredDataSources, setFilteredDataSources] = useState<DatasourceItem[]>([]);
+  const initializedRef = useRef<string | null>(null);
 
   const selectIconRef = useRef<SelectIconRef>(null);
-  const { getSourceDataByApiId } = useDataSourceApi();
+  const { getSourceDataByApiId, getDataSourceBriefList } = useDataSourceApi();
   const { t } = useTranslation();
 
   const {
-    dataSources,
     dataSourcesLoading,
     selectedDataSource,
     setSelectedDataSource,
+    ensureDataSource,
     processFormParamsForSubmit,
     setDefaultParamValues,
     restoreUserParamValues,
   } = useDataSourceManager();
-
-  const filteredDataSources = useMemo(() => {
-    return dataSources.filter(
-      (dataSource) =>
-        dataSource.chart_type && dataSource.chart_type.includes('single')
-    );
-  }, [dataSources]);
 
   const nodeDefaults = useMemo(() => {
     return (
@@ -223,6 +220,8 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
 
   const initializeNewNode = useCallback(() => {
     const defaultValues: any = {
+      dataSource: undefined,
+      params: {},
       logoType: 'default',
       logoIcon: 'cc-host',
       logoUrl: '',
@@ -276,11 +275,12 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
     setTreeData([]);
     setSelectedFields([]);
 
+    form.resetFields();
     form.setFieldsValue(defaultValues);
   }, [form, setSelectedDataSource, nodeType, nodeDefaults]);
 
   const initializeEditNode = useCallback(
-    (editingNodeData: any) => {
+    async (editingNodeData: any) => {
       const { styleConfig = {}, valueConfig = {} } = editingNodeData;
 
       const formValues: any = {
@@ -342,10 +342,8 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
         setLogoPreview(editingNodeData.logoUrl);
       }
 
-      if (valueConfig.dataSource && filteredDataSources.length > 0) {
-        const selectedSource = filteredDataSources.find(
-          (ds) => ds.id === valueConfig.dataSource
-        );
+      if (valueConfig.dataSource) {
+        const selectedSource = await ensureDataSource(valueConfig.dataSource);
         setSelectedDataSource(selectedSource);
 
         formValues.params = formValues.params || {};
@@ -368,7 +366,7 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
     },
     [
       form,
-      filteredDataSources,
+      ensureDataSource,
       setSelectedDataSource,
       setDefaultParamValues,
       restoreUserParamValues,
@@ -377,14 +375,45 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
   );
 
   useEffect(() => {
-    if (dataSources.length > 0 || !dataSourcesLoading) {
-      if (editingNodeData) {
-        initializeEditNode(editingNodeData);
-      } else {
-        initializeNewNode();
-      }
+    if (!visible) {
+      initializedRef.current = null;
+      return;
     }
-  }, [visible, dataSourcesLoading, editingNodeData]);
+
+    const fetchBriefList = async () => {
+      try {
+        const response = await getDataSourceBriefList({
+          chart_type: 'single',
+          page_size: -1,
+        });
+        setFilteredDataSources(Array.isArray(response) ? response : []);
+      } catch (error) {
+        console.error('Failed to fetch single-value datasource list:', error);
+        setFilteredDataSources([]);
+      }
+    };
+
+    void fetchBriefList();
+  }, [getDataSourceBriefList, visible]);
+
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+
+    const initKey = editingNodeData?.id || '__new__';
+    if (initializedRef.current === initKey) {
+      return;
+    }
+
+    initializedRef.current = initKey;
+
+    if (editingNodeData) {
+      void initializeEditNode(editingNodeData);
+    } else {
+      initializeNewNode();
+    }
+  }, [visible, editingNodeData, initializeEditNode, initializeNewNode]);
 
   const handleLogoUpload = useCallback(
     (file: any) => {
@@ -431,11 +460,9 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
   );
 
   const handleDataSourceChange = useCallback(
-    (dataSourceId: number) => {
+    async (dataSourceId: number) => {
       setCurrentDataSource(dataSourceId);
-      const selectedSource = filteredDataSources.find(
-        (ds) => ds.id === dataSourceId
-      );
+      const selectedSource = await ensureDataSource(dataSourceId);
       setSelectedDataSource(selectedSource);
       setTreeData([]);
       setSelectedFields([]);
@@ -443,6 +470,7 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
       const currentValues = form.getFieldsValue();
       form.setFieldsValue({
         ...currentValues,
+        dataSource: dataSourceId,
         selectedFields: [],
       });
 
@@ -456,11 +484,11 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
         });
       }
     },
-    [filteredDataSources, setSelectedDataSource, form, setDefaultParamValues]
+    [ensureDataSource, setSelectedDataSource, form, setDefaultParamValues]
   );
 
   const fetchDataFields = useCallback(async () => {
-    if (!currentDataSource) return;
+    if (!currentDataSource || !selectedDataSource) return;
 
     setLoadingData(true);
     try {
@@ -470,6 +498,14 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
         sourceParams: selectedDataSource?.params,
         userParams: userParams,
       });
+
+      if (
+        builtinNamespaceId !== undefined &&
+        Array.isArray(selectedDataSource.namespaces) &&
+        selectedDataSource.namespaces.length > 0
+      ) {
+        requestParams.namespace_id = builtinNamespaceId;
+      }
 
       const data: any = await getSourceDataByApiId(
         currentDataSource,
@@ -485,8 +521,9 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
   }, [
     currentDataSource,
     form,
-    selectedDataSource?.params,
+    selectedDataSource,
     getSourceDataByApiId,
+    builtinNamespaceId,
   ]);
 
   const handleFieldChange = useCallback(
@@ -691,7 +728,9 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
               dataSources={filteredDataSources}
               placeholder={t('common.selectMsg')}
               style={{ width: '100%' }}
-              onChange={handleDataSourceChange}
+              onChange={(value) => {
+                void handleDataSourceChange(value);
+              }}
               disabled={readonly}
             />
           </Form.Item>
@@ -721,7 +760,7 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
               icon={<ReloadOutlined />}
               onClick={fetchDataFields}
               loading={loadingData}
-              disabled={!currentDataSource || readonly || dataSourcesLoading}
+              disabled={!currentDataSource || !selectedDataSource || readonly || dataSourcesLoading}
               size="small"
               title={t('topology.nodeConfig.refreshDataFields')}
             />
@@ -786,7 +825,6 @@ const NodeConfPanel: React.FC<NodeConfPanelProps> = ({
   }, [
     nodeType,
     dataSourcesLoading,
-    dataSources,
     selectedDataSource,
     currentDataSource,
     loadingData,

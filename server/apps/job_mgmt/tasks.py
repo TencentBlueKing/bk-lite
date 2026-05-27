@@ -155,7 +155,8 @@ def execute_scheduled_task(scheduled_task_id: int):
 @shared_task(max_retries=0)
 def cleanup_expired_distribution_files_task():
     threshold = timezone.now() - timedelta(days=7)
-    expired_files = DistributionFile.objects.filter(created_at__lt=threshold)
+    # 仅清理临时文件（is_permanent=False），永久文件不清理
+    expired_files = DistributionFile.objects.filter(created_at__lt=threshold, is_permanent=False)
     total_count = expired_files.count()
     if total_count == 0:
         logger.info("[cleanup_expired_distribution_files_task] 没有过期文件需要清理")

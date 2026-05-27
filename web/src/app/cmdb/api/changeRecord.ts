@@ -19,10 +19,20 @@ export const useChangeRecordApi = () => {
   const getChangeRecordEnumData = () =>
     get('/cmdb/api/change_record/enum_data/');
 
+  // 获取变更场景枚举
+  const getChangeRecordScenarioEnum = () =>
+    get('/cmdb/api/change_record/enum_scenarios/');
+
+  // 导出变更记录（按当前过滤条件）
+  const exportChangeRecords = (params?: any) =>
+    get('/cmdb/api/change_record/export/', { params, responseType: 'blob' });
+
   return {
     getChangeRecords,
     getInstanceChangeRecords,
     getChangeRecordDetail,
     getChangeRecordEnumData,
+    getChangeRecordScenarioEnum,
+    exportChangeRecords,
   };
 };

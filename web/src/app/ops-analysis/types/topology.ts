@@ -188,6 +188,7 @@ export interface NodeConfPanelProps {
   readonly?: boolean;
   visible?: boolean;
   title?: string;
+  builtinNamespaceId?: number;
   onClose?: () => void;
   onConfirm?: (values: NodeConfigFormValues) => void;
   onCancel?: () => void;
@@ -297,6 +298,8 @@ export interface ViewConfigFormValues {
   dataSourceParams?: ParamItem[];
   filterBindings?: FilterBindings;
   selectedFields?: string[];
+  topNLabelField?: string;
+  topNValueField?: string;
   unit?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
@@ -318,6 +321,9 @@ export interface NodeConfigFormValues {
   chartType?: string;
   dataSource?: number;
   dataSourceParams?: ParamItem[];
+  builtinNamespaceId?: number;
+  topNLabelField?: string;
+  topNValueField?: string;
   width?: number;
   height?: number;
   backgroundColor?: string;

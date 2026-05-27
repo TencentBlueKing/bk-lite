@@ -9,6 +9,7 @@ interface TaskOverview {
   total: number;
   normal: number;
   error: number;
+  partial: number;
   recent_sync_at: string | null;
   covered_models: number;
 }
@@ -82,6 +83,7 @@ const CollectionStats: React.FC = () => {
     total: 0,
     normal: 0,
     error: 0,
+    partial: 0,
     recent_sync_at: null,
     covered_models: 0,
   };
@@ -132,6 +134,19 @@ const CollectionStats: React.FC = () => {
       ),
     },
     {
+      key: 'partial',
+      label: t('Collection.stats.partialTasks'),
+      value: o.partial,
+      iconBg: '#FFF7E6',
+      icon: (
+        <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
+          <circle cx="14" cy="14" r="10" fill="#FFF7E6" />
+          <path d="M14 8V14.5" stroke="#F7BA1E" strokeWidth="2.2" strokeLinecap="round" />
+          <circle cx="14" cy="18" r="1.2" fill="#F7BA1E" />
+        </svg>
+      ),
+    },
+    {
       key: 'coveredModels',
       label: t('Collection.stats.coveredModels'),
       value: o.covered_models,
@@ -165,7 +180,7 @@ const CollectionStats: React.FC = () => {
   return (
     <div className="px-2 pt-3 shrink-0">
       {expanded && (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
           {cards.map((c) => (
             <div
               key={c.key}

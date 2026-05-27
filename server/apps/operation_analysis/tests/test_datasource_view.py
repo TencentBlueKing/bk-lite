@@ -35,6 +35,18 @@ def _build_instance(groups=(1,), rest_api="monitor/query_latest_active_alerts"):
     )
 
 
+def _build_namespace(namespace_id):
+    return SimpleNamespace(
+        id=namespace_id,
+        name=f"ns-{namespace_id}",
+        enable_tls=False,
+        account="account",
+        decrypt_password="password",
+        domain="127.0.0.1:4222",
+        namespace="bk_lite",
+    )
+
+
 def _build_view_response(request, monkeypatch, downstream_result):
     captured = {}
 
@@ -270,3 +282,52 @@ def test_get_source_data_rejects_invalid_runtime_query_fields(authenticated_user
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert payload["result"] is False
     assert "page 必须大于 0" in payload["message"]
+
+
+@pytest.mark.django_db
+def test_get_source_data_rejects_namespace_when_datasource_has_no_namespaces(authenticated_user, monkeypatch):
+    authenticated_user.is_superuser = True
+    request = _build_request(authenticated_user, data={"namespace_id": 3})
+
+    monkeypatch.setattr(
+        datasource_view.DataSourceAPIModelViewSet,
+        "get_object",
+        lambda self: _build_instance(),
+    )
+
+    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "get_source_data"})(request, pk="1")
+    response.render()
+    payload = json.loads(response.rendered_content)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert payload["result"] is False
+    assert payload["message"] == "数据源未关联命名空间"
+
+
+@pytest.mark.django_db
+def test_get_source_data_rejects_unassociated_namespace(authenticated_user, monkeypatch):
+    authenticated_user.is_superuser = True
+    request = _build_request(authenticated_user, data={"namespace_id": 3})
+
+    monkeypatch.setattr(
+        datasource_view.DataSourceAPIModelViewSet,
+        "get_object",
+        lambda self: SimpleNamespace(
+            groups=[1],
+            rest_api="monitor/query_latest_active_alerts",
+            params=[
+                {"name": "limit", "type": "number", "value": 10, "filterType": "params"},
+                {"name": "time_range", "type": "timeRange", "value": 10080, "filterType": "params"},
+                {"name": "group_by", "type": "string", "value": "day", "filterType": "fixed"},
+            ],
+            namespaces=SimpleNamespace(all=lambda: [_build_namespace(9)]),
+        ),
+    )
+
+    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "get_source_data"})(request, pk="1")
+    response.render()
+    payload = json.loads(response.rendered_content)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert payload["result"] is False
+    assert payload["message"] == "数据源未关联所选命名空间"

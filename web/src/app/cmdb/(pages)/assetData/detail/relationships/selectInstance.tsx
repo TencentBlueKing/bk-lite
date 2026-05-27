@@ -255,7 +255,7 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
     const cancelRelate = async (id: unknown) => {
       confirm({
         title: t('disassociationTitle'),
-        content: t('common.deleteContent'),
+        content: t('common.disassociationContent'),
         centered: true,
         onOk() {
           return new Promise(async (resolve) => {

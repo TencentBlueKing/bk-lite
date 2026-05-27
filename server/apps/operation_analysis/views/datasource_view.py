@@ -5,7 +5,7 @@
 from datetime import datetime, timedelta
 
 from django.http import Http404
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -17,6 +17,8 @@ from apps.operation_analysis.filters.datasource_filters import DataSourceAPIMode
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.serializers.datasource_serializers import (
     DataSourceAPIModelSerializer,
+    DataSourceBriefSerializer,
+    DataSourceDetailSerializer,
     DataSourceTagModelSerializer,
     NameSpaceModelSerializer,
 )
@@ -71,6 +73,12 @@ def _classify_runtime_exception(error):
     message = str(error).strip()
     if message == "未找到可用的命名空间":
         return status.HTTP_500_INTERNAL_SERVER_ERROR, "未找到可用命名空间"
+    if message == "数据源未关联命名空间":
+        return status.HTTP_400_BAD_REQUEST, "数据源未关联命名空间"
+    if message == "数据源未关联所选命名空间":
+        return status.HTTP_400_BAD_REQUEST, "数据源未关联所选命名空间"
+    if message == "命名空间参数无效":
+        return status.HTTP_400_BAD_REQUEST, "命名空间参数无效"
     if "未配置服务器连接" in message:
         return status.HTTP_500_INTERNAL_SERVER_ERROR, "命名空间未配置连接信息"
     if "Module not found func" in message:
@@ -242,7 +250,7 @@ def _resolve_request_params(instance, request_data):
     return resolved
 
 
-class DataSourceTagModelViewSet(ModelViewSet):
+class DataSourceTagModelViewSet(viewsets.ReadOnlyModelViewSet):
     """
     数据源标签
     """
@@ -273,7 +281,18 @@ class NameSpaceModelViewSet(ModelViewSet):
 
     @HasPermission("namespace-View")
     def list(self, request, *args, **kwargs):
-        return super(NameSpaceModelViewSet, self).list(request, *args, **kwargs)
+        queryset = self.filter_queryset(self.get_queryset())
+        ids = [item.strip() for item in (request.query_params.get("ids") or "").split(",") if item.strip()]
+        if ids:
+            queryset = queryset.filter(id__in=ids)
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     @HasPermission("namespace-Add")
     def create(self, request, *args, **kwargs):
@@ -293,7 +312,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
     数据源
     """
 
-    queryset = DataSourceAPIModel.objects.all()
+    queryset = DataSourceAPIModel.objects.prefetch_related("namespaces", "tag").all()
     serializer_class = DataSourceAPIModelSerializer
     ordering_fields = ["id"]
     ordering = ["id"]
@@ -301,6 +320,18 @@ class DataSourceAPIModelViewSet(AuthViewSet):
     pagination_class = CustomPageNumberPagination
     permission_key = "datasource"
     ORGANIZATION_FIELD = "groups"  # 使用 groups 字段作为组织字段
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            mode = (self.request.query_params.get("mode") or "").strip().lower()
+            if mode == "brief":
+                return DataSourceBriefSerializer
+            return DataSourceDetailSerializer
+
+        if self.action == "retrieve":
+            return DataSourceDetailSerializer
+
+        return super().get_serializer_class()
 
     @HasPermission("data_source-View")
     @action(detail=False, methods=["post"], url_path=r"get_source_data/(?P<pk>[^/.]+)")
@@ -359,6 +390,9 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         queryset = self.filter_queryset(self.get_queryset())
         _, _, _, query = self.filter_by_group(queryset, request, request.user)
         queryset = queryset.filter(query).order_by(self.ORDERING_FIELD)
+        ids = [item.strip() for item in (request.query_params.get("ids") or "").split(",") if item.strip()]
+        if ids:
+            queryset = queryset.filter(id__in=ids)
         return self._list(queryset)
 
     @HasPermission("data_source-Add")

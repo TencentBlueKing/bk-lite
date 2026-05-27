@@ -334,13 +334,16 @@ class IncidentModelViewSet(AuthViewSet):
         if not incident_id_list:
             return WebUtils.response_error(error_message="incident_id参数不能为空")
 
-        operator = IncidentOperator(user=self.request.user.username)
-        result_list = {}
-        status_list = []
         allowed_incident_ids = set(
             self._get_permission_filtered_queryset(request).filter(incident_id__in=incident_id_list).values_list(
                 "incident_id", flat=True)
         )
+        operator = IncidentOperator(
+            user=self.request.user.username,
+            allowed_incident_ids=allowed_incident_ids,
+        )
+        result_list = {}
+        status_list = []
 
         for incident_id in incident_id_list:
             if incident_id not in allowed_incident_ids:

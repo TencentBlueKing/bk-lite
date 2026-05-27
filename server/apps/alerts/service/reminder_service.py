@@ -5,7 +5,7 @@
 import json
 
 from django.utils import timezone
-from django.db import transaction
+from django.db import transaction, connection
 from datetime import timedelta
 from typing import Dict, Any, Optional, Tuple
 
@@ -295,73 +295,79 @@ class ReminderService:
         """检查并处理需要发送的提醒"""
         processed = 0
         success = 0
-        now = timezone.now()
 
         try:
-            # 获取需要发送提醒的任务
-            pending_reminders = AlertReminderTask.objects.filter(
-                is_active=True,
-                next_reminder_time__lte=now,
-            ).select_related("alert", "assignment")
+            pending_reminder_ids = list(
+                AlertReminderTask.objects.filter(
+                    is_active=True,
+                    next_reminder_time__lte=timezone.now(),
+                ).values_list("id", flat=True)
+            )
 
-            for reminder in pending_reminders:
-                processed += 1
+            select_for_update_kwargs = {}
+            if connection.features.has_select_for_update_skip_locked:
+                select_for_update_kwargs["skip_locked"] = True
 
+            for reminder_id in pending_reminder_ids:
                 try:
-                    if reminder.alert.status != AlertStatus.PENDING:
-                        reminder.is_active = False
-                        reminder.save(update_fields=["is_active", "updated_at"])
-                        logger.info(
-                            "提醒任务因告警状态非待响应而停用: alert_id=%s, status=%s",
-                            reminder.alert.alert_id,
-                            reminder.alert.status,
-                        )
-                        continue
-
-                    effective_max_reminders = cls._get_effective_max_reminders(
-                        reminder
-                    )
-
-                    if (
-                        effective_max_reminders > 0
-                        and reminder.reminder_count >= effective_max_reminders
-                    ):
-                        reminder.is_active = False
-                        reminder.save(update_fields=["is_active", "updated_at"])
-                        logger.info(
-                            "提醒任务达到最大次数，自动停用: alert_id=%s, assignment_id=%s, max_count=%s",
-                            reminder.alert.alert_id,
-                            reminder.assignment_id,
-                            effective_max_reminders,
-                        )
-                        continue
-
-                    # 发送提醒通知
-                    if cls._send_reminder_notification(
-                        assignment=reminder.assignment, alert=reminder.alert
-                    ):
-                        # 更新提醒记录
-                        reminder.reminder_count += 1
-                        reminder.last_reminder_time = now
-
-                        # 计算下次提醒时间
-                        if (
-                            effective_max_reminders <= 0
-                            or reminder.reminder_count < effective_max_reminders
-                        ):
-                            reminder.next_reminder_time = now + timedelta(
-                                minutes=reminder.current_frequency_minutes
+                    with transaction.atomic():
+                        reminder = (
+                            AlertReminderTask.objects.select_for_update(
+                                **select_for_update_kwargs
                             )
-                        else:
-                            # 达到最大次数，停止提醒
-                            reminder.is_active = False
+                            .select_related("alert", "assignment")
+                            .filter(id=reminder_id, is_active=True)
+                            .first()
+                        )
 
-                        reminder.save()
-                        success += 1
+                        if not reminder:
+                            continue
+
+                        if reminder.next_reminder_time > timezone.now():
+                            continue
+
+                        processed += 1
+
+                        if reminder.alert.status != AlertStatus.PENDING:
+                            reminder.is_active = False
+                            reminder.save(update_fields=["is_active", "updated_at"])
+                            logger.info(
+                                "提醒任务因告警状态非待响应而停用: alert_id=%s, status=%s",
+                                reminder.alert.alert_id,
+                                reminder.alert.status,
+                            )
+                            continue
+
+                        effective_max_reminders = cls._get_effective_max_reminders(
+                            reminder
+                        )
+
+                        if (
+                            effective_max_reminders > 0
+                            and reminder.reminder_count >= effective_max_reminders
+                        ):
+                            reminder.is_active = False
+                            reminder.save(update_fields=["is_active", "updated_at"])
+                            logger.info(
+                                "提醒任务达到最大次数，自动停用: alert_id=%s, assignment_id=%s, max_count=%s",
+                                reminder.alert.alert_id,
+                                reminder.assignment_id,
+                                effective_max_reminders,
+                            )
+                            continue
+
+                        if cls._send_reminder_notification(
+                            assignment=reminder.assignment,
+                            alert=reminder.alert,
+                            reminder_id=reminder.id,
+                        ):
+                            success += 1
 
                 except Exception as e:
                     logger.error(
-                        f"处理提醒任务失败: reminder_id={reminder.alert.alert_id}, error={str(e)}"
+                        "处理提醒任务失败: reminder_id=%s, error=%s",
+                        reminder_id,
+                        str(e),
                     )
 
         except Exception as e:
@@ -371,7 +377,10 @@ class ReminderService:
 
     @classmethod
     def _send_reminder_notification(
-        cls, assignment: AlertAssignment, alert: Alert
+        cls,
+        assignment: AlertAssignment,
+        alert: Alert,
+        reminder_id: Optional[int] = None,
     ) -> bool:
         """发送提醒通知"""
         try:
@@ -431,14 +440,109 @@ class ReminderService:
             # 移动导入到函数内部避免循环导入
             from apps.alerts.tasks import sync_notify
 
-            # 异步发送通知
-            transaction.on_commit(lambda: sync_notify.delay(channel_params))
+            def enqueue_and_mark() -> bool:
+                try:
+                    sync_notify.delay(channel_params)
+                    if reminder_id is not None:
+                        return cls._advance_reminder_after_enqueue(reminder_id)
+                    return True
+                except Exception:
+                    logger.exception(
+                        "提醒通知任务投递失败: reminder_id=%s, assignment_id=%s, alert_id=%s",
+                        reminder_id,
+                        assignment.id,
+                        alert.alert_id,
+                    )
+                    return False
 
-            return True
+            # 有外层事务时，提交后再投递，并仅在入队成功后推进提醒状态
+            if transaction.get_connection().in_atomic_block:
+                transaction.on_commit(enqueue_and_mark)
+                return True
 
-        except Exception as e:  # noqa
-            import traceback
-            logger.error(f"发送提醒通知失败: reminder_id={assignment.id}, error={traceback.format_exc()}")
+            return enqueue_and_mark()
+
+        except Exception:  # noqa
+            logger.error(
+                "发送提醒通知失败: reminder_id=%s, assignment_id=%s, alert_id=%s",
+                reminder_id,
+                assignment.id,
+                alert.alert_id,
+                exc_info=True,
+            )
+            return False
+
+    @classmethod
+    def _advance_reminder_after_enqueue(cls, reminder_id: int) -> bool:
+        """仅在通知任务成功入队后推进提醒状态。"""
+        try:
+            with transaction.atomic():
+                reminder = (
+                    AlertReminderTask.objects.select_for_update()
+                    .select_related("alert", "assignment")
+                    .filter(id=reminder_id)
+                    .first()
+                )
+
+                if not reminder:
+                    logger.warning("提醒任务不存在，无法推进状态: reminder_id=%s", reminder_id)
+                    return False
+
+                if not reminder.is_active:
+                    logger.info("提醒任务已停用，跳过状态推进: reminder_id=%s", reminder_id)
+                    return True
+
+                if reminder.alert.status != AlertStatus.PENDING:
+                    reminder.is_active = False
+                    reminder.save(update_fields=["is_active", "updated_at"])
+                    logger.info(
+                        "提醒任务入队后因告警状态非待响应而停用: alert_id=%s, status=%s",
+                        reminder.alert.alert_id,
+                        reminder.alert.status,
+                    )
+                    return True
+
+                effective_max_reminders = cls._get_effective_max_reminders(reminder)
+                if (
+                    effective_max_reminders > 0
+                    and reminder.reminder_count >= effective_max_reminders
+                ):
+                    reminder.is_active = False
+                    reminder.save(update_fields=["is_active", "updated_at"])
+                    logger.info(
+                        "提醒任务入队后发现已达到最大次数，自动停用: alert_id=%s, assignment_id=%s, max_count=%s",
+                        reminder.alert.alert_id,
+                        reminder.assignment_id,
+                        effective_max_reminders,
+                    )
+                    return True
+
+                now = timezone.now()
+                reminder.reminder_count += 1
+                reminder.last_reminder_time = now
+                update_fields = ["reminder_count", "last_reminder_time", "updated_at"]
+
+                if (
+                    effective_max_reminders <= 0
+                    or reminder.reminder_count < effective_max_reminders
+                ):
+                    reminder.next_reminder_time = now + timedelta(
+                        minutes=reminder.current_frequency_minutes
+                    )
+                    update_fields.append("next_reminder_time")
+                else:
+                    reminder.is_active = False
+                    update_fields.append("is_active")
+
+                reminder.save(update_fields=update_fields)
+                return True
+
+        except Exception:
+            logger.error(
+                "推进提醒状态失败: reminder_id=%s",
+                reminder_id,
+                exc_info=True,
+            )
             return False
 
     @staticmethod

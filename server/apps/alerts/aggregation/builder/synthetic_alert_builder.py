@@ -3,6 +3,7 @@ import uuid
 from typing import Any, Dict, Optional
 
 from apps.alerts.constants import AlertStatus, AlarmStrategyType
+from apps.alerts.aggregation.builder.alert_builder import AlertBuilder
 from apps.alerts.models import Alert
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.utils.util import str_to_md5
@@ -74,5 +75,5 @@ class SyntheticAlertBuilder:
             fingerprint=fingerprint,
             group_by_field=AlarmStrategyType.MISSING_DETECTION,
             rule_id=str(strategy.id),
-            team=strategy.dispatch_team,
+            team=AlertBuilder._get_safe_strategy_team(strategy),
         )

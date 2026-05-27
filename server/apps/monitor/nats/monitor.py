@@ -3,29 +3,37 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import Optional
 
-import nats_client
-from rest_framework import serializers
 from django.db.models import Count, Q
-from apps.core.utils.time_util import format_timestamp
-from apps.core.utils.loader import LanguageLoader
+from rest_framework import serializers
 
-from apps.monitor.models import MonitorAlert, MonitorInstance, MonitorObject, MonitorObjectType, Metric, MetricGroup, MonitorPlugin
+import nats_client
+from apps.core.logger import nats_logger as logger
+from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.permission_utils import check_instance_permission, get_permission_rules, get_permissions_rules, permission_filter
+from apps.core.utils.time_util import format_timestamp
+from apps.monitor.constants.language import LanguageConstants
+from apps.monitor.constants.permission import PermissionConstants
+from apps.monitor.models import (
+    CollectConfig,
+    Metric,
+    MetricGroup,
+    MonitorAlert,
+    MonitorAlertMetricSnapshot,
+    MonitorEvent,
+    MonitorInstance,
+    MonitorObject,
+    MonitorObjectType,
+    MonitorPlugin,
+    MonitorPolicy,
+    PolicyInstanceBaseline,
+)
 from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, MetricSerializer
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
-from apps.monitor.serializers.plugin import MonitorPluginSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
+from apps.monitor.serializers.plugin import MonitorPluginSerializer
 from apps.monitor.services.metrics import Metrics
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
-from apps.core.utils.permission_utils import (
-    check_instance_permission,
-    get_permission_rules,
-    get_permissions_rules,
-    permission_filter,
-)
-from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
-from apps.core.logger import nats_logger as logger
-from apps.monitor.constants.language import LanguageConstants
 
 
 def _normalize_monitor_query_data(query_data: dict) -> dict:
@@ -89,6 +97,14 @@ def _normalize_filter_values(value, field_name: str):
     if isinstance(value, str):
         return [item.strip() for item in value.split(",") if item.strip()]
     raise ValueError(f"{field_name} 必须是字符串或列表")
+
+
+def _build_vm_query_failure_result(resp: dict, default_message: str):
+    error_message = resp.get("error") or resp.get("message") or default_message
+    error_type = resp.get("errorType")
+    if error_type:
+        error_message = f"{error_type}: {error_message}"
+    return {"result": False, "data": [], "message": error_message}
 
 
 def _normalize_step(step):
@@ -991,7 +1007,7 @@ def mm_query_range(query: str, time_range: list, step="5m", *args, **kwargs):
     start_time = format_timestamp(start_time)
     end_time = format_timestamp(end_time)
     resp = VictoriaMetricsAPI().query_range(query, start_time, end_time, step)
-    if resp["status"] == "success":
+    if resp.get("status") == "success":
         _result = resp["data"]["result"]
         if _result:
             values = _result[0].get("values", [])
@@ -1001,15 +1017,14 @@ def mm_query_range(query: str, time_range: list, step="5m", *args, **kwargs):
         data = []
         for _value in values:
             data.append({"name": _value[0], "value": _value[1]})
-    else:
-        data = []
-    return {"result": True, "data": data, "message": ""}
+        return {"result": True, "data": data, "message": ""}
+    return _build_vm_query_failure_result(resp, "查询时间范围指标数据失败")
 
 
 @nats_client.register
 def mm_query(query: str, step="5m", *args, **kwargs):
     resp = VictoriaMetricsAPI().query(query, step)
-    if resp["status"] == "success":
+    if resp.get("status") == "success":
         _result = resp["data"]["result"]
         if _result:
             values = _result[0].get("value", [])
@@ -1019,6 +1034,125 @@ def mm_query(query: str, step="5m", *args, **kwargs):
         data = []
         if values:
             data.append({"name": values[0], "value": values[-1]})
-    else:
-        data = []
-    return {"result": True, "data": data, "message": ""}
+        return {"result": True, "data": data, "message": ""}
+    return _build_vm_query_failure_result(resp, "查询单个指标数据失败")
+
+
+@nats_client.register
+def get_monitor_statistics(user_info=None, **kwargs):
+    """监控中心总览统计
+
+    返回资源/能力/告警三大维度全部计数指标，供 operation_analysis
+    内置仪表盘以 single 值卡片渲染（按 selectedFields 取字段）。
+
+    Args:
+        user_info: { team: int, is_superuser: bool, ... } 由 operation_analysis 注入
+
+    Returns:
+        { "result": True, "data": { 各项计数 ... }, "message": "" }
+    """
+    user_info = user_info or {}
+    team = user_info.get("team")
+    is_superuser = bool(user_info.get("is_superuser"))
+
+    def _scope_instance(qs):
+        if is_superuser or not team:
+            return qs
+        return qs.filter(monitorinstanceorganization__organization=team).distinct()
+
+    def _scope_policy(qs):
+        if is_superuser or not team:
+            return qs
+        return qs.filter(policyorganization__organization=team).distinct()
+
+    # ============ 资源概览 ============
+    monitor_object_total = MonitorObject.objects.count()
+    monitor_object_visible = MonitorObject.objects.filter(is_visible=True).count()
+    monitor_object_category = MonitorObjectType.objects.count()
+
+    instance_qs = _scope_instance(MonitorInstance.objects.filter(is_deleted=False))
+    monitor_instance_total = instance_qs.count()
+    monitor_instance_active = instance_qs.filter(is_active=True).count()
+    monitor_instance_inactive = instance_qs.filter(is_active=False).count()
+
+    # ============ 能力概览 ============
+    plugin_total = MonitorPlugin.objects.count()
+    plugin_builtin = MonitorPlugin.objects.filter(is_pre=True).count()
+    plugin_custom = MonitorPlugin.objects.filter(is_pre=False).count()
+    metric_total = Metric.objects.count()
+    metric_group_total = MetricGroup.objects.count()
+    collect_config_total = (
+        CollectConfig.objects.filter(monitor_instance_id__in=instance_qs.values_list("id", flat=True)).count()
+        if not (is_superuser or not team)
+        else CollectConfig.objects.count()
+    )
+
+    # ============ 告警概览 ============
+    policy_qs = _scope_policy(MonitorPolicy.objects.all())
+    policy_total = policy_qs.count()
+    policy_enabled = policy_qs.filter(enable=True).count()
+    policy_disabled = policy_qs.filter(enable=False).count()
+    # 阈值策略：有 threshold 配置 / 无数据策略：no_data_level 非空
+    policy_threshold = policy_qs.exclude(threshold=[]).count()
+    policy_no_data = policy_qs.exclude(no_data_level="").count()
+
+    alert_qs = MonitorAlert.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)) if not is_superuser else MonitorAlert.objects.all()
+    alert_history = alert_qs.count()
+    alert_current = alert_qs.filter(status="new").count()
+    alert_recovered = alert_qs.filter(status="recovered").count()
+    alert_closed = alert_qs.filter(status="closed").count()
+
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    alert_today = alert_qs.filter(created_at__gte=today_start).count()
+
+    event_qs = MonitorEvent.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)) if not is_superuser else MonitorEvent.objects.all()
+    event_total = event_qs.count()
+    event_today = event_qs.filter(created_at__gte=today_start).count()
+
+    alert_snapshot_total = (
+        MonitorAlertMetricSnapshot.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)).count()
+        if not is_superuser
+        else MonitorAlertMetricSnapshot.objects.count()
+    )
+
+    no_data_baseline_total = (
+        PolicyInstanceBaseline.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)).count()
+        if not is_superuser
+        else PolicyInstanceBaseline.objects.count()
+    )
+
+    return {
+        "result": True,
+        "data": {
+            # 资源
+            "monitor_object_total": monitor_object_total,
+            "monitor_object_visible": monitor_object_visible,
+            "monitor_object_category": monitor_object_category,
+            "monitor_instance_total": monitor_instance_total,
+            "monitor_instance_active": monitor_instance_active,
+            "monitor_instance_inactive": monitor_instance_inactive,
+            # 能力
+            "plugin_total": plugin_total,
+            "plugin_builtin": plugin_builtin,
+            "plugin_custom": plugin_custom,
+            "metric_total": metric_total,
+            "metric_group_total": metric_group_total,
+            "collect_config_total": collect_config_total,
+            # 告警
+            "policy_total": policy_total,
+            "policy_enabled": policy_enabled,
+            "policy_disabled": policy_disabled,
+            "alert_current": alert_current,
+            "alert_history": alert_history,
+            "alert_today": alert_today,
+            "alert_recovered": alert_recovered,
+            "alert_closed": alert_closed,
+            "policy_threshold": policy_threshold,
+            "policy_no_data": policy_no_data,
+            "event_total": event_total,
+            "event_today": event_today,
+            "alert_snapshot_total": alert_snapshot_total,
+            "no_data_baseline_total": no_data_baseline_total,
+        },
+        "message": "",
+    }

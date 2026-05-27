@@ -26,7 +26,13 @@ class OpenFileUploadView(APIView):
     请求:
         POST /api/v1/job_mgmt/api/open/upload_file
         Header: Api-Authorization: <api_secret>
-        Body: multipart/form-data { file: <binary> }
+        Body: multipart/form-data { file: <binary>, permanent: <bool> }
+
+    参数:
+        file: 必填，上传的文件
+        permanent: 可选，是否永久保存（默认 false）
+            - true: 文件永久保存，不会被定时清理
+            - false: 文件在 7 天后自动清理
 
     返回:
         {"result": true, "data": {"file_id": 1, "file_key": "job-files/2026/05/06/xxx.rpm"}}
@@ -45,6 +51,10 @@ class OpenFileUploadView(APIView):
                 {"detail": "未上传文件"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # 解析 permanent 参数（仅对外 API 支持）
+        permanent_str = request.data.get("permanent", "false")
+        is_permanent = str(permanent_str).lower() in ("true", "1", "yes")
 
         original_name = file.name
 
@@ -70,6 +80,7 @@ class OpenFileUploadView(APIView):
         distribution_file = DistributionFile.objects.create(
             original_name=original_name,
             file_key=file_key,
+            is_permanent=is_permanent,
         )
 
         return Response(

@@ -40,6 +40,7 @@ interface UseTableConfigProps {
   unifiedFilterValues?: Record<string, FilterValue>;
   filterBindings?: FilterBindings;
   filterDefinitions?: UnifiedFilterDefinition[];
+  builtinNamespaceId?: number;
   t: (key: string) => string;
 }
 
@@ -58,6 +59,7 @@ export function useTableConfig({
   unifiedFilterValues,
   filterBindings,
   filterDefinitions,
+  builtinNamespaceId,
   t,
 }: UseTableConfigProps) {
   const [filterFields, setFilterFields] = useState<FilterFieldRow[]>([]);
@@ -209,6 +211,14 @@ export function useTableConfig({
         payload.page_size = 20;
       }
 
+      if (
+        builtinNamespaceId !== undefined &&
+        Array.isArray(targetDataSource.namespaces) &&
+        targetDataSource.namespaces.length > 0
+      ) {
+        payload.namespace_id = builtinNamespaceId;
+      }
+
       return payload;
     },
     [
@@ -217,6 +227,7 @@ export function useTableConfig({
       unifiedFilterValues,
       filterBindings,
       filterDefinitions,
+      builtinNamespaceId,
     ],
   );
 

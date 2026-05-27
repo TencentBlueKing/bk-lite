@@ -11,6 +11,22 @@ export const collectNamespaceOptions = (
   dataSources: DatasourceItem[],
   namespaceList: Array<{ id: number; name: string }>,
 ): NamespaceOption[] => {
+  const namespaceIds = collectNamespaceIdsFromLayout(layout, dataSources);
+
+  if (namespaceIds.size === 0) return [];
+
+  return namespaceList
+    .filter((ns) => namespaceIds.has(ns.id))
+    .map((ns) => ({
+      label: ns.name || String(ns.id),
+      value: ns.id,
+    }));
+};
+
+export const collectNamespaceIdsFromLayout = (
+  layout: LayoutItem[],
+  dataSources: DatasourceItem[],
+): Set<number> => {
   const namespaceIds = new Set<number>();
 
   layout.forEach((item) => {
@@ -22,14 +38,7 @@ export const collectNamespaceOptions = (
     }
   });
 
-  if (namespaceIds.size === 0) return [];
-
-  return namespaceList
-    .filter((ns) => namespaceIds.has(ns.id))
-    .map((ns) => ({
-      label: ns.name || String(ns.id),
-      value: ns.id,
-    }));
+  return namespaceIds;
 };
 
 export const datasourceSupportsNamespace = (

@@ -1,10 +1,15 @@
+from io import StringIO
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 from celery.exceptions import Retry, SoftTimeLimitExceeded
+from django.core.management import call_command
+from django.db import IntegrityError
 
 from apps.mlops.constants import TrainJobStatus
 from apps.mlops.models.classification import ClassificationTrainJob
+from apps.mlops.models import AlgorithmConfig
 from apps.mlops.tasks.poll_train_job_status import poll_train_job_status
 from apps.mlops.utils.webhook_client import WebhookError
 
@@ -423,3 +428,44 @@ def test_poll_train_job_status_reschedules_when_generic_exception_hits_on_final_
     assert retry_call_count["count"] == 1
     apply_async_mock.assert_called_once()
     assert apply_async_mock.call_args.kwargs["countdown"] == 300
+
+
+def test_init_algorithm_config_treats_duplicate_create_race_as_existing(monkeypatch):
+    config_root = Path(__file__).resolve().parents[1] / "support-files" / "algorithm-configs"
+    expected_config_count = sum(1 for _ in config_root.glob("*/*.json"))
+
+    class FakeQuerySet:
+        @staticmethod
+        def exists():
+            return False
+
+    class FakeManager:
+        def __init__(self):
+            self.get_or_create_calls = []
+
+        @staticmethod
+        def filter(**kwargs):
+            return FakeQuerySet()
+
+        @staticmethod
+        def create(**kwargs):
+            raise IntegrityError("duplicate key value violates unique constraint")
+
+        def get_or_create(self, **kwargs):
+            self.get_or_create_calls.append(kwargs)
+            return object(), False
+
+    fake_manager = FakeManager()
+    monkeypatch.setattr(AlgorithmConfig, "objects", fake_manager, raising=False)
+
+    stdout = StringIO()
+    stderr = StringIO()
+
+    call_command("init_algorithm_config", stdout=stdout, stderr=stderr)
+
+    output = stdout.getvalue()
+
+    assert stderr.getvalue() == ""
+    assert len(fake_manager.get_or_create_calls) == expected_config_count
+    assert f"skipped_existing={expected_config_count}" in output
+    assert "skipped_invalid=0" in output

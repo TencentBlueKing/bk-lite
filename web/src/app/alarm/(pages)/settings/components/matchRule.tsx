@@ -26,6 +26,7 @@ interface MatchRuleProps {
   onChange?: (val: PolicyItem[][]) => void;
   ruleOptions?: { name: string; verbose_name: string }[];
   conditionOptions?: Record<string, { name: string; desc: string }[]>;
+  levelType?: 'alert' | 'event' | 'incident';
 }
 
 const RulesMatch: React.FC<MatchRuleProps> = ({
@@ -33,9 +34,10 @@ const RulesMatch: React.FC<MatchRuleProps> = ({
   onChange,
   ruleOptions,
   conditionOptions,
+  levelType = 'event',
 }) => {
   const { getAlertSources } = useSourceApi();
-  const { levelListEvent } = useCommon();
+  const { levelMeta } = useCommon();
   const { t } = useTranslation();
   const [sourceList, setSourceList] = useState<SourceItem[]>([]);
   const [sourceLoading, setSourceLoading] = useState<boolean>(false);
@@ -57,6 +59,7 @@ const RulesMatch: React.FC<MatchRuleProps> = ({
       value: undefined,
     },
   ];
+  const levelOptions = levelMeta[levelType]?.list || [];
 
   useEffect(() => {
     if (value?.length) {
@@ -188,7 +191,7 @@ const RulesMatch: React.FC<MatchRuleProps> = ({
                             }}
                           >
                             {i.key === 'level' &&
-                              levelListEvent.map(
+                              levelOptions.map(
                                 ({ level_id, level_display_name }) => (
                                   <Option key={level_id} value={level_id}>
                                     {level_display_name}

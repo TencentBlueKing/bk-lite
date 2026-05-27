@@ -13,6 +13,7 @@ from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusTy
 from apps.cmdb.models import CREATE_INST, UPDATE_INST, DELETE_INST, EXECUTE
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
+from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE
 from apps.cmdb.utils.change_record import create_change_record
 from apps.cmdb.utils.base import get_current_team_from_request
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -31,6 +32,27 @@ class CollectModelService(object):
     DELAY_SYNC_THRESHOLD_MINUTES = 15
     # 延迟补跑等待时长（秒）
     DELAY_SYNC_COUNTDOWN_SECONDS = 4 * 60
+
+    # 采集任务快照不纳入超大字段 collect_data / format_data / collect_digest，
+    # 避免单条变更记录膨胀到 MB 级。
+    _SNAPSHOT_FIELDS = (
+        "id", "name", "task_type", "driver_type", "model_id",
+        "is_interval", "cycle_value_type", "cycle_value", "scan_cycle",
+        "ip_range", "instances", "access_point", "credential",
+        "timeout", "exec_status", "task_id", "params", "plugin_id",
+        "input_method", "data_cleanup_strategy", "expire_days",
+        "team", "is_system", "is_visible", "system_code",
+    )
+
+    @classmethod
+    def _snapshot_task(cls, instance):
+        """将采集任务序列化为可入库的快照 dict。"""
+        if not instance:
+            return {}
+        snapshot = {field: getattr(instance, field, None) for field in cls._SNAPSHOT_FIELDS}
+        exec_time = getattr(instance, "exec_time", None)
+        snapshot["exec_time"] = exec_time.isoformat() if exec_time else None
+        return snapshot
 
     @staticmethod
     def _safe_int(value):
@@ -390,6 +412,8 @@ class CollectModelService(object):
                 message=f"创建采集任务. 任务名称: {instance.name}",
                 inst_id=instance.id,
                 model_object=OPERATOR_COLLECT_TASK,
+                scenario=COLLECT_AUTOMATION_CHANGE,
+                after_data=cls._snapshot_task(instance),
             )
 
         return instance.id
@@ -441,6 +465,9 @@ class CollectModelService(object):
                 message=f"修改采集任务. 任务名称: {instance.name}",
                 inst_id=instance.id,
                 model_object=OPERATOR_COLLECT_TASK,
+                scenario=COLLECT_AUTOMATION_CHANGE,
+                before_data=cls._snapshot_task(old_instance),
+                after_data=cls._snapshot_task(instance),
             )
 
         return instance.id
@@ -483,6 +510,8 @@ class CollectModelService(object):
                 message=f"删除采集任务. 任务名称: {instance_name}",
                 inst_id=instance_id,
                 model_object=OPERATOR_COLLECT_TASK,
+                scenario=COLLECT_AUTOMATION_CHANGE,
+                before_data=cls._snapshot_task(instance_copy),
             )
 
         cls.delete_team(instance_copy.id, instance_copy.team, [], view_self)
@@ -528,6 +557,7 @@ class CollectModelService(object):
         if instance.exec_status == CollectRunStatusType.RUNNING:
             return WebUtils.response_error(error_message="任务正在执行中!无法重复执行！", status_code=400)
 
+        before_snapshot = cls._snapshot_task(instance)
         cls.repair_host_cloud_snapshot(instance)
         instance.exec_time = now()
         instance.exec_status = CollectRunStatusType.RUNNING
@@ -548,6 +578,9 @@ class CollectModelService(object):
             message=f"执行采集任务. 任务名称: {instance.name}",
             inst_id=instance.id,
             model_object=OPERATOR_COLLECT_TASK,
+            scenario=COLLECT_AUTOMATION_CHANGE,
+            before_data=before_snapshot,
+            after_data=cls._snapshot_task(instance),
         )
 
         return WebUtils.response_success(instance.id)

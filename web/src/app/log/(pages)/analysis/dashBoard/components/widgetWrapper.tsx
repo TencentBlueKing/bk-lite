@@ -302,6 +302,88 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     return [times[0] - duration, times[0]];
   };
 
+  const buildSingleParams = (
+    queryText: string,
+    times: number[],
+    logGroups: React.Key[]
+  ): SearchParams => {
+    const startTime = times[0] ? new Date(times[0]).toISOString() : '';
+    const endTime = times[1] ? new Date(times[1]).toISOString() : '';
+
+    let query = queryText || '*';
+    if (query.includes('${_time}') && startTime && endTime) {
+      const timeInterval = calculateTimeInterval(startTime, endTime);
+      query = query.replace(/\$\{_time\}/g, timeInterval);
+    }
+    query = buildInstanceFilterQuery(query, otherConfig.instanceIds);
+    query = buildContainerFilterQuery(query, otherConfig.containerNames);
+
+    const params: SearchParams = {
+      start_time: startTime,
+      end_time: endTime,
+      field: '_stream',
+      fields_limit: 5,
+      log_groups: logGroups,
+      query: query,
+      limit: 100
+    };
+    params.step = Math.round((times[1] - times[0]) / 100) + 'ms';
+    return params;
+  };
+
+  const isMultiQuery = !!(config?.dataSourceParams?.queries?.length);
+
+  const getParams = (extra: {
+    config: any;
+    times: number[];
+    logGroups: React.Key[];
+  }) => {
+    return buildSingleParams(
+      extra.config.dataSourceParams.query,
+      extra.times,
+      extra.logGroups
+    );
+  };
+
+  const getMultiQueryParamsList = (extra: {
+    config: any;
+    times: number[];
+    logGroups: React.Key[];
+  }): { key: string; params: SearchParams }[] => {
+    const queries: { key: string; query: string; searchQuery?: string }[] =
+      extra.config.dataSourceParams.queries;
+    return queries.map((entry) => ({
+      key: entry.key,
+      params: buildSingleParams(entry.query, extra.times, extra.logGroups)
+    }));
+  };
+
+  const fetchMultiQueryData = async (
+    configObj: any,
+    times: number[],
+    logGroups: React.Key[],
+    signal: AbortSignal
+  ): Promise<Record<string, any>> => {
+    const paramsList = getMultiQueryParamsList({
+      config: configObj,
+      times,
+      logGroups
+    });
+    const results = await Promise.all(
+      paramsList.map((entry) =>
+        getLogs(entry.params, { signal }).then((data) => ({
+          key: entry.key,
+          data
+        }))
+      )
+    );
+    const merged: Record<string, any> = {};
+    for (const r of results) {
+      merged[r.key] = r.data;
+    }
+    return merged;
+  };
+
   const fetchData = async (silent = false) => {
     if (!otherConfig?.groupIds?.length) {
       setLoading(false);
@@ -316,12 +398,22 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       if (!silent) setLoading(true);
       const times = globalTimeRangeRef.current;
 
-      const params = getParams({
-        config,
-        times,
-        logGroups: otherConfig.groupIds
-      });
-      const data = await getLogs(params, { signal: abortController.signal });
+      let data: any;
+      if (isMultiQuery) {
+        data = await fetchMultiQueryData(
+          config,
+          times,
+          otherConfig.groupIds,
+          abortController.signal
+        );
+      } else {
+        const params = getParams({
+          config,
+          times,
+          logGroups: otherConfig.groupIds
+        });
+        data = await getLogs(params, { signal: abortController.signal });
+      }
       setRawData(data);
 
       // KPI 卡片额外拉上一周期数据
@@ -332,14 +424,24 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
         try {
           const [prevStart, prevEnd] = getPrevTimeRange(times);
-          const prevParams = getParams({
-            config,
-            times: [prevStart, prevEnd],
-            logGroups: otherConfig.groupIds
-          });
-          const prevResult = await getLogs(prevParams, {
-            signal: prevAbortController.signal
-          });
+          let prevResult: any;
+          if (isMultiQuery) {
+            prevResult = await fetchMultiQueryData(
+              config,
+              [prevStart, prevEnd],
+              otherConfig.groupIds,
+              prevAbortController.signal
+            );
+          } else {
+            const prevParams = getParams({
+              config,
+              times: [prevStart, prevEnd],
+              logGroups: otherConfig.groupIds
+            });
+            prevResult = await getLogs(prevParams, {
+              signal: prevAbortController.signal
+            });
+          }
           setPrevData(prevResult);
         } catch (err: any) {
           if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED')
@@ -356,37 +458,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         setLoading(false);
       }
     }
-  };
-
-  const getParams = (extra: {
-    config: any;
-    times: number[];
-    logGroups: React.Key[];
-  }) => {
-    const times = extra.times;
-    const startTime = times[0] ? new Date(times[0]).toISOString() : '';
-    const endTime = times[1] ? new Date(times[1]).toISOString() : '';
-
-    // 计算时间间隔并替换query中的${_time}变量
-    let query = extra.config.dataSourceParams.query || '*';
-    if (query.includes('${_time}') && startTime && endTime) {
-      const timeInterval = calculateTimeInterval(startTime, endTime);
-      query = query.replace(/\$\{_time\}/g, timeInterval);
-    }
-    query = buildInstanceFilterQuery(query, otherConfig.instanceIds);
-    query = buildContainerFilterQuery(query, otherConfig.containerNames);
-
-    const params: SearchParams = {
-      start_time: startTime,
-      end_time: endTime,
-      field: '_stream',
-      fields_limit: 5,
-      log_groups: extra.logGroups,
-      query: query,
-      limit: 100
-    };
-    params.step = Math.round((times[1] - times[0]) / 100) + 'ms';
-    return params;
   };
 
   if (loading) {

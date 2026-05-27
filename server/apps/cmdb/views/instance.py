@@ -3,6 +3,10 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.cmdb.constants.constants import PERMISSION_INSTANCES, OPERATE, VIEW
+from apps.cmdb.models.change_record import (
+    INSTANCE_EDIT_CORRECTABLE_SCENARIOS,
+    ORDINARY_ATTRIBUTE_CHANGE,
+)
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.utils.base import (
     format_group_params,
@@ -380,13 +384,19 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             user_groups = format_group_params(current_team)
         allowed_org_ids = self._get_allowed_org_ids(request)
 
+        update_attr = {k: v for k, v in request.data.items() if k != "_scenario"}
+        scenario = request.data.get("_scenario") or ORDINARY_ATTRIBUTE_CHANGE
+        if scenario not in INSTANCE_EDIT_CORRECTABLE_SCENARIOS:
+            scenario = ORDINARY_ATTRIBUTE_CHANGE
+
         inst = InstanceManage.instance_update(
             user_groups,
             request.user.roles,
             int(pk),
-            request.data,
+            update_attr,
             request.user.username,
             allowed_org_ids=allowed_org_ids,
+            scenario=scenario,
         )
         return WebUtils.response_success(inst)
 
@@ -500,7 +510,34 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @HasPermission("asset_info-Delete Associate")
     @action(detail=False, methods=["delete"], url_path="association/(?P<id>.+?)")
     def instance_association_delete(self, request, id: int):
-        InstanceManage.instance_association_delete(int(id), request.user.username)
+        asso_id = int(id)
+        # 删除前必须做与 instance_association_create 对称的对象级权限校验，
+        # 否则仅凭菜单级 "asset_info-Delete Associate" 权限即可越权清除跨组织边。
+        asso_info = InstanceManage.instance_association_by_asso_id(asso_id)
+        if not asso_info:
+            return WebUtils.response_error("关联关系不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        for endpoint_key, endpoint_label in (("src", "源"), ("dst", "目标")):
+            endpoint_inst = asso_info.get(endpoint_key)
+            if not endpoint_inst:
+                return WebUtils.response_error(
+                    f"{endpoint_label}实例不存在",
+                    status_code=status.HTTP_404_NOT_FOUND,
+                )
+            if self.check_creator_and_organizations(request, endpoint_inst):
+                continue
+            if not self.organizations(request, endpoint_inst):
+                return WebUtils.response_error(
+                    f"抱歉！您没有此实例[{endpoint_inst.get('inst_name')}]的权限",
+                    status_code=status.HTTP_403_FORBIDDEN,
+                )
+            if not self.check_instance_permission(request, endpoint_inst, operator=OPERATE):
+                return WebUtils.response_error(
+                    f"抱歉！您没有此实例[{endpoint_inst.get('inst_name')}]的权限",
+                    status_code=status.HTTP_403_FORBIDDEN,
+                )
+
+        InstanceManage.instance_association_delete(asso_id, request.user.username)
         return WebUtils.response_success()
 
     @action(
@@ -794,7 +831,13 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        result = InstanceManage.topo_search_lite(int(inst_id), depth=3)
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
+        result = InstanceManage.topo_search_lite(
+            int(inst_id),
+            depth=3,
+            permission_map=permissions_map,
+            user=request.user,
+        )
         return WebUtils.response_success(result)
 
     @action(
@@ -829,7 +872,14 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        result = InstanceManage.topo_search_expand(inst_id, parent_ids, depth=2)
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
+        result = InstanceManage.topo_search_expand(
+            inst_id,
+            parent_ids,
+            depth=2,
+            permission_map=permissions_map,
+            user=request.user,
+        )
         return WebUtils.response_success(result)
 
     @action(

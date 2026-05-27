@@ -259,29 +259,19 @@ def authorize_target_organizations(request, node, organizations):
     if not target_orgs:
         return None
 
-    include_children = request.COOKIES.get("include_children", "0") == "1"
-    current_team = request.COOKIES.get("current_team")
     user = get_request_user(request)
-
-    if current_team in (None, "") or user is None:
+    if user is None:
         return WebUtils.response_403("User does not have permission to assign nodes to these organizations")
 
-    try:
-        current_team_int = int(current_team)
-    except (TypeError, ValueError):
+    if getattr(user, "is_superuser", False):
+        return None
+
+    user_group_list = getattr(user, "group_list", []) or []
+    if not user_group_list:
         return WebUtils.response_403("User does not have permission to assign nodes to these organizations")
 
-    scope_result = SystemMgmt(is_local_client=True).get_authorized_groups_scoped(
-        {
-            "username": getattr(user, "username", ""),
-            "domain": getattr(user, "domain", "domain.com"),
-            "current_team": current_team_int,
-            "is_superuser": getattr(user, "is_superuser", False),
-        },
-        include_children=include_children,
-    )
-    authorized_groups = scope_result.get("data", []) if isinstance(scope_result, dict) else []
-    allowed_orgs = normalize_orgs(authorized_groups)
+    from apps.system_mgmt.utils.group_utils import GroupUtils
+    allowed_orgs = set(GroupUtils.get_group_with_descendants(user_group_list))
 
     if not target_orgs.issubset(allowed_orgs):
         return WebUtils.response_403("User does not have permission to assign nodes to these organizations")

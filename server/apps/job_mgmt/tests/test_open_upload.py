@@ -95,6 +95,74 @@ class TestOpenFileUploadView:
         assert "file_key" in data["data"]
         assert data["data"]["file_key"].endswith(".rpm")
 
+    def test_upload_permanent_file(self):
+        """上传永久保存文件（permanent=true）"""
+        from apps.job_mgmt.models import DistributionFile
+
+        file = SimpleUploadedFile("permanent-patch.rpm", b"binary content")
+
+        with patch("apps.job_mgmt.views.open_api.async_to_sync") as mock_async:
+            mock_async.return_value = MagicMock()
+            response = self.client.post(
+                self.url,
+                {"file": file, "permanent": "true"},
+                format="multipart",
+                HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        file_id = data["data"]["file_id"]
+
+        # 验证数据库记录的 is_permanent 字段
+        df = DistributionFile.objects.get(id=file_id)
+        assert df.is_permanent is True
+
+    def test_upload_temporary_file_default(self):
+        """上传临时文件（不传 permanent 参数，默认 false）"""
+        from apps.job_mgmt.models import DistributionFile
+
+        file = SimpleUploadedFile("temp-patch.rpm", b"binary content")
+
+        with patch("apps.job_mgmt.views.open_api.async_to_sync") as mock_async:
+            mock_async.return_value = MagicMock()
+            response = self.client.post(
+                self.url,
+                {"file": file},
+                format="multipart",
+                HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        file_id = data["data"]["file_id"]
+
+        # 验证数据库记录的 is_permanent 字段为 False
+        df = DistributionFile.objects.get(id=file_id)
+        assert df.is_permanent is False
+
+    def test_upload_temporary_file_explicit(self):
+        """显式上传临时文件（permanent=false）"""
+        from apps.job_mgmt.models import DistributionFile
+
+        file = SimpleUploadedFile("explicit-temp.rpm", b"binary content")
+
+        with patch("apps.job_mgmt.views.open_api.async_to_sync") as mock_async:
+            mock_async.return_value = MagicMock()
+            response = self.client.post(
+                self.url,
+                {"file": file, "permanent": "false"},
+                format="multipart",
+                HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        file_id = data["data"]["file_id"]
+
+        df = DistributionFile.objects.get(id=file_id)
+        assert df.is_permanent is False
+
 
 @pytest.mark.unit
 @pytest.mark.django_db
