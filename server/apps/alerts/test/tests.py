@@ -39,6 +39,7 @@ from apps.alerts.constants.constants import (
     LogTargetType,
     SessionStatus,
 )
+from apps.alerts.utils.util import str_to_md5
 from apps.alerts.models import Alert, AlertSource, AlarmStrategy, Event, Level, OperatorLog
 from apps.alerts.models.alert_operator import AlertAssignment
 from apps.alerts.models.models import Incident
@@ -509,6 +510,28 @@ class MissingDetectionProcessorTestCase(TestCase):
         AggregationProcessor._normalize_fingerprint(shanghai_result, alert_levels)
 
         self.assertNotEqual(beijing_result["fingerprint"], shanghai_result["fingerprint"])
+
+    def test_normalize_fingerprint_uses_macro_filtered_title(self):
+        alert_levels = [{"level_id": 1, "level_name": "warning", "level_display_name": "预警"}]
+        result = {
+            "fingerprint": "42|resource_name=172.18.0.19|item=snmp_trap:unknown_trap",
+            "alert_level": 1,
+            "event_count": 2,
+            "first_event_description": "",
+            "alert_description": "172.18.0.19",
+        }
+
+        AggregationProcessor._normalize_fingerprint(result, alert_levels)
+
+        self.assertEqual(
+            result["alert_title"],
+            "resource_name=172.18.0.19|item=snmp_trap:unknown_trap 检测到异常",
+        )
+        self.assertEqual(result["alert_description"], "影响范围：172.18.0.19")
+        self.assertEqual(
+            result["fingerprint"],
+            str_to_md5("resource_name=172.18.0.19|item=snmp_trap:unknown_trap"),
+        )
 
     def test_multi_dimension_group_by_creates_distinct_alerts(self):
         now = timezone.now()

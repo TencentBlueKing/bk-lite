@@ -20,6 +20,14 @@ def _load_module(module_name, file_path):
     return module
 
 
+def _load_monitor_nats_module(monkeypatch, module_name):
+    _install_monitor_nats_dependencies(monkeypatch)
+    return _load_module(
+        module_name,
+        Path(__file__).resolve().parents[1] / "nats" / "monitor.py",
+    )
+
+
 def _install_monitor_nats_dependencies(monkeypatch):
     def register(func):
         return func
@@ -58,6 +66,13 @@ def _install_monitor_nats_dependencies(monkeypatch):
         Metric=_StubModel,
         MetricGroup=_StubModel,
         MonitorPlugin=_StubModel,
+        MonitorPolicy=_StubModel,
+        MonitorEvent=_StubModel,
+        MonitorAlertMetricSnapshot=_StubModel,
+        PolicyInstanceBaseline=_StubModel,
+        CollectConfig=_StubModel,
+        MonitorInstanceOrganization=_StubModel,
+        PolicyOrganization=_StubModel,
     )
     _install_module(
         monkeypatch,
@@ -92,11 +107,7 @@ def _install_monitor_nats_dependencies(monkeypatch):
 
 
 def test_create_monitor_object_type_accepts_user_info_and_uses_actor_context(monkeypatch):
-    _install_monitor_nats_dependencies(monkeypatch)
-    module = _load_module(
-        "monitor_nats_create_handlers_test_module",
-        Path(__file__).resolve().parents[1] / "nats" / "monitor.py",
-    )
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_handlers_test_module")
 
     captured = {}
 
@@ -121,11 +132,7 @@ def test_create_monitor_object_type_accepts_user_info_and_uses_actor_context(mon
 
 
 def test_execute_nats_create_uses_domain_from_user_info_for_string_users(monkeypatch):
-    _install_monitor_nats_dependencies(monkeypatch)
-    module = _load_module(
-        "monitor_nats_create_handlers_string_user_test_module",
-        Path(__file__).resolve().parents[1] / "nats" / "monitor.py",
-    )
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_handlers_string_user_test_module")
 
     captured = {}
 
@@ -150,11 +157,7 @@ def test_execute_nats_create_uses_domain_from_user_info_for_string_users(monkeyp
 
 
 def test_create_monitor_object_payload_generates_derivative_instance_id_keys(monkeypatch):
-    _install_monitor_nats_dependencies(monkeypatch)
-    module = _load_module(
-        "monitor_nats_create_monitor_object_payload_test_module",
-        Path(__file__).resolve().parents[1] / "nats" / "monitor.py",
-    )
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_monitor_object_payload_test_module")
 
     captured = {}
 
@@ -172,6 +175,10 @@ def test_create_monitor_object_payload_generates_derivative_instance_id_keys(mon
     class StubMonitorObjectModel:
         objects = types.SimpleNamespace(bulk_create=lambda objects: captured.setdefault("children", list(objects)))
 
+        def __init__(self, **kwargs):
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
     monkeypatch.setattr(module, "MonitorObjectSerializer", StubMonitorObjectSerializer)
     monkeypatch.setattr(module, "MonitorObject", StubMonitorObjectModel)
 
@@ -184,3 +191,105 @@ def test_create_monitor_object_payload_generates_derivative_instance_id_keys(mon
 
     assert captured["payload"]["instance_id_keys"] == ["instance_id"]
     assert captured["children"][0].instance_id_keys == ["instance_id", "pod"]
+
+
+def test_mm_query_range_returns_formatted_values_when_victoriametrics_succeeds(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_mm_query_range_success_test_module")
+
+    class StubVictoriaMetricsAPI:
+        def query_range(self, query, start, end, step):
+            assert (query, start, end, step) == ("up", 1, 2, "1m")
+            return {
+                "status": "success",
+                "data": {
+                    "result": [
+                        {
+                            "values": [[1, "2"], [2, "3"]],
+                        }
+                    ]
+                },
+            }
+
+    monkeypatch.setattr(module, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    result = module.mm_query_range("up", [1, 2], step="1m")
+
+    assert result == {
+        "result": True,
+        "data": [{"name": 1, "value": "2"}, {"name": 2, "value": "3"}],
+        "message": "",
+    }
+
+
+def test_mm_query_range_keeps_empty_result_as_success(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_mm_query_range_empty_test_module")
+
+    class StubVictoriaMetricsAPI:
+        def query_range(self, query, start, end, step):
+            return {"status": "success", "data": {"result": []}}
+
+    monkeypatch.setattr(module, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    result = module.mm_query_range("up", [1, 2])
+
+    assert result == {"result": True, "data": [], "message": ""}
+
+
+def test_mm_query_range_returns_failure_when_victoriametrics_reports_error(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_mm_query_range_failure_test_module")
+
+    class StubVictoriaMetricsAPI:
+        def query_range(self, query, start, end, step):
+            return {
+                "status": "error",
+                "errorType": "bad_data",
+                "error": "parse error",
+            }
+
+    monkeypatch.setattr(module, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    result = module.mm_query_range("bad_query", [1, 2])
+
+    assert result == {"result": False, "data": [], "message": "bad_data: parse error"}
+
+
+def test_mm_query_returns_formatted_single_value_when_victoriametrics_succeeds(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_mm_query_success_test_module")
+
+    class StubVictoriaMetricsAPI:
+        def query(self, query, step):
+            assert (query, step) == ("up", "30s")
+            return {
+                "status": "success",
+                "data": {
+                    "result": [
+                        {
+                            "value": [123, "9"],
+                        }
+                    ]
+                },
+            }
+
+    monkeypatch.setattr(module, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    result = module.mm_query("up", step="30s")
+
+    assert result == {
+        "result": True,
+        "data": [{"name": 123, "value": "9"}],
+        "message": "",
+    }
+
+
+def test_mm_query_returns_failure_when_victoriametrics_reports_error_without_details(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_mm_query_failure_test_module")
+
+    class StubVictoriaMetricsAPI:
+        def query(self, query, step):
+            return {"status": "error"}
+
+    monkeypatch.setattr(module, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    result = module.mm_query("up")
+
+    assert result == {"result": False, "data": [], "message": "查询单个指标数据失败"}

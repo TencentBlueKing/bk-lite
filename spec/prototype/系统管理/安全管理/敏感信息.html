@@ -97,11 +97,18 @@
         display: inline-flex;
         align-items: center;
         gap: 5px;
+        text-decoration: none;
       }
 
       .nav-item.active {
         color: var(--primary);
         background: var(--primary-weak);
+      }
+
+      .nav-item[disabled] {
+        color: #a3adbf;
+        cursor: not-allowed;
+        opacity: 0.7;
       }
 
       .top-right {
@@ -888,11 +895,11 @@
       </div>
 
       <nav class="main-nav" aria-label="系统管理主导航">
-        <button class="nav-item" type="button">◉ 组织</button>
-        <button class="nav-item" type="button">◉ 应用</button>
-        <button class="nav-item" type="button">◉ 通知渠道</button>
-        <button class="nav-item active" type="button">◉ 安全管理</button>
-        <button class="nav-item" type="button">◉ 设置</button>
+        <button class="nav-item active" type="button" onclick="window.location.href='../组织/组织架构.html'">◉ 用户管理</button>
+        <button class="nav-item" type="button" disabled>◉ 应用管理</button>
+        <a class="nav-item" href="../通知渠道/通知渠道.html">◉ 通知渠道</a>
+        <button class="nav-item" type="button" onclick="window.location.href='../集成中心/集成中心.html'">◉ 集成中心</button>
+        <button class="nav-item" type="button" onclick="window.location.href='../设置/门户.html'">◉ 平台设置</button>
       </nav>
 
       <div class="top-right">
@@ -903,13 +910,12 @@
     <main class="container">
       <section class="shell">
         <div class="sub-head">
-          <div class="subtabs" aria-label="安全管理页签">
-            <a class="subtab" href="#">登录设置</a>
+          <div class="subtabs" aria-label="用户管理页签">
+            <a class="subtab" href="../组织/组织架构.html#user-组织架构">组织架构</a>
+            <a class="subtab" href="../组织/组织架构.html#user-超级管理员">超级管理员</a>
+            <a class="subtab" href="../组织/组织架构.html#user-认证源">认证源</a>
+            <a class="subtab" href="../组织/组织架构.html#user-安全策略">安全策略</a>
             <a class="subtab active" href="./敏感信息.html">敏感信息</a>
-            <a class="subtab" href="#">认证源</a>
-            <a class="subtab" href="#">登录日志</a>
-            <a class="subtab" href="#">操作日志</a>
-            <a class="subtab" href="#">错误日志</a>
           </div>
         </div>
 

@@ -3,8 +3,8 @@ from apps.rpc.system_mgmt import SystemMgmt
 
 class SystemMgmtUtils:
     @staticmethod
-    def get_user_all(actor_context, group=None, include_children=False):
-        result = SystemMgmt().get_group_users_scoped(actor_context, group=group, include_children=include_children)
+    def get_user_all(actor_context=None, group=None, include_children=False):
+        result = SystemMgmt().get_group_users(group=group, include_children=include_children)
         return result["data"]
 
     @staticmethod

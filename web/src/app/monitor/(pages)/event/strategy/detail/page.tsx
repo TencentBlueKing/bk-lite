@@ -156,7 +156,7 @@ const StrategyOperation = () => {
       const channelItem = channelList[0];
       const initForm: TableDataItem = {
         organizations: groupId,
-        notice_type_id: channelItem?.id,
+        notice_type_ids: channelItem ? [channelItem.id] : [],
         notice_type: channelItem?.channel_type,
         notice: false,
         period: 5,
@@ -641,10 +641,9 @@ const StrategyOperation = () => {
           : {};
         params.no_data_period = params.no_data_recovery_period = periodValue;
       }
-      if (params.notice_type_id) {
-        params.notice_type =
-          channelList.find((item) => item.id === params.notice_type_id)
-            ?.channel_type || '';
+      if (params.notice_type_ids?.length) {
+        const firstChannel = channelList.find((item) => item.id === params.notice_type_ids![0]);
+        params.notice_type = firstChannel?.channel_type || '';
       }
       params.enable_alerts = _enableAlerts;
       params.recovery_condition = params.recovery_condition || 0;

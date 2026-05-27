@@ -167,6 +167,31 @@
         "uploadDescription": "Only files of xls or xlsx type can be uploaded",
         "baseInfo": "Basic Information",
         "changeRecords": "Change Records",
+        "changeRecord": {
+            "allChanges": "All Changes",
+            "summary": "Summary",
+            "attrCompare": "Attribute Diff",
+            "relationCompare": "Relation Diff",
+            "allFilter": "All",
+            "searchPlaceholder": "Search change content, attribute, operator",
+            "operatorPlaceholder": "Operator",
+            "startDate": "Start Date",
+            "endDate": "End Date",
+            "selectTip": "Select a record to view details",
+            "changeObject": "Object",
+            "changeType": "Type",
+            "changeTime": "Change Time",
+            "changeSummary": "Change Summary",
+            "relationSummary": "Relation Change Summary",
+            "current": "Current",
+            "addRelation": "Add Relation",
+            "removeRelation": "Remove Relation",
+            "noAttrDiff": "This record is a relation change, no attribute diff",
+            "noRelationDiff": "This record is an attribute change, no relation diff",
+            "expandAll": "Expand All",
+            "operatorLabel": "Operator",
+            "message": "Message"
+        },
         "operator": "Operator",
         "action": "Action",
         "modelType": "Model type",
@@ -318,6 +343,8 @@
         "confirm": "Confirm",
         "cancel": "Cancel",
         "accessPoint": "Proxy",
+        "accessPointHelp": "A proxy is the container node that starts the collection task. Configure it under the matching cloud region in Node Management.",
+        "accessPointLink": "Go to Node Management",
         "syncSuccess": "Sync Successfully!",
         "syncFailed": "Sync Failed",
         "ipRange": "IP Range",
@@ -342,7 +369,8 @@
             "timeout": "Timeout",
             "writing": "Writing",
             "forceStop": "Force Stop",
-            "pendingApproval": "Pending Approval"
+            "pendingApproval": "Pending Approval",
+            "partialSuccess": "Partial Success"
         },
         "k8sTask": {
             "title": "Add Task",
@@ -468,6 +496,7 @@
             "totalTasks": "Total Tasks",
             "normalTasks": "Normal",
             "errorTasks": "Errors",
+            "partialTasks": "Partial Success",
             "recentSync": "Recent Sync",
             "coveredModels": "Covered Models",
             "justNow": "just now",
@@ -511,6 +540,17 @@
             "create_edge": "Create Association",
             "delete_edge": "Delete Association",
             "execute": "Execute"
+        },
+        "scenario": "Scenario",
+        "export": "Export",
+        "exportSuccess": "Exported successfully",
+        "exportFailed": "Export failed",
+        "scenarioOpts": {
+            "device_lifecycle": "Device Lifecycle",
+            "relation_change": "Relation Change",
+            "ordinary_attribute_change": "Ordinary Attribute Change",
+            "collect_automation_change": "Collect Automation",
+            "model_management_change": "Model Management Change"
         }
     },
     "subscription": {

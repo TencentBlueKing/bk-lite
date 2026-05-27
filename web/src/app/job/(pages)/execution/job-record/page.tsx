@@ -66,6 +66,7 @@ const JobRecordPage = () => {
   const [autoScroll, setAutoScroll] = useState(false);
   const [scriptDrawerOpen, setScriptDrawerOpen] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
+  const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const formatFilterTime = useCallback((value: Dayjs) => value.format('YYYY-MM-DD HH:mm:ss'), []);
 
@@ -135,8 +136,10 @@ const JobRecordPage = () => {
     [searchFilters, pagination.current, pagination.pageSize, getTimeFilter]
   );
 
-  const fetchDetail = useCallback(async (id: number) => {
-    setDetailLoading(true);
+  const fetchDetail = useCallback(async (id: number, silent = false) => {
+    if (!silent) {
+      setDetailLoading(true);
+    }
     try {
       const res = await getJobRecordDetail(id);
 
@@ -178,7 +181,9 @@ const JobRecordPage = () => {
 
       setDetail(res);
     } finally {
-      setDetailLoading(false);
+      if (!silent) {
+        setDetailLoading(false);
+      }
     }
   }, [getJobRecordDetail]);
 
@@ -263,6 +268,35 @@ const JobRecordPage = () => {
       fetchData();
     }
   }, [pagination.current, pagination.pageSize]);
+
+  // Auto-refresh polling for in-progress job details
+  useEffect(() => {
+    // Only poll when viewing detail and status is pending or running
+    if (!recordId || !detail?.status) {
+      return;
+    }
+    
+    if (detail.status !== 'pending' && detail.status !== 'running') {
+      // Clear any existing timer when status becomes terminal
+      if (pollingTimerRef.current) {
+        clearInterval(pollingTimerRef.current);
+        pollingTimerRef.current = null;
+      }
+      return;
+    }
+    
+    // Start polling every 5 seconds (silent mode - no loading spinner)
+    pollingTimerRef.current = setInterval(() => {
+      fetchDetail(Number(recordId), true);
+    }, 5000);
+    
+    return () => {
+      if (pollingTimerRef.current) {
+        clearInterval(pollingTimerRef.current);
+        pollingTimerRef.current = null;
+      }
+    };
+  }, [detail?.status, recordId, fetchDetail]);
 
   const handleSearchChange = useCallback((filters: SearchFilters) => {
     setSearchFilters(filters);

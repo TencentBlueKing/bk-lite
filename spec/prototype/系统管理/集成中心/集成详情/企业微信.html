@@ -89,11 +89,20 @@
         border-radius: 10px;
         padding: 6px 12px;
         font-size: 14px;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
       }
 
       .nav-item.active {
         color: var(--primary);
         background: var(--primary-weak);
+      }
+
+      .nav-item[disabled] {
+        color: #a3adbf;
+        cursor: not-allowed;
+        opacity: 0.7;
       }
 
       .avatar {
@@ -833,11 +842,12 @@
         <div class="logo-mark">BK</div>
         <button class="switch-app">▦ ▼</button>
       </div>
-      <nav class="main-nav">
-        <button class="nav-item">◉ 组织</button>
-        <button class="nav-item active">◉ 集成中心</button>
-        <button class="nav-item">◉ 安全管理</button>
-        <button class="nav-item">◉ 设置</button>
+      <nav class="main-nav" aria-label="系统管理主导航">
+        <button class="nav-item" type="button" onclick="window.location.href='../../组织/组织架构.html'">◉ 用户管理</button>
+        <button class="nav-item" type="button" disabled>◉ 应用管理</button>
+        <a class="nav-item" href="../../通知渠道/通知渠道.html">◉ 通知渠道</a>
+        <button class="nav-item active" type="button" onclick="window.location.href='../集成中心.html'">◉ 集成中心</button>
+        <button class="nav-item" type="button" onclick="window.location.href='../../设置/门户.html'">◉ 平台设置</button>
       </nav>
       <div class="top-right"><span class="avatar">A</span><span>admin ▼</span></div>
     </header>

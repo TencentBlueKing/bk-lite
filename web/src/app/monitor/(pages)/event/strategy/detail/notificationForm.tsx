@@ -23,7 +23,6 @@ const getChannelIcon = (channelType: string): string => {
   return iconMap[channelType] || 'jiqiren3';
 };
 
-// 根据 channel_type 返回对应的翻译键
 const getChannelTypeKey = (channelType: string): string => {
   const keyMap: Record<string, string> = {
     email: 'monitor.events.channelTypeEmail',
@@ -50,12 +49,17 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
   const { t } = useTranslation();
   const form = Form.useFormInstance<StrategyFields>();
 
-  // 通知渠道变更时清空通知者
-  const handleChannelChange = () => {
-    form.setFieldValue('notice_users', []);
+  const handleChannelChange = (newIds: (string | number)[]) => {
+    form.setFieldValue('notice_type_ids', newIds);
+    const selectedTypes = channelList
+      .filter((ch) => newIds.includes(ch.id))
+      .map((ch) => ch.channel_type);
+    const allNats = selectedTypes.length > 0 && selectedTypes.every((type) => type === 'nats');
+    if (allNats) {
+      form.setFieldValue('notice_users', []);
+    }
   };
 
-  // 将 channelList 转换为 SelectCard 需要的数据格式
   const channelCardData: CardItem[] = useMemo(() => {
     return channelList.map((item) => {
       const tagKey = getChannelTypeKey(item.channel_type);
@@ -100,7 +104,7 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                     {t('monitor.events.notificationChannel')}
                   </span>
                 }
-                name="notice_type_id"
+                name="notice_type_ids"
                 rules={[
                   {
                     required: true,
@@ -111,10 +115,7 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                 {channelList.length ? (
                   <SelectCard
                     data={channelCardData}
-                    onChange={(val) => {
-                      form.setFieldValue('notice_type_id', val);
-                      handleChannelChange();
-                    }}
+                    onChange={handleChannelChange}
                   />
                 ) : (
                   <span>
@@ -133,70 +134,16 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
               <Form.Item
                 noStyle
                 shouldUpdate={(prevValues, currentValues) =>
-                  prevValues.notice_type_id !== currentValues.notice_type_id
+                  prevValues.notice_type_ids !== currentValues.notice_type_ids
                 }
               >
                 {({ getFieldValue }) => {
-                  const selectedChannel = channelList.find(
-                    (item) => item.id === getFieldValue('notice_type_id')
-                  );
-                  const channelType = selectedChannel?.channel_type;
+                  const selectedIds: number[] = getFieldValue('notice_type_ids') || [];
+                  const selectedChannels = channelList.filter((item) => selectedIds.includes(item.id));
+                  const channelTypes = selectedChannels.map((ch) => ch.channel_type);
 
-                  // NATS 渠道不需要通知者
-                  if (channelType === 'nats') {
+                  if (!selectedChannels.length || channelTypes.every((type) => type === 'nats')) {
                     return null;
-                  }
-
-                  if (channelType === 'email') {
-                    return (
-                      <Form.Item<StrategyFields>
-                        label={
-                          <span className="w-[100px]">
-                            {t('monitor.events.notifier')}
-                          </span>
-                        }
-                        name="notice_users"
-                        rules={[
-                          {
-                            required: true,
-                            message: t('common.required')
-                          }
-                        ]}
-                      >
-                        <Select
-                          style={{
-                            width: '100%'
-                          }}
-                          showSearch
-                          allowClear
-                          mode="multiple"
-                          maxTagCount="responsive"
-                          placeholder={t('monitor.events.notifier')}
-                          virtual
-                          filterOption={(input, option) => {
-                            const user = userList.find(
-                              (u) => u.id === option?.value
-                            );
-                            if (!user) return false;
-                            const searchText = input.toLowerCase();
-                            return (
-                              user.display_name?.toLowerCase() || ''
-                            ).includes(searchText);
-                          }}
-                          optionLabelProp="label"
-                        >
-                          {userList.map((item) => (
-                            <Option
-                              value={item.id}
-                              key={item.id}
-                              label={item.display_name}
-                            >
-                              {item.display_name}
-                            </Option>
-                          ))}
-                        </Select>
-                      </Form.Item>
-                    );
                   }
 
                   return (
@@ -215,16 +162,35 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                       ]}
                     >
                       <Select
-                        style={{
-                          width: '100%'
+                        style={{ width: '100%' }}
+                        showSearch
+                        allowClear
+                        mode="multiple"
+                        maxTagCount="responsive"
+                        placeholder={t('monitor.events.notifier')}
+                        virtual
+                        filterOption={(input, option) => {
+                          const user = userList.find(
+                            (u) => u.id === option?.value
+                          );
+                          if (!user) return false;
+                          const searchText = input.toLowerCase();
+                          return (
+                            user.display_name?.toLowerCase() || ''
+                          ).includes(searchText);
                         }}
-                        mode="tags"
-                        placeholder={t(
-                          'monitor.events.notifierTagsPlaceholder'
-                        )}
-                        suffixIcon={null}
-                        open={false}
-                      />
+                        optionLabelProp="label"
+                      >
+                        {userList.map((item) => (
+                          <Option
+                            value={item.id}
+                            key={item.id}
+                            label={item.display_name}
+                          >
+                            {item.display_name}
+                          </Option>
+                        ))}
+                      </Select>
                     </Form.Item>
                   );
                 }}

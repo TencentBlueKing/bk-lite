@@ -97,9 +97,7 @@ class ConfigFileVersionViewSet(GenericViewSet):
             return WebUtils.response_error(error_message="instance_id 不能为空", status_code=status.HTTP_400_BAD_REQUEST)
 
         queryset = self.get_filtered_queryset(request).filter(instance_id=instance_id)
-        data = ConfigFileService.get_file_list(instance_id)
-        visible_paths = set(queryset.values_list("file_path", flat=True))
-        data = [item for item in data if item["file_path"] in visible_paths]
+        data = ConfigFileService.get_file_list(instance_id, base_queryset=queryset)
         serializer = ConfigFileListSerializer(data, many=True)
         return WebUtils.response_success(serializer.data)
 

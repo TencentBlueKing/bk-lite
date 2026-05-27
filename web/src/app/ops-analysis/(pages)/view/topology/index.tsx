@@ -18,6 +18,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useTopologyState } from './hooks/useTopologyState';
 import { useGraphOperations } from './hooks/useGraphOperations';
 import { useContextMenuAndModal } from './hooks/useGraphInteractions';
+import { useTopologyResources } from './hooks/useTopologyResources';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useUnifiedFilter } from '@/app/ops-analysis/hooks/useUnifiedFilter';
 import {
@@ -52,7 +53,14 @@ import {
   getOpsChartTheme,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
-import { collectNamespaceOptionsFromNodes, convertNodesToLayoutItems, buildFiltersFromNodes, syncFilterValuesWithDefinitions } from './utils/namespaceUtils';
+import {
+  convertNodesToLayoutItems,
+  buildFiltersFromNodes,
+  syncFilterValuesWithDefinitions,
+} from './utils/namespaceUtils';
+import {
+  collectTopologyNamespaceIds,
+} from '@/app/ops-analysis/utils/canvasResources';
 
 const Topology = forwardRef<TopologyRef, TopologyProps>(
   ({ selectedTopology }, ref) => {
@@ -94,7 +102,9 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
     const intl = useIntl();
     const state = useTopologyState();
     const dataSourceManager = useDataSourceManager();
-    const { fetchDataSources, namespaceList, fetchNamespaces } = useOpsAnalysis();
+    const {
+      loadCanvasNamespaces,
+    } = useOpsAnalysis();
 
     const {
       definitions,
@@ -107,14 +117,6 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
     useEffect(() => {
       setLocaleData(intl.locale, intl.messages as Record<string, string>);
     }, [intl.locale, intl.messages]);
-
-    useEffect(() => {
-      void fetchDataSources();
-    }, [fetchDataSources]);
-
-    useEffect(() => {
-      void fetchNamespaces();
-    }, [fetchNamespaces]);
 
     const handleNodeRemovedCallback = useCallback(() => {
       rebuildFiltersRef.current?.();
@@ -149,40 +151,23 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
 
     const { handleEdgeConfigConfirm, closeEdgeConfig, handleMenuClick } =
       useContextMenuAndModal(containerRef, state);
-
-    const namespaceOptions = useMemo(() => {
-      return collectNamespaceOptionsFromNodes(
-        state.graphInstance,
-        dataSourceManager.dataSources,
-        namespaceList,
-      );
-    }, [
-      state.graphInstance,
-      dataSourceManager.dataSources,
-      namespaceList,
-      nodeChangeKey,
-    ]);
+    const handleLoadTopologyRef = useRef(handleLoadTopology);
 
     useEffect(() => {
-      if (namespaceOptions.length > 0) {
-        const fallbackNamespaceId = namespaceOptions[0].value;
-        const draftValid =
-          namespaceDraftId !== undefined &&
-          namespaceOptions.some((o) => o.value === namespaceDraftId);
-        const appliedValid =
-          appliedNamespaceId !== undefined &&
-          namespaceOptions.some((o) => o.value === appliedNamespaceId);
-        if (!draftValid) {
-          setNamespaceDraftId(fallbackNamespaceId);
-        }
-        if (!appliedValid) {
-          setAppliedNamespaceId(fallbackNamespaceId);
-        }
-      } else {
-        setNamespaceDraftId(undefined);
-        setAppliedNamespaceId(undefined);
-      }
-    }, [namespaceOptions, namespaceDraftId, appliedNamespaceId]);
+      handleLoadTopologyRef.current = handleLoadTopology;
+    }, [handleLoadTopology]);
+    const {
+      namespaceOptions,
+      syncTopologyCanvasResources,
+    } = useTopologyResources({
+      graphInstance: state.graphInstance,
+      dataSources: dataSourceManager.dataSources,
+      nodeChangeKey,
+      namespaceDraftId,
+      appliedNamespaceId,
+      setNamespaceDraftId,
+      setAppliedNamespaceId,
+    });
 
     const namespaceSelectorElement = useMemo(() => {
       if (namespaceOptions.length <= 1) return undefined;
@@ -276,6 +261,33 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
         dataSourceManager.dataSources,
       ],
     );
+
+    useEffect(() => {
+      if (
+        !state.graphInstance ||
+        namespaceOptions.length === 0 ||
+        appliedNamespaceId !== undefined
+      ) {
+        return;
+      }
+
+      const initialNamespaceId = namespaceOptions[0].value;
+      setNamespaceDraftId(initialNamespaceId);
+      setAppliedNamespaceId(initialNamespaceId);
+      refreshTopologyNodes(
+        'namespace-search',
+        appliedFilterValues,
+        definitions,
+        initialNamespaceId,
+      );
+    }, [
+      state.graphInstance,
+      namespaceOptions,
+      appliedNamespaceId,
+      appliedFilterValues,
+      definitions,
+      refreshTopologyNodes,
+    ]);
 
     const handleFrequencyChange = useCallback(
       (frequency: number) => {
@@ -384,6 +396,13 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       setChartDropPosition(null);
     };
 
+    const handleViewConfigClose = () => {
+      state.setViewConfigVisible(false);
+      if (state.editingNodeData?.isNewNode) {
+        state.setEditingNodeData(null);
+      }
+    };
+
     const handleTopologyViewConfigConfirm = async (
       values: ViewConfigFormValues
     ) => {
@@ -393,27 +412,14 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
         state.setEditingNodeData(null);
         state.setViewConfigVisible(false);
 
-        // Rebuild filters synchronously after node is added (like dashboard's 3-step pipeline)
-        setTimeout(() => {
-          const newDefinitions = buildFiltersFromNodes(
-            state.graphInstance,
-            dataSourceManager.dataSources,
-            definitions
-          );
-          const syncedValues = syncFilterValuesWithDefinitions(newDefinitions, filterValues);
-          const nextAppliedValues = syncFilterValuesWithDefinitions(
-            newDefinitions,
-            appliedFilterValues,
-          );
-
-          setDefinitions(newDefinitions);
-          setFilterValues(syncedValues);
-          setAppliedFilterValues(nextAppliedValues);
-          setNodeChangeKey((prev) => prev + 1);
-
-          // Now fetch the new node's data with correct filter values
+        scheduleTopologyPostMutation(({
+          definitions: newDefinitions,
+          appliedValues: nextAppliedValues,
+          dataSources: canvasDataSources,
+          namespaceId: nextNamespaceId,
+        }) => {
           if (result?.nodeId && result?.valueConfig?.dataSource) {
-            const dataSource = dataSourceManager.dataSources.find(
+            const dataSource = canvasDataSources.find(
               (ds) => ds.id === result.valueConfig?.dataSource,
             );
             const nextValueConfig = {
@@ -446,10 +452,10 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
               nextAppliedValues,
               newDefinitions,
               dataSource,
-              appliedNamespaceId,
+              nextNamespaceId,
             );
           }
-        }, 100);
+        });
       } else {
         await handleViewConfigConfirm(
           values,
@@ -458,7 +464,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           dataSourceManager.dataSources,
           appliedNamespaceId,
         );
-        setTimeout(() => rebuildFiltersFromNodes(), 100);
+        scheduleTopologyPostMutation();
       }
     };
 
@@ -514,32 +520,20 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
         const isSingleValue = selectedNodeType.id === 'single-value' &&
           !!nodeConfig.valueConfig?.dataSource && (nodeConfig.valueConfig?.selectedFields?.length ?? 0) > 0;
         const nodeId = addNewNode(nodeConfig, isSingleValue);
-        setTimeout(() => {
-          const newDefinitions = buildFiltersFromNodes(
-            state.graphInstance,
-            dataSourceManager.dataSources,
-            definitions
-          );
-          const syncedValues = syncFilterValuesWithDefinitions(newDefinitions, filterValues);
-          const nextAppliedValues = syncFilterValuesWithDefinitions(
-            newDefinitions,
-            appliedFilterValues,
-          );
-          setDefinitions(newDefinitions);
-          setFilterValues(syncedValues);
-          setAppliedFilterValues(nextAppliedValues);
-          setNodeChangeKey((prev) => prev + 1);
-
-          // Fetch single-value node data with correct filter values
+        scheduleTopologyPostMutation(({
+          definitions: newDefinitions,
+          appliedValues: nextAppliedValues,
+          namespaceId: nextNamespaceId,
+        }) => {
           if (isSingleValue && nodeId) {
             updateSingleNodeData(
               { ...nodeConfig, id: nodeId },
               nextAppliedValues,
               newDefinitions,
-              appliedNamespaceId,
+              nextNamespaceId,
             );
           }
-        }, 100);
+        });
       } else {
         await handleNodeUpdate(
           values,
@@ -547,7 +541,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           definitions,
           appliedNamespaceId,
         );
-        setTimeout(() => rebuildFiltersFromNodes(), 100);
+        scheduleTopologyPostMutation();
       }
       handleNodeEditClose();
     };
@@ -659,28 +653,76 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       [updateDefinitions, filterValues, setFilterValues],
     );
 
-    const rebuildFiltersFromNodes = useCallback(() => {
-      const newDefinitions = buildFiltersFromNodes(
-        state.graphInstance,
-        dataSourceManager.dataSources,
-        definitions,
+    const resolveTopologyNamespaceId = useCallback((
+      canvasDataSources: DatasourceItem[],
+    ) => {
+      if (namespaceDraftId !== undefined) {
+        return namespaceDraftId;
+      }
+      if (appliedNamespaceId !== undefined) {
+        return appliedNamespaceId;
+      }
+
+      const namespaceIds = Array.from(
+        collectTopologyNamespaceIds(state.graphInstance, canvasDataSources),
       );
-      setFilterValues(
-        syncFilterValuesWithDefinitions(newDefinitions, filterValues),
-      );
-      setAppliedFilterValues((prev) =>
-        syncFilterValuesWithDefinitions(newDefinitions, prev),
-      );
-      setDefinitions(newDefinitions);
-      setNodeChangeKey((prev) => prev + 1);
+      return namespaceIds[0];
+    }, [appliedNamespaceId, namespaceDraftId, state.graphInstance]);
+
+    const scheduleTopologyPostMutation = useCallback((
+      callback?: (payload: {
+        definitions: UnifiedFilterDefinition[];
+        appliedValues: Record<string, FilterValue>;
+        dataSources: DatasourceItem[];
+        namespaceId: number | undefined;
+      }) => void,
+    ) => {
+      setTimeout(() => {
+        const newDefinitions = buildFiltersFromNodes(
+          state.graphInstance,
+          dataSourceManager.dataSources,
+          definitions,
+        );
+        const syncedValues = syncFilterValuesWithDefinitions(newDefinitions, filterValues);
+        const nextAppliedValues = syncFilterValuesWithDefinitions(
+          newDefinitions,
+          appliedFilterValues,
+        );
+
+        setDefinitions(newDefinitions);
+        setFilterValues(syncedValues);
+        setAppliedFilterValues(nextAppliedValues);
+        setNodeChangeKey((prev) => prev + 1);
+        void syncTopologyCanvasResources().then((canvasDataSources) => {
+          callback?.({
+            definitions: newDefinitions,
+            appliedValues: nextAppliedValues,
+            dataSources: canvasDataSources,
+            namespaceId: resolveTopologyNamespaceId(canvasDataSources),
+          });
+        });
+      }, 100);
     }, [
-      state.graphInstance,
+      appliedFilterValues,
       dataSourceManager.dataSources,
       definitions,
       filterValues,
+      resolveTopologyNamespaceId,
       setDefinitions,
       setFilterValues,
+      syncTopologyCanvasResources,
+      state.graphInstance,
     ]);
+
+    const scheduleTopologyInitialization = useCallback((
+      callback: () => void,
+    ) => {
+      setTimeout(callback, 100);
+    }, []);
+
+    const rebuildFiltersFromNodes = useCallback(() => {
+      scheduleTopologyPostMutation();
+    }, [scheduleTopologyPostMutation]);
 
     useEffect(() => {
       rebuildFiltersRef.current = rebuildFiltersFromNodes;
@@ -711,10 +753,11 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       }
 
       if (selectedTopology?.data_id && state.graphInstance) {
-        handleLoadTopology(selectedTopology.data_id).then((loadedFilters) => {
+        handleLoadTopologyRef.current(selectedTopology.data_id).then(async (loadedFilters) => {
+          const canvasDataSources = await syncTopologyCanvasResources();
           const autoBuiltFilters = buildFiltersFromNodes(
             state.graphInstance,
-            dataSourceManager.dataSources,
+            canvasDataSources,
             loadedFilters
           );
 
@@ -728,26 +771,28 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           }
 
           // Step 2: Determine initial namespace
-          const nsOptions = collectNamespaceOptionsFromNodes(
-            state.graphInstance,
-            dataSourceManager.dataSources,
-            namespaceList
+          const namespaceIds = Array.from(
+            collectTopologyNamespaceIds(
+              state.graphInstance,
+              canvasDataSources,
+            ),
           );
-          const initialNamespaceId = nsOptions.length > 0 ? nsOptions[0].value : undefined;
+          const initialNamespaceId = namespaceIds.length > 0 ? namespaceIds[0] : undefined;
           setNamespaceDraftId(initialNamespaceId);
           setAppliedNamespaceId(initialNamespaceId);
 
           // Step 3: Fetch all node data with correct filter values
-          setTimeout(() => {
+          scheduleTopologyInitialization(() => {
             refreshAllSingleValueNodes(syncedValues, autoBuiltFilters, initialNamespaceId);
-            refreshAllChartNodes(syncedValues, autoBuiltFilters, dataSourceManager.dataSources, initialNamespaceId);
+            refreshAllChartNodes(syncedValues, autoBuiltFilters, canvasDataSources, initialNamespaceId);
             finishInitialization();
-          }, 100);
+          });
         });
       } else if (!selectedTopology?.data_id && state.graphInstance) {
-        setTimeout(() => {
+        void loadCanvasNamespaces([]);
+        scheduleTopologyInitialization(() => {
           finishInitialization();
-        }, 100);
+        });
       }
 
       return () => {
@@ -756,7 +801,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           refreshTimerRef.current = null;
         }
       };
-    }, [selectedTopology?.data_id, state.graphInstance]);
+    }, [selectedTopology?.data_id, state.graphInstance, loadCanvasNamespaces, scheduleTopologyInitialization, syncTopologyCanvasResources]);
 
     const handleSelectMode = () => {
       state.setIsSelectMode(!state.isSelectMode);
@@ -930,6 +975,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           title={getNodeTitle()}
           nodeType={getNodeType()}
           readonly={getNodeReadonly()}
+          builtinNamespaceId={namespaceDraftId}
           editingNodeData={addNodeVisible ? null : state.editingNodeData}
           onClose={handleNodeEditClose}
           onConfirm={handleNodeConfirm}
@@ -945,8 +991,9 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
         <ViewConfig
           open={state.viewConfigVisible}
           item={state.editingNodeData}
-          onClose={() => state.setViewConfigVisible(false)}
+          onClose={handleViewConfigClose}
           onConfirm={handleTopologyViewConfigConfirm}
+          builtinNamespaceId={namespaceDraftId}
           dataSourceManager={dataSourceManager}
           filterDefinitions={definitions}
           unifiedFilterValues={filterValues}

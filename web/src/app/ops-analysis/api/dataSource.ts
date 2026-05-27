@@ -1,34 +1,64 @@
+import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 
 export const useDataSourceApi = () => {
   const { get, post, put, del } = useApiClient();
 
-  const getDataSourceList = async (params?: any) => {
+  const getDataSourceList = useCallback(async (params?: any) => {
     return get('/operation_analysis/api/data_source/', { params });
-  };
+  }, [get]);
 
-  const createDataSource = async (data: any) => {
+  const getDataSourceBriefList = useCallback(async (params?: any) => {
+    return get('/operation_analysis/api/data_source/', {
+      params: { ...params, mode: 'brief' },
+    });
+  }, [get]);
+
+  const getDataSourceDetails = useCallback(async (ids: Array<number | string>) => {
+    const normalizedIds = Array.from(
+      new Set(
+        ids
+          .map((id) => (typeof id === 'string' ? parseInt(id, 10) : id))
+          .filter((id) => Number.isFinite(id))
+      )
+    ) as number[];
+
+    if (normalizedIds.length === 0) {
+      return [];
+    }
+
+    return get('/operation_analysis/api/data_source/', {
+      params: {
+        mode: 'detail',
+        ids: normalizedIds.join(','),
+      },
+    });
+  }, [get]);
+
+  const createDataSource = useCallback(async (data: any) => {
     return post('/operation_analysis/api/data_source/', data);
-  };
+  }, [post]);
 
-  const updateDataSource = async (id: number, data: any) => {
+  const updateDataSource = useCallback(async (id: number, data: any) => {
     return put(`/operation_analysis/api/data_source/${id}/`, data);
-  };
+  }, [put]);
 
-  const deleteDataSource = async (id: number) => {
+  const deleteDataSource = useCallback(async (id: number) => {
     return del(`/operation_analysis/api/data_source/${id}/`);
-  };
+  }, [del]);
 
-  const getDataSourceDetail = async (id: number) => {
+  const getDataSourceDetail = useCallback(async (id: number) => {
     return get(`/operation_analysis/api/data_source/${id}/`);
-  };
+  }, [get]);
 
-  const getSourceDataByApiId = async (id: number, params?: any) => {
+  const getSourceDataByApiId = useCallback(async (id: number, params?: any) => {
     return post(`/operation_analysis/api/data_source/get_source_data/${id}/`, params);
-  }
+  }, [post]);
 
   return {
     getDataSourceList,
+    getDataSourceBriefList,
+    getDataSourceDetails,
     createDataSource,
     updateDataSource,
     deleteDataSource,

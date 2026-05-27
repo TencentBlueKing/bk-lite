@@ -277,6 +277,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["km_llm_model"] = params["km_llm_model"] if params.get("km_llm_model") else skill_obj.km_llm_model
             params["enable_suggest"] = params["enable_suggest"] if params.get("enable_suggest") else skill_obj.enable_suggest
             params["enable_query_rewrite"] = params["enable_query_rewrite"] if params.get("enable_query_rewrite") else skill_obj.enable_query_rewrite
+            params["show_think"] = params["show_think"] if params.get("show_think") is not None else skill_obj.show_think
             params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
             # 合并前端传入的 skill_params 和 DB 中的值（处理 ****** 掩码）
             from apps.opspilot.utils.prompt_utils import merge_skill_params
@@ -351,6 +352,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["km_llm_model"] = params["km_llm_model"] if params.get("km_llm_model") else skill_obj.km_llm_model
             params["enable_suggest"] = params["enable_suggest"] if params.get("enable_suggest") else skill_obj.enable_suggest
             params["enable_query_rewrite"] = params["enable_query_rewrite"] if params.get("enable_query_rewrite") else skill_obj.enable_query_rewrite
+            params["show_think"] = params["show_think"] if params.get("show_think") is not None else skill_obj.show_think
             params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
             params["browser_use_force_task"] = True
             # 合并前端传入的 skill_params 和 DB 中的值（处理 ****** 掩码）

@@ -14,6 +14,7 @@ import {
 } from '@ant-design/icons';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
+import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
@@ -115,15 +116,15 @@ const OperateModal: React.FC<OperateModalProps> = ({
   );
   const [emptyFieldKeys, setEmptyFieldKeys] = React.useState<string[]>([]);
   const [showSchemaConfig, setShowSchemaConfig] = React.useState(true);
+  const [tagList, setTagList] = React.useState<TagItem[]>([]);
+  const [tagsLoading, setTagsLoading] = React.useState(false);
   const {
-    tagList,
-    tagsLoading,
-    fetchTags,
     namespaceList,
     namespacesLoading,
-    fetchNamespaces,
+    refreshNamespaces,
   } = useOpsAnalysis();
   const { createDataSource, updateDataSource } = useDataSourceApi();
+  const { getTagList } = useNamespaceApi();
 
   const paramTypeOptions = [
     { label: t('dataSource.paramTypes.string'), value: 'string' },
@@ -168,6 +169,19 @@ const OperateModal: React.FC<OperateModalProps> = ({
   useEffect(() => {
     if (!open) return;
 
+    const fetchTags = async () => {
+      try {
+        setTagsLoading(true);
+        const response = await getTagList({ page_size: -1 });
+        setTagList(Array.isArray(response) ? response : []);
+      } catch (error) {
+        console.error('获取标签列表失败:', error);
+        setTagList([]);
+      } finally {
+        setTagsLoading(false);
+      }
+    };
+
     form.resetFields();
     setDuplicateNames([]);
     setEmptyNames([]);
@@ -176,8 +190,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
     setDuplicateFieldKeys([]);
     setEmptyFieldKeys([]);
     setShowSchemaConfig(true);
-    void fetchNamespaces();
-    fetchTags();
+    void refreshNamespaces();
+    void fetchTags();
 
     if (!currentRow) {
       setParams([]);
@@ -223,7 +237,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
     } else {
       setParams([]);
     }
-  }, [open, currentRow, form, selectedGroup]);
+  }, [open, currentRow, form, selectedGroup, refreshNamespaces, getTagList]);
 
   useEffect(() => {
     if (!open || !!currentRow || namespaceList.length === 0) {

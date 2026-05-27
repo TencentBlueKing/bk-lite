@@ -10,7 +10,9 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { ComponentSelectorProps } from '@/app/ops-analysis/types/dashBoard';
-import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
+import { TagItem } from '@/app/ops-analysis/types/namespace';
+import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
+import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
 import type {
   DatasourceItem,
   ChartType,
@@ -30,15 +32,12 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   const [currentDataSources, setCurrentDataSources] = useState<
     DatasourceItem[]
   >([]);
+  const [tagList, setTagList] = useState<TagItem[]>([]);
+  const [tagsLoading, setTagsLoading] = useState(false);
+  const [dataSourcesLoading, setDataSourcesLoading] = useState(false);
 
-  const {
-    tagList,
-    tagsLoading,
-    fetchTags,
-    fetchDataSources,
-    dataSources,
-    dataSourcesLoading,
-  } = useOpsAnalysis();
+  const { getDataSourceBriefList } = useDataSourceApi();
+  const { getTagList } = useNamespaceApi();
 
   const getChartIcon = (chartTypes: ChartType[]) => {
     const iconClass = 'text-[16px] text-[var(--color-primary)]';
@@ -68,49 +67,61 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   };
 
   useEffect(() => {
+    const fetchTags = async () => {
+      try {
+        setTagsLoading(true);
+        const response = await getTagList({ page_size: -1 });
+        setTagList(Array.isArray(response) ? response : []);
+      } catch (error) {
+        console.error('获取标签列表失败:', error);
+        setTagList([]);
+      } finally {
+        setTagsLoading(false);
+      }
+    };
+
     if (visible) {
       void fetchTags();
-      void fetchDataSources();
     } else {
       setSelectedTagId(null);
       setHoveredDatasourceId(null);
       setCurrentDataSources([]);
+      setTagList([]);
       setSearch('');
     }
-  }, [visible, fetchDataSources, fetchTags]);
+  }, [getTagList, visible]);
 
   useEffect(() => {
-    if (!selectedTagId) {
-      setCurrentDataSources([]);
-      return;
-    }
-
-    const nextDataSources = dataSources.filter((item) => {
-      if (!Array.isArray(item.tag)) {
-        return false;
+    const fetchBriefList = async () => {
+      if (!visible || !selectedTagId) {
+        setCurrentDataSources([]);
+        return;
       }
 
-      return item.tag.some((tag) => {
-        if (typeof tag === 'number' || typeof tag === 'string') {
-          return Number(tag) === selectedTagId;
-        }
+      try {
+        setDataSourcesLoading(true);
+        const response = await getDataSourceBriefList({
+          tags: selectedTagId,
+          search: search.trim() || undefined,
+          page_size: -1,
+        });
+        setCurrentDataSources(Array.isArray(response) ? response : []);
+      } catch (error) {
+        console.error('获取数据源候选列表失败:', error);
+        setCurrentDataSources([]);
+      } finally {
+        setDataSourcesLoading(false);
+      }
+    };
 
-        return Number((tag as { id?: number | string })?.id) === selectedTagId;
-      });
-    });
-    setCurrentDataSources(nextDataSources);
-  }, [dataSources, selectedTagId]);
+    void fetchBriefList();
+  }, [getDataSourceBriefList, search, selectedTagId, visible]);
 
   useEffect(() => {
     if (visible && tagList.length > 0 && !selectedTagId) {
       setSelectedTagId(tagList[0].id);
     }
   }, [visible, tagList, selectedTagId]);
-
-  const filteredDataSources = currentDataSources.filter(
-    (item: DatasourceItem) =>
-      item.name.toLowerCase().includes(search.toLowerCase())
-  );
 
   const handleTagSelect = (tagItemId: number) => {
     setSelectedTagId(tagItemId);
@@ -180,7 +191,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
             <div className="h-96 overflow-y-auto">
               <List
                 size="small"
-                dataSource={filteredDataSources}
+                 dataSource={currentDataSources}
                 locale={{
                   emptyText: (
                     <Empty

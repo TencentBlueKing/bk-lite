@@ -68,6 +68,15 @@ export const useSettingApi = () => {
   const getGlobalConfig = (key: any) =>
     get(`/alerts/api/settings/get_setting_key/${key}/`);
 
+  const getLevelList = (params?: any) => get('/alerts/api/level/', { params });
+
+  const createLevel = (params: any) => post('/alerts/api/level/', params);
+
+  const updateLevel = (id: string | number, params: any) =>
+    put(`/alerts/api/level/${id}/`, params);
+
+  const deleteLevel = (id: string | number) => del(`/alerts/api/level/${id}/`);
+
   const updateGlobalConfig = (id: any, params: any) =>
     put(`/alerts/api/settings/${id}/`, params);
 
@@ -101,6 +110,10 @@ export const useSettingApi = () => {
     createCorrelationRule,
     updateCorrelationRule,
     deleteCorrelationRule,
+    getLevelList,
+    createLevel,
+    updateLevel,
+    deleteLevel,
     getGlobalConfig,
     updateGlobalConfig,
     toggleGlobalConfig,

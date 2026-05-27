@@ -6,11 +6,11 @@ import MatchRule from '@/app/alarm/(pages)/settings/components/matchRule';
 import EffectiveTime, {
   defaultEffectiveTime,
 } from '@/app/alarm/(pages)/settings/components/effectiveTime';
-import Icon from '@/components/icon';
 import { useCommon } from '@/app/alarm/context/common';
 import { useTranslation } from '@/utils/i18n';
 import { CaretRightOutlined } from '@ant-design/icons';
 import { useSettingApi } from '@/app/alarm/api/settings';
+import LevelIcon from '@/app/alarm/components/levelIcon';
 import { ChannelItem, NotifyOption } from '@/app/alarm/types/settings';
 import {
   Tag,
@@ -265,7 +265,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
               },
             ]}
           >
-            <MatchRule />
+            <MatchRule levelType="alert" />
           </Form.Item>
         )}
 
@@ -363,7 +363,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
                     <div key={level_id} className="flex items-center mb-2">
                       <Tag color={levelMap[level_id]}>
                         <div className="flex items-center">
-                          <Icon type={icon} className="mr-1" />
+                          <LevelIcon icon={icon} className="mr-1 w-4 h-4" />
                           {level_display_name || '--'}
                         </div>
                       </Tag>
