@@ -325,7 +325,16 @@ Api-Authorization: <api_secret>
 Content-Type: multipart/form-data
 ```
 
-**Body:** `file` 字段为要上传的文件
+**Body (multipart/form-data):**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| file | file | 是 | 要上传的文件 |
+| permanent | bool | 否 | 是否永久保存，默认 `false` |
+
+**permanent 参数说明:**
+- `false`（默认）：临时文件，7 天后自动清理
+- `true`：永久文件，不会被定时清理（仍可通过删除接口手动删除）
 
 **Response (成功):**
 ```json
