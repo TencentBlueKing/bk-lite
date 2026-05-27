@@ -65,6 +65,14 @@ export const MobileNode = (props: any) => (
   <BaseNode {...props} icon={nodeConfig.mobile.icon} color={nodeConfig.mobile.color} hasOutput={true} />
 );
 
+export const MemoryReadNode = (props: any) => (
+  <BaseNode {...props} icon={nodeConfig.memory_read.icon} color={nodeConfig.memory_read.color} hasInput={true} hasOutput={true} />
+);
+
+export const MemoryWriteNode = (props: any) => (
+  <BaseNode {...props} icon={nodeConfig.memory_write.icon} color={nodeConfig.memory_write.color} hasInput={true} hasOutput={true} />
+);
+
 export const IntentClassificationNode = (props: any) => {
   const intentCount = props.data?.config?.intents?.length || 1;
   const intents = props.data?.config?.intents || [{ name: '默认意图' }];

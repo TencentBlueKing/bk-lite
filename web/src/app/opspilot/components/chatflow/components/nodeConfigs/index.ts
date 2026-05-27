@@ -10,5 +10,6 @@ export { NotificationNodeConfig } from './NotificationNodeConfig';
 export { EnterpriseWechatNodeConfig } from './EnterpriseWechatNodeConfig';
 export { DingtalkNodeConfig } from './DingtalkNodeConfig';
 export { WechatOfficialNodeConfig } from './WechatOfficialNodeConfig';
+export { MemoryNodeConfig } from './MemoryNodeConfig';
 
 export type * from './types';
