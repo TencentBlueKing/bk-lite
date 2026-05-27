@@ -1,14 +1,13 @@
-from typing import Any, Dict, List, Optional
-from urllib.parse import parse_qs, urlparse
 import asyncio
 import inspect
 import json
 import time
 import uuid
 from collections import Counter
+from typing import Any, Dict, List, Optional
+from urllib.parse import parse_qs, urlparse
 
 import json_repair
-import openai
 
 # ---------------------------------------------------------------------------
 # DeepSeek/Qwen thinking mode fix:
@@ -25,6 +24,7 @@ import openai
 #   2. AIMessage → Request dict: inject reasoning_content back into the payload
 # ---------------------------------------------------------------------------
 import langchain_openai.chat_models.base as _lc_openai_base  # noqa: E402
+import openai
 from deepagents import create_deep_agent
 from langchain_core.callbacks import dispatch_custom_event
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage, ToolMessage
@@ -38,10 +38,19 @@ from langchain_openai.chat_models.base import _convert_message_to_dict as _origi
 from langgraph.constants import END
 from langgraph.graph import StateGraph
 from langgraph.prebuilt import ToolNode
-from pydantic import BaseModel, Field as PydanticField
+from pydantic import BaseModel
+from pydantic import Field as PydanticField
+
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.compaction import CompactionConfig, compact_messages
-from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, DoneToolConfig, PrepareStepContext, PrepareStepResult, StopConditionContext, StopConditionResult
+from apps.opspilot.metis.llm.chain.entity import (
+    BasicLLMRequest,
+    DoneToolConfig,
+    PrepareStepContext,
+    PrepareStepResult,
+    StopConditionContext,
+    StopConditionResult,
+)
 from apps.opspilot.metis.llm.chain.message_trim import trim_messages
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
@@ -49,21 +58,21 @@ from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import Graphiti
 from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
-from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
 from apps.opspilot.utils.approval import wait_for_approval
+from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
+from apps.opspilot.utils.rollback import execute_rollback, get_rollback_spec, take_snapshot
 from apps.opspilot.utils.user_choice import wait_for_choice
-from apps.opspilot.utils.rollback import get_rollback_spec, take_snapshot, execute_rollback
 from apps.opspilot.utils.verification import get_verification_spec, run_verification
 
 
 def _safe_log_preview(content: str, max_len: int = 200) -> str:
     """
     安全地截取日志预览内容，移除可能导致 Windows GBK 编码错误的字符（如 emoji）。
-    
+
     Args:
         content: 原始内容
         max_len: 最大长度
-    
+
     Returns:
         安全的日志预览字符串
     """
@@ -72,7 +81,7 @@ def _safe_log_preview(content: str, max_len: int = 200) -> str:
     preview = str(content)[:max_len]
     # 移除非 ASCII 字符中可能导致 GBK 编码错误的字符（主要是 emoji）
     # 保留中文等常见字符，只移除 emoji 范围的字符
-    return preview.encode('gbk', errors='replace').decode('gbk')
+    return preview.encode("gbk", errors="replace").decode("gbk")
 
 
 def normalize_messages_for_llm(messages: List[Any]) -> List[Any]:
@@ -909,6 +918,7 @@ class ToolsNodes(BasicNode):
 
     def _build_approval_tool(self):
         """构建 request_human_approval 工具，供 LLM 在判断操作高危时主动调用"""
+
         class ApprovalToolInput(BaseModel):
             action: str = PydanticField(description="即将执行的操作描述，包括工具名和关键参数")
             reason: str = PydanticField(description="为什么需要人工审批（风险说明）")
@@ -970,6 +980,7 @@ class ToolsNodes(BasicNode):
 
     def _build_choice_tool(self):
         """构建 request_user_choice 工具，供 LLM 需要用户从多个选项中选择时调用"""
+
         class ChoiceOption(BaseModel):
             key: str = PydanticField(description="选项唯一标识，将返回给你")
             label: str = PydanticField(description="选项显示文本")
@@ -1459,12 +1470,12 @@ class ToolsNodes(BasicNode):
                 if _has_pending_choice and "tool_choice" not in bind_kwargs:
                     bind_kwargs["tool_choice"] = "any"
                     logger.info(f"[{trace_id}] 选择后续行: 用户刚完成 request_user_choice，" f"强制 tool_choice='any' (step={step_counter['count']})")
-                
+
                 # Thinking 模式兼容性处理：
                 # DeepSeek V4 和 Qwen 在 thinking 模式下只支持 tool_choice="auto" 或 "none"，
                 # 不支持 "any"/"required"/specific tool。检测 thinking 模式并转换。
                 if bind_kwargs.get("tool_choice") in ("any", "required"):
-                    extra_body = getattr(llm, 'extra_body', None) or {}
+                    extra_body = getattr(llm, "extra_body", None) or {}
                     # DeepSeek: extra_body.thinking.type == "enabled"
                     # Qwen: extra_body.enable_thinking == True
                     deepseek_thinking = extra_body.get("thinking", {}).get("type") == "enabled"
@@ -1544,7 +1555,7 @@ class ToolsNodes(BasicNode):
                     try:
                         # Thinking 模式兼容：检测并转换 tool_choice
                         retry_tool_choice = "any"
-                        extra_body = getattr(llm, 'extra_body', None) or {}
+                        extra_body = getattr(llm, "extra_body", None) or {}
                         # DeepSeek: extra_body.thinking.type == "enabled"
                         # Qwen: extra_body.enable_thinking == True
                         deepseek_thinking = extra_body.get("thinking", {}).get("type") == "enabled"
@@ -1552,7 +1563,7 @@ class ToolsNodes(BasicNode):
                         if deepseek_thinking or qwen_thinking:
                             retry_tool_choice = "auto"
                             logger.info(f"[{trace_id}] 二次重试: Thinking 模式，tool_choice 'any' -> 'auto'")
-                        
+
                         forced_llm = llm.bind_tools(current_tools, tool_choice=retry_tool_choice)
                         if llm_timeout:
                             response = await asyncio.wait_for(forced_llm.ainvoke(retry_messages), timeout=llm_timeout)
@@ -1958,7 +1969,8 @@ class ToolsNodes(BasicNode):
             if not (hasattr(last_message, "tool_calls") and last_message.tool_calls):
                 logger.info(
                     "ReAct should_continue: 未检测到 tool_calls，结束循环, "
-                    f"last_message_type={type(last_message).__name__}, content_preview={_safe_log_preview(str(getattr(last_message, 'content', '')))!r}"
+                    f"last_message_type={type(last_message).__name__}, "
+                    f"content_preview={_safe_log_preview(str(getattr(last_message, 'content', '')))!r}"
                 )
                 return "end"
 
