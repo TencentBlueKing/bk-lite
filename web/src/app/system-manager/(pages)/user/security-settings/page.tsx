@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { message } from 'antd';
-import { useTranslation } from '@/utils/i18n';
 import { useSecurityApi } from '@/app/system-manager/api/security';
 import LoginSettings from '@/app/system-manager/components/security/authSettings';
+import { useTranslation } from '@/utils/i18n';
 
 const SecuritySettingsPage: React.FC = () => {
   const { t } = useTranslation();
@@ -14,7 +14,7 @@ const SecuritySettingsPage: React.FC = () => {
   const [fetching, setFetching] = useState(false);
   const [loginExpiredTime, setLoginExpiredTime] = useState<string>('24');
   const [pendingLoginExpiredTime, setPendingLoginExpiredTime] = useState<string>('24');
-  
+
   const [passwordExpiration, setPasswordExpiration] = useState<string>('180');
   const [pendingPasswordExpiration, setPendingPasswordExpiration] = useState<string>('180');
   const [passwordComplexity, setPasswordComplexity] = useState<string[]>(['uppercase', 'lowercase', 'digit', 'special']);
@@ -29,7 +29,7 @@ const SecuritySettingsPage: React.FC = () => {
   const [pendingLockDuration, setPendingLockDuration] = useState<string>('180');
   const [reminderDays, setReminderDays] = useState<string>('7');
   const [pendingReminderDays, setPendingReminderDays] = useState<string>('7');
-  
+
   const { getSystemSettings, updateOtpSettings } = useSecurityApi();
 
   useEffect(() => {
@@ -46,13 +46,12 @@ const SecuritySettingsPage: React.FC = () => {
       const expiredTime = settings.login_expired_time || '24';
       setLoginExpiredTime(expiredTime);
       setPendingLoginExpiredTime(expiredTime);
-      
-      // 设置密码相关字段
+
       const pwdExpiration = settings.pwd_set_validity_period || '180';
       setPasswordExpiration(pwdExpiration);
       setPendingPasswordExpiration(pwdExpiration);
-      
-      const pwdComplexity = settings.pwd_set_required_char_types 
+
+      const pwdComplexity = settings.pwd_set_required_char_types
         ? (typeof settings.pwd_set_required_char_types === 'string'
           ? settings.pwd_set_required_char_types.split(',').filter(Boolean)
           : Array.isArray(settings.pwd_set_required_char_types)
@@ -61,23 +60,23 @@ const SecuritySettingsPage: React.FC = () => {
         : ['uppercase', 'lowercase', 'digit', 'special'];
       setPasswordComplexity(pwdComplexity);
       setPendingPasswordComplexity(pwdComplexity);
-      
+
       const pwdMinLength = settings.pwd_set_min_length || '8';
       setMinimumLength(pwdMinLength);
       setPendingMinimumLength(pwdMinLength);
-      
+
       const pwdMaxLength = settings.pwd_set_max_length || '20';
       setMaximumLength(pwdMaxLength);
       setPendingMaximumLength(pwdMaxLength);
-      
+
       const pwdRetryCount = settings.pwd_set_max_retry_count || '3';
       setLoginAttempts(pwdRetryCount);
       setPendingLoginAttempts(pwdRetryCount);
-      
+
       const pwdLockDuration = settings.pwd_set_lock_duration || '180';
       setLockDuration(pwdLockDuration);
       setPendingLockDuration(pwdLockDuration);
-      
+
       const pwdReminderDays = settings.pwd_set_expiry_reminder_days || '7';
       setReminderDays(pwdReminderDays);
       setPendingReminderDays(pwdReminderDays);
@@ -127,8 +126,8 @@ const SecuritySettingsPage: React.FC = () => {
   const handleSaveSettings = async () => {
     try {
       setLoading(true);
-      await updateOtpSettings({ 
-        enableOtp: pendingOtpEnabled ? '1' : '0', 
+      await updateOtpSettings({
+        enableOtp: pendingOtpEnabled ? '1' : '0',
         loginExpiredTime: pendingLoginExpiredTime,
         pwdSetValidityPeriod: pendingPasswordExpiration,
         pwdSetRequiredCharTypes: pendingPasswordComplexity.join(','),

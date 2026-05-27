@@ -25,7 +25,7 @@ interface OperationLog {
   created_at: string;
 }
 
-const OperationLogsPage: React.FC = () => {
+const OperationLogs: React.FC = () => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
   const { clientData } = useClientData();
@@ -46,12 +46,12 @@ const OperationLogsPage: React.FC = () => {
 
   const { getOperationLogs } = useSecurityApi();
 
-  const fetchOperationLogs = async (page = 1) => {
+  const fetchOperationLogs = async (page = 1, pageSize = pagination.pageSize) => {
     setLoading(true);
     try {
       const params: any = {
         page,
-        page_size: pagination.pageSize,
+        page_size: pageSize,
       };
 
       if (filters.username) {
@@ -76,6 +76,7 @@ const OperationLogsPage: React.FC = () => {
       setPagination(prev => ({
         ...prev,
         current: page,
+        pageSize,
         total: response.count || 0,
       }));
     } catch (error) {
@@ -91,7 +92,7 @@ const OperationLogsPage: React.FC = () => {
   }, []);
 
   const handleSearch = () => {
-    fetchOperationLogs(1);
+    fetchOperationLogs(1, pagination.pageSize);
   };
 
   const handleReset = () => {
@@ -105,7 +106,7 @@ const OperationLogsPage: React.FC = () => {
       timeSelectorRef.current.reset();
     }
     setTimeout(() => {
-      fetchOperationLogs(1);
+      fetchOperationLogs(1, pagination.pageSize);
     }, 0);
   };
 
@@ -149,9 +150,9 @@ const OperationLogsPage: React.FC = () => {
   ];
 
   return (
-    <div className="w-full h-full bg-[var(--color-bg)] p-4">
+    <div className="flex flex-col h-full w-full">
       {/* Filter Section */}
-      <div className="mb-4 p-4 rounded">
+      <div className="flex-none mb-3">
         <div className="flex items-center justify-end gap-3">
           <Search
             placeholder={t('system.security.operatorPlaceholder')}
@@ -204,27 +205,30 @@ const OperationLogsPage: React.FC = () => {
       </div>
 
       {/* Table */}
-      <CustomTable
-        columns={columns}
-        dataSource={dataSource}
-        loading={loading}
-        rowKey="id"
-        pagination={{
-          current: pagination.current,
-          pageSize: pagination.pageSize,
-          total: pagination.total,
-          showSizeChanger: true,
-          showQuickJumper: true,
-          showTotal: (total) => `${t('common.total')} ${total} ${t('common.items')}`,
-          onChange: (page: number, pageSize?: number) => {
-            setPagination({ ...pagination, current: page, pageSize: pageSize || 20 });
-            fetchOperationLogs(page);
-          },
-        }}
-        scroll={{ x: 1200, y: 'calc(100vh - 400px)' }}
-      />
+      <div className="flex-1 min-h-0 relative">
+        <CustomTable
+          columns={columns}
+          dataSource={dataSource}
+          loading={loading}
+          rowKey="id"
+          pagination={{
+            current: pagination.current,
+            pageSize: pagination.pageSize,
+            total: pagination.total,
+            showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total) => `${t('common.total')} ${total} ${t('common.items')}`,
+            onChange: (page: number, pageSize?: number) => {
+              const nextPageSize = pageSize || pagination.pageSize;
+              setPagination((prev) => ({ ...prev, current: page, pageSize: nextPageSize }));
+              fetchOperationLogs(page, nextPageSize);
+            },
+          }}
+          scroll={{ x: 1200 }}
+        />
+      </div>
     </div>
   );
 };
 
-export default OperationLogsPage;
+export default OperationLogs;
