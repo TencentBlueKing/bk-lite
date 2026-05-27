@@ -7,7 +7,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('alerts', '0013_alertsource_team_secrets_event_team_incident_team'),
+        ('alerts', '0014_event_ingest_key_and_more'),
     ]
 
     operations = [
