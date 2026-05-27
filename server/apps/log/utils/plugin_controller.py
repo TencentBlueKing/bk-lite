@@ -106,6 +106,11 @@ class Controller:
         configs = self.format_configs()
         node_configs, node_child_configs, collect_configs = [], [], []
 
+        # 批量查询节点操作系统信息，用于模板渲染时区分平台差异
+        node_ids = list({config_info["node_id"] for config_info in configs})
+        nodes_info = NodeMgmt().get_nodes_by_ids(node_ids)
+        node_os_map = {node["id"]: node.get("operating_system", "linux") for node in nodes_info}
+
         # 查询 CollectType 获取 config_section
         collect_type_obj = CollectType.objects.filter(
             name=self.data["collect_type"], collector=self.data["collector"]
@@ -136,7 +141,8 @@ class Controller:
                 template_config = self.render_template(
                     template_dir,
                     f"{template['type']}.{template['config_type']}.{template['file_type']}.j2",
-                    {**tls_context, **config_info, "config_id": config_id.upper()},
+                    {**tls_context, **config_info, "config_id": config_id.upper(),
+                     "operating_system": node_os_map.get(config_info["node_id"], "linux")},
                 )
 
                 # 节点管理创建配置
@@ -229,10 +235,17 @@ class Controller:
         if not isinstance(context_data, Mapping):
             context_data = {}
 
+        # 查询节点操作系统信息
+        operating_system = "linux"
+        if node_id:
+            nodes_info = NodeMgmt().get_nodes_by_ids([node_id])
+            if nodes_info:
+                operating_system = nodes_info[0].get("operating_system", "linux")
+
         content = self.render_template(
             template_dir,
             f"{template['type']}.{template['config_type']}.{template['file_type']}.j2",
-            {**tls_context, "instance_id": instance_id, **context_data},
+            {**tls_context, "instance_id": instance_id, "operating_system": operating_system, **context_data},
         )
 
         return content
