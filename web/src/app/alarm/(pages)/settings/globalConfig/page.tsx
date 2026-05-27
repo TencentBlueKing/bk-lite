@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import PermissionWrapper from '@/components/permission';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { useCommon } from '@/app/alarm/context/common';
 import { useTranslation } from '@/utils/i18n';
@@ -10,30 +9,31 @@ import {
   GlobalConfig,
   ChannelItem,
   NotifyOption,
+  LevelFormItem,
 } from '@/app/alarm/types/settings';
-import {
-  Card,
-  Typography,
-  Form,
-  InputNumber,
-  Select,
-  Checkbox,
-  Button,
-  Space,
-  Switch,
-  Spin,
-} from 'antd';
+import { Card, Form, Spin, Modal, message } from 'antd';
+import { LevelItem } from '@/app/alarm/types/index';
+import NoDispatchConfigCard from './components/noDispatchConfigCard';
+import LevelManagementPanel from './components/levelManagementPanel';
+import LevelFormModal from './components/levelFormModal';
 
 export default function UnallocatedNotificationConfig() {
   const { t } = useTranslation();
-  const { userList } = useCommon();
+  const { userList, levelMeta, refreshLevels } = useCommon();
   const [editMode, setEditMode] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const [form] = Form.useForm<Config>();
+  const [levelForm] = Form.useForm<LevelFormItem>();
   const [loading, setLoading] = useState(false);
   const [activationLoading, setActivationLoading] = useState(false);
   const [globalConfigId, setGlobalConfigId] = useState<string | number>('');
   const [updateLoading, setUpdateLoading] = useState(false);
+  const [levelModalOpen, setLevelModalOpen] = useState(false);
+  const [levelSubmitLoading, setLevelSubmitLoading] = useState(false);
+  const [editingLevel, setEditingLevel] = useState<LevelItem | null>(null);
+  const [currentLevelType, setCurrentLevelType] = useState<
+    'event' | 'alert' | 'incident'
+  >('event');
   const [notifyOptions, setNotifyOptions] = useState<NotifyOption[]>([]);
   const [channelList, setChannelList] = useState<ChannelItem[]>([]);
   const [channelLoading, setChannelLoading] = useState(false);
@@ -42,6 +42,9 @@ export default function UnallocatedNotificationConfig() {
     updateGlobalConfig,
     toggleGlobalConfig,
     getChannelList,
+    createLevel,
+    updateLevel,
+    deleteLevel,
   } = useSettingApi();
   const [config, setConfig] = useState<Config>({
     notify_every: 60,
@@ -161,157 +164,159 @@ export default function UnallocatedNotificationConfig() {
     }
   };
 
+  const openLevelModal = (
+    levelType: 'event' | 'alert' | 'incident',
+    row?: LevelItem,
+  ) => {
+    setCurrentLevelType(levelType);
+    setEditingLevel(row || null);
+    const list = levelMeta[levelType]?.list || [];
+    const nextId = list.length
+      ? Math.max(...list.map((item) => item.level_id)) + 1
+      : 0;
+      levelForm.setFieldsValue({
+        level_id: row?.level_id ?? nextId,
+        level_display_name: row?.level_display_name ?? '',
+        color: row?.color || '#F43B2C',
+        icon: row?.icon || 'huoyanhuodongtuijian',
+        level_type: levelType,
+        built_in: row?.built_in,
+      });
+    setLevelModalOpen(true);
+  };
+
+  const closeLevelModal = () => {
+    setEditingLevel(null);
+    setLevelModalOpen(false);
+    levelForm.resetFields();
+  };
+
+  const submitLevel = async () => {
+    setLevelSubmitLoading(true);
+    try {
+      const values = await levelForm.validateFields();
+      const payload = {
+        level_id: values.level_id,
+        level_display_name: values.level_display_name,
+        color: values.color,
+        icon: values.icon,
+        level_name: editingLevel?.level_name || values.level_display_name,
+        level_type: currentLevelType,
+        built_in: editingLevel?.built_in ?? false,
+      };
+      if (editingLevel?.id) {
+        await updateLevel(editingLevel.id, payload);
+      } else {
+        await createLevel(payload);
+      }
+      await refreshLevels();
+      message.success(t('settings.globalConfig.saveSuccess'));
+      closeLevelModal();
+    } catch (error) {
+      console.error('save level failed', error);
+    } finally {
+      setLevelSubmitLoading(false);
+    }
+  };
+
+  const handleDeleteLevel = (row: LevelItem) => {
+    Modal.confirm({
+      title: t('common.delConfirm'),
+      content: t('common.delConfirmCxt'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      centered: true,
+      onOk: async () => {
+        await deleteLevel(row.id);
+        await refreshLevels();
+        message.success(t('settings.globalConfig.deleteSuccess'));
+      },
+    });
+  };
+
   return (
     <Card style={{ height: '100%' }}>
+      <style jsx global>{`
+        .level-table-clean .ant-table,
+        .level-table-clean .ant-table-container {
+          background: transparent;
+        }
+
+        .compact-config-form .ant-form-item {
+          margin-bottom: 18px;
+        }
+
+        .compact-config-form .ant-checkbox-group {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .level-table-clean .ant-table-thead > tr > th {
+          background: color-mix(in srgb, var(--color-fill-1) 34%, white);
+          color: var(--color-text-2);
+          font-weight: 500;
+          border-bottom: 1px solid var(--color-border-1);
+          padding-top: 6px;
+          padding-bottom: 6px;
+          font-size: 12px;
+        }
+
+        .level-table-clean .ant-table-tbody > tr > td {
+          border-bottom: 1px solid
+            color-mix(in srgb, var(--color-border-1) 70%, transparent);
+          padding-top: 6px;
+          padding-bottom: 6px;
+          font-size: 12px;
+        }
+
+        .level-table-clean .ant-table-tbody > tr:last-child > td {
+          border-bottom: none;
+        }
+
+        .level-table-clean .ant-table-cell::before {
+          display: none !important;
+        }
+      `}</style>
       {loading ? (
         <div className="flex justify-center pt-[20px] mt-[20vh]">
           <Spin spinning={loading} />
         </div>
       ) : (
-        <div className="h-full w-[600px]">
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              marginBottom: 10,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <div
-                style={{
-                  width: 4,
-                  height: 16,
-                  backgroundColor: '#1890ff',
-                  marginRight: 8,
-                }}
-              />
-              <Typography.Title
-                level={4}
-                style={{ margin: 0, fontSize: '16px' }}
-              >
-                {t('settings.globalConfig.title')}
-              </Typography.Title>
-            </div>
-            <Switch
-              size="small"
-              className="ml-[24px]"
-              checked={expanded}
-              loading={activationLoading}
-              onChange={(checked) => handleToggleActivation(checked)}
-            />
-          </div>
-          {expanded && (
-            <div className="ml-[12px]">
-              <div className="mb-[20px] text-[var(--color-text-3)]">
-                {t('settings.globalConfig.description')}
-              </div>
-              <Form
-                form={form}
-                layout="horizontal"
-                initialValues={config}
-                style={{ maxWidth: 500 }}
-              >
-                <Form.Item
-                  name="notify_every"
-                  label={t('settings.globalConfig.intervalLabel')}
-                  rules={[
-                    {
-                      required: true,
-                      message:
-                        t('common.inputTip') +
-                        t('settings.globalConfig.intervalLabel'),
-                    },
-                  ]}
-                >
-                  <InputNumber
-                    min={1}
-                    addonAfter={t('settings.globalConfig.intervalMinutes')}
-                    disabled={!editMode}
-                    style={{ width: '160px' }}
-                  />
-                </Form.Item>
+        <div className="h-full">
+          <NoDispatchConfigCard
+            expanded={expanded}
+            activationLoading={activationLoading}
+            editMode={editMode}
+            form={form}
+            config={config}
+            assigneeOptions={assigneeOptions}
+            notifyOptions={notifyOptions}
+            channelLoading={channelLoading}
+            updateLoading={updateLoading}
+            onToggleActivation={handleToggleActivation}
+            onEnterEdit={enterEdit}
+            onCancelEdit={cancelEdit}
+            onConfirmEdit={confirmEdit}
+          />
 
-                <Form.Item
-                  name="notify_people"
-                  label={t('settings.globalConfig.personnelLabel')}
-                  rules={[
-                    {
-                      required: true,
-                      message:
-                        t('common.selectTip') +
-                        t('settings.globalConfig.personnelLabel'),
-                    },
-                  ]}
-                >
-                  <Select
-                    mode="multiple"
-                    showSearch
-                    allowClear
-                    options={assigneeOptions}
-                    disabled={!editMode}
-                    placeholder={t(
-                      'settings.globalConfig.personnelPlaceholder'
-                    )}
-                    filterOption={(input: string, option?: any) =>
-                      !!option?.label
-                        ?.toLowerCase()
-                        .includes(input.toLowerCase())
-                    }
-                  />
-                </Form.Item>
-
-                <Form.Item
-                  name="notify_channel"
-                  label={t('settings.globalConfig.notificationMethodLabel')}
-                  rules={[
-                    {
-                      required: true,
-                      message:
-                        t('common.selectTip') +
-                        t('settings.globalConfig.notificationMethodLabel'),
-                    },
-                  ]}
-                >
-                  <Checkbox.Group
-                    options={notifyOptions}
-                    disabled={!editMode || channelLoading}
-                  />
-                  {channelLoading && (
-                    <div className="flex justify-center h-[32px] mt-2">
-                      <Spin spinning={channelLoading} />
-                    </div>
-                  )}
-                </Form.Item>
-
-                <Form.Item>
-                  <Space>
-                    {editMode ? (
-                      <>
-                        <Button
-                          type="primary"
-                          onClick={confirmEdit}
-                          loading={updateLoading}
-                        >
-                          {t('common.confirm')}
-                        </Button>
-                        <Button onClick={cancelEdit}>
-                          {t('common.cancel')}
-                        </Button>
-                      </>
-                    ) : (
-                      <PermissionWrapper requiredPermissions={['Edit']}>
-                        <Button type="primary" onClick={enterEdit}>
-                          {t('common.edit')}
-                        </Button>
-                      </PermissionWrapper>
-                    )}
-                  </Space>
-                </Form.Item>
-              </Form>
-            </div>
-          )}
+          <LevelManagementPanel
+            levelMeta={levelMeta}
+            onOpenLevelModal={openLevelModal}
+            onDeleteLevel={handleDeleteLevel}
+          />
         </div>
       )}
+
+      <LevelFormModal
+        open={levelModalOpen}
+        form={levelForm}
+        editingLevel={editingLevel}
+        currentLevelType={currentLevelType}
+        submitting={levelSubmitLoading}
+        onCancel={closeLevelModal}
+        onSubmit={submitLevel}
+      />
     </Card>
   );
 }

@@ -149,7 +149,10 @@ class AlertModelViewSet(AuthViewSet):
         allowed_alert_ids = set(
             self._get_permission_filtered_queryset(request).filter(alert_id__in=alert_id_list).values_list("alert_id", flat=True)
         )
-        operator = AlertOperator(user=self.request.user.username)
+        operator = AlertOperator(
+            user=self.request.user.username,
+            allowed_alert_ids=allowed_alert_ids,
+        )
         result_list = {}
         status_list = []
         for alert_id in alert_id_list:

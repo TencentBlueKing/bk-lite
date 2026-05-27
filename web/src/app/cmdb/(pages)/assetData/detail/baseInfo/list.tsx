@@ -45,6 +45,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   const [attrList, setAttrList] = useState<AttrFieldType[]>([]);
   const [isBatchEdit, setIsBatchEdit] = useState<boolean>(false);
   const [isBatchSaving, setIsBatchSaving] = useState<boolean>(false);
+  const [editScenario, setEditScenario] = useState<string>('ordinary_attribute_change');
   const [collapsedTableFields, setCollapsedTableFields] = useState<Record<string, boolean>>({});
   const { t } = useTranslation();
   const { flatGroups } = useUserInfoContext();
@@ -96,7 +97,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     
     const fieldValue = normalizeFieldValue(fieldKey, config.values[fieldKey], fieldAttr);
 
-    const params: any = {};
+    const params: any = { _scenario: editScenario };
     params[fieldKey] = fieldValue;
     await updateInstance(instId, params);
     message.success(t('successfullyModified'));
@@ -195,6 +196,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
         params[key] = normalizeFieldValue(key, rawValue, fieldAttr);
       });
 
+      params._scenario = editScenario;
       await updateInstance(instId, params);
       message.success(t('successfullyModified'));
 
@@ -498,6 +500,26 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
         <div className="flex items-center justify-end mb-2">
           {isBatchEdit ? (
             <>
+              <span className="mr-1 text-[12px] text-[var(--color-text-3)]">
+                {t('OperationLog.scenario')}:
+              </span>
+              <Select
+                size="small"
+                style={{ width: 140 }}
+                className="mr-2"
+                value={editScenario}
+                onChange={(val) => setEditScenario(val)}
+                options={[
+                  {
+                    label: t('OperationLog.scenarioOpts.ordinary_attribute_change'),
+                    value: 'ordinary_attribute_change',
+                  },
+                  {
+                    label: t('OperationLog.scenarioOpts.device_lifecycle'),
+                    value: 'device_lifecycle',
+                  },
+                ]}
+              />
               <Button
                 type="primary"
                 size="small"

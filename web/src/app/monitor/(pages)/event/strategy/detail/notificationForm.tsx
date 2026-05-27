@@ -54,7 +54,7 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
     const selectedTypes = channelList
       .filter((ch) => newIds.includes(ch.id))
       .map((ch) => ch.channel_type);
-    const allNats = selectedTypes.length > 0 && selectedTypes.every((t) => t === 'nats');
+    const allNats = selectedTypes.length > 0 && selectedTypes.every((type) => type === 'nats');
     if (allNats) {
       form.setFieldValue('notice_users', []);
     }
@@ -142,60 +142,8 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                   const selectedChannels = channelList.filter((item) => selectedIds.includes(item.id));
                   const channelTypes = selectedChannels.map((ch) => ch.channel_type);
 
-                  if (!selectedChannels.length || channelTypes.every((t) => t === 'nats')) {
+                  if (!selectedChannels.length || channelTypes.every((type) => type === 'nats')) {
                     return null;
-                  }
-
-                  const hasEmail = channelTypes.includes('email');
-
-                  if (hasEmail) {
-                    return (
-                      <Form.Item<StrategyFields>
-                        label={
-                          <span className="w-[100px]">
-                            {t('monitor.events.notifier')}
-                          </span>
-                        }
-                        name="notice_users"
-                        rules={[
-                          {
-                            required: true,
-                            message: t('common.required')
-                          }
-                        ]}
-                      >
-                        <Select
-                          style={{ width: '100%' }}
-                          showSearch
-                          allowClear
-                          mode="multiple"
-                          maxTagCount="responsive"
-                          placeholder={t('monitor.events.notifier')}
-                          virtual
-                          filterOption={(input, option) => {
-                            const user = userList.find(
-                              (u) => u.id === option?.value
-                            );
-                            if (!user) return false;
-                            const searchText = input.toLowerCase();
-                            return (
-                              user.display_name?.toLowerCase() || ''
-                            ).includes(searchText);
-                          }}
-                          optionLabelProp="label"
-                        >
-                          {userList.map((item) => (
-                            <Option
-                              value={item.id}
-                              key={item.id}
-                              label={item.display_name}
-                            >
-                              {item.display_name}
-                            </Option>
-                          ))}
-                        </Select>
-                      </Form.Item>
-                    );
                   }
 
                   return (
@@ -215,13 +163,34 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                     >
                       <Select
                         style={{ width: '100%' }}
-                        mode="tags"
-                        placeholder={t(
-                          'monitor.events.notifierTagsPlaceholder'
-                        )}
-                        suffixIcon={null}
-                        open={false}
-                      />
+                        showSearch
+                        allowClear
+                        mode="multiple"
+                        maxTagCount="responsive"
+                        placeholder={t('monitor.events.notifier')}
+                        virtual
+                        filterOption={(input, option) => {
+                          const user = userList.find(
+                            (u) => u.id === option?.value
+                          );
+                          if (!user) return false;
+                          const searchText = input.toLowerCase();
+                          return (
+                            user.display_name?.toLowerCase() || ''
+                          ).includes(searchText);
+                        }}
+                        optionLabelProp="label"
+                      >
+                        {userList.map((item) => (
+                          <Option
+                            value={item.id}
+                            key={item.id}
+                            label={item.display_name}
+                          >
+                            {item.display_name}
+                          </Option>
+                        ))}
+                      </Select>
                     </Form.Item>
                   );
                 }}

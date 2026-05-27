@@ -12,6 +12,7 @@ from apps.cmdb.constants.field_constraints import TAG_ATTR_ID
 from apps.cmdb.validators import IdentifierValidator
 from apps.cmdb.language.service import SettingLanguage
 from apps.cmdb.models import DELETE_INST, UPDATE_INST, FieldGroup
+from apps.cmdb.models.change_record import MODEL_MANAGEMENT_CHANGE
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.utils.base import get_default_group_id, get_current_team_from_request
 from apps.cmdb.utils.change_record import create_change_record
@@ -166,6 +167,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             message=f"删除模型. 模型名称: {model_info['model_name']}",
             inst_id=model_info["_id"],
             model_object=OPERATOR_MODEL,
+            scenario=MODEL_MANAGEMENT_CHANGE,
         )
 
         # 删除该模型下的所有字段分组配置，避免属性变更后字段分组配置不一致的问题
@@ -211,6 +213,7 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             message=f"修改模型. 模型名称: {model_info['model_name']}",
             inst_id=model_info["_id"],
             model_object=OPERATOR_MODEL,
+            scenario=MODEL_MANAGEMENT_CHANGE,
         )
         return WebUtils.response_success(data)
 

@@ -320,7 +320,7 @@ def stream_chat(params, skill_name, kwargs, current_ip, user_message, skill_id=N
 def create_stream_generator(params, skill_name, kwargs, current_ip, user_message, skill_id=None, history_log=None):
     """创建流式生成器 - 返回异步生成器供内部或外部使用"""
     llm_model = LLMModel.objects.get(id=params["llm_model"])
-    show_think = params.pop("show_think", True)
+    show_think = params.get("show_think", True)  # 使用 get 而不是 pop，保留值给 format_chat_server_kwargs
     skill_type = params.get("skill_type")
     params.pop("group", 0)
 

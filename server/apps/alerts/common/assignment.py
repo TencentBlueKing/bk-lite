@@ -10,7 +10,7 @@ from django.db import transaction
 from apps.alerts.error import AlertNotFoundError
 from apps.alerts.models.operator_log import OperatorLog
 from apps.alerts.models.models import Alert
-from apps.alerts.models.alert_operator import AlertAssignment
+from apps.alerts.models.alert_operator import AlertAssignment, AlertReminderTask
 from apps.alerts.constants.constants import (
     AlertStatus,
     AlertAssignmentMatchType,
@@ -145,7 +145,9 @@ class AlertAssignmentOperator:
                 for result in assignment_results:
                     if result["success"]:
                         results["assigned_alerts"] += 1
-                        assigned_alert_ids.add(result["alert_id"])
+                        alert_pk = result.get("alert_pk")
+                        if alert_pk is not None:
+                            assigned_alert_ids.add(alert_pk)
                     else:
                         results["failed_alerts"] += 1
 
@@ -212,10 +214,10 @@ class AlertAssignmentOperator:
 
         # 首先按照Alert的created_at时间过滤符合分派策略时间范围的告警
         time_matched_alert_ids = []
-        for alert in base_queryset:
-            checker = TimeRangeChecker(assignment.config, alert.created_at)
+        for alert_pk, created_at in base_queryset.values_list("id", "created_at"):
+            checker = TimeRangeChecker(assignment.config, created_at)
             if checker.is_in_range():
-                time_matched_alert_ids.append(alert.id)
+                time_matched_alert_ids.append(alert_pk)
 
         if not time_matched_alert_ids:
             logger.debug(f"No alerts match time range for assignment {assignment.id}")
@@ -255,9 +257,11 @@ class AlertAssignmentOperator:
         personnel = assignment.personnel or []
         if not personnel:
             for alert_id in alert_ids:
+                alert = self.alerts.get(alert_id)
                 results.append(
                     {
-                        "alert_id": alert_id,
+                        "alert_id": alert.alert_id if alert else alert_id,
+                        "alert_pk": alert_id,
                         "success": False,
                         "message": "No personnel configured for assignment",
                         "assignment_id": assignment.id,
@@ -286,6 +290,7 @@ class AlertAssignmentOperator:
                             results.append(
                                 {
                                     "alert_id": alert.alert_id,
+                                    "alert_pk": alert.id,
                                     "success": False,
                                     "assignment_id": assignment.id,
                                     "assigned_to": [],
@@ -318,8 +323,13 @@ class AlertAssignmentOperator:
                             )
                         )
                         # 分派成功后 立即发送提醒通知
+                        reminder_id = AlertReminderTask.objects.filter(
+                            alert=alert
+                        ).values_list("alert_id", flat=True).first()
                         ReminderService._send_reminder_notification(
-                            assignment=assignment, alert=alert
+                            assignment=assignment,
+                            alert=alert,
+                            reminder_id=reminder_id,
                         )
                         logger.info(
                             "== assignment alert notify end ==, assignment={}, alert_id={}".format(
@@ -330,6 +340,7 @@ class AlertAssignmentOperator:
                         results.append(
                             {
                                 "alert_id": alert.alert_id,
+                                "alert_pk": alert.id,
                                 "success": True,
                                 "assignment_id": assignment.id,
                                 "assigned_to": personnel,
@@ -343,6 +354,7 @@ class AlertAssignmentOperator:
                         results.append(
                             {
                                 "alert_id": alert.alert_id,
+                                "alert_pk": alert.id,
                                 "success": False,
                                 "message": str(e),
                                 "assignment_id": assignment.id,
@@ -353,9 +365,11 @@ class AlertAssignmentOperator:
             logger.error(f"Error in batch assignment: {str(e)}")
             # 如果批量操作失败，为所有告警添加失败记录
             for alert_id in alert_ids:
+                alert = self.alerts.get(alert_id)
                 results.append(
                     {
-                        "alert_id": alert_id,
+                        "alert_id": alert.alert_id if alert else alert_id,
+                        "alert_pk": alert_id,
                         "success": False,
                         "message": str(e),
                         "assignment_id": assignment.id,

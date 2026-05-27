@@ -471,6 +471,7 @@ class NodeService:
                 "cloud_region_id": node.cloud_region_id,
                 "cloud_region_name": getattr(node.cloud_region, "name", ""),
                 "node_type": node.node_type,
+                "operating_system": node.operating_system,
                 "organization_ids": [rel.organization for rel in node.nodeorganization_set.all()],
             }
             for node in nodes

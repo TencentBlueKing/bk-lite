@@ -1,110 +1,4 @@
 monitor_object_metric:
-  Dameng:
-    up_gauge:
-      name: Exporter Status
-      desc: Probe status between DM-Exporter and the Dameng database; 0 means scrape failed and 1 means scrape succeeded.
-    dm_exporter_connections_gauge:
-      name: Current Connections
-      desc: Total number of current Dameng database session connections.
-    dm_exporter_session_rests_gauge:
-      name: Free Sessions
-      desc: Number of sessions still available for allocation, used to assess remaining session capacity.
-    dm_exporter_session_used_ratio_gauge:
-      name: Session Usage Ratio
-      desc: Percentage of used sessions; a sustained increase usually means connection capacity is approaching the limit.
-    dm_exporter_memory_used_size_gauge:
-      name: Memory Used
-      desc: Operating system memory currently consumed by the database instance.
-    dm_exporter_buffer_cache_hit_percent_gauge:
-      name: Buffer Cache Hit Ratio
-      desc: Buffer pool hit ratio; a low value often indicates more disk access or an unreasonable cache configuration.
-    dm_exporter_locks_gauge:
-      name: Lock Holders
-      desc: Number of processes currently holding locks.
-    dm_exporter_lock_blocks_gauge:
-      name: Blocked Lock Waiters
-      desc: Number of processes currently waiting for locks and already blocked.
-    dm_exporter_deadlock_count_gauge:
-      name: Deadlock Count
-      desc: Historical cumulative number of deadlocks, useful for identifying transaction conflict trends.
-    dm_exporter_tablespace_total_size_gauge:
-      name: Tablespace Total Size
-      desc: Total capacity size of a single tablespace.
-    dm_exporter_tablespace_used_size_gauge:
-      name: Tablespace Used Size
-      desc: Used space size of a single tablespace.
-    dm_exporter_tablespace_free_size_gauge:
-      name: Tablespace Free Size
-      desc: Remaining available space size of a single tablespace.
-    dm_exporter_tablespace_used_ratio_gauge:
-      name: Tablespace Used Ratio
-      desc: Percentage of used space in a single tablespace, a core indicator for capacity alerts.
-    dm_exporter_checkpoint_dirty_pages_gauge:
-      name: Checkpoint Dirty Pages
-      desc: Checkpoint dirty pages parameter value.
-    dm_exporter_checkpoint_interval_time_gauge:
-      name: Checkpoint Interval
-      desc: Checkpoint interval time.
-    dm_exporter_table_used_space_gauge:
-      name: Table Used Space
-      desc: Block count occupied by business tables.
-    dm_exporter_index_used_space_gauge:
-      name: Index Used Space
-      desc: Block count occupied by business indexes.
-    dm_exporter_shared_pool_size_gauge:
-      name: Shared Pool Size
-      desc: Shared memory pool size parameter value.
-    dm_exporter_redo_file_size_gauge:
-      name: Current Redo File Used Size
-      desc: Used space size of the current redo file.
-    dm_exporter_open_cursor_gauge:
-      name: Open Cursors
-      desc: Number of currently open SELECT cursors.
-    dm_exporter_roll_state_gauge:
-      name: Rollback Segment State
-      desc: Rollback segment state. 0 means ONLINE, 1 means OFFLINE, 2 means RES_OFFLINE, 3 means CORRUPT, and 4 means OTHER.
-    dm_exporter_roll_size_gauge:
-      name: Rollback Segment Size
-      desc: Total page size of the rollback segment.
-    dm_exporter_redo_log_size_gauge:
-      name: Redo Log Size
-      desc: Size and status of redo log files.
-    dm_exporter_2pc_pending_gauge:
-      name: Pending 2PC Transactions
-      desc: Number of long-running two-phase commit transaction locks.
-    dm_exporter_load_five_average_gauge:
-      name: 5-Minute Load
-      desc: Database workload indicator over the last 5 minutes, used to observe overall pressure trends.
-    dm_exporter_executions_total_counter:
-      name: Executed SQL Total
-      desc: Cumulative total number of executed SQL statements.
-    dm_exporter_slow_query_gauge:
-      name: Slow Query Count
-      desc: Number of slow queries whose execution time exceeds 2 seconds.
-    dm_exporter_unusable_index_gauge:
-      name: Unusable Index Count
-      desc: Number of unusable indexes; when greater than 0, indexes usually need repair or rebuild soon.
-    dm_exporter_asm_real_used_percent_gauge:
-      name: ASM Used Ratio
-      desc: Actual ASM space usage ratio.
-    dm_exporter_asm_free_size_gauge:
-      name: ASM Safe Free Size
-      desc: Safe available space size of ASM.
-    dm_exporter_backup_is_status_gauge:
-      name: Replication Instance Status
-      desc: Primary-standby instance status. 0 means OPEN, 1 means MOUNT, and 2 means SUSPEND.
-    dm_exporter_backup_i_mode_gauge:
-      name: Replication Instance Mode
-      desc: Primary-standby instance mode. 0 means PRIMARY, 1 means STANDBY, and 2 means NORMAL.
-    dm_exporter_backup_arch_status_gauge:
-      name: Archive Status
-      desc: Primary-standby archive status. 0 means VALID and 1 means INVALID.
-    dm_exporter_backup_dw_status_gauge:
-      name: Watcher Status
-      desc: Primary-standby database watcher status. 0 means ENABLED and 1 means DISABLED.
-    dm_exporter_backup_late_time_gauge:
-      name: Replication Lag
-      desc: Replication delay time between primary and standby.
   Minio:
     minio_cluster_capacity_usable_total_bytes_gauge:
       name: Cluster Usable Total Capacity
@@ -1476,6 +1370,18 @@ monitor_object_metric:
     mysql_threads_cached:
       name: Cached Threads
       desc: Number of reusable cached threads, reflecting connection reuse efficiency
+    mysql_process_list_threads_idle:
+      name: Idle Process List Threads
+      desc: Number of process list threads in idle state, used to identify idle connection accumulation
+    mysql_process_list_threads_executing:
+      name: Executing Process List Threads
+      desc: Number of process list threads currently executing queries, used to assess active query concurrency
+    mysql_process_list_threads_sending_data:
+      name: Sending Data Process List Threads
+      desc: Number of process list threads in Sending data state, often related to large scans or slow result processing
+    mysql_process_list_threads_waiting_for_lock:
+      name: Lock Waiting Process List Threads
+      desc: Number of process list threads waiting for locks, used to identify blocking and lock contention
     mysql_variables_max_connections:
       name: Max Connections Setting
       desc: Configured max_connections value used as the true connection capacity baseline
@@ -1485,15 +1391,24 @@ monitor_object_metric:
     mysql_aborted_connects:
       name: Aborted Connections
       desc: Number of failed connection attempts, possibly due to permissions, network, or configuration
+    mysql_aborted_connects_rate:
+      name: Aborted Connections Rate
+      desc: Rate of failed connection attempts, useful for detecting authentication, network, or configuration issues
     mysql_aborted_clients:
       name: Aborted Clients
       desc: Number of clients disconnected abnormally, often related to network instability or timeouts
+    mysql_aborted_clients_rate:
+      name: Aborted Clients Rate
+      desc: Rate of abnormal client disconnects, useful for identifying network instability, timeout, or connection pool issues
     mysql_connection_errors_internal:
       name: Internal Connection Errors
       desc: Connection failures caused by internal MySQL server errors
     mysql_connection_errors_max_connections:
       name: Max Connections Errors
       desc: Number of connection failures caused by reaching max_connections
+    mysql_connection_errors_max_connections_rate:
+      name: Max Connections Errors Rate
+      desc: Rate of connection failures caused by reaching max_connections, indicating immediate connection saturation impact
     mysql_connection_errors_peer_address:
       name: Peer Address Connection Errors
       desc: Number of connection failures caused by invalid or rejected peer addresses
@@ -1518,6 +1433,18 @@ monitor_object_metric:
     mysql_slave_sql_running:
       name: Replication SQL Thread
       desc: Replica SQL thread status; usually 1 means running and 0 means abnormal
+    mysql_variables_read_only:
+      name: Read Only Setting
+      desc: MySQL read_only setting, commonly used with replication signals to infer instance role
+    mysql_variables_super_read_only:
+      name: Super Read Only Setting
+      desc: MySQL super_read_only setting, commonly enabled on replicas to prevent accidental writes
+    mysql_variables_log_bin:
+      name: Binary Log Enabled
+      desc: Whether binary logging is enabled, used to identify primary or replication-capable instances
+    mysql_variables_log_slave_updates:
+      name: Log Replica Updates Enabled
+      desc: Whether replayed replication changes are written to binary logs, useful for chained replication role analysis
     mysql_slow_queries_rate:
       name: Slow Query Request Trigger Rate
       desc: Number of slow query requests, reflecting the frequency of slow queries
@@ -1629,6 +1556,9 @@ monitor_object_metric:
     mysql_created_tmp_tables_rate:
       name: Total Temporary Tables Create Rate
       desc: Total number of temporary tables (memory + disk) created
+    mysql_created_tmp_memory_tables_rate:
+      name: Memory Temporary Tables Create Rate
+      desc: Estimated rate of temporary tables created in memory, derived from total temporary tables minus disk temporary tables
     mysql_tmp_disk_table_ratio:
       name: Disk Temp Table Ratio
       desc: Ratio of temporary tables created on disk; high values usually indicate SQL or memory tuning issues
@@ -3001,7 +2931,9 @@ monitor_object_metric_group:
     InnoDBPerf: InnoDB Performance
     NetTraffic: Network Traffic
     TableCache: Table Cache
+    KeyCache: Key Cache
     TempTable: Temporary Tables
+    Replication: Replication
   Minio:
     Cluster Monitoring: Cluster Monitoring
     Resource Monitoring: Resource Monitoring

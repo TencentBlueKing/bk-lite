@@ -135,3 +135,13 @@ export interface NotifyOption {
   label: string;
   value: string;
 }
+
+export interface LevelFormItem {
+  id?: number;
+  level_id: number;
+  level_display_name: string;
+  color: string;
+  icon: string;
+  level_type: string;
+  built_in?: boolean;
+}

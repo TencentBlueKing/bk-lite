@@ -101,15 +101,26 @@ class RecoveryHandler:
             logger.debug("所有恢复事件都缺少 external_id，跳过处理")
             return
 
-        # 2. 批量查询所有相关 Alert（优化：1 次查询 + prefetch）
-        if fallback_keys:
-            affected_alerts = Alert.objects.filter(status__in=AlertStatus.ACTIVATE_STATUS).prefetch_related("events__source").distinct()
-        else:
-            affected_alerts = (
-                Alert.objects.filter(status__in=AlertStatus.ACTIVATE_STATUS, events__external_id__in=external_ids, events__action=EventAction.CREATED)
-                .prefetch_related("events__source")
-                .distinct()
+        # 2. 批量查询所有相关 Alert（优化：仅收敛到本批恢复事件可能命中的候选集）
+        candidate_q = Q()
+
+        if external_ids:
+            candidate_q |= Q(events__external_id__in=external_ids, events__action=EventAction.CREATED)
+
+        for source_pk, item, resource_name, _ in fallback_keys:
+            candidate_q |= Q(
+                events__source_id=source_pk,
+                events__item=item,
+                events__resource_name=resource_name,
+                events__action=EventAction.CREATED,
             )
+
+        affected_alerts = (
+            Alert.objects.filter(status__in=AlertStatus.ACTIVATE_STATUS)
+            .filter(candidate_q)
+            .prefetch_related("events__source")
+            .distinct()
+        )
 
         if not affected_alerts.exists():
             logger.debug(f"未找到包含 external_ids={list(external_ids)[:5]}... 的活跃 Alert")
@@ -121,12 +132,14 @@ class RecoveryHandler:
         alert_existing_events = {}  # alert.pk -> set(event_id)
 
         for alert in affected_alerts:
-            # 收集该 Alert 已关联的所有 event_id（避免重复查询）
-            existing_event_ids = set(alert.events.values_list("event_id", flat=True))
+            prefetched_events = list(alert.events.all())
+
+            # 收集该 Alert 已关联的所有 event_id（复用预取结果，避免重复查询）
+            existing_event_ids = {event.event_id for event in prefetched_events}
             alert_existing_events[alert.pk] = existing_event_ids
 
             # 构建 external_id 索引
-            for event in alert.events.all():
+            for event in prefetched_events:
                 if event.external_id in external_ids:
                     alert_by_external_id[event.external_id].append(alert)
                 fallback_key = RecoveryHandler._build_fallback_key(event)

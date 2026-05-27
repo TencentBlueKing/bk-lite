@@ -624,10 +624,16 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
                 "message": "Invalid source_id or source type.",
             }
 
+        normalized_events = []
+        for event in events:
+            normalized_event = dict(event or {})
+            normalized_event.setdefault("push_source_id", pusher)
+            normalized_events.append(normalized_event)
+
         # 创建适配器（内部调用无需密钥验证）
         adapter_class = AlertSourceAdapterFactory.get_adapter(event_source)
         # 传递空密钥，因为不需要认证
-        adapter = adapter_class(alert_source=event_source, secret="", events=events)
+        adapter = adapter_class(alert_source=event_source, secret="", events=normalized_events)
 
         # 记录推送来源信息
         logger.info(f"Processing {len(events)} events from source_id: {source_id}, pusher: {pusher}")

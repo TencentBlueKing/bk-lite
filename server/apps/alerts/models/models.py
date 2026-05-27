@@ -2,6 +2,8 @@
 # @File: models.py
 # @Time: 2025/5/14 16:14
 # @Author: windyzhao
+import hashlib
+import json
 from zoneinfo import ZoneInfo
 
 from django.db import models
@@ -52,6 +54,7 @@ class Event(models.Model):
         default=EventAction.CREATED,
         help_text="事件动作",
     )
+    ingest_key = models.CharField(max_length=64, null=True, blank=True, db_index=True, help_text="接入幂等键")
     rule_id = models.CharField(max_length=100, null=True, blank=True, help_text="触发该事件的规则ID")
     # f"EVENT-{uuid.uuid4().hex}"
     event_id = models.CharField(max_length=100, unique=True, db_index=True, help_text="事件唯一ID")
@@ -77,10 +80,50 @@ class Event(models.Model):
             # 注意: JSONField 索引在部分数据库（如达梦）上不支持，通过 migrate_patch 处理
             models.Index(fields=["labels"], name="event_labels_gin"),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source", "push_source_id", "ingest_key"],
+                name="event_source_push_ingest_key_uniq",
+            ),
+        ]
         ordering = ["-received_at"]
 
     def __str__(self):
         return f"{self.title} ({self.level}) at {self.received_at}"
+
+    @staticmethod
+    def _normalize_ingest_component(value):
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    @classmethod
+    def build_ingest_key(cls, source_id, push_source_id, external_id, action, start_time):
+        if not source_id or not external_id or not action or not start_time:
+            return None
+
+        fingerprint = {
+            "source_id": source_id,
+            "push_source_id": cls._normalize_ingest_component(push_source_id),
+            "external_id": cls._normalize_ingest_component(external_id),
+            "action": cls._normalize_ingest_component(action),
+            "start_time": start_time.isoformat() if hasattr(start_time, "isoformat") else str(start_time),
+        }
+        return hashlib.sha256(json.dumps(fingerprint, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+    def calculate_ingest_key(self):
+        return self.build_ingest_key(
+            getattr(self, "source_id", None),
+            getattr(self, "push_source_id", None),
+            getattr(self, "external_id", None),
+            getattr(self, "action", None),
+            getattr(self, "start_time", None),
+        )
+
+    def save(self, *args, **kwargs):
+        if not self.ingest_key:
+            self.ingest_key = self.calculate_ingest_key()
+        super().save(*args, **kwargs)
 
 
 class Alert(models.Model):

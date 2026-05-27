@@ -3,6 +3,7 @@
 # @Time: 2025/5/9 14:56
 # @Author: windyzhao
 import time
+from typing import Iterable, List
 
 from celery import shared_task
 
@@ -11,6 +12,14 @@ from apps.alerts.models.sys_setting import SystemSetting
 from apps.alerts.service.notify_service import NotifyResultService
 from apps.alerts.service.un_dispatch import UnDispatchService
 from apps.core.logger import alert_logger as logger
+
+
+AUTO_ASSIGNMENT_CHUNK_SIZE = 200
+
+
+def _chunk_alert_ids(alert_ids: List[str], chunk_size: int) -> Iterable[List[str]]:
+    for i in range(0, len(alert_ids), chunk_size):
+        yield alert_ids[i : i + chunk_size]
 
 
 @shared_task
@@ -118,12 +127,40 @@ def async_auto_assignment_for_alerts(alert_ids):
         logger.info("无告警需要自动分配")
         return {"total_alerts": 0, "assigned_alerts": 0}
 
-    logger.info(f"== 开始异步自动分配告警 == 告警数量: {len(alert_ids)}")
+    unique_alert_ids = list(dict.fromkeys(alert_ids))
+    logger.info(
+        "自动分配任务接收告警: original=%s, unique=%s, chunk_size=%s",
+        len(alert_ids),
+        len(unique_alert_ids),
+        AUTO_ASSIGNMENT_CHUNK_SIZE,
+    )
+
+    if len(unique_alert_ids) > AUTO_ASSIGNMENT_CHUNK_SIZE:
+        chunks = list(_chunk_alert_ids(unique_alert_ids, AUTO_ASSIGNMENT_CHUNK_SIZE))
+        for chunk in chunks:
+            async_auto_assignment_for_alerts.delay(chunk)
+
+        logger.info(
+            "自动分配任务已分片调度: unique=%s, chunk_count=%s, chunk_size=%s",
+            len(unique_alert_ids),
+            len(chunks),
+            AUTO_ASSIGNMENT_CHUNK_SIZE,
+        )
+        return {
+            "total_alerts": len(unique_alert_ids),
+            "assigned_alerts": 0,
+            "failed_alerts": 0,
+            "chunked": True,
+            "chunk_size": AUTO_ASSIGNMENT_CHUNK_SIZE,
+            "chunk_count": len(chunks),
+        }
+
+    logger.info(f"== 开始异步自动分配告警 == 告警数量: {len(unique_alert_ids)}")
 
     try:
         from apps.alerts.common.assignment import execute_auto_assignment_for_alerts
 
-        result = execute_auto_assignment_for_alerts(alert_ids)
+        result = execute_auto_assignment_for_alerts(unique_alert_ids)
         logger.info(
             f"== 异步自动分配完成 == "
             f"总数={result.get('total_alerts', 0)}, "
@@ -135,7 +172,11 @@ def async_auto_assignment_for_alerts(alert_ids):
     except Exception as e:
         import traceback
         logger.error(f"异步自动分配失败: {traceback.format_exc()}")
-        return {"total_alerts": len(alert_ids), "assigned_alerts": 0, "error": str(e)}
+        return {
+            "total_alerts": len(unique_alert_ids),
+            "assigned_alerts": 0,
+            "error": str(e),
+        }
 
 
 @shared_task
