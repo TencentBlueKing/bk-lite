@@ -588,9 +588,13 @@ class ConfigFileService(object):
         )
 
     @staticmethod
-    def get_file_list(instance_id: str) -> list[dict]:
+    def get_file_list(instance_id: str, base_queryset=None) -> list[dict]:
+        # 权限过滤必须先于聚合：传入的 base_queryset 已按任务权限收紧，
+        # 在其之上做 Max 聚合，避免 latest_* 字段来自用户无权访问的任务版本。
+        if base_queryset is None:
+            base_queryset = ConfigFileVersion.objects.all()
         latest_ids = (
-            ConfigFileVersion.objects.filter(instance_id=instance_id)
+            base_queryset.filter(instance_id=instance_id)
             .values("file_path")
             .annotate(latest_id=Max("id"))
             .values_list("latest_id", flat=True)

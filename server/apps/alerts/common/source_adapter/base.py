@@ -9,6 +9,8 @@ import json
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 
+from django.db import IntegrityError
+
 from django.utils import timezone
 
 from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
@@ -144,7 +146,7 @@ class AlertSourceAdapter(ABC):
                         # 如果元数据里也没有，直接跳过
                         continue
 
-            if _value and key == "start_time" or key == "end_time":
+            if _value and (key == "start_time" or key == "end_time"):
                 _value = self.timestamp_to_datetime(_value)
 
             if key == "value":
@@ -257,7 +259,12 @@ class AlertSourceAdapter(ABC):
         """添加基础字段"""
 
         event.source = self.alert_source
-        event.push_source_id = getattr(event, "push_source_id", None) or alert.get("source_id") or "default"
+        event.push_source_id = (
+            alert.get("push_source_id")
+            or getattr(event, "push_source_id", None)
+            or alert.get("source_id")
+            or "default"
+        )
         event.raw_data = alert
         event.event_id = f"EVENT-{uuid.uuid4().hex}"
         event.team = self.resolved_team
@@ -271,6 +278,36 @@ class AlertSourceAdapter(ABC):
                 self.alert_source.source_id,
             )
             logger.debug(f"Generated external_id for event: {event.event_id}")
+
+    @staticmethod
+    def build_ingress_dedup_key(event: Event) -> Optional[str]:
+        """
+        构造接入层幂等去重键。
+
+        ingest_key 语义：
+        1. event_id 保持“单条数据库记录唯一 ID”；
+        2. external_id 保持“业务链路关联键”；
+        3. ingest_key 专门作为“接入幂等键”，用于去重与数据库唯一兜底。
+        """
+        if getattr(event, "ingest_key", None):
+            return event.ingest_key
+
+        ingest_key = event.calculate_ingest_key()
+        event.ingest_key = ingest_key
+        return ingest_key
+
+    @staticmethod
+    def _log_duplicate_event(reason: str, event: Event):
+        logger.info(
+            "%s: source_id=%s push_source_id=%s external_id=%s action=%s start_time=%s ingest_key=%s",
+            reason,
+            getattr(event, "source_id", None) or getattr(getattr(event, "source", None), "id", None),
+            getattr(event, "push_source_id", None),
+            getattr(event, "external_id", None),
+            getattr(event, "action", None),
+            getattr(event, "start_time", None),
+            getattr(event, "ingest_key", None),
+        )
 
     @staticmethod
     def bulk_save_events(events: List[Event]):
@@ -288,16 +325,71 @@ class AlertSourceAdapter(ABC):
         if not events:
             return []
 
+        # 当前采用 ingest_key 作为接入幂等键：
+        # - 应用层先按 ingest_key 批内去重和预查询
+        # - 数据库再通过唯一约束兜底，减少并发重复写入
+        unique_events = []
+        seen_dedup_keys = set()
+
+        for event in events:
+            dedup_key = AlertSourceAdapter.build_ingress_dedup_key(event)
+            if dedup_key is None:
+                unique_events.append(event)
+                continue
+
+            if dedup_key in seen_dedup_keys:
+                AlertSourceAdapter._log_duplicate_event("Skip duplicated ingress event in current batch", event)
+                continue
+
+            seen_dedup_keys.add(dedup_key)
+            unique_events.append(event)
+
+        if not unique_events:
+            return []
+
+        queryable_ingest_keys = [event.ingest_key for event in unique_events if getattr(event, "ingest_key", None)]
+        existing_ingest_keys = set()
+        if queryable_ingest_keys:
+            source_ids = {
+                getattr(event, "source_id", None) or getattr(getattr(event, "source", None), "id", None)
+                for event in unique_events
+                if getattr(event, "ingest_key", None)
+            }
+            push_source_ids = {getattr(event, "push_source_id", None) or "default" for event in unique_events if getattr(event, "ingest_key", None)}
+
+            existing_events = Event.objects.filter(
+                source_id__in=source_ids,
+                push_source_id__in=push_source_ids,
+                ingest_key__in=queryable_ingest_keys,
+            ).only("ingest_key")
+
+            existing_ingest_keys = {existing_event.ingest_key for existing_event in existing_events if existing_event.ingest_key}
+
+        events_to_create = []
+        for event in unique_events:
+            ingest_key = getattr(event, "ingest_key", None)
+            if ingest_key is not None and ingest_key in existing_ingest_keys:
+                AlertSourceAdapter._log_duplicate_event("Skip already persisted ingress event", event)
+                continue
+            events_to_create.append(event)
+
+        if not events_to_create:
+            logger.info("No new events to save after ingress deduplication.")
+            return []
+
         # 1. 分批保存
-        bulk_create_events = split_list(events, 100)
+        bulk_create_events = split_list(events_to_create, 100)
         all_event_ids = []
 
         for event_batch in bulk_create_events:
-            Event.objects.bulk_create(event_batch, ignore_conflicts=True)
+            try:
+                Event.objects.bulk_create(event_batch, ignore_conflicts=True)
+            except IntegrityError:
+                logger.warning("Bulk create hit ingest_key unique conflict, treating as idempotent retry.", exc_info=True)
             # 收集所有 event_id 用于后续查询
             all_event_ids.extend([e.event_id for e in event_batch])
 
-        logger.info(f"Bulk saved {len(events)} events.")
+        logger.info(f"Bulk saved {len(events_to_create)} events.")
 
         # 2. 优化：立即查询返回带 pk 的对象（1 次查询）
         # 避免后续 event_operator 需要用 event_id 再查一遍

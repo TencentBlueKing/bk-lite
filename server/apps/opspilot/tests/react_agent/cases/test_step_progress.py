@@ -111,7 +111,7 @@ async def _build_and_run(request, mock_llm_responses, interrupt_at=None):
         "apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template",
         return_value="You are a test assistant.",
     ), patch(
-        "langchain_core.callbacks.dispatch_custom_event",
+        "apps.opspilot.metis.llm.chain.node.dispatch_custom_event",
         side_effect=capture_event,
     ), patch(
         "apps.opspilot.metis.llm.chain.node.is_interrupt_requested_async",
@@ -302,7 +302,7 @@ class TestStepProgressWithDoneTool:
             "apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template",
             return_value="You are a test assistant.",
         ), patch(
-            "langchain_core.callbacks.dispatch_custom_event",
+            "apps.opspilot.metis.llm.chain.node.dispatch_custom_event",
             side_effect=capture_event,
         ):
             await graph.ainvoke(

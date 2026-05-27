@@ -13,17 +13,25 @@ class AlertRecoveryChecker:
     
     职责：
     1. 检查 Alert 下所有 CREATED 事件是否都被恢复
-    2. 判断逻辑：CREATED 事件被恢复 = 存在相同 external_id 且 received_at 更晚的 RECOVERY/CLOSED 事件
+    2. 判断逻辑：CREATED 事件被恢复 = 存在相同 external_id 且事件时间更晚的 RECOVERY/CLOSED 事件
     3. 如果所有 CREATED 都被恢复，则将 Alert 状态设置为 AUTO_RECOVERY
     4. 如果是会话窗口 Alert，同时更新 session_status 为 RECOVERED
     """
+
+    @staticmethod
+    def _get_created_event_time(event: Event):
+        return event.start_time or event.received_at
+
+    @staticmethod
+    def _get_recovery_event_time(event: Event):
+        return event.end_time or event.start_time or event.received_at
 
     @staticmethod
     def check_and_recover_alert(alert: Alert) -> bool:
         """
         检查 Alert 是否应该被自动恢复
         
-        条件：Alert 下所有 CREATED 事件都有对应的"更晚到达"的 RECOVERY/CLOSED 事件
+        条件：Alert 下所有 CREATED 事件都有对应的"事件时间更晚"的 RECOVERY/CLOSED 事件
         
         算法优化：使用字典索引，时间复杂度 O(n)
         
@@ -74,9 +82,11 @@ class AlertRecoveryChecker:
             # 查找相同 external_id 的 RECOVERY/CLOSED 事件
             recovery_events = recovery_by_external_id.get(external_id, [])
             
-            # 检查是否有更晚的 RECOVERY/CLOSED 事件
+            created_event_time = AlertRecoveryChecker._get_created_event_time(created_event)
+
+            # 检查是否有事件时间更晚的 RECOVERY/CLOSED 事件
             has_later_recovery = any(
-                r.received_at > created_event.received_at 
+                AlertRecoveryChecker._get_recovery_event_time(r) > created_event_time
                 for r in recovery_events
             )
             

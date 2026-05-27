@@ -777,6 +777,7 @@ def get_cmdb_collect_statistics(user_info=None, **kwargs):
             "running_count": status_counts.get(CollectRunStatusType.RUNNING, 0),
             "timeout_count": status_counts.get(CollectRunStatusType.TIME_OUT, 0),
             "never_run_count": status_counts.get(CollectRunStatusType.NOT_START, 0),
+            "partial_success_count": status_counts.get(CollectRunStatusType.PARTIAL_SUCCESS, 0),
         },
         "message": "",
     }
