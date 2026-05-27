@@ -2,10 +2,26 @@
  * 阈值颜色配置工具函数
  * 共享模块：供 topology 和 dashBoard 使用
  */
+import { DEFAULT_THRESHOLD_COLORS } from '@/app/ops-analysis/constants/threshold';
+
 export interface ThresholdColorConfig {
   value: string;
   color: string;
 }
+
+/**
+ * 初始化阈值颜色：如果传入有效数组则按值降序排列，否则返回默认值
+ */
+export const initThresholdColors = (
+  colors: ThresholdColorConfig[] | undefined | null,
+): ThresholdColorConfig[] => {
+  if (colors && Array.isArray(colors)) {
+    return [...colors].sort(
+      (a, b) => parseFloat(b.value) - parseFloat(a.value),
+    );
+  }
+  return DEFAULT_THRESHOLD_COLORS;
+};
 
 /**
  * 根据数据值和阈值配置计算对应的颜色

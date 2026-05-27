@@ -295,6 +295,7 @@ export interface ViewConfigFormValues {
   description?: string;
   chartType?: string;
   dataSource?: number | string;
+  compare?: boolean;
   dataSourceParams?: ParamItem[];
   filterBindings?: FilterBindings;
   selectedFields?: string[];
@@ -317,6 +318,7 @@ export interface NodeConfigFormValues {
   logoType?: 'default' | 'custom';
   logoIcon?: string;
   logoUrl?: string;
+  compare?: boolean;
   selectedFields?: string[];
   chartType?: string;
   dataSource?: number;

@@ -20,6 +20,34 @@ interface TrendLineProps {
   onReady?: (ready: boolean) => void;
 }
 
+const withAlpha = (color: string, alpha: number) => {
+  const normalized = color.trim();
+
+  if (normalized.startsWith('rgba(')) {
+    const parts = normalized
+      .slice(5, -1)
+      .split(',')
+      .map((part) => part.trim());
+    return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${alpha})`;
+  }
+
+  if (normalized.startsWith('rgb(')) {
+    const parts = normalized
+      .slice(4, -1)
+      .split(',')
+      .map((part) => part.trim());
+    return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${alpha})`;
+  }
+
+  return color;
+};
+
+const getGradientStops = (color: string, baseOpacity: number) => [
+  { offset: 0, color: withAlpha(color, Math.min(baseOpacity * 3.8, 0.26)) },
+  { offset: 0.55, color: withAlpha(color, Math.min(baseOpacity * 1.7, 0.12)) },
+  { offset: 1, color: withAlpha(color, 0) },
+];
+
 const TrendLine: React.FC<TrendLineProps> = ({
   rawData,
   loading = false,
@@ -324,12 +352,26 @@ const TrendLine: React.FC<TrendLineProps> = ({
       data: item.data,
       smooth: true,
       symbol: 'none',
-      yAxisIndex: useDualAxis ? (largeSeriesIndices.includes(index) ? 0 : 1) : 0,
+      yAxisIndex: useDualAxis
+        ? largeSeriesIndices.includes(index)
+          ? 0
+          : 1
+        : 0,
       lineStyle: {
         width: chartTheme.lineWidth,
       },
       areaStyle: {
-        opacity: chartTheme.lineAreaOpacity,
+        color: {
+          type: 'linear',
+          x: 0,
+          y: 0,
+          x2: 0,
+          y2: 1,
+          colorStops: getGradientStops(
+            chartColors[index % chartColors.length],
+            chartTheme.lineAreaOpacity,
+          ),
+        },
       },
       emphasis: {
         focus: 'series',
@@ -347,7 +389,17 @@ const TrendLine: React.FC<TrendLineProps> = ({
           width: chartTheme.lineWidth,
         },
         areaStyle: {
-          opacity: chartTheme.lineAreaOpacity,
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: getGradientStops(
+              chartColors[0],
+              chartTheme.lineAreaOpacity,
+            ),
+          },
         },
         emphasis: {
           focus: 'series',

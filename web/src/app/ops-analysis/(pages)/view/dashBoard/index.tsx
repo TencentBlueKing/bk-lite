@@ -592,6 +592,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           conversionFactor: config.conversionFactor,
           decimalPlaces: config.decimalPlaces,
           thresholdColors: config.thresholdColors,
+          compare: config.compare,
         },
       };
       const nextLayout = [...layout, newWidget];
@@ -757,6 +758,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                 conversionFactor: values.conversionFactor,
                 decimalPlaces: values.decimalPlaces,
                 thresholdColors: values.thresholdColors,
+                compare: values.compare,
               },
             };
           }
@@ -1068,15 +1070,13 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                             border: `1px solid ${chartTheme.panelBorderColor}`,
                           }}
                         >
-                          <div
-                            className="widget-header mb-2 flex justify-between items-start gap-2"
-                          >
+                          <div className="widget-header mb-2 flex justify-between items-start gap-2">
                             <div className="flex-1 min-w-0">
-                              <h4 className="text-[13px] font-medium text-(--color-text-1) truncate">
+                              <h4 className="truncate text-[14px] font-medium leading-5 text-(--color-text-2)">
                                 {item.name}
                               </h4>
                               {item.description?.trim() && (
-                                <p className="text-[11px] leading-[16px] text-(--color-text-3) mt-0.5 break-words whitespace-normal">
+                                <p className="mt-0.5 text-[11px] leading-4 text-(--color-text-3) wrap-break-word whitespace-normal">
                                   {item.description}
                                 </p>
                               )}

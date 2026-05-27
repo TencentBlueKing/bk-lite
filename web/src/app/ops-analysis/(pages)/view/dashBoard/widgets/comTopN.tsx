@@ -91,6 +91,8 @@ const TopN: React.FC<TopNProps> = ({
 }) => {
   const themeName = resolveOpsChartThemeName();
   const isDark = themeName === 'dark';
+  const hasExplicitLabelField = Boolean(config?.topNLabelField);
+  const hasExplicitValueField = Boolean(config?.topNValueField);
 
   const inferredLabelField = dataSource?.field_schema?.find(
     (field) => field.value_type !== 'number',
@@ -105,6 +107,10 @@ const TopN: React.FC<TopNProps> = ({
 
     // [[name, value], ...] format
     if (Array.isArray(rows[0])) {
+      if (hasExplicitLabelField || hasExplicitValueField) {
+        return [];
+      }
+
       return rows.map((item: any[]) => ({
         name: String(item[0] ?? ''),
         value: Number(item[1]) || 0,
@@ -129,7 +135,7 @@ const TopN: React.FC<TopNProps> = ({
             ? getValueByPath(item, inferredValueField)
             : undefined;
 
-          const rawName = isUsableLabel(explicitName)
+          const rawName = hasExplicitLabelField
             ? explicitName
             : isUsableLabel(item.name)
               ? item.name
@@ -138,7 +144,7 @@ const TopN: React.FC<TopNProps> = ({
                 : isUsableLabel(inferredName)
                   ? inferredName
                   : getFallbackLabel(item);
-          const rawValue = isUsableValue(explicitValue)
+          const rawValue = hasExplicitValueField
             ? explicitValue
             : isUsableValue(item.value)
               ? item.value

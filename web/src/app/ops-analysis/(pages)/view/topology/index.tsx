@@ -41,7 +41,8 @@ import TopologyToolbar from './components/toolbar';
 import ContextMenu from './components/contextMenu';
 import EdgeConfigPanel from './components/edgeConfPanel';
 import NodeSidebar from './components/nodeSidebar';
-import NodeConfPanel from './components/nodeConfPanel';
+import ShapeNodePanel from './components/shapeNodePanel';
+import SingleValueNodePanel from './components/singleValueNodePanel';
 import ViewConfig from '../dashBoard/components/viewConfig';
 import ViewSelector from '../dashBoard/components/viewSelector';
 import {
@@ -61,6 +62,8 @@ import {
 import {
   collectTopologyNamespaceIds,
 } from '@/app/ops-analysis/utils/canvasResources';
+
+const DEFAULT_DROP_POSITION: DropPosition = { x: 300, y: 200 };
 
 const Topology = forwardRef<TopologyRef, TopologyProps>(
   ({ selectedTopology }, ref) => {
@@ -289,12 +292,16 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       refreshTopologyNodes,
     ]);
 
+    const clearRefreshTimer = useCallback(() => {
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    }, []);
+
     const handleFrequencyChange = useCallback(
       (frequency: number) => {
-        if (refreshTimerRef.current) {
-          clearInterval(refreshTimerRef.current);
-          refreshTimerRef.current = null;
-        }
+        clearRefreshTimer();
 
         if (frequency > 0) {
           refreshTimerRef.current = setInterval(() => {
@@ -302,7 +309,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           }, frequency);
         }
       },
-      [refreshTopologyNodes],
+      [clearRefreshTimer, refreshTopologyNodes],
     );
 
     const handleRefresh = useCallback(() => {
@@ -361,12 +368,12 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       position?: DropPosition
     ) => {
       setSelectedNodeType(nodeType);
-      setDropPosition(position || { x: 300, y: 200 });
+      setDropPosition(position || DEFAULT_DROP_POSITION);
       setAddNodeVisible(true);
     };
 
     const handleShowChartSelector = (position?: DropPosition) => {
-      setChartDropPosition(position || { x: 300, y: 200 });
+      setChartDropPosition(position || DEFAULT_DROP_POSITION);
       setViewSelectorVisible(true);
     };
 
@@ -494,6 +501,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           logoIcon: values.logoIcon,
           logoUrl: values.logoUrl,
           valueConfig: {
+            compare: !!values.compare,
             selectedFields: values.selectedFields || [],
             chartType: values.chartType,
             dataSource: values.dataSource,
@@ -607,10 +615,6 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       refreshTopologyNodes,
     ]);
 
-    const handleFilterValuesChange = useCallback((values: Record<string, FilterValue>) => {
-      setFilterValues(values);
-    }, [setFilterValues]);
-
     const handleFilterSearch = useCallback(
       (values: Record<string, FilterValue>) => {
         const namespaceChanged = namespaceDraftId !== appliedNamespaceId;
@@ -631,13 +635,6 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
         refreshTopologyNodes,
         setFilterValues,
       ],
-    );
-
-    const handleFilterReset = useCallback(
-      (values: Record<string, FilterValue>) => {
-        handleFilterSearch(values);
-      },
-      [handleFilterSearch],
     );
 
     const handleFilterConfigConfirm = useCallback(
@@ -747,10 +744,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       setNamespaceDraftId(undefined);
       setAppliedNamespaceId(undefined);
 
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current);
-        refreshTimerRef.current = null;
-      }
+      clearRefreshTimer();
 
       if (selectedTopology?.data_id && state.graphInstance) {
         handleLoadTopologyRef.current(selectedTopology.data_id).then(async (loadedFilters) => {
@@ -796,10 +790,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       }
 
       return () => {
-        if (refreshTimerRef.current) {
-          clearInterval(refreshTimerRef.current);
-          refreshTimerRef.current = null;
-        }
+        clearRefreshTimer();
       };
     }, [selectedTopology?.data_id, state.graphInstance, loadCanvasNamespaces, scheduleTopologyInitialization, syncTopologyCanvasResources]);
 
@@ -829,6 +820,13 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
         document.removeEventListener('keydown', handleKeyDown);
       };
     }, [undo, redo]);
+
+    const NodePanel = getNodeType() === 'single-value' ? SingleValueNodePanel : ShapeNodePanel;
+
+    const panelStyle = {
+      border: `1px solid ${chartTheme.panelBorderColor}`,
+      backgroundColor: chartTheme.panelBg,
+    };
 
     return (
       <div
@@ -862,8 +860,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
         <div
           className="flex-1 rounded-2xl overflow-hidden flex flex-col"
           style={{
-            border: `1px solid ${chartTheme.panelBorderColor}`,
-            backgroundColor: chartTheme.panelBg,
+            ...panelStyle,
             boxShadow: isDarkTheme
               ? '0 10px 24px rgba(0, 0, 0, 0.18)'
               : '0 12px 28px rgba(31, 63, 104, 0.06)',
@@ -874,9 +871,9 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
               <UnifiedFilterBar
                 definitions={definitions}
                 values={filterValues}
-                onChange={handleFilterValuesChange}
+                onChange={setFilterValues}
                 onSearch={handleFilterSearch}
-                onReset={handleFilterReset}
+                onReset={handleFilterSearch}
                 prefixContent={namespaceSelectorElement}
                 containerClassName="mx-0 mt-0"
                 appearance="embedded"
@@ -901,10 +898,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
             <div
               ref={canvasContainerRef}
               className="flex-1 relative rounded-xl overflow-hidden"
-              style={{
-                border: `1px solid ${chartTheme.panelBorderColor}`,
-                backgroundColor: chartTheme.panelBg,
-              }}
+              style={panelStyle}
             >
               {loading && (
                 <div
@@ -970,7 +964,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           onConfirm={handleEdgeConfigConfirm}
         />
 
-        <NodeConfPanel
+        <NodePanel
           visible={state.nodeEditVisible || addNodeVisible}
           title={getNodeTitle()}
           nodeType={getNodeType()}
