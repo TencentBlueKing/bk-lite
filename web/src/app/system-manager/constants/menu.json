@@ -76,7 +76,8 @@
           "title": "设置",
           "icon": "shezhi",
           "name": "channel_setting",
-          "url": "/system-manager/channel/detail/settings"
+          "url": "/system-manager/channel/detail/settings",
+          "isNotMenuItem": true
         }
       ]
     },
