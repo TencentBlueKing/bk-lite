@@ -871,6 +871,12 @@ def retry_controller(task_id, task_node_ids, password=None, private_key=None, pa
 
     _dispatch_or_finalize_controller_task(task_id)
 
+    # Schedule a fresh timeout fallback for the retried attempt
+    timeout_controller_install_task.apply_async(
+        args=[task_id],
+        countdown=CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
+    )
+
 
 @shared_task
 def uninstall_controller(task_id):
