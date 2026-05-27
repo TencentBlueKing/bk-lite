@@ -427,10 +427,10 @@ const ComSingle: React.FC<ComSingleProps> = ({
     x2: 1,
     y2: 0,
     colorStops: [
-      { offset: 0, color: toAlphaColor(metricColor, 0.2) },
-      { offset: 0.18, color: toAlphaColor(metricColor, 0.92) },
-      { offset: 0.82, color: toAlphaColor(metricColor, 0.92) },
-      { offset: 1, color: toAlphaColor(metricColor, 0.2) },
+      { offset: 0, color: toAlphaColor(metricColor, 0.05) },
+      { offset: 0.18, color: toAlphaColor(metricColor, 0.46) },
+      { offset: 0.82, color: toAlphaColor(metricColor, 0.46) },
+      { offset: 1, color: toAlphaColor(metricColor, 0.05) },
     ],
   };
   const sparklineAreaColor = {

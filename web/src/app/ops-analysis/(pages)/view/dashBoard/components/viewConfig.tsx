@@ -196,6 +196,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     selectedDataSource,
     getSourceDataByApiId,
     builtinNamespaceId,
+    open,
   });
 
   /** 用户通过弹窗选择了新的数据源，重置所有依赖配置 */
@@ -400,9 +401,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           ),
         );
       } else {
-        setFilterBindings(
-          (valueConfig as ValueConfig | undefined)?.filterBindings || {},
-        );
+        setFilterBindings({});
       }
 
       if (valueConfig?.tableConfig?.columns?.length) {
@@ -478,7 +477,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       formValues.decimalPlaces = valueConfig.decimalPlaces;
     }
     if (valueConfig?.compare !== undefined) {
-      formValues.compare = valueConfig.compare;
+      formValues.compare = valueConfig.compare && canEnableCompare({
+        config: { chartType: 'single', dataSourceParams: targetDataSource?.params },
+        dataSource: targetDataSource,
+      });
     }
 
     singleValueConfig.setThresholdColors(initThresholdColors(valueConfig?.thresholdColors));
@@ -797,13 +799,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             onThresholdBlur={singleValueConfig.handleThresholdBlur}
             onAddThreshold={singleValueConfig.addThreshold}
             onRemoveThreshold={singleValueConfig.removeThreshold}
-            compareAvailable={canEnableCompare({
-              config: {
-                chartType: 'single',
-                dataSourceParams: selectedDataSource?.params,
-              },
-              dataSource: selectedDataSource,
-            })}
+            compareAvailable={singleValueConfig.compareAvailable}
           />
         )}
 
