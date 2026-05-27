@@ -3,19 +3,26 @@ import { Form, Select } from 'antd';
 
 interface TopNSettingsSectionProps {
   t: (key: string) => string;
+  sectionTitle?: string;
   selectedDataSource: any;
-  topNFieldOptions: Array<{ label: React.ReactNode; value: string }>;
+  topNLabelFieldOptions: Array<{ label: React.ReactNode; value: string }>;
+  topNValueFieldOptions: Array<{ label: React.ReactNode; value: string }>;
 }
 
 export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
   t,
+  sectionTitle,
   selectedDataSource,
-  topNFieldOptions,
+  topNLabelFieldOptions,
+  topNValueFieldOptions,
 }) => {
+  const resolvedSectionTitle =
+    sectionTitle || t('topology.nodeConfig.dataSettings');
+
   return (
     <div className="mb-6">
       <div className="mb-6">
-        <div className="font-medium mb-4">{t('topology.nodeConfig.dataSettings')}</div>
+        <div className="font-medium mb-4">{resolvedSectionTitle}</div>
 
         {!selectedDataSource ? (
           <div className="text-center py-4 text-gray-500">
@@ -23,7 +30,7 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
           </div>
         ) : null}
 
-        {selectedDataSource && topNFieldOptions.length === 0 ? (
+        {selectedDataSource && topNLabelFieldOptions.length === 0 ? (
           <div className="text-center py-4 text-gray-500">
             {t('topology.nodeConfig.noAvailableFields')}
           </div>
@@ -32,11 +39,16 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
         <Form.Item
           label={t('topology.nodeConfig.displayField')}
           name="topNLabelField"
-          rules={[{ required: true, message: t('topology.nodeConfig.selectDisplayField') }]}
+          rules={[
+            {
+              required: true,
+              message: t('topology.nodeConfig.selectDisplayField'),
+            },
+          ]}
         >
           <Select
             placeholder={t('topology.nodeConfig.selectDisplayField')}
-            options={topNFieldOptions}
+            options={topNLabelFieldOptions}
             disabled={!selectedDataSource}
             showSearch
             optionFilterProp="value"
@@ -46,12 +58,17 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
         <Form.Item
           label={t('topology.nodeConfig.valueField')}
           name="topNValueField"
-          rules={[{ required: true, message: t('topology.nodeConfig.selectValueField') }]}
+          rules={[
+            {
+              required: true,
+              message: t('topology.nodeConfig.selectValueField'),
+            },
+          ]}
         >
           <Select
             placeholder={t('topology.nodeConfig.selectValueField')}
-            options={topNFieldOptions}
-            disabled={!selectedDataSource}
+            options={topNValueFieldOptions}
+            disabled={!selectedDataSource || topNValueFieldOptions.length === 0}
             showSearch
             optionFilterProp="value"
           />

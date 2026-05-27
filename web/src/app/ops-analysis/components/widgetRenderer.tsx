@@ -6,6 +6,7 @@ import { getWidgetComponent } from './widgetRegistry';
 interface WidgetRendererProps {
   chartType?: string;
   rawData: any;
+  baselineData?: any;
   loading?: boolean;
   config?: ValueConfig;
   dataSource?: DatasourceItem;
@@ -17,6 +18,7 @@ interface WidgetRendererProps {
 const WidgetRenderer: React.FC<WidgetRendererProps> = ({
   chartType,
   rawData,
+  baselineData,
   loading = false,
   config,
   dataSource,
@@ -32,6 +34,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
   return (
     <Component
       rawData={rawData}
+      baselineData={baselineData}
       loading={loading}
       config={config}
       dataSource={dataSource}

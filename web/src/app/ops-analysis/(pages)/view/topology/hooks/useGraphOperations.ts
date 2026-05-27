@@ -4,7 +4,7 @@
 import { useCallback, useEffect } from 'react';
 import type { Graph as X6Graph, Node, Edge } from '@antv/x6';
 import { v4 as uuidv4 } from 'uuid';
-import { processDataSourceParams, buildDefaultFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { buildDefaultFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { Graph } from '@antv/x6';
 import { Selection } from '@antv/x6-plugin-selection';
 import { Transform } from '@antv/x6-plugin-transform';
@@ -14,6 +14,7 @@ import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import { TopologyNodeData } from '@/app/ops-analysis/types/topology';
 import type { UnifiedFilterDefinition, FilterValue } from '@/app/ops-analysis/types/dashBoard';
+import { fetchCompareData, extractComparableValue, getChangePercent, toComparableNumber } from '@/app/ops-analysis/utils/compareQuery';
 import { updateNodeAttributes, registerNodes, createNodeByType } from '../utils/registerNode';
 import { useTranslation } from '@/utils/i18n';
 import { registerEdges } from '../utils/registerEdge';
@@ -31,7 +32,6 @@ import {
   showPorts,
   showEdgeTools,
   addEdgeTools,
-  getValueByPath,
   formatDisplayValue,
   createPortConfig,
   adjustSingleValueNodeSize,
@@ -39,6 +39,49 @@ import {
 import { getColorByThreshold } from '../utils/thresholdUtils';
 
 const LOADING_ANIMATION_INTERVAL = 300; // 加载动画间隔时间（ms）
+
+/** 构造 fetchCompareData 所需的最小 DataSource 占位对象 */
+/** 对数值应用换算系数和小数位数，返回格式化后的字符串 */
+function formatNumericValue(
+  rawValue: unknown,
+  conversionFactor?: number,
+  decimalPlaces?: number,
+): string {
+  const numericValue = typeof rawValue === 'string' ? parseFloat(rawValue) : rawValue;
+
+  if (typeof numericValue === 'number' && !isNaN(numericValue)) {
+    const factor = conversionFactor !== undefined ? conversionFactor : 1;
+    const places = decimalPlaces !== undefined ? decimalPlaces : 2;
+    return parseFloat((numericValue * factor).toFixed(places)).toString();
+  }
+
+  return formatDisplayValue(rawValue, undefined, undefined, conversionFactor);
+}
+
+/** 构建周期对比后缀文本 */
+function buildCompareSuffix(
+  compareLabel: string,
+  changePercent: number | null,
+): string {
+  if (changePercent === null) {
+    return ` (${compareLabel} --)`;
+  }
+  const arrow = changePercent > 0 ? '↑' : changePercent < 0 ? '↓' : '';
+  return ` (${compareLabel} ${arrow}${Math.abs(changePercent).toFixed(1)}%)`;
+}
+
+/** 合并样式字段：优先取 values 中有值的字段，否则回退到 existing */
+function mergeStyleConfig(
+  values: Record<string, any>,
+  existing: Record<string, any> | undefined,
+  keys: string[],
+): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const key of keys) {
+    result[key] = values[key] !== undefined ? values[key] : existing?.[key];
+  }
+  return result;
+}
 
 export const useGraphOperations = (
   containerRef: React.RefObject<HTMLDivElement | null>,
@@ -107,81 +150,60 @@ export const useGraphOperations = (
     try {
       const effectiveFilterBindings = valueConfig.filterBindings || 
         buildDefaultFilterBindings(valueConfig.dataSourceParams || [], filterDefinitions || [], undefined);
-      
-      const requestParams = processDataSourceParams({
-        sourceParams: valueConfig.dataSourceParams || [],
-        userParams: {},
+
+      const compareResult = await fetchCompareData({
+        dataSourceId: Number(valueConfig.dataSource),
+        getSourceDataByApiId,
+        config: valueConfig,
+        dataSource: { params: valueConfig.dataSourceParams || [] },
+        extraParams: namespaceId !== undefined ? { namespace_id: namespaceId } : undefined,
         unifiedFilterValues,
         filterBindings: effectiveFilterBindings,
         filterDefinitions,
       });
 
-      const finalParams = namespaceId !== undefined 
-        ? { ...requestParams, namespace_id: namespaceId }
-        : requestParams;
-
-      const resData = await getSourceDataByApiId(Number(valueConfig.dataSource), finalParams);
-      
-      let dataToExtract: unknown = null;
-      if (Array.isArray(resData) && resData.length > 0) {
-        dataToExtract = resData[resData.length - 1];
-      } else if (resData && typeof resData === 'object' && !Array.isArray(resData)) {
-        dataToExtract = resData;
+      const dataToExtract = compareResult.currentData;
+      if (!dataToExtract) {
+        throw new Error(t('topology.noData'));
       }
 
-      if (dataToExtract) {
-        const field = valueConfig.selectedFields[0];
-        const value = getValueByPath(dataToExtract, field);
+      // 提取当前值与基线值
+      const field = valueConfig.selectedFields[0];
+      const value = extractComparableValue(dataToExtract, field);
+      const baselineValue = extractComparableValue(compareResult.baselineData, field);
+      const changePercent = valueConfig.compare
+        ? getChangePercent(toComparableNumber(value), toComparableNumber(baselineValue))
+        : null;
 
-        let displayValue;
-        const numericValue = typeof value === 'string' ? parseFloat(value) : value;
+      // 格式化显示文本
+      let displayValue = formatNumericValue(value, nodeConfig.conversionFactor, nodeConfig.decimalPlaces);
+      if (nodeConfig.unit?.trim()) {
+        displayValue = `${displayValue} ${nodeConfig.unit}`;
+      }
 
-        if (typeof numericValue === 'number' && !isNaN(numericValue)) {
-          // 应用换算系数
-          const conversionFactor = nodeConfig.conversionFactor !== undefined ? nodeConfig.conversionFactor : 1;
-          const convertedValue = numericValue * conversionFactor;
+      const compareSuffix = valueConfig.compare
+        ? buildCompareSuffix(t('dashboard.comparePreviousShortLabel'), changePercent)
+        : '';
+      const nodeText = `${displayValue}${compareSuffix}`;
 
-          const decimalPlaces = nodeConfig.decimalPlaces !== undefined ? nodeConfig.decimalPlaces : 2;
-          displayValue = parseFloat(convertedValue.toFixed(decimalPlaces)).toString();
-        } else {
-          displayValue = formatDisplayValue(value, undefined, undefined, nodeConfig.conversionFactor);
-        }
-        if (nodeConfig.unit && nodeConfig.unit.trim()) {
-          displayValue = `${displayValue} ${nodeConfig.unit}`;
-        }
+      // 根据阈值配置计算文本颜色
+      let textColor = nodeConfig.styleConfig?.textColor;
+      if (nodeConfig.styleConfig?.thresholdColors?.length) {
+        const numValue = typeof value === 'string' ? parseFloat(value) : (typeof value === 'number' ? value : null);
+        textColor = getColorByThreshold(numValue, nodeConfig.styleConfig.thresholdColors, nodeConfig.styleConfig.textColor);
+      }
 
-        // 根据阈值配置计算文本颜色
-        let textColor = nodeConfig.styleConfig?.textColor;
-        if (nodeConfig.styleConfig?.thresholdColors?.length) {
-          const numValue = typeof value === 'string' ? parseFloat(value) : (typeof value === 'number' ? value : null);
-          textColor = getColorByThreshold(numValue, nodeConfig.styleConfig.thresholdColors, nodeConfig.styleConfig.textColor);
-        }
+      // 更新节点
+      node.setData({ ...node.getData(), isLoading: false, hasError: false }, { overwrite: true });
+      node.setAttrByPath('label/text', nodeText);
+      node.setAttrByPath('label/fill', textColor);
 
-        const currentNodeData = node.getData();
-        const updatedData = {
-          ...currentNodeData,
-          isLoading: false,
-          hasError: false,
-        };
-        node.setData(updatedData, { overwrite: true });
-        node.setAttrByPath('label/text', displayValue);
-        node.setAttrByPath('label/fill', textColor);
-
-        if (node.isNode()) {
-          adjustSingleValueNodeSize(node, displayValue);
-        }
-      } else {
-        throw new Error(t('topology.noData'));
+      if (node.isNode()) {
+        adjustSingleValueNodeSize(node, nodeText);
       }
     } catch (error) {
       console.error('更新单值节点数据失败:', error);
-      const currentNodeData = node.getData();
-      const updatedData = {
-        ...currentNodeData,
-        isLoading: false,
-        hasError: true,
-      };
-      node.setData(updatedData, { overwrite: true });
+      node.setData({ ...node.getData(), isLoading: false, hasError: true }, { overwrite: true });
       node.setAttrByPath('label/text', '--');
       if (node.isNode()) {
         adjustSingleValueNodeSize(node, '--');
@@ -587,18 +609,44 @@ export const useGraphOperations = (
     // 记录节点大小变化操作
     const nodeOriginalSizes = new Map<string, any>();
 
+    /** 记录大小变更到操作历史（如果大小确实改变了） */
+    const recordResizeIfChanged = (node: Node, updatedConfig: any) => {
+      const originalState = nodeOriginalSizes.get(node.id);
+      if (!originalState) return;
+
+      const newSize = node.getSize();
+      if (originalState.size.width !== newSize.width || originalState.size.height !== newSize.height) {
+        recordOperation({
+          action: 'update',
+          cellType: 'node',
+          cellId: node.id,
+          data: {
+            before: {
+              size: originalState.size,
+              data: originalState.data,
+              attrs: originalState.attrs,
+            },
+            after: {
+              size: { width: newSize.width, height: newSize.height },
+              data: updatedConfig,
+              attrs: node.getAttrs(),
+            },
+          },
+        });
+      }
+      nodeOriginalSizes.delete(node.id);
+    };
+
     const handleNodeSizeUpdate = (node: Node, isRealtime = false) => {
       const nodeData = node.getData();
       const size = node.getSize();
 
       // 记录开始大小变化时的原始大小
       if (isRealtime && !nodeOriginalSizes.has(node.id)) {
-        const originalSize = node.getSize();
-        const originalData = node.getData();
         nodeOriginalSizes.set(node.id, {
-          size: { width: originalSize.width, height: originalSize.height },
-          data: originalData,
-          attrs: node.getAttrs()
+          size: { width: size.width, height: size.height },
+          data: nodeData,
+          attrs: node.getAttrs(),
         });
       }
 
@@ -610,70 +658,17 @@ export const useGraphOperations = (
           height: size.height,
         },
       };
-
       node.setData(updatedConfig, { overwrite: true });
 
       if (nodeData.type === 'icon' || nodeData.type === 'single-value') {
         if (!isRealtime) {
           updateNodeAttributes(node, updatedConfig);
-
-          // 大小变化结束时记录操作
-          const originalState = nodeOriginalSizes.get(node.id);
-          if (originalState) {
-            const newSize = node.getSize();
-            // 只有大小真正发生变化时才记录
-            if (originalState.size.width !== newSize.width || originalState.size.height !== newSize.height) {
-              recordOperation({
-                action: 'update',
-                cellType: 'node',
-                cellId: node.id,
-                data: {
-                  before: {
-                    size: originalState.size,
-                    data: originalState.data,
-                    attrs: originalState.attrs
-                  },
-                  after: {
-                    size: { width: newSize.width, height: newSize.height },
-                    data: updatedConfig,
-                    attrs: node.getAttrs()
-                  }
-                }
-              });
-            }
-            nodeOriginalSizes.delete(node.id);
-          }
+          recordResizeIfChanged(node, updatedConfig);
         }
       } else if (nodeData.type === 'chart') {
-        const chartPortConfig = createPortConfig();
-        node.prop('ports', chartPortConfig);
-
+        node.prop('ports', createPortConfig());
         if (!isRealtime) {
-          // 图表节点大小变化结束时记录操作
-          const originalState = nodeOriginalSizes.get(node.id);
-          if (originalState) {
-            const newSize = node.getSize();
-            if (originalState.size.width !== newSize.width || originalState.size.height !== newSize.height) {
-              recordOperation({
-                action: 'update',
-                cellType: 'node',
-                cellId: node.id,
-                data: {
-                  before: {
-                    size: originalState.size,
-                    data: originalState.data,
-                    attrs: originalState.attrs
-                  },
-                  after: {
-                    size: { width: newSize.width, height: newSize.height },
-                    data: updatedConfig,
-                    attrs: node.getAttrs()
-                  }
-                }
-              });
-            }
-            nodeOriginalSizes.delete(node.id);
-          }
+          recordResizeIfChanged(node, updatedConfig);
         }
       }
     };
@@ -879,6 +874,7 @@ export const useGraphOperations = (
       logoIcon: values.logoIcon || editingNode.logoIcon,
       logoUrl: values.logoUrl || editingNode.logoUrl,
       valueConfig: {
+        compare: values.compare ?? valueConfig?.compare,
         selectedFields: values.selectedFields || valueConfig?.selectedFields,
         chartType: values.chartType || valueConfig?.chartType,
         dataSource: values.dataSource || valueConfig?.dataSource,
@@ -886,23 +882,12 @@ export const useGraphOperations = (
         topNLabelField: values.topNLabelField ?? valueConfig?.topNLabelField,
         topNValueField: values.topNValueField ?? valueConfig?.topNValueField,
       },
-      styleConfig: {
-        textColor: values.textColor !== undefined ? values.textColor : styleConfig?.textColor,
-        fontSize: values.fontSize !== undefined ? values.fontSize : styleConfig?.fontSize,
-        fontWeight: values.fontWeight !== undefined ? values.fontWeight : styleConfig?.fontWeight,
-        backgroundColor: values.backgroundColor !== undefined ? values.backgroundColor : styleConfig?.backgroundColor,
-        borderColor: values.borderColor !== undefined ? values.borderColor : styleConfig?.borderColor,
-        borderWidth: values.borderWidth !== undefined ? values.borderWidth : styleConfig?.borderWidth,
-        iconPadding: values.iconPadding !== undefined ? values.iconPadding : styleConfig?.iconPadding,
-        renderEffect: values.renderEffect !== undefined ? values.renderEffect : styleConfig?.renderEffect,
-        width: values.width !== undefined ? values.width : styleConfig?.width,
-        height: values.height !== undefined ? values.height : styleConfig?.height,
-        lineType: values.lineType !== undefined ? values.lineType : styleConfig?.lineType,
-        shapeType: values.shapeType !== undefined ? values.shapeType : styleConfig?.shapeType,
-        nameColor: values.nameColor !== undefined ? values.nameColor : styleConfig?.nameColor,
-        nameFontSize: values.nameFontSize !== undefined ? values.nameFontSize : styleConfig?.nameFontSize,
-        thresholdColors: values.thresholdColors !== undefined ? values.thresholdColors : styleConfig?.thresholdColors,
-      },
+      styleConfig: mergeStyleConfig(values, styleConfig, [
+        'textColor', 'fontSize', 'fontWeight', 'backgroundColor',
+        'borderColor', 'borderWidth', 'iconPadding', 'renderEffect',
+        'width', 'height', 'lineType', 'shapeType',
+        'nameColor', 'nameFontSize', 'thresholdColors',
+      ]),
     } as TopologyNodeData;
   }
 
