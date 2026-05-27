@@ -27,6 +27,10 @@ from apps.alerts.aggregation.builder.alert_builder import AlertBuilder
 from apps.alerts.aggregation.builder.synthetic_alert_builder import (
     SyntheticAlertBuilder,
 )
+from apps.alerts.utils.permission_scope import (
+    apply_team_scope_with_group_ids,
+    normalize_team_ids,
+)
 from apps.core.logger import alert_logger as logger
 from apps.alerts.utils.util import parse_aggregation_window_size, str_to_md5
 from apps.alerts.constants.constants import LevelType
@@ -75,6 +79,31 @@ class AggregationProcessor:
         )
 
     @staticmethod
+    def _scope_events_for_strategy(queryset, strategy: AlarmStrategy):
+        try:
+            strategy_team_ids = normalize_team_ids(strategy.team)
+        except ValueError:
+            logger.warning(
+                "策略 team 非法，拒绝读取事件: strategy_id=%s team=%s",
+                strategy.id,
+                strategy.team,
+            )
+            return queryset.none()
+
+        if not strategy_team_ids:
+            logger.warning(
+                "策略 team 为空，拒绝读取事件: strategy_id=%s",
+                strategy.id,
+            )
+            return queryset.none()
+
+        return apply_team_scope_with_group_ids(
+            queryset,
+            strategy_team_ids,
+            field_name="team",
+        )
+
+    @staticmethod
     def get_events_for_strategy(strategy: AlarmStrategy, now: datetime):
         """
         根据策略配置获取事件
@@ -103,6 +132,7 @@ class AggregationProcessor:
             received_at__gte=cutoff_time,
             action__in=[EventAction.CREATED, EventAction.CLOSED],
         )
+        events = AggregationProcessor._scope_events_for_strategy(events, strategy)
 
         logger.debug(f"策略 {strategy.name}: 时间范围内事件总数={events.count()}")
 
@@ -231,7 +261,7 @@ class AggregationProcessor:
                 strategy.created_at.isoformat(),
                 now.isoformat(),
             )
-        return queryset
+        return self._scope_events_for_strategy(queryset, strategy)
 
     def _match_heartbeat_events(self, strategy: AlarmStrategy, candidates):
         matched_events = StrategyMatcher.match_events_to_strategy(candidates, cast(List[List[Dict]], strategy.match_rules or []))
