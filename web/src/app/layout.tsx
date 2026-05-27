@@ -7,6 +7,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { SessionProvider, useSession } from 'next-auth/react';
 import { LocaleProvider } from '@/context/locale';
+import { useTranslation } from '@/utils/i18n';
 import { ThemeProvider } from '@/context/theme';
 import { MenusProvider, useMenus } from '@/context/menus';
 import { UserInfoProvider } from '@/context/userInfo';
@@ -37,6 +38,7 @@ const applyWatermarkTemplate = (template: string, variables: Record<string, stri
 
 const PortalBrandingHead = () => {
   const { portalName, faviconUrl } = usePortalBranding();
+  const { t } = useTranslation();
 
   useEffect(() => {
     const head = document.head;
@@ -54,8 +56,9 @@ const PortalBrandingHead = () => {
   }, [faviconUrl]);
 
   useEffect(() => {
-    document.title = `${portalName || portalBrandingDefaults.portalName} - AI 原生的轻量化运维平台`;
-  }, [portalName]);
+    const slogan = t('common.portalSlogan', 'AI-Native Lightweight O&M Platform');
+    document.title = `${portalName || portalBrandingDefaults.portalName} - ${slogan}`;
+  }, [portalName, t]);
 
   return null;
 };
@@ -217,7 +220,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <title>BlueKing Lite - AI 原生的轻量化运维平台</title>
+        <title>BlueKing Lite</title>
         <link rel="icon" href="/logo-site.png" type="image/png" data-portal-favicon="true" />
         <Script src="/iconfont.js" strategy="afterInteractive"/>
       </head>

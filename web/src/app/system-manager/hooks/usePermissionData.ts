@@ -85,6 +85,7 @@ interface UsePermissionDataResult {
     module?: string,
     subModule?: string
   ) => Promise<void>;
+  updateModuleDataItem: (module: string, record: DataPermission, subModule?: string) => void;
 }
 
 export function usePermissionData(
@@ -233,12 +234,29 @@ export function usePermissionData(
     }
   }, [clientId, formGroupId]);
 
+  const updateModuleDataItem = useCallback((
+    module: string,
+    record: DataPermission,
+    subModule?: string
+  ) => {
+    const dataKey = subModule ? `${module}_${subModule}` : module;
+    setModuleData(prev => {
+      const currentData = prev[dataKey];
+      if (!currentData) return prev;
+      const newData = currentData.map(item =>
+        item.id === record.id ? { ...item, view: record.view, operate: record.operate } : item
+      );
+      return { ...prev, [dataKey]: newData };
+    });
+  }, []);
+
   return {
     loading,
     moduleData,
     pagination,
     loadSpecificData,
-    handleTableChange
+    handleTableChange,
+    updateModuleDataItem
   };
 }
 
