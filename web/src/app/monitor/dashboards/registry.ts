@@ -1,4 +1,5 @@
 import MysqlDashboard from './mysql';
+import RedisDashboard from './redis';
 import { ProfessionalDashboardRegistryItem } from './types';
 import { normalizeDashboardKey } from './utils';
 
@@ -9,6 +10,13 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: 'MySQL',
     inheritedPermissionPath: '/monitor/view',
     component: MysqlDashboard
+  },
+  {
+    key: 'redis',
+    objectName: 'Redis',
+    objectDisplayName: 'Redis',
+    inheritedPermissionPath: '/monitor/view',
+    component: RedisDashboard
   }
 ];
 

@@ -15,6 +15,11 @@
           "url": "/monitor/view/dashboard/mysql",
           "name": "mysql_dashboard",
           "isNotMenuItem": true
+        },
+        {
+          "url": "/monitor/view/dashboard/redis",
+          "name": "redis_dashboard",
+          "isNotMenuItem": true
         }
       ]
     },
@@ -126,6 +131,11 @@
         {
           "url": "/monitor/view/dashboard/mysql",
           "name": "mysql_dashboard",
+          "isNotMenuItem": true
+        },
+        {
+          "url": "/monitor/view/dashboard/redis",
+          "name": "redis_dashboard",
           "isNotMenuItem": true
         }
       ]
