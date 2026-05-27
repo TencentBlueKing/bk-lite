@@ -159,7 +159,8 @@
     "noUnreadNotifications": "No unread notifications",
     "sessionExpiredTitle": "Session expired",
     "sessionExpiredDescription": "Please verify your identity again to continue on this page.",
-    "reloginSuccess": "Signed in successfully"
+    "reloginSuccess": "Signed in successfully",
+    "portalSlogan": "AI-Native Lightweight O&M Platform"
   },
   "userInfo": {
     "basicInfo": "Basic Information",
