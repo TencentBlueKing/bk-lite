@@ -1,22 +1,21 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Button,
-  Drawer,
   Empty,
   Flex,
+  Form,
   Popconfirm,
-  Select,
   Space,
-  Spin,
   Table,
   Tag,
   Typography,
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { PlusOutlined } from '@ant-design/icons';
 import { useConfigFileApi } from '@/app/cmdb/api';
 import type {
   ConfigFileContentResponse,
@@ -24,17 +23,12 @@ import type {
   ConfigFileVersion,
 } from '@/app/cmdb/types/configFile';
 import { isConfigFileSupportedModel } from '@/app/cmdb/constants/configFile';
+import { useTranslation } from '@/utils/i18n';
+import ContentDrawer from './components/contentDrawer';
+import CompareDrawer from './components/compareDrawer';
+import ManualUploadDrawer from './components/manualUploadDrawer';
 
-const { Paragraph, Text } = Typography;
-
-const ENCODING_OPTIONS = [
-  { label: 'UTF-8', value: 'utf-8' },
-  { label: 'GBK', value: 'gbk' },
-  { label: 'GB18030', value: 'gb18030' },
-  { label: 'Big5', value: 'big5' },
-  { label: 'Shift_JIS', value: 'shift_jis' },
-  { label: 'UTF-16LE', value: 'utf-16le' },
-];
+const { Text } = Typography;
 
 const formatDateTime = (value: string) => {
   if (!value) return '--';
@@ -51,201 +45,35 @@ const formatDateTime = (value: string) => {
   }).format(date);
 };
 
-interface DiffRow {
-  key: string;
-  leftNumber: number | null;
-  rightNumber: number | null;
-  leftText: string;
-  rightText: string;
-  status: 'same' | 'changed' | 'added' | 'removed';
-}
-
-interface DiffSegment {
-  text: string;
-  changed: boolean;
-}
-
-const buildSideBySideDiffRows = (leftContent: string, rightContent: string): DiffRow[] => {
-  const leftLines = leftContent.split(/\r?\n/);
-  const rightLines = rightContent.split(/\r?\n/);
-  const leftLength = leftLines.length;
-  const rightLength = rightLines.length;
-  const dp = Array.from({ length: leftLength + 1 }, () => Array(rightLength + 1).fill(0));
-
-  for (let leftIndex = leftLength - 1; leftIndex >= 0; leftIndex -= 1) {
-    for (let rightIndex = rightLength - 1; rightIndex >= 0; rightIndex -= 1) {
-      if (leftLines[leftIndex] === rightLines[rightIndex]) {
-        dp[leftIndex][rightIndex] = dp[leftIndex + 1][rightIndex + 1] + 1;
-      } else {
-        dp[leftIndex][rightIndex] = Math.max(dp[leftIndex + 1][rightIndex], dp[leftIndex][rightIndex + 1]);
-      }
-    }
-  }
-
-  const rows: DiffRow[] = [];
-  let leftIndex = 0;
-  let rightIndex = 0;
-  let leftNumber = 1;
-  let rightNumber = 1;
-
-  while (leftIndex < leftLength && rightIndex < rightLength) {
-    if (leftLines[leftIndex] === rightLines[rightIndex]) {
-      rows.push({
-        key: `${leftIndex}-${rightIndex}`,
-        leftNumber,
-        rightNumber,
-        leftText: leftLines[leftIndex],
-        rightText: rightLines[rightIndex],
-        status: 'same',
-      });
-      leftIndex += 1;
-      rightIndex += 1;
-      leftNumber += 1;
-      rightNumber += 1;
-      continue;
-    }
-
-    if (dp[leftIndex + 1][rightIndex] === dp[leftIndex][rightIndex + 1]) {
-      rows.push({
-        key: `${leftIndex}-${rightIndex}`,
-        leftNumber,
-        rightNumber,
-        leftText: leftLines[leftIndex],
-        rightText: rightLines[rightIndex],
-        status: 'changed',
-      });
-      leftIndex += 1;
-      rightIndex += 1;
-      leftNumber += 1;
-      rightNumber += 1;
-      continue;
-    }
-
-    if (dp[leftIndex + 1][rightIndex] > dp[leftIndex][rightIndex + 1]) {
-      rows.push({
-        key: `${leftIndex}-left`,
-        leftNumber,
-        rightNumber: null,
-        leftText: leftLines[leftIndex],
-        rightText: '',
-        status: 'removed',
-      });
-      leftIndex += 1;
-      leftNumber += 1;
-      continue;
-    }
-
-    rows.push({
-      key: `${rightIndex}-right`,
-      leftNumber: null,
-      rightNumber,
-      leftText: '',
-      rightText: rightLines[rightIndex],
-      status: 'added',
-    });
-    rightIndex += 1;
-    rightNumber += 1;
-  }
-
-  while (leftIndex < leftLength) {
-    rows.push({
-      key: `${leftIndex}-left-tail`,
-      leftNumber,
-      rightNumber: null,
-      leftText: leftLines[leftIndex],
-      rightText: '',
-      status: 'removed',
-    });
-    leftIndex += 1;
-    leftNumber += 1;
-  }
-
-  while (rightIndex < rightLength) {
-    rows.push({
-      key: `${rightIndex}-right-tail`,
-      leftNumber: null,
-      rightNumber,
-      leftText: '',
-      rightText: rightLines[rightIndex],
-      status: 'added',
-    });
-    rightIndex += 1;
-    rightNumber += 1;
-  }
-
-  return rows;
-};
-
-const getDiffAccentClassName = (status: DiffRow['status'], side: 'left' | 'right') => {
-  if (status === 'changed') return 'border-l-2 border-l-amber-400';
-  if (status === 'added' && side === 'right') return 'border-l-2 border-l-emerald-400';
-  if (status === 'removed' && side === 'left') return 'border-l-2 border-l-rose-400';
-  return 'border-l-2 border-l-transparent';
-};
-
-const buildInlineSegments = (leftText: string, rightText: string) => {
-  if (leftText === rightText) {
-    return {
-      left: [{ text: leftText, changed: false }],
-      right: [{ text: rightText, changed: false }],
-    };
-  }
-
-  let prefixLength = 0;
-  const maxPrefixLength = Math.min(leftText.length, rightText.length);
-  while (prefixLength < maxPrefixLength && leftText[prefixLength] === rightText[prefixLength]) {
-    prefixLength += 1;
-  }
-
-  let leftSuffixLength = leftText.length - 1;
-  let rightSuffixLength = rightText.length - 1;
-  while (
-    leftSuffixLength >= prefixLength &&
-    rightSuffixLength >= prefixLength &&
-    leftText[leftSuffixLength] === rightText[rightSuffixLength]
-  ) {
-    leftSuffixLength -= 1;
-    rightSuffixLength -= 1;
-  }
-
-  const buildSegments = (source: string, suffixIndex: number): DiffSegment[] => {
-    const segments: DiffSegment[] = [];
-    const prefix = source.slice(0, prefixLength);
-    const changed = source.slice(prefixLength, suffixIndex + 1);
-    const suffix = source.slice(suffixIndex + 1);
-
-    if (prefix) segments.push({ text: prefix, changed: false });
-    if (changed) segments.push({ text: changed, changed: true });
-    if (suffix) segments.push({ text: suffix, changed: false });
-    if (!segments.length) segments.push({ text: '', changed: false });
-    return segments;
-  };
-
-  return {
-    left: buildSegments(leftText, leftSuffixLength),
-    right: buildSegments(rightText, rightSuffixLength),
-  };
-};
-
 const ConfigFilesPage = () => {
   const searchParams = useSearchParams();
   const instanceId = searchParams.get('inst_id') || '';
   const modelId = searchParams.get('model_id') || '';
   const isSupportedModel = isConfigFileSupportedModel(modelId);
+  const { t } = useTranslation();
   const configFileApi = useConfigFileApi();
   const {
     getConfigFileList,
     getConfigFileVersions,
     getConfigFileContent,
     deleteConfigFileVersion,
+    createManualConfigFile,
   } = configFileApi;
+
   const [fileList, setFileList] = useState<ConfigFileItem[]>([]);
   const [fileListLoading, setFileListLoading] = useState(false);
+  const [expandedVersions, setExpandedVersions] = useState<Record<string, ConfigFileVersion[]>>({});
+  const [expandedVersionsLoading, setExpandedVersionsLoading] = useState<Record<string, boolean>>({});
+
+  // Content drawer state
   const [contentDrawerOpen, setContentDrawerOpen] = useState(false);
   const [activeFile, setActiveFile] = useState<ConfigFileItem | null>(null);
+  const [activeVersionLabel, setActiveVersionLabel] = useState('');
   const [contentData, setContentData] = useState<ConfigFileContentResponse | null>(null);
   const [contentLoading, setContentLoading] = useState(false);
   const [contentEncoding, setContentEncoding] = useState('utf-8');
+
+  // Compare drawer state
   const [compareDrawerOpen, setCompareDrawerOpen] = useState(false);
   const [compareTarget, setCompareTarget] = useState<ConfigFileItem | null>(null);
   const [versionList, setVersionList] = useState<ConfigFileVersion[]>([]);
@@ -254,11 +82,11 @@ const ConfigFilesPage = () => {
   const [leftCompareContent, setLeftCompareContent] = useState('');
   const [rightCompareContent, setRightCompareContent] = useState('');
   const [compareLoading, setCompareLoading] = useState(false);
-  const leftPaneRef = useRef<HTMLDivElement | null>(null);
-  const rightPaneRef = useRef<HTMLDivElement | null>(null);
-  const syncingScrollRef = useRef(false);
-  const [expandedVersions, setExpandedVersions] = useState<Record<string, ConfigFileVersion[]>>({});
-  const [expandedVersionsLoading, setExpandedVersionsLoading] = useState<Record<string, boolean>>({});
+
+  // Manual upload state
+  const [manualCreateOpen, setManualCreateOpen] = useState(false);
+  const [manualCreateLoading, setManualCreateLoading] = useState(false);
+  const [manualForm] = Form.useForm();
 
   const fetchFileList = async () => {
     if (!instanceId || !isSupportedModel) {
@@ -278,7 +106,16 @@ const ConfigFilesPage = () => {
     void fetchFileList();
   }, [getConfigFileList, instanceId, isSupportedModel]);
 
-  const [activeVersionLabel, setActiveVersionLabel] = useState<string>('');
+  const fetchExpandedVersions = async (filePath: string) => {
+    try {
+      setExpandedVersionsLoading((prev) => ({ ...prev, [filePath]: true }));
+      const data = await getConfigFileVersions(instanceId, filePath);
+      const items = Array.isArray(data) ? data : data?.items || [];
+      setExpandedVersions((prev) => ({ ...prev, [filePath]: items }));
+    } finally {
+      setExpandedVersionsLoading((prev) => ({ ...prev, [filePath]: false }));
+    }
+  };
 
   const fetchContent = async (record: ConfigFileItem, encoding = 'utf-8') => {
     try {
@@ -298,24 +135,21 @@ const ConfigFilesPage = () => {
     try {
       setContentLoading(true);
       const data = await getConfigFileContent(version.id, encoding);
-      setActiveFile({ latest_version_id: version.id, file_path: version.file_path, file_name: version.file_name, collect_task_id: version.collect_task_id, latest_version: version.version, latest_status: version.status, latest_created_at: version.created_at });
+      setActiveFile({
+        latest_version_id: version.id,
+        file_path: version.file_path,
+        file_name: version.file_name,
+        collect_task_id: version.collect_task_id,
+        latest_version: version.version,
+        latest_status: version.status,
+        latest_created_at: version.created_at,
+      });
       setActiveVersionLabel(version.version);
       setContentData(data || null);
       setContentEncoding(data?.encoding || encoding);
       setContentDrawerOpen(true);
     } finally {
       setContentLoading(false);
-    }
-  };
-
-  const fetchExpandedVersions = async (filePath: string) => {
-    try {
-      setExpandedVersionsLoading((prev) => ({ ...prev, [filePath]: true }));
-      const data = await getConfigFileVersions(instanceId, filePath);
-      const items = Array.isArray(data) ? data : data?.items || [];
-      setExpandedVersions((prev) => ({ ...prev, [filePath]: items }));
-    } finally {
-      setExpandedVersionsLoading((prev) => ({ ...prev, [filePath]: false }));
     }
   };
 
@@ -328,21 +162,10 @@ const ConfigFilesPage = () => {
   const handleCopyContent = async () => {
     try {
       await navigator.clipboard.writeText(contentData?.content || '');
-      message.success('文件内容已复制');
+      message.success(t('ConfigFile.contentCopied'));
     } catch {
-      message.error('复制失败');
+      message.error(t('ConfigFile.copyFailed'));
     }
-  };
-
-  const handleDelete = async (record: ConfigFileItem) => {
-    await deleteConfigFileVersion(record.latest_version_id);
-    message.success('删除成功');
-    if (activeFile?.latest_version_id === record.latest_version_id) {
-      setContentDrawerOpen(false);
-      setActiveFile(null);
-      setContentData(null);
-    }
-    await fetchFileList();
   };
 
   useEffect(() => {
@@ -376,70 +199,54 @@ const ConfigFilesPage = () => {
     };
   }, [compareDrawerOpen, getConfigFileContent, leftCompareVersionId, rightCompareVersionId]);
 
-  const syncScroll = (source: 'left' | 'right') => {
-    const sourcePane = source === 'left' ? leftPaneRef.current : rightPaneRef.current;
-    const targetPane = source === 'left' ? rightPaneRef.current : leftPaneRef.current;
-    if (!sourcePane || !targetPane || syncingScrollRef.current) return;
-
-    syncingScrollRef.current = true;
-    targetPane.scrollTop = sourcePane.scrollTop;
-    targetPane.scrollLeft = sourcePane.scrollLeft;
-    requestAnimationFrame(() => {
-      syncingScrollRef.current = false;
-    });
+  const handleDeleteVersion = async (version: ConfigFileVersion) => {
+    await deleteConfigFileVersion(version.id);
+    message.success(t('ConfigFile.deleteSuccess'));
+    if (activeFile?.latest_version_id === version.id) {
+      setContentDrawerOpen(false);
+      setActiveFile(null);
+      setContentData(null);
+    }
+    await fetchFileList();
+    if (expandedVersions[version.file_path]) {
+      void fetchExpandedVersions(version.file_path);
+    }
   };
 
-  const versionOptions = useMemo(
-    () => versionList.map((item) => ({
-      label: `${item.version} | ${formatDateTime(item.created_at)}`,
-      value: item.id,
-    })),
-    [versionList]
-  );
-
-  const leftVersion = useMemo(
-    () => versionList.find((item) => item.id === leftCompareVersionId),
-    [leftCompareVersionId, versionList]
-  );
-
-  const rightVersion = useMemo(
-    () => versionList.find((item) => item.id === rightCompareVersionId),
-    [rightCompareVersionId, versionList]
-  );
-
-  const diffRows = useMemo(
-    () => buildSideBySideDiffRows(leftCompareContent, rightCompareContent),
-    [leftCompareContent, rightCompareContent]
-  );
-
-  const diffRowsWithSegments = useMemo(
-    () => diffRows.map((row) => ({
-      ...row,
-      segments: buildInlineSegments(row.leftText, row.rightText),
-    })),
-    [diffRows]
-  );
-
-  const diffSummary = useMemo(() => {
-    return diffRows.reduce(
-      (acc, row) => {
-        if (row.status === 'changed') acc.changed += 1;
-        if (row.status === 'added') acc.added += 1;
-        if (row.status === 'removed') acc.removed += 1;
-        return acc;
-      },
-      { changed: 0, added: 0, removed: 0 }
-    );
-  }, [diffRows]);
+  const handleManualCreate = async () => {
+    try {
+      const values = await manualForm.validateFields();
+      setManualCreateLoading(true);
+      await createManualConfigFile({
+        instance_id: instanceId,
+        model_id: modelId,
+        file_path: values.file_path,
+        content: values.content,
+      });
+      message.success(t('ConfigFile.uploadSuccess'));
+      setManualCreateOpen(false);
+      const uploadedFilePath = values.file_path;
+      manualForm.resetFields();
+      await fetchFileList();
+      if (expandedVersions[uploadedFilePath]) {
+        void fetchExpandedVersions(uploadedFilePath);
+      }
+    } catch (err: any) {
+      if (err?.errorFields) return;
+      message.error(err?.message || t('ConfigFile.uploadFailed'));
+    } finally {
+      setManualCreateLoading(false);
+    }
+  };
 
   const versionStatusTag = (status: string) => {
     const map: Record<string, { color: string; label: string }> = {
-      success: { color: 'green', label: '成功' },
-      file_not_found: { color: 'red', label: '文件不存在' },
-      permission_denied: { color: 'red', label: '权限不足' },
-      file_too_large: { color: 'orange', label: '文件超限' },
-      not_text: { color: 'orange', label: '非文本' },
-      error: { color: 'red', label: '异常' },
+      success: { color: 'green', label: t('ConfigFile.statusSuccess') },
+      file_not_found: { color: 'red', label: t('ConfigFile.statusFileNotFound') },
+      permission_denied: { color: 'red', label: t('ConfigFile.statusPermissionDenied') },
+      file_too_large: { color: 'orange', label: t('ConfigFile.statusFileTooLarge') },
+      not_text: { color: 'orange', label: t('ConfigFile.statusNotText') },
+      error: { color: 'red', label: t('ConfigFile.statusError') },
     };
     const info = map[status] || { color: 'default', label: status };
     return <Tag color={info.color}>{info.label}</Tag>;
@@ -451,24 +258,24 @@ const ConfigFilesPage = () => {
 
     const versionColumns: ColumnsType<ConfigFileVersion> = [
       {
-        title: '版本号',
+        title: t('ConfigFile.versionNumber'),
         dataIndex: 'version',
         key: 'version',
-        width: 240,
-        render: (value: string) => <Text className="font-mono text-[13px]">{value}</Text>,
+        render: (value: string) => (
+          <Text className="font-mono text-[13px]">{value}</Text>
+        ),
       },
       {
-        title: '状态',
+        title: t('ConfigFile.status'),
         dataIndex: 'status',
         key: 'status',
-        width: 180,
+        width: '16%',
         render: (value: string) => versionStatusTag(value),
       },
       {
-        title: '文件大小',
+        title: t('ConfigFile.fileSize'),
         dataIndex: 'file_size',
         key: 'file_size',
-        width: 240,
         render: (value: number) => {
           if (!value) return '--';
           if (value < 1024) return `${value} B`;
@@ -477,146 +284,195 @@ const ConfigFilesPage = () => {
         },
       },
       {
-        title: '采集时间',
+        title: t('ConfigFile.collectTime'),
         dataIndex: 'created_at',
         key: 'created_at',
-        width: 200,
+        width: '22%',
         render: (value: string) => formatDateTime(value),
       },
       {
-        title: '操作',
+        title: t('ConfigFile.actions'),
         key: 'actions',
-        render: (_: unknown, versionRecord: ConfigFileVersion, index: number) => (
-          <Space size={0} split={<Text type="secondary">|</Text>}>
+        width: '20%',
+        render: (
+          _: unknown,
+          versionRecord: ConfigFileVersion,
+          index: number,
+        ) => (
+          <Space size={2}>
             {versionRecord.status === 'success' && (
-              <Button type="link" size="small" onClick={() => void fetchVersionContent(versionRecord)}>
-                查看内容
-              </Button>
-            )}
-            {versionRecord.status === 'success' && index < versions.length - 1 && versions[index + 1]?.status === 'success' && (
               <Button
                 type="link"
                 size="small"
-                onClick={() => {
-                  setCompareTarget(record);
-                  setVersionList(versions);
-                  setLeftCompareVersionId(versionRecord.id);
-                  setRightCompareVersionId(versions[index + 1].id);
-                  setLeftCompareContent('');
-                  setRightCompareContent('');
-                  setCompareDrawerOpen(true);
-                }}
+                className="!pl-0"
+                onClick={() => void fetchVersionContent(versionRecord)}
               >
-                与上版本对比
+                {t('ConfigFile.viewContent')}
               </Button>
             )}
+            {versionRecord.status === 'success' &&
+              index < versions.length - 1 &&
+              versions[index + 1]?.status === 'success' && (
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={() => {
+                    setCompareTarget(record);
+                    setVersionList(versions);
+                    setLeftCompareVersionId(versionRecord.id);
+                    setRightCompareVersionId(versions[index + 1].id);
+                    setLeftCompareContent('');
+                    setRightCompareContent('');
+                    setCompareDrawerOpen(true);
+                  }}
+                >
+                  {t('ConfigFile.compareWithPrev')}
+                </Button>
+            )}
+            <Popconfirm
+              title={t('ConfigFile.deleteConfirmTitle')}
+              description={t('ConfigFile.deleteConfirmDesc')}
+              okText={t('ConfigFile.delete')}
+              cancelText={t('ConfigFile.cancel')}
+              onConfirm={() => void handleDeleteVersion(versionRecord)}
+            >
+              <Button danger type="link" size="small">
+                {t('ConfigFile.delete')}
+              </Button>
+            </Popconfirm>
           </Space>
         ),
       },
     ];
 
     return (
-      <Table
-        rowKey="id"
-        columns={versionColumns}
-        dataSource={versions}
-        loading={loading}
-        pagination={false}
-        size="small"
-        locale={{ emptyText: <Empty description="暂无版本记录" /> }}
-      />
+      <div className="mt-1" style={{ marginLeft: 48, marginRight: -48 }}>
+        <Table
+          rowKey="id"
+          columns={versionColumns}
+          dataSource={versions}
+          loading={loading}
+          pagination={false}
+          size="middle"
+          showHeader={true}
+          className="[&_.ant-table-thead_th]:!py-1.5 [&_.ant-table-thead_th]:!text-sm [&_.ant-table-thead_th]:!font-semibold [&_.ant-table-thead_th]:!bg-[var(--color-fill-1)] [&_.ant-table-tbody_td]:!py-1.5"
+          locale={{
+            emptyText: <Empty description={t('ConfigFile.emptyVersionText')} />,
+          }}
+        />
+      </div>
     );
   };
 
   const columns: ColumnsType<ConfigFileItem> = [
     {
-      title: '名称',
+      title: t('ConfigFile.name'),
       dataIndex: 'file_name',
       key: 'file_name',
-      width: 240,
+      width: 160,
       render: (_, record) => (
-        <div className="font-medium text-[14px] text-[var(--color-text-primary)]">{record.file_name}</div>
+        <div className="font-medium text-[14px] text-[var(--color-text-primary)]">
+          {record.file_name}
+        </div>
       ),
     },
     {
-      title: '最新版本号',
+      title: t('ConfigFile.latestVersion'),
       dataIndex: 'latest_version',
       key: 'latest_version',
-      width: 180,
+      width: 160,
       render: (value) => (
-        <Text className="font-mono text-[13px] text-[var(--color-text-primary)]">{value}</Text>
+        <Text className="font-mono text-[13px] text-[var(--color-text-primary)]">
+          {value}
+        </Text>
       ),
     },
     {
-      title: '采集路径',
+      title: t('ConfigFile.collectPath'),
       dataIndex: 'file_path',
       key: 'file_path',
-      width: 240,
-      ellipsis: true,
+      width: 200,
+      ellipsis: { showTitle: false },
       render: (value) => (
-        <Paragraph className="mb-0 text-[13px]" ellipsis={{ rows: 2, tooltip: value }}>
+        <Typography.Text className="text-[13px]" ellipsis={{ tooltip: value }}>
           {value}
-        </Paragraph>
+        </Typography.Text>
       ),
     },
     {
-      title: '最新采集时间',
+      title: t('ConfigFile.source'),
+      dataIndex: 'collect_task_id',
+      key: 'source',
+      width: 100,
+      render: (value) =>
+        value ? (
+          <Tag color="cyan">{t('ConfigFile.sourceCollected')}</Tag>
+        ) : (
+          <Tag color="purple">{t('ConfigFile.sourceManual')}</Tag>
+        ),
+    },
+    {
+      title: t('ConfigFile.latestTime'),
       dataIndex: 'latest_created_at',
       key: 'latest_created_at',
-      width: 200,
+      width: 180,
       render: (value) => formatDateTime(value),
     },
     {
-      title: '操作',
+      title: t('ConfigFile.actions'),
       key: 'actions',
-      width: 280,
+      width: 180,
       fixed: 'right',
       render: (_, record) => (
-        <Space size={0} split={<Text type="secondary">|</Text>}>
-          <Button type="link" size="small" onClick={() => void fetchContent(record)}>
-            查看最新内容
-          </Button>
-          <Popconfirm
-            title="确认删除当前最新版本记录？"
-            description="删除后该文件会回退到上一条可用版本，若无历史版本则会从列表中消失。"
-            okText="删除"
-            cancelText="取消"
-            onConfirm={() => void handleDelete(record)}
-          >
-            <Button danger type="link" size="small">
-              删除
-            </Button>
-          </Popconfirm>
-        </Space>
+        <Button
+          type="link"
+          size="small"
+          className="!pl-0"
+          onClick={() => void fetchContent(record)}
+        >
+          {t('ConfigFile.viewLatestContent')}
+        </Button>
       ),
     },
   ];
 
   if (!instanceId) {
-    return <Empty description="缺少实例信息" />;
+    return <Empty description={t('ConfigFile.noInstance')} />;
   }
 
   if (!isSupportedModel) {
-    return <Empty description="当前模型暂未开放配置文件" />;
+    return <Empty description={t('ConfigFile.modelNotSupported')} />;
   }
 
   return (
     <>
-      <div className="rounded-xl border border-[var(--color-border)] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+      <div className="pt-2 px-2">
         <Flex justify="space-between" align="center" className="mb-4">
           <div>
-            <div className="text-[16px] font-semibold text-[var(--color-text-primary)]">配置文件列表</div>
-            <Text type="secondary">按主机维度查看最新版本的配置文件记录</Text>
+            <div className="text-[16px] font-semibold text-[var(--color-text-primary)]">
+              {t('ConfigFile.title')}
+            </div>
+            <div className="mt-1 text-xs text-[var(--color-text-tertiary)]">
+              {t('ConfigFile.description')}
+            </div>
           </div>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setManualCreateOpen(true)}
+          >
+            {t('ConfigFile.manualUpload')}
+          </Button>
         </Flex>
         <Table
           rowKey="latest_version_id"
-          className="[&_.ant-table-thead_th]:!bg-[var(--color-fill-1)] [&_.ant-table-thead_th]:!py-3.5 [&_.ant-table-thead_th]:text-sm [&_.ant-table-thead_th]:font-semibold [&_.ant-table-tbody_td]:!py-4 [&_.ant-table-tbody_tr:hover_td]:!bg-[var(--color-fill-1)] [&_.ant-table-placeholder_td]:!py-10"
+          className="[&_.ant-table-body]:!min-h-[calc(100vh-300px)] [&_.ant-table-thead_th]:!bg-[var(--color-fill-1)] [&_.ant-table-thead_th]:!py-3 [&_.ant-table-thead_th]:text-sm [&_.ant-table-thead_th]:font-semibold [&_.ant-table-tbody_td]:!py-2.5 [&_.ant-table-tbody_td]:!align-middle [&_.ant-table-tbody_tr:hover_td]:!bg-[var(--color-fill-1)] [&_.ant-table-placeholder_td]:!h-[calc(100vh-330px)] [&_.ant-table-expanded-row>td]:!bg-white [&_.ant-table-expanded-row]:!bg-white"
           loading={fileListLoading}
           dataSource={fileList}
           columns={columns}
           expandable={{
             expandedRowRender,
+            columnWidth: 48,
             onExpand: (expanded, record) => {
               if (expanded && !expandedVersions[record.file_path]) {
                 void fetchExpandedVersions(record.file_path);
@@ -627,51 +483,36 @@ const ConfigFilesPage = () => {
             showSizeChanger: true,
             pageSizeOptions: ['10', '20', '50', '100'],
             defaultPageSize: 10,
-            showTotal: (total) => `共 ${total} 条`,
+            showTotal: (total) => `${total}`,
           }}
-          locale={{ emptyText: <Empty description="当前实例暂无配置文件采集记录" /> }}
-          scroll={{ x: 1120 }}
+          locale={{
+            emptyText: <Empty description={t('ConfigFile.emptyText')} />,
+          }}
+          scroll={{ x: 960, y: 'calc(100vh - 300px)' }}
         />
       </div>
 
-      <Drawer
-        title={activeFile ? `文件内容 · ${activeFile.file_name}${activeVersionLabel ? ` · 版本 ${activeVersionLabel}` : ''}` : '文件内容'}
-        placement="right"
-        width={760}
+      <ContentDrawer
         open={contentDrawerOpen}
+        loading={contentLoading}
+        activeFile={activeFile}
+        activeVersionLabel={activeVersionLabel}
+        contentData={contentData}
+        contentEncoding={contentEncoding}
         onClose={() => setContentDrawerOpen(false)}
-        extra={
-          <Space>
-            <Button onClick={() => void handleCopyContent()}>复制内容</Button>
-            <Text type="secondary">编码</Text>
-            <Select
-              value={contentEncoding}
-              options={ENCODING_OPTIONS}
-              style={{ width: 130 }}
-              onChange={(value) => void handleEncodingChange(value)}
-            />
-          </Space>
-        }
-      >
-        <Spin spinning={contentLoading}>
-          <Space direction="vertical" size={12} className="w-full">
-            <div className="rounded-lg bg-[var(--color-fill-1)] p-3">
-              <div><Text type="secondary">配置文件名称：</Text>{activeFile?.file_name || '--'}</div>
-              <div><Text type="secondary">采集路径：</Text>{activeFile?.file_path || '--'}</div>
-              <div><Text type="secondary">版本号：</Text>{activeFile?.latest_version || '--'}</div>
-            </div>
-            <pre className="max-h-[calc(100vh-240px)] overflow-auto rounded-lg bg-[#0f172a] p-4 text-xs leading-6 text-[#e2e8f0]">
-              {contentData?.content || '暂无内容'}
-            </pre>
-          </Space>
-        </Spin>
-      </Drawer>
+        onEncodingChange={(value) => void handleEncodingChange(value)}
+        onCopy={() => void handleCopyContent()}
+      />
 
-      <Drawer
-        title={compareTarget ? `版本对比 · ${compareTarget.file_name}` : '版本对比'}
-        placement="right"
-        width={1320}
+      <CompareDrawer
         open={compareDrawerOpen}
+        loading={compareLoading}
+        compareTarget={compareTarget}
+        versionList={versionList}
+        leftVersionId={leftCompareVersionId}
+        rightVersionId={rightCompareVersionId}
+        leftContent={leftCompareContent}
+        rightContent={rightCompareContent}
         onClose={() => {
           setCompareDrawerOpen(false);
           setCompareTarget(null);
@@ -681,112 +522,20 @@ const ConfigFilesPage = () => {
           setLeftCompareContent('');
           setRightCompareContent('');
         }}
-      >
-        <div className="flex h-full flex-col gap-4">
-          <div className="rounded-2xl border border-[var(--color-border)] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-            <Flex justify="space-between" align="start" gap={16} wrap="wrap">
-              <Space wrap size={12}>
-                <Select
-                  placeholder="选择左侧版本"
-                  value={leftCompareVersionId}
-                  options={versionOptions}
-                  style={{ width: 330 }}
-                  onChange={setLeftCompareVersionId}
-                />
-                <Select
-                  placeholder="选择右侧版本"
-                  value={rightCompareVersionId}
-                  options={versionOptions.filter((option) => option.value !== leftCompareVersionId)}
-                  style={{ width: 330 }}
-                  onChange={setRightCompareVersionId}
-                  allowClear
-                />
-              </Space>
-              <Space wrap size={8}>
-                <Tag color="gold">修改 {diffSummary.changed}</Tag>
-                <Tag color="green">新增 {diffSummary.added}</Tag>
-                <Tag color="red">删除 {diffSummary.removed}</Tag>
-              </Space>
-            </Flex>
-          </div>
+        onLeftVersionChange={setLeftCompareVersionId}
+        onRightVersionChange={setRightCompareVersionId}
+      />
 
-          <Spin spinning={compareLoading}>
-            <div className="grid h-[calc(100vh-220px)] grid-cols-2 gap-4">
-              <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-                <div className="border-b border-[var(--color-border)] bg-[var(--color-fill-1)] px-4 py-3">
-                  <div className="text-xs text-[var(--color-text-secondary)]">左侧版本</div>
-                  <div className="mt-1 font-mono text-[13px] text-[var(--color-text-primary)]">{leftVersion?.version || '--'}</div>
-                  <div className="text-xs text-[var(--color-text-secondary)]">{leftVersion ? formatDateTime(leftVersion.created_at) : '--'}</div>
-                </div>
-                <div
-                  ref={leftPaneRef}
-                  onScroll={() => syncScroll('left')}
-                  className="min-h-0 flex-1 overflow-auto bg-[#0f172a] px-0 py-3"
-                >
-                  {diffRowsWithSegments.length ? diffRowsWithSegments.map((row) => (
-                    <div
-                      key={`${row.key}-left`}
-                      className="grid grid-cols-[56px_1fr] text-xs leading-6 text-[#e2e8f0]"
-                    >
-                      <div className="px-3 py-1 text-right font-mono text-[#64748b]">
-                        {row.leftNumber ?? ''}
-                      </div>
-                      <pre className={`overflow-x-auto px-3 py-1 whitespace-pre-wrap break-all ${getDiffAccentClassName(row.status, 'left')}`}>
-                        {row.segments.left.map((segment, index) => (
-                          <span
-                            key={`${row.key}-left-${index}`}
-                            className={segment.changed ? 'rounded-sm bg-amber-300/20 px-0.5 text-amber-100' : ''}
-                          >
-                            {segment.text || (index === 0 ? ' ' : '')}
-                          </span>
-                        ))}
-                      </pre>
-                    </div>
-                  )) : (
-                    <div className="px-4 py-10 text-center text-sm text-[#94a3b8]">请选择两个版本进行对比</div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
-                <div className="border-b border-[var(--color-border)] bg-[var(--color-fill-1)] px-4 py-3">
-                  <div className="text-xs text-[var(--color-text-secondary)]">右侧版本</div>
-                  <div className="mt-1 font-mono text-[13px] text-[var(--color-text-primary)]">{rightVersion?.version || '--'}</div>
-                  <div className="text-xs text-[var(--color-text-secondary)]">{rightVersion ? formatDateTime(rightVersion.created_at) : '--'}</div>
-                </div>
-                <div
-                  ref={rightPaneRef}
-                  onScroll={() => syncScroll('right')}
-                  className="min-h-0 flex-1 overflow-auto bg-[#0f172a] px-0 py-3"
-                >
-                  {diffRowsWithSegments.length ? diffRowsWithSegments.map((row) => (
-                    <div
-                      key={`${row.key}-right`}
-                      className="grid grid-cols-[56px_1fr] text-xs leading-6 text-[#e2e8f0]"
-                    >
-                      <div className="px-3 py-1 text-right font-mono text-[#64748b]">
-                        {row.rightNumber ?? ''}
-                      </div>
-                      <pre className={`overflow-x-auto px-3 py-1 whitespace-pre-wrap break-all ${getDiffAccentClassName(row.status, 'right')}`}>
-                        {row.segments.right.map((segment, index) => (
-                          <span
-                            key={`${row.key}-right-${index}`}
-                            className={segment.changed ? 'rounded-sm bg-amber-300/20 px-0.5 text-amber-100' : ''}
-                          >
-                            {segment.text || (index === 0 ? ' ' : '')}
-                          </span>
-                        ))}
-                      </pre>
-                    </div>
-                  )) : (
-                    <div className="px-4 py-10 text-center text-sm text-[#94a3b8]">请选择两个版本进行对比</div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </Spin>
-        </div>
-      </Drawer>
+      <ManualUploadDrawer
+        open={manualCreateOpen}
+        loading={manualCreateLoading}
+        form={manualForm}
+        onClose={() => {
+          setManualCreateOpen(false);
+          manualForm.resetFields();
+        }}
+        onSubmit={() => void handleManualCreate()}
+      />
     </>
   );
 };
