@@ -5,6 +5,7 @@ import EventTable from '@/app/alarm/components/eventTable';
 import AlarmAction from './alarmAction';
 import Icon from '@/components/icon';
 import DeclareIncident from './declareIncident';
+import RelatedAlertsPanel from './relatedAlertsPanel';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useAlarmApi } from '@/app/alarm/api/alarms';
@@ -348,7 +349,12 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
         </div>
         <Tabs activeKey={activeTab} items={tabList} onChange={changeTab} />
         <div className="w-full min-h-[300px]">
-          {isBaseInfo && <BaseInfo detail={formData} />}
+          {isBaseInfo && (
+            <div className="flex flex-col gap-4">
+              <BaseInfo detail={formData} />
+              <RelatedAlertsPanel alert={formData} onRefresh={handleAction} />
+            </div>
+          )}
           {isEventTab && (
             <div className="pt-[10px]">
               <EventTable

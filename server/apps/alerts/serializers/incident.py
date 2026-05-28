@@ -22,13 +22,13 @@ class IncidentModelSerializer(AuthSerializer):
     duration = serializers.SerializerMethodField()
     created_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
     updated_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
-    # 多对多字段处理 一个alert只能属于一个incident
+    # 多对多字段处理 一个 alert 可归属多个 incident
     alert = serializers.PrimaryKeyRelatedField(
         many=True,
         queryset=Alert.objects.all(),
         required=False,
         error_messages={
-            "does_not_exist": "告警ID {pk_value} 已关联Incident或者不存在，请重新检查告警",
+            "does_not_exist": "告警ID {pk_value} 不存在或无权限访问，请重新检查告警",
         },
     )
     sources = serializers.SerializerMethodField()

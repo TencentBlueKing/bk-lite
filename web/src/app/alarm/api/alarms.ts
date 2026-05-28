@@ -11,9 +11,16 @@ export const useAlarmApi = () => {
     return get('/alerts/api/events/', { params });
   };
 
+  const getRelatedAlerts = async (
+    alertId: number,
+    params?: { time_window?: number; limit?: number }
+  ) => {
+    return get(`/alerts/api/alerts/${alertId}/related/`, { params });
+  };
+
   const alertActionOperate = async (actionType: string, params: any) => {
     return post(`/alerts/api/alerts/operator/${actionType}/`, params);
   };
 
-  return { getAlarmList, getEventList, alertActionOperate };
+  return { getAlarmList, getEventList, getRelatedAlerts, alertActionOperate };
 };

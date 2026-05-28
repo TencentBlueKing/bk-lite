@@ -1,6 +1,7 @@
 # -- coding: utf-8 --
 from django.db import connection, transaction
 from django.db.models import Count
+from django.http import Http404
 from rest_framework.response import Response
 from rest_framework.decorators import action
 
@@ -9,13 +10,14 @@ from apps.alerts.constants.constants import SessionStatus, PERMISSION_EVENT
 from apps.alerts.filters import AlertModelFilter
 from apps.alerts.models.models import Alert, Event
 from apps.alerts.serializers import AlertModelSerializer, EventModelSerializer
+from apps.alerts.service.related_alerts import RelatedAlertsService
 from apps.alerts.service.alter_operator import AlertOperator
+from apps.alerts.utils.permission_scope import get_authorized_group_ids
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.system_mgmt.models.user import User
 from config.drf.pagination import CustomPageNumberPagination
-
 
 
 class AlertModelViewSet(AuthViewSet):
@@ -53,7 +55,7 @@ class AlertModelViewSet(AuthViewSet):
                     incident_title_annotated=StringAgg("incident__title", delimiter=", ", distinct=True),
                 )
                 .prefetch_related("events__source", "incident_set")
-        )
+            )
 
         return queryset
 
@@ -122,7 +124,8 @@ class AlertModelViewSet(AuthViewSet):
     def events(self, request, *args, **kwargs):
         alert_queryset = self.get_queryset_by_permission(request, self.get_queryset())
         alert = alert_queryset.get(pk=kwargs["pk"])
-        queryset = self.get_queryset_by_permission(request, Event.objects.select_related("source").filter(alert=alert), permission_key=PERMISSION_EVENT)
+        queryset = self.get_queryset_by_permission(request, Event.objects.select_related("source").filter(alert=alert),
+                                                   permission_key=PERMISSION_EVENT)
         queryset = queryset.order_by("-received_at")
 
         page = self.paginate_queryset(queryset)
@@ -133,7 +136,34 @@ class AlertModelViewSet(AuthViewSet):
         serializer = EventModelSerializer(queryset, many=True, context=self.get_serializer_context())
         return Response(serializer.data)
 
-    @HasPermission("Alarms-Edit")
+    @HasPermission("Alarms-View")
+    @action(methods=["get"], detail=True, url_path="related", url_name="related")
+    def related(self, request, *args, **kwargs):
+        alert_queryset = self.get_queryset_by_permission(request, self.get_queryset())
+        try:
+            alert = alert_queryset.get(pk=kwargs["pk"])
+        except Alert.DoesNotExist as err:
+            raise Http404 from err
+        try:
+            time_window = int(request.query_params.get("time_window", 60))
+        except (TypeError, ValueError):
+            time_window = 60
+
+        try:
+            limit = int(request.query_params.get("limit", 10))
+        except (TypeError, ValueError):
+            limit = 10
+
+        group_ids = get_authorized_group_ids(request)
+        result = RelatedAlertsService.find_related_alerts(
+            alert,
+            time_window_minutes=time_window,
+            limit=limit,
+            group_ids=group_ids,
+        )
+        return Response(result)
+
+    # @HasPermission("Alarms-Edit")
     @action(
         methods=["post"],
         detail=False,
@@ -147,7 +177,8 @@ class AlertModelViewSet(AuthViewSet):
         """
         alert_id_list = request.data["alert_id"]
         allowed_alert_ids = set(
-            self._get_permission_filtered_queryset(request).filter(alert_id__in=alert_id_list).values_list("alert_id", flat=True)
+            self._get_permission_filtered_queryset(request).filter(alert_id__in=alert_id_list).values_list("alert_id",
+                                                                                                           flat=True)
         )
         operator = AlertOperator(
             user=self.request.user.username,

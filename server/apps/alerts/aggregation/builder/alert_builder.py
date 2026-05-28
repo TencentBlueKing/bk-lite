@@ -94,78 +94,19 @@ class AlertBuilder:
     @staticmethod
     def _get_safe_strategy_team(strategy: AlarmStrategy) -> List[int]:
         try:
-            strategy_team = normalize_team_ids(strategy.team)
-        except ValueError:
-            logger.warning(
-                "告警策略 team 非法，回退为空列表: strategy_id=%s team=%s",
-                strategy.id,
-                strategy.team,
-            )
-            strategy_team = []
-
-        try:
             dispatch_team = normalize_team_ids(strategy.dispatch_team)
         except ValueError:
             logger.warning(
-                "告警策略 dispatch_team 非法，回退为策略组织: strategy_id=%s dispatch_team=%s",
+                "告警策略 dispatch_team 非法，回退为空列表: strategy_id=%s dispatch_team=%s",
                 strategy.id,
                 strategy.dispatch_team,
             )
-            return strategy_team
+            return []
 
         if not dispatch_team:
-            return strategy_team
+            return []
 
-        if set(dispatch_team).issubset(set(strategy_team)):
-            return dispatch_team
-
-        logger.warning(
-            "告警策略 dispatch_team 越界，回退为策略组织: strategy_id=%s team=%s dispatch_team=%s",
-            strategy.id,
-            strategy_team,
-            dispatch_team,
-        )
-        return strategy_team
-
-    @staticmethod
-    def _validate_events_team_scope(events: List[Event], strategy: AlarmStrategy) -> None:
-        strategy_team = set(AlertBuilder._get_safe_strategy_team(strategy))
-        if not strategy_team:
-            logger.warning(
-                "告警策略缺少有效 team，拒绝基于事件落库: strategy_id=%s",
-                strategy.id,
-            )
-            raise ValueError("Strategy team scope is empty.")
-
-        for event in events:
-            try:
-                event_team = set(normalize_team_ids(event.team))
-            except ValueError as error:
-                logger.warning(
-                    "事件 team 非法，拒绝告警落库: strategy_id=%s event_id=%s team=%s",
-                    strategy.id,
-                    event.event_id,
-                    event.team,
-                )
-                raise ValueError("Event team scope is invalid.") from error
-
-            if not event_team:
-                logger.warning(
-                    "事件 team 为空，拒绝告警落库: strategy_id=%s event_id=%s",
-                    strategy.id,
-                    event.event_id,
-                )
-                raise ValueError("Event team scope is empty.")
-
-            if not event_team.issubset(strategy_team):
-                logger.warning(
-                    "事件 team 超出策略范围，拒绝告警落库: strategy_id=%s event_id=%s strategy_team=%s event_team=%s",
-                    strategy.id,
-                    event.event_id,
-                    sorted(strategy_team),
-                    sorted(event_team),
-                )
-                raise ValueError("Event team scope exceeds strategy team scope.")
+        return dispatch_team
 
     @staticmethod
     def _get_unique_scalar_value(values: List[Any]) -> Any:
@@ -218,8 +159,32 @@ class AlertBuilder:
             "item": AlertBuilder._get_unique_scalar_value(
                 [event.item for event in event_list]
             ),
-            "labels": AlertBuilder._get_consistent_labels(event_list),
+                "labels": AlertBuilder._get_consistent_labels(event_list),
         }
+
+    @staticmethod
+    def _resolve_dimensions(events: List[Event], group_by_field: str) -> Dict[str, str]:
+        event_list = list(events)
+        if not event_list or not group_by_field:
+            return {}
+
+        dimension_names = [item.strip() for item in group_by_field.split(",") if item.strip()]
+        dimensions: Dict[str, str] = {}
+
+        for dimension_name in dimension_names:
+            values = set()
+            for event in event_list:
+                value = getattr(event, dimension_name, None)
+                if value is None:
+                    continue
+                normalized_value = str(value).strip()
+                if normalized_value:
+                    values.add(normalized_value)
+
+            if len(values) == 1:
+                dimensions[dimension_name] = values.pop()
+
+        return dimensions
 
     @staticmethod
     def _get_events_by_ids(event_ids: List) -> List[Event]:
@@ -279,8 +244,8 @@ class AlertBuilder:
     ) -> Alert:
         alert_id = f"ALERT-{uuid.uuid4().hex.upper()}"
         events = AlertBuilder._get_events_by_ids(event_ids) if event_ids else []
-        AlertBuilder._validate_events_team_scope(events, strategy)
         standard_fields = AlertBuilder._resolve_standard_fields(events)
+        dimensions = AlertBuilder._resolve_dimensions(events, group_by_field)
 
         window_config = WindowFactory.create_from_strategy(strategy)
 
@@ -306,10 +271,13 @@ class AlertBuilder:
             resource_type=standard_fields["resource_type"],
             source_name=standard_fields["source_name"],
             group_by_field=group_by_field,
+            dimensions=dimensions,
             is_session_alert=is_session_alert,
-            session_status=SessionStatus.OBSERVING if session_timeout_minutes else None,
+            session_status=SessionStatus.OBSERVING
+            if is_session_alert and session_timeout_minutes
+            else None,
             session_end_time=window_config.get_session_end_time()
-            if session_timeout_minutes
+            if is_session_alert and session_timeout_minutes
             else None,
             rule_id=strategy.id,  # 软关联告警策略
             team=AlertBuilder._get_safe_strategy_team(strategy),
@@ -331,7 +299,6 @@ class AlertBuilder:
         strategy: AlarmStrategy,
     ) -> Alert:
         events_to_validate = AlertBuilder._get_events_by_ids(event_ids) if event_ids else []
-        AlertBuilder._validate_events_team_scope(events_to_validate, strategy)
         alert.last_event_time = result["last_event_time"]
         # 确保level在ALERT类型的有效范围内
         alert.level = AlertBuilder._map_event_level_to_alert(result["alert_level"])
@@ -364,12 +331,17 @@ class AlertBuilder:
         standard_fields = AlertBuilder._resolve_standard_fields(
             alert.events.select_related("source").all().order_by("pk")
         )
+        dimensions = AlertBuilder._resolve_dimensions(
+            alert.events.all().order_by("pk"),
+            alert.group_by_field or "",
+        )
         alert.source_name = standard_fields["source_name"]
         alert.resource_id = standard_fields["resource_id"]
         alert.resource_name = standard_fields["resource_name"]
         alert.resource_type = standard_fields["resource_type"]
         alert.item = standard_fields["item"]
         alert.labels = standard_fields["labels"]
+        alert.dimensions = dimensions
         alert.save(
             update_fields=[
                 "last_event_time",
@@ -382,6 +354,7 @@ class AlertBuilder:
                 "resource_type",
                 "item",
                 "labels",
+                "dimensions",
             ]
         )
         return alert
