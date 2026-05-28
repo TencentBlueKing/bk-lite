@@ -114,9 +114,10 @@ class TestOpenFileUploadView:
         data = response.json()
         file_id = data["data"]["file_id"]
 
-        # 验证数据库记录的 is_permanent 字段
+        # 验证数据库记录的 is_permanent 字段和 team 字段
         df = DistributionFile.objects.get(id=file_id)
         assert df.is_permanent is True
+        assert df.team == self.api_secret.team
 
     def test_upload_temporary_file_default(self):
         """上传临时文件（不传 permanent 参数，默认 false）"""
@@ -208,12 +209,13 @@ class TestOpenFileDeleteView:
         assert response.status_code == 400
 
     def test_mismatched_id_and_key(self):
-        """file_id 和 file_key 不匹配时不删除"""
+        """file_id 和 file_key 不匹配时返回 not_found"""
         from apps.job_mgmt.models import DistributionFile
 
         df = DistributionFile.objects.create(
             original_name="patch.rpm",
             file_key="job-files/2026/05/06/abc123.rpm",
+            team=self.api_secret.team,
         )
 
         response = self.client.delete(
@@ -223,15 +225,19 @@ class TestOpenFileDeleteView:
             HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
         )
         assert response.status_code == 200
-        assert response.json()["data"]["deleted"] == 0
+        data = response.json()["data"]
+        assert data["deleted"] == 0
+        assert "not_found" in data
         assert DistributionFile.objects.filter(id=df.id).exists()
 
     def test_delete_existing_file(self):
+        """同组用户删除文件成功"""
         from apps.job_mgmt.models import DistributionFile
 
         df = DistributionFile.objects.create(
             original_name="patch.rpm",
             file_key="job-files/2026/05/06/abc123.rpm",
+            team=self.api_secret.team,  # 同组
         )
 
         with patch("apps.job_mgmt.views.open_api.async_to_sync") as mock_async:
@@ -246,3 +252,53 @@ class TestOpenFileDeleteView:
         assert response.status_code == 200
         assert response.json()["data"]["deleted"] == 1
         assert not DistributionFile.objects.filter(id=df.id).exists()
+
+    def test_delete_cross_team_file_fails(self):
+        """跨组删除文件失败（返回 no_permission）"""
+        from apps.job_mgmt.models import DistributionFile
+
+        df = DistributionFile.objects.create(
+            original_name="other-team-patch.rpm",
+            file_key="job-files/2026/05/06/other123.rpm",
+            team=999,  # 不同组
+        )
+
+        response = self.client.delete(
+            self.url,
+            {"files": [{"file_id": df.id, "file_key": df.file_key}]},
+            format="json",
+            HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["deleted"] == 0
+        assert "no_permission" in data
+        assert len(data["no_permission"]) == 1
+        assert data["no_permission"][0]["file_id"] == df.id
+        # 文件仍然存在
+        assert DistributionFile.objects.filter(id=df.id).exists()
+
+    def test_delete_legacy_file_without_team_fails(self):
+        """历史文件（无 team）无法通过 open API 删除"""
+        from apps.job_mgmt.models import DistributionFile
+
+        df = DistributionFile.objects.create(
+            original_name="legacy-patch.rpm",
+            file_key="job-files/2026/05/06/legacy123.rpm",
+            team=None,  # 历史数据无 team
+        )
+
+        response = self.client.delete(
+            self.url,
+            {"files": [{"file_id": df.id, "file_key": df.file_key}]},
+            format="json",
+            HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["deleted"] == 0
+        assert "no_permission" in data
+        # 文件仍然存在
+        assert DistributionFile.objects.filter(id=df.id).exists()

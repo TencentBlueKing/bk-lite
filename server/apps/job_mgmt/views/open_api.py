@@ -14,6 +14,54 @@ from apps.job_mgmt.models import DistributionFile
 from apps.node_mgmt.utils.s3 import delete_s3_file, upload_file_to_s3
 
 
+def _get_user_team_from_request(request):
+    """
+    获取用户的 team。
+
+    - API Secret 认证 (api_pass=True)：直接使用 group_list[0]（即 UserAPISecret.team）
+    - Auth Backend 认证 (api_pass=False)：优先使用 current_team cookie，需要权限校验
+
+    Returns:
+        tuple: (team_id, error_message)
+        - 成功时返回 (team_id, None)
+        - 失败时返回 (None, error_message)
+    """
+    group_list = getattr(request.user, "group_list", [])
+
+    # 提取 group_ids（兼容 [int] 和 [{"id": int}] 两种格式）
+    user_group_ids = []
+    for g in group_list:
+        if isinstance(g, dict):
+            user_group_ids.append(g["id"])
+        else:
+            user_group_ids.append(g)
+
+    if not user_group_ids:
+        return None, "用户未关联团队"
+
+    # API Secret 认证：直接使用 group_list[0]（即 UserAPISecret.team）
+    if getattr(request, "api_pass", False):
+        return user_group_ids[0], None
+
+    # Auth Backend 认证：优先使用 current_team cookie
+    current_team_str = request.COOKIES.get("current_team")
+    if current_team_str:
+        try:
+            current_team = int(current_team_str)
+        except (TypeError, ValueError):
+            return None, "current_team 参数非法"
+
+        # 校验用户是否有权限访问该 team
+        if not getattr(request.user, "is_superuser", False):
+            if current_team not in user_group_ids:
+                return None, "无权访问该团队数据"
+
+        return current_team, None
+
+    # 没有 current_team，使用 group_list[0]
+    return user_group_ids[0], None
+
+
 class OpenFileUploadView(APIView):
     """
     开放文件上传接口
@@ -43,6 +91,15 @@ class OpenFileUploadView(APIView):
     def post(self, request):
         # 鉴权由 APISecretMiddleware + AuthMiddleware 在中间件层完成
         # 到达这里时 request.user 已是合法用户
+
+        # 获取用户的 team（用于文件归属）
+        # 优先使用 current_team cookie，否则使用 group_list[0]
+        user_team, error = _get_user_team_from_request(request)
+        if error:
+            return Response(
+                {"detail": error},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # 文件校验
         file = request.FILES.get("file")
@@ -81,6 +138,7 @@ class OpenFileUploadView(APIView):
             original_name=original_name,
             file_key=file_key,
             is_permanent=is_permanent,
+            team=user_team,
         )
 
         return Response(
@@ -115,18 +173,35 @@ class OpenFileDeleteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # 获取当前用户的 team（用于权限校验）
+        # 优先使用 current_team cookie，否则使用 group_list[0]
+        user_team, error = _get_user_team_from_request(request)
+        if error:
+            return Response(
+                {"detail": error},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # 校验格式并匹配删除
         deleted_count = 0
+        no_permission = []  # 无权限的文件
+        not_found = []  # 不存在的文件
         for item in files:
             file_id = item.get("file_id")
             file_key = item.get("file_key")
             if not file_id or not file_key:
                 continue
 
-            # 必须 file_id 和 file_key 同时匹配才能删除
+            # 先查询文件是否存在
             try:
                 df = DistributionFile.objects.get(id=file_id, file_key=file_key)
             except DistributionFile.DoesNotExist:
+                not_found.append({"file_id": file_id, "file_key": file_key})
+                continue
+
+            # 校验 team 权限
+            if df.team != user_team:
+                no_permission.append({"file_id": file_id, "file_key": file_key})
                 continue
 
             # 删除对象存储文件
@@ -138,7 +213,13 @@ class OpenFileDeleteView(APIView):
             df.delete()
             deleted_count += 1
 
+        result = {"deleted": deleted_count}
+        if no_permission:
+            result["no_permission"] = no_permission
+        if not_found:
+            result["not_found"] = not_found
+
         return Response(
-            {"deleted": deleted_count},
+            result,
             status=status.HTTP_200_OK,
         )
