@@ -114,7 +114,7 @@ class AlarmStrategy(MaintainerInfo, TimeInfo):
     )
     is_active = models.BooleanField(default=True, help_text="是否启用")
     description = models.TextField(null=True, blank=True, help_text="策略描述")
-    team = JSONField(default=list, help_text="关联组织")  # 策略组织
+    team = JSONField(default=list, help_text="关联组织")  # 策略组织 谁能看到这个策略
     dispatch_team = JSONField(
         default=list, help_text="分派组织"
     )  # Event聚合Alert后的组织

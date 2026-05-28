@@ -54,29 +54,6 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
         return self._validate_authorized_team_ids(value, "dispatch_team")
 
     def validate(self, attrs):
-        if "team" in attrs or "dispatch_team" in attrs:
-            team_ids = attrs.get("team")
-            dispatch_team_ids = attrs.get("dispatch_team")
-            if team_ids is None and self.instance is not None:
-                team_ids = self.instance.team or []
-            if dispatch_team_ids is None and self.instance is not None:
-                dispatch_team_ids = self.instance.dispatch_team or []
-
-            normalized_team_ids = set(team_ids or [])
-            normalized_dispatch_team_ids = set(dispatch_team_ids or [])
-            unauthorized_dispatch = sorted(
-                normalized_dispatch_team_ids - normalized_team_ids
-            )
-            if unauthorized_dispatch:
-                raise serializers.ValidationError(
-                    {
-                        "dispatch_team": (
-                            "dispatch_team must be a subset of team: "
-                            f"{unauthorized_dispatch}"
-                        )
-                    }
-                )
-
         strategy_type = attrs.get(
             "strategy_type",
             getattr(self.instance, "strategy_type", AlarmStrategyType.SMART_DENOISE),

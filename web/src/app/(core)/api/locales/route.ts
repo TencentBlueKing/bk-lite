@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs/promises';
+import { getInstallApps } from '../_utils/installApps';
 
-const INSTALL_APPS = (process.env.NEXTAPI_INSTALL_APP || 'example').split(',').map(app => app.trim());
 const ENTERPRISE_WEB_ROOT = process.env.ENTERPRISE_WEB_ROOT || '';
 const APP_ROOTS = [path.resolve(process.cwd(), 'src', 'app')];
 
@@ -40,6 +40,7 @@ const deepMerge = (target: any, source: any) => {
 };
 
 const getMergedMessages = async () => {
+  const installApps = await getInstallApps(APP_ROOTS);
   const baseEnMessages = JSON.parse(await fs.readFile(path.resolve(process.cwd(), 'src', 'locales', 'en.json'), 'utf8'));
   const baseZhMessages = JSON.parse(await fs.readFile(path.resolve(process.cwd(), 'src', 'locales', 'zh.json'), 'utf8'));
 
@@ -56,7 +57,7 @@ const getMergedMessages = async () => {
   };
 
   for (const appRoot of APP_ROOTS) {
-    for (const app of INSTALL_APPS) {
+    for (const app of installApps) {
       const appLocalesDir = path.join(appRoot, app, 'locales');
 
       for (const locale of ['en', 'zh']) {

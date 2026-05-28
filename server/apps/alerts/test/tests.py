@@ -1,9 +1,11 @@
 import json
+from io import StringIO
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
+from django.core.management import call_command
 from django.db import DEFAULT_DB_ALIAS, connections
 from django.test import Client
 from django.test import TestCase
@@ -378,10 +380,11 @@ class MissingDetectionProcessorTestCase(TestCase):
         missing_strategy = self.create_strategy(name="missing-rule")
         now = timezone.now()
 
-        with (
-            patch.object(self.processor, "_process_missing_detection_strategy") as missing_mock,
-            patch.object(self.processor, "get_events_for_strategy") as events_mock,
-        ):
+        with patch.object(
+            self.processor, "_process_missing_detection_strategy"
+        ) as missing_mock, patch.object(
+            self.processor, "get_events_for_strategy"
+        ) as events_mock:
             events_mock.return_value.exists.return_value = False
             self.processor._process_strategy(smart_strategy, now)
             self.processor._process_strategy(missing_strategy, now)
@@ -488,6 +491,35 @@ class MissingDetectionProcessorTestCase(TestCase):
             window_config.window_size_minutes,
             MAX_AGGREGATION_WINDOW_SIZE_MINUTES,
         )
+        self.assertEqual(window_config.session_timeout_minutes, 0)
+
+    def test_sliding_window_alert_is_not_marked_observing(self):
+        now = timezone.now()
+        strategy = self.create_strategy(
+            name="smart-sliding-direct-alert",
+            strategy_type=AlarmStrategyType.SMART_DENOISE,
+            params={"group_by": ["service"], "window_size": 5, "time_out": False},
+        )
+        event = self.create_event(
+            now - timedelta(minutes=1),
+            event_id="EVENT-SLIDING-DIRECT-1",
+            external_id="sliding-direct-1",
+            service="backup",
+        )
+
+        with patch.object(self.processor, "_schedule_auto_assignment"):
+            success = self.processor._aggregate_for_dimensions(
+                strategy,
+                Event.objects.filter(pk=event.pk),
+                ["service"],
+                now,
+            )
+
+        self.assertTrue(success)
+        alert = Alert.objects.get()
+        self.assertFalse(alert.is_session_alert)
+        self.assertIsNone(alert.session_status)
+        self.assertIsNone(alert.session_end_time)
 
     def test_normalize_fingerprint_preserves_full_multi_dimension_combination(self):
         alert_levels = [{"level_id": 1, "level_name": "warning", "level_display_name": "预警"}]
@@ -2627,6 +2659,7 @@ class AlertPermissionScopeTestCase(TestCase):
             source_name=source.name,
             fingerprint=f"fp-{suffix}",
             group_by_field="service",
+            dimensions={"service": "svc"},
             rule_id=f"rule-{suffix}",
             team=team,
         )
@@ -3041,3 +3074,308 @@ class AlertPermissionScopeTestCase(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(payload["data"][0]["alert_count"], 2)
+
+
+class RelatedAlertsFeatureTestCase(TestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        Group.objects.get_or_create(id=1, defaults={"name": "group-1", "parent_id": 0})
+        self.source = AlertSource.objects.create(
+            name="related-source",
+            source_id="related-source",
+            source_type=AlertsSourceTypes.WEBHOOK,
+        )
+        self.user = User.objects.create(
+            username="related-reader",
+            display_name="related-reader",
+            email="related-reader@example.com",
+            password=make_password("password123"),
+            domain="domain.com",
+            group_list=[{"id": 1, "name": "group-1"}],
+        )
+        self.user.permission = {"alarm": {"Alarms-View"}}
+        self.user.is_superuser = False
+        self.user.is_authenticated = True
+
+    def _build_alert(self, suffix, *, service="svc-a", location="gz", resource_name=None, item="cpu", minutes_ago=5):
+        occurred_at = timezone.now() - timedelta(minutes=minutes_ago)
+        resource_name = resource_name or f"host-{suffix}"
+        event = Event.objects.create(
+            source=self.source,
+            push_source_id="default",
+            raw_data={},
+            title=f"event-{suffix}",
+            description="desc",
+            level="warning",
+            service=service,
+            event_type=EventType.ALERT,
+            tags={},
+            location=location,
+            external_id=f"external-{suffix}",
+            start_time=occurred_at,
+            labels={},
+            action=EventAction.CREATED,
+            event_id=f"EVENT-{suffix}",
+            item=item,
+            resource_id=f"resource-{suffix}",
+            resource_type="host",
+            resource_name=resource_name,
+            status="received",
+            assignee=[],
+            team=[1],
+        )
+        Event.objects.filter(pk=event.pk).update(received_at=occurred_at)
+        event.refresh_from_db()
+
+        alert = Alert.objects.create(
+            alert_id=f"ALERT-{suffix}",
+            status=AlertStatus.UNASSIGNED,
+            level="warning",
+            title=f"alert-{suffix}",
+            content="content",
+            labels={},
+            first_event_time=occurred_at,
+            last_event_time=occurred_at,
+            item=item,
+            resource_id=f"resource-{suffix}",
+            resource_name=resource_name,
+            resource_type="host",
+            operate=None,
+            operator=[],
+            source_name=self.source.name,
+            fingerprint=f"fp-{suffix}",
+            group_by_field="service,location,resource_name,item",
+            dimensions={
+                "service": service,
+                "location": location,
+                "resource_name": resource_name,
+                "item": item,
+            },
+            rule_id=f"rule-{suffix}",
+            team=[1],
+        )
+        Alert.objects.filter(pk=alert.pk).update(created_at=occurred_at, updated_at=occurred_at)
+        alert.refresh_from_db()
+        alert.events.add(event)
+        return alert
+
+    def test_related_alert_endpoint_returns_ranked_candidates_within_one_hour(self):
+        current_alert = self._build_alert("current", resource_name="host-current")
+        close_match = self._build_alert(
+            "close-match",
+            resource_name="host-current",
+            minutes_ago=3,
+        )
+        low_match = self._build_alert(
+            "low-match",
+            service="svc-a",
+            location="bj",
+            resource_name="host-other",
+            item="mem",
+            minutes_ago=10,
+        )
+        self._build_alert(
+            "out-window",
+            resource_name="host-current",
+            minutes_ago=120,
+        )
+
+        request = self.factory.get(f"/api/alerts/{current_alert.pk}/related/", {"time_window": 60, "limit": 10})
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=self.user)
+
+        response = AlertModelViewSet.as_view({"get": "related"})(request, pk=current_alert.pk)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["related_count"], 1)
+        self.assertEqual(response.data["maybe_related_count"], 1)
+        self.assertEqual(response.data["items"][0]["id"], close_match.id)
+        self.assertGreater(response.data["items"][0]["similarity_score"], response.data["items"][1]["similarity_score"])
+        self.assertEqual(response.data["items"][1]["id"], low_match.id)
+
+    def test_related_alert_endpoint_returns_multiple_incidents_and_respects_team_scope(self):
+        current_alert = self._build_alert("current-multi", resource_name="host-multi")
+        visible_match = self._build_alert(
+            "visible-match",
+            resource_name="host-multi",
+            minutes_ago=3,
+        )
+        hidden_match = self._build_alert(
+            "hidden-match",
+            resource_name="host-multi",
+            minutes_ago=2,
+        )
+        hidden_match.team = [2]
+        hidden_match.save(update_fields=["team"])
+
+        incident_a = Incident.objects.create(
+            incident_id="INCIDENT-A",
+            status=IncidentStatus.PENDING,
+            level="warning",
+            title="incident-a",
+            content="content",
+            note="",
+            labels={},
+            operator=[],
+            fingerprint="incident-a",
+            team=[1],
+        )
+        incident_b = Incident.objects.create(
+            incident_id="INCIDENT-B",
+            status=IncidentStatus.PENDING,
+            level="warning",
+            title="incident-b",
+            content="content",
+            note="",
+            labels={},
+            operator=[],
+            fingerprint="incident-b",
+            team=[1],
+        )
+        incident_c = Incident.objects.create(
+            incident_id="INCIDENT-C",
+            status=IncidentStatus.PENDING,
+            level="warning",
+            title="incident-c",
+            content="content",
+            note="",
+            labels={},
+            operator=[],
+            fingerprint="incident-c",
+            team=[2],
+        )
+        incident_a.alert.add(current_alert)
+        incident_b.alert.add(current_alert)
+        incident_a.alert.add(visible_match)
+        incident_b.alert.add(visible_match)
+        incident_c.alert.add(hidden_match)
+
+        request = self.factory.get(f"/api/alerts/{current_alert.pk}/related/", {"time_window": 60, "limit": 10})
+        request.COOKIES["current_team"] = "1"
+        force_authenticate(request, user=self.user)
+
+        response = AlertModelViewSet.as_view({"get": "related"})(request, pk=current_alert.pk)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [incident["title"] for incident in response.data["current_incidents"]],
+            ["incident-b", "incident-a"],
+        )
+        self.assertEqual(len(response.data["items"]), 1)
+        self.assertEqual(response.data["items"][0]["id"], visible_match.id)
+        self.assertEqual(
+            [incident["title"] for incident in response.data["items"][0]["incidents"]],
+            ["incident-b", "incident-a"],
+        )
+
+    def test_add_alerts_allows_alerts_in_multiple_incidents(self):
+        incident_one = Incident.objects.create(
+            incident_id="INCIDENT-ONE",
+            status=IncidentStatus.PENDING,
+            level="warning",
+            title="incident-one",
+            content="content",
+            note="",
+            labels={},
+            operator=[],
+            fingerprint="incident-one",
+            team=[1],
+        )
+        incident_two = Incident.objects.create(
+            incident_id="INCIDENT-TWO",
+            status=IncidentStatus.PENDING,
+            level="warning",
+            title="incident-two",
+            content="content",
+            note="",
+            labels={},
+            operator=[],
+            fingerprint="incident-two",
+            team=[1],
+        )
+        alert = self._build_alert("multi-incident-add", resource_name="host-add")
+        incident_one.alert.add(alert)
+
+        request = self.factory.post(
+            f"/api/incident/{incident_two.pk}/alerts/add/",
+            {"alert": [alert.id]},
+            format="json",
+        )
+        request.COOKIES["current_team"] = "1"
+        editor = build_permission_test_user(
+            "incident-editor",
+            [{"id": 1, "name": "group-1"}],
+            {"alarm": {"Incidents-Edit"}},
+        )
+        force_authenticate(request, user=editor)
+
+        response = IncidentModelViewSet.as_view({"post": "add_alerts"})(request, pk=incident_two.pk)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(set(alert.incident_set.values_list("id", flat=True)), {incident_one.id, incident_two.id})
+
+    def test_backfill_alert_dimensions_command_populates_empty_dimensions(self):
+        occurred_at = timezone.now() - timedelta(minutes=5)
+        event = Event.objects.create(
+            source=self.source,
+            push_source_id="default",
+            raw_data={},
+            title="event-backfill",
+            description="desc",
+            level="warning",
+            service="svc-backfill",
+            event_type=EventType.ALERT,
+            tags={},
+            location="gz",
+            external_id="external-backfill",
+            start_time=occurred_at,
+            labels={},
+            action=EventAction.CREATED,
+            event_id="EVENT-backfill",
+            item="cpu",
+            resource_id="resource-backfill",
+            resource_type="host",
+            resource_name="host-backfill",
+            status="received",
+            assignee=[],
+            team=[1],
+        )
+        Event.objects.filter(pk=event.pk).update(received_at=occurred_at)
+        alert = Alert.objects.create(
+            alert_id="ALERT-backfill",
+            status=AlertStatus.UNASSIGNED,
+            level="warning",
+            title="alert-backfill",
+            content="content",
+            labels={},
+            first_event_time=occurred_at,
+            last_event_time=occurred_at,
+            item="cpu",
+            resource_id="resource-backfill",
+            resource_name="host-backfill",
+            resource_type="host",
+            operate=None,
+            operator=[],
+            source_name=self.source.name,
+            fingerprint="fp-backfill",
+            group_by_field="service,location,resource_name,item",
+            dimensions={},
+            rule_id="rule-backfill",
+            team=[1],
+        )
+        alert.events.add(event)
+
+        out = StringIO()
+        call_command("backfill_alert_dimensions", stdout=out)
+        alert.refresh_from_db()
+
+        self.assertEqual(
+            alert.dimensions,
+            {
+                "service": "svc-backfill",
+                "location": "gz",
+                "resource_name": "host-backfill",
+                "item": "cpu",
+            },
+        )
+        self.assertIn("updated=1", out.getvalue())

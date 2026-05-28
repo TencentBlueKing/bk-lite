@@ -205,23 +205,13 @@ class IncidentModelViewSet(AuthViewSet):
         allowed_alert_ids = self._get_allowed_alert_ids()
         unauthorized_alert_ids = set(alert_ids) - allowed_alert_ids
         if unauthorized_alert_ids:
+            alert_titles = Alert.objects.filter(id__in=unauthorized_alert_ids).values_list("title", flat=True)
             return Response(
-                {"detail": "Some alerts are out of your authorized scope."},
+                {"detail": "告警ID列表中包含您没有权限访问的告警。包含：{}".format(list(alert_titles))},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        has_incident_alert_ids = list(
-            Alert.objects.filter(id__in=alert_ids, incident__isnull=False).values_list("id", flat=True))
-        not_incident_alert_ids = set(alert_ids) - set(has_incident_alert_ids)
-        data["alert"] = list(not_incident_alert_ids)
-        if not not_incident_alert_ids:
-            logger.warning(
-                f"Some alerts {has_incident_alert_ids} are already associated with an incident. They will not be included in the new incident."
-            )
-            return Response(
-                {"detail": "Some alerts are already associated with an incident and will not be included."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        data["alert"] = alert_ids
         if not data.get("operator"):
             data["operator"] = [self.request.user.username]
         else:
@@ -263,11 +253,11 @@ class IncidentModelViewSet(AuthViewSet):
             return error_response
         if requested_alert_ids is not None:
             unauthorized_alert_ids = set(requested_alert_ids) - self._get_allowed_alert_ids()
-            if unauthorized_alert_ids:
-                return Response(
-                    {"detail": "Some alerts are out of your authorized scope."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            alert_titles = Alert.objects.filter(id__in=unauthorized_alert_ids).values_list("title", flat=True)
+            return Response(
+                {"detail": "告警ID列表中包含您没有权限访问的告警。包含：{}".format(list(alert_titles))},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if "operator" in request.data:
             request.data["operator"] = normalize_usernames(request.data.get("operator"))
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
@@ -382,24 +372,13 @@ class IncidentModelViewSet(AuthViewSet):
 
         allowed_alert_ids = self._get_allowed_alert_ids()
         unauthorized_alert_ids = set(alert_ids) - allowed_alert_ids
+        alert_titles = Alert.objects.filter(id__in=unauthorized_alert_ids).values_list("title", flat=True)
         if unauthorized_alert_ids:
             return Response(
-                {"detail": "Some alerts are out of your authorized scope."},
+                {"detail": "告警ID列表中包含您没有权限访问的告警。包含：{}".format(list(alert_titles))},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
         already_in_incident = set(instance.alert.values_list("id", flat=True))
-        has_other_incident = set(
-            Alert.objects.filter(id__in=alert_ids, incident__isnull=False)
-            .exclude(incident=instance)
-            .values_list("id", flat=True)
-        )
-        if has_other_incident:
-            return Response(
-                {"detail": f"Alerts {list(has_other_incident)} are already associated with another incident."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
         new_alert_ids = set(alert_ids) - already_in_incident
         if new_alert_ids:
             instance.alert.add(*new_alert_ids)
@@ -430,9 +409,10 @@ class IncidentModelViewSet(AuthViewSet):
 
         allowed_alert_ids = self._get_allowed_alert_ids()
         unauthorized_alert_ids = set(alert_ids) - allowed_alert_ids
+        alert_titles = Alert.objects.filter(id__in=unauthorized_alert_ids).values_list("title", flat=True)
         if unauthorized_alert_ids:
             return Response(
-                {"detail": "Some alerts are out of your authorized scope."},
+                {"detail": "告警ID列表中包含您没有权限访问的告警。包含：{}".format(list(alert_titles))},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

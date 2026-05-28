@@ -103,10 +103,6 @@ const DeclareModal: React.FC<DeclareModalProps> = ({ rowData, onSuccess }) => {
   };
 
   const handleDeclare = () => {
-    if (rowData.some((r) => !!r.incident_name)) {
-      message.error(t('alarms.declareIncidentErrorMsg'));
-      return;
-    }
     setVisible(true);
   };
 
@@ -120,12 +116,12 @@ const DeclareModal: React.FC<DeclareModalProps> = ({ rowData, onSuccess }) => {
           disabled={rowData.length === 0}
           onClick={handleDeclare}
         >
-          {t('alarms.declareIncident')}
+          {t('alarms.linkIncident')}
         </Button>
       </PermissionWrapper>
       <OperateModal
         open={visible}
-        title={t('alarms.declareIncident')}
+        title={t('alarms.linkIncident')}
         confirmLoading={confirmLoading}
         onOk={() => form.submit()}
         onCancel={handleCancel}
