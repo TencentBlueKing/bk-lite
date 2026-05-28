@@ -1,13 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Menu, List, Input, Spin, Empty, Tag } from 'antd';
-import {
-  LineChartOutlined,
-  BarChartOutlined,
-  PieChartOutlined,
-  NumberOutlined,
-  DashboardOutlined,
-  LockOutlined,
-} from '@ant-design/icons';
+import { LockOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { ComponentSelectorProps } from '@/app/ops-analysis/types/dashBoard';
 import { TagItem } from '@/app/ops-analysis/types/namespace';
@@ -39,31 +32,30 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   const { getDataSourceBriefList } = useDataSourceApi();
   const { getTagList } = useNamespaceApi();
 
-  const getChartIcon = (chartTypes: ChartType[]) => {
-    const iconClass = 'text-[16px] text-[var(--color-primary)]';
+  const chartTypeLabels: Record<string, string> = {
+    line: t('dataSource.lineChart'),
+    bar: t('dataSource.barChart'),
+    pie: t('dataSource.pieChart'),
+    single: t('dataSource.singleValue'),
+    table: t('dataSource.table'),
+    topN: t('dataSource.topN'),
+  };
 
-    const iconMap = {
-      line: <LineChartOutlined className={iconClass} />,
-      bar: <BarChartOutlined className={iconClass} />,
-      pie: <PieChartOutlined className={iconClass} />,
-      single: <NumberOutlined className={iconClass} />,
-    };
-
-    if (!chartTypes?.length) {
-      return (
-        <DashboardOutlined className="text-[20px] text-[var(--color-primary)]" />
-      );
-    }
-
-    const icons = chartTypes.map((type, index) => (
-      <span key={index} className="inline-block">
-        {iconMap[type as keyof typeof iconMap] || (
-          <DashboardOutlined className={iconClass} />
-        )}
-      </span>
-    ));
-
-    return <div className="flex gap-1">{icons}</div>;
+  const getChartTags = (chartTypes: ChartType[]) => {
+    if (!chartTypes?.length) return null;
+    return (
+      <div className="flex gap-1.5 flex-wrap pt-0.5">
+        {chartTypes.map((type, index) => (
+          <Tag
+            key={index}
+            bordered={false}
+            className="m-0 rounded-full border border-(--color-border-3) bg-(--color-fill-3) px-2 py-0 text-xs font-medium leading-5 text-(--color-text-2) shadow-sm"
+          >
+            {chartTypeLabels[type] || type}
+          </Tag>
+        ))}
+      </div>
+    );
   };
 
   useEffect(() => {
@@ -81,19 +73,18 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
     };
 
     if (visible) {
-      void fetchTags();
+      if (tagList.length === 0) {
+        void fetchTags();
+      }
     } else {
-      setSelectedTagId(null);
       setHoveredDatasourceId(null);
-      setCurrentDataSources([]);
-      setTagList([]);
       setSearch('');
     }
   }, [getTagList, visible]);
 
   useEffect(() => {
     const fetchBriefList = async () => {
-      if (!visible || !selectedTagId) {
+      if (!selectedTagId) {
         setCurrentDataSources([]);
         return;
       }
@@ -114,8 +105,10 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
       }
     };
 
-    void fetchBriefList();
-  }, [getDataSourceBriefList, search, selectedTagId, visible]);
+    if (visible && selectedTagId) {
+      void fetchBriefList();
+    }
+  }, [getDataSourceBriefList, search, selectedTagId]);
 
   useEffect(() => {
     if (visible && tagList.length > 0 && !selectedTagId) {
@@ -144,7 +137,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
       open={visible}
       onCancel={onCancel}
       footer={null}
-      width={680}
+      width={700}
       style={{ top: '16%' }}
       styles={{ body: { height: '50vh', overflowY: 'hidden' } }}
     >
@@ -191,7 +184,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
             <div className="h-96 overflow-y-auto">
               <List
                 size="small"
-                 dataSource={currentDataSources}
+                dataSource={currentDataSources}
                 locale={{
                   emptyText: (
                     <Empty
@@ -222,10 +215,15 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
                     }}
                     onClick={() => item.hasAuth !== false && handleConfig(item)}
                   >
-                    <div className="flex flex-col gap-1 leading-relaxed flex-1">
+                    <div className="flex flex-col gap-1 leading-relaxed w-full">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium leading-5 text-[var(--color-text-1)]">
+                        <span className="font-medium leading-5 text-(--color-text-1) break-all">
                           {item.name}
+                          {item.rest_api && (
+                            <span className="font-normal text-xs text-gray-400 ml-1">
+                              ({item.rest_api})
+                            </span>
+                          )}
                         </span>
                         {item.hasAuth === false && (
                           <Tag icon={<LockOutlined />} color="warning">
@@ -233,11 +231,13 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
                           </Tag>
                         )}
                       </div>
-                      <span className="text-xs text-[var(--color-text-2)] leading-4">
-                        {item.desc || '--'}
-                      </span>
+                      {item.desc ? (
+                        <span className="text-xs text-(--color-text-2) leading-4">
+                          {item.desc}
+                        </span>
+                      ) : null}
+                      {getChartTags(item.chart_type)}
                     </div>
-                    {getChartIcon(item.chart_type)}
                   </List.Item>
                 )}
               />

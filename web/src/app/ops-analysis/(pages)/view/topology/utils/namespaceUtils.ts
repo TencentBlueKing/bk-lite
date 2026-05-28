@@ -239,6 +239,7 @@ export const buildValueConfig = (
     valueConfig.filterBindings = values.filterBindings;
   }
   if (values.chartType === 'single') {
+    valueConfig.compare = !!values.compare;
     valueConfig.selectedFields = values.selectedFields;
     valueConfig.thresholdColors = values.thresholdColors;
     if (values.unit !== undefined) valueConfig.unit = values.unit;

@@ -4,6 +4,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useSkillApi } from '@/app/opspilot/api/skill';
 import { useChannelApi } from '@/app/system-manager/api/channel';
 import { useStudioApi } from '@/app/opspilot/api/studio';
+import { useMemoryApi, type MemorySpace } from '@/app/opspilot/api/memory';
 import type { LlmModel } from '@/app/opspilot/types/skill';
 
 export const useNodeConfigData = () => {
@@ -11,6 +12,7 @@ export const useNodeConfigData = () => {
   const { fetchSkill, fetchLlmModels } = useSkillApi();
   const { getChannelData } = useChannelApi();
   const { getAllUsers } = useStudioApi();
+  const { fetchMemorySpaces } = useMemoryApi();
 
   const [skills, setSkills] = useState<any[]>([]);
   const [loadingSkills, setLoadingSkills] = useState(false);
@@ -23,6 +25,9 @@ export const useNodeConfigData = () => {
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [usersLoaded, setUsersLoaded] = useState(false);
+  const [memorySpaces, setMemorySpaces] = useState<MemorySpace[]>([]);
+  const [loadingMemorySpaces, setLoadingMemorySpaces] = useState(false);
+  const [memorySpacesLoaded, setMemorySpacesLoaded] = useState(false);
 
   const loadSkills = useCallback(async () => {
     if (skillsLoaded) return;
@@ -87,6 +92,22 @@ export const useNodeConfigData = () => {
     }
   }, [getAllUsers, usersLoaded, t]);
 
+  const loadMemorySpaces = useCallback(async () => {
+    if (memorySpacesLoaded) return;
+    try {
+      setLoadingMemorySpaces(true);
+      const data = await fetchMemorySpaces();
+      setMemorySpaces(data || []);
+      setMemorySpacesLoaded(true);
+    } catch (error) {
+      console.error('Failed to load memory spaces:', error);
+      message.error(t('chatflow.fetchMemorySpacesFailed'));
+      setMemorySpaces([]);
+    } finally {
+      setLoadingMemorySpaces(false);
+    }
+  }, [fetchMemorySpaces, memorySpacesLoaded, t]);
+
   return {
     skills,
     loadingSkills,
@@ -100,5 +121,8 @@ export const useNodeConfigData = () => {
     allUsers,
     loadingUsers,
     loadUsers,
+    memorySpaces,
+    loadingMemorySpaces,
+    loadMemorySpaces,
   };
 };

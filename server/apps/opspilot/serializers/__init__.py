@@ -6,6 +6,7 @@ from apps.opspilot.serializers.history_serializer import HistorySerializer  # no
 from apps.opspilot.serializers.knowledge_base_serializers import KnowledgeBaseSerializer  # noqa
 from apps.opspilot.serializers.knowledge_document_serializers import KnowledgeDocumentSerializer  # noqa
 from apps.opspilot.serializers.manual_knowledge_serializers import ManualKnowledgeSerializer  # noqa
+from apps.opspilot.serializers.memory_serializer import MemorySerializer, MemorySpaceSerializer  # noqa
 from apps.opspilot.serializers.rasa_model_serializer import RasaModelSerializer  # noqa
 from apps.opspilot.serializers.web_page_knowledge_serializers import WebPageKnowledgeSerializer  # noqa
 from apps.opspilot.serializers.workflow_task_result_serializer import WorkFlowTaskResultSerializer  # noqa

@@ -78,6 +78,7 @@ import { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 export interface ValueConfig {
   chartType?: string;
   dataSource?: string | number;
+  compare?: boolean;
   params?: Record<string, string | number | boolean | [number, number] | null>;
   dataSourceParams?: ParamItem[];
   tableConfig?: TableConfig;

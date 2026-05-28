@@ -1,17 +1,23 @@
+/**
+ * 共享单值配置 Hook
+ * 供仪表盘 ViewConfig 和拓扑 NodeConfPanel 复用
+ */
 import { useState, useCallback } from 'react';
 import type { FormInstance } from 'antd';
 import { message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
-import { formatTimeRange } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { processDataSourceParams } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { DEFAULT_THRESHOLD_COLORS } from '@/app/ops-analysis/constants/threshold';
 import { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
-import { buildTreeData } from '../../../../topology/utils/dataTreeUtils';
+import { buildTreeData } from '@/app/ops-analysis/(pages)/view/topology/utils/dataTreeUtils';
 
 interface UseSingleValueConfigProps {
   form: FormInstance;
   selectedDataSource: DatasourceItem | undefined;
   builtinNamespaceId?: number;
+  /** 显式传入数据源 ID（当 selectedDataSource 可能尚未加载时使用） */
+  dataSourceId?: number | null;
   getSourceDataByApiId: (
     id: number,
     params: Record<string, any>,
@@ -22,6 +28,7 @@ export function useSingleValueConfig({
   form,
   selectedDataSource,
   builtinNamespaceId,
+  dataSourceId,
   getSourceDataByApiId,
 }: UseSingleValueConfigProps) {
   const { t } = useTranslation();
@@ -134,28 +141,18 @@ export function useSingleValueConfig({
   }, []);
 
   const fetchSingleValueDataFields = useCallback(async () => {
-    if (!selectedDataSource) return;
+    const resolvedId = dataSourceId ?? selectedDataSource?.id;
+    if (!resolvedId || !selectedDataSource) return;
+
     setLoadingSingleValueData(true);
     try {
       const formValues = form.getFieldsValue();
       const userParams = formValues?.params || {};
-      const requestParams: Record<string, any> = {};
-      (selectedDataSource.params || []).forEach((param) => {
-        const value = userParams[param.name];
-        if (value !== undefined && value !== null) {
-          if (param.type === 'timeRange') {
-            requestParams[param.name] = formatTimeRange(value);
-          } else {
-            requestParams[param.name] = value;
-          }
-        } else if (param.value !== undefined && param.value !== null) {
-          if (param.type === 'timeRange') {
-            requestParams[param.name] = formatTimeRange(param.value);
-          } else {
-            requestParams[param.name] = param.value;
-          }
-        }
+      const requestParams = processDataSourceParams({
+        sourceParams: selectedDataSource.params,
+        userParams,
       });
+
       if (
         builtinNamespaceId !== undefined &&
         Array.isArray(selectedDataSource.namespaces) &&
@@ -163,10 +160,8 @@ export function useSingleValueConfig({
       ) {
         requestParams.namespace_id = builtinNamespaceId;
       }
-      const data = await getSourceDataByApiId(
-        selectedDataSource.id,
-        requestParams,
-      );
+
+      const data = await getSourceDataByApiId(resolvedId, requestParams);
       const tree = buildTreeData(data, selectedDataSource.field_schema);
       setSingleValueTreeData(tree);
     } catch (error) {
@@ -175,7 +170,7 @@ export function useSingleValueConfig({
     } finally {
       setLoadingSingleValueData(false);
     }
-  }, [selectedDataSource, form, getSourceDataByApiId, builtinNamespaceId]);
+  }, [selectedDataSource, dataSourceId, form, getSourceDataByApiId, builtinNamespaceId]);
 
   const handleSingleValueFieldChange = useCallback(
     (checkedKeys: any) => {

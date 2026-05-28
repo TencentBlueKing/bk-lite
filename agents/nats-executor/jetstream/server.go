@@ -20,7 +20,6 @@ type objectStoreGetter interface {
 
 type objectStoreManager interface {
 	ObjectStore(bucket string) (nats.ObjectStore, error)
-	CreateObjectStore(cfg *nats.ObjectStoreConfig) (nats.ObjectStore, error)
 }
 
 var (
@@ -62,14 +61,9 @@ func ensureObjectStore(js objectStoreManager, bucketName string) (nats.ObjectSto
 	store, err := js.ObjectStore(bucketName)
 	if err != nil {
 		if err == nats.ErrBucketNotFound {
-			store, err = js.CreateObjectStore(&nats.ObjectStoreConfig{
-				Bucket:      bucketName,
-				Description: "File distribution bucket",
-			})
+			return nil, fmt.Errorf("object store bucket %q not found: %w", bucketName, err)
 		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to create or access object store: %v", err)
-		}
+		return nil, fmt.Errorf("failed to access object store: %v", err)
 	}
 	return store, nil
 }

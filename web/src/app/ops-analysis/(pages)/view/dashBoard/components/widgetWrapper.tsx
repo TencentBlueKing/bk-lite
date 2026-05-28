@@ -13,6 +13,7 @@ import {
   buildWidgetRequestParams,
   buildWidgetRequestSignatureParams,
 } from '../../../../utils/widgetDataTransform';
+import { fetchCompareData } from '@/app/ops-analysis/utils/compareQuery';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
@@ -114,6 +115,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 }) => {
   const { t } = useTranslation();
   const [rawData, setRawData] = useState<any>(null);
+  const [baselineData, setBaselineData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [tableLoading, setTableLoading] = useState(false);
   const [dataValidation, setDataValidation] = useState<{
@@ -308,63 +310,68 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     [config, t],
   );
 
-  const fetchData = useCallback(
-    async (nextRequestParams: Record<string, any>, requestKey: string) => {
-      const isTableChart = chartType === 'table';
+  const fetchDataRef = useRef<(params: Record<string, any>, key: string) => Promise<void>>(undefined!);
+  fetchDataRef.current = async (nextRequestParams: Record<string, any>, requestKey: string) => {
+    const isTableChart = chartType === 'table';
 
-      if (!normalizedDataSourceId) {
-        return;
+    if (!normalizedDataSourceId) {
+      return;
+    }
+
+    const currentFetchId = ++fetchIdRef.current;
+
+    try {
+      if (isTableChart) {
+        setTableLoading(true);
+      } else {
+        setLoading(true);
       }
+      setDataValidation(null);
 
-      const currentFetchId = ++fetchIdRef.current;
+      const data = await getOrCreateInflightRequest(requestKey, () =>
+        fetchCompareData({
+          dataSourceId: normalizedDataSourceId,
+          getSourceDataByApiId,
+          config,
+          dataSource,
+          extraParams: {
+            ...(widgetUsesNamespace && builtinNamespaceId !== undefined
+              ? { namespace_id: builtinNamespaceId }
+              : {}),
+            ...(chartType === 'table' ? tableQueryParams : {}),
+          },
+          unifiedFilterValues,
+          filterBindings: config?.filterBindings,
+          filterDefinitions,
+        }),
+      );
 
-      try {
-        if (isTableChart) {
-          setTableLoading(true);
-        } else {
-          setLoading(true);
-        }
-        setDataValidation(null);
+      // Discard stale response if a newer fetch has started
+      if (currentFetchId !== fetchIdRef.current) return;
 
-        const data = await getOrCreateInflightRequest(requestKey, () =>
-          getSourceDataByApiId(normalizedDataSourceId, nextRequestParams),
-        );
+      setRawData(data.currentData);
+      setBaselineData(data.baselineData);
 
-        // Discard stale response if a newer fetch has started
-        if (currentFetchId !== fetchIdRef.current) return;
-
-        setRawData(data);
-
-        const validation = validateChartData(data, chartType);
-        setDataValidation(validation);
-      } catch (err) {
-        if (currentFetchId !== fetchIdRef.current) return;
-        console.error('获取数据失败:', err);
-        setRawData(null);
-        setDataValidation({
-          isValid: false,
-          message: getRequestErrorMessage(err, t('dashboard.dataFetchFailed')),
-        });
-      } finally {
-        if (currentFetchId !== fetchIdRef.current) return;
-        if (isTableChart) {
-          setTableLoading(false);
-        } else {
-          setLoading(false);
-        }
+      const validation = validateChartData(data.currentData, chartType);
+      setDataValidation(validation);
+    } catch (err) {
+      if (currentFetchId !== fetchIdRef.current) return;
+      console.error('获取数据失败:', err);
+      setRawData(null);
+      setBaselineData(null);
+      setDataValidation({
+        isValid: false,
+        message: getRequestErrorMessage(err, t('dashboard.dataFetchFailed')),
+      });
+    } finally {
+      if (currentFetchId !== fetchIdRef.current) return;
+      if (isTableChart) {
+        setTableLoading(false);
+      } else {
+        setLoading(false);
       }
-    },
-    [
-      normalizedDataSourceId,
-      chartType,
-      getSourceDataByApiId,
-      validateChartData,
-      t,
-    ],
-  );
-
-  const fetchDataRef = useRef(fetchData);
-  fetchDataRef.current = fetchData;
+    }
+  };
 
   useEffect(() => {
     if (!normalizedDataSourceId) {
@@ -561,11 +568,12 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   return (
     <div style={{ position: 'relative', height: '100%' }}>
       {renderBindingWarning()}
-      <WidgetRenderer
-        chartType={chartType}
-        rawData={rawData}
-        loading={chartType === 'table' ? tableLoading : loading}
-        config={config}
+        <WidgetRenderer
+          chartType={chartType}
+          rawData={rawData}
+          baselineData={baselineData}
+          loading={chartType === 'table' ? tableLoading : loading}
+          config={config}
         dataSource={dataSource}
         onReady={onReady}
         onQueryChange={

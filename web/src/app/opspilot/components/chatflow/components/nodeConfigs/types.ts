@@ -79,3 +79,9 @@ export type EnterpriseWechatNodeConfigProps = BaseNodeConfigProps;
 export type DingtalkNodeConfigProps = BaseNodeConfigProps;
 
 export type WechatOfficialNodeConfigProps = BaseNodeConfigProps;
+
+export interface MemoryNodeConfigProps extends BaseNodeConfigProps {
+  memorySpaces: Array<{ id: number; name: string; scope: 'personal' | 'team' }>;
+  loadingMemorySpaces: boolean;
+  form: FormInstance;
+}

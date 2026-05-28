@@ -18,6 +18,7 @@ import {
   EnterpriseWechatNodeConfig,
   DingtalkNodeConfig,
   WechatOfficialNodeConfig,
+  MemoryNodeConfig,
 } from './components/nodeConfigs';
 
 export const NodeConfigForm: React.FC<any> = ({
@@ -41,6 +42,8 @@ export const NodeConfigForm: React.FC<any> = ({
   loadChannels,
   allUsers,
   loadingUsers,
+  memorySpaces,
+  loadingMemorySpaces,
   form,
 }) => {
   const { t } = useTranslation();
@@ -180,6 +183,15 @@ export const NodeConfigForm: React.FC<any> = ({
       {nodeType === 'dingtalk' && <DingtalkNodeConfig t={t} />}
 
       {nodeType === 'wechat_official' && <WechatOfficialNodeConfig t={t} />}
+
+      {(nodeType === 'memory_read' || nodeType === 'memory_write') && (
+        <MemoryNodeConfig
+          t={t}
+          memorySpaces={memorySpaces}
+          loadingMemorySpaces={loadingMemorySpaces}
+          form={form}
+        />
+      )}
     </>
   );
 };

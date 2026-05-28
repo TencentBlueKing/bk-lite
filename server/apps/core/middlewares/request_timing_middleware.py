@@ -29,6 +29,11 @@ class RequestTimingMiddleware(MiddlewareMixin):
         "/ping/",
     ]
 
+    # 精确匹配排除路径（完全匹配才排除）
+    EXCLUDE_EXACT_PATHS = [
+        "/",  # 排除根路径（通常是健康检查或负载均衡器探针）
+    ]
+
     def process_request(self, request):
         """记录请求开始时间"""
         request._start_time = time.time()
@@ -57,6 +62,10 @@ class RequestTimingMiddleware(MiddlewareMixin):
 
     def _should_exclude(self, path):
         """判断是否应该排除此路径"""
+        # 精确匹配排除
+        if path in self.EXCLUDE_EXACT_PATHS:
+            return True
+        # 前缀匹配排除
         return any(path.startswith(prefix) for prefix in self.EXCLUDE_PATHS)
 
     def _log_request(self, request, response, elapsed_time_ms):
