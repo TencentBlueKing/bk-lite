@@ -772,7 +772,7 @@ export default function RedisDashboardPage() {
     return () => {
       active = false;
     };
-  }, [getInstanceList, monitorObjectId]);
+  }, [monitorObjectId]);
 
   const idValuesKey = JSON.stringify(idValues);
   const currentInstanceCandidates = instanceOptions.filter(
@@ -871,7 +871,7 @@ export default function RedisDashboardPage() {
       return;
     }
     setLoading(false);
-  }, [instanceId, resolvedInstanceName, idValuesKey, timeValues, isDashboardMode]);
+  }, [instanceId, idValuesKey, timeValues, isDashboardMode]);
 
   useEffect(() => {
     if (timerRef.current) {
@@ -891,7 +891,7 @@ export default function RedisDashboardPage() {
         timerRef.current = null;
       }
     };
-  }, [frequence, timeValues, instanceId, resolvedInstanceName, idValuesKey, isDashboardMode]);
+  }, [frequence, timeValues, instanceId, idValuesKey, isDashboardMode]);
 
   const metricMap = useMemo(() => series, [series]);
   const previousMetricMap = useMemo(() => previousSeries, [previousSeries]);
@@ -1063,8 +1063,7 @@ export default function RedisDashboardPage() {
   const onFrequenceChange = (val: number) => setFrequence(val);
   const goBack = () => router.push('/monitor/view');
 
-  const onInstanceChange = (option: { value: string; label: React.ReactNode }) => {
-    const value = option.value;
+  const onInstanceChange = (value: string) => {
     const target = instanceOptions.find((item) => item.value === value);
     const params = new URLSearchParams(searchParams.toString());
     params.set('instance_id', value);
@@ -1195,14 +1194,7 @@ export default function RedisDashboardPage() {
             <div className={styles.instanceActions}>
               <Select
                 className={styles.inlineInstanceSelector}
-                labelInValue
-                value={
-                  currentInstanceOption
-                    ? { value: currentInstanceOption.value, label: currentInstanceOption.label }
-                    : instanceId
-                      ? { value: String(instanceId), label: resolvedInstanceName }
-                      : undefined
-                }
+                value={currentInstanceOption?.value || (instanceId ? String(instanceId) : undefined)}
                 loading={instanceLoading}
                 options={instanceOptions}
                 onChange={onInstanceChange}
@@ -1210,6 +1202,7 @@ export default function RedisDashboardPage() {
                 title={currentInstanceOption?.label || resolvedInstanceName}
                 showSearch
                 optionFilterProp="label"
+                optionLabelProp="label"
                 popupMatchSelectWidth={360}
                 filterOption={(input, option) => {
                   const searchText = input.trim().toLowerCase();

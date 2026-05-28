@@ -20,6 +20,11 @@
           "url": "/monitor/view/dashboard/redis",
           "name": "redis_dashboard",
           "isNotMenuItem": true
+        },
+        {
+          "url": "/monitor/view/dashboard/mongodb",
+          "name": "mongodb_dashboard",
+          "isNotMenuItem": true
         }
       ]
     },
@@ -136,6 +141,11 @@
         {
           "url": "/monitor/view/dashboard/redis",
           "name": "redis_dashboard",
+          "isNotMenuItem": true
+        },
+        {
+          "url": "/monitor/view/dashboard/mongodb",
+          "name": "mongodb_dashboard",
           "isNotMenuItem": true
         }
       ]

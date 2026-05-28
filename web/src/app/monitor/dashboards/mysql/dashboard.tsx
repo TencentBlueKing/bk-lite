@@ -1048,7 +1048,7 @@ export default function MysqlDashboardPage() {
     }
 
     setLoading(false);
-  }, [instanceId, resolvedInstanceName, idValuesKey, timeValues, isDashboardMode]);
+  }, [instanceId, idValuesKey, timeValues, isDashboardMode]);
 
   useEffect(() => {
     if (timerRef.current) {
@@ -1068,7 +1068,7 @@ export default function MysqlDashboardPage() {
         timerRef.current = null;
       }
     };
-  }, [frequence, timeValues, instanceId, resolvedInstanceName, idValuesKey, isDashboardMode]);
+  }, [frequence, timeValues, instanceId, idValuesKey, isDashboardMode]);
 
   const metricMap = useMemo(() => series, [series]);
   const dashboardMetrics = useMemo(
@@ -1642,8 +1642,7 @@ export default function MysqlDashboardPage() {
     router.push('/monitor/view');
   };
 
-  const onInstanceChange = (option: { value: string; label: React.ReactNode }) => {
-    const value = option.value;
+  const onInstanceChange = (value: string) => {
     const target = instanceOptions.find((item) => item.value === value);
     const params = new URLSearchParams(searchParams.toString());
     params.set('instance_id', value);
@@ -1721,14 +1720,7 @@ export default function MysqlDashboardPage() {
             <div className={styles.instanceActions}>
               <Select
                 className={styles.inlineInstanceSelector}
-                labelInValue
-                value={
-                  currentInstanceOption
-                    ? { value: currentInstanceOption.value, label: currentInstanceOption.label }
-                    : instanceIdText
-                      ? { value: String(instanceId), label: resolvedInstanceName }
-                      : undefined
-                }
+                value={currentInstanceOption?.value || (instanceIdText ? String(instanceId) : undefined)}
                 loading={instanceLoading}
                 options={instanceOptions}
                 onChange={onInstanceChange}
@@ -1736,6 +1728,7 @@ export default function MysqlDashboardPage() {
                 title={currentInstanceOption?.label || resolvedInstanceName}
                 showSearch
                 optionFilterProp="label"
+                optionLabelProp="label"
                 popupMatchSelectWidth={360}
                 filterOption={(input, option) => {
                   const searchText = input.trim().toLowerCase();
