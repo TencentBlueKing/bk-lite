@@ -1354,7 +1354,7 @@ export default function RedisDashboardPage() {
                           <TitleWithGuide title="内存趋势" items={memoryTrendGuide} className={styles.panelTitleWithGuide} />
                         </h3>
                         <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>
-                          已用内存与配置上限 · 单位 {memoryTrendScale.unitLabel}
+                          已用内存与配置上限
                         </div>
                         <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
                           {TREND_LEGENDS.memory.map((item) => (
@@ -1388,7 +1388,7 @@ export default function RedisDashboardPage() {
                           <TitleWithGuide title="网络流量趋势" items={networkTrendGuide} className={styles.panelTitleWithGuide} />
                         </h3>
                         <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>
-                          请求接收与结果返回 · 单位 {networkTrendScale.unitLabel}
+                          请求接收与结果返回
                         </div>
                         <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
                           {TREND_LEGENDS.network.map((item) => (
