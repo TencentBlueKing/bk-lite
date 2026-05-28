@@ -35,71 +35,16 @@ const unwrapTopNData = (data: any): any[] => {
   return [];
 };
 
-const getFallbackLabel = (item: Record<string, any>) => {
-  const preferredKeys = ['name', 'label', 'title', 'model', 'model_name', 'model_id', 'id'];
-
-  for (const key of preferredKeys) {
-    const value = item[key];
-    if (value !== undefined && value !== null && String(value).trim()) {
-      return String(value).trim();
-    }
-  }
-
-  for (const value of Object.values(item)) {
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim();
-    }
-  }
-
-  return '';
-};
-
-const getFallbackValue = (item: Record<string, any>) => {
-  const preferredKeys = ['value', 'count', 'total', 'num', 'amount', 'metric', 'size'];
-
-  for (const key of preferredKeys) {
-    const value = Number(item[key]);
-    if (!Number.isNaN(value)) {
-      return value;
-    }
-  }
-
-  for (const rawValue of Object.values(item)) {
-    const value = Number(rawValue);
-    if (!Number.isNaN(value)) {
-      return value;
-    }
-  }
-
-  return NaN;
-};
-
-const isUsableLabel = (value: unknown) => {
-  return value !== undefined && value !== null && String(value).trim() !== '';
-};
-
-const isUsableValue = (value: unknown) => {
-  return !Number.isNaN(Number(value));
-};
-
 const TopN: React.FC<TopNProps> = ({
   rawData,
   loading = false,
   config,
-  dataSource,
   onReady,
 }) => {
   const themeName = resolveOpsChartThemeName();
   const isDark = themeName === 'dark';
-  const hasExplicitLabelField = Boolean(config?.topNLabelField);
-  const hasExplicitValueField = Boolean(config?.topNValueField);
-
-  const inferredLabelField = dataSource?.field_schema?.find(
-    (field) => field.value_type !== 'number',
-  )?.key;
-  const inferredValueField = dataSource?.field_schema?.find(
-    (field) => field.value_type === 'number',
-  )?.key;
+  const labelField = config?.topNLabelField;
+  const valueField = config?.topNValueField;
 
   const transformData = (data: any): TopNItem[] => {
     const rows = unwrapTopNData(data);
@@ -107,54 +52,39 @@ const TopN: React.FC<TopNProps> = ({
 
     // [[name, value], ...] format
     if (Array.isArray(rows[0])) {
-      if (hasExplicitLabelField || hasExplicitValueField) {
-        return [];
-      }
+      return rows
+        .map((item: any[]) => {
+          const rawName = getValueByPath(item, labelField);
+          const rawValue = getValueByPath(item, valueField);
 
-      return rows.map((item: any[]) => ({
-        name: String(item[0] ?? ''),
-        value: Number(item[1]) || 0,
-      }));
+          const name =
+            rawName === undefined || rawName === null
+              ? ''
+              : String(rawName).trim();
+          const value = Number(rawValue);
+          if (!name || Number.isNaN(value)) {
+            return null;
+          }
+
+          return {
+            name,
+            value,
+          };
+        })
+        .filter((item: TopNItem | null): item is TopNItem => item !== null);
     }
 
     // [{name, value}] format
     if (typeof rows[0] === 'object') {
       return rows
         .map((item: any) => {
-          const explicitName = config?.topNLabelField
-            ? getValueByPath(item, config.topNLabelField)
-            : undefined;
-          const explicitValue = config?.topNValueField
-            ? getValueByPath(item, config.topNValueField)
-            : undefined;
+          const rawName = getValueByPath(item, labelField);
+          const rawValue = getValueByPath(item, valueField);
 
-          const inferredName = inferredLabelField
-            ? getValueByPath(item, inferredLabelField)
-            : undefined;
-          const inferredValue = inferredValueField
-            ? getValueByPath(item, inferredValueField)
-            : undefined;
-
-          const rawName = hasExplicitLabelField
-            ? explicitName
-            : isUsableLabel(item.name)
-              ? item.name
-              : isUsableLabel(item.label)
-                ? item.label
-                : isUsableLabel(inferredName)
-                  ? inferredName
-                  : getFallbackLabel(item);
-          const rawValue = hasExplicitValueField
-            ? explicitValue
-            : isUsableValue(item.value)
-              ? item.value
-              : isUsableValue(item.count)
-                ? item.count
-                : isUsableValue(inferredValue)
-                  ? inferredValue
-                  : getFallbackValue(item);
-
-          const name = rawName === undefined || rawName === null ? '' : String(rawName).trim();
+          const name =
+            rawName === undefined || rawName === null
+              ? ''
+              : String(rawName).trim();
           const value = Number(rawValue);
           if (!name || Number.isNaN(value)) {
             return null;
@@ -172,7 +102,8 @@ const TopN: React.FC<TopNProps> = ({
   };
 
   const items = transformData(rawData);
-  const maxValue = items.length > 0 ? Math.max(...items.map((i) => i.value)) : 0;
+  const maxValue =
+    items.length > 0 ? Math.max(...items.map((i) => i.value)) : 0;
   const isDataReady = items.length > 0;
 
   useEffect(() => {

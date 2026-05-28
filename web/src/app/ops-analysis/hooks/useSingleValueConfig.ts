@@ -2,7 +2,7 @@
  * 共享单值配置 Hook
  * 供仪表盘 ViewConfig 和拓扑 NodeConfPanel 复用
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { FormInstance } from 'antd';
 import { message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
@@ -11,6 +11,7 @@ import { processDataSourceParams } from '@/app/ops-analysis/utils/widgetDataTran
 import { DEFAULT_THRESHOLD_COLORS } from '@/app/ops-analysis/constants/threshold';
 import { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 import { buildTreeData } from '@/app/ops-analysis/(pages)/view/topology/utils/dataTreeUtils';
+import { canEnableCompare } from '@/app/ops-analysis/utils/compareQuery';
 
 interface UseSingleValueConfigProps {
   form: FormInstance;
@@ -22,6 +23,8 @@ interface UseSingleValueConfigProps {
     id: number,
     params: Record<string, any>,
   ) => Promise<any>;
+  /** 面板是否打开 */
+  open?: boolean;
 }
 
 export function useSingleValueConfig({
@@ -30,6 +33,7 @@ export function useSingleValueConfig({
   builtinNamespaceId,
   dataSourceId,
   getSourceDataByApiId,
+  open = true,
 }: UseSingleValueConfigProps) {
   const { t } = useTranslation();
   const [singleValueTreeData, setSingleValueTreeData] = useState<any[]>([]);
@@ -37,6 +41,18 @@ export function useSingleValueConfig({
   const [loadingSingleValueData, setLoadingSingleValueData] = useState(false);
   const [thresholdColors, setThresholdColors] =
     useState<ThresholdColorConfig[]>(DEFAULT_THRESHOLD_COLORS);
+
+  // 当数据源不再支持 compare 时，自动关闭
+  const compareAvailable = canEnableCompare({
+    config: { chartType: 'single', dataSourceParams: selectedDataSource?.params },
+    dataSource: selectedDataSource,
+  });
+
+  useEffect(() => {
+    if (open && !compareAvailable && form.getFieldValue('compare')) {
+      form.setFieldsValue({ compare: false });
+    }
+  }, [open, compareAvailable, selectedDataSource, form]);
 
   const handleThresholdChange = useCallback(
     (index: number, field: 'value' | 'color', value: string | number) => {
@@ -214,6 +230,7 @@ export function useSingleValueConfig({
     loadingSingleValueData,
     thresholdColors,
     setThresholdColors,
+    compareAvailable,
     handleThresholdChange,
     handleThresholdBlur,
     addThreshold,

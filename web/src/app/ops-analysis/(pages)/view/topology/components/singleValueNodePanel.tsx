@@ -7,7 +7,6 @@ import React, {
   useState,
   useRef,
   useCallback,
-  useMemo,
 } from 'react';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useSingleValueConfig } from '@/app/ops-analysis/hooks/useSingleValueConfig';
@@ -65,6 +64,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
     builtinNamespaceId,
     dataSourceId: currentDataSource,
     getSourceDataByApiId,
+    open: visible,
   });
 
   const initializeNewNode = useCallback(() => {
@@ -114,6 +114,14 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
       if (valueConfig.dataSource) {
         const selectedSource = await ensureDataSource(valueConfig.dataSource);
         setSelectedDataSource(selectedSource);
+
+        // 如果数据源不再支持 compare，强制关闭
+        if (formValues.compare && !canEnableCompare({
+          config: { chartType: 'single', dataSourceParams: selectedSource?.params },
+          dataSource: selectedSource,
+        })) {
+          formValues.compare = false;
+        }
 
         formValues.params = formValues.params || {};
 
@@ -257,14 +265,6 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
     }
   };
 
-  const compareAvailable = useMemo(() => canEnableCompare({
-    config: {
-      chartType: 'single',
-      dataSourceParams: selectedDataSource?.params,
-    },
-    dataSource: selectedDataSource,
-  }), [selectedDataSource]);
-
   return (
     <Drawer
       title={title || t('topology.nodeTitles.single-value')}
@@ -354,7 +354,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
           onAddThreshold={singleValueConfig.addThreshold}
           onRemoveThreshold={singleValueConfig.removeThreshold}
           readonly={readonly}
-          compareAvailable={compareAvailable}
+          compareAvailable={singleValueConfig.compareAvailable}
         />
 
         {/* 样式设置 */}

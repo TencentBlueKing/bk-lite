@@ -218,9 +218,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         const dataSource = dataSourceManager.dataSources.find(
           (source) => source.id === normalizedId,
         );
-        const params = item.valueConfig?.dataSourceParams?.length
-          ? item.valueConfig.dataSourceParams
-          : dataSource?.params;
+        // 始终使用数据源的当前 params 来发现可绑定参数，
+        // 而非 widget 保存时的快照（快照可能已过时）
+        const params = dataSource?.params;
 
         getBindableFilterParams(params).forEach((param) => {
           const id = getFilterDefinitionId(param.name, param.type);
@@ -275,8 +275,17 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
       return nextLayout.map((item) => {
         const existingBindings = item.valueConfig?.filterBindings;
+        // 使用数据源当前 params 来决定绑定关系，而非保存时的快照
+        const dataSourceId = item.valueConfig?.dataSource;
+        const normalizedId =
+          typeof dataSourceId === 'string' ? parseInt(dataSourceId, 10) : dataSourceId;
+        const dataSource = dataSourceManager.dataSources.find(
+          (source) => source.id === normalizedId,
+        );
+        const currentParams = dataSource?.params;
+
         const autoBindings = buildDefaultFilterBindings(
-          item.valueConfig?.dataSourceParams,
+          currentParams,
           definitions,
           existingBindings,
         );

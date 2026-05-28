@@ -6,7 +6,6 @@ from django_minio_backend import MinioBackend
 
 from apps.cmdb.models.collect_model import CollectModels
 
-
 CONFIG_FILE_BUCKET = "cmdb-config-file"
 
 
@@ -35,9 +34,11 @@ class ConfigFileVersionStatus(object):
 class ConfigFileVersion(models.Model):
     collect_task = models.ForeignKey(
         CollectModels,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="config_file_versions",
-        help_text="关联的采集任务",
+        help_text="关联的采集任务（手动创建时为空）",
     )
     instance_id = models.CharField(max_length=128, help_text="主机实例 ID")
     model_id = models.CharField(max_length=64, help_text="模型 ID")

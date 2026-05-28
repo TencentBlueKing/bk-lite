@@ -1,8 +1,9 @@
 import { useCallback, useMemo } from 'react';
 import useApiClient from '@/utils/request';
+import type { CreateManualConfigFileParams } from '@/app/cmdb/types/configFile';
 
 export const useConfigFileApi = () => {
-  const { get, del } = useApiClient();
+  const { get, del, post } = useApiClient();
 
   const getConfigFileList = useCallback(
     (instance_id: string) =>
@@ -35,6 +36,12 @@ export const useConfigFileApi = () => {
     [get]
   );
 
+  const createManualConfigFile = useCallback(
+    (params: CreateManualConfigFileParams) =>
+      post('/cmdb/api/config_file_versions/create_manual/', params),
+    [post]
+  );
+
   return useMemo(
     () => ({
       getConfigFileList,
@@ -42,7 +49,8 @@ export const useConfigFileApi = () => {
       getConfigFileContent,
       getConfigFileDiff,
       deleteConfigFileVersion,
+      createManualConfigFile,
     }),
-    [deleteConfigFileVersion, getConfigFileContent, getConfigFileDiff, getConfigFileList, getConfigFileVersions]
+    [createManualConfigFile, deleteConfigFileVersion, getConfigFileContent, getConfigFileDiff, getConfigFileList, getConfigFileVersions]
   );
 };
