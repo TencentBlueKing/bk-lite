@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs/promises';
+import { getInstallApps } from '../_utils/installApps';
 
-const INSTALL_APPS = (process.env.NEXTAPI_INSTALL_APP || 'example').split(',').map(app => app.trim());
 const COMMUNITY_APP_ROOT = path.join(process.cwd(), 'src', 'app');
 const ENTERPRISE_WEB_ROOT = process.env.ENTERPRISE_WEB_ROOT || '';
 const ENTERPRISE_MENUS_MANIFEST_PATH = ENTERPRISE_WEB_ROOT
@@ -44,10 +44,11 @@ const applyPatches = (menuItems: any[], patches: MenuPatch[]) => {
 };
 
 const getDynamicMenuItems = async (locale: string) => {
+  const installApps = await getInstallApps([COMMUNITY_APP_ROOT]);
   let allMenuItems: any[] = [];
   const allPatches: MenuPatch[] = [];
 
-  for (const app of INSTALL_APPS) {
+  for (const app of installApps) {
     const menuPath = path.join(COMMUNITY_APP_ROOT, app, 'constants', 'menu.json');
 
     try {

@@ -164,6 +164,7 @@ class Alert(models.Model):
     # 核心指纹字段（用于聚合）
     fingerprint = models.CharField(max_length=32, db_index=True, help_text="告警指纹")  # group_by_field:group_by_value
     group_by_field = models.CharField(max_length=200, null=True, blank=True, help_text="聚合字段")
+    dimensions = JSONField(default=dict, help_text="聚合维度键值对")
     rule_id = models.CharField(max_length=256, null=True, blank=True, help_text="触发该事件的规则ID")
 
     # 会话窗口字段（用于自愈检查）

@@ -16,7 +16,7 @@ class WindowConfig:
         self,
         window_type: WindowType,
         window_size_minutes: int,
-        session_timeout_minutes: int = 10,
+        session_timeout_minutes: int = 0,
     ):
         self.window_type = window_type
         self.window_size_minutes = window_size_minutes
@@ -52,8 +52,9 @@ class WindowFactory:
         session_timeout = params.get(
             "time_minutes", WindowFactory.DEFAULT_SESSION_TIMEOUT
         )
+        session_enabled = bool(time_out) and int(session_timeout or 0) > 0
 
-        if time_out:
+        if session_enabled:
             return WindowConfig(
                 window_type=WindowType.SESSION,
                 window_size_minutes=window_size,
@@ -63,4 +64,5 @@ class WindowFactory:
         return WindowConfig(
             window_type=WindowType.SLIDING,
             window_size_minutes=window_size,
+            session_timeout_minutes=0,
         )

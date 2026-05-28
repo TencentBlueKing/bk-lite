@@ -18,6 +18,7 @@ class AutoCloser:
             matching_alerts = Alert.objects.filter(
                 status__in=AlertStatus.ACTIVATE_STATUS,
                 events__external_id=external_id,
+                events__action=EventAction.CREATED,
             ).distinct()
 
             for alert in matching_alerts:
