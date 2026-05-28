@@ -428,7 +428,7 @@ dashboards:
     description: ''
     valueConfig:
       chartType: single
-      dataSource: 告警统计概览::get_alert_statistics
+      dataSource: 告警统计概览::alert/get_alert_statistics
       selectedFields:
       - total_count
       thresholdColors:
@@ -449,7 +449,7 @@ dashboards:
     description: ''
     valueConfig:
       chartType: single
-      dataSource: 告警统计概览::get_alert_statistics
+      dataSource: 告警统计概览::alert/get_alert_statistics
       selectedFields:
       - event_count
       thresholdColors:
@@ -471,7 +471,7 @@ dashboards:
     valueConfig:
       unit: '%'
       chartType: single
-      dataSource: 告警统计概览::get_alert_statistics
+      dataSource: 告警统计概览::alert/get_alert_statistics
       selectedFields:
       - session_alert_rate
       thresholdColors:
@@ -493,7 +493,7 @@ dashboards:
     valueConfig:
       unit: '%'
       chartType: single
-      dataSource: 告警统计概览::get_alert_statistics
+      dataSource: 告警统计概览::alert/get_alert_statistics
       selectedFields:
       - auto_recovery_rate
       thresholdColors:
@@ -503,7 +503,7 @@ dashboards:
         value: '30'
       - color: '#000000'
         value: '0'
-  - h: 4
+  - h: 5
     i: 586576ee-f427-4c56-9e8a-6777c95c1290
     w: 7
     x: 0
@@ -528,7 +528,7 @@ dashboards:
         value: 10080
         alias_name: time
         filterType: filter
-  - h: 4
+  - h: 5
     i: 85bfbc48-c2b7-4621-99ca-621818d656f9
     w: 5
     x: 7
@@ -550,7 +550,7 @@ dashboards:
     i: 739e9aab-809e-42c6-901a-ca6d664db676
     w: 12
     x: 0
-    y: 25
+    y: 26
     name: 活跃告警 TOP 10
     moved: false
     static: false
@@ -594,11 +594,11 @@ dashboards:
         value: '10'
         alias_name: 返回数量
         filterType: params
-  - h: 6
+  - h: 5
     i: ad522899-2fc5-4b7a-875e-19004c33a425
     w: 6
-    x: 6
-    y: 10
+    x: 0
+    y: 11
     name: 告警源事件数 TOP 5
     moved: false
     static: false
@@ -606,6 +606,8 @@ dashboards:
     valueConfig:
       chartType: topN
       dataSource: 告警源事件数 TOP N::alert/get_alert_source_event_top
+      topNLabelField: '0'
+      topNValueField: '1'
       dataSourceParams:
       - name: limit
         type: string
@@ -623,7 +625,7 @@ dashboards:
     description: ''
     valueConfig:
       chartType: single
-      dataSource: 告警统计概览::get_alert_statistics
+      dataSource: 告警统计概览::alert/get_alert_statistics
       selectedFields:
       - auto_recovery_count
       thresholdColors:
@@ -636,15 +638,18 @@ dashboards:
   - h: 3
     i: e7b15832-9734-4eff-ae1b-96dc5148d286
     w: 3
-    x: 0
-    y: 10
+    x: 6
+    y: 11
     name: 告警源总数
     moved: false
     static: false
     description: ''
     valueConfig:
+      compare: false
       chartType: single
       dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
+      filterBindings:
+        time__timeRange: true
       selectedFields:
       - total_count
       thresholdColors:
@@ -654,25 +659,22 @@ dashboards:
         value: '30'
       - color: '#366CE4'
         value: '0'
-      dataSourceParams:
-      - name: time
-        type: timeRange
-        value: 10080
-        alias_name: 时间范围
-        filterType: params
   - h: 3
     i: a3538b40-7c46-475d-a3d9-927b8f2d7098
     w: 3
-    x: 3
-    y: 13
+    x: 9
+    y: 14
     name: 告警源启用率
     moved: false
     static: false
     description: 已启用告警源在全部告警源中的占比
     valueConfig:
       unit: '%'
+      compare: false
       chartType: single
       dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
+      filterBindings:
+        time__timeRange: true
       selectedFields:
       - enabled_rate
       thresholdColors:
@@ -682,24 +684,21 @@ dashboards:
         value: '100'
       - color: '#366CE4'
         value: '0'
-      dataSourceParams:
-      - name: time
-        type: timeRange
-        value: 10080
-        alias_name: 时间范围
-        filterType: params
   - h: 3
     i: 083e3d04-08d6-4100-9d02-6bdb4a4e5a6f
     w: 3
-    x: 0
-    y: 13
+    x: 6
+    y: 14
     name: 活跃告警源数
     moved: false
     static: false
     description: ''
     valueConfig:
+      compare: false
       chartType: single
       dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
+      filterBindings:
+        time__timeRange: true
       selectedFields:
       - active_count
       thresholdColors:
@@ -709,24 +708,21 @@ dashboards:
         value: '30'
       - color: '#366CE4'
         value: '0'
-      dataSourceParams:
-      - name: time
-        type: timeRange
-        value: 10080
-        alias_name: 时间范围
-        filterType: params
-  - h: 3
+  - h: 4
     i: 063b6d01-ec91-4218-b6ad-9f34c82ea94b
     w: 3
-    x: 0
-    y: 16
+    x: 6
+    y: 22
     name: 通知成功数
     moved: false
     static: false
     description: ''
     valueConfig:
+      compare: true
       chartType: single
       dataSource: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
+      filterBindings:
+        time__timeRange: true
       selectedFields:
       - success_count
       thresholdColors:
@@ -736,24 +732,21 @@ dashboards:
         value: '30'
       - color: '#67a567'
         value: '0'
-      dataSourceParams:
-      - name: time
-        type: timeRange
-        value: 10080
-        alias_name: 时间
-        filterType: params
-  - h: 3
+  - h: 5
     i: af0ee431-54a4-4fcb-8ae4-43a7666a5aed
     w: 3
-    x: 0
-    y: 19
+    x: 6
+    y: 17
     name: 通知失败数
     moved: false
     static: false
     description: ''
     valueConfig:
+      compare: true
       chartType: single
       dataSource: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
+      filterBindings:
+        time__timeRange: true
       selectedFields:
       - failed_count
       thresholdColors:
@@ -763,25 +756,22 @@ dashboards:
         value: '30'
       - color: '#366CE4'
         value: '0'
-      dataSourceParams:
-      - name: time
-        type: timeRange
-        value: 10080
-        alias_name: 时间
-        filterType: params
-  - h: 3
+  - h: 5
     i: 38cbdb62-671c-48a6-a883-2c41a97882f2
     w: 3
-    x: 3
-    y: 19
+    x: 9
+    y: 17
     name: 通知失败率
     moved: false
     static: false
     description: 发送失败的通知在全部通知中的占比
     valueConfig:
       unit: '%'
+      compare: true
       chartType: single
       dataSource: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
+      filterBindings:
+        time__timeRange: false
       selectedFields:
       - failed_rate
       thresholdColors:
@@ -791,16 +781,10 @@ dashboards:
         value: '30'
       - color: '#366CE4'
         value: '0'
-      dataSourceParams:
-      - name: time
-        type: timeRange
-        value: 10080
-        alias_name: 时间
-        filterType: params
-  - h: 6
+  - h: 4
     i: 80a6b436-a8c3-44f0-a054-905fb3f08a3d
     w: 6
-    x: 6
+    x: 0
     y: 16
     name: 按渠道通知成功率
     moved: false
@@ -809,6 +793,8 @@ dashboards:
     valueConfig:
       chartType: bar
       dataSource: 按渠道通知成功率::alert/get_notification_channel_stats
+      filterBindings:
+        time__timeRange: true
       dataSourceParams:
       - name: time
         type: timeRange
@@ -818,16 +804,19 @@ dashboards:
   - h: 3
     i: aede04f0-83f3-4fc6-b804-a2772c640623
     w: 3
-    x: 0
-    y: 22
+    x: 3
+    y: 23
     name: 缺少资源ID事件占比
     moved: false
     static: false
     description: 缺少资源 ID 的告警在全部告警中的占比
     valueConfig:
       unit: '%'
+      compare: false
       chartType: single
       dataSource: 数据完整性（缺失率）::alert/get_alert_data_quality
+      filterBindings:
+        time__timeRange: true
       selectedFields:
       - missing_resource_id_rate
       thresholdColors:
@@ -837,25 +826,22 @@ dashboards:
         value: '300'
       - color: '#366CE4'
         value: '0'
-      dataSourceParams:
-      - name: time
-        type: timeRange
-        value: 10080
-        alias_name: 时间
-        filterType: params
   - h: 3
     i: 9fb91936-d18b-4583-b14b-d9ae04d6bb10
     w: 3
-    x: 3
-    y: 22
+    x: 0
+    y: 23
     name: 缺少规则ID事件占比
     moved: false
     static: false
     description: 缺少规则 ID 的告警在全部告警中的占比
     valueConfig:
       unit: '%'
+      compare: false
       chartType: single
       dataSource: 数据完整性（缺失率）::alert/get_alert_data_quality
+      filterBindings:
+        time__timeRange: true
       selectedFields:
       - missing_rule_id_rate
       thresholdColors:
@@ -865,17 +851,11 @@ dashboards:
         value: '30'
       - color: '#366CE4'
         value: '0'
-      dataSourceParams:
-      - name: time
-        type: timeRange
-        value: 10080
-        alias_name: 时间
-        filterType: params
   - h: 3
     i: 8c4c5cb4-dfd9-4b01-9baa-33a9f758a4b6
     w: 3
-    x: 9
-    y: 22
+    x: 3
+    y: 20
     name: 缺少外部事件ID占比
     moved: false
     static: false
@@ -884,6 +864,8 @@ dashboards:
       unit: '%'
       chartType: single
       dataSource: 数据完整性（缺失率）::alert/get_alert_data_quality
+      filterBindings:
+        time__timeRange: true
       selectedFields:
       - missing_external_id_rate
       thresholdColors:
@@ -902,8 +884,8 @@ dashboards:
   - h: 3
     i: 356ec2d9-0bf2-4d03-aa0b-dda3d9d7cf87
     w: 3
-    x: 6
-    y: 22
+    x: 0
+    y: 20
     name: 缺少指标项事件占比
     moved: false
     static: false
@@ -912,6 +894,8 @@ dashboards:
       unit: '%'
       chartType: single
       dataSource: 数据完整性（缺失率）::alert/get_alert_data_quality
+      filterBindings:
+        time__timeRange: true
       selectedFields:
       - missing_item_rate
       thresholdColors:
@@ -938,7 +922,7 @@ dashboards:
     description: 事件总数 / 告警总数，用于反映事件聚合程度
     valueConfig:
       chartType: single
-      dataSource: 告警统计概览::get_alert_statistics
+      dataSource: 告警统计概览::alert/get_alert_statistics
       selectedFields:
       - aggregation_ratio
       thresholdColors:
@@ -959,7 +943,7 @@ dashboards:
     description: ''
     valueConfig:
       chartType: single
-      dataSource: 告警统计概览::get_alert_statistics
+      dataSource: 告警统计概览::alert/get_alert_statistics
       selectedFields:
       - incident_count
       thresholdColors:
@@ -980,7 +964,7 @@ dashboards:
     description: ''
     valueConfig:
       chartType: single
-      dataSource: 告警统计概览::get_alert_statistics
+      dataSource: 告警统计概览::alert/get_alert_statistics
       selectedFields:
       - active_count
       thresholdColors:
@@ -994,15 +978,18 @@ dashboards:
   - h: 3
     i: 190cbce2-33d1-4755-a85d-ea781c898920
     w: 3
-    x: 3
-    y: 10
+    x: 9
+    y: 11
     name: 已启用告警源数
     moved: false
     static: false
     description: ''
     valueConfig:
+      compare: false
       chartType: single
       dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
+      filterBindings:
+        time__timeRange: true
       selectedFields:
       - enabled_count
       thresholdColors:
@@ -1012,24 +999,21 @@ dashboards:
         value: '30'
       - color: '#366CE4'
         value: '0'
-      dataSourceParams:
-      - name: time
-        type: timeRange
-        value: 10080
-        alias_name: 时间范围
-        filterType: params
-  - h: 3
+  - h: 4
     i: fb51e119-3763-4a99-844f-274fa6c50577
     w: 3
-    x: 3
-    y: 16
+    x: 9
+    y: 22
     name: 通知成功率
     moved: false
     static: false
     description: ''
     valueConfig:
+      compare: true
       chartType: single
       dataSource: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
+      filterBindings:
+        time__timeRange: true
       selectedFields:
       - success_rate
       thresholdColors:
@@ -1039,16 +1023,10 @@ dashboards:
         value: '30'
       - color: '#67a567'
         value: '0'
-      dataSourceParams:
-      - name: time
-        type: timeRange
-        value: 10080
-        alias_name: 时间
-        filterType: params
   refs:
     datasource_keys:
     - 告警等级分布::get_alert_level_distribution
-    - 告警统计概览::get_alert_statistics
+    - 告警统计概览::alert/get_alert_statistics
     - 告警趋势数据::get_alert_trend_data
     - 告警源事件数 TOP N::alert/get_alert_source_event_top
     - 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
@@ -1383,7 +1361,15 @@ datasources:
   - 告警
   chart_type:
   - topN
-  field_schema: []
+  field_schema:
+  - key: '0'
+    title: name
+    value_type: string
+    description: ''
+  - key: '1'
+    title: value
+    value_type: number
+    description: ''
   namespace_keys:
   - 默认命名空间
 - key: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
@@ -1396,7 +1382,7 @@ datasources:
     type: timeRange
     value: 10080
     alias_name: 时间范围
-    filterType: params
+    filterType: filter
   tags:
   - 告警
   chart_type:
@@ -1430,9 +1416,9 @@ datasources:
     description: ''
   namespace_keys:
   - 默认命名空间
-- key: 告警统计概览::get_alert_statistics
+- key: 告警统计概览::alert/get_alert_statistics
   name: 告警统计概览
-  rest_api: get_alert_statistics
+  rest_api: alert/get_alert_statistics
   desc: ''
   is_active: true
   params: []
@@ -1523,7 +1509,7 @@ datasources:
     type: timeRange
     value: 10080
     alias_name: 时间
-    filterType: params
+    filterType: filter
   tags:
   - 告警
   chart_type:
@@ -1541,7 +1527,7 @@ datasources:
     type: timeRange
     value: 10080
     alias_name: 时间
-    filterType: params
+    filterType: filter
   tags:
   - 告警
   chart_type:
@@ -1581,7 +1567,7 @@ datasources:
     type: timeRange
     value: 10080
     alias_name: 时间
-    filterType: params
+    filterType: filter
   tags:
   - 告警
   chart_type:
