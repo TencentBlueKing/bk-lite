@@ -217,7 +217,11 @@ class OceanStorApiMonitor(ApiMonitor):
 
     def process_metrics(self, object_id, object_type, metrics_key, dims_key):
         """处理通用的对象指标数据"""
-        metrics = {v: k for k, v in self.metrics_api_map.items()}
+        # 按 metrics_key 前缀过滤后再反转，避免 pool/drive/volume 共享指标 ID 时相互覆盖
+        prefix = f"api_{metrics_key}_"
+        metrics = {
+            v: k for k, v in self.metrics_api_map.items() if k.startswith(prefix)
+        }
         statistics = self.fetch_performance_data(
             object_type, object_id, list(metrics.keys())
         )
