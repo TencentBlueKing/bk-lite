@@ -44,6 +44,16 @@ class OpenFileUploadView(APIView):
         # 鉴权由 APISecretMiddleware + AuthMiddleware 在中间件层完成
         # 到达这里时 request.user 已是合法用户
 
+        # 获取用户的 team（用于文件归属）
+        user_team = None
+        if hasattr(request.user, "group_list") and request.user.group_list:
+            user_team = request.user.group_list[0]
+        if user_team is None:
+            return Response(
+                {"detail": "用户未关联团队"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # 文件校验
         file = request.FILES.get("file")
         if not file:
@@ -81,6 +91,7 @@ class OpenFileUploadView(APIView):
             original_name=original_name,
             file_key=file_key,
             is_permanent=is_permanent,
+            team=user_team,
         )
 
         return Response(
@@ -115,18 +126,31 @@ class OpenFileDeleteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # 获取当前用户的 team（用于权限校验）
+        user_team = None
+        if hasattr(request.user, "group_list") and request.user.group_list:
+            user_team = request.user.group_list[0]
+
         # 校验格式并匹配删除
         deleted_count = 0
+        no_permission = []  # 无权限的文件
+        not_found = []  # 不存在的文件
         for item in files:
             file_id = item.get("file_id")
             file_key = item.get("file_key")
             if not file_id or not file_key:
                 continue
 
-            # 必须 file_id 和 file_key 同时匹配才能删除
+            # 先查询文件是否存在
             try:
                 df = DistributionFile.objects.get(id=file_id, file_key=file_key)
             except DistributionFile.DoesNotExist:
+                not_found.append({"file_id": file_id, "file_key": file_key})
+                continue
+
+            # 校验 team 权限
+            if df.team != user_team:
+                no_permission.append({"file_id": file_id, "file_key": file_key})
                 continue
 
             # 删除对象存储文件
@@ -138,7 +162,13 @@ class OpenFileDeleteView(APIView):
             df.delete()
             deleted_count += 1
 
+        result = {"deleted": deleted_count}
+        if no_permission:
+            result["no_permission"] = no_permission
+        if not_found:
+            result["not_found"] = not_found
+
         return Response(
-            {"deleted": deleted_count},
+            result,
             status=status.HTTP_200_OK,
         )

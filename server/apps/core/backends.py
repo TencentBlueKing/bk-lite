@@ -1,4 +1,3 @@
-import logging
 from typing import Any, Dict, List, Optional, Set
 
 import pytz
@@ -11,10 +10,9 @@ from django.utils import translation
 
 from apps.base.models import User, UserAPISecret
 from apps.core.constants import VERIFY_TOKEN_USER_NOT_FOUND_CODE, VERIFY_TOKEN_USER_NOT_FOUND_MESSAGE
+from apps.core.logger import logger
 from apps.core.utils.custom_error import DoesNotExist
 from apps.rpc.system_mgmt import SystemMgmt
-
-logger = logging.getLogger("app")
 
 # 常量定义
 DEFAULT_LOCALE = "en"
