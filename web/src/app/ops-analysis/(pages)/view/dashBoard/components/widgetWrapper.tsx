@@ -39,8 +39,11 @@ const validateTopNData = (
 
   const hasValidData = data.some((item) => {
     if (Array.isArray(item) && item.length >= 2) {
-      const name = String(item[0] ?? '').trim();
-      const value = Number(item[1]);
+      const rawName = getValueByPath(item, labelField);
+      const rawValue = getValueByPath(item, valueField);
+      const name =
+        rawName === undefined || rawName === null ? '' : String(rawName).trim();
+      const value = Number(rawValue);
       return !!name && !Number.isNaN(value);
     }
 
@@ -48,12 +51,8 @@ const validateTopNData = (
       return false;
     }
 
-    const rawName = labelField
-      ? getValueByPath(item, labelField)
-      : ((item as Record<string, unknown>).name ?? (item as Record<string, unknown>).label);
-    const rawValue = valueField
-      ? getValueByPath(item, valueField)
-      : ((item as Record<string, unknown>).value ?? (item as Record<string, unknown>).count);
+    const rawName = getValueByPath(item, labelField);
+    const rawValue = getValueByPath(item, valueField);
 
     const name = rawName === undefined || rawName === null ? '' : String(rawName).trim();
     const value = Number(rawValue);
