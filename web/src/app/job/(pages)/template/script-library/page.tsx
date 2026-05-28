@@ -586,6 +586,7 @@ const ScriptLibraryPage = () => {
           <Form.Item
             name="team"
             label={t('job.organization')}
+            rules={[{ required: true, message: t('job.organizationRequired') }]}
           >
             <GroupTreeSelect multiple placeholder={t('job.organizationPlaceholder')} />
           </Form.Item>

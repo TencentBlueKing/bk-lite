@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import {
   ViewConfigProps,
@@ -19,14 +19,15 @@ import {
   Tooltip,
   message,
 } from 'antd';
-import { QuestionCircleOutlined } from '@ant-design/icons';
+import { QuestionCircleOutlined, SwapOutlined } from '@ant-design/icons';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
+import { useSingleValueConfig } from '@/app/ops-analysis/hooks/useSingleValueConfig';
 import {
   getChartTypeList,
   ChartTypeItem,
 } from '@/app/ops-analysis/constants/common';
 import DataSourceParamsConfig from '@/app/ops-analysis/components/paramsConfig';
-import DataSourceSelect from '@/app/ops-analysis/components/dataSourceSelect';
+import { SingleValueSettingsSection } from '@/app/ops-analysis/components/singleValueSettingsSection';
 import { FilterBindingPanel } from '@/app/ops-analysis/components/unifiedFilter';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import {
@@ -34,17 +35,17 @@ import {
   getBindableFilterParams,
   buildDefaultFilterBindings,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { canEnableCompare } from '@/app/ops-analysis/utils/compareQuery';
 import type {
   DatasourceItem,
   ParamItem,
   ResponseFieldDefinition,
 } from '@/app/ops-analysis/types/dataSource';
-import { DEFAULT_THRESHOLD_COLORS } from '@/app/ops-analysis/constants/threshold';
+import { initThresholdColors } from '@/app/ops-analysis/utils/thresholdUtils';
+import ComponentSelector from './viewSelector';
 
 import { useTableConfig } from './viewConfig/hooks/useTableConfig';
-import { useSingleValueConfig } from './viewConfig/hooks/useSingleValueConfig';
 import { TableSettingsSection } from './viewConfig/sections/tableSettingsSection';
-import { SingleValueSettingsSection } from './viewConfig/sections/singleValueSettingsSection';
 import { TopNSettingsSection } from './viewConfig/sections/topNSettingsSection';
 import {
   buildDisplayColumnsFromSchema,
@@ -56,6 +57,7 @@ interface FormValues {
   description?: string;
   chartType: string;
   dataSource: string | number;
+  compare?: boolean;
   dataSourceParams?: ParamItem[];
   params?: Record<string, string | number | boolean | [number, number] | null>;
   tableConfig?: TableConfig;
@@ -87,6 +89,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const [form] = Form.useForm();
   const [chartType, setChartType] = useState<string>('');
   const [filterBindings, setFilterBindings] = useState<FilterBindings>({});
+  const [dataSourceSelectorVisible, setDataSourceSelectorVisible] = useState(false);
   const { getSourceDataByApiId } = useDataSourceApi();
 
   const {
@@ -150,6 +153,30 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     [filterDefinitions, selectedDataSource],
   );
 
+  const queryConfigParams = useMemo(
+    () =>
+      (Array.isArray(selectedDataSource?.params)
+        ? selectedDataSource.params
+        : []
+      ).filter((param: ParamItem) =>
+        ['params', 'fixed'].includes(param.filterType || 'fixed'),
+      ),
+    [selectedDataSource?.params],
+  );
+
+  const bindableFilterParams = useMemo(
+    () =>
+      Array.isArray(selectedDataSource?.params)
+        ? getBindableFilterParams(selectedDataSource.params)
+        : [],
+    [selectedDataSource?.params],
+  );
+
+  const hasQueryParams = queryConfigParams.length > 0;
+  const shouldShowUnifiedFilterSection =
+    previewFilterDefinitions.length > 0 && Boolean(selectedDataSource?.params);
+  const hasUnifiedFilterBindings = bindableFilterParams.length > 0;
+
   const tableConfig = useTableConfig({
     form,
     chartType,
@@ -169,14 +196,94 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     selectedDataSource,
     getSourceDataByApiId,
     builtinNamespaceId,
+    open,
   });
 
-  const topNFieldOptions = useMemo(
+  /** 用户通过弹窗选择了新的数据源，重置所有依赖配置 */
+  const handleDataSourceChangeFromSelector = useCallback(
+    async (item: DatasourceItem) => {
+      setDataSourceSelectorVisible(false);
+
+      // 重置依赖字段
+      setChartType('');
+      setFilterBindings({});
+      tableConfig.resetTableConfig();
+      singleValueConfig.resetSingleValueConfig();
+
+      // 加载完整数据源（brief 模式不含 params）
+      const fullItem = await ensureDataSource(item.id) || item;
+
+      // 设置新数据源
+      setSelectedDataSource(fullItem);
+      const newChartTypes = getFilteredChartTypes(fullItem);
+      const defaultChartType = newChartTypes[0]?.value || '';
+
+      setChartType(defaultChartType);
+
+      // 重置 form 中的依赖字段
+      const params: Record<string, any> = {};
+      if (fullItem.params?.length) {
+        setDefaultParamValues(fullItem.params, params);
+      }
+
+      form.setFieldsValue({
+        dataSource: fullItem.id,
+        chartType: defaultChartType,
+        params,
+        selectedFields: [],
+        topNLabelField: undefined,
+        topNValueField: undefined,
+        unit: undefined,
+        conversionFactor: undefined,
+        decimalPlaces: undefined,
+        compare: false,
+      });
+
+      // 重建 filter bindings
+      if (fullItem.params?.length) {
+        const previewDefs = computePreviewDefinitions(filterDefinitions, fullItem);
+        setFilterBindings(buildDefaultFilterBindings(fullItem.params, previewDefs));
+      }
+
+      // 如果默认图表类型是 table，尝试探测列
+      if (defaultChartType === 'table') {
+        const schemaFields = fullItem.field_schema;
+        if (schemaFields && schemaFields.length > 0) {
+          tableConfig.setDisplayColumns(buildDisplayColumnsFromSchema(schemaFields));
+        } else {
+          const probedColumns = await tableConfig.probeDefaultDisplayColumns(fullItem, params);
+          tableConfig.setDisplayColumns(probedColumns);
+        }
+      }
+    },
+    [
+      form,
+      ensureDataSource,
+      setSelectedDataSource,
+      setDefaultParamValues,
+      filterDefinitions,
+      tableConfig,
+      singleValueConfig,
+    ],
+  );
+
+  const topNLabelFieldOptions = useMemo(
     () =>
       availableFields.map((field) => ({
         label: field.title ? `${field.key} (${field.title})` : field.key,
         value: field.key,
       })),
+    [availableFields],
+  );
+
+  const topNValueFieldOptions = useMemo(
+    () =>
+      availableFields
+        .filter((field) => field.value_type === 'number')
+        .map((field) => ({
+          label: field.title ? `${field.key} (${field.title})` : field.key,
+          value: field.key,
+        })),
     [availableFields],
   );
 
@@ -294,9 +401,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           ),
         );
       } else {
-        setFilterBindings(
-          (valueConfig as ValueConfig | undefined)?.filterBindings || {},
-        );
+        setFilterBindings({});
       }
 
       if (valueConfig?.tableConfig?.columns?.length) {
@@ -371,18 +476,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (valueConfig?.decimalPlaces !== undefined) {
       formValues.decimalPlaces = valueConfig.decimalPlaces;
     }
-
-    if (
-      valueConfig?.thresholdColors &&
-      Array.isArray(valueConfig.thresholdColors)
-    ) {
-      const sortedThresholds = [...valueConfig.thresholdColors].sort(
-        (a, b) => parseFloat(b.value) - parseFloat(a.value),
-      );
-      singleValueConfig.setThresholdColors(sortedThresholds);
-    } else {
-      singleValueConfig.setThresholdColors(DEFAULT_THRESHOLD_COLORS);
+    if (valueConfig?.compare !== undefined) {
+      formValues.compare = valueConfig.compare && canEnableCompare({
+        config: { chartType: 'single', dataSourceParams: targetDataSource?.params },
+        dataSource: targetDataSource,
+      });
     }
+
+    singleValueConfig.setThresholdColors(initThresholdColors(valueConfig?.thresholdColors));
 
     form.setFieldsValue(formValues);
   };
@@ -392,6 +493,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     setSelectedDataSource(undefined);
     setChartType('');
     setFilterBindings({});
+    setDataSourceSelectorVisible(false);
     tableConfig.resetTableConfig();
     singleValueConfig.resetSingleValueConfig();
   };
@@ -509,6 +611,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       if (chartType === 'single') {
         result.selectedFields = singleValueConfig.selectedFields;
         result.thresholdColors = singleValueConfig.thresholdColors;
+        result.compare = !!values.compare;
         const unitValue = form.getFieldValue('unit');
         const conversionFactorValue = form.getFieldValue('conversionFactor');
         const decimalPlacesValue = form.getFieldValue('decimalPlaces');
@@ -569,63 +672,29 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           >
             <Input placeholder={t('dashboard.inputName')} />
           </Form.Item>
-          <Form.Item label={t('dataSource.describe')} name="description">
-            <Input.TextArea
-              placeholder={t('common.inputMsg')}
-              autoSize={{ minRows: 2, maxRows: 4 }}
-            />
-          </Form.Item>
-        </div>
-
-        <div className="mb-6">
-          <div className="font-bold text-(--color-text-1) mb-4">
-            {t('dashboard.dataSource')}
-          </div>
           <Form.Item
-            label={t('dashboard.dataSourceType')}
+            label={t('dashboard.dataSource')}
             name="dataSource"
             rules={[{ required: true, message: t('common.selectTip') }]}
+            getValueProps={() => ({
+              value: selectedDataSource
+                ? `${selectedDataSource.name}（${selectedDataSource.rest_api}）`
+                : '',
+            })}
           >
-            <DataSourceSelect
+            <Input
+              readOnly
               placeholder={t('common.selectTip')}
-              dataSources={selectedDataSource ? [selectedDataSource] : []}
-              disabled
-              onDataSourceChange={setSelectedDataSource}
+              suffix={
+                <SwapOutlined
+                  className="cursor-pointer text-(--color-primary)"
+                  onClick={() => setDataSourceSelectorVisible(true)}
+                />
+              }
+              onClick={() => setDataSourceSelectorVisible(true)}
+              className="cursor-pointer"
             />
           </Form.Item>
-        </div>
-
-        <div className="mb-6">
-          <div className="font-bold text-(--color-text-1) mb-4">
-            {t('dashboard.paramSettings')}
-          </div>
-          <DataSourceParamsConfig
-            selectedDataSource={selectedDataSource}
-            includeFilterTypes={['params', 'fixed']}
-          />
-        </div>
-
-        {previewFilterDefinitions.length > 0 && selectedDataSource?.params && (
-          <div className="mb-6">
-            <div className="font-bold text-(--color-text-1) mb-4 flex items-center gap-1">
-              {t('dashboard.unifiedFilterBinding')}
-              <Tooltip title={t('dashboard.unifiedFilterBindingTip')}>
-                <QuestionCircleOutlined className="text-(--color-text-3) cursor-help" />
-              </Tooltip>
-            </div>
-            <FilterBindingPanel
-              definitions={previewFilterDefinitions}
-              dataSourceParams={selectedDataSource.params}
-              filterBindings={filterBindings}
-              onChange={setFilterBindings}
-            />
-          </div>
-        )}
-
-        <div className="mb-6">
-          <div className="font-bold text-(--color-text-1) mb-4">
-            {t('dashboard.chartTypeLabel')}
-          </div>
           <Form.Item
             label={t('dashboard.chartTypeLabel')}
             name="chartType"
@@ -640,7 +709,42 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               ))}
             </Radio.Group>
           </Form.Item>
+          <Form.Item label={t('dataSource.describe')} name="description">
+            <Input.TextArea
+              placeholder={t('common.inputMsg')}
+              autoSize={{ minRows: 2, maxRows: 4 }}
+            />
+          </Form.Item>
         </div>
+
+        {hasQueryParams && (
+          <div className="mb-6">
+            <div className="font-bold text-(--color-text-1) mb-4">
+              {t('dashboard.queryParams')}
+            </div>
+            <DataSourceParamsConfig
+              selectedDataSource={selectedDataSource}
+              includeFilterTypes={['params', 'fixed']}
+            />
+          </div>
+        )}
+
+        {shouldShowUnifiedFilterSection && hasUnifiedFilterBindings && (
+          <div className="mb-6">
+            <div className="font-bold text-(--color-text-1) mb-4 flex items-center gap-1">
+              {t('dashboard.unifiedFilterLinkage')}
+              <Tooltip title={t('dashboard.unifiedFilterBindingTip')}>
+                <QuestionCircleOutlined className="text-(--color-text-3) cursor-help" />
+              </Tooltip>
+            </div>
+            <FilterBindingPanel
+              definitions={previewFilterDefinitions}
+              dataSourceParams={selectedDataSource.params}
+              filterBindings={filterBindings}
+              onChange={setFilterBindings}
+            />
+          </div>
+        )}
 
         {chartType === 'table' && (
           <TableSettingsSection
@@ -679,6 +783,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         {chartType === 'single' && (
           <SingleValueSettingsSection
             t={t}
+            sectionTitle={t('dashboard.displaySettings')}
             selectedDataSource={selectedDataSource}
             singleValueTreeData={singleValueConfig.singleValueTreeData}
             selectedFields={singleValueConfig.selectedFields}
@@ -694,17 +799,25 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             onThresholdBlur={singleValueConfig.handleThresholdBlur}
             onAddThreshold={singleValueConfig.addThreshold}
             onRemoveThreshold={singleValueConfig.removeThreshold}
+            compareAvailable={singleValueConfig.compareAvailable}
           />
         )}
 
         {chartType === 'topN' && (
           <TopNSettingsSection
             t={t}
+            sectionTitle={t('dashboard.displaySettings')}
             selectedDataSource={selectedDataSource}
-            topNFieldOptions={topNFieldOptions}
+            topNLabelFieldOptions={topNLabelFieldOptions}
+            topNValueFieldOptions={topNValueFieldOptions}
           />
         )}
       </Form>
+      <ComponentSelector
+        visible={dataSourceSelectorVisible}
+        onCancel={() => setDataSourceSelectorVisible(false)}
+        onOpenConfig={handleDataSourceChangeFromSelector}
+      />
     </Drawer>
   );
 };

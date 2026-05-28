@@ -79,11 +79,62 @@ class AgentNode(BaseNodeExecutor):
 
         try:
             template_context = self.variable_manager.get_all_variables()
+            # 记录可用的模板变量，特别是 memory_context
+            memory_context = template_context.get("memory_context", "")
+            logger.info(
+                f"[Agent] 节点 {node_id} 模板变量: keys={list(template_context.keys())}, memory_context长度={len(memory_context) if memory_context else 0}"
+            )
             template = jinja2.Template(prompt)
-            return template.render(**template_context)
+            rendered = template.render(**template_context)
+            if memory_context and "memory_context" in prompt:
+                logger.info(f"[Agent] 节点 {node_id} prompt 中使用了 memory_context")
+            return rendered
         except Exception as e:
             logger.error(f"智能体节点 {node_id} prompt渲染失败: {str(e)}")
             return prompt
+
+    def _truncate_memory_context(self, memory_context: str, max_chars: int = 8000) -> str:
+        """截断过长的记忆内容，避免超出 token 限制
+
+        Args:
+            memory_context: 记忆内容
+            max_chars: 最大字符数（默认 8000，约 2000-4000 tokens）
+
+        Returns:
+            截断后的记忆内容
+        """
+        if not memory_context or len(memory_context) <= max_chars:
+            return memory_context
+
+        # 按记忆条目分割（每条记忆以 ## 开头）
+        memories = memory_context.split("\n\n## ")
+        if len(memories) <= 1:
+            # 无法按条目分割，直接截断
+            return memory_context[:max_chars] + "\n\n...(记忆内容过长，已截断)"
+
+        # 保留第一条的 ## 前缀
+        if memories[0].startswith("## "):
+            memories[0] = memories[0][3:]
+
+        # 逐条添加，直到达到限制
+        result = []
+        current_length = 0
+        for i, mem in enumerate(memories):
+            mem_with_prefix = f"## {mem}" if i > 0 or not memory_context.startswith("## ") else f"## {mem}"
+            if i == 0:
+                mem_with_prefix = f"## {mem}"
+
+            if current_length + len(mem_with_prefix) + 4 > max_chars:  # +4 for "\n\n"
+                if result:
+                    result.append(f"\n\n...(还有 {len(memories) - i} 条记忆未显示)")
+                break
+
+            if result:
+                result.append("\n\n")
+            result.append(mem_with_prefix)
+            current_length += len(mem_with_prefix) + 4
+
+        return "".join(result)
 
     def _build_final_message(self, message, node_prompt: str, uploaded_files: list, node_id: str) -> str:
         """构建最终消息
@@ -100,10 +151,23 @@ class AgentNode(BaseNodeExecutor):
         files_content = self._process_uploaded_files(uploaded_files)
         rendered_prompt = self._render_prompt(node_prompt, node_id)
 
-        if not files_content and not rendered_prompt:
+        # 自动注入记忆内容（如果存在）
+        memory_content = ""
+        if hasattr(self, "variable_manager") and self.variable_manager:
+            memory_context = self.variable_manager.get_variable("memory_context", "")
+            if memory_context:
+                # 截断过长的记忆内容，避免超出 token 限制
+                truncated_memory = self._truncate_memory_context(memory_context)
+                memory_content = f"""### 相关记忆（来自记忆空间）:
+{truncated_memory}
+
+"""
+                logger.info(f"[Agent] 节点 {node_id} 自动注入记忆内容: 原始长度={len(memory_context)}, 截断后长度={len(truncated_memory)}")
+
+        if not files_content and not rendered_prompt and not memory_content:
             return message
 
-        combined_prompt = files_content + rendered_prompt
+        combined_prompt = memory_content + files_content + rendered_prompt
         if isinstance(message, str):
             return f"{combined_prompt}\n{message}"
         for i in message:

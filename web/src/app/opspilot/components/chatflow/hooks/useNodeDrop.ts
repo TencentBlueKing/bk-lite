@@ -87,6 +87,12 @@ export const useNodeDrop = ({
             if (nodeType === 'intent_classification') {
               return t('chatflow.intentClassification');
             }
+            if (nodeType === 'memory_read') {
+              return t('chatflow.memoryRead');
+            }
+            if (nodeType === 'memory_write') {
+              return t('chatflow.memoryWrite');
+            }
             return t(`chatflow.${nodeType}`);
           } catch {
             return nodeType;

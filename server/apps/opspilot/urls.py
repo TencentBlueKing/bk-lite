@@ -15,6 +15,8 @@ from apps.opspilot.viewsets import (
     LLMModelViewSet,
     LLMViewSet,
     ManualKnowledgeViewSet,
+    MemorySpaceViewSet,
+    MemoryViewSet,
     ModelVendorViewSet,
     OCRProviderViewSet,
     QAPairsViewSet,
@@ -55,6 +57,10 @@ router.register(r"knowledge_mgmt/web_page_knowledge", WebPageKnowledgeViewSet)
 router.register(r"knowledge_mgmt/manual_knowledge", ManualKnowledgeViewSet)
 router.register(r"knowledge_mgmt/qa_pairs", QAPairsViewSet)
 router.register(r"knowledge_mgmt/knowledge_graph", KnowledgeGraphViewSet)
+
+# memory
+router.register(r"memory_mgmt/memory_space", MemorySpaceViewSet)
+router.register(r"memory_mgmt/memory", MemoryViewSet)
 
 urlpatterns = router.urls
 

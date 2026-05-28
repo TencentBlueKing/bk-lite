@@ -64,7 +64,8 @@ const PermissionRule: React.FC<PermissionRuleProps> = ({
     moduleData,
     pagination,
     loadSpecificData,
-    handleTableChange
+    handleTableChange,
+    updateModuleDataItem
   } = usePermissionData(clientId, permissions, formGroupId);
 
   const [activeKey, setActiveKey] = useState<string>('');
@@ -253,6 +254,13 @@ const PermissionRule: React.FC<PermissionRuleProps> = ({
       newPermissions[module] = modulePermConfig;
     }
 
+    // Update moduleData to reflect the change in UI immediately
+    const updatedRecord = { ...record };
+    if (type === 'view' && !record.view) {
+      updatedRecord.operate = false;
+    }
+    updateModuleDataItem(module, updatedRecord, subModule);
+
     setPermissions(newPermissions);
 
     if (onChange) {
@@ -263,7 +271,7 @@ const PermissionRule: React.FC<PermissionRuleProps> = ({
         onChange(newPermissions);
       }, 50);
     }
-  }, [permissions, moduleTree, onChange]);
+  }, [permissions, moduleTree, onChange, updateModuleDataItem]);
 
   const handleTabChange = useCallback((key: string) => {
     if (key === activeKey) return;

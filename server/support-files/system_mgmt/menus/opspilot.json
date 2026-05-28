@@ -155,6 +155,21 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Memory",
+      "children": [
+        {
+          "id": "memory_list",
+          "name": "Memory list",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        }
+      ]
     }
   ],
   "roles": [
@@ -176,7 +191,8 @@
         "knowledge_testing-View",
         "provide_list-View",
         "skill_list-View",
-        "skill_setting-View"
+        "skill_setting-View",
+        "memory_list-View"
       ]
     }
   ]
