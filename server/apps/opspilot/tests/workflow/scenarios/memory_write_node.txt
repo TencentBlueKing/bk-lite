@@ -1,0 +1,34 @@
+场景名称: 记忆写入节点测试 (Memory Write Node)
+
+描述:
+  验证记忆写入节点在工作流中的执行逻辑。
+  入口节点 → 记忆写入节点，节点接收用户消息后触发异步 Celery 任务写入记忆条目，
+  同时透传输入到下游节点。
+
+前置条件:
+  - 数据库中存在一个 online 状态的 Bot
+  - 数据库中存在一个 MemorySpace（scope=team, write_rule 非空）
+  - BotWorkFlow 包含两个节点: entry_node(openai) → memory_write_node(memory_write)
+  - memory_write_node 配置: memory_space_id 指向已有 MemorySpace, title="测试记忆"
+  - process_memory_write Celery 任务被 mock（或同步执行）
+
+节点配置:
+  memory_write_node:
+    type: memory_write
+    config:
+      memory_space_id: <MemorySpace.id>
+      title: "测试记忆"
+      inputParams: "last_message"
+      outputParams: "last_message"
+
+测试用例:
+  1. 透传输入: 记忆写入节点输出的 last_message 与输入一致
+  2. 触发写入任务: process_memory_write.delay 被调用，参数包含正确的 memory_space_id、title、content
+  3. 用户信息传递: 写入任务接收到 input_data 中的 _username 和 _domain
+  4. 空消息跳过: 当 input_data 中 last_message 为空时，不触发写入任务
+  5. 无 memory_space_id 跳过: 当配置中未指定 memory_space_id 时，不触发写入任务
+  6. 异常容错: 当 process_memory_write.delay 抛出异常时，节点仍正常透传输入
+
+关联模型: apps/opspilot/models/memory_mgmt.py (MemorySpace, Memory)
+关联节点: apps/opspilot/utils/chat_flow_utils/nodes/memory/memory_write.py
+关联任务: apps/opspilot/tasks.py (process_memory_write)

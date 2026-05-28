@@ -131,6 +131,7 @@
     "matchPatternPathExample4": "/tmp/.*\\.(sh|bin) - Regex match executables in temp directory",
     "organization": "Organization",
     "organizationPlaceholder": "Select organization",
+    "organizationRequired": "Please select organization",
     "enableStatus": "Status",
     "updateTime": "Updated At",
     "addRule": "Add Rule",

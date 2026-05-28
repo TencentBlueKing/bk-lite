@@ -8,6 +8,24 @@ logger = logging.getLogger("monitor")
 
 class OceanStorApiMonitor(ApiMonitor):
     code = "oceanstor-api"
+    config_page_size = 100
+
+    @staticmethod
+    def normalize_timestamp(raw_timestamp):
+        """Normalize OceanStor timestamps to millisecond integers."""
+        if raw_timestamp in (None, ""):
+            return None
+
+        try:
+            timestamp = int(str(raw_timestamp).strip())
+        except (TypeError, ValueError):
+            logger.warning("OceanStor timestamp is invalid: %s", raw_timestamp)
+            return None
+
+        # OceanStor responses typically use second-level epoch values.
+        if timestamp < 10**12:
+            return timestamp * 1000
+        return timestamp
 
     # 指标和数据字段映射
     metrics_api_map = {
@@ -78,12 +96,20 @@ class OceanStorApiMonitor(ApiMonitor):
         }
         try:
             endpoint, method = self.endpoint_map["login"]
-            response = self.api.request(method, endpoint, params=payload, verify=False)
+            response = self.api.request(method, endpoint, json=payload, verify=False)
             data = response.get("data", {})
             if not data:
                 raise RuntimeError("Login failed: No data returned.")
             self.token = data.get("iBaseToken")
             self.device_id = data.get("deviceid")
+            # Persist the session token on the underlying REST client so
+            # subsequent requests can attach iBaseToken via token_header_func.
+            self.api.set_token(self.token)
+            logger.info(
+                "OceanStor login succeeded: device_id=%s, token_present=%s",
+                self.device_id,
+                bool(self.token),
+            )
         except Exception as e:
             logger.error(f"Failed to login: {e}")
             raise RuntimeError(
@@ -103,19 +129,50 @@ class OceanStorApiMonitor(ApiMonitor):
             )
         except Exception as e:
             logger.error(f"Failed to logout: {e}")
+        finally:
+            self.api.logout()
 
     def fetch_config(self, endpoint_key):
         """获取配置信息的通用方法"""
         try:
             endpoint, method = self.endpoint_map[endpoint_key]
             formatted_endpoint = endpoint.format(device_id=self.device_id)
-            response = self.api.request(
-                method,
-                formatted_endpoint,
-                verify=False,
-                token_header_func=self.token_header_func,
+            all_items = []
+            start = 0
+
+            while True:
+                response = self.api.request(
+                    method,
+                    formatted_endpoint,
+                    params={"range": f"[{start}-{start + self.config_page_size - 1}]"},
+                    verify=False,
+                    token_header_func=self.token_header_func,
+                )
+                error_code = (response.get("error") or {}).get("code", 0)
+                if error_code != 0:
+                    logger.warning(
+                        "OceanStor fetch_config returned error: endpoint=%s, code=%s, response=%s",
+                        endpoint_key,
+                        error_code,
+                        response,
+                    )
+                    break
+
+                data = response.get("data", [])
+                if not isinstance(data, list) or not data:
+                    break
+
+                all_items.extend(data)
+                if len(data) < self.config_page_size:
+                    break
+                start += self.config_page_size
+
+            logger.info(
+                "OceanStor fetch_config succeeded: endpoint=%s, item_count=%s",
+                endpoint_key,
+                len(all_items),
             )
-            return response.get("data", [])
+            return all_items
         except Exception as e:
             logger.error(f"Failed to fetch config for {endpoint_key}: {e}")
             return []
@@ -136,7 +193,24 @@ class OceanStorApiMonitor(ApiMonitor):
                 verify=False,
                 token_header_func=self.token_header_func,
             )
-            return response.get("data", [])
+            error_code = (response.get("error") or {}).get("code", 0)
+            if error_code != 0:
+                logger.warning(
+                    "OceanStor performance request returned error: object_type=%s, object_id=%s, code=%s, response=%s",
+                    object_type,
+                    object_id,
+                    error_code,
+                    response,
+                )
+                return []
+            data = response.get("data", [])
+            logger.info(
+                "OceanStor performance response: object_type=%s, object_id=%s, point_count=%s",
+                object_type,
+                object_id,
+                len(data) if isinstance(data, list) else "non-list",
+            )
+            return data
         except Exception as e:
             logger.error(f"Failed to fetch performance data for {object_id}: {e}")
             return []
@@ -147,8 +221,8 @@ class OceanStorApiMonitor(ApiMonitor):
         statistics = self.fetch_performance_data(
             object_type, object_id, list(metrics.keys())
         )
-        processed_metrics = {}
         for item in statistics:
+            processed_metrics = {}
             for key, value in zip(
                 item.get("CMO_STATISTIC_DATA_ID_LIST", "").split(","),
                 item.get("CMO_STATISTIC_DATA_LIST", "").split(","),
@@ -156,7 +230,7 @@ class OceanStorApiMonitor(ApiMonitor):
                 metric_name = metrics.get(key)
                 if metric_name:
                     processed_metrics[metric_name] = value
-            _timestamp = item.get("CMO_STATISTIC_TIMESTAMP") * 1000
+            _timestamp = self.normalize_timestamp(item.get("CMO_STATISTIC_TIMESTAMP"))
 
             # 保存数据
             for metric_name, value in processed_metrics.items():
@@ -170,7 +244,7 @@ class OceanStorApiMonitor(ApiMonitor):
         drives = self.fetch_config("drive_config")
         for drive in drives:
             drive_sn = drive.get("ID")
-            if not drive_sn:
+            if drive_sn in (None, ""):
                 continue
             self.process_metrics(drive_sn, 10, "drive", "drive_id")
 
@@ -179,7 +253,7 @@ class OceanStorApiMonitor(ApiMonitor):
         volumes = self.fetch_config("volume_config")
         for volume in volumes:
             volume_id = volume.get("ID")
-            if not volume_id:
+            if volume_id in (None, ""):
                 continue
             self.process_metrics(volume_id, 11, "volume", "volume_id")
 
@@ -188,7 +262,7 @@ class OceanStorApiMonitor(ApiMonitor):
         pools = self.fetch_config("pool_config")
         for pool in pools:
             pool_id = pool.get("ID")
-            if not pool_id:
+            if pool_id in (None, ""):
                 continue
             self.process_metrics(pool_id, 216, "pool", "pool_id")
 

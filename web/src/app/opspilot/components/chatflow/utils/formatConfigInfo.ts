@@ -1,5 +1,11 @@
 import type { ChatflowNodeData, CeleryNodeConfig, HttpNodeConfig, AgentsNodeConfig, ConditionNodeConfig, IntentClassificationNodeConfig, EnterpriseWechatNodeConfig, DingtalkNodeConfig, WechatOfficialNodeConfig, NotificationNodeConfig, WebChatNodeConfig, MobileNodeConfig } from '../types';
 
+/** 记忆节点配置（前端表单格式） */
+interface MemoryNodeFormConfig {
+  memorySpace?: number;
+  memorySpaceName?: string;
+}
+
 export const formatConfigInfo = (data: ChatflowNodeData, t: any) => {
   const config = data.config;
 
@@ -137,6 +143,16 @@ export const formatConfigInfo = (data: ChatflowNodeData, t: any) => {
         const intentNames = intentConfig.intents.map((intent: { name: string }) => intent.name).join(', ');
         const modelDisplayName = intentConfig.llmModelName || intentConfig.llmModel || '--';
         return `${t('chatflow.nodeConfig.llmModel')}: ${modelDisplayName} · ${t('chatflow.intentClassification')}: ${intentNames}`;
+      }
+      return t('chatflow.notConfigured');
+    }
+
+    case 'memory_read':
+    case 'memory_write': {
+      const memoryConfig = config as MemoryNodeFormConfig;
+      if (memoryConfig.memorySpace) {
+        const spaceName = memoryConfig.memorySpaceName || memoryConfig.memorySpace;
+        return `${t('chatflow.memorySpace')}: ${spaceName}`;
       }
       return t('chatflow.notConfigured');
     }

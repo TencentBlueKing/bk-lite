@@ -51,6 +51,14 @@ const nodeCategories = [
     ]
   },
   {
+    key: 'memory',
+    labelKey: 'chatflow.memoryNodes',
+    items: [
+      { type: 'memory_read', icon: 'database', labelKey: 'chatflow.memoryRead' },
+      { type: 'memory_write', icon: 'edit', labelKey: 'chatflow.memoryWrite' }
+    ]
+  },
+  {
     key: 'actions',
     labelKey: 'chatflow.actionNodes',
     items: [
