@@ -760,6 +760,7 @@ collector_configuration_directory: "%s\\generated"
 tags: ["zone:%s", "group:%s", "cpu_architecture:%s"]
 collector_binaries_accesslist:
   - "%s\\bin\\*"
+  - "%s\\bin\\*\\*"
 `,
 		cfg.ServerURL,
 		cfg.APIToken,
@@ -767,7 +768,7 @@ collector_binaries_accesslist:
 		cfg.NodeName,
 		installDir, installDir, installDir,
 		cfg.ZoneID, cfg.GroupID, cfg.Package.CPUArchitecture,
-		installDir,
+		installDir, installDir,
 	)
 
 	return os.WriteFile(filepath.Join(cfg.InstallDir, "sidecar.yml"), []byte(content), 0644)
