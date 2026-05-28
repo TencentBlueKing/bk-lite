@@ -84,22 +84,17 @@ func TestEnsureObjectStoreUsesExistingBucket(t *testing.T) {
 	}
 }
 
-func TestEnsureObjectStoreCreatesMissingBucket(t *testing.T) {
-	created := stubObjectStoreImpl{}
+func TestEnsureObjectStoreReturnsBucketNotFoundError(t *testing.T) {
 	manager := &stubObjectStoreManager{
 		objectStoreErr: nats.ErrBucketNotFound,
-		createdStore:   created,
 	}
 
-	got, err := ensureObjectStore(manager, "downloads")
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+	_, err := ensureObjectStore(manager, "downloads")
+	if err == nil {
+		t.Fatal("expected error for missing bucket")
 	}
-	if got != created {
-		t.Fatalf("expected created store to be returned")
-	}
-	if manager.createdBucketName != "downloads" {
-		t.Fatalf("expected bucket downloads, got %q", manager.createdBucketName)
+	if !errors.Is(err, nats.ErrBucketNotFound) {
+		t.Fatalf("expected wrapped ErrBucketNotFound, got %v", err)
 	}
 }
 
@@ -109,18 +104,6 @@ func TestEnsureObjectStoreReturnsAccessError(t *testing.T) {
 	_, err := ensureObjectStore(manager, "downloads")
 	if err == nil {
 		t.Fatal("expected access error")
-	}
-}
-
-func TestEnsureObjectStoreReturnsCreateError(t *testing.T) {
-	manager := &stubObjectStoreManager{
-		objectStoreErr: nats.ErrBucketNotFound,
-		createErr:      errors.New("create denied"),
-	}
-
-	_, err := ensureObjectStore(manager, "downloads")
-	if err == nil {
-		t.Fatal("expected create error")
 	}
 }
 
