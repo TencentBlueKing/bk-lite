@@ -1,7 +1,7 @@
 import type { Node } from '@xyflow/react';
 
 /** 节点类型定义 */
-export type NodeType = 'celery' | 'restful' | 'openai' | 'agents' | 'agui' | 'embedded_chat' | 'web_chat' | 'mobile' | 'condition' | 'http' | 'notification' | 'enterprise_wechat' | 'dingtalk' | 'wechat_official' | 'intent_classification';
+export type NodeType = 'celery' | 'restful' | 'openai' | 'agents' | 'agui' | 'embedded_chat' | 'web_chat' | 'mobile' | 'condition' | 'http' | 'notification' | 'enterprise_wechat' | 'dingtalk' | 'wechat_official' | 'intent_classification' | 'memory_read' | 'memory_write';
 
 /** 基础节点配置 */
 interface BaseNodeConfig {
@@ -88,6 +88,18 @@ export interface WebChatNodeConfig extends BaseNodeConfig {
   appDescription: string;
 }
 
+/** 记忆读取节点配置 */
+export interface MemoryReadNodeConfig extends BaseNodeConfig {
+  memory_space_id: number | null;
+  top_k: number;
+}
+
+/** 记忆写入节点配置 */
+export interface MemoryWriteNodeConfig extends BaseNodeConfig {
+  memory_space_id: number | null;
+  title: string;
+}
+
 /** Mobile 节点配置 */
 export interface MobileNodeConfig extends BaseNodeConfig {
   appName: string;
@@ -113,6 +125,8 @@ export type NodeConfig =
   | NotificationNodeConfig
   | WebChatNodeConfig
   | MobileNodeConfig
+  | MemoryReadNodeConfig
+  | MemoryWriteNodeConfig
   | SimpleNodeConfig;
 
 export interface ChatflowNodeData {

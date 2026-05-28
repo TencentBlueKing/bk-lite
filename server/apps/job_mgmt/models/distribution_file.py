@@ -16,6 +16,7 @@ class DistributionFile(models.Model):
     file_key = models.CharField(max_length=512, verbose_name="存储路径")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="上传时间")
     is_permanent = models.BooleanField(default=False, verbose_name="永久保存")
+    team = models.IntegerField(null=True, blank=True, verbose_name="团队ID")
 
     class Meta:
         verbose_name = "分发文件"

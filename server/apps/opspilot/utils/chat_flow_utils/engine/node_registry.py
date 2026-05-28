@@ -10,6 +10,7 @@ from ..nodes.condition.branch import BranchNode
 from ..nodes.converter.text_to_pdf import TextToPdfNode
 from ..nodes.function.function import FunctionNode
 from ..nodes.intent.intent_classifier import IntentClassifierNode
+from ..nodes.memory import MemoryReadNode, MemoryWriteNode
 from .core.base_executor import BaseNodeExecutor
 
 
@@ -53,6 +54,10 @@ class NodeRegistry:
 
         # 意图分类节点
         self.register_node_class("intent_classification", IntentClassifierNode)  # 别名
+
+        # 记忆节点
+        self.register_node_class("memory_read", MemoryReadNode)
+        self.register_node_class("memory_write", MemoryWriteNode)
 
         # 向后兼容的别名
         self.register_node_class("start", EntryNode)

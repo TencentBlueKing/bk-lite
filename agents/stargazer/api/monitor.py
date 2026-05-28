@@ -266,7 +266,10 @@ async def oceanstor_metrics(request):
     username = request.headers.get("username")
     password = request.headers.get("password")
     base_url = request.headers.get("base_url")
-    host = request.headers.get("host") or base_url
+    # Do not use the incoming HTTP Host header here. Telegraf sets it to the
+    # Stargazer service address, while OceanStor collection needs the target
+    # device endpoint carried in base_url.
+    host = base_url
     instance_id = request.headers.get("instance_id", "")
 
     agent_id = request.headers.get("agent_id", "")

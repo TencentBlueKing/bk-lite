@@ -149,6 +149,29 @@
       "name": "tool_list"
     },
     {
+      "title": "记忆",
+      "icon": "shujuguanli",
+      "url": "/opspilot/memory",
+      "name": "memory_list",
+      "hasDetail": true,
+      "children": [
+        {
+          "title": "配置",
+          "url": "/opspilot/memory/detail/config",
+          "icon": "shezhi",
+          "name": "memory_detail_config",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "记忆",
+          "url": "/opspilot/memory/detail/memories",
+          "icon": "shujuguanli",
+          "name": "memory_detail_memories",
+          "isNotMenuItem": true
+        }
+      ]
+    },
+    {
       "title": "模型",
       "icon": "moxing2",
       "url": "/opspilot/provider",
@@ -319,6 +342,29 @@
       "icon": "gongju-",
       "url": "/opspilot/tool",
       "name": "tool_list"
+    },
+    {
+      "title": "Memory",
+      "icon": "shujuguanli",
+      "url": "/opspilot/memory",
+      "name": "memory_list",
+      "hasDetail": true,
+      "children": [
+        {
+          "title": "Config",
+          "url": "/opspilot/memory/detail/config",
+          "icon": "shezhi",
+          "name": "memory_detail_config",
+          "isNotMenuItem": true
+        },
+        {
+          "title": "Memories",
+          "url": "/opspilot/memory/detail/memories",
+          "icon": "shujuguanli",
+          "name": "memory_detail_memories",
+          "isNotMenuItem": true
+        }
+      ]
     },
     {
       "title": "Model",
