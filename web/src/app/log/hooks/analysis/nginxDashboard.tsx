@@ -11,6 +11,9 @@ const NGINX_REFERRER = 'nginx.access.referrer';
 const NGINX_BYTES = 'nginx.access.body_sent.bytes';
 const NGINX_LEVEL = 'nginx.error.level';
 const TIME_BUCKET = '${_time}';
+const NGINX_4XX_FILTER = `${NGINX_STATUS}:re("4..")`;
+const NGINX_5XX_FILTER = `${NGINX_STATUS}:re("5..")`;
+const NGINX_ERROR_STATUS_FILTER = `(${NGINX_4XX_FILTER} OR ${NGINX_5XX_FILTER})`;
 
 const WEB_LEVEL_META: Record<
   string,
@@ -105,8 +108,8 @@ export const useNginxDashboard = () => {
           color: 'warning',
           displayMaps: { type: 'single', key: '_time', value: 'error4xx' },
           dataSourceParams: {
-            searchQuery: `${NGINX_ACCESS_BASE} (${NGINX_STATUS}:"4*")`,
-            query: `${NGINX_ACCESS_BASE} | stats by (_time:${TIME_BUCKET}) count() if (${NGINX_STATUS}:"4*") as error4xx`
+            searchQuery: `${NGINX_ACCESS_BASE} ${NGINX_4XX_FILTER}`,
+            query: `${NGINX_ACCESS_BASE} | stats by (_time:${TIME_BUCKET}) count() if (${NGINX_4XX_FILTER}) as error4xx`
           }
         }
       },
@@ -124,8 +127,8 @@ export const useNginxDashboard = () => {
           color: 'danger',
           displayMaps: { type: 'single', key: '_time', value: 'error5xx' },
           dataSourceParams: {
-            searchQuery: `${NGINX_ACCESS_BASE} (${NGINX_STATUS}:"5*")`,
-            query: `${NGINX_ACCESS_BASE} | stats by (_time:${TIME_BUCKET}) count() if (${NGINX_STATUS}:"5*") as error5xx`
+            searchQuery: `${NGINX_ACCESS_BASE} ${NGINX_5XX_FILTER}`,
+            query: `${NGINX_ACCESS_BASE} | stats by (_time:${TIME_BUCKET}) count() if (${NGINX_5XX_FILTER}) as error5xx`
           }
         }
       },
@@ -168,7 +171,7 @@ export const useNginxDashboard = () => {
           dataSourceParams: {
             searchQuery: NGINX_ACCESS_BASE,
             query:
-              `${NGINX_ACCESS_BASE} | stats by (_time:${TIME_BUCKET}) count() as total_count, count() if (${NGINX_STATUS}:"4*") as error4xx, count() if (${NGINX_STATUS}:"5*") as error5xx`
+              `${NGINX_ACCESS_BASE} | stats by (_time:${TIME_BUCKET}) count() as total_count, count() if (${NGINX_4XX_FILTER}) as error4xx, count() if (${NGINX_5XX_FILTER}) as error5xx`
           }
         }
       },
@@ -187,8 +190,8 @@ export const useNginxDashboard = () => {
             searchQuery: `${NGINX_ACCESS_BASE} ${NGINX_STATUS}:*`,
             queries: [
               { key: '2xx', query: `${NGINX_ACCESS_BASE} ${NGINX_STATUS}:"2*" | stats count() as count` },
-              { key: '4xx', query: `${NGINX_ACCESS_BASE} ${NGINX_STATUS}:"4*" | stats count() as count` },
-              { key: '5xx', query: `${NGINX_ACCESS_BASE} ${NGINX_STATUS}:"5*" | stats count() as count` }
+              { key: '4xx', query: `${NGINX_ACCESS_BASE} ${NGINX_4XX_FILTER} | stats count() as count` },
+              { key: '5xx', query: `${NGINX_ACCESS_BASE} ${NGINX_5XX_FILTER} | stats count() as count` }
             ],
             transformMode: 'statusGroupCounts'
           }
@@ -207,9 +210,9 @@ export const useNginxDashboard = () => {
           barColor: '#1677ff',
           displayMaps: { key: 'nginx.access.url', value: 'count' },
           dataSourceParams: {
-            searchQuery: `${NGINX_ACCESS_BASE} (${NGINX_STATUS}:"4*" OR ${NGINX_STATUS}:"5*") ${NGINX_URL}:*`,
+            searchQuery: `${NGINX_ACCESS_BASE} ${NGINX_ERROR_STATUS_FILTER} ${NGINX_URL}:*`,
             query:
-              `${NGINX_ACCESS_BASE} (${NGINX_STATUS}:"4*" OR ${NGINX_STATUS}:"5*") ${NGINX_URL}:* | stats by (${NGINX_URL}) count() as count | sort by (count desc) | limit 10`
+              `${NGINX_ACCESS_BASE} ${NGINX_ERROR_STATUS_FILTER} ${NGINX_URL}:* | stats by (${NGINX_URL}) count() as count | sort by (count desc) | limit 10`
           }
         }
       },
@@ -226,9 +229,9 @@ export const useNginxDashboard = () => {
           barColor: '#13c2c2',
           displayMaps: { key: 'nginx.access.referrer', value: 'count' },
           dataSourceParams: {
-            searchQuery: `${NGINX_ACCESS_BASE} (${NGINX_STATUS}:"4*" OR ${NGINX_STATUS}:"5*") ${NGINX_REFERRER}:*`,
+            searchQuery: `${NGINX_ACCESS_BASE} ${NGINX_ERROR_STATUS_FILTER} ${NGINX_REFERRER}:*`,
             query:
-              `${NGINX_ACCESS_BASE} (${NGINX_STATUS}:"4*" OR ${NGINX_STATUS}:"5*") ${NGINX_REFERRER}:* | stats by (${NGINX_REFERRER}) count() as count | sort by (count desc) | limit 10`
+              `${NGINX_ACCESS_BASE} ${NGINX_ERROR_STATUS_FILTER} ${NGINX_REFERRER}:* | stats by (${NGINX_REFERRER}) count() as count | sort by (count desc) | limit 10`
           }
         }
       },
@@ -248,8 +251,8 @@ export const useNginxDashboard = () => {
             searchQuery: `${NGINX_ACCESS_BASE} ${NGINX_STATUS}:*`,
             queries: [
               { key: '2xx', query: `${NGINX_ACCESS_BASE} ${NGINX_STATUS}:"2*" | stats count() as count` },
-              { key: '4xx', query: `${NGINX_ACCESS_BASE} ${NGINX_STATUS}:"4*" | stats count() as count` },
-              { key: '5xx', query: `${NGINX_ACCESS_BASE} ${NGINX_STATUS}:"5*" | stats count() as count` }
+              { key: '4xx', query: `${NGINX_ACCESS_BASE} ${NGINX_4XX_FILTER} | stats count() as count` },
+              { key: '5xx', query: `${NGINX_ACCESS_BASE} ${NGINX_5XX_FILTER} | stats count() as count` }
             ],
             transformMode: 'statusGroupCounts'
           }
@@ -274,8 +277,8 @@ export const useNginxDashboard = () => {
             { title: '客户端 IP', dataIndex: 'nginx.access.remote_ip', key: 'nginx.access.remote_ip', width: 128 }
           ],
           dataSourceParams: {
-            searchQuery: `${NGINX_ACCESS_BASE} ${NGINX_STATUS}:"5*"`,
-            query: `${NGINX_ACCESS_BASE} ${NGINX_STATUS}:"5*" | sort by (_time desc) | limit 20`
+            searchQuery: `${NGINX_ACCESS_BASE} ${NGINX_5XX_FILTER}`,
+            query: `${NGINX_ACCESS_BASE} ${NGINX_5XX_FILTER} | sort by (_time desc) | limit 20`
           }
         }
       },

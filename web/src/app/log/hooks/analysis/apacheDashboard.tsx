@@ -11,6 +11,9 @@ const APACHE_IP = 'apache.access.remote_ip';
 const APACHE_BYTES = 'apache.access.body_sent.bytes';
 const APACHE_LEVEL = 'apache.error.level';
 const TIME_BUCKET = '${_time}';
+const APACHE_4XX_FILTER = `${APACHE_STATUS}:re("4..")`;
+const APACHE_5XX_FILTER = `${APACHE_STATUS}:re("5..")`;
+const APACHE_ERROR_STATUS_FILTER = `(${APACHE_4XX_FILTER} OR ${APACHE_5XX_FILTER})`;
 
 const WEB_LEVEL_META: Record<
   string,
@@ -105,8 +108,8 @@ export const useApacheDashboard = () => {
           color: 'warning',
           displayMaps: { type: 'single', key: '_time', value: 'error4xx' },
           dataSourceParams: {
-            searchQuery: `${APACHE_ACCESS_BASE} (${APACHE_STATUS}:"4*")`,
-            query: `${APACHE_ACCESS_BASE} | stats by (_time:${TIME_BUCKET}) count() if (${APACHE_STATUS}:"4*") as error4xx`
+            searchQuery: `${APACHE_ACCESS_BASE} ${APACHE_4XX_FILTER}`,
+            query: `${APACHE_ACCESS_BASE} | stats by (_time:${TIME_BUCKET}) count() if (${APACHE_4XX_FILTER}) as error4xx`
           }
         }
       },
@@ -124,8 +127,8 @@ export const useApacheDashboard = () => {
           color: 'danger',
           displayMaps: { type: 'single', key: '_time', value: 'error5xx' },
           dataSourceParams: {
-            searchQuery: `${APACHE_ACCESS_BASE} (${APACHE_STATUS}:"5*")`,
-            query: `${APACHE_ACCESS_BASE} | stats by (_time:${TIME_BUCKET}) count() if (${APACHE_STATUS}:"5*") as error5xx`
+            searchQuery: `${APACHE_ACCESS_BASE} ${APACHE_5XX_FILTER}`,
+            query: `${APACHE_ACCESS_BASE} | stats by (_time:${TIME_BUCKET}) count() if (${APACHE_5XX_FILTER}) as error5xx`
           }
         }
       },
@@ -168,7 +171,7 @@ export const useApacheDashboard = () => {
           dataSourceParams: {
             searchQuery: APACHE_ACCESS_BASE,
             query:
-              `${APACHE_ACCESS_BASE} | stats by (_time:${TIME_BUCKET}) count() as total_count, count() if (${APACHE_STATUS}:"4*") as error4xx, count() if (${APACHE_STATUS}:"5*") as error5xx`
+              `${APACHE_ACCESS_BASE} | stats by (_time:${TIME_BUCKET}) count() as total_count, count() if (${APACHE_4XX_FILTER}) as error4xx, count() if (${APACHE_5XX_FILTER}) as error5xx`
           }
         }
       },
@@ -187,8 +190,8 @@ export const useApacheDashboard = () => {
             searchQuery: `${APACHE_ACCESS_BASE} ${APACHE_STATUS}:*`,
             queries: [
               { key: '2xx', query: `${APACHE_ACCESS_BASE} ${APACHE_STATUS}:"2*" | stats count() as count` },
-              { key: '4xx', query: `${APACHE_ACCESS_BASE} ${APACHE_STATUS}:"4*" | stats count() as count` },
-              { key: '5xx', query: `${APACHE_ACCESS_BASE} ${APACHE_STATUS}:"5*" | stats count() as count` }
+              { key: '4xx', query: `${APACHE_ACCESS_BASE} ${APACHE_4XX_FILTER} | stats count() as count` },
+              { key: '5xx', query: `${APACHE_ACCESS_BASE} ${APACHE_5XX_FILTER} | stats count() as count` }
             ],
             transformMode: 'statusGroupCounts'
           }
@@ -207,9 +210,9 @@ export const useApacheDashboard = () => {
           barColor: '#1677ff',
           displayMaps: { key: 'apache.access.url', value: 'count' },
           dataSourceParams: {
-            searchQuery: `${APACHE_ACCESS_BASE} (${APACHE_STATUS}:"4*" OR ${APACHE_STATUS}:"5*") ${APACHE_URL}:*`,
+            searchQuery: `${APACHE_ACCESS_BASE} ${APACHE_ERROR_STATUS_FILTER} ${APACHE_URL}:*`,
             query:
-              `${APACHE_ACCESS_BASE} (${APACHE_STATUS}:"4*" OR ${APACHE_STATUS}:"5*") ${APACHE_URL}:* | stats by (${APACHE_URL}) count() as count | sort by (count desc) | limit 10`
+              `${APACHE_ACCESS_BASE} ${APACHE_ERROR_STATUS_FILTER} ${APACHE_URL}:* | stats by (${APACHE_URL}) count() as count | sort by (count desc) | limit 10`
           }
         }
       },
@@ -226,9 +229,9 @@ export const useApacheDashboard = () => {
           barColor: '#13c2c2',
           displayMaps: { key: 'apache.access.remote_ip', value: 'count' },
           dataSourceParams: {
-            searchQuery: `${APACHE_ACCESS_BASE} (${APACHE_STATUS}:"4*" OR ${APACHE_STATUS}:"5*") ${APACHE_IP}:*`,
+            searchQuery: `${APACHE_ACCESS_BASE} ${APACHE_ERROR_STATUS_FILTER} ${APACHE_IP}:*`,
             query:
-              `${APACHE_ACCESS_BASE} (${APACHE_STATUS}:"4*" OR ${APACHE_STATUS}:"5*") ${APACHE_IP}:* | stats by (${APACHE_IP}) count() as count | sort by (count desc) | limit 10`
+              `${APACHE_ACCESS_BASE} ${APACHE_ERROR_STATUS_FILTER} ${APACHE_IP}:* | stats by (${APACHE_IP}) count() as count | sort by (count desc) | limit 10`
           }
         }
       },
@@ -248,8 +251,8 @@ export const useApacheDashboard = () => {
             searchQuery: `${APACHE_ACCESS_BASE} ${APACHE_STATUS}:*`,
             queries: [
               { key: '2xx', query: `${APACHE_ACCESS_BASE} ${APACHE_STATUS}:"2*" | stats count() as count` },
-              { key: '4xx', query: `${APACHE_ACCESS_BASE} ${APACHE_STATUS}:"4*" | stats count() as count` },
-              { key: '5xx', query: `${APACHE_ACCESS_BASE} ${APACHE_STATUS}:"5*" | stats count() as count` }
+              { key: '4xx', query: `${APACHE_ACCESS_BASE} ${APACHE_4XX_FILTER} | stats count() as count` },
+              { key: '5xx', query: `${APACHE_ACCESS_BASE} ${APACHE_5XX_FILTER} | stats count() as count` }
             ],
             transformMode: 'statusGroupCounts'
           }
@@ -274,8 +277,8 @@ export const useApacheDashboard = () => {
             { title: '客户端 IP', dataIndex: 'apache.access.remote_ip', key: 'apache.access.remote_ip', width: 128 }
           ],
           dataSourceParams: {
-            searchQuery: `${APACHE_ACCESS_BASE} ${APACHE_STATUS}:"5*"`,
-            query: `${APACHE_ACCESS_BASE} ${APACHE_STATUS}:"5*" | sort by (_time desc) | limit 20`
+            searchQuery: `${APACHE_ACCESS_BASE} ${APACHE_5XX_FILTER}`,
+            query: `${APACHE_ACCESS_BASE} ${APACHE_5XX_FILTER} | sort by (_time desc) | limit 20`
           }
         }
       },
