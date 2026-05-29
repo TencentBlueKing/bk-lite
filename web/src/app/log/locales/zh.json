@@ -490,6 +490,7 @@
     "analysis": {
       "container": "容器",
       "selectContainer": "请选择容器",
+      "selectLogGroup": "请选择日志分组",
       "selectInstance": "请选择实例",
       "packetbeat": {
         "destinationPort": "Destination Port",

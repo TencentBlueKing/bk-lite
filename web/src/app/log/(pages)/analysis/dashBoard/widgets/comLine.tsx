@@ -2,9 +2,9 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import ChartLegend from '../components/chartLegend';
 import { Spin, Empty } from 'antd';
-import { randomColorForLegend } from '@/app/log/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/log/utils/chartDataTransform';
 import useChartColors from './docker/useChartColors';
+import { createSoftLineArea } from './chartStyle';
 
 const LEGEND_WIDTH_CLASS = 'w-40';
 const LEGEND_WIDTH_PX = 160; // w-40 = 10rem = 160px
@@ -30,8 +30,8 @@ const TrendLine: React.FC<TrendLineProps> = ({
   const chartRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
-  const seriesColors = randomColorForLegend();
   const colors = useChartColors();
+  const seriesColors = colors.series;
 
   const containerCallbackRef = useCallback((node: HTMLDivElement | null) => {
     if (observerRef.current) {
@@ -221,23 +221,9 @@ const TrendLine: React.FC<TrendLineProps> = ({
       },
       areaStyle: {
         opacity: areaOpacity,
-        color: {
-          type: 'linear',
-          x: 0,
-          y: 0,
-          x2: 0,
-          y2: 1,
-          colorStops: [
-            {
-              offset: 0,
-              color: seriesColors[index % seriesColors.length] || colors.primary
-            },
-            {
-              offset: 1,
-              color: 'rgba(255, 255, 255, 0)'
-            }
-          ]
-        }
+        color: createSoftLineArea(
+          seriesColors[index % seriesColors.length] || colors.primary
+        ).color
       },
       emphasis: {
         focus: 'series'
@@ -256,23 +242,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
         },
         areaStyle: {
           opacity: areaOpacity,
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              {
-                offset: 0,
-                color: seriesColors[0] || colors.primary
-              },
-              {
-                offset: 1,
-                color: 'rgba(255, 255, 255, 0)'
-              }
-            ]
-          }
+          color: createSoftLineArea(seriesColors[0] || colors.primary).color
         },
         emphasis: {
           focus: 'series'

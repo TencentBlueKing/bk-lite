@@ -2,9 +2,10 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import ChartLegend from '../components/chartLegend';
 import { Spin, Empty } from 'antd';
-import { randomColorForLegend } from '@/app/log/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/log/utils/chartDataTransform';
 import { DashboardBarChartProps } from '@/app/log/types';
+import useChartColors from './docker/useChartColors';
+import { createHorizontalBarGradient, createVerticalBarGradient } from './chartStyle';
 
 const LEGEND_WIDTH_CLASS = 'w-40';
 const LEGEND_WIDTH_PX = 160;
@@ -28,7 +29,8 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
   const chartRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
-  const chartColors = randomColorForLegend();
+  const colors = useChartColors();
+  const chartColors = config?.barColor ? [config.barColor, ...colors.series] : colors.series;
 
   const containerCallbackRef = useCallback((node: HTMLDivElement | null) => {
     if (observerRef.current) {
@@ -134,11 +136,11 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
             if (value >= 1000) return (value / 1000).toFixed(1) + 'k';
             return value.toString();
           },
-          textStyle: { color: '#7f92a7' }
+          textStyle: { color: colors.axisLabel }
         },
         splitLine: {
           show: true,
-          lineStyle: { color: '#f0f0f0', type: 'solid' }
+          lineStyle: { color: colors.splitLine, type: 'solid' }
         }
       }
       : {
@@ -148,7 +150,7 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
         axisLabel: {
           margin: 15,
           textStyle: {
-            color: '#7f92a7',
+            color: colors.axisLabel,
             fontSize: 11
           },
           rotate: 0,
@@ -159,7 +161,7 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
         },
         axisLine: {
           lineStyle: {
-            color: '#e8e8e8'
+            color: colors.axisLine
           }
         },
         axisTick: {
@@ -168,7 +170,7 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
         splitLine: {
           show: false,
           lineStyle: {
-            color: '#f0f0f0'
+            color: colors.splitLine
           }
         }
       },
@@ -178,14 +180,14 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
         data: chartData?.categories || [],
         axisLabel: {
           textStyle: {
-            color: '#7f92a7',
+            color: colors.axisLabel,
             fontSize: 11
           },
           formatter: function (value: string) {
             return value.length > 12 ? value.slice(0, 12) + '...' : value;
           }
         },
-        axisLine: { lineStyle: { color: '#e8e8e8' } },
+        axisLine: { lineStyle: { color: colors.axisLine } },
         axisTick: { show: false },
         inverse: true
       }
@@ -206,13 +208,13 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
             return value.toString();
           },
           textStyle: {
-            color: '#7f92a7'
+            color: colors.axisLabel
           }
         },
         splitLine: {
           show: true,
           lineStyle: {
-            color: '#f0f0f0',
+            color: colors.splitLine,
             type: 'solid'
           }
         }
@@ -220,15 +222,19 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
   };
 
   // 根据数据类型设置 series
-  const barRadius = isHorizontal ? [0, 2, 2, 0] : [2, 2, 0, 0];
+  const barRadius = isHorizontal ? [0, 3, 3, 0] : [3, 3, 0, 0];
+  const barMaxWidth = isHorizontal ? 16 : 12;
   if (chartData && chartData.series) {
-    option.series = chartData.series.map((item: any) => ({
+    option.series = chartData.series.map((item: any, index: number) => ({
       name: item.name,
       type: 'bar',
       data: item.data,
-      barMaxWidth: 40,
+      barMaxWidth,
       itemStyle: {
-        borderRadius: barRadius
+        borderRadius: barRadius,
+        color: isHorizontal
+          ? createHorizontalBarGradient(chartColors[index % chartColors.length] || colors.primary)
+          : createVerticalBarGradient(chartColors[index % chartColors.length] || colors.primary)
       },
       emphasis: {
         focus: 'series'
@@ -240,9 +246,12 @@ const BarChart: React.FC<DashboardBarChartProps> = ({
         name: '数量',
         type: 'bar',
         data: chartData && chartData.values ? chartData.values : [],
-        barMaxWidth: 40,
+        barMaxWidth,
         itemStyle: {
-          borderRadius: barRadius
+          borderRadius: barRadius,
+          color: isHorizontal
+            ? createHorizontalBarGradient(chartColors[0] || colors.primary)
+            : createVerticalBarGradient(chartColors[0] || colors.primary)
         },
         emphasis: {
           focus: 'series'

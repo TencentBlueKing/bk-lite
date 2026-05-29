@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import { Empty } from 'antd';
 import useChartColors from './useChartColors';
+import { createSoftLineArea } from '../chartStyle';
 
 interface DockerAreaChartProps {
   rawData: any;
@@ -50,7 +51,7 @@ const DockerAreaChart: React.FC<DockerAreaChartProps> = ({
         symbolSize: 4,
         lineStyle: { width: 2, color: color1 },
         itemStyle: { color: color1 },
-        // 无面积填充
+        areaStyle: createSoftLineArea(color1),
         data: series1Data
       }
     ];
@@ -68,6 +69,7 @@ const DockerAreaChart: React.FC<DockerAreaChartProps> = ({
         symbolSize: 4,
         lineStyle: { width: 2, color: color2 },
         itemStyle: { color: color2 },
+        areaStyle: createSoftLineArea(color2),
         data: series2Data
       });
     }
