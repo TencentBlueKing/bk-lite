@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import { Empty } from 'antd';
 import useChartColors from './useChartColors';
+import { createSoftLineArea } from '../chartStyle';
 
 /**
  * DockerDualLine — 双折线 + 双Y轴
@@ -63,6 +64,7 @@ const DockerDualLine: React.FC<DockerDualLineProps> = ({
         symbol: 'none',
         lineStyle: { width: 2, color: color1 },
         itemStyle: { color: color1 },
+        areaStyle: createSoftLineArea(color1),
         data: series1Data
       }
     ];
@@ -94,6 +96,7 @@ const DockerDualLine: React.FC<DockerDualLineProps> = ({
         symbol: 'none',
         lineStyle: { width: 2, color: color2 },
         itemStyle: { color: color2 },
+        areaStyle: createSoftLineArea(color2),
         data: series2Data
       });
       yAxes.push({

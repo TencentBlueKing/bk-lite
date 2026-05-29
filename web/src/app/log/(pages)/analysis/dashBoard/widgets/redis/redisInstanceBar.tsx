@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import { Empty } from 'antd';
 import useChartColors from '../docker/useChartColors';
+import { createHorizontalBarGradient } from '../chartStyle';
 
 // Redis 专属横向柱状图，用于实例/命令/case 维度分析
 // displayMaps.key   = 类目字段名（如 node_ip / redis_cmd / err_case）
@@ -78,9 +79,9 @@ const RedisInstanceBar: React.FC<RedisInstanceBarProps> = ({
         {
           type: 'bar',
           data: [...vals].reverse(),
-          barMaxWidth: 18,
+          barMaxWidth: 16,
           itemStyle: {
-            color: barColor,
+            color: createHorizontalBarGradient(barColor),
             borderRadius: [0, 3, 3, 0]
           },
           label: {

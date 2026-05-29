@@ -3,6 +3,7 @@ import ReactEcharts from 'echarts-for-react';
 import { Empty, Spin } from 'antd';
 import { ChartDataTransformer } from '@/app/log/utils/chartDataTransform';
 import useChartColors from '../docker/useChartColors';
+import { createSoftLineArea, createVerticalBarGradient } from '../chartStyle';
 
 const trimTrailingZeros = (value: string) =>
   value.replace(/\.0+$|(?<=\.\d*[1-9])0+$/g, '');
@@ -124,31 +125,11 @@ const HttpRequestTrend: React.FC<HttpRequestTrendProps> = ({
           barMaxWidth: 16,
           itemStyle: {
             borderRadius: [4, 4, 0, 0],
-            color: {
-              type: 'linear',
-              x: 0,
-              y: 0,
-              x2: 0,
-              y2: 1,
-              colorStops: [
-                { offset: 0, color: `${colors.primary}CC` },
-                { offset: 1, color: colors.primary }
-              ]
-            }
+            color: createVerticalBarGradient(colors.primary)
           },
           emphasis: {
             itemStyle: {
-              color: {
-                type: 'linear',
-                x: 0,
-                y: 0,
-                x2: 0,
-                y2: 1,
-                colorStops: [
-                  { offset: 0, color: `${colors.primary}E6` },
-                  { offset: 1, color: colors.primary }
-                ]
-              }
+              color: createVerticalBarGradient(colors.primary)
             }
           }
         },
@@ -159,7 +140,8 @@ const HttpRequestTrend: React.FC<HttpRequestTrendProps> = ({
           yAxisIndex: 1,
           smooth: true,
           symbol: 'none',
-          lineStyle: { width: 2, color: colors.success }
+          lineStyle: { width: 2, color: colors.success },
+          areaStyle: createSoftLineArea(colors.success)
         },
         {
           name: displayMaps.p95Label || 'P95',
@@ -171,7 +153,8 @@ const HttpRequestTrend: React.FC<HttpRequestTrendProps> = ({
           lineStyle: {
             width: 2,
             color: colors.warning
-          }
+          },
+          areaStyle: createSoftLineArea(colors.warning)
         }
       ]
     };

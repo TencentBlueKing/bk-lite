@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import { Empty } from 'antd';
 import useChartColors from '../docker/useChartColors';
+import { createSoftLineArea } from '../chartStyle';
 
 // Redis 日志量趋势折线图（双系列：总量 + 错误量）
 // displayMaps.key        = 时间字段（_time）
@@ -78,19 +79,7 @@ const RedisTrendLine: React.FC<RedisTrendLineProps> = ({
         symbol: 'none',
         lineStyle: { width: 2, color: color1 },
         itemStyle: { color: color1 },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: color1 + '28' },
-              { offset: 1, color: color1 + '04' }
-            ]
-          }
-        },
+        areaStyle: createSoftLineArea(color1),
         yAxisIndex: 0
       }
     ];
@@ -118,19 +107,7 @@ const RedisTrendLine: React.FC<RedisTrendLineProps> = ({
         symbol: 'none',
         lineStyle: { width: 2, color: color2 },
         itemStyle: { color: color2 },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: color2 + '28' },
-              { offset: 1, color: color2 + '04' }
-            ]
-          }
-        },
+        areaStyle: createSoftLineArea(color2),
         yAxisIndex: 1
       });
       yAxes.push({

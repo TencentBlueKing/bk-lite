@@ -3,6 +3,7 @@ import ReactEcharts from 'echarts-for-react';
 import { Empty, Spin } from 'antd';
 import { ChartDataTransformer } from '@/app/log/utils/chartDataTransform';
 import useChartColors from '../docker/useChartColors';
+import { createSoftLineArea } from '../chartStyle';
 import {
   type HttpStatusCategoryKey,
   getHttpStatusCategory
@@ -142,7 +143,8 @@ const HttpStatusTrend: React.FC<any> = ({
         data: normalizedData.map((item) => Number(item[seriesConfig.key] || 0)),
         smooth: true,
         symbol: 'none',
-        lineStyle: { width: 2, color: seriesConfig.color }
+        lineStyle: { width: 2, color: seriesConfig.color },
+        areaStyle: createSoftLineArea(seriesConfig.color)
       }))
     };
   }, [colors, config?.displayMaps?.labels, rawData]);

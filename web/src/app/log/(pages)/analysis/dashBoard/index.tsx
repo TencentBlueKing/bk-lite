@@ -547,7 +547,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             <div className="mt-4 flex min-w-0 flex-wrap gap-2">
               <div className="w-[200px] max-w-full">
                 <div className="mb-1 text-xs font-medium text-[var(--color-text-3)]">
-                  {t('log.group')}
+                  {t('log.integration.logGroup')}
                 </div>
                 <Select
                   className="w-full"
