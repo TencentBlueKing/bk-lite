@@ -1,6 +1,6 @@
 import React from 'react';
 import { StoryFn, Meta } from '@storybook/react';
-import { action } from '@storybook/addon-actions';
+import { fn } from 'storybook/test';
 import { Menu } from 'antd';
 import EntityList from '@/components/entity-list';
 
@@ -48,15 +48,15 @@ export const Default = Template.bind({});
 Default.args = {
   data: exampleData,
   loading: false,
-  onSearch: (value: string) => action('onSearch')(value),
-  openModal: () => action('openModal')(),
+  onSearch: (value: string) => fn()(value),
+  openModal: () => fn()(),
 };
 
 export const WithSearch = Template.bind({});
 WithSearch.args = {
   data: exampleData,
   loading: false,
-  onSearch: (value: string) => action('onSearch')(value),
+  onSearch: (value: string) => fn()(value),
 };
 
 export const Loading = Template.bind({});
@@ -69,28 +69,28 @@ export const WithMenuActions = Template.bind({});
 WithMenuActions.args = {
   data: exampleData,
   loading: false,
-  onSearch: (value: string) => action('onSearch')(value),
+  onSearch: (value: string) => fn()(value),
   menuActions: (item: ExampleItem) => (
     <Menu>
-      <Menu.Item key="edit" onClick={() => action('edit')(item)}>Edit</Menu.Item>
-      <Menu.Item key="delete" onClick={() => action('delete')(item)}>Delete</Menu.Item>
+      <Menu.Item key="edit" onClick={() => fn()(item)}>Edit</Menu.Item>
+      <Menu.Item key="delete" onClick={() => fn()(item)}>Delete</Menu.Item>
     </Menu>
   ),
-  onCardClick: (item: ExampleItem) => action('cardClick')(item),
+  onCardClick: (item: ExampleItem) => fn()(item),
 };
 
 export const WithAddNewButton = Template.bind({});
 WithAddNewButton.args = {
   data: exampleData,
   loading: false,
-  openModal: () => action('openModal')(),
+  openModal: () => fn()(),
 };
 
 export const WithTagBelowName = Template.bind({});
 WithTagBelowName.args = {
   data: exampleData,
   loading: false,
-  onSearch: (value: string) => action('onSearch')(value),
+  onSearch: (value: string) => fn()(value),
   displayTagBelowName: true,
 };
 
@@ -100,15 +100,15 @@ WithMultipleActions.args = {
   loading: false,
   menuActions: (item: ExampleItem) => (
     <Menu>
-      <Menu.Item key="edit" onClick={() => action('edit')(item)}>Edit</Menu.Item>
-      <Menu.Item key="delete" onClick={() => action('delete')(item)}>Delete</Menu.Item>
+      <Menu.Item key="edit" onClick={() => fn()(item)}>Edit</Menu.Item>
+      <Menu.Item key="delete" onClick={() => fn()(item)}>Delete</Menu.Item>
     </Menu>
   ),
   singleAction: (item: ExampleItem) => ({
     text: 'Action Button',
-    onClick: () => action('buttonClick')(item),
+    onClick: () => fn()(item),
   }),
-  openModal: () => action('openModal')(),
+  openModal: () => fn()(),
   displayTagBelowName: true,
 };
 
@@ -116,5 +116,5 @@ export const Empty = Template.bind({});
 Empty.args = {
   data: [],
   loading: false,
-  onSearch: (value: string) => action('onSearch')(value),
+  onSearch: (value: string) => fn()(value),
 };

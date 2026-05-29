@@ -83,7 +83,7 @@ from apps.opspilot.metis.llm.tools.kubernetes.tracing import (
 )
 
 # 工具集构造参数元数据
-from apps.opspilot.metis.llm.tools.kubernetes.utils import format_bytes, parse_resource_quantity, prepare_context
+from apps.opspilot.metis.llm.tools.kubernetes.utils import format_bytes, parse_resource_quantity, prepare_context, get_current_cluster_name
 
 CONSTRUCTOR_PARAMS = [
     {

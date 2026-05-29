@@ -4,7 +4,7 @@ from kubernetes.client import ApiException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from kubernetes import client
-from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context, parse_resource_quantity
+from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context, parse_resource_quantity, get_current_cluster_name
 
 
 @tool()
@@ -211,14 +211,19 @@ def check_kubernetes_ingress(namespace=None, config: RunnableConfig = None):
 
 
 @tool()
-def check_kubernetes_daemonsets(namespace=None, config: RunnableConfig = None):
+def check_kubernetes_daemonsets(namespace=None, instance_name=None, config: RunnableConfig = None):
     """
     检查DaemonSet状态
 
     Args:
         namespace (str, optional): 要检查的命名空间
+        instance_name (str, optional): 要操作的 Kubernetes 实例名称，多集群时必传
         config (RunnableConfig): 工具配置
     """
+    if instance_name and config:
+        configurable = config.get("configurable", {})
+        configurable["instance_name"] = instance_name
+        config["configurable"] = configurable
     prepare_context(config)
     try:
         apps_v1 = client.AppsV1Api()
@@ -228,9 +233,10 @@ def check_kubernetes_daemonsets(namespace=None, config: RunnableConfig = None):
         else:
             daemonsets = apps_v1.list_daemon_set_for_all_namespaces()
 
-        result = []
+        cluster_name = get_current_cluster_name()
+        items = []
         for ds in daemonsets.items:
-            result.append({
+            items.append({
                 "name": ds.metadata.name,
                 "namespace": ds.metadata.namespace,
                 "desired": ds.status.desired_number_scheduled or 0,
@@ -241,20 +247,26 @@ def check_kubernetes_daemonsets(namespace=None, config: RunnableConfig = None):
                 "node_selector": ds.spec.template.spec.node_selector if ds.spec.template.spec.node_selector else {}
             })
 
+        result = {"cluster_name": cluster_name, "daemonsets": items}
         return json.dumps(result)
     except ApiException as e:
         return json.dumps({"error": f"检查DaemonSet失败: {str(e)}"})
 
 
 @tool()
-def check_kubernetes_statefulsets(namespace=None, config: RunnableConfig = None):
+def check_kubernetes_statefulsets(namespace=None, instance_name=None, config: RunnableConfig = None):
     """
     检查StatefulSet状态
 
     Args:
         namespace (str, optional): 要检查的命名空间
+        instance_name (str, optional): 要操作的 Kubernetes 实例名称，多集群时必传
         config (RunnableConfig): 工具配置
     """
+    if instance_name and config:
+        configurable = config.get("configurable", {})
+        configurable["instance_name"] = instance_name
+        config["configurable"] = configurable
     prepare_context(config)
     try:
         apps_v1 = client.AppsV1Api()
@@ -264,9 +276,10 @@ def check_kubernetes_statefulsets(namespace=None, config: RunnableConfig = None)
         else:
             statefulsets = apps_v1.list_stateful_set_for_all_namespaces()
 
-        result = []
+        cluster_name = get_current_cluster_name()
+        items = []
         for sts in statefulsets.items:
-            result.append({
+            items.append({
                 "name": sts.metadata.name,
                 "namespace": sts.metadata.namespace,
                 "replicas": sts.spec.replicas,
@@ -277,6 +290,7 @@ def check_kubernetes_statefulsets(namespace=None, config: RunnableConfig = None)
                 "volume_claim_templates": len(sts.spec.volume_claim_templates) if sts.spec.volume_claim_templates else 0
             })
 
+        result = {"cluster_name": cluster_name, "statefulsets": items}
         return json.dumps(result)
     except ApiException as e:
         return json.dumps({"error": f"检查StatefulSet失败: {str(e)}"})
@@ -431,21 +445,38 @@ def check_kubernetes_endpoints(namespace=None, config: RunnableConfig = None):
 
 
 @tool()
-def analyze_deployment_configurations(namespace=None, config: RunnableConfig = None):
+def analyze_deployment_configurations(namespace=None, instance_name=None, limit=50, offset=0, config: RunnableConfig = None):
     """
     分析 Deployment 配置的合理性
 
     检查每个 Deployment 的资源配置、探针设置、副本策略等，
     评估配置是否合理并识别潜在问题。
 
+    **分页说明：**
+    - 默认每次最多返回 20 个 Deployment 的分析结果（硬上限 50）
+    - 返回结果中包含 total（总数）、returned（本次返回数）、offset（偏移量）
+    - 如果 total > returned + offset，说明还有更多，使用 offset 参数翻页
+
     Args:
-        namespace (str, optional): 要分析的命名空间
+        namespace (str, optional): 要分析的命名空间，不传则扫描全部命名空间
+        instance_name (str, optional): 要操作的 Kubernetes 实例名称，多集群时必传
+        limit (int, optional): 每次返回的最大 Deployment 数量，默认 20，硬上限 50
+        offset (int, optional): 跳过前 N 个 Deployment，用于分页，默认 0
         config (RunnableConfig): 工具配置
 
     Returns:
-        str: JSON格式的分析结果，包含每个Deployment的配置评估
+        str: JSON格式的分析结果，包含每个Deployment的配置评估及分页信息
     """
+    if instance_name and config:
+        configurable = config.get("configurable", {})
+        configurable["instance_name"] = instance_name
+        config["configurable"] = configurable
     prepare_context(config)
+
+    # 硬上限保护
+    limit = max(1, min(int(limit or 50), 50))
+    offset = max(0, int(offset or 0))
+
     try:
         apps_v1 = client.AppsV1Api()
         core_v1 = client.CoreV1Api()
@@ -455,9 +486,15 @@ def analyze_deployment_configurations(namespace=None, config: RunnableConfig = N
         else:
             deployments = apps_v1.list_deployment_for_all_namespaces()
 
+        all_items = deployments.items
+        total_count = len(all_items)
+        # 分页切片
+        paged_items = all_items[offset:offset + limit]
+
+        cluster_name = get_current_cluster_name()
         analysis_results = []
 
-        for deployment in deployments.items:
+        for deployment in paged_items:
             analysis = {
                 "name": deployment.metadata.name,
                 "namespace": deployment.metadata.namespace,
@@ -551,7 +588,63 @@ def analyze_deployment_configurations(namespace=None, config: RunnableConfig = N
 
             analysis_results.append(analysis)
 
-        return json.dumps(analysis_results)
+        # 统计有问题的工作负载数量
+        _problematic_count = sum(1 for a in analysis_results if a.get("issues") or a.get("recommendations"))
+        _healthy_count = len(analysis_results) - _problematic_count
+
+        _hint_parts = [f"分析完成，共 {_problematic_count} 个工作负载存在问题。"]
+        if _problematic_count > 30:
+            _hint_parts.append(
+                "目标数量较多，建议让用户选择只修复 critical/high 级别的问题，或限定特定命名空间。"
+            )
+        _hint_parts.append(
+            "下一步：调用 generate_repair_report 工具生成修复报告。"
+            f"参数：items 留空，group_by='category'，expected_target_count={_problematic_count}。"
+            "如果用户指定了特定工作负载名称，target_names 设为该名称列表。"
+            "不要调用 get_kubernetes_resource_yaml，修复方案基于分析数据直接生成。"
+        )
+
+        # 构建按问题类型聚合的摘要（精简版返回给 LLM）
+        _issue_counter: dict = {}
+        for a in analysis_results:
+            for issue in a.get("issues", []):
+                _issue_counter[issue] = _issue_counter.get(issue, 0) + 1
+            for c in a.get("config_analysis", {}).get("containers", []):
+                for ci in c.get("issues", []):
+                    _issue_counter[ci] = _issue_counter.get(ci, 0) + 1
+
+        # 安全术语中性化（仅摘要文本）
+        _term_neutralize = {
+            "privileged": "特权模式",
+            "容器逃逸": "容器隔离风险",
+            "攻击面": "暴露面",
+            "提权": "权限提升",
+        }
+
+        def _neutralize(text: str) -> str:
+            for sensitive, neutral in _term_neutralize.items():
+                text = text.replace(sensitive, neutral)
+            return text
+
+        issues_summary = [
+            f"{_neutralize(issue)}（{count} 个工作负载）"
+            for issue, count in sorted(_issue_counter.items(), key=lambda x: -x[1])
+        ]
+
+        result = {
+            "cluster_name": cluster_name,
+            "total": total_count,
+            "healthy": _healthy_count,
+            "problematic": _problematic_count,
+            "offset": offset,
+            "limit": limit,
+            "has_more": (offset + len(analysis_results)) < total_count,
+            "issues_summary": issues_summary,
+            "_next_step_hint": "".join(_hint_parts),
+            # 完整数据供缓存使用，会在进入 LLM context 前被剥离
+            "_deployments_full": analysis_results,
+        }
+        return json.dumps(result)
 
     except ApiException as e:
         return json.dumps({"error": f"分析Deployment配置失败: {str(e)}"})
