@@ -1,33 +1,26 @@
 import type { StorybookConfig } from '@storybook/nextjs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const config: StorybookConfig = {
   stories: ['../src/**/*.mdx', '../src/**/*.stories.@(js|jsx|mjs|ts|tsx)'],
-  addons: [
-    '@storybook/addon-onboarding',
-    '@storybook/addon-essentials',
-    '@chromatic-com/storybook',
-    '@storybook/addon-docs',
-    '@storybook/addon-viewport',
-    'storybook-addon-mock',
-    '@tomfreudenberg/next-auth-mock/storybook',
-    {
-      name: '@storybook/addon-storysource',
-      options: {
-        rule: {
-          include: [path.resolve(__dirname, '../src')], // You can specify directories
-        },
-        loaderOptions: {
-          prettierConfig: { printWidth: 80, singleQuote: false },
-        },
-      },
-    },
-    '@storybook/addon-queryparams',
-  ],
+  addons: [],
   framework: {
     name: '@storybook/nextjs',
     options: {},
   },
   staticDirs: ['../public'],
+  webpackFinal: async (config) => {
+    if (config.resolve) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        '@/context/auth': path.resolve(__dirname, './mocks/auth.tsx'),
+      };
+    }
+    return config;
+  },
 };
 export default config;

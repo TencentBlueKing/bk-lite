@@ -1,43 +1,166 @@
 .markdownBody {
   font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  line-height: 1.5;
+  line-height: 1.6;
   overflow-wrap: break-word;
   font-size: 14px;
+  color: var(--color-text-1);
 
   h1, h2, h3, h4, h5, h6 {
-    margin-top: 1.5em;
-    margin-bottom: .75em;
-    font-weight: bold;
+    margin-top: 1.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    line-height: 1.3;
   }
 
   h1 {
-    font-size: 2em;
+    font-size: 1.6em;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid var(--color-border-1);
   }
 
   h2 {
-    font-size: 1.75em;
+    font-size: 1.4em;
+    padding-bottom: 0.2em;
+    border-bottom: 1px solid var(--color-border-1);
   }
 
   h3 {
-    font-size: 1.5em;
+    font-size: 1.2em;
+  }
+
+  h4 {
+    font-size: 1.1em;
+  }
+
+  p {
+    margin: 0.6em 0;
+  }
+
+  strong {
+    font-weight: 600;
+  }
+
+  hr {
+    border: none;
+    border-top: 1px solid var(--color-border-1);
+    margin: 1.2em 0;
+  }
+
+  ul, ol {
+    padding-left: 1.5em;
+    margin: 0.5em 0;
+  }
+
+  li {
+    margin: 0.25em 0;
+  }
+
+  blockquote {
+    margin: 0.8em 0;
+    padding: 0.4em 1em;
+    border-left: 3px solid var(--color-primary);
+    background: var(--color-fill-1);
+    border-radius: 0 4px 4px 0;
+    color: var(--color-text-2);
   }
 
   code {
-    padding: 10px;
+    padding: 2px 5px;
     font-size: 85%;
+    background: var(--color-fill-2);
+    border-radius: 3px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
   }
 
   pre {
     background: var(--color-fill-1);
-    padding: 10px;
-    border-radius: 5px;
-    margin: 10px 0;
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin: 0.8em 0;
     overflow: auto;
+    border: 1px solid var(--color-border-1);
+
+    code {
+      padding: 0;
+      background: transparent;
+      border-radius: 0;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.8em 0;
+    font-size: 13px;
+    border: 1px solid var(--color-border-1);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  thead {
+    background: var(--color-fill-2);
+  }
+
+  th {
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--color-text-2);
+    border-bottom: 1px solid var(--color-border-1);
+  }
+
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--color-fill-2);
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  tbody tr:hover {
+    background: var(--color-fill-1);
+  }
+
+  a {
+    color: var(--color-primary);
+    text-decoration: none;
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  img {
+    max-width: 100%;
+    border-radius: 4px;
+  }
+
+  // Tool call styles
+  :global(.tool-call-group-header) {
+    cursor: pointer;
+    &:hover {
+      background: var(--color-fill-1);
+    }
+  }
+
+  :global(.tool-call-expand-icon),
+  :global(.tool-call-item-expand-icon) {
+    transition: transform 0.2s ease;
+  }
+
+  :global(.tool-call-item-header) {
+    cursor: pointer;
+    border-radius: 4px;
+    &:hover {
+      background: var(--color-fill-1);
+    }
   }
 }
 
 .chatContainer {
-  background: var(--color-fill-1);
+  background: var(--color-bg-1);
   .avatar {
     width: 35px;
     height: 35px;
@@ -96,8 +219,17 @@
   align-items: flex-end;
 }
 
-.chatContainer :global(.ant-bubble-content) {
-  background-color: var(--color-bg-1);
+// Bot messages: no background, clean and open
+.chatContainer :global(.ant-bubble-start .ant-bubble-content) {
+  background-color: transparent;
+  padding: 0;
+}
+
+// User messages: subtle rounded bubble
+.chatContainer :global(.ant-bubble-end .ant-bubble-content) {
+  background-color: var(--color-primary-light-1, #e6f4ff);
+  border-radius: 18px 18px 4px 18px;
+  padding: 10px 16px;
 }
 
 .chatContainer :global(.ant-bubble-footer) {

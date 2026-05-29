@@ -1,5 +1,6 @@
 import io
 import json
+import yaml
 from typing import Any, Dict, Literal, Optional
 
 from langchain_core.runnables import RunnableConfig
@@ -81,9 +82,33 @@ def resolve_kubernetes_instance(
         raise ValueError(f"Kubernetes instance not found: {instance_id}")
 
     if instance_name:
+        # First try matching by display name
         for instance in instances:
             if instance.get("name") == instance_name:
                 return instance
+        # Fallback: match by kubeconfig context name or cluster name
+        for instance in instances:
+            kubeconfig_data = instance.get("kubeconfig_data", "")
+            if not kubeconfig_data:
+                continue
+            try:
+                kubeconfig = yaml.safe_load(kubeconfig_data)
+                if not isinstance(kubeconfig, dict):
+                    continue
+                # Check context names
+                for ctx in kubeconfig.get("contexts", []):
+                    if ctx.get("name") == instance_name:
+                        return instance
+                    # Also check cluster name within context
+                    ctx_info = ctx.get("context", {})
+                    if ctx_info.get("cluster") == instance_name:
+                        return instance
+                # Check cluster entries
+                for cluster in kubeconfig.get("clusters", []):
+                    if cluster.get("name") == instance_name:
+                        return instance
+            except Exception:
+                continue
         raise ValueError(f"Kubernetes instance not found: {instance_name}")
 
     return instances[0]

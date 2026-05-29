@@ -1,8 +1,8 @@
 'use client';
 
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
-import {Button, Checkbox, message as antMessage, Select} from 'antd';
-import {CheckCircleOutlined, ClockCircleOutlined, ExclamationCircleOutlined, StarFilled} from '@ant-design/icons';
+import {Input, message as antMessage, Select} from 'antd';
+import {ClockCircleOutlined} from '@ant-design/icons';
 import {useTranslation} from '@/utils/i18n';
 import {UserChoiceOption, UserChoiceRequest} from '@/app/opspilot/types/global';
 
@@ -15,29 +15,28 @@ interface UserChoiceCardProps {
 const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmit }) => {
   const { t } = useTranslation();
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  const [textInput, setTextInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState(() => {
     const elapsed = (Date.now() - request.received_at) / 1000;
     return Math.max(0, Math.floor(request.timeout_seconds - elapsed));
   });
 
-  // Determine display mode based on hint and options count
   const displayMode = useMemo(() => {
+    if (request.display_hint === 'text') return 'text';
+    if (request.options.length === 0) return 'text';
     if (request.multiple) return 'checkbox';
     if (request.display_hint !== 'auto') return request.display_hint;
-    return request.options.length <= 5 ? 'buttons' : 'dropdown';
+    return request.options.length <= 8 ? 'buttons' : 'dropdown';
   }, [request.multiple, request.display_hint, request.options.length]);
 
-  // Countdown timer
   useEffect(() => {
     if (request.status !== 'pending') return;
     const timer = setInterval(() => {
       const elapsed = (Date.now() - request.received_at) / 1000;
       const remaining = Math.max(0, Math.floor(request.timeout_seconds - elapsed));
       setRemainingSeconds(remaining);
-      if (remaining <= 0) {
-        clearInterval(timer);
-      }
+      if (remaining <= 0) clearInterval(timer);
     }, 1000);
     return () => clearInterval(timer);
   }, [request.received_at, request.timeout_seconds, request.status]);
@@ -62,9 +61,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
           selected: keys,
         }),
       });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       onSubmit(request.choice_id, 'submitted', keys);
     } catch {
       antMessage.error(t('chat.choiceSubmitFailed'));
@@ -73,185 +70,269 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
     }
   }, [token, request, onSubmit, t]);
 
-  // Single-select button click handler (immediate submit)
   const handleButtonClick = useCallback((key: string) => {
     handleSubmit([key]);
   }, [handleSubmit]);
 
-  // Multi-select confirm handler
   const handleConfirm = useCallback(() => {
     handleSubmit(selectedKeys);
   }, [handleSubmit, selectedKeys]);
 
-  // Checkbox change handler
-  const handleCheckboxChange = useCallback((key: string, checked: boolean) => {
+  const handleCheckboxChange = useCallback((key: string) => {
     setSelectedKeys(prev => {
-      if (checked) {
-        if (request.max_select > 0 && prev.length >= request.max_select) {
-          antMessage.warning(t('chat.choiceMaxSelect', undefined, { max: request.max_select }));
-          return prev;
-        }
-        return [...prev, key];
+      if (prev.includes(key)) return prev.filter(k => k !== key);
+      if (request.max_select > 0 && prev.length >= request.max_select) {
+        antMessage.warning(t('chat.choiceMaxSelect', undefined, { max: request.max_select }));
+        return prev;
       }
-      return prev.filter(k => k !== key);
+      return [...prev, key];
     });
   }, [request.max_select, t]);
 
-  // Dropdown change handler
   const handleDropdownChange = useCallback((value: string) => {
     handleSubmit([value]);
   }, [handleSubmit]);
+
+  const handleTextSubmit = useCallback(() => {
+    if (!textInput.trim()) return;
+    handleSubmit([textInput.trim()]);
+  }, [handleSubmit, textInput]);
 
   const isTimedOut = remainingSeconds <= 0 && request.status === 'pending';
   const isPending = request.status === 'pending' && !isTimedOut;
   const isCompleted = request.status === 'submitted' || request.status === 'timeout' || isTimedOut;
 
-  const statusIcon = () => {
-    if (request.status === 'submitted') return <CheckCircleOutlined className="text-green-500" />;
-    if (request.status === 'timeout' || isTimedOut) return <ExclamationCircleOutlined className="text-orange-500" />;
-    return <ClockCircleOutlined className="text-blue-500" />;
-  };
+  // Completed: don't render standalone row — result is shown inline in tool call panel
+  if (isCompleted) {
+    return null;
+  }
 
-  const statusText = () => {
-    if (request.status === 'submitted') {
-      const selectedLabels = request.selected?.map(key => 
-        request.options.find(o => o.key === key)?.label || key
-      ).join(', ');
-      return `${t('chat.choiceSelected')}: ${selectedLabels}`;
-    }
-    if (request.status === 'timeout' || isTimedOut) return t('chat.choiceTimeout');
-    return `${t('chat.approvalTimeRemaining')}: ${remainingSeconds}s`;
-  };
-
-  const renderOption = (option: UserChoiceOption) => (
-    <span className="flex items-center gap-1">
-      {option.icon && <span>{option.icon}</span>}
-      <span>{option.label}</span>
-      {option.recommended && <StarFilled className="text-yellow-500 text-xs" />}
-    </span>
+  const renderOptionCard = (option: UserChoiceOption, isSelected: boolean, onClick: () => void) => (
+    <button
+      key={option.key}
+      type="button"
+      disabled={option.disabled || submitting}
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        padding: '8px 14px',
+        borderRadius: '8px',
+        border: isSelected ? '1.5px solid var(--color-primary)' : '1px solid var(--color-border-1)',
+        background: isSelected ? 'var(--color-primary-light-1, rgba(22,119,255,0.06))' : 'var(--color-bg-1)',
+        cursor: option.disabled ? 'not-allowed' : 'pointer',
+        opacity: option.disabled ? 0.5 : 1,
+        fontSize: '13px',
+        color: 'var(--color-text-1)',
+        transition: 'all 0.15s ease',
+        textAlign: 'left',
+        width: '100%',
+      }}
+      onMouseEnter={e => {
+        if (!option.disabled) {
+          (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-primary)';
+          (e.currentTarget as HTMLElement).style.background = 'var(--color-primary-light-1, rgba(22,119,255,0.04))';
+        }
+      }}
+      onMouseLeave={e => {
+        if (!isSelected) {
+          (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-1)';
+          (e.currentTarget as HTMLElement).style.background = 'var(--color-bg-1)';
+        }
+      }}
+    >
+      {request.multiple && (
+        <span style={{
+          width: '16px',
+          height: '16px',
+          borderRadius: '4px',
+          border: isSelected ? '1.5px solid var(--color-primary)' : '1.5px solid var(--color-border-2)',
+          background: isSelected ? 'var(--color-primary)' : 'transparent',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          transition: 'all 0.15s ease',
+        }}>
+          {isSelected && (
+            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+              <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          )}
+        </span>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {option.icon && <span>{option.icon}</span>}
+          <span>{option.label}</span>
+          {option.recommended && (
+            <span style={{
+              fontSize: '11px',
+              padding: '1px 6px',
+              borderRadius: '4px',
+              background: 'rgba(22,119,255,0.1)',
+              color: 'var(--color-primary)',
+              fontWeight: 500,
+            }}>推荐</span>
+          )}
+        </div>
+        {option.description && (
+          <div style={{ fontSize: '12px', color: 'var(--color-text-3)', marginTop: '2px' }}>
+            {option.description}
+          </div>
+        )}
+      </div>
+    </button>
   );
 
   const renderButtons = () => (
-    <div className="flex flex-wrap gap-2">
-      {request.options.map(option => (
-        <Button
-          key={option.key}
-          size="small"
-          type={option.recommended ? 'primary' : 'default'}
-          disabled={option.disabled || submitting}
-          loading={submitting}
-          onClick={() => handleButtonClick(option.key)}
-          title={option.description}
-        >
-          {renderOption(option)}
-        </Button>
-      ))}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      {request.options.map(option =>
+        renderOptionCard(option, false, () => handleButtonClick(option.key))
+      )}
+    </div>
+  );
+
+  const renderCheckboxes = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      {request.options.map(option =>
+        renderOptionCard(
+          option,
+          selectedKeys.includes(option.key),
+          () => handleCheckboxChange(option.key)
+        )
+      )}
+      <button
+        type="button"
+        disabled={selectedKeys.length < request.min_select || submitting}
+        onClick={handleConfirm}
+        style={{
+          marginTop: '4px',
+          padding: '7px 20px',
+          borderRadius: '6px',
+          border: 'none',
+          background: selectedKeys.length >= request.min_select ? 'var(--color-primary)' : 'var(--color-fill-3)',
+          color: selectedKeys.length >= request.min_select ? '#fff' : 'var(--color-text-3)',
+          fontSize: '13px',
+          fontWeight: 500,
+          cursor: selectedKeys.length >= request.min_select ? 'pointer' : 'not-allowed',
+          alignSelf: 'flex-start',
+          transition: 'all 0.15s ease',
+        }}
+      >
+        {t('chat.choiceConfirm')}
+      </button>
+    </div>
+  );
+
+  const renderTextInput = () => (
+    <div style={{ display: 'flex', gap: '8px' }}>
+      <Input
+        value={textInput}
+        onChange={e => setTextInput(e.target.value)}
+        onPressEnter={handleTextSubmit}
+        placeholder={t('chat.choiceTextPlaceholder') || '输入你的回答...'}
+        disabled={submitting}
+        style={{ flex: 1, borderRadius: '8px' }}
+      />
+      <button
+        type="button"
+        disabled={!textInput.trim() || submitting}
+        onClick={handleTextSubmit}
+        style={{
+          padding: '4px 16px',
+          borderRadius: '8px',
+          border: 'none',
+          background: textInput.trim() ? 'var(--color-primary)' : 'var(--color-fill-3)',
+          color: textInput.trim() ? '#fff' : 'var(--color-text-3)',
+          fontSize: '13px',
+          fontWeight: 500,
+          cursor: textInput.trim() ? 'pointer' : 'not-allowed',
+          transition: 'all 0.15s ease',
+        }}
+      >
+        {t('chat.choiceConfirm') || '确认'}
+      </button>
     </div>
   );
 
   const renderDropdown = () => (
     <Select
-      size="small"
+      size="middle"
       placeholder={t('chat.choicePlaceholder')}
-      className="w-full"
+      style={{ width: '100%' }}
       disabled={submitting}
       loading={submitting}
       onChange={handleDropdownChange}
       options={request.options.map(option => ({
         value: option.key,
-        label: renderOption(option),
+        label: option.label,
         disabled: option.disabled,
         title: option.description,
       }))}
     />
   );
 
-  const renderCheckboxes = () => {
-    const isMaxReached = request.max_select > 0 && selectedKeys.length >= request.max_select;
-    
-    return (
-      <div className="flex flex-col gap-1">
-        {request.options.map(option => {
-          const isChecked = selectedKeys.includes(option.key);
-          // Disable unchecked options when max is reached
-          const isDisabledByMax = isMaxReached && !isChecked;
-          
-          return (
-            <Checkbox
-              key={option.key}
-              disabled={option.disabled || submitting || isDisabledByMax}
-              checked={isChecked}
-              onChange={e => handleCheckboxChange(option.key, e.target.checked)}
-            >
-              <span className="flex items-center gap-1" title={option.description}>
-                {option.icon && <span>{option.icon}</span>}
-                <span>{option.label}</span>
-                {option.recommended && <StarFilled className="text-yellow-500 text-xs" />}
-                {option.description && (
-                  <span className="text-gray-400 text-xs ml-1">({option.description})</span>
-                )}
-              </span>
-            </Checkbox>
-          );
-        })}
-        <Button
-          size="small"
-          type="primary"
-          className="mt-2 w-fit"
-          disabled={selectedKeys.length < request.min_select || submitting}
-          loading={submitting}
-          onClick={handleConfirm}
-        >
-          {t('chat.choiceConfirm')}
-        </Button>
-      </div>
-    );
-  };
-
-  // Compact view for completed state
-  if (isCompleted) {
-    const selectedLabels = request.selected?.map(key =>
-      request.options.find(o => o.key === key)?.label || key
-    ).join(', ') || '';
-    const isTimeout = request.status === 'timeout' || isTimedOut;
-
-    return (
-      <div className="my-1 flex items-center gap-2 text-sm text-gray-600">
-        {isTimeout ? (
-          <ExclamationCircleOutlined className="text-orange-500" />
-        ) : (
-          <CheckCircleOutlined className="text-green-500" />
-        )}
-        <span>
-          {isTimeout ? t('chat.choiceTimeout') : t('chat.choiceSelected')}
-          {selectedLabels && `: ${selectedLabels}`}
-        </span>
-      </div>
-    );
-  }
-
   return (
-    <div className="my-2 border border-blue-200 rounded-lg bg-blue-50 p-3 max-w-md">
-      <div className="flex items-center gap-2 mb-2 font-medium text-blue-700">
-        <ExclamationCircleOutlined />
-        <span>{request.title}</span>
+    <div style={{
+      margin: '8px 0',
+      padding: '14px 16px',
+      borderRadius: '12px',
+      border: '1px solid var(--color-border-1)',
+      background: 'var(--color-bg-1)',
+      maxWidth: '380px',
+    }}>
+      {/* Title */}
+      <div style={{
+        fontSize: '13px',
+        fontWeight: 600,
+        color: 'var(--color-text-1)',
+        marginBottom: '10px',
+      }}>
+        {request.title}
       </div>
 
+      {/* Description */}
       {request.description && (
-        <div className="text-sm text-gray-600 mb-2">{request.description}</div>
+        <div style={{ fontSize: '12px', color: 'var(--color-text-3)', marginBottom: '10px' }}>
+          {request.description}
+        </div>
       )}
 
-      <div className="flex items-center gap-2 text-sm mb-2">
-        {statusIcon()}
-        <span>{statusText()}</span>
-      </div>
-
+      {/* Options */}
       {isPending && (
         <>
           {displayMode === 'buttons' && renderButtons()}
           {displayMode === 'dropdown' && renderDropdown()}
           {displayMode === 'checkbox' && renderCheckboxes()}
+          {/* Always show text input: user can click an option OR type freely */}
+          {displayMode !== 'checkbox' && (
+            <div style={{ marginTop: request.options.length > 0 && displayMode !== 'text' ? '10px' : '0' }}>
+              {request.options.length > 0 && displayMode !== 'text' && (
+                <div style={{ fontSize: '11px', color: 'var(--color-text-4)', marginBottom: '6px' }}>
+                  {t('chat.choiceOrType') || '或者自行输入'}
+                </div>
+              )}
+              {renderTextInput()}
+            </div>
+          )}
         </>
+      )}
+
+      {/* Timer */}
+      {isPending && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          marginTop: '10px',
+          fontSize: '11px',
+          color: remainingSeconds <= 10 ? '#ff4d4f' : 'var(--color-text-4)',
+        }}>
+          <ClockCircleOutlined style={{ fontSize: '11px' }} />
+          <span>{remainingSeconds}s</span>
+        </div>
       )}
     </div>
   );
