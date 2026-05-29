@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from openai import OpenAI
 
+from apps.core.utils.ssrf_validator import SSRFValidator
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 
 
@@ -42,9 +43,14 @@ class LLMClientFactory:
     @staticmethod
     def _create_openai_client(request: BasicLLMRequest, disable_stream: bool) -> ChatOpenAI:
         """创建 OpenAI 兼容客户端"""
+        # SSRF 防护：验证 API base URL（宽松模式，允许内网 LLM 服务）
+        base_url = request.openai_api_base
+        if base_url:
+            SSRFValidator.validate_llm_endpoint(base_url)
+
         llm = ChatOpenAI(
             model=request.model,
-            base_url=request.openai_api_base,
+            base_url=base_url,
             api_key=request.openai_api_key,
             temperature=request.temperature,
             disable_streaming=disable_stream,
@@ -71,6 +77,9 @@ class LLMClientFactory:
         base_url = request.openai_api_base
         if not base_url or base_url == "https://api.openai.com":
             base_url = "https://api.anthropic.com"
+
+        # SSRF 防护：验证 API base URL（宽松模式，允许内网 LLM 服务）
+        SSRFValidator.validate_llm_endpoint(base_url)
 
         # 处理 thinking 模式
         show_think = bool((request.extra_config or {}).get("show_think", True))
@@ -116,6 +125,8 @@ class LLMClientFactory:
         """创建独立的原生 OpenAI 客户端"""
         kwargs = {"api_key": request.openai_api_key, "timeout": 60.0}
         if request.openai_api_base:
+            # SSRF 防护：验证 API base URL（宽松模式，允许内网 LLM 服务）
+            SSRFValidator.validate_llm_endpoint(request.openai_api_base)
             kwargs["base_url"] = request.openai_api_base
         return OpenAI(**kwargs)
 
@@ -125,6 +136,9 @@ class LLMClientFactory:
         base_url = request.openai_api_base
         if not base_url or base_url == "https://api.openai.com":
             base_url = "https://api.anthropic.com"
+
+        # SSRF 防护：验证 API base URL（宽松模式，允许内网 LLM 服务）
+        SSRFValidator.validate_llm_endpoint(base_url)
 
         return anthropic.Anthropic(
             api_key=request.openai_api_key,

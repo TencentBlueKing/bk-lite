@@ -2,10 +2,10 @@ import logging
 from collections import defaultdict
 from typing import ContextManager, cast
 
-import requests
 from django.db import transaction
 
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.safe_requests import safe_get, safe_post
 from apps.opspilot.models import EmbedProvider, LLMModel, OCRProvider, RerankProvider
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ class ModelVendorSyncService:
             raise ValueError(loader.get("error.vendor_api_base_required", "供应商 API 地址不能为空"))
         if not api_key:
             raise ValueError(loader.get("error.vendor_api_key_required", "供应商 API Key 不能为空"))
-        response = requests.get(
+        response = safe_get(
             f"{normalized_api_base}/models",
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=15,
@@ -100,7 +100,7 @@ class ModelVendorSyncService:
         normalized_api_base = (api_base or "https://api.anthropic.com").rstrip("/")
         test_model = model or "claude-3-haiku-20240307"
 
-        response = requests.post(
+        response = safe_post(
             f"{normalized_api_base}/v1/messages",
             headers={
                 "x-api-key": api_key,
