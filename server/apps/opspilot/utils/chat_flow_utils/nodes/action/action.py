@@ -8,6 +8,7 @@ from typing import Any, Dict
 import requests
 
 from apps.core.logger import opspilot_logger as logger
+from apps.core.utils.safe_requests import safe_delete, safe_get, safe_patch, safe_post, safe_put
 from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.rpc.system_mgmt import SystemMgmt
@@ -115,13 +116,13 @@ class HttpActionNode(BaseNodeExecutor):
         if request_kwargs.get("params") is None:
             request_kwargs.pop("params", None)
 
-        # HTTP方法映射
+        # HTTP方法映射（使用安全请求）
         http_methods = {
-            "GET": requests.get,
-            "POST": requests.post,
-            "PUT": requests.put,
-            "PATCH": requests.patch,
-            "DELETE": requests.delete,
+            "GET": safe_get,
+            "POST": safe_post,
+            "PUT": safe_put,
+            "PATCH": safe_patch,
+            "DELETE": safe_delete,
         }
 
         http_func = http_methods.get(method)

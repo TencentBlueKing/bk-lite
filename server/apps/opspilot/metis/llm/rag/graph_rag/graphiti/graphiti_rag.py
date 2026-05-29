@@ -12,6 +12,7 @@ from loguru import logger
 from openai import AsyncOpenAI
 from tqdm import tqdm
 
+from apps.core.utils.ssrf_validator import SSRFValidator
 from apps.opspilot.metis.llm.rag.graph_rag.graphiti.metis_embedder import MetisEmbedder
 from apps.opspilot.metis.llm.rag.graph_rag.graphiti.metis_embedder_config import MetisEmbedderConfig
 from apps.opspilot.metis.llm.rag.graph_rag.graphiti.metis_reranker_client import MetisRerankerClient
@@ -70,7 +71,11 @@ class GraphitiRAG:
 
     def _create_llm_client(self, llm_config: dict) -> OpenAIClient:
         """创建LLM客户端"""
-        async_openai = AsyncOpenAI(api_key=llm_config["api_key"], base_url=llm_config["base_url"], timeout=self.LLM_TIMEOUT_SECONDS)  # 使用类变量避免硬编码
+        # SSRF 防护：验证 API base URL（宽松模式，允许内网 LLM 服务）
+        base_url = llm_config.get("base_url")
+        if base_url:
+            SSRFValidator.validate_llm_endpoint(base_url)
+        async_openai = AsyncOpenAI(api_key=llm_config["api_key"], base_url=base_url, timeout=self.LLM_TIMEOUT_SECONDS)  # 使用类变量避免硬编码
         return OpenAIClient(
             client=async_openai,
             config=LLMConfig(model=llm_config["model"], small_model=llm_config["model"]),
