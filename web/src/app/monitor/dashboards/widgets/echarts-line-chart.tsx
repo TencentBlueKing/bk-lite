@@ -107,12 +107,15 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
       };
     });
 
-    const leftWidth = leftAxisWidthOverride || 50;
+    const yAxisUnit = seriesStyles[0]?.unit || unit || '';
+    const KNOWN_METRIC_UNITS = new Set(['cps', 'ops', 'bytes', 'byteps', 'percent', 's', 'ms', 'ns', 'msps', 'permin', 'mebibytes', 'counts', 'none', 'short']);
+    const yAxisLabel = KNOWN_METRIC_UNITS.has(yAxisUnit) ? '' : yAxisUnit;
+    const leftWidth = leftAxisWidthOverride || (yAxisLabel ? 60 : 50);
 
     return {
       animation: false,
       grid: {
-        top: 12,
+        top: yAxisLabel ? 24 : 12,
         right: 12,
         bottom: 24,
         left: leftWidth,
@@ -132,6 +135,9 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
       },
       yAxis: {
         type: 'value' as const,
+        name: yAxisLabel || undefined,
+        nameTextStyle: yAxisLabel ? { fontSize: 11, color: '#8c8c8c', padding: [0, 0, 0, 0] } : undefined,
+        nameGap: 8,
         axisLabel: {
           formatter: (val: number) => formatAxisNumber(val),
           fontSize: 11,

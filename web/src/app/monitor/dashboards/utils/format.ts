@@ -51,7 +51,7 @@ export const formatMetricValue = (value: number, unit: MetricUnit): { value: str
     value: value >= 1000
       ? value.toLocaleString(undefined, { maximumFractionDigits: 0 })
       : value.toFixed(value >= 100 ? 0 : 1),
-    unit: unit === 'ops' ? '/s' : ''
+    unit: unit === 'counts' || unit === 'short' ? '' : String(unit || '')
   };
 };
 
