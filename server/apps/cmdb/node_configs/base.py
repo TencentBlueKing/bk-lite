@@ -6,8 +6,9 @@ import os
 from abc import abstractmethod, ABCMeta
 
 from django.conf import settings
-from jinja2 import Environment, FileSystemLoader, DebugUndefined
+from jinja2 import FileSystemLoader, DebugUndefined
 from apps.core.logger import cmdb_logger as logger
+from apps.core.utils.safe_template import build_sandboxed_env
 
 
 class BaseNodeParams(metaclass=ABCMeta):
@@ -184,22 +185,47 @@ class BaseNodeParams(metaclass=ABCMeta):
         })
         return nodes
 
+    # 类级别缓存沙箱环境
+    _jinja_env = None
+
+    @classmethod
+    def get_jinja_env(cls):
+        """延迟初始化并缓存安全的 Jinja2 沙箱环境"""
+        if cls._jinja_env is None:
+            template_dir = os.path.join(settings.BASE_DIR, "apps/cmdb/support-files")
+            cls._jinja_env = build_sandboxed_env(
+                loader=FileSystemLoader(template_dir),
+                undefined=DebugUndefined,
+                extra_filters={"to_toml": cls.to_toml_dict},
+            )
+        return cls._jinja_env
+
+    @staticmethod
+    def escape_toml_string(s: str) -> str:
+        """转义 TOML 字符串中的特殊字符"""
+        if not isinstance(s, str):
+            s = str(s)
+        return s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+
     @staticmethod
     def to_toml_dict(d):
+        """将字典转换为 TOML 格式的内联表（带转义）"""
         if not d:
             return "{}"
-        return "{ " + ", ".join(f'"{k}" = "{v}"' for k, v in d.items()) + " }"
+        escaped = {k: BaseNodeParams.escape_toml_string(v) for k, v in d.items()}
+        return "{ " + ", ".join(f'"{k}" = "{v}"' for k, v in escaped.items()) + " }"
 
     def render_template(self, context: dict):
         """
         渲染指定目录下的 j2 模板文件。
+
+        使用 SandboxedEnvironment 防止 SSTI 攻击。
+
         :param context: 用于模板渲染的变量字典
         :return: 渲染后的配置字符串
         """
         file_name = "base.child.toml.j2"
-        template_dir = os.path.join(settings.BASE_DIR, "apps/cmdb/support-files")
-        env = Environment(loader=FileSystemLoader(template_dir), undefined=DebugUndefined)
-        env.filters['to_toml'] = self.to_toml_dict
+        env = self.get_jinja_env()
         template = env.get_template(file_name)
         return template.render(context)
 
