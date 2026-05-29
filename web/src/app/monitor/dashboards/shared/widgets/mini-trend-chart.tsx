@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useId, useMemo } from 'react';
+import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { ChartData } from '@/app/monitor/types';
-import { useECharts } from './useECharts';
 
 export interface MiniTrendChartStyles {
   miniTrendPlaceholder?: string;
@@ -17,6 +17,7 @@ export const MiniTrendChart = ({
   color: string;
   styles: MiniTrendChartStyles;
 }) => {
+  const gradientId = useId().replace(/:/g, '_');
   const chartData = useMemo(
     () =>
       data
@@ -28,51 +29,30 @@ export const MiniTrendChart = ({
     [data]
   );
 
-  const option = useMemo(() => {
-    if (!chartData.length) return null;
-    return {
-      animation: false,
-      grid: { top: 2, right: 0, bottom: 2, left: 0 },
-      xAxis: {
-        type: 'category' as const,
-        show: false,
-        data: chartData.map((p) => p.time)
-      },
-      yAxis: {
-        type: 'value' as const,
-        show: false
-      },
-      series: [
-        {
-          type: 'line' as const,
-          data: chartData.map((p) => p.value),
-          smooth: true,
-          symbol: 'none',
-          lineStyle: { width: 2, color },
-          areaStyle: {
-            color: {
-              type: 'linear' as const,
-              x: 0,
-              y: 0,
-              x2: 0,
-              y2: 1,
-              colorStops: [
-                { offset: 0, color: `${color}3D` },
-                { offset: 1, color: `${color}05` }
-              ]
-            }
-          }
-        }
-      ],
-      tooltip: { show: false }
-    };
-  }, [chartData, color]);
-
-  const { containerRef } = useECharts(option);
-
   if (!chartData.length) {
     return <div className={styles.miniTrendPlaceholder} />;
   }
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <AreaChart data={chartData} margin={{ top: 2, right: 0, bottom: 2, left: 0 }}>
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.24} />
+            <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <Area
+          type="monotone"
+          dataKey="value"
+          stroke={color}
+          strokeWidth={2}
+          fill={`url(#${gradientId})`}
+          dot={false}
+          activeDot={false}
+          isAnimationActive={false}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
 };
