@@ -1,15 +1,15 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { message, Tag } from 'antd';
-import { useTranslation } from '@/utils/i18n';
-import { useSecurityApi } from '@/app/system-manager/api/security';
-import { AuthSource } from '@/app/system-manager/types/security';
-import { enhanceAuthSourcesList } from '@/app/system-manager/utils/authSourceUtils';
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
+import { useSecurityApi } from '@/app/system-manager/api/security';
 import { useUserApi } from '@/app/system-manager/api/user/index';
-import { useClientData } from '@/context/client';
 import AuthSourcesList from '@/app/system-manager/components/security/sourcesList';
+import type { AuthSource } from '@/app/system-manager/types/security';
+import { enhanceAuthSourcesList } from '@/app/system-manager/utils/authSourceUtils';
+import { useClientData } from '@/context/client';
+import { useTranslation } from '@/utils/i18n';
 
 const AuthSourcesPage: React.FC = () => {
   const { t } = useTranslation();

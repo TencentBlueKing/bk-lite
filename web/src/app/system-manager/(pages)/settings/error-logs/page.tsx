@@ -1,14 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Input, Select, Button, message, Tooltip } from 'antd';
-import { useTranslation } from '@/utils/i18n';
-import { useLocalizedTime } from '@/hooks/useLocalizedTime';
-import { useClientData } from '@/context/client';
+import React, { useEffect, useRef, useState } from 'react';
 import dayjs from 'dayjs';
+import { Button, Input, message, Select, Tooltip } from 'antd';
 import { useSecurityApi } from '@/app/system-manager/api/security';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
+import { useClientData } from '@/context/client';
+import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import { useTranslation } from '@/utils/i18n';
 
 const { Search } = Input;
 
@@ -46,12 +46,12 @@ const ErrorLogsPage: React.FC = () => {
 
   const { getErrorLogs } = useSecurityApi();
 
-  const fetchErrorLogs = async (page = 1) => {
+  const fetchErrorLogs = async (page = 1, pageSize = pagination.pageSize) => {
     setLoading(true);
     try {
       const params: any = {
         page,
-        page_size: pagination.pageSize,
+        page_size: pageSize,
       };
 
       if (filters.username) {
@@ -69,9 +69,10 @@ const ErrorLogsPage: React.FC = () => {
 
       const response = await getErrorLogs(params);
       setDataSource(response.items || []);
-      setPagination(prev => ({
+      setPagination((prev) => ({
         ...prev,
         current: page,
+        pageSize,
         total: response.count || 0,
       }));
     } catch (error) {
@@ -87,7 +88,7 @@ const ErrorLogsPage: React.FC = () => {
   }, []);
 
   const handleSearch = () => {
-    fetchErrorLogs(1);
+    fetchErrorLogs(1, pagination.pageSize);
   };
 
   const handleReset = () => {
@@ -102,7 +103,7 @@ const ErrorLogsPage: React.FC = () => {
       timeSelectorRef.current.reset();
     }
     setTimeout(() => {
-      fetchErrorLogs(1);
+      fetchErrorLogs(1, pagination.pageSize);
     }, 0);
   };
 
@@ -149,7 +150,6 @@ const ErrorLogsPage: React.FC = () => {
 
   return (
     <div className="w-full h-full bg-[var(--color-bg)] p-4">
-      {/* Filter Section */}
       <div className="mb-4 p-4 rounded">
         <div className="flex items-center justify-end gap-3">
           <Search
@@ -181,7 +181,7 @@ const ErrorLogsPage: React.FC = () => {
             onChange={handleTimeChange}
             defaultValue={{
               selectValue: 7 * 24 * 60,
-              rangePickerVaule: null
+              rangePickerVaule: null,
             }}
           />
           <Button type="primary" onClick={handleSearch}>
@@ -191,7 +191,6 @@ const ErrorLogsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Table */}
       <CustomTable
         columns={columns}
         dataSource={dataSource}
@@ -205,8 +204,9 @@ const ErrorLogsPage: React.FC = () => {
           showQuickJumper: true,
           showTotal: (total) => `${t('common.total')} ${total} ${t('common.items')}`,
           onChange: (page: number, pageSize?: number) => {
-            setPagination({ ...pagination, current: page, pageSize: pageSize || 20 });
-            fetchErrorLogs(page);
+            const nextPageSize = pageSize || pagination.pageSize;
+            setPagination((prev) => ({ ...prev, current: page, pageSize: nextPageSize }));
+            fetchErrorLogs(page, nextPageSize);
           },
         }}
         scroll={{ x: 1200, y: 'calc(100vh - 400px)' }}
