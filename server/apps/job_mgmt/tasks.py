@@ -2,17 +2,19 @@
 
 from datetime import timedelta
 
-import requests
 from asgiref.sync import async_to_sync
 from celery import current_app, shared_task
 from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
+from apps.core.utils.safe_requests import safe_post
+from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.job_mgmt.constants import ConcurrencyPolicy, ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DistributionFile, JobExecution, ScheduledTask
 from apps.job_mgmt.services import FileDistributionRunner, ScriptExecutionRunner, ScriptParamsService
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.playbook_execution import PlaybookExecution
+from apps.job_mgmt.utils.callback_signer import get_signed_headers
 from apps.node_mgmt.utils.s3 import delete_s3_file
 
 
@@ -210,9 +212,24 @@ def do_callback_task(self, url: str, payload: dict, execution_id: int) -> None:
 
     失败时由 Celery 自动重试（指数退避: ~5s → 10s → 20s → 40s → 80s，最多 5 次）。
     任务持久化到 broker，worker 重启后仍会继续执行。
+
+    安全特性：
+    - SSRF 防护：二次校验 URL，仅阻断云元数据地址（允许内网回调）
+    - 签名认证：请求头包含 HMAC-SHA256 签名，供接收方验证来源
     """
+    # 二次 SSRF 校验（宽松模式，仅阻断云元数据）
     try:
-        resp = requests.post(url, json=payload, timeout=10)
+        SSRFValidator.validate_callback(url)
+    except SSRFError as e:
+        logger.error(f"[callback] SSRF 校验失败，拒绝回调: execution_id={execution_id}, url={url}, error={e}")
+        # SSRF 校验失败不重试，直接返回
+        return
+
+    # 生成签名请求头
+    headers = get_signed_headers(payload)
+
+    try:
+        resp = safe_post(url, json=payload, headers=headers, timeout=10)
         if 200 <= resp.status_code < 300:
             logger.info(f"[callback] 回调成功: execution_id={execution_id}, url={url}")
             return
@@ -222,15 +239,14 @@ def do_callback_task(self, url: str, payload: dict, execution_id: int) -> None:
                 f"[callback] {error_msg}: execution_id={execution_id}, " f"url={url}, attempt={self.request.retries + 1}/{self.max_retries + 1}"
             )
             raise RuntimeError(error_msg)
-    except requests.RequestException as e:
-        logger.warning(
-            f"[callback] 回调网络异常: execution_id={execution_id}, " f"url={url}, attempt={self.request.retries + 1}/{self.max_retries + 1}, error={e}"
-        )
-        raise
+    except SSRFError as e:
+        # safe_post 内部的 SSRF 校验失败（如重定向到内网）
+        logger.error(f"[callback] 请求过程中 SSRF 校验失败: execution_id={execution_id}, url={url}, error={e}")
+        return
     except RuntimeError:
         raise
     except Exception as e:
-        logger.error(
-            f"[callback] 回调未知异常: execution_id={execution_id}, " f"url={url}, attempt={self.request.retries + 1}/{self.max_retries + 1}, error={e}"
+        logger.warning(
+            f"[callback] 回调异常: execution_id={execution_id}, " f"url={url}, attempt={self.request.retries + 1}/{self.max_retries + 1}, error={e}"
         )
         raise
