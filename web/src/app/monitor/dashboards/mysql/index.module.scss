@@ -3378,8 +3378,17 @@
   .innodbInner {
     display: flex;
     overflow-x: auto;
+    width: 100%;
     padding-bottom: 4px;
     scroll-snap-type: x proximity;
+  }
+
+  .mysqlRequestPath {
+    min-width: max-content;
+  }
+
+  .innodbInner {
+    min-width: 760px;
   }
 
   .mysqlPathNode,

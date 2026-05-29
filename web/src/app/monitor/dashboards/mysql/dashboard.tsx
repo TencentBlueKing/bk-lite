@@ -1,15 +1,12 @@
 'use client';
 
-import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Empty, Select, Spin, Tag, Tooltip } from 'antd';
 import {
   ArrowLeftOutlined,
   DatabaseOutlined,
   ThunderboltOutlined,
   ClockCircleOutlined,
-  InfoCircleOutlined,
-  RiseOutlined,
-  FallOutlined,
   NodeIndexOutlined,
   CodeOutlined,
   DesktopOutlined,
@@ -17,21 +14,13 @@ import {
 } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
-import { Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer } from 'recharts';
+import EChartsLineChart from '../widgets/echarts-line-chart';
+import { InlineRingChart } from '../widgets/inline-ring-chart';
 import TimeSelector from '@/components/time-selector';
-import LineChart from '@/app/monitor/components/charts/lineChart';
 import useViewApi from '@/app/monitor/api/view';
 import MetricViews from '@/app/monitor/components/metric-views';
 import { useTranslation } from '@/utils/i18n';
-import { ListItem } from '@/types';
-import {
-  calculateMetrics,
-  getRecentTimeRange,
-  mergeViewQueryKeyValues,
-  renderChart
-} from '@/app/monitor/utils/common';
-import { ChartData, MetricItem, TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
-import { SearchParams } from '@/app/monitor/types/search';
+import { ChartData, TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
 import {
   DASHBOARD_METRICS,
   MYSQL_COLLECTION_STATUS_QUERY,
@@ -40,6 +29,33 @@ import {
 import { MetricSeries, MetricUnit, MysqlMetricConfig } from './types';
 import styles from './index.module.scss';
 import useMonitorApi from '@/app/monitor/api';
+import {
+  DEFAULT_REFRESH_FREQUENCY_LIST,
+  formatMetricValue,
+  buildSearchParams,
+  getLatestChartValue,
+  getChartPointSeriesTotal,
+  buildSeriesTotalByTime,
+  buildPreviousPeriodTimeValues,
+  runWithConcurrency,
+  getPeriodCompare,
+  normalizeDisplayText,
+  isOpaqueIdentifier,
+  buildInstanceDisplayName,
+  buildInstanceSearchTokens,
+  parseLegacyParamList,
+  buildCollectionStatusTimeline,
+  formatCollectionStatusWindow,
+  toMetricSeries,
+  buildMetricItem,
+  mergeChartSeries,
+  getCollectionStatus
+} from '../utils';
+import {
+  StatCard,
+  CollectionStatusCard,
+  TitleWithGuide
+} from '../widgets';
 
 interface MysqlInstanceOption {
   label: string;
@@ -48,18 +64,7 @@ interface MysqlInstanceOption {
   searchTokens: string[];
 }
 
-const MAX_POINTS = 100;
-const DEFAULT_STEP = 360;
-const MYSQL_REFRESH_FREQUENCY_LIST: ListItem[] = [
-  { label: '关闭', value: 0 },
-  { label: '5s', value: 5000 },
-  { label: '10s', value: 10000 },
-  { label: '30s', value: 30000 },
-  { label: '1m', value: 60000 },
-  { label: '2m', value: 120000 },
-  { label: '5m', value: 300000 },
-  { label: '10m', value: 600000 }
-];
+const MYSQL_REFRESH_FREQUENCY_LIST = DEFAULT_REFRESH_FREQUENCY_LIST;
 const RAW_VALUE_METRICS = new Set([
   'mysql_uptime',
   'mysql_innodb_buffer_pool_pages_total',
@@ -75,145 +80,84 @@ const CONNECTION_ERROR_LABELS: Record<string, string> = {
   mysql_connection_errors_select: '轮询连接错误数',
   mysql_connection_errors_tcpwrap: '访问控制连接错误数'
 };
-const COLLECTION_STATUS_SEGMENT_COUNT = 18;
-const COLLECTION_STATUS_LEGEND = [
-  { key: 'success' as const, label: '正常', color: '#22c55e' },
-  { key: 'empty' as const, label: '无数据', color: '#cbd5e1' },
-  { key: 'error' as const, label: '异常', color: '#ff4d4f' }
+const METRIC_QUERY_CONCURRENCY = 6;
+const MYSQL_METRIC_GROUPS = [
+  {
+    key: 'summary',
+    names: [
+      'mysql_uptime',
+      'mysql_threads_connected',
+      'mysql_threads_running',
+      'mysql_variables_max_connections',
+      'mysql_connection_utilization',
+      'mysql_queries_rate',
+      'mysql_slow_queries_rate',
+      'mysql_com_select_rate',
+      'mysql_innodb_row_lock_waits_rate',
+      'mysql_buffer_pool_hit_ratio',
+      'mysql_buffer_pool_used_ratio',
+      'mysql_buffer_pool_dirty_ratio',
+      'mysql_variables_read_only',
+      'mysql_variables_super_read_only',
+      'mysql_variables_log_bin',
+      'mysql_variables_log_slave_updates',
+      'mysql_slave_seconds_behind_master',
+      'mysql_slave_io_running',
+      'mysql_slave_sql_running'
+    ]
+  },
+  {
+    key: 'flow',
+    names: [
+      'mysql_process_list_threads_idle',
+      'mysql_process_list_threads_executing',
+      'mysql_process_list_threads_sending_data',
+      'mysql_process_list_threads_waiting_for_lock',
+      'mysql_innodb_data_reads_rate',
+      'mysql_innodb_data_writes_rate',
+      'mysql_innodb_os_log_fsyncs_rate',
+      'mysql_innodb_buffer_pool_pages_total',
+      'mysql_innodb_buffer_pool_pages_dirty',
+      'mysql_innodb_buffer_pool_pages_free',
+      'mysql_created_tmp_tables_rate',
+      'mysql_created_tmp_disk_tables_rate',
+      'mysql_created_tmp_memory_tables_rate'
+    ]
+  },
+  {
+    key: 'trends',
+    names: [
+      'mysql_innodb_row_lock_time_avg',
+      'mysql_com_insert_rate',
+      'mysql_com_update_rate',
+      'mysql_com_delete_rate'
+    ]
+  },
+  {
+    key: 'details',
+    names: [
+      'mysql_opened_tables_rate',
+      'mysql_table_open_cache_misses_rate',
+      'mysql_aborted_connects',
+      'mysql_aborted_connects_rate',
+      'mysql_aborted_clients',
+      'mysql_aborted_clients_rate',
+      'mysql_connection_errors_internal',
+      'mysql_connection_errors_max_connections',
+      'mysql_connection_errors_max_connections_rate',
+      'mysql_connection_errors_peer_address',
+      'mysql_connection_errors_select',
+      'mysql_connection_errors_tcpwrap'
+    ]
+  }
+] as const;
+const MYSQL_COMPARE_METRICS = [
+  'mysql_connection_utilization',
+  'mysql_queries_rate',
+  'mysql_slow_queries_rate',
+  'mysql_buffer_pool_hit_ratio'
 ];
-
-const formatMetricValue = (value: number, unit: MetricUnit) => {
-  if (!Number.isFinite(value)) {
-    return { value: '--', unit: '' };
-  }
-
-  if (unit === 's') {
-    if (value < 60) {
-      return { value: value.toFixed(0), unit: 's' };
-    }
-
-    if (value < 3600) {
-      return { value: (value / 60).toFixed(value >= 600 ? 0 : 1), unit: 'min' };
-    }
-
-    if (value < 86400) {
-      return { value: (value / 3600).toFixed(value >= 36000 ? 0 : 1), unit: 'h' };
-    }
-
-    const days = Math.floor(value / 86400);
-    const hours = Math.floor((value % 86400) / 3600);
-    return { value: `${days}${hours > 0 ? `d ${hours}h` : 'd'}`, unit: '' };
-  }
-
-  if (unit === 'percent') {
-    return { value: value.toFixed(1), unit: '%' };
-  }
-
-  if (unit === 'ms') {
-    return { value: value.toFixed(1), unit: 'ms' };
-  }
-
-  if (unit === 'cps') {
-    return { value: value >= 100 ? value.toFixed(0) : value.toFixed(2), unit: '/s' };
-  }
-
-  if (unit === 'permin') {
-    return { value: value >= 100 ? value.toFixed(0) : value.toFixed(1), unit: '/min' };
-  }
-
-  if (unit === 'byteps') {
-    const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
-    let next = value;
-    let idx = 0;
-    while (next >= 1024 && idx < units.length - 1) {
-      next /= 1024;
-      idx += 1;
-    }
-    return { value: next >= 100 ? next.toFixed(0) : next.toFixed(1), unit: units[idx] };
-  }
-
-  if (unit === 'bytes') {
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let next = value;
-    let idx = 0;
-    while (next >= 1024 && idx < units.length - 1) {
-      next /= 1024;
-      idx += 1;
-    }
-    return { value: next >= 100 ? next.toFixed(0) : next.toFixed(1), unit: units[idx] };
-  }
-
-  return {
-    value: value >= 1000 ? value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : value.toFixed(value >= 100 ? 0 : 1),
-    unit: unit === 'ops' ? '/s' : ''
-  };
-};
-
-const buildSearchParams = (
-  query: string,
-  source_unit: string,
-  idValues: string[],
-  instanceIdKeys: string[],
-  timeValues: TimeValuesProps
-): SearchParams => {
-  const effectiveIdValues = idValues.length ? idValues : [''];
-  const labels = mergeViewQueryKeyValues([
-    { keys: instanceIdKeys.length ? instanceIdKeys : ['instance_id'], values: effectiveIdValues }
-  ]);
-  const recentTimeRange = getRecentTimeRange(timeValues);
-  const startTime = recentTimeRange.at(0);
-  const endTime = recentTimeRange.at(1);
-  const params: SearchParams = {
-    query: query.replace(/__\$labels__/g, labels),
-    source_unit,
-    auto_convert_unit: Array.from(RAW_VALUE_METRICS).some((metricName) => query.includes(metricName)) ? false : true
-  };
-
-  if (startTime && endTime) {
-    params.start = startTime;
-    params.end = endTime;
-    params.step = Math.max(
-      Math.ceil((params.end / MAX_POINTS - params.start / MAX_POINTS) / DEFAULT_STEP),
-      1
-    );
-  }
-
-  return params;
-};
-
-const getLatestChartValue = (data: ChartData[]) => {
-  const latestValue = calculateMetrics(data as Record<string, number>[]).latestValue;
-  return typeof latestValue === 'number' ? latestValue : 0;
-};
-
-const getChartPointSeriesTotal = (point?: ChartData) => {
-  if (!point) {
-    return 0;
-  }
-
-  return Object.entries(point).reduce((sum, [key, value]) => {
-    if (!/^value\d+$/.test(key) || typeof value !== 'number' || !Number.isFinite(value)) {
-      return sum;
-    }
-
-    return sum + value;
-  }, 0);
-};
-
-const buildSeriesTotalByTime = (data: ChartData[] = []) => {
-  const totals = new Map<number, number>();
-
-  data.forEach((point) => {
-    const time = Number(point.time);
-    if (!Number.isFinite(time)) {
-      return;
-    }
-
-    totals.set(time, getChartPointSeriesTotal(point));
-  });
-
-  return totals;
-};
+const MYSQL_METRIC_CONFIG_BY_NAME = new Map(DASHBOARD_METRICS.map((metric) => [metric.name, metric]));
 
 const getLatestThreadSnapshot = (metricMap: Record<string, MetricSeries | undefined>) => {
   const connectedByTime = buildSeriesTotalByTime(metricMap.mysql_threads_connected?.viewData || []);
@@ -270,46 +214,6 @@ const getLatestThreadSnapshot = (metricMap: Record<string, MetricSeries | undefi
   };
 };
 
-const buildPreviousPeriodTimeValues = (timeValues: TimeValuesProps): TimeValuesProps | null => {
-  const [startTime, endTime] = getRecentTimeRange(timeValues);
-
-  if (!startTime || !endTime) {
-    return null;
-  }
-
-  const duration = endTime - startTime;
-
-  return {
-    timeRange: [startTime - duration, endTime - duration],
-    originValue: 0
-  };
-};
-
-const getPeriodCompare = (currentValue: number, previousValue: number) => {
-  if (!Number.isFinite(currentValue) || !Number.isFinite(previousValue)) {
-    return null;
-  }
-
-  if (previousValue === 0) {
-    if (currentValue === 0) {
-      return { direction: 'flat' as const, value: '0.0%' };
-    }
-
-    return null;
-  }
-
-  const delta = ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
-
-  if (Math.abs(delta) < 0.05) {
-    return { direction: 'flat' as const, value: '0.0%' };
-  }
-
-  return {
-    direction: delta > 0 ? ('up' as const) : ('down' as const),
-    value: `${Math.abs(delta).toFixed(1)}%`
-  };
-};
-
 const getUptimeInsight = (uptimeSeconds: number) => {
   if (!Number.isFinite(uptimeSeconds) || uptimeSeconds < 0) {
     return {
@@ -357,98 +261,6 @@ const countRestartsInRange = (data: ChartData[] = []) => {
   return restartCount;
 };
 
-const getCompareTone = (direction: 'up' | 'down' | 'flat') => {
-  if (direction === 'flat') {
-    return 'flat';
-  }
-
-  return direction === 'up' ? 'positive' : 'negative';
-};
-
-const normalizeDisplayText = (value?: string | null) => {
-  if (!value) {
-    return '';
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed || trimmed === '--') {
-    return '';
-  }
-
-  const withoutQuotes = trimmed.replace(/^["'`\[(,\s]+|["'`,;\])\s]+$/g, '').trim();
-  if (!withoutQuotes || withoutQuotes === '--') {
-    return '';
-  }
-
-  if (
-    /^[A-Za-z0-9+/=_-]{12,}$/.test(withoutQuotes) &&
-    !/[.:/]/.test(withoutQuotes) &&
-    !/[a-z]+-[a-z]/.test(withoutQuotes)
-  ) {
-    return '';
-  }
-
-  return withoutQuotes;
-};
-
-const isOpaqueIdentifier = (value?: string | null) => {
-  const normalized = normalizeDisplayText(value);
-  if (!normalized) {
-    return true;
-  }
-
-  return /^[A-Za-z0-9+/=_-]{12,}$/.test(normalized) && !/[.:/]/.test(normalized) && !/[a-z]+-[a-z]/.test(normalized);
-};
-
-const buildInstanceDisplayName = (item: any) => {
-  const primaryName = normalizeDisplayText(item.instance_name) || normalizeDisplayText(item.name);
-  const hostPort = normalizeDisplayText(item.host && item.port ? `${item.host}:${item.port}` : '');
-  const endpoint = normalizeDisplayText(item.endpoint) || normalizeDisplayText(item.url);
-  const fallbackHost = normalizeDisplayText(item.host) || normalizeDisplayText(item.ip);
-
-  if (primaryName && hostPort && !primaryName.includes(hostPort)) {
-    return `${primaryName} (${hostPort})`;
-  }
-
-  if (primaryName) {
-    return primaryName;
-  }
-
-  return hostPort || endpoint || fallbackHost || normalizeDisplayText(item.instance_id) || '--';
-};
-
-const buildInstanceSearchTokens = (item: any, displayName: string) => {
-  return Array.from(
-    new Set(
-      [
-        displayName,
-        normalizeDisplayText(item.instance_name),
-        normalizeDisplayText(item.name),
-        normalizeDisplayText(item.host),
-        normalizeDisplayText(item.ip),
-        normalizeDisplayText(item.port),
-        normalizeDisplayText(item.endpoint),
-        normalizeDisplayText(item.url),
-        normalizeDisplayText(item.instance_id)
-      ].filter(Boolean)
-    )
-  );
-};
-
-const parseLegacyParamList = (value?: string | null) => {
-  if (!value) {
-    return [] as string[];
-  }
-
-  const normalized = value
-    .replace(/[()\[\]'"`]/g, '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  return Array.from(new Set(normalized));
-};
-
 const inferMysqlIdentity = (roleSignals: {
   instanceName: string;
   hasReplicationMetrics: boolean;
@@ -494,351 +306,6 @@ const inferMysqlIdentity = (roleSignals: {
   return { deployment, role, replication };
 };
 
-const getCollectionStatusTones = (metric?: MetricSeries | null) => {
-  if (!Array.isArray(metric?.viewData)) {
-    return [] as Array<'success' | 'empty'>;
-  }
-
-  return [...metric.viewData]
-    .sort((a, b) => Number(a.time) - Number(b.time))
-    .slice(-COLLECTION_STATUS_SEGMENT_COUNT)
-    .map((point) => (Number(point.value1 ?? 0) > 0 ? ('success' as const) : ('empty' as const)));
-};
-
-const buildCollectionStatusTimeline = (metric?: MetricSeries | null) => {
-  if (metric?.loadState === 'error') {
-    return Array.from({ length: COLLECTION_STATUS_SEGMENT_COUNT }, () => 'error' as const);
-  }
-
-  const tones = getCollectionStatusTones(metric);
-
-  if (tones.length >= COLLECTION_STATUS_SEGMENT_COUNT) {
-    return tones;
-  }
-
-  return [
-    ...Array.from({ length: COLLECTION_STATUS_SEGMENT_COUNT - tones.length }, () => 'empty' as const),
-    ...tones
-  ];
-};
-
-const formatCollectionStatusWindow = (timeValues: TimeValuesProps) => {
-  const [startTime, endTime] = getRecentTimeRange(timeValues);
-
-  if (!startTime || !endTime) {
-    return '最近 15 分钟';
-  }
-
-  const totalMinutes = Math.max(Math.round((endTime - startTime) / 60000), 1);
-
-  if (totalMinutes < 60) {
-    return `最近 ${totalMinutes} 分钟`;
-  }
-
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-
-  return minutes > 0 ? `最近 ${hours} 小时 ${minutes} 分钟` : `最近 ${hours} 小时`;
-};
-
-const toMetricSeries = (
-  metric: MysqlMetricConfig,
-  result: any,
-  instanceId: React.Key,
-  instanceName: string,
-  idValues: string[],
-  instanceIdKeys: string[]
-) => {
-  const viewData = renderChart(result?.data?.result || [], [
-    {
-      instance_id_values: idValues,
-      instance_name: instanceName,
-      instance_id: String(instanceId || ''),
-      instance_id_keys: instanceIdKeys,
-      dimensions: metric.dimensions || [],
-      title: metric.display_name
-    }
-  ]);
-
-  return {
-    ...metric,
-    viewData,
-    loadState: 'success' as const
-  };
-};
-
-const buildMetricItem = (metric: MetricSeries): MetricItem => ({
-  id: 0,
-  metric_group: 0,
-  metric_object: 0,
-  name: metric.name,
-  type: 'number',
-  display_name: metric.display_name,
-  dimensions: metric.dimensions || [],
-  unit: metric.unit,
-  query: metric.query,
-  description: metric.description,
-  color: metric.color,
-  viewData: metric.viewData
-});
-
-const mergeChartSeries = (
-  seriesList: Array<{ key: string; label: string; displayName?: string; data: ChartData[] }>
-): ChartData[] => {
-  const merged = new Map<number, ChartData>();
-
-  seriesList.forEach((series, index) => {
-    const valueKey = `value${index + 1}`;
-
-    series.data.forEach((point) => {
-      const time = Number(point.time);
-      const current = merged.get(time) || {
-        time,
-        title: series.label,
-        details: {}
-      };
-
-      current[valueKey] = Number(point.value1 ?? 0);
-      current.details = current.details || {};
-      current.details[valueKey] = [
-        {
-          name: series.key,
-          label: series.displayName || '',
-          value: series.displayName || series.label
-        }
-      ];
-
-      merged.set(time, current);
-    });
-  });
-
-  return Array.from(merged.values()).sort((a, b) => Number(a.time) - Number(b.time));
-};
-
-const getCollectionStatus = (metric?: MetricSeries | null) => {
-  const hasError = metric?.loadState === 'error';
-
-  if (hasError) {
-    return {
-      label: '异常',
-      tagColor: 'error' as const,
-      accentColor: '#ff4d4f',
-      summary: '查询失败',
-      detail: '当前采集状态指标查询失败，请检查探针与数据库连通性或采集配置。'
-    };
-  }
-
-  const latestTone = getCollectionStatusTones(metric).at(-1);
-
-  if (latestTone === 'success') {
-    return {
-      label: '正常',
-      tagColor: 'success' as const,
-      accentColor: '#27c274',
-      summary: '采集中',
-      detail: '当前采集状态指标可正常返回，说明 MySQL 监控探针采集链路正常。'
-    };
-  }
-
-  return {
-    label: '无数据',
-    tagColor: 'warning' as const,
-    accentColor: '#fa8c16',
-    summary: '暂无采集数据',
-    detail: '尚未在当前时间范围内看到采集状态数据，请检查时间范围或等待新数据进入。'
-  };
-};
-
-const MiniTrendChart = ({ data, color }: { data: ChartData[]; color: string }) => {
-  const gradientId = useId().replace(/:/g, '_');
-  const chartData = useMemo(
-    () =>
-      data
-        .map((point) => ({
-          time: Number(point.time),
-          value: Number(point.value1 ?? 0)
-        }))
-        .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value)),
-    [data]
-  );
-
-  if (!chartData.length) {
-    return <div className={styles.miniTrendPlaceholder} />;
-  }
-
-  return (
-    <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={chartData} margin={{ top: 2, right: 0, bottom: 2, left: 0 }}>
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity={0.24} />
-            <stop offset="100%" stopColor={color} stopOpacity={0.02} />
-          </linearGradient>
-        </defs>
-        <Area
-          type="monotone"
-          dataKey="value"
-          stroke={color}
-          strokeWidth={2}
-          fill={`url(#${gradientId})`}
-          dot={false}
-          activeDot={false}
-          isAnimationActive={false}
-        />
-      </AreaChart>
-    </ResponsiveContainer>
-  );
-};
-
-const StatCard = ({
-  title,
-  value,
-  unit,
-  icon,
-  iconStyle,
-  color,
-  footer,
-  compare,
-  trendData = [],
-  hideTrend = false,
-  noDataType = 'empty',
-  className,
-  bodyClassName,
-  extra
-}: {
-  title: React.ReactNode;
-  value: React.ReactNode;
-  unit: string;
-  icon: React.ReactNode;
-  iconStyle: React.CSSProperties;
-  color: string;
-  footer: React.ReactNode;
-  compare?: {
-    direction: 'up' | 'down' | 'flat';
-    value: string;
-  } | null;
-  trendData?: ChartData[];
-  hideTrend?: boolean;
-  noDataType?: 'empty' | 'error';
-  className?: string;
-  bodyClassName?: string;
-  extra?: React.ReactNode;
-}) => {
-  const compareTone = compare ? getCompareTone(compare.direction) : 'flat';
-
-  return (
-    <div className={`${styles.statCard} ${className || ''}`}>
-      <div className={styles.statHeader}>
-        <div className={styles.statLabel}>{title}</div>
-        <div className={styles.statIcon} style={iconStyle}>
-          {icon}
-        </div>
-      </div>
-      <div className={`${styles.statBody} ${bodyClassName || ''}`}>
-        <div className={styles.statValue} style={{ color }}>
-          {value}
-          {unit ? <span className={styles.statUnit}>{unit}</span> : null}
-        </div>
-        {compare ? (
-          <div className={`${styles.statCompare} ${styles[`statCompare${compareTone === 'flat' ? 'Flat' : compareTone === 'positive' ? 'Positive' : 'Negative'}`]}`}>
-            <span className={styles.statCompareLabel}>较上一周期</span>
-            <span className={styles.statCompareValue}>
-              {compare.direction === 'up' ? <RiseOutlined /> : compare.direction === 'down' ? <FallOutlined /> : null}
-              {compare.value}
-            </span>
-          </div>
-        ) : null}
-        <div className={styles.statMeta}>{footer}</div>
-      </div>
-      {extra ? <div className={styles.statExtra}>{extra}</div> : null}
-      {!hideTrend ? (
-        <div className={styles.miniTrend}>
-          <MiniTrendChart data={noDataType === 'error' ? [] : trendData} color={color} />
-        </div>
-      ) : null}
-    </div>
-  );
-};
-
-const CollectionStatusCard = ({
-  status,
-  timeline
-}: {
-  status: ReturnType<typeof getCollectionStatus>;
-  timeline: Array<'success' | 'empty' | 'error'>;
-}) => {
-  return (
-    <div className={`${styles.statCard} ${styles.collectionStatusCard}`}>
-      <div className={styles.collectionStatusHeader}>
-        <div className={styles.statLabel}>
-          <TitleWithGuide
-            title="采集状态"
-            items={[
-              { label: '采集状态', detail: '展示最近一段时间内该实例监控采集是否正常、缺失或异常。' },
-              { label: '状态时间线', detail: '绿色表示采集成功，灰色表示暂无数据，红色表示采集或查询异常。' }
-            ]}
-            className={styles.statTitleWithGuide}
-          />
-        </div>
-      </div>
-      <div className={styles.collectionStatusBody}>
-        <div className={`${styles.collectionStatusValue} ${styles[`collectionStatusValue${status.label === '正常' ? 'Success' : status.label === '异常' ? 'Error' : 'Empty'}`]}`}>
-          {status.label}
-        </div>
-        <div className={styles.collectionStatusTimelineBlock}>
-          <div className={styles.collectionStatusTimelineTitle}>状态时间线</div>
-          <div className={styles.collectionStatusTimeline}>
-            {timeline.map((tone, index) => (
-              <span key={`${tone}-${index}`} className={`${styles.collectionStatusSegment} ${styles[`collectionStatusSegment${tone === 'success' ? 'Success' : tone === 'error' ? 'Error' : 'Empty'}`]}`} />
-            ))}
-          </div>
-          <div className={styles.collectionStatusLegend}>
-            {COLLECTION_STATUS_LEGEND.map((item) => (
-              <span key={item.key} className={styles.collectionStatusLegendItem}>
-                <span className={styles.collectionStatusLegendDot} style={{ background: item.color }} />
-                {item.label}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-interface GuideItem {
-  label: string;
-  detail: string;
-}
-
-const GuideTooltipContent = ({ items }: { items: GuideItem[] }) => (
-  <div className={styles.metricGuideTooltip}>
-    {items.map((item) => (
-      <div key={item.label} className={styles.metricGuideTooltipRow}>
-        <strong>{item.label}</strong>
-        <span>{item.detail}</span>
-      </div>
-    ))}
-  </div>
-);
-
-const TitleWithGuide = ({
-  title,
-  items,
-  className
-}: {
-  title: React.ReactNode;
-  items: GuideItem[];
-  className?: string;
-}) => (
-  <span className={[styles.titleWithGuide, className].filter(Boolean).join(' ')}>
-    <span>{title}</span>
-    <Tooltip overlayClassName="lightMetricTooltip" title={<GuideTooltipContent items={items} />}>
-      <InfoCircleOutlined className={styles.metricGuideIcon} />
-    </Tooltip>
-  </span>
-);
-
 export default function MysqlDashboardPage() {
   const { getInstanceQuery } = useViewApi();
   const { getInstanceList } = useMonitorApi();
@@ -846,6 +313,7 @@ export default function MysqlDashboardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const loadSeqRef = useRef(0);
   const [loading, setLoading] = useState(true);
   const [displayMode, setDisplayMode] = useState<'dashboard' | 'metrics'>('dashboard');
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({
@@ -956,7 +424,25 @@ export default function MysqlDashboardPage() {
     currentInstanceOption?.label || normalizedInstanceName || normalizeDisplayText(String(instanceId)) || normalizeDisplayText(idValues[0]) || '--';
   const primaryInstanceText = resolvedInstanceName;
 
+  const loadMetricGroup = async (metricNames: readonly string[], targetTimeValues: TimeValuesProps) => {
+    const metrics = metricNames
+      .map((name) => MYSQL_METRIC_CONFIG_BY_NAME.get(name))
+      .filter((metric): metric is MysqlMetricConfig => Boolean(metric));
+
+    return runWithConcurrency(
+      metrics,
+      METRIC_QUERY_CONCURRENCY,
+      async (metric) =>
+        getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, targetTimeValues, RAW_VALUE_METRICS))
+          .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
+          .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
+    );
+  };
+
   const loadMetrics = async (silent = false) => {
+    const loadSeq = loadSeqRef.current + 1;
+    loadSeqRef.current = loadSeq;
+
     if (!silent) {
       setLoading(true);
     }
@@ -964,23 +450,12 @@ export default function MysqlDashboardPage() {
     try {
       if (isDashboardMode) {
         const previousTimeValues = buildPreviousPeriodTimeValues(timeValues);
-        const compareMetrics = DASHBOARD_METRICS.filter((metric) =>
-          [
-            'mysql_connection_utilization',
-            'mysql_queries_rate',
-            'mysql_slow_queries_rate',
-            'mysql_buffer_pool_hit_ratio'
-          ].includes(metric.name)
+        const compareMetrics = MYSQL_COMPARE_METRICS.map((name) => MYSQL_METRIC_CONFIG_BY_NAME.get(name)).filter(
+          (metric): metric is MysqlMetricConfig => Boolean(metric)
         );
-        const metricResultsPromise = Promise.all(
-          DASHBOARD_METRICS.map((metric) =>
-            getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, timeValues))
-              .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
-              .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
-          )
-        );
+        const summaryResultsPromise = loadMetricGroup(MYSQL_METRIC_GROUPS[0].names, timeValues);
 
-        const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(buildSearchParams(MYSQL_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, timeValues))
+        const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(buildSearchParams(MYSQL_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, timeValues, RAW_VALUE_METRICS))
           .then((result) =>
             toMetricSeries(
               {
@@ -1013,31 +488,52 @@ export default function MysqlDashboardPage() {
           );
 
         const previousMetricResultsPromise = previousTimeValues
-          ? Promise.all(
-            compareMetrics.map((metric) =>
-              getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues))
+          ? runWithConcurrency(
+            compareMetrics,
+            METRIC_QUERY_CONCURRENCY,
+            async (metric) =>
+              getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues, RAW_VALUE_METRICS))
                 .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
                 .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
-            )
           )
           : Promise.resolve([] as Array<readonly [string, MetricSeries]>);
 
-        const [results, previousResults, collectionStatus] = await Promise.all([
-          metricResultsPromise,
+        const [summaryResults, previousResults, collectionStatus] = await Promise.all([
+          summaryResultsPromise,
           previousMetricResultsPromise,
           collectionStatusPromise
         ]);
 
-        setSeries(Object.fromEntries(results));
+        if (loadSeqRef.current !== loadSeq) {
+          return;
+        }
+
+        setSeries((prev) => (silent ? { ...prev, ...Object.fromEntries(summaryResults) } : Object.fromEntries(summaryResults)));
         setPreviousSeries(Object.fromEntries(previousResults));
         setCollectionStatusMetric(collectionStatus);
+
+        if (!silent) {
+          setLoading(false);
+        }
+
+        MYSQL_METRIC_GROUPS.slice(1).forEach((group) => {
+          loadMetricGroup(group.names, timeValues).then((results) => {
+            if (loadSeqRef.current !== loadSeq) {
+              return;
+            }
+
+            setSeries((prev) => ({ ...prev, ...Object.fromEntries(results) }));
+          });
+        });
       } else {
         setSeries({});
         setPreviousSeries({});
         setCollectionStatusMetric(null);
       }
     } finally {
-      setLoading(false);
+      if (loadSeqRef.current === loadSeq) {
+        setLoading(false);
+      }
     }
   };
 
@@ -1056,7 +552,7 @@ export default function MysqlDashboardPage() {
       timerRef.current = null;
     }
 
-    if (frequence > 0) {
+    if (isDashboardMode && frequence > 0) {
       timerRef.current = setInterval(() => {
         loadMetrics(true);
       }, frequence);
@@ -1143,7 +639,7 @@ export default function MysqlDashboardPage() {
   const logSlaveUpdatesValue = getLatest('mysql_variables_log_slave_updates');
   const statusInfo = getCollectionStatus(collectionStatusMetric);
   const metricEmptyText = statusInfo.label === '异常' ? '查询失败' : '暂无采集数据';
-  const collectionStatusTimeline = buildCollectionStatusTimeline(collectionStatusMetric);
+  const collectionStatusTimeline = buildCollectionStatusTimeline(collectionStatusMetric?.loadState, collectionStatusMetric?.viewData);
   const collectionStatusWindowLabel = formatCollectionStatusWindow(timeValues);
   const qpsDisplay = formatMetricValue(qpsValue, 'cps');
   const connDisplay = formatMetricValue(connValue, 'percent');
@@ -1756,11 +1252,13 @@ export default function MysqlDashboardPage() {
                 <div className={styles.modeContent}>
                   <div className={styles.primaryGrid}>
                     <CollectionStatusCard
+                      styles={styles}
                       status={statusInfo}
                       timeline={collectionStatusTimeline}
                     />
                     <StatCard
-                      title={<TitleWithGuide title="MySQL 运行时长" items={uptimeGuide} />}
+                      styles={styles}
+                      title={<TitleWithGuide styles={styles} title="MySQL 运行时长" items={uptimeGuide} />}
                       value={uptimeDisplay}
                       unit=""
                       icon={<ClockCircleOutlined />}
@@ -1797,7 +1295,8 @@ export default function MysqlDashboardPage() {
                       noDataType={getNoDataType('mysql_uptime')}
                     />
                     <StatCard
-                      title={<TitleWithGuide title="连接使用率" items={connectionGuide} />}
+                      styles={styles}
+                      title={<TitleWithGuide styles={styles} title="连接使用率" items={connectionGuide} />}
                       value={connCardDisplay.value}
                       unit={connCardDisplay.unit}
                       icon={<NodeIndexOutlined />}
@@ -1809,7 +1308,8 @@ export default function MysqlDashboardPage() {
                       noDataType={getNoDataType('mysql_connection_utilization')}
                     />
                     <StatCard
-                      title={<TitleWithGuide title="QPS（每秒查询数）" items={qpsGuide} />}
+                      styles={styles}
+                      title={<TitleWithGuide styles={styles} title="QPS（每秒查询数）" items={qpsGuide} />}
                       value={qpsCardDisplay.value}
                       unit={qpsCardDisplay.unit}
                       icon={<ThunderboltOutlined />}
@@ -1821,7 +1321,8 @@ export default function MysqlDashboardPage() {
                       noDataType={getNoDataType('mysql_queries_rate')}
                     />
                     <StatCard
-                      title={<TitleWithGuide title="慢查询速率" items={slowGuide} />}
+                      styles={styles}
+                      title={<TitleWithGuide styles={styles} title="慢查询速率" items={slowGuide} />}
                       value={slowCardDisplay.value}
                       unit={slowCardDisplay.unit}
                       icon={<ClockCircleOutlined />}
@@ -1833,7 +1334,8 @@ export default function MysqlDashboardPage() {
                       noDataType={getNoDataType('mysql_slow_queries_rate')}
                     />
                     <StatCard
-                      title={<TitleWithGuide title="缓冲池命中率" items={hitRatioGuide} />}
+                      styles={styles}
+                      title={<TitleWithGuide styles={styles} title="缓冲池命中率" items={hitRatioGuide} />}
                       value={hitCardDisplay.value}
                       unit={hitCardDisplay.unit}
                       icon={<DatabaseOutlined />}
@@ -1849,7 +1351,7 @@ export default function MysqlDashboardPage() {
                   <div className={`${styles.panel} ${styles.dataFlowPanel}`}>
                       <div className={styles.panelHeader}>
                         <div className={styles.panelHeading}>
-                        <h3 className={styles.panelTitle}><TitleWithGuide title="请求链路与 InnoDB 数据流" items={flowGuide} className={styles.panelTitleWithGuide} /></h3>
+                        <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="请求链路与 InnoDB 数据流" items={flowGuide} className={styles.panelTitleWithGuide} /></h3>
                         <div className={styles.panelSubTitle}>从请求入口到缓存、日志与落盘路径</div>
                       </div>
                     </div>
@@ -1903,7 +1405,7 @@ export default function MysqlDashboardPage() {
                             <div className={styles.innodbColumnTitle}>缓冲池</div>
                             <div className={styles.innodbBufferCard}>
                               <div className={styles.innodbCardTitle}>
-                                <TitleWithGuide title="缓冲池" items={bufferPoolGuide} className={styles.innodbCardTitleWithGuide} />
+                                <TitleWithGuide styles={styles} title="缓冲池" items={bufferPoolGuide} className={styles.innodbCardTitleWithGuide} />
                               </div>
                               <div className={styles.innodbBufferGrid}>
                                 {Array.from({ length: bufferFlowCellCount }).map((_, index) => (
@@ -1955,7 +1457,7 @@ export default function MysqlDashboardPage() {
                             <div className={styles.innodbLogCards}>
                               <div className={`${styles.innodbLogCard} ${styles.innodbCardPrimary}`}>
                                 <div className={styles.innodbCardTitleRow}>
-                                  <TitleWithGuide title="Redo 日志" items={redoLogGuide} className={styles.innodbCardTitleWithGuide} />
+                                  <TitleWithGuide styles={styles} title="Redo 日志" items={redoLogGuide} className={styles.innodbCardTitleWithGuide} />
                                 </div>
                                 <div className={styles.innodbCardHint}>
                                   事务提交先写入 Redo 缓冲，
@@ -1965,7 +1467,7 @@ export default function MysqlDashboardPage() {
                               </div>
                               <div className={`${styles.innodbLogCard} ${styles.innodbCardSecondary}`}>
                                 <div className={styles.innodbCardTitleRow}>
-                                  <TitleWithGuide title="临时表" items={tempTableGuide} className={styles.innodbCardTitleWithGuide} />
+                                  <TitleWithGuide styles={styles} title="临时表" items={tempTableGuide} className={styles.innodbCardTitleWithGuide} />
                                 </div>
                                 <div className={styles.mysqlNodeMetric}>
                                   <span>总临时表</span>
@@ -1990,14 +1492,14 @@ export default function MysqlDashboardPage() {
                             <div className={styles.innodbDiskStack}>
                               <div className={`${styles.innodbDiskCard} ${styles.innodbCardPrimary}`}>
                                 <div className={styles.innodbCardTitleRow}>
-                                  <TitleWithGuide title="数据文件" items={dataFileGuide} className={styles.innodbCardTitleWithGuide} />
+                                  <TitleWithGuide styles={styles} title="数据文件" items={dataFileGuide} className={styles.innodbCardTitleWithGuide} />
                                 </div>
                                 <div className={styles.mysqlNodeMetric}><span>读 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_reads_rate', dataReadValue.toFixed(1), '/s')}</strong></div>
                                 <div className={styles.mysqlNodeMetric}><span>写 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_writes_rate', dataWriteValue.toFixed(1), '/s')}</strong></div>
                               </div>
                               <div className={`${styles.innodbDiskCard} ${styles.innodbCardSecondary}`}>
                                 <div className={styles.innodbCardTitleRow}>
-                                  <TitleWithGuide title="Redo 日志文件" items={redoFileGuide} className={styles.innodbCardTitleWithGuide} />
+                                  <TitleWithGuide styles={styles} title="Redo 日志文件" items={redoFileGuide} className={styles.innodbCardTitleWithGuide} />
                                 </div>
                                 <div className={styles.mysqlNodeMetric}><span>Redo 刷盘</span><strong>{renderFlowValue('mysql_innodb_os_log_fsyncs_rate', fsyncValue.toFixed(1), '/s')}</strong></div>
                                 <div className={styles.mysqlNodeMetric}><span>复制延迟</span><strong>{replicationApplicable ? renderFlowValue('mysql_slave_seconds_behind_master', replicationDelayDisplay.value, replicationDelayDisplay.unit || 's') : '不适用'}</strong></div>
@@ -2013,7 +1515,7 @@ export default function MysqlDashboardPage() {
                   <div className={styles.mainTrendGrid}>
                     <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
                       <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide title="QPS 趋势" items={qpsTrendGuide} className={styles.panelTitleWithGuide} /></h3>
+                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide styles={styles} title="QPS 趋势" items={qpsTrendGuide} className={styles.panelTitleWithGuide} /></h3>
                         <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>总查询吞吐</div>
                         <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
                           {TREND_LEGENDS.qps.slice(0, 1).map((item) => (
@@ -2025,7 +1527,7 @@ export default function MysqlDashboardPage() {
                         </div>
                       </div>
                       <div className={styles.chartWrap}>
-                        <LineChart
+                        <EChartsLineChart
                           data={qpsTrendData}
                           metric={buildMetricItem(metricMap.mysql_queries_rate || dashboardMetrics[0])}
                           unit="cps"
@@ -2045,7 +1547,7 @@ export default function MysqlDashboardPage() {
 
                     <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
                       <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide title="慢查询趋势" items={slowTrendGuide} className={styles.panelTitleWithGuide} /></h3>
+                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide styles={styles} title="慢查询趋势" items={slowTrendGuide} className={styles.panelTitleWithGuide} /></h3>
                         <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>每分钟慢 SQL</div>
                         <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
                           {TREND_LEGENDS.qps.slice(1, 2).map((item) => (
@@ -2057,7 +1559,7 @@ export default function MysqlDashboardPage() {
                         </div>
                       </div>
                       <div className={styles.chartWrap}>
-                        <LineChart
+                        <EChartsLineChart
                           data={slowQueryTrendData}
                           metric={buildMetricItem(metricMap.mysql_slow_queries_rate || dashboardMetrics[0])}
                           unit="permin"
@@ -2077,7 +1579,7 @@ export default function MysqlDashboardPage() {
 
                     <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
                       <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide title="连接与线程趋势" items={connectionTrendGuide} className={styles.panelTitleWithGuide} /></h3>
+                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide styles={styles} title="连接与线程趋势" items={connectionTrendGuide} className={styles.panelTitleWithGuide} /></h3>
                         <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>连接总量与执行线程</div>
                         <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
                           {TREND_LEGENDS.connection.map((item) => (
@@ -2092,7 +1594,7 @@ export default function MysqlDashboardPage() {
                         </div>
                       </div>
                       <div className={styles.chartWrap}>
-                        <LineChart
+                        <EChartsLineChart
                           data={connectionTrendData}
                           metric={buildMetricItem(metricMap.mysql_threads_connected || dashboardMetrics[0])}
                           unit="counts"
@@ -2114,34 +1616,13 @@ export default function MysqlDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
                       <div className={styles.panelHeader}>
                         <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide title="查询类型分布" items={queryTypeGuide} className={styles.panelTitleWithGuide} /></h3>
+                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="查询类型分布" items={queryTypeGuide} className={styles.panelTitleWithGuide} /></h3>
                       <div className={styles.panelSubTitle}>按命令占比</div>
                     </div>
                   </div>
                       <div className={styles.ringCard}>
                         <div className={styles.ringChartWrap}>
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie
-                                data={statementShareChartData}
-                                cx="50%"
-                                cy="50%"
-                                innerRadius={52}
-                                outerRadius={72}
-                                startAngle={90}
-                                endAngle={-270}
-                                cornerRadius={0}
-                                paddingAngle={0}
-                                stroke="none"
-                                strokeWidth={0}
-                                dataKey="value"
-                              >
-                                {statementShareChartData.map((item) => (
-                                  <Cell key={item.name} fill={item.color} />
-                                ))}
-                              </Pie>
-                            </PieChart>
-                          </ResponsiveContainer>
+                          <InlineRingChart data={statementShareChartData} />
                           <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
                             <div className={styles.ringValue}>{totalStatements.toFixed(totalStatements >= 100 ? 0 : 1)}</div>
                             <div className={styles.ringCaption}>总数 /s</div>
@@ -2173,34 +1654,13 @@ export default function MysqlDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
                       <div className={styles.panelHeader}>
                         <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide title="线程状态分布" items={threadStateGuide} className={styles.panelTitleWithGuide} /></h3>
+                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="线程状态分布" items={threadStateGuide} className={styles.panelTitleWithGuide} /></h3>
                           <div className={styles.panelSubTitle}>按线程当前状态占比</div>
                         </div>
                       </div>
                       <div className={styles.ringCard}>
                         <div className={styles.ringChartWrap}>
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie
-                                data={threadShareChartData}
-                                cx="50%"
-                                cy="50%"
-                                innerRadius={52}
-                                outerRadius={72}
-                                startAngle={90}
-                                endAngle={-270}
-                                cornerRadius={0}
-                                paddingAngle={0}
-                                stroke="none"
-                                strokeWidth={0}
-                                dataKey="value"
-                              >
-                                {threadShareChartData.map((item) => (
-                                  <Cell key={item.name} fill={item.color} />
-                                ))}
-                              </Pie>
-                            </PieChart>
-                          </ResponsiveContainer>
+                          <InlineRingChart data={threadShareChartData} />
                           <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
                             <div className={styles.ringValue}>{threadDistributionTotal.toFixed(0)}</div>
                             <div className={styles.ringCaption}>当前总数</div>
@@ -2232,7 +1692,7 @@ export default function MysqlDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel} ${styles.fillPanel}`}>
                   <div className={styles.panelHeader}>
                     <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide title="临时表与缓存指标" items={tempCacheGuide} className={styles.panelTitleWithGuide} /></h3>
+                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="临时表与缓存指标" items={tempCacheGuide} className={styles.panelTitleWithGuide} /></h3>
                       <div className={styles.panelSubTitle}>临时表创建与表缓存变化</div>
                     </div>
                   </div>
@@ -2284,7 +1744,7 @@ export default function MysqlDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel} ${styles.fillPanel}`}>
                       <div className={styles.panelHeader}>
                         <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide title="锁与等待指标" items={lockGuide} className={styles.panelTitleWithGuide} /></h3>
+                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="锁与等待指标" items={lockGuide} className={styles.panelTitleWithGuide} /></h3>
                           <div className={styles.panelSubTitle}>事件速率 / 平均值</div>
                         </div>
                       </div>
@@ -2342,7 +1802,7 @@ export default function MysqlDashboardPage() {
 
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
                   <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                    <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide title="InnoDB 读写趋势" items={innodbTrendGuide} className={styles.panelTitleWithGuide} /></h3>
+                    <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide styles={styles} title="InnoDB 读写趋势" items={innodbTrendGuide} className={styles.panelTitleWithGuide} /></h3>
                     <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>InnoDB 读写与 Redo 刷盘变化</div>
                     <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
                       {TREND_LEGENDS.innodb.map((item) => (
@@ -2354,7 +1814,7 @@ export default function MysqlDashboardPage() {
                     </div>
                   </div>
                       <div className={styles.chartWrap}>
-                        <LineChart
+                        <EChartsLineChart
                           data={innodbTrendData}
                            metric={buildMetricItem(metricMap.mysql_innodb_data_reads_rate || dashboardMetrics[0])}
                           unit="ops"
@@ -2378,34 +1838,13 @@ export default function MysqlDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel} ${styles.fillPanel}`}>
                       <div className={styles.panelHeader}>
                         <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide title="缓冲池使用情况" items={bufferUsageGuide} className={styles.panelTitleWithGuide} /></h3>
+                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="缓冲池使用情况" items={bufferUsageGuide} className={styles.panelTitleWithGuide} /></h3>
                           <div className={styles.panelSubTitle}>缓存页状态</div>
                         </div>
                       </div>
                       <div className={`${styles.ringCard} ${styles.bufferPoolRingCard} ${styles.ringCardRelaxed} ${styles.fillBody}`}>
                           <div className={`${styles.ringChartWrap} ${styles.bufferPoolChartWrap}`}>
-                            <ResponsiveContainer width="100%" height={176}>
-                              <PieChart>
-                                <Pie
-                                  data={bufferPoolShareChartData}
-                                  cx="50%"
-                                  cy="50%"
-                                  innerRadius={52}
-                                  outerRadius={72}
-                                  startAngle={90}
-                                  endAngle={-270}
-                                  cornerRadius={0}
-                                  paddingAngle={0}
-                                  stroke="none"
-                                  strokeWidth={0}
-                                  dataKey="value"
-                                >
-                                  {bufferPoolShareChartData.map((item) => (
-                                    <Cell key={item.name} fill={item.color} />
-                                  ))}
-                                </Pie>
-                              </PieChart>
-                            </ResponsiveContainer>
+                            <InlineRingChart data={bufferPoolShareChartData} height={176} />
                             <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
                               <div className={styles.ringValue}>{bufferPoolUsedValue.toFixed(0)}%</div>
                               <div className={styles.ringCaption}>使用率</div>
@@ -2443,7 +1882,7 @@ export default function MysqlDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel} ${styles.fillPanel}`}>
                       <div className={styles.panelHeader}>
                     <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide title="复制状态" items={replicationGuide} className={styles.panelTitleWithGuide} /></h3>
+                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="复制状态" items={replicationGuide} className={styles.panelTitleWithGuide} /></h3>
                       <div className={styles.panelSubTitle}>
                         {replicationApplicable ? '从库复制延迟与线程状态' : `${mysqlIdentity.deployment}实例无需复制线程`}
                       </div>
@@ -2475,7 +1914,7 @@ export default function MysqlDashboardPage() {
                             </div>
                           </div>
                           <div className={styles.replicationChartWrap}>
-                            <LineChart
+                            <EChartsLineChart
                               data={replicationTrendData}
                               metric={buildMetricItem(metricMap.mysql_slave_seconds_behind_master || dashboardMetrics[0])}
                               unit="s"
@@ -2509,7 +1948,7 @@ export default function MysqlDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
                       <div className={styles.panelHeader}>
                         <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide title="连接异常热点" items={errorHotspotGuide} className={styles.panelTitleWithGuide} /></h3>
+                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="连接异常热点" items={errorHotspotGuide} className={styles.panelTitleWithGuide} /></h3>
                           <div className={styles.panelSubTitle}>当前 5 分钟平均速率</div>
                         </div>
                       </div>
@@ -2565,7 +2004,7 @@ export default function MysqlDashboardPage() {
                   <div className={`${styles.panel} ${styles.fullPanel}`}>
                     <div className={styles.panelHeader}>
                       <div className={styles.panelHeading}>
-                        <h3 className={styles.panelTitle}><TitleWithGuide title="监控指标全景" items={metricsOverviewGuide} className={styles.panelTitleWithGuide} /></h3>
+                        <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="监控指标全景" items={metricsOverviewGuide} className={styles.panelTitleWithGuide} /></h3>
                       </div>
                     </div>
                     <MetricViews

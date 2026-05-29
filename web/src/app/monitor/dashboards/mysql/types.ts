@@ -1,24 +1,9 @@
 import { ChartData } from '@/app/monitor/types';
+import { BaseMetricConfig } from '../types';
 
-export type MetricUnit =
-  | 'counts'
-  | 'percent'
-  | 'cps'
-  | 's'
-  | 'bytes'
-  | 'byteps'
-  | 'ms'
-  | 'ops'
-  | 'permin';
+export type { MetricUnit, TrendLegendItem } from '../types';
 
-export interface MysqlMetricConfig {
-  name: string;
-  display_name: string;
-  description: string;
-  unit: MetricUnit;
-  query: string;
-  color: string;
-  dimensions?: Array<{ name: string; description: string }>;
+export interface MysqlMetricConfig extends BaseMetricConfig {
   groupId?: number | string;
 }
 
@@ -37,11 +22,4 @@ export interface MetricSection {
   key: string;
   title: string;
   metrics: MetricSeries[];
-}
-
-export interface TrendLegendItem {
-  label: string;
-  color: string;
-  primary?: boolean;
-  dashed?: boolean;
 }

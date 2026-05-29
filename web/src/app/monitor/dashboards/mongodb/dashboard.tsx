@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Select, Spin, Tooltip } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -14,9 +14,9 @@ import {
 } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
-import { Area, AreaChart, ResponsiveContainer } from 'recharts';
+import EChartsLineChart from '../widgets/echarts-line-chart';
+import { useECharts } from '../widgets/useECharts';
 import TimeSelector from '@/components/time-selector';
-import LineChart from '@/app/monitor/components/charts/lineChart';
 import useViewApi from '@/app/monitor/api/view';
 import MetricViews from '@/app/monitor/components/metric-views';
 import useMonitorApi from '@/app/monitor/api';
@@ -484,7 +484,6 @@ const mergeChartSeries = (
 };
 
 const MiniTrendChart = ({ data, color }: { data: ChartData[]; color: string }) => {
-  const gradientId = useId().replace(/:/g, '_');
   const chartData = useMemo(
     () =>
       data
@@ -496,23 +495,41 @@ const MiniTrendChart = ({ data, color }: { data: ChartData[]; color: string }) =
     [data]
   );
 
+  const option = useMemo(() => {
+    if (!chartData.length) return null;
+    return {
+      animation: false,
+      grid: { top: 2, right: 0, bottom: 2, left: 0 },
+      xAxis: { type: 'category' as const, show: false, data: chartData.map((p) => p.time) },
+      yAxis: { type: 'value' as const, show: false },
+      series: [{
+        type: 'line' as const,
+        data: chartData.map((p) => p.value),
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { width: 2, color },
+        areaStyle: {
+          color: {
+            type: 'linear' as const,
+            x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: `${color}3D` },
+              { offset: 1, color: `${color}05` }
+            ]
+          }
+        }
+      }],
+      tooltip: { show: false }
+    };
+  }, [chartData, color]);
+
+  const { containerRef } = useECharts(option);
+
   if (!chartData.length) {
     return <div className={styles.miniTrendPlaceholder} />;
   }
 
-  return (
-    <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={chartData} margin={{ top: 2, right: 0, bottom: 2, left: 0 }}>
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity={0.24} />
-            <stop offset="100%" stopColor={color} stopOpacity={0.02} />
-          </linearGradient>
-        </defs>
-        <Area type="monotone" dataKey="value" stroke={color} strokeWidth={2} fill={`url(#${gradientId})`} dot={false} activeDot={false} isAnimationActive={false} />
-      </AreaChart>
-    </ResponsiveContainer>
-  );
+  return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
 };
 
 const GuideTooltipContent = ({ items }: { items: GuideItem[] }) => (
@@ -1344,7 +1361,7 @@ export default function MongoDashboardPage() {
                     </div>
                   </div>
                   <div className={styles.chartWrap}>
-                    <LineChart
+                    <EChartsLineChart
                       data={buildThroughputSeries}
                       metric={buildMetricItem(metricMap.mongodb_commands_rate || { ...DASHBOARD_METRICS[4], viewData: [], loadState: 'success' })}
                       seriesStyles={TREND_LEGENDS.throughput.map((item) => ({ color: item.color, unit: 'ops/s' }))}
@@ -1373,7 +1390,7 @@ export default function MongoDashboardPage() {
                     </div>
                   </div>
                   <div className={styles.chartWrap}>
-                    <LineChart
+                    <EChartsLineChart
                       data={cacheTrendData}
                       unit={cacheTrendScale.label}
                       metric={buildMetricItem(metricMap.mongodb_wtcache_current_bytes || { ...DASHBOARD_METRICS[17], viewData: [], loadState: 'success' })}
@@ -1404,7 +1421,7 @@ export default function MongoDashboardPage() {
                     </div>
                   </div>
                   <div className={styles.chartWrap}>
-                    <LineChart
+                    <EChartsLineChart
                       data={pressureTrendData}
                       metric={buildMetricItem(metricMap.mongodb_active_reads || { ...DASHBOARD_METRICS[10], viewData: [], loadState: 'success' })}
                       seriesStyles={TREND_LEGENDS.pressure.map((item) => ({ color: item.color, unit: 'counts' }))}
@@ -1492,7 +1509,7 @@ export default function MongoDashboardPage() {
                     </div>
                   </div>
                   <div className={styles.chartWrap}>
-                    <LineChart
+                    <EChartsLineChart
                       data={networkTrendData}
                       unit={networkTrendScale.label}
                       metric={buildMetricItem(metricMap.mongodb_net_in_bytes_count_rate || { ...DASHBOARD_METRICS[22], viewData: [], loadState: 'success' })}

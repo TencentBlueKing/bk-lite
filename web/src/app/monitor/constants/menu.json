@@ -25,6 +25,26 @@
           "url": "/monitor/view/dashboard/mongodb",
           "name": "mongodb_dashboard",
           "isNotMenuItem": true
+        },
+        {
+          "url": "/monitor/view/dashboard/nginx",
+          "name": "nginx_dashboard",
+          "isNotMenuItem": true
+        },
+        {
+          "url": "/monitor/view/dashboard/mssql",
+          "name": "mssql_dashboard",
+          "isNotMenuItem": true
+        },
+        {
+          "url": "/monitor/view/dashboard/elasticsearch",
+          "name": "elasticsearch_dashboard",
+          "isNotMenuItem": true
+        },
+        {
+          "url": "/monitor/view/dashboard/postgres",
+          "name": "postgres_dashboard",
+          "isNotMenuItem": true
         }
       ]
     },
@@ -146,6 +166,26 @@
         {
           "url": "/monitor/view/dashboard/mongodb",
           "name": "mongodb_dashboard",
+          "isNotMenuItem": true
+        },
+        {
+          "url": "/monitor/view/dashboard/nginx",
+          "name": "nginx_dashboard",
+          "isNotMenuItem": true
+        },
+        {
+          "url": "/monitor/view/dashboard/mssql",
+          "name": "mssql_dashboard",
+          "isNotMenuItem": true
+        },
+        {
+          "url": "/monitor/view/dashboard/elasticsearch",
+          "name": "elasticsearch_dashboard",
+          "isNotMenuItem": true
+        },
+        {
+          "url": "/monitor/view/dashboard/postgres",
+          "name": "postgres_dashboard",
           "isNotMenuItem": true
         }
       ]
