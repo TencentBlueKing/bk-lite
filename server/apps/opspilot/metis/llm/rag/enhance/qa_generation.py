@@ -2,6 +2,7 @@ import json_repair
 from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate
 from langchain_openai import ChatOpenAI
 
+from apps.core.utils.ssrf_validator import SSRFValidator
 from apps.opspilot.metis.llm.rag.rag_enhance_entity import AnswerGenerateRequest, QAEnhanceRequest, QuestionGenerateRequest
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
 
@@ -34,6 +35,10 @@ class QAGeneration:
             },
         )
 
+        # SSRF 防护：验证 API base URL（宽松模式，允许内网 LLM 服务）
+        if req.openai_api_base:
+            SSRFValidator.validate_llm_endpoint(req.openai_api_base)
+
         llm = ChatOpenAI(model=req.model, base_url=req.openai_api_base, api_key=req.openai_api_key, temperature="0")
 
         prompt = ChatPromptTemplate.from_messages(
@@ -59,6 +64,10 @@ class QAGeneration:
             },
         )
 
+        # SSRF 防护：验证 API base URL（宽松模式，允许内网 LLM 服务）
+        if req.openai_api_base:
+            SSRFValidator.validate_llm_endpoint(req.openai_api_base)
+
         llm = ChatOpenAI(model=req.model, base_url=req.openai_api_base, api_key=req.openai_api_key, temperature="0")
 
         prompt = ChatPromptTemplate.from_messages(
@@ -83,6 +92,10 @@ class QAGeneration:
                 "extra_prompt": QAGeneration._escape_template_braces(req.extra_prompt),
             },
         )
+
+        # SSRF 防护：验证 API base URL（宽松模式，允许内网 LLM 服务）
+        if req.openai_api_base:
+            SSRFValidator.validate_llm_endpoint(req.openai_api_base)
 
         llm = ChatOpenAI(model=req.model, base_url=req.openai_api_base, api_key=req.openai_api_key, temperature="0")
 

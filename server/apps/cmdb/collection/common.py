@@ -204,10 +204,15 @@ class Management:
                     asso_info["dst_inst_name"] = dst_info["inst_name"]
                     assos_result["success"].append(asso_info)
             except Exception as e:
+                error_message = str(getattr(e, "message", e))
                 asso_info = self.set_asso_info(dst_id, src_info, dst_info)
                 asso_info["src_inst_name"] = src_info["inst_name"]
                 asso_info["dst_inst_name"] = dst_info["inst_name"]
-                asso_info.update({"src_info": src_info, "dst_info": dst_info, "error": str(getattr(e, "message", e))})
+                # 关联边已存在即为目标状态，幂等视为成功，避免重复采集把"已存在的关联"误报为失败
+                if error_message == "edge already exists":
+                    assos_result["success"].append(asso_info)
+                    continue
+                asso_info.update({"src_info": src_info, "dst_info": dst_info, "error": error_message})
                 assos_result["failed"].append(asso_info)
         return assos_result
 

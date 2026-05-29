@@ -5,11 +5,16 @@ import logging
 from openai import OpenAI
 from PIL import Image
 
+from apps.core.utils.ssrf_validator import SSRFValidator
+
 logger = logging.getLogger(__name__)
 
 
 class OlmOcr:
     def __init__(self, base_url: str, api_key: str, model="olmOCR-7B-0225-preview"):
+        # SSRF 防护：验证 API base URL（宽松模式，允许内网 LLM 服务）
+        if base_url:
+            SSRFValidator.validate_llm_endpoint(base_url)
         self.client = OpenAI(base_url=base_url, api_key=api_key)
         self.model = model
 

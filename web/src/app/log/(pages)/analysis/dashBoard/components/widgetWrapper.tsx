@@ -59,6 +59,72 @@ import {
   RedisTrendLine,
   RedisNodeCompareBar
 } from '../widgets/redis';
+import {
+  MongodbKpiCard,
+  MongodbBarLine,
+  MongodbBar,
+  MongodbPie,
+  MongodbTable,
+  MongodbTrend
+} from '../widgets/mongodb';
+import {
+  KafkaKpiCard,
+  KafkaBarLine,
+  KafkaBar,
+  KafkaPie,
+  KafkaTable,
+  KafkaTrend
+} from '../widgets/kafka';
+import {
+  ElasticsearchKpiCard,
+  ElasticsearchPie,
+  ElasticsearchTable,
+  ElasticsearchTrend
+} from '../widgets/elasticsearch';
+import {
+  SyslogKpiCard,
+  SyslogPie,
+  SyslogTable,
+  SyslogTrend
+} from '../widgets/syslog';
+import {
+  ApacheKpiCard,
+  ApachePie,
+  ApacheTable,
+  ApacheTrend
+} from '../widgets/apache';
+import {
+  PostgresqlKpiCard,
+  PostgresqlPie,
+  PostgresqlTable,
+  PostgresqlTrend
+} from '../widgets/postgresql';
+import {
+  NginxKpiCard,
+  NginxPie,
+  NginxTable,
+  NginxTrend
+} from '../widgets/nginx';
+import {
+  FileIntegrityKpiCard,
+  FileIntegrityPie,
+  FileIntegrityTable,
+  FileIntegrityTrend
+} from '../widgets/fileIntegrity';
+import {
+  RabbitmqBar,
+  RabbitmqKpiCard,
+  RabbitmqPie,
+  RabbitmqTable,
+  RabbitmqTrend
+} from '../widgets/rabbitmq';
+import {
+  WindowsEventBar,
+  WindowsEventKpiCard,
+  WindowsEventPie,
+  WindowsEventTable,
+  WindowsEventTrend
+} from '../widgets/windowsEvent';
 import { SearchParams } from '@/app/log/types/search';
 
 const buildInstanceFilterQuery = (
@@ -182,7 +248,219 @@ const componentMap: Record<string, React.ComponentType<any>> = {
   redisLogTable: RedisLogTable,
   redisInstanceBar: RedisInstanceBar,
   redisTrendLine: RedisTrendLine,
-  redisNodeCompareBar: RedisNodeCompareBar
+  redisNodeCompareBar: RedisNodeCompareBar,
+  mongodbKpiCard: MongodbKpiCard,
+  mongodbBarLine: MongodbBarLine,
+  mongodbBar: MongodbBar,
+  mongodbPie: MongodbPie,
+  mongodbTable: MongodbTable,
+  mongodbTrend: MongodbTrend,
+  kafkaKpiCard: KafkaKpiCard,
+  kafkaBarLine: KafkaBarLine,
+  kafkaBar: KafkaBar,
+  kafkaPie: KafkaPie,
+  kafkaTable: KafkaTable,
+  kafkaTrend: KafkaTrend,
+  elasticsearchKpiCard: ElasticsearchKpiCard,
+  elasticsearchPie: ElasticsearchPie,
+  elasticsearchTable: ElasticsearchTable,
+  elasticsearchTrend: ElasticsearchTrend,
+  syslogKpiCard: SyslogKpiCard,
+  syslogPie: SyslogPie,
+  syslogTable: SyslogTable,
+  syslogTrend: SyslogTrend,
+  apacheKpiCard: ApacheKpiCard,
+  apachePie: ApachePie,
+  apacheTable: ApacheTable,
+  apacheTrend: ApacheTrend,
+  postgresqlKpiCard: PostgresqlKpiCard,
+  postgresqlPie: PostgresqlPie,
+  postgresqlTable: PostgresqlTable,
+  postgresqlTrend: PostgresqlTrend,
+  nginxKpiCard: NginxKpiCard,
+  nginxPie: NginxPie,
+  nginxTable: NginxTable,
+  nginxTrend: NginxTrend,
+  fileIntegrityKpiCard: FileIntegrityKpiCard,
+  fileIntegrityPie: FileIntegrityPie,
+  fileIntegrityTable: FileIntegrityTable,
+  fileIntegrityTrend: FileIntegrityTrend,
+  rabbitmqBar: RabbitmqBar,
+  rabbitmqKpiCard: RabbitmqKpiCard,
+  rabbitmqPie: RabbitmqPie,
+  rabbitmqTable: RabbitmqTable,
+  rabbitmqTrend: RabbitmqTrend,
+  windowsEventBar: WindowsEventBar,
+  windowsEventKpiCard: WindowsEventKpiCard,
+  windowsEventPie: WindowsEventPie,
+  windowsEventTable: WindowsEventTable,
+  windowsEventTrend: WindowsEventTrend
+};
+
+const formatRatio = (value: number) => `${value.toFixed(1)}%`;
+
+const withTopRatios = (rows: any[], countField = 'count') => {
+  if (!Array.isArray(rows) || !rows.length) return rows;
+  const total = rows.reduce(
+    (sum, item) => sum + Number(item?.[countField] || 0),
+    0
+  );
+  if (!total) {
+    return rows.map((item) => ({ ...item, ratio: '0.0%' }));
+  }
+  return rows.map((item) => ({
+    ...item,
+    ratio: formatRatio((Number(item?.[countField] || 0) / total) * 100)
+  }));
+};
+
+const WINDOWS_EVENT_NAMES: Record<string, string> = {
+  '4624': '成功登录',
+  '4625': '登录失败',
+  '7031': '服务异常终止',
+  '1000': '应用程序错误',
+  '1102': '安全日志已清除'
+};
+
+const transformDataByMode = (data: any, config: any) => {
+  const mode = config?.dataSourceParams?.transformMode;
+  if (!mode) return data;
+
+  if (mode === 'esNodes') {
+    const serverRows = Array.isArray(data?.serverRows) ? data.serverRows : [];
+    const slowRows = Array.isArray(data?.slowRows) ? data.slowRows : [];
+    const slowCountMap = new Map(
+      slowRows.map((row: any) => [row.instance_id, Number(row.slow_count || 0)])
+    );
+
+    return serverRows.map((row: any) => ({
+      ...row,
+      slow_count:
+        slowCountMap.get(row['elasticsearch.server.node.name']) ||
+        slowCountMap.get(row.instance_id) ||
+        0,
+      gc_count: 0,
+      ratio: '0.0%'
+    }));
+  }
+
+  if (mode === 'mongoTopComponents' || mode === 'mongoTopMessages') {
+    return withTopRatios(data, 'count');
+  }
+
+  if (mode === 'mongoTopContexts') {
+    return withTopRatios(data, 'count');
+  }
+
+  if (mode === 'esTopComponents') {
+    const rows = Array.isArray(data) ? data : [];
+    const total = rows.reduce(
+      (sum, item) =>
+        sum + Number(item?.error_count || 0) + Number(item?.warn_count || 0),
+      0
+    );
+    if (!total) {
+      return rows.map((item) => ({ ...item, ratio: '0.0%' }));
+    }
+    return rows.map((item) => ({
+      ...item,
+      ratio: formatRatio(
+        ((Number(item?.error_count || 0) + Number(item?.warn_count || 0)) /
+          total) *
+          100
+      )
+    }));
+  }
+
+  if (mode === 'topRatios') {
+    const countField = config?.dataSourceParams?.countField || 'count';
+    return withTopRatios(data, countField);
+  }
+
+  if (mode === 'windowsEventIds') {
+    const rows = withTopRatios(Array.isArray(data) ? data : [], 'count');
+    return rows.map((item: any) => {
+      const eventId = String(item?.['winlog.event_id'] || item?.event_id || '');
+      return {
+        ...item,
+        event_id: eventId,
+        event_name: WINDOWS_EVENT_NAMES[eventId] || '其他事件'
+      };
+    });
+  }
+
+  if (mode === 'rabbitmqKeywordCounts') {
+    return Object.entries(data || {})
+      .map(([keyword_type, rows]) => {
+        const firstRow = Array.isArray(rows) ? rows[0] : null;
+        return {
+          keyword_type,
+          count: Number(firstRow?.count || 0)
+        };
+      })
+      .filter((item) => item.count > 0)
+      .sort((a, b) => b.count - a.count);
+  }
+
+  if (mode === 'rabbitmqRecentEvents') {
+    const rows = Array.isArray(data) ? data : [];
+    return rows.map((item) => {
+      const message = String(item?.['rabbitmq.log.message'] || item?._msg || '').toLowerCase();
+      const keyword =
+        (message.includes('access_refused') || message.includes('credential'))
+          ? 'auth'
+          : message.includes('connection')
+            ? 'connection'
+            : message.includes('channel')
+              ? 'channel'
+              : message.includes('queue')
+                ? 'queue'
+                : message.includes('heartbeat')
+                  ? 'heartbeat'
+                  : message.includes('memory')
+                    ? 'memory'
+                    : message.includes('cluster')
+                      ? 'cluster'
+                      : 'connection';
+      return {
+        ...item,
+        keyword_type: keyword
+      };
+    });
+  }
+
+  if (mode === 'statusGroupCounts') {
+    const labelMap: Record<string, string> = {
+      '2xx': '2xx',
+      '4xx': '4xx',
+      '5xx': '5xx'
+    };
+
+    return Object.entries(data || {})
+      .map(([key, rows]) => {
+        const firstRow = Array.isArray(rows) ? rows[0] : null;
+        return {
+          status_group: labelMap[key] || key,
+          count: Number(firstRow?.count || 0)
+        };
+      })
+      .filter((item) => item.count > 0)
+      .sort((a, b) => b.count - a.count);
+  }
+
+  if (mode === 'highRiskRatio') {
+    const rows = Array.isArray(data) ? data : [];
+    return rows.map((item) => {
+      const total = Number(item?.total_count || 0);
+      const high = Number(item?.high_count || 0);
+      return {
+        ...item,
+        ratio: total ? formatRatio((high / total) * 100) : '0.0%'
+      };
+    });
+  }
+
+  return data;
 };
 
 interface WidgetWrapperProps extends BaseWidgetProps {
@@ -226,14 +504,23 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       config?.displayMaps
     ]
   );
-
   const isKpiCard = [
     'dockerKpiCard',
     'flowKpiCard',
     'httpKpiCard',
     'kpiCard',
     'mysqlKpiCard',
-    'redisKpiCard'
+    'redisKpiCard',
+    'mongodbKpiCard',
+    'kafkaKpiCard',
+    'elasticsearchKpiCard',
+    'syslogKpiCard',
+    'apacheKpiCard',
+    'postgresqlKpiCard',
+    'nginxKpiCard',
+    'fileIntegrityKpiCard',
+    'rabbitmqKpiCard',
+    'windowsEventKpiCard'
   ].includes(chartType || '');
 
   // 保持 ref 与最新 props 同步
@@ -275,7 +562,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   ]);
 
   useEffect(() => {
-    if (config?.dataSource && !isLoading && otherConfig.groupIds) {
+    if (
+      config?.dataSource &&
+      !isLoading &&
+      otherConfig.groupIds
+    ) {
       fetchData();
     }
   }, [
@@ -414,7 +705,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         });
         data = await getLogs(params, { signal: abortController.signal });
       }
-      setRawData(data);
+      setRawData(transformDataByMode(data, config));
 
       // KPI 卡片额外拉上一周期数据
       if (isKpiCard && times?.length === 2 && times[0] && times[1]) {
@@ -442,7 +733,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
               signal: prevAbortController.signal
             });
           }
-          setPrevData(prevResult);
+          setPrevData(transformDataByMode(prevResult, config));
         } catch (err: any) {
           if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED')
             return;

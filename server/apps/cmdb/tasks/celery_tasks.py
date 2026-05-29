@@ -127,19 +127,22 @@ def sync_collect_task(instance_id):
                         last_time = i["__time__"]
             collect_digest["last_time"] = last_time
 
-            # 根据写入失败数升级任务状态：
-            # - 任一操作有数据但全部写入失败 → ERROR（写入侧完全失败，掩盖真实问题最危险）
-            # - 否则只要存在 *_error > 0 → PARTIAL_SUCCESS（部分写入失败，需运维感知）
+            # 任务状态判定以"整体成败"为口径，而非单个操作类型是否全挂：
+            # - 实例数据(add/update/delete)有要写、但成功 0 条 → ERROR（写库整体失败，最危险）
+            # - 否则只要存在任意失败(含 association) → PARTIAL_SUCCESS（部分成功，需运维感知）
             # - 全部成功 → 保持 SUCCESS
-            op_keys = ("add", "update", "delete", "association")
-            totals = {k: collect_digest.get(k, 0) for k in op_keys}
-            errors = {k: collect_digest.get(f"{k}_error", 0) for k in op_keys}
-            has_full_failure = any(totals[k] > 0 and totals[k] == errors[k] for k in op_keys)
-            has_any_failure = any(errors[k] > 0 for k in op_keys)
-            if has_full_failure:
+            # 注：association 失败不单独升级为 ERROR（目标实例未采到等场景常见且非致命）。
+            data_keys = ("add", "update", "delete")
+            data_total = sum(collect_digest.get(k, 0) for k in data_keys)
+            data_error = sum(collect_digest.get(f"{k}_error", 0) for k in data_keys)
+            data_success = data_total - data_error
+            any_failure = any(
+                collect_digest.get(f"{k}_error", 0) > 0 for k in ("add", "update", "delete", "association")
+            )
+            if data_total > 0 and data_success == 0:
                 instance.exec_status = CollectRunStatusType.ERROR
-                collect_digest["message"] = "存在写入完全失败的操作，请检查 add/update/delete/association 错误数"
-            elif has_any_failure:
+                collect_digest["message"] = "实例数据写入全部失败，请检查 add/update/delete 错误数"
+            elif any_failure:
                 instance.exec_status = CollectRunStatusType.PARTIAL_SUCCESS
                 collect_digest["message"] = "部分数据写入失败，请检查 add/update/delete/association 错误数"
         instance.collect_digest = collect_digest

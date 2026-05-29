@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import { Empty } from 'antd';
 import useChartColors from './useChartColors';
+import { createHorizontalBarGradient } from '../chartStyle';
 
 const trimTrailingZeros = (value: string) =>
   value.replace(/\.0+$|(?<=\.\d*[1-9])0+$/g, '');
@@ -116,31 +117,11 @@ const DockerBarChart: React.FC<DockerBarChartProps> = ({
           barMaxWidth: 16,
           itemStyle: {
             borderRadius: [0, 3, 3, 0],
-            color: {
-              type: 'linear',
-              x: 0,
-              y: 0,
-              x2: 1,
-              y2: 0,
-              colorStops: [
-                { offset: 0, color: barColor + '60' },
-                { offset: 1, color: barColor }
-              ]
-            }
+            color: createHorizontalBarGradient(barColor)
           },
           emphasis: {
             itemStyle: {
-              color: {
-                type: 'linear',
-                x: 0,
-                y: 0,
-                x2: 1,
-                y2: 0,
-                colorStops: [
-                  { offset: 0, color: barColor + '80' },
-                  { offset: 1, color: barColor }
-                ]
-              }
+              color: createHorizontalBarGradient(barColor)
             }
           },
           label: {
