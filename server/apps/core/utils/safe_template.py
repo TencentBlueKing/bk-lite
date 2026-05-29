@@ -14,6 +14,9 @@
 import re
 from typing import Any
 
+from jinja2 import BaseLoader, DebugUndefined
+from jinja2.sandbox import SandboxedEnvironment
+
 from apps.core.logger import logger
 
 
@@ -134,3 +137,41 @@ def safe_render(template_str: str, context: dict[str, Any]) -> str:
             return ""
 
     return SAFE_VAR_PATTERN.sub(replace_var, template_str)
+
+
+# ============================================================
+# 方案 C：安全 Jinja2 沙箱环境（需要完整模板能力时使用）
+# ============================================================
+
+
+def build_sandboxed_env(
+    loader=None,
+    undefined=DebugUndefined,
+    extra_filters: dict | None = None,
+) -> SandboxedEnvironment:
+    """
+    构建安全 Jinja2 沙箱环境，供需要完整 Jinja2 模板能力的模块使用。
+
+    防护能力：
+    - 使用 SandboxedEnvironment 阻断属性链攻击（__globals__, __class__ 等）
+    - 清空 globals（移除 cycler/joiner/namespace/lipsum 等可被利用的内置对象）
+    - 清空默认 filters 和 tests，仅保留调用方显式声明的 filters
+
+    Args:
+        loader: Jinja2 模板加载器，默认 BaseLoader
+        undefined: 未定义变量处理策略，默认 DebugUndefined
+        extra_filters: 额外允许的过滤器字典
+
+    Returns:
+        配置好的 SandboxedEnvironment 实例
+    """
+    env = SandboxedEnvironment(
+        loader=loader or BaseLoader(),
+        undefined=undefined,
+    )
+    env.globals.clear()
+    env.filters.clear()
+    env.tests.clear()
+    if extra_filters:
+        env.filters.update(extra_filters)
+    return env

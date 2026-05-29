@@ -731,7 +731,9 @@
     "choicePlaceholder": "Please select...",
     "choiceConfirm": "Confirm",
     "choiceTimeout": "Timed Out",
-    "choiceSelected": "Selected"
+    "choiceSelected": "Selected",
+    "choiceOrType": "Or type your answer",
+    "choiceTextPlaceholder": "Type your answer..."
   },
   "settings": {
     "secret": {

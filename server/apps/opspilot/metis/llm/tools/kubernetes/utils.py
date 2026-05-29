@@ -3,11 +3,25 @@
 import base64
 import io
 import os
+import threading
 
 import yaml
 from kubernetes import config
 
 from apps.core.logger import opspilot_logger as logger
+
+# 线程局部存储，用于传递当前操作的集群名
+_thread_local = threading.local()
+
+
+def get_current_cluster_name() -> str:
+    """获取当前线程操作的集群名称"""
+    return getattr(_thread_local, "cluster_name", "")
+
+
+def _set_current_cluster_name(name: str):
+    """设置当前线程操作的集群名称"""
+    _thread_local.cluster_name = name
 
 
 def _resolve_file_to_inline_data(obj, file_key, data_key, base64_encode=True):
@@ -149,6 +163,7 @@ def prepare_context(cfg):
                     instance_name=configurable.get("instance_name"),
                     instance_id=configurable.get("instance_id"),
                 )
+                _set_current_cluster_name(instance.get("name", ""))
                 kubeconfig_data = instance.get("kubeconfig_data", "")
                 if kubeconfig_data:
                     if isinstance(kubeconfig_data, str):
@@ -178,6 +193,16 @@ def prepare_context(cfg):
             except Exception:
                 # 如果默认路径失败，尝试集群内配置
                 config.load_incluster_config()
+
+        # 尝试从已加载的 kubeconfig 中获取集群名
+        if not get_current_cluster_name():
+            try:
+                _, active_context = config.list_kube_config_contexts()
+                if active_context:
+                    _set_current_cluster_name(active_context.get("context", {}).get("cluster", "")
+                                             or active_context.get("name", ""))
+            except Exception:
+                pass
     except Exception as e:
         logger.exception(e)
         raise Exception(f"无法加载 Kubernetes 配置: {str(e)}. " "请检查 kubeconfig 配置内容或集群连接。")
