@@ -25,7 +25,7 @@ from apps.system_mgmt.models import User
 from apps.core.logger import node_logger as logger
 from apps.node_mgmt.services.sidecar import Sidecar
 from apps.rpc.system_mgmt import SystemMgmt
-from jinja2 import Template as JinjaTemplate
+from apps.core.utils.safe_template import build_sandboxed_env
 
 
 class NodeService:
@@ -314,7 +314,7 @@ class NodeService:
                     logger.info(f"Node {node.id} is a container node, appending add_config for {collector.name}")
 
             # 渲染模板
-            tpl = JinjaTemplate(config_template)
+            tpl = build_sandboxed_env().from_string(config_template)
             rendered_config = tpl.render(variables)
 
             # 创建配置
