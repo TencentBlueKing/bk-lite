@@ -716,13 +716,15 @@
 
 .dataFlowPanel {
   margin-bottom: 12px;
+  overflow-x: auto;
 }
 
 .mysqlFlowModel {
   display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  grid-template-columns: 0.95fr 1.05fr;
   gap: 18px;
   align-items: stretch;
+  min-width: 1100px;
 }
 
 .mysqlFlowScene {
@@ -758,7 +760,7 @@
 .mysqlRequestPath {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(142px, 1fr) 34px minmax(142px, 1fr) 34px minmax(142px, 1fr) 34px minmax(142px, 1fr);
+  grid-template-columns: minmax(120px, 1fr) 34px minmax(120px, 1fr) 34px minmax(120px, 1fr) 34px minmax(120px, 1fr);
   gap: 12px;
   align-items: center;
   width: 100%;
@@ -981,7 +983,7 @@
 
 .innodbInner {
   display: grid;
-  grid-template-columns: minmax(190px, 0.9fr) 38px minmax(190px, 0.85fr) 38px minmax(206px, 1fr);
+  grid-template-columns: minmax(156px, 0.9fr) 38px minmax(156px, 0.85fr) 38px minmax(170px, 1fr);
   gap: 12px;
   align-items: stretch;
   padding: 8px 0 0;

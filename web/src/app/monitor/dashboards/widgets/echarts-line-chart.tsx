@@ -224,11 +224,18 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
 
   getInstanceRef.current = getInstance;
 
-  if (!data.length || !areaKeys.length) {
-    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ margin: '20px 0' }} />;
-  }
+  const isEmpty = !data.length || !areaKeys.length;
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
+  return (
+    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      {isEmpty && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default EChartsLineChart;
