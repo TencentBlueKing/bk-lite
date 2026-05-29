@@ -1,0 +1,136 @@
+"""
+安全模板渲染工具
+
+基于 OWASP 和 Jinja2 官方安全指南：
+- 方案 A：白名单变量替换（推荐，最安全）
+- 方案 B：严格配置的 SandboxedEnvironment（备选）
+
+防护能力：
+1. 危险模式检测（dunder、cycler/joiner/namespace、控制语句、过滤器等）
+2. 白名单变量替换（仅允许简单变量插值）
+3. 阻止所有已知 SSTI bypass 技术
+"""
+
+import re
+from typing import Any
+
+from apps.core.logger import logger
+
+
+class TemplateSecurityError(ValueError):
+    """模板安全校验失败异常"""
+
+    pass
+
+
+# ============================================================
+# 危险模式检测（基于已知 SSTI bypass 技术）
+# ============================================================
+
+DANGEROUS_PATTERNS: list[tuple[str, str]] = [
+    # Python 内省
+    (r"__\w+__", "dunder 属性访问 (如 __class__, __globals__)"),
+    (r"\bmro\b", "MRO 链访问"),
+    (r"\bbase\b", "base 类访问"),
+    (r"\bsubclasses\b", "subclasses 枚举"),
+    # Jinja2 特殊对象
+    (r"\bcycler\b", "cycler 对象（可访问 __globals__）"),
+    (r"\bjoiner\b", "joiner 对象（可访问 __globals__）"),
+    (r"\bnamespace\b", "namespace 对象（可访问 __globals__）"),
+    (r"\blipsum\b", "lipsum 对象（可访问 __globals__）"),
+    # 危险函数/模块
+    (r"\beval\b", "eval 函数"),
+    (r"\bexec\b", "exec 函数"),
+    (r"\bimport\b", "import 语句"),
+    (r"\bopen\b", "open 函数"),
+    (r"\bpopen\b", "popen 命令执行"),
+    (r"\bsubprocess\b", "subprocess 模块"),
+    (r"\bos\s*\.", "os 模块访问"),
+    (r"\bsys\s*\.", "sys 模块访问"),
+    (r"\bbuiltins\b", "builtins 访问"),
+    (r"\bglobals\b", "globals 访问"),
+    (r"\bgetattr\b", "getattr 函数"),
+    (r"\bsetattr\b", "setattr 函数"),
+    (r"\bdelattr\b", "delattr 函数"),
+    # Jinja2 语法
+    (r"\{%", "Jinja2 控制语句"),
+    (r"\|", "Jinja2 过滤器"),
+    (r"\[", "下标/切片访问"),
+    (r"\(", "函数调用"),
+    # Flask/Web 对象
+    (r"\brequest\b", "request 对象"),
+    (r"\bconfig\b", "config 对象"),
+    (r"\bself\b", "self 引用"),
+    (r"\burl_for\b", "url_for 函数"),
+    (r"\bg\b", "Flask g 对象"),
+]
+
+
+def check_dangerous_patterns(template_str: str) -> None:
+    """
+    检测模板中的危险模式
+
+    Args:
+        template_str: 模板字符串
+
+    Raises:
+        TemplateSecurityError: 发现危险模式时抛出
+    """
+    template_lower = template_str.lower()
+    for pattern, description in DANGEROUS_PATTERNS:
+        if re.search(pattern, template_lower, re.IGNORECASE):
+            logger.warning(f"[SSTI] 检测到危险模式: {description}, template={template_str[:100]}...")
+            raise TemplateSecurityError(f"模板包含禁止的模式: {description}")
+
+
+# ============================================================
+# 方案 A：白名单变量替换（推荐）
+# ============================================================
+
+# 允许的变量模式：{{ variable }} 或 {{ variable.property.subprop }}
+SAFE_VAR_PATTERN = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)\s*\}\}")
+
+
+def safe_render(template_str: str, context: dict[str, Any]) -> str:
+    """
+    安全的模板变量替换，仅支持简单变量插值。
+
+    允许: {{ last_message }}, {{ user.name }}, {{ memory_context }}
+    禁止: {{ foo.__class__ }}, {{ foo|filter }}, {% if %}, {{ foo[0] }}, {{ foo() }}
+
+    Args:
+        template_str: 模板字符串
+        context: 变量上下文
+
+    Returns:
+        渲染后的字符串
+
+    Raises:
+        TemplateSecurityError: 模板包含危险模式
+    """
+    if not template_str:
+        return template_str
+
+    # 1. 检测危险模式
+    check_dangerous_patterns(template_str)
+
+    # 2. 仅替换白名单变量
+    def replace_var(match: re.Match) -> str:
+        var_path = match.group(1)
+        value: Any = context
+        try:
+            for part in var_path.split("."):
+                # 禁止访问私有属性
+                if part.startswith("_"):
+                    return ""
+                if isinstance(value, dict):
+                    value = value.get(part, "")
+                elif hasattr(value, part):
+                    value = getattr(value, part)
+                else:
+                    return ""
+            return str(value) if value is not None else ""
+        except Exception:
+            return ""
+
+    return SAFE_VAR_PATTERN.sub(replace_var, template_str)

@@ -6,9 +6,8 @@ import json
 import time
 from typing import Any, Dict
 
-import jinja2
-
 from apps.core.logger import opspilot_logger as logger
+from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 from apps.opspilot.models import LLMModel, LLMSkill
 from apps.opspilot.services.chat_service import ChatService, chat_service
 from apps.opspilot.utils.agent_factory import create_agent_instance
@@ -84,11 +83,13 @@ class AgentNode(BaseNodeExecutor):
             logger.info(
                 f"[Agent] 节点 {node_id} 模板变量: keys={list(template_context.keys())}, memory_context长度={len(memory_context) if memory_context else 0}"
             )
-            template = jinja2.Template(prompt)
-            rendered = template.render(**template_context)
+            rendered = safe_render(prompt, template_context)
             if memory_context and "memory_context" in prompt:
                 logger.info(f"[Agent] 节点 {node_id} prompt 中使用了 memory_context")
             return rendered
+        except TemplateSecurityError as e:
+            logger.error(f"智能体节点 {node_id} prompt安全校验失败: {str(e)}")
+            raise ValueError(f"模板包含不安全内容: {e}")
         except Exception as e:
             logger.error(f"智能体节点 {node_id} prompt渲染失败: {str(e)}")
             return prompt
