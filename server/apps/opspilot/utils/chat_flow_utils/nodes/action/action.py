@@ -1,13 +1,14 @@
 """
 动作节点（HTTP请求、定时任务等）
 """
+
 import json
 from typing import Any, Dict
 
-import jinja2
 import requests
 
 from apps.core.logger import opspilot_logger as logger
+from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.rpc.system_mgmt import SystemMgmt
 
@@ -16,7 +17,7 @@ class HttpActionNode(BaseNodeExecutor):
     """支持模板变量的HTTP请求节点"""
 
     def _render_template(self, content: str, node_id: str, template_context: Dict[str, Any]) -> str:
-        """使用Jinja2渲染模板
+        """使用安全模板渲染
 
         Args:
             content: 待渲染内容
@@ -30,8 +31,10 @@ class HttpActionNode(BaseNodeExecutor):
             return content
 
         try:
-            template = jinja2.Template(str(content))
-            return template.render(**template_context)
+            return safe_render(str(content), template_context)
+        except TemplateSecurityError as e:
+            logger.error(f"HTTP节点 {node_id} 模板安全校验失败: {e}")
+            raise ValueError(f"模板包含不安全内容: {e}")
         except Exception as e:
             logger.warning(f"HTTP节点 {node_id} 模板渲染失败: {e}")
             return content
@@ -170,8 +173,10 @@ class NotifyNode(BaseNodeExecutor):
 
         try:
             template_context = self.variable_manager.get_all_variables()
-            template = jinja2.Template(str(content))
-            return template.render(**template_context)
+            return safe_render(str(content), template_context)
+        except TemplateSecurityError as e:
+            logger.error(f"通知节点 {node_id} 模板安全校验失败: {e}")
+            raise ValueError(f"模板包含不安全内容: {e}")
         except Exception as e:
             logger.warning(f"通知节点 {node_id} 内容渲染失败: {e}")
             return content
