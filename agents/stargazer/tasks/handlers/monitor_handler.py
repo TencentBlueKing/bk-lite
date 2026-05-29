@@ -183,3 +183,49 @@ async def collect_oceanstor_metrics_task(
             "monitor_type": "oceanstor",
             "completed_at": int(time.time() * 1000),
         }
+
+
+async def collect_host_metrics_task(
+    ctx: Dict, params: Dict[str, Any], task_id: str
+) -> Dict[str, Any]:
+    logger.info(f"[Host Task] Processing: {task_id}")
+
+    try:
+        from tasks.collectors.host_collector import HostCollector
+        from tasks.utils.nats_helper import publish_metrics_to_nats
+
+        collector = HostCollector(params)
+        metrics_data = await collector.collect()
+
+        logger.info(
+            f"[Host Task] {task_id} completed, data size: {len(metrics_data)} bytes"
+        )
+
+        await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
+
+        return {
+            "task_id": task_id,
+            "status": "success",
+            "monitor_type": "host",
+            "data_size": len(metrics_data),
+            "completed_at": int(time.time() * 1000),
+        }
+
+    except Exception as e:
+        logger.error(
+            f"[Host Task] {task_id} failed: {str(e)}\n{traceback.format_exc()}"
+        )
+
+        from tasks.utils.nats_helper import publish_metrics_to_nats
+        from tasks.utils.metrics_helper import generate_monitor_error_metrics
+
+        error_metrics = generate_monitor_error_metrics(params, e)
+        await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
+
+        return {
+            "task_id": task_id,
+            "status": "failed",
+            "error": str(e),
+            "monitor_type": "host",
+            "completed_at": int(time.time() * 1000),
+        }
