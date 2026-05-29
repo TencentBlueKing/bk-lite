@@ -19,6 +19,9 @@ import BrowserStepProgress from './BrowserStepProgress';
 import AgentStepProgress from './AgentStepProgress';
 import ApprovalCard from './ApprovalCard';
 import UserChoiceCard from './UserChoiceCard';
+import DiffReportCard from './DiffReportCard';
+import ReportDownloadCard from './ReportDownloadCard';
+import RepairCommandsCard from './RepairCommandsCard';
 import {Annotation, CustomChatMessage} from '@/app/opspilot/types/global';
 import {useSession} from 'next-auth/react';
 import {useAuth} from '@/context/auth';
@@ -349,7 +352,17 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         
         const group = groupHeader.closest('.tool-call-group') as HTMLElement | null;
         if (group) {
-          group.classList.toggle('expanded');
+          const body = group.querySelector('.tool-call-group-body') as HTMLElement | null;
+          if (body) {
+            const isHidden = body.style.display === 'none';
+            body.style.display = isHidden ? '' : 'none';
+          }
+          // 旋转箭头图标
+          const expandIcon = groupHeader.querySelector('.tool-call-expand-icon') as HTMLElement | null;
+          if (expandIcon) {
+            const isExpanded = expandIcon.style.transform === 'rotate(90deg)';
+            expandIcon.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(90deg)';
+          }
         }
         return;
       }
@@ -362,7 +375,17 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         
         const item = itemHeader.closest('.tool-call-item') as HTMLElement | null;
         if (item && item.getAttribute('data-has-detail') === 'true') {
-          item.classList.toggle('expanded');
+          const detail = item.querySelector('.tool-call-item-detail') as HTMLElement | null;
+          if (detail) {
+            const isHidden = detail.style.display === 'none';
+            detail.style.display = isHidden ? '' : 'none';
+          }
+          // 旋转箭头图标
+          const expandIcon = itemHeader.querySelector('.tool-call-item-expand-icon') as HTMLElement | null;
+          if (expandIcon) {
+            const isExpanded = expandIcon.style.transform === 'rotate(90deg)';
+            expandIcon.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(90deg)';
+          }
         }
         return;
       }
@@ -477,11 +500,201 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }, [updateMessages]);
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, agentStepProgress } = msg;
+    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, reportFileDownloads, repairCommands, agentStepProgress } = msg;
 
     let replacedContent = parseReferenceLinks(content || '');
     replacedContent = parseSuggestionLinks(replacedContent);
-    const html = sanitizeHtml(md.render(replacedContent));
+
+    // Split content at placeholder markers and render components inline
+    const renderContentWithInlineComponents = () => {
+      if (!content) return null;
+
+      // Check if content has inline markers
+      const markerPattern = /<!--(CONFIG_DIFF|USER_CHOICE):([^-]+)-->/g;
+      const hasMarkers = markerPattern.test(replacedContent);
+
+      if (!hasMarkers) {
+        // No markers — render as single block with fallback positions
+        const html = sanitizeHtml(md.render(replacedContent));
+        return (
+          <>
+            <div
+              dangerouslySetInnerHTML={{ __html: html }}
+              className={styles.markdownBody}
+              onClick={e => {
+                handleToolCallClick(e);
+                handleReferenceClick(e);
+                handleSuggestionClick(e);
+              }}
+            />
+            {Array.isArray(configDiffReports) && configDiffReports.length > 0 && (
+              <div className="mt-2">
+                {[...configDiffReports].sort((a, b) => (a.received_at || 0) - (b.received_at || 0)).map(report => (
+                  <DiffReportCard key={report.report_id} report={report} />
+                ))}
+              </div>
+            )}
+            {Array.isArray(reportFileDownloads) && reportFileDownloads.length > 0 && (
+              <div className="mt-2">
+                {reportFileDownloads.map(dl => (
+                  <ReportDownloadCard key={dl.download_id} download={dl} />
+                ))}
+              </div>
+            )}
+            {Array.isArray(repairCommands) && repairCommands.length > 0 && (
+              <div className="mt-2">
+                {repairCommands.map(cmd => (
+                  <RepairCommandsCard key={cmd.commands_id} commands={cmd} />
+                ))}
+              </div>
+            )}
+            {Array.isArray(approvalRequests) && approvalRequests.length > 0 && (
+              <div className="mt-2">
+                {approvalRequests.map(req => (
+                  <ApprovalCard
+                    key={req.tool_call_id}
+                    request={req}
+                    token={token || ''}
+                    onDecision={handleApprovalDecision}
+                  />
+                ))}
+              </div>
+            )}
+            {Array.isArray(userChoiceRequests) && userChoiceRequests.length > 0 && (
+              <div className="mt-2">
+                {userChoiceRequests.map(req => (
+                  <UserChoiceCard
+                    key={req.choice_id}
+                    request={req}
+                    token={token || ''}
+                    onSubmit={handleUserChoiceSubmit}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        );
+      }
+
+      // Has markers — split and interleave
+      const segments = replacedContent.split(/<!--(?:CONFIG_DIFF|USER_CHOICE):[^-]+-->/);
+      const markers: Array<{ type: string; id: string }> = [];
+      let match;
+      const re = /<!--(CONFIG_DIFF|USER_CHOICE):([^-]+)-->/g;
+      while ((match = re.exec(replacedContent)) !== null) {
+        markers.push({ type: match[1], id: match[2] });
+      }
+
+      // Track which reports/choices are rendered inline
+      const renderedDiffIds = new Set<string>();
+      const renderedChoiceIds = new Set<string>();
+
+      const elements: React.ReactNode[] = [];
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i].trim();
+        if (segment) {
+          const segHtml = sanitizeHtml(md.render(segment));
+          elements.push(
+            <div
+              key={`seg-${i}`}
+              dangerouslySetInnerHTML={{ __html: segHtml }}
+              className={styles.markdownBody}
+              onClick={e => {
+                handleToolCallClick(e);
+                handleReferenceClick(e);
+                handleSuggestionClick(e);
+              }}
+            />
+          );
+        }
+        // Render the marker component after this segment
+        if (i < markers.length) {
+          const marker = markers[i];
+          if (marker.type === 'CONFIG_DIFF') {
+            const report = configDiffReports?.find(r => r.report_id === marker.id);
+            if (report) {
+              renderedDiffIds.add(marker.id);
+              elements.push(<DiffReportCard key={`diff-${marker.id}`} report={report} />);
+            }
+          } else if (marker.type === 'USER_CHOICE') {
+            const req = userChoiceRequests?.find(r => r.choice_id === marker.id);
+            if (req) {
+              renderedChoiceIds.add(marker.id);
+              elements.push(
+                <UserChoiceCard
+                  key={`choice-${marker.id}`}
+                  request={req}
+                  token={token || ''}
+                  onSubmit={handleUserChoiceSubmit}
+                />
+              );
+            }
+          }
+        }
+      }
+
+      // Render any remaining items not matched by markers (fallback)
+      const remainingDiffs = configDiffReports?.filter(r => !renderedDiffIds.has(r.report_id)) || [];
+      const remainingChoices = userChoiceRequests?.filter(r => !renderedChoiceIds.has(r.choice_id)) || [];
+
+      if (remainingDiffs.length > 0) {
+        elements.push(
+          <div key="remaining-diffs" className="mt-2">
+            {remainingDiffs.map(report => (
+              <DiffReportCard key={report.report_id} report={report} />
+            ))}
+          </div>
+        );
+      }
+      if (Array.isArray(reportFileDownloads) && reportFileDownloads.length > 0) {
+        elements.push(
+          <div key="file-downloads" className="mt-2">
+            {reportFileDownloads.map(dl => (
+              <ReportDownloadCard key={dl.download_id} download={dl} />
+            ))}
+          </div>
+        );
+      }
+      if (Array.isArray(repairCommands) && repairCommands.length > 0) {
+        elements.push(
+          <div key="repair-commands" className="mt-2">
+            {repairCommands.map(cmd => (
+              <RepairCommandsCard key={cmd.commands_id} commands={cmd} />
+            ))}
+          </div>
+        );
+      }
+      if (Array.isArray(approvalRequests) && approvalRequests.length > 0) {
+        elements.push(
+          <div key="approvals" className="mt-2">
+            {approvalRequests.map(req => (
+              <ApprovalCard
+                key={req.tool_call_id}
+                request={req}
+                token={token || ''}
+                onDecision={handleApprovalDecision}
+              />
+            ))}
+          </div>
+        );
+      }
+      if (remainingChoices.length > 0) {
+        elements.push(
+          <div key="remaining-choices" className="mt-2">
+            {remainingChoices.map(req => (
+              <UserChoiceCard
+                key={req.choice_id}
+                request={req}
+                token={token || ''}
+                onSubmit={handleUserChoiceSubmit}
+              />
+            ))}
+          </div>
+        );
+      }
+
+      return <>{elements}</>;
+    };
 
     return (
       <>
@@ -508,41 +721,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         {browserStepsHistory && browserStepsHistory.steps.length > 0 && (
           <BrowserStepProgress history={browserStepsHistory} />
         )}
-        {content && (
-          <div
-            dangerouslySetInnerHTML={{ __html: html }}
-            className={styles.markdownBody}
-            onClick={e => {
-              handleToolCallClick(e);
-              handleReferenceClick(e);
-              handleSuggestionClick(e);
-            }}
-          />
-        )}
-        {Array.isArray(approvalRequests) && approvalRequests.length > 0 && (
-          <div className="mt-2">
-            {approvalRequests.map(req => (
-              <ApprovalCard
-                key={req.tool_call_id}
-                request={req}
-                token={token || ''}
-                onDecision={handleApprovalDecision}
-              />
-            ))}
-          </div>
-        )}
-        {Array.isArray(userChoiceRequests) && userChoiceRequests.length > 0 && (
-          <div className="mt-2">
-            {userChoiceRequests.map(req => (
-              <UserChoiceCard
-                key={req.choice_id}
-                request={req}
-                token={token || ''}
-                onSubmit={handleUserChoiceSubmit}
-              />
-            ))}
-          </div>
-        )}
+        {renderContentWithInlineComponents()}
         {Array.isArray(knowledgeBase) && knowledgeBase.length ? (
           <KnowledgeBase knowledgeList={knowledgeBase} />
         ) : null}

@@ -9,6 +9,9 @@ import {
   ApprovalRequestValue,
   BrowserStepProgressValue,
   BrowserTaskReceivedValue,
+  ConfigDiffReportValue,
+  RepairCommandsValue,
+  ReportFileDownloadValue,
   SubAgentProgressValue,
   UserChoiceRequestValue
 } from '@/app/opspilot/types/chat';
@@ -17,7 +20,10 @@ import {
   ApprovalRequest,
   BrowserStepProgressData,
   BrowserStepsHistory,
+  ConfigDiffReport,
   CustomChatMessage,
+  RepairCommands,
+  ReportFileDownload,
   UserChoiceRequest
 } from '@/app/opspilot/types/global';
 import {
@@ -37,7 +43,11 @@ export interface MessageUpdateFn {
 type ContentBlock =
   | { type: 'text'; content: string }
   | { type: 'toolCall'; id: string }
-  | { type: 'thinking' };
+  | { type: 'thinking' }
+  | { type: 'configDiff'; reportId: string }
+  | { type: 'fileDownload'; downloadId: string }
+  | { type: 'repairCommands'; commandsId: string }
+  | { type: 'userChoice'; choiceId: string };
 
 export class AGUIMessageHandler {
   private contentBlocks: ContentBlock[] = [];
@@ -51,6 +61,9 @@ export class AGUIMessageHandler {
   private browserStepsHistory: BrowserStepProgressData[] = [];
   private approvalRequests: ApprovalRequest[] = [];
   private userChoiceRequests: UserChoiceRequest[] = [];
+  private configDiffReports: ConfigDiffReport[] = [];
+  private reportFileDownloads: ReportFileDownload[] = [];
+  private repairCommandsList: RepairCommands[] = [];
   private agentStepProgressList: AgentStepProgressData[] = [];
 
   constructor(
@@ -103,6 +116,15 @@ export class AGUIMessageHandler {
                 return existing && existing.status !== 'pending' ? existing : req;
               })
               : msgItem.userChoiceRequests,
+            configDiffReports: this.configDiffReports.length > 0
+              ? this.configDiffReports
+              : msgItem.configDiffReports,
+            reportFileDownloads: this.reportFileDownloads.length > 0
+              ? this.reportFileDownloads
+              : msgItem.reportFileDownloads,
+            repairCommands: this.repairCommandsList.length > 0
+              ? this.repairCommandsList
+              : msgItem.repairCommands,
             updateAt: new Date().toISOString()
           }
           : msgItem
@@ -149,6 +171,24 @@ export class AGUIMessageHandler {
         if (toolInfo) {
           pendingToolCalls.set(block.id, toolInfo);
         }
+      } else if (block.type === 'configDiff') {
+        flushToolCalls();
+        // Insert placeholder marker for React component rendering
+        parts.push(`\n\n<!--CONFIG_DIFF:${block.reportId}-->`);
+        lastBlockType = 'configDiff';
+      } else if (block.type === 'fileDownload') {
+        flushToolCalls();
+        // File download cards are rendered via reportFileDownloads, no inline marker needed
+        lastBlockType = 'fileDownload';
+      } else if (block.type === 'repairCommands') {
+        flushToolCalls();
+        // Repair commands rendered via repairCommands data, no inline marker needed
+        lastBlockType = 'repairCommands';
+      } else if (block.type === 'userChoice') {
+        flushToolCalls();
+        // Insert placeholder marker for React component rendering
+        parts.push(`\n\n<!--USER_CHOICE:${block.choiceId}-->`);
+        lastBlockType = 'userChoice';
       } else if (block.type === 'thinking') {
         // 忽略 thinking 块
       }
@@ -268,6 +308,32 @@ export class AGUIMessageHandler {
     if (toolCall) {
       toolCall.status = 'completed';
       toolCall.result = content;
+
+      // Fallback: if report_config_diff completed but CUSTOM event wasn't received,
+      // construct the DiffReportCard from tool args
+      if (toolCall.name === 'report_config_diff' && toolCall.args) {
+        try {
+          const args = JSON.parse(toolCall.args);
+          const existingReport = this.configDiffReports.find(
+            r => r.cluster_name === args.cluster_name && r.title === args.title
+          );
+          if (!existingReport && args.items && args.items.length > 0) {
+            const report: ConfigDiffReport = {
+              report_id: `fallback_${toolCallId}`,
+              title: args.title || '',
+              cluster_name: args.cluster_name || '',
+              items: args.items,
+              received_at: Date.now(),
+            };
+            this.configDiffReports.push(report);
+            this.flushCurrentTextBlock();
+            this.contentBlocks.push({ type: 'configDiff', reportId: report.report_id });
+          }
+        } catch {
+          // args parse failed, skip fallback
+        }
+      }
+
       closeActiveToolCallPanel(toolCallId);
       this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
     }
@@ -355,6 +421,9 @@ export class AGUIMessageHandler {
       status: 'pending',
     };
     this.userChoiceRequests.push(request);
+    // Insert a placeholder block so the card renders in-order
+    this.flushCurrentTextBlock();
+    this.contentBlocks.push({ type: 'userChoice', choiceId: request.choice_id });
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
@@ -378,6 +447,49 @@ export class AGUIMessageHandler {
   handleUserChoiceResult(value: { choice_id: string; selected: string[]; source: string }) {
     const status = value.source === 'user' ? 'submitted' : 'timeout';
     this.updateUserChoiceStatus(value.choice_id, status, value.selected);
+  }
+
+  /**
+   * 处理配置 diff 报告事件
+   */
+  handleConfigDiffReport(value: ConfigDiffReportValue) {
+    const report: ConfigDiffReport = {
+      ...value,
+      received_at: Date.now(),
+    };
+    this.configDiffReports.push(report);
+    // Insert a placeholder block so the card renders in-order
+    this.flushCurrentTextBlock();
+    this.contentBlocks.push({ type: 'configDiff', reportId: report.report_id });
+    this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
+  }
+
+  /**
+   * 处理报告文件下载事件
+   */
+  handleReportFileDownload(value: ReportFileDownloadValue) {
+    const download: ReportFileDownload = {
+      ...value,
+      received_at: Date.now(),
+    };
+    this.reportFileDownloads.push(download);
+    this.flushCurrentTextBlock();
+    this.contentBlocks.push({ type: 'fileDownload', downloadId: download.download_id });
+    this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
+  }
+
+  /**
+   * 处理修复命令事件
+   */
+  handleRepairCommands(value: RepairCommandsValue) {
+    const commands: RepairCommands = {
+      ...value,
+      received_at: Date.now(),
+    };
+    this.repairCommandsList.push(commands);
+    this.flushCurrentTextBlock();
+    this.contentBlocks.push({ type: 'repairCommands', commandsId: commands.commands_id });
+    this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
   /**
@@ -521,6 +633,12 @@ export class AGUIMessageHandler {
           this.handleUserChoiceRequest(aguiData.value as UserChoiceRequestValue);
         } else if (aguiData.name === 'user_choice_result' && aguiData.value) {
           this.handleUserChoiceResult(aguiData.value as { choice_id: string; selected: string[]; source: string });
+        } else if (aguiData.name === 'config_diff_report' && aguiData.value) {
+          this.handleConfigDiffReport(aguiData.value as unknown as ConfigDiffReportValue);
+        } else if (aguiData.name === 'report_file_download' && aguiData.value) {
+          this.handleReportFileDownload(aguiData.value as unknown as ReportFileDownloadValue);
+        } else if (aguiData.name === 'repair_commands' && aguiData.value) {
+          this.handleRepairCommands(aguiData.value as unknown as RepairCommandsValue);
         } else if (aguiData.name === 'agent_step_progress' && aguiData.value) {
           this.handleAgentStepProgress(aguiData.value as AgentStepProgressValue);
         } else if (aguiData.name === 'sub_agent_progress' && aguiData.value) {

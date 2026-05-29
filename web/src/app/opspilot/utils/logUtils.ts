@@ -94,7 +94,7 @@ export const createConversation = async (data: any, get: any): Promise<CustomCha
     const shouldProcessOpenAI = normalizedRole === 'bot' && entryType === 'OpenAI';
     const shouldProcessAGUI = normalizedRole === 'bot' && !shouldProcessOpenAI && (entryType === 'AG-UI' || (typeof rawContent === 'string' && rawContent.trim().startsWith('[')));
 
-    let processed: { content: any; thinking: any; isThinking: boolean; browserStepProgress: any; browserStepsHistory: any } = {
+    let processed: { content: any; thinking: any; isThinking: boolean; browserStepProgress: any; browserStepsHistory: any; toolCalls?: any } = {
       content: rawContent,
       thinking: '',
       isThinking: false,
@@ -108,7 +108,8 @@ export const createConversation = async (data: any, get: any): Promise<CustomCha
         thinking: parsed.thinking ?? '',
         isThinking: parsed.isThinking ?? false,
         browserStepProgress: parsed.browserStepProgress ?? null,
-        browserStepsHistory: parsed.browserStepsHistory ?? null
+        browserStepsHistory: parsed.browserStepsHistory ?? null,
+        toolCalls: parsed.toolCalls
       };
     } else if (shouldProcessOpenAI) {
       const parsed = typeof rawContent === 'string' ? parseJsonValue(rawContent) : rawContent;
@@ -148,6 +149,7 @@ export const createConversation = async (data: any, get: any): Promise<CustomCha
       isThinking: processed.isThinking,
       browserStepProgress: processed.browserStepProgress ?? null,
       browserStepsHistory: processed.browserStepsHistory ?? null,
+      toolCalls: processed.toolCalls,
     } as CustomChatMessage;
   }));
 };
