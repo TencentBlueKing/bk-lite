@@ -1,8 +1,9 @@
 import uuid
 
-from jinja2 import Environment, BaseLoader, DebugUndefined
+from jinja2 import BaseLoader, DebugUndefined
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.safe_template import build_sandboxed_env
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import CollectConfig, MonitorPlugin, MonitorPluginConfigTemplate
@@ -25,10 +26,13 @@ class Controller:
 
     @property
     def jinja_env(self):
-        """延迟初始化并缓存 Jinja2 Environment 对象"""
+        """延迟初始化并缓存 Jinja2 SandboxedEnvironment 对象"""
         if self._jinja_env is None:
-            self._jinja_env = Environment(loader=BaseLoader(), undefined=DebugUndefined)
-            self._jinja_env.filters["to_toml"] = to_toml_dict
+            self._jinja_env = build_sandboxed_env(
+                loader=BaseLoader(),
+                undefined=DebugUndefined,
+                extra_filters={"to_toml": to_toml_dict},
+            )
         return self._jinja_env
 
     def get_templates_by_collector(self, collector: str, collect_type: str):

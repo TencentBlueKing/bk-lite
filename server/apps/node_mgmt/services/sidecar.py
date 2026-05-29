@@ -6,7 +6,7 @@ from string import Template
 from django.core.cache import cache
 from django.core.serializers.json import DjangoJSONEncoder
 from django.http import HttpResponse
-from jinja2 import Template as JinjaTemplate
+from apps.core.utils.safe_template import build_sandboxed_env
 
 from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
@@ -823,7 +823,7 @@ class Sidecar:
                         logger.info(f"Node {node.id} is a container node, appending add_config for {collector_obj.name}")
 
                 # 渲染模板
-                tpl = JinjaTemplate(config_template)
+                tpl = build_sandboxed_env().from_string(config_template)
                 _config_template = tpl.render(variables)
 
                 existing_pre_configuration = CollectorConfiguration.objects.filter(collector=collector_obj, nodes=node, is_pre=True).first()

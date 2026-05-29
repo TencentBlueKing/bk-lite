@@ -6,6 +6,7 @@ from typing import Optional
 from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.safe_template import TemplateSecurityError, check_dangerous_patterns
 from apps.monitor.models import CollectConfig, MonitorPlugin, MonitorPluginConfigTemplate, MonitorPluginUITemplate
 from apps.monitor.utils.config_format import ConfigFormat
 from apps.monitor.utils.plugin_controller import Controller
@@ -313,6 +314,16 @@ class CustomSnmpPluginService:
             raise BaseAppException("采集片段不能为空")
         if "[[inputs.snmp]]" in normalized_snippet or "[inputs.snmp.tags]" in normalized_snippet:
             raise BaseAppException("仅支持编辑 SNMP 指标采集片段，请勿修改 inputs.snmp 主配置")
+
+        forbidden_tokens = ["{{", "}}", "{%", "%}"]
+        for token in forbidden_tokens:
+            if token in normalized_snippet:
+                raise BaseAppException(f"采集模板片段不允许包含模板语法: {token}")
+
+        try:
+            check_dangerous_patterns(normalized_snippet)
+        except TemplateSecurityError as e:
+            raise BaseAppException(f"采集模板包含不安全的内容: {e}")
 
         child_template_id = CustomSnmpPluginService.get_child_template(plugin).id
 
