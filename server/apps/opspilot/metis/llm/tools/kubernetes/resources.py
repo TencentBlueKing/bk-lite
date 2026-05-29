@@ -698,10 +698,37 @@ def search_workload_across_namespaces(workload_name: str, config: RunnableConfig
         prepare_context(config)
         _search_current_cluster("default")
 
-    return json.dumps({
+    is_unique = len(locations) == 1
+    result = {
         "workload_name": workload_name,
         "found": len(locations) > 0,
-        "unique": len(locations) == 1,
+        "unique": is_unique,
         "locations": locations,
         "total_count": len(locations),
-    })
+    }
+
+    if len(locations) > 1:
+        # 多个匹配：强制要求 LLM 向用户询问
+        choices_desc = ", ".join(
+            f"{loc['cluster']} / {loc['namespace']} / {loc['kind']}"
+            for loc in locations
+        )
+        result["_next_step_hint"] = (
+            f"找到多个名为 {workload_name} 的工作负载：{choices_desc}。"
+            "你【必须】立即调用 request_user_choice 工具，让用户选择要检查哪一个。"
+            "选项格式为：'集群名 / 命名空间 / 类型'。"
+            "在用户做出选择之前，禁止调用 analyze_deployment_configurations 或其他分析工具。"
+        )
+    elif len(locations) == 1:
+        loc = locations[0]
+        result["_next_step_hint"] = (
+            f"全局唯一，直接对 {loc['cluster']} / {loc['namespace']} 中的 {workload_name} 执行后续操作，"
+            f"调用 analyze_deployment_configurations 时传入 instance_name=\"{loc['cluster']}\"、"
+            f"namespace=\"{loc['namespace']}\"、name=\"{workload_name}\"。"
+        )
+    else:
+        result["_next_step_hint"] = (
+            f"未找到名为 {workload_name} 的工作负载。请告知用户未找到该工作负载，确认名称是否正确。"
+        )
+
+    return json.dumps(result)
