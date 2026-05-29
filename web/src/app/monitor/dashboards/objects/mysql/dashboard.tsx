@@ -14,8 +14,8 @@ import {
 } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
-import EChartsLineChart from '../widgets/echarts-line-chart';
-import { InlineRingChart } from '../widgets/inline-ring-chart';
+import EChartsLineChart from '../../shared/widgets/echarts-line-chart';
+import { InlineRingChart } from '../../shared/widgets/inline-ring-chart';
 import TimeSelector from '@/components/time-selector';
 import useViewApi from '@/app/monitor/api/view';
 import MetricViews from '@/app/monitor/components/metric-views';
@@ -50,12 +50,12 @@ import {
   buildMetricItem,
   mergeChartSeries,
   getCollectionStatus
-} from '../utils';
+} from '../../shared/utils';
 import {
   StatCard,
   CollectionStatusCard,
   TitleWithGuide
-} from '../widgets';
+} from '../../shared/widgets';
 
 interface MysqlInstanceOption {
   label: string;

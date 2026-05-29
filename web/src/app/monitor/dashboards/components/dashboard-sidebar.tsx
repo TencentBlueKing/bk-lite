@@ -5,7 +5,7 @@ import { Input } from 'antd';
 import { LeftOutlined, RightOutlined, DatabaseOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { PROFESSIONAL_DASHBOARDS } from '../registry';
-import { normalizeDashboardKey } from '../utils';
+import { normalizeDashboardKey } from '../shared/utils';
 import styles from './dashboard-sidebar.module.scss';
 
 interface DashboardSidebarProps {

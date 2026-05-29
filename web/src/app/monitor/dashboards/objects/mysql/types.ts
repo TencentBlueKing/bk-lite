@@ -1,7 +1,7 @@
 import { ChartData } from '@/app/monitor/types';
-import { BaseMetricConfig } from '../types';
+import { BaseMetricConfig } from '../../shared/types';
 
-export type { MetricUnit, TrendLegendItem } from '../types';
+export type { MetricUnit, TrendLegendItem } from '../../shared/types';
 
 export interface MysqlMetricConfig extends BaseMetricConfig {
   groupId?: number | string;

@@ -3,8 +3,8 @@
 import { Empty } from 'antd';
 import { useParams } from 'next/navigation';
 import { PROFESSIONAL_DASHBOARD_MAP } from '@/app/monitor/dashboards/registry';
-import { normalizeDashboardKey } from '@/app/monitor/dashboards/utils';
-import { useResolveObjectId } from '@/app/monitor/dashboards/utils/use-resolve-object-id';
+import { normalizeDashboardKey } from '@/app/monitor/dashboards/shared/utils';
+import { useResolveObjectId } from '@/app/monitor/dashboards/shared/utils/use-resolve-object-id';
 import { DashboardLayout } from '@/app/monitor/dashboards/components/dashboard-layout';
 
 export default function ProfessionalDashboardPage() {

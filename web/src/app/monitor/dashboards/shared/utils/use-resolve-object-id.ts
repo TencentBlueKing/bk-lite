@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
-import { PROFESSIONAL_DASHBOARDS } from '../registry';
+import { PROFESSIONAL_DASHBOARDS } from '../../registry';
 import { normalizeDashboardKey } from './index';
 import { buildInstanceDisplayName } from './instance';
 

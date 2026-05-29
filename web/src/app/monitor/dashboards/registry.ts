@@ -1,8 +1,8 @@
-import MysqlDashboard from './mysql';
-import MongodbDashboard from './mongodb';
-import RedisDashboard from './redis';
-import { ProfessionalDashboardRegistryItem } from './types';
-import { normalizeDashboardKey } from './utils';
+import MysqlDashboard from './objects/mysql';
+import MongodbDashboard from './objects/mongodb';
+import RedisDashboard from './objects/redis';
+import { ProfessionalDashboardRegistryItem } from './shared/types';
+import { normalizeDashboardKey } from './shared/utils';
 
 export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
   {

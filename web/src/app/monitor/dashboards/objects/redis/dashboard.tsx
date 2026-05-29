@@ -11,13 +11,13 @@ import {
 } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
-import EChartsLineChart from '../widgets/echarts-line-chart';
+import EChartsLineChart from '../../shared/widgets/echarts-line-chart';
 import {
   StatCard,
   CollectionStatusCard,
   TitleWithGuide,
   GuideTooltipContent
-} from '../widgets';
+} from '../../shared/widgets';
 import {
   DEFAULT_REFRESH_FREQUENCY_LIST,
   formatMetricValue,
@@ -34,7 +34,7 @@ import {
   buildMetricItem,
   mergeChartSeries,
   getCollectionStatus
-} from '../utils';
+} from '../../shared/utils';
 import TimeSelector from '@/components/time-selector';
 import useViewApi from '@/app/monitor/api/view';
 import MetricViews from '@/app/monitor/components/metric-views';

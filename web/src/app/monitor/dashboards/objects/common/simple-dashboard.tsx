@@ -13,7 +13,7 @@ import {
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
 import TimeSelector from '@/components/time-selector';
-import EChartsLineChart from '../widgets/echarts-line-chart';
+import EChartsLineChart from '../../shared/widgets/echarts-line-chart';
 import MetricViews from '@/app/monitor/components/metric-views';
 import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
@@ -34,9 +34,9 @@ import {
   buildMetricItem,
   getCollectionStatus,
   buildCollectionStatusTimeline
-} from '../utils';
-import { GuideItem } from '../types';
-import { StatCard, CollectionStatusCard, TitleWithGuide } from '../widgets';
+} from '../../shared/utils';
+import { GuideItem } from '../../shared/types';
+import { StatCard, CollectionStatusCard, TitleWithGuide } from '../../shared/widgets';
 import styles from './simple-dashboard.module.scss';
 
 export type SimpleMetricUnit = 'percent' | 'counts' | 'short' | 'cps' | 'ops' | 's' | 'ms' | 'ns' | 'bytes' | 'byteps' | 'msps' | 'none' | string;
