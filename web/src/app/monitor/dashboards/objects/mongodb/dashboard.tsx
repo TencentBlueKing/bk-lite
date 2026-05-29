@@ -11,12 +11,12 @@ import {
 } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
-import EChartsLineChart from '../widgets/echarts-line-chart';
+import EChartsLineChart from '../../shared/widgets/echarts-line-chart';
 import {
   StatCard,
   CollectionStatusCard,
   TitleWithGuide
-} from '../widgets';
+} from '../../shared/widgets';
 import {
   DEFAULT_REFRESH_FREQUENCY_LIST,
   buildSearchParams,
@@ -33,7 +33,7 @@ import {
   buildMetricItem,
   mergeChartSeries,
   getCollectionStatus
-} from '../utils';
+} from '../../shared/utils';
 import TimeSelector from '@/components/time-selector';
 import useViewApi from '@/app/monitor/api/view';
 import MetricViews from '@/app/monitor/components/metric-views';
@@ -655,16 +655,16 @@ export default function MongoDashboardPage() {
     { label: '搭配指标', detail: '应同时结合脏数据、常驻内存和缺页频率一起判断缓存是否成为瓶颈。' }
   ];
   const throughputTrendGuide = [
-    { label: '吞吐趋势', detail: '同时展示命令吞吐、查询吞吐和写入吞吐，判断当前工作负载类型与变化节奏。' }
+    { label: '吞吐趋势', detail: '同时展示命令吞吐、查询吞吐和写入吞吐，判断当前工作负载类型与变化节奏。单位：次/秒。' }
   ];
   const cacheTrendGuide = [
-    { label: '缓存与内存趋势', detail: '同时展示 WiredTiger 缓存已用、缓存上限和常驻内存，判断缓存与工作集的匹配程度。' }
+    { label: '缓存与内存趋势', detail: '同时展示 WiredTiger 缓存已用、缓存上限和常驻内存，判断缓存与工作集的匹配程度。单位：自动换算（B/KB/MB/GB）。' }
   ];
   const pressureTrendGuide = [
-    { label: '读写压力趋势', detail: '同时展示活跃读写和排队读写，用于判断当前负载是否已开始堆积。' }
+    { label: '读写压力趋势', detail: '同时展示活跃读写和排队读写，用于判断当前负载是否已开始堆积。单位：个。' }
   ];
   const networkTrendGuide = [
-    { label: '网络流量趋势', detail: '同时展示 MongoDB 网络入流量和出流量，判断请求接收与结果返回的压力。' }
+    { label: '网络流量趋势', detail: '同时展示 MongoDB 网络入流量和出流量，判断请求接收与结果返回的压力。单位：自动换算（B/s、KB/s、MB/s）。' }
   ];
   const queueGuide = [
     { label: '连接与排队', detail: '展示当前连接、打开连接、可用连接以及读写排队情况。' }
