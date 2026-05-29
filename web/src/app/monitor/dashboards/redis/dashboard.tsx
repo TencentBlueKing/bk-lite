@@ -6,30 +6,41 @@ import {
   ArrowLeftOutlined,
   ClockCircleOutlined,
   DatabaseOutlined,
-  FallOutlined,
-  InfoCircleOutlined,
   NodeIndexOutlined,
-  RiseOutlined,
   ThunderboltOutlined
 } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
 import EChartsLineChart from '../widgets/echarts-line-chart';
-import { useECharts } from '../widgets/useECharts';
+import {
+  StatCard,
+  CollectionStatusCard,
+  TitleWithGuide,
+  GuideTooltipContent
+} from '../widgets';
+import {
+  DEFAULT_REFRESH_FREQUENCY_LIST,
+  formatMetricValue,
+  buildSearchParams,
+  getLatestChartValue,
+  buildPreviousPeriodTimeValues,
+  getPeriodCompare,
+  normalizeDisplayText,
+  buildInstanceDisplayName,
+  buildInstanceSearchTokens,
+  parseLegacyParamList,
+  buildCollectionStatusTimeline,
+  toMetricSeries,
+  buildMetricItem,
+  mergeChartSeries,
+  getCollectionStatus
+} from '../utils';
 import TimeSelector from '@/components/time-selector';
 import useViewApi from '@/app/monitor/api/view';
 import MetricViews from '@/app/monitor/components/metric-views';
 import useMonitorApi from '@/app/monitor/api';
 import { useTranslation } from '@/utils/i18n';
-import { ListItem } from '@/types';
-import {
-  calculateMetrics,
-  getRecentTimeRange,
-  mergeViewQueryKeyValues,
-  renderChart
-} from '@/app/monitor/utils/common';
 import { ChartData, MetricItem, TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
-import { SearchParams } from '@/app/monitor/types/search';
 import {
   DASHBOARD_METRICS,
   REDIS_COLLECTION_STATUS_QUERY,
@@ -45,27 +56,11 @@ interface RedisInstanceOption {
   searchTokens: string[];
 }
 
-interface GuideItem {
-  label: string;
-  detail: string;
-}
-
-const MAX_POINTS = 100;
-const DEFAULT_STEP = 360;
 const BINARY_DISPLAY_UNITS = {
   bytes: ['B', 'KB', 'MB', 'GB', 'TB'],
   byteps: ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s']
 } as const;
-const REDIS_REFRESH_FREQUENCY_LIST: ListItem[] = [
-  { label: '关闭', value: 0 },
-  { label: '5s', value: 5000 },
-  { label: '10s', value: 10000 },
-  { label: '30s', value: 30000 },
-  { label: '1m', value: 60000 },
-  { label: '2m', value: 120000 },
-  { label: '5m', value: 300000 },
-  { label: '10m', value: 600000 }
-];
+
 const RAW_VALUE_METRICS = new Set([
   'redis_uptime',
   'redis_used_memory',
@@ -73,82 +68,6 @@ const RAW_VALUE_METRICS = new Set([
   'redis_clients',
   'redis_blocked_clients'
 ]);
-const COLLECTION_STATUS_SEGMENT_COUNT = 18;
-const COLLECTION_STATUS_LEGEND = [
-  { key: 'success' as const, label: '正常', color: '#22c55e' },
-  { key: 'empty' as const, label: '无数据', color: '#cbd5e1' },
-  { key: 'error' as const, label: '异常', color: '#ff4d4f' }
-];
-
-const formatMetricValue = (value: number, unit: MetricUnit) => {
-  if (!Number.isFinite(value)) {
-    return { value: '--', unit: '' };
-  }
-
-  if (unit === 's') {
-    if (value < 60) {
-      return { value: value.toFixed(0), unit: 's' };
-    }
-
-    if (value < 3600) {
-      return { value: (value / 60).toFixed(value >= 600 ? 0 : 1), unit: 'min' };
-    }
-
-    if (value < 86400) {
-      return { value: (value / 3600).toFixed(value >= 36000 ? 0 : 1), unit: 'h' };
-    }
-
-    const days = Math.floor(value / 86400);
-    const hours = Math.floor((value % 86400) / 3600);
-    return { value: `${days}d ${hours}h`, unit: '' };
-  }
-
-  if (unit === 'percent') {
-    return { value: value.toFixed(1), unit: '%' };
-  }
-
-  if (unit === 'ms') {
-    return { value: value.toFixed(1), unit: 'ms' };
-  }
-
-  if (unit === 'cps' || unit === 'ops') {
-    return { value: value >= 100 ? value.toFixed(0) : value.toFixed(1), unit: '/s' };
-  }
-
-  if (unit === 'byteps') {
-    const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
-    let next = value;
-    let idx = 0;
-    while (next >= 1024 && idx < units.length - 1) {
-      next /= 1024;
-      idx += 1;
-    }
-    return { value: next >= 100 ? next.toFixed(0) : next.toFixed(1), unit: units[idx] };
-  }
-
-  if (unit === 'bytes') {
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let next = value;
-    let idx = 0;
-    while (next >= 1024 && idx < units.length - 1) {
-      next /= 1024;
-      idx += 1;
-    }
-    return { value: next >= 100 ? next.toFixed(0) : next.toFixed(1), unit: units[idx] };
-  }
-
-  if (unit === 'none') {
-    return { value: value.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1'), unit: '' };
-  }
-
-  return {
-    value:
-      value >= 1000
-        ? value.toLocaleString(undefined, { maximumFractionDigits: 0 })
-        : value.toFixed(value >= 100 ? 0 : 1),
-    unit: ''
-  };
-};
 
 const resolveBinaryDisplayUnit = (
   data: ChartData[],
@@ -195,497 +114,6 @@ const scaleChartDataValues = (data: ChartData[], divisor: number): ChartData[] =
     return next;
   });
 };
-
-const buildSearchParams = (
-  query: string,
-  source_unit: string,
-  idValues: string[],
-  instanceIdKeys: string[],
-  timeValues: TimeValuesProps
-): SearchParams => {
-  const effectiveIdValues = idValues.length ? idValues : [''];
-  const labels = mergeViewQueryKeyValues([
-    { keys: instanceIdKeys.length ? instanceIdKeys : ['instance_id'], values: effectiveIdValues }
-  ]);
-  const recentTimeRange = getRecentTimeRange(timeValues);
-  const startTime = recentTimeRange.at(0);
-  const endTime = recentTimeRange.at(1);
-  const params: SearchParams = {
-    query: query.replace(/__\$labels__/g, labels),
-    source_unit,
-    auto_convert_unit: Array.from(RAW_VALUE_METRICS).some((metricName) => query.includes(metricName)) ? false : true
-  };
-
-  if (startTime && endTime) {
-    params.start = startTime;
-    params.end = endTime;
-    params.step = Math.max(
-      Math.ceil((params.end / MAX_POINTS - params.start / MAX_POINTS) / DEFAULT_STEP),
-      1
-    );
-  }
-
-  return params;
-};
-
-const getLatestChartValue = (data: ChartData[]) => {
-  const latestValue = calculateMetrics(data as Record<string, number>[]).latestValue;
-  return typeof latestValue === 'number' ? latestValue : 0;
-};
-
-const buildPreviousPeriodTimeValues = (timeValues: TimeValuesProps): TimeValuesProps | null => {
-  const [startTime, endTime] = getRecentTimeRange(timeValues);
-
-  if (!startTime || !endTime) {
-    return null;
-  }
-
-  const duration = endTime - startTime;
-
-  return {
-    timeRange: [startTime - duration, endTime - duration],
-    originValue: 0
-  };
-};
-
-const getPeriodCompare = (currentValue: number, previousValue: number) => {
-  if (!Number.isFinite(currentValue) || !Number.isFinite(previousValue)) {
-    return null;
-  }
-
-  if (previousValue === 0) {
-    if (currentValue === 0) {
-      return { direction: 'flat' as const, value: '0.0%' };
-    }
-
-    return null;
-  }
-
-  const delta = ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
-
-  if (Math.abs(delta) < 0.05) {
-    return { direction: 'flat' as const, value: '0.0%' };
-  }
-
-  return {
-    direction: delta > 0 ? ('up' as const) : ('down' as const),
-    value: `${Math.abs(delta).toFixed(1)}%`
-  };
-};
-
-const normalizeDisplayText = (value?: string | null) => {
-  if (!value) {
-    return '';
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed || trimmed === '--') {
-    return '';
-  }
-
-  const withoutQuotes = trimmed.replace(/^["'`\[(,\s]+|["'`,;\])\s]+$/g, '').trim();
-  if (!withoutQuotes || withoutQuotes === '--') {
-    return '';
-  }
-
-  if (
-    /^[A-Za-z0-9+/=_-]{12,}$/.test(withoutQuotes) &&
-    !/[.:/]/.test(withoutQuotes) &&
-    !/[a-z]+-[a-z]/.test(withoutQuotes)
-  ) {
-    return '';
-  }
-
-  return withoutQuotes;
-};
-
-const buildInstanceDisplayName = (item: any) => {
-  const primaryName = normalizeDisplayText(item.instance_name) || normalizeDisplayText(item.name);
-  const hostPort = normalizeDisplayText(item.host && item.port ? `${item.host}:${item.port}` : '');
-  const endpoint = normalizeDisplayText(item.endpoint) || normalizeDisplayText(item.url);
-  const fallbackHost = normalizeDisplayText(item.host) || normalizeDisplayText(item.ip);
-
-  if (primaryName && hostPort && !primaryName.includes(hostPort)) {
-    return `${primaryName} (${hostPort})`;
-  }
-
-  if (primaryName) {
-    return primaryName;
-  }
-
-  return hostPort || endpoint || fallbackHost || normalizeDisplayText(item.instance_id) || '--';
-};
-
-const buildInstanceSearchTokens = (item: any, displayName: string) =>
-  Array.from(
-    new Set(
-      [
-        displayName,
-        normalizeDisplayText(item.instance_name),
-        normalizeDisplayText(item.name),
-        normalizeDisplayText(item.host),
-        normalizeDisplayText(item.ip),
-        normalizeDisplayText(item.port),
-        normalizeDisplayText(item.endpoint),
-        normalizeDisplayText(item.url),
-        normalizeDisplayText(item.instance_id)
-      ].filter(Boolean)
-    )
-  );
-
-const parseLegacyParamList = (value?: string | null) => {
-  if (!value) {
-    return [] as string[];
-  }
-
-  return Array.from(
-    new Set(
-      value
-        .replace(/[()\[\]'"`]/g, '')
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean)
-    )
-  );
-};
-
-const getCollectionStatusTones = (metric?: MetricSeries | null) => {
-  if (!Array.isArray(metric?.viewData)) {
-    return [] as Array<'success' | 'empty'>;
-  }
-
-  return [...metric.viewData]
-    .sort((a, b) => Number(a.time) - Number(b.time))
-    .slice(-COLLECTION_STATUS_SEGMENT_COUNT)
-    .map((point) => (Number(point.value1 ?? 0) > 0 ? ('success' as const) : ('empty' as const)));
-};
-
-const buildCollectionStatusTimeline = (metric?: MetricSeries | null) => {
-  if (metric?.loadState === 'error') {
-    return Array.from({ length: COLLECTION_STATUS_SEGMENT_COUNT }, () => 'error' as const);
-  }
-
-  const tones = getCollectionStatusTones(metric);
-  if (tones.length >= COLLECTION_STATUS_SEGMENT_COUNT) {
-    return tones;
-  }
-
-  return [
-    ...Array.from({ length: COLLECTION_STATUS_SEGMENT_COUNT - tones.length }, () => 'empty' as const),
-    ...tones
-  ];
-};
-
-const toMetricSeries = (
-  metric: RedisMetricConfig,
-  result: any,
-  instanceId: React.Key,
-  instanceName: string,
-  idValues: string[],
-  instanceIdKeys: string[]
-): MetricSeries => {
-  const viewData = renderChart(result?.data?.result || [], [
-    {
-      instance_id_values: idValues,
-      instance_name: instanceName,
-      instance_id: String(instanceId || ''),
-      instance_id_keys: instanceIdKeys,
-      dimensions: metric.dimensions || [],
-      title: metric.display_name
-    }
-  ]);
-
-  return {
-    ...metric,
-    viewData,
-    loadState: 'success'
-  };
-};
-
-const buildMetricItem = (metric: MetricSeries): MetricItem => ({
-  id: 0,
-  metric_group: 0,
-  metric_object: 0,
-  name: metric.name,
-  type: 'number',
-  display_name: metric.display_name,
-  dimensions: metric.dimensions || [],
-  unit: metric.unit,
-  query: metric.query,
-  description: metric.description,
-  color: metric.color,
-  viewData: metric.viewData
-});
-
-const mergeChartSeries = (
-  seriesList: Array<{ key: string; label: string; displayName?: string; data: ChartData[] }>
-): ChartData[] => {
-  const merged = new Map<number, ChartData>();
-
-  seriesList.forEach((series, index) => {
-    const valueKey = `value${index + 1}`;
-
-    series.data.forEach((point) => {
-      const time = Number(point.time);
-      const current = merged.get(time) || {
-        time,
-        title: series.label,
-        details: {}
-      };
-
-      current[valueKey] = Number(point.value1 ?? 0);
-      current.details = current.details || {};
-      current.details[valueKey] = [
-        {
-          name: series.key,
-          label: series.displayName || '',
-          value: series.displayName || series.label
-        }
-      ];
-
-      merged.set(time, current);
-    });
-  });
-
-  return Array.from(merged.values()).sort((a, b) => Number(a.time) - Number(b.time));
-};
-
-const getCollectionStatus = (metric?: MetricSeries | null) => {
-  const hasError = metric?.loadState === 'error';
-
-  if (hasError) {
-    return {
-      label: '异常',
-      tagColor: 'error' as const,
-      detail: '当前采集状态指标查询失败，请检查探针与 Redis 实例连通性或采集配置。'
-    };
-  }
-
-  const latestTone = getCollectionStatusTones(metric).at(-1);
-
-  if (latestTone === 'success') {
-    return {
-      label: '正常',
-      tagColor: 'success' as const,
-      detail: '当前采集状态指标可正常返回，说明 Redis 监控采集链路正常。'
-    };
-  }
-
-  return {
-    label: '无数据',
-    tagColor: 'warning' as const,
-    detail: '当前时间范围内尚未看到 Redis 采集数据，请检查时间范围或等待新数据进入。'
-  };
-};
-
-const getCompareTone = (direction: 'up' | 'down' | 'flat') => {
-  if (direction === 'flat') {
-    return 'flat';
-  }
-  return direction === 'up' ? 'positive' : 'negative';
-};
-
-const MiniTrendChart = ({ data, color }: { data: ChartData[]; color: string }) => {
-  const chartData = useMemo(
-    () =>
-      data
-        .map((point) => ({
-          time: Number(point.time),
-          value: Number(point.value1 ?? 0)
-        }))
-        .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value)),
-    [data]
-  );
-
-  const option = useMemo(() => {
-    if (!chartData.length) return null;
-    return {
-      animation: false,
-      grid: { top: 2, right: 0, bottom: 2, left: 0 },
-      xAxis: { type: 'category' as const, show: false, data: chartData.map((p) => p.time) },
-      yAxis: { type: 'value' as const, show: false },
-      series: [{
-        type: 'line' as const,
-        data: chartData.map((p) => p.value),
-        smooth: true,
-        symbol: 'none',
-        lineStyle: { width: 2, color },
-        areaStyle: {
-          color: {
-            type: 'linear' as const,
-            x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: `${color}3D` },
-              { offset: 1, color: `${color}05` }
-            ]
-          }
-        }
-      }],
-      tooltip: { show: false }
-    };
-  }, [chartData, color]);
-
-  const { containerRef } = useECharts(option);
-
-  if (!chartData.length) {
-    return <div className={styles.miniTrendPlaceholder} />;
-  }
-
-  return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
-};
-
-const GuideTooltipContent = ({ items }: { items: GuideItem[] }) => (
-  <div className={styles.metricGuideTooltip}>
-    {items.map((item) => (
-      <div key={item.label} className={styles.metricGuideTooltipRow}>
-        <strong>{item.label}</strong>
-        <span>{item.detail}</span>
-      </div>
-    ))}
-  </div>
-);
-
-const TitleWithGuide = ({
-  title,
-  items,
-  className
-}: {
-  title: React.ReactNode;
-  items: GuideItem[];
-  className?: string;
-}) => (
-  <span className={[styles.titleWithGuide, className].filter(Boolean).join(' ')}>
-    <span>{title}</span>
-    <Tooltip overlayClassName="lightMetricTooltip" title={<GuideTooltipContent items={items} />}>
-      <InfoCircleOutlined className={styles.metricGuideIcon} />
-    </Tooltip>
-  </span>
-);
-
-const StatCard = ({
-  title,
-  value,
-  unit,
-  icon,
-  iconStyle,
-  color,
-  footer,
-  compare,
-  trendData = [],
-  hideTrend = false,
-  noDataType = 'empty',
-  className,
-  bodyClassName,
-  extra
-}: {
-  title: React.ReactNode;
-  value: React.ReactNode;
-  unit: string;
-  icon: React.ReactNode;
-  iconStyle: React.CSSProperties;
-  color: string;
-  footer: React.ReactNode;
-  compare?: {
-    direction: 'up' | 'down' | 'flat';
-    value: string;
-  } | null;
-  trendData?: ChartData[];
-  hideTrend?: boolean;
-  noDataType?: 'empty' | 'error';
-  className?: string;
-  bodyClassName?: string;
-  extra?: React.ReactNode;
-}) => {
-  const compareTone = compare ? getCompareTone(compare.direction) : 'flat';
-
-  return (
-    <div className={`${styles.statCard} ${className || ''}`}>
-      <div className={styles.statHeader}>
-        <div className={styles.statLabel}>{title}</div>
-        <div className={styles.statIcon} style={iconStyle}>
-          {icon}
-        </div>
-      </div>
-      <div className={`${styles.statBody} ${bodyClassName || ''}`}>
-        <div className={styles.statValue} style={{ color }}>
-          {value}
-          {unit ? <span className={styles.statUnit}>{unit}</span> : null}
-        </div>
-        {compare ? (
-          <div
-            className={`${styles.statCompare} ${styles[`statCompare${compareTone === 'flat' ? 'Flat' : compareTone === 'positive' ? 'Positive' : 'Negative'}`]}`}
-          >
-            <span className={styles.statCompareLabel}>较上一周期</span>
-            <span className={styles.statCompareValue}>
-              {compare.direction === 'up' ? <RiseOutlined /> : compare.direction === 'down' ? <FallOutlined /> : null}
-              {compare.value}
-            </span>
-          </div>
-        ) : null}
-        <div className={styles.statMeta}>{footer}</div>
-      </div>
-      {extra ? <div className={styles.statExtra}>{extra}</div> : null}
-      {!hideTrend ? (
-        <div className={styles.miniTrend}>
-          <MiniTrendChart data={noDataType === 'error' ? [] : trendData} color={color} />
-        </div>
-      ) : null}
-    </div>
-  );
-};
-
-const CollectionStatusCard = ({
-  status,
-  timeline
-}: {
-  status: ReturnType<typeof getCollectionStatus>;
-  timeline: Array<'success' | 'empty' | 'error'>;
-}) => (
-  <div className={`${styles.statCard} ${styles.collectionStatusCard}`}>
-    <div className={styles.collectionStatusHeader}>
-      <div className={styles.statLabel}>
-        <TitleWithGuide
-          title="采集状态"
-          items={[
-            { label: '采集状态', detail: '展示最近一段时间内该实例监控采集是否正常、缺失或异常。' },
-            { label: '状态时间线', detail: '绿色表示采集成功，灰色表示暂无数据，红色表示采集或查询异常。' }
-          ]}
-          className={styles.statTitleWithGuide}
-        />
-      </div>
-    </div>
-    <div className={styles.collectionStatusBody}>
-      <div
-        className={`${styles.collectionStatusValue} ${
-          styles[`collectionStatusValue${status.label === '正常' ? 'Success' : status.label === '异常' ? 'Error' : 'Empty'}`]
-        }`}
-      >
-        {status.label}
-      </div>
-      <div className={styles.collectionStatusTimelineBlock}>
-        <div className={styles.collectionStatusTimelineTitle}>状态时间线</div>
-        <div className={styles.collectionStatusTimeline}>
-          {timeline.map((tone, index) => (
-            <span
-              key={`${tone}-${index}`}
-              className={`${styles.collectionStatusSegment} ${
-                styles[`collectionStatusSegment${tone === 'success' ? 'Success' : tone === 'error' ? 'Error' : 'Empty'}`]
-              }`}
-            />
-          ))}
-        </div>
-        <div className={styles.collectionStatusLegend}>
-          {COLLECTION_STATUS_LEGEND.map((item) => (
-            <span key={item.key} className={styles.collectionStatusLegendItem}>
-              <span className={styles.collectionStatusLegendDot} style={{ background: item.color }} />
-              {item.label}
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
-  </div>
-);
 
 export default function RedisDashboardPage() {
   const { getInstanceQuery } = useViewApi();
@@ -804,22 +232,22 @@ export default function RedisDashboardPage() {
 
         const metricResultsPromise = Promise.all(
           DASHBOARD_METRICS.map((metric) =>
-            getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, timeValues))
+            getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, timeValues, RAW_VALUE_METRICS))
               .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
               .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
           )
         );
 
         const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(
-          buildSearchParams(REDIS_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, timeValues)
+          buildSearchParams(REDIS_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, timeValues, RAW_VALUE_METRICS)
         )
           .then((result) =>
-            toMetricSeries(
+            toMetricSeries<RedisMetricConfig>(
               {
                 name: 'redis_collection_status',
                 display_name: '采集状态',
                 description: 'Redis 监控探针采集状态，用于判断当前实例是否存在有效采集数据。',
-                unit: 'counts',
+                unit: 'counts' as MetricUnit,
                 query: REDIS_COLLECTION_STATUS_QUERY,
                 color: '#27c274'
               },
@@ -847,7 +275,7 @@ export default function RedisDashboardPage() {
         const previousMetricResultsPromise = previousTimeValues
           ? Promise.all(
             compareMetrics.map((metric) =>
-              getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues))
+              getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues, RAW_VALUE_METRICS))
                 .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
                 .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
             )
@@ -928,8 +356,8 @@ export default function RedisDashboardPage() {
   const evictedRateValue = getLatest('redis_evicted_keys_rate');
   const rejectedRateValue = getLatest('redis_rejected_connections_rate');
 
-  const collectionStatus = getCollectionStatus(collectionStatusMetric);
-  const collectionStatusTimeline = buildCollectionStatusTimeline(collectionStatusMetric);
+  const collectionStatus = getCollectionStatus(collectionStatusMetric, 'Redis');
+  const collectionStatusTimeline = buildCollectionStatusTimeline(collectionStatusMetric?.loadState, collectionStatusMetric?.viewData);
   const metricEmptyText = collectionStatus.label === '异常' ? '查询失败' : '暂无采集数据';
 
   const uptimeDisplay = formatMetricValue(uptimeValue, 's');
@@ -1170,7 +598,7 @@ export default function RedisDashboardPage() {
               <div className={styles.toolbarTimeSelector}>
                 <TimeSelector
                   defaultValue={timeDefaultValue}
-                  customFrequencyList={REDIS_REFRESH_FREQUENCY_LIST}
+                  customFrequencyList={DEFAULT_REFRESH_FREQUENCY_LIST}
                   onChange={onTimeChange}
                   onFrequenceChange={onFrequenceChange}
                   onRefresh={() => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))}
@@ -1236,9 +664,10 @@ export default function RedisDashboardPage() {
               {displayMode === 'dashboard' ? (
                 <>
                   <div className={styles.primaryGrid}>
-                    <CollectionStatusCard status={collectionStatus} timeline={collectionStatusTimeline} />
+                    <CollectionStatusCard styles={styles} status={collectionStatus} timeline={collectionStatusTimeline} />
                     <StatCard
-                      title={<TitleWithGuide title="Redis 运行时长" items={uptimeGuide} className={styles.statTitleWithGuide} />}
+                      styles={styles}
+                      title={<TitleWithGuide styles={styles} title="Redis 运行时长" items={uptimeGuide} className={styles.statTitleWithGuide} />}
                       value={hasMetricData('redis_uptime') ? `${uptimeDisplay.value}${uptimeDisplay.unit}` : '--'}
                       unit=""
                       icon={<ClockCircleOutlined />}
@@ -1254,7 +683,7 @@ export default function RedisDashboardPage() {
                           <span className={styles.uptimeStatusDot} />
                           <div className={styles.uptimeStatusMainWrap}>
                             <span className={styles.uptimeStatusMain}>运行正常</span>
-                            <Tooltip overlayClassName="lightMetricTooltip" title={<GuideTooltipContent items={uptimeStatusGuide} />}>
+                            <Tooltip overlayClassName="lightMetricTooltip" title={<GuideTooltipContent styles={styles} items={uptimeStatusGuide} />}>
                               <ClockCircleOutlined className={styles.uptimeStatusInfoIcon} />
                             </Tooltip>
                           </div>
@@ -1262,7 +691,8 @@ export default function RedisDashboardPage() {
                       }
                     />
                     <StatCard
-                      title={<TitleWithGuide title="内存使用率" items={memoryGuide} className={styles.statTitleWithGuide} />}
+                      styles={styles}
+                      title={<TitleWithGuide styles={styles} title="内存使用率" items={memoryGuide} className={styles.statTitleWithGuide} />}
                       value={maxMemoryValue > 0 && hasMetricData('redis_memory_utilization') ? memoryUtilDisplay.value : '--'}
                       unit={maxMemoryValue > 0 && hasMetricData('redis_memory_utilization') ? memoryUtilDisplay.unit : ''}
                       icon={<DatabaseOutlined />}
@@ -1279,7 +709,8 @@ export default function RedisDashboardPage() {
                       noDataType={getNoDataType('redis_memory_utilization')}
                     />
                     <StatCard
-                      title={<TitleWithGuide title="实时 OPS" items={opsGuide} className={styles.statTitleWithGuide} />}
+                      styles={styles}
+                      title={<TitleWithGuide styles={styles} title="实时 OPS" items={opsGuide} className={styles.statTitleWithGuide} />}
                       value={renderMetricValue('redis_instantaneous_ops_per_sec', opsDisplay.value)}
                       unit={hasMetricData('redis_instantaneous_ops_per_sec') ? opsDisplay.unit : ''}
                       icon={<ThunderboltOutlined />}
@@ -1291,7 +722,8 @@ export default function RedisDashboardPage() {
                       noDataType={getNoDataType('redis_instantaneous_ops_per_sec')}
                     />
                     <StatCard
-                      title={<TitleWithGuide title="缓存命中率" items={hitGuide} className={styles.statTitleWithGuide} />}
+                      styles={styles}
+                      title={<TitleWithGuide styles={styles} title="缓存命中率" items={hitGuide} className={styles.statTitleWithGuide} />}
                       value={renderMetricValue('redis_keyspace_hitrate', hitRateDisplay.value)}
                       unit={hasMetricData('redis_keyspace_hitrate') ? hitRateDisplay.unit : ''}
                       icon={<DatabaseOutlined />}
@@ -1308,7 +740,8 @@ export default function RedisDashboardPage() {
                       noDataType={getNoDataType('redis_keyspace_hitrate')}
                     />
                     <StatCard
-                      title={<TitleWithGuide title="客户端连接数" items={clientGuide} className={styles.statTitleWithGuide} />}
+                      styles={styles}
+                      title={<TitleWithGuide styles={styles} title="客户端连接数" items={clientGuide} className={styles.statTitleWithGuide} />}
                       value={renderMetricValue('redis_clients', clientsDisplay.value)}
                       unit=""
                       icon={<NodeIndexOutlined />}
@@ -1330,7 +763,7 @@ export default function RedisDashboardPage() {
                     <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
                       <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
                         <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
-                          <TitleWithGuide title="命令吞吐趋势" items={opsTrendGuide} className={styles.panelTitleWithGuide} />
+                          <TitleWithGuide styles={styles} title="命令吞吐趋势" items={opsTrendGuide} className={styles.panelTitleWithGuide} />
                         </h3>
                         <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>实时 OPS 与平均命令处理</div>
                         <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
@@ -1359,7 +792,7 @@ export default function RedisDashboardPage() {
                     <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
                       <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
                         <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
-                          <TitleWithGuide title="内存趋势" items={memoryTrendGuide} className={styles.panelTitleWithGuide} />
+                          <TitleWithGuide styles={styles} title="内存趋势" items={memoryTrendGuide} className={styles.panelTitleWithGuide} />
                         </h3>
                         <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>
                           已用内存与配置上限
@@ -1393,7 +826,7 @@ export default function RedisDashboardPage() {
                     <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
                       <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
                         <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
-                          <TitleWithGuide title="网络流量趋势" items={networkTrendGuide} className={styles.panelTitleWithGuide} />
+                          <TitleWithGuide styles={styles} title="网络流量趋势" items={networkTrendGuide} className={styles.panelTitleWithGuide} />
                         </h3>
                         <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>
                           请求接收与结果返回
@@ -1426,7 +859,7 @@ export default function RedisDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
                       <div className={styles.detailCard}>
                         <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide title="缓存访问概览" items={cacheDetailGuide} className={styles.panelTitleWithGuide} /></h3>
+                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="缓存访问概览" items={cacheDetailGuide} className={styles.panelTitleWithGuide} /></h3>
                           <div className={styles.panelSubTitle}>命中率与键访问结果</div>
                         </div>
                         <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>缓存命中率</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_keyspace_hitrate', `${hitRateDisplay.value}${hitRateDisplay.unit}`)}</span></div>
@@ -1438,7 +871,7 @@ export default function RedisDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
                       <div className={styles.detailCard}>
                         <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide title="客户端与阻塞" items={clientDetailGuide} className={styles.panelTitleWithGuide} /></h3>
+                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="客户端与阻塞" items={clientDetailGuide} className={styles.panelTitleWithGuide} /></h3>
                           <div className={styles.panelSubTitle}>连接总量与阻塞情况</div>
                         </div>
                         <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>当前连接</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_clients', clientsDisplay.value)}</span></div>
@@ -1450,7 +883,7 @@ export default function RedisDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
                       <div className={styles.detailCard}>
                         <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide title="键生命周期" items={keyLifecycleGuide} className={styles.panelTitleWithGuide} /></h3>
+                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="键生命周期" items={keyLifecycleGuide} className={styles.panelTitleWithGuide} /></h3>
                           <div className={styles.panelSubTitle}>过期与驱逐行为</div>
                         </div>
                         <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>键过期频率</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_expired_keys_rate', `${expiredDisplay.value}${expiredDisplay.unit}`)}</span></div>
@@ -1468,7 +901,7 @@ export default function RedisDashboardPage() {
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
                       <div className={styles.detailCard}>
                         <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide title="内存与碎片" items={memoryDetailGuide} className={styles.panelTitleWithGuide} /></h3>
+                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="内存与碎片" items={memoryDetailGuide} className={styles.panelTitleWithGuide} /></h3>
                           <div className={styles.panelSubTitle}>容量边界与分配效率</div>
                         </div>
                         <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>已用内存</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_used_memory', `${usedMemoryDisplay.value}${usedMemoryDisplay.unit}`)}</span></div>
@@ -1499,7 +932,7 @@ export default function RedisDashboardPage() {
                     <div className={styles.panelHeader}>
                       <div className={styles.panelHeading}>
                         <h3 className={styles.panelTitle}>
-                          <TitleWithGuide title="监控指标全景" items={metricsOverviewGuide} className={styles.panelTitleWithGuide} />
+                          <TitleWithGuide styles={styles} title="监控指标全景" items={metricsOverviewGuide} className={styles.panelTitleWithGuide} />
                         </h3>
                       </div>
                     </div>

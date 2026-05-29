@@ -6,30 +6,40 @@ import {
   ArrowLeftOutlined,
   ClockCircleOutlined,
   DatabaseOutlined,
-  FallOutlined,
-  InfoCircleOutlined,
   NodeIndexOutlined,
-  RiseOutlined,
   ThunderboltOutlined
 } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
 import EChartsLineChart from '../widgets/echarts-line-chart';
-import { useECharts } from '../widgets/useECharts';
+import {
+  StatCard,
+  CollectionStatusCard,
+  TitleWithGuide
+} from '../widgets';
+import {
+  DEFAULT_REFRESH_FREQUENCY_LIST,
+  buildSearchParams,
+  getLatestChartValue,
+  getChartPointSeriesTotal,
+  buildPreviousPeriodTimeValues,
+  getPeriodCompare,
+  normalizeDisplayText,
+  buildInstanceDisplayName,
+  buildInstanceSearchTokens,
+  parseLegacyParamList,
+  buildCollectionStatusTimeline,
+  toMetricSeries,
+  buildMetricItem,
+  mergeChartSeries,
+  getCollectionStatus
+} from '../utils';
 import TimeSelector from '@/components/time-selector';
 import useViewApi from '@/app/monitor/api/view';
 import MetricViews from '@/app/monitor/components/metric-views';
 import useMonitorApi from '@/app/monitor/api';
 import { useTranslation } from '@/utils/i18n';
-import { ListItem } from '@/types';
-import {
-  calculateMetrics,
-  getRecentTimeRange,
-  mergeViewQueryKeyValues,
-  renderChart
-} from '@/app/monitor/utils/common';
 import { ChartData, MetricItem, TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
-import { SearchParams } from '@/app/monitor/types/search';
 import {
   DASHBOARD_METRICS,
   MONGODB_COLLECTION_STATUS_QUERY,
@@ -45,30 +55,7 @@ interface InstanceOption {
   searchTokens: string[];
 }
 
-interface GuideItem {
-  label: string;
-  detail: string;
-}
-
-const MAX_POINTS = 100;
-const DEFAULT_STEP = 360;
 const MEBIBYTE = 1024 * 1024;
-const MONGODB_REFRESH_FREQUENCY_LIST: ListItem[] = [
-  { label: '关闭', value: 0 },
-  { label: '5s', value: 5000 },
-  { label: '10s', value: 10000 },
-  { label: '30s', value: 30000 },
-  { label: '1m', value: 60000 },
-  { label: '2m', value: 120000 },
-  { label: '5m', value: 300000 },
-  { label: '10m', value: 600000 }
-];
-const COLLECTION_STATUS_SEGMENT_COUNT = 18;
-const COLLECTION_STATUS_LEGEND = [
-  { key: 'success' as const, label: '正常', color: '#22c55e' },
-  { key: 'empty' as const, label: '无数据', color: '#cbd5e1' },
-  { key: 'error' as const, label: '异常', color: '#ff4d4f' }
-];
 
 const formatBinary = (value: number) => {
   if (!Number.isFinite(value)) {
@@ -118,14 +105,6 @@ const formatRuntimeNs = (value: number) => {
   const hours = Math.floor((seconds % 86400) / 3600);
   return { value: `${days}d ${hours}h`, unit: '' };
 };
-
-const getChartPointSeriesTotal = (point?: ChartData) =>
-  Object.entries(point || {}).reduce((sum, [key, value]) => {
-    if (!key.startsWith('value') || typeof value !== 'number' || !Number.isFinite(value)) {
-      return sum;
-    }
-    return sum + value;
-  }, 0);
 
 const countRestartsInRange = (data: ChartData[] = []) => {
   const points = [...data]
@@ -245,454 +224,6 @@ const multiplyChartDataValues = (data: ChartData[], factor: number) =>
     return next;
   });
 
-const normalizeDisplayText = (value?: string | null) => {
-  if (!value) {
-    return '';
-  }
-  const trimmed = value.trim();
-  if (!trimmed || trimmed === '--') {
-    return '';
-  }
-  const withoutQuotes = trimmed.replace(/^["'`\[(,\s]+|["'`,;\])\s]+$/g, '').trim();
-  if (!withoutQuotes || withoutQuotes === '--') {
-    return '';
-  }
-  if (
-    /^[A-Za-z0-9+/=_-]{12,}$/.test(withoutQuotes) &&
-    !/[.:/]/.test(withoutQuotes) &&
-    !/[a-z]+-[a-z]/.test(withoutQuotes)
-  ) {
-    return '';
-  }
-  return withoutQuotes;
-};
-
-const buildInstanceDisplayName = (item: any) => {
-  const primaryName = normalizeDisplayText(item.instance_name) || normalizeDisplayText(item.name);
-  const hostPort = normalizeDisplayText(item.host && item.port ? `${item.host}:${item.port}` : '');
-  const endpoint = normalizeDisplayText(item.endpoint) || normalizeDisplayText(item.url);
-  const fallbackHost = normalizeDisplayText(item.host) || normalizeDisplayText(item.ip);
-
-  if (primaryName && hostPort && !primaryName.includes(hostPort)) {
-    return `${primaryName} (${hostPort})`;
-  }
-  if (primaryName) {
-    return primaryName;
-  }
-  return hostPort || endpoint || fallbackHost || normalizeDisplayText(item.instance_id) || '--';
-};
-
-const buildInstanceSearchTokens = (item: any, displayName: string) =>
-  Array.from(
-    new Set(
-      [
-        displayName,
-        normalizeDisplayText(item.instance_name),
-        normalizeDisplayText(item.name),
-        normalizeDisplayText(item.host),
-        normalizeDisplayText(item.ip),
-        normalizeDisplayText(item.port),
-        normalizeDisplayText(item.endpoint),
-        normalizeDisplayText(item.url),
-        normalizeDisplayText(item.instance_id)
-      ].filter(Boolean)
-    )
-  );
-
-const parseLegacyParamList = (value?: string | null) => {
-  if (!value) {
-    return [] as string[];
-  }
-  return Array.from(
-    new Set(
-      value
-        .replace(/[()\[\]'"`]/g, '')
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean)
-    )
-  );
-};
-
-const getCollectionStatusTones = (metric?: MetricSeries | null) => {
-  if (!Array.isArray(metric?.viewData)) {
-    return [] as Array<'success' | 'empty'>;
-  }
-  return [...metric.viewData]
-    .sort((a, b) => Number(a.time) - Number(b.time))
-    .slice(-COLLECTION_STATUS_SEGMENT_COUNT)
-    .map((point) => (Number(point.value1 ?? 0) > 0 ? ('success' as const) : ('empty' as const)));
-};
-
-const buildCollectionStatusTimeline = (metric?: MetricSeries | null) => {
-  if (metric?.loadState === 'error') {
-    return Array.from({ length: COLLECTION_STATUS_SEGMENT_COUNT }, () => 'error' as const);
-  }
-  const tones = getCollectionStatusTones(metric);
-  if (tones.length >= COLLECTION_STATUS_SEGMENT_COUNT) {
-    return tones;
-  }
-  return [
-    ...Array.from({ length: COLLECTION_STATUS_SEGMENT_COUNT - tones.length }, () => 'empty' as const),
-    ...tones
-  ];
-};
-
-const buildSearchParams = (
-  query: string,
-  source_unit: string,
-  idValues: string[],
-  instanceIdKeys: string[],
-  timeValues: TimeValuesProps
-): SearchParams => {
-  const effectiveIdValues = idValues.length ? idValues : [''];
-  const labels = mergeViewQueryKeyValues([
-    { keys: instanceIdKeys.length ? instanceIdKeys : ['instance_id'], values: effectiveIdValues }
-  ]);
-  const recentTimeRange = getRecentTimeRange(timeValues);
-  const startTime = recentTimeRange.at(0);
-  const endTime = recentTimeRange.at(1);
-  const params: SearchParams = {
-    query: query.replace(/__\$labels__/g, labels),
-    source_unit,
-    auto_convert_unit: false
-  };
-
-  if (startTime && endTime) {
-    params.start = startTime;
-    params.end = endTime;
-    params.step = Math.max(
-      Math.ceil((params.end / MAX_POINTS - params.start / MAX_POINTS) / DEFAULT_STEP),
-      1
-    );
-  }
-
-  return params;
-};
-
-const getLatestChartValue = (data: ChartData[]) => {
-  const latestValue = calculateMetrics(data as Record<string, number>[]).latestValue;
-  return typeof latestValue === 'number' ? latestValue : 0;
-};
-
-const buildPreviousPeriodTimeValues = (timeValues: TimeValuesProps): TimeValuesProps | null => {
-  const [startTime, endTime] = getRecentTimeRange(timeValues);
-  if (!startTime || !endTime) {
-    return null;
-  }
-  const duration = endTime - startTime;
-  return {
-    timeRange: [startTime - duration, endTime - duration],
-    originValue: 0
-  };
-};
-
-const getPeriodCompare = (currentValue: number, previousValue: number) => {
-  if (!Number.isFinite(currentValue) || !Number.isFinite(previousValue)) {
-    return null;
-  }
-  if (previousValue === 0) {
-    if (currentValue === 0) {
-      return { direction: 'flat' as const, value: '0.0%' };
-    }
-    return { direction: 'up' as const, value: '100%' };
-  }
-  const delta = ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
-  if (Math.abs(delta) < 0.05) {
-    return { direction: 'flat' as const, value: '0.0%' };
-  }
-  return {
-    direction: delta > 0 ? ('up' as const) : ('down' as const),
-    value: `${Math.abs(delta).toFixed(1)}%`
-  };
-};
-
-const getCompareTone = (direction: 'up' | 'down' | 'flat') => {
-  if (direction === 'flat') {
-    return 'flat';
-  }
-  return direction === 'up' ? 'positive' : 'negative';
-};
-
-const toMetricSeries = (
-  metric: MongoMetricConfig,
-  result: any,
-  instanceId: React.Key,
-  instanceName: string,
-  idValues: string[],
-  instanceIdKeys: string[]
-): MetricSeries => {
-  const viewData = renderChart(result?.data?.result || [], [
-    {
-      instance_id_values: idValues,
-      instance_name: instanceName,
-      instance_id: String(instanceId || ''),
-      instance_id_keys: instanceIdKeys,
-      dimensions: metric.dimensions || [],
-      title: metric.display_name
-    }
-  ]);
-
-  return {
-    ...metric,
-    viewData,
-    loadState: 'success'
-  };
-};
-
-const buildMetricItem = (metric: MetricSeries): MetricItem => ({
-  id: 0,
-  metric_group: 0,
-  metric_object: 0,
-  name: metric.name,
-  type: 'number',
-  display_name: metric.display_name,
-  dimensions: metric.dimensions || [],
-  unit: metric.unit,
-  query: metric.query,
-  description: metric.description,
-  color: metric.color,
-  viewData: metric.viewData
-});
-
-const mergeChartSeries = (
-  seriesList: Array<{ key: string; label: string; displayName?: string; data: ChartData[] }>
-): ChartData[] => {
-  const merged = new Map<number, ChartData>();
-  seriesList.forEach((series, index) => {
-    const valueKey = `value${index + 1}`;
-    series.data.forEach((point) => {
-      const time = Number(point.time);
-      const current = merged.get(time) || {
-        time,
-        title: series.label,
-        details: {}
-      };
-      current[valueKey] = Number(point.value1 ?? 0);
-      current.details = current.details || {};
-      current.details[valueKey] = [
-        {
-          name: series.key,
-          label: series.displayName || '',
-          value: series.displayName || series.label
-        }
-      ];
-      merged.set(time, current);
-    });
-  });
-  return Array.from(merged.values()).sort((a, b) => Number(a.time) - Number(b.time));
-};
-
-const MiniTrendChart = ({ data, color }: { data: ChartData[]; color: string }) => {
-  const chartData = useMemo(
-    () =>
-      data
-        .map((point) => ({
-          time: Number(point.time),
-          value: Number(point.value1 ?? 0)
-        }))
-        .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value)),
-    [data]
-  );
-
-  const option = useMemo(() => {
-    if (!chartData.length) return null;
-    return {
-      animation: false,
-      grid: { top: 2, right: 0, bottom: 2, left: 0 },
-      xAxis: { type: 'category' as const, show: false, data: chartData.map((p) => p.time) },
-      yAxis: { type: 'value' as const, show: false },
-      series: [{
-        type: 'line' as const,
-        data: chartData.map((p) => p.value),
-        smooth: true,
-        symbol: 'none',
-        lineStyle: { width: 2, color },
-        areaStyle: {
-          color: {
-            type: 'linear' as const,
-            x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: `${color}3D` },
-              { offset: 1, color: `${color}05` }
-            ]
-          }
-        }
-      }],
-      tooltip: { show: false }
-    };
-  }, [chartData, color]);
-
-  const { containerRef } = useECharts(option);
-
-  if (!chartData.length) {
-    return <div className={styles.miniTrendPlaceholder} />;
-  }
-
-  return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
-};
-
-const GuideTooltipContent = ({ items }: { items: GuideItem[] }) => (
-  <div className={styles.metricGuideTooltip}>
-    {items.map((item) => (
-      <div key={item.label} className={styles.metricGuideTooltipRow}>
-        <strong>{item.label}</strong>
-        <span>{item.detail}</span>
-      </div>
-    ))}
-  </div>
-);
-
-const TitleWithGuide = ({ title, items, className }: { title: React.ReactNode; items: GuideItem[]; className?: string }) => (
-  <span className={[styles.titleWithGuide, className].filter(Boolean).join(' ')}>
-    <span>{title}</span>
-    <Tooltip overlayClassName="lightMetricTooltip" title={<GuideTooltipContent items={items} />}>
-      <InfoCircleOutlined className={styles.metricGuideIcon} />
-    </Tooltip>
-  </span>
-);
-
-const StatCard = ({
-  title,
-  value,
-  unit,
-  icon,
-  iconStyle,
-  color,
-  footer,
-  compare,
-  trendData = [],
-  hideTrend = false,
-  noDataType = 'empty',
-  className,
-  bodyClassName,
-  extra
-}: {
-  title: React.ReactNode;
-  value: React.ReactNode;
-  unit: string;
-  icon: React.ReactNode;
-  iconStyle: React.CSSProperties;
-  color: string;
-  footer: React.ReactNode;
-  compare?: { direction: 'up' | 'down' | 'flat'; value: string } | null;
-  trendData?: ChartData[];
-  hideTrend?: boolean;
-  noDataType?: 'empty' | 'error';
-  className?: string;
-  bodyClassName?: string;
-  extra?: React.ReactNode;
-}) => {
-  const compareTone = compare ? getCompareTone(compare.direction) : 'flat';
-  return (
-    <div className={`${styles.statCard} ${className || ''}`}>
-      <div className={styles.statHeader}>
-        <div className={styles.statLabel}>{title}</div>
-        <div className={styles.statIcon} style={iconStyle}>{icon}</div>
-      </div>
-      <div className={`${styles.statBody} ${bodyClassName || ''}`}>
-        <div className={styles.statValue} style={{ color }}>
-          {value}
-          {unit ? <span className={styles.statUnit}>{unit}</span> : null}
-        </div>
-        {compare ? (
-          <div className={`${styles.statCompare} ${styles[`statCompare${compareTone === 'flat' ? 'Flat' : compareTone === 'positive' ? 'Positive' : 'Negative'}`]}`}>
-            <span className={styles.statCompareLabel}>较上一周期</span>
-            <span className={styles.statCompareValue}>
-              {compare.direction === 'up' ? <RiseOutlined /> : compare.direction === 'down' ? <FallOutlined /> : null}
-              {compare.value}
-            </span>
-          </div>
-        ) : null}
-        <div className={styles.statMeta}>{footer}</div>
-      </div>
-      {extra ? <div className={styles.statExtra}>{extra}</div> : null}
-      {!hideTrend ? (
-        <div className={styles.miniTrend}>
-          <MiniTrendChart data={noDataType === 'error' ? [] : trendData} color={color} />
-        </div>
-      ) : null}
-    </div>
-  );
-};
-
-const CollectionStatusCard = ({
-  status,
-  timeline
-}: {
-  status: ReturnType<typeof getCollectionStatus>;
-  timeline: Array<'success' | 'empty' | 'error'>;
-}) => (
-  <div className={`${styles.statCard} ${styles.collectionStatusCard}`}>
-    <div className={styles.collectionStatusHeader}>
-      <div className={styles.statLabel}>
-        <TitleWithGuide
-          title="采集状态"
-          items={[
-            { label: '采集状态', detail: '展示最近一段时间内该实例监控采集是否正常、缺失或异常。' },
-            { label: '状态时间线', detail: '绿色表示采集成功，灰色表示暂无数据，红色表示采集或查询异常。' }
-          ]}
-          className={styles.statTitleWithGuide}
-        />
-      </div>
-    </div>
-    <div className={styles.collectionStatusBody}>
-      <div
-        className={`${styles.collectionStatusValue} ${
-          styles[`collectionStatusValue${status.label === '正常' ? 'Success' : status.label === '异常' ? 'Error' : 'Empty'}`]
-        }`}
-      >
-        {status.label}
-      </div>
-      <div className={styles.collectionStatusTimelineBlock}>
-        <div className={styles.collectionStatusTimelineTitle}>状态时间线</div>
-        <div className={styles.collectionStatusTimeline}>
-          {timeline.map((tone, index) => (
-            <span
-              key={`${tone}-${index}`}
-              className={`${styles.collectionStatusSegment} ${
-                styles[`collectionStatusSegment${tone === 'success' ? 'Success' : tone === 'error' ? 'Error' : 'Empty'}`]
-              }`}
-            />
-          ))}
-        </div>
-        <div className={styles.collectionStatusLegend}>
-          {COLLECTION_STATUS_LEGEND.map((item) => (
-            <span key={item.key} className={styles.collectionStatusLegendItem}>
-              <span className={styles.collectionStatusLegendDot} style={{ background: item.color }} />
-              {item.label}
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
-  </div>
-);
-
-const getCollectionStatus = (metric?: MetricSeries | null) => {
-  const hasError = metric?.loadState === 'error';
-  if (hasError) {
-    return {
-      label: '异常',
-      tagColor: 'error' as const,
-      detail: '当前采集状态指标查询失败，请检查探针与 MongoDB 实例连通性或采集配置。'
-    };
-  }
-  const latestTone = getCollectionStatusTones(metric).at(-1);
-  if (latestTone === 'success') {
-    return {
-      label: '正常',
-      tagColor: 'success' as const,
-      detail: '当前采集状态指标可正常返回，说明 MongoDB 监控采集链路正常。'
-    };
-  }
-  return {
-    label: '无数据',
-    tagColor: 'warning' as const,
-    detail: '当前时间范围内尚未看到 MongoDB 采集数据，请检查时间范围或等待新数据进入。'
-  };
-};
-
 export default function MongoDashboardPage() {
   const { getInstanceQuery } = useViewApi();
   const { getInstanceList } = useMonitorApi();
@@ -807,22 +338,22 @@ export default function MongoDashboardPage() {
 
         const metricResultsPromise = Promise.all(
           DASHBOARD_METRICS.map((metric) =>
-            getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, timeValues))
+            getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, timeValues, undefined, false))
               .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
               .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
           )
         );
 
         const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(
-          buildSearchParams(MONGODB_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, timeValues)
+          buildSearchParams(MONGODB_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, timeValues, undefined, false)
         )
           .then((result) =>
-            toMetricSeries(
+            toMetricSeries<MongoMetricConfig>(
               {
                 name: 'mongodb_collection_status',
                 display_name: '采集状态',
                 description: 'MongoDB 监控探针采集状态，用于判断当前实例是否存在有效采集数据。',
-                unit: 'counts',
+                unit: 'counts' as MetricUnit,
                 query: MONGODB_COLLECTION_STATUS_QUERY,
                 color: '#27c274'
               },
@@ -936,8 +467,8 @@ export default function MongoDashboardPage() {
   const cursorTimedOut = getLatest('mongodb_cursor_timed_out_count');
   const userAssert = getLatest('mongodb_assert_user');
 
-  const collectionStatus = getCollectionStatus(collectionStatusMetric);
-  const collectionStatusTimeline = buildCollectionStatusTimeline(collectionStatusMetric);
+  const collectionStatus = getCollectionStatus(collectionStatusMetric, 'MongoDB');
+  const collectionStatusTimeline = buildCollectionStatusTimeline(collectionStatusMetric?.loadState, collectionStatusMetric?.viewData);
   const metricEmptyText = collectionStatus.label === '异常' ? '查询失败' : '暂无采集数据';
 
   const uptimeDisplay = formatRuntimeNs(uptimeValue);
@@ -1175,7 +706,7 @@ export default function MongoDashboardPage() {
               <div className={styles.toolbarTimeSelector}>
                 <TimeSelector
                   defaultValue={timeDefaultValue}
-                  customFrequencyList={MONGODB_REFRESH_FREQUENCY_LIST}
+                  customFrequencyList={DEFAULT_REFRESH_FREQUENCY_LIST}
                   onChange={onTimeChange}
                   onFrequenceChange={onFrequenceChange}
                   onRefresh={() => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))}
@@ -1233,9 +764,10 @@ export default function MongoDashboardPage() {
           {displayMode === 'dashboard' ? (
             <>
               <div className={styles.primaryGrid}>
-                <CollectionStatusCard status={collectionStatus} timeline={collectionStatusTimeline} />
+                <CollectionStatusCard styles={styles} status={collectionStatus} timeline={collectionStatusTimeline} />
                 <StatCard
-                  title={<TitleWithGuide title="MongoDB 运行时长" items={uptimeGuide} className={styles.statTitleWithGuide} />}
+                  styles={styles}
+                  title={<TitleWithGuide styles={styles} title="MongoDB 运行时长" items={uptimeGuide} className={styles.statTitleWithGuide} />}
                   value={hasMetricData('mongodb_uptime_ns') ? `${uptimeDisplay.value}${uptimeDisplay.unit}` : '--'}
                   unit=""
                   icon={<ClockCircleOutlined />}
@@ -1276,7 +808,8 @@ export default function MongoDashboardPage() {
                   noDataType={getNoDataType('mongodb_uptime_ns')}
                 />
                 <StatCard
-                  title={<TitleWithGuide title="当前连接数" items={connectionGuide} className={styles.statTitleWithGuide} />}
+                  styles={styles}
+                  title={<TitleWithGuide styles={styles} title="当前连接数" items={connectionGuide} className={styles.statTitleWithGuide} />}
                   value={renderMetricValue('mongodb_connections_current', connectionsDisplay.value)}
                   unit=""
                   icon={<NodeIndexOutlined />}
@@ -1293,7 +826,8 @@ export default function MongoDashboardPage() {
                   noDataType={getNoDataType('mongodb_connections_current')}
                 />
                 <StatCard
-                  title={<TitleWithGuide title="命令吞吐" items={throughputGuide} className={styles.statTitleWithGuide} />}
+                  styles={styles}
+                  title={<TitleWithGuide styles={styles} title="命令吞吐" items={throughputGuide} className={styles.statTitleWithGuide} />}
                   value={renderMetricValue('mongodb_commands_rate', commandsDisplay.value)}
                   unit={hasMetricData('mongodb_commands_rate') ? commandsDisplay.unit : ''}
                   icon={<ThunderboltOutlined />}
@@ -1310,7 +844,8 @@ export default function MongoDashboardPage() {
                   noDataType={getNoDataType('mongodb_commands_rate')}
                 />
                 <StatCard
-                  title={<TitleWithGuide title="读延迟" items={latencyGuide} className={styles.statTitleWithGuide} />}
+                  styles={styles}
+                  title={<TitleWithGuide styles={styles} title="读延迟" items={latencyGuide} className={styles.statTitleWithGuide} />}
                   value={renderMetricValue('mongodb_latency_reads_avg', readLatencyDisplay.value)}
                   unit={hasMetricData('mongodb_latency_reads_avg') ? readLatencyDisplay.unit : ''}
                   icon={<ClockCircleOutlined />}
@@ -1326,7 +861,8 @@ export default function MongoDashboardPage() {
                   noDataType={getNoDataType('mongodb_latency_reads_avg')}
                 />
                 <StatCard
-                  title={<TitleWithGuide title="WiredTiger 缓存使用率" items={cacheGuide} className={styles.statTitleWithGuide} />}
+                  styles={styles}
+                  title={<TitleWithGuide styles={styles} title="WiredTiger 缓存使用率" items={cacheGuide} className={styles.statTitleWithGuide} />}
                   value={renderMetricValue('mongodb_wtcache_usage_ratio', cacheUsageDisplay.value)}
                   unit={hasMetricData('mongodb_wtcache_usage_ratio') ? cacheUsageDisplay.unit : ''}
                   icon={<DatabaseOutlined />}
@@ -1348,7 +884,7 @@ export default function MongoDashboardPage() {
                 <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
                   <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
                     <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
-                      <TitleWithGuide title="吞吐趋势" items={throughputTrendGuide} className={styles.panelTitleWithGuide} />
+                      <TitleWithGuide styles={styles} title="吞吐趋势" items={throughputTrendGuide} className={styles.panelTitleWithGuide} />
                     </h3>
                     <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>命令、查询与写入变化</div>
                     <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
@@ -1374,7 +910,7 @@ export default function MongoDashboardPage() {
                 <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
                   <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
                     <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
-                      <TitleWithGuide title="缓存与内存趋势" items={cacheTrendGuide} className={styles.panelTitleWithGuide} />
+                      <TitleWithGuide styles={styles} title="缓存与内存趋势" items={cacheTrendGuide} className={styles.panelTitleWithGuide} />
                     </h3>
                     <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>缓存已用、缓存上限与常驻内存</div>
                     <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
@@ -1408,7 +944,7 @@ export default function MongoDashboardPage() {
                 <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
                   <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
                     <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
-                      <TitleWithGuide title="读写压力趋势" items={pressureTrendGuide} className={styles.panelTitleWithGuide} />
+                      <TitleWithGuide styles={styles} title="读写压力趋势" items={pressureTrendGuide} className={styles.panelTitleWithGuide} />
                     </h3>
                     <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>活跃读写与排队读写</div>
                     <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
@@ -1436,7 +972,7 @@ export default function MongoDashboardPage() {
                 <div className={`${styles.panel} ${styles.quarterPanel}`}>
                   <div className={styles.detailCard}>
                     <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide title="连接与排队" items={queueGuide} className={styles.panelTitleWithGuide} /></h3>
+                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="连接与排队" items={queueGuide} className={styles.panelTitleWithGuide} /></h3>
                       <div className={styles.panelSubTitle}>连接容量与等待积压</div>
                     </div>
                     <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>当前连接</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_connections_current', formatMetricValue(currentConnections, 'counts').value)}</span></div>
@@ -1452,7 +988,7 @@ export default function MongoDashboardPage() {
                 <div className={`${styles.panel} ${styles.quarterPanel}`}>
                   <div className={styles.detailCard}>
                     <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide title="WiredTiger 缓存状态" items={cacheDetailGuide} className={styles.panelTitleWithGuide} /></h3>
+                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="WiredTiger 缓存状态" items={cacheDetailGuide} className={styles.panelTitleWithGuide} /></h3>
                       <div className={styles.panelSubTitle}>缓存占用与脏数据状态</div>
                     </div>
                     <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>缓存使用率</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_wtcache_usage_ratio', `${cacheUsageDisplay.value}${cacheUsageDisplay.unit}`)}</span></div>
@@ -1468,7 +1004,7 @@ export default function MongoDashboardPage() {
                 <div className={`${styles.panel} ${styles.quarterPanel}`}>
                   <div className={styles.detailCard}>
                     <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide title="内存与缺页" items={memoryDetailGuide} className={styles.panelTitleWithGuide} /></h3>
+                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="内存与缺页" items={memoryDetailGuide} className={styles.panelTitleWithGuide} /></h3>
                       <div className={styles.panelSubTitle}>工作集与进程内存匹配</div>
                     </div>
                     <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>常驻内存</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_resident_megabytes', `${residentDisplay.value}${residentDisplay.unit}`)}</span></div>
@@ -1481,7 +1017,7 @@ export default function MongoDashboardPage() {
                 <div className={`${styles.panel} ${styles.quarterPanel}`}>
                   <div className={styles.detailCard}>
                     <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide title="网络与异常" items={networkDetailGuide} className={styles.panelTitleWithGuide} /></h3>
+                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="网络与异常" items={networkDetailGuide} className={styles.panelTitleWithGuide} /></h3>
                       <div className={styles.panelSubTitle}>结果返回与异常信号</div>
                     </div>
                     <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>入流量</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_net_in_bytes_count_rate', `${netInDisplay.value}${netInDisplay.unit}`)}</span></div>
@@ -1496,7 +1032,7 @@ export default function MongoDashboardPage() {
                 <div className={`${styles.panel} ${styles.fullPanel}`}>
                   <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
                     <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
-                      <TitleWithGuide title="网络流量趋势" items={networkTrendGuide} className={styles.panelTitleWithGuide} />
+                      <TitleWithGuide styles={styles} title="网络流量趋势" items={networkTrendGuide} className={styles.panelTitleWithGuide} />
                     </h3>
                     <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>入流量与出流量</div>
                     <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
@@ -1530,7 +1066,7 @@ export default function MongoDashboardPage() {
                 <div className={styles.panelHeader}>
                   <div className={styles.panelHeading}>
                     <h3 className={styles.panelTitle}>
-                      <TitleWithGuide title="监控指标全景" items={metricsOverviewGuide} className={styles.panelTitleWithGuide} />
+                      <TitleWithGuide styles={styles} title="监控指标全景" items={metricsOverviewGuide} className={styles.panelTitleWithGuide} />
                     </h3>
                   </div>
                 </div>
