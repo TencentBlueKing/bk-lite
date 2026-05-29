@@ -90,6 +90,7 @@ class SubscriptionRuleSerializer(serializers.ModelSerializer):
             TriggerType.ATTRIBUTE_CHANGE.value,
             TriggerType.RELATION_CHANGE.value,
             TriggerType.EXPIRATION.value,
+            TriggerType.CONFIG_FILE.value,
         }
         if not isinstance(value, list) or not value:
             raise serializers.ValidationError("至少选择一种触发类型")
@@ -128,6 +129,12 @@ class SubscriptionRuleSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("临近到期需配置时间字段")
             if not isinstance(days_before, int) or days_before <= 0:
                 raise serializers.ValidationError("提前天数必须为正整数")
+        if TriggerType.CONFIG_FILE.value in trigger_types:
+            config_file = normalized_value.get("config_file", {})
+            if config_file is None:
+                normalized_value["config_file"] = {}
+            elif not isinstance(config_file, dict):
+                raise serializers.ValidationError("config_file 配置格式不合法")
         return normalized_value
 
     @staticmethod

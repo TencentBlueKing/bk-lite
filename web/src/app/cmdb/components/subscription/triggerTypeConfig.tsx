@@ -17,7 +17,7 @@ interface TriggerTypeConfigProps {
   errors?: Record<string, string>;
 }
 
-const TYPES: TriggerType[] = ['attribute_change', 'relation_change', 'expiration'];
+const TYPES: TriggerType[] = ['attribute_change', 'relation_change', 'expiration', 'config_file'];
 const ATTRIBUTE_CHANGE_EXCLUDED_FIELD_IDS = new Set([
   'inst_name',
   'organization',
@@ -128,12 +128,14 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
     attribute_change: t('subscription.triggerTypeAttributeChange'),
     relation_change: t('subscription.triggerTypeRelationChange'),
     expiration: t('subscription.triggerTypeExpiration'),
+    config_file: t('subscription.triggerTypeConfigFile'),
   } as const;
 
   const descMap = {
     attribute_change: t('subscription.attributeChangeDesc'),
     relation_change: t('subscription.relationChangeDesc'),
     expiration: t('subscription.expirationDesc'),
+    config_file: t('subscription.configFileDesc'),
   } as const;
 
   const toggleType = (type: TriggerType) => {
@@ -149,6 +151,9 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
       }
       if (type === 'expiration' && !nextConfig.expiration) {
         nextConfig.expiration = { time_field: '', days_before: 1 };
+      }
+      if (type === 'config_file' && !nextConfig.config_file) {
+        nextConfig.config_file = {};
       }
     }
     onChange(nextTypes, nextConfig);
@@ -391,6 +396,10 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
       );
     }
 
+    if (type === 'config_file') {
+      return null;
+    }
+
     return null;
   };
 
@@ -428,14 +437,21 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
         })}
       </div>
 
-      {value.map((type) => (
-        <div key={type} style={{ padding: '12px', background: '#fafafa', borderRadius: 6 }}>
-          <div style={{ fontSize: 13, color: '#333', marginBottom: 12, fontWeight: 500 }}>
-            {titleMap[type]}{t('subscription.config')}
+      {value.map((type) => {
+        const content = renderConfigContent(type);
+        if (!content) {
+          return null;
+        }
+
+        return (
+          <div key={type} style={{ padding: '12px', background: '#fafafa', borderRadius: 6 }}>
+            <div style={{ fontSize: 13, color: '#333', marginBottom: 12, fontWeight: 500 }}>
+              {titleMap[type]}{t('subscription.config')}
+            </div>
+            {content}
           </div>
-          {renderConfigContent(type)}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };
