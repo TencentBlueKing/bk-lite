@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 import smtplib
 import time
 import urllib.parse
@@ -10,6 +11,7 @@ from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import encode_rfc2231
+from urllib.parse import unquote, urlparse
 
 import requests
 from wechatpy import WeChatClientException
@@ -18,6 +20,53 @@ from wechatpy.enterprise import WeChatClient
 import nats_client
 from apps.core.logger import system_mgmt_logger as logger
 from apps.system_mgmt.models import Channel
+
+# Webhook 域名白名单（防止 SSRF 攻击）
+WEBHOOK_ALLOWED_DOMAINS = {
+    # 企业微信
+    "qyapi.weixin.qq.com",
+    # 飞书
+    "open.feishu.cn",
+    "open.larksuite.com",
+    # 钉钉
+    "oapi.dingtalk.com",
+}
+
+
+def is_valid_webhook_url(url: str) -> bool:
+    """验证 Webhook URL 是否为允许的官方域名，防止 SSRF 攻击
+
+    Args:
+        url: Webhook URL
+
+    Returns:
+        bool: URL 是否有效且在白名单内
+    """
+    if not url:
+        return False
+    try:
+        # 拒绝含反斜杠的 URL（urlparse 与 requests 解析不一致，可绕过域名校验）
+        if "\\" in url:
+            return False
+        parsed = urlparse(url)
+        if parsed.scheme not in ("https", "http"):
+            return False
+        # 拒绝含 userinfo（@）的 URL，防止 user@host 形式的绕过
+        if "@" in (parsed.netloc or ""):
+            return False
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        # 对 hostname 解码后校验，防止 %23 %00 等编码绕过
+        decoded_hostname = unquote(hostname).lower()
+        if decoded_hostname != hostname.lower():
+            return False
+        # hostname 只允许字母、数字、连字符、点号
+        if not re.match(r"^[a-z0-9\-\.]+$", hostname.lower()):
+            return False
+        return hostname.lower() in WEBHOOK_ALLOWED_DOMAINS
+    except Exception:
+        return False
 
 
 def send_wechat(channel_obj: Channel, content, user_list):
@@ -123,6 +172,12 @@ def send_by_wecom_bot(channel_obj: Channel, content, receivers):
         channel_obj.decrypt_field("bot_key", channel_config)
         bot_key = channel_config.get("bot_key")
         webhook_url = f"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={bot_key}"
+
+    # SSRF 防护：验证 webhook URL 域名
+    if not is_valid_webhook_url(webhook_url):
+        logger.warning(f"[SSRF] 阻断非法 webhook URL: {webhook_url}")
+        return {"result": False, "message": "Invalid webhook URL: domain not in allowlist"}
+
     try:
         res = requests.post(webhook_url, json=payload, timeout=5)
         return res.json()
@@ -141,6 +196,11 @@ def send_by_feishu_bot(channel_obj: Channel, title, content, receivers):
     webhook_url = channel_config.get("webhook_url")
     if not webhook_url:
         return {"result": False, "message": "Feishu bot webhook_url is not configured"}
+
+    # SSRF 防护：验证 webhook URL 域名
+    if not is_valid_webhook_url(webhook_url):
+        logger.warning(f"[SSRF] 阻断非法 webhook URL: {webhook_url}")
+        return {"result": False, "message": "Invalid webhook URL: domain not in allowlist"}
 
     payload = {
         "msg_type": "interactive",
@@ -180,6 +240,11 @@ def send_by_dingtalk_bot(channel_obj: Channel, title, content, receivers):
     webhook_url = channel_config.get("webhook_url")
     if not webhook_url:
         return {"result": False, "message": "DingTalk bot webhook_url is not configured"}
+
+    # SSRF protection: validate webhook URL against allowlist before signing
+    if not is_valid_webhook_url(webhook_url):
+        logger.warning(f"DingTalk webhook URL rejected by SSRF validator: {webhook_url[:100]}")
+        return {"result": False, "message": "Invalid DingTalk webhook URL"}
 
     # 可选签名验证（毫秒级时间戳，URL 编码）
     channel_obj.decrypt_field("sign_secret", channel_config)

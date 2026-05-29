@@ -137,7 +137,10 @@ const defaultCalculateMetric = (
   }
 
   const values = rawData.map((item: any) => toNumber(item[field]));
+  const metricMode = config?.metricMode === 'latest' ? 'latest' : 'sum';
   const total = values.reduce((sum: number, value: number) => sum + value, 0);
+  const currentValue =
+    metricMode === 'latest' ? values[values.length - 1] ?? 0 : total;
   let pct: number | null = null;
 
   if (Array.isArray(prevData) && prevData.length > 0) {
@@ -146,9 +149,13 @@ const defaultCalculateMetric = (
       (sum: number, value: number) => sum + value,
       0
     );
-    if (prevTotal !== 0) {
-      pct = ((total - prevTotal) / prevTotal) * 100;
-    } else if (total > 0) {
+    const prevValue =
+      metricMode === 'latest'
+        ? prevValues[prevValues.length - 1] ?? 0
+        : prevTotal;
+    if (prevValue !== 0) {
+      pct = ((currentValue - prevValue) / prevValue) * 100;
+    } else if (currentValue > 0) {
       pct = 100;
     }
   } else if (values.length > 1) {
@@ -160,7 +167,7 @@ const defaultCalculateMetric = (
   }
 
   return {
-    currentValue: total,
+    currentValue,
     changePercent: pct,
     trendData: values.length > 1 ? values : []
   };

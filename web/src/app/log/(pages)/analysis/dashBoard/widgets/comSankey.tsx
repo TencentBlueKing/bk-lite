@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import { Spin, Empty } from 'antd';
-import { randomColorForLegend } from '@/app/log/utils/randomColorForChart';
 import { formatNumericValue } from '@/app/log/utils/common';
 import useChartColors from './docker/useChartColors';
 
@@ -37,8 +36,8 @@ const Sankey: React.FC<SankeyProps> = ({
   const [isDataReady, setIsDataReady] = useState(false);
   const [chartInstance, setChartInstance] = useState<any>(null);
   const chartRef = useRef<any>(null);
-  const chartColors = randomColorForLegend();
   const colors = useChartColors();
+  const chartColors = colors.series;
 
   const transformData = (rawData: any): SankeyData => {
     if (!Array.isArray(rawData) || rawData.length === 0) {

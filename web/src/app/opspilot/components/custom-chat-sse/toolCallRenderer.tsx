@@ -283,84 +283,18 @@ const initCardEvents = () => {
   if (cardEventInitialized) return;
   cardEventInitialized = true;
 
-  // 添加全局样式 - 使用 CSS 类控制展开/折叠
+  // 只注入 keyframes 动画（展开/折叠由 React onClick handler 处理）
   const styleEl = document.createElement('style');
+  styleEl.id = 'tool-call-animations';
   styleEl.textContent = `
     @keyframes tool-spin { 
       0% { transform: rotate(0deg); } 
       100% { transform: rotate(360deg); } 
     }
-    .tool-call-group-header:hover {
-      background: var(--color-fill-1);
-    }
-    .tool-call-group-body {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.3s ease-out;
-    }
-    .tool-call-group.expanded .tool-call-group-body {
-      max-height: 2000px;
-    }
-    .tool-call-expand-icon {
-      transition: transform 0.2s ease;
-    }
-    .tool-call-group.expanded .tool-call-expand-icon {
-      transform: rotate(90deg);
-    }
-    .tool-call-item-header {
-      cursor: pointer;
-      border-radius: 4px;
-    }
-    .tool-call-item-header:hover {
-      background: var(--color-fill-1);
-    }
-    .tool-call-item-detail {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.3s ease-out;
-    }
-    .tool-call-item.expanded .tool-call-item-detail {
-      max-height: 5000px;
-    }
-    .tool-call-item-expand-icon {
-      transition: transform 0.2s ease;
-    }
-    .tool-call-item.expanded .tool-call-item-expand-icon {
-      transform: rotate(90deg);
-    }
   `;
-  document.head.appendChild(styleEl);
-
-  // 点击事件委托 - 展开/折叠工具组
-  document.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement;
-    const header = target.closest('.tool-call-group-header') as HTMLElement | null;
-
-    if (header) {
-      e.preventDefault();
-      e.stopPropagation();
-      
-      const group = header.closest('.tool-call-group') as HTMLElement | null;
-      if (group) {
-        const body = group.querySelector('.tool-call-group-body') as HTMLElement | null;
-        const icon = group.querySelector('.tool-call-expand-icon') as HTMLElement | null;
-        
-        const isExpanded = group.getAttribute('data-expanded') === 'true';
-        const newExpanded = !isExpanded;
-        
-        group.setAttribute('data-expanded', newExpanded ? 'true' : 'false');
-        
-        // 直接操作样式
-        if (body) {
-          body.style.maxHeight = newExpanded ? '2000px' : '0';
-          body.style.overflow = 'hidden';
-        }
-        if (icon) {
-          icon.style.transform = newExpanded ? 'rotate(90deg)' : 'rotate(0deg)';
-        }
-      }
-    }
-  });
+  if (!document.getElementById('tool-call-animations')) {
+    document.head.appendChild(styleEl);
+  }
 };
 
 /**
@@ -395,6 +329,26 @@ export const syncActiveToolCallPanel = (toolId: string, info: ToolCallInfo) => {
       const summary = extractSummary(info.args);
       if (summary) {
         summarySpan.innerHTML = `<span style="color: var(--color-text-3);">· ${escapeHtml(summary)}</span>`;
+      }
+    }
+
+    // 对 request_user_choice 完成后，在行内追加选择结果 badge
+    if (info.name === 'request_user_choice' && info.status === 'completed' && info.result) {
+      const existingBadge = toolItem.querySelector('.tool-call-choice-badge');
+      if (!existingBadge) {
+        const match = info.result.match(/(?:用户回答|选择了|默认选项)[:：]\s*(.+?)(?:[。.]|(?:\s*\(keys:)|$)/);
+        const selected = match ? match[1].trim() : '';
+        if (selected) {
+          const header = toolItem.querySelector('.tool-call-item-header');
+          const textSpan = header?.querySelector('span[style*="flex: 1"]');
+          if (textSpan) {
+            const badge = document.createElement('span');
+            badge.className = 'tool-call-choice-badge';
+            badge.style.cssText = 'margin-left: 8px; padding: 1px 8px; background: var(--color-primary-light-1, #e6f4ff); color: var(--color-primary-6, #1677ff); border-radius: 10px; font-size: 11px; font-weight: 500;';
+            badge.textContent = `→ ${selected}`;
+            textSpan.appendChild(badge);
+          }
+        }
       }
     }
   }
@@ -443,9 +397,19 @@ const renderToolItem = (id: string, info: ToolCallInfo): string => {
     : `<span style="color: #52c41a; font-size: 12px;">✓</span>`;
 
   // 概要显示（调用目的）- 放在工具名右边
-  const summaryHtml = summary 
+  let summaryHtml = summary 
     ? `<span class="tool-call-summary" style="margin-left: 8px;"><span style="color: var(--color-text-3);">· ${escapeHtml(summary)}</span></span>` 
     : `<span class="tool-call-summary"></span>`;
+
+  // 对 request_user_choice 工具，完成后在行内显示选择结果
+  if (info.name === 'request_user_choice' && info.status === 'completed' && info.result) {
+    // Match patterns: "用户回答: xxx。" or "选择了: xxx" or "默认选项: xxx。"
+    const match = info.result.match(/(?:用户回答|选择了|默认选项)[:：]\s*(.+?)(?:[。.]|(?:\s*\(keys:)|$)/);
+    const selected = match ? match[1].trim() : '';
+    if (selected) {
+      summaryHtml += `<span style="margin-left: 8px; padding: 1px 8px; background: var(--color-primary-light-1, #e6f4ff); color: var(--color-primary-6, #1677ff); border-radius: 10px; font-size: 11px; font-weight: 500;">→ ${escapeHtml(selected)}</span>`;
+    }
+  }
 
   // 格式化 JSON 用于详情显示
   const formatJson = (str: string): string => {
@@ -571,7 +535,7 @@ const renderToolItem = (id: string, info: ToolCallInfo): string => {
   const header = `<div class="tool-call-item-header" style="display: flex; align-items: center; gap: 6px; padding: 4px 0;"><span class="tool-call-status-icon" style="flex-shrink: 0; width: 16px; display: inline-flex; align-items: center; justify-content: center;">${statusIcon}</span>${expandIcon}<span style="flex: 1; min-width: 0; font-size: 12px; line-height: 1.5;"><span style="color: var(--color-text-1); font-weight: 500;">${escapeHtml(info.name)}</span>${summaryHtml}</span></div>`;
 
   const detail = hasDetail 
-    ? `<div class="tool-call-item-detail" style="padding-left: 34px; font-size: 12px;">${detailContent}</div>`
+    ? `<div class="tool-call-item-detail" style="padding-left: 34px; font-size: 12px; display: none;">${detailContent}</div>`
     : '';
 
   return `<div class="tool-call-item" data-tool-id="${escapeHtml(id)}" data-has-detail="${hasDetail}">${header}${detail}</div>`;
@@ -614,8 +578,9 @@ export const renderAllToolCalls = (toolCalls: Map<string, ToolCallInfo>, isStrea
   // 组头部
   const header = `<div class="tool-call-group-header" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; cursor: pointer; user-select: none; font-size: 12px; color: var(--color-text-3); border-radius: 4px; margin: 2px 0;"><span class="tool-call-expand-icon" style="font-size: 8px; width: 12px; display: inline-flex; align-items: center; justify-content: center;">▶</span><span class="tool-call-group-status" style="display: inline-flex; align-items: center;">${groupStatusIcon}</span><span>已调用 ${totalCount} 个工具</span><span style="color: var(--color-text-4);">${hintText}</span></div>`;
 
-  // 组内容
-  const body = `<div class="tool-call-group-body" style="padding-left: 20px; margin-top: 4px;">${toolItems}</div>`;
+  // 组内容 - 默认收起时用 display:none，避免 CSS 优先级问题
+  const bodyDisplay = shouldExpand ? '' : 'display: none;';
+  const body = `<div class="tool-call-group-body" style="padding-left: 20px; margin-top: 4px; ${bodyDisplay}">${toolItems}</div>`;
 
   // 流式回复中默认展开，回复结束后收起
   const expandedClass = shouldExpand ? ' expanded' : '';

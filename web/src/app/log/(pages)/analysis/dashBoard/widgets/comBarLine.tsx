@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import { Spin, Empty } from 'antd';
-import { randomColorForLegend } from '@/app/log/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/log/utils/chartDataTransform';
 import ChartLegend from '../components/chartLegend';
 import useChartColors from './docker/useChartColors';
+import { createSoftLineArea, createVerticalBarGradient } from './chartStyle';
 
 const LEGEND_WIDTH_CLASS = 'w-40';
 const LEGEND_WIDTH_PX = 160;
@@ -30,8 +30,8 @@ const ComBarLine: React.FC<ComBarLineProps> = ({
   const chartRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
-  const chartColors = randomColorForLegend();
   const colors = useChartColors();
+  const chartColors = colors.series;
 
   const containerCallbackRef = useCallback((node: HTMLDivElement | null) => {
     if (observerRef.current) {
@@ -138,10 +138,10 @@ const ComBarLine: React.FC<ComBarLineProps> = ({
         type: 'bar',
         data: chartData.series[0].data,
         yAxisIndex: 0,
-        barMaxWidth: 40,
+        barMaxWidth: 12,
         itemStyle: {
-          borderRadius: [2, 2, 0, 0],
-          color: chartColors[0]
+          borderRadius: [3, 3, 0, 0],
+          color: createVerticalBarGradient(chartColors[0])
         }
       },
       {
@@ -151,7 +151,8 @@ const ComBarLine: React.FC<ComBarLineProps> = ({
         yAxisIndex: 1,
         smooth: true,
         symbol: 'none',
-        lineStyle: { width: 2, color: chartColors[1] }
+        lineStyle: { width: 2, color: chartColors[1] },
+        areaStyle: createSoftLineArea(chartColors[1])
       }
     ];
   } else if (chartData?.values) {
@@ -160,8 +161,11 @@ const ComBarLine: React.FC<ComBarLineProps> = ({
         name: barLabel,
         type: 'bar',
         data: chartData.values,
-        barMaxWidth: 40,
-        itemStyle: { borderRadius: [2, 2, 0, 0] }
+        barMaxWidth: 12,
+        itemStyle: {
+          borderRadius: [3, 3, 0, 0],
+          color: createVerticalBarGradient(chartColors[0])
+        }
       }
     ];
   }

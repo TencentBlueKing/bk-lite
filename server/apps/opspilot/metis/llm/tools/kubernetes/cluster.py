@@ -87,17 +87,65 @@ def verify_kubernetes_connection(config: RunnableConfig = None):
 @tool()
 def get_kubernetes_contexts(config: RunnableConfig = None):
     """
-    获取kubectl上下文信息
+    获取可用的 Kubernetes 集群信息
 
-    显示当前可用的上下文和当前活动的上下文
+    列出当前可操作的所有 Kubernetes 集群/实例及其标识信息。
+    多集群场景下，返回每个集群的名称和上下文信息。
 
     Args:
         config (RunnableConfig): 工具配置
 
     Returns:
-        str: JSON格式的上下文信息
+        str: JSON格式的集群信息，包含 instance_name（传给其他工具的标识）和 context 详情
     """
     try:
+        configurable = config.get("configurable", {}) if config else {}
+
+        # If platform instances are configured, use them
+        if configurable.get("kubernetes_instances"):
+            from apps.opspilot.metis.llm.tools.kubernetes.connection import get_kubernetes_instances_from_configurable
+            import yaml as _yaml
+
+            instances = get_kubernetes_instances_from_configurable(configurable)
+            result = {"clusters": []}
+
+            for instance in instances:
+                cluster_info = {
+                    "instance_name": instance.get("name", ""),
+                    "instance_id": instance.get("id", ""),
+                    "contexts": [],
+                }
+                kubeconfig_data = instance.get("kubeconfig_data", "")
+                if kubeconfig_data:
+                    try:
+                        kubeconfig = _yaml.safe_load(kubeconfig_data)
+                        if isinstance(kubeconfig, dict):
+                            current_ctx = kubeconfig.get("current-context", "")
+                            for ctx in kubeconfig.get("contexts", []):
+                                ctx_name = ctx.get("name", "")
+                                ctx_detail = ctx.get("context", {})
+                                cluster_info["contexts"].append({
+                                    "context_name": ctx_name,
+                                    "cluster": ctx_detail.get("cluster", ""),
+                                    "user": ctx_detail.get("user", ""),
+                                    "namespace": ctx_detail.get("namespace", "default"),
+                                    "is_current": ctx_name == current_ctx,
+                                })
+                    except Exception:
+                        pass
+                result["clusters"].append(cluster_info)
+
+            # 多集群时提示 LLM 必须让用户选择
+            if len(result["clusters"]) > 1:
+                result["_instruction"] = (
+                    "检测到多个集群。仅当用户正在执行 K8s 操作且没有指定具体集群时，"
+                    "才需要调用 request_user_choice 让用户选择集群。"
+                    "如果用户只是打招呼或问非 K8s 问题，不要问集群选择。"
+                )
+
+            return json.dumps(result)
+
+        # Fallback: read from local kubeconfig
         from kubernetes import config as k8s_config
 
         contexts, active_context = k8s_config.list_kube_config_contexts()
@@ -117,7 +165,7 @@ def get_kubernetes_contexts(config: RunnableConfig = None):
         return json.dumps(result)
 
     except Exception as e:
-        return json.dumps({"error": f"获取上下文失败: {str(e)}", "suggestion": "请检查kubeconfig文件是否存在且格式正确"})
+        return json.dumps({"error": f"获取集群信息失败: {str(e)}", "suggestion": "请检查kubeconfig文件是否存在且格式正确"})
 
 
 @tool()

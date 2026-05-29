@@ -2,8 +2,9 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import ChartLegend from '../components/chartLegend';
 import { Spin, Empty } from 'antd';
-import { randomColorForLegend } from '@/app/log/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/log/utils/chartDataTransform';
+import useChartColors from './docker/useChartColors';
+import { createHorizontalBarGradient } from './chartStyle';
 
 const LEGEND_WIDTH_CLASS = 'w-40';
 const LEGEND_WIDTH_PX = 160;
@@ -28,7 +29,8 @@ const OsPie: React.FC<OsPieProps> = ({
   const [showLegend, setShowLegend] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
-  const chartColors = randomColorForLegend();
+  const colors = useChartColors();
+  const chartColors = colors.series;
 
   const containerCallbackRef = useCallback((node: HTMLDivElement | null) => {
     // 清理旧的 observer
@@ -116,15 +118,15 @@ const OsPie: React.FC<OsPieProps> = ({
       },
       xAxis: {
         type: 'value',
-        axisLabel: { fontSize: 11, color: '#7f92a7' },
-        splitLine: { lineStyle: { type: 'dashed', color: '#f0f0f0' } }
+        axisLabel: { fontSize: 11, color: colors.axisLabel },
+        splitLine: { lineStyle: { type: 'dashed', color: colors.splitLine } }
       },
       yAxis: {
         type: 'category',
         data: sortedBarData.map((d: any) => d.name),
         axisLabel: {
           fontSize: 11,
-          color: '#7f92a7',
+          color: colors.axisLabel,
           width: 100,
           overflow: 'truncate',
           ellipsis: '...'
@@ -138,16 +140,18 @@ const OsPie: React.FC<OsPieProps> = ({
           data: sortedBarData.map((d: any, i: number) => ({
             value: d.value,
             itemStyle: {
-              color: chartColors[i % chartColors.length],
-              borderRadius: [0, 2, 2, 0]
+              color: createHorizontalBarGradient(
+                chartColors[i % chartColors.length]
+              ),
+              borderRadius: [0, 3, 3, 0]
             }
           })),
-          barMaxWidth: 20,
+          barMaxWidth: 16,
           label: {
             show: true,
             position: 'right',
             fontSize: 11,
-            color: '#7f92a7'
+            color: colors.textSecondary
           }
         }
       ]
@@ -275,11 +279,11 @@ const OsPie: React.FC<OsPieProps> = ({
       {/* 图例区域 - only for pie/donut */}
       {!useBarChart && showLegend && chartData && chartData.length > 1 && (
         <div className={`ml-2 ${LEGEND_WIDTH_CLASS} flex-shrink-0 h-full`}>
-          <ChartLegend
-            chart={chartInstance}
-            data={chartData.map((item: any) => ({ name: item.name }))}
-            colors={chartColors}
-          />
+           <ChartLegend
+             chart={chartInstance}
+             data={chartData.map((item: any) => ({ name: item.name }))}
+             colors={chartColors}
+           />
         </div>
       )}
     </div>

@@ -89,7 +89,7 @@ export interface UserChoiceRequest {
   max_select: number;
   timeout_seconds: number;
   default_keys: string[];
-  display_hint: 'auto' | 'buttons' | 'dropdown' | 'checkbox';
+  display_hint: 'auto' | 'buttons' | 'dropdown' | 'checkbox' | 'text';
   received_at: number;
   status: 'pending' | 'submitted' | 'timeout';
   selected?: string[];
@@ -126,7 +126,42 @@ export interface CustomChatMessage {
   browserStepsHistory?: BrowserStepsHistory | null;
   approvalRequests?: ApprovalRequest[];
   userChoiceRequests?: UserChoiceRequest[];
+  configDiffReports?: ConfigDiffReport[];
+  reportFileDownloads?: ReportFileDownload[];
+  repairCommands?: RepairCommands[];
   agentStepProgress?: AgentStepProgressData[];
+}
+
+export interface ConfigDiffItem {
+  workload_name: string;
+  workload_type: string;
+  namespace: string;
+  severity: 'critical' | 'high' | 'warning' | 'info';
+  summary: string;
+  before_yaml: string;
+  after_yaml: string;
+}
+
+export interface ConfigDiffReport {
+  report_id: string;
+  title: string;
+  cluster_name: string;
+  items: ConfigDiffItem[];
+  received_at: number;
+}
+
+export interface ReportFileDownload {
+  download_id: string;
+  filename: string;
+  content_base64: string;
+  mime_type: string;
+  received_at: number;
+}
+
+export interface RepairCommands {
+  commands_id: string;
+  commands_markdown: string;
+  received_at: number;
 }
 
 export interface ResultItem {

@@ -731,7 +731,9 @@
     "choicePlaceholder": "请选择...",
     "choiceConfirm": "确认选择",
     "choiceTimeout": "已超时",
-    "choiceSelected": "已选择"
+    "choiceSelected": "已选择",
+    "choiceOrType": "或者自行输入",
+    "choiceTextPlaceholder": "输入你的回答..."
   },
   "settings": {
     "secret": {

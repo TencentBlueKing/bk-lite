@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import { Empty } from 'antd';
 import useChartColors from '../docker/useChartColors';
+import { createHorizontalBarGradient } from '../chartStyle';
 
 // MySQL 专属横向柱状图，用于用户 / 实例 / 主机维度分析
 // displayMaps.key   = 类目字段名（如 mysql_user / node_ip）
@@ -76,9 +77,9 @@ const MysqlInstanceBar: React.FC<MysqlInstanceBarProps> = ({
         {
           type: 'bar',
           data: [...vals].reverse(),
-          barMaxWidth: 18,
+          barMaxWidth: 16,
           itemStyle: {
-            color: colors.series[0],
+            color: createHorizontalBarGradient(colors.series[0]),
             borderRadius: [0, 3, 3, 0]
           },
           label: {
