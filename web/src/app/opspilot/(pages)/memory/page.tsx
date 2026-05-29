@@ -1,16 +1,16 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { Input, Modal, message, Spin, Button, Form, Dropdown, Menu } from 'antd';
-import { PlusOutlined, MoreOutlined } from '@ant-design/icons';
+import React, {useCallback, useEffect, useState} from 'react';
+import {useRouter} from 'next/navigation';
+import {Button, Dropdown, Form, Input, Menu, message, Modal, Spin} from 'antd';
+import {MoreOutlined, PlusOutlined} from '@ant-design/icons';
 import PermissionWrapper from '@/components/permission';
 import OperateModal from '@/components/operate-modal';
 import DynamicForm from '@/components/dynamic-form';
 import styles from '@/app/opspilot/styles/common.module.scss';
-import { useTranslation } from '@/utils/i18n';
-import { useMemoryApi, MemorySpace } from '@/app/opspilot/api/memory';
-import { useUserInfoContext } from '@/context/userInfo';
+import {useTranslation} from '@/utils/i18n';
+import {MemorySpace, useMemoryApi} from '@/app/opspilot/api/memory';
+import {useUserInfoContext} from '@/context/userInfo';
 
 const { Search } = Input;
 
@@ -148,9 +148,9 @@ const MemoryPage = () => {
     ...[
       {
         name: 'team',
-        label: t('memory.team'),
+        label: t('memory.organization'),
         type: 'groupTreeSelect' as const,
-        rules: [{ required: true, message: `${t('common.selectMsg')}${t('memory.team')}` }],
+        rules: [{ required: true, message: `${t('common.selectMsg')}${t('memory.organization')}` }],
       }
     ],
     {
