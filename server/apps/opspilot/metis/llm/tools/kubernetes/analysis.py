@@ -445,7 +445,7 @@ def check_kubernetes_endpoints(namespace=None, config: RunnableConfig = None):
 
 
 @tool()
-def analyze_deployment_configurations(namespace=None, instance_name=None, limit=50, offset=0, config: RunnableConfig = None):
+def analyze_deployment_configurations(namespace=None, instance_name=None, name=None, limit=50, offset=0, config: RunnableConfig = None):
     """
     分析 Deployment 配置的合理性
 
@@ -460,6 +460,7 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, limit=
     Args:
         namespace (str, optional): 要分析的命名空间，不传则扫描全部命名空间
         instance_name (str, optional): 要操作的 Kubernetes 实例名称，多集群时必传
+        name (str, optional): 要分析的特定 Deployment 名称。指定后只分析该 Deployment，忽略 limit/offset
         limit (int, optional): 每次返回的最大 Deployment 数量，默认 20，硬上限 50
         offset (int, optional): 跳过前 N 个 Deployment，用于分页，默认 0
         config (RunnableConfig): 工具配置
@@ -488,8 +489,15 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, limit=
 
         all_items = deployments.items
         total_count = len(all_items)
-        # 分页切片
-        paged_items = all_items[offset:offset + limit]
+
+        # 如果指定了 name，只分析该 deployment
+        if name:
+            all_items = [d for d in all_items if d.metadata.name == name]
+            total_count = len(all_items)
+            paged_items = all_items
+        else:
+            # 分页切片
+            paged_items = all_items[offset:offset + limit]
 
         cluster_name = get_current_cluster_name()
         analysis_results = []
@@ -597,12 +605,20 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, limit=
             _hint_parts.append(
                 "目标数量较多，建议让用户选择只修复 critical/high 级别的问题，或限定特定命名空间。"
             )
-        _hint_parts.append(
-            "下一步：调用 generate_repair_report 工具生成修复报告。"
-            f"参数：items 留空，group_by='category'，expected_target_count={_problematic_count}。"
-            "如果用户指定了特定工作负载名称，target_names 设为该名称列表。"
-            "不要调用 get_kubernetes_resource_yaml，修复方案基于分析数据直接生成。"
-        )
+        if name:
+            _hint_parts.append(
+                "下一步：调用 generate_repair_report 工具生成修复报告。"
+                f"参数：items 留空，group_by='category'，expected_target_count={_problematic_count}，"
+                f"target_names=[\"{name}\"]（必须设置，因为用户只要求检查该工作负载）。"
+                "不要调用 get_kubernetes_resource_yaml，修复方案基于分析数据直接生成。"
+            )
+        else:
+            _hint_parts.append(
+                "下一步：调用 generate_repair_report 工具生成修复报告。"
+                f"参数：items 留空，group_by='category'，expected_target_count={_problematic_count}。"
+                "如果用户指定了特定工作负载名称，target_names 设为该名称列表。"
+                "不要调用 get_kubernetes_resource_yaml，修复方案基于分析数据直接生成。"
+            )
 
         # 构建按问题类型聚合的摘要（精简版返回给 LLM）
         _issue_counter: dict = {}
