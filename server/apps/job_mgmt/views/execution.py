@@ -203,16 +203,20 @@ class JobExecutionViewSet(AuthViewSet):
                 if existing_count != len(target_ids):
                     return Response({"error": "部分目标不存在"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 验证文件
+        # 越权防护：只允许复用归属于本次作业所属团队(team)的文件，
+        # 防止跨团队凭 file_id 复用/分发其他团队的文件。
+        team = data.get("team", [])
+        team_ids = [int(t) for t in team] if team else []
+
+        # 验证文件（且归属当前团队）
         file_ids = data["file_ids"]
-        distribution_files = DistributionFile.objects.filter(id__in=file_ids)
+        distribution_files = DistributionFile.objects.filter(id__in=file_ids, team__in=team_ids)
         if distribution_files.count() != len(file_ids):
             return Response({"error": "部分文件不存在或已过期"}, status=status.HTTP_400_BAD_REQUEST)
 
         username = request.user.username if request.user else ""
 
         target_path = data["target_path"]
-        team = data.get("team", [])
 
         # 高危路径检测
         check_result = DangerousChecker.check_path(target_path, team)

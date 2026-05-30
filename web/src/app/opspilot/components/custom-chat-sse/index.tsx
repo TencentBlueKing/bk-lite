@@ -3,7 +3,7 @@ import {Button, ButtonProps, Drawer, Flex, Image, message as antMessage, Popconf
 import {FullscreenExitOutlined, FullscreenOutlined, PictureOutlined, SendOutlined} from '@ant-design/icons';
 import type {UploadFile} from 'antd/es/upload/interface';
 import {Bubble, Sender} from '@ant-design/x';
-import DOMPurify from 'dompurify';
+import { sanitizeHtml as sharedSanitizeHtml } from '@/utils/sanitize';
 import Icon from '@/components/icon';
 import {useTranslation} from '@/utils/i18n';
 import MarkdownIt from 'markdown-it';
@@ -93,7 +93,7 @@ const ThinkingPanel: React.FC<{ thinking?: string; isThinking?: boolean }> = ({ 
 };
 
 const md = new MarkdownIt({
-  html: true, // Enable raw HTML (sanitized by DOMPurify)
+  html: false, // 默认不渲染原始 HTML，避免 Markdown 内嵌脚本；输出仍统一净化
   highlight: function (str: string, lang: string) {
     if (lang && hljs.getLanguage(lang)) {
       try {
@@ -104,12 +104,24 @@ const md = new MarkdownIt({
   },
 });
 
-// Sanitize HTML to prevent XSS
+// 通过公共净化工具统一处理：放行渲染所需的 button 标签与 data-* 交互属性
+// （供工具调用 / 引用 / 建议点击处理），但仍强制禁用所有 on* 事件属性、
+// javascript: 协议以及 script/iframe/style/svg/math 等危险标签。
 const sanitizeHtml = (html: string): string => {
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button', 'style'],
-    ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'data-ref-number', 'data-chunk-id', 'data-knowledge-id', 'data-chunk-type', 'data-content', 'data-suggestion', 'data-expanded', 'data-tool-id', 'src', 'alt', 'width', 'height', 'aria-hidden'],
-    ALLOW_DATA_ATTR: true,
+  return sharedSanitizeHtml(html, {
+    allowTags: ['button'],
+    allowAttrs: [
+      'data-ref-number',
+      'data-chunk-id',
+      'data-knowledge-id',
+      'data-chunk-type',
+      'data-content',
+      'data-suggestion',
+      'data-expanded',
+      'data-tool-id',
+      'aria-hidden',
+    ],
+    allowDataAttr: true,
   });
 };
 

@@ -8,6 +8,7 @@ from celery import current_app, shared_task
 from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
+from apps.core.utils.ssrf import SSRFValidationError, safe_request, validate_url
 from apps.job_mgmt.constants import ConcurrencyPolicy, ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DistributionFile, JobExecution, ScheduledTask
 from apps.job_mgmt.services import FileDistributionRunner, ScriptExecutionRunner, ScriptParamsService
@@ -211,8 +212,15 @@ def do_callback_task(self, url: str, payload: dict, execution_id: int) -> None:
     失败时由 Celery 自动重试（指数退避: ~5s → 10s → 20s → 40s → 80s，最多 5 次）。
     任务持久化到 broker，worker 重启后仍会继续执行。
     """
+    # SSRF 防护：callback_url 来自外部 NATS 调用方（不可信），回调前统一校验，
+    # 阻断指向内网/回环/云元数据（169.254.169.254）等地址；校验失败不重试。
     try:
-        resp = requests.post(url, json=payload, timeout=10)
+        validate_url(url)
+    except SSRFValidationError as e:
+        logger.warning(f"[callback] 回调地址未通过 SSRF 校验，已拒绝: execution_id={execution_id}, url={url}, error={e}")
+        return
+    try:
+        resp = safe_request("POST", url, json=payload, timeout=10)
         if 200 <= resp.status_code < 300:
             logger.info(f"[callback] 回调成功: execution_id={execution_id}, url={url}")
             return

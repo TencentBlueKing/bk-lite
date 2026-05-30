@@ -3,7 +3,7 @@
 """
 from typing import Any, Dict, List
 
-from jinja2 import Environment, StrictUndefined
+from apps.core.utils.safe_jinja import create_secure_jinja_environment
 
 
 class VariableManager:
@@ -18,8 +18,9 @@ class VariableManager:
     def __init__(self):
         """初始化变量管理器"""
         self._variables: Dict[str, Any] = {}
-        # 创建Jinja2环境，使用StrictUndefined在变量不存在时抛出异常
-        self._jinja_env = Environment(undefined=StrictUndefined)
+        # 创建安全沙箱 Jinja2 环境（StrictUndefined：变量不存在时抛异常），
+        # 阻断 {{ ...__globals__... }} 等 SSTI/RCE 逃逸链（见 apps.core.utils.safe_jinja）
+        self._jinja_env = create_secure_jinja_environment(strict_undefined=True)
 
     def set_variable(self, name: str, value: Any) -> None:
         """设置变量

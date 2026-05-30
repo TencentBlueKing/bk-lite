@@ -4,10 +4,11 @@
 import json
 from typing import Any, Dict
 
-import jinja2
 import requests
 
 from apps.core.logger import opspilot_logger as logger
+from apps.core.utils.safe_jinja import render_secure_template
+from apps.core.utils.ssrf import safe_request, validate_url
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.rpc.system_mgmt import SystemMgmt
 
@@ -30,8 +31,8 @@ class HttpActionNode(BaseNodeExecutor):
             return content
 
         try:
-            template = jinja2.Template(str(content))
-            return template.render(**template_context)
+            # 安全渲染：使用沙箱环境，阻断 Jinja2 SSTI/RCE（见 apps.core.utils.safe_jinja）
+            return render_secure_template(str(content), template_context)
         except Exception as e:
             logger.warning(f"HTTP节点 {node_id} 模板渲染失败: {e}")
             return content
@@ -108,37 +109,31 @@ class HttpActionNode(BaseNodeExecutor):
         """发送HTTP请求"""
         logger.info(f"HTTP动作节点 {node_id}: {method} {url}")
 
+        if method not in ("GET", "POST", "PUT", "PATCH", "DELETE"):
+            raise ValueError(f"不支持的HTTP方法: {method}")
+
+        # SSRF 防护：校验用户可控 URL，禁止指向内网/回环/保留地址，并对重定向逐跳校验
+        # （safe_request 内部调用 validate_url，见 apps.core.utils.ssrf）
+        validate_url(url)
+
         # 移除空的params以避免请求问题
         if request_kwargs.get("params") is None:
             request_kwargs.pop("params", None)
 
-        # HTTP方法映射
-        http_methods = {
-            "GET": requests.get,
-            "POST": requests.post,
-            "PUT": requests.put,
-            "PATCH": requests.patch,
-            "DELETE": requests.delete,
-        }
-
-        http_func = http_methods.get(method)
-        if not http_func:
-            raise ValueError(f"不支持的HTTP方法: {method}")
-
         # GET请求不需要请求体
         if method == "GET":
-            return http_func(url, **request_kwargs)
+            return safe_request(method, url, **request_kwargs)
 
         # 其他方法需要处理请求体
         request_data = self._prepare_request_body(config, node_id, template_context)
 
         if request_data is not None:
             if isinstance(request_data, dict):
-                return http_func(url, json=request_data, **request_kwargs)
+                return safe_request(method, url, json=request_data, **request_kwargs)
             else:
-                return http_func(url, data=request_data, **request_kwargs)
+                return safe_request(method, url, data=request_data, **request_kwargs)
         else:
-            return http_func(url, **request_kwargs)
+            return safe_request(method, url, **request_kwargs)
 
     def _process_response(self, response) -> Any:
         """处理HTTP响应"""
@@ -170,8 +165,8 @@ class NotifyNode(BaseNodeExecutor):
 
         try:
             template_context = self.variable_manager.get_all_variables()
-            template = jinja2.Template(str(content))
-            return template.render(**template_context)
+            # 安全渲染：使用沙箱环境，阻断 Jinja2 SSTI/RCE（见 apps.core.utils.safe_jinja）
+            return render_secure_template(str(content), template_context)
         except Exception as e:
             logger.warning(f"通知节点 {node_id} 内容渲染失败: {e}")
             return content

@@ -8,6 +8,7 @@ import { remark } from "remark";
 import html from "remark-html";
 import gfm from "remark-gfm";
 import "github-markdown-css/github-markdown.css";
+import { sanitizeHtml } from "@/utils/sanitize";
 const FileViewer = dynamic(() => import("react-file-viewer"), {
   ssr: false,
 });
@@ -122,7 +123,7 @@ const PreviewPage: React.FC = () => {
         if (isMarkdownFile(contentType, resolvedFileName)) {
           const rawMarkdown = await blob.text();
           const processedContent = await remark().use(gfm).use(html).process(rawMarkdown);
-          setMarkdownHtml(processedContent.toString());
+          setMarkdownHtml(sanitizeHtml(processedContent.toString()));
           setFileUrl(null);
           setViewerType(null);
           setLoading(false);
@@ -173,32 +174,27 @@ const PreviewPage: React.FC = () => {
           const workbook = new ExcelJS.Workbook();
           await workbook.xlsx.load(arrayBuffer);
           const worksheet = workbook.worksheets[0];
-          let htmlStr = '<table>';
+
+          // 通过 DOM API 构建表格，单元格值统一用 textContent 写入，
+          // 任何用户/文件内容都不会被当作 HTML 解析，杜绝 XSS。
+          const table = document.createElement("table");
+          table.style.borderCollapse = "collapse";
+          table.style.width = "100%";
+
           worksheet.eachRow((row, rowNumber) => {
-            htmlStr += '<tr>';
+            const tr = document.createElement("tr");
             row.eachCell({ includeEmpty: true }, (cell) => {
-              const cellValue = cell.value?.toString() || '';
-              htmlStr += rowNumber === 1 ? `<th>${cellValue}</th>` : `<td>${cellValue}</td>`;
+              const cellEl = document.createElement(rowNumber === 1 ? "th" : "td");
+              cellEl.textContent = cell.value?.toString() || "";
+              cellEl.style.border = "1px solid #ccc";
+              cellEl.style.padding = "4px 8px";
+              tr.appendChild(cellEl);
             });
-            htmlStr += '</tr>';
-          })
-          htmlStr += '</table>';
+            table.appendChild(tr);
+          });
 
           if (xlsxContainerRef?.current) {
-            xlsxContainerRef.current.innerHTML = htmlStr;
-          }
-
-          const table = xlsxContainerRef?.current?.querySelector("table");
-          if (table) {
-            table.style.borderCollapse = "collapse";
-            table.style.width = "100%";
-            const cells = table.querySelectorAll("td, th");
-            cells.forEach((cell) => {
-              if (cell instanceof HTMLElement) {
-                cell.style.border = "1px solid #ccc";
-                cell.style.padding = "4px 8px";
-              }
-            });
+            xlsxContainerRef.current.replaceChildren(table);
           }
         } catch (error) {
           console.error("Excel render failed:", error);

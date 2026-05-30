@@ -6,6 +6,7 @@ from typing import Optional
 from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.safe_jinja import contains_template_syntax
 from apps.monitor.models import CollectConfig, MonitorPlugin, MonitorPluginConfigTemplate, MonitorPluginUITemplate
 from apps.monitor.utils.config_format import ConfigFormat
 from apps.monitor.utils.plugin_controller import Controller
@@ -313,6 +314,9 @@ class CustomSnmpPluginService:
             raise BaseAppException("采集片段不能为空")
         if "[[inputs.snmp]]" in normalized_snippet or "[inputs.snmp.tags]" in normalized_snippet:
             raise BaseAppException("仅支持编辑 SNMP 指标采集片段，请勿修改 inputs.snmp 主配置")
+        # 安全校验：采集片段为 SNMP 指标 TOML，不应包含模板表达式或反射用的双下划线，防止 SSTI/RCE
+        if contains_template_syntax(normalized_snippet) or "__" in normalized_snippet:
+            raise BaseAppException("采集模板片段不允许包含模板表达式（{{ }} / {% %}）或双下划线 __")
 
         child_template_id = CustomSnmpPluginService.get_child_template(plugin).id
 

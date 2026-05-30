@@ -6,9 +6,8 @@ import json
 import time
 from typing import Any, Dict
 
-import jinja2
-
 from apps.core.logger import opspilot_logger as logger
+from apps.core.utils.safe_jinja import render_secure_template
 from apps.opspilot.models import LLMModel, LLMSkill
 from apps.opspilot.services.chat_service import ChatService, chat_service
 from apps.opspilot.utils.agent_factory import create_agent_instance
@@ -84,8 +83,8 @@ class AgentNode(BaseNodeExecutor):
             logger.info(
                 f"[Agent] 节点 {node_id} 模板变量: keys={list(template_context.keys())}, memory_context长度={len(memory_context) if memory_context else 0}"
             )
-            template = jinja2.Template(prompt)
-            rendered = template.render(**template_context)
+            # 安全渲染：使用沙箱环境，阻断 Jinja2 SSTI/RCE（见 apps.core.utils.safe_jinja）
+            rendered = render_secure_template(prompt, template_context)
             if memory_context and "memory_context" in prompt:
                 logger.info(f"[Agent] 节点 {node_id} prompt 中使用了 memory_context")
             return rendered

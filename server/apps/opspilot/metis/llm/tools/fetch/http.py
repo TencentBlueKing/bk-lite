@@ -6,6 +6,8 @@ import requests
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+# SSRF 防护：URL 由 LLM/用户可控，统一走 apps.core.utils.ssrf
+from apps.core.utils.ssrf import safe_request
 from apps.opspilot.metis.llm.tools.fetch.utils import (
     format_error_response,
     parse_content_type_encoding,
@@ -55,13 +57,14 @@ def _http_get_impl(
             pass  # 使用默认值
 
     try:
-        response = requests.get(
+        # SSRF 防护：使用 safe_request 逐跳校验重定向目标，禁止跳转到内网
+        response = safe_request(
+            "GET",
             url,
             headers=req_headers,
             params=params,
             timeout=request_timeout,
             verify=verify_ssl,
-            allow_redirects=True,
         )
 
         # 检查响应状态
@@ -122,14 +125,15 @@ def _http_post_impl(
             pass  # 使用默认值
 
     try:
-        response = requests.post(
+        # SSRF 防护：使用 safe_request 逐跳校验重定向目标，禁止跳转到内网
+        response = safe_request(
+            "POST",
             url,
             data=data,
             json=json_data,
             headers=req_headers,
             timeout=request_timeout,
             verify=verify_ssl,
-            allow_redirects=True,
         )
 
         response.raise_for_status()
@@ -185,14 +189,15 @@ def _http_put_impl(
             pass  # 使用默认值
 
     try:
-        response = requests.put(
+        # SSRF 防护：使用 safe_request 逐跳校验重定向目标，禁止跳转到内网
+        response = safe_request(
+            "PUT",
             url,
             data=data,
             json=json_data,
             headers=req_headers,
             timeout=request_timeout,
             verify=verify_ssl,
-            allow_redirects=True,
         )
 
         response.raise_for_status()
@@ -246,13 +251,14 @@ def _http_delete_impl(
             pass  # 使用默认值
 
     try:
-        response = requests.delete(
+        # SSRF 防护：使用 safe_request 逐跳校验重定向目标，禁止跳转到内网
+        response = safe_request(
+            "DELETE",
             url,
             headers=req_headers,
             params=params,
             timeout=request_timeout,
             verify=verify_ssl,
-            allow_redirects=True,
         )
 
         response.raise_for_status()
@@ -307,14 +313,15 @@ def _http_patch_impl(
             pass  # 使用默认值
 
     try:
-        response = requests.patch(
+        # SSRF 防护：使用 safe_request 逐跳校验重定向目标，禁止跳转到内网
+        response = safe_request(
+            "PATCH",
             url,
             data=data,
             json=json_data,
             headers=req_headers,
             timeout=request_timeout,
             verify=verify_ssl,
-            allow_redirects=True,
         )
 
         response.raise_for_status()

@@ -41,7 +41,12 @@ def prepare_fetch_config(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]
 
 def validate_url(url: str) -> str:
     """
-    验证并规范化URL
+    验证并规范化URL，并执行 SSRF 安全校验。
+
+    URL 由 LLM/用户提供，属外部可控。除格式校验外，还会复用统一的
+    apps.core.utils.ssrf.validate_url 做 SSRF 防护：仅允许 http/https，
+    并在 DNS 解析后阻断 loopback / 私网 / link-local（含云元数据
+    169.254.169.254）/ 保留 / 组播等危险地址，防止经 Fetch 工具探测内网。
 
     Args:
         url: URL字符串
@@ -50,7 +55,7 @@ def validate_url(url: str) -> str:
         str: 规范化后的URL
 
     Raises:
-        ValueError: URL无效时抛出
+        ValueError: URL无效或命中 SSRF 受限网段时抛出（SSRFValidationError 是 ValueError 子类）
     """
     if not url or not url.strip():
         raise ValueError("URL不能为空")
@@ -66,9 +71,15 @@ def validate_url(url: str) -> str:
         parsed = urlparse(url)
         if not parsed.netloc:
             raise ValueError(f"URL格式无效: {url}")
-        return url
+    except ValueError:
+        raise
     except Exception as e:
         raise ValueError(f"URL格式无效: {url}, 错误: {str(e)}")
+
+    # SSRF 防护：统一校验目标地址，拦截内网/回环/保留地址
+    from apps.core.utils.ssrf import validate_url as ssrf_validate_url
+
+    return ssrf_validate_url(url)
 
 
 def prepare_headers(

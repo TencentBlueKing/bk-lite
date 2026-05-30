@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
 import MarkdownIt from 'markdown-it';
-import DOMPurify from 'dompurify';
+import { sanitizeHtml } from '@/utils/sanitize';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
 import styles from './index.module.scss';
@@ -38,14 +38,6 @@ const md = new MarkdownIt({
     return '';
   },
 });
-
-const sanitizeHtml = (html: string): string => {
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img'],
-    ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'src', 'alt', 'width', 'height'],
-    ALLOW_DATA_ATTR: false,
-  });
-};
 
 const CustomChat: React.FC<CustomChatProps> = ({ handleSendMessage, showMarkOnly = false, initialMessages = [], mode = 'chat' }) => {
   const { t } = useTranslation();

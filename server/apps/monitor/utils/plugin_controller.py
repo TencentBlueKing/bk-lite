@@ -1,6 +1,7 @@
 import uuid
 
-from jinja2 import Environment, BaseLoader, DebugUndefined
+from jinja2 import BaseLoader, DebugUndefined
+from jinja2.sandbox import ImmutableSandboxedEnvironment
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
@@ -27,7 +28,8 @@ class Controller:
     def jinja_env(self):
         """延迟初始化并缓存 Jinja2 Environment 对象"""
         if self._jinja_env is None:
-            self._jinja_env = Environment(loader=BaseLoader(), undefined=DebugUndefined)
+            # 使用沙箱环境，阻断用户可控采集模板内容中的 Jinja2 SSTI/RCE
+            self._jinja_env = ImmutableSandboxedEnvironment(loader=BaseLoader(), undefined=DebugUndefined)
             self._jinja_env.filters["to_toml"] = to_toml_dict
         return self._jinja_env
 

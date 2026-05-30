@@ -393,8 +393,11 @@ def job_file_distribute(data: dict):
         forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
         return {"result": False, "message": f"目标路径为高危路径，禁止分发: {', '.join(forbidden_rules)}"}
 
-    # 验证文件存在
-    distribution_files = DistributionFile.objects.filter(file_key__in=file_keys)
+    # 验证文件存在。
+    # 越权防护：只允许复用归属于当前调用方团队(team 列表)的文件，
+    # 防止跨团队凭 file_key 复用他人文件。team 为该 App 持有的团队ID列表。
+    team_ids = [int(t) for t in team]
+    distribution_files = DistributionFile.objects.filter(file_key__in=file_keys, team__in=team_ids)
     found_keys = set(distribution_files.values_list("file_key", flat=True))
     missing_keys = [k for k in file_keys if k not in found_keys]
     if missing_keys:

@@ -2,9 +2,8 @@
 
 from typing import Any, Dict
 
-import jinja2
-
 from apps.core.logger import opspilot_logger as logger
+from apps.core.utils.safe_jinja import render_secure_template
 from apps.opspilot.enum import SkillTypeChoices
 from apps.opspilot.services.chat_service import ChatService
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
@@ -59,8 +58,8 @@ class IntentClassifierNode(BaseNodeExecutor):
 
         try:
             template_context = self.variable_manager.get_all_variables()
-            template = jinja2.Template(prompt)
-            return template.render(**template_context)
+            # 安全渲染：使用沙箱环境，阻断 Jinja2 SSTI/RCE（见 apps.core.utils.safe_jinja）
+            return render_secure_template(prompt, template_context)
         except Exception as e:
             logger.error("意图分类节点 %s 分类规则渲染失败: %s", node_id, str(e))
             return prompt

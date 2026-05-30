@@ -12,6 +12,7 @@ import { conversationStyles, parseHistoryEvents } from './utils';
 import { useTranslation } from '@/utils/i18n';
 import { getApplication, getSessionMessages, getWelcomeMessage } from '@/api/bot';
 import { getAvatar } from '@/utils/avatar';
+import { sanitizeHtml } from '@/utils/sanitize';
 import { MessageContentItem } from '@/types/conversation';
 import { useSessionsCache } from './hooks';
 import { ExclamationTriangleOutline } from 'antd-mobile-icons';
@@ -101,19 +102,19 @@ export default function ConversationDetail() {
     sessionId: currentSessionId,
   });
 
-  // 初始化 markdown-it
+  // 初始化 markdown-it（html: false 不渲染原始 HTML，输出再统一净化）
   const md = useMemo(() => {
     return new MarkdownIt({
-      html: true,
+      html: false,
       linkify: true,
       typographer: true,
       breaks: true,
     });
   }, []);
 
-  // Markdown 渲染函数
+  // Markdown 渲染函数：渲染后用公共净化工具防御存储型 XSS
   const renderMarkdown = (text: string) => {
-    const html = md.render(text);
+    const html = sanitizeHtml(md.render(text));
     return <div dangerouslySetInnerHTML={{ __html: html }} className="markdown-body" />;
   };
 
