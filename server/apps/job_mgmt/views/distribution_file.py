@@ -10,6 +10,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.models import DistributionFile
 from apps.job_mgmt.serializers.distribution_file import DistributionFileSerializer, DistributionFileUploadSerializer
@@ -63,9 +64,25 @@ class DistributionFileViewSet(AuthViewSet):
         async_to_sync(upload_file_to_s3)(file, file_key)
 
         # 创建数据库记录
+        # 记录文件归属团队，供删除/复用时的越权校验。
+        # 优先使用 current_team cookie（用户当前所选团队，需属于该用户），否则回退首个所属组。
+        user_group_ids = normalize_user_group_ids(getattr(request.user, "group_list", []) or [])
+        team_id = None
+        current_team_str = request.COOKIES.get("current_team")
+        if current_team_str:
+            try:
+                current_team = int(current_team_str)
+            except (TypeError, ValueError):
+                current_team = None
+            if current_team is not None and (getattr(request.user, "is_superuser", False) or current_team in user_group_ids):
+                team_id = current_team
+        if team_id is None and user_group_ids:
+            team_id = user_group_ids[0]
+
         distribution_file = DistributionFile.objects.create(
             original_name=original_name,
             file_key=file_key,
+            team=team_id,
         )
         log_operation(request, "create", "job", f"上传分发文件: {distribution_file.original_name}")
 
