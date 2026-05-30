@@ -8,6 +8,7 @@ import gfm from 'remark-gfm';
 import 'github-markdown-css/github-markdown.css';
 import styles from './index.module.scss';
 import { getClientIdFromRoute } from '@/utils/route';
+import { sanitizeHtml } from '@/utils/sanitize';
 
 interface MarkdownRendererProps {
   filePath?: string;
@@ -33,7 +34,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           .use(gfm)
           .use(html)
           .process(externalContent);
-        setContent(processedContent.toString());
+        setContent(sanitizeHtml(processedContent.toString()));
       } else {
         setContent('');
       }
@@ -67,7 +68,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         .use(gfm)
         .use(html)
         .process(data.content);
-      setContent(processedContent.toString());
+      setContent(sanitizeHtml(processedContent.toString()));
     } catch (error) {
       message.error('Failed to load markdown content.');
       console.error(error);

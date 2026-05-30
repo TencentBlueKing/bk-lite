@@ -6,6 +6,7 @@ import { Toast, SpinLoading, ImageViewer } from 'antd-mobile';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChatInfo } from '@/types/conversation';
 import MarkdownIt from 'markdown-it';
+import { sanitizeHtml } from '@/utils/sanitize';
 import { ConversationHeader, ConversationSidebar, MessageList, CustomInput, MessageContent } from './components';
 import { useMessages } from './hooks';
 import { conversationStyles, parseHistoryEvents } from './utils';
@@ -104,7 +105,7 @@ export default function ConversationDetail() {
   // 初始化 markdown-it
   const md = useMemo(() => {
     return new MarkdownIt({
-      html: true,
+      html: false,
       linkify: true,
       typographer: true,
       breaks: true,
@@ -113,7 +114,7 @@ export default function ConversationDetail() {
 
   // Markdown 渲染函数
   const renderMarkdown = (text: string) => {
-    const html = md.render(text);
+    const html = sanitizeHtml(md.render(text));
     return <div dangerouslySetInnerHTML={{ __html: html }} className="markdown-body" />;
   };
 
