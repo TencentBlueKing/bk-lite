@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer mysql 采集脚本原始输出",
+  "type": "object",
+  "required": ["ip_addr", "port", "version"],
+  "properties": {
+    "ip_addr":             {"type": "string"},
+    "port":                {"type": "string", "pattern": "^[0-9]+$"},
+    "version":             {"type": "string"},
+    "enable_binlog":       {"type": "string", "enum": ["ON", "OFF"]},
+    "sync_binlog":         {"type": "string"},
+    "max_conn":            {"type": "string"},
+    "max_mem":             {"type": "string"},
+    "basedir":             {"type": "string"},
+    "datadir":             {"type": "string"},
+    "socket":              {"type": "string"},
+    "bind_address":        {"type": "string"},
+    "slow_query_log":      {"type": "string", "enum": ["ON", "OFF"]},
+    "slow_query_log_file": {"type": "string"},
+    "log_error":           {"type": "string"},
+    "wait_timeout":        {"type": "string"}
+  }
+}
