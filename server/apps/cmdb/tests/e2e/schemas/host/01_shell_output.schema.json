@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer host shell collector raw output",
+  "description": "host_default_discover.sh 输出的原始 JSON。字段对应 sh 脚本里的 printf 模板。",
+  "type": "object",
+  "required": ["hostname", "os_type", "os_name", "os_version", "cpu_architecture", "cpu_cores", "mac_address"],
+  "properties": {
+    "hostname":         {"type": "string", "minLength": 1},
+    "os_type":          {"type": "string", "enum": ["Linux", "Windows", "AIX", "Unix", "Other"]},
+    "os_name":          {"type": "string"},
+    "os_version":       {"type": "string"},
+    "os_bits":          {"type": "string", "pattern": "^(32|64)$"},
+    "cpu_architecture": {"type": "string", "enum": ["x86_64", "arm64", "aarch64", "i386", "i486", "i586", "i686", "armv7l", "armv8l"]},
+    "cpu_model":        {"type": "string"},
+    "cpu_cores":        {"type": "string", "pattern": "^[0-9]+$"},
+    "mem_total_mb":     {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$"},
+    "disk_total_gb":    {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$"},
+    "mac_address":      {"type": "string"},
+    "ip_addr":          {"type": "string", "format": "ipv4"},
+    "proc": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pid", "name"],
+        "properties": {
+          "pid":   {"type": "string"},
+          "name":  {"type": "string"},
+          "arg":   {"type": "string"},
+          "exe":   {"type": "string"},
+          "cwd":   {"type": "string"},
+          "ports": {"type": "string"}
+        }
+      }
+    }
+  }
+}

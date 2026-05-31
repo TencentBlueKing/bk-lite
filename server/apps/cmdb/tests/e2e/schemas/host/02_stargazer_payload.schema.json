@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer HostInfo.list_all_resources output",
+  "description": "Stargazer 把 shell 输出标准化后包装的 payload，准备 push 到 VictoriaMetrics 作为 metric labels。",
+  "type": "object",
+  "required": ["success", "result"],
+  "properties": {
+    "success": {"type": "boolean"},
+    "result": {
+      "type": "object",
+      "required": ["host"],
+      "properties": {
+        "host": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["hostname", "ip_addr", "os_type", "cpu_cores"],
+            "properties": {
+              "hostname":         {"type": "string", "minLength": 1},
+              "ip_addr":          {"type": "string"},
+              "os_type":          {"type": "string"},
+              "os_name":          {"type": "string"},
+              "os_version":       {"type": "string"},
+              "cpu_architecture": {"type": "string"},
+              "cpu_cores":        {"type": "string"},
+              "mem_total_mb":     {"type": "string"},
+              "disk_total_gb":    {"type": "string"},
+              "mac_address":      {"type": "string"}
+            }
+          }
+        },
+        "host_proc_usage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pid", "name", "self_device", "ip_addr"],
+            "properties": {
+              "pid":         {"type": "string"},
+              "name":        {"type": "string"},
+              "self_device": {"type": "string"},
+              "ip_addr":     {"type": "string"},
+              "arg":   {"type": "string"},
+              "exe":   {"type": "string"},
+              "cwd":   {"type": "string"},
+              "ports": {"type": "string"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

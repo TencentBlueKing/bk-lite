@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VictoriaMetrics /api/v1/query response",
+  "description": "CMDB 通过 Collection().query() 拉到的 PromQL vector 响应。每条 result 是一个 metric 及其最新采样。",
+  "type": "object",
+  "required": ["status", "data"],
+  "properties": {
+    "status": {"type": "string", "enum": ["success", "error"]},
+    "data": {
+      "type": "object",
+      "required": ["resultType", "result"],
+      "properties": {
+        "resultType": {"type": "string", "enum": ["vector"]},
+        "result": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["metric", "value"],
+            "properties": {
+              "metric": {
+                "type": "object",
+                "required": ["__name__", "instance_id"],
+                "properties": {
+                  "__name__":       {"type": "string", "pattern": "_info_gauge$"},
+                  "instance_id":    {"type": "string", "pattern": "^cmdb_[0-9]+$"},
+                  "collect_status": {"type": "string", "enum": ["success", "failed"]}
+                }
+              },
+              "value": {
+                "type": "array",
+                "items": [
+                  {"type": "number"},
+                  {"type": "string"}
+                ],
+                "minItems": 2,
+                "maxItems": 2
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
