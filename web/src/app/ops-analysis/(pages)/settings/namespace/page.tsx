@@ -97,6 +97,7 @@ const Namespace: React.FC = () => {
       content: t('common.delConfirmCxt'),
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),
+      okButtonProps: { danger: true },
       centered: true,
       onOk: async () => {
         try {
@@ -220,7 +221,7 @@ const Namespace: React.FC = () => {
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Delete']}>
-            <Button type="link" size="small" onClick={() => handleDelete(row)}>
+            <Button type="link" size="small" danger onClick={() => handleDelete(row)}>
               {t('common.delete')}
             </Button>
           </PermissionWrapper>

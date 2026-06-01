@@ -840,6 +840,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         content: t('common.delConfirmCxt'),
         okText: t('common.confirm'),
         cancelText: t('common.cancel'),
+        okButtonProps: { danger: true },
         centered: true,
         onOk: async () => {
           try {
@@ -950,7 +951,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                     <Tooltip title={t('common.edit')}>
                       <Button
                         type="text"
-                        icon={<EditOutlined style={{ fontSize: 16 }} />}
+                        aria-label={t('common.edit')}
+                        icon={<EditOutlined aria-hidden="true" style={{ fontSize: 16 }} />}
                         disabled={
                           !selectedDashboard?.data_id ||
                           selectedDashboard?.is_build_in
@@ -1026,7 +1028,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                         <PermissionWrapper requiredPermissions={['EditChart']}>
                           <Button
                             type="primary"
-                            icon={<PlusOutlined />}
+                            icon={<PlusOutlined aria-hidden="true" />}
                             onClick={openAddModal}
                             disabled={selectedDashboard?.is_build_in}
                           >
@@ -1092,8 +1094,12 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                             </div>
                             {isEditMode && (
                               <Dropdown overlay={menu} trigger={['click']}>
-                                <button className="no-drag text-(--color-text-2) hover:text-(--color-text-1) transition-colors cursor-pointer">
-                                  <MoreOutlined style={{ fontSize: '18px' }} />
+                                <button
+                                  type="button"
+                                  aria-label={t('common.more')}
+                                  className="no-drag text-(--color-text-2) hover:text-(--color-text-1) transition-colors cursor-pointer"
+                                >
+                                  <MoreOutlined aria-hidden="true" style={{ fontSize: '18px' }} />
                                 </button>
                               </Dropdown>
                             )}

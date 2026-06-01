@@ -10,6 +10,7 @@ import {
 import LevelIcon from '@/app/alarm/components/levelIcon';
 import { LevelFormItem } from '@/app/alarm/types/settings';
 import { LevelItem } from '@/app/alarm/types/index';
+import { NEUTRAL } from '@/app/alarm/constants/colors';
 import {
   Grid,
   Modal,
@@ -344,7 +345,7 @@ export default function LevelFormModal({
                             <LevelIcon
                               icon={icon}
                               className="h-4 w-4"
-                              style={{ color: '#fff' }}
+                              style={{ color: NEUTRAL.ON_DARK_FG }}
                             />
                           </span>
                         </div>

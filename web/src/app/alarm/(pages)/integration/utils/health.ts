@@ -1,4 +1,10 @@
 import { SourceItem } from '@/app/alarm/types/integration';
+import {
+  STATUS_TEXT,
+  HEALTH_BG,
+  SOURCE_LOGO,
+  SOURCE_LOGO_FALLBACK,
+} from '@/app/alarm/constants/colors';
 
 export interface HealthStatus {
   key: 'healthy' | 'warning' | 'stale' | 'silent' | 'stopped' | 'inactive';
@@ -12,22 +18,22 @@ const H7D = H24 * 7;
 
 export function getHealth(src: SourceItem): HealthStatus {
   if (!src.is_active) {
-    return { key: 'stopped', labelKey: 'integration.healthStopped', color: '#f53f3f', bg: '#fff1f0' };
+    return { key: 'stopped', labelKey: 'integration.healthStopped', color: STATUS_TEXT.TREND_UP_RED, bg: HEALTH_BG.RED_BG };
   }
   if (!src.is_effective) {
-    return { key: 'inactive', labelKey: 'integration.healthInactive', color: '#86909c', bg: '#f2f3f5' };
+    return { key: 'inactive', labelKey: 'integration.healthInactive', color: STATUS_TEXT.NEUTRAL_GRAY, bg: HEALTH_BG.GRAY_BG };
   }
   if (!src.last_event_time) {
-    return { key: 'silent', labelKey: 'integration.healthNoData', color: '#ff7d00', bg: '#fff7e8' };
+    return { key: 'silent', labelKey: 'integration.healthNoData', color: STATUS_TEXT.WARN_ORANGE, bg: HEALTH_BG.ORANGE_BG };
   }
   const diff = Date.now() - new Date(src.last_event_time).getTime();
   if (diff < H24) {
-    return { key: 'healthy', labelKey: 'integration.healthHealthy', color: '#00b42a', bg: '#e8ffea' };
+    return { key: 'healthy', labelKey: 'integration.healthHealthy', color: STATUS_TEXT.TREND_DOWN_GREEN, bg: HEALTH_BG.GREEN_BG };
   }
   if (diff < H7D) {
-    return { key: 'warning', labelKey: 'integration.healthSilent', color: '#ff7d00', bg: '#fff7e8' };
+    return { key: 'warning', labelKey: 'integration.healthSilent', color: STATUS_TEXT.WARN_ORANGE, bg: HEALTH_BG.ORANGE_BG };
   }
-  return { key: 'stale', labelKey: 'integration.healthStale', color: '#ff7d00', bg: '#fff7e8' };
+  return { key: 'stale', labelKey: 'integration.healthStale', color: STATUS_TEXT.WARN_ORANGE, bg: HEALTH_BG.ORANGE_BG };
 }
 
 export function matchesStatusFilter(
@@ -41,17 +47,8 @@ export function matchesStatusFilter(
   return true;
 }
 
-const LOGO_COLORS: Record<string, string> = {
-  restful: '#5b8def',
-  nats: '#27aae1',
-  k8s: '#326ce5',
-  snmp_trap: '#2b3040',
-  prometheus: '#e6522c',
-  zabbix: '#2b3040',
-};
-
 export function getLogoColor(sourceId: string): string {
-  return LOGO_COLORS[sourceId] || '#3370ff';
+  return SOURCE_LOGO[sourceId] || SOURCE_LOGO_FALLBACK;
 }
 
 export function formatEventCount(n: number | null | undefined | string): string {

@@ -49,6 +49,7 @@ const CorrelationRulesPage: React.FC = () => {
       content: t('common.delConfirmCxt'),
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),
+      okButtonProps: { danger: true },
       centered: true,
       maskClosable: false,
       onOk: async () => {
@@ -200,6 +201,7 @@ const CorrelationRulesPage: React.FC = () => {
             <Button
               type="link"
               size="small"
+              danger
               onClick={() => handleDelete(row)}
             >
               {t('common.delete')}

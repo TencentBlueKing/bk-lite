@@ -140,7 +140,7 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
             <div className={fieldLabelClassName}>Image reference</div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 break-all text-[13px] font-medium leading-6 text-[var(--color-text-1)]">
               <span className="min-w-0 flex-1 break-all">{meta.image_reference}</span>
-              <Button className="self-center" type="link" size="small" icon={<CopyOutlined />} onClick={() => copy(meta.image_reference)} />
+              <Button className="self-center" type="link" size="small" aria-label={t('common.copy')} icon={<CopyOutlined aria-hidden="true" />} onClick={() => copy(meta.image_reference)} />
             </div>
           </div>
           <div className={codeBlockClassName}>
@@ -178,13 +178,13 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
           <Descriptions.Item label="BK_LITE_RECEIVER_URL">
             <div className="flex items-center gap-2 break-all">
               <span>{meta.receiver_url}</span>
-              <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => copy(meta.receiver_url)} />
+              <Button type="link" size="small" aria-label={t('common.copy')} icon={<CopyOutlined aria-hidden="true" />} onClick={() => copy(meta.receiver_url)} />
             </div>
           </Descriptions.Item>
           <Descriptions.Item label="BK_LITE_SECRET">
             <div className="flex items-center gap-2">
               <span>******************</span>
-              <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => copy(source.secret)} />
+              <Button type="link" size="small" aria-label={t('common.copy')} icon={<CopyOutlined aria-hidden="true" />} onClick={() => copy(source.secret)} />
             </div>
           </Descriptions.Item>
           <Descriptions.Item label="BK_LITE_SOURCE_ID">
