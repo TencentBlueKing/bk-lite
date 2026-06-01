@@ -2425,11 +2425,6 @@
   z-index: 0;
 }
 
-.ringChartWrap :global(.recharts-wrapper) {
-  position: relative;
-  z-index: 1;
-}
-
 .bufferPoolRingCard {
   grid-template-columns: 168px minmax(0, 1fr);
   align-items: center;
@@ -2509,10 +2504,6 @@
   min-height: 0;
   border-bottom: 0;
   pointer-events: none;
-}
-
-.ringChartWrap :global(.recharts-sector) {
-  filter: drop-shadow(0 3px 8px rgba(83, 108, 146, 0.12));
 }
 
 .ringCenterOverlay .ringValue {
@@ -3230,18 +3221,8 @@
   box-shadow: 0 0 0 2px rgba(10, 18, 30, 0.72);
 }
 
-:global(html.dark) .ringChartWrap :global(.recharts-sector) {
-  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.14));
-  stroke: rgba(17, 27, 40, 0.96);
-}
-
 :global(html.dark) .metricDot {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-}
-
-:global(html.dark) .replicationChartWrap :global(.recharts-wrapper),
-:global(html.dark) .replicationChartWrap :global(.recharts-surface) {
-  background: transparent;
 }
 
 :global(html.dark) .toolbarTimeSelector > div > div:first-child :global(.ant-select-selector),

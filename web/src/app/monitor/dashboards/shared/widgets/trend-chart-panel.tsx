@@ -32,6 +32,7 @@ export interface TrendChartPanelProps {
   data: ChartData[];
   metric: MetricItem;
   unit: MetricUnit;
+  loading?: boolean;
   seriesStyles?: Array<{
     color: string;
     fillOpacity?: number;
@@ -52,6 +53,7 @@ export const TrendChartPanel = ({
   data,
   metric,
   unit,
+  loading = false,
   seriesStyles,
   onXRangeChange,
   className,
@@ -67,14 +69,16 @@ export const TrendChartPanel = ({
   return (
     <div className={className}>
       <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
-          {guide ? (
-            <TitleWithGuide title={title} items={guide} className={styles.panelTitleWithGuide} styles={styles} />
-          ) : (
-            title
-          )}
-        </h3>
-        {subtitle ? <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>{subtitle}</div> : null}
+        <div className={styles.panelHeading}>
+          <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
+            {guide ? (
+              <TitleWithGuide title={title} items={guide} className={styles.panelTitleWithGuide} styles={styles} />
+            ) : (
+              title
+            )}
+          </h3>
+          {subtitle ? <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>{subtitle}</div> : null}
+        </div>
         <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
           {legends.map((item) => (
             <span className={styles.chartLegendItem} key={item.label}>
@@ -92,6 +96,7 @@ export const TrendChartPanel = ({
           data={data}
           metric={metric}
           unit={unit}
+          loading={loading}
           xAxisTimeFormat="HH:mm"
           leftAxisWidthOverride={44}
           seriesStyles={computedSeriesStyles}

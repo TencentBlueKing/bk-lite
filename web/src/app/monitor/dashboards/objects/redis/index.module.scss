@@ -1115,15 +1115,6 @@
   z-index: 0;
 }
 
-.ringChartWrap :global(.recharts-wrapper) {
-  position: relative;
-  z-index: 1;
-}
-
-.ringChartWrap :global(.recharts-sector) {
-  filter: drop-shadow(0 3px 8px rgba(83, 108, 146, 0.12));
-}
-
 .ringCenter {
   text-align: left;
   padding-bottom: 18px;
