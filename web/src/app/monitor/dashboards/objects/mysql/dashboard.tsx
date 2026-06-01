@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Empty, Select, Spin, Tag, Tooltip } from 'antd';
+import { Button, Empty, Tag, Tooltip } from 'antd';
 import {
   ArrowLeftOutlined,
   DatabaseOutlined,
@@ -54,7 +54,8 @@ import {
 import {
   StatCard,
   CollectionStatusCard,
-  TitleWithGuide
+  TitleWithGuide,
+  InstanceSelector
 } from '../../shared/widgets';
 
 interface MysqlInstanceOption {
@@ -1214,34 +1215,20 @@ export default function MysqlDashboardPage() {
               </div>
             </div>
             <div className={styles.instanceActions}>
-              <Select
-                className={styles.inlineInstanceSelector}
+              <InstanceSelector
+                styles={styles}
                 value={currentInstanceOption?.value || (instanceIdText ? String(instanceId) : undefined)}
                 loading={instanceLoading}
                 options={instanceOptions}
                 onChange={onInstanceChange}
                 placeholder="选择实例"
                 title={currentInstanceOption?.label || resolvedInstanceName}
-                showSearch
-                optionFilterProp="label"
-                optionLabelProp="label"
-                popupMatchSelectWidth={360}
-                filterOption={(input, option) => {
-                  const searchText = input.trim().toLowerCase();
-                  if (!searchText) {
-                    return true;
-                  }
-
-                  const tokens = (option as MysqlInstanceOption | undefined)?.searchTokens || [];
-                  return tokens.some((token) => token.toLowerCase().includes(searchText));
-                }}
-                variant="borderless"
               />
             </div>
           </div>
         </div>
 
-        <Spin spinning={loading}>
+        <div>
           {showEmpty ? (
             <div className={styles.empty}>
               <Empty description={t('common.noData')} />
@@ -2028,7 +2015,7 @@ export default function MysqlDashboardPage() {
               )}
             </>
           )}
-        </Spin>
+        </div>
       </div>
     </div>
   );

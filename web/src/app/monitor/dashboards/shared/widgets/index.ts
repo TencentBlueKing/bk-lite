@@ -25,4 +25,7 @@ export type { TrendChartPanelProps, TrendChartPanelStyles } from './trend-chart-
 export { default as EChartsLineChart } from './echarts-line-chart';
 export type { EChartsLineChartProps } from './echarts-line-chart';
 
+export { InstanceSelector } from './instance-selector';
+export type { InstanceSelectorProps, InstanceSelectorStyles, InstanceSelectorOption } from './instance-selector';
+
 export { useECharts } from './useECharts';

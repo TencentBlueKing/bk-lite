@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Select, Spin, Tooltip } from 'antd';
+import { Button, Tooltip } from 'antd';
 import {
   ArrowLeftOutlined,
   ClockCircleOutlined,
@@ -15,7 +15,8 @@ import EChartsLineChart from '../../shared/widgets/echarts-line-chart';
 import {
   StatCard,
   CollectionStatusCard,
-  TitleWithGuide
+  TitleWithGuide,
+  InstanceSelector
 } from '../../shared/widgets';
 import {
   DEFAULT_REFRESH_FREQUENCY_LIST,
@@ -32,7 +33,8 @@ import {
   toMetricSeries,
   buildMetricItem,
   mergeChartSeries,
-  getCollectionStatus
+  getCollectionStatus,
+  runWithConcurrency
 } from '../../shared/utils';
 import TimeSelector from '@/components/time-selector';
 import useViewApi from '@/app/monitor/api/view';
@@ -56,6 +58,47 @@ interface InstanceOption {
 }
 
 const MEBIBYTE = 1024 * 1024;
+
+const METRIC_QUERY_CONCURRENCY = 6;
+
+const MONGODB_METRIC_GROUPS = [
+  {
+    key: 'summary',
+    names: [
+      'mongodb_uptime_ns',
+      'mongodb_connections_current',
+      'mongodb_connections_available',
+      'mongodb_open_connections',
+      'mongodb_commands_rate',
+      'mongodb_queries_rate',
+      'mongodb_write_ops_rate',
+      'mongodb_latency_reads_avg',
+      'mongodb_latency_commands_avg',
+      'mongodb_page_faults_rate',
+      'mongodb_wtcache_usage_ratio',
+      'mongodb_wtcache_dirty_ratio'
+    ]
+  },
+  {
+    key: 'trends',
+    names: [
+      'mongodb_active_reads',
+      'mongodb_active_writes',
+      'mongodb_queued_reads',
+      'mongodb_queued_writes',
+      'mongodb_resident_megabytes',
+      'mongodb_vsize_megabytes',
+      'mongodb_tcmalloc_current_allocated_bytes',
+      'mongodb_wtcache_current_bytes',
+      'mongodb_wtcache_max_bytes_configured',
+      'mongodb_wtcache_tracked_dirty_bytes',
+      'mongodb_net_in_bytes_count_rate',
+      'mongodb_net_out_bytes_count_rate',
+      'mongodb_cursor_timed_out_count',
+      'mongodb_assert_user'
+    ]
+  }
+];
 
 const formatBinary = (value: number) => {
   if (!Number.isFinite(value)) {
@@ -183,35 +226,6 @@ const formatMetricValue = (value: number, unit: MetricUnit) => {
   }
 };
 
-const resolveDisplayUnit = (maxValue: number, suffix = '') => {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let divisor = 1;
-  let unitIndex = 0;
-  while (maxValue / divisor >= 1024 && unitIndex < units.length - 1) {
-    divisor *= 1024;
-    unitIndex += 1;
-  }
-  return {
-    divisor,
-    label: `${units[unitIndex]}${suffix}`
-  };
-};
-
-const scaleChartDataValues = (data: ChartData[], divisor: number) => {
-  if (!Number.isFinite(divisor) || divisor <= 0 || divisor === 1) {
-    return data;
-  }
-
-  return data.map((point) => {
-    const next: ChartData = { ...point };
-    Object.entries(point).forEach(([key, current]) => {
-      if (key.startsWith('value') && typeof current === 'number' && Number.isFinite(current)) {
-        next[key] = current / divisor;
-      }
-    });
-    return next;
-  });
-};
 
 const multiplyChartDataValues = (data: ChartData[], factor: number) =>
   data.map((point) => {
@@ -245,6 +259,7 @@ export default function MongoDashboardPage() {
   const [instanceOptions, setInstanceOptions] = useState<InstanceOption[]>([]);
   const [instanceLoading, setInstanceLoading] = useState(false);
   const [metricsRefreshSignal, setMetricsRefreshSignal] = useState(0);
+  const loadSeqRef = useRef(0);
 
   const monitorObjectId = searchParams.get('monitorObjId') || '';
   const monitorObjectName = searchParams.get('name') || 'Mongodb';
@@ -327,7 +342,24 @@ export default function MongoDashboardPage() {
   const instanceSelectValue =
     currentInstanceOption?.value || (hasReadableInstanceName && instanceId ? String(instanceId) : undefined);
 
+  const loadMetricGroup = async (metricNames: readonly string[]) => {
+    const metrics = metricNames
+      .map((name) => DASHBOARD_METRICS.find((m) => m.name === name))
+      .filter((m): m is MongoMetricConfig => Boolean(m));
+    return runWithConcurrency(
+      metrics,
+      METRIC_QUERY_CONCURRENCY,
+      async (metric) =>
+        getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, timeValues, undefined, false))
+          .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
+          .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
+    );
+  };
+
   const loadMetrics = async (silent = false) => {
+    const loadSeq = loadSeqRef.current + 1;
+    loadSeqRef.current = loadSeq;
+
     if (!silent) setLoading(true);
     try {
       if (isDashboardMode) {
@@ -336,13 +368,7 @@ export default function MongoDashboardPage() {
           ['mongodb_connections_current', 'mongodb_commands_rate', 'mongodb_wtcache_usage_ratio'].includes(metric.name)
         );
 
-        const metricResultsPromise = Promise.all(
-          DASHBOARD_METRICS.map((metric) =>
-            getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, timeValues, undefined, false))
-              .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
-              .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
-          )
-        );
+        const summaryResultsPromise = loadMetricGroup(MONGODB_METRIC_GROUPS[0].names);
 
         const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(
           buildSearchParams(MONGODB_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, timeValues, undefined, false)
@@ -379,31 +405,44 @@ export default function MongoDashboardPage() {
           );
 
         const previousMetricResultsPromise = previousTimeValues
-          ? Promise.all(
-            compareMetrics.map((metric) =>
+          ? runWithConcurrency(
+            compareMetrics,
+            METRIC_QUERY_CONCURRENCY,
+            async (metric) =>
               getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues))
                 .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
                 .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
-            )
           )
           : Promise.resolve([] as Array<readonly [string, MetricSeries]>);
 
-        const [results, previousResults, collectionStatus] = await Promise.all([
-          metricResultsPromise,
+        const [summaryResults, previousResults, collectionStatus] = await Promise.all([
+          summaryResultsPromise,
           previousMetricResultsPromise,
           collectionStatusPromise
         ]);
 
-        setSeries(Object.fromEntries(results));
+        if (loadSeqRef.current !== loadSeq) return;
+
+        setSeries((prev) => (silent ? { ...prev, ...Object.fromEntries(summaryResults) } : Object.fromEntries(summaryResults)));
         setPreviousSeries(Object.fromEntries(previousResults));
         setCollectionStatusMetric(collectionStatus);
+
+        if (!silent) setLoading(false);
+
+        MONGODB_METRIC_GROUPS.slice(1).forEach((group) => {
+          loadMetricGroup(group.names).then((results) => {
+            if (loadSeqRef.current !== loadSeq) return;
+            setSeries((prev) => ({ ...prev, ...Object.fromEntries(results) }));
+          });
+        });
       } else {
         setSeries({});
         setPreviousSeries({});
         setCollectionStatusMetric(null);
+        if (!silent) setLoading(false);
       }
-    } finally {
-      setLoading(false);
+    } catch {
+      if (loadSeqRef.current === loadSeq && !silent) setLoading(false);
     }
   };
 
@@ -515,7 +554,7 @@ export default function MongoDashboardPage() {
     [metricMap.mongodb_commands_rate?.viewData, metricMap.mongodb_queries_rate?.viewData, metricMap.mongodb_write_ops_rate?.viewData]
   );
 
-  const cacheTrendRawData = useMemo(
+  const cacheTrendData = useMemo(
     () =>
       mergeChartSeries([
         { key: 'mongodb_wtcache_current_bytes', label: '缓存已用', displayName: '缓存已用', data: metricMap.mongodb_wtcache_current_bytes?.viewData || [] },
@@ -532,21 +571,6 @@ export default function MongoDashboardPage() {
       metricMap.mongodb_wtcache_max_bytes_configured?.viewData,
       metricMap.mongodb_resident_megabytes?.viewData
     ]
-  );
-  const cacheTrendMaxValue = useMemo(
-    () =>
-      cacheTrendRawData.reduce((max, point) => {
-        const values = Object.entries(point)
-          .filter(([key, value]) => key.startsWith('value') && typeof value === 'number')
-          .map(([, value]) => Number(value));
-        return Math.max(max, ...values, 0);
-      }, 0),
-    [cacheTrendRawData]
-  );
-  const cacheTrendScale = useMemo(() => resolveDisplayUnit(cacheTrendMaxValue), [cacheTrendMaxValue]);
-  const cacheTrendData = useMemo(
-    () => scaleChartDataValues(cacheTrendRawData, cacheTrendScale.divisor),
-    [cacheTrendRawData, cacheTrendScale.divisor]
   );
 
   const pressureTrendData = useMemo(
@@ -565,28 +589,13 @@ export default function MongoDashboardPage() {
     ]
   );
 
-  const networkTrendRawData = useMemo(
+  const networkTrendData = useMemo(
     () =>
       mergeChartSeries([
         { key: 'mongodb_net_in_bytes_count_rate', label: '入流量', displayName: '入流量', data: metricMap.mongodb_net_in_bytes_count_rate?.viewData || [] },
         { key: 'mongodb_net_out_bytes_count_rate', label: '出流量', displayName: '出流量', data: metricMap.mongodb_net_out_bytes_count_rate?.viewData || [] }
       ]),
     [metricMap.mongodb_net_in_bytes_count_rate?.viewData, metricMap.mongodb_net_out_bytes_count_rate?.viewData]
-  );
-  const networkTrendMaxValue = useMemo(
-    () =>
-      networkTrendRawData.reduce((max, point) => {
-        const values = Object.entries(point)
-          .filter(([key, value]) => key.startsWith('value') && typeof value === 'number')
-          .map(([, value]) => Number(value));
-        return Math.max(max, ...values, 0);
-      }, 0),
-    [networkTrendRawData]
-  );
-  const networkTrendScale = useMemo(() => resolveDisplayUnit(networkTrendMaxValue, '/s'), [networkTrendMaxValue]);
-  const networkTrendData = useMemo(
-    () => scaleChartDataValues(networkTrendRawData, networkTrendScale.divisor),
-    [networkTrendRawData, networkTrendScale.divisor]
   );
 
   const pageTitle = displayMode === 'metrics' ? `${objectDisplayText} 全量指标` : 'MongoDB 监控仪表盘';
@@ -736,31 +745,20 @@ export default function MongoDashboardPage() {
               </div>
             </div>
             <div className={styles.instanceActions}>
-              <Select
-                className={styles.inlineInstanceSelector}
+              <InstanceSelector
+                styles={styles}
                 value={instanceSelectValue}
                 loading={instanceLoading}
                 options={instanceSelectOptions}
                 onChange={onInstanceChange}
                 placeholder={resolvedInstanceName !== '--' ? resolvedInstanceName : '选择实例'}
                 title={currentInstanceOption?.label || normalizedInstanceName || resolvedInstanceName}
-                showSearch
-                optionFilterProp="label"
-                optionLabelProp="label"
-                popupMatchSelectWidth={360}
-                filterOption={(input, option) => {
-                  const searchText = input.trim().toLowerCase();
-                  if (!searchText) return true;
-                  const tokens = (option as InstanceOption | undefined)?.searchTokens || [];
-                  return tokens.some((token) => token.toLowerCase().includes(searchText));
-                }}
-                variant="borderless"
               />
             </div>
           </div>
         </div>
 
-        <Spin spinning={loading}>
+        <div>
           {displayMode === 'dashboard' ? (
             <>
               <div className={styles.primaryGrid}>
@@ -928,12 +926,12 @@ export default function MongoDashboardPage() {
                   <div className={styles.chartWrap}>
                     <EChartsLineChart
                       data={cacheTrendData}
-                      unit={cacheTrendScale.label}
+                      unit="bytes"
                       metric={buildMetricItem(metricMap.mongodb_wtcache_current_bytes || { ...DASHBOARD_METRICS[17], viewData: [], loadState: 'success' })}
                       seriesStyles={[
-                        { color: TREND_LEGENDS.cache[0].color, unit: cacheTrendScale.label },
-                        { color: TREND_LEGENDS.cache[1].color, strokeDasharray: '5 5', unit: cacheTrendScale.label },
-                        { color: TREND_LEGENDS.cache[2].color, unit: cacheTrendScale.label }
+                        { color: TREND_LEGENDS.cache[0].color, unit: 'bytes' },
+                        { color: TREND_LEGENDS.cache[1].color, strokeDasharray: '5 5', unit: 'bytes' },
+                        { color: TREND_LEGENDS.cache[2].color, unit: 'bytes' }
                       ]}
                       allowSelect={false}
                       onXRangeChange={onXRangeChange}
@@ -1047,11 +1045,11 @@ export default function MongoDashboardPage() {
                   <div className={styles.chartWrap}>
                     <EChartsLineChart
                       data={networkTrendData}
-                      unit={networkTrendScale.label}
+                      unit="byteps"
                       metric={buildMetricItem(metricMap.mongodb_net_in_bytes_count_rate || { ...DASHBOARD_METRICS[22], viewData: [], loadState: 'success' })}
                       seriesStyles={[
-                        { color: TREND_LEGENDS.network[0].color, unit: networkTrendScale.label },
-                        { color: TREND_LEGENDS.network[1].color, unit: networkTrendScale.label }
+                        { color: TREND_LEGENDS.network[0].color, unit: 'byteps' },
+                        { color: TREND_LEGENDS.network[1].color, unit: 'byteps' }
                       ]}
                       allowSelect={false}
                       onXRangeChange={onXRangeChange}
@@ -1087,7 +1085,7 @@ export default function MongoDashboardPage() {
               </div>
             </div>
           )}
-        </Spin>
+        </div>
       </div>
     </div>
   );

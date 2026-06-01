@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Empty, Select, Spin, Tooltip } from 'antd';
+import { Button, Empty, Tooltip } from 'antd';
 import {
   ArrowLeftOutlined,
   ClockCircleOutlined,
@@ -16,7 +16,8 @@ import {
   StatCard,
   CollectionStatusCard,
   TitleWithGuide,
-  GuideTooltipContent
+  GuideTooltipContent,
+  InstanceSelector
 } from '../../shared/widgets';
 import {
   DEFAULT_REFRESH_FREQUENCY_LIST,
@@ -33,7 +34,8 @@ import {
   toMetricSeries,
   buildMetricItem,
   mergeChartSeries,
-  getCollectionStatus
+  getCollectionStatus,
+  runWithConcurrency
 } from '../../shared/utils';
 import TimeSelector from '@/components/time-selector';
 import useViewApi from '@/app/monitor/api/view';
@@ -56,11 +58,6 @@ interface RedisInstanceOption {
   searchTokens: string[];
 }
 
-const BINARY_DISPLAY_UNITS = {
-  bytes: ['B', 'KB', 'MB', 'GB', 'TB'],
-  byteps: ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s']
-} as const;
-
 const RAW_VALUE_METRICS = new Set([
   'redis_uptime',
   'redis_used_memory',
@@ -69,51 +66,37 @@ const RAW_VALUE_METRICS = new Set([
   'redis_blocked_clients'
 ]);
 
-const resolveBinaryDisplayUnit = (
-  data: ChartData[],
-  unit: 'bytes' | 'byteps'
-) => {
-  const maxValue = data.reduce((max, point) => {
-    const pointMax = Object.entries(point).reduce((innerMax, [key, current]) => {
-      if (!key.startsWith('value') || typeof current !== 'number' || !Number.isFinite(current)) {
-        return innerMax;
-      }
-      return Math.max(innerMax, Math.abs(current));
-    }, 0);
+const METRIC_QUERY_CONCURRENCY = 6;
 
-    return Math.max(max, pointMax);
-  }, 0);
-
-  const unitList = BINARY_DISPLAY_UNITS[unit];
-  let divisor = 1;
-  let unitIndex = 0;
-
-  while (maxValue / divisor >= 1024 && unitIndex < unitList.length - 1) {
-    divisor *= 1024;
-    unitIndex += 1;
+const REDIS_METRIC_GROUPS = [
+  {
+    key: 'summary',
+    names: [
+      'redis_uptime',
+      'redis_used_memory',
+      'redis_maxmemory',
+      'redis_memory_utilization',
+      'redis_instantaneous_ops_per_sec',
+      'redis_keyspace_hitrate',
+      'redis_clients',
+      'redis_blocked_clients',
+      'redis_rejected_connections_rate'
+    ]
+  },
+  {
+    key: 'trends',
+    names: [
+      'redis_mem_fragmentation_ratio',
+      'redis_total_commands_processed_rate',
+      'redis_keyspace_hits_rate',
+      'redis_keyspace_misses_rate',
+      'redis_total_net_input_bytes_rate',
+      'redis_total_net_output_bytes_rate',
+      'redis_expired_keys_rate',
+      'redis_evicted_keys_rate'
+    ]
   }
-
-  return {
-    divisor,
-    unitLabel: unitList[unitIndex]
-  };
-};
-
-const scaleChartDataValues = (data: ChartData[], divisor: number): ChartData[] => {
-  if (!Number.isFinite(divisor) || divisor <= 0 || divisor === 1) {
-    return data;
-  }
-
-  return data.map((point) => {
-    const next: ChartData = { ...point };
-    Object.entries(point).forEach(([key, current]) => {
-      if (key.startsWith('value') && typeof current === 'number' && Number.isFinite(current)) {
-        next[key] = current / divisor;
-      }
-    });
-    return next;
-  });
-};
+];
 
 export default function RedisDashboardPage() {
   const { getInstanceQuery } = useViewApi();
@@ -139,6 +122,7 @@ export default function RedisDashboardPage() {
   const [instanceOptions, setInstanceOptions] = useState<RedisInstanceOption[]>([]);
   const [instanceLoading, setInstanceLoading] = useState(false);
   const [metricsRefreshSignal, setMetricsRefreshSignal] = useState(0);
+  const loadSeqRef = useRef(0);
 
   const monitorObjectId = searchParams.get('monitorObjId') || '';
   const monitorObjectName = searchParams.get('name') || 'Redis';
@@ -218,7 +202,24 @@ export default function RedisDashboardPage() {
   const resolvedInstanceName =
     currentInstanceOption?.label || normalizedInstanceName || normalizeDisplayText(String(instanceId)) || normalizeDisplayText(idValues[0]) || '--';
 
+  const loadMetricGroup = async (metricNames: readonly string[]) => {
+    const metrics = metricNames
+      .map((name) => DASHBOARD_METRICS.find((m) => m.name === name))
+      .filter((m): m is RedisMetricConfig => Boolean(m));
+    return runWithConcurrency(
+      metrics,
+      METRIC_QUERY_CONCURRENCY,
+      async (metric) =>
+        getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, timeValues, RAW_VALUE_METRICS))
+          .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
+          .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
+    );
+  };
+
   const loadMetrics = async (silent = false) => {
+    const loadSeq = loadSeqRef.current + 1;
+    loadSeqRef.current = loadSeq;
+
     if (!silent) {
       setLoading(true);
     }
@@ -230,13 +231,7 @@ export default function RedisDashboardPage() {
           ['redis_memory_utilization', 'redis_instantaneous_ops_per_sec', 'redis_keyspace_hitrate', 'redis_clients'].includes(metric.name)
         );
 
-        const metricResultsPromise = Promise.all(
-          DASHBOARD_METRICS.map((metric) =>
-            getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, timeValues, RAW_VALUE_METRICS))
-              .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
-              .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
-          )
-        );
+        const summaryResultsPromise = loadMetricGroup(REDIS_METRIC_GROUPS[0].names);
 
         const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(
           buildSearchParams(REDIS_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, timeValues, RAW_VALUE_METRICS)
@@ -273,31 +268,44 @@ export default function RedisDashboardPage() {
           );
 
         const previousMetricResultsPromise = previousTimeValues
-          ? Promise.all(
-            compareMetrics.map((metric) =>
+          ? runWithConcurrency(
+            compareMetrics,
+            METRIC_QUERY_CONCURRENCY,
+            async (metric) =>
               getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues, RAW_VALUE_METRICS))
                 .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
                 .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
-            )
           )
           : Promise.resolve([] as Array<readonly [string, MetricSeries]>);
 
-        const [results, previousResults, collectionStatus] = await Promise.all([
-          metricResultsPromise,
+        const [summaryResults, previousResults, collectionStatus] = await Promise.all([
+          summaryResultsPromise,
           previousMetricResultsPromise,
           collectionStatusPromise
         ]);
 
-        setSeries(Object.fromEntries(results));
+        if (loadSeqRef.current !== loadSeq) return;
+
+        setSeries((prev) => (silent ? { ...prev, ...Object.fromEntries(summaryResults) } : Object.fromEntries(summaryResults)));
         setPreviousSeries(Object.fromEntries(previousResults));
         setCollectionStatusMetric(collectionStatus);
+
+        if (!silent) setLoading(false);
+
+        REDIS_METRIC_GROUPS.slice(1).forEach((group) => {
+          loadMetricGroup(group.names).then((results) => {
+            if (loadSeqRef.current !== loadSeq) return;
+            setSeries((prev) => ({ ...prev, ...Object.fromEntries(results) }));
+          });
+        });
       } else {
         setSeries({});
         setPreviousSeries({});
         setCollectionStatusMetric(null);
+        if (!silent) setLoading(false);
       }
-    } finally {
-      setLoading(false);
+    } catch {
+      if (loadSeqRef.current === loadSeq && !silent) setLoading(false);
     }
   };
 
@@ -425,15 +433,6 @@ export default function RedisDashboardPage() {
     [metricMap.redis_used_memory?.viewData, metricMap.redis_maxmemory?.viewData]
   );
 
-  const memoryTrendScale = useMemo(
-    () => resolveBinaryDisplayUnit(memoryTrendData, 'bytes'),
-    [memoryTrendData]
-  );
-  const memoryTrendDisplayData = useMemo(
-    () => scaleChartDataValues(memoryTrendData, memoryTrendScale.divisor),
-    [memoryTrendData, memoryTrendScale.divisor]
-  );
-
   const networkTrendData = useMemo(
     () =>
       mergeChartSeries([
@@ -453,14 +452,6 @@ export default function RedisDashboardPage() {
     [metricMap.redis_total_net_input_bytes_rate?.viewData, metricMap.redis_total_net_output_bytes_rate?.viewData]
   );
 
-  const networkTrendScale = useMemo(
-    () => resolveBinaryDisplayUnit(networkTrendData, 'byteps'),
-    [networkTrendData]
-  );
-  const networkTrendDisplayData = useMemo(
-    () => scaleChartDataValues(networkTrendData, networkTrendScale.divisor),
-    [networkTrendData, networkTrendScale.divisor]
-  );
 
   const pageTitle = displayMode === 'metrics' ? `${objectDisplayText} 全量指标` : 'Redis 监控仪表盘';
   const hasDashboardContent = DASHBOARD_METRICS.length > 0;
@@ -628,33 +619,20 @@ export default function RedisDashboardPage() {
               </div>
             </div>
             <div className={styles.instanceActions}>
-              <Select
-                className={styles.inlineInstanceSelector}
+              <InstanceSelector
+                styles={styles}
                 value={currentInstanceOption?.value || (instanceId ? String(instanceId) : undefined)}
                 loading={instanceLoading}
                 options={instanceOptions}
                 onChange={onInstanceChange}
                 placeholder="选择实例"
                 title={currentInstanceOption?.label || resolvedInstanceName}
-                showSearch
-                optionFilterProp="label"
-                optionLabelProp="label"
-                popupMatchSelectWidth={360}
-                filterOption={(input, option) => {
-                  const searchText = input.trim().toLowerCase();
-                  if (!searchText) {
-                    return true;
-                  }
-                  const tokens = (option as RedisInstanceOption | undefined)?.searchTokens || [];
-                  return tokens.some((token) => token.toLowerCase().includes(searchText));
-                }}
-                variant="borderless"
               />
             </div>
           </div>
         </div>
 
-        <Spin spinning={loading}>
+        <div>
           {showEmpty ? (
             <div className={styles.empty}>
               <Empty description={t('暂无数据')} />
@@ -811,11 +789,11 @@ export default function RedisDashboardPage() {
                       </div>
                       <div className={styles.chartWrap}>
                         <EChartsLineChart
-                          data={memoryTrendDisplayData}
+                          data={memoryTrendData}
                           metric={buildMetricItem(metricMap.redis_used_memory || { ...DASHBOARD_METRICS[1], viewData: [], loadState: 'success' })}
                           seriesStyles={[
-                            { color: TREND_LEGENDS.memory[0].color, unit: memoryTrendScale.unitLabel },
-                            { color: TREND_LEGENDS.memory[1].color, strokeDasharray: '5 5', unit: memoryTrendScale.unitLabel }
+                            { color: TREND_LEGENDS.memory[0].color, unit: 'bytes' },
+                            { color: TREND_LEGENDS.memory[1].color, strokeDasharray: '5 5', unit: 'bytes' }
                           ]}
                           allowSelect={false}
                           onXRangeChange={onXRangeChange}
@@ -842,11 +820,11 @@ export default function RedisDashboardPage() {
                       </div>
                       <div className={styles.chartWrap}>
                         <EChartsLineChart
-                          data={networkTrendDisplayData}
+                          data={networkTrendData}
                           metric={buildMetricItem(metricMap.redis_total_net_input_bytes_rate || { ...DASHBOARD_METRICS[10], viewData: [], loadState: 'success' })}
                           seriesStyles={[
-                            { color: TREND_LEGENDS.network[0].color, unit: networkTrendScale.unitLabel },
-                            { color: TREND_LEGENDS.network[1].color, unit: networkTrendScale.unitLabel }
+                            { color: TREND_LEGENDS.network[0].color, unit: 'byteps' },
+                            { color: TREND_LEGENDS.network[1].color, unit: 'byteps' }
                           ]}
                           allowSelect={false}
                           onXRangeChange={onXRangeChange}
@@ -955,7 +933,7 @@ export default function RedisDashboardPage() {
               )}
             </>
           )}
-        </Spin>
+        </div>
       </div>
     </div>
   );

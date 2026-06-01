@@ -2,7 +2,7 @@
 
 import React, { useMemo, useCallback, useRef } from 'react';
 import dayjs, { Dayjs } from 'dayjs';
-import { Empty } from 'antd';
+import { Empty, Spin } from 'antd';
 import { ChartData, MetricItem } from '@/app/monitor/types';
 import { useECharts } from './useECharts';
 import { formatMetricValue } from '../utils/format';
@@ -12,6 +12,7 @@ export interface EChartsLineChartProps {
   data: ChartData[];
   unit?: string;
   metric?: MetricItem;
+  loading?: boolean;
   seriesStyles?: Array<{
     color?: string;
     strokeDasharray?: string;
@@ -50,9 +51,28 @@ const formatAxisNumber = (value: number) => {
   return value.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
 };
 
+const BINARY_SCALE_CONFIG: Record<string, string[]> = {
+  bytes: ['B', 'KB', 'MB', 'GB', 'TB'],
+  byteps: ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s'],
+  mebibytes: ['MiB', 'GiB', 'TiB']
+};
+
+const resolveBinaryScale = (maxValue: number, metricUnit: string) => {
+  const unitList = BINARY_SCALE_CONFIG[metricUnit];
+  if (!unitList) return { divisor: 1, displayUnit: metricUnit };
+  let divisor = 1;
+  let idx = 0;
+  while (maxValue / divisor >= 1024 && idx < unitList.length - 1) {
+    divisor *= 1024;
+    idx += 1;
+  }
+  return { divisor, displayUnit: unitList[idx] };
+};
+
 const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
   data,
   unit = '',
+  loading = false,
   seriesStyles = [],
   xAxisTimeFormat = 'HH:mm',
   leftAxisWidthOverride,
@@ -60,6 +80,7 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
   onXRangeChange
 }) => {
   const dragStartRef = useRef<number | null>(null);
+  const hasEverHadData = useRef(false);
 
   const areaKeys = useMemo(() => getChartAreaKeys(data), [data]);
 
@@ -71,6 +92,27 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
 
   const option = useMemo(() => {
     if (!data.length || !areaKeys.length) return null;
+
+    const yAxisUnit = seriesStyles[0]?.unit || unit || '';
+    const needsBinaryScale = yAxisUnit in BINARY_SCALE_CONFIG;
+
+    let scaleDivisor = 1;
+    let scaleDisplayUnit = yAxisUnit;
+
+    if (needsBinaryScale) {
+      let maxValue = 0;
+      data.forEach((point) => {
+        areaKeys.forEach((key) => {
+          const v = point[key];
+          if (typeof v === 'number' && Number.isFinite(v)) {
+            maxValue = Math.max(maxValue, Math.abs(v));
+          }
+        });
+      });
+      const scale = resolveBinaryScale(maxValue, yAxisUnit);
+      scaleDivisor = scale.divisor;
+      scaleDisplayUnit = scale.displayUnit;
+    }
 
     const times = data.map((d) => d.time);
     const seriesList = areaKeys.map((key, idx) => {
@@ -84,7 +126,11 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
       return {
         type: 'line' as const,
         name: key,
-        data: data.map((d) => (d[key] as number) ?? null),
+        data: data.map((d) => {
+          const v = d[key] as number | null;
+          if (v == null) return null;
+          return scaleDivisor > 1 ? v / scaleDivisor : v;
+        }),
         smooth: false,
         symbol: 'none',
         lineStyle: {
@@ -107,15 +153,12 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
       };
     });
 
-    const yAxisUnit = seriesStyles[0]?.unit || unit || '';
-    const KNOWN_METRIC_UNITS = new Set(['cps', 'ops', 'bytes', 'byteps', 'percent', 's', 'ms', 'ns', 'msps', 'permin', 'mebibytes', 'counts', 'none', 'short']);
-    const yAxisLabel = KNOWN_METRIC_UNITS.has(yAxisUnit) ? '' : yAxisUnit;
-    const leftWidth = leftAxisWidthOverride || (yAxisLabel ? 60 : 50);
+    const leftWidth = leftAxisWidthOverride || 50;
 
     return {
       animation: false,
       grid: {
-        top: yAxisLabel ? 24 : 12,
+        top: 12,
         right: 12,
         bottom: 24,
         left: leftWidth,
@@ -135,9 +178,6 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
       },
       yAxis: {
         type: 'value' as const,
-        name: yAxisLabel || undefined,
-        nameTextStyle: yAxisLabel ? { fontSize: 11, color: '#8c8c8c', padding: [0, 0, 0, 0] } : undefined,
-        nameGap: 8,
         axisLabel: {
           formatter: (val: number) => formatAxisNumber(val),
           fontSize: 11,
@@ -168,12 +208,22 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
           } else {
             params.forEach((p: any, idx: number) => {
               const style = seriesStyles[idx] || {};
-              const seriesUnit = style.unit || unit;
               const rawValue = p.value;
               if (rawValue == null) return;
-              const formatted = formatMetricValue(Number(rawValue), seriesUnit as MetricUnit);
+              let displayValue: string;
+              let displayUnit: string;
+              if (needsBinaryScale) {
+                const num = Number(rawValue);
+                displayValue = num >= 100 ? num.toFixed(0) : num.toFixed(1);
+                displayUnit = scaleDisplayUnit;
+              } else {
+                const seriesUnit = style.unit || unit;
+                const formatted = formatMetricValue(Number(rawValue), seriesUnit as MetricUnit);
+                displayValue = formatted.value;
+                displayUnit = formatted.unit;
+              }
               const color = style.color || DEFAULT_COLORS[idx % DEFAULT_COLORS.length];
-              html += `<div style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span><span>${formatted.value} ${formatted.unit}</span></div>`;
+              html += `<div style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span><span>${displayValue} ${displayUnit}</span></div>`;
             });
           }
           return html;
@@ -232,10 +282,21 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
 
   const isEmpty = !data.length || !areaKeys.length;
 
+  if (!isEmpty) {
+    hasEverHadData.current = true;
+  }
+
+  const showLoading = isEmpty && (loading || !hasEverHadData.current);
+
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-      {isEmpty && (
+      {showLoading && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
+          <Spin size="small" />
+        </div>
+      )}
+      {!showLoading && isEmpty && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
         </div>

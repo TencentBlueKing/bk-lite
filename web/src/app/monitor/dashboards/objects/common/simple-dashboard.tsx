@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Select, Spin } from 'antd';
+import { Button } from 'antd';
 import {
   ApiOutlined,
   ArrowLeftOutlined,
@@ -36,7 +36,7 @@ import {
   buildCollectionStatusTimeline
 } from '../../shared/utils';
 import { GuideItem } from '../../shared/types';
-import { StatCard, CollectionStatusCard, TitleWithGuide } from '../../shared/widgets';
+import { StatCard, CollectionStatusCard, TitleWithGuide, InstanceSelector } from '../../shared/widgets';
 import styles from './simple-dashboard.module.scss';
 
 export type SimpleMetricUnit = 'percent' | 'counts' | 'short' | 'cps' | 'ops' | 's' | 'ms' | 'ns' | 'bytes' | 'byteps' | 'msps' | 'none' | string;
@@ -436,31 +436,20 @@ export default function SimpleDashboard({ config }: { config: SimpleDashboardCon
               </div>
             </div>
             <div className={styles.instanceActions}>
-              <Select
-                className={styles.inlineInstanceSelector}
+              <InstanceSelector
+                styles={styles}
                 value={instanceSelectValue}
                 loading={instanceLoading}
                 options={instanceSelectOptions}
                 onChange={onInstanceChange}
                 placeholder={resolvedInstanceName !== '--' ? resolvedInstanceName : '选择实例'}
                 title={currentInstanceOption?.label || normalizedInstanceName || resolvedInstanceName}
-                showSearch
-                optionFilterProp="label"
-                optionLabelProp="label"
-                popupMatchSelectWidth={360}
-                filterOption={(input, option) => {
-                  const searchText = input.trim().toLowerCase();
-                  if (!searchText) return true;
-                  const tokens = (option as InstanceOption | undefined)?.searchTokens || [];
-                  return tokens.some((token) => token.toLowerCase().includes(searchText));
-                }}
-                variant="borderless"
               />
             </div>
           </div>
         </div>
 
-        <Spin spinning={loading}>
+        <div>
           {displayMode === 'dashboard' ? (
             <>
               <div className={styles.primaryGrid}>
@@ -571,7 +560,7 @@ export default function SimpleDashboard({ config }: { config: SimpleDashboardCon
               </div>
             </div>
           )}
-        </Spin>
+        </div>
       </div>
     </div>
   );
