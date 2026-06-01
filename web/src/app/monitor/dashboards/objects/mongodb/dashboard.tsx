@@ -1162,38 +1162,6 @@ export default function MongoDashboardPage() {
                 <div className={`${styles.panel} ${styles.quarterPanel}`}>
                   <div className={styles.detailCard}>
                     <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="连接与排队" items={queueGuide} className={styles.panelTitleWithGuide} /></h3>
-                      <div className={styles.panelSubTitle}>连接容量与等待积压</div>
-                    </div>
-                    <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>当前连接</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_connections_current', formatMetricValue(currentConnections, 'counts').value)}</span></div>
-                    <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>打开连接</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_open_connections', formatMetricValue(openConnections, 'counts').value)}</span></div>
-                    <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>排队读操作</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_queued_reads', formatMetricValue(queuedReads, 'counts').value)}</span></div>
-                    <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>排队写操作</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_queued_writes', formatMetricValue(queuedWrites, 'counts').value)}</span></div>
-                    <div className={`${styles.fragmentationWarning} ${queueTone === 'danger' ? styles.fragmentationWarningDanger : queueTone === 'warn' ? styles.fragmentationWarningWarn : styles.fragmentationWarningNormal}`}>
-                      {queueTone === 'danger' ? '读写队列已明显堆积，建议优先排查缓存与内存压力。' : queueTone === 'warn' ? '已出现轻微排队，需要结合延迟和缺页持续观察。' : '当前未观察到明显排队堆积。'}
-                    </div>
-                  </div>
-                </div>
-
-                <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                  <div className={styles.detailCard}>
-                    <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="WiredTiger 缓存状态" items={cacheDetailGuide} className={styles.panelTitleWithGuide} /></h3>
-                      <div className={styles.panelSubTitle}>缓存占用与脏数据状态</div>
-                    </div>
-                    <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>缓存使用率</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_wtcache_usage_ratio', `${cacheUsageDisplay.value}${cacheUsageDisplay.unit}`)}</span></div>
-                    <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>脏数据占比</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_wtcache_dirty_ratio', `${cacheDirtyRatioDisplay.value}${cacheDirtyRatioDisplay.unit}`)}</span></div>
-                    <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>缓存上限</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_wtcache_max_bytes_configured', `${cacheMaxDisplay.value}${cacheMaxDisplay.unit}`)}</span></div>
-                    <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>脏数据大小</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_wtcache_tracked_dirty_bytes', `${cacheDirtyDisplay.value}${cacheDirtyDisplay.unit}`)}</span></div>
-                    <div className={`${styles.fragmentationWarning} ${cachePressureTone === 'danger' ? styles.fragmentationWarningDanger : cachePressureTone === 'warn' ? styles.fragmentationWarningWarn : styles.fragmentationWarningNormal}`}>
-                      {cachePressureTone === 'danger' ? '缓存接近饱和或脏数据偏高，优先排查工作集与落盘压力。' : cachePressureTone === 'warn' ? '缓存利用率开始升高，需要同时观察常驻内存与缺页。' : '当前缓存状态平稳。'}
-                    </div>
-                  </div>
-                </div>
-
-                <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                  <div className={styles.detailCard}>
-                    <div className={styles.panelHeading}>
                       <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="内存与缺页" items={memoryDetailGuide} className={styles.panelTitleWithGuide} /></h3>
                       <div className={styles.panelSubTitle}>工作集与进程内存匹配</div>
                     </div>
@@ -1216,10 +1184,8 @@ export default function MongoDashboardPage() {
                     <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>用户断言</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_assert_user', formatMetricValue(userAssert, 'counts').value)}</span></div>
                   </div>
                 </div>
-              </div>
 
-              <div className={styles.mainTrendGrid}>
-                <div className={`${styles.panel} ${styles.fullPanel}`}>
+                <div className={`${styles.panel} ${styles.halfWidePanel} ${styles.compactChartPanel}`}>
                   <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
                     <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
                       <TitleWithGuide styles={styles} title="网络流量趋势" items={networkTrendGuide} className={styles.panelTitleWithGuide} />
@@ -1234,7 +1200,7 @@ export default function MongoDashboardPage() {
                       ))}
                     </div>
                   </div>
-                  <div className={styles.chartWrap}>
+                  <div className={`${styles.chartWrap} ${styles.compactChartWrap}`}>
                     <EChartsLineChart
                       data={networkTrendData}
                       unit="byteps"
