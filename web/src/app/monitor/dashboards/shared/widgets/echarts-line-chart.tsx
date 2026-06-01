@@ -80,7 +80,6 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
   onXRangeChange
 }) => {
   const dragStartRef = useRef<number | null>(null);
-  const hasEverHadData = useRef(false);
 
   const areaKeys = useMemo(() => getChartAreaKeys(data), [data]);
 
@@ -126,6 +125,7 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
       return {
         type: 'line' as const,
         name: key,
+        connectNulls: true,
         data: data.map((d) => {
           const v = d[key] as number | null;
           if (v == null) return null;
@@ -281,12 +281,7 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
   getInstanceRef.current = getInstance;
 
   const isEmpty = !data.length || !areaKeys.length;
-
-  if (!isEmpty) {
-    hasEverHadData.current = true;
-  }
-
-  const showLoading = isEmpty && (loading || !hasEverHadData.current);
+  const showLoading = isEmpty && loading;
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>

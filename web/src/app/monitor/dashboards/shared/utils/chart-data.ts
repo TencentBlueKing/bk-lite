@@ -34,7 +34,7 @@ export const mergeChartSeries = (
     series.data.forEach((point) => {
       const time = Number(point.time);
       const current = merged.get(time) || { time, title: series.label, details: {} };
-      current[valueKey] = Number(point.value1 ?? 0);
+      current[valueKey] = getChartPointSeriesTotal(point);
       current.details = current.details || {};
       current.details[valueKey] = [
         { name: series.key, label: series.displayName || '', value: series.displayName || series.label }
@@ -43,5 +43,15 @@ export const mergeChartSeries = (
     });
   });
 
-  return Array.from(merged.values()).sort((a, b) => Number(a.time) - Number(b.time));
+  const allValueKeys = seriesList.map((_, index) => `value${index + 1}`);
+  const result = Array.from(merged.values()).sort((a, b) => Number(a.time) - Number(b.time));
+  result.forEach((point) => {
+    allValueKeys.forEach((key) => {
+      if (!(key in point)) {
+        point[key] = null;
+      }
+    });
+  });
+
+  return result;
 };
