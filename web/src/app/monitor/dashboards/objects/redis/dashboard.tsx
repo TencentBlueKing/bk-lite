@@ -11,6 +11,7 @@ import {
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
 import EChartsLineChart from '../../shared/widgets/echarts-line-chart';
+import { InlineRingChart } from '../../shared/widgets/inline-ring-chart';
 import {
   StatCard,
   CollectionStatusCard,
@@ -788,6 +789,164 @@ export default function RedisDashboardPage() {
                           allowSelect={false}
                           onXRangeChange={onXRangeChange}
                         />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={styles.detailGrid}>
+                    <div className={`${styles.panel} ${styles.quarterPanel}`}>
+                      <div className={styles.panelHeader}>
+                        <div className={styles.panelHeading}>
+                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="内存占用分布" items={memoryGuide} className={styles.panelTitleWithGuide} /></h3>
+                          <div className={styles.panelSubTitle}>已用与剩余内存占比</div>
+                        </div>
+                      </div>
+                      <div className={styles.ringCard}>
+                        <div className={styles.ringChartWrap}>
+                          <InlineRingChart
+                            data={(() => {
+                              const used = hasMetricData('redis_used_memory') ? usedMemoryValue : 0;
+                              const max = hasMetricData('redis_maxmemory') && maxMemoryValue > 0 ? maxMemoryValue : used;
+                              const free = Math.max(max - used, 0);
+                              return [
+                                { name: '已用', value: used, color: '#ff8a1f' },
+                                { name: '剩余', value: free, color: '#e8f0fe' }
+                              ];
+                            })()}
+                          />
+                          <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
+                            <div className={styles.ringValue}>{maxMemoryValue > 0 && hasMetricData('redis_memory_utilization') ? `${memoryUtilDisplay.value}%` : '--'}</div>
+                            <div className={styles.ringCaption}>使用率</div>
+                          </div>
+                        </div>
+                        <div className={styles.ringInfoPanel}>
+                          <div className={styles.metricList}>
+                            <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
+                              <span className={styles.metricKey}>
+                                <span className={styles.metricLabelGroup}>
+                                  <span className={styles.metricDot} style={{ background: '#ff8a1f' }} />
+                                  <span className={styles.metricName}>已用内存</span>
+                                </span>
+                              </span>
+                              <span className={styles.metricValueGroup}>
+                                <span className={styles.metricPercent}>{renderMetricValue('redis_used_memory', `${usedMemoryDisplay.value}${usedMemoryDisplay.unit}`)}</span>
+                              </span>
+                            </div>
+                            <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
+                              <span className={styles.metricKey}>
+                                <span className={styles.metricLabelGroup}>
+                                  <span className={styles.metricDot} style={{ background: '#e8f0fe' }} />
+                                  <span className={styles.metricName}>内存上限</span>
+                                </span>
+                              </span>
+                              <span className={styles.metricValueGroup}>
+                                <span className={styles.metricPercent}>{maxMemoryValue > 0 && hasMetricData('redis_maxmemory') ? `${maxMemoryDisplay.value}${maxMemoryDisplay.unit}` : '未配置'}</span>
+                              </span>
+                            </div>
+                            <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
+                              <span className={styles.metricKey}>
+                                <span className={styles.metricLabelGroup}>
+                                  <span className={styles.metricDot} style={{ background: '#faad14' }} />
+                                  <span className={styles.metricName}>碎片率</span>
+                                </span>
+                              </span>
+                              <span className={styles.metricValueGroup}>
+                                <span className={styles.metricPercent}>{renderMetricValue('redis_mem_fragmentation_ratio', fragmentationDisplay.value)}</span>
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className={`${styles.panel} ${styles.quarterPanel}`}>
+                      <div className={styles.panelHeader}>
+                        <div className={styles.panelHeading}>
+                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="命中分布" items={hitGuide} className={styles.panelTitleWithGuide} /></h3>
+                          <div className={styles.panelSubTitle}>命中与未命中频率占比</div>
+                        </div>
+                      </div>
+                      <div className={styles.ringCard}>
+                        <div className={styles.ringChartWrap}>
+                          <InlineRingChart
+                            data={[
+                              { name: '命中', value: hasMetricData('redis_keyspace_hits_rate') ? hitsRateValue : 0, color: '#8a5cff' },
+                              { name: '未命中', value: hasMetricData('redis_keyspace_misses_rate') ? missesRateValue : 0, color: '#ffccc7' }
+                            ]}
+                          />
+                          <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
+                            <div className={styles.ringValue}>{hasMetricData('redis_keyspace_hitrate') ? `${hitRateDisplay.value}%` : '--'}</div>
+                            <div className={styles.ringCaption}>命中率</div>
+                          </div>
+                        </div>
+                        <div className={styles.ringInfoPanel}>
+                          <div className={styles.metricList}>
+                            <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
+                              <span className={styles.metricKey}>
+                                <span className={styles.metricLabelGroup}>
+                                  <span className={styles.metricDot} style={{ background: '#8a5cff' }} />
+                                  <span className={styles.metricName}>键命中频率</span>
+                                </span>
+                              </span>
+                              <span className={styles.metricValueGroup}>
+                                <span className={styles.metricPercent}>{renderMetricValue('redis_keyspace_hits_rate', `${hitsRateDisplay.value}${hitsRateDisplay.unit}`)}</span>
+                              </span>
+                            </div>
+                            <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
+                              <span className={styles.metricKey}>
+                                <span className={styles.metricLabelGroup}>
+                                  <span className={styles.metricDot} style={{ background: '#ffccc7' }} />
+                                  <span className={styles.metricName}>键未命中频率</span>
+                                </span>
+                              </span>
+                              <span className={styles.metricValueGroup}>
+                                <span className={styles.metricPercent}>{renderMetricValue('redis_keyspace_misses_rate', `${missesRateDisplay.value}${missesRateDisplay.unit}`)}</span>
+                              </span>
+                            </div>
+                            <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
+                              <span className={styles.metricKey}>
+                                <span className={styles.metricLabelGroup}>
+                                  <span className={styles.metricDot} style={{ background: '#27c274' }} />
+                                  <span className={styles.metricName}>命中率</span>
+                                </span>
+                              </span>
+                              <span className={styles.metricValueGroup}>
+                                <span className={styles.metricPercent}>{renderMetricValue('redis_keyspace_hitrate', `${hitRateDisplay.value}${hitRateDisplay.unit}`)}</span>
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className={`${styles.panel} ${styles.quarterPanel}`}>
+                      <div className={styles.panelHeader}>
+                        <div className={styles.panelHeading}>
+                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="客户端状态" items={clientGuide} className={styles.panelTitleWithGuide} /></h3>
+                          <div className={styles.panelSubTitle}>连接分布与阻塞情况</div>
+                        </div>
+                      </div>
+                      <div className={`${styles.bars} ${styles.compactBars} ${styles.barsFull}`}>
+                        {(() => {
+                          const normalClients = Math.max(clientsValue - blockedClientsValue, 0);
+                          const maxVal = Math.max(clientsValue, 1);
+                          return [
+                            { label: '正常连接', value: normalClients, display: hasMetricData('redis_clients') ? normalClients.toFixed(0) : '--', color: '#2f6bff', max: maxVal },
+                            { label: '阻塞客户端', value: blockedClientsValue, display: renderMetricValue('redis_blocked_clients', blockedClientsDisplay.value), color: '#fa8c16', max: maxVal },
+                            { label: '连接拒绝频率', value: rejectedRateValue, display: renderMetricValue('redis_rejected_connections_rate', `${rejectedDisplay.value}${rejectedDisplay.unit}`), color: '#ff4d4f', max: Math.max(rejectedRateValue, clientsValue, 1) }
+                          ];
+                        })().map((item) => (
+                          <div key={item.label} className={styles.barRow}>
+                            <div className={styles.barLabel}>{item.label}</div>
+                            <div className={styles.barTrack}>
+                              <div
+                                className={styles.barFill}
+                                style={{ width: `${Math.min((item.value / item.max) * 100, 100)}%`, background: item.color }}
+                              />
+                            </div>
+                            <div className={styles.barValue}>{item.display}</div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>

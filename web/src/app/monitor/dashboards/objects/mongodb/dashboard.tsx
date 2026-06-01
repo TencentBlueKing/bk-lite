@@ -11,6 +11,7 @@ import {
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
 import EChartsLineChart from '../../shared/widgets/echarts-line-chart';
+import { InlineRingChart } from '../../shared/widgets/inline-ring-chart';
 import {
   StatCard,
   CollectionStatusCard,
@@ -492,6 +493,8 @@ export default function MongoDashboardPage() {
   const pageFaults = getLatest('mongodb_page_faults_rate');
   const queuedReads = getLatest('mongodb_queued_reads');
   const queuedWrites = getLatest('mongodb_queued_writes');
+  const activeReads = getLatest('mongodb_active_reads');
+  const activeWrites = getLatest('mongodb_active_writes');
   const residentMemory = getLatest('mongodb_resident_megabytes');
   const virtualMemory = getLatest('mongodb_vsize_megabytes');
   const allocatedMemory = getLatest('mongodb_tcmalloc_current_allocated_bytes');
@@ -930,6 +933,227 @@ export default function MongoDashboardPage() {
                       allowSelect={false}
                       onXRangeChange={onXRangeChange}
                     />
+                  </div>
+                </div>
+              </div>
+
+              <div className={styles.detailGrid}>
+                <div className={`${styles.panel} ${styles.quarterPanel}`}>
+                  <div className={styles.panelHeader}>
+                    <div className={styles.panelHeading}>
+                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="连接分布" items={connectionGuide} className={styles.panelTitleWithGuide} /></h3>
+                      <div className={styles.panelSubTitle}>当前与可用连接占比</div>
+                    </div>
+                  </div>
+                  <div className={styles.ringCard}>
+                    <div className={styles.ringChartWrap}>
+                      <InlineRingChart
+                        data={[
+                          { name: '当前连接', value: hasMetricData('mongodb_connections_current') ? currentConnections : 0, color: '#2f6bff' },
+                          { name: '可用连接', value: hasMetricData('mongodb_connections_available') ? availableConnections : 0, color: '#e8f0fe' }
+                        ]}
+                      />
+                      <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
+                        <div className={styles.ringValue}>{renderMetricValue('mongodb_connections_current', formatMetricValue(currentConnections, 'counts').value)}</div>
+                        <div className={styles.ringCaption}>当前连接</div>
+                      </div>
+                    </div>
+                    <div className={styles.ringInfoPanel}>
+                      <div className={styles.metricList}>
+                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
+                          <span className={styles.metricKey}>
+                            <span className={styles.metricLabelGroup}>
+                              <span className={styles.metricDot} style={{ background: '#2f6bff' }} />
+                              <span className={styles.metricName}>当前连接</span>
+                            </span>
+                          </span>
+                          <span className={styles.metricValueGroup}>
+                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_connections_current', formatMetricValue(currentConnections, 'counts').value)}</span>
+                          </span>
+                        </div>
+                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
+                          <span className={styles.metricKey}>
+                            <span className={styles.metricLabelGroup}>
+                              <span className={styles.metricDot} style={{ background: '#e8f0fe' }} />
+                              <span className={styles.metricName}>可用连接</span>
+                            </span>
+                          </span>
+                          <span className={styles.metricValueGroup}>
+                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_connections_available', formatMetricValue(availableConnections, 'counts').value)}</span>
+                          </span>
+                        </div>
+                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
+                          <span className={styles.metricKey}>
+                            <span className={styles.metricLabelGroup}>
+                              <span className={styles.metricDot} style={{ background: '#27c274' }} />
+                              <span className={styles.metricName}>打开连接</span>
+                            </span>
+                          </span>
+                          <span className={styles.metricValueGroup}>
+                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_open_connections', formatMetricValue(openConnections, 'counts').value)}</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={`${styles.panel} ${styles.quarterPanel}`}>
+                  <div className={styles.panelHeader}>
+                    <div className={styles.panelHeading}>
+                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="WiredTiger 缓存" items={cacheGuide} className={styles.panelTitleWithGuide} /></h3>
+                      <div className={styles.panelSubTitle}>缓存占用与脏数据分布</div>
+                    </div>
+                  </div>
+                  <div className={styles.ringCard}>
+                    <div className={styles.ringChartWrap}>
+                      <InlineRingChart
+                        data={(() => {
+                          const used = hasMetricData('mongodb_wtcache_current_bytes') ? cacheCurrent : 0;
+                          const dirty = hasMetricData('mongodb_wtcache_tracked_dirty_bytes') ? cacheDirty : 0;
+                          const max = hasMetricData('mongodb_wtcache_max_bytes_configured') && cacheMax > 0 ? cacheMax : used;
+                          const free = Math.max(max - used, 0);
+                          return [
+                            { name: '已用', value: used - dirty, color: '#2f6bff' },
+                            { name: '脏数据', value: dirty, color: '#fa8c16' },
+                            { name: '空闲', value: free, color: '#e8f0fe' }
+                          ];
+                        })()}
+                      />
+                      <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
+                        <div className={styles.ringValue}>{hasMetricData('mongodb_wtcache_usage_ratio') ? `${cacheUsageDisplay.value}%` : '--'}</div>
+                        <div className={styles.ringCaption}>缓存使用率</div>
+                      </div>
+                    </div>
+                    <div className={styles.ringInfoPanel}>
+                      <div className={styles.metricList}>
+                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
+                          <span className={styles.metricKey}>
+                            <span className={styles.metricLabelGroup}>
+                              <span className={styles.metricDot} style={{ background: '#2f6bff' }} />
+                              <span className={styles.metricName}>缓存已用</span>
+                            </span>
+                          </span>
+                          <span className={styles.metricValueGroup}>
+                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_wtcache_current_bytes', `${cacheCurrentDisplay.value}${cacheCurrentDisplay.unit}`)}</span>
+                          </span>
+                        </div>
+                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
+                          <span className={styles.metricKey}>
+                            <span className={styles.metricLabelGroup}>
+                              <span className={styles.metricDot} style={{ background: '#fa8c16' }} />
+                              <span className={styles.metricName}>脏数据</span>
+                            </span>
+                          </span>
+                          <span className={styles.metricValueGroup}>
+                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_wtcache_tracked_dirty_bytes', `${cacheDirtyDisplay.value}${cacheDirtyDisplay.unit}`)}</span>
+                          </span>
+                        </div>
+                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
+                          <span className={styles.metricKey}>
+                            <span className={styles.metricLabelGroup}>
+                              <span className={styles.metricDot} style={{ background: '#e8f0fe' }} />
+                              <span className={styles.metricName}>缓存上限</span>
+                            </span>
+                          </span>
+                          <span className={styles.metricValueGroup}>
+                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_wtcache_max_bytes_configured', `${cacheMaxDisplay.value}${cacheMaxDisplay.unit}`)}</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={`${styles.panel} ${styles.quarterPanel}`}>
+                  <div className={styles.panelHeader}>
+                    <div className={styles.panelHeading}>
+                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="操作类型分布" items={throughputGuide} className={styles.panelTitleWithGuide} /></h3>
+                      <div className={styles.panelSubTitle}>按命令类型占比</div>
+                    </div>
+                  </div>
+                  <div className={styles.ringCard}>
+                    <div className={styles.ringChartWrap}>
+                      <InlineRingChart
+                        data={[
+                          { name: '命令', value: hasMetricData('mongodb_commands_rate') ? commandsRate : 0, color: '#27c274' },
+                          { name: '查询', value: hasMetricData('mongodb_queries_rate') ? queriesRate : 0, color: '#5b8ff9' },
+                          { name: '写入', value: hasMetricData('mongodb_write_ops_rate') ? writesRate : 0, color: '#ff9f43' }
+                        ]}
+                      />
+                      <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
+                        <div className={styles.ringValue}>{hasMetricData('mongodb_commands_rate') ? formatMetricValue(commandsRate + queriesRate + writesRate, 'cps').value : '--'}</div>
+                        <div className={styles.ringCaption}>总吞吐 /s</div>
+                      </div>
+                    </div>
+                    <div className={styles.ringInfoPanel}>
+                      <div className={styles.metricList}>
+                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
+                          <span className={styles.metricKey}>
+                            <span className={styles.metricLabelGroup}>
+                              <span className={styles.metricDot} style={{ background: '#27c274' }} />
+                              <span className={styles.metricName}>命令</span>
+                            </span>
+                          </span>
+                          <span className={styles.metricValueGroup}>
+                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_commands_rate', `${commandsDisplay.value}${commandsDisplay.unit}`)}</span>
+                          </span>
+                        </div>
+                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
+                          <span className={styles.metricKey}>
+                            <span className={styles.metricLabelGroup}>
+                              <span className={styles.metricDot} style={{ background: '#5b8ff9' }} />
+                              <span className={styles.metricName}>查询</span>
+                            </span>
+                          </span>
+                          <span className={styles.metricValueGroup}>
+                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_queries_rate', `${queriesDisplay.value}${queriesDisplay.unit}`)}</span>
+                          </span>
+                        </div>
+                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
+                          <span className={styles.metricKey}>
+                            <span className={styles.metricLabelGroup}>
+                              <span className={styles.metricDot} style={{ background: '#ff9f43' }} />
+                              <span className={styles.metricName}>写入</span>
+                            </span>
+                          </span>
+                          <span className={styles.metricValueGroup}>
+                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_write_ops_rate', `${writesDisplay.value}${writesDisplay.unit}`)}</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={`${styles.panel} ${styles.quarterPanel}`}>
+                  <div className={styles.panelHeader}>
+                    <div className={styles.panelHeading}>
+                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="读写压力" items={pressureTrendGuide} className={styles.panelTitleWithGuide} /></h3>
+                      <div className={styles.panelSubTitle}>活跃与排队操作数</div>
+                    </div>
+                  </div>
+                  <div className={`${styles.bars} ${styles.compactBars} ${styles.barsFull}`}>
+                    {(() => {
+                      const maxVal = Math.max(activeReads, activeWrites, queuedReads, queuedWrites, 1);
+                      return [
+                        { label: '活跃读', value: activeReads, display: renderMetricValue('mongodb_active_reads', formatMetricValue(activeReads, 'counts').value), color: '#27c274', max: maxVal },
+                        { label: '活跃写', value: activeWrites, display: renderMetricValue('mongodb_active_writes', formatMetricValue(activeWrites, 'counts').value), color: '#5b8ff9', max: maxVal },
+                        { label: '排队读', value: queuedReads, display: renderMetricValue('mongodb_queued_reads', formatMetricValue(queuedReads, 'counts').value), color: '#fa8c16', max: maxVal },
+                        { label: '排队写', value: queuedWrites, display: renderMetricValue('mongodb_queued_writes', formatMetricValue(queuedWrites, 'counts').value), color: '#ff4d4f', max: maxVal }
+                      ];
+                    })().map((item) => (
+                      <div key={item.label} className={styles.barRow}>
+                        <div className={styles.barLabel}>{item.label}</div>
+                        <div className={styles.barTrack}>
+                          <div
+                            className={styles.barFill}
+                            style={{ width: `${Math.min((item.value / item.max) * 100, 100)}%`, background: item.color }}
+                          />
+                        </div>
+                        <div className={styles.barValue}>{item.display}</div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
