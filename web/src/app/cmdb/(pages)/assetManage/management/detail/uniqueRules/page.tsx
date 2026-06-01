@@ -67,6 +67,7 @@ const UniqueRulesPage: React.FC = () => {
     confirm({
       title: t('common.delConfirm'),
       content: t('common.delConfirmCxt'),
+      okButtonProps: { danger: true },
       onOk: async () => {
         await deleteModelUniqueRule(modelId!, record.rule_id);
         message.success(t('successfullyDeleted'));
@@ -104,7 +105,7 @@ const UniqueRulesPage: React.FC = () => {
             requiredPermissions={['Edit Model']}
             instPermissions={modelPermission}
           >
-            <Button type="link" onClick={() => handleDelete(record)}>
+            <Button type="link" danger onClick={() => handleDelete(record)}>
               {t('common.delete')}
             </Button>
           </PermissionWrapper>
