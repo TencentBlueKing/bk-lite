@@ -22,12 +22,9 @@ export type MetricUnit =
   | 'kibibytes'
   | 'mebibytes'
   | 'ms'
-  | 'ops'
-  | 'permin'
   | 'ns'
   | 'msps'
   | 'none'
-  | 'short'
   | string;
 
 export interface BaseMetricConfig {

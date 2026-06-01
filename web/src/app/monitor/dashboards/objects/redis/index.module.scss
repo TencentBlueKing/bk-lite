@@ -1608,6 +1608,10 @@
 }
 
 @media (max-width: 768px) {
+  .primaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .actionButtons {
     width: 100%;
   }
@@ -1653,5 +1657,12 @@
 
   .instanceMetaDivider {
     display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .primaryGrid,
+  .allMetricsGrid {
+    grid-template-columns: 1fr;
   }
 }

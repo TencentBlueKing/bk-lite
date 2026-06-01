@@ -28,7 +28,6 @@ import { GuideItem, TrendLegendItem } from '../../shared/types';
 export type SimpleMetricUnit =
   | 'percent'
   | 'counts'
-  | 'short'
   | 'cps'
   | 's'
   | 'ms'

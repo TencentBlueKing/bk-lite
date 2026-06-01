@@ -2049,10 +2049,12 @@
 
   .mongodbRequestScene {
     overflow-x: auto;
+    scroll-snap-type: x proximity;
   }
 
   .mongodbPathTrack {
     min-width: 920px;
+    scroll-snap-align: start;
   }
 
   .mongodbStageLabels {
@@ -2180,6 +2182,10 @@
 }
 
 @media (max-width: 768px) {
+  .primaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .actionButtons {
     width: 100%;
   }
@@ -2233,5 +2239,11 @@
 
   .mongodbInternalTitle {
     font-size: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .primaryGrid {
+    grid-template-columns: 1fr;
   }
 }

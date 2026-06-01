@@ -66,7 +66,7 @@ const RAW_VALUE_METRICS = new Set([
   'redis_blocked_clients'
 ]);
 
-const METRIC_QUERY_CONCURRENCY = 6;
+const METRIC_QUERY_CONCURRENCY = 4;
 
 const REDIS_METRIC_GROUPS = [
   {

@@ -59,7 +59,7 @@ interface InstanceOption {
 
 const MEBIBYTE = 1024 * 1024;
 
-const METRIC_QUERY_CONCURRENCY = 6;
+const METRIC_QUERY_CONCURRENCY = 4;
 
 const MONGODB_METRIC_GROUPS = [
   {
@@ -869,7 +869,7 @@ export default function MongoDashboardPage() {
                     <EChartsLineChart
                       data={buildThroughputSeries}
                       metric={buildMetricItem(metricMap.mongodb_commands_rate || { ...DASHBOARD_METRICS[4], viewData: [], loadState: 'success' })}
-                      seriesStyles={TREND_LEGENDS.throughput.map((item) => ({ color: item.color, unit: 'ops/s' }))}
+                      seriesStyles={TREND_LEGENDS.throughput.map((item) => ({ color: item.color, unit: 'cps' }))}
                       allowSelect={false}
                       onXRangeChange={onXRangeChange}
                     />

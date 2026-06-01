@@ -879,60 +879,6 @@
   width: 100%;
 }
 
-@media (max-width: 1180px) {
-  .chartGrid,
-  .detailGrid,
-  .insightGrid {
-    grid-template-columns: 1fr;
-  }
-
-}
-
-@media (max-width: 760px) {
-  .shell {
-    padding: 14px 12px 22px;
-  }
-
-  .pageTitleRow,
-  .instanceCard {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .controlsWrap {
-    justify-content: flex-start;
-  }
-
-  .primaryGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .inlineInstanceSelector {
-    width: 100%;
-  }
-
-  .chartPanelHeader {
-    padding-right: 0;
-  }
-
-  .chartLegendHeader {
-    position: static;
-    margin-top: 8px;
-  }
-
-  .ringCard,
-  .barRow {
-    grid-template-columns: 1fr;
-  }
-
-  .ringChartWrap {
-    justify-self: center;
-  }
-
-  .barValue {
-    text-align: left;
-  }
-}
 
 .overviewGrid {
   display: grid;
@@ -1005,9 +951,9 @@
   justify-content: start;
 }
 
-@media (max-width: 1400px) {
+@media (max-width: 1600px) {
   .kpiGrid {
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   }
 }
 
@@ -1026,12 +972,66 @@
   .span3 {
     grid-column: span 12;
   }
+
+  .chartGrid,
+  .detailGrid,
+  .insightGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 768px) {
+  .shell {
+    padding: 14px 12px 22px;
+  }
+
+  .pageTitleRow,
+  .instanceCard {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .controlsWrap {
+    justify-content: flex-start;
+  }
+
+  .primaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .inlineInstanceSelector {
+    width: 100%;
+  }
+
+  .chartPanelHeader {
+    padding-right: 0;
+  }
+
+  .chartLegendHeader {
+    position: static;
+    margin-top: 8px;
+  }
+
+  .ringCard,
+  .barRow {
+    grid-template-columns: 1fr;
+  }
+
+  .ringChartWrap {
+    justify-self: center;
+  }
+
+  .barValue {
+    text-align: left;
+  }
+
   .kpiGrid,
   .detailGridBalanced {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .chartWrap {
+    height: 160px;
   }
 }
 
@@ -1039,6 +1039,10 @@
   .kpiGrid,
   .detailGridBalanced {
     grid-template-columns: 1fr;
+  }
+
+  .chartWrap {
+    height: 130px;
   }
 }
 

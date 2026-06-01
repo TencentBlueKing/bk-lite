@@ -19,12 +19,8 @@ export const formatMetricValue = (value: number, unit: MetricUnit): { value: str
   if (unit === 'ns') return { value: value.toFixed(0), unit: 'ns' };
   if (unit === 'msps') return { value: value >= 100 ? value.toFixed(0) : value.toFixed(1), unit: 'ms/s' };
 
-  if (unit === 'cps' || unit === 'ops') {
+  if (unit === 'cps') {
     return { value: value >= 100 ? value.toFixed(0) : value.toFixed(2), unit: '/s' };
-  }
-
-  if (unit === 'permin') {
-    return { value: value >= 100 ? value.toFixed(0) : value.toFixed(1), unit: '/min' };
   }
 
   if (unit === 'byteps') {
@@ -60,7 +56,7 @@ export const formatMetricValue = (value: number, unit: MetricUnit): { value: str
     value: value >= 1000
       ? value.toLocaleString(undefined, { maximumFractionDigits: 0 })
       : value.toFixed(value >= 100 ? 0 : 1),
-    unit: unit === 'counts' || unit === 'short' ? '' : String(unit || '')
+    unit: unit === 'counts' ? '' : String(unit || '')
   };
 };
 

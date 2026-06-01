@@ -152,7 +152,7 @@ export const KpiSection = ({
   styles
 }: KpiSectionProps) => {
   const extraCount = React.Children.count(extraCards);
-  const cols = kpiCols ?? summaryCards.length + 1 + extraCount;
+  const cols = Math.min(kpiCols ?? summaryCards.length + 1 + extraCount, 6);
 
   return (
     <section

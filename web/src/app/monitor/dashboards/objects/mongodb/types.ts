@@ -8,7 +8,6 @@ export type MetricUnit =
   | 'bytes'
   | 'byteps'
   | 'ms'
-  | 'ops'
   | 'none'
   | 'ns'
   | 'mebibytes';

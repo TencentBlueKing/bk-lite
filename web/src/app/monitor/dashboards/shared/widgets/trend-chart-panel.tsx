@@ -10,6 +10,7 @@ import { TitleWithGuide, GuideTooltipStyles } from './guide-tooltip';
 export interface TrendChartPanelStyles extends GuideTooltipStyles {
   panel?: string;
   panelHeader?: string;
+  panelHeading?: string;
   chartPanelHeader?: string;
   panelTitle?: string;
   chartHeaderTitle?: string;

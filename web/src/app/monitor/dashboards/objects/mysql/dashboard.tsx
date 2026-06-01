@@ -81,7 +81,7 @@ const CONNECTION_ERROR_LABELS: Record<string, string> = {
   mysql_connection_errors_select: '轮询连接错误数',
   mysql_connection_errors_tcpwrap: '访问控制连接错误数'
 };
-const METRIC_QUERY_CONCURRENCY = 6;
+const METRIC_QUERY_CONCURRENCY = 4;
 const MYSQL_METRIC_GROUPS = [
   {
     key: 'summary',
@@ -644,13 +644,13 @@ export default function MysqlDashboardPage() {
   const collectionStatusWindowLabel = formatCollectionStatusWindow(timeValues);
   const qpsDisplay = formatMetricValue(qpsValue, 'cps');
   const connDisplay = formatMetricValue(connValue, 'percent');
-  const slowDisplay = formatMetricValue(slowValue * 60, 'permin');
+  const slowDisplay = formatMetricValue(slowValue, 'cps');
   const uptimeInsight = getUptimeInsight(uptimeValue);
   const replicationDelayDisplay = formatMetricValue(replicationDelay, 's');
   const connCompare = getPeriodCompare(connValue, getPreviousLatest('mysql_connection_utilization'));
   const hitCompare = getPeriodCompare(hitValue, getPreviousLatest('mysql_buffer_pool_hit_ratio'));
   const qpsCompare = getPeriodCompare(qpsValue, getPreviousLatest('mysql_queries_rate'));
-  const slowCompare = getPeriodCompare(slowValue * 60, getPreviousLatest('mysql_slow_queries_rate') * 60);
+  const slowCompare = getPeriodCompare(slowValue, getPreviousLatest('mysql_slow_queries_rate'));
   const pageTitle = displayMode === 'metrics' ? `${objectDisplayText} 全量指标` : 'MySQL 监控仪表盘';
   const hasDashboardContent = dashboardMetrics.length > 0;
   const showEmpty = isDashboardMode ? !hasDashboardContent : false;
@@ -673,12 +673,9 @@ export default function MysqlDashboardPage() {
       mergeChartSeries([
         {
           key: 'mysql_slow_queries_rate',
-          label: '慢查询速率（次/分钟）',
+          label: '慢查询速率（次/秒）',
           displayName: '慢查询速率',
-          data: (metricMap.mysql_slow_queries_rate?.viewData || []).map((point) => ({
-            ...point,
-            value1: Number(point.value1 ?? 0) * 60
-          }))
+          data: metricMap.mysql_slow_queries_rate?.viewData || []
         }
       ]),
     [metricMap.mysql_slow_queries_rate?.viewData]
@@ -1038,7 +1035,7 @@ export default function MysqlDashboardPage() {
     { label: '关联判断', detail: '通常需要结合慢查询、连接数和磁盘写入一起判断当前波动是否来自正常业务变化。' }
   ];
   const slowGuide = [
-    { label: '慢查询速率', detail: '每分钟慢 SQL 的新增速率。' },
+    { label: '慢查询速率', detail: '每秒慢 SQL 的新增速率。' },
     { label: '关联判断', detail: '如果慢查询升高，通常再结合锁等待、临时表和磁盘 I/O 进一步判断瓶颈位置。' }
   ];
   const hitRatioGuide = [
@@ -1296,8 +1293,7 @@ export default function MysqlDashboardPage() {
                     />
                   </div>
 
-                  {/* TODO: 请求链路与 InnoDB 数据流面板 - 待重做为 6 模块网格布局
-                  <div className={`${styles.panel} ${styles.dataFlowPanel}`}>
+                  {/* <div className={`${styles.panel} ${styles.dataFlowPanel}`}>
                       <div className={styles.panelHeader}>
                         <div className={styles.panelHeading}>
                         <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="请求链路与 InnoDB 数据流" items={flowGuide} className={styles.panelTitleWithGuide} /></h3>
@@ -1459,8 +1455,7 @@ export default function MysqlDashboardPage() {
                       </div>
                       </div>
                     </div>
-                  </div>
-                  END TODO: 请求链路与 InnoDB 数据流面板 */}
+                  </div> */}
 
                   <div className={styles.mainTrendGrid}>
                     <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
@@ -1498,7 +1493,7 @@ export default function MysqlDashboardPage() {
                     <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
                       <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
                         <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide styles={styles} title="慢查询趋势" items={slowTrendGuide} className={styles.panelTitleWithGuide} /></h3>
-                        <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>每分钟慢 SQL</div>
+                        <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>每秒慢 SQL</div>
                         <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
                           {TREND_LEGENDS.qps.slice(1, 2).map((item) => (
                             <span className={styles.chartLegendItem} key={item.label}>
@@ -1512,7 +1507,7 @@ export default function MysqlDashboardPage() {
                         <EChartsLineChart
                           data={slowQueryTrendData}
                           metric={buildMetricItem(metricMap.mysql_slow_queries_rate || dashboardMetrics[0])}
-                          unit="permin"
+                          unit="cps"
                           xAxisTimeFormat="HH:mm"
                           leftAxisWidthOverride={44}
                           seriesStyles={TREND_LEGENDS.qps.slice(1, 2).map((item) => ({
@@ -1520,7 +1515,7 @@ export default function MysqlDashboardPage() {
                             fillOpacity: 0.08,
                             strokeOpacity: 1,
                             strokeWidth: 2.8,
-                            unit: 'permin'
+                            unit: 'cps'
                           }))}
                           onXRangeChange={onXRangeChange}
                         />
@@ -1766,8 +1761,8 @@ export default function MysqlDashboardPage() {
                       <div className={styles.chartWrap}>
                         <EChartsLineChart
                           data={innodbTrendData}
-                           metric={buildMetricItem(metricMap.mysql_innodb_data_reads_rate || dashboardMetrics[0])}
-                          unit="ops"
+                          metric={buildMetricItem(metricMap.mysql_innodb_data_reads_rate || dashboardMetrics[0])}
+                          unit="cps"
                           xAxisTimeFormat="HH:mm"
                           seriesStyles={TREND_LEGENDS.innodb.map((item) => ({
                             color: item.color,
