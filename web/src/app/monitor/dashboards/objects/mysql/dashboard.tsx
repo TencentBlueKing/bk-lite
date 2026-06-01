@@ -1348,6 +1348,7 @@ export default function MysqlDashboardPage() {
                     />
                   </div>
 
+                  {/* TODO: 请求链路与 InnoDB 数据流面板 - 待重做为 6 模块网格布局
                   <div className={`${styles.panel} ${styles.dataFlowPanel}`}>
                       <div className={styles.panelHeader}>
                         <div className={styles.panelHeading}>
@@ -1511,6 +1512,7 @@ export default function MysqlDashboardPage() {
                       </div>
                     </div>
                   </div>
+                  END TODO: 请求链路与 InnoDB 数据流面板 */}
 
                   <div className={styles.mainTrendGrid}>
                     <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
