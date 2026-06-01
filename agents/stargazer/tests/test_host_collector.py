@@ -108,6 +108,7 @@ class TestParseMetricsToPrometheus:
         assert "host_mem_total_bytes" in result
         assert "8589934592" in result
         assert "host_mem_swap_total_bytes" in result
+        assert "host_mem_used_percent" in result
 
     def test_disk_metrics_with_dimensions(self):
         data = {

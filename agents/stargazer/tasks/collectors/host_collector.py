@@ -65,6 +65,12 @@ def parse_metrics_to_prometheus(
             lines.append(f"# HELP {metric_name} Memory {key}")
             lines.append(f"# TYPE {metric_name} gauge")
             lines.append(f"{metric_name}{{{base_labels}}} {mem.get(key, 0)} {timestamp}")
+        total_bytes = float(mem.get("total_bytes", 0) or 0)
+        used_bytes = float(mem.get("used_bytes", 0) or 0)
+        used_percent = round((used_bytes / total_bytes) * 100, 2) if total_bytes > 0 else 0
+        lines.append(f"# HELP host_mem_used_percent Memory used percent")
+        lines.append(f"# TYPE host_mem_used_percent gauge")
+        lines.append(f"host_mem_used_percent{{{base_labels}}} {used_percent} {timestamp}")
 
     if "disk" in data:
         disks = data["disk"]

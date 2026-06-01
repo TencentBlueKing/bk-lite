@@ -1,17 +1,17 @@
 {
   "plugin": "Host Remote",
   "plugin_desc": "Remote host metrics collection via SSH/WinRM through Ansible Executor. Supports CPU, memory, disk, and network metrics without agent installation on target hosts.",
-  "status_query": "any({instance_type='host', collect_type='http'}) by (instance_id)",
+  "status_query": "any({instance_type='os', collect_type='http'}) by (instance_id)",
   "node_selector": {
     "is_container": true
   },
-  "name": "Remote Host",
-  "icon": "mm-host",
-  "type": "Host",
+  "name": "Host",
+  "icon": "mm-host_主机",
+  "type": "OS",
   "description": "Remote agentless host monitoring via SSH/WinRM",
-  "default_metric": "any({instance_type='host', collect_type='http'}) by (instance_id)",
+  "default_metric": "any({instance_type='os'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["host_cpu_usage_percent", "host_mem_used_bytes"],
+  "supplementary_indicators": ["host_cpu_usage_percent", "host_mem_used_percent", "host_disk_used_percent"],
   "metrics": [
     {
       "metric_group": "CPU",
@@ -89,6 +89,17 @@
       "dimensions": [],
       "instance_id_keys": ["instance_id"],
       "description": "Used physical memory in bytes"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "host_mem_used_percent",
+      "query": "host_mem_used_percent{instance_id=\"$instance_id\"}",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "%",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Used physical memory percentage"
     },
     {
       "metric_group": "Memory",
