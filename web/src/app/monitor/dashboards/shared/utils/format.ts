@@ -43,6 +43,15 @@ export const formatMetricValue = (value: number, unit: MetricUnit): { value: str
     return { value: next >= 100 ? next.toFixed(0) : next.toFixed(1), unit: units[idx] };
   }
 
+  if (unit === 'kibibytes' || unit === 'mebibytes') {
+    const baseValue = unit === 'kibibytes' ? value * 1024 : value * 1024 * 1024;
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let next = baseValue;
+    let idx = 0;
+    while (next >= 1024 && idx < units.length - 1) { next /= 1024; idx += 1; }
+    return { value: next >= 100 ? next.toFixed(0) : next.toFixed(1), unit: units[idx] };
+  }
+
   if (unit === 'none') {
     return { value: value.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1'), unit: '' };
   }

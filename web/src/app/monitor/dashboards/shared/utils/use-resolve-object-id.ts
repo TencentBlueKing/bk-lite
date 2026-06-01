@@ -50,9 +50,16 @@ export function useResolveObjectId(objectKey: string) {
     if (!monitorObjId) {
       const normalizedKey = normalizeDashboardKey(objectKey);
       const registryItem = PROFESSIONAL_DASHBOARDS.find(
-        (item) => normalizeDashboardKey(item.key) === normalizedKey
+        (item) =>
+          [item.key, ...(item.aliases || []), item.objectName, item.objectDisplayName]
+            .filter(Boolean)
+            .map((value) => normalizeDashboardKey(value))
+            .includes(normalizedKey)
       );
       if (!registryItem) return;
+      const registryCandidates = [registryItem.key, ...(registryItem.aliases || []), registryItem.objectName, registryItem.objectDisplayName]
+        .filter(Boolean)
+        .map((value) => normalizeDashboardKey(value));
 
       resolving.current = true;
 
@@ -64,7 +71,7 @@ export function useResolveObjectId(objectKey: string) {
           const matched = objects.find((obj: any) => {
             const objName = normalizeDashboardKey(obj.name);
             const objDisplay = normalizeDashboardKey(obj.display_name);
-            return objName === normalizedKey || objDisplay === normalizedKey;
+            return registryCandidates.includes(objName) || registryCandidates.includes(objDisplay);
           });
 
           if (!matched) return;

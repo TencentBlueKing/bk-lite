@@ -5,6 +5,7 @@ export type ProfessionalDashboardComponent = ComponentType;
 
 export interface ProfessionalDashboardRegistryItem {
   key: string;
+  aliases?: string[];
   objectName: string;
   objectDisplayName?: string;
   inheritedPermissionPath?: string;
@@ -18,6 +19,8 @@ export type MetricUnit =
   | 's'
   | 'bytes'
   | 'byteps'
+  | 'kibibytes'
+  | 'mebibytes'
   | 'ms'
   | 'ops'
   | 'permin'
@@ -25,7 +28,6 @@ export type MetricUnit =
   | 'msps'
   | 'none'
   | 'short'
-  | 'mebibytes'
   | string;
 
 export interface BaseMetricConfig {

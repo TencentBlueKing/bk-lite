@@ -35,6 +35,7 @@ export interface RingChartDataItem {
   name: string;
   value: number;
   color: string;
+  display?: string;
 }
 
 export interface RingChartPanelProps {
@@ -129,7 +130,7 @@ export const RingChartPanel = ({
                   <span className={styles.metricPercent}>
                     {total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0'}%
                   </span>
-                  <span className={styles.metricCount}>({item.value >= 100 ? item.value.toFixed(0) : item.value.toFixed(1)})</span>
+                  <span className={styles.metricCount}>({item.display || (item.value >= 100 ? item.value.toFixed(0) : item.value.toFixed(1))})</span>
                 </span>
               </div>
             ))}
