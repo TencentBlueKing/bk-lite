@@ -655,6 +655,27 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
             for issue, count in sorted(_issue_counter.items(), key=lambda x: -x[1])
         ]
 
+        # 构建按问题类型到工作负载名称的映射（供 LLM 输出报告时使用真实名称）
+        _issue_to_workloads: dict = {}
+        for a in analysis_results:
+            _wl_name = a.get("name", "unknown")
+            _wl_namespace = a.get("namespace", "")
+            _wl_label = f"{_wl_name} ({_wl_namespace})" if _wl_namespace else _wl_name
+            for issue in a.get("issues", []):
+                _issue_to_workloads.setdefault(issue, []).append(_wl_label)
+            for c in a.get("config_analysis", {}).get("containers", []):
+                for ci in c.get("issues", []):
+                    _issue_to_workloads.setdefault(ci, []).append(_wl_label)
+
+        issues_detail = [
+            {
+                "issue": _neutralize(issue),
+                "count": len(workloads),
+                "workloads": workloads,
+            }
+            for issue, workloads in sorted(_issue_to_workloads.items(), key=lambda x: -len(x[1]))
+        ]
+
         result = {
             "cluster_name": cluster_name,
             "total": total_count,
@@ -664,6 +685,7 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
             "limit": limit,
             "has_more": (offset + len(analysis_results)) < total_count,
             "issues_summary": issues_summary,
+            "issues_detail": issues_detail,
             "_next_step_hint": "".join(_hint_parts),
             # 完整数据供缓存使用，会在进入 LLM context 前被剥离
             "_deployments_full": analysis_results,
