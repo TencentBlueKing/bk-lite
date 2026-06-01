@@ -2147,19 +2147,26 @@ class ToolsNodes(BasicNode):
                 logger.info(f"[{trace_id}] Token 预算软阈值触发 wrap-up (step={step_counter['count']}, {used_pct}%)")
 
             # ========== 选择后续行预处理：检测 request_user_choice 结果并注入提示 ==========
-            # 策略：检查最近一条 AIMessage 是否调用了 request_user_choice。
-            # 如果是，说明当前步骤紧跟用户选择，需要注入续行提示。
-            # 但不再强制 tool_choice="any"——有些模型对此不稳定，改为仅注入提示引导。
+            # 策略：检查最近 N 条消息中是否存在未处理的 request_user_choice 结果。
+            # "未处理"定义：存在 request_user_choice 的 ToolMessage，且其后尚未出现 generate_repair_report 的工具调用。
+            # 这样即使中间有重试或额外的 AIMessage，也能正确注入续行提示，防止 LLM 重复输出检查结果。
             _has_pending_choice = False
             if choice_tool_instance:
-                for _rmsg in reversed(messages):
-                    _msg_type = getattr(_rmsg, "type", "")
-                    if _msg_type == "ai":
-                        _tool_calls = getattr(_rmsg, "tool_calls", []) or []
-                        for _tc in _tool_calls:
-                            if isinstance(_tc, dict) and _tc.get("name") == "request_user_choice":
-                                _has_pending_choice = True
-                        break  # 只检查最近一条 AIMessage
+                _RECENT_WINDOW = 20  # 向前查看最多 20 条消息
+                _recent_msgs = messages[-_RECENT_WINDOW:] if len(messages) > _RECENT_WINDOW else messages
+                # 检查近期消息中是否有 request_user_choice 的工具结果
+                _choice_tool_msg_found = any(
+                    getattr(m, "type", "") == "tool" and getattr(m, "name", "") == "request_user_choice"
+                    for m in _recent_msgs
+                )
+                if _choice_tool_msg_found:
+                    # 检查 generate_repair_report 是否已被调用（避免重复注入）
+                    _repair_already_done = any(
+                        getattr(m, "name", "") == "generate_repair_report" and getattr(m, "type", "") == "tool"
+                        for m in _recent_msgs
+                    )
+                    if not _repair_already_done:
+                        _has_pending_choice = True
 
                 if _has_pending_choice:
                     from langchain_core.messages import SystemMessage as _PreSM
@@ -2361,6 +2368,16 @@ class ToolsNodes(BasicNode):
                 # 重置续行标记
                 choice_continuation["retried_at_step"] = -1
 
+                # ========== 拦截并发冲突：request_user_choice 与 generate_repair_report 同时出现 ==========
+                # LLM 有时会并发调用这两个工具，但 generate_repair_report 必须在用户选择后才能执行
+                if choice_tool_instance and any(tc.get("name") == "request_user_choice" for tc in tool_calls):
+                    _conflicting_report_calls = [tc for tc in tool_calls if tc.get("name") == "generate_repair_report"]
+                    if _conflicting_report_calls:
+                        # 移除 generate_repair_report，让用户先完成选择
+                        tool_calls = [tc for tc in tool_calls if tc.get("name") != "generate_repair_report"]
+                        response.tool_calls = tool_calls
+                        logger.info(f"[{trace_id}] agent_node: 拦截并发冲突，移除 generate_repair_report（共 {len(_conflicting_report_calls)} 个），等待用户选择后再生成报告")
+
                 # ========== 拦截是否题：报告已生成时不再提问 ==========
                 if choice_tool_instance and any(tc.get("name") == "request_user_choice" for tc in tool_calls):
                     # 检查修复报告是否已生成
@@ -2524,11 +2541,10 @@ class ToolsNodes(BasicNode):
                         nudge_msg = _RetrySystemMessage(
                             content=(
                                 "你刚才返回了空响应，这是不允许的。用户已完成选择，你必须立即行动。"
-                                "请根据用户的选择结果和之前的对话上下文，直接输出相应内容。"
-                                "如果用户选择了查看详情，展示所有目标的完整问题列表。"
-                                "如果用户选择了导出命令，直接输出修复命令。"
-                                "如果用户选择了修复方案，调用 generate_repair_report 工具生成修复对比。"
-                                "不要返回空内容，不要再次提问，不要调用 request_user_choice。"
+                                "【禁止】重复输出之前已经展示过的配置检查结果或问题摘要，用户已经看过了。"
+                                "请根据用户的选择结果，直接调用 generate_repair_report 工具生成修复报告（items 留空，"
+                                "group_by 根据用户选择设置：全部展示→all，按工作负载→target，按类别→category）。"
+                                "不要返回空内容，不要再次提问，不要调用 request_user_choice，不要重复分析结果。"
                             )
                         )
                         logger.info(f"[{trace_id}] agent_node: request_user_choice 后 LLM 未调用工具，" f"二次重试 (step={current_step})")
@@ -2615,6 +2631,33 @@ class ToolsNodes(BasicNode):
                     tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
                     interrupted_msgs.append(ToolMessage(content="[执行已中断]", tool_call_id=tc_id))
                 return {"messages": interrupted_msgs}
+
+            # ========== 拦截并发冲突：request_user_choice 与 generate_repair_report 同时出现 ==========
+            # tool_node.ainvoke(state) 读取的是 state["messages"][-1].tool_calls（即 last_message），
+            # 必须在此处直接修改 last_message.tool_calls，才能阻止 generate_repair_report 执行。
+            _tc_name_set = {
+                (tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", ""))
+                for tc in tool_calls
+            }
+            if "request_user_choice" in _tc_name_set and "generate_repair_report" in _tc_name_set:
+                _filtered_tool_calls = [
+                    tc for tc in tool_calls
+                    if (tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "")) != "generate_repair_report"
+                ]
+                _removed_count = len(tool_calls) - len(_filtered_tool_calls)
+                logger.info(
+                    f"[{trace_id}] logged_tool_node: 拦截并发冲突，移除 {_removed_count} 个 generate_repair_report，"
+                    f"等待用户选择后再生成修复报告"
+                )
+                # 直接修改 state 中的 AIMessage，tool_node 读取 state["messages"][-1].tool_calls
+                try:
+                    last_message.tool_calls = _filtered_tool_calls
+                except Exception:
+                    try:
+                        object.__setattr__(last_message, "tool_calls", _filtered_tool_calls)
+                    except Exception:
+                        logger.warning(f"[{trace_id}] logged_tool_node: 无法修改 last_message.tool_calls，并发拦截可能失效")
+                tool_calls = _filtered_tool_calls
 
             # ========== 操作前快照（回滚用）==========
             rollback_cfg = graph_request.rollback_config

@@ -628,8 +628,10 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
             )
         if name:
             _hint_parts.append(
-                "报告输出后，【必须】调用 request_user_choice 工具让用户选择修复方案的展示方式"
+                "【必须】先用纯文字向用户输出问题摘要（每个工作负载列出发现的问题条目，不要输出修复建议/diff/命令）。"
+                "摘要输出完毕后，【必须】调用 request_user_choice 工具让用户选择修复方案的展示方式"
                 "（选项参考：按问题类别聚合 / 按工作负载聚合 / 全部展示）。"
+                "【禁止】在调用 request_user_choice 之前输出任何修复建议或 diff 报告。"
                 "用户选择后，再调用 generate_repair_report 工具生成修复报告，"
                 f"参数：items 留空，group_by 根据用户选择设置，expected_target_count={_problematic_count}，"
                 f"target_names=[\"{name}\"]（必须设置，因为用户只要求检查该工作负载）。"
@@ -637,8 +639,10 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
             )
         else:
             _hint_parts.append(
-                "报告输出后，【必须】调用 request_user_choice 工具让用户选择修复方案的展示方式"
+                "【必须】先用纯文字向用户输出问题摘要（按工作负载列出发现的问题，不要输出修复建议/diff/命令）。"
+                "摘要输出完毕后，【必须】调用 request_user_choice 工具让用户选择修复方案的展示方式"
                 "（选项参考：按问题类别聚合 / 按工作负载聚合 / 全部展示）。"
+                "【禁止】在调用 request_user_choice 之前输出任何修复建议或 diff 报告。"
                 "用户选择后，再调用 generate_repair_report 工具生成修复报告，"
                 f"参数：items 留空，group_by 根据用户选择设置，expected_target_count={_problematic_count}。"
                 "如果用户指定了特定工作负载名称，target_names 设为该名称列表。"
