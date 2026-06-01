@@ -2224,16 +2224,16 @@ class ToolsNodes(BasicNode):
                             _group_instruction = f"设置 {_group_by_hint}。" if _group_by_hint else "根据用户选择的维度设置 group_by 参数（target/category/all）。"
                             _continuation_hint = (
                                 f"用户已选择（{_choice_summary}），问题是「{_choice_question}」。"
-                                f"请立即调用 generate_repair_report 工具。{_group_instruction}"
+                                f"【禁止】输出任何文字、报告或解释。直接调用 generate_repair_report 工具。{_group_instruction}"
                                 "items 留空即可（工具会自动从分析结果生成完整报告），只需传 title、group_by、expected_target_count。"
+                                "不要重复输出检查报告内容。"
                             )
                         else:
                             _continuation_hint = (
                                 f"用户已完成选择（{_choice_summary}），请基于选择结果继续执行下一步操作。"
+                                "【禁止】重复输出之前已展示过的检查报告内容。"
                                 "不要再询问用户，不要再调用 request_user_choice，不要要求用户澄清。"
-                                "直接基于已有的分析数据生成结果，避免重复获取原始数据。"
-                                "如果用户选择查看详情，展示所有工作负载的完整问题列表。"
-                                "如果用户需要文本形式的输出（如命令、配置等），直接以文本回复即可。"
+                                "直接基于已有的分析数据执行操作（调用工具或简短回复），避免冗余文字。"
                             )
                     else:
                         _continuation_hint = "用户已完成选择，请基于选择结果继续执行下一步操作。"
