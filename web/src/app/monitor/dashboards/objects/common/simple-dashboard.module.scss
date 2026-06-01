@@ -1,0 +1,631 @@
+.page {
+  height: calc(100vh - 88px);
+  width: 100%;
+  overflow-y: auto;
+  background: linear-gradient(180deg, #f6f8fc 0%, #f5f7fb 100%);
+  color: #22324a;
+  font-family: Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+.shell {
+  width: 100%;
+  padding: 18px 20px 28px;
+  box-sizing: border-box;
+}
+
+.page :global(.ant-spin-nested-loading),
+.page :global(.ant-spin-container) {
+  width: 100%;
+}
+
+.pageHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.pageTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.titleBlock {
+  min-width: 0;
+  flex: 1;
+}
+
+.title {
+  margin: 0;
+  color: #182132;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.controlsWrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.modeTabs {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border-radius: 14px;
+  border: 1px solid #dbe5f1;
+  background: #f8fbff;
+}
+
+.modeTab {
+  border: 0;
+  background: transparent;
+  color: #5c7190;
+  font-size: 13px;
+  font-weight: 700;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 11px;
+  cursor: pointer;
+}
+
+.modeTabActive {
+  background: #ffffff;
+  color: #182132;
+  box-shadow: 0 4px 14px rgba(37, 71, 120, 0.12);
+}
+
+.toolbarTimeSelector {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.toolbarTimeSelector > div {
+  align-items: center;
+  display: flex;
+}
+
+.toolbarTimeSelector > div > div:first-child {
+  width: 256px;
+}
+
+.toolbarTimeSelector > div > div:last-child {
+  margin-left: 0 !important;
+}
+
+.toolbarTimeSelector > div > div:first-child :global(.ant-select),
+.toolbarTimeSelector > div > div:first-child :global(.ant-picker) {
+  width: 256px !important;
+}
+
+.toolbarTimeSelector > div > div:last-child :global(.ant-select) {
+  width: 92px !important;
+}
+
+.toolbarBackBtn {
+  height: 34px;
+  border-radius: 16px;
+  font-weight: 700;
+  color: #4e6383;
+  border-color: #dbe5f1;
+}
+
+.instanceCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0 8px;
+  border-bottom: 1px solid #e7edf5;
+  min-width: 0;
+}
+
+.instanceMain {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.instanceIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #27c274;
+  font-size: 20px;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #effdf5 0%, #f6fffb 100%);
+  box-shadow: inset 0 0 0 1px rgba(39, 194, 116, 0.12);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 6px 10px;
+  flex-wrap: wrap;
+  color: #5d7090;
+  min-width: 0;
+}
+
+.instanceName {
+  color: #182132;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.22;
+  word-break: break-word;
+}
+
+.instanceInfo {
+  min-width: 0;
+  flex: 1;
+}
+
+.instanceActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.instanceMetaInline {
+  color: #526987;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.instanceMetaDivider {
+  color: #b7c4d6;
+}
+
+.inlineInstanceSelector {
+  width: 240px;
+  padding: 0 10px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #dbe5f1;
+}
+
+.inlineInstanceSelector :global(.ant-select-selector) {
+  min-height: 34px !important;
+  padding: 0 24px 0 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.inlineInstanceSelector :global(.ant-select-selection-item),
+.inlineInstanceSelector :global(.ant-select-selection-placeholder) {
+  color: #5b7190 !important;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.primaryGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.statCard,
+.panel {
+  background: #ffffff;
+  border: 1px solid #dfe8f3;
+  border-radius: 14px;
+  box-shadow: 0 12px 28px rgba(30, 55, 90, 0.06);
+}
+
+.statCard {
+  min-height: 154px;
+  padding: 14px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.statHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.statLabel {
+  color: #253754;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.statIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 17px;
+}
+
+.statBody {
+  margin-top: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.statValue {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+  color: #2f6bff;
+  font-variant-numeric: tabular-nums;
+}
+
+.statUnit {
+  margin-left: 4px;
+  color: #637895;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.statCompare {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  color: #8293ac;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.statComparePositive .statCompareValue {
+  color: #16a765;
+}
+
+.statCompareNegative .statCompareValue {
+  color: #ff4d4f;
+}
+
+.statCompareFlat .statCompareValue {
+  color: #8293ac;
+}
+
+.statMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  color: #7184a0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.miniTrend {
+  height: 38px;
+  margin-top: 8px;
+}
+
+.miniTrendPlaceholder {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(231, 237, 247, 0.4), rgba(246, 248, 252, 0.2));
+}
+
+.collectionStatusCard {
+  justify-content: space-between;
+}
+
+.collectionStatusValue {
+  margin-top: 14px;
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.collectionStatusValueSuccess {
+  color: #22c55e;
+}
+
+.collectionStatusValueError {
+  color: #ff4d4f;
+}
+
+.collectionStatusValueEmpty {
+  color: #94a3b8;
+}
+
+.collectionStatusTimelineTitle {
+  margin-top: 14px;
+  color: #657893;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.collectionStatusTimeline {
+  display: grid;
+  grid-template-columns: repeat(18, 1fr);
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.collectionStatusSegment {
+  height: 18px;
+  border-radius: 4px;
+  background: #cbd5e1;
+}
+
+.collectionStatusSegmentSuccess {
+  background: #22c55e;
+}
+
+.collectionStatusSegmentError {
+  background: #ff4d4f;
+}
+
+.collectionStatusLegend {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  color: #5d7090;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.collectionStatusLegendItem,
+.chartLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.collectionStatusLegendDot,
+.chartLegendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sectionHeading {
+  margin-bottom: 14px;
+}
+
+.panelTitle {
+  margin: 0;
+  color: #1c2c45;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.panelSubTitle {
+  margin-top: 4px;
+  color: #8a9bb2;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.chartGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.panel {
+  min-width: 0;
+  padding: 18px 20px 16px;
+}
+
+.chartPanelHeader {
+  position: relative;
+  min-height: 0;
+  padding-right: 0;
+}
+
+.chartLegendHeader {
+  position: static;
+  margin-top: 8px;
+}
+
+.chartLegend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: #8092ad;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.chartWrap {
+  height: 220px;
+  margin-top: 10px;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.detailMetricRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 0;
+  border-top: 1px solid #edf2f8;
+  color: #6b7f9a;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.detailMetricRow:first-of-type {
+  border-top: 0;
+}
+
+.detailMetricValue {
+  color: #1a2b45;
+  font-size: 18px;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.titleWithGuide {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.metricGuideIcon {
+  color: #8aa0bc;
+  font-size: 14px;
+}
+
+.metricGuideTooltip,
+.uptimeStatusTooltip {
+  max-width: 360px;
+  color: #5d7090;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.metricGuideTooltipRow,
+.uptimeStatusTooltipRow {
+  display: grid;
+  gap: 4px;
+}
+
+.metricGuideTooltipRow + .metricGuideTooltipRow,
+.uptimeStatusTooltipRow + .uptimeStatusTooltipRow {
+  margin-top: 10px;
+}
+
+.metricGuideTooltipRow strong,
+.uptimeStatusTooltipRow strong {
+  color: #23344f;
+  font-size: 14px;
+}
+
+.metricsMode {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+.fullPanel {
+  width: 100%;
+}
+
+@media (max-width: 1500px) {
+  .primaryGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1180px) {
+  .chartGrid,
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+
+}
+
+@media (max-width: 760px) {
+  .shell {
+    padding: 14px 12px 22px;
+  }
+
+  .pageTitleRow,
+  .instanceCard {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .controlsWrap {
+    justify-content: flex-start;
+  }
+
+  .primaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .inlineInstanceSelector {
+    width: 100%;
+  }
+
+  .chartPanelHeader {
+    padding-right: 0;
+  }
+
+  .chartLegendHeader {
+    position: static;
+    margin-top: 8px;
+  }
+}
+
+:global(html.dark) .page {
+  background: #0c1624;
+  color: #e8eef7;
+}
+
+:global(html.dark) .title,
+:global(html.dark) .instanceName,
+:global(html.dark) .panelTitle,
+:global(html.dark) .detailMetricValue {
+  color: #f2f6fb;
+}
+
+:global(html.dark) .statCard,
+:global(html.dark) .panel {
+  background: #111d2c;
+  border-color: #2b3a4f;
+  box-shadow: none;
+}
+
+:global(html.dark) .instanceCard {
+  border-color: #26364a;
+}
+
+:global(html.dark) .modeTabs,
+:global(html.dark) .inlineInstanceSelector {
+  background: #0f1a28;
+  border-color: #2a3a50;
+}
+
+:global(html.dark) .modeTabActive {
+  background: #e8eef7;
+  color: #101826;
+}
+
+:global(html.dark) .statLabel,
+:global(html.dark) .detailMetricRow,
+:global(html.dark) .panelSubTitle,
+:global(html.dark) .instanceMetaInline,
+:global(html.dark) .chartLegend {
+  color: #9eb0c8;
+}
+
+:global(html.dark) .metricGuideTooltipRow strong,
+:global(html.dark) .uptimeStatusTooltipRow strong {
+  color: #f2f6fb;
+}
+
+:global(html.dark) .metricGuideTooltip,
+:global(html.dark) .uptimeStatusTooltip {
+  color: #b8c6d9;
+}

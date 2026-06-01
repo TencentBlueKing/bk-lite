@@ -1,6 +1,8 @@
-import MysqlDashboard from './mysql';
-import { ProfessionalDashboardRegistryItem } from './types';
-import { normalizeDashboardKey } from './utils';
+import MysqlDashboard from './objects/mysql';
+import MongodbDashboard from './objects/mongodb';
+import RedisDashboard from './objects/redis';
+import { ProfessionalDashboardRegistryItem } from './shared/types';
+import { normalizeDashboardKey } from './shared/utils';
 
 export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
   {
@@ -9,6 +11,20 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: 'MySQL',
     inheritedPermissionPath: '/monitor/view',
     component: MysqlDashboard
+  },
+  {
+    key: 'redis',
+    objectName: 'Redis',
+    objectDisplayName: 'Redis',
+    inheritedPermissionPath: '/monitor/view',
+    component: RedisDashboard
+  },
+  {
+    key: 'mongodb',
+    objectName: 'Mongodb',
+    objectDisplayName: 'MongoDB',
+    inheritedPermissionPath: '/monitor/view',
+    component: MongodbDashboard
   }
 ];
 
