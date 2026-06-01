@@ -1,19 +1,19 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Form, Button, Dropdown, Menu, Tag, message, Spin } from 'antd';
-import { useTranslation } from '@/utils/i18n';
-import { DownOutlined } from '@ant-design/icons';
+import React, {useCallback, useEffect, useState} from 'react';
+import {Button, Dropdown, Form, Menu, message, Spin, Tag} from 'antd';
+import {useTranslation} from '@/utils/i18n';
+import {DownOutlined} from '@ant-design/icons';
 import useGroups from '@/app/opspilot/hooks/useGroups';
-import { useSearchParams } from 'next/navigation';
-import type { ChatflowExecutionState } from '@/app/opspilot/components/chatflow/types';
+import {useSearchParams} from 'next/navigation';
+import type {ChatflowExecutionState} from '@/app/opspilot/components/chatflow/types';
 import PermissionWrapper from '@/components/permission';
 import styles from '@/app/opspilot/styles/common.module.scss';
 import Icon from '@/components/icon';
-import { useStudioApi } from '@/app/opspilot/api/studio';
+import {useStudioApi} from '@/app/opspilot/api/studio';
 import ChatflowSettings from '@/app/opspilot/components/studio/chatflowSettings';
-import { useUnsavedChanges } from '@/app/opspilot/hooks/useUnsavedChanges';
-import { useStudio } from '@/app/opspilot/context/studioContext';
+import {useUnsavedChanges} from '@/app/opspilot/hooks/useUnsavedChanges';
+import {useStudio} from '@/app/opspilot/context/studioContext';
 
 const actionButtonClassName = 'inline-flex h-7 items-center rounded-md px-2.5 text-[11px] font-medium leading-none';
 const actionTagClassName = 'mb-0 mr-0 inline-flex h-7 items-center rounded-md px-2 text-[11px] font-medium leading-none';
@@ -308,7 +308,7 @@ const StudioSettingsPage: React.FC = () => {
             </Tag>
             <Dropdown overlay={chatflowMenu} trigger={['click']}>
               <Button icon={<DownOutlined />} size="small" type="primary" className={actionButtonClassName}>
-                {t('common.settings')}
+                {t('common.save')}
               </Button>
             </Dropdown>
           </div>

@@ -139,6 +139,9 @@ opspilot = [
     "reportlab==4.2.5",
     "pyodbc==5.2.0",
     "oracledb==2.0.0",
+    # 可选记忆引擎依赖
+    "mem0ai>=0.1.0",
+    "zep-cloud>=2.0.0",
 ]
 
 [tool.black]
