@@ -1,9 +1,8 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Empty, Tooltip } from 'antd';
+import { Empty, Tooltip } from 'antd';
 import {
-  ArrowLeftOutlined,
   ClockCircleOutlined,
   DatabaseOutlined,
   NodeIndexOutlined,
@@ -17,10 +16,11 @@ import {
   CollectionStatusCard,
   TitleWithGuide,
   GuideTooltipContent,
-  InstanceSelector
+  InstanceSelector,
+  DashboardPageHeader,
+  DashboardInstanceCard
 } from '../../shared/widgets';
 import {
-  DEFAULT_REFRESH_FREQUENCY_LIST,
   formatMetricValue,
   buildSearchParams,
   getLatestChartValue,
@@ -37,7 +37,6 @@ import {
   getCollectionStatus,
   runWithConcurrency
 } from '../../shared/utils';
-import TimeSelector from '@/components/time-selector';
 import useViewApi from '@/app/monitor/api/view';
 import MetricViews from '@/app/monitor/components/metric-views';
 import useMonitorApi from '@/app/monitor/api';
@@ -565,71 +564,31 @@ export default function RedisDashboardPage() {
     <div className={styles.page}>
       <div className={styles.shell}>
         <div className={styles.pageHeader}>
-          <div className={styles.pageTitleRow}>
-            <div className={styles.titleBlock}>
-              <h1 className={styles.title}>{pageTitle}</h1>
-            </div>
-            <div className={styles.controlsWrap}>
-              <div className={styles.modeTabs}>
-                <button
-                  type="button"
-                  className={`${styles.modeTab} ${displayMode === 'dashboard' ? styles.modeTabActive : ''}`}
-                  onClick={() => setDisplayMode('dashboard')}
-                >
-                  监控仪表盘
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.modeTab} ${displayMode === 'metrics' ? styles.modeTabActive : ''}`}
-                  onClick={() => setDisplayMode('metrics')}
-                >
-                  全量指标
-                </button>
-              </div>
-              <div className={styles.toolbarTimeSelector}>
-                <TimeSelector
-                  defaultValue={timeDefaultValue}
-                  customFrequencyList={DEFAULT_REFRESH_FREQUENCY_LIST}
-                  onChange={onTimeChange}
-                  onFrequenceChange={onFrequenceChange}
-                  onRefresh={() => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))}
-                />
-              </div>
-              <div className={styles.actionButtons}>
-                <Button className={styles.toolbarBackBtn} icon={<ArrowLeftOutlined />} onClick={goBack}>返回</Button>
-              </div>
-            </div>
-          </div>
+          <DashboardPageHeader
+            title={pageTitle}
+            displayMode={displayMode}
+            onDisplayModeChange={setDisplayMode}
+            timeDefaultValue={timeDefaultValue}
+            onTimeChange={onTimeChange}
+            onFrequenceChange={onFrequenceChange}
+            onRefresh={() => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))}
+            onBack={goBack}
+            styles={styles}
+          />
 
-          <div className={`${styles.instanceCard} ${!isDashboardMode ? styles.instanceCardFull : ''}`}>
-            <div className={styles.instanceMain}>
-              <div className={styles.instanceIcon}>
-                <DatabaseOutlined />
-              </div>
-              <div className={styles.instanceInfo}>
-                <div className={styles.meta}>
-                  <span className={styles.instanceName}>{currentInstanceText}</span>
-                  {instanceMetaItems.map((item, index) => (
-                    <React.Fragment key={index}>
-                      <span className={styles.instanceMetaDivider}>|</span>
-                      {item}
-                    </React.Fragment>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className={styles.instanceActions}>
-              <InstanceSelector
-                styles={styles}
-                value={currentInstanceOption?.value || (instanceId ? String(instanceId) : undefined)}
-                loading={instanceLoading}
-                options={instanceOptions}
-                onChange={onInstanceChange}
-                placeholder="选择实例"
-                title={currentInstanceOption?.label || resolvedInstanceName}
-              />
-            </div>
-          </div>
+          <DashboardInstanceCard
+            instanceName={currentInstanceText}
+            metaItems={instanceMetaItems}
+            icon={<DatabaseOutlined />}
+            selectorValue={currentInstanceOption?.value || (instanceId ? String(instanceId) : undefined)}
+            selectorLoading={instanceLoading}
+            selectorOptions={instanceOptions}
+            onInstanceChange={onInstanceChange}
+            selectorPlaceholder="选择实例"
+            selectorTitle={currentInstanceOption?.label || resolvedInstanceName}
+            isDashboardMode={isDashboardMode}
+            styles={styles}
+          />
         </div>
 
         <div>

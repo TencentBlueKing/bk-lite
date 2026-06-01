@@ -28,4 +28,10 @@ export type { EChartsLineChartProps } from './echarts-line-chart';
 export { InstanceSelector } from './instance-selector';
 export type { InstanceSelectorProps, InstanceSelectorStyles, InstanceSelectorOption } from './instance-selector';
 
+export { DashboardPageHeader } from './dashboard-page-header';
+export type { DashboardPageHeaderProps, DashboardPageHeaderStyles } from './dashboard-page-header';
+
+export { DashboardInstanceCard } from './dashboard-instance-card';
+export type { DashboardInstanceCardProps, DashboardInstanceCardStyles } from './dashboard-instance-card';
+
 export { useECharts } from './useECharts';
