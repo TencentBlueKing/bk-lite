@@ -3,9 +3,10 @@ import uuid
 import json
 from collections.abc import Mapping
 
-from jinja2 import Environment, FileSystemLoader, DebugUndefined
+from jinja2 import FileSystemLoader, DebugUndefined
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.safe_template import build_sandboxed_env
 from apps.log.constants.database import DatabaseConstants
 from apps.log.constants.plugin import PluginConstants
 from apps.log.models import CollectConfig, CollectType
@@ -58,12 +59,11 @@ class Controller:
         :return: 渲染后的配置字符串
         """
         _context = {**context}
-        env = Environment(
-            loader=FileSystemLoader(template_dir), undefined=DebugUndefined
+        env = build_sandboxed_env(
+            loader=FileSystemLoader(template_dir),
+            undefined=DebugUndefined,
+            extra_filters={"to_json": lambda obj: json.dumps(obj, ensure_ascii=False)},
         )
-
-        # 添加 to_json 过滤器
-        env.filters["to_json"] = lambda obj: json.dumps(obj, ensure_ascii=False)
 
         template = env.get_template(file_name)
         return template.render(_context)

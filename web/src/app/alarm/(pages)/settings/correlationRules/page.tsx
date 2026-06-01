@@ -6,7 +6,6 @@ import AlertListDrawer from './components/alertListDrawer';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
 import Introduction from '@/app/alarm/components/introduction';
-import { Tabs } from 'antd';
 import { CorrelationRule } from '@/app/alarm/types/settings';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { Button, Input, Modal, message } from 'antd';
@@ -28,7 +27,6 @@ const CorrelationRulesPage: React.FC = () => {
     total: 0,
     pageSize: 20,
   });
-  const [activeTab, setActiveTab] = useState<'Event' | 'Alert'>('Event');
   const [alertDrawerVisible, setAlertDrawerVisible] = useState<boolean>(false);
   const [currentRuleId, setCurrentRuleId] = useState<number | null>(null);
 
@@ -219,68 +217,53 @@ const CorrelationRulesPage: React.FC = () => {
         message={t('settings.correlationRulesMessage')}
       />
       <div className="p-4 pt-0 bg-[var(--color-bg-1)] rounded-lg shadow">
-        <Tabs
-          activeKey={activeTab}
-          onChange={(key) => setActiveTab(key as 'Event' | 'Alert')}
-          items={[
-            { key: 'Event', label: t('alarms.event') },
-            { key: 'Alert', label: t('alarms.alert') },
-          ]}
-        />
-        {activeTab === 'Event' && (
-          <div>
-            <div className="nav-box flex justify-between mb-[14px]">
-              <div className="flex items-center">
-                <Input
-                  allowClear
-                  value={searchKey}
-                  placeholder={t('common.search')}
-                  style={{ width: 250 }}
-                  onChange={(e) => setSearchKey(e.target.value)}
-                  onPressEnter={handleFilterChange}
-                  onClear={handleFilterClear}
-                />
-              </div>
-              <PermissionWrapper requiredPermissions={['Add']}>
-                <Button type="primary" onClick={() => handleEdit('add')}>
-                  {t('common.addNew')}
-                </Button>
-              </PermissionWrapper>
+        <div>
+          <div className="nav-box flex justify-between mb-[14px]">
+            <div className="flex items-center">
+              <Input
+                allowClear
+                value={searchKey}
+                placeholder={t('common.search')}
+                style={{ width: 250 }}
+                onChange={(e) => setSearchKey(e.target.value)}
+                onPressEnter={handleFilterChange}
+                onClear={handleFilterClear}
+              />
             </div>
-            <CustomTable
-              size="middle"
-              rowKey="id"
-              loading={tableLoading}
-              columns={columns}
-              dataSource={dataList}
-              pagination={pagination}
-              onChange={handleTableChange}
-              scroll={{ y: 'calc(100vh - 480px)' }}
-            />
-            <OperateModal
-              open={operateVisible}
-              onClose={() => setOperateVisible(false)}
-              currentRow={currentRow}
-              onSuccess={() => {
-                setPagination((prev) => ({ ...prev, current: 1 }));
-                getTableList({ current: 1, pageSize: pagination.pageSize });
-              }}
-            />
-            <AlertListDrawer
-              visible={alertDrawerVisible}
-              ruleId={currentRuleId}
-              onClose={() => {
-                setAlertDrawerVisible(false);
-                setCurrentRuleId(null);
-              }}
-            />
+            <PermissionWrapper requiredPermissions={['Add']}>
+              <Button type="primary" onClick={() => handleEdit('add')}>
+                {t('common.addNew')}
+              </Button>
+            </PermissionWrapper>
           </div>
-        )}
-        {activeTab === 'Alert' && (
-          <div className="p-4 bg-[var(--color-bg-1)] rounded-lg shadow text-center">
-            {t('settings.correlationAlertPlaceholder')}
-          </div>
-        )}
+          <CustomTable
+            size="middle"
+            rowKey="id"
+            loading={tableLoading}
+            columns={columns}
+            dataSource={dataList}
+            pagination={pagination}
+            onChange={handleTableChange}
+            scroll={{ y: 'calc(100vh - 480px)' }}
+          />
+          <OperateModal
+            open={operateVisible}
+            onClose={() => setOperateVisible(false)}
+            currentRow={currentRow}
+            onSuccess={() => {
+              setPagination((prev) => ({ ...prev, current: 1 }));
+              getTableList({ current: 1, pageSize: pagination.pageSize });
+            }}
+          />
+          <AlertListDrawer
+            visible={alertDrawerVisible}
+            ruleId={currentRuleId}
+            onClose={() => {
+              setAlertDrawerVisible(false);
+              setCurrentRuleId(null);
+            }}
+          />
+        </div>
       </div>
     </>
   );

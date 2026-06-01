@@ -8,12 +8,18 @@ import { LocaleProvider } from '@/context/locale';
 import { ThemeProvider } from '@/context/theme';
 import { ClientProvider } from '@/context/client';
 import { PermissionsProvider } from '@/context/permissions';
+import { UserInfoProvider } from '@/context/userInfo';
+import AuthProvider from '@/context/auth';
 
 const mockSession = {
   username: 'umr',
   expires: '3023-12-31T23:59:59.999Z',
+  user: {
+    id: '1',
+    username: 'admin',
+    email: 'admin@example.com',
+  },
 };
-
 
 const preview: Preview = {
   decorators: [
@@ -22,13 +28,17 @@ const preview: Preview = {
         <Script src="/iconfont.js" strategy="afterInteractive" />
         <LocaleProvider>
           <ThemeProvider>
-            <ClientProvider>
-              <PermissionsProvider>
-                <AntdRegistry>
-                  <Story />
-                </AntdRegistry>
-              </PermissionsProvider>
-            </ClientProvider>
+            <AuthProvider>
+              <UserInfoProvider>
+                <ClientProvider>
+                  <PermissionsProvider>
+                    <AntdRegistry>
+                      <Story />
+                    </AntdRegistry>
+                  </PermissionsProvider>
+                </ClientProvider>
+              </UserInfoProvider>
+            </AuthProvider>
           </ThemeProvider>
         </LocaleProvider>
       </SessionProvider>
@@ -36,6 +46,12 @@ const preview: Preview = {
   ],
   tags: ['autodocs'],
   parameters: {
+    nextjs: {
+      appDirectory: true,
+      navigation: {
+        pathname: '/',
+      },
+    },
     controls: {
       matchers: {
         color: /(background|color)$/i,

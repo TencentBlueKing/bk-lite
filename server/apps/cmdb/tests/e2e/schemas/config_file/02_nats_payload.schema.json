@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer 通过 NATS 上报 CMDB 的配置文件采集结果",
+  "description": "subject = receive_config_file_result（CMDB nats.py 注册的 @nats_client.register handler）",
+  "type": "object",
+  "required": ["collect_task_id", "model_id", "file_path", "status"],
+  "properties": {
+    "collect_task_id": {"type": ["integer", "string"]},
+    "task_id":         {"type": ["integer", "string"]},
+    "instance_id":     {"type": "string"},
+    "instance_name":   {"type": "string"},
+    "model_id":        {"type": "string"},
+    "file_path":       {"type": "string"},
+    "file_name":       {"type": "string"},
+    "version":         {"type": "string"},
+    "collected_at":    {"type": "string"},
+    "status":          {"type": "string", "enum": ["success", "file_not_found", "permission_denied", "file_too_large", "not_text", "error"]},
+    "size":            {"type": "integer", "minimum": 0},
+    "file_size":       {"type": "integer", "minimum": 0},
+    "content_base64":  {"type": "string"},
+    "error":           {"type": "string"},
+    "error_message":   {"type": "string"},
+    "collect_result":  {"type": "object"}
+  }
+}

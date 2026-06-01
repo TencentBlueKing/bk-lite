@@ -1,7 +1,7 @@
 {
   "zh": [
     {
-      "title": "组织",
+      "title": "用户管理",
       "icon": "yonghu1",
       "name": "structure",
       "url": "/system-manager/user",
@@ -17,11 +17,23 @@
           "icon": "chaojiguanliyuan",
           "name": "super_admin",
           "url": "/system-manager/user/adminstrator"
+        },
+        {
+          "title": "认证源",
+          "icon": "renzhengyuanguanli",
+          "name": "auth_sources",
+          "url": "/system-manager/user/auth-sources"
+        },
+        {
+          "title": "安全策略",
+          "icon": "shezhi",
+          "name": "security_settings",
+          "url": "/system-manager/user/security-settings"
         }
       ]
     },
     {
-      "title": "应用",
+      "title": "应用管理",
       "icon": "guanli",
       "name": "application_list",
       "url": "/system-manager/application",
@@ -64,50 +76,13 @@
           "title": "设置",
           "icon": "shezhi",
           "name": "channel_setting",
-          "url": "/system-manager/channel/detail/settings"
+          "url": "/system-manager/channel/detail/settings",
+          "isNotMenuItem": true
         }
       ]
     },
     {
-      "title": "安全管理",
-      "icon": "shujumoxingguanli",
-      "name": "security_management",
-      "url": "/system-manager/security",
-      "children": [
-        {
-          "title": "登录设置",
-          "icon": "shezhi",
-          "name": "security_settings",
-          "url": "/system-manager/security/settings"
-        },
-        {
-          "title": "认证源",
-          "icon": "renzhengyuanguanli",
-          "name": "auth_sources",
-          "url": "/system-manager/security/auth-sources"
-        },
-        {
-          "title": "登录日志",
-          "icon": "denglurizhi",
-          "name": "user_logs",
-          "url": "/system-manager/security/login-logs"
-        },
-        {
-          "title": "操作日志",
-          "icon": "talk-line",
-          "name": "operation_logs",
-          "url": "/system-manager/security/operation-logs"
-        },
-        {
-          "title": "错误日志",
-          "icon": "wannengbiaodan",
-          "name": "error_logs",
-          "url": "/system-manager/security/error-logs"
-        }
-      ]
-    },
-    {
-      "title": "设置",
+      "title": "平台设置",
       "icon": "settings-fill",
       "url": "/system-manager/settings",
       "name": "Setting",
@@ -117,13 +92,25 @@
           "url": "/system-manager/settings/key",
           "icon": "key",
           "name": "api_secret_key"
+        },
+        {
+          "title": "审计日志",
+          "url": "/system-manager/settings/audit-log",
+          "icon": "talk-line",
+          "name": "audit_log"
+        },
+        {
+          "title": "错误日志",
+          "url": "/system-manager/settings/error-logs",
+          "icon": "wannengbiaodan",
+          "name": "error_logs"
         }
       ]
     }
   ],
   "en": [
     {
-      "title": "Organization",
+      "title": "User Management",
       "icon": "yonghu1",
       "name": "organization",
       "url": "/system-manager/user",
@@ -137,13 +124,25 @@
         {
           "title": "Super Administrator",
           "icon": "chaojiguanliyuan",
-          "name": "user_group",
+          "name": "super_admin",
           "url": "/system-manager/user/adminstrator"
+        },
+        {
+          "title": "Auth Sources",
+          "icon": "renzhengyuanguanli",
+          "name": "auth_sources",
+          "url": "/system-manager/user/auth-sources"
+        },
+        {
+          "title": "Security Settings",
+          "icon": "shezhi",
+          "name": "security_settings",
+          "url": "/system-manager/user/security-settings"
         }
       ]
     },
     {
-      "title": "Application",
+      "title": "Application Management",
       "icon": "guanli",
       "name": "application_list",
       "url": "/system-manager/application",
@@ -191,45 +190,7 @@
       ]
     },
     {
-      "title": "Security Management",
-      "icon": "shujumoxingguanli",
-      "name": "security_management",
-      "url": "/system-manager/security",
-      "children": [
-        {
-          "title": "Login Settings",
-          "icon": "shezhi",
-          "name": "security_settings",
-          "url": "/system-manager/security/settings"
-        },
-        {
-          "title": "Auth Sources",
-          "icon": "renzhengyuanguanli",
-          "name": "auth_sources",
-          "url": "/system-manager/security/auth-sources"
-        },
-        {
-          "title": "Login Logs",
-          "icon": "denglurizhi",
-          "name": "user_logs",
-          "url": "/system-manager/security/login-logs"
-        },
-        {
-          "title": "Operation Logs",
-          "icon": "talk-line",
-          "name": "operation_logs",
-          "url": "/system-manager/security/operation-logs"
-        },
-        {
-          "title": "Error Logs",
-          "icon": "wannengbiaodan",
-          "name": "error_logs",
-          "url": "/system-manager/security/error-logs"
-        }
-      ]
-    },
-    {
-      "title": "Settings",
+      "title": "Platform Settings",
       "icon": "settings-fill",
       "url": "/system-manager/settings",
       "name": "Setting",
@@ -239,6 +200,18 @@
           "url": "/system-manager/settings/key",
           "icon": "key",
           "name": "api_secret_key"
+        },
+        {
+          "title": "Audit Logs",
+          "url": "/system-manager/settings/audit-log",
+          "icon": "talk-line",
+          "name": "audit_log"
+        },
+        {
+          "title": "Error Logs",
+          "url": "/system-manager/settings/error-logs",
+          "icon": "wannengbiaodan",
+          "name": "error_logs"
         }
       ]
     }

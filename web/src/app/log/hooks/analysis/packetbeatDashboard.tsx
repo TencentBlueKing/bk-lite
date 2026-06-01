@@ -177,8 +177,8 @@ export const usePacketbeatDashboard = () => {
         }
       },
       {
-        h: 3,
-        w: 6,
+        h: 4,
+        w: 3,
         x: 0,
         y: 5,
         i: uuidv4(),
@@ -203,9 +203,9 @@ export const usePacketbeatDashboard = () => {
         }
       },
       {
-        h: 3,
-        w: 6,
-        x: 6,
+        h: 4,
+        w: 3,
+        x: 3,
         y: 5,
         i: uuidv4(),
         name: '目标端口流量 Top 10',
@@ -229,10 +229,10 @@ export const usePacketbeatDashboard = () => {
         }
       },
       {
-        h: 5,
-        w: 12,
-        x: 0,
-        y: 8,
+        h: 4,
+        w: 6,
+        x: 6,
+        y: 5,
         i: uuidv4(),
         name: t('log.analysis.packetbeat.highTrafficSankey'),
         moved: false,
@@ -267,7 +267,7 @@ export const usePacketbeatDashboard = () => {
         h: 4,
         w: 12,
         x: 0,
-        y: 13,
+        y: 9,
         i: uuidv4(),
         name: t('log.analysis.packetbeat.topFlowSessions'),
         moved: false,

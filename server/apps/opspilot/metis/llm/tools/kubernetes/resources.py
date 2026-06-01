@@ -196,15 +196,23 @@ def list_kubernetes_nodes(config: RunnableConfig):
 
 
 @tool()
-def list_kubernetes_deployments(namespace=None, config: RunnableConfig = None):
+def list_kubernetes_deployments(namespace=None, limit=30, offset=0, config: RunnableConfig = None):
     """
-    List deployments with optional namespace filter
+    List deployments with optional namespace filter and pagination.
 
     Args:
-        namespaces (list, optional): A list of namespace names to filter pods by.
-            If None, pods from all namespaces will be returned. Defaults to None.
+        namespace (str, optional): Namespace to filter. If None, returns all namespaces.
+        limit (int, optional): Maximum number of deployments to return (default 30, max 50).
+        offset (int, optional): Number of deployments to skip for pagination (default 0).
+        config (RunnableConfig): Configuration for the tool.
+
+    Returns:
+        JSON with fields: items (list), total (int), returned (int), offset (int), has_more (bool).
     """
     prepare_context(config)
+    limit = max(1, min(int(limit or 30), 50))
+    offset = max(0, int(offset or 0))
+
     apps_v1 = client.AppsV1Api()
     try:
         if namespace:
@@ -212,8 +220,12 @@ def list_kubernetes_deployments(namespace=None, config: RunnableConfig = None):
         else:
             deployments = apps_v1.list_deployment_for_all_namespaces()
 
+        all_items = deployments.items
+        total_count = len(all_items)
+        paged_items = all_items[offset:offset + limit]
+
         result = []
-        for deployment in deployments.items:
+        for deployment in paged_items:
             result.append(
                 {
                     "name": deployment.metadata.name,
@@ -227,7 +239,7 @@ def list_kubernetes_deployments(namespace=None, config: RunnableConfig = None):
                     "selector": deployment.spec.selector.match_labels if deployment.spec.selector else {},
                 }
             )
-        return json.dumps(result)
+        return json.dumps({"items": result, "total": total_count, "returned": len(result), "offset": offset, "has_more": (offset + len(result)) < total_count})
     except ApiException as e:
         return json.dumps({"error": f"获取Deployment列表失败: {str(e)}"})
 
@@ -397,6 +409,15 @@ def get_kubernetes_resource_yaml(namespace, resource_type, resource_name, config
 
         # Convert to dict and then to YAML
         resource_dict = client.ApiClient().sanitize_for_serialization(resource_data)
+
+        # 过滤冗余字段以减少 token 消耗和 Content Filter 触发风险
+        if "metadata" in resource_dict:
+            resource_dict["metadata"].pop("managedFields", None)
+            annotations = resource_dict["metadata"].get("annotations")
+            if isinstance(annotations, dict):
+                annotations.pop("kubectl.kubernetes.io/last-applied-configuration", None)
+        resource_dict.pop("status", None)
+
         yaml_str = yaml.dump(resource_dict, default_flow_style=False)
 
         return yaml_str

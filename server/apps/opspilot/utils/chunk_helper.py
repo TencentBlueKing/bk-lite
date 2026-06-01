@@ -14,10 +14,9 @@ from apps.opspilot.metis.llm.rag.naive_rag_entity import (
     DocumentMetadataUpdateRequest,
 )
 from apps.opspilot.metis.llm.rag.rag_enhance_entity import AnswerGenerateRequest, QuestionGenerateRequest
-from apps.opspilot.utils.chat_server_helper import ChatServerHelper
 
 
-class ChunkHelper(ChatServerHelper):
+class ChunkHelper:
     @classmethod
     def create_qa_pairs_by_content(
         cls,

@@ -1,9 +1,15 @@
 """
-变量管理器 - 支持Jinja2模板渲染
+变量管理器 - 支持安全模板渲染
+
+安全说明：
+- 使用 safe_render 替代原生 Jinja2 Environment，防止 SSTI 攻击
+- 仅支持简单变量插值 {{ var }} 和属性访问 {{ var.prop }}
+- 禁止控制语句、过滤器、函数调用等危险操作
 """
+
 from typing import Any, Dict, List
 
-from jinja2 import Environment, StrictUndefined
+from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 
 
 class VariableManager:
@@ -11,15 +17,13 @@ class VariableManager:
 
     负责管理工作流执行过程中的所有变量，支持：
     - 变量的存储和获取
-    - Jinja2模板变量渲染
+    - 安全的模板变量渲染（防止 SSTI 攻击）
     - 递归解析嵌套结构中的模板
     """
 
     def __init__(self):
         """初始化变量管理器"""
         self._variables: Dict[str, Any] = {}
-        # 创建Jinja2环境，使用StrictUndefined在变量不存在时抛出异常
-        self._jinja_env = Environment(undefined=StrictUndefined)
 
     def set_variable(self, name: str, value: Any) -> None:
         """设置变量
@@ -59,24 +63,30 @@ class VariableManager:
         return self._variables.copy()
 
     def resolve_template(self, template: str) -> str:
-        """使用Jinja2解析模板字符串
+        """使用安全模板渲染解析模板字符串
 
         将 {{variable_name}} 替换为实际变量值。
+        使用 safe_render 防止 SSTI 攻击。
 
         Args:
             template: 模板字符串
 
         Returns:
             渲染后的字符串，失败时返回原始模板
+
+        Raises:
+            TemplateSecurityError: 模板包含危险模式时抛出
         """
         if not isinstance(template, str):
             return template
 
         try:
-            jinja_template = self._jinja_env.from_string(template)
-            return jinja_template.render(self._variables)
+            return safe_render(template, self._variables)
+        except TemplateSecurityError:
+            # 安全错误向上抛出，不静默处理
+            raise
         except Exception:
-            # 模板渲染失败时返回原始模板
+            # 其他渲染失败时返回原始模板
             return template
 
     def resolve_template_dict(self, data: Dict[str, Any]) -> Dict[str, Any]:

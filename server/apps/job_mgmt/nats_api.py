@@ -5,6 +5,7 @@ from django.utils import timezone
 
 import nats_client
 from apps.core.logger import job_logger as logger
+from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.job_mgmt.constants import ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DangerousPath, DangerousRule, DistributionFile, JobExecution, Playbook, ScheduledTask, Script, Target
 from apps.job_mgmt.services.callback_service import send_callback
@@ -306,6 +307,14 @@ def job_script_execute(data: dict):
     if not team:
         return {"result": False, "message": "team 不能为空"}
 
+    # SSRF 防护：校验 callback_url（宽松模式，仅阻断云元数据）
+    if callback_url:
+        try:
+            SSRFValidator.validate_callback(callback_url)
+        except SSRFError as e:
+            logger.warning(f"[job_script_execute] callback_url SSRF 校验失败: url={callback_url}, error={e}")
+            return {"result": False, "message": f"Invalid callback_url: {e}"}
+
     # 高危命令检测
     check_result = DangerousChecker.check_command(script_content, team)
     if not check_result.can_execute:
@@ -386,6 +395,14 @@ def job_file_distribute(data: dict):
         return {"result": False, "message": "target_path 不能为空"}
     if not team:
         return {"result": False, "message": "team 不能为空"}
+
+    # SSRF 防护：校验 callback_url（宽松模式，仅阻断云元数据）
+    if callback_url:
+        try:
+            SSRFValidator.validate_callback(callback_url)
+        except SSRFError as e:
+            logger.warning(f"[job_file_distribute] callback_url SSRF 校验失败: url={callback_url}, error={e}")
+            return {"result": False, "message": f"Invalid callback_url: {e}"}
 
     # 高危路径检测
     check_result = DangerousChecker.check_path(target_path, team)

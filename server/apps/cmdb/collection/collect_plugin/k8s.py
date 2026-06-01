@@ -234,7 +234,7 @@ class CollectK8sMetrics:
             elif annotations_info["index_key"] == K8S_DAEMONSET_ANNOTATIONS:
                 replicas_key = "daemonset"
             elif annotations_info["index_key"] == K8S_JOB_ANNOTATIONS:
-                replicas_key = "job"
+                replicas_key = "job_name"
             elif annotations_info["index_key"] == K8S_CRONJOB_ANNOTATIONS:
                 replicas_key = "cronjob"
             else:

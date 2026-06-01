@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import { Empty } from 'antd';
 import useChartColors from '../docker/useChartColors';
+import { createHorizontalBarGradient } from '../chartStyle';
 
 // 节点日志量 vs 错误数 双系列横向柱状图
 // rawData 期望字段：node_ip, log_count, err_count
@@ -78,16 +79,22 @@ const RedisNodeCompareBar: React.FC<RedisNodeCompareBarProps> = ({
           name: '日志量',
           type: 'bar',
           data: [...logVals].reverse(),
-          barMaxWidth: 14,
-          itemStyle: { color: colors.series[0], borderRadius: [0, 3, 3, 0] },
+          barMaxWidth: 16,
+          itemStyle: {
+            color: createHorizontalBarGradient(colors.series[0]),
+            borderRadius: [0, 3, 3, 0]
+          },
           label: { show: false }
         },
         {
           name: '错误数',
           type: 'bar',
           data: [...errVals].reverse(),
-          barMaxWidth: 14,
-          itemStyle: { color: colors.series[4], borderRadius: [0, 3, 3, 0] },
+          barMaxWidth: 16,
+          itemStyle: {
+            color: createHorizontalBarGradient(colors.series[4]),
+            borderRadius: [0, 3, 3, 0]
+          },
           label: { show: false }
         }
       ]

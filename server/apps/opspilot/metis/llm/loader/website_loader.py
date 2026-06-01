@@ -12,6 +12,8 @@ from langchain_community.document_transformers import BeautifulSoupTransformer
 from langchain_core.documents import Document
 from loguru import logger
 
+from apps.core.utils.ssrf_validator import SSRFValidator
+
 
 class WebSiteLoader:
     def __init__(self, url, max_depth, ocr):
@@ -28,8 +30,11 @@ class WebSiteLoader:
     def load(self) -> List[Document]:
         logger.info(f"加载网站: [{self.url}], 最大深度: [{self.max_depth}], OCR: [{self.ocr is not None}]")
 
+        # SSRF 防护：验证起始 URL
+        validated_url = SSRFValidator.validate(self.url)
+
         # 加载网页文本内容
-        loader = RecursiveUrlLoader(self.url, max_depth=self.max_depth)
+        loader = RecursiveUrlLoader(validated_url, max_depth=self.max_depth)
         web_docs = loader.load()
 
         transformer = BeautifulSoupTransformer()
@@ -185,8 +190,11 @@ class WebSiteLoader:
             图片二进制数据，失败返回None
         """
         try:
+            # SSRF 防护：验证图片 URL
+            validated_url = SSRFValidator.validate(img_url)
+
             with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-                response = client.get(img_url)
+                response = client.get(validated_url)
 
                 if response.status_code != 200:
                     logger.warning(f"下载图片失败 [{img_url}], 状态码: {response.status_code}")

@@ -731,7 +731,9 @@
     "choicePlaceholder": "请选择...",
     "choiceConfirm": "确认选择",
     "choiceTimeout": "已超时",
-    "choiceSelected": "已选择"
+    "choiceSelected": "已选择",
+    "choiceOrType": "或者自行输入",
+    "choiceTextPlaceholder": "输入你的回答..."
   },
   "settings": {
     "secret": {
@@ -1382,9 +1384,10 @@
     "editSpace": "编辑记忆空间",
     "name": "名称",
     "introduction": "简介",
-    "scope": "可见范围",
+    "scope": "记忆类型",
     "personal": "个人",
     "team": "团队",
+    "organization": "组织",
     "scopePersonalHint": "个人记忆：每次工作流运行时，记录到使用者的个人记忆中",
     "scopeTeamHint": "团队记忆：每次工作流运行时，记录到团队共享记忆中",
     "memoryCount": "记忆条数",
@@ -1405,6 +1408,7 @@
     "saveSuccess": "保存成功",
     "memoryList": "记忆列表",
     "user": "用户",
+    "organization": "组织",
     "memoryId": "记忆 ID",
     "updatedAt": "更新时间",
     "summary": "摘要",
@@ -1413,6 +1417,7 @@
     "edit": "编辑",
     "cancel": "取消",
     "filterUser": "筛选用户",
+    "filterOrganization": "筛选组织",
     "searchUser": "搜索用户",
     "noMemories": "暂无记忆",
     "backToList": "返回记忆列表",

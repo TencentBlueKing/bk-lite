@@ -1,0 +1,14 @@
+if [ $_first_module -eq 0 ]; then echo ','; fi; _first_module=0
+mem_total=$(awk '/^MemTotal:/{print $2}' /proc/meminfo)
+mem_free=$(awk '/^MemFree:/{print $2}' /proc/meminfo)
+mem_available=$(awk '/^MemAvailable:/{print $2}' /proc/meminfo)
+mem_buffers=$(awk '/^Buffers:/{print $2}' /proc/meminfo)
+mem_cached=$(awk '/^Cached:/{print $2}' /proc/meminfo)
+swap_total=$(awk '/^SwapTotal:/{print $2}' /proc/meminfo)
+swap_free=$(awk '/^SwapFree:/{print $2}' /proc/meminfo)
+mem_total_bytes=$((mem_total*1024))
+mem_available_bytes=$((${mem_available:-$((mem_free+mem_buffers+mem_cached))}*1024))
+mem_used_bytes=$((mem_total_bytes-mem_available_bytes))
+swap_total_bytes=$((swap_total*1024))
+swap_used_bytes=$(( (swap_total-swap_free)*1024 ))
+echo "\"mem\":{\"total_bytes\":$mem_total_bytes,\"used_bytes\":$mem_used_bytes,\"available_bytes\":$mem_available_bytes,\"swap_total_bytes\":$swap_total_bytes,\"swap_used_bytes\":$swap_used_bytes}"

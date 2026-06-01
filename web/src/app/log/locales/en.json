@@ -490,6 +490,7 @@
     "analysis": {
       "container": "Container",
       "selectContainer": "Select container",
+      "selectLogGroup": "Please select a log group",
       "selectInstance": "Please select an instance",
       "packetbeat": {
         "destinationPort": "Destination Port",
