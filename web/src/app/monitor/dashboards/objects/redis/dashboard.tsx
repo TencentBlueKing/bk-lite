@@ -949,32 +949,6 @@ export default function RedisDashboardPage() {
                         ))}
                       </div>
                     </div>
-                  </div>
-
-                  <div className={styles.detailGrid}>
-                    <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                      <div className={styles.detailCard}>
-                        <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="缓存访问概览" items={cacheDetailGuide} className={styles.panelTitleWithGuide} /></h3>
-                          <div className={styles.panelSubTitle}>命中率与键访问结果</div>
-                        </div>
-                        <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>缓存命中率</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_keyspace_hitrate', `${hitRateDisplay.value}${hitRateDisplay.unit}`)}</span></div>
-                        <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>键命中频率</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_keyspace_hits_rate', `${hitsRateDisplay.value}${hitsRateDisplay.unit}`)}</span></div>
-                        <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>键未命中频率</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_keyspace_misses_rate', `${missesRateDisplay.value}${missesRateDisplay.unit}`)}</span></div>
-                      </div>
-                    </div>
-
-                    <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                      <div className={styles.detailCard}>
-                        <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="客户端与阻塞" items={clientDetailGuide} className={styles.panelTitleWithGuide} /></h3>
-                          <div className={styles.panelSubTitle}>连接总量与阻塞情况</div>
-                        </div>
-                        <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>当前连接</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_clients', clientsDisplay.value)}</span></div>
-                        <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>阻塞客户端</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_blocked_clients', blockedClientsDisplay.value)}</span></div>
-                        <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>连接拒绝频率</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_rejected_connections_rate', `${rejectedDisplay.value}${rejectedDisplay.unit}`)}</span></div>
-                      </div>
-                    </div>
 
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
                       <div className={styles.detailCard}>
@@ -990,33 +964,6 @@ export default function RedisDashboardPage() {
                           }`}
                         >
                           {evictedRateValue > 0 ? '出现驱逐，通常说明内存接近上限。' : '当前未观察到明显驱逐。'}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                      <div className={styles.detailCard}>
-                        <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="内存与碎片" items={memoryDetailGuide} className={styles.panelTitleWithGuide} /></h3>
-                          <div className={styles.panelSubTitle}>容量边界与分配效率</div>
-                        </div>
-                        <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>已用内存</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_used_memory', `${usedMemoryDisplay.value}${usedMemoryDisplay.unit}`)}</span></div>
-                        <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>内存上限</span><span className={styles.detailMetricValue}>{maxMemoryValue > 0 && hasMetricData('redis_maxmemory') ? `${maxMemoryDisplay.value}${maxMemoryDisplay.unit}` : '未配置'}</span></div>
-                        <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>内存碎片率</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_mem_fragmentation_ratio', fragmentationDisplay.value)}</span></div>
-                        <div
-                          className={`${styles.fragmentationWarning} ${
-                            fragmentationTone === 'danger'
-                              ? styles.fragmentationWarningDanger
-                              : fragmentationTone === 'warn'
-                                ? styles.fragmentationWarningWarn
-                                : styles.fragmentationWarningNormal
-                          }`}
-                        >
-                          {fragmentationTone === 'danger'
-                            ? '碎片率偏高，建议排查内存抖动与键淘汰。'
-                            : fragmentationTone === 'warn'
-                              ? '碎片率开始升高，需要结合内存使用率持续观察。'
-                              : '当前碎片率平稳。'}
                         </div>
                       </div>
                     </div>

@@ -335,8 +335,15 @@
   gap: 12px;
 }
 
+.mainTrendGrid + .detailGrid,
+.detailGrid + .detailGrid,
+.detailGrid + .mainTrendGrid {
+  margin-top: 12px;
+}
+
 .mainTrendGrid {
-  margin-bottom: 12px;
+  margin-top: 12px;
+  margin-bottom: 0;
 }
 
 .sectionTitle {
