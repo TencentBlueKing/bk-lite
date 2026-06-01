@@ -574,6 +574,7 @@ const AssetDataContent = () => {
       content: t('common.delConfirmCxt'),
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),
+      okButtonProps: { danger: true },
       centered: true,
       async onOk() {
         try {
@@ -841,7 +842,7 @@ const AssetDataContent = () => {
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Delete']} instPermissions={record.permission}>
-            <Button type="link" onClick={() => showDeleteConfirm(record)}>
+            <Button type="link" danger onClick={() => showDeleteConfirm(record)}>
               {t('common.delete')}
             </Button>
           </PermissionWrapper>
@@ -1036,7 +1037,7 @@ const AssetDataContent = () => {
                   </Space>
                 </Button>
               </Dropdown>
-              <Button icon={<UnorderedListOutlined />} onClick={() => openSubscription('drawer')}>
+              <Button icon={<UnorderedListOutlined aria-hidden="true" />} onClick={() => openSubscription('drawer')}>
                 {t('subscription.dataSubscription')}
               </Button>
             </Space>
@@ -1046,22 +1047,22 @@ const AssetDataContent = () => {
               <Button type="primary">
                 <Space>
                   {t('common.addNew')}
-                  <DownOutlined />
+                  <DownOutlined aria-hidden="true" />
                 </Space>
               </Button>
               <Button>
                 <Space>
                   {t('export')}
-                  <DownOutlined />
+                  <DownOutlined aria-hidden="true" />
                 </Space>
               </Button>
               <Button>
                 <Space>
                   {t('more')}
-                  <DownOutlined />
+                  <DownOutlined aria-hidden="true" />
                 </Space>
               </Button>
-              <Button icon={<UnorderedListOutlined />}>
+              <Button icon={<UnorderedListOutlined aria-hidden="true" />}>
                 {t('subscription.dataSubscription')}
               </Button>
             </Space>

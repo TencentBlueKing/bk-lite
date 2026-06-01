@@ -64,11 +64,11 @@ const AgentStepProgress: React.FC<AgentStepProgressProps> = ({ steps }) => {
               color: getStatusColor(latestStep.status),
               minWidth: '80px',
             }}>
-              {agentName === 'main' ? t('mainAgent') : agentName}
+              {agentName === 'main' ? t('chatflow.mainAgent') : agentName}
             </span>
             {latestStep.max_steps > 0 && (
               <span style={{ color: '#8c8c8c' }}>
-                {t('stepProgress', '', { current: latestStep.step, total: latestStep.max_steps })}
+                {t('chatflow.stepProgress', '', { current: latestStep.step, total: latestStep.max_steps })}
               </span>
             )}
             <span style={{ color: '#595959', flex: 1 }}>

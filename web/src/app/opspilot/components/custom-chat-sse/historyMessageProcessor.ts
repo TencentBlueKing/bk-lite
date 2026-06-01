@@ -4,7 +4,7 @@
  */
 
 import { BrowserStepProgressData, BrowserStepsHistory, BrowserTaskReceivedData } from '@/app/opspilot/types/global';
-import { initToolCallTooltips, renderAllToolCalls, renderErrorMessage, ToolCallInfo } from './toolCallRenderer';
+import { initToolCallTooltips, renderErrorMessage, ToolCallInfo } from './toolCallRenderer';
 
 const escapeNewlinesInStrings = (raw: string) => {
   let result = '';
@@ -308,6 +308,20 @@ const buildFromEvents = (events: any[], finalize = true) => {
   const agentSteps: any[] = [];
   let isRunning = false;
   let lastStep: BrowserStepProgressData | null = null;
+  const pendingToolIds: string[] = [];
+
+  const flushToolCalls = () => {
+    if (pendingToolIds.length > 0) {
+      const idsStr = pendingToolIds.join(',');
+      if (parts.length > 0) {
+        parts.push(`\n\n<!--TOOL_CALLS:${idsStr}-->`);
+      } else {
+        parts.push(`<!--TOOL_CALLS:${idsStr}-->`);
+      }
+      pendingToolIds.length = 0;
+      lastBlockType = 'toolCall';
+    }
+  };
 
   const upsertStep = (stepData: BrowserStepProgressData) => {
     const existingIndex = steps.findIndex(s => s.step_number === stepData.step_number);
@@ -347,12 +361,18 @@ const buildFromEvents = (events: any[], finalize = true) => {
 
       case 'TEXT_MESSAGE_CONTENT':
         isThinking = false;
+        // If pending tool calls exist and this is the start of new text, flush them
+        if (pendingToolIds.length > 0 && !currentText) {
+          flushToolCalls();
+        }
         currentText += msg.delta || '';
         break;
 
       case 'TOOL_CALL_START':
         isThinking = false;
         if (currentText) {
+          // Flush pending tool calls before text
+          flushToolCalls();
           if (parts.length > 0 && lastBlockType !== 'text') {
             parts.push('\n\n' + currentText);
           } else {
@@ -389,9 +409,8 @@ const buildFromEvents = (events: any[], finalize = true) => {
         break;
 
       case 'TOOL_CALL_END':
-        // 不在这里渲染，等所有工具调用完成后统一渲染
-        // 标记有工具调用需要渲染
         if (msg.toolCallId && toolCalls.has(msg.toolCallId)) {
+          pendingToolIds.push(msg.toolCallId);
           lastBlockType = 'toolCall';
         }
         break;
@@ -469,15 +488,8 @@ const buildFromEvents = (events: any[], finalize = true) => {
     }
   });
 
-  // 渲染所有工具调用（作为一个可折叠的组，历史消息默认收起）
-  if (toolCalls.size > 0) {
-    const toolCallsHtml = renderAllToolCalls(toolCalls, false);
-    if (parts.length > 0) {
-      parts.push('\n\n' + toolCallsHtml);
-    } else {
-      parts.push(toolCallsHtml);
-    }
-  }
+  // 输出剩余的工具调用占位
+  flushToolCalls();
 
   if (currentText) {
     if (parts.length > 0 && lastBlockType !== 'text') {
@@ -498,7 +510,10 @@ const buildFromEvents = (events: any[], finalize = true) => {
     isThinking: finalize ? false : isThinking,
     browserStepProgress: lastStep,
     browserStepsHistory,
-    agentStepProgress: agentSteps.length > 0 ? agentSteps : undefined
+    agentStepProgress: agentSteps.length > 0 ? agentSteps : undefined,
+    toolCalls: toolCalls.size > 0 ? Array.from(toolCalls.entries()).map(([id, info]) => ({
+      id, name: info.name, args: info.args, status: info.status as 'calling' | 'completed', result: info.result
+    })) : undefined
   };
 };
 
@@ -550,6 +565,7 @@ export const processHistoryMessageWithExtras = (
   browserStepProgress?: BrowserStepProgressData | null;
   browserStepsHistory?: BrowserStepsHistory | null;
   agentStepProgress?: import('@/app/opspilot/types/global').AgentStepProgressData[];
+  toolCalls?: Array<{ id: string; name: string; args: string; status: 'calling' | 'completed'; result?: string }>;
 } => {
   if (role !== 'bot') {
     return {

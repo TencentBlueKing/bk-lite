@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB aliyun_ecs instance",
+  "type": "object",
+  "required": ["inst_name", "resource_id"],
+  "properties": {
+    "inst_name":     {"type": "string"},
+    "resource_name": {"type": "string"},
+    "resource_id":   {"type": "string"},
+    "ip_addr":       {"type": "string"},
+    "public_ip":     {"type": "string"},
+    "region":        {"type": "string"},
+    "zone":          {"type": "string"},
+    "vpc":           {"type": "string"},
+    "status":        {"type": "string"},
+    "instance_type": {"type": "string"},
+    "os_name":       {"type": "string"},
+    "vcpus":         {"type": "integer"},
+    "memory_mb":     {"type": "integer"},
+    "charge_type":   {"type": "string"},
+    "create_time":   {"type": "string"},
+    "expired_time":  {"type": "string"},
+    "assos":         {"type": ["array", "object"]}
+  }
+}

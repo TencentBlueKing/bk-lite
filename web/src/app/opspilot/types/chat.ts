@@ -52,6 +52,41 @@ export interface UserChoiceRequestValue {
   display_hint: 'auto' | 'buttons' | 'dropdown' | 'checkbox';
 }
 
+export interface ConfigDiffReportValue {
+  report_id: string;
+  title: string;
+  cluster_name: string;
+  items: Array<{
+    workload_name: string;
+    workload_type: string;
+    namespace: string;
+    severity: 'critical' | 'high' | 'warning' | 'info';
+    summary: string;
+    before_yaml: string;
+    after_yaml: string;
+  }>;
+}
+
+export interface ReportFileDownloadValue {
+  download_id: string;
+  filename: string;
+  content_base64: string;
+  mime_type: string;
+}
+
+export interface ReportFileDownload extends ReportFileDownloadValue {
+  received_at: number;
+}
+
+export interface RepairCommandsValue {
+  commands_id: string;
+  commands_markdown: string;
+}
+
+export interface RepairCommands extends RepairCommandsValue {
+  received_at: number;
+}
+
 export interface CustomChatSSEProps {
   handleSendMessage?: (message: string, currentMessages?: any[]) => Promise<{
     url: string;

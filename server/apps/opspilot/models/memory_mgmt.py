@@ -37,7 +37,12 @@ class MemorySpace(MaintainerInfo, TimeInfo):
 
 
 class Memory(MaintainerInfo, TimeInfo):
-    """记忆条目模型"""
+    """记忆条目模型
+
+    个人记忆：owner_username + owner_domain 确定唯一用户，每个用户在每个记忆空间只有一条记忆
+    组织记忆：organization_id 确定唯一组织，每个组织在每个记忆空间只有一条记忆
+             owner_username 存储组织名称（用于显示）
+    """
 
     memory_space = models.ForeignKey(
         MemorySpace,
@@ -47,8 +52,9 @@ class Memory(MaintainerInfo, TimeInfo):
     )
     title = models.CharField(max_length=255, db_index=True, verbose_name=_("标题"))
     content = models.TextField(verbose_name=_("内容"))
-    owner_username = models.CharField(max_length=150, verbose_name=_("创建者用户名"), db_index=True)
-    owner_domain = models.CharField(max_length=255, verbose_name=_("创建者域"), db_index=True)
+    owner_username = models.CharField(max_length=150, verbose_name=_("创建者用户名/组织名"), db_index=True)
+    owner_domain = models.CharField(max_length=255, verbose_name=_("创建者域"), db_index=True, blank=True, default="")
+    organization_id = models.IntegerField(verbose_name=_("组织ID"), db_index=True, null=True, blank=True)
 
     class Meta:
         db_table = "memory_mgmt_memory"
@@ -56,6 +62,7 @@ class Memory(MaintainerInfo, TimeInfo):
         verbose_name_plural = "记忆"
         indexes = [
             models.Index(fields=["owner_username", "owner_domain"]),
+            models.Index(fields=["organization_id"]),
         ]
 
     def __str__(self):
