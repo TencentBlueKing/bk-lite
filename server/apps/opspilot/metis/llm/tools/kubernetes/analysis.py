@@ -607,15 +607,23 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
             )
         if name:
             _hint_parts.append(
-                "下一步：调用 generate_repair_report 工具生成修复报告。"
-                f"参数：items 留空，group_by='category'，expected_target_count={_problematic_count}，"
+                "下一步操作顺序（严格按顺序执行）："
+                "1) 先用文字向用户输出检查报告摘要（按严重程度分组展示问题）；"
+                "2) 报告输出后，【必须】调用 request_user_choice 工具让用户选择修复方案的展示方式"
+                "（选项参考：按问题类别聚合 / 按工作负载聚合 / 全部展示）；"
+                "3) 用户选择后，再调用 generate_repair_report 工具生成修复报告，"
+                f"参数：items 留空，group_by 根据用户选择设置，expected_target_count={_problematic_count}，"
                 f"target_names=[\"{name}\"]（必须设置，因为用户只要求检查该工作负载）。"
                 "不要调用 get_kubernetes_resource_yaml，修复方案基于分析数据直接生成。"
             )
         else:
             _hint_parts.append(
-                "下一步：调用 generate_repair_report 工具生成修复报告。"
-                f"参数：items 留空，group_by='category'，expected_target_count={_problematic_count}。"
+                "下一步操作顺序（严格按顺序执行）："
+                "1) 先用文字向用户输出检查报告摘要（按严重程度分组展示问题）；"
+                "2) 报告输出后，【必须】调用 request_user_choice 工具让用户选择修复方案的展示方式"
+                "（选项参考：按问题类别聚合 / 按工作负载聚合 / 全部展示）；"
+                "3) 用户选择后，再调用 generate_repair_report 工具生成修复报告，"
+                f"参数：items 留空，group_by 根据用户选择设置，expected_target_count={_problematic_count}。"
                 "如果用户指定了特定工作负载名称，target_names 设为该名称列表。"
                 "不要调用 get_kubernetes_resource_yaml，修复方案基于分析数据直接生成。"
             )
