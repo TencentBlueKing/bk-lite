@@ -397,7 +397,7 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
             </PermissionWrapper>
             <PermissionWrapper requiredPermissions={['Edit']}>
               <Dropdown menu={{ items: moreMenuItems }} trigger={['click']} placement="bottomRight">
-                <Button type="text" size="small" className="px-1" icon={<MoreOutlined style={{ fontSize: 14 }} />} />
+                <Button type="text" size="small" className="px-1" aria-label={t('common.more')} icon={<MoreOutlined aria-hidden="true" style={{ fontSize: 14 }} />} />
               </Dropdown>
             </PermissionWrapper>
           </div>

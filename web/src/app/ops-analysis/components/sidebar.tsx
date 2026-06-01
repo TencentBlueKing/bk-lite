@@ -192,6 +192,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         content: t('common.delConfirmCxt'),
         okText: t('common.confirm'),
         cancelText: t('common.cancel'),
+        okButtonProps: { danger: true },
         centered: true,
         onOk: async () => {
           try {
@@ -476,7 +477,8 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
               >
                 <Button
                   type="text"
-                  icon={<MoreOutlined />}
+                  aria-label={t('common.more')}
+                  icon={<MoreOutlined aria-hidden="true" />}
                   onClick={(e) => e.stopPropagation()}
                   onMouseDown={(e) => e.stopPropagation()}
                   className="flex-shrink-0"

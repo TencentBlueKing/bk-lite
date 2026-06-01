@@ -1,8 +1,9 @@
-# CMDB 模块设计规范（DESIGN.md）
+# 设计规范基线（DESIGN.md）
 
 > 仅记录视觉、交互、文案与可访问性约定。不涉及模块结构、目录、技术选型。
 > 作为新页面/新组件的视觉对齐基准。
-> 本文档亦同步登记本模块已落地的修复与仍待修的平台级遗留问题。
+> **适用范围**：本文档源于 CMDB 模块的设计审查，现已作为 web 端跨模块的设计基线使用，覆盖：**CMDB / 报警中心（alarm） / 运营分析（ops-analysis）**。后续模块加入时在 §15 增加分节即可。
+> 本文档亦同步登记各模块已落地的修复与仍待修的平台级遗留问题。
 
 ---
 
@@ -443,33 +444,79 @@ i18n key 沉淀：
 
 ---
 
-## 15. 本模块已落地的修复（截至 2026-05-31）
+## 15. 已落地修复登记（按模块）
+
+> **改动性质共识**：所有登记项**仅追加 JSX prop**（`danger` / `aria-label` / `aria-hidden` / `okButtonProps` / `danger`/`role`/`tabIndex`/`onKeyDown`），**零业务逻辑变更**——onClick、状态、请求函数都没动过。
+
+### 15.1 CMDB 模块（截至 2026-05-31）
 
 | 类别 | 文件 | 改动 |
 |---|---|---|
-| **图标按钮 a11y** | `assetData/detail/baseInfo/list.tsx` | 行内编辑 4 个图标按钮（确认/取消/编辑/复制）加 `aria-label` + 图标 `aria-hidden="true"` |
-| **图标装饰** | `assetData/page.tsx` | 顶部工具栏 4 个按钮内的 `UnorderedListOutlined`/`DownOutlined` 加 `aria-hidden="true"` |
-| **删除按钮 danger** | `assetData/page.tsx` | 行内删除按钮加 `danger` |
-| **删除按钮 danger** | `assetManage/management/detail/uniqueRules/page.tsx` | 同上 |
-| **删除按钮 danger** | `assetManage/management/detail/associations/page.tsx` | 同上 |
-| **删除按钮 danger** | `assetManage/management/detail/autoAssociationRules/page.tsx` | 同上 |
-| **删除按钮 danger** | `assetManage/management/detail/attributes/page.tsx` | 同上 |
-| **删除按钮 danger** | `assetManage/autoDiscovery/featureLibrary/soid/page.tsx` | 同上 |
-| **删除按钮 danger** | `assetManage/autoDiscovery/collection/profess/components/baseTask.tsx` | 同上 |
-| **删除按钮 danger** | `components/subscription/subscriptionRuleList.tsx` | Popconfirm 内删除按钮加 `danger` |
-| **删除 confirm okButtonProps** | `assetManage/management/page.tsx` | confirm 加 `okButtonProps:{danger:true}` |
-| **删除 confirm okButtonProps** | `assetManage/management/detail/layout.tsx` | 模型删除 confirm |
-| **删除 confirm okButtonProps** | `assetManage/management/detail/uniqueRules/page.tsx` | 同上 |
-| **删除 confirm okButtonProps** | `assetManage/management/detail/associations/page.tsx` | 单删 + 批量删 各一处 |
-| **删除 confirm okButtonProps** | `assetManage/management/detail/autoAssociationRules/page.tsx` | 同上 |
-| **删除 confirm okButtonProps** | `assetManage/management/detail/attributes/page.tsx` | 同上 |
-| **删除 confirm okButtonProps** | `assetManage/management/list/publicEnumLibraryModal.tsx` | 删除枚举库 Modal.confirm |
-| **删除 confirm okButtonProps** | `assetManage/autoDiscovery/collection/profess/page.tsx` | 删除采集任务 Modal.confirm |
-| **删除 confirm okButtonProps** | `assetManage/autoDiscovery/featureLibrary/soid/page.tsx` | 同上 |
-| **删除 confirm okButtonProps** | `assetData/page.tsx` | `handleDeleteWithConfirm` |
-| **删除 confirm okButtonProps** | `assetData/list/searchFilter.tsx` | 删除已保存筛选器 Modal.confirm |
+| **图标按钮 a11y** | `cmdb/(pages)/assetData/detail/baseInfo/list.tsx` | 行内编辑 4 个图标按钮（确认/取消/编辑/复制）加 `aria-label` + 图标 `aria-hidden="true"` |
+| **图标装饰** | `cmdb/(pages)/assetData/page.tsx` | 顶部工具栏 4 个按钮内的 `UnorderedListOutlined`/`DownOutlined` 加 `aria-hidden="true"` |
+| **删除按钮 danger** | `cmdb/(pages)/assetData/page.tsx` | 行内删除按钮加 `danger` |
+| **删除按钮 danger** | `cmdb/(pages)/assetManage/management/detail/uniqueRules/page.tsx` | 同上 |
+| **删除按钮 danger** | `cmdb/(pages)/assetManage/management/detail/associations/page.tsx` | 同上 |
+| **删除按钮 danger** | `cmdb/(pages)/assetManage/management/detail/autoAssociationRules/page.tsx` | 同上 |
+| **删除按钮 danger** | `cmdb/(pages)/assetManage/management/detail/attributes/page.tsx` | 同上 |
+| **删除按钮 danger** | `cmdb/(pages)/assetManage/autoDiscovery/featureLibrary/soid/page.tsx` | 同上 |
+| **删除按钮 danger** | `cmdb/(pages)/assetManage/autoDiscovery/collection/profess/components/baseTask.tsx` | 同上 |
+| **删除按钮 danger** | `cmdb/components/subscription/subscriptionRuleList.tsx` | Popconfirm 内删除按钮加 `danger` |
+| **删除 confirm okButtonProps** | `cmdb/(pages)/assetManage/management/page.tsx` | confirm 加 `okButtonProps:{danger:true}` |
+| **删除 confirm okButtonProps** | `cmdb/(pages)/assetManage/management/detail/layout.tsx` | 模型删除 confirm |
+| **删除 confirm okButtonProps** | `cmdb/(pages)/assetManage/management/detail/uniqueRules/page.tsx` | 同上 |
+| **删除 confirm okButtonProps** | `cmdb/(pages)/assetManage/management/detail/associations/page.tsx` | 单删 + 批量删 各一处 |
+| **删除 confirm okButtonProps** | `cmdb/(pages)/assetManage/management/detail/autoAssociationRules/page.tsx` | 同上 |
+| **删除 confirm okButtonProps** | `cmdb/(pages)/assetManage/management/detail/attributes/page.tsx` | 同上 |
+| **删除 confirm okButtonProps** | `cmdb/(pages)/assetManage/management/list/publicEnumLibraryModal.tsx` | 删除枚举库 Modal.confirm |
+| **删除 confirm okButtonProps** | `cmdb/(pages)/assetManage/autoDiscovery/collection/profess/page.tsx` | 删除采集任务 Modal.confirm |
+| **删除 confirm okButtonProps** | `cmdb/(pages)/assetManage/autoDiscovery/featureLibrary/soid/page.tsx` | 同上 |
+| **删除 confirm okButtonProps** | `cmdb/(pages)/assetData/page.tsx` | `handleDeleteWithConfirm` |
+| **删除 confirm okButtonProps** | `cmdb/(pages)/assetData/list/searchFilter.tsx` | 删除已保存筛选器 Modal.confirm |
 
-**改动性质**：仅追加 JSX prop（`danger` / `aria-label` / `aria-hidden` / `okButtonProps`），**零业务逻辑变更**——onClick、状态、请求函数都没动过。
+### 15.2 报警中心（alarm）模块（截至 2026-06-01）
+
+| 类别 | 文件 | 改动 |
+|---|---|---|
+| **图标按钮 a11y** | `alarm/components/k8sGuide/index.tsx` | 3 个复制按钮加 `aria-label={t('common.copy')}` + 图标 `aria-hidden="true"` |
+| **图标按钮 a11y** | `alarm/components/zabbixGuide/index.tsx` | 3 个复制按钮同上 |
+| **图标按钮 a11y** | `alarm/(pages)/incidents/components/collaboration/index.tsx` | "更多"图标按钮加 `aria-label={t('common.more')}` + `aria-hidden` |
+| **删除按钮 danger** | `alarm/(pages)/settings/shieldStrategy/page.tsx` | 行删除按钮加 `danger` |
+| **删除按钮 danger** | `alarm/(pages)/settings/alertAssign/page.tsx` | 同上 |
+| **删除按钮 danger** | `alarm/(pages)/settings/correlationRules/page.tsx` | 同上 + Modal.confirm 加 `okButtonProps:{danger:true}` |
+| **删除按钮 danger + 清色** | `alarm/(pages)/settings/globalConfig/components/levelManagementPanel.tsx` | 加 `danger`；顺手移除硬编码 `text-[#2F6BFF]` className（让 antd 走 token） |
+| **删除 confirm okButtonProps** | `alarm/(pages)/settings/globalConfig/page.tsx` | 等级删除 Modal.confirm |
+| **取消关联 confirm** | `alarm/(pages)/incidents/detail/page.tsx` | "取消关联告警" Modal.confirm 加 `okButtonProps:{danger:true}` |
+| **通用删除 hook** | `alarm/hooks/useSettingsTable.ts` | 通用删除 Modal.confirm 加 `okButtonProps:{danger:true}` |
+| **保守跳过** | `alarm/(pages)/alarms/components/alarmAction.tsx:103` | 动态 `type` 不明（可能是 resolve/close/delete 任意），未加 danger，等明确语义再处理 |
+| **P1 语义色集中化（新增）** | `alarm/constants/colors.ts` | 新建集中常量文件：`BRAND` / `NEUTRAL` / `STATUS_TEXT` / `HEALTH_BG` / `SOURCE_LOGO` / `SOURCE_LOGO_FALLBACK` |
+| **P1 替换 inline hex** | `alarm/(pages)/settings/alertAssign/page.tsx` | `'#00ba6c'` / `'#CE241B'` → `STATUS_TEXT.ACTIVE_GREEN` / `INACTIVE_RED` |
+| **P1 替换 inline hex** | `alarm/(pages)/settings/shieldStrategy/page.tsx` | 同上 |
+| **P1 替换 inline hex** | `alarm/(pages)/settings/globalConfig/page.tsx` | `'#F43B2C'` fallback → `BRAND.FAIL` |
+| **P1 替换 inline hex** | `alarm/(pages)/settings/globalConfig/components/levelManagementPanel.tsx` | `'#FFAD42'` / `'#fff'` → `BRAND.LEVEL_FALLBACK_AMBER` / `NEUTRAL.ON_DARK_FG` |
+| **P1 替换 inline hex** | `alarm/(pages)/settings/globalConfig/components/levelFormModal.tsx` | `'#fff'` → `NEUTRAL.ON_DARK_FG` |
+| **P1 替换 inline hex** | `alarm/(pages)/integration/components/SummaryStats.tsx` | 6 处趋势色/SVG fill/iconBg → 对应常量引用 |
+| **P1 重构** | `alarm/(pages)/integration/utils/health.ts` | 健康状态 6 元组 + LOGO_COLORS Map 改为引用集中常量 |
+| **P1 替换 inline hex** | `alarm/constants/level.tsx` | `'#fff'` → `NEUTRAL.ON_DARK_FG` |
+
+### 15.3 运营分析（ops-analysis）模块（截至 2026-06-01）
+
+| 类别 | 文件 | 改动 |
+|---|---|---|
+| **图标按钮 a11y** | `ops-analysis/(pages)/view/dashBoard/index.tsx` | 裸 `<button>MoreOutlined`、`<Button>EditOutlined` 加 `aria-label`；`PlusOutlined` 图标加 `aria-hidden` |
+| **图标按钮 a11y** | `ops-analysis/components/sidebar.tsx` | `MoreOutlined` 按钮加 `aria-label={t('common.more')}` + 图标 `aria-hidden` |
+| **图标按钮 a11y** | `ops-analysis/(pages)/view/topology/components/toolbar.tsx` | `DeleteOutlined`/`SettingOutlined` 加 `aria-label` + 图标 `aria-hidden`（虽有 Tooltip 仍需 aria-label） |
+| **删除按钮 danger** | `ops-analysis/(pages)/settings/dataSource/page.tsx` | 行删除按钮加 `danger` + Modal.confirm 加 `okButtonProps:{danger:true}` |
+| **删除按钮 danger** | `ops-analysis/(pages)/settings/namespace/page.tsx` | 同上 |
+| **删除 confirm okButtonProps** | `ops-analysis/components/sidebar.tsx` | 目录删除 Modal.confirm |
+| **删除 confirm okButtonProps** | `ops-analysis/(pages)/view/dashBoard/index.tsx` | 移除 widget 的 Modal.confirm |
+| **废弃 prop 迁移** | `ops-analysis/(pages)/view/page.tsx` | `okType:'danger'`（antd 已弃用）→ `okButtonProps:{danger:true}` |
+
+### 15.4 P1 范围说明（语义色集中化）
+
+- **alarm 模块已完成**（见 §15.2 末尾 9 行 P1 条目）：新建 `alarm/constants/colors.ts`，把所有 inline-style hex 替换为 import 引用，hex 值原样保留，视觉零变化。
+- **ops-analysis 模块本批次不做**：该模块的语义色已分别落在 `topology/constants/nodeDefaults.ts`、`constants/common.ts`、`constants/threshold.ts` 三个常量文件，已天然集中，剩余散落主要是 Tailwind arbitrary class（`bg-[#1677ff15]` 等），不影响 import 集中化目标。改 Tailwind 需触配置或转 inline style，列入下一阶段。
+- **共同未做**：所有 Tailwind arbitrary value 形式的 hex（`bg-[#xxx]`/`text-[#xxx]`/`border-[#xxx]`）。这部分需要 Tailwind config 引入 named colors 或大量 inline style 重写，风险与收益比不划算，登记在 §16 P3 项。
 
 ---
 
