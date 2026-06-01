@@ -2690,9 +2690,12 @@ class ToolsNodes(BasicNode):
                         _rm_content = getattr(_rm, "content", "")
                         _parsed = _json_cache.loads(_rm_content) if isinstance(_rm_content, str) else _rm_content
                         if isinstance(_parsed, dict) and "_deployments_full" in _parsed:
-                            _analysis_cache["deployments"] = _parsed["_deployments_full"]
+                            # 追加而非覆盖，支持分页场景下多次调用累积结果
+                            if "deployments" not in _analysis_cache:
+                                _analysis_cache["deployments"] = []
+                            _analysis_cache["deployments"].extend(_parsed["_deployments_full"])
                             _analysis_cache["cluster_name"] = _parsed.get("cluster_name", "")
-                            logger.info(f"[{trace_id}] 缓存分析结果: {len(_parsed['_deployments_full'])} 个 deployment")
+                            logger.info(f"[{trace_id}] 缓存分析结果: 本次 {len(_parsed['_deployments_full'])} 个，累计 {len(_analysis_cache['deployments'])} 个 deployment")
                             # 剥离完整数据，只保留精简摘要进入 LLM context
                             _parsed.pop("_deployments_full", None)
                             _rm.content = _json_cache.dumps(_parsed, ensure_ascii=False)

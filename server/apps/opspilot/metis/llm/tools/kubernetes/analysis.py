@@ -490,6 +490,27 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
         all_items = deployments.items
         total_count = len(all_items)
 
+        # 大规模集群保护：超过 100 个且未指定 name 时，强制要求缩小范围
+        if not name and total_count > 100:
+            # 统计各 namespace 的 deployment 数量，供用户选择
+            ns_counts = {}
+            for d in all_items:
+                ns = d.metadata.namespace
+                ns_counts[ns] = ns_counts.get(ns, 0) + 1
+            ns_list = sorted(ns_counts.items(), key=lambda x: -x[1])[:15]
+
+            return json.dumps({
+                "error": "scope_too_large",
+                "total": total_count,
+                "namespace_distribution": [{"namespace": ns, "count": c} for ns, c in ns_list],
+                "_next_step_hint": (
+                    f"集群中有 {total_count} 个 Deployment，超过分析上限（100）。"
+                    "【必须】调用 request_user_choice 工具让用户选择要检查的命名空间，"
+                    "然后用 namespace 参数重新调用 analyze_deployment_configurations。"
+                    "禁止在不指定 namespace 的情况下继续分析。"
+                ),
+            })
+
         # 如果指定了 name，只分析该 deployment
         if name:
             all_items = [d for d in all_items if d.metadata.name == name]
@@ -653,7 +674,8 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
             {
                 "issue": _neutralize(issue),
                 "count": len(workloads),
-                "workloads": workloads,
+                "workloads": workloads[:10],
+                "truncated": len(workloads) > 10,
             }
             for issue, workloads in sorted(_issue_to_workloads.items(), key=lambda x: -len(x[1]))
         ]
