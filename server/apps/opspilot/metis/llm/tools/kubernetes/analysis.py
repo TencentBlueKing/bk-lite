@@ -624,15 +624,6 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
                 "不要调用 get_kubernetes_resource_yaml，修复方案基于分析数据直接生成。"
             )
 
-        # 构建按问题类型聚合的摘要（精简版返回给 LLM）
-        _issue_counter: dict = {}
-        for a in analysis_results:
-            for issue in a.get("issues", []):
-                _issue_counter[issue] = _issue_counter.get(issue, 0) + 1
-            for c in a.get("config_analysis", {}).get("containers", []):
-                for ci in c.get("issues", []):
-                    _issue_counter[ci] = _issue_counter.get(ci, 0) + 1
-
         # 安全术语中性化（仅摘要文本）
         _term_neutralize = {
             "privileged": "特权模式",
@@ -645,11 +636,6 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
             for sensitive, neutral in _term_neutralize.items():
                 text = text.replace(sensitive, neutral)
             return text
-
-        issues_summary = [
-            f"{_neutralize(issue)}（{count} 个工作负载）"
-            for issue, count in sorted(_issue_counter.items(), key=lambda x: -x[1])
-        ]
 
         # 构建按问题类型到工作负载名称的映射（供 LLM 输出报告时使用真实名称）
         _issue_to_workloads: dict = {}
@@ -680,7 +666,6 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
             "offset": offset,
             "limit": limit,
             "has_more": (offset + len(analysis_results)) < total_count,
-            "issues_summary": issues_summary,
             "issues_detail": issues_detail,
             "_next_step_hint": "".join(_hint_parts),
             # 完整数据供缓存使用，会在进入 LLM context 前被剥离
