@@ -350,9 +350,9 @@ async def host_metrics(request):
 
     agent_id = request.headers.get("agent_id", "")
     instance_id = request.headers.get("instance_id")
-    instance_type = request.headers.get("instance_type", "host")
-    collect_type = request.headers.get("collect_type")
-    config_type = request.headers.get("config_type")
+    instance_type = request.headers.get("instance_type", "os")
+    collect_type = request.headers.get("collect_type", "http")
+    config_type = request.headers.get("config_type", "host")
 
     if not host or not username or not password:
         current_timestamp = int(time.time() * 1000)

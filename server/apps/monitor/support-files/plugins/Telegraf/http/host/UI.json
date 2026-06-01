@@ -1,10 +1,10 @@
 {
   "object_name": "Host",
-  "instance_type": "host",
+  "instance_type": "os",
   "collect_type": "http",
   "config_type": ["host"],
   "collector": "Telegraf",
-  "instance_id": "{{cloud_region}}_host_{{host}}",
+  "instance_id": "{{cloud_region}}_{{instance_type}}_{{host}}",
   "form_fields": [
     {
       "name": "host",
