@@ -5,16 +5,29 @@
   height: 100%;
   border-right: 1px solid var(--color-border-1, #e5e6eb);
   background: var(--color-bg-1, #fff);
-  transition: width 0.3s ease, min-width 0.3s ease, opacity 0.3s ease;
+  transition: width 0.3s ease, min-width 0.3s ease;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  flex-shrink: 0;
 
   &.collapsed {
     width: 0;
     min-width: 0;
     border-right: none;
+  }
+}
+
+.sidebarInner {
+  display: flex;
+  flex-direction: column;
+  width: 160px;
+  height: 100%;
+  overflow: hidden;
+  transition: opacity 0.2s ease;
+
+  .collapsed & {
     opacity: 0;
+    pointer-events: none;
   }
 }
 

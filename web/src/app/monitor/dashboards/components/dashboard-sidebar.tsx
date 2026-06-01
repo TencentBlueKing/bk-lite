@@ -41,27 +41,29 @@ export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) =>
 
   return (
     <div className={`${styles.sidebar} ${collapsed ? styles.collapsed : ''}`}>
-      <div className={styles.searchBox}>
-        <Input.Search
-          placeholder="搜索..."
-          size="small"
-          className={styles.searchInput}
-          value={searchValue}
-          onChange={(e) => setSearchValue(e.target.value)}
-          allowClear
-        />
-      </div>
-      <div className={styles.list}>
-        {filteredItems.map((item) => (
-          <div
-            key={item.key}
-            className={`${styles.item} ${normalizeDashboardKey(item.key) === normalizedCurrent ? styles.active : ''}`}
-            onClick={() => handleSelect(item.key)}
-          >
-            <span className={styles.itemIcon}>{item.icon}</span>
-            <span>{item.label}</span>
-          </div>
-        ))}
+      <div className={styles.sidebarInner}>
+        <div className={styles.searchBox}>
+          <Input.Search
+            placeholder="搜索..."
+            size="small"
+            className={styles.searchInput}
+            value={searchValue}
+            onChange={(e) => setSearchValue(e.target.value)}
+            allowClear
+          />
+        </div>
+        <div className={styles.list}>
+          {filteredItems.map((item) => (
+            <div
+              key={item.key}
+              className={`${styles.item} ${normalizeDashboardKey(item.key) === normalizedCurrent ? styles.active : ''}`}
+              onClick={() => handleSelect(item.key)}
+            >
+              <span className={styles.itemIcon}>{item.icon}</span>
+              <span>{item.label}</span>
+            </div>
+          ))}
+        </div>
       </div>
       <div className={styles.toggleBtn} onClick={() => setCollapsed(!collapsed)}>
         {collapsed ? <RightOutlined /> : <LeftOutlined />}
