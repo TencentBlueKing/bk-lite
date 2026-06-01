@@ -658,26 +658,26 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
                 text = text.replace(sensitive, neutral)
             return text
 
-        # 问题到严重等级的映射
+        # 问题到严重等级的映射（key 须与 analysis 中 append 的文本完全一致）
         _issue_severity = {
             "明文敏感信息": "critical",
             "特权模式容器": "critical",
             "使用hostNetwork": "critical",
             "使用hostPID": "critical",
             "使用hostIPC": "critical",
-            "可能以 root 用户运行": "medium",
-            "未设置 capabilities drop ALL": "medium",
-            "未设置 readOnlyRootFilesystem": "medium",
+            "可能以root用户运行": "medium",
+            "未设置capabilities drop ALL": "medium",
+            "未设置readOnlyRootFilesystem": "medium",
             "未禁止权限提升": "medium",
-            "使用 default ServiceAccount": "medium",
-            "单副本部署，存在单点故障风险": "medium",
-            "未设置资源请求 (Requests)": "high",
-            "未设置资源限制 (Limits)": "high",
-            "未配置存活探针 (Liveness Probe)": "high",
-            "未配置就绪探针 (Readiness Probe)": "high",
-            "使用 Recreate 更新策略": "high",
-            "使用 :latest 标签": "high",
-            "未明确设置 imagePullPolicy": "low",
+            "使用default ServiceAccount": "medium",
+            "单副本部署": "medium",
+            "未设置资源请求": "high",
+            "未设置资源限制": "high",
+            "未配置存活探针": "high",
+            "未配置就绪探针": "high",
+            "Recreate": "high",
+            ":latest": "high",
+            "imagePullPolicy": "low",
         }
 
         def _get_severity(issue_text: str) -> str:
