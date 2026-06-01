@@ -39,9 +39,16 @@ export interface TrendChartPanelProps {
     fillOpacity?: number;
     strokeOpacity?: number;
     strokeWidth?: number;
-    unit?: string;
+    strokeDasharray?: string;
+    unit?: MetricUnit;
   }>;
+  xAxisTimeFormat?: string;
+  leftAxisWidthOverride?: number;
+  allowSelect?: boolean;
   onXRangeChange?: (range: [Dayjs, Dayjs]) => void;
+  bodyTop?: React.ReactNode;
+  bodyBottom?: React.ReactNode;
+  chartWrapClassName?: string;
   className?: string;
   styles: TrendChartPanelStyles;
 }
@@ -56,7 +63,13 @@ export const TrendChartPanel = ({
   unit,
   loading = false,
   seriesStyles,
+  xAxisTimeFormat = 'HH:mm',
+  leftAxisWidthOverride = 44,
+  allowSelect = false,
   onXRangeChange,
+  bodyTop,
+  bodyBottom,
+  chartWrapClassName,
   className,
   styles
 }: TrendChartPanelProps) => {
@@ -68,7 +81,7 @@ export const TrendChartPanel = ({
   }));
 
   return (
-    <div className={className}>
+    <div className={[styles.panel, className].filter(Boolean).join(' ')}>
       <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
         <div className={styles.panelHeading}>
           <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
@@ -92,18 +105,21 @@ export const TrendChartPanel = ({
           ))}
         </div>
       </div>
-      <div className={styles.chartWrap}>
+      {bodyTop}
+      <div className={chartWrapClassName ? `${styles.chartWrap} ${chartWrapClassName}` : styles.chartWrap}>
         <EChartsLineChart
           data={data}
           metric={metric}
           unit={unit}
           loading={loading}
-          xAxisTimeFormat="HH:mm"
-          leftAxisWidthOverride={44}
+          xAxisTimeFormat={xAxisTimeFormat}
+          leftAxisWidthOverride={leftAxisWidthOverride}
           seriesStyles={computedSeriesStyles}
+          allowSelect={allowSelect}
           onXRangeChange={onXRangeChange}
         />
       </div>
+      {bodyBottom}
     </div>
   );
 };

@@ -47,7 +47,7 @@ export const HorizontalBarPanel = ({
   styles
 }: HorizontalBarPanelProps) => {
   return (
-    <div className={className}>
+    <div className={[styles.panel, className].filter(Boolean).join(' ')}>
       <div className={styles.panelHeader}>
         <div className={styles.panelHeading}>
           <h3 className={styles.panelTitle}>

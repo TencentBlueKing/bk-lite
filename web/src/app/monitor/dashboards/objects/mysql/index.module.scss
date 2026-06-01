@@ -1,22 +1,4 @@
-.page {
-  height: calc(100vh - 88px);
-  width: 100%;
-  overflow-y: auto;
-  background: linear-gradient(180deg, #f6f8fc 0%, #f5f7fb 100%);
-  color: #22324a;
-  font-family: Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-}
-
-.shell {
-  width: 100%;
-  padding: 18px 20px 28px;
-  box-sizing: border-box;
-}
-
-.page :global(.ant-spin-nested-loading),
-.page :global(.ant-spin-container) {
-  width: 100%;
-}
+@import '../common/simple-dashboard.module.scss';
 
 .modeContent {
   width: 100%;
@@ -344,14 +326,6 @@
   color: #22324a;
   font-size: 18px;
   font-weight: 700;
-}
-
-.panel,
-.statCard {
-  background: #ffffff;
-  border: 1px solid #e4ebf3;
-  border-radius: 14px;
-  box-shadow: 0 4px 16px rgba(18, 34, 66, 0.04);
 }
 
 .statCard {
@@ -688,10 +662,6 @@
   height: 14px;
   border-radius: 4px;
   box-shadow: inset 0 0 0 1px rgba(19, 33, 56, 0.04);
-}
-
-.panel {
-  padding: 16px;
 }
 
 .chartPanel {
@@ -3280,7 +3250,7 @@
 
 @media (max-width: 1600px) {
   .primaryGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .thirdChartPanel {
@@ -3348,7 +3318,7 @@
 
   .primaryGrid,
   .allMetricsGrid {
-    grid-template-columns: repeat(1, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .dataFlow {
@@ -3528,6 +3498,12 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .chartWrap,
+  .compactChartWrap,
+  .replicationChartWrap {
+    height: 160px;
+  }
+
   .actionButtons {
     width: 100%;
   }
@@ -3588,5 +3564,11 @@
   .primaryGrid,
   .allMetricsGrid {
     grid-template-columns: 1fr;
+  }
+
+  .chartWrap,
+  .compactChartWrap,
+  .replicationChartWrap {
+    height: 130px;
   }
 }

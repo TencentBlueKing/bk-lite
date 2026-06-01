@@ -10,15 +10,15 @@ import {
 } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
-import EChartsLineChart from '../../shared/widgets/echarts-line-chart';
-import { InlineRingChart } from '../../shared/widgets/inline-ring-chart';
 import {
   StatCard,
   CollectionStatusCard,
   TitleWithGuide,
-  InstanceSelector,
   DashboardPageHeader,
-  DashboardInstanceCard
+  DashboardInstanceCard,
+  TrendChartPanel,
+  RingChartPanel,
+  HorizontalBarPanel
 } from '../../shared/widgets';
 import {
   buildSearchParams,
@@ -35,13 +35,14 @@ import {
   buildMetricItem,
   mergeChartSeries,
   getCollectionStatus,
-  runWithConcurrency
+  runWithConcurrency,
+  formatMetricValue
 } from '../../shared/utils';
 import useViewApi from '@/app/monitor/api/view';
 import MetricViews from '@/app/monitor/components/metric-views';
 import useMonitorApi from '@/app/monitor/api';
 import { useTranslation } from '@/utils/i18n';
-import { ChartData, MetricItem, TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
+import { ChartData, TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
 import {
   DASHBOARD_METRICS,
   MONGODB_COLLECTION_STATUS_QUERY,
@@ -100,55 +101,6 @@ const MONGODB_METRIC_GROUPS = [
   }
 ];
 
-const formatBinary = (value: number) => {
-  if (!Number.isFinite(value)) {
-    return { value: '--', unit: '' };
-  }
-
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let next = value;
-  let idx = 0;
-  while (Math.abs(next) >= 1024 && idx < units.length - 1) {
-    next /= 1024;
-    idx += 1;
-  }
-  return {
-    value: next >= 100 ? next.toFixed(0) : next.toFixed(1),
-    unit: units[idx]
-  };
-};
-
-const formatBinaryPerSecond = (value: number) => {
-  const formatted = formatBinary(value);
-  return {
-    ...formatted,
-    unit: formatted.unit ? `${formatted.unit}/s` : ''
-  };
-};
-
-const formatRuntimeNs = (value: number) => {
-  if (!Number.isFinite(value)) {
-    return { value: '--', unit: '' };
-  }
-
-  const seconds = value / 1e9;
-  if (seconds < 60) {
-    return { value: seconds.toFixed(0), unit: 's' };
-  }
-
-  if (seconds < 3600) {
-    return { value: (seconds / 60).toFixed(seconds >= 600 ? 0 : 1), unit: 'min' };
-  }
-
-  if (seconds < 86400) {
-    return { value: (seconds / 3600).toFixed(seconds >= 36000 ? 0 : 1), unit: 'h' };
-  }
-
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  return { value: `${days}d ${hours}h`, unit: '' };
-};
-
 const countRestartsInRange = (data: ChartData[] = []) => {
   const points = [...data]
     .map((point) => ({
@@ -179,54 +131,6 @@ const countRestartsInRange = (data: ChartData[] = []) => {
   return restartCount;
 };
 
-const formatLatencyNs = (value: number) => {
-  if (!Number.isFinite(value)) {
-    return { value: '--', unit: '' };
-  }
-
-  if (value < 1e3) {
-    return { value: value.toFixed(0), unit: 'ns' };
-  }
-
-  if (value < 1e6) {
-    return { value: (value / 1e3).toFixed(value >= 1e5 ? 0 : 1), unit: 'us' };
-  }
-
-  if (value < 1e9) {
-    return { value: (value / 1e6).toFixed(value >= 1e8 ? 0 : 1), unit: 'ms' };
-  }
-
-  return { value: (value / 1e9).toFixed(2), unit: 's' };
-};
-
-const formatMetricValue = (value: number, unit: MetricUnit) => {
-  if (!Number.isFinite(value)) {
-    return { value: '--', unit: '' };
-  }
-
-  switch (unit) {
-    case 'ns':
-      return formatLatencyNs(value);
-    case 'percent':
-      return { value: value.toFixed(1), unit: '%' };
-    case 'cps':
-      return { value: value >= 100 ? value.toFixed(0) : value.toFixed(1), unit: '/s' };
-    case 'byteps':
-      return formatBinaryPerSecond(value);
-    case 'bytes':
-      return formatBinary(value);
-    case 'mebibytes':
-      return formatBinary(value * MEBIBYTE);
-    case 'counts':
-      return { value: value.toFixed(0), unit: '' };
-    case 'none':
-      return { value: value.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1'), unit: '' };
-    default:
-      return { value: value.toFixed(1), unit: '' };
-  }
-};
-
-
 const multiplyChartDataValues = (data: ChartData[], factor: number) =>
   data.map((point) => {
     const next: ChartData = { ...point };
@@ -245,7 +149,7 @@ export default function MongoDashboardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [displayMode, setDisplayMode] = useState<'dashboard' | 'metrics'>('dashboard');
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({ timeRange: [], originValue: 15 });
   const [timeDefaultValue, setTimeDefaultValue] = useState<TimeSelectorDefaultValue>({
@@ -502,7 +406,6 @@ export default function MongoDashboardPage() {
   const cacheMax = getLatest('mongodb_wtcache_max_bytes_configured');
   const cacheDirty = getLatest('mongodb_wtcache_tracked_dirty_bytes');
   const cacheUsageRatio = getLatest('mongodb_wtcache_usage_ratio');
-  const cacheDirtyRatio = getLatest('mongodb_wtcache_dirty_ratio');
   const netIn = getLatest('mongodb_net_in_bytes_count_rate');
   const netOut = getLatest('mongodb_net_out_bytes_count_rate');
   const cursorTimedOut = getLatest('mongodb_cursor_timed_out_count');
@@ -512,24 +415,23 @@ export default function MongoDashboardPage() {
   const collectionStatusTimeline = buildCollectionStatusTimeline(collectionStatusMetric?.loadState, collectionStatusMetric?.viewData);
   const metricEmptyText = collectionStatus.label === '异常' ? '查询失败' : '暂无采集数据';
 
-  const uptimeDisplay = formatRuntimeNs(uptimeValue);
+  const uptimeDisplay = formatMetricValue(uptimeValue / 1e9, 's');
   const connectionsDisplay = formatMetricValue(currentConnections, 'counts');
   const commandsDisplay = formatMetricValue(commandsRate, 'cps');
   const queriesDisplay = formatMetricValue(queriesRate, 'cps');
   const writesDisplay = formatMetricValue(writesRate, 'cps');
-  const readLatencyDisplay = formatLatencyNs(readLatency);
-  const commandLatencyDisplay = formatLatencyNs(commandLatency);
+  const readLatencyDisplay = formatMetricValue(readLatency, 'ns');
+  const commandLatencyDisplay = formatMetricValue(commandLatency, 'ns');
   const pageFaultDisplay = formatMetricValue(pageFaults, 'cps');
   const cacheUsageDisplay = formatMetricValue(cacheUsageRatio, 'percent');
-  const cacheDirtyRatioDisplay = formatMetricValue(cacheDirtyRatio, 'percent');
-  const cacheCurrentDisplay = formatBinary(cacheCurrent);
-  const cacheMaxDisplay = formatBinary(cacheMax);
-  const cacheDirtyDisplay = formatBinary(cacheDirty);
+  const cacheCurrentDisplay = formatMetricValue(cacheCurrent, 'bytes');
+  const cacheMaxDisplay = formatMetricValue(cacheMax, 'bytes');
+  const cacheDirtyDisplay = formatMetricValue(cacheDirty, 'bytes');
   const residentDisplay = formatMetricValue(residentMemory, 'mebibytes');
   const virtualDisplay = formatMetricValue(virtualMemory, 'mebibytes');
   const allocatedDisplay = formatMetricValue(allocatedMemory, 'bytes');
-  const netInDisplay = formatBinaryPerSecond(netIn);
-  const netOutDisplay = formatBinaryPerSecond(netOut);
+  const netInDisplay = formatMetricValue(netIn, 'byteps');
+  const netOutDisplay = formatMetricValue(netOut, 'byteps');
 
   const startupTimeDisplay =
     Number.isFinite(uptimeValue) && uptimeValue >= 0
@@ -542,7 +444,6 @@ export default function MongoDashboardPage() {
       ? { label: '期间有重启', tone: 'warning' as const, detail: '' }
       : { label: '运行正常', tone: 'success' as const, detail: '' };
 
-  const connectionCompare = getPeriodCompare(currentConnections, getLatestChartValue(previousMetricMap.mongodb_connections_current?.viewData || []));
   const throughputCompare = getPeriodCompare(commandsRate, getLatestChartValue(previousMetricMap.mongodb_commands_rate?.viewData || []));
   const cacheCompare = getPeriodCompare(cacheUsageRatio, getLatestChartValue(previousMetricMap.mongodb_wtcache_usage_ratio?.viewData || []));
 
@@ -677,12 +578,6 @@ export default function MongoDashboardPage() {
   const networkTrendGuide = [
     { label: '网络流量趋势', detail: '同时展示 MongoDB 网络入流量和出流量，判断请求接收与结果返回的压力。单位：自动换算（B/s、KB/s、MB/s）。' }
   ];
-  const queueGuide = [
-    { label: '连接与排队', detail: '展示当前连接、打开连接、可用连接以及读写排队情况。' }
-  ];
-  const cacheDetailGuide = [
-    { label: 'WiredTiger 缓存状态', detail: '展示缓存使用率、缓存上限、脏数据占比与脏数据体量。' }
-  ];
   const memoryDetailGuide = [
     { label: '内存与缺页', detail: '展示常驻内存、虚拟内存、已分配内存和缺页频率。' }
   ];
@@ -692,11 +587,6 @@ export default function MongoDashboardPage() {
   const metricsOverviewGuide = [
     { label: '监控指标全景', detail: '这里承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。' }
   ];
-  const cachePressureTone =
-    cacheUsageRatio >= 90 || cacheDirtyRatio >= 25 ? 'danger' : cacheUsageRatio >= 75 || cacheDirtyRatio >= 12 ? 'warn' : 'normal';
-  const queueBacklog = queuedReads + queuedWrites;
-  const queueTone = queueBacklog >= 10 ? 'danger' : queueBacklog >= 3 ? 'warn' : 'normal';
-
   return (
     <div className={styles.page}>
       <div className={styles.shell}>
@@ -790,7 +680,6 @@ export default function MongoDashboardPage() {
                       <span>打开 {renderMetricValue('mongodb_open_connections', formatMetricValue(openConnections, 'counts').value)}</span>
                     </>
                   }
-                  compare={connectionCompare}
                   trendData={metricMap.mongodb_connections_current?.viewData || []}
                   noDataType={getNoDataType('mongodb_connections_current')}
                 />
@@ -850,312 +739,128 @@ export default function MongoDashboardPage() {
               </div>
 
               <div className={styles.mainTrendGrid}>
-                <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
-                  <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                    <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
-                      <TitleWithGuide styles={styles} title="吞吐趋势" items={throughputTrendGuide} className={styles.panelTitleWithGuide} />
-                    </h3>
-                    <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>命令、查询与写入变化</div>
-                    <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
-                      {TREND_LEGENDS.throughput.map((item) => (
-                        <span key={item.label} className={styles.chartLegendItem}>
-                          <span className={styles.chartLegendDot} style={{ background: item.color }} />
-                          {item.label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className={styles.chartWrap}>
-                    <EChartsLineChart
-                      data={buildThroughputSeries}
-                      metric={buildMetricItem(metricMap.mongodb_commands_rate || { ...DASHBOARD_METRICS[4], viewData: [], loadState: 'success' })}
-                      seriesStyles={TREND_LEGENDS.throughput.map((item) => ({ color: item.color, unit: 'cps' }))}
-                      allowSelect={false}
-                      onXRangeChange={onXRangeChange}
-                    />
-                  </div>
-                </div>
+                <TrendChartPanel
+                  styles={styles}
+                  className={styles.thirdChartPanel}
+                  title={<TitleWithGuide styles={styles} title="吞吐趋势" items={throughputTrendGuide} className={styles.panelTitleWithGuide} />}
+                  subtitle="命令、查询与写入变化"
+                  legends={TREND_LEGENDS.throughput}
+                  data={buildThroughputSeries}
+                  metric={buildMetricItem(metricMap.mongodb_commands_rate || { ...DASHBOARD_METRICS[4], viewData: [], loadState: 'success' })}
+                  unit="cps"
+                  seriesStyles={TREND_LEGENDS.throughput.map((item) => ({ color: item.color, unit: 'cps' }))}
+                  onXRangeChange={onXRangeChange}
+                />
 
-                <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
-                  <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                    <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
-                      <TitleWithGuide styles={styles} title="缓存与内存趋势" items={cacheTrendGuide} className={styles.panelTitleWithGuide} />
-                    </h3>
-                    <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>缓存已用、缓存上限与常驻内存</div>
-                    <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
-                      {TREND_LEGENDS.cache.map((item) => (
-                        <span key={item.label} className={styles.chartLegendItem}>
-                          <span
-                            className={item.dashed ? styles.chartLegendDash : styles.chartLegendDot}
-                            style={item.dashed ? { borderTopColor: item.color } : { background: item.color }}
-                          />
-                          {item.label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className={styles.chartWrap}>
-                    <EChartsLineChart
-                      data={cacheTrendData}
-                      unit="bytes"
-                      metric={buildMetricItem(metricMap.mongodb_wtcache_current_bytes || { ...DASHBOARD_METRICS[17], viewData: [], loadState: 'success' })}
-                      seriesStyles={[
-                        { color: TREND_LEGENDS.cache[0].color, unit: 'bytes' },
-                        { color: TREND_LEGENDS.cache[1].color, strokeDasharray: '5 5', unit: 'bytes' },
-                        { color: TREND_LEGENDS.cache[2].color, unit: 'bytes' }
-                      ]}
-                      allowSelect={false}
-                      onXRangeChange={onXRangeChange}
-                    />
-                  </div>
-                </div>
+                <TrendChartPanel
+                  styles={styles}
+                  className={styles.thirdChartPanel}
+                  title={<TitleWithGuide styles={styles} title="缓存与内存趋势" items={cacheTrendGuide} className={styles.panelTitleWithGuide} />}
+                  subtitle="缓存已用、上限与常驻内存"
+                  legends={TREND_LEGENDS.cache}
+                  data={cacheTrendData}
+                  metric={buildMetricItem(metricMap.mongodb_wtcache_current_bytes || { ...DASHBOARD_METRICS[17], viewData: [], loadState: 'success' })}
+                  unit="bytes"
+                  seriesStyles={[
+                    { color: TREND_LEGENDS.cache[0].color, unit: 'bytes' },
+                    { color: TREND_LEGENDS.cache[1].color, strokeDasharray: '5 5', unit: 'bytes' },
+                    { color: TREND_LEGENDS.cache[2].color, unit: 'bytes' }
+                  ]}
+                  onXRangeChange={onXRangeChange}
+                />
 
-                <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
-                  <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                    <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
-                      <TitleWithGuide styles={styles} title="读写压力趋势" items={pressureTrendGuide} className={styles.panelTitleWithGuide} />
-                    </h3>
-                    <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>活跃读写与排队读写</div>
-                    <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
-                      {TREND_LEGENDS.pressure.map((item) => (
-                        <span key={item.label} className={styles.chartLegendItem}>
-                          <span className={styles.chartLegendDot} style={{ background: item.color }} />
-                          {item.label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className={styles.chartWrap}>
-                    <EChartsLineChart
-                      data={pressureTrendData}
-                      metric={buildMetricItem(metricMap.mongodb_active_reads || { ...DASHBOARD_METRICS[10], viewData: [], loadState: 'success' })}
-                      seriesStyles={TREND_LEGENDS.pressure.map((item) => ({ color: item.color, unit: 'counts' }))}
-                      allowSelect={false}
-                      onXRangeChange={onXRangeChange}
-                    />
-                  </div>
-                </div>
+                <TrendChartPanel
+                  styles={styles}
+                  className={styles.thirdChartPanel}
+                  title={<TitleWithGuide styles={styles} title="读写压力趋势" items={pressureTrendGuide} className={styles.panelTitleWithGuide} />}
+                  subtitle="活跃读写与排队读写"
+                  legends={TREND_LEGENDS.pressure}
+                  data={pressureTrendData}
+                  metric={buildMetricItem(metricMap.mongodb_active_reads || { ...DASHBOARD_METRICS[10], viewData: [], loadState: 'success' })}
+                  unit="counts"
+                  seriesStyles={TREND_LEGENDS.pressure.map((item) => ({ color: item.color, unit: 'counts' }))}
+                  onXRangeChange={onXRangeChange}
+                />
               </div>
 
               <div className={styles.detailGrid}>
-                <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                  <div className={styles.panelHeader}>
-                    <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="连接分布" items={connectionGuide} className={styles.panelTitleWithGuide} /></h3>
-                      <div className={styles.panelSubTitle}>当前与可用连接占比</div>
-                    </div>
-                  </div>
-                  <div className={styles.ringCard}>
-                    <div className={styles.ringChartWrap}>
-                      <InlineRingChart
-                        data={[
-                          { name: '当前连接', value: hasMetricData('mongodb_connections_current') ? currentConnections : 0, color: '#2f6bff' },
-                          { name: '可用连接', value: hasMetricData('mongodb_connections_available') ? availableConnections : 0, color: '#e8f0fe' }
-                        ]}
-                      />
-                      <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
-                        <div className={styles.ringValue}>{renderMetricValue('mongodb_connections_current', formatMetricValue(currentConnections, 'counts').value)}</div>
-                        <div className={styles.ringCaption}>当前连接</div>
-                      </div>
-                    </div>
-                    <div className={styles.ringInfoPanel}>
-                      <div className={styles.metricList}>
-                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
-                          <span className={styles.metricKey}>
-                            <span className={styles.metricLabelGroup}>
-                              <span className={styles.metricDot} style={{ background: '#2f6bff' }} />
-                              <span className={styles.metricName}>当前连接</span>
-                            </span>
-                          </span>
-                          <span className={styles.metricValueGroup}>
-                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_connections_current', formatMetricValue(currentConnections, 'counts').value)}</span>
-                          </span>
-                        </div>
-                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
-                          <span className={styles.metricKey}>
-                            <span className={styles.metricLabelGroup}>
-                              <span className={styles.metricDot} style={{ background: '#e8f0fe' }} />
-                              <span className={styles.metricName}>可用连接</span>
-                            </span>
-                          </span>
-                          <span className={styles.metricValueGroup}>
-                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_connections_available', formatMetricValue(availableConnections, 'counts').value)}</span>
-                          </span>
-                        </div>
-                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
-                          <span className={styles.metricKey}>
-                            <span className={styles.metricLabelGroup}>
-                              <span className={styles.metricDot} style={{ background: '#27c274' }} />
-                              <span className={styles.metricName}>打开连接</span>
-                            </span>
-                          </span>
-                          <span className={styles.metricValueGroup}>
-                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_open_connections', formatMetricValue(openConnections, 'counts').value)}</span>
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <RingChartPanel
+                  styles={styles}
+                  className={styles.quarterPanel}
+                  title={<TitleWithGuide styles={styles} title="连接分布" items={connectionGuide} className={styles.panelTitleWithGuide} />}
+                  subtitle="当前、可用与打开连接"
+                  data={[
+                    { name: '当前连接', value: hasMetricData('mongodb_connections_current') ? currentConnections : 0, color: '#2f6bff' },
+                    { name: '可用连接', value: hasMetricData('mongodb_connections_available') ? availableConnections : 0, color: '#e8f0fe' }
+                  ]}
+                  centerValue={renderMetricValue('mongodb_connections_current', formatMetricValue(currentConnections, 'counts').value)}
+                  centerCaption="当前连接"
+                  infoRows={[
+                    { name: '当前连接', color: '#2f6bff', primary: renderMetricValue('mongodb_connections_current', formatMetricValue(currentConnections, 'counts').value) },
+                    { name: '可用连接', color: '#e8f0fe', primary: renderMetricValue('mongodb_connections_available', formatMetricValue(availableConnections, 'counts').value) },
+                    { name: '打开连接', color: '#27c274', primary: renderMetricValue('mongodb_open_connections', formatMetricValue(openConnections, 'counts').value) }
+                  ]}
+                />
 
-                <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                  <div className={styles.panelHeader}>
-                    <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="WiredTiger 缓存" items={cacheGuide} className={styles.panelTitleWithGuide} /></h3>
-                      <div className={styles.panelSubTitle}>缓存占用与脏数据分布</div>
-                    </div>
-                  </div>
-                  <div className={styles.ringCard}>
-                    <div className={styles.ringChartWrap}>
-                      <InlineRingChart
-                        data={(() => {
-                          const used = hasMetricData('mongodb_wtcache_current_bytes') ? cacheCurrent : 0;
-                          const dirty = hasMetricData('mongodb_wtcache_tracked_dirty_bytes') ? cacheDirty : 0;
-                          const max = hasMetricData('mongodb_wtcache_max_bytes_configured') && cacheMax > 0 ? cacheMax : used;
-                          const free = Math.max(max - used, 0);
-                          return [
-                            { name: '已用', value: used - dirty, color: '#2f6bff' },
-                            { name: '脏数据', value: dirty, color: '#fa8c16' },
-                            { name: '空闲', value: free, color: '#e8f0fe' }
-                          ];
-                        })()}
-                      />
-                      <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
-                        <div className={styles.ringValue}>{hasMetricData('mongodb_wtcache_usage_ratio') ? `${cacheUsageDisplay.value}%` : '--'}</div>
-                        <div className={styles.ringCaption}>缓存使用率</div>
-                      </div>
-                    </div>
-                    <div className={styles.ringInfoPanel}>
-                      <div className={styles.metricList}>
-                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
-                          <span className={styles.metricKey}>
-                            <span className={styles.metricLabelGroup}>
-                              <span className={styles.metricDot} style={{ background: '#2f6bff' }} />
-                              <span className={styles.metricName}>缓存已用</span>
-                            </span>
-                          </span>
-                          <span className={styles.metricValueGroup}>
-                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_wtcache_current_bytes', `${cacheCurrentDisplay.value}${cacheCurrentDisplay.unit}`)}</span>
-                          </span>
-                        </div>
-                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
-                          <span className={styles.metricKey}>
-                            <span className={styles.metricLabelGroup}>
-                              <span className={styles.metricDot} style={{ background: '#fa8c16' }} />
-                              <span className={styles.metricName}>脏数据</span>
-                            </span>
-                          </span>
-                          <span className={styles.metricValueGroup}>
-                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_wtcache_tracked_dirty_bytes', `${cacheDirtyDisplay.value}${cacheDirtyDisplay.unit}`)}</span>
-                          </span>
-                        </div>
-                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
-                          <span className={styles.metricKey}>
-                            <span className={styles.metricLabelGroup}>
-                              <span className={styles.metricDot} style={{ background: '#e8f0fe' }} />
-                              <span className={styles.metricName}>缓存上限</span>
-                            </span>
-                          </span>
-                          <span className={styles.metricValueGroup}>
-                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_wtcache_max_bytes_configured', `${cacheMaxDisplay.value}${cacheMaxDisplay.unit}`)}</span>
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <RingChartPanel
+                  styles={styles}
+                  className={styles.quarterPanel}
+                  title={<TitleWithGuide styles={styles} title="WiredTiger 缓存" items={cacheGuide} className={styles.panelTitleWithGuide} />}
+                  subtitle="缓存占用与脏数据分布"
+                  data={(() => {
+                    const used = hasMetricData('mongodb_wtcache_current_bytes') ? cacheCurrent : 0;
+                    const dirty = hasMetricData('mongodb_wtcache_tracked_dirty_bytes') ? cacheDirty : 0;
+                    const max = hasMetricData('mongodb_wtcache_max_bytes_configured') && cacheMax > 0 ? cacheMax : used;
+                    const free = Math.max(max - used, 0);
+                    return [
+                      { name: '已用', value: used - dirty, color: '#2f6bff' },
+                      { name: '脏数据', value: dirty, color: '#fa8c16' },
+                      { name: '空闲', value: free, color: '#e8f0fe' }
+                    ];
+                  })()}
+                  centerValue={hasMetricData('mongodb_wtcache_usage_ratio') ? `${cacheUsageDisplay.value}%` : '--'}
+                  centerCaption="缓存使用率"
+                  infoRows={[
+                    { name: '缓存已用', color: '#2f6bff', primary: renderMetricValue('mongodb_wtcache_current_bytes', `${cacheCurrentDisplay.value}${cacheCurrentDisplay.unit}`) },
+                    { name: '脏数据', color: '#fa8c16', primary: renderMetricValue('mongodb_wtcache_tracked_dirty_bytes', `${cacheDirtyDisplay.value}${cacheDirtyDisplay.unit}`) },
+                    { name: '缓存上限', color: '#e8f0fe', primary: renderMetricValue('mongodb_wtcache_max_bytes_configured', `${cacheMaxDisplay.value}${cacheMaxDisplay.unit}`) }
+                  ]}
+                />
 
-                <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                  <div className={styles.panelHeader}>
-                    <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="操作类型分布" items={throughputGuide} className={styles.panelTitleWithGuide} /></h3>
-                      <div className={styles.panelSubTitle}>按命令类型占比</div>
-                    </div>
-                  </div>
-                  <div className={styles.ringCard}>
-                    <div className={styles.ringChartWrap}>
-                      <InlineRingChart
-                        data={[
-                          { name: '命令', value: hasMetricData('mongodb_commands_rate') ? commandsRate : 0, color: '#27c274' },
-                          { name: '查询', value: hasMetricData('mongodb_queries_rate') ? queriesRate : 0, color: '#5b8ff9' },
-                          { name: '写入', value: hasMetricData('mongodb_write_ops_rate') ? writesRate : 0, color: '#ff9f43' }
-                        ]}
-                      />
-                      <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
-                        <div className={styles.ringValue}>{hasMetricData('mongodb_commands_rate') ? formatMetricValue(commandsRate + queriesRate + writesRate, 'cps').value : '--'}</div>
-                        <div className={styles.ringCaption}>总吞吐 /s</div>
-                      </div>
-                    </div>
-                    <div className={styles.ringInfoPanel}>
-                      <div className={styles.metricList}>
-                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
-                          <span className={styles.metricKey}>
-                            <span className={styles.metricLabelGroup}>
-                              <span className={styles.metricDot} style={{ background: '#27c274' }} />
-                              <span className={styles.metricName}>命令</span>
-                            </span>
-                          </span>
-                          <span className={styles.metricValueGroup}>
-                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_commands_rate', `${commandsDisplay.value}${commandsDisplay.unit}`)}</span>
-                          </span>
-                        </div>
-                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
-                          <span className={styles.metricKey}>
-                            <span className={styles.metricLabelGroup}>
-                              <span className={styles.metricDot} style={{ background: '#5b8ff9' }} />
-                              <span className={styles.metricName}>查询</span>
-                            </span>
-                          </span>
-                          <span className={styles.metricValueGroup}>
-                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_queries_rate', `${queriesDisplay.value}${queriesDisplay.unit}`)}</span>
-                          </span>
-                        </div>
-                        <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
-                          <span className={styles.metricKey}>
-                            <span className={styles.metricLabelGroup}>
-                              <span className={styles.metricDot} style={{ background: '#ff9f43' }} />
-                              <span className={styles.metricName}>写入</span>
-                            </span>
-                          </span>
-                          <span className={styles.metricValueGroup}>
-                            <span className={styles.metricPercent}>{renderMetricValue('mongodb_write_ops_rate', `${writesDisplay.value}${writesDisplay.unit}`)}</span>
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <RingChartPanel
+                  styles={styles}
+                  className={styles.quarterPanel}
+                  title={<TitleWithGuide styles={styles} title="操作类型分布" items={throughputGuide} className={styles.panelTitleWithGuide} />}
+                  subtitle="命令、查询与写入占比"
+                  data={[
+                    { name: '命令', value: hasMetricData('mongodb_commands_rate') ? commandsRate : 0, color: '#27c274' },
+                    { name: '查询', value: hasMetricData('mongodb_queries_rate') ? queriesRate : 0, color: '#5b8ff9' },
+                    { name: '写入', value: hasMetricData('mongodb_write_ops_rate') ? writesRate : 0, color: '#ff9f43' }
+                  ]}
+                  centerValue={hasMetricData('mongodb_commands_rate') ? formatMetricValue(commandsRate + queriesRate + writesRate, 'cps').value : '--'}
+                  centerCaption="总吞吐 /s"
+                  infoRows={[
+                    { name: '命令', color: '#27c274', primary: renderMetricValue('mongodb_commands_rate', `${commandsDisplay.value}${commandsDisplay.unit}`) },
+                    { name: '查询', color: '#5b8ff9', primary: renderMetricValue('mongodb_queries_rate', `${queriesDisplay.value}${queriesDisplay.unit}`) },
+                    { name: '写入', color: '#ff9f43', primary: renderMetricValue('mongodb_write_ops_rate', `${writesDisplay.value}${writesDisplay.unit}`) }
+                  ]}
+                />
 
-                <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                  <div className={styles.panelHeader}>
-                    <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="读写压力" items={pressureTrendGuide} className={styles.panelTitleWithGuide} /></h3>
-                      <div className={styles.panelSubTitle}>活跃与排队操作数</div>
-                    </div>
-                  </div>
-                  <div className={`${styles.bars} ${styles.compactBars} ${styles.barsFull}`}>
-                    {(() => {
-                      const maxVal = Math.max(activeReads, activeWrites, queuedReads, queuedWrites, 1);
-                      return [
-                        { label: '活跃读', value: activeReads, display: renderMetricValue('mongodb_active_reads', formatMetricValue(activeReads, 'counts').value), color: '#27c274', max: maxVal },
-                        { label: '活跃写', value: activeWrites, display: renderMetricValue('mongodb_active_writes', formatMetricValue(activeWrites, 'counts').value), color: '#5b8ff9', max: maxVal },
-                        { label: '排队读', value: queuedReads, display: renderMetricValue('mongodb_queued_reads', formatMetricValue(queuedReads, 'counts').value), color: '#fa8c16', max: maxVal },
-                        { label: '排队写', value: queuedWrites, display: renderMetricValue('mongodb_queued_writes', formatMetricValue(queuedWrites, 'counts').value), color: '#ff4d4f', max: maxVal }
-                      ];
-                    })().map((item) => (
-                      <div key={item.label} className={styles.barRow}>
-                        <div className={styles.barLabel}>{item.label}</div>
-                        <div className={styles.barTrack}>
-                          <div
-                            className={styles.barFill}
-                            style={{ width: `${Math.min((item.value / item.max) * 100, 100)}%`, background: item.color }}
-                          />
-                        </div>
-                        <div className={styles.barValue}>{item.display}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <HorizontalBarPanel
+                  styles={styles}
+                  className={styles.quarterPanel}
+                  title={<TitleWithGuide styles={styles} title="读写压力" items={pressureTrendGuide} className={styles.panelTitleWithGuide} />}
+                  subtitle="活跃与排队操作数"
+                  items={(() => {
+                    const maxVal = Math.max(activeReads, activeWrites, queuedReads, queuedWrites, 1);
+                    return [
+                      { label: '活跃读', value: activeReads, display: renderMetricValue('mongodb_active_reads', formatMetricValue(activeReads, 'counts').value), color: '#27c274', max: maxVal },
+                      { label: '活跃写', value: activeWrites, display: renderMetricValue('mongodb_active_writes', formatMetricValue(activeWrites, 'counts').value), color: '#5b8ff9', max: maxVal },
+                      { label: '排队读', value: queuedReads, display: renderMetricValue('mongodb_queued_reads', formatMetricValue(queuedReads, 'counts').value), color: '#fa8c16', max: maxVal },
+                      { label: '排队写', value: queuedWrites, display: renderMetricValue('mongodb_queued_writes', formatMetricValue(queuedWrites, 'counts').value), color: '#ff4d4f', max: maxVal }
+                    ];
+                  })()}
+                />
               </div>
 
               <div className={styles.detailGrid}>
@@ -1185,35 +890,22 @@ export default function MongoDashboardPage() {
                   </div>
                 </div>
 
-                <div className={`${styles.panel} ${styles.halfWidePanel} ${styles.compactChartPanel}`}>
-                  <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                    <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
-                      <TitleWithGuide styles={styles} title="网络流量趋势" items={networkTrendGuide} className={styles.panelTitleWithGuide} />
-                    </h3>
-                    <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>入流量与出流量</div>
-                    <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
-                      {TREND_LEGENDS.network.map((item) => (
-                        <span key={item.label} className={styles.chartLegendItem}>
-                          <span className={styles.chartLegendDot} style={{ background: item.color }} />
-                          {item.label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className={`${styles.chartWrap} ${styles.compactChartWrap}`}>
-                    <EChartsLineChart
-                      data={networkTrendData}
-                      unit="byteps"
-                      metric={buildMetricItem(metricMap.mongodb_net_in_bytes_count_rate || { ...DASHBOARD_METRICS[22], viewData: [], loadState: 'success' })}
-                      seriesStyles={[
-                        { color: TREND_LEGENDS.network[0].color, unit: 'byteps' },
-                        { color: TREND_LEGENDS.network[1].color, unit: 'byteps' }
-                      ]}
-                      allowSelect={false}
-                      onXRangeChange={onXRangeChange}
-                    />
-                  </div>
-                </div>
+                <TrendChartPanel
+                  styles={styles}
+                  className={`${styles.halfWidePanel} ${styles.compactChartPanel}`}
+                  chartWrapClassName={styles.compactChartWrap}
+                  title={<TitleWithGuide styles={styles} title="网络流量趋势" items={networkTrendGuide} className={styles.panelTitleWithGuide} />}
+                  subtitle="入流量与出流量"
+                  legends={TREND_LEGENDS.network}
+                  data={networkTrendData}
+                  metric={buildMetricItem(metricMap.mongodb_net_in_bytes_count_rate || { ...DASHBOARD_METRICS[22], viewData: [], loadState: 'success' })}
+                  unit="byteps"
+                  seriesStyles={[
+                    { color: TREND_LEGENDS.network[0].color, unit: 'byteps' },
+                    { color: TREND_LEGENDS.network[1].color, unit: 'byteps' }
+                  ]}
+                  onXRangeChange={onXRangeChange}
+                />
               </div>
             </>
           ) : (

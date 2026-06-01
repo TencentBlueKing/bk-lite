@@ -2,15 +2,27 @@ import MysqlDashboard from './objects/mysql';
 import MongodbDashboard from './objects/mongodb';
 import RedisDashboard from './objects/redis';
 import ElasticsearchDashboard from './objects/elasticsearch';
+import HostDashboard from './objects/host';
 import MssqlDashboard from './objects/mssql';
 import NginxDashboard from './objects/nginx';
+import PingDashboard from './objects/ping';
 import PostgresqlDashboard from './objects/postgresql';
 import { ProfessionalDashboardRegistryItem } from './shared/types';
+import WebsiteDashboard from './objects/website';
 import { normalizeDashboardKey } from './shared/utils';
+
+export const PROFESSIONAL_DASHBOARD_GROUPS = {
+  hardware: { label: '硬件设备', order: 10 },
+  os: { label: '操作系统', order: 20 },
+  network: { label: '网络', order: 30 },
+  database: { label: '数据库', order: 40 },
+  middleware: { label: '中间件', order: 50 }
+} as const;
 
 export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
   {
     key: 'mysql',
+    groupKey: 'database',
     objectName: 'Mysql',
     objectDisplayName: 'MySQL',
     inheritedPermissionPath: '/monitor/view',
@@ -18,6 +30,7 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
   },
   {
     key: 'redis',
+    groupKey: 'database',
     objectName: 'Redis',
     objectDisplayName: 'Redis',
     inheritedPermissionPath: '/monitor/view',
@@ -25,6 +38,7 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
   },
   {
     key: 'mongodb',
+    groupKey: 'database',
     objectName: 'Mongodb',
     objectDisplayName: 'MongoDB',
     inheritedPermissionPath: '/monitor/view',
@@ -32,6 +46,7 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
   },
   {
     key: 'mssql',
+    groupKey: 'database',
     objectName: 'MSSQL',
     objectDisplayName: 'MSSQL',
     inheritedPermissionPath: '/monitor/view',
@@ -39,6 +54,7 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
   },
   {
     key: 'nginx',
+    groupKey: 'middleware',
     objectName: 'nginx',
     objectDisplayName: 'Nginx',
     inheritedPermissionPath: '/monitor/view',
@@ -47,6 +63,7 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
   {
     key: 'postgres',
     aliases: ['postgresql'],
+    groupKey: 'database',
     objectName: 'Postgres',
     objectDisplayName: 'PostgreSQL',
     inheritedPermissionPath: '/monitor/view',
@@ -54,10 +71,37 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
   },
   {
     key: 'elasticsearch',
+    groupKey: 'database',
     objectName: 'ElasticSearch',
     objectDisplayName: 'Elasticsearch',
     inheritedPermissionPath: '/monitor/view',
     component: ElasticsearchDashboard
+  },
+  {
+    key: 'host',
+    aliases: ['os', '主机'],
+    groupKey: 'os',
+    objectName: 'Host',
+    objectDisplayName: '主机',
+    inheritedPermissionPath: '/monitor/view',
+    component: HostDashboard
+  },
+  {
+    key: 'website',
+    aliases: ['web', '网站'],
+    groupKey: 'network',
+    objectName: 'Website',
+    objectDisplayName: '网站',
+    inheritedPermissionPath: '/monitor/view',
+    component: WebsiteDashboard
+  },
+  {
+    key: 'ping',
+    groupKey: 'network',
+    objectName: 'Ping',
+    objectDisplayName: 'Ping',
+    inheritedPermissionPath: '/monitor/view',
+    component: PingDashboard
   }
 ];
 

@@ -6,15 +6,10 @@ import {
   DatabaseOutlined,
   ThunderboltOutlined,
   ClockCircleOutlined,
-  NodeIndexOutlined,
-  CodeOutlined,
-  DesktopOutlined,
-  HddOutlined
+  NodeIndexOutlined
 } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
-import EChartsLineChart from '../../shared/widgets/echarts-line-chart';
-import { InlineRingChart } from '../../shared/widgets/inline-ring-chart';
 import useViewApi from '@/app/monitor/api/view';
 import MetricViews from '@/app/monitor/components/metric-views';
 import { useTranslation } from '@/utils/i18n';
@@ -53,9 +48,11 @@ import {
   StatCard,
   CollectionStatusCard,
   TitleWithGuide,
-  InstanceSelector,
   DashboardPageHeader,
-  DashboardInstanceCard
+  DashboardInstanceCard,
+  TrendChartPanel,
+  RingChartPanel,
+  HorizontalBarPanel
 } from '../../shared/widgets';
 
 interface MysqlInstanceOption {
@@ -315,7 +312,7 @@ export default function MysqlDashboardPage() {
   const searchParams = useSearchParams();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const loadSeqRef = useRef(0);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [displayMode, setDisplayMode] = useState<'dashboard' | 'metrics'>('dashboard');
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({
     timeRange: [],
@@ -926,102 +923,6 @@ export default function MysqlDashboardPage() {
     <span key="timezone" className={styles.instanceMetaInline}>时区: Asia/Shanghai</span>
   ].filter(Boolean) as React.ReactNode[];
   const replicationApplicable = mysqlIdentity.role === '从库' || hasReplicationData;
-  const renderFlowValue = (name: string, value: string, unit = '') => (hasMetricData(name) ? `${value}${unit}` : '--');
-  const requestFlowNodes: Array<{
-    title: string;
-    subTitle: string;
-    icon: React.ReactNode;
-    className?: string;
-    metrics: Array<{ label: string; value: string }>;
-  }> = [
-    {
-      title: '客户端 / 连接',
-      subTitle: '请求入口',
-      icon: <DesktopOutlined />,
-      metrics: [
-        { label: 'QPS', value: `${qpsCardDisplay.value}${qpsCardDisplay.unit}` },
-        {
-          label: '当前连接',
-          value: hasMetricData('mysql_threads_connected') ? threadsConnectedValue.toFixed(0) : '--'
-        },
-        { label: '连接使用率', value: `${connCardDisplay.value}${connCardDisplay.unit}` }
-      ]
-    },
-    {
-      title: 'MySQL 实例',
-      subTitle: '实例信息',
-      icon: <DatabaseOutlined />,
-      metrics: [
-        { label: '部署', value: mysqlIdentity.deployment },
-        { label: '身份', value: mysqlIdentity.role },
-        { label: '运行时长', value: uptimeDisplay },
-      ]
-    },
-    {
-      title: 'SQL 执行',
-      subTitle: '查询 / 锁等待',
-      icon: <CodeOutlined />,
-      metrics: [
-        { label: 'SELECT', value: renderFlowValue('mysql_com_select_rate', selectValue.toFixed(1), '/s') },
-        { label: '慢查询', value: `${slowCardDisplay.value}${slowCardDisplay.unit}` },
-        {
-          label: '锁等待',
-          value: renderFlowValue('mysql_innodb_row_lock_waits_rate', (lockWaitRate * 60).toFixed(lockWaitRate * 60 >= 10 ? 0 : 1), '/min')
-        }
-      ]
-    },
-    {
-      title: '存储引擎 InnoDB',
-      subTitle: '进入缓存、日志与落盘',
-      icon: <HddOutlined />,
-      className: styles.mysqlPathNodeEngine,
-      metrics: [
-        { label: '命中率', value: `${hitCardDisplay.value}${hitCardDisplay.unit}` },
-        { label: '磁盘 I/O', value: renderFlowValue('mysql_innodb_data_writes_rate', dataWriteValue.toFixed(1), '/s') },
-        { label: '脏页', value: renderFlowValue('mysql_buffer_pool_dirty_ratio', bpDirtyValue.toFixed(1), '%') }
-      ]
-    }
-  ];
-  const bufferFlowMetrics = [
-    {
-      label: '命中率',
-      value: `${hitCardDisplay.value}${hitCardDisplay.unit}`
-    },
-    {
-      label: '使用率',
-      value: renderFlowValue('mysql_buffer_pool_used_ratio', bufferPoolUsedValue.toFixed(1), '%')
-    },
-    {
-      label: '脏页',
-      value: renderFlowValue('mysql_buffer_pool_dirty_ratio', bpDirtyValue.toFixed(1), '%')
-    }
-  ];
-  const bufferPoolGuide = [
-    { label: '方格含义', detail: '这里固定用 25 个格子做示意图，不代表真实页数。' },
-    { label: '橙色方格', detail: '表示脏页，数量约等于“脏页 × 25”，对应下方“脏页”。如果脏页为 0%，就不会出现橙色格子。' },
-    { label: '蓝色方格', detail: '表示已使用但不是脏页的缓冲页，数量约等于“(使用率 - 脏页) × 25”。' },
-    { label: '灰色方格', detail: '表示空闲页，数量约等于“(100% - 使用率) × 25”。' },
-    { label: '命中率', detail: '命中率和这 25 个格子的分布无关，单独看下方“命中率”。' }
-  ];
-  const redoLogGuide = [
-    { label: 'Redo 日志', detail: '事务提交时会先进入内存中的 Redo 缓冲。' },
-    { label: 'Redo 刷盘', detail: '随后由刷盘动作写入日志文件，数值越高表示落盘更频繁。' }
-  ];
-  const tempTableGuide = [
-    { label: '临时表', detail: '展示 SQL 执行过程中产生的临时表速率。' },
-    { label: '总临时表', detail: '表示所有临时表的总生成速率。' },
-    { label: '磁盘临时表', detail: '表示落到磁盘的临时表速率，升高通常意味着排序、分组或结果集开销增加。' }
-  ];
-  const dataFileGuide = [
-    { label: '数据文件', detail: '表示 InnoDB 数据页最终读写到磁盘数据文件的结果。' },
-    { label: '读 IOPS', detail: '每秒读取数据页的次数。' },
-    { label: '写 IOPS', detail: '每秒写入数据页的次数。' }
-  ];
-  const redoFileGuide = [
-    { label: 'Redo 日志文件', detail: '表示 Redo 最终落盘到日志文件后的结果视角。' },
-    { label: 'Redo 刷盘', detail: '每秒刷盘次数，和左侧日志阶段说明对应，但这里只展示最终落盘结果。' },
-    { label: '复制延迟', detail: '仅主从场景下有效，表示从库落后主库的秒数。' }
-  ];
   const uptimeGuide = [
     { label: '运行时长', detail: '基于 `mysql_uptime` 计算实例自上次启动以来持续运行的时间。' },
     { label: '重启判断', detail: '如果当前观察窗口内 `mysql_uptime` 出现回退，说明期间发生过重启。' }
@@ -1041,10 +942,6 @@ export default function MysqlDashboardPage() {
   const hitRatioGuide = [
     { label: '缓冲池命中率', detail: '表示请求命中 Buffer Pool 的比例，越高通常表示随机读越少落到磁盘。' },
     { label: '搭配指标', detail: '需要和缓冲池使用率、脏页比例、写 IOPS 一起看，单看命中率不够。' }
-  ];
-  const flowGuide = [
-    { label: '数据流用途', detail: '按照请求入口、SQL 执行、InnoDB 缓冲、日志和落盘的顺序组织指标，帮助定位问题所在环节。' },
-    { label: '排查顺序', detail: '优先从左到右看异常是出在连接、SQL、缓存、临时表还是磁盘持久化。' }
   ];
   const qpsTrendGuide = [
     { label: 'QPS 趋势', detail: '查看查询吞吐在时间维度上的变化，用于识别波峰、波谷与突变。' },
@@ -1094,10 +991,6 @@ export default function MysqlDashboardPage() {
     { label: '监控指标全景', detail: '这里承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。' },
     { label: '适用场景', detail: '如果仪表盘只给出方向，这里负责补足细节与完整上下文。' }
   ];
-  const bufferFlowCellCount = 25;
-  const bufferFlowUsedCells = Math.round((bufferPoolUsedValue / 100) * bufferFlowCellCount);
-  const bufferFlowDirtyCells = Math.round((bpDirtyValue / 100) * bufferFlowCellCount);
-
   const onTimeChange = (val: number[], originValue: number | null) => {
     setTimeValues({
       timeRange: val,
@@ -1458,424 +1351,273 @@ export default function MysqlDashboardPage() {
                   </div> */}
 
                   <div className={styles.mainTrendGrid}>
-                    <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
-                      <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide styles={styles} title="QPS 趋势" items={qpsTrendGuide} className={styles.panelTitleWithGuide} /></h3>
-                        <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>总查询吞吐</div>
-                        <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
-                          {TREND_LEGENDS.qps.slice(0, 1).map((item) => (
-                            <span className={styles.chartLegendItem} key={item.label}>
-                              <span className={styles.chartLegendDot} style={{ background: item.color }} />
-                              {item.label}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div className={styles.chartWrap}>
-                        <EChartsLineChart
-                          data={qpsTrendData}
-                          metric={buildMetricItem(metricMap.mysql_queries_rate || dashboardMetrics[0])}
-                          unit="cps"
-                          xAxisTimeFormat="HH:mm"
-                          leftAxisWidthOverride={44}
-                          seriesStyles={TREND_LEGENDS.qps.slice(0, 1).map((item) => ({
-                            color: item.color,
-                            fillOpacity: 0.09,
-                            strokeOpacity: 1,
-                            strokeWidth: 2.8,
-                            unit: 'cps'
-                          }))}
-                          onXRangeChange={onXRangeChange}
-                        />
-                      </div>
-                    </div>
+                    <TrendChartPanel
+                      styles={styles}
+                      className={styles.thirdChartPanel}
+                      title={<TitleWithGuide styles={styles} title="QPS 趋势" items={qpsTrendGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="总查询吞吐"
+                      legends={TREND_LEGENDS.qps.slice(0, 1)}
+                      data={qpsTrendData}
+                      metric={buildMetricItem(metricMap.mysql_queries_rate || dashboardMetrics[0])}
+                      unit="cps"
+                      seriesStyles={TREND_LEGENDS.qps.slice(0, 1).map((item) => ({
+                        color: item.color,
+                        fillOpacity: 0.09,
+                        strokeOpacity: 1,
+                        strokeWidth: 2.8,
+                        unit: 'cps'
+                      }))}
+                      onXRangeChange={onXRangeChange}
+                    />
 
-                    <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
-                      <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide styles={styles} title="慢查询趋势" items={slowTrendGuide} className={styles.panelTitleWithGuide} /></h3>
-                        <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>每秒慢 SQL</div>
-                        <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
-                          {TREND_LEGENDS.qps.slice(1, 2).map((item) => (
-                            <span className={styles.chartLegendItem} key={item.label}>
-                              <span className={styles.chartLegendDot} style={{ background: item.color }} />
-                              {item.label}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div className={styles.chartWrap}>
-                        <EChartsLineChart
-                          data={slowQueryTrendData}
-                          metric={buildMetricItem(metricMap.mysql_slow_queries_rate || dashboardMetrics[0])}
-                          unit="cps"
-                          xAxisTimeFormat="HH:mm"
-                          leftAxisWidthOverride={44}
-                          seriesStyles={TREND_LEGENDS.qps.slice(1, 2).map((item) => ({
-                            color: item.color,
-                            fillOpacity: 0.08,
-                            strokeOpacity: 1,
-                            strokeWidth: 2.8,
-                            unit: 'cps'
-                          }))}
-                          onXRangeChange={onXRangeChange}
-                        />
-                      </div>
-                    </div>
+                    <TrendChartPanel
+                      styles={styles}
+                      className={styles.thirdChartPanel}
+                      title={<TitleWithGuide styles={styles} title="慢查询趋势" items={slowTrendGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="慢 SQL 速率"
+                      legends={TREND_LEGENDS.qps.slice(1, 2)}
+                      data={slowQueryTrendData}
+                      metric={buildMetricItem(metricMap.mysql_slow_queries_rate || dashboardMetrics[0])}
+                      unit="cps"
+                      seriesStyles={TREND_LEGENDS.qps.slice(1, 2).map((item) => ({
+                        color: item.color,
+                        fillOpacity: 0.08,
+                        strokeOpacity: 1,
+                        strokeWidth: 2.8,
+                        unit: 'cps'
+                      }))}
+                      onXRangeChange={onXRangeChange}
+                    />
 
-                    <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
-                      <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide styles={styles} title="连接与线程趋势" items={connectionTrendGuide} className={styles.panelTitleWithGuide} /></h3>
-                        <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>连接总量与执行线程</div>
-                        <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
-                          {TREND_LEGENDS.connection.map((item) => (
-                            <span className={styles.chartLegendItem} key={item.label}>
-                              <span
-                                className={`${styles.chartLegendDot} ${item.dashed ? styles.chartLegendDash : ''}`}
-                                style={{ background: item.dashed ? 'transparent' : item.color, borderColor: item.color }}
-                              />
-                              {item.label}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div className={styles.chartWrap}>
-                        <EChartsLineChart
-                          data={connectionTrendData}
-                          metric={buildMetricItem(metricMap.mysql_threads_connected || dashboardMetrics[0])}
-                          unit="counts"
-                          xAxisTimeFormat="HH:mm"
-                          leftAxisWidthOverride={44}
-                          seriesStyles={TREND_LEGENDS.connection.map((item) => ({
-                            color: item.color,
-                            fillOpacity: item.primary ? 0.08 : 0.03,
-                            strokeOpacity: item.primary ? 1 : 0.68,
-                            strokeWidth: item.primary ? 2.8 : 2.2
-                          }))}
-                          onXRangeChange={onXRangeChange}
-                        />
-                      </div>
-                    </div>
+                    <TrendChartPanel
+                      styles={styles}
+                      className={styles.thirdChartPanel}
+                      title={<TitleWithGuide styles={styles} title="连接与线程趋势" items={connectionTrendGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="连接量与执行线程"
+                      legends={TREND_LEGENDS.connection}
+                      data={connectionTrendData}
+                      metric={buildMetricItem(metricMap.mysql_threads_connected || dashboardMetrics[0])}
+                      unit="counts"
+                      seriesStyles={TREND_LEGENDS.connection.map((item) => ({
+                        color: item.color,
+                        fillOpacity: item.primary ? 0.08 : 0.03,
+                        strokeOpacity: item.primary ? 1 : 0.68,
+                        strokeWidth: item.primary ? 2.8 : 2.2
+                      }))}
+                      onXRangeChange={onXRangeChange}
+                    />
                   </div>
 
                   <div className={styles.detailGrid}>
-                    <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                      <div className={styles.panelHeader}>
-                        <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="查询类型分布" items={queryTypeGuide} className={styles.panelTitleWithGuide} /></h3>
-                      <div className={styles.panelSubTitle}>按命令占比</div>
-                    </div>
-                  </div>
-                      <div className={styles.ringCard}>
-                        <div className={styles.ringChartWrap}>
-                          <InlineRingChart data={statementShareChartData} />
-                          <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
-                            <div className={styles.ringValue}>{totalStatements.toFixed(totalStatements >= 100 ? 0 : 1)}</div>
-                            <div className={styles.ringCaption}>总数 /s</div>
-                          </div>
-                        </div>
-                        <div className={styles.ringInfoPanel}>
-                          <div className={styles.metricList}>
-                            {statementShare.map((item) => (
-                              <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`} key={item.name}>
-                                <span className={styles.metricKey}>
-                                  <span className={styles.metricLabelGroup}>
-                                    <span className={styles.metricDot} style={{ background: item.color }} />
-                                    <span className={styles.metricName}>{item.name}</span>
-                                  </span>
-                                </span>
-                                <span className={styles.metricValueGroup}>
-                                  <span className={styles.metricPercent}>
-                                    {totalStatements > 0 ? ((item.value / totalStatements) * 100).toFixed(1) : '0.0'}%
-                                  </span>
-                                  <span className={styles.metricCount}>({item.value >= 100 ? item.value.toFixed(0) : item.value.toFixed(1)})</span>
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    <RingChartPanel
+                      styles={styles}
+                      className={styles.quarterPanel}
+                      title={<TitleWithGuide styles={styles} title="查询类型分布" items={queryTypeGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="查询、写入与更新占比"
+                      data={statementShareChartData}
+                      centerValue={totalStatements.toFixed(totalStatements >= 100 ? 0 : 1)}
+                      centerCaption="总数 /s"
+                    />
 
-                    <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                      <div className={styles.panelHeader}>
-                        <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="线程状态分布" items={threadStateGuide} className={styles.panelTitleWithGuide} /></h3>
-                          <div className={styles.panelSubTitle}>按线程当前状态占比</div>
-                        </div>
-                      </div>
-                      <div className={styles.ringCard}>
-                        <div className={styles.ringChartWrap}>
-                          <InlineRingChart data={threadShareChartData} />
-                          <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
-                            <div className={styles.ringValue}>{threadDistributionTotal.toFixed(0)}</div>
-                            <div className={styles.ringCaption}>当前总数</div>
-                          </div>
-                        </div>
-                        <div className={styles.ringInfoPanel}>
-                          <div className={styles.metricList}>
-                            {threadShare.map((item) => (
-                              <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`} key={item.name}>
-                                <span className={styles.metricKey}>
-                                  <span className={styles.metricLabelGroup}>
-                                    <span className={styles.metricDot} style={{ background: item.color }} />
-                                    <span className={styles.metricName}>{item.name}</span>
-                                  </span>
-                                </span>
-                                <span className={styles.metricValueGroup}>
-                                  <span className={styles.metricPercent}>
-                                    {threadDistributionTotal > 0 ? ((item.value / threadDistributionTotal) * 100).toFixed(1) : '0.0'}%
-                                  </span>
-                                  <span className={styles.metricCount}>({item.value.toFixed(0)})</span>
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    <RingChartPanel
+                      styles={styles}
+                      className={styles.quarterPanel}
+                      title={<TitleWithGuide styles={styles} title="线程状态分布" items={threadStateGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="空闲、执行与等待占比"
+                      data={threadShareChartData}
+                      centerValue={threadDistributionTotal.toFixed(0)}
+                      centerCaption="当前总数"
+                    />
 
-                    <div className={`${styles.panel} ${styles.quarterPanel} ${styles.fillPanel}`}>
-                  <div className={styles.panelHeader}>
-                    <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="临时表与缓存指标" items={tempCacheGuide} className={styles.panelTitleWithGuide} /></h3>
-                      <div className={styles.panelSubTitle}>临时表创建与表缓存变化</div>
-                    </div>
-                  </div>
-                      <div className={`${styles.bars} ${styles.compactBars} ${styles.barsFull}`}>
-                        {[
-                          {
-                            label: '磁盘临时表',
-                            value: tmpDiskRate * 60,
-                            display: `${(tmpDiskRate * 60).toFixed(tmpDiskRate * 60 >= 10 ? 0 : 1)} /min`,
-                            color: '#ff4d4f',
-                            max: Math.max(tmpTotalRate * 60, 1)
-                          },
-                          {
-                            label: '内存临时表',
-                            value: tmpMemoryRate * 60,
-                            display: `${(tmpMemoryRate * 60).toFixed(tmpMemoryRate * 60 >= 10 ? 0 : 1)} /min`,
-                            color: '#fa8c16',
-                            max: Math.max(tmpTotalRate * 60, 1)
-                          },
-                          {
-                            label: '表缓存未命中',
-                            value: tableCacheMissRate * 60,
-                            display: `${(tableCacheMissRate * 60).toFixed(tableCacheMissRate * 60 >= 10 ? 0 : 1)} /min`,
-                            color: '#faad14',
-                            max: Math.max((tableCacheMissRate + openedTablesRate) * 60, 1)
-                          },
-                          {
-                            label: '打开表速率',
-                            value: openedTablesRate * 60,
-                            display: `${(openedTablesRate * 60).toFixed(openedTablesRate * 60 >= 10 ? 0 : 1)} /min`,
-                            color: '#2f6bff',
-                            max: Math.max((openedTablesRate + tableCacheMissRate) * 60, 1)
-                          }
-                        ].map((item) => (
-                          <div key={item.label} className={styles.barRow}>
-                            <div className={styles.barLabel}>{item.label}</div>
-                            <div className={styles.barTrack}>
-                              <div
-                                className={styles.barFill}
-                                style={{ width: `${Math.min((item.value / item.max) * 100, 100)}%`, background: item.color }}
-                              />
-                            </div>
-                            <div className={styles.barValue}>{item.display}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    <HorizontalBarPanel
+                      styles={styles}
+                      className={`${styles.quarterPanel} ${styles.fillPanel}`}
+                      title={<TitleWithGuide styles={styles} title="临时表与缓存指标" items={tempCacheGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="临时表与表缓存变化"
+                      items={[
+                        {
+                          label: '磁盘临时表',
+                          value: tmpDiskRate * 60,
+                          display: `${(tmpDiskRate * 60).toFixed(tmpDiskRate * 60 >= 10 ? 0 : 1)} /min`,
+                          color: '#ff4d4f',
+                          max: Math.max(tmpTotalRate * 60, 1)
+                        },
+                        {
+                          label: '内存临时表',
+                          value: tmpMemoryRate * 60,
+                          display: `${(tmpMemoryRate * 60).toFixed(tmpMemoryRate * 60 >= 10 ? 0 : 1)} /min`,
+                          color: '#fa8c16',
+                          max: Math.max(tmpTotalRate * 60, 1)
+                        },
+                        {
+                          label: '表缓存未命中',
+                          value: tableCacheMissRate * 60,
+                          display: `${(tableCacheMissRate * 60).toFixed(tableCacheMissRate * 60 >= 10 ? 0 : 1)} /min`,
+                          color: '#faad14',
+                          max: Math.max((tableCacheMissRate + openedTablesRate) * 60, 1)
+                        },
+                        {
+                          label: '打开表速率',
+                          value: openedTablesRate * 60,
+                          display: `${(openedTablesRate * 60).toFixed(openedTablesRate * 60 >= 10 ? 0 : 1)} /min`,
+                          color: '#2f6bff',
+                          max: Math.max((openedTablesRate + tableCacheMissRate) * 60, 1)
+                        }
+                      ]}
+                    />
 
-                    <div className={`${styles.panel} ${styles.quarterPanel} ${styles.fillPanel}`}>
-                      <div className={styles.panelHeader}>
-                        <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="锁与等待指标" items={lockGuide} className={styles.panelTitleWithGuide} /></h3>
-                          <div className={styles.panelSubTitle}>事件速率 / 平均值</div>
+                    <HorizontalBarPanel
+                      styles={styles}
+                      className={`${styles.quarterPanel} ${styles.fillPanel}`}
+                      title={<TitleWithGuide styles={styles} title="锁与等待指标" items={lockGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="等待、断开与上限错误"
+                      items={[
+                        {
+                          label: '行锁等待',
+                          value: getMetricValue('mysql_innodb_row_lock_waits_rate', lockWaitRate * 60),
+                          display: renderMetricValue('mysql_innodb_row_lock_waits_rate', `${(lockWaitRate * 60).toFixed(lockWaitRate * 60 >= 10 ? 0 : 1)} /min`),
+                          color: '#ff4d4f',
+                          max: Math.max(getMetricValue('mysql_innodb_row_lock_waits_rate', lockWaitRate * 60), 1)
+                        },
+                        {
+                          label: '平均等待时间',
+                          value: getMetricValue('mysql_innodb_row_lock_time_avg', lockWait),
+                          display: renderMetricValue('mysql_innodb_row_lock_time_avg', `${lockWait.toFixed(lockWait >= 10 ? 0 : 1)} ms`),
+                          color: '#faad14',
+                          max: Math.max(getMetricValue('mysql_innodb_row_lock_time_avg', lockWait), 10)
+                        },
+                        {
+                          label: '连接尝试失败',
+                          value: getMetricValue('mysql_aborted_connects_rate', abortedConnectsRate * 60),
+                          display: renderMetricValue('mysql_aborted_connects_rate', `${(abortedConnectsRate * 60).toFixed(abortedConnectsRate * 60 >= 10 ? 0 : 1)} /min`),
+                          color: '#a855f7',
+                          max: Math.max(getMetricValue('mysql_aborted_connects_rate', abortedConnectsRate * 60), 1)
+                        },
+                        {
+                          label: '异常断开客户端',
+                          value: getMetricValue('mysql_aborted_clients_rate', abortedClientsRate * 60),
+                          display: renderMetricValue('mysql_aborted_clients_rate', `${(abortedClientsRate * 60).toFixed(abortedClientsRate * 60 >= 10 ? 0 : 1)} /min`),
+                          color: '#52c41a',
+                          max: Math.max(getMetricValue('mysql_aborted_clients_rate', abortedClientsRate * 60), 1)
+                        },
+                        {
+                          label: '达到连接上限',
+                          value: getMetricValue('mysql_connection_errors_max_connections_rate', maxConnectionErrorsRate * 60),
+                          display: renderMetricValue('mysql_connection_errors_max_connections_rate', `${(maxConnectionErrorsRate * 60).toFixed(maxConnectionErrorsRate * 60 >= 10 ? 0 : 1)} /min`),
+                          color: '#2f6bff',
+                          max: Math.max(getMetricValue('mysql_connection_errors_max_connections_rate', maxConnectionErrorsRate * 60), 1)
+                        }
+                      ]}
+                    />
+
+                    <TrendChartPanel
+                      styles={styles}
+                      className={styles.quarterPanel}
+                      title={<TitleWithGuide styles={styles} title="InnoDB 读写趋势" items={innodbTrendGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="读写与 Redo 刷盘"
+                      legends={TREND_LEGENDS.innodb}
+                      data={innodbTrendData}
+                      metric={buildMetricItem(metricMap.mysql_innodb_data_reads_rate || dashboardMetrics[0])}
+                      unit="cps"
+                      seriesStyles={TREND_LEGENDS.innodb.map((item) => ({
+                        color: item.color,
+                        fillOpacity: item.primary ? 0.08 : 0.03,
+                        strokeOpacity: item.primary ? 1 : 0.68,
+                        strokeWidth: item.primary ? 2.8 : 2.1
+                      }))}
+                      bodyBottom={(
+                        <div className={styles.inlineStats}>
+                          <div className={styles.inlineStat}><span>读 IOPS</span><strong>{dataReadValue.toFixed(1)}/s</strong></div>
+                          <div className={styles.inlineStat}><span>写 IOPS</span><strong>{dataWriteValue.toFixed(1)}/s</strong></div>
+                          <div className={styles.inlineStat}><span>Redo 刷盘</span><strong>{fsyncValue.toFixed(1)}/s</strong></div>
                         </div>
-                      </div>
-                      <div className={`${styles.bars} ${styles.compactBars} ${styles.barsFull}`}>
-                        {[
-                          {
-                            label: '行锁等待',
-                            value: getMetricValue('mysql_innodb_row_lock_waits_rate', lockWaitRate * 60),
-                            display: renderMetricValue('mysql_innodb_row_lock_waits_rate', `${(lockWaitRate * 60).toFixed(lockWaitRate * 60 >= 10 ? 0 : 1)} /min`),
-                            color: '#ff4d4f',
-                            max: Math.max(getMetricValue('mysql_innodb_row_lock_waits_rate', lockWaitRate * 60), 1)
-                          },
-                          {
-                            label: '平均等待时间',
-                            value: getMetricValue('mysql_innodb_row_lock_time_avg', lockWait),
-                            display: renderMetricValue('mysql_innodb_row_lock_time_avg', `${lockWait.toFixed(lockWait >= 10 ? 0 : 1)} ms`),
-                            color: '#faad14',
-                            max: Math.max(getMetricValue('mysql_innodb_row_lock_time_avg', lockWait), 10)
-                          },
-                          {
-                            label: '连接尝试失败',
-                            value: getMetricValue('mysql_aborted_connects_rate', abortedConnectsRate * 60),
-                            display: renderMetricValue('mysql_aborted_connects_rate', `${(abortedConnectsRate * 60).toFixed(abortedConnectsRate * 60 >= 10 ? 0 : 1)} /min`),
-                            color: '#a855f7',
-                            max: Math.max(getMetricValue('mysql_aborted_connects_rate', abortedConnectsRate * 60), 1)
-                          },
-                          {
-                            label: '异常断开客户端',
-                            value: getMetricValue('mysql_aborted_clients_rate', abortedClientsRate * 60),
-                            display: renderMetricValue('mysql_aborted_clients_rate', `${(abortedClientsRate * 60).toFixed(abortedClientsRate * 60 >= 10 ? 0 : 1)} /min`),
-                            color: '#52c41a',
-                            max: Math.max(getMetricValue('mysql_aborted_clients_rate', abortedClientsRate * 60), 1)
-                          },
-                          {
-                            label: '达到连接上限',
-                            value: getMetricValue('mysql_connection_errors_max_connections_rate', maxConnectionErrorsRate * 60),
-                            display: renderMetricValue('mysql_connection_errors_max_connections_rate', `${(maxConnectionErrorsRate * 60).toFixed(maxConnectionErrorsRate * 60 >= 10 ? 0 : 1)} /min`),
-                            color: '#2f6bff',
-                            max: Math.max(getMetricValue('mysql_connection_errors_max_connections_rate', maxConnectionErrorsRate * 60), 1)
-                          }
-                        ].map((item) => (
-                          <div key={item.label} className={styles.barRow}>
-                            <div className={styles.barLabel}>{item.label}</div>
-                            <div className={styles.barTrack}>
-                              <div
-                                className={styles.barFill}
-                                style={{ width: `${Math.min((item.value / item.max) * 100, 100)}%`, background: item.color }}
-                              />
-                            </div>
-                            <div className={styles.barValue}>{item.display}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                      )}
+                      onXRangeChange={onXRangeChange}
+                    />
 
-                    <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                  <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                    <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}><TitleWithGuide styles={styles} title="InnoDB 读写趋势" items={innodbTrendGuide} className={styles.panelTitleWithGuide} /></h3>
-                    <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>InnoDB 读写与 Redo 刷盘变化</div>
-                    <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
-                      {TREND_LEGENDS.innodb.map((item) => (
-                        <span className={styles.chartLegendItem} key={item.label}>
-                          <span className={styles.chartLegendDot} style={{ background: item.color }} />
-                          {item.label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                      <div className={styles.chartWrap}>
-                        <EChartsLineChart
-                          data={innodbTrendData}
-                          metric={buildMetricItem(metricMap.mysql_innodb_data_reads_rate || dashboardMetrics[0])}
-                          unit="cps"
-                          xAxisTimeFormat="HH:mm"
-                          seriesStyles={TREND_LEGENDS.innodb.map((item) => ({
-                            color: item.color,
-                            fillOpacity: item.primary ? 0.08 : 0.03,
-                            strokeOpacity: item.primary ? 1 : 0.68,
-                            strokeWidth: item.primary ? 2.8 : 2.1
-                          }))}
-                          onXRangeChange={onXRangeChange}
-                        />
-                      </div>
-                      <div className={styles.inlineStats}>
-                        <div className={styles.inlineStat}><span>读 IOPS</span><strong>{dataReadValue.toFixed(1)}/s</strong></div>
-                        <div className={styles.inlineStat}><span>写 IOPS</span><strong>{dataWriteValue.toFixed(1)}/s</strong></div>
-                        <div className={styles.inlineStat}><span>Redo 刷盘</span><strong>{fsyncValue.toFixed(1)}/s</strong></div>
-                      </div>
-                    </div>
-
-                    <div className={`${styles.panel} ${styles.quarterPanel} ${styles.fillPanel}`}>
-                      <div className={styles.panelHeader}>
-                        <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="缓冲池使用情况" items={bufferUsageGuide} className={styles.panelTitleWithGuide} /></h3>
-                          <div className={styles.panelSubTitle}>缓存页状态</div>
+                    <RingChartPanel
+                      styles={styles}
+                      className={`${styles.quarterPanel} ${styles.fillPanel}`}
+                      ringCardClassName={`${styles.bufferPoolRingCard} ${styles.ringCardRelaxed}`}
+                      ringChartWrapClassName={styles.bufferPoolChartWrap}
+                      title={<TitleWithGuide styles={styles} title="缓冲池使用情况" items={bufferUsageGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="已用、脏页与空闲页"
+                      data={bufferPoolShareChartData}
+                      centerValue={bufferPoolUsedValue.toFixed(0)}
+                      centerCaption="使用率"
+                      infoRows={bufferPoolBreakdown.map((item) => ({
+                        name: item.name,
+                        color: item.color,
+                        primary: `${item.percent.toFixed(1)}%`,
+                        secondary: `(${item.count.toLocaleString()})`
+                      }))}
+                      chartExtra={(
+                        <div className={styles.bufferPoolLegend}>
+                          {bufferPoolLegendItems.map((item) => (
+                            <span key={item.name}>
+                              <i style={{ background: item.color }} />
+                              {item.name}
+                            </span>
+                          ))}
                         </div>
-                      </div>
-                      <div className={`${styles.ringCard} ${styles.bufferPoolRingCard} ${styles.ringCardRelaxed} ${styles.fillBody}`}>
-                          <div className={`${styles.ringChartWrap} ${styles.bufferPoolChartWrap}`}>
-                            <InlineRingChart data={bufferPoolShareChartData} height={176} />
-                            <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
-                              <div className={styles.ringValue}>{bufferPoolUsedValue.toFixed(0)}%</div>
-                              <div className={styles.ringCaption}>使用率</div>
-                            </div>
-                            <div className={styles.bufferPoolLegend}>
-                              {bufferPoolLegendItems.map((item) => (
-                                <span key={item.name}>
-                                  <i style={{ background: item.color }} />
-                                  {item.name}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                          <div className={styles.ringInfoPanel}>
-                            <div className={styles.metricList}>
-                              {bufferPoolBreakdown.map((item) => (
-                                <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`} key={item.name}>
-                                  <span className={styles.metricKey}>
-                                    <span className={styles.metricLabelGroup}>
-                                      <span className={styles.metricDot} style={{ background: item.color }} />
-                                      <span className={styles.metricName}>{item.name}</span>
-                                    </span>
-                                  </span>
-                                  <span className={styles.metricValueGroup}>
-                                    <span className={styles.metricPercent}>{item.percent.toFixed(1)}%</span>
-                                    <span className={styles.metricCount}>({item.count.toLocaleString()})</span>
-                                  </span>
+                      )}
+                    />
+
+                    {replicationApplicable ? (
+                      <TrendChartPanel
+                        styles={styles}
+                        className={`${styles.quarterPanel} ${styles.fillPanel} ${styles.replicationCardRelaxed}`}
+                        chartWrapClassName={styles.replicationChartWrap}
+                        title={<TitleWithGuide styles={styles} title="复制状态" items={replicationGuide} className={styles.panelTitleWithGuide} />}
+                        subtitle="复制延迟与线程状态"
+                        legends={TREND_LEGENDS.replication}
+                        data={replicationTrendData}
+                        metric={buildMetricItem(metricMap.mysql_slave_seconds_behind_master || dashboardMetrics[0])}
+                        unit="s"
+                        seriesStyles={TREND_LEGENDS.replication.map((item) => ({
+                          color: item.color,
+                          fillOpacity: 0.08,
+                          strokeOpacity: 1,
+                          strokeWidth: 2.8,
+                          unit: 's'
+                        }))}
+                        bodyTop={(
+                          <div className={styles.replicationCard}>
+                            <div className={styles.replicationInfoBlock}>
+                              <div className={styles.replicationDelayBlock}>
+                                <div className={styles.replicationDelayLabel}>复制延迟</div>
+                                <div className={styles.replicationDelayValue}>
+                                  {hasReplicationData ? replicationDelayDisplay.value : '--'}
+                                  <span>{hasReplicationData ? replicationDelayDisplay.unit || 's' : ''}</span>
                                 </div>
-                              ))}
+                              </div>
+                              <div className={styles.replicationStatusList}>
+                                <div className={styles.replicationStatusItem}>
+                                  <span className={styles.replicationStatusLabel}>IO 线程</span>
+                                  <Tag className={styles.replicationStatusTag} color={replicationIoRunning > 0 ? 'success' : 'error'}>
+                                    {replicationIoRunning > 0 ? '运行中' : '已停止'}
+                                  </Tag>
+                                </div>
+                                <div className={styles.replicationStatusItem}>
+                                  <span className={styles.replicationStatusLabel}>SQL 线程</span>
+                                  <Tag className={styles.replicationStatusTag} color={replicationSqlRunning > 0 ? 'success' : 'error'}>
+                                    {replicationSqlRunning > 0 ? '运行中' : '已停止'}
+                                  </Tag>
+                                </div>
+                              </div>
                             </div>
+                          </div>
+                        )}
+                        onXRangeChange={onXRangeChange}
+                      />
+                    ) : (
+                      <div className={`${styles.panel} ${styles.quarterPanel} ${styles.fillPanel}`}>
+                        <div className={styles.panelHeader}>
+                          <div className={styles.panelHeading}>
+                            <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="复制状态" items={replicationGuide} className={styles.panelTitleWithGuide} /></h3>
+                            <div className={styles.panelSubTitle}>{`${mysqlIdentity.deployment}实例无需复制线程`}</div>
                           </div>
                         </div>
-                    </div>
-
-                    <div className={`${styles.panel} ${styles.quarterPanel} ${styles.fillPanel}`}>
-                      <div className={styles.panelHeader}>
-                    <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="复制状态" items={replicationGuide} className={styles.panelTitleWithGuide} /></h3>
-                      <div className={styles.panelSubTitle}>
-                        {replicationApplicable ? '从库复制延迟与线程状态' : `${mysqlIdentity.deployment}实例无需复制线程`}
-                      </div>
-                    </div>
-                  </div>
-                      {replicationApplicable ? (
-                        <div className={`${styles.replicationCard} ${styles.replicationCardRelaxed} ${styles.fillBody}`}>
-                          <div className={styles.replicationInfoBlock}>
-                            <div className={styles.replicationDelayBlock}>
-                              <div className={styles.replicationDelayLabel}>复制延迟</div>
-                              <div className={styles.replicationDelayValue}>
-                                {hasReplicationData ? replicationDelayDisplay.value : '--'}
-                                <span>{hasReplicationData ? replicationDelayDisplay.unit || 's' : ''}</span>
-                              </div>
-                            </div>
-                            <div className={styles.replicationStatusList}>
-                              <div className={styles.replicationStatusItem}>
-                                <span className={styles.replicationStatusLabel}>IO 线程</span>
-                                <Tag className={styles.replicationStatusTag} color={replicationIoRunning > 0 ? 'success' : 'error'}>
-                                  {replicationIoRunning > 0 ? '运行中' : '已停止'}
-                                </Tag>
-                              </div>
-                              <div className={styles.replicationStatusItem}>
-                                <span className={styles.replicationStatusLabel}>SQL 线程</span>
-                                <Tag className={styles.replicationStatusTag} color={replicationSqlRunning > 0 ? 'success' : 'error'}>
-                                  {replicationSqlRunning > 0 ? '运行中' : '已停止'}
-                                </Tag>
-                              </div>
-                            </div>
-                          </div>
-                          <div className={styles.replicationChartWrap}>
-                            <EChartsLineChart
-                              data={replicationTrendData}
-                              metric={buildMetricItem(metricMap.mysql_slave_seconds_behind_master || dashboardMetrics[0])}
-                              unit="s"
-                              xAxisTimeFormat="HH:mm"
-                              seriesStyles={TREND_LEGENDS.replication.map((item) => ({
-                                color: item.color,
-                                fillOpacity: 0.08,
-                                strokeOpacity: 1,
-                                strokeWidth: 2.8,
-                                unit: 's'
-                              }))}
-                              onXRangeChange={onXRangeChange}
-                            />
-                          </div>
-                        </div>
-                      ) : (
                         <div className={`${styles.replicationStandalone} ${styles.fillBody}`}>
                           <div className={styles.replicationRoleBadge}>{mysqlIdentity.role}</div>
                           <div className={styles.replicationStandaloneTitle}>无需复制线程</div>
@@ -1887,8 +1629,8 @@ export default function MysqlDashboardPage() {
                             <Tag className={styles.replicationStatusTag}>SQL 不适用</Tag>
                           </div>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
 
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
                       <div className={styles.panelHeader}>

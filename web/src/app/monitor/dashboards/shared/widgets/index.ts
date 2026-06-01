@@ -11,7 +11,7 @@ export { CollectionStatusCard } from './collection-status-card';
 export type { CollectionStatusCardProps, CollectionStatusCardStyles } from './collection-status-card';
 
 export { RingChartPanel } from './ring-chart-panel';
-export type { RingChartPanelProps, RingChartPanelStyles, RingChartDataItem } from './ring-chart-panel';
+export type { RingChartPanelProps, RingChartPanelStyles, RingChartDataItem, RingChartInfoRow } from './ring-chart-panel';
 
 export { InlineRingChart } from './inline-ring-chart';
 export type { InlineRingChartProps } from './inline-ring-chart';

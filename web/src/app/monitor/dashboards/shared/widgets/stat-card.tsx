@@ -89,7 +89,7 @@ export const StatCard = ({
       </div>
       {extra ? <div className={styles.statExtra}>{extra}</div> : null}
       {!hideTrend ? (
-        <div className={styles.miniTrend}>
+        <div className={styles.miniTrend} style={{ flexShrink: 0 }}>
           <MiniTrendChart data={noDataType === 'error' ? [] : trendData} color={color} styles={styles} />
         </div>
       ) : null}

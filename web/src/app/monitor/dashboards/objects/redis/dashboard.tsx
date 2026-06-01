@@ -10,16 +10,16 @@ import {
 } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
-import EChartsLineChart from '../../shared/widgets/echarts-line-chart';
-import { InlineRingChart } from '../../shared/widgets/inline-ring-chart';
 import {
   StatCard,
   CollectionStatusCard,
   TitleWithGuide,
   GuideTooltipContent,
-  InstanceSelector,
   DashboardPageHeader,
-  DashboardInstanceCard
+  DashboardInstanceCard,
+  TrendChartPanel,
+  RingChartPanel,
+  HorizontalBarPanel
 } from '../../shared/widgets';
 import {
   formatMetricValue,
@@ -42,7 +42,7 @@ import useViewApi from '@/app/monitor/api/view';
 import MetricViews from '@/app/monitor/components/metric-views';
 import useMonitorApi from '@/app/monitor/api';
 import { useTranslation } from '@/utils/i18n';
-import { ChartData, MetricItem, TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
+import { TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
 import {
   DASHBOARD_METRICS,
   REDIS_COLLECTION_STATUS_QUERY,
@@ -105,7 +105,7 @@ export default function RedisDashboardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [displayMode, setDisplayMode] = useState<'dashboard' | 'metrics'>('dashboard');
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({
     timeRange: [],
@@ -387,7 +387,6 @@ export default function RedisDashboardPage() {
   const memoryCompare = maxMemoryValue > 0 ? getPeriodCompare(memoryUtilValue, getPreviousLatest('redis_memory_utilization')) : null;
   const opsCompare = getPeriodCompare(opsValue, getPreviousLatest('redis_instantaneous_ops_per_sec'));
   const hitRateCompare = getPeriodCompare(hitRateValue, getPreviousLatest('redis_keyspace_hitrate'));
-  const clientCompare = getPeriodCompare(clientsValue, getPreviousLatest('redis_clients'));
 
   const uptimeStartedAt = Number.isFinite(uptimeValue) && uptimeValue >= 0 ? dayjs().subtract(Math.floor(uptimeValue), 'second').format('YYYY-MM-DD HH:mm:ss') : metricEmptyText;
   const uptimeStatusGuide = [
@@ -536,30 +535,12 @@ export default function RedisDashboardPage() {
   const networkTrendGuide = [
     { label: '网络流量趋势', detail: '同时展示 Redis 的网络入流量和出流量，判断请求与返回压力。' }
   ];
-  const cacheDetailGuide = [
-    { label: '缓存访问概览', detail: '集中展示命中率、命中频率和未命中频率，判断缓存是否有效工作。' }
-  ];
-  const clientDetailGuide = [
-    { label: '客户端与阻塞', detail: '展示客户端总量、阻塞连接和连接拒绝频率，判断连接层是否存在拥塞。' }
-  ];
   const keyLifecycleGuide = [
     { label: '键生命周期', detail: '展示过期键与驱逐键频率，判断缓存淘汰和生命周期行为是否异常。' }
-  ];
-  const memoryDetailGuide = [
-    { label: '内存与碎片', detail: '展示已用内存、内存上限、使用率与碎片率。' },
-    { label: '碎片率', detail: '碎片率过高通常意味着 Redis 内存分配与回收效率下降。' }
   ];
   const metricsOverviewGuide = [
     { label: '监控指标全景', detail: '这里承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。' }
   ];
-
-  const fragmentationTone = !hasMetricData('redis_mem_fragmentation_ratio')
-    ? 'normal'
-    : fragmentationValue >= 1.5
-      ? 'danger'
-      : fragmentationValue >= 1.2
-        ? 'warn'
-        : 'normal';
 
   return (
     <div className={styles.page}>
@@ -691,264 +672,148 @@ export default function RedisDashboardPage() {
                           <span>拒绝频率 {renderMetricValue('redis_rejected_connections_rate', `${rejectedDisplay.value}${rejectedDisplay.unit}`)}</span>
                         </>
                       }
-                      compare={clientCompare}
                       trendData={metricMap.redis_clients?.viewData || []}
                       noDataType={getNoDataType('redis_clients')}
                     />
                   </div>
 
                   <div className={styles.mainTrendGrid}>
-                    <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
-                      <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
-                          <TitleWithGuide styles={styles} title="命令吞吐趋势" items={opsTrendGuide} className={styles.panelTitleWithGuide} />
-                        </h3>
-                        <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>实时 OPS 与平均命令处理</div>
-                        <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
-                          {TREND_LEGENDS.ops.map((item) => (
-                            <span key={item.label} className={styles.chartLegendItem}>
-                              <span className={styles.chartLegendDot} style={{ background: item.color }} />
-                              {item.label}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div className={styles.chartWrap}>
-                        <EChartsLineChart
-                          data={opsTrendData}
-                          metric={buildMetricItem(metricMap.redis_instantaneous_ops_per_sec || { ...DASHBOARD_METRICS[5], viewData: [], loadState: 'success' })}
-                          seriesStyles={[
-                            { color: TREND_LEGENDS.ops[0].color, unit: 'cps' },
-                            { color: TREND_LEGENDS.ops[1].color, unit: 'cps' }
-                          ]}
-                          allowSelect={false}
-                          onXRangeChange={onXRangeChange}
-                        />
-                      </div>
-                    </div>
+                    <TrendChartPanel
+                      styles={styles}
+                      className={styles.thirdChartPanel}
+                      title={<TitleWithGuide styles={styles} title="命令吞吐趋势" items={opsTrendGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="OPS 与命令处理"
+                      guide={opsTrendGuide}
+                      legends={TREND_LEGENDS.ops}
+                      data={opsTrendData}
+                      metric={buildMetricItem(metricMap.redis_instantaneous_ops_per_sec || { ...DASHBOARD_METRICS[5], viewData: [], loadState: 'success' })}
+                      unit="cps"
+                      seriesStyles={[
+                        { color: TREND_LEGENDS.ops[0].color, unit: 'cps' },
+                        { color: TREND_LEGENDS.ops[1].color, unit: 'cps' }
+                      ]}
+                      onXRangeChange={onXRangeChange}
+                    />
 
-                    <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
-                      <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
-                          <TitleWithGuide styles={styles} title="内存趋势" items={memoryTrendGuide} className={styles.panelTitleWithGuide} />
-                        </h3>
-                        <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>
-                          已用内存与配置上限
-                        </div>
-                        <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
-                          {TREND_LEGENDS.memory.map((item) => (
-                            <span key={item.label} className={styles.chartLegendItem}>
-                              <span
-                                className={item.dashed ? styles.chartLegendDash : styles.chartLegendDot}
-                                style={item.dashed ? { borderTopColor: item.color } : { background: item.color }}
-                              />
-                              {item.label}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div className={styles.chartWrap}>
-                        <EChartsLineChart
-                          data={memoryTrendData}
-                          metric={buildMetricItem(metricMap.redis_used_memory || { ...DASHBOARD_METRICS[1], viewData: [], loadState: 'success' })}
-                          seriesStyles={[
-                            { color: TREND_LEGENDS.memory[0].color, unit: 'bytes' },
-                            { color: TREND_LEGENDS.memory[1].color, strokeDasharray: '5 5', unit: 'bytes' }
-                          ]}
-                          allowSelect={false}
-                          onXRangeChange={onXRangeChange}
-                        />
-                      </div>
-                    </div>
+                    <TrendChartPanel
+                      styles={styles}
+                      className={styles.thirdChartPanel}
+                      title={<TitleWithGuide styles={styles} title="内存趋势" items={memoryTrendGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="已用内存与上限"
+                      guide={memoryTrendGuide}
+                      legends={TREND_LEGENDS.memory}
+                      data={memoryTrendData}
+                      metric={buildMetricItem(metricMap.redis_used_memory || { ...DASHBOARD_METRICS[1], viewData: [], loadState: 'success' })}
+                      unit="bytes"
+                      seriesStyles={[
+                        { color: TREND_LEGENDS.memory[0].color, unit: 'bytes' },
+                        { color: TREND_LEGENDS.memory[1].color, strokeDasharray: '5 5', unit: 'bytes' }
+                      ]}
+                      onXRangeChange={onXRangeChange}
+                    />
 
-                    <div className={`${styles.panel} ${styles.thirdChartPanel}`}>
-                      <div className={`${styles.panelHeader} ${styles.chartPanelHeader}`}>
-                        <h3 className={`${styles.panelTitle} ${styles.chartHeaderTitle}`}>
-                          <TitleWithGuide styles={styles} title="网络流量趋势" items={networkTrendGuide} className={styles.panelTitleWithGuide} />
-                        </h3>
-                        <div className={`${styles.panelSubTitle} ${styles.chartHeaderSubTitle}`}>
-                          请求接收与结果返回
-                        </div>
-                        <div className={`${styles.chartLegend} ${styles.chartLegendHeader}`}>
-                          {TREND_LEGENDS.network.map((item) => (
-                            <span key={item.label} className={styles.chartLegendItem}>
-                              <span className={styles.chartLegendDot} style={{ background: item.color }} />
-                              {item.label}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div className={styles.chartWrap}>
-                        <EChartsLineChart
-                          data={networkTrendData}
-                          metric={buildMetricItem(metricMap.redis_total_net_input_bytes_rate || { ...DASHBOARD_METRICS[10], viewData: [], loadState: 'success' })}
-                          seriesStyles={[
-                            { color: TREND_LEGENDS.network[0].color, unit: 'byteps' },
-                            { color: TREND_LEGENDS.network[1].color, unit: 'byteps' }
-                          ]}
-                          allowSelect={false}
-                          onXRangeChange={onXRangeChange}
-                        />
-                      </div>
-                    </div>
+                    <TrendChartPanel
+                      styles={styles}
+                      className={styles.thirdChartPanel}
+                      title={<TitleWithGuide styles={styles} title="网络流量趋势" items={networkTrendGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="入流量与出流量"
+                      guide={networkTrendGuide}
+                      legends={TREND_LEGENDS.network}
+                      data={networkTrendData}
+                      metric={buildMetricItem(metricMap.redis_total_net_input_bytes_rate || { ...DASHBOARD_METRICS[10], viewData: [], loadState: 'success' })}
+                      unit="byteps"
+                      seriesStyles={[
+                        { color: TREND_LEGENDS.network[0].color, unit: 'byteps' },
+                        { color: TREND_LEGENDS.network[1].color, unit: 'byteps' }
+                      ]}
+                      onXRangeChange={onXRangeChange}
+                    />
                   </div>
 
                   <div className={styles.detailGrid}>
-                    <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                      <div className={styles.panelHeader}>
-                        <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="内存占用分布" items={memoryGuide} className={styles.panelTitleWithGuide} /></h3>
-                          <div className={styles.panelSubTitle}>已用与剩余内存占比</div>
-                        </div>
-                      </div>
-                      <div className={styles.ringCard}>
-                        <div className={styles.ringChartWrap}>
-                          <InlineRingChart
-                            data={(() => {
-                              const used = hasMetricData('redis_used_memory') ? usedMemoryValue : 0;
-                              const max = hasMetricData('redis_maxmemory') && maxMemoryValue > 0 ? maxMemoryValue : used;
-                              const free = Math.max(max - used, 0);
-                              return [
-                                { name: '已用', value: used, color: '#ff8a1f' },
-                                { name: '剩余', value: free, color: '#e8f0fe' }
-                              ];
-                            })()}
-                          />
-                          <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
-                            <div className={styles.ringValue}>{maxMemoryValue > 0 && hasMetricData('redis_memory_utilization') ? `${memoryUtilDisplay.value}%` : '--'}</div>
-                            <div className={styles.ringCaption}>使用率</div>
-                          </div>
-                        </div>
-                        <div className={styles.ringInfoPanel}>
-                          <div className={styles.metricList}>
-                            <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
-                              <span className={styles.metricKey}>
-                                <span className={styles.metricLabelGroup}>
-                                  <span className={styles.metricDot} style={{ background: '#ff8a1f' }} />
-                                  <span className={styles.metricName}>已用内存</span>
-                                </span>
-                              </span>
-                              <span className={styles.metricValueGroup}>
-                                <span className={styles.metricPercent}>{renderMetricValue('redis_used_memory', `${usedMemoryDisplay.value}${usedMemoryDisplay.unit}`)}</span>
-                              </span>
-                            </div>
-                            <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
-                              <span className={styles.metricKey}>
-                                <span className={styles.metricLabelGroup}>
-                                  <span className={styles.metricDot} style={{ background: '#e8f0fe' }} />
-                                  <span className={styles.metricName}>内存上限</span>
-                                </span>
-                              </span>
-                              <span className={styles.metricValueGroup}>
-                                <span className={styles.metricPercent}>{maxMemoryValue > 0 && hasMetricData('redis_maxmemory') ? `${maxMemoryDisplay.value}${maxMemoryDisplay.unit}` : '未配置'}</span>
-                              </span>
-                            </div>
-                            <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
-                              <span className={styles.metricKey}>
-                                <span className={styles.metricLabelGroup}>
-                                  <span className={styles.metricDot} style={{ background: '#faad14' }} />
-                                  <span className={styles.metricName}>碎片率</span>
-                                </span>
-                              </span>
-                              <span className={styles.metricValueGroup}>
-                                <span className={styles.metricPercent}>{renderMetricValue('redis_mem_fragmentation_ratio', fragmentationDisplay.value)}</span>
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    <RingChartPanel
+                      styles={styles}
+                      className={styles.quarterPanel}
+                      title={<TitleWithGuide styles={styles} title="内存占用分布" items={memoryGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="已用、上限与碎片"
+                      guide={memoryGuide}
+                      data={(() => {
+                        const used = hasMetricData('redis_used_memory') ? usedMemoryValue : 0;
+                        const max = hasMetricData('redis_maxmemory') && maxMemoryValue > 0 ? maxMemoryValue : used;
+                        const free = Math.max(max - used, 0);
+                        return [
+                          { name: '已用', value: used, color: '#ff8a1f' },
+                          { name: '剩余', value: free, color: '#e8f0fe' }
+                        ];
+                      })()}
+                      centerValue={maxMemoryValue > 0 && hasMetricData('redis_memory_utilization') ? `${memoryUtilDisplay.value}%` : '--'}
+                      centerCaption="使用率"
+                      infoRows={[
+                        {
+                          name: '已用内存',
+                          color: '#ff8a1f',
+                          primary: renderMetricValue('redis_used_memory', `${usedMemoryDisplay.value}${usedMemoryDisplay.unit}`)
+                        },
+                        {
+                          name: '内存上限',
+                          color: '#e8f0fe',
+                          primary: maxMemoryValue > 0 && hasMetricData('redis_maxmemory') ? `${maxMemoryDisplay.value}${maxMemoryDisplay.unit}` : '未配置'
+                        },
+                        {
+                          name: '碎片率',
+                          color: '#faad14',
+                          primary: renderMetricValue('redis_mem_fragmentation_ratio', fragmentationDisplay.value)
+                        }
+                      ]}
+                    />
 
-                    <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                      <div className={styles.panelHeader}>
-                        <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="命中分布" items={hitGuide} className={styles.panelTitleWithGuide} /></h3>
-                          <div className={styles.panelSubTitle}>命中与未命中频率占比</div>
-                        </div>
-                      </div>
-                      <div className={styles.ringCard}>
-                        <div className={styles.ringChartWrap}>
-                          <InlineRingChart
-                            data={[
-                              { name: '命中', value: hasMetricData('redis_keyspace_hits_rate') ? hitsRateValue : 0, color: '#8a5cff' },
-                              { name: '未命中', value: hasMetricData('redis_keyspace_misses_rate') ? missesRateValue : 0, color: '#ffccc7' }
-                            ]}
-                          />
-                          <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
-                            <div className={styles.ringValue}>{hasMetricData('redis_keyspace_hitrate') ? `${hitRateDisplay.value}%` : '--'}</div>
-                            <div className={styles.ringCaption}>命中率</div>
-                          </div>
-                        </div>
-                        <div className={styles.ringInfoPanel}>
-                          <div className={styles.metricList}>
-                            <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
-                              <span className={styles.metricKey}>
-                                <span className={styles.metricLabelGroup}>
-                                  <span className={styles.metricDot} style={{ background: '#8a5cff' }} />
-                                  <span className={styles.metricName}>键命中频率</span>
-                                </span>
-                              </span>
-                              <span className={styles.metricValueGroup}>
-                                <span className={styles.metricPercent}>{renderMetricValue('redis_keyspace_hits_rate', `${hitsRateDisplay.value}${hitsRateDisplay.unit}`)}</span>
-                              </span>
-                            </div>
-                            <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
-                              <span className={styles.metricKey}>
-                                <span className={styles.metricLabelGroup}>
-                                  <span className={styles.metricDot} style={{ background: '#ffccc7' }} />
-                                  <span className={styles.metricName}>键未命中频率</span>
-                                </span>
-                              </span>
-                              <span className={styles.metricValueGroup}>
-                                <span className={styles.metricPercent}>{renderMetricValue('redis_keyspace_misses_rate', `${missesRateDisplay.value}${missesRateDisplay.unit}`)}</span>
-                              </span>
-                            </div>
-                            <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`}>
-                              <span className={styles.metricKey}>
-                                <span className={styles.metricLabelGroup}>
-                                  <span className={styles.metricDot} style={{ background: '#27c274' }} />
-                                  <span className={styles.metricName}>命中率</span>
-                                </span>
-                              </span>
-                              <span className={styles.metricValueGroup}>
-                                <span className={styles.metricPercent}>{renderMetricValue('redis_keyspace_hitrate', `${hitRateDisplay.value}${hitRateDisplay.unit}`)}</span>
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    <RingChartPanel
+                      styles={styles}
+                      className={styles.quarterPanel}
+                      title={<TitleWithGuide styles={styles} title="命中分布" items={hitGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="命中、未命中与命中率"
+                      guide={hitGuide}
+                      data={[
+                        { name: '命中', value: hasMetricData('redis_keyspace_hits_rate') ? hitsRateValue : 0, color: '#8a5cff' },
+                        { name: '未命中', value: hasMetricData('redis_keyspace_misses_rate') ? missesRateValue : 0, color: '#ffccc7' }
+                      ]}
+                      centerValue={hasMetricData('redis_keyspace_hitrate') ? `${hitRateDisplay.value}%` : '--'}
+                      centerCaption="命中率"
+                      infoRows={[
+                        {
+                          name: '键命中频率',
+                          color: '#8a5cff',
+                          primary: renderMetricValue('redis_keyspace_hits_rate', `${hitsRateDisplay.value}${hitsRateDisplay.unit}`)
+                        },
+                        {
+                          name: '键未命中频率',
+                          color: '#ffccc7',
+                          primary: renderMetricValue('redis_keyspace_misses_rate', `${missesRateDisplay.value}${missesRateDisplay.unit}`)
+                        },
+                        {
+                          name: '命中率',
+                          color: '#27c274',
+                          primary: renderMetricValue('redis_keyspace_hitrate', `${hitRateDisplay.value}${hitRateDisplay.unit}`)
+                        }
+                      ]}
+                    />
 
-                    <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                      <div className={styles.panelHeader}>
-                        <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="客户端状态" items={clientGuide} className={styles.panelTitleWithGuide} /></h3>
-                          <div className={styles.panelSubTitle}>连接分布与阻塞情况</div>
-                        </div>
-                      </div>
-                      <div className={`${styles.bars} ${styles.compactBars} ${styles.barsFull}`}>
-                        {(() => {
-                          const normalClients = Math.max(clientsValue - blockedClientsValue, 0);
-                          const maxVal = Math.max(clientsValue, 1);
-                          return [
-                            { label: '正常连接', value: normalClients, display: hasMetricData('redis_clients') ? normalClients.toFixed(0) : '--', color: '#2f6bff', max: maxVal },
-                            { label: '阻塞客户端', value: blockedClientsValue, display: renderMetricValue('redis_blocked_clients', blockedClientsDisplay.value), color: '#fa8c16', max: maxVal },
-                            { label: '连接拒绝频率', value: rejectedRateValue, display: renderMetricValue('redis_rejected_connections_rate', `${rejectedDisplay.value}${rejectedDisplay.unit}`), color: '#ff4d4f', max: Math.max(rejectedRateValue, clientsValue, 1) }
-                          ];
-                        })().map((item) => (
-                          <div key={item.label} className={styles.barRow}>
-                            <div className={styles.barLabel}>{item.label}</div>
-                            <div className={styles.barTrack}>
-                              <div
-                                className={styles.barFill}
-                                style={{ width: `${Math.min((item.value / item.max) * 100, 100)}%`, background: item.color }}
-                              />
-                            </div>
-                            <div className={styles.barValue}>{item.display}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    <HorizontalBarPanel
+                      styles={styles}
+                      className={styles.quarterPanel}
+                      title={<TitleWithGuide styles={styles} title="客户端状态" items={clientGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="连接、阻塞与拒绝"
+                      guide={clientGuide}
+                      items={(() => {
+                        const normalClients = Math.max(clientsValue - blockedClientsValue, 0);
+                        const maxVal = Math.max(clientsValue, 1);
+                        return [
+                          { label: '正常连接', value: normalClients, display: hasMetricData('redis_clients') ? normalClients.toFixed(0) : '--', color: '#2f6bff', max: maxVal },
+                          { label: '阻塞客户端', value: blockedClientsValue, display: renderMetricValue('redis_blocked_clients', blockedClientsDisplay.value), color: '#fa8c16', max: maxVal },
+                          { label: '连接拒绝频率', value: rejectedRateValue, display: renderMetricValue('redis_rejected_connections_rate', `${rejectedDisplay.value}${rejectedDisplay.unit}`), color: '#ff4d4f', max: Math.max(rejectedRateValue, clientsValue, 1) }
+                        ];
+                      })()}
+                    />
 
                     <div className={`${styles.panel} ${styles.quarterPanel}`}>
                       <div className={styles.detailCard}>

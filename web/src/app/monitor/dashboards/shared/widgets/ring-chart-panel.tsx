@@ -38,6 +38,13 @@ export interface RingChartDataItem {
   display?: string;
 }
 
+export interface RingChartInfoRow {
+  name: string;
+  color: string;
+  primary: string;
+  secondary?: string;
+}
+
 export interface RingChartPanelProps {
   title: React.ReactNode;
   subtitle?: string;
@@ -45,8 +52,12 @@ export interface RingChartPanelProps {
   data: RingChartDataItem[];
   centerValue: string;
   centerCaption: string;
+  infoRows?: RingChartInfoRow[];
   innerRadius?: number;
   outerRadius?: number;
+  chartExtra?: React.ReactNode;
+  ringCardClassName?: string;
+  ringChartWrapClassName?: string;
   className?: string;
   styles: RingChartPanelStyles;
 }
@@ -58,8 +69,12 @@ export const RingChartPanel = ({
   data,
   centerValue,
   centerCaption,
+  infoRows,
   innerRadius = 52,
   outerRadius = 72,
+  chartExtra,
+  ringCardClassName,
+  ringChartWrapClassName,
   className,
   styles
 }: RingChartPanelProps) => {
@@ -95,7 +110,7 @@ export const RingChartPanel = ({
   const { containerRef } = useECharts(option);
 
   return (
-    <div className={className}>
+    <div className={[styles.panel, className].filter(Boolean).join(' ')}>
       <div className={styles.panelHeader}>
         <div className={styles.panelHeading}>
           <h3 className={styles.panelTitle}>
@@ -108,17 +123,23 @@ export const RingChartPanel = ({
           {subtitle ? <div className={styles.panelSubTitle}>{subtitle}</div> : null}
         </div>
       </div>
-      <div className={styles.ringCard}>
-        <div className={styles.ringChartWrap}>
+      <div className={ringCardClassName ? `${styles.ringCard} ${ringCardClassName}` : styles.ringCard}>
+        <div className={ringChartWrapClassName ? `${styles.ringChartWrap} ${ringChartWrapClassName}` : styles.ringChartWrap}>
           <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
           <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
             <div className={styles.ringValue}>{centerValue}</div>
             <div className={styles.ringCaption}>{centerCaption}</div>
           </div>
+          {chartExtra}
         </div>
         <div className={styles.ringInfoPanel}>
           <div className={styles.metricList}>
-            {data.map((item) => (
+            {(infoRows || data.map((item) => ({
+              name: item.name,
+              color: item.color,
+              primary: `${total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0'}%`,
+              secondary: `(${item.display || (item.value >= 100 ? item.value.toFixed(0) : item.value.toFixed(1))})`
+            }))).map((item) => (
               <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`} key={item.name}>
                 <span className={styles.metricKey}>
                   <span className={styles.metricLabelGroup}>
@@ -127,10 +148,8 @@ export const RingChartPanel = ({
                   </span>
                 </span>
                 <span className={styles.metricValueGroup}>
-                  <span className={styles.metricPercent}>
-                    {total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0'}%
-                  </span>
-                  <span className={styles.metricCount}>({item.display || (item.value >= 100 ? item.value.toFixed(0) : item.value.toFixed(1))})</span>
+                  <span className={styles.metricPercent}>{item.primary}</span>
+                  {item.secondary ? <span className={styles.metricCount}>{item.secondary}</span> : null}
                 </span>
               </div>
             ))}

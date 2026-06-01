@@ -52,9 +52,16 @@ const formatAxisNumber = (value: number) => {
 };
 
 const BINARY_SCALE_CONFIG: Record<string, string[]> = {
-  bytes: ['B', 'KB', 'MB', 'GB', 'TB'],
-  byteps: ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s'],
-  mebibytes: ['MiB', 'GiB', 'TiB']
+  bytes: ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'],
+  kibibytes: ['KiB', 'MiB', 'GiB', 'TiB', 'PiB'],
+  mebibytes: ['MiB', 'GiB', 'TiB', 'PiB'],
+  gibibytes: ['GiB', 'TiB', 'PiB'],
+  tebibytes: ['TiB', 'PiB'],
+  byteps: ['B/s', 'KiB/s', 'MiB/s', 'GiB/s', 'TiB/s', 'PiB/s'],
+  kibyteps: ['KiB/s', 'MiB/s', 'GiB/s', 'TiB/s', 'PiB/s'],
+  mibyteps: ['MiB/s', 'GiB/s', 'TiB/s', 'PiB/s'],
+  gibyteps: ['GiB/s', 'TiB/s', 'PiB/s'],
+  tibyteps: ['TiB/s', 'PiB/s']
 };
 
 const resolveBinaryScale = (maxValue: number, metricUnit: string) => {

@@ -23,22 +23,9 @@ import {
   getCollectionStatus,
   buildCollectionStatusTimeline
 } from '../../shared/utils';
-import { GuideItem, TrendLegendItem } from '../../shared/types';
+import { GuideItem, MetricUnit, TrendLegendItem } from '../../shared/types';
 
-export type SimpleMetricUnit =
-  | 'percent'
-  | 'counts'
-  | 'cps'
-  | 's'
-  | 'ms'
-  | 'ns'
-  | 'bytes'
-  | 'byteps'
-  | 'kibibytes'
-  | 'mebibytes'
-  | 'msps'
-  | 'none'
-  | string;
+export type SimpleMetricUnit = MetricUnit;
 
 export interface SimpleMetricConfig {
   name: string;
@@ -157,7 +144,14 @@ export interface PreparedChartPanel {
   metric: MetricItem;
   unit: SimpleMetricUnit;
   legends: TrendLegendItem[];
-  seriesStyles: Array<{ color: string; unit?: string; fillOpacity?: number; strokeOpacity?: number; strokeWidth?: number }>;
+  seriesStyles: Array<{
+    color: string;
+    unit?: SimpleMetricUnit;
+    fillOpacity?: number;
+    strokeOpacity?: number;
+    strokeWidth?: number;
+    strokeDasharray?: string;
+  }>;
 }
 
 export interface PreparedRingPanel {
@@ -572,7 +566,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
       legends: chart.series.map((item, index) => ({ label: item.label, color: item.color, primary: index === 0 })),
       seriesStyles: chart.series.map((item, index) => ({
         color: item.color,
-        unit: item.unit || metricMap[item.metric]?.unit || '',
+        unit: item.unit || metricMap[item.metric]?.unit,
         fillOpacity: index === 0 ? 0.08 : 0.03,
         strokeOpacity: index === 0 ? 1 : 0.72,
         strokeWidth: index === 0 ? 2.8 : 2.2

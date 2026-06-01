@@ -6,6 +6,7 @@ export type ProfessionalDashboardComponent = ComponentType;
 export interface ProfessionalDashboardRegistryItem {
   key: string;
   aliases?: string[];
+  groupKey: string;
   objectName: string;
   objectDisplayName?: string;
   inheritedPermissionPath?: string;
@@ -13,19 +14,59 @@ export interface ProfessionalDashboardRegistryItem {
 }
 
 export type MetricUnit =
-  | 'counts'
+  | 'none'
   | 'percent'
-  | 'cps'
-  | 's'
+  | 'counts'
+  | 'thousand'
+  | 'million'
+  | 'billion'
+  | 'trillion'
+  | 'quadrillion'
+  | 'quintillion'
+  | 'sextillion'
+  | 'septillion'
+  | 'bits'
+  | 'kilobits'
+  | 'megabits'
+  | 'gigabits'
+  | 'terabits'
+  | 'petabits'
   | 'bytes'
-  | 'byteps'
   | 'kibibytes'
   | 'mebibytes'
-  | 'ms'
+  | 'gibibytes'
+  | 'tebibytes'
+  | 'pebibytes'
+  | 'bitps'
+  | 'kbitps'
+  | 'mbitps'
+  | 'gbitps'
+  | 'tbitps'
+  | 'pbitps'
+  | 'byteps'
+  | 'kibyteps'
+  | 'mibyteps'
+  | 'gibyteps'
+  | 'tibyteps'
+  | 'pibyteps'
   | 'ns'
+  | 'µs'
+  | 'us'
+  | 'ms'
+  | 's'
+  | 'm'
+  | 'h'
+  | 'd'
+  | 'cps'
+  | 'hertz'
+  | 'kilohertz'
+  | 'megahertz'
   | 'msps'
-  | 'none'
-  | string;
+  | 'celsius'
+  | 'fahrenheit'
+  | 'kelvin'
+  | 'watts'
+  | 'volts';
 
 export interface BaseMetricConfig {
   name: string;
