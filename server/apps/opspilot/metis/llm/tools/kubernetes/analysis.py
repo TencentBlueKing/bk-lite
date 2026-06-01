@@ -658,6 +658,34 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
                 text = text.replace(sensitive, neutral)
             return text
 
+        # 问题到严重等级的映射
+        _issue_severity = {
+            "明文敏感信息": "critical",
+            "特权模式容器": "critical",
+            "使用hostNetwork": "critical",
+            "使用hostPID": "critical",
+            "使用hostIPC": "critical",
+            "可能以 root 用户运行": "medium",
+            "未设置 capabilities drop ALL": "medium",
+            "未设置 readOnlyRootFilesystem": "medium",
+            "未禁止权限提升": "medium",
+            "使用 default ServiceAccount": "medium",
+            "单副本部署，存在单点故障风险": "medium",
+            "未设置资源请求 (Requests)": "high",
+            "未设置资源限制 (Limits)": "high",
+            "未配置存活探针 (Liveness Probe)": "high",
+            "未配置就绪探针 (Readiness Probe)": "high",
+            "使用 Recreate 更新策略": "high",
+            "使用 :latest 标签": "high",
+            "未明确设置 imagePullPolicy": "low",
+        }
+
+        def _get_severity(issue_text: str) -> str:
+            for key, sev in _issue_severity.items():
+                if key in issue_text:
+                    return sev
+            return "low"
+
         # 构建按问题类型到工作负载名称的映射（供 LLM 输出报告时使用真实名称）
         _issue_to_workloads: dict = {}
         for a in analysis_results:
@@ -670,14 +698,19 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
                 for ci in c.get("issues", []):
                     _issue_to_workloads.setdefault(ci, []).append(_wl_label)
 
+        # 按严重等级排序：critical > high > medium > low
+        _sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
         issues_detail = [
             {
+                "severity": _get_severity(issue),
                 "issue": _neutralize(issue),
                 "count": len(workloads),
-                "workloads": workloads[:10],
-                "truncated": len(workloads) > 10,
+                "workloads": workloads,
             }
-            for issue, workloads in sorted(_issue_to_workloads.items(), key=lambda x: -len(x[1]))
+            for issue, workloads in sorted(
+                _issue_to_workloads.items(),
+                key=lambda x: (_sev_order.get(_get_severity(x[0]), 3), -len(x[1]))
+            )
         ]
 
         result = {
