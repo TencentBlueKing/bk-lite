@@ -116,7 +116,7 @@ const VendorBasicInfo: React.FC<VendorBasicInfoProps> = ({ vendorId, onUpdated }
         return;
       }
 
-      message.error(t('provider.vendor.testFailed'));
+      message.error(result.message || t('provider.vendor.testFailed'));
     } catch (error: any) {
       if (error?.errorFields) {
         message.error(t('provider.vendor.validationError'));
