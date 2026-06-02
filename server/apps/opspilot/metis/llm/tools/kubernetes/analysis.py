@@ -455,8 +455,10 @@ def build_config_analysis_next_step_hint(problematic_count: int, target_name: st
             f"当前结果已经覆盖用户指定的工作负载 {target_name}。"
         )
     hint_parts.append(
-        "本轮先输出一次完整检查结果即可。"
-        "如用户明确要求修复方案、修复命令、导出报告或按其他维度重组结果，再继续下一步。"
+        "本轮先输出一次完整检查结果。"
+        "输出完整检查报告后，调用 request_user_choice 让用户选择修复展示方式："
+        "按问题类别聚合、按工作负载聚合、或全部一次性展示。"
+        "等用户选择后，再调用 generate_repair_report。"
     )
     return "".join(hint_parts)
 
