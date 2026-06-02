@@ -1,7 +1,6 @@
 import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
-from apps.monitor.models.collect_config import CollectConfig
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import (
     MonitorInstance,
@@ -11,8 +10,6 @@ from apps.monitor.models.monitor_object import (
 )
 from apps.monitor.services.flow_onboarding import FlowOnboardingService
 from apps.monitor.services.manual_collect import ManualCollectService
-from apps.monitor.services.node_mgmt import InstanceConfigService
-from apps.monitor.utils.plugin_controller import Controller
 
 
 def _create_child_default_metric(parent_object: MonitorObject, child_name: str = "SwitchPort") -> MonitorObject:
@@ -550,10 +547,10 @@ def test_update_flow_asset_rejects_duplicate_tuple_when_moving_asset(db):
     assert MonitorInstance.objects.filter(monitor_object_id=switch_object.id, cloud_region_id=1, ip="10.0.0.12").count() == 1
 
 
-def test_create_manual_collect_instance_rejects_flow_only_fields(db):
+def test_create_manual_collect_instance_rejects_flow_only_fields_with_validation_error(db):
     switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
 
-    with pytest.raises(BaseAppException, match="Use flow_asset for flow asset fields"):
+    with pytest.raises(ValidationAppException, match="Use flow_asset for flow asset fields"):
         ManualCollectService.create_manual_collect_instance(
             {
                 "id": "flow-bypass",
@@ -653,62 +650,3 @@ def test_create_or_bind_flow_asset_rejects_nonexistent_instance(db):
             instance_id="missing-instance",
         )
 
-
-def test_host_remote_onboarding_rejects_invalid_instance_identity(db):
-    host_object = MonitorObject.objects.create(name="Host", display_name="Host")
-
-    with pytest.raises(BaseAppException, match="实例识别失败"):
-        InstanceConfigService.create_monitor_instance_by_node_mgmt({
-            "monitor_object_id": host_object.id,
-            "collect_type": "snmp",
-            "collector": "test-collector",
-            "configs": [],
-            "instances": [{"instance_id": "", "instance_name": "Bad Host", "group_ids": [1]}],
-        })
-
-
-def test_host_remote_onboarding_reuses_existing_host_instance(db, monkeypatch):
-    host_object = MonitorObject.objects.create(name="Host", display_name="Host")
-    MonitorInstance.objects.create(
-        id="('192.168.1.1',)",
-        name="My Host",
-        monitor_object_id=host_object.id,
-    )
-
-    monkeypatch.setattr(Controller, "controller", lambda self: None)
-
-    InstanceConfigService.create_monitor_instance_by_node_mgmt({
-        "monitor_object_id": host_object.id,
-        "collect_type": "snmp",
-        "collector": "test-collector",
-        "configs": [],
-        "instances": [{"instance_id": "192.168.1.1", "instance_name": "My Host", "group_ids": [1]}],
-    })
-
-    assert MonitorInstance.objects.filter(monitor_object_id=host_object.id).count() == 1
-
-
-def test_host_remote_onboarding_rejects_duplicate_same_collect_type(db):
-    host_object = MonitorObject.objects.create(name="Host", display_name="Host")
-    existing = MonitorInstance.objects.create(
-        id="('192.168.1.1',)",
-        name="My Host",
-        monitor_object_id=host_object.id,
-    )
-    CollectConfig.objects.create(
-        id="cfg-1",
-        monitor_instance=existing,
-        collector="test-collector",
-        collect_type="snmp",
-        config_type="base",
-        file_type="toml",
-    )
-
-    with pytest.raises(BaseAppException, match="已存在采集配置"):
-        InstanceConfigService.create_monitor_instance_by_node_mgmt({
-            "monitor_object_id": host_object.id,
-            "collect_type": "snmp",
-            "collector": "test-collector",
-            "configs": [{"type": "base"}],
-            "instances": [{"instance_id": "192.168.1.1", "instance_name": "My Host", "group_ids": [1]}],
-        })

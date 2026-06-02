@@ -1,4 +1,4 @@
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.services.infra import InfraService
 from apps.monitor.services.node_mgmt import InstanceConfigService
@@ -24,7 +24,7 @@ class ManualCollectService:
             return
         flow_only_fields = sorted(cls.FLOW_ONLY_FIELDS.intersection(data))
         if flow_only_fields:
-            raise BaseAppException(
+            raise ValidationAppException(
                 f"Use flow_asset for flow asset fields: {', '.join(flow_only_fields)}"
             )
 
