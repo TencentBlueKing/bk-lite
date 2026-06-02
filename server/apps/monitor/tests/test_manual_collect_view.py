@@ -105,7 +105,7 @@ def test_flow_asset_checks_operate_permission_before_binding_instance(monkeypatc
 def test_flow_asset_checks_operate_permission_before_reusing_existing_instance(monkeypatch, db):
     calls = {}
     actor_context = {"current_team": 7}
-    existing_instance = types.SimpleNamespace(id="inst-reused")
+    existing_instance = types.SimpleNamespace(id="inst-reused", is_deleted=True)
 
     class ViewSet:
         pass
@@ -123,8 +123,8 @@ def test_flow_asset_checks_operate_permission_before_reusing_existing_instance(m
     def lock_monitor_object(*, monitor_object_id):
         calls["lock_monitor_object"] = monitor_object_id
 
-    def find_existing_asset(*, monitor_object_id, cloud_region_id, ip, for_update=False):
-        calls["find_existing_asset"] = {
+    def find_reusable_asset(*, monitor_object_id, cloud_region_id, ip, for_update=False):
+        calls["find_reusable_asset"] = {
             "monitor_object_id": monitor_object_id,
             "cloud_region_id": cloud_region_id,
             "ip": ip,
@@ -155,7 +155,7 @@ def test_flow_asset_checks_operate_permission_before_reusing_existing_instance(m
         "apps.monitor.services.flow_onboarding",
         FlowOnboardingService=types.SimpleNamespace(
             create_or_bind_asset=create_or_bind_asset,
-            find_existing_asset=find_existing_asset,
+            find_reusable_asset=find_reusable_asset,
             lock_monitor_object=lock_monitor_object,
         ),
     )
@@ -189,7 +189,7 @@ def test_flow_asset_checks_operate_permission_before_reusing_existing_instance(m
 
     assert response == {"instance_id": existing_instance.id}
     assert calls["lock_monitor_object"] == 1
-    assert calls["find_existing_asset"] == {
+    assert calls["find_reusable_asset"] == {
         "monitor_object_id": 1,
         "cloud_region_id": 1,
         "ip": "10.0.0.12",

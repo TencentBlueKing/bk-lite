@@ -102,6 +102,101 @@ def test_create_or_bind_flow_asset_creates_monitor_side_asset(db):
     ) == {1, 2}
 
 
+def test_create_or_bind_flow_asset_restores_soft_deleted_asset(db, monkeypatch):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    restored_rule_calls = []
+
+    monkeypatch.setattr(
+        ManualCollectService,
+        "create_organization_rule_by_child_object",
+        lambda monitor_object_id, instance_id, organization_ids: restored_rule_calls.append(
+            (monitor_object_id, instance_id, list(organization_ids))
+        ),
+    )
+
+    created = FlowOnboardingService.create_or_bind_asset(
+        monitor_object_id=switch_object.id,
+        protocol="netflow",
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        name="Core Switch",
+        organizations=[1],
+    )
+    restored_rule_calls.clear()
+
+    deleted = MonitorInstance.objects.get(id=created["instance_id"])
+    deleted.is_deleted = True
+    deleted.save(update_fields=["is_deleted"])
+
+    recreated = FlowOnboardingService.create_or_bind_asset(
+        monitor_object_id=switch_object.id,
+        protocol="sflow",
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        name="Core Switch",
+        organizations=[2],
+        fallback_sampling_rate=2000,
+    )
+
+    restored = MonitorInstance.objects.get(id=created["instance_id"])
+
+    assert recreated["instance_id"] == created["instance_id"]
+    assert restored.is_deleted is False
+    assert restored.monitor_object_id == switch_object.id
+    assert restored.cloud_region_id == 1
+    assert restored.ip == "10.0.0.12"
+    assert restored.fallback_sampling_rate == 2000
+    assert set(restored.enabled_protocols) == {"netflow", "sflow"}
+    assert set(
+        MonitorInstanceOrganization.objects.filter(monitor_instance_id=restored.id).values_list("organization", flat=True)
+    ) == {2}
+    assert restored_rule_calls == [(switch_object.id, restored.id, [2])]
+    assert MonitorInstance.objects.filter(
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+    ).count() == 1
+
+
+def test_create_or_bind_flow_asset_rejects_restoring_deleted_asset_with_duplicate_name(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+
+    created = FlowOnboardingService.create_or_bind_asset(
+        monitor_object_id=switch_object.id,
+        protocol="netflow",
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        name="Core Switch",
+        organizations=[1],
+    )
+    deleted = MonitorInstance.objects.get(id=created["instance_id"])
+    deleted.is_deleted = True
+    deleted.save(update_fields=["is_deleted"])
+
+    MonitorInstance.objects.create(
+        id="('flow-device-2',)",
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=2,
+        ip="10.0.0.13",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["sflow"],
+    )
+
+    with pytest.raises(BaseAppException, match="实例名称已存在"):
+        FlowOnboardingService.create_or_bind_asset(
+            monitor_object_id=switch_object.id,
+            protocol="sflow",
+            cloud_region_id=1,
+            ip="10.0.0.12",
+            name="Core Switch",
+            organizations=[2],
+        )
+
+    deleted.refresh_from_db()
+    assert deleted.is_deleted is True
+
+
 def test_create_or_bind_flow_asset_uses_monitor_object_scoped_asset_ids(db):
     switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
     router_object = MonitorObject.objects.create(name="Router", display_name="Router")

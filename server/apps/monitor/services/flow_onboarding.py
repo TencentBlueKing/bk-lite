@@ -1,7 +1,7 @@
 from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.monitor.models import MonitorInstance, MonitorObject
+from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectOrganizationRule
 from apps.monitor.services.manual_collect import ManualCollectService
 from apps.monitor.services.monitor_object import MonitorObjectService
 
@@ -38,6 +38,10 @@ class FlowOnboardingService:
                 organizations=organizations,
                 instance_id=instance_id,
             )
+            restoring_deleted = instance.is_deleted
+            restored_organizations = None
+            if restoring_deleted:
+                restored_organizations = organizations if organizations_provided else cls._get_instance_organizations(instance.id)
             cls._ensure_tuple_available(
                 monitor_object_id=monitor_object_id,
                 cloud_region_id=cloud_region_id,
@@ -50,19 +54,31 @@ class FlowOnboardingService:
             )
             instance.enabled_protocols = cls._merge_protocols(instance.enabled_protocols, protocol)
             instance.auto = False
+            if restoring_deleted:
+                final_name = name if name is not None else instance.name
+                MonitorObjectService.validate_new_instance_name_unique(instance.monitor_object_id, final_name)
+                instance.name = final_name
+            instance.is_deleted = False
             instance.cloud_region_id = cloud_region_id
             instance.ip = ip
-            instance.save(
-                update_fields=[
-                    "cloud_region_id",
-                    "ip",
-                    "fallback_sampling_rate",
-                    "enabled_protocols",
-                    "auto",
-                ]
-            )
+            update_fields = [
+                "cloud_region_id",
+                "ip",
+                "fallback_sampling_rate",
+                "enabled_protocols",
+                "auto",
+                "is_deleted",
+                "name",
+            ]
+            instance.save(update_fields=update_fields)
             if organizations_provided:
                 MonitorObjectService.set_instances_organizations([instance.id], organizations)
+            if restoring_deleted:
+                cls._restore_organization_rules(
+                    monitor_object_id=instance.monitor_object_id,
+                    instance_id=instance.id,
+                    organizations=restored_organizations,
+                )
 
         return {"instance_id": instance.id, "enabled_protocols": instance.enabled_protocols}
 
@@ -108,7 +124,7 @@ class FlowOnboardingService:
         if instance_id:
             return cls._get_instance(instance_id=instance_id, monitor_object_id=monitor_object_id, for_update=True)
 
-        instance = cls.find_existing_asset(
+        instance = cls.find_reusable_asset(
             monitor_object_id=monitor_object_id,
             cloud_region_id=cloud_region_id,
             ip=ip,
@@ -133,16 +149,34 @@ class FlowOnboardingService:
         return MonitorInstance.objects.get(id=result["instance_id"])
 
     @classmethod
-    def find_existing_asset(cls, *, monitor_object_id, cloud_region_id, ip, for_update=False):
+    def find_existing_asset(cls, *, monitor_object_id, cloud_region_id, ip, is_deleted=False, for_update=False):
         queryset = MonitorInstance.objects.filter(
             monitor_object_id=monitor_object_id,
             cloud_region_id=cloud_region_id,
             ip=ip,
-            is_deleted=False,
+            is_deleted=is_deleted,
         ).order_by("created_at")
         if for_update:
             queryset = queryset.select_for_update()
         return queryset.first()
+
+    @classmethod
+    def find_reusable_asset(cls, *, monitor_object_id, cloud_region_id, ip, for_update=False):
+        instance = cls.find_existing_asset(
+            monitor_object_id=monitor_object_id,
+            cloud_region_id=cloud_region_id,
+            ip=ip,
+            for_update=for_update,
+        )
+        if instance:
+            return instance
+        return cls.find_existing_asset(
+            monitor_object_id=monitor_object_id,
+            cloud_region_id=cloud_region_id,
+            ip=ip,
+            is_deleted=True,
+            for_update=for_update,
+        )
 
     @classmethod
     def _get_instance(cls, *, instance_id, monitor_object_id=None, for_update=False):
@@ -174,6 +208,21 @@ class FlowOnboardingService:
             duplicates = duplicates.exclude(id=exclude_instance_id)
         if duplicates.exists():
             raise BaseAppException("Flow asset already exists")
+
+    @staticmethod
+    def _get_instance_organizations(instance_id):
+        return list(
+            MonitorInstanceOrganization.objects.filter(monitor_instance_id=instance_id).values_list("organization", flat=True)
+        )
+
+    @staticmethod
+    def _restore_organization_rules(*, monitor_object_id, instance_id, organizations):
+        MonitorObjectOrganizationRule.objects.filter(monitor_instance_id=instance_id).delete()
+        ManualCollectService.create_organization_rule_by_child_object(
+            monitor_object_id,
+            instance_id,
+            organizations or [],
+        )
 
     @classmethod
     def lock_monitor_object(cls, *, monitor_object_id):

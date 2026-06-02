@@ -37,7 +37,7 @@ class ManualCollect(viewsets.ViewSet):
             if instance_id:
                 _ensure_operate_instances(request, [instance_id], actor_context)
             else:
-                existing_instance = FlowOnboardingService.find_existing_asset(
+                existing_instance = FlowOnboardingService.find_reusable_asset(
                     monitor_object_id=request.data["monitor_object_id"],
                     cloud_region_id=request.data["cloud_region_id"],
                     ip=request.data["ip"],
