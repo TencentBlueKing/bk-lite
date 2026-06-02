@@ -107,22 +107,6 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       footer: [{ label: '处理连接', metric: 'nginx_handled_rate', unit: 'cps' }]
     },
     {
-      title: '连接接受速率',
-      metric: 'nginx_accepts_rate',
-      color: '#13c2c2',
-      icon: 'thunder',
-      guide: [{ label: '连接接受', detail: '每秒接受的新连接数量。' }],
-      footer: [{ label: '处理速率', metric: 'nginx_handled_rate', unit: 'cps' }]
-    },
-    {
-      title: '等待连接数',
-      metric: 'nginx_waiting',
-      color: '#ff8a1f',
-      icon: 'node',
-      guide: [{ label: '等待连接', detail: '空闲等待请求的连接数，可结合活跃连接判断连接池状态。' }],
-      footer: [{ label: '读取连接', metric: 'nginx_reading', unit: 'counts' }]
-    },
-    {
       title: '繁忙连接占比',
       metric: 'nginx_busy_connection_ratio',
       color: '#ff8a1f',
@@ -155,12 +139,11 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       title: '请求连接速率',
-      subtitle: '请求与连接吞吐',
+      subtitle: '请求与处理吞吐',
       metric: 'nginx_requests_rate',
-      guide: [{ label: '吞吐速率', detail: '请求速率与连接接受、处理速率的对比。' }],
+      guide: [{ label: '吞吐速率', detail: '请求速率与连接处理速率的对比。' }],
       series: [
         { metric: 'nginx_requests_rate', label: '请求速率', color: '#2f6bff', unit: 'cps' },
-        { metric: 'nginx_accepts_rate', label: '接受速率', color: '#27c274', unit: 'cps' },
         { metric: 'nginx_handled_rate', label: '处理速率', color: '#13c2c2', unit: 'cps' }
       ]
     }

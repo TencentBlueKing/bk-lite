@@ -52,7 +52,7 @@ export default function NginxDashboardPage() {
                 loading={dashboard.loading}
                 seriesStyles={connectionTrendChart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
-                className={styles.span4}
+                className={styles.span6}
                 styles={styles}
               />
             ) : null}
@@ -69,7 +69,7 @@ export default function NginxDashboardPage() {
                 loading={dashboard.loading}
                 seriesStyles={rateTrendChart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
-                className={styles.span4}
+                className={styles.span6}
                 styles={styles}
               />
             ) : null}
@@ -82,7 +82,7 @@ export default function NginxDashboardPage() {
                 data={connectionRing.data}
                 centerValue={connectionRing.centerValue}
                 centerCaption={connectionRing.panel.centerCaption}
-                className={styles.span4}
+                className={styles.span12}
                 styles={styles}
               />
             ) : null}
