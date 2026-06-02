@@ -284,6 +284,52 @@ def test_flow_asset_api_restores_soft_deleted_reused_instance(api_client, monkey
     assert restored_rule_calls == [(switch_object.id, deleted_instance.id, [2])]
 
 
+def test_update_flow_asset_api_allows_existing_non_flow_asset_binding(api_client, monkeypatch, db):
+    from apps.monitor.models import MonitorInstance, MonitorObject
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    host_object = MonitorObject.objects.create(name="Host", display_name="Host")
+    instance = MonitorInstance.objects.create(
+        id="('host-device-1',)",
+        name="Existing Host",
+        monitor_object_id=host_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None: instance_ids,
+    )
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_target_organizations",
+        lambda organizations, actor_context: None,
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/update/",
+        data={
+            "instance_id": instance.id,
+            "name": "Existing Host Updated",
+            "fallback_sampling_rate": 2000,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.content
+    assert response.json()["data"] == {"instance_id": instance.id}
+
+    instance.refresh_from_db()
+    assert instance.name == "Existing Host Updated"
+    assert instance.fallback_sampling_rate == 2000
+    assert instance.enabled_protocols == ["netflow"]
+
+
 def test_flow_asset_api_rejects_unknown_request_fields(api_client, monkeypatch):
     from apps.monitor.services.flow_onboarding import FlowOnboardingService
     from apps.monitor.views import manual_collect as manual_collect_view

@@ -111,7 +111,7 @@ class FlowOnboardingService:
 
         with transaction.atomic():
             instance = cls._get_instance(instance_id=instance_id)
-            cls.lock_monitor_object(monitor_object_id=instance.monitor_object_id)
+            cls.lock_monitor_object(monitor_object_id=instance.monitor_object_id, require_supported=False)
             instance = cls._get_instance(instance_id=instance_id, for_update=True)
             cls._ensure_tuple_available(
                 monitor_object_id=instance.monitor_object_id,
