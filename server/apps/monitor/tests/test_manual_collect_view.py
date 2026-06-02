@@ -495,6 +495,49 @@ def test_update_flow_asset_api_rejects_unknown_request_fields(api_client, monkey
 
 
 @pytest.mark.parametrize(
+    ("path", "payload"),
+    [
+        ("/api/v1/monitor/api/manual_collect/flow_asset/", []),
+        ("/api/v1/monitor/api/manual_collect/flow_asset/", "boom"),
+        ("/api/v1/monitor/api/manual_collect/flow_asset/update/", []),
+        ("/api/v1/monitor/api/manual_collect/flow_asset/update/", "boom"),
+    ],
+)
+def test_flow_asset_endpoints_reject_non_object_payloads(api_client, monkeypatch, path, payload):
+    from apps.monitor.services.flow_onboarding import FlowOnboardingService
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    monkeypatch.setattr(
+        FlowOnboardingService,
+        "lock_monitor_object",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("lock_monitor_object should not be called for invalid payloads")),
+    )
+    monkeypatch.setattr(
+        FlowOnboardingService,
+        "create_or_bind_asset",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("create_or_bind_asset should not be called for invalid payloads")),
+    )
+    monkeypatch.setattr(
+        FlowOnboardingService,
+        "update_asset",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("update_asset should not be called for invalid payloads")),
+    )
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None: (_ for _ in ()).throw(
+            AssertionError("_ensure_operate_instances should not be called for invalid payloads")
+        ),
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(path, data=payload, format="json")
+
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == "Request body must be an object"
+
+
+@pytest.mark.parametrize(
     ("field", "value", "message"),
     [
         ("cloud_region_id", None, "Field cloud_region_id cannot be empty"),

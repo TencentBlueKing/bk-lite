@@ -1,4 +1,5 @@
 import ipaddress
+from collections.abc import Mapping
 
 from django.db import transaction
 from rest_framework import viewsets
@@ -109,6 +110,9 @@ def _build_conflict_permission_checker(request, actor_context):
 
 
 def _validated_request_payload(data, *, required_fields, optional_fields, field_validators=None):
+    if not isinstance(data, Mapping):
+        raise ValidationAppException("Request body must be an object")
+
     payload = dict(data)
     allowed_fields = required_fields | optional_fields
     field_validators = field_validators or {}
