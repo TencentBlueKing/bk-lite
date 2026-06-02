@@ -42,3 +42,4 @@ code-reviews/
 .env.dev
 .sisyphus/*
 automation/
+.worktrees/
