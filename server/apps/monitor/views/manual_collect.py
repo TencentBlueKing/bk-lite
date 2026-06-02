@@ -18,14 +18,7 @@ from apps.rpc.node_mgmt import NodeMgmt
 FLOW_ASSET_REQUIRED_FIELDS = {"monitor_object_id", "protocol", "cloud_region_id", "ip", "name"}
 FLOW_ASSET_OPTIONAL_FIELDS = {"organizations", "instance_id", "fallback_sampling_rate"}
 UPDATE_FLOW_ASSET_REQUIRED_FIELDS = {"instance_id"}
-UPDATE_FLOW_ASSET_OPTIONAL_FIELDS = {
-    "name",
-    "organizations",
-    "cloud_region_id",
-    "ip",
-    "fallback_sampling_rate",
-    "enabled_protocols",
-}
+UPDATE_FLOW_ASSET_OPTIONAL_FIELDS = {"name", "organizations", "cloud_region_id", "ip", "fallback_sampling_rate"}
 SUPPORTED_FLOW_PROTOCOLS = getattr(FlowOnboardingService, "SUPPORTED_PROTOCOLS", {"netflow", "sflow"})
 
 
@@ -39,14 +32,6 @@ def _validate_flow_identity_field(field, value):
             return str(ipaddress.ip_address(value.strip()))
         except ValueError as exc:
             raise ValidationAppException("Field ip must be a valid IP address") from exc
-    return value
-
-
-def _validate_enabled_protocols(_field, value):
-    if not isinstance(value, (list, tuple)):
-        raise ValidationAppException("Field enabled_protocols must be a list of supported flow protocols")
-    if any(not isinstance(protocol, str) or protocol not in SUPPORTED_FLOW_PROTOCOLS for protocol in value):
-        raise ValidationAppException("Field enabled_protocols must be a list of supported flow protocols")
     return value
 
 
@@ -115,7 +100,7 @@ class ManualCollect(viewsets.ViewSet):
             instance_id = payload.get("instance_id")
             FlowOnboardingService.lock_monitor_object(
                 monitor_object_id=payload["monitor_object_id"],
-                require_supported=instance_id is None,
+                require_supported=True,
             )
             if instance_id:
                 _ensure_operate_instances(request, [instance_id], actor_context)
@@ -144,7 +129,6 @@ class ManualCollect(viewsets.ViewSet):
                 "cloud_region_id": _validate_flow_identity_field,
                 "ip": _validate_flow_identity_field,
                 "fallback_sampling_rate": _validate_fallback_sampling_rate,
-                "enabled_protocols": _validate_enabled_protocols,
             },
         )
         actor_context = _build_actor_context(request)

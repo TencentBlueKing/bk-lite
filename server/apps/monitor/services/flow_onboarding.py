@@ -33,7 +33,7 @@ class FlowOnboardingService:
         with transaction.atomic():
             cls.lock_monitor_object(
                 monitor_object_id=monitor_object_id,
-                require_supported=instance_id is None,
+                require_supported=True,
             )
             instance, created = cls._resolve_instance(
                 monitor_object_id=monitor_object_id,
@@ -49,7 +49,6 @@ class FlowOnboardingService:
             if restoring_deleted:
                 restored_organizations = organizations if organizations_provided else cls._get_instance_organizations(instance.id)
             cls._ensure_tuple_available(
-                monitor_object_id=monitor_object_id,
                 cloud_region_id=cloud_region_id,
                 ip=ip,
                 exclude_instance_id=instance.id,
@@ -104,17 +103,12 @@ class FlowOnboardingService:
         cloud_region_id=None,
         ip=None,
         fallback_sampling_rate=None,
-        enabled_protocols=None,
     ):
-        if enabled_protocols is not None:
-            enabled_protocols = cls._normalize_protocols(enabled_protocols)
-
         with transaction.atomic():
             instance = cls._get_instance(instance_id=instance_id)
-            cls.lock_monitor_object(monitor_object_id=instance.monitor_object_id, require_supported=False)
+            cls.lock_monitor_object(monitor_object_id=instance.monitor_object_id, require_supported=True)
             instance = cls._get_instance(instance_id=instance_id, for_update=True)
             cls._ensure_tuple_available(
-                monitor_object_id=instance.monitor_object_id,
                 cloud_region_id=cloud_region_id if cloud_region_id is not None else instance.cloud_region_id,
                 ip=ip if ip is not None else instance.ip,
                 exclude_instance_id=instance.id,
@@ -126,7 +120,6 @@ class FlowOnboardingService:
                 cloud_region_id=cloud_region_id,
                 ip=ip,
                 fallback_sampling_rate=fallback_sampling_rate,
-                enabled_protocols=enabled_protocols,
                 auto=False,
             )
             if organizations is not None:
@@ -229,14 +222,14 @@ class FlowOnboardingService:
         return instance
 
     @classmethod
-    def _ensure_tuple_available(cls, *, monitor_object_id, cloud_region_id, ip, exclude_instance_id=None):
+    def _ensure_tuple_available(cls, *, cloud_region_id, ip, exclude_instance_id=None):
         if cloud_region_id is None or not ip:
             return
         duplicates = MonitorInstance.objects.filter(
-            monitor_object_id=monitor_object_id,
             cloud_region_id=cloud_region_id,
             ip=ip,
             is_deleted=False,
+            monitor_object__name__in=cls.SUPPORTED_MONITOR_OBJECT_NAMES,
         )
         if exclude_instance_id is not None:
             duplicates = duplicates.exclude(id=exclude_instance_id)

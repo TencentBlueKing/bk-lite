@@ -101,7 +101,7 @@ def test_flow_asset_checks_operate_permission_before_binding_instance(monkeypatc
     response = module.ManualCollect().flow_asset(request)
 
     assert response == {"instance_id": "inst-a"}
-    assert calls["lock_monitor_object"] == {"monitor_object_id": 1, "require_supported": False}
+    assert calls["lock_monitor_object"] == {"monitor_object_id": 1, "require_supported": True}
     assert calls["operate_args"] == (request, ["inst-a"], actor_context)
     assert calls["target_org_args"] == ([7], actor_context)
     assert calls["create_or_bind_asset"] == request.data
@@ -284,7 +284,7 @@ def test_flow_asset_api_restores_soft_deleted_reused_instance(api_client, monkey
     assert restored_rule_calls == [(switch_object.id, deleted_instance.id, [2])]
 
 
-def test_update_flow_asset_api_allows_existing_non_flow_asset_binding(api_client, monkeypatch, db):
+def test_flow_asset_api_rejects_explicit_binding_for_unsupported_monitor_object(api_client, monkeypatch, db):
     from apps.monitor.models import MonitorInstance, MonitorObject
     from apps.monitor.views import manual_collect as manual_collect_view
 
@@ -301,32 +301,28 @@ def test_update_flow_asset_api_allows_existing_non_flow_asset_binding(api_client
 
     monkeypatch.setattr(
         manual_collect_view,
-        "_ensure_operate_instances",
-        lambda request, instance_ids, actor_context=None: instance_ids,
-    )
-    monkeypatch.setattr(
-        manual_collect_view,
         "_ensure_target_organizations",
         lambda organizations, actor_context: None,
     )
 
     api_client.cookies["current_team"] = "1"
     response = api_client.post(
-        "/api/v1/monitor/api/manual_collect/flow_asset/update/",
+        "/api/v1/monitor/api/manual_collect/flow_asset/",
         data={
+            "monitor_object_id": host_object.id,
             "instance_id": instance.id,
-            "name": "Existing Host Updated",
-            "fallback_sampling_rate": 2000,
+            "protocol": "sflow",
+            "cloud_region_id": 1,
+            "ip": "10.0.0.12",
+            "name": "Existing Host",
         },
         format="json",
     )
 
-    assert response.status_code == 200, response.content
-    assert response.json()["data"] == {"instance_id": instance.id}
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == "Unsupported flow monitor object"
 
     instance.refresh_from_db()
-    assert instance.name == "Existing Host Updated"
-    assert instance.fallback_sampling_rate == 2000
     assert instance.enabled_protocols == ["netflow"]
 
 
@@ -376,7 +372,7 @@ def test_update_flow_asset_api_rejects_unknown_request_fields(api_client, monkey
         lambda organizations, actor_context: None,
     )
 
-    def fail_if_called(*, instance_id, name=None, organizations=None, cloud_region_id=None, ip=None, fallback_sampling_rate=None, enabled_protocols=None):
+    def fail_if_called(*, instance_id, name=None, organizations=None, cloud_region_id=None, ip=None, fallback_sampling_rate=None):
         raise AssertionError("update_asset should not be called for invalid payloads")
 
     monkeypatch.setattr(FlowOnboardingService, "update_asset", fail_if_called)
@@ -616,17 +612,7 @@ def test_update_flow_asset_api_rejects_empty_identity_values(api_client, monkeyp
     assert response.json()["message"] == message
 
 
-@pytest.mark.parametrize(
-    ("enabled_protocols", "message"),
-    [
-        (1, "Field enabled_protocols must be a list of supported flow protocols"),
-        ([1], "Field enabled_protocols must be a list of supported flow protocols"),
-        (["netflow", "ipfix"], "Field enabled_protocols must be a list of supported flow protocols"),
-    ],
-)
-def test_update_flow_asset_api_rejects_invalid_enabled_protocols(
-    api_client, monkeypatch, enabled_protocols, message
-):
+def test_update_flow_asset_api_rejects_enabled_protocols_field(api_client, monkeypatch):
     from apps.monitor.views import manual_collect as manual_collect_view
 
     monkeypatch.setattr(
@@ -642,13 +628,13 @@ def test_update_flow_asset_api_rejects_invalid_enabled_protocols(
         "/api/v1/monitor/api/manual_collect/flow_asset/update/",
         data={
             "instance_id": "inst-a",
-            "enabled_protocols": enabled_protocols,
+            "enabled_protocols": ["netflow"],
         },
         format="json",
     )
 
     assert response.status_code == 400, response.content
-    assert response.json()["message"] == message
+    assert response.json()["message"] == "Unknown request fields: enabled_protocols"
 
 
 def test_flow_asset_api_normalizes_ip_for_creation_and_reuse(api_client, monkeypatch, db):

@@ -203,7 +203,7 @@ def test_create_or_bind_flow_asset_rejects_restoring_deleted_asset_with_duplicat
     assert deleted.is_deleted is True
 
 
-def test_create_or_bind_flow_asset_uses_monitor_object_scoped_asset_ids(db):
+def test_create_or_bind_flow_asset_rejects_duplicate_tuple_across_supported_monitor_objects(db):
     switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
     router_object = MonitorObject.objects.create(name="Router", display_name="Router")
 
@@ -215,23 +215,22 @@ def test_create_or_bind_flow_asset_uses_monitor_object_scoped_asset_ids(db):
         name="Core Asset",
         organizations=[1],
     )
-    router_result = FlowOnboardingService.create_or_bind_asset(
-        monitor_object_id=router_object.id,
-        protocol="sflow",
-        cloud_region_id=1,
-        ip="10.0.0.12",
-        name="Core Asset",
-        organizations=[2],
-    )
+    with pytest.raises(BaseAppException, match="Flow asset already exists"):
+        FlowOnboardingService.create_or_bind_asset(
+            monitor_object_id=router_object.id,
+            protocol="sflow",
+            cloud_region_id=1,
+            ip="10.0.0.12",
+            name="Core Asset",
+            organizations=[2],
+        )
 
     switch_instance = MonitorInstance.objects.get(id=switch_result["instance_id"])
-    router_instance = MonitorInstance.objects.get(id=router_result["instance_id"])
 
-    assert switch_instance.id != router_instance.id
     assert switch_instance.monitor_object_id == switch_object.id
-    assert router_instance.monitor_object_id == router_object.id
-    assert switch_instance.ip == router_instance.ip == "10.0.0.12"
-    assert switch_instance.cloud_region_id == router_instance.cloud_region_id == 1
+    assert switch_instance.ip == "10.0.0.12"
+    assert switch_instance.cloud_region_id == 1
+    assert not MonitorInstance.objects.filter(monitor_object_id=router_object.id, cloud_region_id=1, ip="10.0.0.12").exists()
 
 
 def test_update_flow_asset_updates_editable_fields(db):
@@ -268,7 +267,7 @@ def test_update_flow_asset_updates_editable_fields(db):
     ) == {2}
 
 
-def test_update_flow_asset_allows_existing_non_flow_asset_binding(db):
+def test_update_flow_asset_rejects_unsupported_monitor_object(db):
     host_object = MonitorObject.objects.create(name="Host", display_name="Host")
     instance = MonitorInstance.objects.create(
         id="('host-device-1',)",
@@ -280,16 +279,16 @@ def test_update_flow_asset_allows_existing_non_flow_asset_binding(db):
         enabled_protocols=["netflow"],
     )
 
-    result = FlowOnboardingService.update_asset(
-        instance_id=instance.id,
-        name="Existing Host Updated",
-        fallback_sampling_rate=2000,
-    )
+    with pytest.raises(BaseAppException, match="Unsupported flow monitor object"):
+        FlowOnboardingService.update_asset(
+            instance_id=instance.id,
+            name="Existing Host Updated",
+            fallback_sampling_rate=2000,
+        )
 
     instance.refresh_from_db()
-    assert result["instance_id"] == instance.id
-    assert instance.name == "Existing Host Updated"
-    assert instance.fallback_sampling_rate == 2000
+    assert instance.name == "Existing Host"
+    assert instance.fallback_sampling_rate == 1000
     assert instance.enabled_protocols == ["netflow"]
 
 
@@ -598,7 +597,7 @@ def test_create_or_bind_flow_asset_rejects_unsupported_monitor_object(db):
         )
 
 
-def test_create_or_bind_flow_asset_allows_existing_non_flow_asset_binding(db):
+def test_create_or_bind_flow_asset_rejects_explicit_binding_for_unsupported_monitor_object(db):
     unsupported_object = MonitorObject.objects.create(name="Host", display_name="Host")
     existing = MonitorInstance.objects.create(
         id="('host-device-1',)",
@@ -610,15 +609,15 @@ def test_create_or_bind_flow_asset_allows_existing_non_flow_asset_binding(db):
         enabled_protocols=["netflow"],
     )
 
-    result = FlowOnboardingService.create_or_bind_asset(
-        monitor_object_id=unsupported_object.id,
-        protocol="sflow",
-        cloud_region_id=1,
-        ip="10.0.0.12",
-        name="Existing Host",
-        instance_id=existing.id,
-    )
+    with pytest.raises(BaseAppException, match="Unsupported flow monitor object"):
+        FlowOnboardingService.create_or_bind_asset(
+            monitor_object_id=unsupported_object.id,
+            protocol="sflow",
+            cloud_region_id=1,
+            ip="10.0.0.12",
+            name="Existing Host",
+            instance_id=existing.id,
+        )
 
     existing.refresh_from_db()
-    assert result["instance_id"] == existing.id
-    assert set(existing.enabled_protocols) == {"netflow", "sflow"}
+    assert existing.enabled_protocols == ["netflow"]
