@@ -680,6 +680,7 @@ export default function RedisDashboardPage() {
                         </>
                       }
                       compare={hitRateCompare}
+                      compareFavorableDirection="up"
                       trendData={metricMap.redis_keyspace_hitrate?.viewData || []}
                       noDataType={getNoDataType('redis_keyspace_hitrate')}
                     />
@@ -745,6 +746,7 @@ export default function RedisDashboardPage() {
                       title={<TitleWithGuide styles={styles} title="内存占用分布" items={memoryGuide} className={styles.panelTitleWithGuide} />}
                       subtitle="已用、上限与碎片"
                       guide={memoryGuide}
+                      isEmpty={!hasMetricData('redis_used_memory') && !hasMetricData('redis_memory_utilization')}
                       data={(() => {
                         const used = hasMetricData('redis_used_memory') ? usedMemoryValue : 0;
                         const max = hasMetricData('redis_maxmemory') && maxMemoryValue > 0 ? maxMemoryValue : used;
@@ -781,6 +783,7 @@ export default function RedisDashboardPage() {
                       title={<TitleWithGuide styles={styles} title="命中分布" items={hitGuide} className={styles.panelTitleWithGuide} />}
                       subtitle="命中、未命中与命中率"
                       guide={hitGuide}
+                      isEmpty={!hasMetricData('redis_keyspace_hits_rate') && !hasMetricData('redis_keyspace_misses_rate')}
                       data={[
                         { name: '命中', value: hasMetricData('redis_keyspace_hits_rate') ? hitsRateValue : 0, color: '#8a5cff' },
                         { name: '未命中', value: hasMetricData('redis_keyspace_misses_rate') ? missesRateValue : 0, color: '#ffccc7' }

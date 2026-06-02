@@ -259,6 +259,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#27c274',
       icon: 'database',
       compare: true,
+      compareFavorableDirection: 'up',
       guide: [{ label: '缓存命中率', detail: '缓冲池满足数据页读取的比例，低值说明内存或缓存压力偏高。' }],
       footer: [{ label: '页面生命周期', metric: 'sqlserver_page_life_expectancy', unit: 's' }]
     },

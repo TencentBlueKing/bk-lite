@@ -771,6 +771,7 @@ export default function MongoDashboardPage() {
                   className={styles.quarterPanel}
                   title={<TitleWithGuide styles={styles} title="WiredTiger 缓存" items={cacheGuide} className={styles.panelTitleWithGuide} />}
                   subtitle="缓存占用与脏数据分布"
+                  isEmpty={!hasMetricData('mongodb_wtcache_current_bytes') && !hasMetricData('mongodb_wtcache_usage_ratio')}
                   data={(() => {
                     const used = hasMetricData('mongodb_wtcache_current_bytes') ? cacheCurrent : 0;
                     const dirty = hasMetricData('mongodb_wtcache_tracked_dirty_bytes') ? cacheDirty : 0;
@@ -796,6 +797,7 @@ export default function MongoDashboardPage() {
                   className={styles.quarterPanel}
                   title={<TitleWithGuide styles={styles} title="操作类型分布" items={throughputGuide} className={styles.panelTitleWithGuide} />}
                   subtitle="命令、查询与写入占比"
+                  isEmpty={!hasMetricData('mongodb_commands_rate') && !hasMetricData('mongodb_queries_rate') && !hasMetricData('mongodb_write_ops_rate')}
                   data={[
                     { name: '命令', value: hasMetricData('mongodb_commands_rate') ? commandsRate : 0, color: '#27c274' },
                     { name: '查询', value: hasMetricData('mongodb_queries_rate') ? queriesRate : 0, color: '#5b8ff9' },

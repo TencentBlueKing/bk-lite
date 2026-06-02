@@ -220,6 +220,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#27c274',
       icon: 'database',
       compare: true,
+      compareFavorableDirection: 'up',
       guide: [{ label: '缓存命中率', detail: '共享缓冲区缓存命中比例，偏低时要关注内存配置和热点数据是否频繁落盘。' }],
       footer: [{ label: '磁盘读取', metric: 'postgresql_blks_read_rate', unit: 'cps' }]
     },
