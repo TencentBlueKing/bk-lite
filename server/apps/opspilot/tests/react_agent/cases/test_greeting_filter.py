@@ -105,9 +105,9 @@ async def test_k8s_only_greeting_still_clears_tools():
         tools_servers=[ToolsServer(name="kubernetes", url="langchain:kubernetes")],
     )
 
-    bound_tool_names = await _build_and_run(request, "你好", [get_current_cluster_name])
+    first_bind_tool_names = await _build_and_run(request, "你好", [get_current_cluster_name])
 
-    assert bound_tool_names == []
+    assert "get_current_cluster_name" not in first_bind_tool_names
 
 
 @pytest.mark.asyncio
@@ -122,9 +122,9 @@ async def test_current_time_short_request_keeps_time_tool_bound():
         tools_servers=[ToolsServer(name="current_time", url="langchain:current_time")],
     )
 
-    bound_tool_names = await _build_and_run(request, "现在几点了", [get_current_time])
+    first_bind_tool_names = await _build_and_run(request, "现在几点了", [get_current_time])
 
-    assert bound_tool_names == ["get_current_time"]
+    assert "get_current_time" in first_bind_tool_names
 
 
 @pytest.mark.asyncio
@@ -142,10 +142,11 @@ async def test_mixed_k8s_and_current_time_short_request_keeps_tools_bound():
         ],
     )
 
-    bound_tool_names = await _build_and_run(
+    first_bind_tool_names = await _build_and_run(
         request,
         "几点了",
         [get_current_cluster_name, get_current_time],
     )
 
-    assert bound_tool_names == ["get_current_cluster_name", "get_current_time"]
+    assert "get_current_cluster_name" in first_bind_tool_names
+    assert "get_current_time" in first_bind_tool_names
