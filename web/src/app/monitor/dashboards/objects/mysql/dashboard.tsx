@@ -1059,7 +1059,7 @@ export default function MysqlDashboardPage() {
                       iconStyle={{ background: 'rgba(255, 77, 79, 0.12)', color: '#ff4d4f' }}
                       color="#ff3030"
                       compare={hasSlowData ? slowCompare : null}
-                      footer={<><span>{hasSlowData ? `行锁等待 ${(lockWaitRate * 60).toFixed(lockWaitRate * 60 >= 10 ? 0 : 1)}/min` : metricEmptyText}</span></>}
+                      footer={<><span>{hasSlowData && hasLockData ? `行锁等待 ${(lockWaitRate * 60).toFixed(lockWaitRate * 60 >= 10 ? 0 : 1)}/min` : metricEmptyText}</span></>}
                       trendData={metricMap.mysql_slow_queries_rate?.viewData || []}
                       noDataType={getNoDataType('mysql_slow_queries_rate')}
                     />
