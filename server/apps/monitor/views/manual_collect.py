@@ -29,6 +29,8 @@ class ManualCollect(viewsets.ViewSet):
     @action(methods=['post'], detail=False, url_path='flow_asset')
     def flow_asset(self, request):
         actor_context = _build_actor_context(request)
+        if request.data.get("instance_id"):
+            _ensure_operate_instances(request, [request.data["instance_id"]], actor_context)
         _ensure_target_organizations(request.data.get("organizations", []), actor_context)
         data = FlowOnboardingService.create_or_bind_asset(**request.data)
         return WebUtils.response_success(data)

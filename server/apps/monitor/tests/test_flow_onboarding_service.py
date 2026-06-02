@@ -67,12 +67,12 @@ def test_create_or_bind_flow_asset_reuses_existing_instance(db):
         ip="10.0.0.12",
         name="Core Switch",
         organizations=[1],
-        instance_id=existing.id,
     )
 
     existing.refresh_from_db()
     assert result["instance_id"] == existing.id
     assert set(existing.enabled_protocols) == {"netflow", "sflow"}
+    assert MonitorInstance.objects.filter(monitor_object_id=switch_object.id, cloud_region_id=1, ip="10.0.0.12").count() == 1
 
 
 def test_create_or_bind_flow_asset_creates_monitor_side_asset(db):
