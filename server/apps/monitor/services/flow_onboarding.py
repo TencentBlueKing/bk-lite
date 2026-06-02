@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Q
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectOrganizationRule
@@ -253,8 +254,15 @@ class FlowOnboardingService:
 
     @classmethod
     def lock_monitor_object(cls, *, monitor_object_id, require_supported=True):
-        monitor_object_name = (
-            MonitorObject.objects.select_for_update().filter(id=monitor_object_id).order_by().values_list("name", flat=True).first()
+        locked_objects = list(
+            MonitorObject.objects.select_for_update()
+            .filter(Q(id=monitor_object_id) | Q(name__in=cls.SUPPORTED_MONITOR_OBJECT_NAMES))
+            .order_by("id")
+            .values("id", "name")
+        )
+        monitor_object_name = next(
+            (monitor_object["name"] for monitor_object in locked_objects if monitor_object["id"] == monitor_object_id),
+            None,
         )
         if not monitor_object_name:
             raise BaseAppException("Monitor object does not exist")

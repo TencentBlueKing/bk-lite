@@ -233,6 +233,50 @@ def test_create_or_bind_flow_asset_rejects_duplicate_tuple_across_supported_moni
     assert not MonitorInstance.objects.filter(monitor_object_id=router_object.id, cloud_region_id=1, ip="10.0.0.12").exists()
 
 
+def test_lock_monitor_object_serializes_supported_flow_object_set(monkeypatch):
+    captured = {}
+
+    class FakeLockedRows:
+        def filter(self, *args, **kwargs):
+            captured["filter_args"] = args
+            captured["filter_kwargs"] = kwargs
+            return self
+
+        def order_by(self, *fields):
+            captured["order_by"] = fields
+            return self
+
+        def values(self, *fields):
+            captured["values"] = fields
+            return [
+                {"id": 1, "name": "Switch"},
+                {"id": 2, "name": "Router"},
+            ]
+
+    class FakeManager:
+        def select_for_update(self):
+            captured["select_for_update"] = True
+            return FakeLockedRows()
+
+    fake_monitor_object = type("FakeMonitorObject", (), {"objects": FakeManager()})
+    monkeypatch.setattr("apps.monitor.services.flow_onboarding.MonitorObject", fake_monitor_object)
+
+    monitor_object_name = FlowOnboardingService.lock_monitor_object(monitor_object_id=2, require_supported=True)
+
+    assert monitor_object_name == "Router"
+    assert captured["select_for_update"] is True
+    assert captured["filter_kwargs"] == {}
+    assert len(captured["filter_args"]) == 1
+    assert captured["filter_args"][0].connector == "OR"
+    assert ("id", 2) in captured["filter_args"][0].children
+    assert (
+        "name__in",
+        FlowOnboardingService.SUPPORTED_MONITOR_OBJECT_NAMES,
+    ) in captured["filter_args"][0].children
+    assert captured["order_by"] == ("id",)
+    assert captured["values"] == ("id", "name")
+
+
 def test_update_flow_asset_updates_editable_fields(db):
     switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
     instance = MonitorInstance.objects.create(

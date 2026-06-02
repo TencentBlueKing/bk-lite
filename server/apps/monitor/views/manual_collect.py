@@ -23,8 +23,22 @@ SUPPORTED_FLOW_PROTOCOLS = getattr(FlowOnboardingService, "SUPPORTED_PROTOCOLS",
 
 
 def _validate_flow_identity_field(field, value):
-    if field == "cloud_region_id" and value is None:
-        raise ValidationAppException("Field cloud_region_id cannot be empty")
+    if field == "cloud_region_id":
+        if value is None:
+            raise ValidationAppException("Field cloud_region_id cannot be empty")
+        if isinstance(value, bool):
+            raise ValidationAppException("Field cloud_region_id must be an integer")
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise ValidationAppException("Field cloud_region_id must be an integer")
+            try:
+                return int(value)
+            except ValueError as exc:
+                raise ValidationAppException("Field cloud_region_id must be an integer") from exc
+        raise ValidationAppException("Field cloud_region_id must be an integer")
     if field == "ip":
         if not isinstance(value, str) or not value.strip():
             raise ValidationAppException("Field ip cannot be empty")
