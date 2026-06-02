@@ -44,7 +44,7 @@ class ScriptType:
 
     # 映射到 Executor.execute_local 的 shell 参数
     SHELL_MAPPING = {
-        SHELL: "sh",
+        SHELL: "bash",
         PYTHON: "python",
         POWERSHELL: "powershell",
         BAT: "cmd",
