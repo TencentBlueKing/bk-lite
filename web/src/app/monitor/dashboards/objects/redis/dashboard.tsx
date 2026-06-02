@@ -400,6 +400,7 @@ export default function RedisDashboardPage() {
   const memoryCompare = maxMemoryValue > 0 ? getPeriodCompare(memoryUtilValue, getPreviousLatest('redis_memory_utilization')) : null;
   const evictedCompare = getPeriodCompare(evictedRateValue, getPreviousLatest('redis_evicted_keys_rate'));
   const hitRateCompare = getPeriodCompare(hitRateValue, getPreviousLatest('redis_keyspace_hitrate'));
+  const rejectedCompare = getPeriodCompare(rejectedRateValue, getPreviousLatest('redis_rejected_connections_rate'));
 
   const uptimeStartedAt = Number.isFinite(uptimeValue) && uptimeValue >= 0 ? dayjs().subtract(Math.floor(uptimeValue), 'second').format('YYYY-MM-DD HH:mm:ss') : metricEmptyText;
   const uptimeStatusGuide = [
@@ -660,6 +661,7 @@ export default function RedisDashboardPage() {
                       footer={
                         <span>阻塞客户端 {renderMetricValue('redis_blocked_clients', blockedClientsDisplay.value)}</span>
                       }
+                      compare={rejectedCompare}
                       trendData={metricMap.redis_rejected_connections_rate?.viewData || []}
                       noDataType={getNoDataType('redis_rejected_connections_rate')}
                     />
