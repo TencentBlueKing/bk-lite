@@ -9,6 +9,7 @@ import {
   ApprovalRequestValue,
   BrowserStepProgressValue,
   BrowserTaskReceivedValue,
+  ConfigAnalysisReportValue,
   ConfigDiffReportValue,
   RepairCommandsValue,
   ReportFileDownloadValue,
@@ -464,6 +465,12 @@ export class AGUIMessageHandler {
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
+  handleConfigAnalysisReport(value: ConfigAnalysisReportValue) {
+    this.flushCurrentTextBlock();
+    this.contentBlocks.push({ type: 'text', content: value.markdown });
+    this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
+  }
+
   /**
    * 处理报告文件下载事件
    */
@@ -635,6 +642,8 @@ export class AGUIMessageHandler {
           this.handleUserChoiceResult(aguiData.value as { choice_id: string; selected: string[]; source: string });
         } else if (aguiData.name === 'config_diff_report' && aguiData.value) {
           this.handleConfigDiffReport(aguiData.value as unknown as ConfigDiffReportValue);
+        } else if (aguiData.name === 'config_analysis_report' && aguiData.value) {
+          this.handleConfigAnalysisReport(aguiData.value as ConfigAnalysisReportValue);
         } else if (aguiData.name === 'report_file_download' && aguiData.value) {
           this.handleReportFileDownload(aguiData.value as unknown as ReportFileDownloadValue);
         } else if (aguiData.name === 'repair_commands' && aguiData.value) {
