@@ -3,6 +3,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 
 def _load_module(module_name: str, file_path: Path):
     spec = importlib.util.spec_from_file_location(module_name, file_path)
@@ -235,3 +237,36 @@ def test_import_compound_monitor_object_propagates_node_selector(monkeypatch):
     assert captured[0]["node_selector"] == {"is_container": True}
     assert captured[1]["node_selector"] == {"is_container": True}
     assert captured[1]["parent_id"] == 99
+
+
+def test_normalize_instance_identity_supports_raw_and_legacy_formats(monkeypatch):
+    dimension_module = _load_module(
+        "monitor_dimension_identity_test_module",
+        Path(__file__).resolve().parents[1] / "utils" / "dimension.py",
+    )
+
+    normalize_instance_identity = dimension_module.normalize_instance_identity
+
+    raw_result = normalize_instance_identity("MTVmOTFiYTM5ODZk")
+    legacy_result = normalize_instance_identity("('MTVmOTFiYTM5ODZk',)")
+
+    assert raw_result == {
+        "raw_input": "MTVmOTFiYTM5ODZk",
+        "logical_instance_value": "MTVmOTFiYTM5ODZk",
+        "storage_instance_key": "('MTVmOTFiYTM5ODZk',)",
+    }
+    assert legacy_result == {
+        "raw_input": "('MTVmOTFiYTM5ODZk',)",
+        "logical_instance_value": "MTVmOTFiYTM5ODZk",
+        "storage_instance_key": "('MTVmOTFiYTM5ODZk',)",
+    }
+
+
+def test_normalize_instance_identity_rejects_empty_value(monkeypatch):
+    dimension_module = _load_module(
+        "monitor_dimension_identity_empty_test_module",
+        Path(__file__).resolve().parents[1] / "utils" / "dimension.py",
+    )
+
+    with pytest.raises(ValueError, match="instance_id"):
+        dimension_module.normalize_instance_identity("")
