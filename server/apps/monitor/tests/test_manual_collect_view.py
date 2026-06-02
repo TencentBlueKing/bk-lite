@@ -39,8 +39,11 @@ def test_flow_asset_checks_operate_permission_before_binding_instance(monkeypatc
         calls["create_or_bind_asset"] = kwargs
         return {"instance_id": kwargs.get("instance_id")}
 
-    def lock_monitor_object(*, monitor_object_id):
-        calls["lock_monitor_object"] = monitor_object_id
+    def lock_monitor_object(*, monitor_object_id, require_supported=True):
+        calls["lock_monitor_object"] = {
+            "monitor_object_id": monitor_object_id,
+            "require_supported": require_supported,
+        }
 
     def _build_actor_context(request):
         calls["actor_context_request"] = request
@@ -98,7 +101,7 @@ def test_flow_asset_checks_operate_permission_before_binding_instance(monkeypatc
     response = module.ManualCollect().flow_asset(request)
 
     assert response == {"instance_id": "inst-a"}
-    assert calls["lock_monitor_object"] == 1
+    assert calls["lock_monitor_object"] == {"monitor_object_id": 1, "require_supported": False}
     assert calls["operate_args"] == (request, ["inst-a"], actor_context)
     assert calls["target_org_args"] == ([7], actor_context)
     assert calls["create_or_bind_asset"] == request.data
@@ -122,8 +125,11 @@ def test_flow_asset_checks_operate_permission_before_reusing_existing_instance(m
         calls["create_or_bind_asset"] = kwargs
         return {"instance_id": existing_instance.id}
 
-    def lock_monitor_object(*, monitor_object_id):
-        calls["lock_monitor_object"] = monitor_object_id
+    def lock_monitor_object(*, monitor_object_id, require_supported=True):
+        calls["lock_monitor_object"] = {
+            "monitor_object_id": monitor_object_id,
+            "require_supported": require_supported,
+        }
 
     def find_reusable_asset(*, monitor_object_id, cloud_region_id, ip, for_update=False):
         calls["find_reusable_asset"] = {
@@ -190,7 +196,7 @@ def test_flow_asset_checks_operate_permission_before_reusing_existing_instance(m
     response = module.ManualCollect().flow_asset(request)
 
     assert response == {"instance_id": existing_instance.id}
-    assert calls["lock_monitor_object"] == 1
+    assert calls["lock_monitor_object"] == {"monitor_object_id": 1, "require_supported": True}
     assert calls["find_reusable_asset"] == {
         "monitor_object_id": 1,
         "cloud_region_id": 1,
@@ -406,6 +412,35 @@ def test_flow_asset_api_rejects_unsupported_protocol(api_client, monkeypatch):
     assert response.json()["message"] == "Field protocol must be a supported flow protocol"
 
 
+def test_flow_asset_api_rejects_unsupported_monitor_object(api_client, monkeypatch, db):
+    from apps.monitor.models import MonitorObject
+    from apps.monitor.services.flow_onboarding import FlowOnboardingService
+
+    unsupported_object = MonitorObject.objects.create(name="Host", display_name="Host")
+
+    monkeypatch.setattr(
+        FlowOnboardingService,
+        "create_or_bind_asset",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("create_or_bind_asset should not be called")),
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/",
+        data={
+            "monitor_object_id": unsupported_object.id,
+            "protocol": "netflow",
+            "cloud_region_id": 1,
+            "ip": "10.0.0.12",
+            "name": "Core Host",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == "Unsupported flow monitor object"
+
+
 @pytest.mark.parametrize(
     ("path", "payload"),
     [
@@ -451,6 +486,52 @@ def test_flow_asset_endpoints_reject_invalid_fallback_sampling_rate(api_client, 
 
     assert response.status_code == 400, response.content
     assert response.json()["message"] == "Field fallback_sampling_rate must be a non-negative integer"
+
+
+@pytest.mark.parametrize(
+    ("path", "payload"),
+    [
+        (
+            "/api/v1/monitor/api/manual_collect/flow_asset/",
+            {
+                "monitor_object_id": 1,
+                "protocol": "netflow",
+                "cloud_region_id": 1,
+                "ip": " not-an-ip ",
+                "name": "Core Switch",
+            },
+        ),
+        (
+            "/api/v1/monitor/api/manual_collect/flow_asset/update/",
+            {
+                "instance_id": "inst-a",
+                "ip": "999.999.999.999",
+            },
+        ),
+    ],
+)
+def test_flow_asset_endpoints_reject_invalid_ip_values(api_client, monkeypatch, path, payload):
+    from apps.monitor.services.flow_onboarding import FlowOnboardingService
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    monkeypatch.setattr(
+        FlowOnboardingService,
+        "lock_monitor_object",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("lock_monitor_object should not be called for invalid payloads")),
+    )
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None: (_ for _ in ()).throw(
+            AssertionError("_ensure_operate_instances should not be called for invalid payloads")
+        ),
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(path, data=payload, format="json")
+
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == "Field ip must be a valid IP address"
 
 
 @pytest.mark.parametrize(
@@ -522,3 +603,61 @@ def test_update_flow_asset_api_rejects_invalid_enabled_protocols(
 
     assert response.status_code == 400, response.content
     assert response.json()["message"] == message
+
+
+def test_flow_asset_api_normalizes_ip_for_creation_and_reuse(api_client, monkeypatch, db):
+    from apps.monitor.models import MonitorInstance, MonitorObject
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None: instance_ids,
+    )
+
+    api_client.cookies["current_team"] = "1"
+    create_response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/",
+        data={
+            "monitor_object_id": switch_object.id,
+            "protocol": "netflow",
+            "cloud_region_id": 1,
+            "ip": " 10.0.0.12 ",
+            "name": "Core Switch",
+            "organizations": [1],
+        },
+        format="json",
+    )
+
+    assert create_response.status_code == 200, create_response.content
+    created_instance_id = create_response.json()["data"]["instance_id"]
+    created_instance = MonitorInstance.objects.get(id=created_instance_id)
+    assert f"flow:{switch_object.id}:1:10.0.0.12" in created_instance.id
+    assert " 10.0.0.12 " not in created_instance.id
+    assert created_instance.ip == "10.0.0.12"
+    assert created_instance.enabled_protocols == ["netflow"]
+
+    reuse_response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/",
+        data={
+            "monitor_object_id": switch_object.id,
+            "protocol": "sflow",
+            "cloud_region_id": 1,
+            "ip": "10.0.0.12",
+            "name": "Core Switch",
+            "organizations": [1],
+        },
+        format="json",
+    )
+
+    assert reuse_response.status_code == 200, reuse_response.content
+    assert reuse_response.json()["data"]["instance_id"] == created_instance_id
+
+    created_instance.refresh_from_db()
+    assert set(created_instance.enabled_protocols) == {"netflow", "sflow"}
+    assert MonitorInstance.objects.filter(
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+    ).count() == 1

@@ -570,6 +570,46 @@ def test_create_or_bind_flow_asset_rejects_unknown_protocol(db):
         )
 
 
+def test_create_or_bind_flow_asset_rejects_unsupported_monitor_object(db):
+    unsupported_object = MonitorObject.objects.create(name="Host", display_name="Host")
+
+    with pytest.raises(BaseAppException, match="Unsupported flow monitor object"):
+        FlowOnboardingService.create_or_bind_asset(
+            monitor_object_id=unsupported_object.id,
+            protocol="netflow",
+            cloud_region_id=1,
+            ip="10.0.0.12",
+            name="Core Host",
+            organizations=[1],
+        )
+
+
+def test_create_or_bind_flow_asset_allows_existing_non_flow_asset_binding(db):
+    unsupported_object = MonitorObject.objects.create(name="Host", display_name="Host")
+    existing = MonitorInstance.objects.create(
+        id="('host-device-1',)",
+        name="Existing Host",
+        monitor_object_id=unsupported_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+
+    result = FlowOnboardingService.create_or_bind_asset(
+        monitor_object_id=unsupported_object.id,
+        protocol="sflow",
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        name="Existing Host",
+        instance_id=existing.id,
+    )
+
+    existing.refresh_from_db()
+    assert result["instance_id"] == existing.id
+    assert set(existing.enabled_protocols) == {"netflow", "sflow"}
+
+
 def test_flow_plugin_seed_files_define_expected_templates():
     expected_templates = {
         ("switch", "netflow"): ("Switch", "Switch Flow NetFlow"),

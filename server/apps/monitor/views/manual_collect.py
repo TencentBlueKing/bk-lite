@@ -1,3 +1,5 @@
+import ipaddress
+
 from django.db import transaction
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -30,8 +32,14 @@ SUPPORTED_FLOW_PROTOCOLS = getattr(FlowOnboardingService, "SUPPORTED_PROTOCOLS",
 def _validate_flow_identity_field(field, value):
     if field == "cloud_region_id" and value is None:
         raise ValidationAppException("Field cloud_region_id cannot be empty")
-    if field == "ip" and (not isinstance(value, str) or not value.strip()):
-        raise ValidationAppException("Field ip cannot be empty")
+    if field == "ip":
+        if not isinstance(value, str) or not value.strip():
+            raise ValidationAppException("Field ip cannot be empty")
+        try:
+            return str(ipaddress.ip_address(value.strip()))
+        except ValueError as exc:
+            raise ValidationAppException("Field ip must be a valid IP address") from exc
+    return value
 
 
 def _validate_enabled_protocols(_field, value):
@@ -39,16 +47,19 @@ def _validate_enabled_protocols(_field, value):
         raise ValidationAppException("Field enabled_protocols must be a list of supported flow protocols")
     if any(not isinstance(protocol, str) or protocol not in SUPPORTED_FLOW_PROTOCOLS for protocol in value):
         raise ValidationAppException("Field enabled_protocols must be a list of supported flow protocols")
+    return value
 
 
 def _validate_protocol(_field, value):
     if not isinstance(value, str) or value not in SUPPORTED_FLOW_PROTOCOLS:
         raise ValidationAppException("Field protocol must be a supported flow protocol")
+    return value
 
 
 def _validate_fallback_sampling_rate(_field, value):
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValidationAppException("Field fallback_sampling_rate must be a non-negative integer")
+    return value
 
 
 def _validated_request_payload(data, *, required_fields, optional_fields, field_validators=None):
@@ -66,7 +77,7 @@ def _validated_request_payload(data, *, required_fields, optional_fields, field_
 
     for field, validator in field_validators.items():
         if field in payload:
-            validator(field, payload[field])
+            payload[field] = validator(field, payload[field])
 
     return {field: payload[field] for field in payload if field in allowed_fields}
 
@@ -101,8 +112,11 @@ class ManualCollect(viewsets.ViewSet):
         )
         actor_context = _build_actor_context(request)
         with transaction.atomic():
-            FlowOnboardingService.lock_monitor_object(monitor_object_id=payload["monitor_object_id"])
             instance_id = payload.get("instance_id")
+            FlowOnboardingService.lock_monitor_object(
+                monitor_object_id=payload["monitor_object_id"],
+                require_supported=instance_id is None,
+            )
             if instance_id:
                 _ensure_operate_instances(request, [instance_id], actor_context)
             else:

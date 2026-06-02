@@ -1,6 +1,6 @@
 from django.db import transaction
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectOrganizationRule
 from apps.monitor.services.manual_collect import ManualCollectService
 from apps.monitor.services.monitor_object import MonitorObjectService
@@ -8,6 +8,7 @@ from apps.monitor.services.monitor_object import MonitorObjectService
 
 class FlowOnboardingService:
     SUPPORTED_PROTOCOLS = {"netflow", "sflow"}
+    SUPPORTED_MONITOR_OBJECT_NAMES = {"Switch", "Router", "Firewall", "Loadbalance"}
     DEFAULT_FALLBACK_SAMPLING_RATE = 1000
     ORGANIZATIONS_UNSET = object()
 
@@ -30,7 +31,10 @@ class FlowOnboardingService:
         organizations = list(organizations or []) if organizations_provided else None
 
         with transaction.atomic():
-            cls.lock_monitor_object(monitor_object_id=monitor_object_id)
+            cls.lock_monitor_object(
+                monitor_object_id=monitor_object_id,
+                require_supported=instance_id is None,
+            )
             instance, created = cls._resolve_instance(
                 monitor_object_id=monitor_object_id,
                 cloud_region_id=cloud_region_id,
@@ -255,10 +259,15 @@ class FlowOnboardingService:
         )
 
     @classmethod
-    def lock_monitor_object(cls, *, monitor_object_id):
-        exists = MonitorObject.objects.select_for_update().filter(id=monitor_object_id).exists()
-        if not exists:
+    def lock_monitor_object(cls, *, monitor_object_id, require_supported=True):
+        monitor_object_name = (
+            MonitorObject.objects.select_for_update().filter(id=monitor_object_id).order_by().values_list("name", flat=True).first()
+        )
+        if not monitor_object_name:
             raise BaseAppException("Monitor object does not exist")
+        if require_supported and monitor_object_name not in cls.SUPPORTED_MONITOR_OBJECT_NAMES:
+            raise ValidationAppException("Unsupported flow monitor object")
+        return monitor_object_name
 
     @classmethod
     def _validate_protocol(cls, protocol):
