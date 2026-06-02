@@ -239,7 +239,7 @@ def test_import_compound_monitor_object_propagates_node_selector(monkeypatch):
     assert captured[1]["parent_id"] == 99
 
 
-def test_normalize_instance_identity_supports_raw_and_legacy_formats(monkeypatch):
+def test_normalize_instance_identity_supports_raw_and_legacy_formats():
     dimension_module = _load_module(
         "monitor_dimension_identity_test_module",
         Path(__file__).resolve().parents[1] / "utils" / "dimension.py",
@@ -262,7 +262,7 @@ def test_normalize_instance_identity_supports_raw_and_legacy_formats(monkeypatch
     }
 
 
-def test_normalize_instance_identity_rejects_empty_value(monkeypatch):
+def test_normalize_instance_identity_rejects_empty_value():
     dimension_module = _load_module(
         "monitor_dimension_identity_empty_test_module",
         Path(__file__).resolve().parents[1] / "utils" / "dimension.py",
@@ -270,3 +270,6 @@ def test_normalize_instance_identity_rejects_empty_value(monkeypatch):
 
     with pytest.raises(ValueError, match="instance_id"):
         dimension_module.normalize_instance_identity("")
+
+    with pytest.raises(ValueError, match="instance_id"):
+        dimension_module.normalize_instance_identity(None)
