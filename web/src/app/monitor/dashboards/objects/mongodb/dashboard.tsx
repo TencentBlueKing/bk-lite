@@ -66,7 +66,6 @@ const MONGODB_METRIC_GROUPS = [
   {
     key: 'summary',
     names: [
-      'mongodb_uptime_ns',
       'mongodb_connections_current',
       'mongodb_connections_available',
       'mongodb_open_connections',
@@ -89,7 +88,6 @@ const MONGODB_METRIC_GROUPS = [
     names: [
       'mongodb_resident_megabytes',
       'mongodb_vsize_megabytes',
-      'mongodb_tcmalloc_current_allocated_bytes',
       'mongodb_wtcache_current_bytes',
       'mongodb_wtcache_max_bytes_configured',
       'mongodb_wtcache_tracked_dirty_bytes',
