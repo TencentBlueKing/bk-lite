@@ -1323,6 +1323,8 @@ export default function MysqlDashboardPage() {
                       data={threadShareChartData}
                       centerValue={threadDistributionTotal.toFixed(0)}
                       centerCaption="当前总数"
+                      isEmpty={threadShareChartData.length === 0}
+                      emptyDescription="暂无线程状态数据"
                     />
 
                     <RingChartPanel
@@ -1335,6 +1337,8 @@ export default function MysqlDashboardPage() {
                       data={bufferPoolShareChartData}
                       centerValue={bufferPoolUsedValue.toFixed(0)}
                       centerCaption="使用率"
+                      isEmpty={!hasMetricData('mysql_buffer_pool_used_ratio')}
+                      emptyDescription="暂无缓冲池数据"
                       infoRows={bufferPoolBreakdown.map((item) => ({
                         name: item.name,
                         color: item.color,
