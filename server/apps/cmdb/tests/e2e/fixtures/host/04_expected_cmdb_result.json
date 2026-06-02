@@ -1,0 +1,18 @@
+{
+  "model_id": "host",
+  "instance_count_min": 1,
+  "expected_instance": {
+    "inst_name":        "web01.prod.example.com",
+    "ip_addr":          "10.0.0.11",
+    "os_type":          "1",
+    "os_name":          "Ubuntu",
+    "os_version":       "22.04.4 LTS",
+    "cpu_arch":         "x64",
+    "cpu_core":         8,
+    "memory":           16384,
+    "disk":             500,
+    "mac_address":      "02:42:AC:11:00:02"
+  },
+  "expected_proc_count": 2,
+  "expected_proc_names_subset": ["nginx", "redis-server"]
+}

@@ -3,6 +3,7 @@
 import React from 'react';
 import { useTranslation } from '@/utils/i18n';
 import { SourceItem } from '@/app/alarm/types/integration';
+import { STATUS_TEXT, HEALTH_BG, SOURCE_LOGO_FALLBACK } from '@/app/alarm/constants/colors';
 
 interface StatCardProps {
   icon: React.ReactNode;
@@ -54,10 +55,10 @@ function formatTrend(today: number, yesterday: number, t: (key: string) => strin
   const diff = today - yesterday;
   const pct = ((diff / yesterday) * 100).toFixed(1);
   if (diff > 0) {
-    return { text: `↑ ${pct}%`, color: '#f53f3f' };
+    return { text: `↑ ${pct}%`, color: STATUS_TEXT.TREND_UP_RED };
   }
   if (diff < 0) {
-    return { text: `↓ ${Math.abs(parseFloat(pct))}%`, color: '#00b42a' };
+    return { text: `↓ ${Math.abs(parseFloat(pct))}%`, color: STATUS_TEXT.TREND_DOWN_GREEN };
   }
   return { text: '— 0%', color: 'var(--color-text-3)' };
 }
@@ -84,10 +85,10 @@ const SummaryStats: React.FC<SummaryStatsProps> = ({ sources, dailyStats }) => {
       <StatCard
         icon={
           <svg viewBox="0 0 24 24" width="24" height="24">
-            <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" fill="#3370ff" />
+            <path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" fill={SOURCE_LOGO_FALLBACK} />
           </svg>
         }
-        iconBg="#e8f0ff"
+        iconBg={HEALTH_BG.BLUE_BG}
         label={t('integration.statTotal')}
         value={total}
         unit={t('integration.statUnitSources')}
@@ -95,10 +96,10 @@ const SummaryStats: React.FC<SummaryStatsProps> = ({ sources, dailyStats }) => {
       <StatCard
         icon={
           <svg viewBox="0 0 24 24" width="24" height="24">
-            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="#00b42a" />
+            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill={STATUS_TEXT.TREND_DOWN_GREEN} />
           </svg>
         }
-        iconBg="#e8ffea"
+        iconBg={HEALTH_BG.GREEN_BG}
         label={t('integration.statTodayEvents')}
         value={todayCount.toLocaleString()}
         unit={t('integration.statUnitEvents')}
@@ -108,11 +109,11 @@ const SummaryStats: React.FC<SummaryStatsProps> = ({ sources, dailyStats }) => {
       <StatCard
         icon={
           <svg viewBox="0 0 24 24" width="24" height="24">
-            <circle cx="12" cy="12" r="8" fill="none" stroke="#ff7d00" strokeWidth="2" />
-            <path d="M12 8v4l3 3" fill="none" stroke="#ff7d00" strokeWidth="2" strokeLinecap="round" />
+            <circle cx="12" cy="12" r="8" fill="none" stroke={STATUS_TEXT.WARN_ORANGE} strokeWidth="2" />
+            <path d="M12 8v4l3 3" fill="none" stroke={STATUS_TEXT.WARN_ORANGE} strokeWidth="2" strokeLinecap="round" />
           </svg>
         }
-        iconBg="#fff7e8"
+        iconBg={HEALTH_BG.ORANGE_BG}
         label={t('integration.statActive')}
         value={activeSources}
         unit={t('integration.statUnitSources')}

@@ -261,11 +261,10 @@ const UserLoginLogs: React.FC = () => {
   ];
 
   return (
-    <div className="bg-[var(--color-bg)] p-4 rounded-lg">
-      <Space direction="vertical" className="w-full" size="middle">
-        <div className="flex justify-end">
-          <Space wrap>
-            <Select
+    <div className="flex flex-col h-full w-full">
+      <div className="flex-none flex justify-end mb-3">
+        <Space wrap>
+          <Select
               placeholder={t('system.security.loginStatus')}
               className="w-[120px]"
               allowClear
@@ -315,15 +314,16 @@ const UserLoginLogs: React.FC = () => {
             >
             </Button>
           </Space>
-        </div>
-        
+      </div>
+      
+      <div className="flex-1 min-h-0 relative">
         <CustomTable
           columns={columns}
           dataSource={logs}
           loading={loading}
           rowKey="id"
           rowSelection={rowSelection}
-          scroll={{ x: '100%', y: 'calc(100vh - 320px)' }}
+          scroll={{ x: '100%' }}
           pagination={{
             current: pagination.current,
             pageSize: pagination.pageSize,
@@ -334,7 +334,7 @@ const UserLoginLogs: React.FC = () => {
             onShowSizeChange: handleTableChange
           }}
         />
-      </Space>
+      </div>
 
       <OperateModal
         title={t('system.security.exportTitle')}

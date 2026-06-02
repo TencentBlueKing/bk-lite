@@ -90,6 +90,7 @@ const OidLibrary: React.FC = () => {
         content: t('common.delConfirmCxt'),
         okText: t('common.confirm'),
         cancelText: t('common.cancel'),
+        okButtonProps: { danger: true },
         centered: true,
         onOk: async () => {
           try {
@@ -270,6 +271,7 @@ const OidLibrary: React.FC = () => {
               <Button
                 type="link"
                 size="small"
+                danger
                 disabled={record.built_in}
                 onClick={() => delMap(record)}
               >

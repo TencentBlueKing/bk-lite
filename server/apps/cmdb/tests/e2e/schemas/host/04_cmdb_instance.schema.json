@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB host instance (after format_metrics)",
+  "description": "HostCollectMetrics.format_metrics 转换出来准备写入 FalkorDB 的字典字段约束。",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "os_type", "cpu_arch"],
+  "properties": {
+    "inst_name":        {"type": "string", "minLength": 1},
+    "ip_addr":          {"type": "string"},
+    "os_type":          {"type": "string", "enum": ["1", "2", "3", "4", "other"]},
+    "os_name":          {"type": "string"},
+    "os_version":       {"type": "string"},
+    "cpu_arch":         {"type": "string", "enum": ["x86", "x64", "arm", "arm64", "other"]},
+    "cpu_core":         {"type": "integer", "minimum": 0},
+    "memory":           {"type": "integer", "minimum": 0},
+    "disk":             {"type": "integer", "minimum": 0},
+    "mac_address":      {"type": "string"}
+  }
+}

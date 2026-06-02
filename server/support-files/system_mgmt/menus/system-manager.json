@@ -35,6 +35,26 @@
             "Add",
             "Delete"
           ]
+        },
+        {
+          "id": "auth_sources",
+          "name": "Auth Sources",
+          "operation": [
+            "View",
+            "Edit",
+            "Add",
+            "Delete"
+          ]
+        },
+        {
+          "id": "security_settings",
+          "name": "Security Settings",
+          "operation": [
+            "View",
+            "Edit",
+            "Add",
+            "Delete"
+          ]
         }
       ]
     },
@@ -114,53 +134,6 @@
       ]
     },
     {
-      "name": "Security Management",
-      "children": [
-        {
-          "id": "security_settings",
-          "name": "Security Settings",
-          "operation": [
-            "View",
-            "Edit",
-            "Add",
-            "Delete"
-          ]
-        },
-        {
-          "id": "auth_sources",
-          "name": "Auth Sources",
-          "operation": [
-            "View",
-            "Edit",
-            "Add",
-            "Delete"
-          ]
-        },
-        {
-          "id": "user_logs",
-          "name": "Login Logs",
-          "operation": [
-            "View",
-            "Delete"
-          ]
-        },
-        {
-          "id": "operation_logs",
-          "name": "Operation Logs",
-          "operation": [
-            "View"
-          ]
-        },
-        {
-          "id": "error_logs",
-          "name": "Error Logs",
-          "operation": [
-            "View"
-          ]
-        }
-      ]
-    },
-    {
       "name": "Setting",
       "icon": "settings-fill",
       "children": [
@@ -171,6 +144,20 @@
             "View",
             "Add",
             "Delete"
+          ]
+        },
+        {
+          "id": "audit_log",
+          "name": "Audit Logs",
+          "operation": [
+            "View"
+          ]
+        },
+        {
+          "id": "error_logs",
+          "name": "Error Logs",
+          "operation": [
+            "View"
           ]
         }
       ]

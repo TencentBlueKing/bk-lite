@@ -358,7 +358,7 @@ const ZabbixGuide: React.FC<ZabbixGuideProps> = ({ guide }) => {
                     {item.value}
                   </span>
                   {item.copyable ? (
-                    <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => copy(item.value || '')} />
+                    <Button type="link" size="small" aria-label={t('common.copy')} icon={<CopyOutlined aria-hidden="true" />} onClick={() => copy(item.value || '')} />
                   ) : null}
                 </div>
               </Descriptions.Item>
@@ -371,7 +371,7 @@ const ZabbixGuide: React.FC<ZabbixGuideProps> = ({ guide }) => {
                     <span className="min-w-0 flex-1 break-all font-mono text-[13px] leading-6 text-[var(--color-text-1)]">
                       {String(value ?? '')}
                     </span>
-                    <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => copy(String(value || ''))} />
+                    <Button type="link" size="small" aria-label={t('common.copy')} icon={<CopyOutlined aria-hidden="true" />} onClick={() => copy(String(value || ''))} />
                   </div>
                 </Descriptions.Item>
               ))}
@@ -418,7 +418,7 @@ const ZabbixGuide: React.FC<ZabbixGuideProps> = ({ guide }) => {
                         {item.value || '--'}
                       </span>
                       {item.copyable ? (
-                        <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => copy(item.value)} />
+                        <Button type="link" size="small" aria-label={t('common.copy')} icon={<CopyOutlined aria-hidden="true" />} onClick={() => copy(item.value)} />
                       ) : null}
                     </div>
                     {item.description ? (

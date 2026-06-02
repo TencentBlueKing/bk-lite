@@ -1,24 +1,23 @@
 'use client';
 
 import React from 'react';
-import { Form, Input } from 'antd';
-import type { UploadProps } from 'antd';
-import { useTranslation } from '@/utils/i18n';
-import { message } from 'antd';
+import type {UploadProps} from 'antd';
+import {Form, Input, message} from 'antd';
+import {useTranslation} from '@/utils/i18n';
 import {
-  CeleryNodeConfig,
-  HttpNodeConfig,
   AgentsNodeConfig,
   ApiInfoNodeConfig,
-  WebChatNodeConfig,
-  MobileNodeConfig,
+  CeleryNodeConfig,
   ConditionNodeConfig,
-  IntentClassificationNodeConfig,
-  NotificationNodeConfig,
-  EnterpriseWechatNodeConfig,
   DingtalkNodeConfig,
-  WechatOfficialNodeConfig,
+  EnterpriseWechatNodeConfig,
+  HttpNodeConfig,
+  IntentClassificationNodeConfig,
   MemoryNodeConfig,
+  MobileNodeConfig,
+  NotificationNodeConfig,
+  WebChatNodeConfig,
+  WechatOfficialNodeConfig,
 } from './components/nodeConfigs';
 
 export const NodeConfigForm: React.FC<any> = ({
@@ -190,6 +189,9 @@ export const NodeConfigForm: React.FC<any> = ({
           memorySpaces={memorySpaces}
           loadingMemorySpaces={loadingMemorySpaces}
           form={form}
+          nodeType={nodeType}
+          llmModels={llmModels}
+          loadingLlmModels={loadingLlmModels}
         />
       )}
     </>

@@ -1,5 +1,6 @@
 import React from 'react';
 import LevelIcon from '@/app/alarm/components/levelIcon';
+import { NEUTRAL } from '@/app/alarm/constants/colors';
 
 export const DEFAULT_LEVEL_ICONS = [
   'huoyanhuodongtuijian',
@@ -24,6 +25,6 @@ export const renderLevelIconOption = (icon: string, color?: string) => (
     className="flex h-7 w-7 items-center justify-center rounded-md"
     style={{ backgroundColor: color || DEFAULT_LEVEL_COLORS[0] }}
   >
-    <LevelIcon icon={icon} className="h-4 w-4" style={{ color: '#fff' }} />
+    <LevelIcon icon={icon} className="h-4 w-4" style={{ color: NEUTRAL.ON_DARK_FG }} />
   </div>
 );

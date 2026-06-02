@@ -14,6 +14,6 @@
         metrics_modules = "{{ metrics_modules | default('cpu,mem,disk,net', true) }}"
         ansible_node_id = "${ANSIBLE_NODE_ID}"
         instance_id = "{{ instance_id }}"
-        instance_type = "host"
+        instance_type = "os"
         collect_type = "http"
         config_type = "host"

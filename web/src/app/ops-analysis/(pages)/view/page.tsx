@@ -91,7 +91,7 @@ const ViewPage: React.FC = () => {
         content: t('opsAnalysisSidebar.unsavedChangesWarning'),
         okText: t('common.confirm'),
         cancelText: t('common.cancel'),
-        okType: 'danger',
+        okButtonProps: { danger: true },
         centered: true,
         onOk: () => {
           performNavigation(type, itemInfo);

@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB mysql instance",
+  "type": "object",
+  "required": ["inst_name", "ip_addr", "port"],
+  "properties": {
+    "inst_name":    {"type": "string", "pattern": "-mysql-"},
+    "ip_addr":      {"type": "string"},
+    "port":         {"type": "string"},
+    "version":      {"type": "string"},
+    "enable_binlog":{"type": "string"},
+    "sync_binlog":  {"type": "string"},
+    "max_conn":     {"type": "string"},
+    "max_mem":      {"type": "string"},
+    "basedir":      {"type": "string"},
+    "datadir":      {"type": "string"},
+    "socket":       {"type": "string"},
+    "bind_address": {"type": "string"},
+    "slow_query_log": {"type": "string"},
+    "slow_query_log_file": {"type": "string"},
+    "log_error":    {"type": "string"},
+    "wait_timeout": {"type": "string"}
+  }
+}
