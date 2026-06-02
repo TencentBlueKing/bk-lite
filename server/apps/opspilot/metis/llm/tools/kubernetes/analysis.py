@@ -444,6 +444,23 @@ def check_kubernetes_endpoints(namespace=None, config: RunnableConfig = None):
         return json.dumps({"error": f"检查Endpoints失败: {str(e)}"})
 
 
+def build_config_analysis_next_step_hint(problematic_count: int, target_name: str | None = None) -> str:
+    hint_parts = [f"分析完成，共 {problematic_count} 个工作负载存在问题。"]
+    if problematic_count > 30:
+        hint_parts.append(
+            "目标数量较多，建议优先聚焦 high/critical 问题，或限定特定命名空间查看。"
+        )
+    if target_name:
+        hint_parts.append(
+            f"当前结果已经覆盖用户指定的工作负载 {target_name}。"
+        )
+    hint_parts.append(
+        "本轮先输出一次完整检查结果即可。"
+        "如用户明确要求修复方案、修复命令、导出报告或按其他维度重组结果，再继续下一步。"
+    )
+    return "".join(hint_parts)
+
+
 @tool()
 def analyze_deployment_configurations(namespace=None, instance_name=None, name=None, limit=50, offset=0, config: RunnableConfig = None):
     """
@@ -621,33 +638,10 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
         _problematic_count = sum(1 for a in analysis_results if a.get("issues") or a.get("recommendations"))
         _healthy_count = len(analysis_results) - _problematic_count
 
-        _hint_parts = [f"分析完成，共 {_problematic_count} 个工作负载存在问题。"]
-        if _problematic_count > 30:
-            _hint_parts.append(
-                "目标数量较多，建议让用户选择只修复 critical/high 级别的问题，或限定特定命名空间。"
-            )
-        if name:
-            _hint_parts.append(
-                "【必须】先用纯文字向用户输出问题摘要（每个工作负载列出发现的问题条目，不要输出修复建议/diff/命令）。"
-                "摘要输出完毕后，【必须】调用 request_user_choice 工具让用户选择修复方案的展示方式"
-                "（选项参考：按问题类别聚合 / 按工作负载聚合 / 全部展示）。"
-                "【禁止】在调用 request_user_choice 之前输出任何修复建议或 diff 报告。"
-                "用户选择后，再调用 generate_repair_report 工具生成修复报告，"
-                f"参数：items 留空，group_by 根据用户选择设置，expected_target_count={_problematic_count}，"
-                f"target_names=[\"{name}\"]（必须设置，因为用户只要求检查该工作负载）。"
-                "不要调用 get_kubernetes_resource_yaml，修复方案基于分析数据直接生成。"
-            )
-        else:
-            _hint_parts.append(
-                "【必须】先用纯文字向用户输出问题摘要（按工作负载列出发现的问题，不要输出修复建议/diff/命令）。"
-                "摘要输出完毕后，【必须】调用 request_user_choice 工具让用户选择修复方案的展示方式"
-                "（选项参考：按问题类别聚合 / 按工作负载聚合 / 全部展示）。"
-                "【禁止】在调用 request_user_choice 之前输出任何修复建议或 diff 报告。"
-                "用户选择后，再调用 generate_repair_report 工具生成修复报告，"
-                f"参数：items 留空，group_by 根据用户选择设置，expected_target_count={_problematic_count}。"
-                "如果用户指定了特定工作负载名称，target_names 设为该名称列表。"
-                "不要调用 get_kubernetes_resource_yaml，修复方案基于分析数据直接生成。"
-            )
+        next_step_hint = build_config_analysis_next_step_hint(
+            problematic_count=_problematic_count,
+            target_name=name,
+        )
 
         # 安全术语中性化（仅摘要文本）
         _term_neutralize = {
@@ -726,7 +720,7 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
             "limit": limit,
             "has_more": (offset + len(analysis_results)) < total_count,
             "issues_detail": issues_detail,
-            "_next_step_hint": "".join(_hint_parts),
+            "_next_step_hint": next_step_hint,
             # 完整数据供缓存使用，会在进入 LLM context 前被剥离
             "_deployments_full": analysis_results,
         }

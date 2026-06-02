@@ -117,6 +117,48 @@ def normalize_messages_for_llm(messages: List[Any]) -> List[Any]:
         return non_system_messages
 
 
+def build_post_tool_directives(result_messages: List[BaseMessage]) -> List[SystemMessage]:
+    directives: List[SystemMessage] = []
+
+    for message in result_messages:
+        message_name = getattr(message, "name", "")
+        message_content = getattr(message, "content", "")
+
+        if message_name == "analyze_deployment_configurations":
+            try:
+                parsed = json.loads(message_content) if isinstance(message_content, str) else message_content
+            except Exception:
+                parsed = None
+
+            if isinstance(parsed, dict) and parsed.get("issues_detail"):
+                directives.append(
+                    SystemMessage(
+                        content=(
+                            "【配置检查输出规则】不要同时输出“问题摘要”和“配置问题报告”两个重复板块。"
+                            "如果已经输出按严重级别或问题类别展开的详细问题报告，就不要再单独重复一段摘要。"
+                            "优先保留详细问题报告，并把总数、集群名、影响范围合并到报告标题或开头一句。"
+                            "本轮只输出一次配置检查结果，不要主动调用 request_user_choice，也不要主动调用 generate_repair_report。"
+                            "除非用户明确要求修复方案、修复命令、导出报告或重新分组展示，否则到此结束。"
+                        )
+                    )
+                )
+
+        if message_name == "generate_repair_report" and ("修复命令" in message_content or "```" in message_content):
+            directives.append(
+                SystemMessage(
+                    content=(
+                        "【强制输出规则】用户无法看到工具返回的内容（ToolMessage 对用户不可见）。"
+                        "你必须在你的回复中完整列出工具结果中的所有修复命令。"
+                        "格式要求：按工作负载分组，每条命令用 ```bash 代码块包裹。"
+                        "严禁省略任何命令，严禁说'见上方'或'复制以上命令'。"
+                        "用户只能看到你的文字回复，所以命令必须出现在你的回复中。"
+                    )
+                )
+            )
+
+    return directives
+
+
 # --- Patch 1: Response deserialization (preserve reasoning_content) ----------
 
 # Different providers use different field names for thinking/reasoning content:
@@ -2787,23 +2829,12 @@ class ToolsNodes(BasicNode):
                     except Exception:
                         pass
 
-            # ========== 修复报告后注入命令输出指令 ==========
-            for _rm in result_messages:
-                _rm_name = getattr(_rm, "name", "")
-                if _rm_name == "generate_repair_report":
-                    _rm_content = getattr(_rm, "content", "")
-                    if "修复命令" in _rm_content or "```" in _rm_content:
-                        from langchain_core.messages import SystemMessage as _CmdOutputSM
-                        _cmd_directive = _CmdOutputSM(content=(
-                            "【强制输出规则】用户无法看到工具返回的内容（ToolMessage 对用户不可见）。"
-                            "你必须在你的回复中完整列出工具结果中的所有修复命令。"
-                            "格式要求：按工作负载分组，每条命令用 ```bash 代码块包裹。"
-                            "严禁省略任何命令，严禁说'见上方'或'复制以上命令'。"
-                            "用户只能看到你的文字回复，所以命令必须出现在你的回复中。"
-                        ))
-                        result_messages.append(_cmd_directive)
-                        logger.info(f"[{trace_id}] 注入命令输出指令")
-                    break
+            # ========== 根据工具结果注入输出指令 ==========
+            _post_tool_directives = build_post_tool_directives(result_messages)
+            if _post_tool_directives:
+                result_messages.extend(_post_tool_directives)
+                if any("修复命令" in directive.content for directive in _post_tool_directives):
+                    logger.info(f"[{trace_id}] 注入命令输出指令")
 
             # ========== 防护：截断 YAML 内容防止 context 溢出 ==========
             if yaml_call_ids:
