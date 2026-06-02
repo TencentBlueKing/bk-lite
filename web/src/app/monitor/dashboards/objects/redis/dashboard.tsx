@@ -1,12 +1,11 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Empty, Tooltip } from 'antd';
+import { Empty } from 'antd';
 import {
-  ClockCircleOutlined,
   DatabaseOutlined,
-  NodeIndexOutlined,
-  ThunderboltOutlined
+  StopOutlined,
+  WarningOutlined
 } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
@@ -14,7 +13,6 @@ import {
   StatCard,
   CollectionStatusCard,
   TitleWithGuide,
-  GuideTooltipContent,
   DashboardPageHeader,
   DashboardInstanceCard,
   DashboardPanel,
@@ -72,30 +70,32 @@ const METRIC_QUERY_CONCURRENCY = 4;
 
 const REDIS_METRIC_GROUPS = [
   {
+    // Primary signals: capacity risk + cache efficiency — load first
     key: 'summary',
     names: [
-      'redis_uptime',
       'redis_used_memory',
       'redis_maxmemory',
       'redis_memory_utilization',
-      'redis_instantaneous_ops_per_sec',
       'redis_keyspace_hitrate',
+      'redis_keyspace_hits_rate',
+      'redis_keyspace_misses_rate',
+      'redis_evicted_keys_rate',
+      'redis_rejected_connections_rate',
       'redis_clients',
-      'redis_blocked_clients',
-      'redis_rejected_connections_rate'
+      'redis_blocked_clients'
     ]
   },
   {
+    // Diagnostic / trend layer — load after primary cards are ready
     key: 'trends',
     names: [
       'redis_mem_fragmentation_ratio',
+      'redis_instantaneous_ops_per_sec',
       'redis_total_commands_processed_rate',
-      'redis_keyspace_hits_rate',
-      'redis_keyspace_misses_rate',
       'redis_total_net_input_bytes_rate',
       'redis_total_net_output_bytes_rate',
       'redis_expired_keys_rate',
-      'redis_evicted_keys_rate'
+      'redis_uptime'
     ]
   }
 ];
@@ -230,7 +230,7 @@ export default function RedisDashboardPage() {
       if (isDashboardMode) {
         const previousTimeValues = buildPreviousPeriodTimeValues(timeValues);
         const compareMetrics = DASHBOARD_METRICS.filter((metric) =>
-          ['redis_memory_utilization', 'redis_instantaneous_ops_per_sec', 'redis_keyspace_hitrate', 'redis_clients'].includes(metric.name)
+          ['redis_memory_utilization', 'redis_evicted_keys_rate', 'redis_keyspace_hitrate', 'redis_rejected_connections_rate'].includes(metric.name)
         );
 
         const summaryResultsPromise = loadMetricGroup(REDIS_METRIC_GROUPS[0].names);
@@ -392,9 +392,13 @@ export default function RedisDashboardPage() {
   const expiredDisplay = formatMetricValue(expiredRateValue, 'cps');
   const evictedDisplay = formatMetricValue(evictedRateValue, 'cps');
   const rejectedDisplay = formatMetricValue(rejectedRateValue, 'cps');
+  const netInputValue = getLatest('redis_total_net_input_bytes_rate');
+  const netOutputValue = getLatest('redis_total_net_output_bytes_rate');
+  const netInputDisplay = formatMetricValue(netInputValue, 'byteps');
+  const netOutputDisplay = formatMetricValue(netOutputValue, 'byteps');
 
   const memoryCompare = maxMemoryValue > 0 ? getPeriodCompare(memoryUtilValue, getPreviousLatest('redis_memory_utilization')) : null;
-  const opsCompare = getPeriodCompare(opsValue, getPreviousLatest('redis_instantaneous_ops_per_sec'));
+  const evictedCompare = getPeriodCompare(evictedRateValue, getPreviousLatest('redis_evicted_keys_rate'));
   const hitRateCompare = getPeriodCompare(hitRateValue, getPreviousLatest('redis_keyspace_hitrate'));
 
   const uptimeStartedAt = Number.isFinite(uptimeValue) && uptimeValue >= 0 ? dayjs().subtract(Math.floor(uptimeValue), 'second').format('YYYY-MM-DD HH:mm:ss') : metricEmptyText;
@@ -460,6 +464,25 @@ export default function RedisDashboardPage() {
     [metricMap.redis_total_net_input_bytes_rate?.viewData, metricMap.redis_total_net_output_bytes_rate?.viewData]
   );
 
+  const cacheHitMissTrendData = useMemo(
+    () =>
+      mergeChartSeries([
+        {
+          key: 'redis_keyspace_hits_rate',
+          label: '键命中频率',
+          displayName: '键命中频率',
+          data: metricMap.redis_keyspace_hits_rate?.viewData || []
+        },
+        {
+          key: 'redis_keyspace_misses_rate',
+          label: '键未命中频率',
+          displayName: '键未命中频率',
+          data: metricMap.redis_keyspace_misses_rate?.viewData || []
+        }
+      ]),
+    [metricMap.redis_keyspace_hits_rate?.viewData, metricMap.redis_keyspace_misses_rate?.viewData]
+  );
+
 
   const pageTitle = displayMode === 'metrics' ? `${objectDisplayText} 全量指标` : 'Redis 监控仪表盘';
   const hasDashboardContent = DASHBOARD_METRICS.length > 0;
@@ -519,9 +542,13 @@ export default function RedisDashboardPage() {
     { label: '内存使用率', detail: '表示已用内存占配置上限的比例。' },
     { label: '排查建议', detail: '当使用率接近上限时，应同时查看键驱逐、内存碎片率和网络流量。' }
   ];
-  const opsGuide = [
-    { label: '实时 OPS', detail: '表示 Redis 当前每秒处理的命令数量。' },
-    { label: '关联判断', detail: 'OPS 持续抬升时，需要结合网络流量、命中率和客户端连接一起判断压力来源。' }
+  const evictedGuide = [
+    { label: '键驱逐频率', detail: '因内存达到上限被主动淘汰的键频率，非零即说明内存容量不足，会直接导致缓存命中率下降。' },
+    { label: '排查建议', detail: '结合内存使用率与碎片率判断：若使用率已高则需扩容或调整淘汰策略。' }
+  ];
+  const rejectedGuide = [
+    { label: '连接拒绝频率', detail: '因达到 maxclients 限制被拒绝的连接请求频率，非零说明客户端整体压力已超上限。' },
+    { label: '排查建议', detail: '若阻塞客户端数量同时升高，优先排查热点命令（热点导致）；否则说明是整体连接规模超限（资源饱和）。' }
   ];
   const hitGuide = [
     { label: '缓存命中率', detail: '表示键命中占总键访问的比例。' },
@@ -529,23 +556,19 @@ export default function RedisDashboardPage() {
   ];
   const clientGuide = [
     { label: '客户端连接数', detail: '表示当前活跃的客户端连接总量。' },
-    { label: '关联判断', detail: '如果连接数升高且阻塞客户端增加，需要同时关注慢命令和网络出流量。' }
+    { label: '阻塞客户端诊断', detail: '阻塞数升高 + 拒绝频率高 → 热点命令导致排队；阻塞数低但拒绝频率高 → 整体连接规模超限（资源饱和）。' }
   ];
-  const uptimeGuide = [
-    { label: '运行时长', detail: '表示 Redis 进程自上次启动以来的持续运行时间。' },
-    { label: '启动时间', detail: '用于辅助判断实例是否近期发生过重启。' }
+  const memoryTrendGuide = [
+    { label: '内存压力趋势', detail: '同时展示已用内存与内存上限，判断实例是否逼近容量边界。碎片率详情见下方内存分布面板。' }
+  ];
+  const cacheHitMissTrendGuide = [
+    { label: '命中/未命中趋势', detail: '同时展示键命中频率与未命中频率，通过两条曲线的比例直观判断缓存效率是否下降。' }
   ];
   const opsTrendGuide = [
     { label: '命令吞吐趋势', detail: '同时展示实时 OPS 和命令处理速率，判断 Redis 当前吞吐变化。' }
   ];
-  const memoryTrendGuide = [
-    { label: '内存趋势', detail: '同时展示已用内存与内存上限，判断实例是否逼近容量边界。' }
-  ];
-  const networkTrendGuide = [
-    { label: '网络流量趋势', detail: '同时展示 Redis 的网络入流量和出流量，判断请求与返回压力。' }
-  ];
   const keyLifecycleGuide = [
-    { label: '键生命周期', detail: '展示过期键与驱逐键频率，判断缓存淘汰和生命周期行为是否异常。' }
+    { label: '键生命周期与网络', detail: '展示过期键与驱逐键频率，以及网络入/出流量，判断缓存淘汰行为和请求压力。' }
   ];
   const metricsOverviewGuide = [
     { label: '监控指标全景', detail: '这里承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。' }
@@ -595,31 +618,6 @@ export default function RedisDashboardPage() {
                     <CollectionStatusCard styles={styles} status={collectionStatus} timeline={collectionStatusTimeline} />
                     <StatCard
                       styles={styles}
-                      title={<TitleWithGuide styles={styles} title="Redis 运行时长" items={uptimeGuide} className={styles.statTitleWithGuide} />}
-                      value={hasMetricData('redis_uptime') ? `${uptimeDisplay.value}${uptimeDisplay.unit}` : '--'}
-                      unit=""
-                      icon={<ClockCircleOutlined />}
-                      iconStyle={{ background: 'rgba(89, 126, 247, 0.12)', color: '#597ef7' }}
-                      color="#597ef7"
-                      className={styles.statCardRelaxed}
-                      bodyClassName={styles.statBodyRelaxed}
-                      footer={<span>启动时间 {uptimeStartedAt}</span>}
-                      hideTrend
-                      noDataType={getNoDataType('redis_uptime')}
-                      extra={
-                        <div className={`${styles.uptimeStatus} ${styles.uptimeStatusSuccess}`}>
-                          <span className={styles.uptimeStatusDot} />
-                          <div className={styles.uptimeStatusMainWrap}>
-                            <span className={styles.uptimeStatusMain}>运行正常</span>
-                            <Tooltip overlayClassName="lightMetricTooltip" title={<GuideTooltipContent styles={styles} items={uptimeStatusGuide} />}>
-                              <ClockCircleOutlined className={styles.uptimeStatusInfoIcon} />
-                            </Tooltip>
-                          </div>
-                        </div>
-                      }
-                    />
-                    <StatCard
-                      styles={styles}
                       title={<TitleWithGuide styles={styles} title="内存使用率" items={memoryGuide} className={styles.statTitleWithGuide} />}
                       value={maxMemoryValue > 0 && hasMetricData('redis_memory_utilization') ? memoryUtilDisplay.value : '--'}
                       unit={maxMemoryValue > 0 && hasMetricData('redis_memory_utilization') ? memoryUtilDisplay.unit : ''}
@@ -638,16 +636,32 @@ export default function RedisDashboardPage() {
                     />
                     <StatCard
                       styles={styles}
-                      title={<TitleWithGuide styles={styles} title="实时 OPS" items={opsGuide} className={styles.statTitleWithGuide} />}
-                      value={renderMetricValue('redis_instantaneous_ops_per_sec', opsDisplay.value)}
-                      unit={hasMetricData('redis_instantaneous_ops_per_sec') ? opsDisplay.unit : ''}
-                      icon={<ThunderboltOutlined />}
-                      iconStyle={{ background: 'rgba(39, 194, 116, 0.12)', color: '#27c274' }}
-                      color="#27c274"
-                      footer={<span>命令处理 {renderMetricValue('redis_total_commands_processed_rate', `${commandRateDisplay.value}${commandRateDisplay.unit}`)}</span>}
-                      compare={opsCompare}
-                      trendData={metricMap.redis_instantaneous_ops_per_sec?.viewData || []}
-                      noDataType={getNoDataType('redis_instantaneous_ops_per_sec')}
+                      title={<TitleWithGuide styles={styles} title="键驱逐频率" items={evictedGuide} className={styles.statTitleWithGuide} />}
+                      value={renderMetricValue('redis_evicted_keys_rate', evictedDisplay.value)}
+                      unit={hasMetricData('redis_evicted_keys_rate') ? evictedDisplay.unit : ''}
+                      icon={<WarningOutlined />}
+                      iconStyle={{ background: 'rgba(255, 77, 79, 0.12)', color: '#ff4d4f' }}
+                      color="#ff4d4f"
+                      footer={
+                        <span>内存使用率 {maxMemoryValue > 0 && hasMetricData('redis_memory_utilization') ? `${memoryUtilDisplay.value}${memoryUtilDisplay.unit}` : '--'}</span>
+                      }
+                      compare={evictedCompare}
+                      trendData={metricMap.redis_evicted_keys_rate?.viewData || []}
+                      noDataType={getNoDataType('redis_evicted_keys_rate')}
+                    />
+                    <StatCard
+                      styles={styles}
+                      title={<TitleWithGuide styles={styles} title="连接拒绝频率" items={rejectedGuide} className={styles.statTitleWithGuide} />}
+                      value={renderMetricValue('redis_rejected_connections_rate', rejectedDisplay.value)}
+                      unit={hasMetricData('redis_rejected_connections_rate') ? rejectedDisplay.unit : ''}
+                      icon={<StopOutlined />}
+                      iconStyle={{ background: 'rgba(255, 77, 79, 0.12)', color: '#ff4d4f' }}
+                      color="#ff4d4f"
+                      footer={
+                        <span>阻塞客户端 {renderMetricValue('redis_blocked_clients', blockedClientsDisplay.value)}</span>
+                      }
+                      trendData={metricMap.redis_rejected_connections_rate?.viewData || []}
+                      noDataType={getNoDataType('redis_rejected_connections_rate')}
                     />
                     <StatCard
                       styles={styles}
@@ -667,47 +681,13 @@ export default function RedisDashboardPage() {
                       trendData={metricMap.redis_keyspace_hitrate?.viewData || []}
                       noDataType={getNoDataType('redis_keyspace_hitrate')}
                     />
-                    <StatCard
-                      styles={styles}
-                      title={<TitleWithGuide styles={styles} title="客户端连接数" items={clientGuide} className={styles.statTitleWithGuide} />}
-                      value={renderMetricValue('redis_clients', clientsDisplay.value)}
-                      unit=""
-                      icon={<NodeIndexOutlined />}
-                      iconStyle={{ background: 'rgba(47, 107, 255, 0.12)', color: '#2f6bff' }}
-                      color="#2f6bff"
-                      footer={
-                        <>
-                          <span>阻塞客户端 {renderMetricValue('redis_blocked_clients', blockedClientsDisplay.value)}</span>
-                          <span>拒绝频率 {renderMetricValue('redis_rejected_connections_rate', `${rejectedDisplay.value}${rejectedDisplay.unit}`)}</span>
-                        </>
-                      }
-                      trendData={metricMap.redis_clients?.viewData || []}
-                      noDataType={getNoDataType('redis_clients')}
-                    />
                   </div>
 
                   <div className={styles.mainTrendGrid}>
                     <TrendChartPanel
                       styles={styles}
                       className={styles.thirdChartPanel}
-                      title={<TitleWithGuide styles={styles} title="命令吞吐趋势" items={opsTrendGuide} className={styles.panelTitleWithGuide} />}
-                      subtitle="OPS 与命令处理"
-                      guide={opsTrendGuide}
-                      legends={TREND_LEGENDS.ops}
-                      data={opsTrendData}
-                      metric={buildMetricItem(metricMap.redis_instantaneous_ops_per_sec || { ...DASHBOARD_METRICS[5], viewData: [], loadState: 'success' })}
-                      unit="cps"
-                      seriesStyles={[
-                        { color: TREND_LEGENDS.ops[0].color, unit: 'cps' },
-                        { color: TREND_LEGENDS.ops[1].color, unit: 'cps' }
-                      ]}
-                      onXRangeChange={onXRangeChange}
-                    />
-
-                    <TrendChartPanel
-                      styles={styles}
-                      className={styles.thirdChartPanel}
-                      title={<TitleWithGuide styles={styles} title="内存趋势" items={memoryTrendGuide} className={styles.panelTitleWithGuide} />}
+                      title={<TitleWithGuide styles={styles} title="内存压力趋势" items={memoryTrendGuide} className={styles.panelTitleWithGuide} />}
                       subtitle="已用内存与上限"
                       guide={memoryTrendGuide}
                       legends={TREND_LEGENDS.memory}
@@ -724,16 +704,33 @@ export default function RedisDashboardPage() {
                     <TrendChartPanel
                       styles={styles}
                       className={styles.thirdChartPanel}
-                      title={<TitleWithGuide styles={styles} title="网络流量趋势" items={networkTrendGuide} className={styles.panelTitleWithGuide} />}
-                      subtitle="入流量与出流量"
-                      guide={networkTrendGuide}
-                      legends={TREND_LEGENDS.network}
-                      data={networkTrendData}
-                      metric={buildMetricItem(metricMap.redis_total_net_input_bytes_rate || { ...DASHBOARD_METRICS[10], viewData: [], loadState: 'success' })}
-                      unit="byteps"
+                      title={<TitleWithGuide styles={styles} title="命中/未命中趋势" items={cacheHitMissTrendGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="键命中与未命中频率"
+                      guide={cacheHitMissTrendGuide}
+                      legends={TREND_LEGENDS.cache}
+                      data={cacheHitMissTrendData}
+                      metric={buildMetricItem(metricMap.redis_keyspace_hits_rate || { ...DASHBOARD_METRICS[7], viewData: [], loadState: 'success' })}
+                      unit="cps"
                       seriesStyles={[
-                        { color: TREND_LEGENDS.network[0].color, unit: 'byteps' },
-                        { color: TREND_LEGENDS.network[1].color, unit: 'byteps' }
+                        { color: TREND_LEGENDS.cache[0].color, unit: 'cps' },
+                        { color: TREND_LEGENDS.cache[1].color, unit: 'cps' }
+                      ]}
+                      onXRangeChange={onXRangeChange}
+                    />
+
+                    <TrendChartPanel
+                      styles={styles}
+                      className={styles.thirdChartPanel}
+                      title={<TitleWithGuide styles={styles} title="命令吞吐趋势" items={opsTrendGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="OPS 与命令处理"
+                      guide={opsTrendGuide}
+                      legends={TREND_LEGENDS.ops}
+                      data={opsTrendData}
+                      metric={buildMetricItem(metricMap.redis_instantaneous_ops_per_sec || { ...DASHBOARD_METRICS[5], viewData: [], loadState: 'success' })}
+                      unit="cps"
+                      seriesStyles={[
+                        { color: TREND_LEGENDS.ops[0].color, unit: 'cps' },
+                        { color: TREND_LEGENDS.ops[1].color, unit: 'cps' }
                       ]}
                       onXRangeChange={onXRangeChange}
                     />
@@ -827,12 +824,14 @@ export default function RedisDashboardPage() {
                     <DetailPanel
                       styles={styles}
                       className={styles.quarterPanel}
-                      title="键生命周期"
-                      subtitle="过期与驱逐行为"
+                      title="键生命周期与网络"
+                      subtitle="过期、驱逐与网络流量"
                       guide={keyLifecycleGuide}
                     >
                       <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>键过期频率</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_expired_keys_rate', `${expiredDisplay.value}${expiredDisplay.unit}`)}</span></div>
                       <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>键驱逐频率</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_evicted_keys_rate', `${evictedDisplay.value}${evictedDisplay.unit}`)}</span></div>
+                      <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>网络入流量</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_total_net_input_bytes_rate', `${netInputDisplay.value}${netInputDisplay.unit}`)}</span></div>
+                      <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>网络出流量</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_total_net_output_bytes_rate', `${netOutputDisplay.value}${netOutputDisplay.unit}`)}</span></div>
                       <div
                         className={`${styles.fragmentationWarning} ${
                           evictedRateValue > 0 ? styles.fragmentationWarningDanger : styles.fragmentationWarningNormal
