@@ -46,6 +46,7 @@ export default function PingDashboardPage() {
                 data={qualityRing.data}
                 centerValue={qualityRing.centerValue}
                 centerCaption={qualityRing.panel.centerCaption}
+                isEmpty={qualityRing.isEmpty}
                 className={styles.span4}
                 styles={styles}
               />

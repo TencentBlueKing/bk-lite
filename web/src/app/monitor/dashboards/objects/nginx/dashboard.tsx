@@ -82,6 +82,7 @@ export default function NginxDashboardPage() {
                 data={connectionRing.data}
                 centerValue={connectionRing.centerValue}
                 centerCaption={connectionRing.panel.centerCaption}
+                isEmpty={connectionRing.isEmpty}
                 className={styles.span12}
                 styles={styles}
               />

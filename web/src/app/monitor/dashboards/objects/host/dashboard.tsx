@@ -81,6 +81,7 @@ export default function HostDashboardPage() {
                 data={cpuRing.data}
                 centerValue={cpuRing.centerValue}
                 centerCaption={cpuRing.panel.centerCaption}
+                isEmpty={cpuRing.isEmpty}
                 className={styles.span4}
                 styles={styles}
               />
@@ -94,6 +95,7 @@ export default function HostDashboardPage() {
                 data={memoryRing.data}
                 centerValue={memoryRing.centerValue}
                 centerCaption={memoryRing.panel.centerCaption}
+                isEmpty={memoryRing.isEmpty}
                 className={styles.span4}
                 styles={styles}
               />
@@ -107,6 +109,7 @@ export default function HostDashboardPage() {
                 data={processRing.data}
                 centerValue={processRing.centerValue}
                 centerCaption={processRing.panel.centerCaption}
+                isEmpty={processRing.isEmpty}
                 className={styles.span4}
                 styles={styles}
               />

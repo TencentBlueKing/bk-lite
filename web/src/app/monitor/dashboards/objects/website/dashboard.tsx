@@ -49,6 +49,7 @@ export default function WebsiteDashboardPage() {
                 data={availabilityRing.data}
                 centerValue={availabilityRing.centerValue}
                 centerCaption={availabilityRing.panel.centerCaption}
+                isEmpty={availabilityRing.isEmpty}
                 className={`${styles.span4} ${styles.compactStatusRing}`}
                 styles={styles}
               />
