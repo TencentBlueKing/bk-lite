@@ -20,7 +20,7 @@ def _load_module(module_name, file_path):
     return module
 
 
-def test_flow_asset_checks_operate_permission_before_binding_instance(monkeypatch):
+def test_flow_asset_checks_operate_permission_before_binding_instance(monkeypatch, db):
     calls = {}
     actor_context = {"current_team": 7}
 
@@ -36,6 +36,9 @@ def test_flow_asset_checks_operate_permission_before_binding_instance(monkeypatc
     def create_or_bind_asset(**kwargs):
         calls["create_or_bind_asset"] = kwargs
         return {"instance_id": kwargs.get("instance_id")}
+
+    def lock_monitor_object(*, monitor_object_id):
+        calls["lock_monitor_object"] = monitor_object_id
 
     def _build_actor_context(request):
         calls["actor_context_request"] = request
@@ -58,7 +61,10 @@ def test_flow_asset_checks_operate_permission_before_binding_instance(monkeypatc
     _install_module(
         monkeypatch,
         "apps.monitor.services.flow_onboarding",
-        FlowOnboardingService=types.SimpleNamespace(create_or_bind_asset=create_or_bind_asset),
+        FlowOnboardingService=types.SimpleNamespace(
+            create_or_bind_asset=create_or_bind_asset,
+            lock_monitor_object=lock_monitor_object,
+        ),
     )
     _install_module(monkeypatch, "apps.monitor.services.manual_collect", ManualCollectService=object)
     _install_module(
@@ -90,6 +96,105 @@ def test_flow_asset_checks_operate_permission_before_binding_instance(monkeypatc
     response = module.ManualCollect().flow_asset(request)
 
     assert response == {"instance_id": "inst-a"}
+    assert calls["lock_monitor_object"] == 1
     assert calls["operate_args"] == (request, ["inst-a"], actor_context)
     assert calls["target_org_args"] == ([7], actor_context)
     assert calls["create_or_bind_asset"] == request.data
+
+
+def test_flow_asset_checks_operate_permission_before_reusing_existing_instance(monkeypatch, db):
+    calls = {}
+    actor_context = {"current_team": 7}
+    existing_instance = types.SimpleNamespace(id="inst-reused")
+
+    class ViewSet:
+        pass
+
+    def action(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
+    def create_or_bind_asset(**kwargs):
+        calls["create_or_bind_asset"] = kwargs
+        return {"instance_id": existing_instance.id}
+
+    def lock_monitor_object(*, monitor_object_id):
+        calls["lock_monitor_object"] = monitor_object_id
+
+    def find_existing_asset(*, monitor_object_id, cloud_region_id, ip, for_update=False):
+        calls["find_existing_asset"] = {
+            "monitor_object_id": monitor_object_id,
+            "cloud_region_id": cloud_region_id,
+            "ip": ip,
+            "for_update": for_update,
+        }
+        return existing_instance
+
+    def _build_actor_context(request):
+        calls["actor_context_request"] = request
+        return actor_context
+
+    def _ensure_operate_instances(request, instance_ids, received_actor_context=None):
+        calls["operate_args"] = (request, instance_ids, received_actor_context)
+        return instance_ids
+
+    def _ensure_target_organizations(organizations, received_actor_context):
+        calls["target_org_args"] = (organizations, received_actor_context)
+
+    _install_module(monkeypatch, "rest_framework.viewsets", ViewSet=ViewSet)
+    _install_module(monkeypatch, "rest_framework.decorators", action=action)
+    _install_module(
+        monkeypatch,
+        "apps.core.utils.web_utils",
+        WebUtils=types.SimpleNamespace(response_success=lambda data=None: data),
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.services.flow_onboarding",
+        FlowOnboardingService=types.SimpleNamespace(
+            create_or_bind_asset=create_or_bind_asset,
+            find_existing_asset=find_existing_asset,
+            lock_monitor_object=lock_monitor_object,
+        ),
+    )
+    _install_module(monkeypatch, "apps.monitor.services.manual_collect", ManualCollectService=object)
+    _install_module(
+        monkeypatch,
+        "apps.monitor.views.monitor_instance",
+        _build_actor_context=_build_actor_context,
+        _ensure_operate_instances=_ensure_operate_instances,
+        _ensure_target_organizations=_ensure_target_organizations,
+    )
+    _install_module(monkeypatch, "apps.rpc.node_mgmt", NodeMgmt=object)
+
+    module = _load_module(
+        "manual_collect_view_test_module_reused",
+        Path(__file__).resolve().parents[1] / "views" / "manual_collect.py",
+    )
+
+    request = types.SimpleNamespace(
+        data={
+            "monitor_object_id": 1,
+            "protocol": "sflow",
+            "cloud_region_id": 1,
+            "ip": "10.0.0.12",
+            "name": "Core Switch",
+            "organizations": [7],
+        }
+    )
+
+    response = module.ManualCollect().flow_asset(request)
+
+    assert response == {"instance_id": existing_instance.id}
+    assert calls["lock_monitor_object"] == 1
+    assert calls["find_existing_asset"] == {
+        "monitor_object_id": 1,
+        "cloud_region_id": 1,
+        "ip": "10.0.0.12",
+        "for_update": True,
+    }
+    assert calls["operate_args"] == (request, [existing_instance.id], actor_context)
+    assert calls["target_org_args"] == ([7], actor_context)
+    assert calls["create_or_bind_asset"] == {**request.data, "instance_id": existing_instance.id}

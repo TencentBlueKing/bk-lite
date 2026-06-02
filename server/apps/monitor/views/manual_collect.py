@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from apps.core.utils.web_utils import WebUtils
@@ -29,10 +30,24 @@ class ManualCollect(viewsets.ViewSet):
     @action(methods=['post'], detail=False, url_path='flow_asset')
     def flow_asset(self, request):
         actor_context = _build_actor_context(request)
-        if request.data.get("instance_id"):
-            _ensure_operate_instances(request, [request.data["instance_id"]], actor_context)
-        _ensure_target_organizations(request.data.get("organizations", []), actor_context)
-        data = FlowOnboardingService.create_or_bind_asset(**request.data)
+        with transaction.atomic():
+            FlowOnboardingService.lock_monitor_object(monitor_object_id=request.data["monitor_object_id"])
+            instance_id = request.data.get("instance_id")
+            payload = dict(request.data)
+            if instance_id:
+                _ensure_operate_instances(request, [instance_id], actor_context)
+            else:
+                existing_instance = FlowOnboardingService.find_existing_asset(
+                    monitor_object_id=request.data["monitor_object_id"],
+                    cloud_region_id=request.data["cloud_region_id"],
+                    ip=request.data["ip"],
+                    for_update=True,
+                )
+                if existing_instance:
+                    _ensure_operate_instances(request, [existing_instance.id], actor_context)
+                    payload["instance_id"] = existing_instance.id
+            _ensure_target_organizations(request.data.get("organizations", []), actor_context)
+            data = FlowOnboardingService.create_or_bind_asset(**payload)
         return WebUtils.response_success(data)
 
     @action(methods=['post'], detail=False, url_path='flow_asset/update')

@@ -135,6 +135,86 @@ def test_update_flow_asset_updates_editable_fields(db):
     ) == {2}
 
 
+def test_create_or_bind_flow_asset_rejects_duplicate_tuple_when_rebinding_specific_instance(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    reused = MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Flow Asset A",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+    other = MonitorInstance.objects.create(
+        id="('flow-device-2',)",
+        name="Flow Asset B",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=2,
+        ip="10.0.0.13",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["sflow"],
+    )
+
+    with pytest.raises(BaseAppException, match="Flow asset already exists"):
+        FlowOnboardingService.create_or_bind_asset(
+            monitor_object_id=switch_object.id,
+            protocol="sflow",
+            cloud_region_id=1,
+            ip="10.0.0.12",
+            name="Flow Asset B",
+            organizations=[1],
+            instance_id=other.id,
+        )
+
+    reused.refresh_from_db()
+    other.refresh_from_db()
+    assert reused.cloud_region_id == 1
+    assert reused.ip == "10.0.0.12"
+    assert reused.enabled_protocols == ["netflow"]
+    assert other.cloud_region_id == 2
+    assert other.ip == "10.0.0.13"
+    assert other.enabled_protocols == ["sflow"]
+    assert MonitorInstance.objects.filter(monitor_object_id=switch_object.id, cloud_region_id=1, ip="10.0.0.12").count() == 1
+
+
+def test_update_flow_asset_rejects_duplicate_tuple_when_moving_asset(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    existing = MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Flow Asset A",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+    moving = MonitorInstance.objects.create(
+        id="('flow-device-2',)",
+        name="Flow Asset B",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=2,
+        ip="10.0.0.13",
+        fallback_sampling_rate=2000,
+        enabled_protocols=["sflow"],
+    )
+
+    with pytest.raises(BaseAppException, match="Flow asset already exists"):
+        FlowOnboardingService.update_asset(
+            instance_id=moving.id,
+            cloud_region_id=1,
+            ip="10.0.0.12",
+        )
+
+    existing.refresh_from_db()
+    moving.refresh_from_db()
+    assert existing.cloud_region_id == 1
+    assert existing.ip == "10.0.0.12"
+    assert moving.cloud_region_id == 2
+    assert moving.ip == "10.0.0.13"
+    assert MonitorInstance.objects.filter(monitor_object_id=switch_object.id, cloud_region_id=1, ip="10.0.0.12").count() == 1
+
+
 def test_create_or_bind_flow_asset_rejects_unknown_protocol(db):
     switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
 
