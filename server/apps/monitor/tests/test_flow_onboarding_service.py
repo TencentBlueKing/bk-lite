@@ -102,6 +102,37 @@ def test_create_or_bind_flow_asset_creates_monitor_side_asset(db):
     ) == {1, 2}
 
 
+def test_create_or_bind_flow_asset_uses_monitor_object_scoped_asset_ids(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    router_object = MonitorObject.objects.create(name="Router", display_name="Router")
+
+    switch_result = FlowOnboardingService.create_or_bind_asset(
+        monitor_object_id=switch_object.id,
+        protocol="netflow",
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        name="Core Asset",
+        organizations=[1],
+    )
+    router_result = FlowOnboardingService.create_or_bind_asset(
+        monitor_object_id=router_object.id,
+        protocol="sflow",
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        name="Core Asset",
+        organizations=[2],
+    )
+
+    switch_instance = MonitorInstance.objects.get(id=switch_result["instance_id"])
+    router_instance = MonitorInstance.objects.get(id=router_result["instance_id"])
+
+    assert switch_instance.id != router_instance.id
+    assert switch_instance.monitor_object_id == switch_object.id
+    assert router_instance.monitor_object_id == router_object.id
+    assert switch_instance.ip == router_instance.ip == "10.0.0.12"
+    assert switch_instance.cloud_region_id == router_instance.cloud_region_id == 1
+
+
 def test_update_flow_asset_updates_editable_fields(db):
     switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
     instance = MonitorInstance.objects.create(
@@ -134,6 +165,66 @@ def test_update_flow_asset_updates_editable_fields(db):
     assert set(
         MonitorInstanceOrganization.objects.filter(monitor_instance_id=instance.id).values_list("organization", flat=True)
     ) == {2}
+
+
+def test_create_or_bind_flow_asset_with_explicit_empty_organizations_clears_bindings(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    instance = MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance_id=instance.id, organization=1)
+    MonitorInstanceOrganization.objects.create(monitor_instance_id=instance.id, organization=2)
+
+    result = FlowOnboardingService.create_or_bind_asset(
+        monitor_object_id=switch_object.id,
+        protocol="sflow",
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        name="Core Switch",
+        organizations=[],
+        instance_id=instance.id,
+    )
+
+    instance.refresh_from_db()
+    assert result["instance_id"] == instance.id
+    assert set(instance.enabled_protocols) == {"netflow", "sflow"}
+    assert not MonitorInstanceOrganization.objects.filter(monitor_instance_id=instance.id).exists()
+
+
+def test_create_or_bind_flow_asset_without_organizations_keeps_existing_bindings(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    instance = MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance_id=instance.id, organization=1)
+
+    result = FlowOnboardingService.create_or_bind_asset(
+        monitor_object_id=switch_object.id,
+        protocol="sflow",
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        name="Core Switch",
+        instance_id=instance.id,
+    )
+
+    instance.refresh_from_db()
+    assert result["instance_id"] == instance.id
+    assert set(instance.enabled_protocols) == {"netflow", "sflow"}
+    assert set(
+        MonitorInstanceOrganization.objects.filter(monitor_instance_id=instance.id).values_list("organization", flat=True)
+    ) == {1}
 
 
 def test_create_or_bind_flow_asset_rejects_duplicate_tuple_when_rebinding_specific_instance(db):

@@ -9,6 +9,7 @@ from apps.monitor.services.monitor_object import MonitorObjectService
 class FlowOnboardingService:
     SUPPORTED_PROTOCOLS = {"netflow", "sflow"}
     DEFAULT_FALLBACK_SAMPLING_RATE = 1000
+    ORGANIZATIONS_UNSET = object()
 
     @classmethod
     def create_or_bind_asset(
@@ -19,12 +20,13 @@ class FlowOnboardingService:
         cloud_region_id,
         ip,
         name,
-        organizations,
+        organizations=ORGANIZATIONS_UNSET,
         instance_id=None,
         fallback_sampling_rate=None,
     ):
         cls._validate_protocol(protocol)
-        organizations = organizations or []
+        organizations_provided = organizations is not cls.ORGANIZATIONS_UNSET
+        organizations = list(organizations or []) if organizations_provided else None
 
         with transaction.atomic():
             cls.lock_monitor_object(monitor_object_id=monitor_object_id)
@@ -59,7 +61,7 @@ class FlowOnboardingService:
                     "auto",
                 ]
             )
-            if organizations:
+            if organizations_provided:
                 MonitorObjectService.set_instances_organizations([instance.id], organizations)
 
         return {"instance_id": instance.id, "enabled_protocols": instance.enabled_protocols}
@@ -117,14 +119,14 @@ class FlowOnboardingService:
 
         result = ManualCollectService.create_manual_collect_instance(
             {
-                "id": cls._build_asset_key(cloud_region_id, ip),
+                "id": cls._build_asset_key(monitor_object_id, cloud_region_id, ip),
                 "name": name,
                 "monitor_object_id": monitor_object_id,
                 "cloud_region_id": cloud_region_id,
                 "ip": ip,
                 "fallback_sampling_rate": cls._resolve_sampling_rate(fallback_sampling_rate=None),
                 "enabled_protocols": [],
-                "organizations": organizations,
+                "organizations": organizations or [],
             },
             allow_flow_fields=True,
         )
@@ -202,5 +204,5 @@ class FlowOnboardingService:
         return fallback_sampling_rate or current_value or cls.DEFAULT_FALLBACK_SAMPLING_RATE
 
     @staticmethod
-    def _build_asset_key(cloud_region_id, ip):
-        return f"flow:{cloud_region_id}:{ip}"
+    def _build_asset_key(monitor_object_id, cloud_region_id, ip):
+        return f"flow:{monitor_object_id}:{cloud_region_id}:{ip}"

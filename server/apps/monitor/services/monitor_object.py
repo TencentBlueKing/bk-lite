@@ -302,8 +302,9 @@ class MonitorObjectService:
     @staticmethod
     def set_instances_organizations(instance_ids, organizations):
         """设置监控对象实例组织"""
-        if not instance_ids or not organizations:
+        if not instance_ids:
             return
+        organizations = organizations or []
 
         with transaction.atomic():
             # 删除旧的组织关联
@@ -314,4 +315,5 @@ class MonitorObjectService:
             for instance_id in instance_ids:
                 for org in organizations:
                     creates.append(MonitorInstanceOrganization(monitor_instance_id=instance_id, organization=org))
-            MonitorInstanceOrganization.objects.bulk_create(creates, ignore_conflicts=True)
+            if creates:
+                MonitorInstanceOrganization.objects.bulk_create(creates, ignore_conflicts=True)
