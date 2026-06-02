@@ -117,6 +117,12 @@ class FlowOnboardingService:
                 enabled_protocols=enabled_protocols,
                 auto=False,
             )
+            if organizations is not None:
+                cls._restore_organization_rules(
+                    monitor_object_id=instance.monitor_object_id,
+                    instance_id=instance.id,
+                    organizations=organizations,
+                )
         return {"instance_id": instance_id}
 
     @classmethod

@@ -4,8 +4,13 @@ from pathlib import Path
 import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.monitor.models.monitor_metrics import Metric
-from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject
+from apps.monitor.models.monitor_metrics import Metric, MetricGroup
+from apps.monitor.models.monitor_object import (
+    MonitorInstance,
+    MonitorInstanceOrganization,
+    MonitorObject,
+    MonitorObjectOrganizationRule,
+)
 from apps.monitor.services.flow_onboarding import FlowOnboardingService
 from apps.monitor.services.manual_collect import ManualCollectService
 from apps.monitor.services.plugin import MonitorPluginService
@@ -16,6 +21,18 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1] / "support-files" / "plugins" 
 
 def _load_plugin_seed(protocol: str, instance_type: str, file_name: str):
     return json.loads((PLUGIN_ROOT / protocol / instance_type / file_name).read_text())
+
+
+def _create_child_default_metric(parent_object: MonitorObject, child_name: str = "SwitchPort") -> MonitorObject:
+    child_object = MonitorObject.objects.create(name=child_name, display_name=child_name, parent=parent_object)
+    metric_group = MetricGroup.objects.create(monitor_object=child_object, name=f"{child_name} Metrics")
+    Metric.objects.create(
+        monitor_object=child_object,
+        metric_group=metric_group,
+        name="traffic_in",
+        query="traffic_in_total",
+    )
+    return child_object
 
 
 def test_flow_instance_fields_and_protocols_are_persisted(db):
@@ -260,6 +277,45 @@ def test_update_flow_asset_updates_editable_fields(db):
     assert set(
         MonitorInstanceOrganization.objects.filter(monitor_instance_id=instance.id).values_list("organization", flat=True)
     ) == {2}
+
+
+def test_update_flow_asset_refreshes_child_object_organization_rules_when_organizations_change(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    child_object = _create_child_default_metric(switch_object)
+    instance = MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance_id=instance.id, organization=1)
+    MonitorObjectOrganizationRule.objects.create(
+        name=f"{child_object.name}-flow-device-1",
+        monitor_object_id=child_object.id,
+        rule={
+            "type": "metric",
+            "metric_id": Metric.objects.get(monitor_object_id=child_object.id).id,
+            "filter": [{"name": "instance_id", "method": "=", "value": "flow-device-1"}],
+        },
+        organizations=[1],
+        monitor_instance_id=instance.id,
+    )
+
+    FlowOnboardingService.update_asset(
+        instance_id=instance.id,
+        organizations=[2, 3],
+    )
+
+    rules = list(MonitorObjectOrganizationRule.objects.filter(monitor_instance_id=instance.id))
+    assert len(rules) == 1
+    assert rules[0].monitor_object_id == child_object.id
+    assert rules[0].organizations == [2, 3]
+    assert set(
+        MonitorInstanceOrganization.objects.filter(monitor_instance_id=instance.id).values_list("organization", flat=True)
+    ) == {2, 3}
 
 
 def test_create_or_bind_flow_asset_with_explicit_empty_organizations_clears_bindings(db):
