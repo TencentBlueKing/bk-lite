@@ -12,12 +12,6 @@
   }
 }
 
-.wideTrend {
-  .chartWrap {
-    height: 178px;
-  }
-}
-
 .compactStatusRing {
   .ringCard {
     grid-template-columns: minmax(132px, 144px) minmax(0, 1fr);
@@ -45,24 +39,12 @@
       height: 138px;
     }
   }
-
-  .wideTrend {
-    .chartWrap {
-      height: 150px;
-    }
-  }
 }
 
 @media (max-width: 480px) {
   .compactTrend {
     .chartWrap {
       height: 120px;
-    }
-  }
-
-  .wideTrend {
-    .chartWrap {
-      height: 126px;
     }
   }
 }

@@ -33,14 +33,6 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#2f6bff'
     },
     {
-      name: 'website_response_time_min',
-      display_name: '最小响应时间',
-      description: '网站探测最小响应时间。',
-      unit: 's',
-      query: 'min(http_response_response_time{__$labels__})',
-      color: '#13c2c2'
-    },
-    {
       name: 'website_response_time_max',
       display_name: '最大响应时间',
       description: '网站探测最大响应时间。',
@@ -55,14 +47,6 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       unit: 'bytes',
       query: 'avg(http_response_content_length{__$labels__})',
       color: '#597ef7'
-    },
-    {
-      name: 'website_status_code_node_total',
-      display_name: '状态码节点总数',
-      description: '当前返回 HTTP 状态码的探测节点总数。',
-      unit: 'counts',
-      query: 'count(http_response_http_response_code{__$labels__})',
-      color: '#2f6bff'
     },
     {
       name: 'website_status_code_2xx_count',
@@ -100,29 +84,29 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   summaryCards: [
     {
       title: '探测成功率',
+      guide: [{ label: '探测成功率', detail: '优先确认当前可用性是否已下降，并结合失败占比判断影响面。' }],
       metric: 'website_success_rate_avg',
       color: '#27c274',
       icon: 'api',
       compare: true,
-      guide: [{ label: '探测成功率', detail: '统计网站探测节点的平均成功率。' }],
       footer: [{ label: '失败占比', metric: 'website_failure_rate_avg', unit: 'percent' }]
     },
     {
       title: '平均响应时间',
+      guide: [{ label: '平均响应时间', detail: '优先观察平均响应是否持续升高，再对比峰值判断是否存在抖动。' }],
       metric: 'website_response_time_avg',
       color: '#2f6bff',
       icon: 'clock',
       compare: true,
-      guide: [{ label: '响应时间', detail: '统计网站探测节点的平均响应时间。' }],
-      footer: [{ label: '最大响应', metric: 'website_response_time_max', unit: 's' }]
+      footer: [{ label: '峰值响应', metric: 'website_response_time_max', unit: 's' }]
     },
     {
-      title: '平均内容长度',
-      metric: 'website_content_length_avg',
-      color: '#597ef7',
-      icon: 'database',
-      guide: [{ label: '内容长度', detail: '统计网站返回内容的平均体积。' }],
-      footer: [{ label: '5xx 节点', metric: 'website_status_code_5xx_count', unit: 'counts' }]
+      title: '5xx 节点数',
+      guide: [{ label: '5xx 节点数', detail: '用于快速识别服务端错误是否已扩散，并结合 4xx 节点判断问题归因。' }],
+      metric: 'website_status_code_5xx_count',
+      color: '#ff4d4f',
+      icon: 'thunder',
+      footer: [{ label: '4xx 节点', metric: 'website_status_code_4xx_count', unit: 'counts' }]
     }
   ],
   charts: [
@@ -135,13 +119,12 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       title: '响应时间趋势',
-      subtitle: '平均、最小与最大',
+      subtitle: '平均与峰值',
+      guide: [{ label: '响应时间趋势', detail: '对比平均值与峰值，优先识别整体变慢还是局部尖刺。' }],
       metric: 'website_response_time_avg',
-      guide: [{ label: '响应时间', detail: '对比网站平均、最小和最大响应时间。' }],
       series: [
         { metric: 'website_response_time_avg', label: '平均响应', color: '#2f6bff', unit: 's' },
-        { metric: 'website_response_time_min', label: '最小响应', color: '#13c2c2', unit: 's' },
-        { metric: 'website_response_time_max', label: '最大响应', color: '#ff8a1f', unit: 's' }
+        { metric: 'website_response_time_max', label: '峰值响应', color: '#ff8a1f', unit: 's' }
       ]
     },
     {
@@ -165,14 +148,13 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { label: '失败占比', metric: 'website_failure_rate_avg', color: '#ffccc7', unit: 'percent' }
       ]
     },
+  ],
+  barPanels: [
     {
       title: '状态码分布',
-      subtitle: '2xx~5xx分布',
-      centerMetric: 'website_status_code_node_total',
-      centerCaption: '探测节点',
-      centerUnit: 'counts',
-      guide: [{ label: '状态码分布', detail: '按探测节点当前返回的 HTTP 状态码类型统计 2xx、3xx、4xx、5xx 分布。' }],
-      segments: [
+      subtitle: '2xx~5xx节点',
+      guide: [{ label: '状态码结构', detail: '优先判断当前异常请求主要集中在 4xx 还是 5xx。' }],
+      items: [
         { label: '2xx', metric: 'website_status_code_2xx_count', color: '#27c274', unit: 'counts' },
         { label: '3xx', metric: 'website_status_code_3xx_count', color: '#2f6bff', unit: 'counts' },
         { label: '4xx', metric: 'website_status_code_4xx_count', color: '#ff8a1f', unit: 'counts' },

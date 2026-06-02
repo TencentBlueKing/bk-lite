@@ -6,26 +6,31 @@ import {
   DashboardShell,
   FlexiblePanelSection,
   KpiSection,
+  useFilteredBarPanels,
   useFilteredChartPanels,
   useFilteredRingPanels
 } from '../common/dashboard-components';
 import {
+  HorizontalBarPanel,
   RingChartPanel,
   TrendChartPanel
 } from '../../shared/widgets';
 import { WEBSITE_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
-const PRIMARY_CHART_TITLES = ['响应时间趋势', '探测成功率趋势', '内容长度趋势'];
-const RING_TITLES = ['可用性分布', '状态码分布'];
+const PRIMARY_CHART_TITLES = ['探测成功率趋势', '响应时间趋势', '内容长度趋势'];
+const RING_TITLES = ['可用性分布'];
+const BAR_TITLES = ['状态码分布'];
 
 export default function WebsiteDashboardPage() {
   const dashboard = useSimpleDashboardData(WEBSITE_DASHBOARD_CONFIG);
   const charts = useFilteredChartPanels(dashboard.chartPanels, PRIMARY_CHART_TITLES);
   const rings = useFilteredRingPanels(dashboard.ringPanels, RING_TITLES);
+  const bars = useFilteredBarPanels(dashboard.barPanels, BAR_TITLES);
 
-  const [responseChart, successChart, contentChart] = charts;
-  const [availabilityRing, statusCodeRing] = rings;
+  const [successChart, responseChart, contentChart] = charts;
+  const [availabilityRing] = rings;
+  const [statusCodeBar] = bars;
 
   return (
     <DashboardShell
@@ -65,23 +70,6 @@ export default function WebsiteDashboardPage() {
                 styles={styles}
               />
             ) : null}
-            {contentChart ? (
-              <TrendChartPanel
-                key={contentChart.chart.title}
-                title={contentChart.chart.title}
-                subtitle={contentChart.chart.subtitle}
-                guide={contentChart.chart.guide}
-                legends={contentChart.legends}
-                data={contentChart.data}
-                metric={contentChart.metric}
-                unit={contentChart.unit}
-                loading={dashboard.loading}
-                seriesStyles={contentChart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span4} ${styles.compactTrend}`}
-                styles={styles}
-              />
-            ) : null}
             {responseChart ? (
               <TrendChartPanel
                 key={responseChart.chart.title}
@@ -95,20 +83,35 @@ export default function WebsiteDashboardPage() {
                 loading={dashboard.loading}
                 seriesStyles={responseChart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span8} ${styles.compactTrend} ${styles.wideTrend}`}
+                className={`${styles.span4} ${styles.compactTrend}`}
                 styles={styles}
               />
             ) : null}
-            {statusCodeRing ? (
-              <RingChartPanel
-                key={statusCodeRing.panel.title}
-                title={statusCodeRing.panel.title}
-                subtitle={statusCodeRing.panel.subtitle}
-                guide={statusCodeRing.panel.guide}
-                data={statusCodeRing.data}
-                centerValue={statusCodeRing.centerValue}
-                centerCaption={statusCodeRing.panel.centerCaption}
-                className={`${styles.span4} ${styles.compactStatusRing}`}
+            {statusCodeBar ? (
+              <HorizontalBarPanel
+                key={statusCodeBar.panel.title}
+                title={statusCodeBar.panel.title}
+                subtitle={statusCodeBar.panel.subtitle}
+                guide={statusCodeBar.panel.guide}
+                items={statusCodeBar.items}
+                className={styles.span6}
+                styles={styles}
+              />
+            ) : null}
+            {contentChart ? (
+              <TrendChartPanel
+                key={contentChart.chart.title}
+                title={contentChart.chart.title}
+                subtitle={contentChart.chart.subtitle}
+                guide={contentChart.chart.guide}
+                legends={contentChart.legends}
+                data={contentChart.data}
+                metric={contentChart.metric}
+                unit={contentChart.unit}
+                loading={dashboard.loading}
+                seriesStyles={contentChart.seriesStyles}
+                onXRangeChange={dashboard.onXRangeChange}
+                className={`${styles.span6} ${styles.compactTrend}`}
                 styles={styles}
               />
             ) : null}
