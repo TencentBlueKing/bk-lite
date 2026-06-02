@@ -305,19 +305,21 @@
 
 .primaryGrid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 12px;
 }
 
 .mainTrendGrid,
+.structureGrid,
 .detailGrid {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 12px;
 }
 
-.mainTrendGrid {
+.mainTrendGrid,
+.structureGrid {
   margin-bottom: 12px;
 }
 
@@ -2311,7 +2313,10 @@
 }
 
 .replicationStatusList {
-  display: contents;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(132px, max-content));
+  grid-column: span 2;
+  gap: 8px;
 }
 
 @media (max-width: 768px) {
@@ -2319,11 +2324,20 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
   }
+
+  .replicationStatusList {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 480px) {
   .replicationInfoBlock {
     grid-template-columns: 1fr;
+  }
+
+  .replicationStatusList {
+    grid-template-columns: 1fr;
+    grid-column: auto;
   }
 }
 
@@ -3423,10 +3437,6 @@
 
   .mysqlRequestPath {
     min-width: 1100px;
-  }
-
-  .innodbInner {
-    min-width: 760px;
   }
 
   .mysqlPathNode,

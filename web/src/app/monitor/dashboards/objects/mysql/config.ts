@@ -666,5 +666,6 @@ export const TREND_LEGENDS: Record<string, TrendLegendItem[]> = {
     { label: '接收速率', color: '#2f6bff', primary: true },
     { label: '发送速率', color: '#27c274' }
   ],
+  lockWaits: [{ label: '行锁等待速率', color: '#ff4d4f', primary: true }],
   replication: [{ label: '复制延迟', color: '#2f6bff', primary: true }]
 };
