@@ -1,5 +1,8 @@
 import useApiClient from '@/utils/request';
 
+// Storage engine types
+export type StorageType = 'local' | 'mem0' | 'zep' | 'custom';
+
 export interface MemorySpace {
   id: number;
   name: string;
@@ -9,6 +12,8 @@ export interface MemorySpace {
   write_rule: string;
   default_model: string;
   memory_count: number;
+  storage_type: StorageType;
+  storage_config: Record<string, unknown>;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -24,6 +29,37 @@ export interface Memory {
   created_by: string;
   created_at: string;
   updated_at: string;
+}
+
+// Engine types
+export interface MemoryEngineInfo {
+  type: StorageType;
+  name: string;
+  description: string;
+  available: boolean;
+}
+
+export interface EngineConfigField {
+  name: string;
+  label: string;
+  type: 'text' | 'password' | 'number' | 'select' | 'json';
+  required: boolean;
+  encrypted?: boolean;
+  default?: unknown;
+  placeholder?: string;
+  options?: Array<{ value: string; label: string }>;
+}
+
+export interface EngineConfigSchema {
+  type: StorageType;
+  name: string;
+  description: string;
+  fields: EngineConfigField[];
+}
+
+export interface TestConnectionResult {
+  success: boolean;
+  message: string;
 }
 
 export const useMemoryApi = () => {
@@ -76,6 +112,22 @@ export const useMemoryApi = () => {
     return await post('/opspilot/memory_mgmt/memory_space/test_write/', data);
   };
 
+  // Memory Engine APIs
+  const fetchMemoryEngines = async (): Promise<MemoryEngineInfo[]> => {
+    return await get('/opspilot/memory_mgmt/memory_engines/');
+  };
+
+  const fetchEngineSchema = async (engineType: StorageType): Promise<EngineConfigSchema> => {
+    return await get(`/opspilot/memory_mgmt/memory_engines/${engineType}/schema/`);
+  };
+
+  const testEngineConnection = async (
+    engineType: StorageType,
+    config: Record<string, unknown>
+  ): Promise<TestConnectionResult> => {
+    return await post(`/opspilot/memory_mgmt/memory_engines/${engineType}/test/`, config);
+  };
+
   return {
     fetchMemorySpaces,
     fetchMemorySpace,
@@ -87,5 +139,9 @@ export const useMemoryApi = () => {
     updateMemory,
     deleteMemory,
     testMemoryWrite,
+    // Engine APIs
+    fetchMemoryEngines,
+    fetchEngineSchema,
+    testEngineConnection,
   };
 };

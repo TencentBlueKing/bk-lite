@@ -1,15 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Drawer, Form, Button, message } from 'antd';
-import { DeleteOutlined } from '@ant-design/icons';
-import { Node } from '@xyflow/react';
-import type { UploadFile as AntdUploadFile } from 'antd';
-import { useTranslation } from '@/utils/i18n';
-import { useSearchParams } from 'next/navigation';
-import { useNodeConfigData } from './hooks/useNodeConfigData';
-import { useKeyValueRows } from './hooks/useKeyValueRows';
-import { NodeConfigForm } from './NodeConfigForm';
+import React, {useState} from 'react';
+import type {UploadFile as AntdUploadFile} from 'antd';
+import {Button, Drawer, Form, message} from 'antd';
+import {DeleteOutlined} from '@ant-design/icons';
+import {Node} from '@xyflow/react';
+import {useTranslation} from '@/utils/i18n';
+import {useSearchParams} from 'next/navigation';
+import {useNodeConfigData} from './hooks/useNodeConfigData';
+import {useKeyValueRows} from './hooks/useKeyValueRows';
+import {NodeConfigForm} from './NodeConfigForm';
 
 interface UploadFile extends AntdUploadFile {
   content?: string;
@@ -122,8 +122,8 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
         loadSkills();
       }
 
-      // 加载模型列表（意图分类节点）
-      if (node.data.type === 'intent_classification') {
+      // 加载模型列表（意图分类节点、记忆写入节点）
+      if (node.data.type === 'intent_classification' || node.data.type === 'memory_write') {
         loadLlmModels();
       }
 
