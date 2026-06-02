@@ -60,8 +60,32 @@ def _validate_protocol(_field, value):
     return value
 
 
+def _validate_name(_field, value):
+    if not isinstance(value, str):
+        raise ValidationAppException("Field name must be a string")
+    normalized_value = value.strip()
+    if not normalized_value:
+        raise ValidationAppException("Field name cannot be empty")
+    return normalized_value
+
+
 def _validate_fallback_sampling_rate(_field, value):
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+    if isinstance(value, bool):
+        raise ValidationAppException("Field fallback_sampling_rate must be a non-negative integer")
+    if isinstance(value, int):
+        normalized_value = value
+    elif isinstance(value, str):
+        stripped_value = value.strip()
+        if not stripped_value:
+            raise ValidationAppException("Field fallback_sampling_rate must be a non-negative integer")
+        try:
+            normalized_value = int(stripped_value)
+        except ValueError as exc:
+            raise ValidationAppException("Field fallback_sampling_rate must be a non-negative integer") from exc
+    else:
+        raise ValidationAppException("Field fallback_sampling_rate must be a non-negative integer")
+    value = normalized_value
+    if value < 0:
         raise ValidationAppException("Field fallback_sampling_rate must be a non-negative integer")
     return value
 
@@ -109,11 +133,25 @@ def _build_conflict_permission_checker(request, actor_context):
     return checker
 
 
-def _validated_request_payload(data, *, required_fields, optional_fields, field_validators=None):
+def _normalize_request_payload_mapping(data, *, multi_value_fields):
+    if not hasattr(data, "getlist"):
+        return dict(data)
+
+    payload = {}
+    for field in data.keys():
+        if field in multi_value_fields:
+            payload[field] = data.getlist(field)
+        else:
+            payload[field] = data.get(field)
+    return payload
+
+
+def _validated_request_payload(data, *, required_fields, optional_fields, field_validators=None, multi_value_fields=None):
     if not isinstance(data, Mapping):
         raise ValidationAppException("Request body must be an object")
 
-    payload = dict(data)
+    multi_value_fields = multi_value_fields or set()
+    payload = _normalize_request_payload_mapping(data, multi_value_fields=multi_value_fields)
     allowed_fields = required_fields | optional_fields
     field_validators = field_validators or {}
 
@@ -158,9 +196,11 @@ class ManualCollect(viewsets.ViewSet):
                 "cloud_region_id": _validate_flow_identity_field,
                 "ip": _validate_flow_identity_field,
                 "protocol": _validate_protocol,
+                "name": _validate_name,
                 "fallback_sampling_rate": _validate_fallback_sampling_rate,
                 "organizations": _validate_organizations,
             },
+            multi_value_fields={"organizations"},
         )
         actor_context = _build_actor_context(request)
         with transaction.atomic():
@@ -199,9 +239,11 @@ class ManualCollect(viewsets.ViewSet):
             field_validators={
                 "cloud_region_id": _validate_flow_identity_field,
                 "ip": _validate_flow_identity_field,
+                "name": _validate_name,
                 "fallback_sampling_rate": _validate_fallback_sampling_rate,
                 "organizations": _validate_organizations,
             },
+            multi_value_fields={"organizations"},
         )
         actor_context = _build_actor_context(request)
         _validate_existing_flow_instance(payload["instance_id"])

@@ -4,6 +4,7 @@ import types
 from pathlib import Path
 
 import pytest
+from django.http import QueryDict
 
 
 def _install_module(monkeypatch, name, **attrs):
@@ -291,6 +292,136 @@ def test_flow_asset_coerces_monitor_object_id_before_service_calls(monkeypatch, 
     assert calls["lock_monitor_object"] == {"monitor_object_id": 1, "require_supported": True}
     assert calls["create_or_bind_asset"]["monitor_object_id"] == 1
     assert callable(calls["create_or_bind_asset"]["conflict_permission_checker"])
+
+
+@pytest.mark.parametrize(
+    ("method_name", "module_name", "request_data", "expected_payload"),
+    [
+        (
+            "flow_asset",
+            "manual_collect_view_test_module_create_form_payload",
+            {
+                "monitor_object_id": "1",
+                "protocol": "netflow",
+                "cloud_region_id": "2",
+                "ip": " 10.0.0.12 ",
+                "name": "  Core Switch  ",
+                "organizations": ["7", "8"],
+                "fallback_sampling_rate": 3000,
+            },
+            {
+                "monitor_object_id": 1,
+                "protocol": "netflow",
+                "cloud_region_id": 2,
+                "ip": "10.0.0.12",
+                "name": "Core Switch",
+                "organizations": [7, 8],
+                "fallback_sampling_rate": 3000,
+            },
+        ),
+        (
+            "update_flow_asset",
+            "manual_collect_view_test_module_update_form_payload",
+            {
+                "instance_id": "inst-a",
+                "name": "  Core Switch Updated  ",
+                "cloud_region_id": "3",
+                "ip": "10.0.0.13",
+                "organizations": ["9"],
+            },
+            {
+                "instance_id": "inst-a",
+                "name": "Core Switch Updated",
+                "cloud_region_id": 3,
+                "ip": "10.0.0.13",
+                "organizations": [9],
+            },
+        ),
+    ],
+)
+def test_flow_asset_endpoints_normalize_querydict_payloads(monkeypatch, db, method_name, module_name, request_data, expected_payload):
+    calls = {}
+    actor_context = {"current_team": 7}
+
+    class ViewSet:
+        pass
+
+    def action(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
+    def create_or_bind_asset(**kwargs):
+        calls["service_payload"] = kwargs
+        return {"instance_id": kwargs.get("instance_id", "created-instance")}
+
+    def update_asset(**kwargs):
+        calls["service_payload"] = kwargs
+        return {"instance_id": kwargs["instance_id"]}
+
+    def lock_monitor_object(*, monitor_object_id, require_supported=True):
+        calls["lock_monitor_object"] = {
+            "monitor_object_id": monitor_object_id,
+            "require_supported": require_supported,
+        }
+
+    def validate_instance_id(*, instance_id):
+        calls.setdefault("validated_instance_ids", []).append(instance_id)
+        return instance_id
+
+    _install_module(monkeypatch, "rest_framework.viewsets", ViewSet=ViewSet)
+    _install_module(monkeypatch, "rest_framework.decorators", action=action)
+    _install_module(
+        monkeypatch,
+        "apps.core.utils.web_utils",
+        WebUtils=types.SimpleNamespace(response_success=lambda data=None: data),
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.services.flow_onboarding",
+        FlowOnboardingService=types.SimpleNamespace(
+            create_or_bind_asset=create_or_bind_asset,
+            update_asset=update_asset,
+            find_reusable_asset=lambda **kwargs: None,
+            lock_monitor_object=lock_monitor_object,
+            validate_instance_id=validate_instance_id,
+        ),
+    )
+    _install_module(monkeypatch, "apps.monitor.services.manual_collect", ManualCollectService=object)
+    _install_module(
+        monkeypatch,
+        "apps.monitor.views.monitor_instance",
+        _build_actor_context=lambda request: actor_context,
+        _ensure_operate_instances=lambda request, instance_ids, received_actor_context=None: instance_ids,
+        _ensure_target_organizations=lambda organizations, received_actor_context: None,
+    )
+    _install_module(monkeypatch, "apps.rpc.node_mgmt", NodeMgmt=object)
+
+    module = _load_module(
+        module_name,
+        Path(__file__).resolve().parents[1] / "views" / "manual_collect.py",
+    )
+
+    payload = QueryDict("", mutable=True)
+    for field, value in request_data.items():
+        if isinstance(value, list):
+            payload.setlist(field, value)
+        else:
+            payload[field] = str(value)
+
+    response = getattr(module.ManualCollect(), method_name)(types.SimpleNamespace(data=payload))
+
+    assert response["instance_id"] == expected_payload.get("instance_id", "created-instance")
+    service_payload = dict(calls["service_payload"])
+    conflict_permission_checker = service_payload.pop("conflict_permission_checker", None)
+    if method_name == "flow_asset":
+        assert callable(conflict_permission_checker)
+        assert calls["lock_monitor_object"] == {"monitor_object_id": 1, "require_supported": True}
+    else:
+        assert conflict_permission_checker is not None and callable(conflict_permission_checker)
+        assert calls["validated_instance_ids"] == ["inst-a"]
+    assert service_payload == expected_payload
 
 
 def test_flow_asset_api_restores_soft_deleted_reused_instance(api_client, monkeypatch, db):
@@ -1207,6 +1338,102 @@ def test_update_flow_asset_api_rejects_duplicate_name_as_validation_error(api_cl
     assert response.json()["message"] == "实例名称已存在"
     target.refresh_from_db()
     assert target.name == "Flow Asset B"
+
+
+@pytest.mark.parametrize(
+    ("path", "payload", "message"),
+    [
+        (
+            "/api/v1/monitor/api/manual_collect/flow_asset/",
+            {
+                "monitor_object_id": 1,
+                "protocol": "netflow",
+                "cloud_region_id": 1,
+                "ip": "10.0.0.12",
+                "name": "",
+            },
+            "Field name cannot be empty",
+        ),
+        (
+            "/api/v1/monitor/api/manual_collect/flow_asset/",
+            {
+                "monitor_object_id": 1,
+                "protocol": "netflow",
+                "cloud_region_id": 1,
+                "ip": "10.0.0.12",
+                "name": "   ",
+            },
+            "Field name cannot be empty",
+        ),
+        (
+            "/api/v1/monitor/api/manual_collect/flow_asset/",
+            {
+                "monitor_object_id": 1,
+                "protocol": "netflow",
+                "cloud_region_id": 1,
+                "ip": "10.0.0.12",
+                "name": 123,
+            },
+            "Field name must be a string",
+        ),
+        (
+            "/api/v1/monitor/api/manual_collect/flow_asset/update/",
+            {
+                "instance_id": "inst-a",
+                "name": "",
+            },
+            "Field name cannot be empty",
+        ),
+        (
+            "/api/v1/monitor/api/manual_collect/flow_asset/update/",
+            {
+                "instance_id": "inst-a",
+                "name": "   ",
+            },
+            "Field name cannot be empty",
+        ),
+        (
+            "/api/v1/monitor/api/manual_collect/flow_asset/update/",
+            {
+                "instance_id": "inst-a",
+                "name": 123,
+            },
+            "Field name must be a string",
+        ),
+    ],
+)
+def test_flow_asset_endpoints_reject_invalid_name_values(api_client, monkeypatch, path, payload, message):
+    from apps.monitor.services.flow_onboarding import FlowOnboardingService
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    monkeypatch.setattr(
+        FlowOnboardingService,
+        "lock_monitor_object",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("lock_monitor_object should not be called for invalid payloads")),
+    )
+    monkeypatch.setattr(
+        FlowOnboardingService,
+        "create_or_bind_asset",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("create_or_bind_asset should not be called for invalid payloads")),
+    )
+    monkeypatch.setattr(
+        FlowOnboardingService,
+        "update_asset",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("update_asset should not be called for invalid payloads")),
+    )
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None: (_ for _ in ()).throw(
+            AssertionError("_ensure_operate_instances should not be called for invalid payloads")
+        ),
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(path, data=payload, format="json")
+
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == message
 
 
 def test_update_flow_asset_api_checks_operate_permission_before_cross_object_duplicate_error(api_client, monkeypatch, db):
