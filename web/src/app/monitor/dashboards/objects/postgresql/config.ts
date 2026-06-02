@@ -208,7 +208,6 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'postgresql_blks_read_rate',
       color: '#ff8a1f',
       icon: 'database',
-      compare: true,
       guide: [{ label: '磁盘块读取', detail: '需从磁盘读取块的速率，高值通常表示缓存未命中较多。' }],
       footer: [
         { label: '缓存命中', metric: 'postgresql_blks_hit_rate', unit: 'cps' },

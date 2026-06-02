@@ -16,10 +16,10 @@ import {
 import { POSTGRESQL_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
-const SUMMARY_TITLES = ['活跃连接数', '事务提交速率', '缓存命中率', '临时文件速率', '死锁速率'];
+const SUMMARY_TITLES = ['事务回滚速率', '死锁速率', '临时文件速率', '缓存命中率', '活跃连接数'];
 const PRIMARY_CHART_TITLES = ['事务提交与回滚', '缓存与磁盘读', '检查点趋势'];
-const SECONDARY_CHART_TITLES = ['数据操作速率', '查询行读取趋势', '缓冲区写入活动'];
-const RING_TITLES = ['事务结果分布', '缓存访问分布', '数据变更分布'];
+const SECONDARY_CHART_TITLES = ['缓冲区写入活动', '数据操作速率', '查询行读取趋势'];
+const RING_TITLES: string[] = [];
 const BAR_TITLES = ['异常事件热点', '缓冲区写入来源'];
 
 export default function PostgresqlDashboardPage() {
@@ -39,7 +39,6 @@ export default function PostgresqlDashboardPage() {
         <>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
           <TrendSection charts={primaryCharts} onXRangeChange={dashboard.onXRangeChange} loading={dashboard.loading} styles={styles} />
-          <TrendSection charts={secondaryCharts} onXRangeChange={dashboard.onXRangeChange} loading={dashboard.loading} styles={styles} />
           <InsightSection
             rings={rings}
             bars={bars}
@@ -47,6 +46,7 @@ export default function PostgresqlDashboardPage() {
             barSpanClass={() => styles.span6}
             styles={styles}
           />
+          <TrendSection charts={secondaryCharts} onXRangeChange={dashboard.onXRangeChange} loading={dashboard.loading} styles={styles} />
           <DetailSection detailPanels={dashboard.detailPanels} styles={styles} />
         </>
       }
