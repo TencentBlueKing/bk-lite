@@ -34,6 +34,7 @@ class ManualCollect(viewsets.ViewSet):
             FlowOnboardingService.lock_monitor_object(monitor_object_id=request.data["monitor_object_id"])
             instance_id = request.data.get("instance_id")
             payload = dict(request.data)
+            payload.pop("allow_deleted_instance_reuse", None)
             if instance_id:
                 _ensure_operate_instances(request, [instance_id], actor_context)
             else:
@@ -46,6 +47,7 @@ class ManualCollect(viewsets.ViewSet):
                 if existing_instance:
                     _ensure_operate_instances(request, [existing_instance.id], actor_context)
                     payload["instance_id"] = existing_instance.id
+                    payload["allow_deleted_instance_reuse"] = existing_instance.is_deleted
             _ensure_target_organizations(request.data.get("organizations", []), actor_context)
             data = FlowOnboardingService.create_or_bind_asset(**payload)
         return WebUtils.response_success(data)

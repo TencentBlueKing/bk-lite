@@ -22,6 +22,7 @@ class FlowOnboardingService:
         name,
         organizations=ORGANIZATIONS_UNSET,
         instance_id=None,
+        allow_deleted_instance_reuse=False,
         fallback_sampling_rate=None,
     ):
         cls._validate_protocol(protocol)
@@ -37,6 +38,7 @@ class FlowOnboardingService:
                 name=name,
                 organizations=organizations,
                 instance_id=instance_id,
+                allow_deleted_instance_reuse=allow_deleted_instance_reuse,
             )
             restoring_deleted = instance.is_deleted
             restored_organizations = None
@@ -126,9 +128,24 @@ class FlowOnboardingService:
         return {"instance_id": instance_id}
 
     @classmethod
-    def _resolve_instance(cls, *, monitor_object_id, cloud_region_id, ip, name, organizations, instance_id=None):
+    def _resolve_instance(
+        cls,
+        *,
+        monitor_object_id,
+        cloud_region_id,
+        ip,
+        name,
+        organizations,
+        instance_id=None,
+        allow_deleted_instance_reuse=False,
+    ):
         if instance_id:
-            return cls._get_instance(instance_id=instance_id, monitor_object_id=monitor_object_id, for_update=True)
+            return cls._get_instance(
+                instance_id=instance_id,
+                monitor_object_id=monitor_object_id,
+                for_update=True,
+                include_deleted=allow_deleted_instance_reuse,
+            )
 
         instance = cls.find_reusable_asset(
             monitor_object_id=monitor_object_id,
@@ -185,11 +202,12 @@ class FlowOnboardingService:
         )
 
     @classmethod
-    def _get_instance(cls, *, instance_id, monitor_object_id=None, for_update=False):
+    def _get_instance(cls, *, instance_id, monitor_object_id=None, for_update=False, include_deleted=False):
         filters = {
             "id": instance_id,
-            "is_deleted": False,
         }
+        if not include_deleted:
+            filters["is_deleted"] = False
         if monitor_object_id is not None:
             filters["monitor_object_id"] = monitor_object_id
         queryset = MonitorInstance.objects.filter(**filters)

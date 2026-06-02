@@ -197,4 +197,80 @@ def test_flow_asset_checks_operate_permission_before_reusing_existing_instance(m
     }
     assert calls["operate_args"] == (request, [existing_instance.id], actor_context)
     assert calls["target_org_args"] == ([7], actor_context)
-    assert calls["create_or_bind_asset"] == {**request.data, "instance_id": existing_instance.id}
+    assert calls["create_or_bind_asset"] == {
+        **request.data,
+        "instance_id": existing_instance.id,
+        "allow_deleted_instance_reuse": True,
+    }
+
+
+def test_flow_asset_api_restores_soft_deleted_reused_instance(api_client, monkeypatch, db):
+    from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject
+    from apps.monitor.services.manual_collect import ManualCollectService
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    deleted_instance = MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+        is_deleted=True,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance_id=deleted_instance.id, organization=1)
+
+    operate_calls = []
+    target_org_calls = []
+    restored_rule_calls = []
+
+    def fake_ensure_operate_instances(request, instance_ids, actor_context=None):
+        operate_calls.append((list(instance_ids), actor_context["current_team"]))
+        return instance_ids
+
+    def fake_ensure_target_organizations(organizations, actor_context):
+        target_org_calls.append((list(organizations), actor_context["current_team"]))
+
+    monkeypatch.setattr(manual_collect_view, "_ensure_operate_instances", fake_ensure_operate_instances)
+    monkeypatch.setattr(manual_collect_view, "_ensure_target_organizations", fake_ensure_target_organizations)
+    monkeypatch.setattr(
+        ManualCollectService,
+        "create_organization_rule_by_child_object",
+        lambda monitor_object_id, instance_id, organization_ids: restored_rule_calls.append(
+            (monitor_object_id, instance_id, list(organization_ids))
+        ),
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/",
+        data={
+            "monitor_object_id": switch_object.id,
+            "protocol": "sflow",
+            "cloud_region_id": 1,
+            "ip": "10.0.0.12",
+            "name": "Core Switch",
+            "organizations": [2],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.content
+    assert response.json()["data"] == {
+        "instance_id": deleted_instance.id,
+        "enabled_protocols": ["netflow", "sflow"],
+    }
+
+    deleted_instance.refresh_from_db()
+    assert deleted_instance.is_deleted is False
+    assert deleted_instance.cloud_region_id == 1
+    assert deleted_instance.ip == "10.0.0.12"
+    assert set(deleted_instance.enabled_protocols) == {"netflow", "sflow"}
+    assert set(
+        MonitorInstanceOrganization.objects.filter(monitor_instance_id=deleted_instance.id).values_list("organization", flat=True)
+    ) == {2}
+    assert operate_calls == [([deleted_instance.id], 1)]
+    assert target_org_calls == [([2], 1)]
+    assert restored_rule_calls == [(switch_object.id, deleted_instance.id, [2])]
