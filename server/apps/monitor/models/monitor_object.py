@@ -55,6 +55,10 @@ class MonitorInstance(TimeInfo, MaintainerInfo):
     auto = models.BooleanField(default=False, verbose_name='是否自动发现')
     is_deleted = models.BooleanField(db_index=True, default=False, verbose_name='是否删除')
     is_active = models.BooleanField(default=True)
+    cloud_region_id = models.IntegerField(null=True, blank=True, db_index=True, verbose_name='云区域ID')
+    ip = models.GenericIPAddressField(null=True, blank=True, verbose_name='接入IP')
+    fallback_sampling_rate = models.IntegerField(default=1000, verbose_name='兜底采样率')
+    enabled_protocols = models.JSONField(default=list, verbose_name='已启用的Flow协议')
 
     class Meta:
         verbose_name = '监控对象实例'

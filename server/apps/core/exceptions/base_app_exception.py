@@ -54,3 +54,12 @@ class UnauthorizedException(BaseAppException):
     MESSAGE = "未授权访问"
     STATUS_CODE = 401
     LOG_LEVEL = logging.ERROR
+
+
+class ValidationAppException(BaseAppException):
+    """校验失败异常，返回400状态码"""
+
+    ERROR_CODE = "4000001"
+    MESSAGE = "请求参数非法"
+    STATUS_CODE = 400
+    LOG_LEVEL = logging.WARNING

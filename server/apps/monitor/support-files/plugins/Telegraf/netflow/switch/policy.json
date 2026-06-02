@@ -1,0 +1,34 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Flow NetFlow",
+  "templates": [
+    {
+      "name": "设备总入流量过高",
+      "alert_name": "交换机${resource_name} 总入流量过高",
+      "description": "NetFlow 总入流量过高告警。",
+      "metric_name": "device_total_incoming_netflow_traffic",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 900,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "设备总出流量过高",
+      "alert_name": "交换机${resource_name} 总出流量过高",
+      "description": "NetFlow 总出流量过高告警。",
+      "metric_name": "device_total_outgoing_netflow_traffic",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 900,
+          "method": ">"
+        }
+      ]
+    }
+  ]
+}

@@ -428,6 +428,18 @@ monitor_object_metric:
     device_total_incoming_traffic:
       desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
       name: 设备接收总流量速率
+    device_total_incoming_netflow_traffic:
+      name: 设备 NetFlow 接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_outgoing_netflow_traffic:
+      name: 设备 NetFlow 发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_incoming_sflow_traffic:
+      name: 设备 sFlow 接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_outgoing_sflow_traffic:
+      name: 设备 sFlow 发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
     interface_ifOutOctets:
       desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节（MB）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
       name: 接口发送流量速率
@@ -556,6 +568,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+    device_total_incoming_netflow_traffic:
+      name: 设备 NetFlow 接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_outgoing_netflow_traffic:
+      name: 设备 NetFlow 发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_incoming_sflow_traffic:
+      name: 设备 sFlow 接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_outgoing_sflow_traffic:
+      name: 设备 sFlow 发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
   ActiveMQ:
     activemq_topics_consumer_count:
       name: 主题消费者数量
@@ -1674,6 +1698,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+    device_total_incoming_netflow_traffic:
+      name: 设备 NetFlow 接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_outgoing_netflow_traffic:
+      name: 设备 NetFlow 发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_incoming_sflow_traffic:
+      name: 设备 sFlow 接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_outgoing_sflow_traffic:
+      name: 设备 sFlow 发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
   Router:
     snmp_uptime:
       name: 系统运行时间
@@ -1717,6 +1753,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+    device_total_incoming_netflow_traffic:
+      name: 设备 NetFlow 接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_outgoing_netflow_traffic:
+      name: 设备 NetFlow 发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_incoming_sflow_traffic:
+      name: 设备 sFlow 接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_outgoing_sflow_traffic:
+      name: 设备 sFlow 发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
   Consul:
     consul_health_checks_passing:
       name: 健康检查通过数
@@ -2732,6 +2780,12 @@ monitor_object_plugin:
   Switch SNMP General:
     name: 交换机通用（Telegraf）
     desc: 通过Telegraf采集器利用SNMP协议定期收集交换机各接口的流量、丢包数、错包数等IF-MIB关键指标。
+  Switch Flow NetFlow:
+    name: 交换机流量分析（NetFlow）
+    desc: 使用 NetFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。
+  Switch Flow sFlow:
+    name: 交换机流量分析（sFlow）
+    desc: 使用 sFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。
   WebLogic-JMX:
     name: WebLogic（JMX）
     desc: 通过WebLogic-JMX采集器定期收集WebLogic关键指标，包括线程池、连接池、内存、EJB、Servlet、JMS 性能及 Web 服务响应时间等。
@@ -2750,6 +2804,12 @@ monitor_object_plugin:
   Loadbalance SNMP General:
     desc: 通过Telegraf采集器利用SNMP协议定期收集负载均衡各接口的流量、丢包数、错包数等IF-MIB关键指标。
     name: 负载均衡设备通用（Telegraf）
+  Loadbalance Flow NetFlow:
+    name: 负载均衡流量分析（NetFlow）
+    desc: 使用 NetFlow 对负载均衡设备进行流量分析采集，并转换为标准化设备流量指标。
+  Loadbalance Flow sFlow:
+    name: 负载均衡流量分析（sFlow）
+    desc: 使用 sFlow 对负载均衡设备进行流量分析采集，并转换为标准化设备流量指标。
   Bastion Host SNMP General:
     desc: SNMP 通用插件用于通过 SNMP 监控和管理堡垒机的监控情况。管理员可以获取有关设备的关键信息，例如 接口流量、错误统计和状态信息等，从而优化网络性能和提高管理效率。
     name: 堡垒机通用（SNMP）
@@ -2765,12 +2825,24 @@ monitor_object_plugin:
   Firewall SNMP General:
     desc: 通过Telegraf采集器利用SNMP协议定期收集防火墙各接口的流量、丢包数、错包数等IF-MIB关键指标。
     name: 防火墙通用（Telegraf）
+  Firewall Flow NetFlow:
+    name: 防火墙流量分析（NetFlow）
+    desc: 使用 NetFlow 对防火墙进行流量分析采集，并转换为标准化设备流量指标。
+  Firewall Flow sFlow:
+    name: 防火墙流量分析（sFlow）
+    desc: 使用 sFlow 对防火墙进行流量分析采集，并转换为标准化设备流量指标。
   SNMP Trap:
     desc: SNMP Trap监控插件用于接收和处理网络设备主动推送的报警或状态通知（Trap消息），以实现实时监控和故障告警。
     name: SNMP Trap
   Router SNMP General:
     desc: 通过Telegraf采集器利用SNMP协议定期收集路由器各接口的流量、丢包数、错包数等IF-MIB关键指标。
     name: 路由器通用（Telegraf）
+  Router Flow NetFlow:
+    name: 路由器流量分析（NetFlow）
+    desc: 使用 NetFlow 对路由器进行流量分析采集，并转换为标准化设备流量指标。
+  Router Flow sFlow:
+    name: 路由器流量分析（sFlow）
+    desc: 使用 sFlow 对路由器进行流量分析采集，并转换为标准化设备流量指标。
   ActiveMQ-JMX:
     name: ActiveMQ-JMX
     desc: 该 ActiveMQ 插件基于 JMX 采集，可获取消息队列、连接池、消息吞吐量等关键性能指标，实时监控消息处理效率与资源使用情况，助力优化系统性能，保障服务稳定。

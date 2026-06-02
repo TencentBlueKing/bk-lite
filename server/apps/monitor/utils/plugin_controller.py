@@ -76,21 +76,28 @@ class Controller:
         """
         _context = {**context}
 
-        # 兼容字符串和元组字面量两种 instance_id 表示，统一取首维度值供模板渲染。
-        instance_id = _context.get("instance_id")
-        if instance_id:
-            try:
-                if isinstance(instance_id, str):
-                    parsed_id = parse_instance_id(instance_id)
-                    if parsed_id:
-                        _context.update(instance_id=parsed_id[0])
-                    else:
-                        logger.warning(f"instance_id 格式异常: {instance_id}")
-                elif isinstance(instance_id, (list, tuple)) and len(instance_id) > 0:
-                    _context.update(instance_id=instance_id[0])
-            except Exception as e:
-                logger.error(f"解析 instance_id 失败: {instance_id}, 错误: {e}")
-                raise ValueError(f"无效的 instance_id 格式: {instance_id}") from e
+        # 优先使用显式 logical_instance_value（已规范化的逻辑实例值）。
+        # 仅在缺失时才尝试解析 instance_id，保持向后兼容。
+        logical_instance_value = _context.get("logical_instance_value")
+        if logical_instance_value:
+            _context["instance_id"] = logical_instance_value
+        else:
+            instance_id = _context.get("instance_id")
+            if instance_id:
+                try:
+                    if isinstance(instance_id, str):
+                        parsed_id = parse_instance_id(instance_id)
+                        if parsed_id:
+                            _context.update(instance_id=parsed_id[0])
+                        else:
+                            raise ValueError(f"无效的 instance_id 格式: {instance_id}")
+                    elif isinstance(instance_id, (list, tuple)) and len(instance_id) > 0:
+                        _context.update(instance_id=instance_id[0])
+                except ValueError:
+                    raise
+                except Exception as e:
+                    logger.error(f"解析 instance_id 失败: {instance_id}, 错误: {e}")
+                    raise ValueError(f"无效的 instance_id 格式: {instance_id}") from e
 
         template = self.jinja_env.from_string(template_content)
         return template.render(_context)
@@ -211,7 +218,15 @@ class Controller:
                             "monitor_plugin_id": plugin_id,
                         },
                     )
-                except (ValueError, Exception) as e:
+                except ValueError as e:
+                    raw_id = config_info.get("instance_id")
+                    logical_id = config_info.get("logical_instance_value")
+                    storage_id = config_info.get("storage_instance_key")
+                    logger.error(
+                        f"实例识别失败：type={type_name}, raw={raw_id}, logical={logical_id}, storage={storage_id}, 错误: {e}"
+                    )
+                    raise BaseAppException(f"实例识别失败：type={type_name}, instance_id={raw_id}") from e
+                except Exception as e:
                     logger.error(f"渲染模板失败：type={type_name}, config_id={config_id}, instance_id={config_info.get('instance_id')}, 错误: {e}")
                     raise BaseAppException(f"渲染采集模板失败：type={type_name}, instance_id={config_info.get('instance_id')}") from e
 
