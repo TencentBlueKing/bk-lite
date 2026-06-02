@@ -16,9 +16,9 @@ import {
 import { MSSQL_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
-const SUMMARY_TITLES = ['运行时长', '批量请求速率', '缓存命中率', '读延迟', '信号等待占比'];
-const PRIMARY_CHART_TITLES = ['请求耗时趋势', '等待时间趋势', 'CPU 使用情况'];
-const SECONDARY_CHART_TITLES = ['读写延迟', '读写吞吐'];
+const SUMMARY_TITLES = ['信号等待占比', '读延迟', '批量请求速率', '缓存命中率', '卷可用空间'];
+const PRIMARY_CHART_TITLES = ['等待时间趋势', '请求耗时趋势', '读写延迟'];
+const SECONDARY_CHART_TITLES = ['CPU 使用情况', '读写吞吐'];
 const RING_TITLES = ['缓存命中分布', '存储空间分布'];
 const BAR_TITLES = ['调度器压力', '请求资源消耗'];
 
@@ -39,18 +39,18 @@ export default function MssqlDashboardPage() {
         <>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
           <TrendSection charts={primaryCharts} onXRangeChange={dashboard.onXRangeChange} loading={dashboard.loading} styles={styles} />
-          <TrendSection
-            charts={secondaryCharts}
-            onXRangeChange={dashboard.onXRangeChange}
-            loading={dashboard.loading}
-            spanClass={(i) => (i === 0 ? styles.span8 : styles.span4)}
-            styles={styles}
-          />
           <InsightSection
             rings={rings}
             bars={bars}
             ringSpanClass={() => styles.span3}
             barSpanClass={() => styles.span3}
+            styles={styles}
+          />
+          <TrendSection
+            charts={secondaryCharts}
+            onXRangeChange={dashboard.onXRangeChange}
+            loading={dashboard.loading}
+            spanClass={(i) => (i === 0 ? styles.span8 : styles.span4)}
             styles={styles}
           />
           <DetailSection detailPanels={dashboard.detailPanels} styles={styles} />
