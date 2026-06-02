@@ -8,7 +8,7 @@ from apps.core.mixinx import EncryptMixin
 from apps.job_mgmt.constants import CredentialSource, ExecutionStatus, ExecutorDriver, OSType, ScriptType, SSHCredentialType, TargetSource
 from apps.job_mgmt.models import JobExecution, Target
 from apps.job_mgmt.services.callback_service import send_callback
-from apps.job_mgmt.services.shell_utils import parse_shebang
+from apps.job_mgmt.services.shell_utils import ANSIBLE_SHELL_EXECUTABLES, parse_shebang
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.node_mgmt import NodeMgmt
 from config.components.nats import NATS_NAMESPACE
@@ -219,11 +219,12 @@ class ExecutionTaskBaseService(object):
         }
         module = shell_mapping.get(script_type, "shell")
 
-        # Linux shell 模块：通过 ansible_shell_executable 传递解释器（优先 Shebang，回退 SHELL_MAPPING）
+        # Linux shell 模块：通过 ansible_shell_executable 传递解释器（仅限 sh/bash）
         extra_vars = {}
         if module == "shell":
             shell_interpreter = parse_shebang(script_content) or ScriptType.SHELL_MAPPING.get(script_type, "bash")
-            extra_vars["ansible_shell_executable"] = f"/bin/{shell_interpreter}"
+            if shell_interpreter in ANSIBLE_SHELL_EXECUTABLES:
+                extra_vars["ansible_shell_executable"] = f"/bin/{shell_interpreter}"
 
         # 调用 Ansible Executor
         executor = AnsibleExecutor(ansible_node_id)

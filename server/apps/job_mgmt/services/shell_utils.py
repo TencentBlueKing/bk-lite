@@ -5,6 +5,9 @@ from typing import Optional
 # 支持的解释器白名单：非白名单的 Shebang 解析结果将被忽略，回退到默认值
 SUPPORTED_SHELLS = {"sh", "bash", "python", "python3", "powershell", "pwsh"}
 
+# ansible_shell_executable 只支持真正的 shell，不能设为 python/powershell
+ANSIBLE_SHELL_EXECUTABLES = {"sh", "bash"}
+
 
 def parse_shebang(script: str) -> Optional[str]:
     """
