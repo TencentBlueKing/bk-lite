@@ -101,6 +101,13 @@ def _validate_existing_flow_instance(instance_id):
     return instance_id
 
 
+def _build_conflict_permission_checker(request, actor_context):
+    def checker(conflicting_instance):
+        _ensure_operate_instances(request, [conflicting_instance.id], actor_context)
+
+    return checker
+
+
 def _validated_request_payload(data, *, required_fields, optional_fields, field_validators=None):
     payload = dict(data)
     allowed_fields = required_fields | optional_fields
@@ -173,7 +180,10 @@ class ManualCollect(viewsets.ViewSet):
                     payload["instance_id"] = existing_instance.id
                     payload["allow_deleted_instance_reuse"] = existing_instance.is_deleted
             _ensure_target_organizations(payload.get("organizations", []), actor_context)
-            data = FlowOnboardingService.create_or_bind_asset(**payload)
+            data = FlowOnboardingService.create_or_bind_asset(
+                **payload,
+                conflict_permission_checker=_build_conflict_permission_checker(request, actor_context),
+            )
         return WebUtils.response_success(data)
 
     @action(methods=['post'], detail=False, url_path='flow_asset/update')
@@ -193,7 +203,10 @@ class ManualCollect(viewsets.ViewSet):
         _validate_existing_flow_instance(payload["instance_id"])
         _ensure_operate_instances(request, [payload["instance_id"]], actor_context)
         _ensure_target_organizations(payload.get("organizations", []), actor_context)
-        data = FlowOnboardingService.update_asset(**payload)
+        data = FlowOnboardingService.update_asset(
+            **payload,
+            conflict_permission_checker=_build_conflict_permission_checker(request, actor_context),
+        )
         return WebUtils.response_success(data)
 
     # 生成安装命令

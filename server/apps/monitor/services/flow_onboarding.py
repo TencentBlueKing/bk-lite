@@ -27,6 +27,7 @@ class FlowOnboardingService:
         instance_id=None,
         allow_deleted_instance_reuse=False,
         fallback_sampling_rate=None,
+        conflict_permission_checker=None,
     ):
         cls._validate_protocol(protocol)
         organizations_provided = organizations is not cls.ORGANIZATIONS_UNSET
@@ -54,6 +55,7 @@ class FlowOnboardingService:
                 cloud_region_id=cloud_region_id,
                 ip=ip,
                 exclude_instance_id=instance.id,
+                conflict_permission_checker=conflict_permission_checker,
             )
             instance.fallback_sampling_rate = cls._resolve_sampling_rate(
                 fallback_sampling_rate,
@@ -109,6 +111,7 @@ class FlowOnboardingService:
         cloud_region_id=None,
         ip=None,
         fallback_sampling_rate=None,
+        conflict_permission_checker=None,
     ):
         with transaction.atomic():
             instance = cls._get_instance(instance_id=instance_id)
@@ -118,6 +121,7 @@ class FlowOnboardingService:
                 cloud_region_id=cloud_region_id if cloud_region_id is not None else instance.cloud_region_id,
                 ip=ip if ip is not None else instance.ip,
                 exclude_instance_id=instance.id,
+                conflict_permission_checker=conflict_permission_checker,
             )
             cls._normalize_duplicate_name_conflict(
                 ManualCollectService.update_manual_collect_instance,
@@ -235,18 +239,35 @@ class FlowOnboardingService:
         return instance_id
 
     @classmethod
-    def _ensure_tuple_available(cls, *, cloud_region_id, ip, exclude_instance_id=None):
+    def find_tuple_conflict(cls, *, cloud_region_id, ip, exclude_instance_id=None, for_update=False):
         if cloud_region_id is None or not ip:
-            return
-        duplicates = MonitorInstance.objects.filter(
-            cloud_region_id=cloud_region_id,
-            ip=ip,
-            is_deleted=False,
-            monitor_object__name__in=cls.SUPPORTED_MONITOR_OBJECT_NAMES,
+            return None
+        duplicates = (
+            MonitorInstance.objects.filter(
+                cloud_region_id=cloud_region_id,
+                ip=ip,
+                is_deleted=False,
+                monitor_object__name__in=cls.SUPPORTED_MONITOR_OBJECT_NAMES,
+            )
+            .order_by("created_at", "id")
         )
         if exclude_instance_id is not None:
             duplicates = duplicates.exclude(id=exclude_instance_id)
-        if duplicates.exists():
+        if for_update:
+            duplicates = duplicates.select_for_update()
+        return duplicates.first()
+
+    @classmethod
+    def _ensure_tuple_available(cls, *, cloud_region_id, ip, exclude_instance_id=None, conflict_permission_checker=None):
+        duplicate = cls.find_tuple_conflict(
+            cloud_region_id=cloud_region_id,
+            ip=ip,
+            exclude_instance_id=exclude_instance_id,
+            for_update=True,
+        )
+        if duplicate:
+            if conflict_permission_checker is not None:
+                conflict_permission_checker(duplicate)
             raise ValidationAppException("Flow asset already exists")
 
     @classmethod

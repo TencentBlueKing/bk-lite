@@ -104,7 +104,10 @@ def test_flow_asset_checks_operate_permission_before_binding_instance(monkeypatc
     assert calls["lock_monitor_object"] == {"monitor_object_id": 1, "require_supported": True}
     assert calls["operate_args"] == (request, ["inst-a"], actor_context)
     assert calls["target_org_args"] == ([7], actor_context)
-    assert calls["create_or_bind_asset"] == request.data
+    create_or_bind_call = dict(calls["create_or_bind_asset"])
+    conflict_permission_checker = create_or_bind_call.pop("conflict_permission_checker")
+    assert callable(conflict_permission_checker)
+    assert create_or_bind_call == request.data
 
 
 def test_flow_asset_checks_operate_permission_before_reusing_existing_instance(monkeypatch, db):
@@ -205,7 +208,10 @@ def test_flow_asset_checks_operate_permission_before_reusing_existing_instance(m
     }
     assert calls["operate_args"] == (request, [existing_instance.id], actor_context)
     assert calls["target_org_args"] == ([7], actor_context)
-    assert calls["create_or_bind_asset"] == {
+    create_or_bind_call = dict(calls["create_or_bind_asset"])
+    conflict_permission_checker = create_or_bind_call.pop("conflict_permission_checker")
+    assert callable(conflict_permission_checker)
+    assert create_or_bind_call == {
         **request.data,
         "instance_id": existing_instance.id,
         "allow_deleted_instance_reuse": True,
@@ -284,6 +290,7 @@ def test_flow_asset_coerces_monitor_object_id_before_service_calls(monkeypatch, 
 
     assert calls["lock_monitor_object"] == {"monitor_object_id": 1, "require_supported": True}
     assert calls["create_or_bind_asset"]["monitor_object_id"] == 1
+    assert callable(calls["create_or_bind_asset"]["conflict_permission_checker"])
 
 
 def test_flow_asset_api_restores_soft_deleted_reused_instance(api_client, monkeypatch, db):
@@ -412,7 +419,19 @@ def test_flow_asset_api_rejects_unknown_request_fields(api_client, monkeypatch):
     monkeypatch.setattr(FlowOnboardingService, "lock_monitor_object", lambda **kwargs: None)
     monkeypatch.setattr(FlowOnboardingService, "find_reusable_asset", lambda **kwargs: None)
 
-    def fail_if_called(*, monitor_object_id, protocol, cloud_region_id, ip, name, organizations=None, instance_id=None, allow_deleted_instance_reuse=False, fallback_sampling_rate=None):
+    def fail_if_called(
+        *,
+        monitor_object_id,
+        protocol,
+        cloud_region_id,
+        ip,
+        name,
+        organizations=None,
+        instance_id=None,
+        allow_deleted_instance_reuse=False,
+        fallback_sampling_rate=None,
+        conflict_permission_checker=None,
+    ):
         raise AssertionError("create_or_bind_asset should not be called for invalid payloads")
 
     monkeypatch.setattr(FlowOnboardingService, "create_or_bind_asset", fail_if_called)
@@ -446,7 +465,16 @@ def test_update_flow_asset_api_rejects_unknown_request_fields(api_client, monkey
         lambda organizations, actor_context: None,
     )
 
-    def fail_if_called(*, instance_id, name=None, organizations=None, cloud_region_id=None, ip=None, fallback_sampling_rate=None):
+    def fail_if_called(
+        *,
+        instance_id,
+        name=None,
+        organizations=None,
+        cloud_region_id=None,
+        ip=None,
+        fallback_sampling_rate=None,
+        conflict_permission_checker=None,
+    ):
         raise AssertionError("update_asset should not be called for invalid payloads")
 
     monkeypatch.setattr(FlowOnboardingService, "update_asset", fail_if_called)
@@ -757,6 +785,58 @@ def test_flow_asset_api_rejects_duplicate_tuple_as_validation_error(api_client, 
     assert response.json()["message"] == "Flow asset already exists"
     assert not MonitorInstance.objects.filter(
         monitor_object_id=switch_object.id + 1,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+    ).exists()
+
+
+def test_flow_asset_api_checks_operate_permission_before_cross_object_duplicate_error(api_client, monkeypatch, db):
+    from apps.core.exceptions.base_app_exception import UnauthorizedException
+    from apps.monitor.models import MonitorInstance, MonitorObject
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    router_object = MonitorObject.objects.create(name="Router", display_name="Router")
+    conflicting = MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Core Router",
+        monitor_object_id=router_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+    operate_calls = []
+
+    def fake_ensure_operate_instances(request, instance_ids, actor_context=None):
+        normalized_ids = list(instance_ids)
+        operate_calls.append(normalized_ids)
+        if normalized_ids == [conflicting.id]:
+            raise UnauthorizedException("无权限操作指定监控实例")
+        return normalized_ids
+
+    monkeypatch.setattr(manual_collect_view, "_ensure_operate_instances", fake_ensure_operate_instances)
+    monkeypatch.setattr(manual_collect_view, "_ensure_target_organizations", lambda organizations, actor_context: None)
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/",
+        data={
+            "monitor_object_id": switch_object.id,
+            "protocol": "sflow",
+            "cloud_region_id": 1,
+            "ip": "10.0.0.12",
+            "name": "Core Switch",
+            "organizations": [1],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 401, response.content
+    assert response.json()["message"] == "无权限操作指定监控实例"
+    assert operate_calls == [[conflicting.id]]
+    assert not MonitorInstance.objects.filter(
+        monitor_object_id=switch_object.id,
         cloud_region_id=1,
         ip="10.0.0.12",
     ).exists()
@@ -1084,6 +1164,62 @@ def test_update_flow_asset_api_rejects_duplicate_name_as_validation_error(api_cl
     assert response.json()["message"] == "实例名称已存在"
     target.refresh_from_db()
     assert target.name == "Flow Asset B"
+
+
+def test_update_flow_asset_api_checks_operate_permission_before_cross_object_duplicate_error(api_client, monkeypatch, db):
+    from apps.core.exceptions.base_app_exception import UnauthorizedException
+    from apps.monitor.models import MonitorInstance, MonitorObject
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    router_object = MonitorObject.objects.create(name="Router", display_name="Router")
+    target = MonitorInstance.objects.create(
+        id="('flow-device-2',)",
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=2,
+        ip="10.0.0.13",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+    conflicting = MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Core Router",
+        monitor_object_id=router_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["sflow"],
+    )
+    operate_calls = []
+
+    def fake_ensure_operate_instances(request, instance_ids, actor_context=None):
+        normalized_ids = list(instance_ids)
+        operate_calls.append(normalized_ids)
+        if normalized_ids == [conflicting.id]:
+            raise UnauthorizedException("无权限操作指定监控实例")
+        return normalized_ids
+
+    monkeypatch.setattr(manual_collect_view, "_ensure_operate_instances", fake_ensure_operate_instances)
+    monkeypatch.setattr(manual_collect_view, "_ensure_target_organizations", lambda organizations, actor_context: None)
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/update/",
+        data={
+            "instance_id": target.id,
+            "cloud_region_id": 1,
+            "ip": "10.0.0.12",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 401, response.content
+    assert response.json()["message"] == "无权限操作指定监控实例"
+    assert operate_calls == [[target.id], [conflicting.id]]
+    target.refresh_from_db()
+    assert target.cloud_region_id == 2
+    assert target.ip == "10.0.0.13"
 
 
 def test_flow_asset_api_normalizes_ip_for_creation_and_reuse(api_client, monkeypatch, db):
