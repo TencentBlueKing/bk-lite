@@ -65,6 +65,35 @@ def _validate_fallback_sampling_rate(_field, value):
     return value
 
 
+def _validate_organizations(_field, value):
+    if not isinstance(value, (list, tuple)):
+        raise ValidationAppException("Field organizations must be a list or tuple of integers")
+
+    normalized = []
+    seen = set()
+    for org_id in value:
+        if isinstance(org_id, bool):
+            raise ValidationAppException("Field organizations must be a list or tuple of integers")
+        if isinstance(org_id, int):
+            normalized_id = org_id
+        elif isinstance(org_id, str):
+            stripped_value = org_id.strip()
+            if not stripped_value:
+                raise ValidationAppException("Field organizations must be a list or tuple of integers")
+            try:
+                normalized_id = int(stripped_value)
+            except ValueError as exc:
+                raise ValidationAppException("Field organizations must be a list or tuple of integers") from exc
+        else:
+            raise ValidationAppException("Field organizations must be a list or tuple of integers")
+
+        if normalized_id not in seen:
+            normalized.append(normalized_id)
+            seen.add(normalized_id)
+
+    return normalized
+
+
 def _validate_existing_flow_instance(instance_id):
     validator = getattr(FlowOnboardingService, "validate_instance_id", None)
     if validator is not None:
@@ -119,6 +148,7 @@ class ManualCollect(viewsets.ViewSet):
                 "ip": _validate_flow_identity_field,
                 "protocol": _validate_protocol,
                 "fallback_sampling_rate": _validate_fallback_sampling_rate,
+                "organizations": _validate_organizations,
             },
         )
         actor_context = _build_actor_context(request)
@@ -156,6 +186,7 @@ class ManualCollect(viewsets.ViewSet):
                 "cloud_region_id": _validate_flow_identity_field,
                 "ip": _validate_flow_identity_field,
                 "fallback_sampling_rate": _validate_fallback_sampling_rate,
+                "organizations": _validate_organizations,
             },
         )
         actor_context = _build_actor_context(request)

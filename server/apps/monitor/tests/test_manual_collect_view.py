@@ -574,6 +574,68 @@ def test_flow_asset_api_rejects_invalid_monitor_object_id_values(api_client, mon
     assert response.json()["message"] == "Field monitor_object_id must be an integer"
 
 
+def test_flow_asset_organizations_validator_normalizes_tuple_values():
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    assert manual_collect_view._validate_organizations("organizations", ("1", 2, " 2 ", "1")) == [1, 2]
+
+
+@pytest.mark.parametrize(
+    ("path", "payload", "downstream_attr"),
+    [
+        (
+            "/api/v1/monitor/api/manual_collect/flow_asset/",
+            {
+                "monitor_object_id": 1,
+                "protocol": "netflow",
+                "cloud_region_id": 1,
+                "ip": "10.0.0.12",
+                "name": "Core Switch",
+                "organizations": "1,2",
+            },
+            "lock_monitor_object",
+        ),
+        (
+            "/api/v1/monitor/api/manual_collect/flow_asset/update/",
+            {
+                "instance_id": "inst-a",
+                "organizations": [1, "bad-org"],
+            },
+            "update_asset",
+        ),
+    ],
+)
+def test_flow_asset_endpoints_reject_invalid_organizations_payloads(api_client, monkeypatch, path, payload, downstream_attr):
+    from apps.monitor.services.flow_onboarding import FlowOnboardingService
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    monkeypatch.setattr(
+        FlowOnboardingService,
+        downstream_attr,
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError(f"{downstream_attr} should not be called for invalid payloads")),
+    )
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None: (_ for _ in ()).throw(
+            AssertionError("_ensure_operate_instances should not be called for invalid payloads")
+        ),
+    )
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_target_organizations",
+        lambda organizations, actor_context: (_ for _ in ()).throw(
+            AssertionError("_ensure_target_organizations should not be called for invalid payloads")
+        ),
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(path, data=payload, format="json")
+
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == "Field organizations must be a list or tuple of integers"
+
+
 def test_flow_asset_api_rejects_unsupported_protocol(api_client, monkeypatch):
     from apps.monitor.services.flow_onboarding import FlowOnboardingService
 
