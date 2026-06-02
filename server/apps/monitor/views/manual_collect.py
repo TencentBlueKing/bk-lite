@@ -26,9 +26,26 @@ UPDATE_FLOW_ASSET_OPTIONAL_FIELDS = {
 }
 
 
-def _validated_request_payload(data, *, required_fields, optional_fields):
+def _validate_flow_identity_field(field, value):
+    if field == "cloud_region_id" and value is None:
+        raise ValidationAppException("Field cloud_region_id cannot be empty")
+    if field == "ip" and (not isinstance(value, str) or not value.strip()):
+        raise ValidationAppException("Field ip cannot be empty")
+
+
+def _validate_enabled_protocols(_field, value):
+    if not isinstance(value, (list, tuple)):
+        raise ValidationAppException("Field enabled_protocols must be a list of supported flow protocols")
+    if any(
+        not isinstance(protocol, str) or protocol not in FlowOnboardingService.SUPPORTED_PROTOCOLS for protocol in value
+    ):
+        raise ValidationAppException("Field enabled_protocols must be a list of supported flow protocols")
+
+
+def _validated_request_payload(data, *, required_fields, optional_fields, field_validators=None):
     payload = dict(data)
     allowed_fields = required_fields | optional_fields
+    field_validators = field_validators or {}
 
     unknown_fields = sorted(set(payload) - allowed_fields)
     if unknown_fields:
@@ -37,6 +54,10 @@ def _validated_request_payload(data, *, required_fields, optional_fields):
     missing_fields = sorted(field for field in required_fields if field not in payload)
     if missing_fields:
         raise ValidationAppException(f"Missing required fields: {', '.join(missing_fields)}")
+
+    for field, validator in field_validators.items():
+        if field in payload:
+            validator(field, payload[field])
 
     return {field: payload[field] for field in payload if field in allowed_fields}
 
@@ -62,6 +83,10 @@ class ManualCollect(viewsets.ViewSet):
             request.data,
             required_fields=FLOW_ASSET_REQUIRED_FIELDS,
             optional_fields=FLOW_ASSET_OPTIONAL_FIELDS,
+            field_validators={
+                "cloud_region_id": _validate_flow_identity_field,
+                "ip": _validate_flow_identity_field,
+            },
         )
         actor_context = _build_actor_context(request)
         with transaction.atomic():
@@ -90,6 +115,11 @@ class ManualCollect(viewsets.ViewSet):
             request.data,
             required_fields=UPDATE_FLOW_ASSET_REQUIRED_FIELDS,
             optional_fields=UPDATE_FLOW_ASSET_OPTIONAL_FIELDS,
+            field_validators={
+                "cloud_region_id": _validate_flow_identity_field,
+                "ip": _validate_flow_identity_field,
+                "enabled_protocols": _validate_enabled_protocols,
+            },
         )
         actor_context = _build_actor_context(request)
         _ensure_operate_instances(request, [payload["instance_id"]], actor_context)

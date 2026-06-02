@@ -3,6 +3,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 
 def _install_module(monkeypatch, name, **attrs):
     module = types.ModuleType(name)
@@ -340,3 +342,110 @@ def test_update_flow_asset_api_rejects_unknown_request_fields(api_client, monkey
 
     assert response.status_code == 400, response.content
     assert response.json()["message"] == "Unknown request fields: unexpected_field"
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("cloud_region_id", None, "Field cloud_region_id cannot be empty"),
+        ("ip", "", "Field ip cannot be empty"),
+    ],
+)
+def test_flow_asset_api_rejects_empty_identity_values(api_client, monkeypatch, field, value, message):
+    from apps.monitor.services.flow_onboarding import FlowOnboardingService
+
+    monkeypatch.setattr(
+        FlowOnboardingService,
+        "lock_monitor_object",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("lock_monitor_object should not be called for invalid payloads")),
+    )
+
+    payload = {
+        "monitor_object_id": 1,
+        "protocol": "netflow",
+        "cloud_region_id": 1,
+        "ip": "10.0.0.12",
+        "name": "Core Switch",
+    }
+    payload[field] = value
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/",
+        data=payload,
+        format="json",
+    )
+
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == message
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("cloud_region_id", None, "Field cloud_region_id cannot be empty"),
+        ("ip", "", "Field ip cannot be empty"),
+    ],
+)
+def test_update_flow_asset_api_rejects_empty_identity_values(api_client, monkeypatch, field, value, message):
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None: (_ for _ in ()).throw(
+            AssertionError("_ensure_operate_instances should not be called for invalid payloads")
+        ),
+    )
+
+    payload = {
+        "instance_id": "inst-a",
+        "cloud_region_id": 1,
+        "ip": "10.0.0.12",
+    }
+    payload[field] = value
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/update/",
+        data=payload,
+        format="json",
+    )
+
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == message
+
+
+@pytest.mark.parametrize(
+    ("enabled_protocols", "message"),
+    [
+        (1, "Field enabled_protocols must be a list of supported flow protocols"),
+        ([1], "Field enabled_protocols must be a list of supported flow protocols"),
+        (["netflow", "ipfix"], "Field enabled_protocols must be a list of supported flow protocols"),
+    ],
+)
+def test_update_flow_asset_api_rejects_invalid_enabled_protocols(
+    api_client, monkeypatch, enabled_protocols, message
+):
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None: (_ for _ in ()).throw(
+            AssertionError("_ensure_operate_instances should not be called for invalid payloads")
+        ),
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/update/",
+        data={
+            "instance_id": "inst-a",
+            "enabled_protocols": enabled_protocols,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == message
