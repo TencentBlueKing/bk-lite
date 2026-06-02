@@ -689,7 +689,11 @@ class InstanceConfigService:
         monitor_object_name = monitor_object.name if monitor_object else ""
         prepared_instances = sanitized_instances
         if InstanceConfigService._should_use_host_identity_adapter(monitor_object_name):
-            prepared_instances = InstanceConfigService._prepare_host_identity_instances(sanitized_instances)
+            try:
+                prepared_instances = InstanceConfigService._prepare_host_identity_instances(sanitized_instances)
+            except ValueError as e:
+                logger.error(f"实例识别失败: {e}")
+                raise BaseAppException(f"实例识别失败：{e}")
 
         # ============ 阶段1: 参数预校验与数据准备 ============
         try:
