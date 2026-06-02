@@ -24,6 +24,7 @@ UPDATE_FLOW_ASSET_OPTIONAL_FIELDS = {
     "fallback_sampling_rate",
     "enabled_protocols",
 }
+SUPPORTED_FLOW_PROTOCOLS = getattr(FlowOnboardingService, "SUPPORTED_PROTOCOLS", {"netflow", "sflow"})
 
 
 def _validate_flow_identity_field(field, value):
@@ -36,10 +37,18 @@ def _validate_flow_identity_field(field, value):
 def _validate_enabled_protocols(_field, value):
     if not isinstance(value, (list, tuple)):
         raise ValidationAppException("Field enabled_protocols must be a list of supported flow protocols")
-    if any(
-        not isinstance(protocol, str) or protocol not in FlowOnboardingService.SUPPORTED_PROTOCOLS for protocol in value
-    ):
+    if any(not isinstance(protocol, str) or protocol not in SUPPORTED_FLOW_PROTOCOLS for protocol in value):
         raise ValidationAppException("Field enabled_protocols must be a list of supported flow protocols")
+
+
+def _validate_protocol(_field, value):
+    if not isinstance(value, str) or value not in SUPPORTED_FLOW_PROTOCOLS:
+        raise ValidationAppException("Field protocol must be a supported flow protocol")
+
+
+def _validate_fallback_sampling_rate(_field, value):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValidationAppException("Field fallback_sampling_rate must be a non-negative integer")
 
 
 def _validated_request_payload(data, *, required_fields, optional_fields, field_validators=None):
@@ -86,6 +95,8 @@ class ManualCollect(viewsets.ViewSet):
             field_validators={
                 "cloud_region_id": _validate_flow_identity_field,
                 "ip": _validate_flow_identity_field,
+                "protocol": _validate_protocol,
+                "fallback_sampling_rate": _validate_fallback_sampling_rate,
             },
         )
         actor_context = _build_actor_context(request)
@@ -118,6 +129,7 @@ class ManualCollect(viewsets.ViewSet):
             field_validators={
                 "cloud_region_id": _validate_flow_identity_field,
                 "ip": _validate_flow_identity_field,
+                "fallback_sampling_rate": _validate_fallback_sampling_rate,
                 "enabled_protocols": _validate_enabled_protocols,
             },
         )

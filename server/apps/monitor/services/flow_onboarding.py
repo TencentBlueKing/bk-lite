@@ -31,7 +31,7 @@ class FlowOnboardingService:
 
         with transaction.atomic():
             cls.lock_monitor_object(monitor_object_id=monitor_object_id)
-            instance = cls._resolve_instance(
+            instance, created = cls._resolve_instance(
                 monitor_object_id=monitor_object_id,
                 cloud_region_id=cloud_region_id,
                 ip=ip,
@@ -75,7 +75,13 @@ class FlowOnboardingService:
             instance.save(update_fields=update_fields)
             if organizations_provided:
                 MonitorObjectService.set_instances_organizations([instance.id], organizations)
-            if restoring_deleted:
+            if organizations_provided and (restoring_deleted or not created):
+                cls._restore_organization_rules(
+                    monitor_object_id=instance.monitor_object_id,
+                    instance_id=instance.id,
+                    organizations=organizations,
+                )
+            elif restoring_deleted:
                 cls._restore_organization_rules(
                     monitor_object_id=instance.monitor_object_id,
                     instance_id=instance.id,
@@ -145,7 +151,7 @@ class FlowOnboardingService:
                 monitor_object_id=monitor_object_id,
                 for_update=True,
                 include_deleted=allow_deleted_instance_reuse,
-            )
+            ), False
 
         instance = cls.find_reusable_asset(
             monitor_object_id=monitor_object_id,
@@ -154,7 +160,7 @@ class FlowOnboardingService:
             for_update=True,
         )
         if instance:
-            return instance
+            return instance, False
 
         result = ManualCollectService.create_manual_collect_instance(
             {
@@ -169,7 +175,7 @@ class FlowOnboardingService:
             },
             allow_flow_fields=True,
         )
-        return MonitorInstance.objects.get(id=result["instance_id"])
+        return MonitorInstance.objects.get(id=result["instance_id"]), True
 
     @classmethod
     def find_existing_asset(cls, *, monitor_object_id, cloud_region_id, ip, is_deleted=False, for_update=False):
@@ -274,7 +280,11 @@ class FlowOnboardingService:
 
     @classmethod
     def _resolve_sampling_rate(cls, fallback_sampling_rate, current_value=None):
-        return fallback_sampling_rate or current_value or cls.DEFAULT_FALLBACK_SAMPLING_RATE
+        if fallback_sampling_rate is not None:
+            return fallback_sampling_rate
+        if current_value is not None:
+            return current_value
+        return cls.DEFAULT_FALLBACK_SAMPLING_RATE
 
     @staticmethod
     def _build_asset_key(monitor_object_id, cloud_region_id, ip):

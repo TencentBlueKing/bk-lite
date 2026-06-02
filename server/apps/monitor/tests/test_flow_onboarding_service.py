@@ -318,6 +318,80 @@ def test_update_flow_asset_refreshes_child_object_organization_rules_when_organi
     ) == {2, 3}
 
 
+def test_create_or_bind_flow_asset_refreshes_child_object_organization_rules_when_rebinding_live_asset(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    child_object = _create_child_default_metric(switch_object)
+    instance = MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance_id=instance.id, organization=1)
+    MonitorObjectOrganizationRule.objects.create(
+        name=f"{child_object.name}-flow-device-1",
+        monitor_object_id=child_object.id,
+        rule={
+            "type": "metric",
+            "metric_id": Metric.objects.get(monitor_object_id=child_object.id).id,
+            "filter": [{"name": "instance_id", "method": "=", "value": "flow-device-1"}],
+        },
+        organizations=[1],
+        monitor_instance_id=instance.id,
+    )
+
+    result = FlowOnboardingService.create_or_bind_asset(
+        monitor_object_id=switch_object.id,
+        protocol="sflow",
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        name="Core Switch",
+        organizations=[2, 3],
+    )
+
+    instance.refresh_from_db()
+    rules = list(MonitorObjectOrganizationRule.objects.filter(monitor_instance_id=instance.id))
+
+    assert result["instance_id"] == instance.id
+    assert set(instance.enabled_protocols) == {"netflow", "sflow"}
+    assert len(rules) == 1
+    assert rules[0].monitor_object_id == child_object.id
+    assert rules[0].organizations == [2, 3]
+    assert set(
+        MonitorInstanceOrganization.objects.filter(monitor_instance_id=instance.id).values_list("organization", flat=True)
+    ) == {2, 3}
+
+
+def test_create_or_bind_flow_asset_preserves_zero_fallback_sampling_rate(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    instance = MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+
+    result = FlowOnboardingService.create_or_bind_asset(
+        monitor_object_id=switch_object.id,
+        protocol="sflow",
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        name="Core Switch",
+        fallback_sampling_rate=0,
+    )
+
+    instance.refresh_from_db()
+
+    assert result["instance_id"] == instance.id
+    assert instance.fallback_sampling_rate == 0
+
+
 def test_create_or_bind_flow_asset_with_explicit_empty_organizations_clears_bindings(db):
     switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
     instance = MonitorInstance.objects.create(
