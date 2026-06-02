@@ -219,11 +219,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#ff8a1f',
       icon: 'thunder',
       compare: true,
-      guide: [{ label: 'I/O Wait', detail: 'CPU 等待磁盘或网络 I/O 的占比。' }],
-      footer: [
-        { label: '读吞吐', metric: 'diskio_read_bytes_rate', unit: 'byteps' },
-        { label: '写吞吐', metric: 'diskio_write_bytes_rate', unit: 'byteps' }
-      ]
+      guide: [{ label: 'I/O Wait', detail: 'CPU 等待磁盘或网络 I/O 的占比。' }]
     },
     {
       title: '1 分钟负载',
