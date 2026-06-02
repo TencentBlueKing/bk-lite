@@ -235,7 +235,7 @@ class FlowOnboardingService:
         if exclude_instance_id is not None:
             duplicates = duplicates.exclude(id=exclude_instance_id)
         if duplicates.exists():
-            raise BaseAppException("Flow asset already exists")
+            raise ValidationAppException("Flow asset already exists")
 
     @staticmethod
     def _get_instance_organizations(instance_id):

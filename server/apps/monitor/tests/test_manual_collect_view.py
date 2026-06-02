@@ -529,6 +529,51 @@ def test_flow_asset_api_rejects_unsupported_monitor_object(api_client, monkeypat
     assert response.json()["message"] == "Unsupported flow monitor object"
 
 
+def test_flow_asset_api_rejects_duplicate_tuple_as_validation_error(api_client, monkeypatch, db):
+    from apps.monitor.models import MonitorInstance, MonitorObject
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    MonitorObject.objects.create(name="Router", display_name="Router")
+    MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None: instance_ids,
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/",
+        data={
+            "monitor_object_id": switch_object.id + 1,
+            "protocol": "sflow",
+            "cloud_region_id": 1,
+            "ip": "10.0.0.12",
+            "name": "Core Router",
+            "organizations": [1],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == "Flow asset already exists"
+    assert not MonitorInstance.objects.filter(
+        monitor_object_id=switch_object.id + 1,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+    ).exists()
+
+
 @pytest.mark.parametrize(
     ("path", "payload"),
     [
