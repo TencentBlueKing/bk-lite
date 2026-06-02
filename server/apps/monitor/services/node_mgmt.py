@@ -31,7 +31,6 @@ class InstanceConfigService:
         "Pod": "pod_status_phase",
         "Node": "node_status_condition",
     }
-    _HOST_MONITOR_OBJECT_NAME = "Host"
 
     @staticmethod
     def _build_permission_data(actor_context):
@@ -631,9 +630,10 @@ class InstanceConfigService:
         return instance_objs, association_objs, instance_ids
 
     @staticmethod
-    def _should_use_host_identity_adapter(monitor_object_name: str) -> bool:
+    def _should_use_host_identity_adapter(monitor_object_id) -> bool:
         """判断当前监控对象是否为 Host，Host 接入需要 identity adapter 处理实例ID。"""
-        return monitor_object_name == InstanceConfigService._HOST_MONITOR_OBJECT_NAME
+        monitor_object = MonitorObject.objects.filter(id=monitor_object_id).only("id", "name").first()
+        return bool(monitor_object and monitor_object.name == "Host")
 
     @staticmethod
     def _prepare_host_identity_instances(instances: list) -> list:
@@ -685,10 +685,8 @@ class InstanceConfigService:
         )
 
         # 对 Host 对象应用 identity adapter，统一 storage/logical/raw 三层 ID
-        monitor_object = MonitorObject.objects.filter(id=monitor_object_id).only("id", "name").first()
-        monitor_object_name = monitor_object.name if monitor_object else ""
         prepared_instances = sanitized_instances
-        if InstanceConfigService._should_use_host_identity_adapter(monitor_object_name):
+        if InstanceConfigService._should_use_host_identity_adapter(monitor_object_id):
             prepared_instances = InstanceConfigService._prepare_host_identity_instances(sanitized_instances)
 
         # ============ 阶段1: 参数预校验与数据准备 ============
