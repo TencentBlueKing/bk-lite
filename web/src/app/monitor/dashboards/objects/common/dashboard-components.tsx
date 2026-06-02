@@ -305,7 +305,7 @@ const autoSpan = (total: number, styles: DashboardStyles): string => {
 };
 
 export interface InsightSectionProps {
-  rings: PreparedRingPanel[];
+  rings?: PreparedRingPanel[];
   bars: PreparedBarPanel[];
   ringSpanClass?: (index: number, total: number) => string;
   barSpanClass?: (index: number, total: number) => string;
@@ -313,7 +313,7 @@ export interface InsightSectionProps {
 }
 
 export const InsightSection = ({
-  rings,
+  rings = [],
   bars,
   ringSpanClass,
   barSpanClass,
@@ -325,7 +325,7 @@ export const InsightSection = ({
   return (
     <section className={styles.dashboardSection}>
       <div className={styles.sectionGrid}>
-        {rings.map(({ panel, data, centerValue }, index) => (
+        {rings.map(({ panel, data, centerValue, isEmpty }, index) => (
           <RingChartPanel
             key={panel.title}
             title={panel.title}
@@ -334,6 +334,7 @@ export const InsightSection = ({
             data={data}
             centerValue={centerValue}
             centerCaption={panel.centerCaption}
+            isEmpty={isEmpty}
             className={`${styles.panel} ${ringSpanClass ? ringSpanClass(index, rings.length) : defaultSpan}`}
             styles={styles}
           />

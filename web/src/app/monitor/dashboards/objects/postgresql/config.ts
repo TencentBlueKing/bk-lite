@@ -318,45 +318,6 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     }
   ],
-  ringPanels: [
-    {
-      title: '事务结果分布',
-      subtitle: '提交与回滚',
-      centerMetric: 'postgresql_xact_commit_rate',
-      centerCaption: '提交速率',
-      centerUnit: 'cps',
-      guide: [{ label: '事务结果', detail: '提交与回滚事务速率占比，回滚占比升高通常需要排查失败原因。' }],
-      segments: [
-        { label: '提交', metric: 'postgresql_xact_commit_rate', color: '#27c274', unit: 'cps' },
-        { label: '回滚', metric: 'postgresql_xact_rollback_rate', color: '#ff4d4f', unit: 'cps' }
-      ]
-    },
-    {
-      title: '缓存访问分布',
-      subtitle: '命中与磁盘读',
-      centerMetric: 'postgresql_cache_hit_ratio',
-      centerCaption: '命中率',
-      centerUnit: 'percent',
-      guide: [{ label: '缓存访问', detail: '共享缓冲区命中与磁盘块读取占比，磁盘读取占比升高说明缓存压力增加。' }],
-      segments: [
-        { label: '缓存命中', metric: 'postgresql_cache_hit_ratio', color: '#27c274', unit: 'percent' },
-        { label: '磁盘读取占比', metric: 'postgresql_cache_hit_ratio', color: '#ffccc7', unit: 'percent', transform: 'percentRemaining' }
-      ]
-    },
-    {
-      title: '数据变更分布',
-      subtitle: '插入、更新、删除',
-      centerMetric: 'postgresql_tup_inserted_rate',
-      centerCaption: '插入速率',
-      centerUnit: 'cps',
-      guide: [{ label: '数据变更', detail: '行级插入、更新、删除操作速率占比，用于判断当前写入类型。' }],
-      segments: [
-        { label: '插入', metric: 'postgresql_tup_inserted_rate', color: '#2f6bff', unit: 'cps' },
-        { label: '更新', metric: 'postgresql_tup_updated_rate', color: '#ff8a1f', unit: 'cps' },
-        { label: '删除', metric: 'postgresql_tup_deleted_rate', color: '#ff4d4f', unit: 'cps' }
-      ]
-    }
-  ],
   barPanels: [
     {
       title: '异常事件热点',
