@@ -6,7 +6,7 @@
       "name": "设备总入流量过高",
       "alert_name": "负载均衡设备${resource_name} 总入流量过高",
       "description": "NetFlow 总入流量过高告警。",
-      "metric_name": "device_total_incoming_traffic",
+      "metric_name": "device_total_incoming_netflow_traffic",
       "algorithm": "max",
       "threshold": [
         {
@@ -20,7 +20,7 @@
       "name": "设备总出流量过高",
       "alert_name": "负载均衡设备${resource_name} 总出流量过高",
       "description": "NetFlow 总出流量过高告警。",
-      "metric_name": "device_total_outgoing_traffic",
+      "metric_name": "device_total_outgoing_netflow_traffic",
       "algorithm": "max",
       "threshold": [
         {

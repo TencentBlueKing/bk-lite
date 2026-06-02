@@ -479,6 +479,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
+    device_total_incoming_netflow_traffic:
+      name: Device Total Incoming NetFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_outgoing_netflow_traffic:
+      name: Device Total Outgoing NetFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_incoming_sflow_traffic:
+      name: Device Total Incoming sFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_total_outgoing_sflow_traffic:
+      name: Device Total Outgoing sFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
   Jetty-JMX:
     jetty_queuedthreadpool_threads_value:
       name: Thread Count
@@ -620,6 +632,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
+    device_total_incoming_netflow_traffic:
+      name: Device Total Incoming NetFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_outgoing_netflow_traffic:
+      name: Device Total Outgoing NetFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_incoming_sflow_traffic:
+      name: Device Total Incoming sFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_total_outgoing_sflow_traffic:
+      name: Device Total Outgoing sFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
   ActiveMQ:
     activemq_topics_consumer_count:
       name: Topic Consumer Count
@@ -1942,6 +1966,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
+    device_total_incoming_netflow_traffic:
+      name: Device Total Incoming NetFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_outgoing_netflow_traffic:
+      name: Device Total Outgoing NetFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_incoming_sflow_traffic:
+      name: Device Total Incoming sFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_total_outgoing_sflow_traffic:
+      name: Device Total Outgoing sFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
   Router:
     snmp_uptime:
       name: System Uptime
@@ -1985,6 +2021,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
+    device_total_incoming_netflow_traffic:
+      name: Device Total Incoming NetFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_outgoing_netflow_traffic:
+      name: Device Total Outgoing NetFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_incoming_sflow_traffic:
+      name: Device Total Incoming sFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_total_outgoing_sflow_traffic:
+      name: Device Total Outgoing sFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
   Consul:
     consul_health_checks_passing:
       name: Health Checks Passing
