@@ -3,6 +3,7 @@ from django.db.models import Q
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectOrganizationRule
+from apps.monitor.services.flow_sampling import FlowSamplingService
 from apps.monitor.services.manual_collect import ManualCollectService
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.dimension import parse_instance_id
@@ -341,11 +342,17 @@ class FlowOnboardingService:
         )
         query = f"any({{instance_id='{parse_instance_id(instance.id)[0]}', collect_type='{protocol}'}}[{time_window}])"
         result = VictoriaMetricsAPI().query(query).get("data", {}).get("result", [])
+        normalized_payload = FlowSamplingService.normalize_payload(
+            result[0].get("metric", {}) if result else {},
+            fallback_sampling_rate=instance.fallback_sampling_rate,
+        )
         return {
             "success": bool(result),
             "protocol": protocol,
             "instance_id": instance_id,
             "last_seen_at": result[0]["value"][0] if result else None,
+            "effective_sampling_rate": normalized_payload["effective_sampling_rate"],
+            "sampling_rate_source": normalized_payload["sampling_rate_source"],
         }
 
     @classmethod

@@ -30,6 +30,18 @@ def test_normalize_payload_uses_first_non_empty_candidate_field():
     assert result["sampling_rate_source"] == "normalized_from_SAMPLING_ALGORITHM"
 
 
+def test_normalize_payload_coerces_sampling_values_to_integers():
+    result = FlowSamplingService.normalize_payload(
+        {
+            "samplingRate": "2048",
+        },
+        fallback_sampling_rate="4096",
+    )
+
+    assert result["effective_sampling_rate"] == 2048
+    assert result["sampling_rate_source"] == "normalized_from_samplingRate"
+
+
 def test_normalize_payload_falls_back_to_asset_sampling_rate():
     result = FlowSamplingService.normalize_payload({}, fallback_sampling_rate=4096)
 

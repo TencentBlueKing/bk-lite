@@ -85,7 +85,16 @@ def test_detect_status_uses_protocol_scoped_recent_data_query(db, monkeypatch):
     class StubVictoriaMetricsAPI:
         def query(self, query):
             queries.append(query)
-            return {"data": {"result": [{"value": [1712052000, "1"]}]}}
+            return {
+                "data": {
+                    "result": [
+                        {
+                            "metric": {"samplingRate": "2048"},
+                            "value": [1712052000, "1"],
+                        }
+                    ]
+                }
+            }
 
     monkeypatch.setattr("apps.monitor.services.flow_onboarding.VictoriaMetricsAPI", StubVictoriaMetricsAPI)
 
@@ -102,6 +111,8 @@ def test_detect_status_uses_protocol_scoped_recent_data_query(db, monkeypatch):
         "protocol": "netflow",
         "instance_id": instance.id,
         "last_seen_at": 1712052000,
+        "effective_sampling_rate": 2048,
+        "sampling_rate_source": "normalized_from_samplingRate",
     }
 
 
@@ -134,6 +145,8 @@ def test_detect_status_returns_unsuccessful_when_recent_data_is_missing(db, monk
         "protocol": "sflow",
         "instance_id": instance.id,
         "last_seen_at": None,
+        "effective_sampling_rate": 1000,
+        "sampling_rate_source": "fallback_sampling_rate",
     }
 
 
