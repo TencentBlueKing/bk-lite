@@ -1,4 +1,5 @@
 import ipaddress
+import re
 from collections.abc import Mapping
 
 from django.db import transaction
@@ -6,6 +7,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.core.utils.web_utils import WebUtils
+from apps.monitor.services.flow_access_guide import FlowAccessGuideService
 from apps.monitor.services.flow_onboarding import FlowOnboardingService
 from apps.monitor.services.manual_collect import ManualCollectService
 from apps.monitor.views.monitor_instance import (
@@ -20,6 +22,9 @@ FLOW_ASSET_REQUIRED_FIELDS = {"monitor_object_id", "protocol", "cloud_region_id"
 FLOW_ASSET_OPTIONAL_FIELDS = {"organizations", "instance_id", "fallback_sampling_rate"}
 UPDATE_FLOW_ASSET_REQUIRED_FIELDS = {"instance_id"}
 UPDATE_FLOW_ASSET_OPTIONAL_FIELDS = {"name", "organizations", "cloud_region_id", "ip", "fallback_sampling_rate"}
+FLOW_ACCESS_GUIDE_REQUIRED_FIELDS = {"monitor_object_id", "protocol", "cloud_region_id"}
+FLOW_DETECT_REQUIRED_FIELDS = {"instance_id", "monitor_object_id", "protocol"}
+FLOW_DETECT_OPTIONAL_FIELDS = {"time_window"}
 SUPPORTED_FLOW_PROTOCOLS = getattr(FlowOnboardingService, "SUPPORTED_PROTOCOLS", {"netflow", "sflow"})
 
 
@@ -66,6 +71,22 @@ def _validate_name(_field, value):
     normalized_value = value.strip()
     if not normalized_value:
         raise ValidationAppException("Field name cannot be empty")
+    return normalized_value
+
+
+def _validate_non_empty_string(field, value):
+    if not isinstance(value, str):
+        raise ValidationAppException(f"Field {field} must be a string")
+    normalized_value = value.strip()
+    if not normalized_value:
+        raise ValidationAppException(f"Field {field} cannot be empty")
+    return normalized_value
+
+
+def _validate_time_window(field, value):
+    normalized_value = _validate_non_empty_string(field, value)
+    if not re.fullmatch(r"\d+[smhdwy]", normalized_value):
+        raise ValidationAppException(f"Field {field} must be a valid time window")
     return normalized_value
 
 
@@ -253,6 +274,39 @@ class ManualCollect(viewsets.ViewSet):
             **payload,
             conflict_permission_checker=_build_conflict_permission_checker(request, actor_context),
         )
+        return WebUtils.response_success(data)
+
+    @action(methods=['post'], detail=False, url_path='flow_access_guide')
+    def flow_access_guide(self, request):
+        payload = _validated_request_payload(
+            request.data,
+            required_fields=FLOW_ACCESS_GUIDE_REQUIRED_FIELDS,
+            optional_fields=set(),
+            field_validators={
+                "monitor_object_id": _validate_flow_identity_field,
+                "cloud_region_id": _validate_flow_identity_field,
+                "protocol": _validate_protocol,
+            },
+        )
+        data = FlowAccessGuideService.build_document(**payload)
+        return WebUtils.response_success(data)
+
+    @action(methods=['post'], detail=False, url_path='flow_detect_status')
+    def flow_detect_status(self, request):
+        payload = _validated_request_payload(
+            request.data,
+            required_fields=FLOW_DETECT_REQUIRED_FIELDS,
+            optional_fields=FLOW_DETECT_OPTIONAL_FIELDS,
+            field_validators={
+                "instance_id": _validate_non_empty_string,
+                "monitor_object_id": _validate_flow_identity_field,
+                "protocol": _validate_protocol,
+                "time_window": _validate_time_window,
+            },
+        )
+        actor_context = _build_actor_context(request)
+        _ensure_operate_instances(request, [payload["instance_id"]], actor_context)
+        data = FlowOnboardingService.detect_status(**payload)
         return WebUtils.response_success(data)
 
     # 生成安装命令

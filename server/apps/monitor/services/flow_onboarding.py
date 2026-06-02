@@ -5,6 +5,8 @@ from apps.core.exceptions.base_app_exception import BaseAppException, Validation
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectOrganizationRule
 from apps.monitor.services.manual_collect import ManualCollectService
 from apps.monitor.services.monitor_object import MonitorObjectService
+from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
 class FlowOnboardingService:
@@ -329,6 +331,22 @@ class FlowOnboardingService:
     @classmethod
     def _merge_protocols(cls, current_protocols, protocol):
         return sorted(set(cls._normalize_protocols(current_protocols or [])) | {protocol})
+
+    @classmethod
+    def detect_status(cls, *, instance_id, protocol, monitor_object_id, time_window="5m"):
+        cls._validate_protocol(protocol)
+        instance = cls._get_instance(
+            instance_id=instance_id,
+            monitor_object_id=monitor_object_id,
+        )
+        query = f"any({{instance_id='{parse_instance_id(instance.id)[0]}', collect_type='{protocol}'}}[{time_window}])"
+        result = VictoriaMetricsAPI().query(query).get("data", {}).get("result", [])
+        return {
+            "success": bool(result),
+            "protocol": protocol,
+            "instance_id": instance_id,
+            "last_seen_at": result[0]["value"][0] if result else None,
+        }
 
     @classmethod
     def _resolve_sampling_rate(cls, fallback_sampling_rate, current_value=None):
