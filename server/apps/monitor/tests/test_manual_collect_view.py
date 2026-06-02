@@ -600,6 +600,57 @@ def test_flow_asset_api_rejects_duplicate_tuple_as_validation_error(api_client, 
     ).exists()
 
 
+def test_flow_asset_api_rejects_duplicate_name_on_restore_as_validation_error(api_client, monkeypatch, db):
+    from apps.monitor.models import MonitorInstance, MonitorObject
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    created = MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+        is_deleted=True,
+    )
+    MonitorInstance.objects.create(
+        id="('flow-device-2',)",
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=2,
+        ip="10.0.0.13",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["sflow"],
+    )
+
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None: instance_ids,
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/",
+        data={
+            "monitor_object_id": switch_object.id,
+            "protocol": "sflow",
+            "cloud_region_id": 1,
+            "ip": "10.0.0.12",
+            "name": "Core Switch",
+            "organizations": [1],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == "实例名称已存在"
+    created.refresh_from_db()
+    assert created.is_deleted is True
+
+
 def test_flow_asset_api_rejects_nonexistent_instance_id(api_client, monkeypatch, db):
     from apps.monitor.models import MonitorObject
     from apps.monitor.services.flow_onboarding import FlowOnboardingService
@@ -820,6 +871,57 @@ def test_update_flow_asset_api_rejects_nonexistent_instance_id(api_client, monke
 
     assert response.status_code == 400, response.content
     assert response.json()["message"] == "Monitor instance does not exist"
+
+
+def test_update_flow_asset_api_rejects_duplicate_name_as_validation_error(api_client, monkeypatch, db):
+    from apps.monitor.models import MonitorInstance, MonitorObject
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Flow Asset A",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+    target = MonitorInstance.objects.create(
+        id="('flow-device-2',)",
+        name="Flow Asset B",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=2,
+        ip="10.0.0.13",
+        fallback_sampling_rate=2000,
+        enabled_protocols=["sflow"],
+    )
+
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None: instance_ids,
+    )
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_target_organizations",
+        lambda organizations, actor_context: None,
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/update/",
+        data={
+            "instance_id": target.id,
+            "name": "Flow Asset A",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == "实例名称已存在"
+    target.refresh_from_db()
+    assert target.name == "Flow Asset B"
 
 
 def test_flow_asset_api_normalizes_ip_for_creation_and_reuse(api_client, monkeypatch, db):

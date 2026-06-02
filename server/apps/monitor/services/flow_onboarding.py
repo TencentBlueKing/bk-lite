@@ -1,7 +1,7 @@
 from django.db import transaction
 from django.db.models import Q
 
-from apps.core.exceptions.base_app_exception import ValidationAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectOrganizationRule
 from apps.monitor.services.manual_collect import ManualCollectService
 from apps.monitor.services.monitor_object import MonitorObjectService
@@ -12,6 +12,7 @@ class FlowOnboardingService:
     SUPPORTED_MONITOR_OBJECT_NAMES = {"Switch", "Router", "Firewall", "Loadbalance"}
     DEFAULT_FALLBACK_SAMPLING_RATE = 1000
     ORGANIZATIONS_UNSET = object()
+    DUPLICATE_NAME_MESSAGE = "实例名称已存在"
 
     @classmethod
     def create_or_bind_asset(
@@ -62,7 +63,11 @@ class FlowOnboardingService:
             instance.auto = False
             if restoring_deleted:
                 final_name = name if name is not None else instance.name
-                MonitorObjectService.validate_new_instance_name_unique(instance.monitor_object_id, final_name)
+                cls._normalize_duplicate_name_conflict(
+                    MonitorObjectService.validate_new_instance_name_unique,
+                    instance.monitor_object_id,
+                    final_name,
+                )
                 instance.name = final_name
             instance.is_deleted = False
             instance.cloud_region_id = cloud_region_id
@@ -114,7 +119,8 @@ class FlowOnboardingService:
                 ip=ip if ip is not None else instance.ip,
                 exclude_instance_id=instance.id,
             )
-            ManualCollectService.update_manual_collect_instance(
+            cls._normalize_duplicate_name_conflict(
+                ManualCollectService.update_manual_collect_instance,
                 instance_id=instance_id,
                 name=name,
                 organizations=organizations,
@@ -160,7 +166,8 @@ class FlowOnboardingService:
         if instance:
             return instance, False
 
-        result = ManualCollectService.create_manual_collect_instance(
+        result = cls._normalize_duplicate_name_conflict(
+            ManualCollectService.create_manual_collect_instance,
             {
                 "id": cls._build_asset_key(monitor_object_id, cloud_region_id, ip),
                 "name": name,
@@ -241,6 +248,15 @@ class FlowOnboardingService:
             duplicates = duplicates.exclude(id=exclude_instance_id)
         if duplicates.exists():
             raise ValidationAppException("Flow asset already exists")
+
+    @classmethod
+    def _normalize_duplicate_name_conflict(cls, func, *args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except BaseAppException as exc:
+            if exc.message == cls.DUPLICATE_NAME_MESSAGE:
+                raise ValidationAppException(exc.message) from exc
+            raise
 
     @staticmethod
     def _get_instance_organizations(instance_id):

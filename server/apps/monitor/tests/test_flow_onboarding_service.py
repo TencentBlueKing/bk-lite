@@ -189,7 +189,7 @@ def test_create_or_bind_flow_asset_rejects_restoring_deleted_asset_with_duplicat
         enabled_protocols=["sflow"],
     )
 
-    with pytest.raises(BaseAppException, match="实例名称已存在"):
+    with pytest.raises(ValidationAppException, match="实例名称已存在"):
         FlowOnboardingService.create_or_bind_asset(
             monitor_object_id=switch_object.id,
             protocol="sflow",
@@ -547,6 +547,39 @@ def test_update_flow_asset_rejects_duplicate_tuple_when_moving_asset(db):
     assert MonitorInstance.objects.filter(monitor_object_id=switch_object.id, cloud_region_id=1, ip="10.0.0.12").count() == 1
 
 
+def test_update_flow_asset_rejects_duplicate_name_with_validation_error(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Flow Asset A",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+    target = MonitorInstance.objects.create(
+        id="('flow-device-2',)",
+        name="Flow Asset B",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=2,
+        ip="10.0.0.13",
+        fallback_sampling_rate=2000,
+        enabled_protocols=["sflow"],
+    )
+
+    with pytest.raises(ValidationAppException, match="实例名称已存在"):
+        FlowOnboardingService.update_asset(
+            instance_id=target.id,
+            name="Flow Asset A",
+        )
+
+    target.refresh_from_db()
+    assert target.name == "Flow Asset B"
+    assert target.cloud_region_id == 2
+    assert target.ip == "10.0.0.13"
+
+
 def test_create_manual_collect_instance_rejects_flow_only_fields_with_validation_error(db):
     switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
 
@@ -649,4 +682,3 @@ def test_create_or_bind_flow_asset_rejects_nonexistent_instance(db):
             name="Missing Instance",
             instance_id="missing-instance",
         )
-
