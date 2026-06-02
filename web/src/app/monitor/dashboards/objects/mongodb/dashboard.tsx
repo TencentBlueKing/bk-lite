@@ -79,8 +79,7 @@ const MONGODB_METRIC_GROUPS = [
       'mongodb_active_writes',
       'mongodb_queued_reads',
       'mongodb_queued_writes',
-      'mongodb_wtcache_usage_ratio',
-      'mongodb_wtcache_dirty_ratio'
+      'mongodb_wtcache_usage_ratio'
     ]
   },
   {
