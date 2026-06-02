@@ -14,6 +14,7 @@ export interface RingChartPanelStyles extends GuideTooltipStyles {
   panelSubTitle?: string;
   ringCard?: string;
   ringChartWrap?: string;
+  ringChartCanvas?: string;
   ringCenter?: string;
   ringCenterOverlay?: string;
   ringValue?: string;
@@ -125,7 +126,11 @@ export const RingChartPanel = ({
       </div>
       <div className={ringCardClassName ? `${styles.ringCard} ${ringCardClassName}` : styles.ringCard}>
         <div className={ringChartWrapClassName ? `${styles.ringChartWrap} ${ringChartWrapClassName}` : styles.ringChartWrap}>
-          <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+          <div
+            ref={containerRef}
+            className={styles.ringChartCanvas}
+            style={{ width: '100%', height: '100%' }}
+          />
           <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
             <div className={styles.ringValue}>{centerValue}</div>
             <div className={styles.ringCaption}>{centerCaption}</div>

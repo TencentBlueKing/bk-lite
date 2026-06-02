@@ -1,1 +1,5 @@
 @import '../common/simple-dashboard.module.scss';
+
+.detailGridBalanced {
+  grid-template-columns: minmax(min(100%, 300px), 600px);
+}

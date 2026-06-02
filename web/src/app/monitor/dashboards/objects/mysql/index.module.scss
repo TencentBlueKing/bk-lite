@@ -330,7 +330,7 @@
 
 .statCard {
   padding: 16px 16px 14px;
-  min-height: 172px;
+  min-height: 224px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -564,7 +564,7 @@
 }
 
 .collectionStatusCard {
-  min-height: 172px;
+  min-height: 224px;
 }
 
 .collectionStatusHeader {
@@ -2410,6 +2410,15 @@
   justify-content: flex-start;
 }
 
+.bufferPoolChartWrap .ringChartCanvas {
+  width: 176px !important;
+  height: 176px !important;
+  min-width: 176px;
+  min-height: 176px;
+  flex: 0 0 176px;
+  align-self: center;
+}
+
 .bufferPoolChartWrap::before {
   inset: 26px 26px auto;
   width: 124px;
@@ -3456,6 +3465,14 @@
   .bufferPoolChartWrap {
     height: 210px;
     min-height: 210px;
+  }
+
+  .bufferPoolChartWrap .ringChartCanvas {
+    width: 168px !important;
+    height: 168px !important;
+    min-width: 168px;
+    min-height: 168px;
+    flex-basis: 168px;
   }
 
   .bufferPoolChartWrap::before {

@@ -8,6 +8,18 @@ export interface MiniTrendChartStyles {
   miniTrendPlaceholder?: string;
 }
 
+const getPointValue = (point: ChartData) => {
+  const values = Object.entries(point)
+    .filter(([key, value]) => /^value\d+$/.test(key) && typeof value === 'number' && Number.isFinite(value))
+    .map(([, value]) => value as number);
+
+  if (values.length === 0) {
+    return null;
+  }
+
+  return values.reduce((sum, value) => sum + value, 0);
+};
+
 export const MiniTrendChart = ({
   data,
   color,
@@ -20,11 +32,14 @@ export const MiniTrendChart = ({
   const chartData = useMemo(
     () =>
       data
-        .map((point) => ({
-          time: Number(point.time),
-          value: Number(point.value1 ?? 0)
-        }))
-        .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value)),
+        .map((point) => {
+          const value = getPointValue(point);
+          return {
+            time: Number(point.time),
+            value
+          };
+        })
+        .filter((point): point is { time: number; value: number } => Number.isFinite(point.time) && typeof point.value === 'number'),
     [data]
   );
 

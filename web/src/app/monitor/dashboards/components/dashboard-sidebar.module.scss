@@ -90,15 +90,15 @@
 .groupItems {
   position: relative;
   margin-left: 13px;
-  padding-left: 20px;
+  padding-left: 18px;
 }
 
 .groupItems::before {
   content: '';
   position: absolute;
-  top: 2px;
-  bottom: 10px;
-  left: 6px;
+  top: 8px;
+  bottom: 12px;
+  left: 4px;
   width: 1px;
   background: #d7dfeb;
 }
@@ -107,7 +107,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
   padding: 8px 10px 8px 0;
   border: 0;
@@ -131,31 +131,29 @@
 
 .itemBranch {
   position: relative;
-  width: 18px;
+  width: 0;
+  height: 16px;
+  flex: 0 0 0;
+}
+
+.itemIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
   height: 16px;
   flex-shrink: 0;
 }
 
-.itemBranch::before,
-.itemBranch::after {
+.itemBranch::before {
   content: '';
   position: absolute;
   background: #d7dfeb;
-}
-
-.itemBranch::before {
   top: 50%;
   left: -14px;
   width: 14px;
   height: 1px;
   transform: translateY(-50%);
-}
-
-.itemBranch::after {
-  top: -8px;
-  left: -14px;
-  width: 1px;
-  height: 24px;
 }
 
 .itemLabel {

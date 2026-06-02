@@ -28,7 +28,12 @@ export default function WebsiteDashboardPage() {
             loading={dashboard.loading}
             styles={styles}
           />
-          <InsightSection rings={dashboard.ringPanels} bars={dashboard.barPanels} styles={styles} />
+          <InsightSection
+            rings={dashboard.ringPanels}
+            bars={dashboard.barPanels}
+            ringSpanClass={() => styles.span6}
+            styles={styles}
+          />
           <DetailSection detailPanels={dashboard.detailPanels} styles={styles} />
         </>
       }

@@ -26,6 +26,7 @@ export default function HostDashboardPage() {
             charts={dashboard.chartPanels}
             onXRangeChange={dashboard.onXRangeChange}
             loading={dashboard.loading}
+            spanClass={(index) => (index < 3 ? styles.span4 : styles.span6)}
             styles={styles}
           />
           <InsightSection rings={dashboard.ringPanels} bars={dashboard.barPanels} styles={styles} />
