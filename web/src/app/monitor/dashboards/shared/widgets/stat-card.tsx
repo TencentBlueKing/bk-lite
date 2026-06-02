@@ -3,7 +3,7 @@
 import React from 'react';
 import { RiseOutlined, FallOutlined } from '@ant-design/icons';
 import { ChartData } from '@/app/monitor/types';
-import { PeriodCompare } from '../types';
+import { CompareFavorableDirection, PeriodCompare } from '../types';
 import { getCompareTone } from '../utils/format';
 import { MiniTrendChart, MiniTrendChartStyles } from './mini-trend-chart';
 
@@ -35,6 +35,7 @@ export interface StatCardProps {
   color: string;
   footer: React.ReactNode;
   compare?: PeriodCompare | null;
+  compareFavorableDirection?: CompareFavorableDirection;
   trendData?: ChartData[];
   hideTrend?: boolean;
   noDataType?: 'empty' | 'error';
@@ -53,6 +54,7 @@ export const StatCard = ({
   color,
   footer,
   compare,
+  compareFavorableDirection = 'down',
   trendData = [],
   hideTrend = false,
   noDataType = 'empty',
@@ -61,7 +63,7 @@ export const StatCard = ({
   extra,
   styles
 }: StatCardProps) => {
-  const compareTone = compare ? getCompareTone(compare.direction) : 'flat';
+  const compareTone = compare ? getCompareTone(compare.direction, compareFavorableDirection) : 'flat';
 
   return (
     <div className={`${styles.statCard} ${className || ''}`}>

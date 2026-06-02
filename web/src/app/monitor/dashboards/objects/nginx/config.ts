@@ -120,6 +120,7 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#27c274',
       icon: 'thunder',
       compare: true,
+      compareFavorableDirection: 'up',
       guide: [{ label: '处理完成率', detail: '连接处理速率相对连接接受速率的比例，偏低时要关注连接处理失败或积压。' }],
       footer: [{ label: '接受速率', metric: 'nginx_accepts_rate', unit: 'cps' }]
     }

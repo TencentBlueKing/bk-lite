@@ -1,5 +1,11 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
 
+const PING_RESULT_CODE_ENUM_MAP = {
+  0: { label: '成功', color: '#1ac44a' },
+  1: { label: '错误', color: '#ff4d4f' },
+  2: { label: '无法解析', color: '#ff4d4f' }
+} as const;
+
 export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'ping',
   pageTitle: 'Ping 监控仪表盘',
@@ -72,6 +78,7 @@ export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#27c274',
       icon: 'api',
       compare: true,
+      compareFavorableDirection: 'up',
       guide: [],
       footer: [{ label: '平均丢包率', metric: 'ping_packet_loss_avg', unit: 'percent' }]
     },
@@ -85,12 +92,14 @@ export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       footer: [{ label: '最大延迟', metric: 'ping_latency_max', unit: 'ms' }]
     },
     {
-      title: '最差结果码',
+      title: '最差探测结果',
       metric: 'ping_result_code_max',
       color: '#9aa9bf',
       icon: 'thunder',
+      enumMap: PING_RESULT_CODE_ENUM_MAP,
       guide: [],
-      footer: [{ label: '平均 TTL', metric: 'ping_ttl_avg', unit: 'counts' }]
+      footer: [{ label: '平均 TTL', metric: 'ping_ttl_avg', unit: 'counts' }],
+      hideTrend: true
     }
   ],
   charts: [
@@ -143,7 +152,7 @@ export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { label: '连通成功率', metric: 'ping_success_rate_avg', unit: 'percent' },
         { label: '平均丢包率', metric: 'ping_packet_loss_avg', unit: 'percent' },
         { label: '平均 TTL', metric: 'ping_ttl_avg', unit: 'counts' },
-        { label: '最差结果码', metric: 'ping_result_code_max', unit: 'none' }
+        { label: '最差探测结果', metric: 'ping_result_code_max', enumMap: PING_RESULT_CODE_ENUM_MAP }
       ]
     }
   ]

@@ -1,4 +1,4 @@
-import { MetricUnit } from '../types';
+import { CompareFavorableDirection, MetricEnumMap, MetricUnit } from '../types';
 
 const COUNT_UNITS: MetricUnit[] = ['counts', 'thousand', 'million', 'billion', 'trillion', 'quadrillion', 'quintillion', 'sextillion', 'septillion'];
 const COUNT_LABELS = ['', 'K', 'Mil', 'Bil', 'Tri', 'Quadr', 'Quint', 'Sext', 'Sept'];
@@ -121,7 +121,27 @@ export const formatMetricValue = (value: number, unit: MetricUnit): { value: str
   };
 };
 
-export const getCompareTone = (direction: 'up' | 'down' | 'flat') => {
+export const formatEnumValue = (value: number, enumMap?: MetricEnumMap) => {
+  if (!Number.isFinite(value) || !enumMap) {
+    return { value: '--', color: undefined as string | undefined };
+  }
+
+  const normalizedValue = Math.round(value);
+  const match = enumMap[normalizedValue];
+  if (match) {
+    return { value: match.label, color: match.color };
+  }
+
+  return {
+    value: formatMetricValue(value, 'none').value,
+    color: undefined
+  };
+};
+
+export const getCompareTone = (
+  direction: 'up' | 'down' | 'flat',
+  favorableDirection: CompareFavorableDirection = 'down'
+) => {
   if (direction === 'flat') return 'flat';
-  return direction === 'up' ? 'positive' : 'negative';
+  return direction === favorableDirection ? 'negative' : 'positive';
 };

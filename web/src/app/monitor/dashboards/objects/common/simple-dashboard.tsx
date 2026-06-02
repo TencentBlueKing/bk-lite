@@ -115,7 +115,7 @@ export default function SimpleDashboard({ config }: { config: SimpleDashboardCon
                   ]}
                   styles={styles}
                 />
-                {summaryCards.map(({ card, mainValue, compare, footerItems, trendData, noDataType, uptimeState }) => {
+                {summaryCards.map(({ card, mainValue, valueColor, compare, footerItems, trendData, noDataType, uptimeState }) => {
                   const isUptime = card.isUptimeCard && uptimeState;
                   return (
                     <StatCard
@@ -124,8 +124,8 @@ export default function SimpleDashboard({ config }: { config: SimpleDashboardCon
                       value={mainValue.value}
                       unit={mainValue.unit}
                       icon={getIcon(card.icon)}
-                      iconStyle={{ background: `${card.color}1f`, color: card.color }}
-                      color={card.color}
+                      iconStyle={{ background: `${valueColor ?? card.color}1f`, color: valueColor ?? card.color }}
+                      color={valueColor ?? card.color}
                       className={isUptime ? styles.statCardRelaxed : undefined}
                       bodyClassName={isUptime ? styles.statBodyRelaxed : undefined}
                       footer={
@@ -136,6 +136,7 @@ export default function SimpleDashboard({ config }: { config: SimpleDashboardCon
                         </>
                       }
                       compare={compare}
+                      compareFavorableDirection={card.compareFavorableDirection}
                       trendData={isUptime ? [] : trendData}
                       hideTrend={isUptime ? true : card.hideTrend}
                       noDataType={noDataType}

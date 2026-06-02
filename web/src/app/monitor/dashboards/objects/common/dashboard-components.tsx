@@ -203,6 +203,7 @@ export const KpiSection = ({
               <span key={item.label}>{item.label} {item.value}</span>
             ))}
             compare={compare}
+            compareFavorableDirection={card.compareFavorableDirection}
             trendData={trendData}
             hideTrend={card.hideTrend}
             noDataType={noDataType}

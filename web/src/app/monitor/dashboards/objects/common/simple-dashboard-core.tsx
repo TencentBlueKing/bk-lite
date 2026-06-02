@@ -11,6 +11,7 @@ import {
   parseLegacyParamList,
   buildInstanceDisplayName,
   buildInstanceSearchTokens,
+  formatEnumValue,
   formatMetricValue,
   buildSearchParams,
   getLatestChartValue,
@@ -23,7 +24,13 @@ import {
   getCollectionStatus,
   buildCollectionStatusTimeline
 } from '../../shared/utils';
-import { GuideItem, MetricUnit, TrendLegendItem } from '../../shared/types';
+import {
+  CompareFavorableDirection,
+  GuideItem,
+  MetricEnumMap,
+  MetricUnit,
+  TrendLegendItem
+} from '../../shared/types';
 
 export type SimpleMetricUnit = MetricUnit;
 
@@ -54,6 +61,7 @@ export interface SummaryFieldConfig {
   metric: string;
   unit?: SimpleMetricUnit;
   formatter?: 'duration' | 'enumHealth' | 'startedAt';
+  enumMap?: MetricEnumMap;
 }
 
 export interface SummaryCardConfig {
@@ -64,9 +72,11 @@ export interface SummaryCardConfig {
   color: string;
   icon: 'api' | 'clock' | 'database' | 'node' | 'thunder';
   compare?: boolean;
+  compareFavorableDirection?: CompareFavorableDirection;
   footer?: SummaryFieldConfig[];
   hideTrend?: boolean;
   formatter?: 'duration' | 'enumHealth' | 'startedAt';
+  enumMap?: MetricEnumMap;
   /** 标记为运行时长卡片，启用 relaxed 布局 + 运行状态指示器 */
   isUptimeCard?: boolean;
 }
@@ -216,6 +226,11 @@ const formatClusterHealth = (value: number) => {
   if (value <= 1) return { value: '正常', unit: '', color: CLUSTER_HEALTH_COLORS.normal };
   if (value <= 2) return { value: '警告', unit: '', color: CLUSTER_HEALTH_COLORS.warning };
   return { value: '严重', unit: '', color: CLUSTER_HEALTH_COLORS.critical };
+};
+
+const formatMappedEnum = (value: number, enumMap?: MetricEnumMap) => {
+  const formatted = formatEnumValue(value, enumMap);
+  return { value: formatted.value, unit: '', color: formatted.color };
 };
 
 export function useSimpleDashboardData(config: SimpleDashboardConfig) {
@@ -507,6 +522,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     if (!hasMetricData(field.metric)) return '--';
     if (field.formatter === 'duration') return formatDuration(value);
     if (field.formatter === 'enumHealth') return formatClusterHealth(value).value;
+    if (field.enumMap) return formatMappedEnum(value, field.enumMap).value;
     if (field.formatter === 'startedAt') {
       if (!Number.isFinite(value) || value < 0) return '--';
       return dayjs().subtract(Math.floor(value), 'second').format('YYYY-MM-DD HH:mm:ss');
@@ -532,6 +548,9 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
       const healthResult = card.formatter === 'enumHealth' && hasMetricData(card.metric)
         ? formatClusterHealth(getLatest(card.metric))
         : null;
+      const enumResult = card.enumMap && hasMetricData(card.metric)
+        ? formatMappedEnum(getLatest(card.metric), card.enumMap)
+        : null;
 
       const mainValue = !hasMetricData(card.metric)
         ? { value: '--', unit: '' }
@@ -539,7 +558,9 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
           ? { value: formatDuration(getLatest(card.metric)), unit: '' }
           : healthResult
             ? { value: healthResult.value, unit: healthResult.unit }
-            : formatMetricValue(getLatest(card.metric), card.unit || metricMap[card.metric]?.unit || 'none');
+            : enumResult
+              ? { value: enumResult.value, unit: enumResult.unit }
+              : formatMetricValue(getLatest(card.metric), card.unit || metricMap[card.metric]?.unit || 'none');
 
       const uptimeState = card.isUptimeCard
         ? !hasMetricData(card.metric)
@@ -552,7 +573,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
       return {
         card,
         mainValue,
-        valueColor: healthResult?.color,
+        valueColor: enumResult?.color || healthResult?.color,
         compare: card.compare
           ? getPeriodCompare(getLatest(card.metric), getLatestChartValue(previousMetricMap[card.metric]?.viewData || []))
           : null,

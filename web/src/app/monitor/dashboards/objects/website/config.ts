@@ -89,6 +89,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#27c274',
       icon: 'api',
       compare: true,
+      compareFavorableDirection: 'up',
       footer: [{ label: '失败占比', metric: 'website_failure_rate_avg', unit: 'percent' }]
     },
     {

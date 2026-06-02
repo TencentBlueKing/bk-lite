@@ -101,6 +101,15 @@ export interface PeriodCompare {
   value: string;
 }
 
+export type CompareFavorableDirection = 'up' | 'down';
+
+export interface EnumMetricOption {
+  label: string;
+  color?: string;
+}
+
+export type MetricEnumMap = Record<number, EnumMetricOption>;
+
 export interface TrendLegendItem {
   label: string;
   color: string;
