@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Tooltip } from 'antd';
 import {
   ClockCircleOutlined,
   DatabaseOutlined,
+  ExclamationCircleOutlined,
   NodeIndexOutlined,
-  ThunderboltOutlined
+  PauseCircleOutlined
 } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
@@ -19,13 +19,11 @@ import {
   DashboardPanel,
   DetailPanel,
   TrendChartPanel,
-  RingChartPanel,
-  HorizontalBarPanel
+  RingChartPanel
 } from '../../shared/widgets';
 import {
   buildSearchParams,
   getLatestChartValue,
-  getChartPointSeriesTotal,
   buildPreviousPeriodTimeValues,
   getPeriodCompare,
   normalizeDisplayText,
@@ -78,6 +76,10 @@ const MONGODB_METRIC_GROUPS = [
       'mongodb_latency_reads_avg',
       'mongodb_latency_commands_avg',
       'mongodb_page_faults_rate',
+      'mongodb_active_reads',
+      'mongodb_active_writes',
+      'mongodb_queued_reads',
+      'mongodb_queued_writes',
       'mongodb_wtcache_usage_ratio',
       'mongodb_wtcache_dirty_ratio'
     ]
@@ -85,10 +87,6 @@ const MONGODB_METRIC_GROUPS = [
   {
     key: 'trends',
     names: [
-      'mongodb_active_reads',
-      'mongodb_active_writes',
-      'mongodb_queued_reads',
-      'mongodb_queued_writes',
       'mongodb_resident_megabytes',
       'mongodb_vsize_megabytes',
       'mongodb_tcmalloc_current_allocated_bytes',
@@ -102,37 +100,6 @@ const MONGODB_METRIC_GROUPS = [
     ]
   }
 ];
-
-const countRestartsInRange = (data: ChartData[] = []) => {
-  const points = [...data]
-    .map((point) => ({
-      time: Number(point.time),
-      value: getChartPointSeriesTotal(point)
-    }))
-    .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value) && point.value >= 0)
-    .sort((a, b) => a.time - b.time);
-
-  if (points.length < 2) {
-    return 0;
-  }
-
-  let restartCount = 0;
-
-  for (let index = 1; index < points.length; index += 1) {
-    const previous = points[index - 1];
-    const current = points[index];
-    const drop = previous.value - current.value;
-    const gapSeconds = Math.max((current.time - previous.time) / 1000, 0);
-    const tolerance = Math.max(30, gapSeconds * 0.2);
-
-    if (drop > tolerance && current.value < previous.value * 0.98) {
-      restartCount += 1;
-    }
-  }
-
-  return restartCount;
-};
-
 const multiplyChartDataValues = (data: ChartData[], factor: number) =>
   data.map((point) => {
     const next: ChartData = { ...point };
@@ -271,7 +238,7 @@ export default function MongoDashboardPage() {
       if (isDashboardMode) {
         const previousTimeValues = buildPreviousPeriodTimeValues(timeValues);
         const compareMetrics = DASHBOARD_METRICS.filter((metric) =>
-          ['mongodb_connections_current', 'mongodb_commands_rate', 'mongodb_wtcache_usage_ratio'].includes(metric.name)
+          ['mongodb_connections_current'].includes(metric.name)
         );
 
         const summaryResultsPromise = loadMetricGroup(MONGODB_METRIC_GROUPS[0].names);
@@ -394,7 +361,6 @@ export default function MongoDashboardPage() {
   };
   const renderMetricValue = (name: string, value: string) => (hasMetricData(name) ? value : '--');
 
-  const uptimeValue = getLatest('mongodb_uptime_ns');
   const currentConnections = getLatest('mongodb_connections_current');
   const availableConnections = getLatest('mongodb_connections_available');
   const openConnections = getLatest('mongodb_open_connections');
@@ -410,7 +376,6 @@ export default function MongoDashboardPage() {
   const activeWrites = getLatest('mongodb_active_writes');
   const residentMemory = getLatest('mongodb_resident_megabytes');
   const virtualMemory = getLatest('mongodb_vsize_megabytes');
-  const allocatedMemory = getLatest('mongodb_tcmalloc_current_allocated_bytes');
   const cacheCurrent = getLatest('mongodb_wtcache_current_bytes');
   const cacheMax = getLatest('mongodb_wtcache_max_bytes_configured');
   const cacheDirty = getLatest('mongodb_wtcache_tracked_dirty_bytes');
@@ -424,7 +389,6 @@ export default function MongoDashboardPage() {
   const collectionStatusTimeline = buildCollectionStatusTimeline(collectionStatusMetric?.loadState, collectionStatusMetric?.viewData);
   const metricEmptyText = collectionStatus.label === '异常' ? '查询失败' : '暂无采集数据';
 
-  const uptimeDisplay = formatMetricValue(uptimeValue / 1e9, 's');
   const connectionsDisplay = formatMetricValue(currentConnections, 'counts');
   const commandsDisplay = formatMetricValue(commandsRate, 'cps');
   const queriesDisplay = formatMetricValue(queriesRate, 'cps');
@@ -438,23 +402,10 @@ export default function MongoDashboardPage() {
   const cacheDirtyDisplay = formatMetricValue(cacheDirty, 'bytes');
   const residentDisplay = formatMetricValue(residentMemory, 'mebibytes');
   const virtualDisplay = formatMetricValue(virtualMemory, 'mebibytes');
-  const allocatedDisplay = formatMetricValue(allocatedMemory, 'bytes');
   const netInDisplay = formatMetricValue(netIn, 'byteps');
   const netOutDisplay = formatMetricValue(netOut, 'byteps');
 
-  const startupTimeDisplay =
-    Number.isFinite(uptimeValue) && uptimeValue >= 0
-      ? dayjs().subtract(Math.floor(uptimeValue / 1e9), 'second').format('YYYY-MM-DD HH:mm:ss')
-      : metricEmptyText;
-  const uptimeRestarts = countRestartsInRange(metricMap.mongodb_uptime_ns?.viewData || []);
-  const uptimeState = !hasMetricData('mongodb_uptime_ns')
-    ? { label: '状态未知', tone: 'empty' as const, detail: metricEmptyText }
-    : uptimeRestarts > 0
-      ? { label: '期间有重启', tone: 'warning' as const, detail: '' }
-      : { label: '运行正常', tone: 'success' as const, detail: '' };
-
-  const throughputCompare = getPeriodCompare(commandsRate, getLatestChartValue(previousMetricMap.mongodb_commands_rate?.viewData || []));
-  const cacheCompare = getPeriodCompare(cacheUsageRatio, getLatestChartValue(previousMetricMap.mongodb_wtcache_usage_ratio?.viewData || []));
+  const connectionCompare = getPeriodCompare(currentConnections, getLatestChartValue(previousMetricMap.mongodb_connections_current?.viewData || []));
 
   const buildThroughputSeries = useMemo(
     () =>
@@ -466,26 +417,16 @@ export default function MongoDashboardPage() {
     [metricMap.mongodb_commands_rate?.viewData, metricMap.mongodb_queries_rate?.viewData, metricMap.mongodb_write_ops_rate?.viewData]
   );
 
-  const cacheTrendData = useMemo(
+  const latencyTrendData = useMemo(
     () =>
       mergeChartSeries([
-        { key: 'mongodb_wtcache_current_bytes', label: '缓存已用', displayName: '缓存已用', data: metricMap.mongodb_wtcache_current_bytes?.viewData || [] },
-        { key: 'mongodb_wtcache_max_bytes_configured', label: '缓存上限', displayName: '缓存上限', data: metricMap.mongodb_wtcache_max_bytes_configured?.viewData || [] },
-        {
-          key: 'mongodb_resident_megabytes',
-          label: '常驻内存',
-          displayName: '常驻内存',
-          data: multiplyChartDataValues(metricMap.mongodb_resident_megabytes?.viewData || [], MEBIBYTE)
-        }
+        { key: 'mongodb_latency_reads_avg', label: '读延迟', displayName: '读延迟', data: metricMap.mongodb_latency_reads_avg?.viewData || [] },
+        { key: 'mongodb_latency_commands_avg', label: '命令延迟', displayName: '命令延迟', data: metricMap.mongodb_latency_commands_avg?.viewData || [] }
       ]),
-    [
-      metricMap.mongodb_wtcache_current_bytes?.viewData,
-      metricMap.mongodb_wtcache_max_bytes_configured?.viewData,
-      metricMap.mongodb_resident_megabytes?.viewData
-    ]
+    [metricMap.mongodb_latency_reads_avg?.viewData, metricMap.mongodb_latency_commands_avg?.viewData]
   );
 
-  const pressureTrendData = useMemo(
+  const queueTrendData = useMemo(
     () =>
       mergeChartSeries([
         { key: 'mongodb_active_reads', label: '活跃读', displayName: '活跃读', data: metricMap.mongodb_active_reads?.viewData || [] },
@@ -501,14 +442,34 @@ export default function MongoDashboardPage() {
     ]
   );
 
-  const networkTrendData = useMemo(
+  const cacheTrendData = useMemo(
     () =>
       mergeChartSeries([
-        { key: 'mongodb_net_in_bytes_count_rate', label: '入流量', displayName: '入流量', data: metricMap.mongodb_net_in_bytes_count_rate?.viewData || [] },
-        { key: 'mongodb_net_out_bytes_count_rate', label: '出流量', displayName: '出流量', data: metricMap.mongodb_net_out_bytes_count_rate?.viewData || [] }
+        { key: 'mongodb_wtcache_current_bytes', label: '缓存已用', displayName: '缓存已用', data: metricMap.mongodb_wtcache_current_bytes?.viewData || [] },
+        { key: 'mongodb_wtcache_max_bytes_configured', label: '缓存上限', displayName: '缓存上限', data: metricMap.mongodb_wtcache_max_bytes_configured?.viewData || [] }
       ]),
-    [metricMap.mongodb_net_in_bytes_count_rate?.viewData, metricMap.mongodb_net_out_bytes_count_rate?.viewData]
+    [metricMap.mongodb_wtcache_current_bytes?.viewData, metricMap.mongodb_wtcache_max_bytes_configured?.viewData]
   );
+
+  const memoryTrendData = useMemo(
+    () =>
+      mergeChartSeries([
+        {
+          key: 'mongodb_resident_megabytes',
+          label: '常驻内存',
+          displayName: '常驻内存',
+          data: multiplyChartDataValues(metricMap.mongodb_resident_megabytes?.viewData || [], MEBIBYTE)
+        },
+        {
+          key: 'mongodb_vsize_megabytes',
+          label: '虚拟内存',
+          displayName: '虚拟内存',
+          data: multiplyChartDataValues(metricMap.mongodb_vsize_megabytes?.viewData || [], MEBIBYTE)
+        }
+      ]),
+    [metricMap.mongodb_resident_megabytes?.viewData, metricMap.mongodb_vsize_megabytes?.viewData]
+  );
+
 
   const pageTitle = displayMode === 'metrics' ? `${objectDisplayText} 全量指标` : 'MongoDB 监控仪表盘';
   const instanceMetaItems = [
@@ -550,14 +511,21 @@ export default function MongoDashboardPage() {
     return targets.length > 0 && targets.every((metric) => metric?.loadState === 'error') ? 'error' : 'empty';
   };
 
-  const uptimeGuide = [
-    { label: '运行时长', detail: '基于 mongodb_uptime_ns 计算实例自上次启动以来持续运行的时间。' },
-    { label: '启动时间', detail: '用于辅助判断实例是否近期发生过重启。' }
+  const queuedReadsGuide = [
+    { label: '排队读操作', detail: '等待执行的读操作数量。此值非零时表明读并发已超出处理能力，需关注锁等待与工作集匹配度。' },
+    { label: '关联判断', detail: '结合排队写、命令延迟和缺页频率，共同判断是否存在资源争用瓶颈。' }
   ];
-  const uptimeStateGuide = [
-    { label: '状态未知', detail: '当前观察范围内未获取到 mongodb_uptime_ns 指标，暂时无法判断是否发生过重启。' },
-    { label: '运行正常', detail: '当前所选时间段内 mongodb_uptime_ns 未出现明显回退。该状态仅表示未观察到重启，不代表实例整体健康度。' },
-    { label: '期间有重启', detail: '当前所选时间段内 mongodb_uptime_ns 出现回退，说明实例在该时间段内发生过重启。以上状态仅描述重启观察结果，不代表实例整体健康度。' }
+  const queuedWritesGuide = [
+    { label: '排队写操作', detail: '等待执行的写操作数量。此值升高时通常伴随写延迟上升，需排查写入锁竞争。' },
+    { label: '关联判断', detail: '结合排队读、活跃写和命令延迟，判断写入是否成为瓶颈。' }
+  ];
+  const pageFaultGuide = [
+    { label: '缺页频率', detail: '每秒发生缺页中断的速率。值升高通常意味着工作集超出常驻内存，磁盘 I/O 介入频繁。' },
+    { label: '关联判断', detail: '结合常驻内存、WiredTiger 缓存使用率和排队读写，判断内存工作集是否不匹配。' }
+  ];
+  const cmdLatencyGuide = [
+    { label: '命令延迟', detail: '所有 MongoDB 命令的平均执行时间。持续升高时通常关联排队读写堆积或内存压力。' },
+    { label: '关联判断', detail: '结合排队读写、缺页频率和缓存使用率，综合判断延迟来源。' }
   ];
   const connectionGuide = [
     { label: '当前连接数', detail: '表示当前仍在使用中的客户端连接总量。' },
@@ -567,28 +535,28 @@ export default function MongoDashboardPage() {
     { label: '命令吞吐', detail: '表示 MongoDB 每秒处理的整体命令速率。' },
     { label: '关联判断', detail: '吞吐抬升时，需要结合缓存使用率、活跃读写和网络流量一起分析来源。' }
   ];
-  const latencyGuide = [
-    { label: '读延迟', detail: '表示 MongoDB 读请求的平均响应时间。' },
-    { label: '关联判断', detail: '读延迟升高时，通常要同时观察缺页频率、排队读写和常驻内存。' }
+  const latencyTrendGuide = [
+    { label: '延迟趋势', detail: '同时展示读延迟和命令延迟，判断响应速度变化与潜在瓶颈。单位：自动换算（ns/µs/ms/s）。' }
   ];
-  const cacheGuide = [
-    { label: '缓存使用率', detail: '表示 WiredTiger 当前已用缓存占配置上限的比例。' },
-    { label: '搭配指标', detail: '应同时结合脏数据、常驻内存和缺页频率一起判断缓存是否成为瓶颈。' }
+  const queueTrendGuide = [
+    { label: '读写队列趋势', detail: '同时展示活跃读写和排队读写，用于判断当前负载是否已开始堆积。单位：个。' }
   ];
   const throughputTrendGuide = [
     { label: '吞吐趋势', detail: '同时展示命令吞吐、查询吞吐和写入吞吐，判断当前工作负载类型与变化节奏。单位：次/秒。' }
   ];
   const cacheTrendGuide = [
-    { label: '缓存与内存趋势', detail: '同时展示 WiredTiger 缓存已用、缓存上限和常驻内存，判断缓存与工作集的匹配程度。单位：自动换算（B/KB/MB/GB）。' }
+    { label: 'WiredTiger 缓存趋势', detail: '展示 WiredTiger 缓存已用量与配置上限，判断缓存是否趋于饱和。单位：自动换算（B/KB/MB/GB）。' }
   ];
-  const pressureTrendGuide = [
-    { label: '读写压力趋势', detail: '同时展示活跃读写和排队读写，用于判断当前负载是否已开始堆积。单位：个。' }
+  const memoryTrendGuide = [
+    { label: '进程内存趋势', detail: '展示常驻内存和虚拟内存，判断 MongoDB 进程内存使用与工作集变化。单位：自动换算（B/KB/MB/GB）。' }
   ];
-  const networkTrendGuide = [
-    { label: '网络流量趋势', detail: '同时展示 MongoDB 网络入流量和出流量，判断请求接收与结果返回的压力。单位：自动换算（B/s、KB/s、MB/s）。' }
+  const cacheGuide = [
+    { label: '缓存使用率', detail: '表示 WiredTiger 当前已用缓存占配置上限的比例。' },
+    { label: '搭配指标', detail: '应同时结合脏数据、常驻内存和缺页频率一起判断缓存是否成为瓶颈。' }
   ];
   const memoryDetailGuide = [
-    { label: '内存与缺页', detail: '展示常驻内存、虚拟内存、已分配内存和缺页频率。' }
+    { label: '进程内存', detail: '展示常驻内存和虚拟内存，用于判断 MongoDB 进程的实际内存使用情况。' },
+    { label: '缺页参考', detail: '缺页频率升高时，对照常驻内存判断工作集是否超出物理内存。' }
   ];
   const networkDetailGuide = [
     { label: '网络与异常', detail: '展示网络流量、游标超时和用户断言，用于判断响应层异常。' }
@@ -631,49 +599,73 @@ export default function MongoDashboardPage() {
         <div>
           {displayMode === 'dashboard' ? (
             <>
+              {/* Layer 1: Queue & Latency primary signals */}
               <div className={styles.primaryGrid}>
                 <CollectionStatusCard styles={styles} status={collectionStatus} timeline={collectionStatusTimeline} />
                 <StatCard
                   styles={styles}
-                  title={<TitleWithGuide styles={styles} title="MongoDB 运行时长" items={uptimeGuide} className={styles.statTitleWithGuide} />}
-                  value={hasMetricData('mongodb_uptime_ns') ? `${uptimeDisplay.value}${uptimeDisplay.unit}` : '--'}
+                  title={<TitleWithGuide styles={styles} title="排队读" items={queuedReadsGuide} className={styles.statTitleWithGuide} />}
+                  value={renderMetricValue('mongodb_queued_reads', formatMetricValue(queuedReads, 'counts').value)}
                   unit=""
-                  icon={<ClockCircleOutlined />}
+                  icon={<PauseCircleOutlined />}
                   iconStyle={{ background: 'rgba(91, 143, 249, 0.12)', color: '#5b8ff9' }}
                   color="#5b8ff9"
-                  footer={<span>启动时间 {startupTimeDisplay}</span>}
-                  extra={
-                    <div
-                      className={`${styles.uptimeStatus} ${
-                        styles[`uptimeStatus${uptimeState.tone === 'success' ? 'Success' : uptimeState.tone === 'warning' ? 'Warning' : 'Empty'}`]
-                      }`}
-                    >
-                      <span className={styles.uptimeStatusDot} />
-                      <span className={styles.uptimeStatusMainWrap}>
-                        <span className={styles.uptimeStatusMain}>{uptimeState.label}</span>
-                        <Tooltip
-                          overlayClassName="lightMetricTooltip"
-                          title={
-                            <div className={styles.uptimeStatusTooltip}>
-                              {uptimeStateGuide.map((item) => (
-                                <div key={item.label} className={styles.uptimeStatusTooltipRow}>
-                                  <strong>{item.label}</strong>
-                                  <span>{item.detail}</span>
-                                </div>
-                              ))}
-                            </div>
-                          }
-                        >
-                          <ClockCircleOutlined className={styles.uptimeStatusInfoIcon} />
-                        </Tooltip>
-                      </span>
-                      {uptimeState.detail ? <span className={styles.uptimeStatusDetail}>{uptimeState.detail}</span> : null}
-                    </div>
+                  footer={
+                    <>
+                      <span>活跃读 {renderMetricValue('mongodb_active_reads', formatMetricValue(activeReads, 'counts').value)}</span>
+                      <span>读延迟 {renderMetricValue('mongodb_latency_reads_avg', `${readLatencyDisplay.value}${readLatencyDisplay.unit}`)}</span>
+                    </>
                   }
-                  hideTrend
-                  className={styles.statCardRelaxed}
-                  bodyClassName={styles.statBodyRelaxed}
-                  noDataType={getNoDataType('mongodb_uptime_ns')}
+                  trendData={metricMap.mongodb_queued_reads?.viewData || []}
+                  noDataType={getNoDataType('mongodb_queued_reads')}
+                />
+                <StatCard
+                  styles={styles}
+                  title={<TitleWithGuide styles={styles} title="排队写" items={queuedWritesGuide} className={styles.statTitleWithGuide} />}
+                  value={renderMetricValue('mongodb_queued_writes', formatMetricValue(queuedWrites, 'counts').value)}
+                  unit=""
+                  icon={<PauseCircleOutlined />}
+                  iconStyle={{ background: 'rgba(255, 159, 67, 0.12)', color: '#ff9f43' }}
+                  color="#ff9f43"
+                  footer={
+                    <>
+                      <span>活跃写 {renderMetricValue('mongodb_active_writes', formatMetricValue(activeWrites, 'counts').value)}</span>
+                    </>
+                  }
+                  trendData={metricMap.mongodb_queued_writes?.viewData || []}
+                  noDataType={getNoDataType('mongodb_queued_writes')}
+                />
+                <StatCard
+                  styles={styles}
+                  title={<TitleWithGuide styles={styles} title="缺页频率" items={pageFaultGuide} className={styles.statTitleWithGuide} />}
+                  value={renderMetricValue('mongodb_page_faults_rate', pageFaultDisplay.value)}
+                  unit={hasMetricData('mongodb_page_faults_rate') ? pageFaultDisplay.unit : ''}
+                  icon={<ExclamationCircleOutlined />}
+                  iconStyle={{ background: 'rgba(255, 77, 79, 0.10)', color: '#ff4d4f' }}
+                  color="#ff4d4f"
+                  footer={
+                    <>
+                      <span>常驻内存 {renderMetricValue('mongodb_resident_megabytes', `${residentDisplay.value}${residentDisplay.unit}`)}</span>
+                    </>
+                  }
+                  trendData={metricMap.mongodb_page_faults_rate?.viewData || []}
+                  noDataType={getNoDataType('mongodb_page_faults_rate')}
+                />
+                <StatCard
+                  styles={styles}
+                  title={<TitleWithGuide styles={styles} title="命令延迟" items={cmdLatencyGuide} className={styles.statTitleWithGuide} />}
+                  value={renderMetricValue('mongodb_latency_commands_avg', commandLatencyDisplay.value)}
+                  unit={hasMetricData('mongodb_latency_commands_avg') ? commandLatencyDisplay.unit : ''}
+                  icon={<ClockCircleOutlined />}
+                  iconStyle={{ background: 'rgba(250, 173, 20, 0.12)', color: '#faad14' }}
+                  color="#faad14"
+                  footer={
+                    <>
+                      <span>读延迟 {renderMetricValue('mongodb_latency_reads_avg', `${readLatencyDisplay.value}${readLatencyDisplay.unit}`)}</span>
+                    </>
+                  }
+                  trendData={metricMap.mongodb_latency_commands_avg?.viewData || []}
+                  noDataType={getNoDataType('mongodb_latency_commands_avg')}
                 />
                 <StatCard
                   styles={styles}
@@ -685,69 +677,47 @@ export default function MongoDashboardPage() {
                   color="#2f6bff"
                   footer={
                     <>
-                      <span>可用 {renderMetricValue('mongodb_connections_available', formatMetricValue(availableConnections, 'counts').value)}</span>
                       <span>打开 {renderMetricValue('mongodb_open_connections', formatMetricValue(openConnections, 'counts').value)}</span>
+                      <span>可用 {renderMetricValue('mongodb_connections_available', formatMetricValue(availableConnections, 'counts').value)}</span>
                     </>
                   }
+                  compare={connectionCompare}
                   trendData={metricMap.mongodb_connections_current?.viewData || []}
                   noDataType={getNoDataType('mongodb_connections_current')}
                 />
-                <StatCard
-                  styles={styles}
-                  title={<TitleWithGuide styles={styles} title="命令吞吐" items={throughputGuide} className={styles.statTitleWithGuide} />}
-                  value={renderMetricValue('mongodb_commands_rate', commandsDisplay.value)}
-                  unit={hasMetricData('mongodb_commands_rate') ? commandsDisplay.unit : ''}
-                  icon={<ThunderboltOutlined />}
-                  iconStyle={{ background: 'rgba(39, 194, 116, 0.12)', color: '#27c274' }}
-                  color="#27c274"
-                  footer={
-                    <>
-                      <span>查询 {renderMetricValue('mongodb_queries_rate', `${queriesDisplay.value}${queriesDisplay.unit}`)}</span>
-                      <span>写入 {renderMetricValue('mongodb_write_ops_rate', `${writesDisplay.value}${writesDisplay.unit}`)}</span>
-                    </>
-                  }
-                  compare={throughputCompare}
-                  trendData={metricMap.mongodb_commands_rate?.viewData || []}
-                  noDataType={getNoDataType('mongodb_commands_rate')}
-                />
-                <StatCard
-                  styles={styles}
-                  title={<TitleWithGuide styles={styles} title="读延迟" items={latencyGuide} className={styles.statTitleWithGuide} />}
-                  value={renderMetricValue('mongodb_latency_reads_avg', readLatencyDisplay.value)}
-                  unit={hasMetricData('mongodb_latency_reads_avg') ? readLatencyDisplay.unit : ''}
-                  icon={<ClockCircleOutlined />}
-                  iconStyle={{ background: 'rgba(255, 159, 67, 0.12)', color: '#ff9f43' }}
-                  color="#ff9f43"
-                  footer={
-                    <>
-                      <span>命令延迟 {renderMetricValue('mongodb_latency_commands_avg', `${commandLatencyDisplay.value}${commandLatencyDisplay.unit}`)}</span>
-                      <span>缺页 {renderMetricValue('mongodb_page_faults_rate', `${pageFaultDisplay.value}${pageFaultDisplay.unit}`)}</span>
-                    </>
-                  }
-                  trendData={metricMap.mongodb_latency_reads_avg?.viewData || []}
-                  noDataType={getNoDataType('mongodb_latency_reads_avg')}
-                />
-                <StatCard
-                  styles={styles}
-                  title={<TitleWithGuide styles={styles} title="WiredTiger 缓存使用率" items={cacheGuide} className={styles.statTitleWithGuide} />}
-                  value={renderMetricValue('mongodb_wtcache_usage_ratio', cacheUsageDisplay.value)}
-                  unit={hasMetricData('mongodb_wtcache_usage_ratio') ? cacheUsageDisplay.unit : ''}
-                  icon={<DatabaseOutlined />}
-                  iconStyle={{ background: 'rgba(47, 107, 255, 0.12)', color: '#2f6bff' }}
-                  color="#2f6bff"
-                  footer={
-                    <>
-                      <span>已用 {renderMetricValue('mongodb_wtcache_current_bytes', `${cacheCurrentDisplay.value}${cacheCurrentDisplay.unit}`)}</span>
-                      <span>脏数据 {renderMetricValue('mongodb_wtcache_tracked_dirty_bytes', `${cacheDirtyDisplay.value}${cacheDirtyDisplay.unit}`)}</span>
-                    </>
-                  }
-                  compare={cacheCompare}
-                  trendData={metricMap.mongodb_wtcache_usage_ratio?.viewData || []}
-                  noDataType={getNoDataType('mongodb_wtcache_usage_ratio')}
-                />
               </div>
 
+              {/* Layer 1: Latency / Queue / Throughput trends */}
               <div className={styles.mainTrendGrid}>
+                <TrendChartPanel
+                  styles={styles}
+                  className={styles.thirdChartPanel}
+                  title={<TitleWithGuide styles={styles} title="延迟趋势" items={latencyTrendGuide} className={styles.panelTitleWithGuide} />}
+                  subtitle="读延迟与命令延迟变化"
+                  legends={TREND_LEGENDS.latency}
+                  data={latencyTrendData}
+                  metric={buildMetricItem(metricMap.mongodb_latency_reads_avg || { ...DASHBOARD_METRICS[7], viewData: [], loadState: 'success' })}
+                  unit="ns"
+                  seriesStyles={[
+                    { color: TREND_LEGENDS.latency[0].color, unit: 'ns' },
+                    { color: TREND_LEGENDS.latency[1].color, unit: 'ns' }
+                  ]}
+                  onXRangeChange={onXRangeChange}
+                />
+
+                <TrendChartPanel
+                  styles={styles}
+                  className={styles.thirdChartPanel}
+                  title={<TitleWithGuide styles={styles} title="读写队列趋势" items={queueTrendGuide} className={styles.panelTitleWithGuide} />}
+                  subtitle="活跃读写与排队读写"
+                  legends={TREND_LEGENDS.queue}
+                  data={queueTrendData}
+                  metric={buildMetricItem(metricMap.mongodb_active_reads || { ...DASHBOARD_METRICS[10], viewData: [], loadState: 'success' })}
+                  unit="counts"
+                  seriesStyles={TREND_LEGENDS.queue.map((item) => ({ color: item.color, unit: 'counts' }))}
+                  onXRangeChange={onXRangeChange}
+                />
+
                 <TrendChartPanel
                   styles={styles}
                   className={styles.thirdChartPanel}
@@ -760,57 +730,45 @@ export default function MongoDashboardPage() {
                   seriesStyles={TREND_LEGENDS.throughput.map((item) => ({ color: item.color, unit: 'cps' }))}
                   onXRangeChange={onXRangeChange}
                 />
+              </div>
 
+              {/* Layer 2: WiredTiger cache + process memory trends */}
+              <div className={styles.detailGrid}>
                 <TrendChartPanel
                   styles={styles}
-                  className={styles.thirdChartPanel}
-                  title={<TitleWithGuide styles={styles} title="缓存与内存趋势" items={cacheTrendGuide} className={styles.panelTitleWithGuide} />}
-                  subtitle="缓存已用、上限与常驻内存"
+                  className={styles.halfWidePanel}
+                  title={<TitleWithGuide styles={styles} title="WiredTiger 缓存趋势" items={cacheTrendGuide} className={styles.panelTitleWithGuide} />}
+                  subtitle="缓存已用与配置上限"
                   legends={TREND_LEGENDS.cache}
                   data={cacheTrendData}
                   metric={buildMetricItem(metricMap.mongodb_wtcache_current_bytes || { ...DASHBOARD_METRICS[17], viewData: [], loadState: 'success' })}
                   unit="bytes"
                   seriesStyles={[
                     { color: TREND_LEGENDS.cache[0].color, unit: 'bytes' },
-                    { color: TREND_LEGENDS.cache[1].color, strokeDasharray: '5 5', unit: 'bytes' },
-                    { color: TREND_LEGENDS.cache[2].color, unit: 'bytes' }
+                    { color: TREND_LEGENDS.cache[1].color, strokeDasharray: '5 5', unit: 'bytes' }
                   ]}
                   onXRangeChange={onXRangeChange}
                 />
 
                 <TrendChartPanel
                   styles={styles}
-                  className={styles.thirdChartPanel}
-                  title={<TitleWithGuide styles={styles} title="读写压力趋势" items={pressureTrendGuide} className={styles.panelTitleWithGuide} />}
-                  subtitle="活跃读写与排队读写"
-                  legends={TREND_LEGENDS.pressure}
-                  data={pressureTrendData}
-                  metric={buildMetricItem(metricMap.mongodb_active_reads || { ...DASHBOARD_METRICS[10], viewData: [], loadState: 'success' })}
-                  unit="counts"
-                  seriesStyles={TREND_LEGENDS.pressure.map((item) => ({ color: item.color, unit: 'counts' }))}
+                  className={styles.halfWidePanel}
+                  title={<TitleWithGuide styles={styles} title="进程内存趋势" items={memoryTrendGuide} className={styles.panelTitleWithGuide} />}
+                  subtitle="常驻内存与虚拟内存"
+                  legends={TREND_LEGENDS.memory}
+                  data={memoryTrendData}
+                  metric={buildMetricItem(metricMap.mongodb_resident_megabytes || { ...DASHBOARD_METRICS[14], viewData: [], loadState: 'success' })}
+                  unit="bytes"
+                  seriesStyles={[
+                    { color: TREND_LEGENDS.memory[0].color, unit: 'bytes' },
+                    { color: TREND_LEGENDS.memory[1].color, unit: 'bytes' }
+                  ]}
                   onXRangeChange={onXRangeChange}
                 />
               </div>
 
+              {/* Layer 2: WiredTiger diagnostic + operations structure + detail panels */}
               <div className={styles.detailGrid}>
-                <RingChartPanel
-                  styles={styles}
-                  className={styles.quarterPanel}
-                  title={<TitleWithGuide styles={styles} title="连接分布" items={connectionGuide} className={styles.panelTitleWithGuide} />}
-                  subtitle="当前、可用与打开连接"
-                  data={[
-                    { name: '当前连接', value: hasMetricData('mongodb_connections_current') ? currentConnections : 0, color: '#2f6bff' },
-                    { name: '可用连接', value: hasMetricData('mongodb_connections_available') ? availableConnections : 0, color: '#e8f0fe' }
-                  ]}
-                  centerValue={renderMetricValue('mongodb_connections_current', formatMetricValue(currentConnections, 'counts').value)}
-                  centerCaption="当前连接"
-                  infoRows={[
-                    { name: '当前连接', color: '#2f6bff', primary: renderMetricValue('mongodb_connections_current', formatMetricValue(currentConnections, 'counts').value) },
-                    { name: '可用连接', color: '#e8f0fe', primary: renderMetricValue('mongodb_connections_available', formatMetricValue(availableConnections, 'counts').value) },
-                    { name: '打开连接', color: '#27c274', primary: renderMetricValue('mongodb_open_connections', formatMetricValue(openConnections, 'counts').value) }
-                  ]}
-                />
-
                 <RingChartPanel
                   styles={styles}
                   className={styles.quarterPanel}
@@ -847,7 +805,7 @@ export default function MongoDashboardPage() {
                     { name: '写入', value: hasMetricData('mongodb_write_ops_rate') ? writesRate : 0, color: '#ff9f43' }
                   ]}
                   centerValue={hasMetricData('mongodb_commands_rate') ? formatMetricValue(commandsRate + queriesRate + writesRate, 'cps').value : '--'}
-                  centerCaption="总吞吐 /s"
+                  centerCaption="总吞吐"
                   infoRows={[
                     { name: '命令', color: '#27c274', primary: renderMetricValue('mongodb_commands_rate', `${commandsDisplay.value}${commandsDisplay.unit}`) },
                     { name: '查询', color: '#5b8ff9', primary: renderMetricValue('mongodb_queries_rate', `${queriesDisplay.value}${queriesDisplay.unit}`) },
@@ -855,24 +813,6 @@ export default function MongoDashboardPage() {
                   ]}
                 />
 
-                <HorizontalBarPanel
-                  styles={styles}
-                  className={styles.quarterPanel}
-                  title={<TitleWithGuide styles={styles} title="读写压力" items={pressureTrendGuide} className={styles.panelTitleWithGuide} />}
-                  subtitle="活跃与排队操作数"
-                  items={(() => {
-                    const maxVal = Math.max(activeReads, activeWrites, queuedReads, queuedWrites, 1);
-                    return [
-                      { label: '活跃读', value: activeReads, display: renderMetricValue('mongodb_active_reads', formatMetricValue(activeReads, 'counts').value), color: '#27c274', max: maxVal },
-                      { label: '活跃写', value: activeWrites, display: renderMetricValue('mongodb_active_writes', formatMetricValue(activeWrites, 'counts').value), color: '#5b8ff9', max: maxVal },
-                      { label: '排队读', value: queuedReads, display: renderMetricValue('mongodb_queued_reads', formatMetricValue(queuedReads, 'counts').value), color: '#fa8c16', max: maxVal },
-                      { label: '排队写', value: queuedWrites, display: renderMetricValue('mongodb_queued_writes', formatMetricValue(queuedWrites, 'counts').value), color: '#ff4d4f', max: maxVal }
-                    ];
-                  })()}
-                />
-              </div>
-
-              <div className={styles.detailGrid}>
                 <DetailPanel
                   styles={styles}
                   className={styles.quarterPanel}
@@ -882,7 +822,6 @@ export default function MongoDashboardPage() {
                 >
                   <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>常驻内存</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_resident_megabytes', `${residentDisplay.value}${residentDisplay.unit}`)}</span></div>
                   <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>虚拟内存</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_vsize_megabytes', `${virtualDisplay.value}${virtualDisplay.unit}`)}</span></div>
-                  <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>已分配内存</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_tcmalloc_current_allocated_bytes', `${allocatedDisplay.value}${allocatedDisplay.unit}`)}</span></div>
                   <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>缺页频率</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_page_faults_rate', `${pageFaultDisplay.value}${pageFaultDisplay.unit}`)}</span></div>
                 </DetailPanel>
 
@@ -898,23 +837,6 @@ export default function MongoDashboardPage() {
                   <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>游标超时数</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_cursor_timed_out_count', formatMetricValue(cursorTimedOut, 'counts').value)}</span></div>
                   <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>用户断言</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_assert_user', formatMetricValue(userAssert, 'counts').value)}</span></div>
                 </DetailPanel>
-
-                <TrendChartPanel
-                  styles={styles}
-                  className={`${styles.halfWidePanel} ${styles.compactChartPanel}`}
-                  chartWrapClassName={styles.compactChartWrap}
-                  title={<TitleWithGuide styles={styles} title="网络流量趋势" items={networkTrendGuide} className={styles.panelTitleWithGuide} />}
-                  subtitle="入流量与出流量"
-                  legends={TREND_LEGENDS.network}
-                  data={networkTrendData}
-                  metric={buildMetricItem(metricMap.mongodb_net_in_bytes_count_rate || { ...DASHBOARD_METRICS[22], viewData: [], loadState: 'success' })}
-                  unit="byteps"
-                  seriesStyles={[
-                    { color: TREND_LEGENDS.network[0].color, unit: 'byteps' },
-                    { color: TREND_LEGENDS.network[1].color, unit: 'byteps' }
-                  ]}
-                  onXRangeChange={onXRangeChange}
-                />
               </div>
             </>
           ) : (

@@ -234,16 +234,23 @@ export const TREND_LEGENDS: Record<string, TrendLegendItem[]> = {
     { label: '查询吞吐', color: '#13c2c2' },
     { label: '写入吞吐', color: '#ff9f43' }
   ],
-  cache: [
-    { label: '缓存已用', color: '#2f6bff', primary: true },
-    { label: '缓存上限', color: '#9aa9bf', dashed: true },
-    { label: '常驻内存', color: '#27c274' }
+  latency: [
+    { label: '读延迟', color: '#27c274', primary: true },
+    { label: '命令延迟', color: '#faad14' }
   ],
-  pressure: [
+  queue: [
     { label: '活跃读', color: '#2f6bff', primary: true },
     { label: '活跃写', color: '#27c274' },
     { label: '排队读', color: '#5b8ff9' },
     { label: '排队写', color: '#ff9f43' }
+  ],
+  cache: [
+    { label: '缓存已用', color: '#2f6bff', primary: true },
+    { label: '缓存上限', color: '#9aa9bf', dashed: true }
+  ],
+  memory: [
+    { label: '常驻内存', color: '#27c274', primary: true },
+    { label: '虚拟内存', color: '#9aa9bf' }
   ],
   network: [
     { label: '入流量', color: '#2f6bff', primary: true },
