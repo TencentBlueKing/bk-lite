@@ -7,6 +7,7 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.services.flow_onboarding import FlowOnboardingService
+from apps.monitor.services.manual_collect import ManualCollectService
 from apps.monitor.services.plugin import MonitorPluginService
 
 
@@ -213,6 +214,30 @@ def test_update_flow_asset_rejects_duplicate_tuple_when_moving_asset(db):
     assert moving.cloud_region_id == 2
     assert moving.ip == "10.0.0.13"
     assert MonitorInstance.objects.filter(monitor_object_id=switch_object.id, cloud_region_id=1, ip="10.0.0.12").count() == 1
+
+
+def test_create_manual_collect_instance_rejects_flow_only_fields(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+
+    with pytest.raises(BaseAppException, match="Use flow_asset for flow asset fields"):
+        ManualCollectService.create_manual_collect_instance(
+            {
+                "id": "flow-bypass",
+                "name": "Core Switch",
+                "monitor_object_id": switch_object.id,
+                "cloud_region_id": 1,
+                "ip": "10.0.0.12",
+                "fallback_sampling_rate": 2000,
+                "enabled_protocols": ["netflow"],
+                "organizations": [1],
+            }
+        )
+
+    assert not MonitorInstance.objects.filter(
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+    ).exists()
 
 
 def test_create_or_bind_flow_asset_rejects_unknown_protocol(db):

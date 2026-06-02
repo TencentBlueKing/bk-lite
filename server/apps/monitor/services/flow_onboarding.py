@@ -125,7 +125,8 @@ class FlowOnboardingService:
                 "fallback_sampling_rate": cls._resolve_sampling_rate(fallback_sampling_rate=None),
                 "enabled_protocols": [],
                 "organizations": organizations,
-            }
+            },
+            allow_flow_fields=True,
         )
         return MonitorInstance.objects.get(id=result["instance_id"])
 

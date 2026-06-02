@@ -8,6 +8,8 @@ from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
 class ManualCollectService:
+    FLOW_ONLY_FIELDS = {"cloud_region_id", "ip", "fallback_sampling_rate", "enabled_protocols"}
+
     @staticmethod
     def _build_manual_collect_instance_data(data: dict):
         payload = dict(data)
@@ -15,6 +17,16 @@ class ManualCollectService:
         payload["auto"] = False
         payload["id"] = str(tuple([payload["id"]]))
         return payload, organizations
+
+    @classmethod
+    def _validate_create_fields(cls, data: dict, allow_flow_fields=False):
+        if allow_flow_fields:
+            return
+        flow_only_fields = sorted(cls.FLOW_ONLY_FIELDS.intersection(data))
+        if flow_only_fields:
+            raise BaseAppException(
+                f"Use flow_asset for flow asset fields: {', '.join(flow_only_fields)}"
+            )
 
     @staticmethod
     def check_collect_status(object_id, instance_id) -> bool:
@@ -59,10 +71,11 @@ class ManualCollectService:
         )
 
     @staticmethod
-    def create_manual_collect_instance(data: dict):
+    def create_manual_collect_instance(data: dict, *, allow_flow_fields=False):
         """
         创建手动采集实例
         """
+        ManualCollectService._validate_create_fields(data, allow_flow_fields=allow_flow_fields)
         data, organizations = ManualCollectService._build_manual_collect_instance_data(data)
         MonitorObjectService.validate_new_instance_name_unique(data.get("monitor_object_id"), data.get("name"))
         # 建实例
