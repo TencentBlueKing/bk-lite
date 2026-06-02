@@ -529,6 +529,32 @@ def test_flow_asset_api_rejects_unsupported_monitor_object(api_client, monkeypat
     assert response.json()["message"] == "Unsupported flow monitor object"
 
 
+def test_flow_asset_api_rejects_nonexistent_monitor_object(api_client, monkeypatch):
+    from apps.monitor.services.flow_onboarding import FlowOnboardingService
+
+    monkeypatch.setattr(
+        FlowOnboardingService,
+        "create_or_bind_asset",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("create_or_bind_asset should not be called")),
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/",
+        data={
+            "monitor_object_id": 999999,
+            "protocol": "netflow",
+            "cloud_region_id": 1,
+            "ip": "10.0.0.12",
+            "name": "Missing Object",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == "Monitor object does not exist"
+
+
 def test_flow_asset_api_rejects_duplicate_tuple_as_validation_error(api_client, monkeypatch, db):
     from apps.monitor.models import MonitorInstance, MonitorObject
     from apps.monitor.views import manual_collect as manual_collect_view
@@ -572,6 +598,44 @@ def test_flow_asset_api_rejects_duplicate_tuple_as_validation_error(api_client, 
         cloud_region_id=1,
         ip="10.0.0.12",
     ).exists()
+
+
+def test_flow_asset_api_rejects_nonexistent_instance_id(api_client, monkeypatch, db):
+    from apps.monitor.models import MonitorObject
+    from apps.monitor.services.flow_onboarding import FlowOnboardingService
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None: (_ for _ in ()).throw(
+            AssertionError("_ensure_operate_instances should not be called for invalid payloads")
+        ),
+    )
+    monkeypatch.setattr(
+        FlowOnboardingService,
+        "create_or_bind_asset",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("create_or_bind_asset should not be called")),
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/",
+        data={
+            "monitor_object_id": switch_object.id,
+            "instance_id": "missing-instance",
+            "protocol": "netflow",
+            "cloud_region_id": 1,
+            "ip": "10.0.0.12",
+            "name": "Missing Instance",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == "Monitor instance does not exist"
 
 
 @pytest.mark.parametrize(
@@ -726,6 +790,36 @@ def test_update_flow_asset_api_rejects_enabled_protocols_field(api_client, monke
 
     assert response.status_code == 400, response.content
     assert response.json()["message"] == "Unknown request fields: enabled_protocols"
+
+
+def test_update_flow_asset_api_rejects_nonexistent_instance_id(api_client, monkeypatch):
+    from apps.monitor.services.flow_onboarding import FlowOnboardingService
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None: (_ for _ in ()).throw(
+            AssertionError("_ensure_operate_instances should not be called for invalid payloads")
+        ),
+    )
+    monkeypatch.setattr(
+        FlowOnboardingService,
+        "update_asset",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("update_asset should not be called")),
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/update/",
+        data={
+            "instance_id": "missing-instance",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == "Monitor instance does not exist"
 
 
 def test_flow_asset_api_normalizes_ip_for_creation_and_reuse(api_client, monkeypatch, db):

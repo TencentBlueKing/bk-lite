@@ -577,7 +577,7 @@ def test_create_manual_collect_instance_rejects_flow_only_fields(db):
 def test_create_or_bind_flow_asset_rejects_unknown_protocol(db):
     switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
 
-    with pytest.raises(BaseAppException, match="Unsupported flow protocol"):
+    with pytest.raises(ValidationAppException, match="Unsupported flow protocol"):
         FlowOnboardingService.create_or_bind_asset(
             monitor_object_id=switch_object.id,
             protocol="ipfix",
@@ -591,7 +591,7 @@ def test_create_or_bind_flow_asset_rejects_unknown_protocol(db):
 def test_create_or_bind_flow_asset_rejects_unsupported_monitor_object(db):
     unsupported_object = MonitorObject.objects.create(name="Host", display_name="Host")
 
-    with pytest.raises(BaseAppException, match="Unsupported flow monitor object"):
+    with pytest.raises(ValidationAppException, match="Unsupported flow monitor object"):
         FlowOnboardingService.create_or_bind_asset(
             monitor_object_id=unsupported_object.id,
             protocol="netflow",
@@ -614,7 +614,7 @@ def test_create_or_bind_flow_asset_rejects_explicit_binding_for_unsupported_moni
         enabled_protocols=["netflow"],
     )
 
-    with pytest.raises(BaseAppException, match="Unsupported flow monitor object"):
+    with pytest.raises(ValidationAppException, match="Unsupported flow monitor object"):
         FlowOnboardingService.create_or_bind_asset(
             monitor_object_id=unsupported_object.id,
             protocol="sflow",
@@ -626,6 +626,32 @@ def test_create_or_bind_flow_asset_rejects_explicit_binding_for_unsupported_moni
 
     existing.refresh_from_db()
     assert existing.enabled_protocols == ["netflow"]
+
+
+def test_create_or_bind_flow_asset_rejects_nonexistent_monitor_object(db):
+    with pytest.raises(ValidationAppException, match="Monitor object does not exist"):
+        FlowOnboardingService.create_or_bind_asset(
+            monitor_object_id=999999,
+            protocol="netflow",
+            cloud_region_id=1,
+            ip="10.0.0.12",
+            name="Missing Object",
+            organizations=[1],
+        )
+
+
+def test_create_or_bind_flow_asset_rejects_nonexistent_instance(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+
+    with pytest.raises(ValidationAppException, match="Monitor instance does not exist"):
+        FlowOnboardingService.create_or_bind_asset(
+            monitor_object_id=switch_object.id,
+            protocol="netflow",
+            cloud_region_id=1,
+            ip="10.0.0.12",
+            name="Missing Instance",
+            instance_id="missing-instance",
+        )
 
 
 def test_host_remote_onboarding_rejects_invalid_instance_identity(db):

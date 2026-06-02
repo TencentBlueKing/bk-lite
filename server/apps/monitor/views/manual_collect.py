@@ -61,6 +61,13 @@ def _validate_fallback_sampling_rate(_field, value):
     return value
 
 
+def _validate_existing_flow_instance(instance_id):
+    validator = getattr(FlowOnboardingService, "validate_instance_id", None)
+    if validator is not None:
+        validator(instance_id=instance_id)
+    return instance_id
+
+
 def _validated_request_payload(data, *, required_fields, optional_fields, field_validators=None):
     payload = dict(data)
     allowed_fields = required_fields | optional_fields
@@ -117,6 +124,7 @@ class ManualCollect(viewsets.ViewSet):
                 require_supported=True,
             )
             if instance_id:
+                _validate_existing_flow_instance(instance_id)
                 _ensure_operate_instances(request, [instance_id], actor_context)
             else:
                 existing_instance = FlowOnboardingService.find_reusable_asset(
@@ -146,6 +154,7 @@ class ManualCollect(viewsets.ViewSet):
             },
         )
         actor_context = _build_actor_context(request)
+        _validate_existing_flow_instance(payload["instance_id"])
         _ensure_operate_instances(request, [payload["instance_id"]], actor_context)
         _ensure_target_organizations(payload.get("organizations", []), actor_context)
         data = FlowOnboardingService.update_asset(**payload)

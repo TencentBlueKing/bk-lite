@@ -1,7 +1,7 @@
 from django.db import transaction
 from django.db.models import Q
 
-from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectOrganizationRule
 from apps.monitor.services.manual_collect import ManualCollectService
 from apps.monitor.services.monitor_object import MonitorObjectService
@@ -219,8 +219,13 @@ class FlowOnboardingService:
             queryset = queryset.select_for_update()
         instance = queryset.first()
         if not instance:
-            raise BaseAppException("Monitor instance does not exist")
+            raise ValidationAppException("Monitor instance does not exist")
         return instance
+
+    @classmethod
+    def validate_instance_id(cls, *, instance_id):
+        cls._get_instance(instance_id=instance_id)
+        return instance_id
 
     @classmethod
     def _ensure_tuple_available(cls, *, cloud_region_id, ip, exclude_instance_id=None):
@@ -265,7 +270,7 @@ class FlowOnboardingService:
             None,
         )
         if not monitor_object_name:
-            raise BaseAppException("Monitor object does not exist")
+            raise ValidationAppException("Monitor object does not exist")
         if require_supported and monitor_object_name not in cls.SUPPORTED_MONITOR_OBJECT_NAMES:
             raise ValidationAppException("Unsupported flow monitor object")
         return monitor_object_name
@@ -273,7 +278,7 @@ class FlowOnboardingService:
     @classmethod
     def _validate_protocol(cls, protocol):
         if protocol not in cls.SUPPORTED_PROTOCOLS:
-            raise BaseAppException("Unsupported flow protocol")
+            raise ValidationAppException("Unsupported flow protocol")
 
     @classmethod
     def _normalize_protocols(cls, protocols):
