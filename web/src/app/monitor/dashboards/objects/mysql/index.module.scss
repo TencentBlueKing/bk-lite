@@ -564,20 +564,20 @@
 }
 
 .collectionStatusCard {
-  min-height: 224px;
+  justify-content: space-between;
+  min-height: 188px;
 }
 
 .collectionStatusHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  min-height: 32px;
 }
 
 .collectionStatusBody {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  margin-top: 18px;
+  display: grid;
+  flex: 1;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  row-gap: 8px;
+  min-height: 0;
 }
 
 .collectionStatusValue {
@@ -585,6 +585,9 @@
   font-weight: 700;
   line-height: 1.05;
   letter-spacing: -0.03em;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
 }
 
 .collectionStatusValueSuccess {
@@ -600,26 +603,30 @@
 }
 
 .collectionStatusTimelineBlock {
+  margin-top: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 6px;
+  justify-content: center;
 }
 
 .collectionStatusTimelineTitle {
+  margin-top: 0;
   color: #536882;
   font-size: 14px;
   font-weight: 700;
-  line-height: 1.35;
+  display: flex;
+  align-items: center;
 }
 
 .collectionStatusTimeline {
   display: grid;
   grid-template-columns: repeat(18, minmax(0, 1fr));
   gap: 4px;
+  margin-top: 8px;
 }
 
 .collectionStatusSegment {
+  min-width: 0;
   height: 22px;
   border-radius: 4px;
   border: 1px solid transparent;
@@ -645,16 +652,16 @@
   align-items: center;
   gap: 18px;
   flex-wrap: wrap;
+  margin-top: 8px;
+  color: #42556d;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .collectionStatusLegendItem {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  color: #42556d;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.2;
+  gap: 6px;
 }
 
 .collectionStatusLegendDot {
@@ -678,6 +685,10 @@
 
 .halfPanel {
   grid-column: span 4;
+}
+
+.widePanel {
+  grid-column: span 8;
 }
 
 .fullPanel {
@@ -2206,29 +2217,71 @@
 .replicationCard {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  justify-content: space-between;
   align-items: stretch;
-  min-height: 206px;
+  min-height: 0;
+  height: 100%;
 }
 
 .replicationCardRelaxed {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    'header'
+    'summary'
+    'legend'
+    'chart';
+  gap: 8px;
+  min-height: 232px;
   padding-top: 12px;
+}
+
+.replicationCardRelaxed > .panelHeader {
+  display: contents;
+}
+
+.replicationCardRelaxed > .panelHeader > .panelHeading {
+  grid-area: header;
+}
+
+.replicationCardRelaxed > .panelHeader > .chartLegendHeader {
+  grid-area: legend;
+  justify-self: end;
+  justify-content: flex-end;
+  align-self: end;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  max-width: 100%;
+  white-space: normal;
+}
+
+.replicationCardRelaxed > .replicationCard {
+  grid-area: summary;
+}
+
+.replicationCardRelaxed > .replicationChartWrap {
+  grid-area: chart;
+  align-self: stretch;
 }
 
 .replicationInfoBlock {
   display: grid;
-  grid-template-columns: minmax(110px, 0.9fr) repeat(2, minmax(86px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(132px, max-content));
+  justify-content: flex-start;
+  gap: 8px;
   min-width: 0;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .replicationDelayBlock {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 8px;
-  min-height: 74px;
-  padding: 10px 12px;
+  gap: 6px;
+  min-height: 0;
+  padding: 8px 10px;
   border-radius: 10px;
   background: #f8fbff;
   border: 1px solid #edf2f9;
@@ -2243,7 +2296,7 @@
 
 .replicationDelayValue {
   color: #2f6bff;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.02em;
@@ -2261,15 +2314,28 @@
   display: contents;
 }
 
+@media (max-width: 768px) {
+  .replicationInfoBlock {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .replicationInfoBlock {
+    grid-template-columns: 1fr;
+  }
+}
+
 .replicationStatusItem {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   color: #344760;
-  min-height: 74px;
-  padding: 10px 12px;
+  min-height: 0;
+  padding: 8px 10px;
   border-radius: 10px;
   background: #f8fbff;
   border: 1px solid #edf2f9;
@@ -2294,8 +2360,8 @@
 
 .replicationChartWrap {
   flex: 1;
-  height: 132px;
-  min-height: 132px;
+  height: 100%;
+  min-height: 148px;
   border-radius: 12px;
   background: #fbfcff;
   border: 1px solid #edf2f9;
@@ -2304,12 +2370,12 @@
 }
 
 .replicationStandalone {
-  min-height: 206px;
+  min-height: 174px;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 12px;
-  padding: 18px;
+  gap: 10px;
+  padding: 16px;
   border-radius: 12px;
   background: linear-gradient(135deg, #f8fbff 0%, #ffffff 100%);
   border: 1px solid #edf2f9;
@@ -3270,6 +3336,14 @@
     grid-column: span 6;
   }
 
+  .halfPanel {
+    grid-column: span 4;
+  }
+
+  .widePanel {
+    grid-column: span 8;
+  }
+
   .allMetricsGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -3321,6 +3395,7 @@
   .thirdChartPanel,
   .quarterPanel,
   .halfPanel,
+  .widePanel,
   .fullPanel {
     grid-column: span 12;
   }
@@ -3347,7 +3422,7 @@
   }
 
   .mysqlRequestPath {
-    min-width: max-content;
+    min-width: 1100px;
   }
 
   .innodbInner {
@@ -3446,7 +3521,7 @@
   .toolbarTimeSelector > div > div:first-child,
   .toolbarTimeSelector > div > div:first-child :global(.ant-select),
   .toolbarTimeSelector > div > div:first-child :global(.ant-picker) {
-    width: 320px !important;
+    width: min(100%, 320px) !important;
   }
 
   .ringCard,
@@ -3485,12 +3560,19 @@
     height: 168px;
   }
 
-  .replicationCard {
+  .replicationCardRelaxed {
     grid-template-columns: 1fr;
-    gap: 16px;
+    grid-template-areas:
+      'header'
+      'summary'
+      'legend'
+      'chart';
+    gap: 12px;
   }
 
   .replicationChartWrap {
+    height: 132px;
+    min-height: 132px;
     padding-right: 0;
   }
 
@@ -3564,6 +3646,10 @@
     gap: 10px;
   }
 
+  .replicationCardRelaxed {
+    gap: 10px;
+  }
+
   .instanceSubline {
     font-size: 13px;
   }
@@ -3587,5 +3673,9 @@
   .compactChartWrap,
   .replicationChartWrap {
     height: 130px;
+  }
+
+  .replicationCardRelaxed {
+    grid-template-columns: 1fr;
   }
 }

@@ -191,7 +191,6 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'postgresql_xact_commit_rate',
       color: '#27c274',
       icon: 'thunder',
-      compare: true,
       guide: [{ label: '事务提交', detail: '成功提交事务的速率，反映业务活跃程度。' }],
       footer: [{ label: '回滚速率', metric: 'postgresql_xact_rollback_rate', unit: 'cps' }]
     },

@@ -50,6 +50,7 @@ import {
   TitleWithGuide,
   DashboardPageHeader,
   DashboardInstanceCard,
+  DashboardPanel,
   TrendChartPanel,
   RingChartPanel,
   HorizontalBarPanel
@@ -496,9 +497,19 @@ export default function MysqlDashboardPage() {
           )
           : Promise.resolve([] as Array<readonly [string, MetricSeries]>);
 
-        const [summaryResults, previousResults, collectionStatus] = await Promise.all([
+        if (!silent) {
+          setPreviousSeries({});
+        }
+
+        previousMetricResultsPromise.then((previousResults) => {
+          if (loadSeqRef.current !== loadSeq) {
+            return;
+          }
+          setPreviousSeries(Object.fromEntries(previousResults));
+        });
+
+        const [summaryResults, collectionStatus] = await Promise.all([
           summaryResultsPromise,
-          previousMetricResultsPromise,
           collectionStatusPromise
         ]);
 
@@ -507,7 +518,6 @@ export default function MysqlDashboardPage() {
         }
 
         setSeries((prev) => (silent ? { ...prev, ...Object.fromEntries(summaryResults) } : Object.fromEntries(summaryResults)));
-        setPreviousSeries(Object.fromEntries(previousResults));
         setCollectionStatusMetric(collectionStatus);
 
         if (!silent) {
@@ -1510,34 +1520,9 @@ export default function MysqlDashboardPage() {
                       ]}
                     />
 
-                    <TrendChartPanel
-                      styles={styles}
-                      className={styles.quarterPanel}
-                      title={<TitleWithGuide styles={styles} title="InnoDB 读写趋势" items={innodbTrendGuide} className={styles.panelTitleWithGuide} />}
-                      subtitle="读写与 Redo 刷盘"
-                      legends={TREND_LEGENDS.innodb}
-                      data={innodbTrendData}
-                      metric={buildMetricItem(metricMap.mysql_innodb_data_reads_rate || dashboardMetrics[0])}
-                      unit="cps"
-                      seriesStyles={TREND_LEGENDS.innodb.map((item) => ({
-                        color: item.color,
-                        fillOpacity: item.primary ? 0.08 : 0.03,
-                        strokeOpacity: item.primary ? 1 : 0.68,
-                        strokeWidth: item.primary ? 2.8 : 2.1
-                      }))}
-                      bodyBottom={(
-                        <div className={styles.inlineStats}>
-                          <div className={styles.inlineStat}><span>读 IOPS</span><strong>{dataReadValue.toFixed(1)}/s</strong></div>
-                          <div className={styles.inlineStat}><span>写 IOPS</span><strong>{dataWriteValue.toFixed(1)}/s</strong></div>
-                          <div className={styles.inlineStat}><span>Redo 刷盘</span><strong>{fsyncValue.toFixed(1)}/s</strong></div>
-                        </div>
-                      )}
-                      onXRangeChange={onXRangeChange}
-                    />
-
                     <RingChartPanel
                       styles={styles}
-                      className={`${styles.quarterPanel} ${styles.fillPanel}`}
+                      className={`${styles.halfPanel} ${styles.fillPanel}`}
                       ringCardClassName={`${styles.bufferPoolRingCard} ${styles.ringCardRelaxed}`}
                       ringChartWrapClassName={styles.bufferPoolChartWrap}
                       title={<TitleWithGuide styles={styles} title="缓冲池使用情况" items={bufferUsageGuide} className={styles.panelTitleWithGuide} />}
@@ -1566,7 +1551,7 @@ export default function MysqlDashboardPage() {
                     {replicationApplicable ? (
                       <TrendChartPanel
                         styles={styles}
-                        className={`${styles.quarterPanel} ${styles.fillPanel} ${styles.replicationCardRelaxed}`}
+                        className={`${styles.widePanel} ${styles.fillPanel} ${styles.replicationCardRelaxed}`}
                         chartWrapClassName={styles.replicationChartWrap}
                         title={<TitleWithGuide styles={styles} title="复制状态" items={replicationGuide} className={styles.panelTitleWithGuide} />}
                         subtitle="复制延迟与线程状态"
@@ -1611,34 +1596,58 @@ export default function MysqlDashboardPage() {
                         onXRangeChange={onXRangeChange}
                       />
                     ) : (
-                      <div className={`${styles.panel} ${styles.quarterPanel} ${styles.fillPanel}`}>
-                        <div className={styles.panelHeader}>
-                          <div className={styles.panelHeading}>
-                            <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="复制状态" items={replicationGuide} className={styles.panelTitleWithGuide} /></h3>
-                            <div className={styles.panelSubTitle}>{`${mysqlIdentity.deployment}实例无需复制线程`}</div>
-                          </div>
+                      <DashboardPanel
+                        styles={styles}
+                        className={`${styles.widePanel} ${styles.fillPanel}`}
+                        bodyClassName={`${styles.replicationStandalone} ${styles.fillBody}`}
+                        title="复制状态"
+                        subtitle={`${mysqlIdentity.deployment}实例无需复制线程`}
+                        guide={replicationGuide}
+                      >
+                        <div className={styles.replicationRoleBadge}>{mysqlIdentity.role}</div>
+                        <div className={styles.replicationStandaloneTitle}>无需复制线程</div>
+                        <div className={styles.replicationStandaloneDesc}>
+                          当前实例为{mysqlIdentity.deployment}的{mysqlIdentity.role}，不需要展示从库复制延迟与 SQL/IO 线程状态。
                         </div>
-                        <div className={`${styles.replicationStandalone} ${styles.fillBody}`}>
-                          <div className={styles.replicationRoleBadge}>{mysqlIdentity.role}</div>
-                          <div className={styles.replicationStandaloneTitle}>无需复制线程</div>
-                          <div className={styles.replicationStandaloneDesc}>
-                            当前实例为{mysqlIdentity.deployment}的{mysqlIdentity.role}，不需要展示从库复制延迟与 SQL/IO 线程状态。
-                          </div>
-                          <div className={styles.replicationStandaloneTags}>
-                            <Tag className={styles.replicationStatusTag}>IO 不适用</Tag>
-                            <Tag className={styles.replicationStatusTag}>SQL 不适用</Tag>
-                          </div>
+                        <div className={styles.replicationStandaloneTags}>
+                          <Tag className={styles.replicationStatusTag}>IO 不适用</Tag>
+                          <Tag className={styles.replicationStatusTag}>SQL 不适用</Tag>
                         </div>
-                      </div>
+                      </DashboardPanel>
                     )}
 
-                    <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                      <div className={styles.panelHeader}>
-                        <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="连接异常热点" items={errorHotspotGuide} className={styles.panelTitleWithGuide} /></h3>
-                          <div className={styles.panelSubTitle}>当前 5 分钟平均速率</div>
+                    <TrendChartPanel
+                      styles={styles}
+                      className={styles.chartPanel}
+                      title={<TitleWithGuide styles={styles} title="InnoDB 读写趋势" items={innodbTrendGuide} className={styles.panelTitleWithGuide} />}
+                      subtitle="读写与 Redo 刷盘"
+                      legends={TREND_LEGENDS.innodb}
+                      data={innodbTrendData}
+                      metric={buildMetricItem(metricMap.mysql_innodb_data_reads_rate || dashboardMetrics[0])}
+                      unit="cps"
+                      seriesStyles={TREND_LEGENDS.innodb.map((item) => ({
+                        color: item.color,
+                        fillOpacity: item.primary ? 0.08 : 0.03,
+                        strokeOpacity: item.primary ? 1 : 0.68,
+                        strokeWidth: item.primary ? 2.8 : 2.1
+                      }))}
+                      bodyBottom={(
+                        <div className={styles.inlineStats}>
+                          <div className={styles.inlineStat}><span>读 IOPS</span><strong>{dataReadValue.toFixed(1)}/s</strong></div>
+                          <div className={styles.inlineStat}><span>写 IOPS</span><strong>{dataWriteValue.toFixed(1)}/s</strong></div>
+                          <div className={styles.inlineStat}><span>Redo 刷盘</span><strong>{fsyncValue.toFixed(1)}/s</strong></div>
                         </div>
-                      </div>
+                      )}
+                      onXRangeChange={onXRangeChange}
+                    />
+
+                    <DashboardPanel
+                      styles={styles}
+                      className={styles.chartPanel}
+                      title="连接异常热点"
+                      subtitle="当前 5 分钟平均速率"
+                      guide={errorHotspotGuide}
+                    >
                       <div className={styles.errorOverview}>
                         <div className={styles.errorOverviewHeader}>
                           <span className={styles.errorOverviewLabel}>错误速率总量</span>
@@ -1683,17 +1692,17 @@ export default function MysqlDashboardPage() {
                           </div>
                         ))}
                       </div>
-                    </div>
+                    </DashboardPanel>
                   </div>
                 </div>
               ) : (
                 <div className={`${styles.modeContent} ${styles.metricsMode}`}>
-                  <div className={`${styles.panel} ${styles.fullPanel}`}>
-                    <div className={styles.panelHeader}>
-                      <div className={styles.panelHeading}>
-                        <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="监控指标全景" items={metricsOverviewGuide} className={styles.panelTitleWithGuide} /></h3>
-                      </div>
-                    </div>
+                  <DashboardPanel
+                    styles={styles}
+                    className={styles.fullPanel}
+                    title="监控指标全景"
+                    guide={metricsOverviewGuide}
+                  >
                     <MetricViews
                       key={`${monitorObjectId}-${instanceId}-${idValues.join('|')}`}
                       monitorObjectId={monitorObjectId}
@@ -1708,7 +1717,7 @@ export default function MysqlDashboardPage() {
                       hideTimeSelector
                       onExternalXRangeChange={onXRangeChange}
                     />
-                  </div>
+                  </DashboardPanel>
                 </div>
               )}
             </>

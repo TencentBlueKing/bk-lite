@@ -128,6 +128,17 @@ export function useFilteredBarPanels(
   );
 }
 
+export function useFilteredDetailPanels(
+  all: PreparedDetailPanel[],
+  titles: string[]
+): PreparedDetailPanel[] {
+  return useMemo(
+    () => pickDefined(titles.map((t) => all.find((p) => p.panel.title === t))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [all, titles.join(',')]
+  );
+}
+
 // ─── Shared style type ────────────────────────────────────────────────────────
 
 export type DashboardStyles = Record<string, string>;
@@ -231,6 +242,12 @@ export interface TrendSectionProps {
   styles: DashboardStyles;
 }
 
+const autoTrendSpan = (total: number, styles: DashboardStyles): string => {
+  if (total === 1) return styles.span12;
+  if (total === 2) return styles.span6;
+  return styles.span4;
+};
+
 export const TrendSection = ({
   charts,
   onXRangeChange,
@@ -239,6 +256,7 @@ export const TrendSection = ({
   styles
 }: TrendSectionProps) => {
   if (charts.length === 0) return null;
+  const defaultSpan = autoTrendSpan(charts.length, styles);
   return (
     <section className={styles.dashboardSection}>
       <div className={styles.sectionGrid}>
@@ -255,7 +273,7 @@ export const TrendSection = ({
             loading={loading}
             seriesStyles={seriesStyles}
             onXRangeChange={onXRangeChange}
-            className={`${styles.panel} ${spanClass ? spanClass(index, charts.length) : styles.span4}`}
+            className={`${styles.panel} ${spanClass ? spanClass(index, charts.length) : defaultSpan}`}
             styles={styles}
           />
         ))}
@@ -337,6 +355,48 @@ export const InsightSection = ({
 
 // ─── DetailSection ────────────────────────────────────────────────────────────
 
+export interface DetailPanelCardProps {
+  detailPanel: PreparedDetailPanel;
+  className?: string;
+  styles: DashboardStyles;
+}
+
+export const DetailPanelCard = ({ detailPanel, className, styles }: DetailPanelCardProps) => {
+  const { panel, rows, hasData } = detailPanel;
+
+  return (
+    <div className={[styles.panel, className].filter(Boolean).join(' ')}>
+      <h3 className={styles.panelTitle}>{panel.title}</h3>
+      <div className={styles.panelSubTitle}>{panel.subtitle}</div>
+      {hasData ? (
+        rows.map((row) => (
+          <div key={row.label} className={styles.detailMetricRow}>
+            <span>{row.label}</span>
+            <span className={styles.detailMetricValue}>{row.value}</span>
+          </div>
+        ))
+      ) : (
+        <div className={styles.detailEmpty}>当前时间范围内暂无可展示详情</div>
+      )}
+    </div>
+  );
+};
+
+export interface FlexiblePanelSectionProps {
+  children: React.ReactNode;
+  styles: DashboardStyles;
+}
+
+export const FlexiblePanelSection = ({ children, styles }: FlexiblePanelSectionProps) => {
+  if (!React.Children.count(children)) return null;
+
+  return (
+    <section className={styles.dashboardSection}>
+      <div className={styles.sectionGrid}>{children}</div>
+    </section>
+  );
+};
+
 export interface DetailSectionProps {
   detailPanels: PreparedDetailPanel[];
   styles: DashboardStyles;
@@ -346,21 +406,12 @@ export const DetailSection = ({ detailPanels, styles }: DetailSectionProps) => {
   if (detailPanels.length === 0) return null;
   return (
     <section className={styles.detailGridBalanced}>
-      {detailPanels.map(({ panel, rows, hasData }) => (
-        <div key={panel.title} className={styles.panel}>
-          <h3 className={styles.panelTitle}>{panel.title}</h3>
-          <div className={styles.panelSubTitle}>{panel.subtitle}</div>
-          {hasData ? (
-            rows.map((row) => (
-              <div key={row.label} className={styles.detailMetricRow}>
-                <span>{row.label}</span>
-                <span className={styles.detailMetricValue}>{row.value}</span>
-              </div>
-            ))
-          ) : (
-            <div className={styles.detailEmpty}>当前时间范围内暂无可展示详情</div>
-          )}
-        </div>
+      {detailPanels.map((detailPanel) => (
+        <DetailPanelCard
+          key={detailPanel.panel.title}
+          detailPanel={detailPanel}
+          styles={styles}
+        />
       ))}
     </section>
   );

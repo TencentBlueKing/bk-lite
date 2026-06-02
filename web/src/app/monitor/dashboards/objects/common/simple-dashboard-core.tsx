@@ -423,17 +423,24 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
           )
           : Promise.resolve([] as Array<readonly [string, MetricSeries]>);
 
-        // ── Await summary group — StatCards show real values as soon as this resolves ──
-        const [summaryResults, previousResults, collectionStatus] = await Promise.all([
+        if (!silent) {
+          setPreviousSeries({});
+        }
+
+        previousMetricResultsPromise.then((previousResults) => {
+          if (loadSeqRef.current !== loadSeq) return;
+          setPreviousSeries(Object.fromEntries(previousResults));
+        });
+
+        // KPI cards and collection status should render as soon as their data is ready.
+        const [summaryResults, collectionStatus] = await Promise.all([
           summaryResultsPromise,
-          previousMetricResultsPromise,
           collectionStatusPromise
         ]);
 
         if (loadSeqRef.current !== loadSeq) return;
 
         setSeries((prev) => (silent ? { ...prev, ...Object.fromEntries(summaryResults) } : Object.fromEntries(summaryResults)));
-        setPreviousSeries(Object.fromEntries(previousResults));
         setCollectionStatusMetric(collectionStatus);
         if (!silent) setLoading(false);
 

@@ -34,4 +34,10 @@ export type { DashboardPageHeaderProps, DashboardPageHeaderStyles } from './dash
 export { DashboardInstanceCard } from './dashboard-instance-card';
 export type { DashboardInstanceCardProps, DashboardInstanceCardStyles } from './dashboard-instance-card';
 
+export { DashboardPanel } from './dashboard-panel';
+export type { DashboardPanelProps, DashboardPanelStyles } from './dashboard-panel';
+
+export { DetailPanel } from './detail-panel';
+export type { DetailPanelProps, DetailPanelStyles } from './detail-panel';
+
 export { useECharts } from './useECharts';

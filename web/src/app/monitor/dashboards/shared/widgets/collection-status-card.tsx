@@ -60,8 +60,8 @@ export const CollectionStatusCard = ({
         <div className={`${styles.collectionStatusValue} ${styles[`collectionStatusValue${status.label === '正常' ? 'Success' : status.label === '异常' ? 'Error' : 'Empty'}`]}`}>
           {status.label}
         </div>
+        <div className={styles.collectionStatusTimelineTitle}>状态时间线</div>
         <div className={styles.collectionStatusTimelineBlock}>
-          <div className={styles.collectionStatusTimelineTitle}>状态时间线</div>
           <div className={styles.collectionStatusTimeline}>
             {timeline.map((tone, index) => (
               <span key={`${tone}-${index}`} className={`${styles.collectionStatusSegment} ${styles[`collectionStatusSegment${tone === 'success' ? 'Success' : tone === 'error' ? 'Error' : 'Empty'}`]}`} />

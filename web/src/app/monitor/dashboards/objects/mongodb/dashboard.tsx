@@ -16,6 +16,8 @@ import {
   TitleWithGuide,
   DashboardPageHeader,
   DashboardInstanceCard,
+  DashboardPanel,
+  DetailPanel,
   TrendChartPanel,
   RingChartPanel,
   HorizontalBarPanel
@@ -319,16 +321,23 @@ export default function MongoDashboardPage() {
           )
           : Promise.resolve([] as Array<readonly [string, MetricSeries]>);
 
-        const [summaryResults, previousResults, collectionStatus] = await Promise.all([
+        if (!silent) {
+          setPreviousSeries({});
+        }
+
+        previousMetricResultsPromise.then((previousResults) => {
+          if (loadSeqRef.current !== loadSeq) return;
+          setPreviousSeries(Object.fromEntries(previousResults));
+        });
+
+        const [summaryResults, collectionStatus] = await Promise.all([
           summaryResultsPromise,
-          previousMetricResultsPromise,
           collectionStatusPromise
         ]);
 
         if (loadSeqRef.current !== loadSeq) return;
 
         setSeries((prev) => (silent ? { ...prev, ...Object.fromEntries(summaryResults) } : Object.fromEntries(summaryResults)));
-        setPreviousSeries(Object.fromEntries(previousResults));
         setCollectionStatusMetric(collectionStatus);
 
         if (!silent) setLoading(false);
@@ -864,31 +873,31 @@ export default function MongoDashboardPage() {
               </div>
 
               <div className={styles.detailGrid}>
-                <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                  <div className={styles.detailCard}>
-                    <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="内存与缺页" items={memoryDetailGuide} className={styles.panelTitleWithGuide} /></h3>
-                      <div className={styles.panelSubTitle}>工作集与进程内存匹配</div>
-                    </div>
-                    <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>常驻内存</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_resident_megabytes', `${residentDisplay.value}${residentDisplay.unit}`)}</span></div>
-                    <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>虚拟内存</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_vsize_megabytes', `${virtualDisplay.value}${virtualDisplay.unit}`)}</span></div>
-                    <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>已分配内存</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_tcmalloc_current_allocated_bytes', `${allocatedDisplay.value}${allocatedDisplay.unit}`)}</span></div>
-                    <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>缺页频率</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_page_faults_rate', `${pageFaultDisplay.value}${pageFaultDisplay.unit}`)}</span></div>
-                  </div>
-                </div>
+                <DetailPanel
+                  styles={styles}
+                  className={styles.quarterPanel}
+                  title="内存与缺页"
+                  subtitle="工作集与进程内存匹配"
+                  guide={memoryDetailGuide}
+                >
+                  <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>常驻内存</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_resident_megabytes', `${residentDisplay.value}${residentDisplay.unit}`)}</span></div>
+                  <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>虚拟内存</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_vsize_megabytes', `${virtualDisplay.value}${virtualDisplay.unit}`)}</span></div>
+                  <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>已分配内存</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_tcmalloc_current_allocated_bytes', `${allocatedDisplay.value}${allocatedDisplay.unit}`)}</span></div>
+                  <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>缺页频率</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_page_faults_rate', `${pageFaultDisplay.value}${pageFaultDisplay.unit}`)}</span></div>
+                </DetailPanel>
 
-                <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                  <div className={styles.detailCard}>
-                    <div className={styles.panelHeading}>
-                      <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="网络与异常" items={networkDetailGuide} className={styles.panelTitleWithGuide} /></h3>
-                      <div className={styles.panelSubTitle}>结果返回与异常信号</div>
-                    </div>
-                    <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>入流量</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_net_in_bytes_count_rate', `${netInDisplay.value}${netInDisplay.unit}`)}</span></div>
-                    <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>出流量</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_net_out_bytes_count_rate', `${netOutDisplay.value}${netOutDisplay.unit}`)}</span></div>
-                    <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>游标超时数</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_cursor_timed_out_count', formatMetricValue(cursorTimedOut, 'counts').value)}</span></div>
-                    <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>用户断言</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_assert_user', formatMetricValue(userAssert, 'counts').value)}</span></div>
-                  </div>
-                </div>
+                <DetailPanel
+                  styles={styles}
+                  className={styles.quarterPanel}
+                  title="网络与异常"
+                  subtitle="结果返回与异常信号"
+                  guide={networkDetailGuide}
+                >
+                  <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>入流量</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_net_in_bytes_count_rate', `${netInDisplay.value}${netInDisplay.unit}`)}</span></div>
+                  <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>出流量</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_net_out_bytes_count_rate', `${netOutDisplay.value}${netOutDisplay.unit}`)}</span></div>
+                  <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>游标超时数</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_cursor_timed_out_count', formatMetricValue(cursorTimedOut, 'counts').value)}</span></div>
+                  <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>用户断言</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_assert_user', formatMetricValue(userAssert, 'counts').value)}</span></div>
+                </DetailPanel>
 
                 <TrendChartPanel
                   styles={styles}
@@ -910,14 +919,12 @@ export default function MongoDashboardPage() {
             </>
           ) : (
             <div className={`${styles.modeContent} ${styles.metricsMode}`}>
-              <div className={`${styles.panel} ${styles.fullPanel}`}>
-                <div className={styles.panelHeader}>
-                  <div className={styles.panelHeading}>
-                    <h3 className={styles.panelTitle}>
-                      <TitleWithGuide styles={styles} title="监控指标全景" items={metricsOverviewGuide} className={styles.panelTitleWithGuide} />
-                    </h3>
-                  </div>
-                </div>
+              <DashboardPanel
+                styles={styles}
+                className={styles.fullPanel}
+                title="监控指标全景"
+                guide={metricsOverviewGuide}
+              >
                 <MetricViews
                   key={`${monitorObjectId}-${instanceId}-${idValues.join('|')}`}
                   monitorObjectId={monitorObjectId}
@@ -932,7 +939,7 @@ export default function MongoDashboardPage() {
                   hideTimeSelector
                   onExternalXRangeChange={onXRangeChange}
                 />
-              </div>
+              </DashboardPanel>
             </div>
           )}
         </div>

@@ -103,7 +103,6 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'nginx_requests_rate',
       color: '#27c274',
       icon: 'thunder',
-      compare: true,
       guide: [{ label: '请求速率', detail: '每秒处理请求数，反映 Nginx 实时吞吐。' }],
       footer: [{ label: '处理连接', metric: 'nginx_handled_rate', unit: 'cps' }]
     },
@@ -112,7 +111,6 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'nginx_accepts_rate',
       color: '#13c2c2',
       icon: 'thunder',
-      compare: true,
       guide: [{ label: '连接接受', detail: '每秒接受的新连接数量。' }],
       footer: [{ label: '处理速率', metric: 'nginx_handled_rate', unit: 'cps' }]
     },
@@ -129,7 +127,6 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'nginx_busy_connection_ratio',
       color: '#ff8a1f',
       icon: 'api',
-      compare: true,
       guide: [{ label: '繁忙连接', detail: '读取和写入中的连接占活跃连接的比例，可快速判断当前是否处于忙碌处理状态。' }],
       footer: [{ label: '等待占比', metric: 'nginx_waiting_connection_ratio', unit: 'percent' }]
     },
@@ -183,17 +180,6 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     }
   ],
-  barPanels: [
-    {
-      title: '连接处理能力',
-      subtitle: '接受、处理与请求',
-      guide: [{ label: '处理能力', detail: '对比请求速率、连接接受速率和连接处理速率，判断入口吞吐是否均衡。' }],
-      items: [
-        { label: '请求速率', metric: 'nginx_requests_rate', color: '#2f6bff', unit: 'cps' },
-        { label: '接受速率', metric: 'nginx_accepts_rate', color: '#27c274', unit: 'cps' },
-        { label: '处理速率', metric: 'nginx_handled_rate', color: '#13c2c2', unit: 'cps' }
-      ]
-    }
-  ],
+  barPanels: [],
   details: []
 };

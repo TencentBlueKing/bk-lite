@@ -17,6 +17,8 @@ import {
   GuideTooltipContent,
   DashboardPageHeader,
   DashboardInstanceCard,
+  DashboardPanel,
+  DetailPanel,
   TrendChartPanel,
   RingChartPanel,
   HorizontalBarPanel
@@ -278,16 +280,23 @@ export default function RedisDashboardPage() {
           )
           : Promise.resolve([] as Array<readonly [string, MetricSeries]>);
 
-        const [summaryResults, previousResults, collectionStatus] = await Promise.all([
+        if (!silent) {
+          setPreviousSeries({});
+        }
+
+        previousMetricResultsPromise.then((previousResults) => {
+          if (loadSeqRef.current !== loadSeq) return;
+          setPreviousSeries(Object.fromEntries(previousResults));
+        });
+
+        const [summaryResults, collectionStatus] = await Promise.all([
           summaryResultsPromise,
-          previousMetricResultsPromise,
           collectionStatusPromise
         ]);
 
         if (loadSeqRef.current !== loadSeq) return;
 
         setSeries((prev) => (silent ? { ...prev, ...Object.fromEntries(summaryResults) } : Object.fromEntries(summaryResults)));
-        setPreviousSeries(Object.fromEntries(previousResults));
         setCollectionStatusMetric(collectionStatus);
 
         if (!silent) setLoading(false);
@@ -815,35 +824,33 @@ export default function RedisDashboardPage() {
                       })()}
                     />
 
-                    <div className={`${styles.panel} ${styles.quarterPanel}`}>
-                      <div className={styles.detailCard}>
-                        <div className={styles.panelHeading}>
-                          <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="键生命周期" items={keyLifecycleGuide} className={styles.panelTitleWithGuide} /></h3>
-                          <div className={styles.panelSubTitle}>过期与驱逐行为</div>
-                        </div>
-                        <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>键过期频率</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_expired_keys_rate', `${expiredDisplay.value}${expiredDisplay.unit}`)}</span></div>
-                        <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>键驱逐频率</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_evicted_keys_rate', `${evictedDisplay.value}${evictedDisplay.unit}`)}</span></div>
-                        <div
-                          className={`${styles.fragmentationWarning} ${
-                            evictedRateValue > 0 ? styles.fragmentationWarningDanger : styles.fragmentationWarningNormal
-                          }`}
-                        >
-                          {evictedRateValue > 0 ? '出现驱逐，通常说明内存接近上限。' : '当前未观察到明显驱逐。'}
-                        </div>
+                    <DetailPanel
+                      styles={styles}
+                      className={styles.quarterPanel}
+                      title="键生命周期"
+                      subtitle="过期与驱逐行为"
+                      guide={keyLifecycleGuide}
+                    >
+                      <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>键过期频率</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_expired_keys_rate', `${expiredDisplay.value}${expiredDisplay.unit}`)}</span></div>
+                      <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>键驱逐频率</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_evicted_keys_rate', `${evictedDisplay.value}${evictedDisplay.unit}`)}</span></div>
+                      <div
+                        className={`${styles.fragmentationWarning} ${
+                          evictedRateValue > 0 ? styles.fragmentationWarningDanger : styles.fragmentationWarningNormal
+                        }`}
+                      >
+                        {evictedRateValue > 0 ? '出现驱逐，通常说明内存接近上限。' : '当前未观察到明显驱逐。'}
                       </div>
-                    </div>
+                    </DetailPanel>
                   </div>
                 </>
               ) : (
                 <div className={`${styles.modeContent} ${styles.metricsMode}`}>
-                  <div className={`${styles.panel} ${styles.fullPanel}`}>
-                    <div className={styles.panelHeader}>
-                      <div className={styles.panelHeading}>
-                        <h3 className={styles.panelTitle}>
-                          <TitleWithGuide styles={styles} title="监控指标全景" items={metricsOverviewGuide} className={styles.panelTitleWithGuide} />
-                        </h3>
-                      </div>
-                    </div>
+                  <DashboardPanel
+                    styles={styles}
+                    className={styles.fullPanel}
+                    title="监控指标全景"
+                    guide={metricsOverviewGuide}
+                  >
                     <MetricViews
                       key={`${monitorObjectId}-${instanceId}-${idValues.join('|')}`}
                       monitorObjectId={monitorObjectId}
@@ -858,7 +865,7 @@ export default function RedisDashboardPage() {
                       hideTimeSelector
                       onExternalXRangeChange={onXRangeChange}
                     />
-                  </div>
+                  </DashboardPanel>
                 </div>
               )}
             </>

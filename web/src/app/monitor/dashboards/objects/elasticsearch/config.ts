@@ -197,7 +197,7 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   charts: [
     {
       title: '资源使用率',
-      subtitle: 'JVM 堆与进程 CPU',
+      subtitle: '堆内存与 CPU',
       metric: 'elasticsearch_jvm_mem_heap_used_percent',
       guide: [
         { label: 'JVM 堆', detail: 'JVM 堆内存使用百分比。' },
@@ -210,7 +210,7 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       title: 'GC 耗时趋势',
-      subtitle: 'Young GC 耗时',
+      subtitle: 'Young GC',
       metric: 'elasticsearch_jvm_gc_collectors_young_collection_time_in_millis_rate',
       guide: [{ label: 'GC 耗时', detail: '新生代 GC 每秒累计耗时。' }],
       series: [
@@ -238,7 +238,7 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       title: '熔断器触发',
-      subtitle: 'Fielddata 与请求',
+      subtitle: '熔断触发',
       metric: 'elasticsearch_breakers_fielddata_tripped_rate',
       guide: [
         { label: 'Fielddata', detail: 'Fielddata 内存保护熔断触发速率。' },
@@ -288,7 +288,7 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       title: '熔断器热点',
-      subtitle: 'Fielddata 与请求',
+      subtitle: '熔断触发',
       guide: [{ label: '熔断器', detail: 'Fielddata 与请求级熔断触发速率，非零表示近期存在内存保护触发。' }],
       items: [
         { label: 'Fielddata 熔断', metric: 'elasticsearch_breakers_fielddata_tripped_rate', color: '#ff4d4f', unit: 'cps' },

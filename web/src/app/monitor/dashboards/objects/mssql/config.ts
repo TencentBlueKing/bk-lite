@@ -250,7 +250,6 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'sqlserver_performance_value_rate',
       color: '#27c274',
       icon: 'thunder',
-      compare: true,
       guide: [{ label: '批量请求', detail: '每秒处理的批量请求数量，衡量实例吞吐。' }],
       footer: [{ label: '锁等待', metric: 'sqlserver_lock_wait_time_rate', unit: 'cps' }]
     },
