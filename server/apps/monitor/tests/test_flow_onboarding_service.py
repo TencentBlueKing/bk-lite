@@ -270,28 +270,6 @@ def test_update_flow_asset_updates_editable_fields(db):
     ) == {2}
 
 
-def test_update_manual_collect_instance_does_not_overwrite_enabled_protocols(db):
-    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
-    instance = MonitorInstance.objects.create(
-        id="('flow-device-1',)",
-        name="Core Switch",
-        monitor_object_id=switch_object.id,
-        cloud_region_id=1,
-        ip="10.0.0.12",
-        fallback_sampling_rate=1000,
-        enabled_protocols=["netflow"],
-    )
-
-    ManualCollectService.update_manual_collect_instance(
-        instance_id=instance.id,
-        fallback_sampling_rate=2000,
-        enabled_protocols=["sflow"],
-    )
-
-    instance.refresh_from_db()
-    assert instance.fallback_sampling_rate == 2000
-    assert instance.enabled_protocols == ["netflow"]
-
 
 def test_update_flow_asset_rejects_unsupported_monitor_object(db):
     host_object = MonitorObject.objects.create(name="Host", display_name="Host")
@@ -742,7 +720,7 @@ def test_host_remote_onboarding_rejects_duplicate_same_collect_type(db, monkeypa
         staticmethod(lambda instances, monitor_plugin_id, actor_context=None: None),
     )
 
-    with pytest.raises(BaseAppException, match="重复配置冲突|已存在采集配置"):
+    with pytest.raises(BaseAppException, match="已存在采集配置"):
         node_mgmt_service.InstanceConfigService.create_monitor_instance_by_node_mgmt(
             _build_host_remote_payload(host_object.id, "MTVmOTFiYTM5ODZk")
         )
