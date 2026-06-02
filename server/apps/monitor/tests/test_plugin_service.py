@@ -283,9 +283,6 @@ def _load_plugin_controller_module(monkeypatch, template_rows=None):
 
     def _fake_build_sandboxed_env(loader=None, undefined=DebugUndefined, extra_filters=None):
         env = SandboxedEnvironment(loader=loader or BaseLoader(), undefined=undefined)
-        env.globals.clear()
-        env.filters.clear()
-        env.tests.clear()
         if extra_filters:
             env.filters.update(extra_filters)
         return env
@@ -360,3 +357,37 @@ def test_get_templates_by_collector_keeps_monitor_plugin_id_branch(monkeypatch):
     templates = plugin_controller_module.Controller({"monitor_plugin_id": 208}).get_templates_by_collector("Telegraf", "http")
 
     assert templates == {"host": template_rows}
+
+
+def test_render_template_falls_back_to_parsed_instance_id_without_logical_value(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+
+    rendered = plugin_controller_module.Controller({}).render_template(
+        "{{ instance_id }}",
+        {
+            "instance_id": "MTVmOTFiYTM5ODZk",
+            # logical_instance_value intentionally absent
+        },
+    )
+
+    assert rendered == "MTVmOTFiYTM5ODZk"
+
+
+def test_controller_raises_identity_error_when_instance_value_is_invalid(monkeypatch):
+    template_rows = [
+        {"type": "host", "config_type": "main", "file_type": "toml", "content": "{{ instance_id }}"}
+    ]
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch, template_rows=template_rows)
+
+    # Simulate a genuinely unparseable instance_id: parse_instance_id returns empty tuple
+    plugin_controller_module.parse_instance_id = lambda x: ()
+
+    ctrl = plugin_controller_module.Controller({
+        "collector": "Telegraf",
+        "collect_type": "http",
+        "instances": [{"instance_id": "unparseable-id", "node_ids": ["node1"], "type": "host"}],
+        "configs": [{"type": "host"}],
+    })
+
+    with pytest.raises(Exception, match="实例识别失败"):
+        ctrl.controller()

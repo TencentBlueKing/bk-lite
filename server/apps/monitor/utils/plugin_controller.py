@@ -90,9 +90,11 @@ class Controller:
                         if parsed_id:
                             _context.update(instance_id=parsed_id[0])
                         else:
-                            logger.warning(f"instance_id 格式异常: {instance_id}")
+                            raise ValueError(f"无效的 instance_id 格式: {instance_id}")
                     elif isinstance(instance_id, (list, tuple)) and len(instance_id) > 0:
                         _context.update(instance_id=instance_id[0])
+                except ValueError:
+                    raise
                 except Exception as e:
                     logger.error(f"解析 instance_id 失败: {instance_id}, 错误: {e}")
                     raise ValueError(f"无效的 instance_id 格式: {instance_id}") from e
