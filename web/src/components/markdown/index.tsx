@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Spin, message } from 'antd';
+import DOMPurify from 'dompurify';
 import { remark } from 'remark';
 import html from 'remark-html';
 import gfm from 'remark-gfm';
@@ -14,6 +15,14 @@ interface MarkdownRendererProps {
   fileName?: string;
   content?: string;
 }
+
+const sanitizeMarkdownHtml = (unsafeHtml: string): string => (
+  DOMPurify.sanitize(unsafeHtml, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'hr', 'del', 'ins', 'sup', 'sub'],
+    ALLOWED_ATTR: ['class', 'href', 'target', 'rel', 'src', 'alt', 'width', 'height'],
+    ALLOW_DATA_ATTR: false,
+  })
+);
 
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   filePath,
@@ -33,7 +42,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           .use(gfm)
           .use(html)
           .process(externalContent);
-        setContent(processedContent.toString());
+        setContent(sanitizeMarkdownHtml(processedContent.toString()));
       } else {
         setContent('');
       }
@@ -67,7 +76,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         .use(gfm)
         .use(html)
         .process(data.content);
-      setContent(processedContent.toString());
+      setContent(sanitizeMarkdownHtml(processedContent.toString()));
     } catch (error) {
       message.error('Failed to load markdown content.');
       console.error(error);

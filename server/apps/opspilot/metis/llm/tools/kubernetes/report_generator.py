@@ -228,7 +228,15 @@ def generate_report_download_event(
     commands_text: str = "",
 ) -> Dict[str, str]:
     """生成报告并返回可直接用于 dispatch 的事件数据"""
-    docx_bytes = generate_k8s_report_docx(report_data)
+    try:
+        docx_bytes = generate_k8s_report_docx(report_data)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error("docx 报告生成失败: %s", str(e), exc_info=True)
+        return {
+            "error": f"报告生成失败: {str(e)}",
+        }
+
     content_b64 = base64.b64encode(docx_bytes).decode("utf-8")
 
     cluster_name = report_data.get("cluster_name", "集群")
