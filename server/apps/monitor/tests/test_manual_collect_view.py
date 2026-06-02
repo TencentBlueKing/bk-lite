@@ -274,3 +274,69 @@ def test_flow_asset_api_restores_soft_deleted_reused_instance(api_client, monkey
     assert operate_calls == [([deleted_instance.id], 1)]
     assert target_org_calls == [([2], 1)]
     assert restored_rule_calls == [(switch_object.id, deleted_instance.id, [2])]
+
+
+def test_flow_asset_api_rejects_unknown_request_fields(api_client, monkeypatch):
+    from apps.monitor.services.flow_onboarding import FlowOnboardingService
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_target_organizations",
+        lambda organizations, actor_context: None,
+    )
+    monkeypatch.setattr(FlowOnboardingService, "lock_monitor_object", lambda **kwargs: None)
+    monkeypatch.setattr(FlowOnboardingService, "find_reusable_asset", lambda **kwargs: None)
+
+    def fail_if_called(*, monitor_object_id, protocol, cloud_region_id, ip, name, organizations=None, instance_id=None, allow_deleted_instance_reuse=False, fallback_sampling_rate=None):
+        raise AssertionError("create_or_bind_asset should not be called for invalid payloads")
+
+    monkeypatch.setattr(FlowOnboardingService, "create_or_bind_asset", fail_if_called)
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/",
+        data={
+            "monitor_object_id": 1,
+            "protocol": "netflow",
+            "cloud_region_id": 1,
+            "ip": "10.0.0.12",
+            "name": "Core Switch",
+            "unexpected_field": "boom",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == "Unknown request fields: unexpected_field"
+
+
+def test_update_flow_asset_api_rejects_unknown_request_fields(api_client, monkeypatch):
+    from apps.monitor.services.flow_onboarding import FlowOnboardingService
+    from apps.monitor.views import manual_collect as manual_collect_view
+
+    monkeypatch.setattr(manual_collect_view, "_ensure_operate_instances", lambda request, instance_ids, actor_context=None: instance_ids)
+    monkeypatch.setattr(
+        manual_collect_view,
+        "_ensure_target_organizations",
+        lambda organizations, actor_context: None,
+    )
+
+    def fail_if_called(*, instance_id, name=None, organizations=None, cloud_region_id=None, ip=None, fallback_sampling_rate=None, enabled_protocols=None):
+        raise AssertionError("update_asset should not be called for invalid payloads")
+
+    monkeypatch.setattr(FlowOnboardingService, "update_asset", fail_if_called)
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/update/",
+        data={
+            "instance_id": "inst-a",
+            "name": "Core Switch",
+            "unexpected_field": "boom",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == "Unknown request fields: unexpected_field"
