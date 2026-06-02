@@ -67,6 +67,7 @@ def test_host_remote_onboarding_reuses_existing_host_instance(db, monkeypatch, i
     )
 
     assert MonitorInstance.objects.filter(monitor_object_id=host_object.id).count() == 1
+    assert len(controller_payloads) == 1
     assert controller_payloads[0]["instances"][0]["instance_id"] == existing.id
     assert controller_payloads[0]["instances"][0]["logical_instance_value"] == "MTVmOTFiYTM5ODZk"
 
