@@ -731,6 +731,29 @@ class ToolsNodes(BasicNode):
 
         return "sse"
 
+    @staticmethod
+    def _is_k8s_tool_server(tool_server) -> bool:
+        tool_url = (getattr(tool_server, "url", "") or "").strip().lower()
+        return tool_url in {
+            "langchain:kubernetes",
+            "langchain:kubernetes_data_collection",
+        }
+
+    def _should_apply_first_turn_greeting_filter(self, request) -> bool:
+        tool_servers = list(getattr(request, "tools_servers", []) or [])
+        if not tool_servers:
+            return True
+
+        langchain_servers = [
+            server
+            for server in tool_servers
+            if (getattr(server, "url", "") or "").startswith("langchain:")
+        ]
+        if not langchain_servers:
+            return False
+
+        return all(self._is_k8s_tool_server(server) for server in langchain_servers)
+
     async def call_with_structured_output(self, llm, user_message: str, pydantic_model):
         """
         通用结构化输出调用方法
@@ -1970,14 +1993,38 @@ class ToolsNodes(BasicNode):
 
             # ========== 寒暄检测：第一步+非技术消息 → 标记不绑工具 ==========
             _is_greeting = False
-            if step_counter["count"] == 1:
+            if step_counter["count"] == 1 and self._should_apply_first_turn_greeting_filter(graph_request):
                 _user_msg_sc = ""
                 for _m_sc in reversed(state.get("messages", [])):
                     if getattr(_m_sc, "type", "") == "human":
                         _user_msg_sc = str(getattr(_m_sc, "content", "")).strip()
                         break
-                _k8s_kws_sc = {"k8s", "kubernetes", "集群", "工作负载", "deployment", "pod", "检查", "配置", "节点", "namespace", "服务", "检测", "诊断", "排查", "修复", "告警", "监控", "日志", "容器", "镜像"}
-                _is_greeting = not (len(_user_msg_sc) > 10 or any(kw in _user_msg_sc.lower() for kw in _k8s_kws_sc))
+                _k8s_kws_sc = {
+                    "k8s",
+                    "kubernetes",
+                    "集群",
+                    "工作负载",
+                    "deployment",
+                    "pod",
+                    "检查",
+                    "配置",
+                    "节点",
+                    "namespace",
+                    "服务",
+                    "检测",
+                    "诊断",
+                    "排查",
+                    "修复",
+                    "告警",
+                    "监控",
+                    "日志",
+                    "容器",
+                    "镜像",
+                }
+                _is_greeting = not (
+                    len(_user_msg_sc) > 10
+                    or any(kw in _user_msg_sc.lower() for kw in _k8s_kws_sc)
+                )
 
             # DEBUG: 写入调试文件确认 agent_node 被调用
             try:
