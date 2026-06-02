@@ -742,17 +742,12 @@ class ToolsNodes(BasicNode):
     def _should_apply_first_turn_greeting_filter(self, request) -> bool:
         tool_servers = list(getattr(request, "tools_servers", []) or [])
         if not tool_servers:
-            return True
-
-        langchain_servers = [
-            server
-            for server in tool_servers
-            if (getattr(server, "url", "") or "").startswith("langchain:")
-        ]
-        if not langchain_servers:
             return False
 
-        return all(self._is_k8s_tool_server(server) for server in langchain_servers)
+        return all(
+            (getattr(server, "url", "") or "").startswith("langchain:") and self._is_k8s_tool_server(server)
+            for server in tool_servers
+        )
 
     async def call_with_structured_output(self, llm, user_message: str, pydantic_model):
         """

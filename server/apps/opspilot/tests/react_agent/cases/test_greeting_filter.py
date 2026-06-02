@@ -150,3 +150,23 @@ async def test_mixed_k8s_and_current_time_short_request_keeps_tools_bound():
 
     assert "get_current_cluster_name" in first_bind_tool_names
     assert "get_current_time" in first_bind_tool_names
+
+
+@pytest.mark.asyncio
+async def test_k8s_with_non_langchain_server_keeps_tools_bound():
+    request = BasicLLMRequest(
+        model="gpt-4o",
+        max_steps=3,
+        compaction_enabled=False,
+        retry_config=RetryConfig(enabled=False),
+        reflection_config=ReflectionConfig(enabled=False),
+        timeout_config=TimeoutConfig(enabled=False),
+        tools_servers=[
+            ToolsServer(name="kubernetes", url="langchain:kubernetes"),
+            ToolsServer(name="external_mcp", url="https://example.com/mcp"),
+        ],
+    )
+
+    first_bind_tool_names = await _build_and_run(request, "你好", [get_current_cluster_name])
+
+    assert "get_current_cluster_name" in first_bind_tool_names
