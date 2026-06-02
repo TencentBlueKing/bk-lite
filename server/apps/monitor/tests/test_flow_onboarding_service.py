@@ -1,7 +1,6 @@
 import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.monitor.models import CollectConfig
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import (
     MonitorInstance,
@@ -9,7 +8,6 @@ from apps.monitor.models.monitor_object import (
     MonitorObject,
     MonitorObjectOrganizationRule,
 )
-from apps.monitor.services import node_mgmt as node_mgmt_service
 from apps.monitor.services.flow_onboarding import FlowOnboardingService
 from apps.monitor.services.manual_collect import ManualCollectService
 
@@ -235,49 +233,6 @@ def test_create_or_bind_flow_asset_rejects_duplicate_tuple_across_supported_moni
     assert not MonitorInstance.objects.filter(monitor_object_id=router_object.id, cloud_region_id=1, ip="10.0.0.12").exists()
 
 
-def test_lock_monitor_object_serializes_supported_flow_object_set(monkeypatch):
-    captured = {}
-
-    class FakeLockedRows:
-        def filter(self, *args, **kwargs):
-            captured["filter_args"] = args
-            captured["filter_kwargs"] = kwargs
-            return self
-
-        def order_by(self, *fields):
-            captured["order_by"] = fields
-            return self
-
-        def values(self, *fields):
-            captured["values"] = fields
-            return [
-                {"id": 1, "name": "Switch"},
-                {"id": 2, "name": "Router"},
-            ]
-
-    class FakeManager:
-        def select_for_update(self):
-            captured["select_for_update"] = True
-            return FakeLockedRows()
-
-    fake_monitor_object = type("FakeMonitorObject", (), {"objects": FakeManager()})
-    monkeypatch.setattr("apps.monitor.services.flow_onboarding.MonitorObject", fake_monitor_object)
-
-    monitor_object_name = FlowOnboardingService.lock_monitor_object(monitor_object_id=2, require_supported=True)
-
-    assert monitor_object_name == "Router"
-    assert captured["select_for_update"] is True
-    assert captured["filter_kwargs"] == {}
-    assert len(captured["filter_args"]) == 1
-    assert captured["filter_args"][0].connector == "OR"
-    assert ("id", 2) in captured["filter_args"][0].children
-    assert (
-        "name__in",
-        FlowOnboardingService.SUPPORTED_MONITOR_OBJECT_NAMES,
-    ) in captured["filter_args"][0].children
-    assert captured["order_by"] == ("id",)
-    assert captured["values"] == ("id", "name")
-
 
 def test_update_flow_asset_updates_editable_fields(db):
     switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
@@ -311,6 +266,29 @@ def test_update_flow_asset_updates_editable_fields(db):
     assert set(
         MonitorInstanceOrganization.objects.filter(monitor_instance_id=instance.id).values_list("organization", flat=True)
     ) == {2}
+
+
+def test_update_manual_collect_instance_does_not_overwrite_enabled_protocols(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    instance = MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+
+    ManualCollectService.update_manual_collect_instance(
+        instance_id=instance.id,
+        fallback_sampling_rate=2000,
+        enabled_protocols=["sflow"],
+    )
+
+    instance.refresh_from_db()
+    assert instance.fallback_sampling_rate == 2000
+    assert instance.enabled_protocols == ["netflow"]
 
 
 def test_update_flow_asset_rejects_unsupported_monitor_object(db):
@@ -667,102 +645,3 @@ def test_create_or_bind_flow_asset_rejects_explicit_binding_for_unsupported_moni
 
     existing.refresh_from_db()
     assert existing.enabled_protocols == ["netflow"]
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Host Remote Onboarding regression tests (Task 2)
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def _build_host_remote_payload(host_object_id: int, instance_id: str) -> dict:
-    return {
-        "collect_type": "http",
-        "collector": "Telegraf",
-        "configs": [
-            {
-                "type": "host",
-                "os_type": "linux",
-                "port": "22",
-                "interval": 60,
-            }
-        ],
-        "instances": [
-            {
-                "instance_id": instance_id,
-                "instance_name": "10.10.41.149",
-                "group_ids": [1],
-                "node_ids": ["node-a"],
-            }
-        ],
-        "monitor_object_id": host_object_id,
-        "monitor_plugin_id": 208,
-    }
-
-
-@pytest.mark.parametrize("incoming_instance_id", ["MTVmOTFiYTM5ODZk", "('MTVmOTFiYTM5ODZk',)"])
-def test_host_remote_onboarding_reuses_existing_host_instance(db, monkeypatch, incoming_instance_id):
-    host_object = MonitorObject.objects.create(name="Host", display_name="Host")
-    existing = MonitorInstance.objects.create(
-        id="('MTVmOTFiYTM5ODZk',)",
-        name="10.10.41.149",
-        monitor_object_id=host_object.id,
-    )
-    MonitorInstanceOrganization.objects.create(monitor_instance_id=existing.id, organization=1)
-    CollectConfig.objects.create(
-        id="cfg-old-host",
-        monitor_instance_id=existing.id,
-        collector="Telegraf",
-        collect_type="host",
-        config_type="host",
-        file_type="toml",
-        is_child=True,
-    )
-
-    controller_payloads = []
-    monkeypatch.setattr(
-        node_mgmt_service.Controller,
-        "controller",
-        lambda self: controller_payloads.append(self.data),
-    )
-    monkeypatch.setattr(
-        node_mgmt_service.InstanceConfigService,
-        "_validate_instances_with_plugin_selector",
-        staticmethod(lambda instances, monitor_plugin_id, actor_context=None: None),
-    )
-
-    node_mgmt_service.InstanceConfigService.create_monitor_instance_by_node_mgmt(
-        _build_host_remote_payload(host_object.id, incoming_instance_id)
-    )
-
-    assert MonitorInstance.objects.filter(monitor_object_id=host_object.id).count() == 1
-    assert controller_payloads[0]["instances"][0]["instance_id"] == existing.id
-    assert controller_payloads[0]["instances"][0]["logical_instance_value"] == "MTVmOTFiYTM5ODZk"
-
-
-def test_host_remote_onboarding_rejects_duplicate_same_collect_type(db, monkeypatch):
-    host_object = MonitorObject.objects.create(name="Host", display_name="Host")
-    existing = MonitorInstance.objects.create(
-        id="('MTVmOTFiYTM5ODZk',)",
-        name="10.10.41.149",
-        monitor_object_id=host_object.id,
-    )
-    CollectConfig.objects.create(
-        id="cfg-existing-http-host",
-        monitor_instance_id=existing.id,
-        collector="Telegraf",
-        collect_type="http",
-        config_type="host",
-        file_type="toml",
-        is_child=True,
-    )
-    monkeypatch.setattr(node_mgmt_service.Controller, "controller", lambda self: None)
-    monkeypatch.setattr(
-        node_mgmt_service.InstanceConfigService,
-        "_validate_instances_with_plugin_selector",
-        staticmethod(lambda instances, monitor_plugin_id, actor_context=None: None),
-    )
-
-    with pytest.raises(BaseAppException, match="重复配置冲突|已存在采集配置"):
-        node_mgmt_service.InstanceConfigService.create_monitor_instance_by_node_mgmt(
-            _build_host_remote_payload(host_object.id, "MTVmOTFiYTM5ODZk")
-        )

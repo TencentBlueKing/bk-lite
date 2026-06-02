@@ -268,7 +268,7 @@ class MonitorObjectService:
         if name:
             MonitorObjectService.validate_update_instance_name_unique(instance, name)
             instance.name = name
-        for field in ("cloud_region_id", "ip", "fallback_sampling_rate", "enabled_protocols", "auto"):
+        for field in ("cloud_region_id", "ip", "fallback_sampling_rate", "auto"):
             if field in extra_fields and extra_fields[field] is not None:
                 setattr(instance, field, extra_fields[field])
         instance.save()

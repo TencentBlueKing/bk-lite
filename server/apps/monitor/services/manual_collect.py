@@ -92,6 +92,7 @@ class ManualCollectService:
 
     @staticmethod
     def update_manual_collect_instance(instance_id: str, name=None, organizations=None, **extra_fields):
+        extra_fields.pop("enabled_protocols", None)
         MonitorObjectService.update_instance(
             instance_id=instance_id,
             name=name,
