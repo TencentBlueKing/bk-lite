@@ -1,8 +1,12 @@
 import json
 from pathlib import Path
 
+import pytest
+
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models.monitor_metrics import Metric
-from apps.monitor.models.monitor_object import MonitorInstance, MonitorObject
+from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject
+from apps.monitor.services.flow_onboarding import FlowOnboardingService
 from apps.monitor.services.plugin import MonitorPluginService
 
 
@@ -42,6 +46,107 @@ def test_flow_instance_fields_and_protocols_are_persisted(db):
     defaulted_instance.refresh_from_db()
 
     assert defaulted_instance.fallback_sampling_rate == 1000
+
+
+def test_create_or_bind_flow_asset_reuses_existing_instance(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    existing = MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+
+    result = FlowOnboardingService.create_or_bind_asset(
+        monitor_object_id=switch_object.id,
+        protocol="sflow",
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        name="Core Switch",
+        organizations=[1],
+        instance_id=existing.id,
+    )
+
+    existing.refresh_from_db()
+    assert result["instance_id"] == existing.id
+    assert set(existing.enabled_protocols) == {"netflow", "sflow"}
+
+
+def test_create_or_bind_flow_asset_creates_monitor_side_asset(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+
+    result = FlowOnboardingService.create_or_bind_asset(
+        monitor_object_id=switch_object.id,
+        protocol="netflow",
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        name="Core Switch",
+        organizations=[1, 2],
+        fallback_sampling_rate=2000,
+    )
+
+    instance = MonitorInstance.objects.get(id=result["instance_id"])
+    assert instance.monitor_object_id == switch_object.id
+    assert instance.name == "Core Switch"
+    assert instance.cloud_region_id == 1
+    assert instance.ip == "10.0.0.12"
+    assert instance.fallback_sampling_rate == 2000
+    assert instance.enabled_protocols == ["netflow"]
+    assert instance.auto is False
+    assert set(
+        MonitorInstanceOrganization.objects.filter(monitor_instance_id=instance.id).values_list("organization", flat=True)
+    ) == {1, 2}
+
+
+def test_update_flow_asset_updates_editable_fields(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    instance = MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow", "sflow"],
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance_id=instance.id, organization=1)
+
+    result = FlowOnboardingService.update_asset(
+        instance_id=instance.id,
+        name="Core Switch Updated",
+        organizations=[2],
+        cloud_region_id=2,
+        ip="10.0.0.13",
+        fallback_sampling_rate=3000,
+    )
+
+    instance.refresh_from_db()
+    assert result["instance_id"] == instance.id
+    assert instance.name == "Core Switch Updated"
+    assert instance.cloud_region_id == 2
+    assert instance.ip == "10.0.0.13"
+    assert instance.fallback_sampling_rate == 3000
+    assert set(instance.enabled_protocols) == {"netflow", "sflow"}
+    assert set(
+        MonitorInstanceOrganization.objects.filter(monitor_instance_id=instance.id).values_list("organization", flat=True)
+    ) == {2}
+
+
+def test_create_or_bind_flow_asset_rejects_unknown_protocol(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+
+    with pytest.raises(BaseAppException, match="Unsupported flow protocol"):
+        FlowOnboardingService.create_or_bind_asset(
+            monitor_object_id=switch_object.id,
+            protocol="ipfix",
+            cloud_region_id=1,
+            ip="10.0.0.12",
+            name="Core Switch",
+            organizations=[1],
+        )
 
 
 def test_flow_plugin_seed_files_define_expected_templates():

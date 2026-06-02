@@ -9,6 +9,14 @@ from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 class ManualCollectService:
     @staticmethod
+    def _build_manual_collect_instance_data(data: dict):
+        payload = dict(data)
+        organizations = payload.pop("organizations", [])
+        payload["auto"] = False
+        payload["id"] = str(tuple([payload["id"]]))
+        return payload, organizations
+
+    @staticmethod
     def check_collect_status(object_id, instance_id) -> bool:
         """
         检查手动采集是否已经上报数据
@@ -55,11 +63,8 @@ class ManualCollectService:
         """
         创建手动采集实例
         """
-        organizations = data.pop("organizations", [])
-        data["auto"] = False
+        data, organizations = ManualCollectService._build_manual_collect_instance_data(data)
         MonitorObjectService.validate_new_instance_name_unique(data.get("monitor_object_id"), data.get("name"))
-        instance_id = str(tuple([data["id"]]))
-        data.update(id=instance_id)
         # 建实例
         instance_obj = MonitorInstance.objects.create(**data)
         # 关联组织
@@ -71,6 +76,16 @@ class ManualCollectService:
             organizations,
         )
         return {"instance_id": instance_obj.id}
+
+    @staticmethod
+    def update_manual_collect_instance(instance_id: str, name=None, organizations=None, **extra_fields):
+        MonitorObjectService.update_instance(
+            instance_id=instance_id,
+            name=name,
+            organizations=organizations,
+            **extra_fields,
+        )
+        return {"instance_id": instance_id}
 
     @staticmethod
     def generate_install_command(instance_id: str, cloud_region_id: str) -> str:

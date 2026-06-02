@@ -260,7 +260,7 @@ class MonitorObjectService:
                 )
 
     @staticmethod
-    def update_instance(instance_id, name, organizations):
+    def update_instance(instance_id, name=None, organizations=None, **extra_fields):
         """更新监控对象实例"""
         instance = MonitorInstance.objects.filter(id=instance_id).first()
         if not instance:
@@ -268,12 +268,16 @@ class MonitorObjectService:
         if name:
             MonitorObjectService.validate_update_instance_name_unique(instance, name)
             instance.name = name
-            instance.save()
+        for field in ("cloud_region_id", "ip", "fallback_sampling_rate", "enabled_protocols", "auto"):
+            if field in extra_fields and extra_fields[field] is not None:
+                setattr(instance, field, extra_fields[field])
+        instance.save()
 
         # 更新组织信息
-        instance.monitorinstanceorganization_set.all().delete()
-        for org in organizations:
-            instance.monitorinstanceorganization_set.create(organization=org)
+        if organizations is not None:
+            instance.monitorinstanceorganization_set.all().delete()
+            for org in organizations:
+                instance.monitorinstanceorganization_set.create(organization=org)
 
     @staticmethod
     def remove_instances_organizations(instance_ids, organizations):

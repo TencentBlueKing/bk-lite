@@ -1,6 +1,7 @@
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from apps.core.utils.web_utils import WebUtils
+from apps.monitor.services.flow_onboarding import FlowOnboardingService
 from apps.monitor.services.manual_collect import ManualCollectService
 from apps.monitor.views.monitor_instance import (
     _build_actor_context,
@@ -23,6 +24,21 @@ class ManualCollect(viewsets.ViewSet):
         actor_context = _build_actor_context(request)
         _ensure_target_organizations(request.data.get("organizations", []), actor_context)
         data = ManualCollectService.create_manual_collect_instance(request.data)
+        return WebUtils.response_success(data)
+
+    @action(methods=['post'], detail=False, url_path='flow_asset')
+    def flow_asset(self, request):
+        actor_context = _build_actor_context(request)
+        _ensure_target_organizations(request.data.get("organizations", []), actor_context)
+        data = FlowOnboardingService.create_or_bind_asset(**request.data)
+        return WebUtils.response_success(data)
+
+    @action(methods=['post'], detail=False, url_path='flow_asset/update')
+    def update_flow_asset(self, request):
+        actor_context = _build_actor_context(request)
+        _ensure_operate_instances(request, [request.data["instance_id"]], actor_context)
+        _ensure_target_organizations(request.data.get("organizations", []), actor_context)
+        data = FlowOnboardingService.update_asset(**request.data)
         return WebUtils.response_success(data)
 
     # 生成安装命令
