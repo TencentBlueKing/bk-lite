@@ -67,39 +67,30 @@ export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   ],
   summaryCards: [
     {
+      title: '连通成功率',
+      metric: 'ping_success_rate_avg',
+      color: '#27c274',
+      icon: 'api',
+      compare: true,
+      guide: [],
+      footer: [{ label: '平均丢包率', metric: 'ping_packet_loss_avg', unit: 'percent' }]
+    },
+    {
       title: '平均延迟',
       metric: 'ping_latency_avg',
       color: '#2f6bff',
       icon: 'clock',
       compare: true,
-      guide: [{ label: '平均延迟', detail: '统计 Ping 探测节点的平均网络延迟。' }],
+      guide: [],
       footer: [{ label: '最大延迟', metric: 'ping_latency_max', unit: 'ms' }]
     },
     {
-      title: '最大延迟',
-      metric: 'ping_latency_max',
-      color: '#ff8a1f',
+      title: '最差结果码',
+      metric: 'ping_result_code_max',
+      color: '#9aa9bf',
       icon: 'thunder',
-      compare: true,
-      guide: [{ label: '最大延迟', detail: '观察当前最慢探测节点的网络延迟。' }],
-      footer: [{ label: '最小延迟', metric: 'ping_latency_min', unit: 'ms' }]
-    },
-    {
-      title: '平均丢包率',
-      metric: 'ping_packet_loss_avg',
-      color: '#ff4d4f',
-      icon: 'thunder',
-      compare: true,
-      guide: [{ label: '丢包率', detail: '统计 Ping 探测节点的平均丢包率。' }],
-      footer: [{ label: '连通成功率', metric: 'ping_success_rate_avg', unit: 'percent' }]
-    },
-    {
-      title: '平均 TTL',
-      metric: 'ping_ttl_avg',
-      color: '#597ef7',
-      icon: 'api',
-      guide: [{ label: 'TTL', detail: '统计 Ping 探测节点的平均 TTL。' }],
-      footer: [{ label: '最差结果码', metric: 'ping_result_code_max', unit: 'none' }]
+      guide: [],
+      footer: [{ label: '平均 TTL', metric: 'ping_ttl_avg', unit: 'counts' }]
     }
   ],
   charts: [
@@ -143,18 +134,7 @@ export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     }
   ],
-  barPanels: [
-    {
-      title: '延迟窗口对比',
-      subtitle: '平均、最小、最大',
-      guide: [{ label: '延迟对比', detail: '横向对比当前平均、最小和最大延迟。' }],
-      items: [
-        { label: '平均延迟', metric: 'ping_latency_avg', color: '#2f6bff', unit: 'ms' },
-        { label: '最小延迟', metric: 'ping_latency_min', color: '#13c2c2', unit: 'ms' },
-        { label: '最大延迟', metric: 'ping_latency_max', color: '#ff8a1f', unit: 'ms' }
-      ]
-    }
-  ],
+  barPanels: [],
   details: [
     {
       title: '网络探测详情',

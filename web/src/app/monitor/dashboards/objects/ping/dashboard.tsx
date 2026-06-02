@@ -7,34 +7,26 @@ import {
   DetailPanelCard,
   FlexiblePanelSection,
   KpiSection,
-  useFilteredBarPanels,
   useFilteredChartPanels,
   useFilteredDetailPanels,
   useFilteredRingPanels
 } from '../common/dashboard-components';
-import {
-  HorizontalBarPanel,
-  RingChartPanel,
-  TrendChartPanel
-} from '../../shared/widgets';
+import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { PING_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
 const CHART_TITLES = ['延迟趋势', '丢包率趋势', 'TTL 趋势'];
 const DETAIL_TITLES = ['网络探测详情'];
 const RING_TITLES = ['连通质量分布'];
-const BAR_TITLES = ['延迟窗口对比'];
 
 export default function PingDashboardPage() {
   const dashboard = useSimpleDashboardData(PING_DASHBOARD_CONFIG);
   const charts = useFilteredChartPanels(dashboard.chartPanels, CHART_TITLES);
   const detailPanels = useFilteredDetailPanels(dashboard.detailPanels, DETAIL_TITLES);
   const rings = useFilteredRingPanels(dashboard.ringPanels, RING_TITLES);
-  const bars = useFilteredBarPanels(dashboard.barPanels, BAR_TITLES);
 
   const [latencyChart, lossChart, ttlChart] = charts;
   const [qualityRing] = rings;
-  const [delayBar] = bars;
   const [detailPanel] = detailPanels;
 
   return (
@@ -45,20 +37,16 @@ export default function PingDashboardPage() {
         <>
           <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} styles={styles} />
           <FlexiblePanelSection styles={styles}>
-            {latencyChart ? (
-              <TrendChartPanel
-                key={latencyChart.chart.title}
-                title={latencyChart.chart.title}
-                subtitle={latencyChart.chart.subtitle}
-                guide={latencyChart.chart.guide}
-                legends={latencyChart.legends}
-                data={latencyChart.data}
-                metric={latencyChart.metric}
-                unit={latencyChart.unit}
-                loading={dashboard.loading}
-                seriesStyles={latencyChart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span4} ${styles.compactTrend}`}
+            {qualityRing ? (
+              <RingChartPanel
+                key={qualityRing.panel.title}
+                title={qualityRing.panel.title}
+                subtitle={qualityRing.panel.subtitle}
+                guide={qualityRing.panel.guide}
+                data={qualityRing.data}
+                centerValue={qualityRing.centerValue}
+                centerCaption={qualityRing.panel.centerCaption}
+                className={styles.span4}
                 styles={styles}
               />
             ) : null}
@@ -79,6 +67,24 @@ export default function PingDashboardPage() {
                 styles={styles}
               />
             ) : null}
+            {latencyChart ? (
+              <TrendChartPanel
+                key={latencyChart.chart.title}
+                title={latencyChart.chart.title}
+                subtitle={latencyChart.chart.subtitle}
+                guide={latencyChart.chart.guide}
+                legends={latencyChart.legends}
+                data={latencyChart.data}
+                metric={latencyChart.metric}
+                unit={latencyChart.unit}
+                loading={dashboard.loading}
+                seriesStyles={latencyChart.seriesStyles}
+                onXRangeChange={dashboard.onXRangeChange}
+                className={`${styles.span4} ${styles.compactTrend}`}
+                styles={styles}
+              />
+            ) : null}
+            {detailPanel ? <DetailPanelCard detailPanel={detailPanel} className={styles.span6} styles={styles} /> : null}
             {ttlChart ? (
               <TrendChartPanel
                 key={ttlChart.chart.title}
@@ -92,35 +98,10 @@ export default function PingDashboardPage() {
                 loading={dashboard.loading}
                 seriesStyles={ttlChart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span4} ${styles.compactTrend}`}
+                className={`${styles.span6} ${styles.compactTrend}`}
                 styles={styles}
               />
             ) : null}
-            {delayBar ? (
-              <HorizontalBarPanel
-                key={delayBar.panel.title}
-                title={delayBar.panel.title}
-                subtitle={delayBar.panel.subtitle}
-                guide={delayBar.panel.guide}
-                items={delayBar.items}
-                className={styles.span4}
-                styles={styles}
-              />
-            ) : null}
-            {qualityRing ? (
-              <RingChartPanel
-                key={qualityRing.panel.title}
-                title={qualityRing.panel.title}
-                subtitle={qualityRing.panel.subtitle}
-                guide={qualityRing.panel.guide}
-                data={qualityRing.data}
-                centerValue={qualityRing.centerValue}
-                centerCaption={qualityRing.panel.centerCaption}
-                className={styles.span4}
-                styles={styles}
-              />
-            ) : null}
-            {detailPanel ? <DetailPanelCard detailPanel={detailPanel} className={styles.span4} styles={styles} /> : null}
           </FlexiblePanelSection>
         </>
       }
