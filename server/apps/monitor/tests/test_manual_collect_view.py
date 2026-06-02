@@ -212,6 +212,80 @@ def test_flow_asset_checks_operate_permission_before_reusing_existing_instance(m
     }
 
 
+def test_flow_asset_coerces_monitor_object_id_before_service_calls(monkeypatch, db):
+    calls = {}
+    actor_context = {"current_team": 7}
+
+    class ViewSet:
+        pass
+
+    def action(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
+    def create_or_bind_asset(**kwargs):
+        calls["create_or_bind_asset"] = kwargs
+        return {"instance_id": kwargs.get("instance_id")}
+
+    def lock_monitor_object(*, monitor_object_id, require_supported=True):
+        calls["lock_monitor_object"] = {
+            "monitor_object_id": monitor_object_id,
+            "require_supported": require_supported,
+        }
+
+    def _build_actor_context(request):
+        return actor_context
+
+    _install_module(monkeypatch, "rest_framework.viewsets", ViewSet=ViewSet)
+    _install_module(monkeypatch, "rest_framework.decorators", action=action)
+    _install_module(
+        monkeypatch,
+        "apps.core.utils.web_utils",
+        WebUtils=types.SimpleNamespace(response_success=lambda data=None: data),
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.services.flow_onboarding",
+        FlowOnboardingService=types.SimpleNamespace(
+            create_or_bind_asset=create_or_bind_asset,
+            find_reusable_asset=lambda **kwargs: None,
+            lock_monitor_object=lock_monitor_object,
+        ),
+    )
+    _install_module(monkeypatch, "apps.monitor.services.manual_collect", ManualCollectService=object)
+    _install_module(
+        monkeypatch,
+        "apps.monitor.views.monitor_instance",
+        _build_actor_context=_build_actor_context,
+        _ensure_operate_instances=lambda request, instance_ids, received_actor_context=None: instance_ids,
+        _ensure_target_organizations=lambda organizations, received_actor_context: None,
+    )
+    _install_module(monkeypatch, "apps.rpc.node_mgmt", NodeMgmt=object)
+
+    module = _load_module(
+        "manual_collect_view_test_module_monitor_object_id_coercion",
+        Path(__file__).resolve().parents[1] / "views" / "manual_collect.py",
+    )
+
+    request = types.SimpleNamespace(
+        data={
+            "monitor_object_id": "1",
+            "protocol": "netflow",
+            "cloud_region_id": 1,
+            "ip": "10.0.0.12",
+            "name": "Core Switch",
+            "organizations": [7],
+        }
+    )
+
+    module.ManualCollect().flow_asset(request)
+
+    assert calls["lock_monitor_object"] == {"monitor_object_id": 1, "require_supported": True}
+    assert calls["create_or_bind_asset"]["monitor_object_id"] == 1
+
+
 def test_flow_asset_api_restores_soft_deleted_reused_instance(api_client, monkeypatch, db):
     from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject
     from apps.monitor.services.manual_collect import ManualCollectService
@@ -472,6 +546,32 @@ def test_flow_asset_endpoints_reject_invalid_cloud_region_id_values(api_client, 
 
     assert response.status_code == 400, response.content
     assert response.json()["message"] == "Field cloud_region_id must be an integer"
+
+
+def test_flow_asset_api_rejects_invalid_monitor_object_id_values(api_client, monkeypatch):
+    from apps.monitor.services.flow_onboarding import FlowOnboardingService
+
+    monkeypatch.setattr(
+        FlowOnboardingService,
+        "lock_monitor_object",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("lock_monitor_object should not be called for invalid payloads")),
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.post(
+        "/api/v1/monitor/api/manual_collect/flow_asset/",
+        data={
+            "monitor_object_id": "abc",
+            "protocol": "netflow",
+            "cloud_region_id": 1,
+            "ip": "10.0.0.12",
+            "name": "Core Switch",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400, response.content
+    assert response.json()["message"] == "Field monitor_object_id must be an integer"
 
 
 def test_flow_asset_api_rejects_unsupported_protocol(api_client, monkeypatch):

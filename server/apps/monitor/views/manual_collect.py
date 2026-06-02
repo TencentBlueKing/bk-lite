@@ -22,23 +22,27 @@ UPDATE_FLOW_ASSET_OPTIONAL_FIELDS = {"name", "organizations", "cloud_region_id",
 SUPPORTED_FLOW_PROTOCOLS = getattr(FlowOnboardingService, "SUPPORTED_PROTOCOLS", {"netflow", "sflow"})
 
 
+def _validate_integer_field(field, value):
+    if value is None:
+        raise ValidationAppException(f"Field {field} cannot be empty")
+    if isinstance(value, bool):
+        raise ValidationAppException(f"Field {field} must be an integer")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            raise ValidationAppException(f"Field {field} must be an integer")
+        try:
+            return int(value)
+        except ValueError as exc:
+            raise ValidationAppException(f"Field {field} must be an integer") from exc
+    raise ValidationAppException(f"Field {field} must be an integer")
+
+
 def _validate_flow_identity_field(field, value):
-    if field == "cloud_region_id":
-        if value is None:
-            raise ValidationAppException("Field cloud_region_id cannot be empty")
-        if isinstance(value, bool):
-            raise ValidationAppException("Field cloud_region_id must be an integer")
-        if isinstance(value, int):
-            return value
-        if isinstance(value, str):
-            value = value.strip()
-            if not value:
-                raise ValidationAppException("Field cloud_region_id must be an integer")
-            try:
-                return int(value)
-            except ValueError as exc:
-                raise ValidationAppException("Field cloud_region_id must be an integer") from exc
-        raise ValidationAppException("Field cloud_region_id must be an integer")
+    if field in {"monitor_object_id", "cloud_region_id"}:
+        return _validate_integer_field(field, value)
     if field == "ip":
         if not isinstance(value, str) or not value.strip():
             raise ValidationAppException("Field ip cannot be empty")
@@ -110,6 +114,7 @@ class ManualCollect(viewsets.ViewSet):
             required_fields=FLOW_ASSET_REQUIRED_FIELDS,
             optional_fields=FLOW_ASSET_OPTIONAL_FIELDS,
             field_validators={
+                "monitor_object_id": _validate_flow_identity_field,
                 "cloud_region_id": _validate_flow_identity_field,
                 "ip": _validate_flow_identity_field,
                 "protocol": _validate_protocol,
