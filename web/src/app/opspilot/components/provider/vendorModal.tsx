@@ -216,7 +216,7 @@ const VendorModal: React.FC<VendorModalProps> = ({
         return;
       }
 
-      message.error(t('provider.vendor.testFailed'));
+      message.error(result.message || t('provider.vendor.testFailed'));
     } catch (error: any) {
       if (error?.errorFields) {
         setSubmitError(t('provider.vendor.validationError'));
