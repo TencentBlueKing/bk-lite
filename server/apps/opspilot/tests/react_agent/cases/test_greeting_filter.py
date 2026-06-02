@@ -21,22 +21,22 @@ _falkordb_asyncio = types.ModuleType("falkordb.asyncio")
 _falkordb_asyncio.FalkorDB = type("FalkorDB", (), {})
 sys.modules.setdefault("falkordb.asyncio", _falkordb_asyncio)
 
-from typing import Annotated
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import Annotated  # noqa: E402
+from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
 
-import pytest
-from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.tools import tool
-from langgraph.graph import StateGraph, add_messages
+import pytest  # noqa: E402
+from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
+from langchain_core.tools import tool  # noqa: E402
+from langgraph.graph import StateGraph, add_messages  # noqa: E402
 
-from apps.opspilot.metis.llm.chain.entity import (
+from apps.opspilot.metis.llm.chain.entity import (  # noqa: E402
     BasicLLMRequest,
     ReflectionConfig,
     RetryConfig,
     TimeoutConfig,
     ToolsServer,
 )
-from apps.opspilot.metis.llm.chain.node import ToolsNodes
+from apps.opspilot.metis.llm.chain.node import ToolsNodes  # noqa: E402
 
 
 @tool
