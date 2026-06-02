@@ -38,6 +38,40 @@ export default function HostDashboardPage() {
         <>
           <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} styles={styles} />
           <FlexiblePanelSection styles={styles}>
+            {resourceChart ? (
+              <TrendChartPanel
+                key={resourceChart.chart.title}
+                title={resourceChart.chart.title}
+                subtitle={resourceChart.chart.subtitle}
+                guide={resourceChart.chart.guide}
+                legends={resourceChart.legends}
+                data={resourceChart.data}
+                metric={resourceChart.metric}
+                unit={resourceChart.unit}
+                loading={dashboard.loading}
+                seriesStyles={resourceChart.seriesStyles}
+                onXRangeChange={dashboard.onXRangeChange}
+                className={`${styles.span6} ${styles.compactTrend}`}
+                styles={styles}
+              />
+            ) : null}
+            {loadChart ? (
+              <TrendChartPanel
+                key={loadChart.chart.title}
+                title={loadChart.chart.title}
+                subtitle={loadChart.chart.subtitle}
+                guide={loadChart.chart.guide}
+                legends={loadChart.legends}
+                data={loadChart.data}
+                metric={loadChart.metric}
+                unit={loadChart.unit}
+                loading={dashboard.loading}
+                seriesStyles={loadChart.seriesStyles}
+                onXRangeChange={dashboard.onXRangeChange}
+                className={`${styles.span6} ${styles.compactTrend}`}
+                styles={styles}
+              />
+            ) : null}
             {cpuRing ? (
               <RingChartPanel
                 key={cpuRing.panel.title}
@@ -77,57 +111,8 @@ export default function HostDashboardPage() {
                 styles={styles}
               />
             ) : null}
-            {resourceChart ? (
-              <TrendChartPanel
-                key={resourceChart.chart.title}
-                title={resourceChart.chart.title}
-                subtitle={resourceChart.chart.subtitle}
-                guide={resourceChart.chart.guide}
-                legends={resourceChart.legends}
-                data={resourceChart.data}
-                metric={resourceChart.metric}
-                unit={resourceChart.unit}
-                loading={dashboard.loading}
-                seriesStyles={resourceChart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span4} ${styles.compactTrend}`}
-                styles={styles}
-              />
-            ) : null}
-            {loadChart ? (
-              <TrendChartPanel
-                key={loadChart.chart.title}
-                title={loadChart.chart.title}
-                subtitle={loadChart.chart.subtitle}
-                guide={loadChart.chart.guide}
-                legends={loadChart.legends}
-                data={loadChart.data}
-                metric={loadChart.metric}
-                unit={loadChart.unit}
-                loading={dashboard.loading}
-                seriesStyles={loadChart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span4} ${styles.compactTrend}`}
-                styles={styles}
-              />
-            ) : null}
-            {processChart ? (
-              <TrendChartPanel
-                key={processChart.chart.title}
-                title={processChart.chart.title}
-                subtitle={processChart.chart.subtitle}
-                guide={processChart.chart.guide}
-                legends={processChart.legends}
-                data={processChart.data}
-                metric={processChart.metric}
-                unit={processChart.unit}
-                loading={dashboard.loading}
-                seriesStyles={processChart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span4} ${styles.compactTrend}`}
-                styles={styles}
-              />
-            ) : null}
+          </FlexiblePanelSection>
+          <FlexiblePanelSection styles={styles}>
             {networkChart ? (
               <TrendChartPanel
                 key={networkChart.chart.title}
@@ -159,6 +144,23 @@ export default function HostDashboardPage() {
                 seriesStyles={diskChart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
                 className={`${styles.span6} ${styles.compactTrend}`}
+                styles={styles}
+              />
+            ) : null}
+            {processChart ? (
+              <TrendChartPanel
+                key={processChart.chart.title}
+                title={processChart.chart.title}
+                subtitle={processChart.chart.subtitle}
+                guide={processChart.chart.guide}
+                legends={processChart.legends}
+                data={processChart.data}
+                metric={processChart.metric}
+                unit={processChart.unit}
+                loading={dashboard.loading}
+                seriesStyles={processChart.seriesStyles}
+                onXRangeChange={dashboard.onXRangeChange}
+                className={`${styles.span12} ${styles.compactTrend}`}
                 styles={styles}
               />
             ) : null}

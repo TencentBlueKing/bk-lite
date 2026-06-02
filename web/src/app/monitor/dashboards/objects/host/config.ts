@@ -199,7 +199,6 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'cpu_usage_total',
       color: '#2f6bff',
       icon: 'thunder',
-      compare: true,
       guide: [{ label: 'CPU 使用率', detail: '反映主机整体 CPU 负载水平。' }],
       footer: [
         { label: '用户态', metric: 'cpu_usage_user_total', unit: 'percent' },
@@ -211,7 +210,6 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'mem_used_percent',
       color: '#27c274',
       icon: 'database',
-      compare: true,
       guide: [{ label: '内存使用率', detail: '反映主机当前内存压力。' }],
       footer: [{ label: '可用内存', metric: 'mem_available', unit: 'bytes' }]
     },
@@ -222,7 +220,10 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'thunder',
       compare: true,
       guide: [{ label: 'I/O Wait', detail: 'CPU 等待磁盘或网络 I/O 的占比。' }],
-      footer: [{ label: '15 分钟负载', metric: 'system_load15', unit: 'none' }]
+      footer: [
+        { label: '读吞吐', metric: 'diskio_read_bytes_rate', unit: 'byteps' },
+        { label: '写吞吐', metric: 'diskio_write_bytes_rate', unit: 'byteps' }
+      ]
     },
     {
       title: '1 分钟负载',
@@ -231,14 +232,6 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'node',
       guide: [{ label: '系统负载', detail: '主机最近 1 分钟平均负载。' }],
       footer: [{ label: '5 分钟负载', metric: 'system_load5', unit: 'none' }]
-    },
-    {
-      title: '阻塞进程',
-      metric: 'processes_blocked',
-      color: '#9aa9bf',
-      icon: 'api',
-      guide: [{ label: '阻塞进程', detail: '处于阻塞状态的进程数量。' }],
-      footer: [{ label: '僵尸进程', metric: 'processes_zombies', unit: 'counts' }]
     }
   ],
   charts: [
@@ -298,18 +291,6 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   ],
   ringPanels: [
     {
-      title: '内存占用分布',
-      subtitle: '已用与可用内存',
-      centerMetric: 'mem_used_percent',
-      centerCaption: '内存使用率',
-      centerUnit: 'percent',
-      guide: [{ label: '内存结构', detail: '对比当前已用内存与可用内存容量。' }],
-      segments: [
-        { label: '已用内存', metric: 'mem_used_bytes', color: '#27c274', unit: 'bytes' },
-        { label: '可用内存', metric: 'mem_available', color: '#e8f0fe', unit: 'bytes' }
-      ]
-    },
-    {
       title: 'CPU 时间分布',
       subtitle: '用户、内核与等待',
       centerMetric: 'cpu_usage_total',
@@ -321,6 +302,18 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { label: '内核态', metric: 'cpu_usage_system_total', color: '#597ef7', unit: 'percent' },
         { label: 'I/O Wait', metric: 'cpu_usage_iowait_total', color: '#ff8a1f', unit: 'percent' },
         { label: '其他', metric: 'cpu_usage_other_total', color: '#e8f0fe', unit: 'percent' }
+      ]
+    },
+    {
+      title: '内存占用分布',
+      subtitle: '已用与可用内存',
+      centerMetric: 'mem_used_percent',
+      centerCaption: '内存使用率',
+      centerUnit: 'percent',
+      guide: [{ label: '内存结构', detail: '对比当前已用内存与可用内存容量。' }],
+      segments: [
+        { label: '已用内存', metric: 'mem_used_bytes', color: '#27c274', unit: 'bytes' },
+        { label: '可用内存', metric: 'mem_available', color: '#e8f0fe', unit: 'bytes' }
       ]
     },
     {
@@ -339,26 +332,5 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     }
   ],
   barPanels: [],
-  details: [
-    {
-      title: '内存概览',
-      subtitle: '容量与缓存',
-      rows: [
-        { label: '总内存', metric: 'mem_total', unit: 'bytes' },
-        { label: '可用内存', metric: 'mem_available', unit: 'bytes' },
-        { label: '缓存内存', metric: 'mem_cached', unit: 'bytes' },
-        { label: '缓冲内存', metric: 'mem_buffered', unit: 'bytes' }
-      ]
-    },
-    {
-      title: '系统概览',
-      subtitle: '负载与 I/O',
-      rows: [
-        { label: '1 分钟负载', metric: 'system_load1', unit: 'none' },
-        { label: '5 分钟负载', metric: 'system_load5', unit: 'none' },
-        { label: '15 分钟负载', metric: 'system_load15', unit: 'none' },
-        { label: 'I/O Wait', metric: 'cpu_usage_iowait_total', unit: 'percent' }
-      ]
-    }
-  ]
+  details: []
 };
