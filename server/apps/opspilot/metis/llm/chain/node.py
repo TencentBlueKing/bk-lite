@@ -162,6 +162,86 @@ def build_post_tool_directives(result_messages: List[BaseMessage]) -> List[Syste
     return directives
 
 
+def build_config_analysis_report_markdown(parsed: Dict[str, Any]) -> str:
+    cluster_name = parsed.get("cluster_name") or "Kubernetes"
+    problematic = parsed.get("problematic", 0)
+    healthy = parsed.get("healthy")
+    total = parsed.get("total")
+    issues_detail = parsed.get("issues_detail") or []
+
+    lines = [f"# 配置检查报告 - {cluster_name}"]
+    summary_parts = []
+    if total is not None:
+        summary_parts.append(f"总计 {total} 个工作负载")
+    if problematic is not None:
+        summary_parts.append(f"存在问题 {problematic} 个")
+    if healthy is not None:
+        summary_parts.append(f"健康 {healthy} 个")
+    if summary_parts:
+        lines.append("；".join(summary_parts))
+
+    severity_titles = {
+        "critical": "Critical",
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low",
+        "warning": "Warning",
+        "info": "Info",
+    }
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for item in issues_detail:
+        grouped.setdefault(item.get("severity", "info"), []).append(item)
+
+    severity_order = ["critical", "high", "medium", "low", "warning", "info"]
+    for severity in severity_order:
+        items = grouped.get(severity)
+        if not items:
+            continue
+        lines.append(f"## {severity_titles.get(severity, severity.title())}")
+        for item in items:
+            issue = item.get("issue", "未知问题")
+            count = item.get("count", 0)
+            workloads = item.get("workloads") or []
+            workload_preview = "、".join(workloads[:5])
+            if len(workloads) > 5:
+                workload_preview += f" 等 {len(workloads)} 个工作负载"
+            elif workload_preview:
+                workload_preview = f"：{workload_preview}"
+            lines.append(f"- {issue}（{count} 个工作负载{workload_preview}）")
+
+    return "\n\n".join(lines)
+
+
+def find_pending_k8s_analysis_choice(messages: List[BaseMessage]) -> Optional[Dict[str, Any]]:
+    latest_index = -1
+    latest_payload: Optional[Dict[str, Any]] = None
+
+    for index, message in enumerate(messages):
+        if getattr(message, "type", "") != "tool" or getattr(message, "name", "") != "analyze_deployment_configurations":
+            continue
+        content = getattr(message, "content", "")
+        try:
+            parsed = json.loads(content) if isinstance(content, str) else content
+        except Exception:
+            continue
+        if isinstance(parsed, dict) and parsed.get("issues_detail"):
+            latest_index = index
+            latest_payload = parsed
+
+    if latest_index < 0 or latest_payload is None:
+        return None
+
+    for message in messages[latest_index + 1 :]:
+        if getattr(message, "type", "") == "tool" and getattr(message, "name", "") in {"request_user_choice", "generate_repair_report"}:
+            return None
+        if getattr(message, "type", "") == "ai":
+            tool_calls = getattr(message, "tool_calls", []) or []
+            if any(tool_call.get("name") == "request_user_choice" for tool_call in tool_calls):
+                return None
+
+    return latest_payload
+
+
 # --- Patch 1: Response deserialization (preserve reasoning_content) ----------
 
 # Different providers use different field names for thinking/reasoning content:
@@ -2335,6 +2415,33 @@ class ToolsNodes(BasicNode):
                     logger.info(f"[{trace_id}] agent_node: 最近 AIMessage 调用了 request_user_choice，"
                                 f"注入续行提示 (step={step_counter['count']}), choices={_choice_summary!r}")
 
+            _pending_k8s_analysis_choice = find_pending_k8s_analysis_choice(messages)
+            if choice_tool_instance and _pending_k8s_analysis_choice:
+                logger.info(f"[{trace_id}] agent_node: K8s 配置检查已完成，直接合成 request_user_choice，跳过中间 LLM 总结")
+                return {
+                    "messages": [
+                        AIMessage(
+                            content="",
+                            tool_calls=[
+                                {
+                                    "name": "request_user_choice",
+                                    "args": {
+                                        "question": "请选择修复展示方式",
+                                        "question_type": "single_select",
+                                        "options": [
+                                            "按问题类别聚合",
+                                            "按工作负载聚合",
+                                            "全部一次性展示",
+                                        ],
+                                    },
+                                    "id": f"repair-mode-{uuid.uuid4().hex[:8]}",
+                                    "type": "tool_call",
+                                }
+                            ],
+                        )
+                    ]
+                }
+
 
             # 获取 LLM 并绑定工具
             llm = get_llm_client(graph_request)
@@ -2568,6 +2675,35 @@ class ToolsNodes(BasicNode):
                                     should_force_choice = True
 
                     if should_force_choice:
+                        _repair_mode_keywords = ("修复展示方式", "请选择修复展示方式", "请选择修复展示方式")
+                        _is_k8s_repair_mode_prompt = _has_analysis_context and any(
+                            kw in response_content for kw in _repair_mode_keywords
+                        )
+                        if _is_k8s_repair_mode_prompt:
+                            from langchain_core.messages import AIMessage as _CombinedAI
+
+                            logger.info(f"[{trace_id}] agent_node: 检测到 K8s 修复方式纯文本提问，直接合成 request_user_choice")
+                            synthetic_choice_response = _CombinedAI(
+                                content="",
+                                tool_calls=[
+                                    {
+                                        "name": "request_user_choice",
+                                        "args": {
+                                            "question": "请选择修复展示方式",
+                                            "question_type": "single_select",
+                                            "options": [
+                                                "按问题类别聚合",
+                                                "按工作负载聚合",
+                                                "全部一次性展示",
+                                            ],
+                                        },
+                                        "id": f"repair-mode-{uuid.uuid4().hex[:8]}",
+                                        "type": "tool_call",
+                                    }
+                                ],
+                            )
+                            return {"messages": [synthetic_choice_response]}
+
                         logger.warning(
                             f"[{trace_id}] agent_node: 检测到纯文本提问/选项列表，强制重试使用 request_user_choice"
                         )
@@ -2829,6 +2965,14 @@ class ToolsNodes(BasicNode):
                             # 剥离完整数据，只保留精简摘要进入 LLM context
                             _parsed.pop("_deployments_full", None)
                             _rm.content = _json_cache.dumps(_parsed, ensure_ascii=False)
+                            if _parsed.get("issues_detail"):
+                                dispatch_custom_event(
+                                    "config_analysis_report",
+                                    {
+                                        "report_id": str(uuid.uuid4())[:8],
+                                        "markdown": build_config_analysis_report_markdown(_parsed),
+                                    },
+                                )
                     except Exception:
                         pass
 

@@ -67,6 +67,11 @@ export interface ConfigDiffReportValue {
   }>;
 }
 
+export interface ConfigAnalysisReportValue {
+  report_id: string;
+  markdown: string;
+}
+
 export interface ReportFileDownloadValue {
   download_id: string;
   filename: string;
@@ -146,7 +151,7 @@ export interface AGUIMessage {
   message?: string;
   code?: string;
   name?: string;
-  value?: BrowserStepProgressValue | BrowserTaskReceivedValue | ApprovalRequestValue | UserChoiceRequestValue | AgentStepProgressValue | SubAgentProgressValue | Record<string, unknown>;
+  value?: BrowserStepProgressValue | BrowserTaskReceivedValue | ApprovalRequestValue | UserChoiceRequestValue | AgentStepProgressValue | SubAgentProgressValue | ConfigAnalysisReportValue | Record<string, unknown>;
 }
 
 export interface ReferenceModalState {

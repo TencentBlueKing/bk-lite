@@ -814,6 +814,7 @@ class BasicGraph(ABC):
         current_tool_calls: Dict[str, Dict] = {}
         message_started = False
         thinking_started = False
+        suppress_text_after_tool_call = False
         show_think = bool((request.extra_config or {}).get("show_think", True))
         # 只输出 key 列表，避免日志中包含 emoji 导致 Windows GBK 编码错误，同时避免泄露敏感信息（如 SSH 密码）
         logger.info(f"[BasicGraph] stream_events - extra_config_keys={list((request.extra_config or {}).keys())}, show_think={show_think}")
@@ -879,20 +880,25 @@ class BasicGraph(ABC):
 
                 if event_type == "on_chat_model_stream":
                     chunk = event_data.get("chunk")
-                    # 处理文本内容
-                    content_events, current_message_id, message_started, thinking_started = self._handle_chat_model_stream_content(
-                        chunk,
-                        encoder,
-                        run_id,
-                        current_message_id,
-                        message_started,
-                        show_think,
-                        thinking_started,
-                    )
-                    for ev in content_events:
-                        yield ev
+                    if not suppress_text_after_tool_call:
+                        content_events, current_message_id, message_started, thinking_started = (
+                            self._handle_chat_model_stream_content(
+                                chunk,
+                                encoder,
+                                run_id,
+                                current_message_id,
+                                message_started,
+                                show_think,
+                                thinking_started,
+                            )
+                        )
+                        for ev in content_events:
+                            yield ev
                     # 处理工具调用 chunks
-                    for ev in self._handle_tool_call_chunks(chunk, encoder, current_message_id, current_tool_calls):
+                    tool_chunk_events = self._handle_tool_call_chunks(chunk, encoder, current_message_id, current_tool_calls)
+                    if tool_chunk_events:
+                        suppress_text_after_tool_call = True
+                    for ev in tool_chunk_events:
                         yield ev
 
                 elif event_type == "on_tool_start":
@@ -912,6 +918,7 @@ class BasicGraph(ABC):
                 elif event_type == "on_chat_model_end":
                     for ev in self._handle_chat_model_end_event(event_data, encoder, current_message_id, current_tool_calls):
                         yield ev
+                    suppress_text_after_tool_call = False
 
                 elif event_type == "on_custom_event":
                     # 转发自定义事件（如 agent_step_progress）
