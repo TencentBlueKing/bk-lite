@@ -64,12 +64,30 @@ export const RoleMode: Story = {
   },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
+    const getTreeNode = (label: string) => canvas.getByText(label).closest('.ant-tree-treenode');
 
-    await expect(canvas.getByText('system.role.inheritedRole')).toBeInTheDocument();
-    await expect(canvas.getByText('system.role.organizationRole')).toBeInTheDocument();
-    await expect(canvas.getByText('system.role.personalRole')).toBeInTheDocument();
+    const inheritedRow = getTreeNode('View Dashboard');
+    const organizationRow = getTreeNode('View Topology');
+    const personalRow = getTreeNode('Edit Dashboard');
 
-    const deleteButton = canvasElement.querySelector('.anticon-delete');
+    await expect(inheritedRow).toBeTruthy();
+    await expect(within(inheritedRow as HTMLElement).getByText('system.role.inheritedRole')).toBeInTheDocument();
+    await expect(within(inheritedRow as HTMLElement).queryByText('system.role.organizationRole')).toBeNull();
+    await expect(within(inheritedRow as HTMLElement).queryByText('system.role.personalRole')).toBeNull();
+    await expect(inheritedRow?.querySelector('.anticon-delete')).toBeNull();
+
+    await expect(organizationRow).toBeTruthy();
+    await expect(within(organizationRow as HTMLElement).getByText('system.role.organizationRole')).toBeInTheDocument();
+    await expect(within(organizationRow as HTMLElement).queryByText('system.role.inheritedRole')).toBeNull();
+    await expect(within(organizationRow as HTMLElement).queryByText('system.role.personalRole')).toBeNull();
+    await expect(organizationRow?.querySelector('.anticon-delete')).toBeNull();
+
+    await expect(personalRow).toBeTruthy();
+    await expect(within(personalRow as HTMLElement).getByText('system.role.personalRole')).toBeInTheDocument();
+    await expect(within(personalRow as HTMLElement).queryByText('system.role.inheritedRole')).toBeNull();
+    await expect(within(personalRow as HTMLElement).queryByText('system.role.organizationRole')).toBeNull();
+
+    const deleteButton = personalRow?.querySelector('.anticon-delete');
     await expect(deleteButton).not.toBeNull();
 
     await userEvent.click(deleteButton as HTMLElement);
