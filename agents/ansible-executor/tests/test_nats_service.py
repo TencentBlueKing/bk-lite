@@ -2,7 +2,6 @@ import asyncio
 import json
 
 import pytest
-
 from core.config import ServiceConfig
 from service.nats_service import AnsibleNATSService, QueuedTask
 
@@ -13,6 +12,23 @@ class DummyMessage:
 
     async def in_progress(self):
         self.in_progress_calls += 1
+
+
+class DummyEnqueueMessage:
+    def __init__(self, payload):
+        self.data = json.dumps({"args": [payload], "kwargs": {}}).encode("utf-8")
+        self.responses = []
+
+    async def respond(self, payload):
+        self.responses.append(json.loads(payload.decode("utf-8")))
+
+
+class DummyJetStream:
+    def __init__(self):
+        self.published = []
+
+    async def publish(self, subject, payload):
+        self.published.append((subject, json.loads(payload.decode("utf-8"))))
 
 
 class DummyNATSResponse:
@@ -29,6 +45,11 @@ class DummyNATSClient:
 
     async def request(self, subject, request_payload, timeout):
         return DummyNATSResponse(self.payload)
+
+
+class DummyMetadata:
+    def __init__(self, num_delivered):
+        self.num_delivered = num_delivered
 
 
 @pytest.mark.asyncio
@@ -184,3 +205,112 @@ async def test_invoke_callback_rejects_non_object_response(tmp_path):
 
     with pytest.raises(ValueError, match="non-object"):
         await service._invoke_callback({"subject": "job.ansible_task_callback"}, {"task_id": "task-6"})
+
+
+@pytest.mark.asyncio
+async def test_enqueue_task_publishes_sanitized_queue_payload(tmp_path):
+    service = AnsibleNATSService(
+        ServiceConfig(
+            nats_servers=["nats://127.0.0.1:4222"],
+            nats_instance_id="default",
+            js_stream="BK_ANS_EXEC_TASKS",
+            js_subject_prefix="bk.ans_exec.tasks",
+            js_durable="ansible-executor",
+            state_db_path=str(tmp_path / "task.db"),
+        )
+    )
+    service.js = DummyJetStream()
+    message = DummyEnqueueMessage(
+        {
+            "task_id": "task-queue-safe",
+            "inventory_content": "[all]\n10.0.0.1 ansible_user=root ansible_password=secret\n",
+            "host_credentials": [{"host": "10.0.0.1", "user": "root", "password": "secret"}],
+            "private_key_content": "-----BEGIN RSA PRIVATE KEY-----\nMIIE...",
+        }
+    )
+
+    await service._enqueue_task(message, "adhoc", "default")
+
+    subject, published = service.js.published[0]
+    assert subject == "bk.ans_exec.tasks.adhoc.default"
+    assert published["payload"]["host_credentials"][0]["_redacted"] is True
+    assert "password" not in published["payload"]["host_credentials"][0]
+    assert "private_key_content" not in published["payload"]
+    assert "inventory_content" not in published["payload"]
+
+    execution_payload = service.task_store.get_execution_payload("task-queue-safe")
+    assert execution_payload["private_key_content"].startswith("-----BEGIN RSA PRIVATE KEY-----")
+    assert execution_payload["host_credentials"][0]["password"] == "secret"
+
+
+def test_build_task_dlq_payload_uses_sanitized_snapshot():
+    task = QueuedTask(
+        task_id="task-dlq",
+        task_type="adhoc",
+        payload={
+            "task_id": "task-dlq",
+            "inventory_content": "[all]\n10.0.0.1 ansible_user=root ansible_password=secret\n",
+            "host_credentials": [{"host": "10.0.0.1", "user": "root", "password": "secret"}],
+        },
+        callback={},
+        instance_id="default",
+    )
+
+    dlq_payload = AnsibleNATSService._build_task_dlq_payload(
+        task,
+        "bk.ans_exec.tasks.adhoc.default",
+        "boom",
+        5,
+        "2026-06-02T00:00:00+00:00",
+    )
+
+    assert dlq_payload["task_id"] == "task-dlq"
+    assert "inventory_content" not in dlq_payload["payload"]
+    assert "password" not in dlq_payload["payload"]["host_credentials"][0]
+    assert dlq_payload["payload"]["host_credentials"][0]["_redacted"] is True
+
+
+def test_build_callback_retry_dlq_payload_keeps_structured_summary_only():
+    dlq_payload = AnsibleNATSService._build_callback_retry_dlq_payload(
+        {
+            "task_id": "task-callback",
+            "reason": "request-failed",
+            "callback": {"subject": "job.ansible_task_callback"},
+            "payload": {"task_id": "task-callback", "success": False, "output_truncated": True},
+        },
+        "callback failed",
+        5,
+        "2026-06-02T00:00:00+00:00",
+    )
+
+    assert dlq_payload["type"] == "callback_retry"
+    assert dlq_payload["payload"]["output_truncated"] is True
+    assert "task" not in dlq_payload
+
+
+def test_build_task_result_marks_truncated_output(monkeypatch):
+    monkeypatch.setattr("service.nats_service.parse_ansible_output_per_host", lambda output: [{"host": "should-not-be-used"}])
+    monkeypatch.setattr("service.nats_service.parse_playbook_recap", lambda output: [{"host": "should-not-be-used"}])
+
+    task = QueuedTask(task_id="task-output", task_type="adhoc", payload={"task_id": "task-output"}, callback={}, instance_id="default")
+    result = AnsibleNATSService._build_task_result(
+        task,
+        "owner-a",
+        "2026-06-02T00:00:00+00:00",
+        0,
+        "x" * 32,
+        {
+            "truncated": True,
+            "output_bytes_total": 1024,
+            "output_bytes_retained": 32,
+            "output_max_bytes": 32,
+        },
+        "",
+    )
+
+    assert result["success"] is True
+    assert result["output_truncated"] is True
+    assert result["result"] == "x" * 32
+    assert result["result_summary"]["output_bytes_total"] == 1024
+    assert result["result_summary"]["output_bytes_retained"] == 32
+    assert result["result_summary"]["output_max_bytes"] == 32
