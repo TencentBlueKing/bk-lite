@@ -9,6 +9,7 @@ from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.monitor.models.monitor_object import MonitorInstance, MonitorObject
 from apps.monitor.services.flow_access_guide import FlowAccessGuideService
 from apps.monitor.services.flow_onboarding import FlowOnboardingService
+from apps.monitor.services.template_access_guide import TemplateAccessGuideService
 
 
 def _install_module(monkeypatch, name, **attrs):
@@ -355,3 +356,75 @@ def test_flow_detect_status_rejects_invalid_time_window(monkeypatch, db):
 
     with pytest.raises(ValidationAppException, match="Field time_window must be a valid time window"):
         module.ManualCollect().flow_detect_status(request)
+
+
+def test_template_access_guide_keeps_non_flow_timestamp_example_stable(monkeypatch):
+    monitor_object = types.SimpleNamespace(
+        id=101,
+        name="Host",
+        display_name="Host",
+        instance_id_keys=["bk_target_ip"],
+    )
+    plugin = types.SimpleNamespace(
+        template_id="custom_api_demo",
+        display_name="Custom API Demo",
+        name="custom_api_demo",
+        description="custom api plugin",
+        pk=208,
+        monitor_object=types.SimpleNamespace(values_list=lambda *args, **kwargs: [monitor_object.id]),
+    )
+    metric_rows = [
+        {
+            "name": "cpu_usage",
+            "display_name": "CPU Usage",
+            "description": "demo metric",
+            "unit": "%",
+            "data_type": "gauge",
+            "dimensions": [],
+        }
+    ]
+
+    class StubMonitorObjectQuerySet:
+        def order_by(self, *args):
+            return self
+
+        def first(self):
+            return monitor_object
+
+    class StubMetricQuerySet:
+        def order_by(self, *args):
+            return self
+
+        def values(self, *args):
+            return metric_rows
+
+    monkeypatch.setattr(
+        "apps.monitor.services.template_access_guide.MonitorObject",
+        types.SimpleNamespace(
+            _default_manager=types.SimpleNamespace(filter=lambda **kwargs: StubMonitorObjectQuerySet())
+        ),
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.template_access_guide.Metric",
+        types.SimpleNamespace(_default_manager=types.SimpleNamespace(filter=lambda **kwargs: StubMetricQuerySet())),
+    )
+    monkeypatch.setattr(
+        TemplateAccessGuideService,
+        "get_telegraf_listener_endpoint",
+        staticmethod(lambda cloud_region_id: f"https://region-{cloud_region_id}.example.com/telegraf/api"),
+    )
+
+    document = TemplateAccessGuideService.get_template_document(
+        plugin=plugin,
+        organization_id=7,
+        cloud_region_id=2,
+    )
+
+    assert TemplateAccessGuideService.DEFAULT_TIMESTAMP_MS_EXAMPLE == 1712052000000
+    assert document["line_protocol_example_without_timestamp"] == (
+        "cpu_usage,organization_id=7,instance_type=Host,plugin_id=custom_api_demo,bk_target_ip=demo_bk_target_ip value=1"
+    )
+    assert (
+        document["line_protocol_example_with_timestamp_ms"]
+        == f"{document['line_protocol_example_without_timestamp']} 1712052000000"
+    )

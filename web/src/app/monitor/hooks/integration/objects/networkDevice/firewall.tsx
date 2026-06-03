@@ -62,7 +62,9 @@ export const useFirewallConfig = () => {
       default: ['instance_id']
     },
     collectTypes: {
-      'Firewall SNMP General': 'snmp'
+      'Firewall SNMP General': 'snmp',
+      'Firewall Flow NetFlow': 'netflow',
+      'Firewall Flow sFlow': 'sflow'
     }
   };
 };
