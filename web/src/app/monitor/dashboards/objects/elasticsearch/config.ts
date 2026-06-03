@@ -182,6 +182,7 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#2f6bff',
       icon: 'database',
       compare: true,
+      compareFavorableDirection: 'up',
       guide: [{ label: '分配率', detail: '活跃主分片占主分片总数的比例，低于 100% 时说明仍有分片未恢复。' }],
       footer: [{ label: '未分配分片', metric: 'elasticsearch_cluster_health_unassigned_shards', unit: 'counts' }]
     },
@@ -250,32 +251,7 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     }
   ],
-  ringPanels: [
-    {
-      title: 'JVM 堆内存分布',
-      subtitle: '已用与剩余',
-      centerMetric: 'elasticsearch_jvm_mem_heap_used_percent',
-      centerCaption: '堆使用率',
-      centerUnit: 'percent',
-      guide: [{ label: 'JVM 堆', detail: 'JVM 堆内存已用与剩余占比，持续高位会增加 GC 压力。' }],
-      segments: [
-        { label: '已用', metric: 'elasticsearch_jvm_mem_heap_used_percent', color: '#2f6bff', unit: 'percent' },
-        { label: '剩余', metric: 'elasticsearch_jvm_mem_heap_used_percent', color: '#e8f0fe', unit: 'percent', transform: 'percentRemaining' }
-      ]
-    },
-    {
-      title: '分片状态分布',
-      subtitle: '主分片与未分配',
-      centerMetric: 'elasticsearch_shard_assignment_ratio',
-      centerCaption: '分配率',
-      centerUnit: 'percent',
-      guide: [{ label: '分片状态', detail: '活跃主分片和未分配分片数量占比，未分配分片非零需立即排查。' }],
-      segments: [
-        { label: '已分配主分片', metric: 'elasticsearch_shard_assignment_ratio', color: '#2f6bff', unit: 'percent' },
-        { label: '未恢复分片', metric: 'elasticsearch_shard_assignment_ratio', color: '#ffccc7', unit: 'percent', transform: 'percentRemaining' }
-      ]
-    }
-  ],
+  ringPanels: [],
   barPanels: [
     {
       title: '线程池压力',

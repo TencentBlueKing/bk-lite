@@ -19,7 +19,7 @@ import { NGINX_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
 const SUMMARY_TITLES = ['活跃连接数', '请求速率', '繁忙连接占比', '连接处理完成率'];
-const CHART_TITLES = ['连接状态趋势', '请求连接速率'];
+const CHART_TITLES = ['连接状态趋势', '请求连接速率', '连接占比趋势'];
 const RING_TITLES = ['连接状态分布'];
 
 export default function NginxDashboardPage() {
@@ -28,7 +28,7 @@ export default function NginxDashboardPage() {
   const summaryCards = useFilteredSummaryCards(dashboard.summaryCards, SUMMARY_TITLES);
   const charts = useFilteredChartPanels(dashboard.chartPanels, CHART_TITLES);
   const rings = useFilteredRingPanels(dashboard.ringPanels, RING_TITLES);
-  const [connectionTrendChart, rateTrendChart] = charts;
+  const [connectionTrendChart, rateTrendChart, connectionRatioChart] = charts;
   const [connectionRing] = rings;
 
   return (
@@ -39,23 +39,6 @@ export default function NginxDashboardPage() {
         <>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
           <FlexiblePanelSection styles={styles}>
-            {connectionTrendChart ? (
-              <TrendChartPanel
-                key={connectionTrendChart.chart.title}
-                title={connectionTrendChart.chart.title}
-                subtitle={connectionTrendChart.chart.subtitle}
-                guide={connectionTrendChart.chart.guide}
-                legends={connectionTrendChart.legends}
-                data={connectionTrendChart.data}
-                metric={connectionTrendChart.metric}
-                unit={connectionTrendChart.unit}
-                loading={dashboard.loading}
-                seriesStyles={connectionTrendChart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={styles.span6}
-                styles={styles}
-              />
-            ) : null}
             {rateTrendChart ? (
               <TrendChartPanel
                 key={rateTrendChart.chart.title}
@@ -69,7 +52,7 @@ export default function NginxDashboardPage() {
                 loading={dashboard.loading}
                 seriesStyles={rateTrendChart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
-                className={styles.span6}
+                className={styles.span4}
                 styles={styles}
               />
             ) : null}
@@ -83,6 +66,40 @@ export default function NginxDashboardPage() {
                 centerValue={connectionRing.centerValue}
                 centerCaption={connectionRing.panel.centerCaption}
                 isEmpty={connectionRing.isEmpty}
+                className={styles.span4}
+                styles={styles}
+              />
+            ) : null}
+            {connectionRatioChart ? (
+              <TrendChartPanel
+                key={connectionRatioChart.chart.title}
+                title={connectionRatioChart.chart.title}
+                subtitle={connectionRatioChart.chart.subtitle}
+                guide={connectionRatioChart.chart.guide}
+                legends={connectionRatioChart.legends}
+                data={connectionRatioChart.data}
+                metric={connectionRatioChart.metric}
+                unit={connectionRatioChart.unit}
+                loading={dashboard.loading}
+                seriesStyles={connectionRatioChart.seriesStyles}
+                onXRangeChange={dashboard.onXRangeChange}
+                className={styles.span4}
+                styles={styles}
+              />
+            ) : null}
+            {connectionTrendChart ? (
+              <TrendChartPanel
+                key={connectionTrendChart.chart.title}
+                title={connectionTrendChart.chart.title}
+                subtitle={connectionTrendChart.chart.subtitle}
+                guide={connectionTrendChart.chart.guide}
+                legends={connectionTrendChart.legends}
+                data={connectionTrendChart.data}
+                metric={connectionTrendChart.metric}
+                unit={connectionTrendChart.unit}
+                loading={dashboard.loading}
+                seriesStyles={connectionTrendChart.seriesStyles}
+                onXRangeChange={dashboard.onXRangeChange}
                 className={styles.span12}
                 styles={styles}
               />

@@ -102,12 +102,12 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       footer: [{ label: '峰值响应', metric: 'website_response_time_max', unit: 's' }]
     },
     {
-      title: '5xx 节点数',
-      guide: [{ label: '5xx 节点数', detail: '用于快速识别服务端错误是否已扩散，并结合 4xx 节点判断问题归因。' }],
-      metric: 'website_status_code_5xx_count',
-      color: '#ff4d4f',
-      icon: 'thunder',
-      footer: [{ label: '4xx 节点', metric: 'website_status_code_4xx_count', unit: 'counts' }]
+      title: '平均内容长度',
+      guide: [{ label: '平均内容长度', detail: '观察返回体积是否异常放大，并辅助判断页面内容是否出现偏差。' }],
+      metric: 'website_content_length_avg',
+      color: '#597ef7',
+      icon: 'node',
+      footer: [{ label: '5xx 节点', metric: 'website_status_code_5xx_count', unit: 'counts' }]
     }
   ],
   charts: [

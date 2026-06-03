@@ -168,6 +168,7 @@ export interface PreparedRingPanel {
   panel: RingPanelConfig;
   data: Array<{ name: string; value: number; color: string; display: string }>;
   centerValue: string;
+  isEmpty: boolean;
 }
 
 export interface PreparedBarPanel {
@@ -615,7 +616,8 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
         ? panel.centerFormatter === 'duration'
           ? formatDuration(getLatest(panel.centerMetric))
           : formatTransformedValue(panel.centerMetric, panel.centerUnit)
-        : '--'
+        : '--',
+      isEmpty: !hasMetricData(panel.centerMetric) && panel.segments.every((item) => !hasMetricData(item.metric))
     }))
   ), [config.ringPanels, formatTransformedValue, getLatest, getTransformedValue, hasMetricData]);
 

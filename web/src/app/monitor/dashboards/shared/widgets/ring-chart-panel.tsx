@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { Empty } from 'antd';
 import { GuideItem } from '../types';
 import { TitleWithGuide, GuideTooltipStyles } from './guide-tooltip';
 import { useECharts } from './useECharts';
@@ -60,6 +61,8 @@ export interface RingChartPanelProps {
   ringCardClassName?: string;
   ringChartWrapClassName?: string;
   className?: string;
+  isEmpty?: boolean;
+  emptyDescription?: React.ReactNode;
   styles: RingChartPanelStyles;
 }
 
@@ -77,6 +80,8 @@ export const RingChartPanel = ({
   ringCardClassName,
   ringChartWrapClassName,
   className,
+  isEmpty = false,
+  emptyDescription = '暂无数据',
   styles
 }: RingChartPanelProps) => {
   const total = data.reduce((sum, item) => sum + item.value, 0);
@@ -125,41 +130,54 @@ export const RingChartPanel = ({
         </div>
       </div>
       <div className={ringCardClassName ? `${styles.ringCard} ${ringCardClassName}` : styles.ringCard}>
-        <div className={ringChartWrapClassName ? `${styles.ringChartWrap} ${ringChartWrapClassName}` : styles.ringChartWrap}>
-          <div
-            ref={containerRef}
-            className={styles.ringChartCanvas}
-            style={{ width: '100%', height: '100%' }}
-          />
-          <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
-            <div className={styles.ringValue}>{centerValue}</div>
-            <div className={styles.ringCaption}>{centerCaption}</div>
+        {isEmpty ? (
+          <div style={{ gridColumn: '1 / -1', minHeight: 176, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div
+              ref={containerRef}
+              className={styles.ringChartCanvas}
+              style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+            />
+            <Empty description={emptyDescription} image={Empty.PRESENTED_IMAGE_SIMPLE} />
           </div>
-          {chartExtra}
-        </div>
-        <div className={styles.ringInfoPanel}>
-          <div className={styles.metricList}>
-            {(infoRows || data.map((item) => ({
-              name: item.name,
-              color: item.color,
-              primary: `${total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0'}%`,
-              secondary: `(${item.display || (item.value >= 100 ? item.value.toFixed(0) : item.value.toFixed(1))})`
-            }))).map((item) => (
-              <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`} key={item.name}>
-                <span className={styles.metricKey}>
-                  <span className={styles.metricLabelGroup}>
-                    <span className={styles.metricDot} style={{ background: item.color }} />
-                    <span className={styles.metricName}>{item.name}</span>
-                  </span>
-                </span>
-                <span className={styles.metricValueGroup}>
-                  <span className={styles.metricPercent}>{item.primary}</span>
-                  {item.secondary ? <span className={styles.metricCount}>{item.secondary}</span> : null}
-                </span>
+        ) : (
+          <>
+            <div className={ringChartWrapClassName ? `${styles.ringChartWrap} ${ringChartWrapClassName}` : styles.ringChartWrap}>
+              <div
+                ref={containerRef}
+                className={styles.ringChartCanvas}
+                style={{ width: '100%', height: '100%' }}
+              />
+              <div className={`${styles.ringCenter} ${styles.ringCenterOverlay}`}>
+                <div className={styles.ringValue}>{centerValue}</div>
+                <div className={styles.ringCaption}>{centerCaption}</div>
               </div>
-            ))}
-          </div>
-        </div>
+              {chartExtra}
+            </div>
+            <div className={styles.ringInfoPanel}>
+              <div className={styles.metricList}>
+                {(infoRows || data.map((item) => ({
+                  name: item.name,
+                  color: item.color,
+                  primary: `${total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0'}%`,
+                  secondary: `(${item.display || (item.value >= 100 ? item.value.toFixed(0) : item.value.toFixed(1))})`
+                }))).map((item) => (
+                  <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`} key={item.name}>
+                    <span className={styles.metricKey}>
+                      <span className={styles.metricLabelGroup}>
+                        <span className={styles.metricDot} style={{ background: item.color }} />
+                        <span className={styles.metricName}>{item.name}</span>
+                      </span>
+                    </span>
+                    <span className={styles.metricValueGroup}>
+                      <span className={styles.metricPercent}>{item.primary}</span>
+                      {item.secondary ? <span className={styles.metricCount}>{item.secondary}</span> : null}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

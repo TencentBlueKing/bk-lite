@@ -18,9 +18,9 @@ import { ELASTICSEARCH_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
 const HEALTH_CARD_TITLE = '集群健康状态';
-const SUMMARY_TITLES = ['JVM 堆使用率', '主分片分配率', '未分配分片', 'HTTP 当前连接'];
-const PRIMARY_CHART_TITLES = ['资源使用率', '线程池队列', '熔断器触发'];
-const SECONDARY_CHART_TITLES = ['GC 耗时趋势', 'HTTP 新建连接'];
+const SUMMARY_TITLES = ['未分配分片', '主分片分配率', '节点可用磁盘', 'JVM 堆使用率'];
+const PRIMARY_CHART_TITLES = ['线程池队列', '熔断器触发', 'HTTP 新建连接'];
+const SECONDARY_CHART_TITLES = ['资源使用率', 'GC 耗时趋势'];
 const RING_TITLES = ['JVM 堆内存分布', '分片状态分布'];
 const BAR_TITLES = ['线程池压力', '熔断器热点'];
 
@@ -47,21 +47,22 @@ export default function ElasticsearchDashboardPage() {
             dashboard={dashboard}
             summaryCards={summaryCards}
             extraCards={healthCard ? <ClusterHealthCard prepared={healthCard} styles={styles} /> : undefined}
+            kpiCols={6}
             styles={styles}
           />
           <TrendSection charts={primaryCharts} onXRangeChange={dashboard.onXRangeChange} loading={dashboard.loading} styles={styles} />
+          <InsightSection
+            rings={rings}
+            bars={bars}
+            ringSpanClass={() => styles.span4}
+            barSpanClass={() => styles.span6}
+            styles={styles}
+          />
           <TrendSection
             charts={secondaryCharts}
             onXRangeChange={dashboard.onXRangeChange}
             loading={dashboard.loading}
             spanClass={(i) => (i === 0 ? styles.span8 : styles.span4)}
-            styles={styles}
-          />
-          <InsightSection
-            rings={rings}
-            bars={bars}
-            ringSpanClass={() => styles.span3}
-            barSpanClass={() => styles.span3}
             styles={styles}
           />
           <DetailSection detailPanels={dashboard.detailPanels} styles={styles} />

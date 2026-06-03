@@ -92,14 +92,14 @@ export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       footer: [{ label: '最大延迟', metric: 'ping_latency_max', unit: 'ms' }]
     },
     {
-      title: '最差探测结果',
-      metric: 'ping_result_code_max',
-      color: '#9aa9bf',
-      icon: 'thunder',
-      enumMap: PING_RESULT_CODE_ENUM_MAP,
+      title: '平均丢包率',
+      metric: 'ping_packet_loss_avg',
+      color: '#ff4d4f',
+      icon: 'api',
+      compare: true,
+      compareFavorableDirection: 'down',
       guide: [],
       footer: [{ label: '平均 TTL', metric: 'ping_ttl_avg', unit: 'counts' }],
-      hideTrend: true
     }
   ],
   charts: [

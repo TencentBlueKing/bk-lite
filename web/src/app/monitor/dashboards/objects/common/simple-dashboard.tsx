@@ -175,7 +175,7 @@ export default function SimpleDashboard({ config }: { config: SimpleDashboardCon
 
               {(ringPanels.length > 0 || barPanels.length > 0) ? (
                 <div className={styles.insightGrid}>
-                  {ringPanels.map(({ panel, data, centerValue }) => (
+                  {ringPanels.map(({ panel, data, centerValue, isEmpty }) => (
                     <RingChartPanel
                       key={panel.title}
                       title={panel.title}
@@ -184,6 +184,7 @@ export default function SimpleDashboard({ config }: { config: SimpleDashboardCon
                       data={data}
                       centerValue={centerValue}
                       centerCaption={panel.centerCaption}
+                      isEmpty={isEmpty}
                       className={styles.panel}
                       styles={styles}
                     />

@@ -147,6 +147,16 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { metric: 'nginx_requests_rate', label: '请求速率', color: '#2f6bff', unit: 'cps' },
         { metric: 'nginx_handled_rate', label: '处理速率', color: '#13c2c2', unit: 'cps' }
       ]
+    },
+    {
+      title: '连接占比趋势',
+      subtitle: '繁忙与等待占比',
+      metric: 'nginx_busy_connection_ratio',
+      guide: [{ label: '连接占比', detail: '对比繁忙连接与等待连接的占比变化，识别负载结构是否出现偏移。' }],
+      series: [
+        { metric: 'nginx_busy_connection_ratio', label: '繁忙占比', color: '#ff8a1f', unit: 'percent' },
+        { metric: 'nginx_waiting_connection_ratio', label: '等待占比', color: '#9aa9bf', unit: 'percent' }
+      ]
     }
   ],
   ringPanels: [

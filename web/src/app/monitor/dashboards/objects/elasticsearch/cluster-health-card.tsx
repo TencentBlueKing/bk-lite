@@ -36,7 +36,9 @@ export interface ClusterHealthCardProps {
  * sparkline, matching the visual language of CollectionStatusCard.
  */
 export const ClusterHealthCard = ({ prepared, styles }: ClusterHealthCardProps) => {
-  const { mainValue, valueColor, footerItems, trendData, card } = prepared;
+  const { mainValue, valueColor, trendData, card } = prepared;
+  const mainValueColor =
+    mainValue.value === '--' ? HEALTH_COLORS.unknown : valueColor ?? HEALTH_COLORS.normal;
 
   const timeline = useMemo(() => {
     const data = trendData as ChartData[];
@@ -58,39 +60,38 @@ export const ClusterHealthCard = ({ prepared, styles }: ClusterHealthCardProps) 
         </div>
       </div>
       <div className={styles.collectionStatusBody}>
-        <div className={styles.collectionStatusValue} style={{ color: valueColor ?? HEALTH_COLORS.normal }}>
+        <div className={styles.collectionStatusValue} style={{ color: mainValueColor }}>
           {mainValue.value}
         </div>
+        <div className={styles.collectionStatusTimelineTitle}>状态时间线</div>
         <div className={styles.collectionStatusTimelineBlock}>
-          <div className={styles.collectionStatusTimelineTitle}>状态时间线</div>
-          <div className={styles.collectionStatusTimeline}>
-            {timeline.map((tone, index) => (
-              <span
-                key={index}
-                className={styles.collectionStatusSegment}
-                style={{
-                  background: HEALTH_COLORS[tone],
-                  borderColor: tone === 'unknown' ? 'transparent' : undefined
-                }}
-              />
-            ))}
-          </div>
-          <div className={styles.collectionStatusLegend}>
-            {HEALTH_LEGEND.map((item) => (
-              <span key={item.key} className={styles.collectionStatusLegendItem}>
-                <span className={styles.collectionStatusLegendDot} style={{ background: item.color }} />
-                {item.label}
-              </span>
-            ))}
-          </div>
+          {timeline.length > 0 ? (
+            <div className={styles.collectionStatusTimeline}>
+              {timeline.map((tone, index) => (
+                <span
+                  key={index}
+                  className={styles.collectionStatusSegment}
+                  style={{
+                    background: HEALTH_COLORS[tone],
+                    borderColor: tone === 'unknown' ? 'transparent' : undefined
+                  }}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className={styles.collectionStatusTimelineEmpty}>暂无健康时间线数据</div>
+          )}
+          {timeline.length > 0 ? (
+            <div className={styles.collectionStatusLegend}>
+              {HEALTH_LEGEND.map((item) => (
+                <span key={item.key} className={styles.collectionStatusLegendItem}>
+                  <span className={styles.collectionStatusLegendDot} style={{ background: item.color }} />
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
-        {footerItems.length > 0 ? (
-          <div className={styles.statMeta}>
-            {footerItems.map((item) => (
-              <span key={item.label}>{item.label} {item.value}</span>
-            ))}
-          </div>
-        ) : null}
       </div>
     </div>
   );

@@ -39,11 +39,17 @@ export const TitleWithGuide = ({
   items: GuideItem[];
   className?: string;
   styles: GuideTooltipStyles;
-}) => (
-  <span className={[styles.titleWithGuide, className].filter(Boolean).join(' ')}>
-    <span>{title}</span>
-    <Tooltip overlayClassName="lightMetricTooltip" title={<GuideTooltipContent items={items} styles={styles} />}>
-      <InfoCircleOutlined className={styles.metricGuideIcon} />
-    </Tooltip>
-  </span>
-);
+}) => {
+  const hasGuideItems = items.length > 0;
+
+  return (
+    <span className={[styles.titleWithGuide, className].filter(Boolean).join(' ')}>
+      <span>{title}</span>
+      {hasGuideItems ? (
+        <Tooltip overlayClassName="lightMetricTooltip" title={<GuideTooltipContent items={items} styles={styles} />}>
+          <InfoCircleOutlined className={styles.metricGuideIcon} />
+        </Tooltip>
+      ) : null}
+    </span>
+  );
+};
