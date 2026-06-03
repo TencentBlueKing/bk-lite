@@ -49,3 +49,13 @@ def parse_shebang(script: str) -> Optional[str]:
     if interpreter in SUPPORTED_SHELLS:
         return interpreter
     return None
+
+
+def build_heredoc_command(interpreter: str, script: str) -> str:
+    """
+    构造通过指定解释器读取 heredoc 的命令字符串。
+
+    用于无法通过 ansible_shell_executable 直接切换解释器的场景，
+    例如 python3 / pwsh 需要显式作为命令入口执行。
+    """
+    return f"{interpreter} <<'__SCRIPT__'\n{script}\n__SCRIPT__"
