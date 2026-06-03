@@ -16,8 +16,8 @@ const AccessComplete: React.FC<AccessCompleteProps> = ({ onReset }) => {
   const params = useSearchParams();
   const objectId = params.get('id') || params.get('objId') || '';
 
-  const handleViewAssetList = () => {
-    router.push(`/monitor/integration/asset?objId=${objectId}`);
+  const handleViewMonitorView = () => {
+    router.push(`/monitor/view`);
   };
 
   const handleBackToTemplateList = () => {
@@ -46,7 +46,7 @@ const AccessComplete: React.FC<AccessCompleteProps> = ({ onReset }) => {
         </p>
       </div>
       <div className="flex justify-center flex-wrap gap-[10px]">
-        <Button type="primary" onClick={handleViewAssetList}>
+        <Button type="primary" onClick={handleViewMonitorView}>
           {t('monitor.integrations.flow.viewAssetList')}
         </Button>
         <Button onClick={onReset}>
