@@ -11,6 +11,7 @@ import ZabbixGuide from '@/app/alarm/components/zabbixGuide';
 import CustomBreadcrumb from '@/app/alarm/components/customBreadcrumb';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelect from '@/components/group-tree-select';
+import RefreshIconButton from '@/components/refresh-icon-button';
 import {
   CheckCircleFilled,
   CopyOutlined,
@@ -865,10 +866,16 @@ const IntegrationDetail: FC = () => {
 
   const renderEventFilters = () => (
     <div className="mb-4 flex flex-wrap items-center gap-4">
-      <SearchFilter
-        attrList={eventAttrList}
-        onSearch={onFilterSearch}
-      />
+      <div className="flex items-center gap-2">
+        <SearchFilter
+          attrList={eventAttrList}
+          onSearch={onFilterSearch}
+        />
+        <RefreshIconButton
+          loading={eventLoading}
+          onClick={() => fetchEventList()}
+        />
+      </div>
       <div>
         <span className="mr-2">{t('integration.timeRange')}</span>
         <DatePicker.RangePicker
