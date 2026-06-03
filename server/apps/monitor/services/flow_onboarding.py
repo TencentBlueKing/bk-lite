@@ -2,6 +2,7 @@ from django.db import transaction
 from django.db.models import Q
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.core.logger import monitor_logger as logger
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectOrganizationRule
 from apps.monitor.services.flow_sampling import FlowSamplingService
 from apps.monitor.services.manual_collect import ManualCollectService
@@ -101,6 +102,7 @@ class FlowOnboardingService:
                     instance_id=instance.id,
                     organizations=restored_organizations,
                 )
+            cls._schedule_region_refresh(instance.cloud_region_id)
 
         return {"instance_id": instance.id, "enabled_protocols": instance.enabled_protocols}
 
@@ -120,6 +122,7 @@ class FlowOnboardingService:
             instance = cls._get_instance(instance_id=instance_id)
             cls.lock_monitor_object(monitor_object_id=instance.monitor_object_id, require_supported=True)
             instance = cls._get_instance(instance_id=instance_id, for_update=True)
+            previous_cloud_region_id = instance.cloud_region_id
             cls._ensure_tuple_available(
                 cloud_region_id=cloud_region_id if cloud_region_id is not None else instance.cloud_region_id,
                 ip=ip if ip is not None else instance.ip,
@@ -142,6 +145,7 @@ class FlowOnboardingService:
                     instance_id=instance.id,
                     organizations=organizations,
                 )
+            cls._schedule_region_refresh(previous_cloud_region_id, cloud_region_id if cloud_region_id is not None else instance.cloud_region_id)
         return {"instance_id": instance_id}
 
     @classmethod
@@ -366,3 +370,20 @@ class FlowOnboardingService:
     @staticmethod
     def _build_asset_key(monitor_object_id, cloud_region_id, ip):
         return f"flow:{monitor_object_id}:{cloud_region_id}:{ip}"
+
+    @staticmethod
+    def _schedule_region_refresh(*cloud_region_ids):
+        target_region_ids = sorted({region_id for region_id in cloud_region_ids if region_id is not None})
+        if not target_region_ids:
+            return
+
+        def _refresh():
+            from apps.monitor.services.flow_env_config import FlowEnvConfigService
+
+            for region_id in target_region_ids:
+                try:
+                    FlowEnvConfigService.refresh_collect_configs(cloud_region_id=region_id)
+                except Exception:
+                    logger.exception("刷新 Flow env_config 失败: cloud_region_id=%s", region_id)
+
+        transaction.on_commit(_refresh)
