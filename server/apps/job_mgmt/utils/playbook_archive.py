@@ -15,6 +15,10 @@ PLAYBOOK_ARCHIVE_MAX_MEMBER_SIZE_BYTES = 5 * 1024 * 1024
 PLAYBOOK_ARCHIVE_MAX_EXPANDED_SIZE_BYTES = 50 * 1024 * 1024
 
 
+def _format_mb(size_bytes: int) -> str:
+    return f"{size_bytes // (1024 * 1024)}MB"
+
+
 @dataclass
 class ArchiveInfo:
     archive_type: str
@@ -95,11 +99,11 @@ def inspect_archive(file_obj) -> ArchiveInfo:
 def enforce_archive_limits(file_obj) -> ArchiveInfo:
     info = inspect_archive(file_obj)
     if info.raw_size > PLAYBOOK_ARCHIVE_MAX_SIZE_BYTES:
-        raise ValueError(f"压缩包过大，不支持处理|{info.raw_size}")
+        raise ValueError(f"压缩包过大，不支持处理（压缩包最大 {_format_mb(PLAYBOOK_ARCHIVE_MAX_SIZE_BYTES)}）|{info.raw_size}")
     if info.member_count > PLAYBOOK_ARCHIVE_MAX_MEMBERS:
-        raise ValueError("压缩包文件数量过多，不支持处理")
+        raise ValueError(f"压缩包文件数量过多，不支持处理（文件数不能超过 {PLAYBOOK_ARCHIVE_MAX_MEMBERS} 个）")
     if info.max_member_size > PLAYBOOK_ARCHIVE_MAX_MEMBER_SIZE_BYTES:
-        raise ValueError("压缩包内单文件过大，不支持处理")
+        raise ValueError(f"压缩包内单文件过大，不支持处理（单文件最大 {_format_mb(PLAYBOOK_ARCHIVE_MAX_MEMBER_SIZE_BYTES)}）")
     if info.total_member_size > PLAYBOOK_ARCHIVE_MAX_EXPANDED_SIZE_BYTES:
-        raise ValueError("压缩包解压总量过大，不支持处理")
+        raise ValueError(f"压缩包解压总量过大，不支持处理（解压总量最大 {_format_mb(PLAYBOOK_ARCHIVE_MAX_EXPANDED_SIZE_BYTES)}）")
     return info

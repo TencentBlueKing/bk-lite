@@ -3,6 +3,7 @@ import importlib
 import json
 import ssl
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -60,6 +61,9 @@ def _build_queue_safe_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
 
 
 class AnsibleNATSService:
+    CALLBACK_PAYLOAD_MARGIN_BYTES = 4 * 1024
+    CALLBACK_RESULT_TEXT_MAX_CHARS = 8 * 1024
+
     def __init__(self, config: ServiceConfig):
         self.config = config
         self.workers: list[asyncio.Task] = []
@@ -68,6 +72,79 @@ class AnsibleNATSService:
     @staticmethod
     def _now_iso() -> str:
         return datetime.now(UTC).isoformat()
+
+    @classmethod
+    def _callback_request_size_bytes(cls, payload: dict[str, Any]) -> int:
+        request_payload = json.dumps({"args": [payload], "kwargs": {}}, ensure_ascii=False).encode("utf-8")
+        return len(request_payload)
+
+    @classmethod
+    def _truncate_callback_text(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        if len(value) <= cls.CALLBACK_RESULT_TEXT_MAX_CHARS:
+            return value
+        return value[: cls.CALLBACK_RESULT_TEXT_MAX_CHARS] + "\n...[truncated for callback]"
+
+    @classmethod
+    def _compact_callback_payload(cls, payload: dict[str, Any], max_bytes: int) -> dict[str, Any]:
+        callback_payload = deepcopy(payload)
+
+        if cls._callback_request_size_bytes(callback_payload) <= max_bytes:
+            return callback_payload
+
+        result_summary = callback_payload.get("result_summary")
+        if isinstance(result_summary, dict):
+            result_summary.pop("stdout_combined", None)
+            result_summary["callback_payload_truncated"] = True
+        if cls._callback_request_size_bytes(callback_payload) <= max_bytes:
+            return callback_payload
+
+        result = callback_payload.get("result")
+        if isinstance(result, list):
+            for item in result:
+                if not isinstance(item, dict):
+                    continue
+                for field in ("stdout", "stderr", "error_message"):
+                    item[field] = cls._truncate_callback_text(item.get(field, ""))
+        elif isinstance(result, str):
+            callback_payload["result"] = cls._truncate_callback_text(result)
+
+        callback_payload["error"] = cls._truncate_callback_text(callback_payload.get("error", ""))
+        if cls._callback_request_size_bytes(callback_payload) <= max_bytes:
+            return callback_payload
+
+        if isinstance(result, list):
+            for item in result:
+                if not isinstance(item, dict):
+                    continue
+                item["stdout"] = ""
+                item["stderr"] = ""
+                item["error_message"] = ""
+        elif isinstance(callback_payload.get("result"), str):
+            callback_payload["result"] = ""
+
+        if isinstance(result_summary, dict):
+            callback_payload["result_summary"] = {
+                key: result_summary[key]
+                for key in (
+                    "host_count",
+                    "output_truncated",
+                    "output_bytes_total",
+                    "output_bytes_retained",
+                    "output_max_bytes",
+                    "callback_payload_truncated",
+                )
+                if key in result_summary
+            }
+
+        callback_payload["callback_payload_truncated"] = True
+        return callback_payload
+
+    def _prepare_callback_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        max_payload = int(getattr(self.nc, "max_payload", 1024 * 1024) or 1024 * 1024)
+        max_bytes = max(1024, max_payload - self.CALLBACK_PAYLOAD_MARGIN_BYTES)
+        return self._compact_callback_payload(payload, max_bytes)
 
     @staticmethod
     def _build_accepted(task_id: str, duplicate: bool = False) -> bytes:
@@ -447,13 +524,14 @@ class AnsibleNATSService:
             raise RuntimeError(f"task lease lost before final update: {task.task_id}")
 
         if callback:
+            callback_payload = self._prepare_callback_payload(result)
             try:
-                await self._invoke_callback(callback, result)
+                await self._invoke_callback(callback, callback_payload)
                 self.task_store.update_callback_status(task.task_id, "sent", result, self._now_iso(), preserve_status=final_status)
             except Exception as callback_err:
                 result["callback_error"] = str(callback_err)
                 self.task_store.update_callback_status(task.task_id, "failed", result, self._now_iso(), preserve_status=final_status)
-                await self._enqueue_callback_retry(callback, result, str(callback_err))
+                await self._enqueue_callback_retry(callback, callback_payload, str(callback_err))
         else:
             self.task_store.update_callback_status(task.task_id, "none", result, self._now_iso(), preserve_status=final_status)
 

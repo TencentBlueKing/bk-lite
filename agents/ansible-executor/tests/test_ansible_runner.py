@@ -4,7 +4,14 @@ import zipfile
 import pytest
 from core.config import ServiceConfig
 from service import ansible_runner
-from service.ansible_runner import PlaybookRequest, _safe_extract_zip, _safe_workspace_path, prepare_playbook_execution, run_command
+from service.ansible_runner import (
+    PlaybookRequest,
+    _safe_extract_zip,
+    _safe_workspace_path,
+    parse_playbook_recap,
+    prepare_playbook_execution,
+    run_command,
+)
 
 
 def test_safe_workspace_path_rejects_parent_escape(tmp_path):
@@ -200,3 +207,31 @@ async def test_run_command_truncates_oversized_output():
     assert output_meta["output_bytes_total"] == 2048
     assert output_meta["output_bytes_retained"] == 128
     assert output_meta["output_max_bytes"] == 128
+
+
+def test_parse_playbook_recap_keeps_opening_brace_from_ok_line():
+    output = """
+PLAY [all] *********************************************************************
+
+TASK [debug] *******************************************************************
+ok: [10.10.41.149] => {
+    "msg": "Hello from playbook template"
+}
+
+PLAY RECAP *********************************************************************
+10.10.41.149 : ok=1 changed=0 unreachable=0 failed=0 skipped=0 rescued=0 ignored=0
+""".strip()
+
+    result = parse_playbook_recap(output)
+
+    assert result == [
+        {
+            "host": "10.10.41.149",
+            "status": "success",
+            "raw_status": "SUCCESS",
+            "stdout": "Hello from playbook template",
+            "stderr": "",
+            "exit_code": 0,
+            "error_message": "",
+        }
+    ]
