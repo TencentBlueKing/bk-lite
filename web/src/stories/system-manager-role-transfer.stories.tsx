@@ -25,7 +25,7 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     treeData: roleTreeData,
-    selectedKeys: ['monitor.view', 'monitor.edit', 'cmdb.view'],
+    selectedKeys: ['monitor.edit', 'cmdb.view'],
     personalRoleIds,
     organizationRoleIds,
     organizationRoleSourceMap,
@@ -34,14 +34,19 @@ export const Default: Story = {
     onChange: noop,
   },
   render: (args) => {
-    const [selectedKeys, setSelectedKeys] = useState<React.Key[]>(args.selectedKeys);
+    const [personalSelectedRoleIds, setPersonalSelectedRoleIds] = useState<React.Key[]>(args.personalRoleIds ?? []);
+    const selectedKeys = [
+      ...personalSelectedRoleIds,
+      ...(args.organizationRoleIds ?? []),
+    ];
 
     return (
       <div style={{ width: 960 }}>
         <RoleTransfer
           {...args}
+          personalRoleIds={personalSelectedRoleIds}
           selectedKeys={selectedKeys}
-          onChange={setSelectedKeys}
+          onChange={setPersonalSelectedRoleIds}
         />
       </div>
     );
@@ -100,6 +105,11 @@ export const GroupMode: Story = {
 
     await userEvent.click(leftCheckbox);
     await expect(within(rightList).getByText('Backend Team')).toBeInTheDocument();
+
+    const rightRow = within(rightList).getByText('Backend Team').closest('.ant-tree-treenode') as HTMLElement;
+    const rightDelete = rightRow.querySelector('.anticon-delete') as HTMLElement;
+    await userEvent.click(rightDelete);
+    await expect(within(rightList).queryByText('Backend Team')).toBeNull();
   },
 };
 
