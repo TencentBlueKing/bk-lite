@@ -241,6 +241,65 @@ def test_import_compound_monitor_object_propagates_node_selector(monkeypatch):
     assert captured[1]["parent_id"] == 99
 
 
+@pytest.mark.django_db
+def test_import_basic_monitor_object_uses_plugin_scoped_metric_group():
+    from apps.monitor.models.monitor_metrics import Metric, MetricGroup
+    from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
+    from apps.monitor.models.plugin import MonitorPlugin
+    from apps.monitor.services.plugin import MonitorPluginService
+
+    monitor_object_type = MonitorObjectType.objects.create(id="host", name="Host")
+    monitor_object = MonitorObject.objects.create(
+        name="Host",
+        display_name="Host",
+        type=monitor_object_type,
+        level="base",
+    )
+
+    legacy_plugin = MonitorPlugin.objects.create(
+        name="Legacy Host",
+        display_name="Legacy Host",
+        collector="Telegraf",
+        collect_type="http",
+    )
+    legacy_plugin.monitor_object.add(monitor_object)
+    MetricGroup.objects.create(
+        monitor_object=monitor_object,
+        monitor_plugin=legacy_plugin,
+        name="Network",
+    )
+
+    MonitorPluginService.import_basic_monitor_object(
+        {
+            "plugin": "Host Remote",
+            "plugin_desc": "desc",
+            "collector": "Telegraf",
+            "collect_type": "http",
+            "name": "Host",
+            "type": "host",
+            "metrics": [
+                {
+                    "metric_group": "Network",
+                    "name": "host_net_rx_bytes",
+                    "display_name": "Network RX Bytes",
+                    "query": "host_net_rx_bytes",
+                    "unit": "bytes",
+                    "data_type": "Number",
+                    "description": "",
+                    "dimensions": ["interface"],
+                    "instance_id_keys": ["instance_id"],
+                }
+            ],
+        }
+    )
+
+    imported_plugin = MonitorPlugin.objects.get(name="Host Remote")
+    imported_metric = Metric.objects.get(name="host_net_rx_bytes", monitor_plugin=imported_plugin)
+
+    assert MetricGroup.objects.filter(monitor_object=monitor_object, name="Network").count() == 2
+    assert imported_metric.metric_group.monitor_plugin_id == imported_plugin.id
+
+
 def test_normalize_instance_identity_supports_raw_and_legacy_formats():
     dimension_module = _load_module(
         "monitor_dimension_identity_test_module",
