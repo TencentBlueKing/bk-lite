@@ -45,6 +45,7 @@ export const RoleMode: Story = {
     selectedKeys: [],
     personalRoleIds,
     organizationRoleIds,
+    leftExpandedKeys: ['app-monitor', 'app-cmdb'],
     mode: 'role',
     enableSubGroupSelect: false,
   },
