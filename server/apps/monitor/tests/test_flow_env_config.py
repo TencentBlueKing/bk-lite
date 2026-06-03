@@ -30,6 +30,23 @@ def test_build_flow_asset_map_uses_cloud_region_ip_composite_key(db):
     }
 
 
+def test_build_flow_asset_map_excludes_unsupported_monitor_objects(db):
+    unsupported_object = MonitorObject.objects.create(name="Host", display_name="Host")
+    MonitorInstance.objects.create(
+        id="('host-device-1',)",
+        name="Host Device",
+        monitor_object_id=unsupported_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.30",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+
+    from apps.monitor.services.flow_env_config import FlowEnvConfigService
+
+    assert FlowEnvConfigService.build_asset_map(cloud_region_id=1) == {}
+
+
 def test_refresh_collect_configs_only_updates_env_config(monkeypatch):
     config_items = [
         types.SimpleNamespace(

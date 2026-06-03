@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
@@ -327,26 +328,27 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             .values_list("cloud_region_id", flat=True)
             .distinct()
         )
-        MonitorInstance.objects.filter(id__in=instance_ids).update(is_deleted=True)
-        if request.data.get("clean_child_config"):
-            config_objs = CollectConfig.objects.filter(monitor_instance_id__in=instance_ids)
-            child_configs, configs = [], []
-            for config in config_objs:
-                if config.is_child:
-                    child_configs.append(config.id)
-                else:
-                    configs.append(config.id)
-            # 删除子配置
-            NodeMgmt().delete_child_configs(child_configs)
-            # 删除配置
-            NodeMgmt().delete_configs(configs)
-            # 删除配置对象
-            config_objs.delete()
+        with transaction.atomic():
+            MonitorInstance.objects.filter(id__in=instance_ids).update(is_deleted=True)
+            if request.data.get("clean_child_config"):
+                config_objs = CollectConfig.objects.filter(monitor_instance_id__in=instance_ids)
+                child_configs, configs = [], []
+                for config in config_objs:
+                    if config.is_child:
+                        child_configs.append(config.id)
+                    else:
+                        configs.append(config.id)
+                # 删除子配置
+                NodeMgmt().delete_child_configs(child_configs)
+                # 删除配置
+                NodeMgmt().delete_configs(configs)
+                # 删除配置对象
+                config_objs.delete()
 
-        MonitorObjectOrganizationRule.objects.filter(monitor_instance_id__in=instance_ids).delete()
+            MonitorObjectOrganizationRule.objects.filter(monitor_instance_id__in=instance_ids).delete()
+            FlowOnboardingService._schedule_region_refresh(*refresh_region_ids)
 
         cleanup_policy_sources(instance_ids)
-        FlowOnboardingService._schedule_region_refresh(*refresh_region_ids)
 
         return WebUtils.response_success()
 

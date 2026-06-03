@@ -7,11 +7,16 @@ from apps.monitor.services.node_mgmt import InstanceConfigService
 class FlowEnvConfigService:
     ENV_KEY = "FLOW_ASSET_MAP_JSON"
     SUPPORTED_PROTOCOLS = ("netflow", "sflow")
+    SUPPORTED_MONITOR_OBJECT_NAMES = ("Switch", "Router", "Firewall", "Loadbalance")
 
     @classmethod
     def build_asset_map(cls, *, cloud_region_id):
         queryset = (
-            MonitorInstance.objects.filter(cloud_region_id=cloud_region_id, is_deleted=False)
+            MonitorInstance.objects.filter(
+                cloud_region_id=cloud_region_id,
+                is_deleted=False,
+                monitor_object__name__in=cls.SUPPORTED_MONITOR_OBJECT_NAMES,
+            )
             .select_related("monitor_object")
             .order_by("created_at", "id")
         )
