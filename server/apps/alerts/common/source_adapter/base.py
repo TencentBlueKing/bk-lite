@@ -505,6 +505,18 @@ class AlertSourceAdapter(ABC):
         bulk_events = self.create_events(events)
         if not bulk_events:
             return
+
+        # 即时告警旁路：与下方现有聚合主路径并行。dispatch 自身吞掉全部异常，
+        # 永不阻断主流程；未配置 INSTANT 策略时直接 no-op，零开销。
+        try:
+            from apps.alerts.aggregation.processor.instant_dispatcher import (
+                InstantAlertDispatcher,
+            )
+
+            InstantAlertDispatcher.dispatch(bulk_events)
+        except Exception:  # noqa
+            logger.exception("instant dispatch invocation failed; main pipeline continues")
+
         self.event_operator(bulk_events)
         self.handle_recovery_events(bulk_events)
 

@@ -44,6 +44,10 @@ from .constants import (
     # 窗口相关
     WindowType,
     Alignment,
+    # 即时告警旁路
+    INSTANT_SYNC_THRESHOLD,
+    INSTANT_HIT_CEILING,
+    INSTANT_STRATEGY_CACHE_TTL,
 )
 
 __all__ = [
@@ -85,4 +89,8 @@ __all__ = [
     # 窗口相关
     "WindowType",
     "Alignment",
+    # 即时告警旁路
+    "INSTANT_SYNC_THRESHOLD",
+    "INSTANT_HIT_CEILING",
+    "INSTANT_STRATEGY_CACHE_TTL",
 ]

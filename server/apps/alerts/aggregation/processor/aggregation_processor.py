@@ -68,10 +68,13 @@ class AggregationProcessor:
             self.db_conn.close()
 
     def _get_active_strategies(self) -> List[AlarmStrategy]:
+        # 排除 INSTANT 策略：即时告警走 InstantAlertDispatcher 旁路，不进聚合管线
         return list(
             AlarmStrategy.objects.filter(
                 is_active=True,
-            ).order_by("-updated_at")
+            )
+            .exclude(strategy_type=AlarmStrategyType.INSTANT)
+            .order_by("-updated_at")
         )
 
     @staticmethod

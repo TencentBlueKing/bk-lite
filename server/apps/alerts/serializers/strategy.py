@@ -25,6 +25,18 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at", "updated_at", "last_execute_time"]
         extra_kwargs = {}
 
+    def save(self, **kwargs):
+        instance = super().save(**kwargs)
+        # 即时告警策略缓存失效：保证启停 / 编辑后旁路立即生效，避免最长 60s TTL 窗口不一致
+        try:
+            from apps.alerts.aggregation.processor.instant_dispatcher import (
+                InstantStrategyCache,
+            )
+            InstantStrategyCache.cache_clear()
+        except Exception:  # noqa
+            pass
+        return instance
+
     def _validate_authorized_team_ids(self, value, field_name):
         try:
             team_ids = normalize_team_ids(value)
@@ -61,6 +73,8 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
 
         if strategy_type == AlarmStrategyType.MISSING_DETECTION:
             attrs = self._validate_missing_detection(attrs)
+        elif strategy_type == AlarmStrategyType.INSTANT:
+            attrs = self._validate_instant(attrs)
         else:
             attrs = self._validate_aggregation_strategy(attrs)
 
@@ -92,6 +106,46 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"params": params_errors})
 
         attrs["params"] = params
+        return attrs
+
+    def _validate_instant(self, attrs):
+        """即时告警类型校验：
+
+        - 必须配置 match_rules，且不允许等价 ALL 的空规则（PRD 不允许"全部"）
+        - params.alert_template.title 与 description 必填
+        - 静默清理 params 中的聚合相关字段（window_size / group_by / aggregation_*）
+        """
+        match_rules = attrs.get(
+            "match_rules", getattr(self.instance, "match_rules", []) or []
+        )
+
+        if not match_rules or not any(group for group in match_rules):
+            raise serializers.ValidationError(
+                {"match_rules": "即时告警必须配置筛选条件，且不支持全部（ALL）匹配。"}
+            )
+
+        params = dict(attrs.get("params") or {})
+        alert_template = dict(params.get("alert_template") or {})
+        template_title = (alert_template.get("title") or "").strip()
+        template_description = (alert_template.get("description") or "").strip()
+
+        params_errors = {}
+        if not template_title:
+            params_errors["alert_template.title"] = "告警模板标题不能为空。"
+        if not template_description:
+            params_errors["alert_template.description"] = "告警模板描述不能为空。"
+        if params_errors:
+            raise serializers.ValidationError({"params": params_errors})
+
+        # 即时告警不参与聚合，强制清理聚合参数
+        attrs["params"] = {
+            "alert_template": {
+                "title": template_title,
+                "description": template_description,
+            }
+        }
+        # 即时告警不自动关闭
+        attrs["auto_close"] = False
         return attrs
 
     def _validate_missing_detection(self, attrs):
