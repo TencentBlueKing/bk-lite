@@ -1,3 +1,4 @@
+import copy
 import importlib.util
 import logging
 import sys
@@ -391,3 +392,72 @@ def test_controller_raises_identity_error_when_instance_value_is_invalid(monkeyp
 
     with pytest.raises(Exception, match="实例识别失败"):
         ctrl.controller()
+
+
+@pytest.mark.django_db
+def test_import_basic_monitor_object_uses_plugin_scoped_metric_group():
+    from apps.monitor.models.monitor_metrics import Metric, MetricGroup
+    from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
+    from apps.monitor.models.plugin import MonitorPlugin
+    from apps.monitor.services.plugin import MonitorPluginService
+
+    monitor_object_type = MonitorObjectType.objects.create(id="OS", name="OS")
+    host_monitor_object = MonitorObject.objects.create(
+        name="Host",
+        type=monitor_object_type,
+        description="Legacy host monitoring",
+        default_metric="legacy_metric",
+        instance_id_keys=["instance_id"],
+    )
+    legacy_plugin = MonitorPlugin.objects.create(
+        name="Host Legacy",
+        description="Legacy host metrics collection",
+        collector="Telegraf",
+        collect_type="http",
+    )
+    legacy_plugin.monitor_object.add(host_monitor_object)
+    legacy_group = MetricGroup.objects.create(
+        monitor_object=host_monitor_object,
+        monitor_plugin=legacy_plugin,
+        name="Network",
+    )
+
+    payload = {
+        "plugin": "Host Remote",
+        "plugin_desc": "Remote host metrics collection",
+        "collector": "Telegraf",
+        "collect_type": "http",
+        "name": "Host",
+        "type": "OS",
+        "description": "Remote host monitoring",
+        "default_metric": "any({instance_type='os'}) by (instance_id)",
+        "instance_id_keys": ["instance_id"],
+        "metrics": [
+            {
+                "metric_group": "Network",
+                "name": "host_net_rx_bytes",
+                "query": 'host_net_rx_bytes{instance_id="$instance_id"}',
+                "display_name": "Network RX Bytes",
+                "data_type": "Number",
+                "unit": "bytes",
+                "dimensions": ["interface"],
+                "instance_id_keys": ["instance_id"],
+                "description": "Network bytes received per interface",
+            }
+        ],
+    }
+
+    MonitorPluginService.import_basic_monitor_object(copy.deepcopy(payload))
+
+    remote_plugin = MonitorPlugin.objects.get(name="Host Remote")
+    remote_group_qs = MetricGroup.objects.filter(
+        monitor_object=host_monitor_object,
+        monitor_plugin=remote_plugin,
+        name="Network",
+    )
+    assert remote_group_qs.exists(), "import_basic_monitor_object should create a plugin-scoped MetricGroup for the remote plugin"
+    remote_group = remote_group_qs.get()
+    imported_metric = Metric.objects.get(name="host_net_rx_bytes", monitor_plugin=remote_plugin)
+
+    assert imported_metric.metric_group_id == remote_group.id
+    assert imported_metric.metric_group_id != legacy_group.id
