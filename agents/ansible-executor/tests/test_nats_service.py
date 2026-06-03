@@ -40,8 +40,9 @@ class DummyNATSResponse:
 
 
 class DummyNATSClient:
-    def __init__(self, payload):
+    def __init__(self, payload, max_payload=1024 * 1024):
         self.payload = payload
+        self.max_payload = max_payload
 
     async def request(self, subject, request_payload, timeout):
         return DummyNATSResponse(self.payload)
@@ -286,6 +287,93 @@ def test_build_callback_retry_dlq_payload_keeps_structured_summary_only():
     assert dlq_payload["type"] == "callback_retry"
     assert dlq_payload["payload"]["output_truncated"] is True
     assert "task" not in dlq_payload
+
+
+@pytest.mark.asyncio
+async def test_prepare_callback_payload_shrinks_oversized_output_for_retry(tmp_path):
+    service = AnsibleNATSService(
+        ServiceConfig(
+            nats_servers=["nats://127.0.0.1:4222"],
+            nats_instance_id="default",
+            js_stream="BK_ANS_EXEC_TASKS",
+            js_subject_prefix="bk.ans_exec.tasks",
+            js_durable="ansible-executor",
+            state_db_path=str(tmp_path / "task.db"),
+        )
+    )
+    service.nc = DummyNATSClient({"success": True}, max_payload=20 * 1024)
+
+    payload = {
+        "task_id": "task-big-output",
+        "success": False,
+        "error": "",
+        "result": [
+            {
+                "host": "10.0.0.1",
+                "status": "failed",
+                "stdout": "x" * 20000,
+                "stderr": "",
+                "exit_code": 1,
+                "error_message": "",
+            }
+        ],
+        "result_summary": {
+            "stdout_combined": "x" * 20000,
+            "host_count": 1,
+            "output_truncated": True,
+            "output_bytes_total": 20000,
+            "output_bytes_retained": 20000,
+            "output_max_bytes": 20000,
+        },
+    }
+
+    callback_payload = service._prepare_callback_payload(payload)
+
+    assert service._callback_request_size_bytes(callback_payload) < service.nc.max_payload
+    assert callback_payload["result_summary"]["callback_payload_truncated"] is True
+    assert "stdout_combined" not in callback_payload["result_summary"]
+    assert callback_payload["result"][0]["stdout"].endswith("...[truncated for callback]")
+
+
+@pytest.mark.asyncio
+async def test_enqueue_callback_retry_uses_compact_payload(tmp_path):
+    service = AnsibleNATSService(
+        ServiceConfig(
+            nats_servers=["nats://127.0.0.1:4222"],
+            nats_instance_id="default",
+            js_stream="BK_ANS_EXEC_TASKS",
+            js_subject_prefix="bk.ans_exec.tasks",
+            js_durable="ansible-executor",
+            state_db_path=str(tmp_path / "task.db"),
+        )
+    )
+    service.js = DummyJetStream()
+    service.nc = DummyNATSClient({"success": True}, max_payload=10 * 1024)
+    service.retry_subject = "ansible_executor.callback.retry.default"
+
+    payload = service._prepare_callback_payload(
+        {
+            "task_id": "task-big-output",
+            "success": False,
+            "result": "x" * 20000,
+            "result_summary": {
+                "stdout_combined": "x" * 20000,
+                "host_count": 1,
+                "output_truncated": True,
+                "output_bytes_total": 20000,
+                "output_bytes_retained": 20000,
+                "output_max_bytes": 20000,
+            },
+        }
+    )
+
+    await service._enqueue_callback_retry({"subject": "job.ansible_task_callback"}, payload, "callback failed")
+
+    subject, published = service.js.published[0]
+    assert subject == "ansible_executor.callback.retry.default"
+    assert len(json.dumps(published, ensure_ascii=False).encode("utf-8")) < service.nc.max_payload
+    assert published["payload"]["callback_payload_truncated"] is True
+    assert published["payload"]["result"] == ""
 
 
 def test_build_task_result_marks_truncated_output(monkeypatch):

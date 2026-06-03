@@ -722,6 +722,8 @@ const PlaybookLibraryPage = () => {
                 </p>
                 <p className="ant-upload-text">{t('job.dragUploadText')}</p>
                 <p className="ant-upload-hint">{t('job.dragUploadHint')}</p>
+                <p className="ant-upload-hint">{t('job.playbookArchiveLimitHint')}</p>
+                <p className="ant-upload-hint">{t('job.playbookArchiveEntryLimitHint')}</p>
               </Dragger>
           </Form.Item>
 
@@ -891,6 +893,8 @@ const PlaybookLibraryPage = () => {
                 <InboxOutlined />
               </p>
               <p className="ant-upload-text">{t('job.selectNewZip')}</p>
+              <p className="ant-upload-hint">{t('job.playbookArchiveLimitHint')}</p>
+              <p className="ant-upload-hint">{t('job.playbookArchiveEntryLimitHint')}</p>
             </Dragger>
           </Form.Item>
 

@@ -535,8 +535,15 @@ def _extract_host_task_output(lines: list[str], host: str) -> str:
 
     for line in lines:
         # 匹配 ok: [host], changed: [host], fatal: [host], skipping: [host] 等
-        if re.match(rf"^(ok|changed|fatal|failed|skipping|unreachable):\s+\[{re.escape(host)}\]", line):
+        matched = re.match(
+            rf"^(ok|changed|fatal|failed|skipping|unreachable):\s+\[{re.escape(host)}\](?:\s+(=>|>>)\s*(.*))?$",
+            line,
+        )
+        if matched:
             capturing = True
+            initial_output = (matched.group(3) or "").strip()
+            if initial_output:
+                host_lines.append(initial_output)
             continue
 
         # 新 TASK 或 PLAY 行结束当前捕获
