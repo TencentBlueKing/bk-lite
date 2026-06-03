@@ -20,6 +20,10 @@ from apps.monitor.tasks.grouping_rule import sync_instance_and_group
 
 class MonitorObjectService:
     @staticmethod
+    def _project_instance_identity(qs):
+        return qs.only("id", "name")
+
+    @staticmethod
     def validate_new_instance_name_unique(monitor_object_id, monitor_instance_name):
         if not monitor_instance_name:
             return
@@ -108,10 +112,11 @@ class MonitorObjectService:
 
         count = qs.count()
 
+        projected_qs = MonitorObjectService._project_instance_identity(qs)
         if page_size == -1:
-            objs = qs
+            objs = projected_qs
         else:
-            objs = qs[start:end]
+            objs = projected_qs[start:end]
 
         monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
         if not monitor_obj:

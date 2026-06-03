@@ -156,6 +156,10 @@ class InstanceSearch:
             raise BaseAppException("Monitor object default metric does not exist")
         return obj_metric_map
 
+    @staticmethod
+    def _project_instance_identity(qs):
+        return qs.only("id", "name")
+
     def search(self):
         """特殊搜索接口，特殊对象不通用的查询条件"""
         objs_map = self.get_objs()
@@ -319,7 +323,7 @@ class InstanceSearch:
         # 去除重复
         qs = qs.distinct()
 
-        objs_map = {i.id: i for i in qs}
+        objs_map = {i.id: i for i in self._project_instance_identity(qs)}
         return objs_map
 
     def get_objs_v2(self):
@@ -339,7 +343,7 @@ class InstanceSearch:
         page_size = self.query_data.get("page_size", 10)
         start = (page - 1) * page_size
         end = start + page_size
-        results = qs[start:end]
+        results = self._project_instance_identity(qs)[start:end]
 
         return dict(
             count=count,
