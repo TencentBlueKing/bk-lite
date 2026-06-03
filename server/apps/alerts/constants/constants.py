@@ -5,6 +5,11 @@
 
 SYSTEM_OPERATOR_USER = "admin"
 
+# SNMP Trap 暂不参与组织级 secret 路由：bridge 用源级 secret 接入，事件统一归默认组织。
+SNMP_TRAP_SOURCE_ID = "snmp_trap"
+# Default 组 ID 由 system_mgmt 的 clean_group_data 强制保证为 1（如不为 1 会自动迁移）。
+DEFAULT_GROUP_ID = 1
+
 PERMISSION_EVENT = "event"
 PERMISSION_ALERT = "alert"
 PERMISSION_INCIDENT = "incident"
@@ -245,11 +250,21 @@ class AlertShieldMatchType:
 class AlarmStrategyType:
     SMART_DENOISE = "smart_denoise"
     MISSING_DETECTION = "missing_detection"
+    INSTANT = "instant"
 
     CHOICES = (
         (SMART_DENOISE, "智能降噪"),
         (MISSING_DETECTION, "缺失检测"),
+        (INSTANT, "即时告警"),
     )
+
+
+# 即时告警旁路：命中数 ≤ 阈值在 adapter 线程内同步落库；> 阈值入 Celery 队列
+INSTANT_SYNC_THRESHOLD = 50
+# 单次 dispatch 命中数上限（防异常事件源刷爆）
+INSTANT_HIT_CEILING = 5000
+# 即时告警策略缓存 TTL（秒）
+INSTANT_STRATEGY_CACHE_TTL = 60
 
 
 class HeartbeatCheckMode:

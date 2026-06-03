@@ -12,10 +12,12 @@ import {
   AlertOutlined,
   DownOutlined,
   RightOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
 import type {
   CorrelationRule,
   HeartbeatParams,
+  InstantParams,
 } from '@/app/alarm/types/settings';
 import {
   Drawer,
@@ -63,7 +65,7 @@ interface OperateModalProps {
 
 type PolicyType = 'service' | 'location' | 'resource_name' | 'other';
 type AggregationDimension = 'service' | 'location' | 'resource_name' | 'item';
-type StrategyType = 'smart_denoise' | 'missing_detection';
+type StrategyType = 'smart_denoise' | 'missing_detection' | 'instant';
 type FilterType = 'all' | 'filter';
 
 interface FormValues {
@@ -80,6 +82,9 @@ interface FormValues {
   md_alert_description?: string;
   md_auto_recovery?: boolean;
   md_activation_mode?: 'first_heartbeat' | 'immediate';
+  // 即时告警字段
+  it_alert_title?: string;
+  it_alert_description?: string;
 }
 
 const SectionTitle: React.FC<{ title: React.ReactNode }> = ({ title }) => (
@@ -238,6 +243,17 @@ const isMissingDetectionParams = (
   return !!params && 'check_mode' in params;
 };
 
+const isInstantParams = (
+  params?: CorrelationRule['params']
+): params is InstantParams => {
+  return (
+    !!params &&
+    'alert_template' in params &&
+    !('check_mode' in params) &&
+    !('cron_expr' in params)
+  );
+};
+
 export function normalizeMissingDetectionValues(
   rule?: CorrelationRule
 ): Partial<FormValues> {
@@ -255,6 +271,42 @@ export function normalizeMissingDetectionValues(
     md_alert_description: params.alert_template?.description || '',
     md_auto_recovery: params.auto_recovery,
     md_activation_mode: params.activation_mode,
+  };
+}
+
+export function normalizeInstantValues(
+  rule?: CorrelationRule
+): Partial<FormValues> {
+  if (!rule || !isInstantParams(rule.params)) {
+    return { it_alert_title: '', it_alert_description: '' };
+  }
+  const params = rule.params;
+  return {
+    it_alert_title: params.alert_template?.title || '',
+    it_alert_description: params.alert_template?.description || '',
+  };
+}
+
+export function buildInstantPayload(values: FormValues): CorrelationRule {
+  return {
+    id: 0,
+    created_at: '',
+    updated_at: '',
+    created_by: '',
+    updated_by: '',
+    name: values.name,
+    strategy_type: 'instant',
+    team: values.organization || [],
+    dispatch_team: values.assign_organization ? [values.assign_organization] : [],
+    match_rules: values.filter_rules || [],
+    params: {
+      alert_template: {
+        title: values.it_alert_title || '',
+        description: values.it_alert_description || '',
+      },
+    },
+    auto_close: false,
+    close_minutes: 120,
   };
 }
 
@@ -342,6 +394,12 @@ const OperateModal: React.FC<OperateModalProps> = ({
         labelKey: 'missingDetection',
         descKey: 'missingDetectionDesc',
       },
+      {
+        value: 'instant' as StrategyType,
+        icon: ThunderboltOutlined,
+        labelKey: 'instantAlert',
+        descKey: 'instantAlertDesc',
+      },
     ],
     []
   );
@@ -371,9 +429,11 @@ const OperateModal: React.FC<OperateModalProps> = ({
       const nextType: StrategyType =
         row.strategy_type === 'missing_detection'
           ? 'missing_detection'
-          : 'smart_denoise';
+          : row.strategy_type === 'instant'
+            ? 'instant'
+            : 'smart_denoise';
       const nextFilterType: FilterType =
-        nextType === 'missing_detection'
+        nextType === 'missing_detection' || nextType === 'instant'
           ? 'filter'
           : row.match_rules?.length
             ? 'filter'
@@ -412,6 +472,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
             : 60,
         auto_close_time: row.close_minutes ?? 120,
         ...normalizeMissingDetectionValues(row),
+        ...normalizeInstantValues(row),
       });
 
       return;
@@ -436,7 +497,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
 
     form.resetFields();
     setStrategyType(nextType);
-    setFilterType(nextType === 'missing_detection' ? 'filter' : 'all');
+    setFilterType(
+      nextType === 'missing_detection' || nextType === 'instant' ? 'filter' : 'all'
+    );
     setPolicy('service');
     setDimensions(['service', 'location', 'resource_name', 'item']);
     setDetectionWindow(2);
@@ -482,42 +545,56 @@ const OperateModal: React.FC<OperateModalProps> = ({
     setSubmitLoading(true);
     try {
       const payload =
-        strategyType === 'missing_detection'
+        strategyType === 'instant'
           ? {
             name: values.name,
-            strategy_type: 'missing_detection' as const,
+            strategy_type: 'instant' as const,
             description: '',
             team: values.organization || [],
             dispatch_team: values.assign_organization
               ? [values.assign_organization]
               : [],
             match_rules: values.filter_rules || [],
-            params: buildMissingDetectionPayload(values).params,
+            params: buildInstantPayload(values).params,
             auto_close: false,
             close_minutes: 120,
           }
-          : {
-            name: values.name,
-            strategy_type: 'smart_denoise' as const,
-            description: '',
-            team: values.organization || [],
-            dispatch_team: values.assign_organization
-              ? [values.assign_organization]
-              : [],
-            match_rules:
+          : strategyType === 'missing_detection'
+            ? {
+              name: values.name,
+              strategy_type: 'missing_detection' as const,
+              description: '',
+              team: values.organization || [],
+              dispatch_team: values.assign_organization
+                ? [values.assign_organization]
+                : [],
+              match_rules: values.filter_rules || [],
+              params: buildMissingDetectionPayload(values).params,
+              auto_close: false,
+              close_minutes: 120,
+            }
+            : {
+              name: values.name,
+              strategy_type: 'smart_denoise' as const,
+              description: '',
+              team: values.organization || [],
+              dispatch_team: values.assign_organization
+                ? [values.assign_organization]
+                : [],
+              match_rules:
                 filterType === 'filter' ? values.filter_rules || [] : [],
-            params: {
-              policy,
-              group_by: dimensions,
-              window_size: detectionWindow,
-              time_out: selfHealingEnabled,
-              time_minutes: selfHealingEnabled
-                ? values.self_healing_observation_time
-                : undefined,
-            },
-            auto_close: autoCloseEnabled,
-            close_minutes: autoCloseEnabled ? values.auto_close_time : undefined,
-          };
+              params: {
+                policy,
+                group_by: dimensions,
+                window_size: detectionWindow,
+                time_out: selfHealingEnabled,
+                time_minutes: selfHealingEnabled
+                  ? values.self_healing_observation_time
+                  : undefined,
+              },
+              auto_close: autoCloseEnabled,
+              close_minutes: autoCloseEnabled ? values.auto_close_time : undefined,
+            };
 
       if (currentRow?.id) {
         await updateCorrelationRule(currentRow.id, payload);
@@ -662,11 +739,11 @@ const OperateModal: React.FC<OperateModalProps> = ({
 
         <SectionTitle
           title={
-            strategyType === 'missing_detection' ? (
-              t('settings.correlation.defineMonitorTarget')
-            ) : (
-              t('settings.correlation.defineEventScope')
-            )
+            strategyType === 'missing_detection'
+              ? t('settings.correlation.defineMonitorTarget')
+              : strategyType === 'instant'
+                ? t('settings.correlation.defineInstantTrigger')
+                : t('settings.correlation.defineEventScope')
           }
         />
         <div className="mb-4 pl-3">
@@ -675,7 +752,12 @@ const OperateModal: React.FC<OperateModalProps> = ({
               {t('settings.correlation.expectedEventGuide')}
             </Typography.Text>
           )}
-          {strategyType === 'missing_detection' ? null : (
+          {strategyType === 'instant' && (
+            <Typography.Text type="secondary" className="mb-3 block text-sm leading-5">
+              {t('settings.correlation.instantTriggerGuide')}
+            </Typography.Text>
+          )}
+          {strategyType === 'smart_denoise' && (
             <Radio.Group
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
@@ -690,13 +772,15 @@ const OperateModal: React.FC<OperateModalProps> = ({
               </Radio.Button>
             </Radio.Group>
           )}
-          {(filterType === 'filter' || strategyType === 'missing_detection') && (
+          {(filterType === 'filter' ||
+            strategyType === 'missing_detection' ||
+            strategyType === 'instant') && (
             <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50/80 p-3">
               <Form.Item
                 name="filter_rules"
                 className="mb-0"
                 rules={
-                  strategyType === 'missing_detection'
+                  strategyType === 'missing_detection' || strategyType === 'instant'
                     ? [
                       {
                         validator: async (_, value) => {
@@ -723,12 +807,12 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 <RulesMatch
                   levelType="event"
                   ruleOptions={
-                    strategyType === 'missing_detection'
+                    strategyType === 'missing_detection' || strategyType === 'instant'
                       ? MISSING_DETECTION_FORM_RULE_LIST
                       : undefined
                   }
                   conditionOptions={
-                    strategyType === 'missing_detection'
+                    strategyType === 'missing_detection' || strategyType === 'instant'
                       ? MISSING_DETECTION_INITIAL_CONDITION_LISTS
                       : undefined
                   }
@@ -738,7 +822,45 @@ const OperateModal: React.FC<OperateModalProps> = ({
           )}
         </div>
 
-        {strategyType === 'smart_denoise' ? (
+        {strategyType === 'instant' ? (
+          <>
+            <SectionTitle title={t('settings.correlation.alertTemplate')} />
+            <div className="space-y-4 pl-3">
+              <div className="flex items-start">
+                <div className="w-[100px] shrink-0 pr-2 pt-1 text-right text-sm">
+                  <span className="text-red-500">* </span>
+                  {t('settings.correlation.alertTitle')}
+                </div>
+                <Form.Item
+                  name="it_alert_title"
+                  className="mb-0 flex-1"
+                  rules={[{ required: true, message: t('common.inputTip') }]}
+                >
+                  <Input placeholder={t('settings.correlation.instantTemplatePlaceholder')} />
+                </Form.Item>
+              </div>
+              <div className="flex items-start">
+                <div className="w-[100px] shrink-0 pr-2 pt-1 text-right text-sm">
+                  <span className="text-red-500">* </span>
+                  {t('settings.correlation.alertDescription')}
+                </div>
+                <Form.Item
+                  name="it_alert_description"
+                  className="mb-0 flex-1"
+                  rules={[{ required: true, message: t('common.inputTip') }]}
+                >
+                  <Input.TextArea
+                    rows={3}
+                    placeholder={t('settings.correlation.instantDescPlaceholder')}
+                  />
+                </Form.Item>
+              </div>
+              <Typography.Text type="secondary" className="block text-xs leading-5">
+                {t('settings.correlation.instantTemplateHint')}
+              </Typography.Text>
+            </div>
+          </>
+        ) : strategyType === 'smart_denoise' ? (
           <>
             <SectionTitle title={t('settings.correlation.noiseReductionStrategy')} />
             <div className="pl-3">
