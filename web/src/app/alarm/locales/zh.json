@@ -255,6 +255,8 @@
         "selectTeamPlaceholder": "请选择组织",
         "addTeamSecretInline": "新建组织密钥",
         "manageTeamSecrets": "管理组织密钥",
+        "k8sInsecureSkipVerifyLabel": "跳过 TLS 证书校验（接入 BK-Lite 自签证书时勾选）",
+        "k8sInsecureSkipVerifyHelp": "勾选后渲染的部署文件会让 Event Exporter 在 HTTPS 上报时跳过证书校验。生产环境如有受信 CA，请保持不勾选并提供 CA 证书。",
         "noTeamSecretGuideTitle": "尚未创建组织密钥",
         "noTeamSecretGuideDesc": "完成接入前需要先为当前组织创建一个密钥，事件才能正确归属到对应团队。请点击下方“新建组织密钥”或前往“组织密钥”标签页创建。",
         "zabbixGuideOverview": "指引概览",

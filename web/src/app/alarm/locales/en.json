@@ -253,6 +253,8 @@
         "selectTeamPlaceholder": "Select a team",
         "addTeamSecretInline": "New team secret",
         "manageTeamSecrets": "Manage team secrets",
+        "k8sInsecureSkipVerifyLabel": "Skip TLS certificate verification (check when BK-Lite uses a self-signed cert)",
+        "k8sInsecureSkipVerifyHelp": "When checked, the rendered deployment makes the Event Exporter skip cert verification during HTTPS reporting. In production with a trusted CA, leave unchecked and provide the CA bundle instead.",
         "noTeamSecretGuideTitle": "No team secret yet",
         "noTeamSecretGuideDesc": "Before completing integration, create a team secret so events can be attributed correctly. Click \"New team secret\" below, or go to the Team Secrets tab.",
         "zabbixGuideOverview": "Guide Overview",

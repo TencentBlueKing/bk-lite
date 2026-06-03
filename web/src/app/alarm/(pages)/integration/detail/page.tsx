@@ -161,7 +161,7 @@ const IntegrationDetail: FC = () => {
   const guideUsesDefaultRenderer =
     !!source && !isK8sSource && !isSnmpTrapSource && !isZabbixSource;
   const guideHasTeamSecretSupport =
-    !!source && (guideUsesDefaultRenderer || isZabbixSource);
+    !!source && (guideUsesDefaultRenderer || isZabbixSource || isK8sSource);
 
   useEffect(() => {
     if (guideHasTeamSecretSupport) {
@@ -910,6 +910,8 @@ const IntegrationDetail: FC = () => {
                             meta={k8sMeta}
                             loading={k8sMetaLoading}
                             onDownload={handleK8sDownload}
+                            selectedTeamSecret={selectedGuideSecret}
+                            credentialsSlot={renderTeamSecretSelector({ showSecretRow: true })}
                           />
                         ),
                       },
