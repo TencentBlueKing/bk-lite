@@ -158,6 +158,111 @@ def test_refresh_collect_configs_only_updates_env_config(monkeypatch):
     ]
 
 
+def test_refresh_collect_configs_only_updates_target_cloud_region(monkeypatch):
+    target_config = types.SimpleNamespace(
+        id="target-config-id",
+        collector="Telegraf",
+        collect_type="netflow",
+        config_type="flow",
+        monitor_plugin_id=None,
+        monitor_instance_id="('flow-device-1',)",
+        is_child=False,
+        monitor_instance=types.SimpleNamespace(
+            cloud_region_id=1,
+            monitor_object=types.SimpleNamespace(name="Switch"),
+        ),
+    )
+    off_target_config = types.SimpleNamespace(
+        id="off-target-config-id",
+        collector="Telegraf",
+        collect_type="sflow",
+        config_type="flow",
+        monitor_plugin_id=None,
+        monitor_instance_id="('flow-device-2',)",
+        is_child=False,
+        monitor_instance=types.SimpleNamespace(
+            cloud_region_id=2,
+            monitor_object=types.SimpleNamespace(name="Router"),
+        ),
+    )
+
+    class StubCollectConfigQuerySet:
+        def __init__(self, items):
+            self.items = items
+
+        def select_related(self, *args):
+            return self
+
+        def order_by(self, *args):
+            return self.items
+
+    class StubCollectConfigManager:
+        def __init__(self, items):
+            self.items = items
+            self.filter_kwargs = None
+
+        def filter(self, **kwargs):
+            self.filter_kwargs = kwargs
+            return StubCollectConfigQuerySet(
+                [
+                    item
+                    for item in self.items
+                    if item.collect_type in kwargs["collect_type__in"]
+                    and item.monitor_instance.cloud_region_id == kwargs["monitor_instance__cloud_region_id"]
+                ]
+            )
+
+    config_manager = StubCollectConfigManager([target_config, off_target_config])
+    updated_ids = []
+
+    class StubInstanceConfigService:
+        @staticmethod
+        def get_config_content(ids):
+            return {
+                "base": {
+                    "id": ids[0],
+                    "content": {"config": {"service_address": ":2055"}},
+                    "env_config": {},
+                }
+            }
+
+        @staticmethod
+        def update_instance_config(child_info, base_info):
+            updated_ids.append((child_info or base_info)["id"])
+
+    monkeypatch.setattr(
+        "apps.monitor.services.flow_env_config.CollectConfig",
+        types.SimpleNamespace(objects=config_manager),
+    )
+    monkeypatch.setattr("apps.monitor.services.flow_env_config.InstanceConfigService", StubInstanceConfigService)
+
+    from apps.monitor.services.flow_env_config import FlowEnvConfigService
+
+    monkeypatch.setattr(
+        FlowEnvConfigService,
+        "build_asset_map",
+        classmethod(
+            lambda cls, *, cloud_region_id: {
+                f"{cloud_region_id}:10.0.0.12": {
+                    "instance_id": "('flow-device-1',)",
+                    "instance_type": "switch",
+                    "fallback_sampling_rate": 1000,
+                    "protocols": ["netflow"],
+                }
+            }
+        ),
+    )
+
+    refreshed = FlowEnvConfigService.refresh_collect_configs(cloud_region_id=1)
+
+    assert refreshed == 1
+    assert config_manager.filter_kwargs == {
+        "collect_type__in": ("netflow", "sflow"),
+        "monitor_instance__cloud_region_id": 1,
+    }
+    assert updated_ids == ["target-config-id"]
+
+
 def test_create_or_bind_flow_asset_refreshes_current_cloud_region(db, monkeypatch):
     switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
     refresh_calls = []

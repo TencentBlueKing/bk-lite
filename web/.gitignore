@@ -39,7 +39,6 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts
 tsconfig.lint.json
 
 # npm、pnpm 和 yarn lock
