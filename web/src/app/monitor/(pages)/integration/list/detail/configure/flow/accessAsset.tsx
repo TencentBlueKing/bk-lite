@@ -26,11 +26,8 @@ interface ExistingAssetItem {
   id?: string;
   instance_name?: string;
   name?: string;
-  cloud_region_id?: number;
-  ip?: string;
-  organizations?: React.Key[];
-  fallback_sampling_rate?: number;
-  enabled_protocols?: string[];
+  agent_id?: string;
+  time?: string;
 }
 
 interface AccessAssetProps {
@@ -65,7 +62,6 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
   const [assetLoading, setAssetLoading] = useState(false);
   const [existingAssets, setExistingAssets] = useState<ExistingAssetItem[]>([]);
   const accessType = Form.useWatch('accessType', form);
-  const selectedInstanceId = Form.useWatch('instance_id', form);
 
   useEffect(() => {
     const fetchOptions = async () => {
@@ -116,33 +112,12 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
     [existingAssets]
   );
 
-  useEffect(() => {
-    if (accessType !== 'existing' || !selectedInstanceId) {
-      return;
-    }
-
-    const selectedAsset = existingAssetMap[String(selectedInstanceId)];
-    if (!selectedAsset) {
-      return;
-    }
-
-    form.setFieldsValue({
-      cloud_region_id: selectedAsset.cloud_region_id,
-      ip: selectedAsset.ip,
-      name: selectedAsset.instance_name || selectedAsset.name,
-      organizations: selectedAsset.organizations,
-      fallback_sampling_rate:
-        selectedAsset.fallback_sampling_rate ?? FALLBACK_SAMPLING_RATE_DEFAULT
-    });
-  }, [accessType, existingAssetMap, form, selectedInstanceId]);
-
   const assetOptions = useMemo(
     () =>
       existingAssets.map((item) => {
         const value = String(item.instance_id || item.id || '');
         const name = item.instance_name || item.name || value;
-        const protocols = (item.enabled_protocols || []).join(', ');
-        const suffix = [item.ip, protocols].filter(Boolean).join(' · ');
+        const suffix = value && value !== name ? value : '';
         return {
           value,
           label: suffix ? `${name} (${suffix})` : name
@@ -150,6 +125,18 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
       }),
     [existingAssets]
   );
+
+  const handleExistingAssetChange = (value: string) => {
+    const selectedAsset = existingAssetMap[String(value)];
+    form.setFieldsValue({
+      instance_id: value,
+      name: selectedAsset?.instance_name || selectedAsset?.name,
+      cloud_region_id: undefined,
+      ip: undefined,
+      organizations: selectedGroup?.id ? [Number(selectedGroup.id)] : undefined,
+      fallback_sampling_rate: FALLBACK_SAMPLING_RATE_DEFAULT
+    });
+  };
 
   const handleSubmit = async () => {
     try {
@@ -249,6 +236,7 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
                   loading={assetLoading}
                   options={assetOptions}
                   placeholder={t('monitor.integrations.flow.selectExistingAsset')}
+                  onChange={handleExistingAssetChange}
                   style={{ width: FORM_CONTROL_WIDTH }}
                 />
               </Form.Item>
@@ -257,6 +245,16 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
               </div>
             </div>
           </Form.Item>
+        )}
+
+        {accessType === 'existing' && (
+          <Alert
+            className="mb-6"
+            showIcon
+            type="info"
+            message={t('monitor.integrations.flow.existingAssetReviewNoticeTitle')}
+            description={t('monitor.integrations.flow.existingAssetReviewNoticeDesc')}
+          />
         )}
 
         <Form.Item label={t('monitor.integrations.flow.cloudRegion')} required>
@@ -277,7 +275,11 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
               />
             </Form.Item>
             <div className="text-[var(--color-text-3)] flex-1">
-              {t('monitor.integrations.flow.cloudRegionDesc')}
+              {t(
+                accessType === 'existing'
+                  ? 'monitor.integrations.flow.existingAssetReviewDesc'
+                  : 'monitor.integrations.flow.cloudRegionDesc'
+              )}
             </div>
           </div>
         </Form.Item>
@@ -295,7 +297,11 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
               />
             </Form.Item>
             <div className="text-[var(--color-text-3)] flex-1">
-              {t('monitor.integrations.flow.assetIpDesc')}
+              {t(
+                accessType === 'existing'
+                  ? 'monitor.integrations.flow.existingAssetReviewDesc'
+                  : 'monitor.integrations.flow.assetIpDesc'
+              )}
             </div>
           </div>
         </Form.Item>
@@ -331,7 +337,11 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
               />
             </Form.Item>
             <div className="text-[var(--color-text-3)] flex-1">
-              {t('monitor.integrations.flow.organizationDesc')}
+              {t(
+                accessType === 'existing'
+                  ? 'monitor.integrations.flow.existingAssetReviewDesc'
+                  : 'monitor.integrations.flow.organizationDesc'
+              )}
             </div>
           </div>
         </Form.Item>
@@ -353,7 +363,11 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
               />
             </Form.Item>
             <div className="text-[var(--color-text-3)] flex-1">
-              {t('monitor.integrations.flow.fallbackSamplingRateDesc')}
+              {t(
+                accessType === 'existing'
+                  ? 'monitor.integrations.flow.existingAssetReviewDesc'
+                  : 'monitor.integrations.flow.fallbackSamplingRateDesc'
+              )}
             </div>
           </div>
         </Form.Item>

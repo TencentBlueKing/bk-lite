@@ -10,11 +10,7 @@ import type { FlowAssetWizardState } from './flowConfiguration';
 
 interface FlowGuideDocument {
   protocol: FlowProtocol;
-  protocol_name?: string;
   endpoint: string;
-  instructions?: string[];
-  sampling_rule: string;
-  detect_hint?: string;
 }
 
 interface FlowDetectResult {
@@ -83,6 +79,24 @@ const AccessGuide: React.FC<AccessGuideProps> = ({
     return dayjs.unix(detectResult.last_seen_at).format('YYYY-MM-DD HH:mm:ss');
   }, [detectResult?.last_seen_at]);
 
+  const protocolLabel = protocolLabelMap[protocol];
+  const endpoint = guide?.endpoint || '--';
+  const guideSteps = useMemo(
+    () => [
+      t('monitor.integrations.flow.guideStepSelectProtocol', undefined, {
+        protocol: protocolLabel
+      }),
+      t('monitor.integrations.flow.guideStepSetEndpoint', undefined, {
+        endpoint
+      }),
+      t('monitor.integrations.flow.guideStepConfirmSourceIp', undefined, {
+        ip: assetState.ip
+      }),
+      t('monitor.integrations.flow.guideStepVerifyTraffic')
+    ],
+    [assetState.ip, endpoint, protocolLabel, t]
+  );
+
   const handleDetect = async () => {
     try {
       setDetecting(true);
@@ -117,16 +131,16 @@ const AccessGuide: React.FC<AccessGuideProps> = ({
               type="info"
               message={t('monitor.integrations.flow.guideIntroTitle')}
               description={t('monitor.integrations.flow.guideIntroDesc', undefined, {
-                protocol: guide?.protocol_name || protocolLabelMap[protocol]
+                protocol: protocolLabel
               })}
             />
 
             <Descriptions bordered column={1} size="small">
               <Descriptions.Item label={t('monitor.integrations.flow.protocol')}>
-                {guide?.protocol_name || protocolLabelMap[protocol]}
+                {protocolLabel}
               </Descriptions.Item>
               <Descriptions.Item label={t('monitor.integrations.flow.endpoint')}>
-                <span className="break-all">{guide?.endpoint || '--'}</span>
+                <span className="break-all">{endpoint}</span>
               </Descriptions.Item>
               <Descriptions.Item label={t('monitor.integrations.flow.assetName')}>
                 {assetState.name}
@@ -142,15 +156,22 @@ const AccessGuide: React.FC<AccessGuideProps> = ({
               message={t('monitor.integrations.flow.normalizationRule')}
               description={
                 <div>
-                  <div>{guide?.sampling_rule || '--'}</div>
-                  <div className="mt-2">{t('monitor.integrations.flow.fallbackSamplingRateDesc')}</div>
+                  <div>
+                    {t('monitor.integrations.flow.samplingRuleDesc', undefined, {
+                      protocol: protocolLabel,
+                      samplingRate: assetState.fallback_sampling_rate
+                    })}
+                  </div>
+                  <div className="mt-2">
+                    {t('monitor.integrations.flow.fallbackSamplingRateDesc')}
+                  </div>
                 </div>
               }
             />
 
             <Card size="small" title={t('monitor.integrations.flow.deviceGuide')}>
               <ol className="list-decimal pl-5 space-y-2">
-                {(guide?.instructions || []).map((item, index) => (
+                {guideSteps.map((item, index) => (
                   <li key={`${item}-${index}`}>{item}</li>
                 ))}
               </ol>
@@ -160,7 +181,12 @@ const AccessGuide: React.FC<AccessGuideProps> = ({
               showIcon
               type="info"
               message={t('monitor.integrations.flow.detectHintTitle')}
-              description={guide?.detect_hint || t('monitor.integrations.flow.detectHintDesc')}
+              description={
+                <div className="space-y-1">
+                  <div>{t('monitor.integrations.flow.detectHintDesc')}</div>
+                  <div>{t('monitor.integrations.flow.detectHintReviewSampling')}</div>
+                </div>
+              }
             />
 
             {detectResult && (
