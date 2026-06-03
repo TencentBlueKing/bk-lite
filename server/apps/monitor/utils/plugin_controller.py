@@ -1,6 +1,6 @@
 import uuid
 
-from jinja2 import BaseLoader, DebugUndefined
+from jinja2 import BaseLoader, DebugUndefined, Environment
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.safe_template import build_sandboxed_env
@@ -9,6 +9,12 @@ from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import CollectConfig, MonitorPlugin, MonitorPluginConfigTemplate
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.rpc.node_mgmt import NodeMgmt
+
+
+_DEFAULT_JINJA_ENV = Environment()
+_MONITOR_TEMPLATE_ALLOWED_FILTERS = (
+    "default",
+)
 
 
 def to_toml_dict(d):
@@ -28,11 +34,16 @@ class Controller:
     def jinja_env(self):
         """延迟初始化并缓存 Jinja2 SandboxedEnvironment 对象"""
         if self._jinja_env is None:
-            self._jinja_env = build_sandboxed_env(
+            env = build_sandboxed_env(
                 loader=BaseLoader(),
                 undefined=DebugUndefined,
                 extra_filters={"to_toml": to_toml_dict},
             )
+            missing_filters = [name for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS if name not in _DEFAULT_JINJA_ENV.filters]
+            if missing_filters:
+                raise BaseAppException(f"Missing default Jinja filters: {', '.join(missing_filters)}")
+            env.filters.update({name: _DEFAULT_JINJA_ENV.filters[name] for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS})
+            self._jinja_env = env
         return self._jinja_env
 
     def get_templates_by_collector(self, collector: str, collect_type: str):
