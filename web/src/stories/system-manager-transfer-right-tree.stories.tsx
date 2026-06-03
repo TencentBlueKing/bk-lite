@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import { expect, fn, userEvent, within } from 'storybook/test';
 import TransferRightTree from '@/app/system-manager/components/user/TransferRightTree';
+import { filterTreeData } from '@/app/system-manager/utils/roleTreeUtils';
 import {
   groupTreeData,
   roleTreeData,
@@ -46,12 +47,17 @@ export const GroupMode: Story = {
   },
 };
 
+const roleSelectedKeys = ['monitor.view', 'monitor.edit', 'cmdb.view'];
+const roleFilteredRightData = filterTreeData(
+  roleTreeData,
+  [...new Map([...roleSelectedKeys, ...inheritedRoleIds].map(key => [String(key), key])).values()]
+);
+
 export const RoleMode: Story = {
   args: {
     ...GroupMode.args,
     treeData: roleTreeData,
-    filteredRightData: roleTreeData,
-    selectedKeys: ['monitor.view', 'monitor.edit', 'cmdb.view'],
+    selectedKeys: roleSelectedKeys,
     personalRoleIds,
     organizationRoleIds,
     organizationRoleSourceMap,
@@ -60,6 +66,7 @@ export const RoleMode: Story = {
     mode: 'role',
     forceOrganizationRole: false,
     rightExpandedKeys: ['app-monitor', 'app-cmdb'],
+    filteredRightData: roleFilteredRightData,
     onChange: fn(),
   },
   play: async ({ canvasElement, args }) => {
