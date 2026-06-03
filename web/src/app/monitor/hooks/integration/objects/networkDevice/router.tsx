@@ -62,7 +62,9 @@ export const useRouterConfig = () => {
       default: ['instance_id']
     },
     collectTypes: {
-      'Router SNMP General': 'snmp'
+      'Router SNMP General': 'snmp',
+      'Router Flow NetFlow': 'netflow',
+      'Router Flow sFlow': 'sflow'
     }
   };
 };

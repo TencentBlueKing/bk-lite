@@ -166,6 +166,23 @@ export interface TemplateAccessGuideDoc {
   line_protocol_example_with_timestamp_ms: string;
 }
 
+export interface FlowAccessGuideDoc {
+  protocol: 'netflow' | 'sflow';
+  endpoint: string;
+  sampling_rule: string;
+}
+
+export interface FlowAssetPayload {
+  protocol: 'netflow' | 'sflow';
+  monitor_object_id: number;
+  cloud_region_id: number;
+  ip: string;
+  name: string;
+  fallback_sampling_rate: number;
+  organizations: React.Key[];
+  instance_id?: string;
+}
+
 export interface SnmpCollectTemplateDoc {
   plugin_id: number;
   template_id?: string;

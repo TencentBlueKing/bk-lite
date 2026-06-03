@@ -5,9 +5,28 @@ import {
   OrderParam,
   NodeConfigParam,
   InstanceInfo,
+  FlowAssetPayload,
+  FlowAccessGuideDoc,
   SnmpCollectTemplateDoc,
 } from '@/app/monitor/types/integration';
 import { AxiosRequestConfig } from 'axios';
+
+interface FlowIntegrationApi {
+  createFlowAsset: (data: FlowAssetPayload) => Promise<any>;
+  updateFlowAsset: (
+    data: Partial<FlowAssetPayload> & { instance_id: string }
+  ) => Promise<any>;
+  getFlowGuide: (params: {
+    protocol: 'netflow' | 'sflow';
+    cloud_region_id: number;
+    monitor_object_id: number;
+  }) => Promise<FlowAccessGuideDoc>;
+  detectFlowStatus: (data: {
+    instance_id: string;
+    protocol: 'netflow' | 'sflow';
+    monitor_object_id: number;
+  }) => Promise<any>;
+}
 
 const useIntegrationApi = () => {
   const { get, post, del, put } = useApiClient();
@@ -210,7 +229,29 @@ const useIntegrationApi = () => {
           params
         );
       },
-    }),
+      createFlowAsset: async (data: FlowAssetPayload) => {
+        return await post('/monitor/api/manual_collect/flow_asset/', data);
+      },
+      updateFlowAsset: async (
+        data: Partial<FlowAssetPayload> & { instance_id: string }
+      ) => {
+        return await post('/monitor/api/manual_collect/flow_asset/update/', data);
+      },
+      getFlowGuide: async (params: {
+        protocol: 'netflow' | 'sflow';
+        cloud_region_id: number;
+        monitor_object_id: number;
+      }) => {
+        return await post('/monitor/api/manual_collect/flow_access_guide/', params);
+      },
+      detectFlowStatus: async (data: {
+        instance_id: string;
+        protocol: 'netflow' | 'sflow';
+        monitor_object_id: number;
+      }) => {
+        return await post('/monitor/api/manual_collect/flow_detect_status/', data);
+      },
+    } satisfies FlowIntegrationApi),
     [del, get, post, put]
   );
 };
