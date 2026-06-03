@@ -333,6 +333,35 @@ def test_update_flow_asset_refreshes_child_object_organization_rules_when_organi
     ) == {2, 3}
 
 
+def test_update_flow_asset_name_only_change_does_not_refresh_flow_env_config(db, monkeypatch):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    instance = MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+    refresh_calls = []
+
+    monkeypatch.setattr(
+        FlowOnboardingService,
+        "_schedule_region_refresh",
+        staticmethod(lambda *region_ids: refresh_calls.append(region_ids)),
+    )
+
+    FlowOnboardingService.update_asset(
+        instance_id=instance.id,
+        name="Core Switch Updated",
+    )
+
+    instance.refresh_from_db()
+    assert instance.name == "Core Switch Updated"
+    assert refresh_calls == []
+
+
 def test_create_or_bind_flow_asset_refreshes_child_object_organization_rules_when_rebinding_live_asset(db):
     switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
     child_object = _create_child_default_metric(switch_object)

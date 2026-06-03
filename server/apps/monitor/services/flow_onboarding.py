@@ -124,9 +124,15 @@ class FlowOnboardingService:
             cls.lock_monitor_object(monitor_object_id=instance.monitor_object_id, require_supported=True)
             instance = cls._get_instance(instance_id=instance_id, for_update=True)
             previous_cloud_region_id = instance.cloud_region_id
+            target_cloud_region_id = cloud_region_id if cloud_region_id is not None else instance.cloud_region_id
+            target_ip = ip if ip is not None else instance.ip
+            target_fallback_sampling_rate = cls._resolve_sampling_rate(
+                fallback_sampling_rate,
+                instance.fallback_sampling_rate,
+            )
             cls._ensure_tuple_available(
-                cloud_region_id=cloud_region_id if cloud_region_id is not None else instance.cloud_region_id,
-                ip=ip if ip is not None else instance.ip,
+                cloud_region_id=target_cloud_region_id,
+                ip=target_ip,
                 exclude_instance_id=instance.id,
                 conflict_permission_checker=conflict_permission_checker,
             )
@@ -146,7 +152,12 @@ class FlowOnboardingService:
                     instance_id=instance.id,
                     organizations=organizations,
                 )
-            cls._schedule_region_refresh(previous_cloud_region_id, cloud_region_id if cloud_region_id is not None else instance.cloud_region_id)
+            if (
+                target_cloud_region_id != previous_cloud_region_id
+                or target_ip != instance.ip
+                or target_fallback_sampling_rate != instance.fallback_sampling_rate
+            ):
+                cls._schedule_region_refresh(previous_cloud_region_id, target_cloud_region_id)
         return {"instance_id": instance_id}
 
     @classmethod

@@ -242,8 +242,20 @@ def test_create_or_bind_flow_asset_refreshes_old_and_new_cloud_regions_when_rebi
 
 def test_update_flow_asset_refresh_uses_locked_previous_region_state(db, monkeypatch):
     refresh_calls = []
-    unlocked_instance = types.SimpleNamespace(id="flow-asset", monitor_object_id=1, cloud_region_id=1, ip="10.0.0.12")
-    locked_instance = types.SimpleNamespace(id="flow-asset", monitor_object_id=1, cloud_region_id=3, ip="10.0.0.12")
+    unlocked_instance = types.SimpleNamespace(
+        id="flow-asset",
+        monitor_object_id=1,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+    )
+    locked_instance = types.SimpleNamespace(
+        id="flow-asset",
+        monitor_object_id=1,
+        cloud_region_id=3,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+    )
 
     monkeypatch.setattr(
         FlowOnboardingService,
@@ -286,3 +298,70 @@ def test_refresh_callback_logs_and_swallows_errors(db, monkeypatch):
 
     assert result["instance_id"]
     assert logged == [("刷新 Flow env_config 失败: cloud_region_id=%s", 1)]
+
+
+def test_refresh_collect_configs_continues_when_single_config_update_fails(monkeypatch):
+    config_items = [
+        types.SimpleNamespace(
+            id="broken-config-id",
+            collect_type="netflow",
+            is_child=False,
+        ),
+        types.SimpleNamespace(
+            id="healthy-config-id",
+            collect_type="sflow",
+            is_child=False,
+        ),
+    ]
+
+    class StubCollectConfigManager:
+        def filter(self, **kwargs):
+            return self
+
+        def select_related(self, *args):
+            return self
+
+        def order_by(self, *args):
+            return config_items
+
+    updated = []
+    logged = []
+
+    class StubInstanceConfigService:
+        @staticmethod
+        def get_config_content(ids):
+            return {
+                "base": {
+                    "id": ids[0],
+                    "content": {"config": {"service_address": ":2055"}},
+                    "env_config": {},
+                }
+            }
+
+        @staticmethod
+        def update_instance_config(child_info, base_info):
+            config_id = (child_info or base_info)["id"]
+            if config_id == "broken-config-id":
+                raise RuntimeError("boom")
+            updated.append(config_id)
+
+    monkeypatch.setattr(
+        "apps.monitor.services.flow_env_config.CollectConfig",
+        types.SimpleNamespace(objects=StubCollectConfigManager()),
+    )
+    monkeypatch.setattr("apps.monitor.services.flow_env_config.InstanceConfigService", StubInstanceConfigService)
+    monkeypatch.setattr("apps.monitor.services.flow_env_config.logger.exception", lambda message, config_id: logged.append((message, config_id)))
+
+    from apps.monitor.services.flow_env_config import FlowEnvConfigService
+
+    monkeypatch.setattr(
+        FlowEnvConfigService,
+        "build_asset_map",
+        classmethod(lambda cls, *, cloud_region_id: {f"{cloud_region_id}:10.0.0.12": {"instance_id": "x", "instance_type": "switch", "fallback_sampling_rate": 1000, "protocols": ["netflow"]}}),
+    )
+
+    refreshed = FlowEnvConfigService.refresh_collect_configs(cloud_region_id=1)
+
+    assert refreshed == 2
+    assert updated == ["healthy-config-id"]
+    assert logged == [("刷新 Flow env_config 失败: config_id=%s", "broken-config-id")]

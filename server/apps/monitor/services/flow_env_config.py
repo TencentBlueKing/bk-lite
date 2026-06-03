@@ -1,5 +1,6 @@
 import json
 
+from apps.core.logger import monitor_logger as logger
 from apps.monitor.models import CollectConfig, MonitorInstance
 from apps.monitor.services.node_mgmt import InstanceConfigService
 
@@ -54,20 +55,23 @@ class FlowEnvConfigService:
         )
 
         for config_obj in config_objs:
-            config_payload = InstanceConfigService.get_config_content([config_obj.id])
-            config_info = config_payload.get("child" if config_obj.is_child else "base")
-            if not config_info:
-                continue
-            refreshed_info = cls._merge_config_env(
-                config_info=config_info,
-                env_patch=env_patch,
-                config_id=config_obj.id,
-                is_child=config_obj.is_child,
-            )
-            InstanceConfigService.update_instance_config(
-                refreshed_info if config_obj.is_child else None,
-                refreshed_info if not config_obj.is_child else None,
-            )
+            try:
+                config_payload = InstanceConfigService.get_config_content([config_obj.id])
+                config_info = config_payload.get("child" if config_obj.is_child else "base")
+                if not config_info:
+                    continue
+                refreshed_info = cls._merge_config_env(
+                    config_info=config_info,
+                    env_patch=env_patch,
+                    config_id=config_obj.id,
+                    is_child=config_obj.is_child,
+                )
+                InstanceConfigService.update_instance_config(
+                    refreshed_info if config_obj.is_child else None,
+                    refreshed_info if not config_obj.is_child else None,
+                )
+            except Exception:
+                logger.exception("刷新 Flow env_config 失败: config_id=%s", config_obj.id)
 
         return len(config_objs)
 
