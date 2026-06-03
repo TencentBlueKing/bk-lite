@@ -433,6 +433,17 @@ def test_render_template_falls_back_to_parsed_instance_id_without_logical_value(
     assert rendered == "MTVmOTFiYTM5ODZk"
 
 
+def test_render_template_supports_default_filter(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+
+    rendered = plugin_controller_module.Controller({}).render_template(
+        '{{ auth_type | default("none", true) }}',
+        {"auth_type": ""},
+    )
+
+    assert rendered == "none"
+
+
 def test_controller_raises_identity_error_when_instance_value_is_invalid(monkeypatch):
     template_rows = [
         {"type": "host", "config_type": "main", "file_type": "toml", "content": "{{ instance_id }}"}
