@@ -30,7 +30,7 @@ def test_build_flow_asset_map_uses_cloud_region_ip_composite_key(db):
     }
 
 
-def test_refresh_collect_configs_uses_controller_rendering_and_env_patch(monkeypatch):
+def test_refresh_collect_configs_only_updates_env_config(monkeypatch):
     config_items = [
         types.SimpleNamespace(
             id="base-config-id",
@@ -66,8 +66,6 @@ def test_refresh_collect_configs_uses_controller_rendering_and_env_patch(monkeyp
             return config_items
 
     updated = []
-    render_calls = []
-
     class StubInstanceConfigService:
         @staticmethod
         def get_config_content(ids):
@@ -92,30 +90,11 @@ def test_refresh_collect_configs_uses_controller_rendering_and_env_patch(monkeyp
         def update_instance_config(child_info, base_info):
             updated.append((child_info, base_info))
 
-    class StubController:
-        def __init__(self, data):
-            self.data = data
-
-        def get_templates_by_collector(self, collector, collect_type):
-            assert collector == "Telegraf"
-            assert collect_type == "netflow"
-            return {
-                "flow": [
-                    {"config_type": "main", "file_type": "yaml", "content": "ignored"},
-                    {"config_type": "child", "file_type": "yaml", "content": "ignored"},
-                ]
-            }
-
-        def render_template(self, template_content, context):
-            render_calls.append({"data": self.data, "context": dict(context)})
-            return "rendered-config"
-
     monkeypatch.setattr(
         "apps.monitor.services.flow_env_config.CollectConfig",
         types.SimpleNamespace(objects=StubCollectConfigManager()),
     )
     monkeypatch.setattr("apps.monitor.services.flow_env_config.InstanceConfigService", StubInstanceConfigService)
-    monkeypatch.setattr("apps.monitor.services.flow_env_config.Controller", StubController)
 
     from apps.monitor.services.flow_env_config import FlowEnvConfigService
 
@@ -133,40 +112,15 @@ def test_refresh_collect_configs_uses_controller_rendering_and_env_patch(monkeyp
             }
         ),
     )
-    monkeypatch.setattr(
-        FlowEnvConfigService,
-        "_parse_rendered_content",
-        staticmethod(
-            lambda rendered_content, file_type: {
-                "config": {
-                    "service_address": ":2055",
-                    "asset_map": "{\"1:10.0.0.12\": {\"fallback_sampling_rate\": 1000, \"instance_id\": \"('flow-device-1',)\", \"instance_type\": \"switch\", \"protocols\": [\"netflow\"]}}",
-                }
-            }
-        ),
-    )
-
     refreshed = FlowEnvConfigService.refresh_collect_configs(cloud_region_id=1)
 
     assert refreshed == 2
-    assert [call["data"] for call in render_calls] == [
-        {"collector": "Telegraf", "collect_type": "netflow", "monitor_plugin_id": None},
-        {"collector": "Telegraf", "collect_type": "netflow", "monitor_plugin_id": None},
-    ]
-    assert all(call["context"]["logical_instance_value"] == "flow-device-1" for call in render_calls)
-    assert all(call["context"]["instance_type"] == "switch" for call in render_calls)
-    assert all(call["context"]["ENV_FLOW_ASSET_MAP_JSON"] for call in render_calls)
     assert updated == [
         (
             None,
             {
                 "id": "base-config-id",
-                "content": {
-                    "config": {
-                        "service_address": ":2055",
-                        "asset_map": "{\"1:10.0.0.12\": {\"fallback_sampling_rate\": 1000, \"instance_id\": \"('flow-device-1',)\", \"instance_type\": \"switch\", \"protocols\": [\"netflow\"]}}",
-                    }
-                },
+                "content": {"config": {"service_address": ":2055"}},
                 "env_config": {
                     "EXISTING_ENV": "preserved",
                     "FLOW_ASSET_MAP_JSON": "{\"1:10.0.0.12\": {\"fallback_sampling_rate\": 1000, \"instance_id\": \"('flow-device-1',)\", \"instance_type\": \"switch\", \"protocols\": [\"netflow\"]}}",
@@ -176,12 +130,7 @@ def test_refresh_collect_configs_uses_controller_rendering_and_env_patch(monkeyp
         (
             {
                 "id": "child-config-id",
-                "content": {
-                    "config": {
-                        "service_address": ":2055",
-                        "asset_map": "{\"1:10.0.0.12\": {\"fallback_sampling_rate\": 1000, \"instance_id\": \"('flow-device-1',)\", \"instance_type\": \"switch\", \"protocols\": [\"netflow\"]}}",
-                    }
-                },
+                "content": {"config": {"service_address": ":2055"}},
                 "env_config": {
                     "OTHER_ENV__CHILD-CONFIG-ID": "preserved",
                     "FLOW_ASSET_MAP_JSON__CHILD-CONFIG-ID": "{\"1:10.0.0.12\": {\"fallback_sampling_rate\": 1000, \"instance_id\": \"('flow-device-1',)\", \"instance_type\": \"switch\", \"protocols\": [\"netflow\"]}}",
