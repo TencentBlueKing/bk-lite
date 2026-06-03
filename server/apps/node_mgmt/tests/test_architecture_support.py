@@ -4657,6 +4657,80 @@ def test_converge_controller_install_connectivity_for_node_falls_back_for_legacy
 
 
 @pytest.mark.django_db
+def test_install_connectivity_converge_matches_generated_node_id_not_ip():
+    cloud_region = CloudRegion.objects.create(
+        name="connectivity-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    stale_task = ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    current_task = ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    common_result = {
+        InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING,
+        "steps": [{"action": "connectivity_check", "status": "running", "message": "Wait for node connection"}],
+    }
+    stale_task_node = ControllerTaskNode.objects.create(
+        task=stale_task,
+        ip="10.0.0.88",
+        node_name="stale-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={**common_result, InstallerConstants.INSTALL_NODE_ID_KEY: "stale-install-node"},
+    )
+    current_task_node = ControllerTaskNode.objects.create(
+        task=current_task,
+        ip="10.0.0.88",
+        node_name="current-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={**common_result, InstallerConstants.INSTALL_NODE_ID_KEY: "current-install-node"},
+    )
+    Node.objects.create(
+        id="current-install-node",
+        name="current-node",
+        ip="10.0.0.88",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/tmp/config",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+
+    installer_tasks.converge_controller_install_connectivity_for_node("current-install-node")
+
+    stale_task_node.refresh_from_db()
+    current_task_node.refresh_from_db()
+    assert stale_task_node.status == InstallerConstants.STEP_STATUS_RUNNING
+    assert current_task_node.status == InstallerConstants.STEP_STATUS_SUCCESS
+
+
+@pytest.mark.django_db
 def test_backfill_node_cpu_architecture_updates_linux_node(monkeypatch, capsys):
     cloud_region = CloudRegion.objects.create(
         name="backfill-region",

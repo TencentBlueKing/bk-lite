@@ -6,7 +6,6 @@ import threading
 
 from celery import shared_task
 from django.db import transaction
-from django.db.models import Count, Q
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
@@ -21,9 +20,9 @@ from apps.node_mgmt.models import (
     PackageVersion,
     Node,
     NodeCollectorInstallStatus,
-    Collector,
 )
 from apps.node_mgmt.models import ControllerTaskNode
+from apps.node_mgmt.services.package import PackageService
 
 from apps.node_mgmt.utils.installer import (
     exec_command_to_remote,
@@ -1103,11 +1102,16 @@ def _install_collector_inner(task_obj):
                     next_steps=next_steps,
                 )
 
-            if resolved_package.os in NodeConstants.LINUX_OS:
+            if resolved_package.os == NodeConstants.LINUX_OS:
                 executable_path = f"{collector_install_dir}/{executable_name}"
+                set_executable_command = (
+                    f"if [ -d '{executable_path}' ]; then "
+                    f"find '{executable_path}' -type f -exec chmod +x {{}} \\; ; "
+                    f"else chmod +x '{executable_path}'; fi"
+                )
                 exec_command_to_local(
                     node_obj.node_id,
-                    f"if [ -d '{executable_path}' ]; then find '{executable_path}' -type f -exec chmod +x {{}} \\; ; else chmod +x '{executable_path}'; fi",
+                    set_executable_command,
                 )
                 _update_step_status(node_obj, "success", "Executable permissions updated")
 
