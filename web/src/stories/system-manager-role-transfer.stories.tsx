@@ -25,7 +25,6 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     treeData: roleTreeData,
-    selectedKeys: ['monitor.edit', 'cmdb.view'],
     personalRoleIds,
     organizationRoleIds,
     organizationRoleSourceMap,
@@ -116,7 +115,6 @@ export const GroupMode: Story = {
 export const Loading: Story = {
   args: {
     treeData: roleTreeData,
-    selectedKeys: [],
     personalRoleIds,
     organizationRoleIds,
     organizationRoleSourceMap,
@@ -125,9 +123,19 @@ export const Loading: Story = {
     loading: true,
     onChange: noop,
   },
-  render: (args) => (
-    <div style={{ width: 960 }}>
-      <RoleTransfer {...args} />
-    </div>
-  ),
+  render: (args) => {
+    const [personalSelectedRoleIds, setPersonalSelectedRoleIds] = useState<React.Key[]>(args.personalRoleIds ?? []);
+    const selectedKeys = [...personalSelectedRoleIds, ...(args.organizationRoleIds ?? [])];
+
+    return (
+      <div style={{ width: 960 }}>
+        <RoleTransfer
+          {...args}
+          personalRoleIds={personalSelectedRoleIds}
+          selectedKeys={selectedKeys}
+          onChange={setPersonalSelectedRoleIds}
+        />
+      </div>
+    );
+  },
 };
