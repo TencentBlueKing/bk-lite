@@ -2,9 +2,13 @@ from django.db import transaction
 from django.db.models import Q
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.core.logger import monitor_logger as logger
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectOrganizationRule
+from apps.monitor.services.flow_sampling import FlowSamplingService
 from apps.monitor.services.manual_collect import ManualCollectService
 from apps.monitor.services.monitor_object import MonitorObjectService
+from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
 class FlowOnboardingService:
@@ -47,6 +51,7 @@ class FlowOnboardingService:
                 instance_id=instance_id,
                 allow_deleted_instance_reuse=allow_deleted_instance_reuse,
             )
+            previous_cloud_region_id = instance.cloud_region_id
             restoring_deleted = instance.is_deleted
             restored_organizations = None
             if restoring_deleted:
@@ -98,6 +103,7 @@ class FlowOnboardingService:
                     instance_id=instance.id,
                     organizations=restored_organizations,
                 )
+            cls._schedule_region_refresh(previous_cloud_region_id, instance.cloud_region_id)
 
         return {"instance_id": instance.id, "enabled_protocols": instance.enabled_protocols}
 
@@ -117,9 +123,16 @@ class FlowOnboardingService:
             instance = cls._get_instance(instance_id=instance_id)
             cls.lock_monitor_object(monitor_object_id=instance.monitor_object_id, require_supported=True)
             instance = cls._get_instance(instance_id=instance_id, for_update=True)
+            previous_cloud_region_id = instance.cloud_region_id
+            target_cloud_region_id = cloud_region_id if cloud_region_id is not None else instance.cloud_region_id
+            target_ip = ip if ip is not None else instance.ip
+            target_fallback_sampling_rate = cls._resolve_sampling_rate(
+                fallback_sampling_rate,
+                instance.fallback_sampling_rate,
+            )
             cls._ensure_tuple_available(
-                cloud_region_id=cloud_region_id if cloud_region_id is not None else instance.cloud_region_id,
-                ip=ip if ip is not None else instance.ip,
+                cloud_region_id=target_cloud_region_id,
+                ip=target_ip,
                 exclude_instance_id=instance.id,
                 conflict_permission_checker=conflict_permission_checker,
             )
@@ -139,6 +152,12 @@ class FlowOnboardingService:
                     instance_id=instance.id,
                     organizations=organizations,
                 )
+            if (
+                target_cloud_region_id != previous_cloud_region_id
+                or target_ip != instance.ip
+                or target_fallback_sampling_rate != instance.fallback_sampling_rate
+            ):
+                cls._schedule_region_refresh(previous_cloud_region_id, target_cloud_region_id)
         return {"instance_id": instance_id}
 
     @classmethod
@@ -331,6 +350,28 @@ class FlowOnboardingService:
         return sorted(set(cls._normalize_protocols(current_protocols or [])) | {protocol})
 
     @classmethod
+    def detect_status(cls, *, instance_id, protocol, monitor_object_id, time_window="5m"):
+        cls._validate_protocol(protocol)
+        instance = cls._get_instance(
+            instance_id=instance_id,
+            monitor_object_id=monitor_object_id,
+        )
+        query = f"any({{instance_id='{parse_instance_id(instance.id)[0]}', collect_type='{protocol}'}}[{time_window}])"
+        result = VictoriaMetricsAPI().query(query).get("data", {}).get("result", [])
+        normalized_payload = FlowSamplingService.normalize_payload(
+            result[0].get("metric", {}) if result else {},
+            fallback_sampling_rate=instance.fallback_sampling_rate,
+        )
+        return {
+            "success": bool(result),
+            "protocol": protocol,
+            "instance_id": instance_id,
+            "last_seen_at": result[0]["value"][0] if result else None,
+            "effective_sampling_rate": normalized_payload["effective_sampling_rate"],
+            "sampling_rate_source": normalized_payload["sampling_rate_source"],
+        }
+
+    @classmethod
     def _resolve_sampling_rate(cls, fallback_sampling_rate, current_value=None):
         if fallback_sampling_rate is not None:
             return fallback_sampling_rate
@@ -341,3 +382,20 @@ class FlowOnboardingService:
     @staticmethod
     def _build_asset_key(monitor_object_id, cloud_region_id, ip):
         return f"flow:{monitor_object_id}:{cloud_region_id}:{ip}"
+
+    @staticmethod
+    def _schedule_region_refresh(*cloud_region_ids):
+        target_region_ids = sorted({region_id for region_id in cloud_region_ids if region_id is not None})
+        if not target_region_ids:
+            return
+
+        def _refresh():
+            from apps.monitor.services.flow_env_config import FlowEnvConfigService
+
+            for region_id in target_region_ids:
+                try:
+                    FlowEnvConfigService.refresh_collect_configs(cloud_region_id=region_id)
+                except Exception:
+                    logger.exception("刷新 Flow env_config 失败: cloud_region_id=%s", region_id)
+
+        transaction.on_commit(_refresh)
