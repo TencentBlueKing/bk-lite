@@ -320,15 +320,16 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         )
         with transaction.atomic():
             refresh_region_ids = list(
-                MonitorInstance.objects.select_for_update()
-                .filter(
-                    id__in=instance_ids,
-                    cloud_region_id__isnull=False,
-                    monitor_object__name__in=FlowOnboardingService.SUPPORTED_MONITOR_OBJECT_NAMES,
+                dict.fromkeys(
+                    MonitorInstance.objects.select_for_update()
+                    .filter(
+                        id__in=instance_ids,
+                        cloud_region_id__isnull=False,
+                        monitor_object__name__in=FlowOnboardingService.SUPPORTED_MONITOR_OBJECT_NAMES,
+                    )
+                    .exclude(enabled_protocols=[])
+                    .values_list("cloud_region_id", flat=True)
                 )
-                .exclude(enabled_protocols=[])
-                .values_list("cloud_region_id", flat=True)
-                .distinct()
             )
             MonitorInstance.objects.filter(id__in=instance_ids).update(is_deleted=True)
             if request.data.get("clean_child_config"):
