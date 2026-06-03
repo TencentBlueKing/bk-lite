@@ -17,6 +17,7 @@ from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.services.policy_source_cleanup import cleanup_policy_sources
+from apps.monitor.services.flow_onboarding import FlowOnboardingService
 from apps.monitor.services.metrics import Metrics as MetricsService
 from apps.monitor.utils.pagination import parse_page_params
 from apps.rpc.node_mgmt import NodeMgmt
@@ -316,6 +317,16 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             request.data.get("instance_ids", []),
             actor_context,
         )
+        refresh_region_ids = list(
+            MonitorInstance.objects.filter(
+                id__in=instance_ids,
+                cloud_region_id__isnull=False,
+                monitor_object__name__in=FlowOnboardingService.SUPPORTED_MONITOR_OBJECT_NAMES,
+            )
+            .exclude(enabled_protocols=[])
+            .values_list("cloud_region_id", flat=True)
+            .distinct()
+        )
         MonitorInstance.objects.filter(id__in=instance_ids).update(is_deleted=True)
         if request.data.get("clean_child_config"):
             config_objs = CollectConfig.objects.filter(monitor_instance_id__in=instance_ids)
@@ -335,6 +346,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         MonitorObjectOrganizationRule.objects.filter(monitor_instance_id__in=instance_ids).delete()
 
         cleanup_policy_sources(instance_ids)
+        FlowOnboardingService._schedule_region_refresh(*refresh_region_ids)
 
         return WebUtils.response_success()
 
