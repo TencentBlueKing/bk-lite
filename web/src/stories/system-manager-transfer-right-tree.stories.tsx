@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
+import { expect, fn, userEvent, within } from 'storybook/test';
 import TransferRightTree from '@/app/system-manager/components/user/TransferRightTree';
 import {
   groupTreeData,
@@ -58,5 +59,20 @@ export const RoleMode: Story = {
     inheritedRoleSourceMap,
     mode: 'role',
     forceOrganizationRole: false,
+    rightExpandedKeys: ['app-monitor', 'app-cmdb'],
+    onChange: fn(),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+
+    await expect(canvas.getByText('system.role.inheritedRole')).toBeInTheDocument();
+    await expect(canvas.getByText('system.role.organizationRole')).toBeInTheDocument();
+    await expect(canvas.getByText('system.role.personalRole')).toBeInTheDocument();
+
+    const deleteButton = canvasElement.querySelector('.anticon-delete');
+    await expect(deleteButton).not.toBeNull();
+
+    await userEvent.click(deleteButton as HTMLElement);
+    await expect(args.onChange).toHaveBeenCalledWith([]);
   },
 };
