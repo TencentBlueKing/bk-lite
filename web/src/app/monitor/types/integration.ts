@@ -167,13 +167,27 @@ export interface TemplateAccessGuideDoc {
 }
 
 export interface FlowAccessGuideDoc {
-  protocol: 'netflow' | 'sflow';
+  protocol: FlowProtocol;
   endpoint: string;
   sampling_rule: string;
 }
 
+export type FlowProtocol = 'netflow' | 'sflow';
+
+export interface FlowGuideParams {
+  protocol: FlowProtocol;
+  cloud_region_id: number;
+  monitor_object_id: number;
+}
+
+export interface FlowDetectParams {
+  instance_id: string;
+  protocol: FlowProtocol;
+  monitor_object_id: number;
+}
+
 export interface FlowAssetPayload {
-  protocol: 'netflow' | 'sflow';
+  protocol: FlowProtocol;
   monitor_object_id: number;
   cloud_region_id: number;
   ip: string;
@@ -181,6 +195,16 @@ export interface FlowAssetPayload {
   fallback_sampling_rate: number;
   organizations: React.Key[];
   instance_id?: string;
+}
+
+export interface FlowIntegrationApi {
+  createFlowAsset: (data: FlowAssetPayload) => Promise<any>;
+  updateFlowAsset: (
+    data: Partial<FlowAssetPayload> & { instance_id: string }
+  ) => Promise<any>;
+  getFlowGuide: (params: FlowGuideParams) => Promise<FlowAccessGuideDoc>;
+  detectFlowStatus: (data: FlowDetectParams) => Promise<any>;
+  [key: string]: unknown;
 }
 
 export interface SnmpCollectTemplateDoc {
