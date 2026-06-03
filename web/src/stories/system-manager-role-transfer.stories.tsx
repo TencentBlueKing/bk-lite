@@ -27,13 +27,16 @@ export const Default: Story = {
     treeData: roleTreeData,
     personalRoleIds,
     organizationRoleIds,
+    selectedKeys: [...personalRoleIds, ...organizationRoleIds],
     organizationRoleSourceMap,
     inheritedRoleIds,
     inheritedRoleSourceMap,
     onChange: noop,
   },
   render: (args) => {
-    const [personalSelectedRoleIds, setPersonalSelectedRoleIds] = useState<React.Key[]>(args.personalRoleIds ?? []);
+    const initialPersonalSelectedRoleIds =
+      args.selectedKeys?.filter((key) => !(args.organizationRoleIds ?? []).includes(key)) ?? args.personalRoleIds ?? [];
+    const [personalSelectedRoleIds, setPersonalSelectedRoleIds] = useState<React.Key[]>(initialPersonalSelectedRoleIds);
     const selectedKeys = [
       ...personalSelectedRoleIds,
       ...(args.organizationRoleIds ?? []),
@@ -117,6 +120,7 @@ export const Loading: Story = {
     treeData: roleTreeData,
     personalRoleIds,
     organizationRoleIds,
+    selectedKeys: [...personalRoleIds, ...organizationRoleIds],
     organizationRoleSourceMap,
     inheritedRoleIds,
     inheritedRoleSourceMap,
@@ -124,7 +128,9 @@ export const Loading: Story = {
     onChange: noop,
   },
   render: (args) => {
-    const [personalSelectedRoleIds, setPersonalSelectedRoleIds] = useState<React.Key[]>(args.personalRoleIds ?? []);
+    const initialPersonalSelectedRoleIds =
+      args.selectedKeys?.filter((key) => !(args.organizationRoleIds ?? []).includes(key)) ?? args.personalRoleIds ?? [];
+    const [personalSelectedRoleIds, setPersonalSelectedRoleIds] = useState<React.Key[]>(initialPersonalSelectedRoleIds);
     const selectedKeys = [...personalSelectedRoleIds, ...(args.organizationRoleIds ?? [])];
 
     return (
