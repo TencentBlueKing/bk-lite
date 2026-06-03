@@ -191,6 +191,38 @@ def test_update_flow_asset_refreshes_old_and_new_cloud_regions_when_moved(db, mo
     assert refresh_calls == [1, 2]
 
 
+def test_create_or_bind_flow_asset_refreshes_old_and_new_cloud_regions_when_rebinding_instance(db, monkeypatch):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    instance = MonitorInstance.objects.create(
+        id="('flow-device-1',)",
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+    refresh_calls = []
+
+    monkeypatch.setattr("apps.monitor.services.flow_onboarding.transaction.on_commit", lambda callback: callback())
+    monkeypatch.setattr(
+        "apps.monitor.services.flow_onboarding.FlowOnboardingService._schedule_region_refresh",
+        lambda *region_ids: refresh_calls.extend(region_ids),
+    )
+
+    FlowOnboardingService.create_or_bind_asset(
+        monitor_object_id=switch_object.id,
+        protocol="sflow",
+        cloud_region_id=2,
+        ip="10.0.0.13",
+        name="Core Switch",
+        organizations=[1],
+        instance_id=instance.id,
+    )
+
+    assert refresh_calls == [1, 2]
+
+
 def test_update_flow_asset_refresh_uses_locked_previous_region_state(db, monkeypatch):
     refresh_calls = []
     unlocked_instance = types.SimpleNamespace(id="flow-asset", monitor_object_id=1, cloud_region_id=1, ip="10.0.0.12")

@@ -51,6 +51,7 @@ class FlowOnboardingService:
                 instance_id=instance_id,
                 allow_deleted_instance_reuse=allow_deleted_instance_reuse,
             )
+            previous_cloud_region_id = instance.cloud_region_id
             restoring_deleted = instance.is_deleted
             restored_organizations = None
             if restoring_deleted:
@@ -102,7 +103,7 @@ class FlowOnboardingService:
                     instance_id=instance.id,
                     organizations=restored_organizations,
                 )
-            cls._schedule_region_refresh(instance.cloud_region_id)
+            cls._schedule_region_refresh(previous_cloud_region_id, instance.cloud_region_id)
 
         return {"instance_id": instance.id, "enabled_protocols": instance.enabled_protocols}
 
