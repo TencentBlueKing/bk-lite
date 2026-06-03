@@ -93,18 +93,33 @@ def general_embed_by_document_list(document_list, is_show=False, username="", do
         total_count=len(knowledge_ids),
     )
     train_progress = round(float(1 / len(task_obj.knowledge_ids)) * 100, 2)
+    has_failure = False
     for index, document in tqdm(enumerate(document_list)):
+        success = True
         try:
             invoke_document_to_es(document=document, delete_qa_pairs=delete_qa_pairs)
+            document.refresh_from_db()
+            if document.train_status == DocumentStatus.ERROR:
+                success = False
+                has_failure = True
         except Exception:
             logger.exception("Failed to invoke document to ES: document_id=%s", document.id)
+            success = False
+            has_failure = True
+            document.train_status = DocumentStatus.ERROR
+            document.error_message = "训练过程中发生异常"
+            document.save()
         task_progress = task_obj.train_progress + train_progress
         task_obj.train_progress = round(task_progress, 2)
-        task_obj.completed_count += 1
+        if success:
+            task_obj.completed_count += 1
         if index < len(document_list) - 1:
             task_obj.name = document_list[index + 1].name
         task_obj.save()
-    task_obj.delete()
+    if has_failure:
+        logger.warning(f"Knowledge training completed with failures. Task {task_obj.id} retained for tracking.")
+    else:
+        task_obj.delete()
     return None
 
 
@@ -431,10 +446,13 @@ def rebuild_graph_community_by_instance(instance_id):
         graph_obj.save()
         res = GraphUtils.rebuild_graph_community(graph_obj)
         if not res["result"]:
+            graph_obj.status = "failed"
+            graph_obj.save()
             logger.error("Failed to rebuild graph community")
-        logger.info("Graph community rebuild completed for instance ID: {}".format(instance_id))
+            return
         graph_obj.status = "completed"
         graph_obj.save()
+        logger.info("Graph community rebuild completed for instance ID: {}".format(instance_id))
 
     return _run_in_native_thread(_execute)
 
@@ -448,6 +466,8 @@ def create_graph(instance_id):
         instance.save()
         res = GraphUtils.create_graph(instance)
         if not res["result"]:
+            instance.status = "failed"
+            instance.save()
             logger.error("Failed to create graph: {}".format(res["message"]))
             return
 
@@ -855,3 +875,427 @@ def update_graph_task(current_count, all_count, task_id):
             task_id,
         )
         return
+
+
+# ============================================================================
+# 外部渠道消息处理任务（WeChat/DingTalk）
+#
+# 配置项：
+#     max_retries: 最大重试次数，默认 3 次
+#     default_retry_delay: 重试间隔（秒），默认 60 秒
+#
+#     如需调整，修改 @shared_task 装饰器参数：
+#         @shared_task(bind=True, max_retries=5, default_retry_delay=120)
+#
+# 重试机制：
+#     - 任务失败时自动重试，最多 max_retries 次
+#     - 每次重试间隔 default_retry_delay 秒
+#     - 失败时会清除消息去重标记，允许重新处理
+#     - 所有重试耗尽后，消息将被丢弃（可通过 Celery 死信队列监控）
+#
+# 依赖：
+#     - 两阶段去重：调用前需先调用 is_message_processed() 标记为 processing
+#     - 成功后调用 mark_message_completed()
+#     - 失败后调用 mark_message_failed()
+# ============================================================================
+
+
+def _get_bot_chat_flow(bot_id):
+    """获取 Bot 的 ChatFlow 配置
+
+    Args:
+        bot_id: Bot ID
+
+    Returns:
+        BotWorkFlow 对象，如果不存在则返回 None
+    """
+    bot = Bot.objects.filter(id=bot_id, online=True).first()
+    if not bot:
+        return None
+    return BotWorkFlow.objects.filter(bot_id=bot.id).first()
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def process_wechat_message(self, bot_id, msg_id, message, sender_id, config):
+    """处理企业微信消息的 Celery 任务
+
+    使用两阶段去重：
+    - 调用前已标记为 processing
+    - 成功后标记为 completed
+    - 失败后清除标记并触发重试
+
+    Args:
+        bot_id: Bot ID
+        msg_id: 消息唯一标识
+        message: 用户消息内容
+        sender_id: 发送者 ID
+        config: 渠道配置（包含 node_id 等）
+    """
+    from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
+
+    def _execute():
+        handler = WechatChatFlowUtils(bot_id)
+        try:
+            bot_chat_flow = _get_bot_chat_flow(bot_id)
+            if not bot_chat_flow:
+                logger.error(f"微信消息处理失败：Bot {bot_id} 不存在或未配置 ChatFlow")
+                handler.mark_message_failed(msg_id)
+                return
+
+            # 执行 ChatFlow 并发送回复
+            handler.async_process_and_reply(bot_chat_flow, config, message, sender_id, msg_id)
+            logger.info(f"微信消息处理成功: bot_id={bot_id}, msg_id={msg_id}")
+
+        except Exception as e:
+            logger.error(f"微信消息处理失败: bot_id={bot_id}, msg_id={msg_id}, error={str(e)}")
+            # async_process_and_reply 内部已调用 mark_message_failed
+            # 触发 Celery 重试
+            raise
+
+    try:
+        return _run_in_native_thread(_execute)
+    except Exception as e:
+        # Celery 重试
+        raise self.retry(exc=e)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def process_dingtalk_message(self, bot_id, msg_id, text_content, sender_id, webhook_url, config):
+    """处理钉钉消息的 Celery 任务
+
+    使用两阶段去重：
+    - 调用前已标记为 processing
+    - 成功后标记为 completed
+    - 失败后清除标记并触发重试
+
+    Args:
+        bot_id: Bot ID
+        msg_id: 消息唯一标识
+        text_content: 用户消息内容
+        sender_id: 发送者 ID
+        webhook_url: 钉钉 Webhook URL
+        config: 渠道配置（包含 node_id 等）
+    """
+    from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
+
+    def _execute():
+        handler = DingTalkChatFlowUtils(bot_id)
+        try:
+            bot_chat_flow = _get_bot_chat_flow(bot_id)
+            if not bot_chat_flow:
+                logger.error(f"钉钉消息处理失败：Bot {bot_id} 不存在或未配置 ChatFlow")
+                handler.mark_message_failed(msg_id)
+                return
+
+            # 执行 ChatFlow
+            node_id = config.get("node_id")
+            reply_text = handler.execute_chatflow_with_message(bot_chat_flow, node_id, text_content, sender_id)
+
+            # 发送回复
+            if webhook_url and reply_text:
+                markdown_content = {"title": "机器人回复", "text": reply_text}
+                handler.send_message(webhook_url, "markdown", markdown_content)
+
+            # 标记完成
+            handler.mark_message_completed(msg_id)
+            logger.info(f"钉钉消息处理成功: bot_id={bot_id}, msg_id={msg_id}")
+
+        except Exception as e:
+            logger.error(f"钉钉消息处理失败: bot_id={bot_id}, msg_id={msg_id}, error={str(e)}")
+            handler.mark_message_failed(msg_id)
+            raise
+
+    try:
+        return _run_in_native_thread(_execute)
+    except Exception as e:
+        # Celery 重试
+        raise self.retry(exc=e)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def process_wechat_official_message(self, bot_id, msg_id, message, sender_id, config):
+    """处理微信公众号消息的 Celery 任务
+
+    使用两阶段去重：
+    - 调用前已标记为 processing
+    - 成功后标记为 completed
+    - 失败后清除标记并触发重试
+
+    Args:
+        bot_id: Bot ID
+        msg_id: 消息唯一标识
+        message: 用户消息内容
+        sender_id: 发送者 ID（OpenID）
+        config: 渠道配置（包含 node_id, appid, secret 等）
+    """
+    from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
+
+    def _execute():
+        handler = WechatOfficialChatFlowUtils(bot_id)
+        try:
+            bot_chat_flow = _get_bot_chat_flow(bot_id)
+            if not bot_chat_flow:
+                logger.error(f"微信公众号消息处理失败：Bot {bot_id} 不存在或未配置 ChatFlow")
+                handler.mark_message_failed(msg_id)
+                return
+
+            # 执行 ChatFlow 并发送回复
+            handler.async_process_and_reply(bot_chat_flow, config, message, sender_id, msg_id)
+            logger.info(f"微信公众号消息处理成功: bot_id={bot_id}, msg_id={msg_id}")
+
+        except Exception as e:
+            logger.error(f"微信公众号消息处理失败: bot_id={bot_id}, msg_id={msg_id}, error={str(e)}")
+            # async_process_and_reply 内部已调用 mark_message_failed
+            # 触发 Celery 重试
+            raise
+
+    try:
+        return _run_in_native_thread(_execute)
+    except Exception as e:
+        # Celery 重试
+        raise self.retry(exc=e)
+
+
+@shared_task
+def process_memory_write(
+    memory_space_id: int,
+    title: str,
+    content: str,
+    owner_username: str,
+    owner_domain: str,
+    organization_id: int = None,
+):
+    """异步写入记忆条目，每个用户/组织在每个记忆空间只有一条记忆
+
+    核心逻辑：
+    - 个人记忆：按 owner_username + owner_domain + memory_space_id 查找唯一记忆
+    - 组织记忆：按 organization_id + memory_space_id 查找唯一记忆
+    - 找到则合并内容，未找到则创建新记忆
+    """
+    import json
+    import re
+
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
+    from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
+    from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
+
+    is_org_memory = organization_id is not None
+    entity_desc = f"org_id={organization_id}" if is_org_memory else f"user={owner_username}@{owner_domain}"
+    logger.info(f"[MemoryWriteTask] 开始执行: space_id={memory_space_id}, {entity_desc}, title={title}")
+    logger.info(f"[MemoryWriteTask] 原始内容长度: {len(content)} 字符")
+
+    try:
+        close_old_connections()
+
+        # 获取记忆空间配置
+        memory_space = MemorySpace.objects.get(id=memory_space_id)
+        write_rule = memory_space.write_rule
+        default_model = memory_space.default_model
+
+        # Step 1: 查找该实体的现有记忆（每个用户/组织只有一条）
+        if is_org_memory:
+            existing_memory = Memory.objects.filter(
+                memory_space_id=memory_space_id,
+                organization_id=organization_id,
+            ).first()
+        else:
+            existing_memory = Memory.objects.filter(
+                memory_space_id=memory_space_id,
+                owner_username=owner_username,
+                owner_domain=owner_domain,
+                organization_id__isnull=True,
+            ).first()
+
+        if existing_memory:
+            logger.info(f"[MemoryWriteTask] 找到现有记忆: id={existing_memory.id}")
+        else:
+            logger.info("[MemoryWriteTask] 未找到现有记忆，将创建新记忆")
+
+        # 如果没有配置模型，直接创建或追加内容
+        if not default_model:
+            logger.info("[MemoryWriteTask] 未配置 default_model，直接处理")
+            if existing_memory:
+                # 简单追加内容
+                existing_memory.content = f"{existing_memory.content}\n\n---\n\n{content}"
+                existing_memory.updated_by = owner_username
+                existing_memory.save()
+                logger.info(f"[MemoryWriteTask] 记忆追加成功: id={existing_memory.id}")
+            else:
+                memory = Memory.objects.create(
+                    memory_space_id=memory_space_id,
+                    title=title,
+                    content=content,
+                    owner_username=owner_username,
+                    owner_domain=owner_domain,
+                    organization_id=organization_id,
+                    created_by=owner_username,
+                    updated_by=owner_username,
+                )
+                logger.info(f"[MemoryWriteTask] 记忆创建成功: id={memory.id}")
+            return
+
+        # 获取 LLM 客户端
+        try:
+            llm_model = LLMModel.objects.get(id=default_model)
+            llm_request = BasicLLMRequest(
+                openai_api_base=llm_model.openai_api_base,
+                openai_api_key=llm_model.openai_api_key,
+                model=llm_model.model_name,
+                protocol_type=llm_model.protocol_type,
+                temperature=0.3,
+            )
+            client = LLMClientFactory.create_client(llm_request, disable_stream=True)
+        except LLMModel.DoesNotExist:
+            logger.warning(f"[MemoryWriteTask] 配置的模型不存在: model_id={default_model}，直接处理")
+            if existing_memory:
+                existing_memory.content = f"{existing_memory.content}\n\n---\n\n{content}"
+                existing_memory.updated_by = owner_username
+                existing_memory.save()
+                logger.info(f"[MemoryWriteTask] 记忆追加成功: id={existing_memory.id}")
+            else:
+                memory = Memory.objects.create(
+                    memory_space_id=memory_space_id,
+                    title=title,
+                    content=content,
+                    owner_username=owner_username,
+                    owner_domain=owner_domain,
+                    organization_id=organization_id,
+                    created_by=owner_username,
+                    updated_by=owner_username,
+                )
+                logger.info(f"[MemoryWriteTask] 记忆创建成功: id={memory.id}")
+            return
+
+        # Step 2: 使用 write_rule 规范化新内容（如果配置了）
+        processed_content = content
+        if write_rule:
+            logger.info("[MemoryWriteTask] 使用 write_rule 规范化内容")
+            try:
+                messages = [
+                    SystemMessage(content=write_rule),
+                    HumanMessage(content=content),
+                ]
+                response = client.invoke(messages)
+                processed_content = response.content if hasattr(response, "content") else str(response)
+                logger.info(f"[MemoryWriteTask] 规范化完成: 处理后长度={len(processed_content)} 字符")
+            except Exception as e:
+                logger.error(f"[MemoryWriteTask] 规范化失败: {e}，使用原始内容", exc_info=True)
+
+        # Step 3: 如果没有现有记忆，直接创建
+        if not existing_memory:
+            logger.info("[MemoryWriteTask] 无现有记忆，直接创建新记忆")
+            memory = Memory.objects.create(
+                memory_space_id=memory_space_id,
+                title=title,
+                content=processed_content,
+                owner_username=owner_username,
+                owner_domain=owner_domain,
+                organization_id=organization_id,
+                created_by=owner_username,
+                updated_by=owner_username,
+            )
+            logger.info(f"[MemoryWriteTask] 记忆创建成功: id={memory.id}")
+            return
+
+        # Step 4: 有现有记忆，使用 LLM 智能合并
+        merge_prompt = f"""你是一个记忆管理助手。请将新内容与现有记忆智能合并。
+
+## 现有记忆
+标题: {existing_memory.title}
+内容:
+{existing_memory.content}
+
+## 新内容
+{processed_content}
+
+## 合并规则（重要！）
+你必须将新内容与旧内容**智能合并**，而不是简单替换：
+- **保留旧内容中仍然有效的信息**
+- **追加新内容中的新信息**
+- **如果新旧信息冲突，以新内容为准**（如用户说"我现在喜欢咖啡"覆盖"我喜欢茶"）
+- **去除重复信息**，保持内容简洁
+- **保持 Markdown 格式**，条目清晰
+
+## 输出格式
+请严格按以下 JSON 格式输出，不要输出其他内容：
+```json
+{{
+    "title": "合并后的记忆标题",
+    "content": "合并后的完整记忆内容"
+}}
+```
+
+## 示例
+假设现有记忆：
+- 标题: 用户饮食偏好
+- 内容: "喜欢川菜，不吃香菜"
+
+新内容: "我也喜欢粤式早茶"
+
+正确的合并结果：
+```json
+{{
+    "title": "用户饮食偏好",
+    "content": "- 喜欢川菜\\n- 喜欢粤式早茶\\n- 不吃香菜"
+}}
+```
+
+错误的做法（直接替换）：
+```json
+{{
+    "title": "用户饮食偏好",
+    "content": "我也喜欢粤式早茶"
+}}
+```"""
+
+        logger.info("[MemoryWriteTask] 请求 LLM 合并记忆内容")
+        try:
+            messages = [
+                SystemMessage(content="你是一个记忆管理助手，负责智能合并新旧记忆内容。请严格按照 JSON 格式输出。"),
+                HumanMessage(content=merge_prompt),
+            ]
+            response = client.invoke(messages)
+            merge_text = response.content if hasattr(response, "content") else str(response)
+            logger.info(f"[MemoryWriteTask] LLM 合并响应: {merge_text[:200]}...")
+
+            # 解析 JSON 响应
+            json_match = re.search(r"```json\s*(.*?)\s*```", merge_text, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+            else:
+                json_str = merge_text.strip()
+                json_str = re.sub(r"^```\w*\s*", "", json_str)
+                json_str = re.sub(r"\s*```$", "", json_str)
+
+            merge_result = json.loads(json_str)
+            merged_title = merge_result.get("title", existing_memory.title)
+            merged_content = merge_result.get("content", processed_content)
+
+            # 更新现有记忆
+            existing_memory.title = merged_title
+            existing_memory.content = merged_content
+            existing_memory.updated_by = owner_username
+            existing_memory.save()
+            logger.info(f"[MemoryWriteTask] 记忆合并更新成功: id={existing_memory.id}")
+
+        except json.JSONDecodeError as e:
+            logger.error(f"[MemoryWriteTask] JSON 解析失败: {e}，简单追加内容")
+            existing_memory.content = f"{existing_memory.content}\n\n---\n\n{processed_content}"
+            existing_memory.updated_by = owner_username
+            existing_memory.save()
+            logger.info(f"[MemoryWriteTask] 记忆追加成功: id={existing_memory.id}")
+        except Exception as e:
+            logger.error(f"[MemoryWriteTask] LLM 合并失败: {e}，简单追加内容", exc_info=True)
+            existing_memory.content = f"{existing_memory.content}\n\n---\n\n{processed_content}"
+            existing_memory.updated_by = owner_username
+            existing_memory.save()
+            logger.info(f"[MemoryWriteTask] 记忆追加成功: id={existing_memory.id}")
+
+    except MemorySpace.DoesNotExist:
+        logger.error(f"[MemoryWriteTask] 记忆空间不存在: space_id={memory_space_id}")
+        raise
+    except Exception as e:
+        logger.error(f"[MemoryWriteTask] 记忆写入失败: {e}", exc_info=True)
+        raise

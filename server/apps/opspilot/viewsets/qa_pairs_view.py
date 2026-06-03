@@ -5,6 +5,7 @@ from django.http import HttpResponse, JsonResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import MaintainerViewSet
@@ -13,6 +14,7 @@ from apps.opspilot.serializers.qa_pairs_serializers import QAPairsSerializer
 from apps.opspilot.tasks import create_qa_pairs, create_qa_pairs_by_chunk, create_qa_pairs_by_custom, create_qa_pairs_by_json, generate_answer
 from apps.opspilot.utils.chunk_helper import ChunkHelper
 from apps.opspilot.utils.permission_check import CheckKnowledgePermission
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class QAPairsFilter(FilterSet):
@@ -21,10 +23,56 @@ class QAPairsFilter(FilterSet):
 
 
 class QAPairsViewSet(MaintainerViewSet):
+    """QA对 ViewSet - 禁用未使用的内置 create 接口，使用自定义 action 创建"""
+
     queryset = QAPairs.objects.all()
     serializer_class = QAPairsSerializer
     filterset_class = QAPairsFilter
     ordering = ("-id",)
+
+    def create(self, request, *args, **kwargs):
+        """禁用内置 create 接口 - 使用 create_qa_pairs/create_qa_pairs_by_custom/create_qa_pairs_by_chunk 等 action"""
+        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
+
+    @HasPermission("knowledge_document-View")
+    def list(self, request, *args, **kwargs):
+        """列表接口 - 强制要求 knowledge_base_id，验证 current_team 权限"""
+        # 强制要求 knowledge_base_id 参数
+        knowledge_base_id = request.query_params.get("knowledge_base_id")
+        if not knowledge_base_id:
+            msg = self.loader.get("error.knowledge_base_required") if self.loader else "缺少 knowledge_base_id"
+            return JsonResponse({"result": False, "message": msg}, status=400)
+
+        # 验证 knowledge_base 是否存在
+        try:
+            knowledge_base = KnowledgeBase.objects.get(id=knowledge_base_id)
+        except KnowledgeBase.DoesNotExist:
+            msg = self.loader.get("error.knowledge_base_not_found") if self.loader else "知识库不存在"
+            return JsonResponse({"result": False, "message": msg}, status=404)
+
+        # 超管可以看到所有数据
+        if not request.user.is_superuser:
+            # 非超管用户：验证 current_team 权限
+            current_team = self._parse_current_team_cookie(request)
+            user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
+            if current_team not in user_group_ids:
+                msg = self.loader.get("error.no_permission_access_team") if self.loader else "无权访问该团队数据"
+                raise PermissionDenied(msg)
+
+            # 验证用户是否有权访问该知识库
+            if current_team not in knowledge_base.team:
+                msg = self.loader.get("error.no_permission_access_knowledge_base") if self.loader else "无权访问该知识库"
+                raise PermissionDenied(msg)
+
+        # 按 knowledge_base_id 过滤（已由 filterset_class 处理，这里显式确保）
+        queryset = self.filter_queryset(self.get_queryset()).filter(knowledge_base_id=knowledge_base_id)
+
+        page = self.paginate_queryset(queryset.order_by(*self.ordering))
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(queryset, many=True)
+        return JsonResponse({"result": True, "data": serializer.data})
 
     @HasPermission("knowledge_document-View")
     @CheckKnowledgePermission(QAPairs)
@@ -38,7 +86,12 @@ class QAPairsViewSet(MaintainerViewSet):
         if obj.status == "generating" or obj.status == "pending":
             message = self.loader.get("error.qa_pairs_generating") if self.loader else "QA pairs is generating, cannot delete"
             return JsonResponse({"result": False, "message": message})
-        return super().destroy(request, *args, **kwargs)
+        qa_name = obj.name
+        kb_name = obj.knowledge_base.name if obj.knowledge_base else str(obj.knowledge_base_id)
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code == 204:
+            log_operation(request, "delete", "opspilot", f"删除知识库（{kb_name}）的问答对: {qa_name}")
+        return response
 
     def _check_user_permission(self, knowledge_base_id, request):
         knowledge_base = KnowledgeBase.objects.get(id=knowledge_base_id)
@@ -193,12 +246,24 @@ class QAPairsViewSet(MaintainerViewSet):
             )
         add_list = QAPairs.objects.bulk_create(qa_list, batch_size=100)
         create_qa_pairs.delay([instance.id for instance in add_list], params.get("only_question", False))
+        if add_list:
+            kb = KnowledgeBase.objects.filter(id=params["knowledge_base_id"]).first()
+            kb_name = kb.name if kb else str(params["knowledge_base_id"])
+            qa_names = ", ".join([i.name for i in add_list[:3]])
+            if len(add_list) > 3:
+                qa_names += f" 等{len(add_list)}个"
+            log_operation(request, "create", "opspilot", f"创建知识库（{kb_name}）的问答对: {qa_names}")
         return JsonResponse({"result": True})
 
     @HasPermission("knowledge_document-Set")
     @CheckKnowledgePermission(QAPairs)
     def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
+        obj = self.get_object()
+        response = super().update(request, *args, **kwargs)
+        if response.status_code == 200:
+            kb_name = obj.knowledge_base.name if obj.knowledge_base else str(obj.knowledge_base_id)
+            log_operation(request, "update", "opspilot", f"更新知识库（{kb_name}）的问答对: {obj.name}")
+        return response
 
     @action(methods=["POST"], detail=False)
     @HasPermission("knowledge_document-Add")
@@ -233,6 +298,10 @@ class QAPairsViewSet(MaintainerViewSet):
             request.user.username,
             request.user.domain,
         )
+        kb = KnowledgeBase.objects.filter(id=params["knowledge_base_id"]).first()
+        kb_name = kb.name if kb else str(params["knowledge_base_id"])
+        file_names = ", ".join([f.name for f in files])
+        log_operation(request, "create", "opspilot", f"导入知识库（{kb_name}）的问答对: {file_names}")
         return JsonResponse({"result": True, "message": "QA pairs import started."})
 
     def set_file_data(self, files):
@@ -332,6 +401,10 @@ class QAPairsViewSet(MaintainerViewSet):
         if not result:
             message = self.loader.get("error.qa_pair_update_failed") if self.loader else "Failed to update QA pair."
             return JsonResponse({"result": False, "message": message})
+        qa_pairs_obj = QAPairs.objects.filter(id=params.get("qa_pairs_id")).first()
+        if qa_pairs_obj:
+            kb_name = qa_pairs_obj.knowledge_base.name if qa_pairs_obj.knowledge_base else str(qa_pairs_obj.knowledge_base_id)
+            log_operation(request, "update", "opspilot", f"更新知识库（{kb_name}）的问答对: {question[:30]}")
         return JsonResponse({"result": True})
 
     @action(methods=["POST"], detail=False)
@@ -352,6 +425,8 @@ class QAPairsViewSet(MaintainerViewSet):
         if result["result"]:
             qa_paris.generate_count += 1
             qa_paris.save()
+            kb_name = qa_paris.knowledge_base.name if qa_paris.knowledge_base else str(qa_paris.knowledge_base_id)
+            log_operation(request, "create", "opspilot", f"创建知识库（{kb_name}）的问答对: {question[:30]}")
         return JsonResponse(result)
 
     @action(methods=["POST"], detail=False)
@@ -366,6 +441,10 @@ class QAPairsViewSet(MaintainerViewSet):
             return JsonResponse({"result": False, "message": message})
         # if params["base_chunk_id"]:
         #     ChunkHelper.update_document_qa_pairs_count(index_name, -1, params["base_chunk_id"])
+        qa_pairs_obj = QAPairs.objects.filter(id=params.get("qa_pairs_id")).first()
+        if qa_pairs_obj:
+            kb_name = qa_pairs_obj.knowledge_base.name if qa_pairs_obj.knowledge_base else str(qa_pairs_obj.knowledge_base_id)
+            log_operation(request, "delete", "opspilot", f"删除知识库（{kb_name}）的问答对: {params.get('question', '')[:30]}")
         return JsonResponse({"result": True})
 
     @action(methods=["POST"], detail=False)
@@ -385,6 +464,9 @@ class QAPairsViewSet(MaintainerViewSet):
             domain=request.user.domain,
         )
         create_qa_pairs_by_custom.delay(qa_pairs.id, params["qa_pairs"])
+        kb = KnowledgeBase.objects.filter(id=params["knowledge_base_id"]).first()
+        kb_name = kb.name if kb else str(params["knowledge_base_id"])
+        log_operation(request, "create", "opspilot", f"自定义创建知识库（{kb_name}）的问答对: {params['name']}")
         return JsonResponse({"result": True})
 
     @action(methods=["POST"], detail=False)
@@ -419,6 +501,9 @@ class QAPairsViewSet(MaintainerViewSet):
             "only_question": params.get("only_question", False),
         }
         create_qa_pairs_by_chunk.delay(qa_pairs.id, kwargs)
+        kb = KnowledgeBase.objects.filter(id=params["knowledge_base_id"]).first()
+        kb_name = kb.name if kb else str(params["knowledge_base_id"])
+        log_operation(request, "create", "opspilot", f"按chunk创建知识库（{kb_name}）的问答对: {params['name']}")
         return JsonResponse({"result": True, "data": {"qa_pairs_id": qa_pairs.id}})
 
     @action(methods=["GET"], detail=False)

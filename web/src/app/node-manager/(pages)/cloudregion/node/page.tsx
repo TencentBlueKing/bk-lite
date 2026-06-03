@@ -82,6 +82,7 @@ const Node = () => {
   const [collectorOperationType, setCollectorOperationType] =
     useState<string>('');
   const [collectorId, setCollectorId] = useState<string>('');
+  const [collectorName, setCollectorName] = useState<string>('');
   const [collectorPackageId, setCollectorPackageId] = useState<
     number | undefined
   >();
@@ -126,6 +127,7 @@ const Node = () => {
     setShowNodeTable(true);
     setShowCollectorOperation(false);
     setCollectorOperationType('');
+    setCollectorName('');
     getNodes(searchFilters);
   }, [searchFilters]);
 
@@ -144,7 +146,9 @@ const Node = () => {
       selectedRowKeys.includes(item.key)
     );
     const operatingSystems = selectedNodes.map((node) => node.operating_system);
-    const architectures = selectedNodes.map((node) => node.cpu_architecture || '');
+    const architectures = selectedNodes.map(
+      (node) => node.cpu_architecture || ''
+    );
     const uniqueOS = [...new Set(operatingSystems)];
     const uniqueArchitectures = [...new Set(architectures)];
     // 采集器：检查操作系统和 CPU 架构是否一致
@@ -400,14 +404,22 @@ const Node = () => {
                     style={{
                       fontSize: isAutoInstall ? '32px' : '24px',
                       transform: isAutoInstall ? 'none' : 'translateX(2px)',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      marginRight: isAutoInstall ? '' : '8px'
                     }}
                   />
                 </div>
               </Tooltip>
-              <Tooltip title={`CPU架构: ${cpuArchitectureLabel}`}>
-                <div className="flex items-center text-[12px] min-w-[52px] text-[var(--color-text-2)] cursor-pointer">
-                  {cpuArchitectureLabel}
+              <Tooltip
+                title={`${t(
+                  'node-manager.cloudregion.node.cpuArchitecture'
+                )}: ${cpuArchitectureLabel}`}
+              >
+                <div className="flex items-center">
+                  <Icon
+                    type="cpu"
+                    style={{ fontSize: '28px', cursor: 'pointer' }}
+                  />
                 </div>
               </Tooltip>
             </div>
@@ -612,7 +624,8 @@ const Node = () => {
       type: '',
       taskId: '',
       collectorId: '',
-      collectorPackageId: undefined as number | undefined
+      collectorPackageId: undefined as number | undefined,
+      collectorName: ''
     }
   ) => {
     getNodes(searchFilters);
@@ -628,6 +641,7 @@ const Node = () => {
       setTaskId(config.taskId);
       setCollectorOperationType(config.type);
       setCollectorId(config.collectorId || '');
+      setCollectorName(config.collectorName || '');
       setCollectorPackageId(config.collectorPackageId);
       setShowNodeTable(false);
       setShowCollectorOperation(true);
@@ -751,6 +765,7 @@ const Node = () => {
               operationType={collectorOperationType as any}
               taskId={taskId}
               collectorId={collectorId}
+              collectorName={collectorName}
               collectorPackageId={collectorPackageId}
               cancel={cancelCollectorOperation}
             />

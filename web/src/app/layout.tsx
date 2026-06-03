@@ -7,6 +7,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { SessionProvider, useSession } from 'next-auth/react';
 import { LocaleProvider } from '@/context/locale';
+import { useTranslation } from '@/utils/i18n';
 import { ThemeProvider } from '@/context/theme';
 import { MenusProvider, useMenus } from '@/context/menus';
 import { UserInfoProvider } from '@/context/userInfo';
@@ -14,9 +15,10 @@ import { ClientProvider } from '@/context/client';
 import { PermissionsProvider, usePermissions } from '@/context/permissions';
 import AuthProvider from '@/context/auth';
 import TopMenu from '@/components/top-menu';
-import { ConfigProvider, Watermark } from 'antd';
+import { ConfigProvider, Watermark, message } from 'antd';
 import Spin from '@/components/spin';
 import { portalBrandingDefaults, usePortalBranding } from '@/hooks/usePortalBranding';
+import { isProfessionalDashboardRoute } from '@/app/monitor/dashboards/utils';
 import '@/styles/globals.css';
 import { MenuItem } from '@/types/index'
 import WithSideMenuLayout from '@/components/sub-layout'
@@ -36,6 +38,7 @@ const applyWatermarkTemplate = (template: string, variables: Record<string, stri
 
 const PortalBrandingHead = () => {
   const { portalName, faviconUrl } = usePortalBranding();
+  const { t } = useTranslation();
 
   useEffect(() => {
     const head = document.head;
@@ -53,8 +56,9 @@ const PortalBrandingHead = () => {
   }, [faviconUrl]);
 
   useEffect(() => {
-    document.title = `${portalName || portalBrandingDefaults.portalName} - AI 原生的轻量化运维平台`;
-  }, [portalName]);
+    const slogan = t('common.portalSlogan', 'AI-Native Lightweight O&M Platform');
+    document.title = `${portalName || portalBrandingDefaults.portalName} - ${slogan}`;
+  }, [portalName, t]);
 
   return null;
 };
@@ -75,14 +79,16 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const isLoading = isAuthLoading || (isAuthenticated && (permissionsLoading || menusLoading));
   const authPaths = ['/auth/signin', '/auth/signout'];
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
+  const hasResolvedPathname = pathname !== null;
   const isAuthRoute = Boolean(pathname && authPaths.includes(pathname));
+  const isDashboardRoute = isProfessionalDashboardRoute(pathname);
 
   const shouldRenderMenu = useMemo(() => {
-    if (pathname?.startsWith('/ops-console')) {
+    if (pathname?.startsWith('/ops-console') || isDashboardRoute) {
       return false;
     }
     return shouldRenderSecondLayerMenu(pathname, menus);
-  }, [pathname, menus]);
+  }, [pathname, menus, isDashboardRoute]);
 
   const isPathInMenu = useCallback((path: string, menus: MenuItem[]): boolean => {
     for (const menu of menus) {
@@ -131,6 +137,17 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     checkPermission();
   }, [isLoading, pathname, isAuthenticated, status, session, router, configMenus, hasPermission]);
 
+  // Show password expiry reminder after login redirect
+  useEffect(() => {
+    if (isAuthenticated && !isAuthRoute) {
+      const reminder = sessionStorage.getItem('password_expiry_reminder');
+      if (reminder) {
+        sessionStorage.removeItem('password_expiry_reminder');
+        message.warning(reminder, 8);
+      }
+    }
+  }, [isAuthenticated, isAuthRoute]);
+
   const hideTopMenu = useMemo(() => {
     return pathname?.startsWith('/opspilot/studio/chat');
   }, [pathname]);
@@ -154,7 +171,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const layoutContent = (
     <AntdRegistry>
       <div className="flex flex-col min-h-screen">
-        {isAuthenticated && !isAuthRoute && (
+        {isAuthenticated && hasResolvedPathname && !isAuthRoute && (
           <header className="sticky top-0 left-0 right-0 flex justify-between items-center header-bg">
             <TopMenu hideMainMenu={hideTopMenu} />
           </header>
@@ -203,7 +220,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <title>BlueKing Lite - AI 原生的轻量化运维平台</title>
+        <title>BlueKing Lite</title>
         <link rel="icon" href="/logo-site.png" type="image/png" data-portal-favicon="true" />
         <Script src="/iconfont.js" strategy="afterInteractive"/>
       </head>

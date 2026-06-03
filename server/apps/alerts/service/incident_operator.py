@@ -18,9 +18,15 @@ class IncidentOperator:
     未分派--> 待响应 --> 处理中 --> 已关闭--> 重新打开到处理中
     """
 
-    def __init__(self, user):
+    def __init__(self, user, allowed_incident_ids=None):
         self.user = user
         self.status_map = dict(IncidentStatus.CHOICES)
+        self.allowed_incident_ids = None if allowed_incident_ids is None else {str(item) for item in allowed_incident_ids}
+
+    def _is_incident_allowed(self, incident_id: str) -> bool:
+        if self.allowed_incident_ids is None:
+            return True
+        return str(incident_id) in self.allowed_incident_ids
 
     def operate(self, action: str, incident_id: str, data: dict) -> dict:
         """
@@ -34,6 +40,14 @@ class IncidentOperator:
             return {
                 "result": False,
                 "message": f"不支持的操作类型: {action}",
+                "data": {}
+            }
+
+        if not self._is_incident_allowed(incident_id):
+            logger.warning(f"用户 {self.user} 无权限操作事故: incident_id={incident_id}")
+            return {
+                "result": False,
+                "message": "您没有权限操作此事故",
                 "data": {}
             }
 

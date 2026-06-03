@@ -48,7 +48,7 @@ class UserAPISecretViewSet(viewsets.ModelViewSet):
 
         return UserAPISecret.objects.filter(username=user.username, domain=user.domain, team=current_team)
 
-    @HasPermission("api_secret_key-View", "opspilot")
+    @HasPermission("api_secret_key-View", "system-manager")
     def list(self, request, *args, **kwargs):
         loader = _get_loader(request)
         _, error_response = _parse_current_team(request, loader)
@@ -59,19 +59,19 @@ class UserAPISecretViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
-    @HasPermission("api_secret_key-View", "opspilot")
+    @HasPermission("api_secret_key-View", "system-manager")
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
     @action(detail=False, methods=["POST"])
-    @HasPermission("api_secret_key-Add", "opspilot")
+    @HasPermission("api_secret_key-Add", "system-manager")
     def generate_api_secret(self, request):
         api_secret = UserAPISecret.generate_api_secret()
         return JsonResponse({"result": True, "data": {"api_secret": api_secret}})
 
-    @HasPermission("api_secret_key-Add", "opspilot")
+    @HasPermission("api_secret_key-Add", "system-manager")
     def create(self, request, *args, **kwargs):
         username = request.user.username
         loader = _get_loader(request)
@@ -101,6 +101,6 @@ class UserAPISecretViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         return JsonResponse({"result": False, "message": "API密钥不支持修改"})
 
-    @HasPermission("api_secret_key-Delete", "opspilot")
+    @HasPermission("api_secret_key-Delete", "system-manager")
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)

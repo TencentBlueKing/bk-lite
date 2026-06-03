@@ -1,8 +1,12 @@
+from types import SimpleNamespace
+
 from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.image_classification import *
 from rest_framework import serializers
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.utils.group_scope import (
+    assert_dataset_version_scope,
+    assert_parent_team_matches,
     assert_team_ownership,
     get_current_team,
     validate_requested_teams,
@@ -79,6 +83,7 @@ class ImageClassificationDatasetReleaseSerializer(AuthSerializer):
     class Meta:
         model = ImageClassificationDatasetRelease
         fields = "__all__"
+        validators = []
         extra_kwargs = {
             "name": {"required": False},  # 创建时可选，会自动生成
             "dataset_file": {"required": False},  # 创建时不需要直接提供文件
@@ -107,11 +112,22 @@ class ImageClassificationDatasetReleaseSerializer(AuthSerializer):
         train_file_id = validated_data.pop("train_file_id", None)
         val_file_id = validated_data.pop("val_file_id", None)
         test_file_id = validated_data.pop("test_file_id", None)
+        dataset = validated_data.get("dataset")
+        version = validated_data.get("version")
 
         # 如果提供了文件ID，则执行文件打包逻辑
         if train_file_id and val_file_id and test_file_id:
             return self._create_from_files(validated_data, train_file_id, val_file_id, test_file_id)
         else:
+            existing = ImageClassificationDatasetRelease._default_manager.filter(dataset=dataset, version=version).first()
+            if existing and existing.status == "failed":
+                existing.dataset_file = validated_data.get("dataset_file")
+                existing.status = "pending"
+                existing.file_size = 0
+                existing.metadata = {}
+                existing.save(update_fields=["dataset_file", "status", "file_size", "metadata"])
+                return existing
+
             # 否则使用标准创建（适用于直接上传ZIP文件的场景）
             return super().create(validated_data)
 
@@ -132,32 +148,48 @@ class ImageClassificationDatasetReleaseSerializer(AuthSerializer):
             val_obj = ImageClassificationTrainData.objects.get(id=val_file_id, dataset=dataset)
             test_obj = ImageClassificationTrainData.objects.get(id=test_file_id, dataset=dataset)
 
-            # 检查是否已有相同版本的记录（幂等性保护）
-            existing = ImageClassificationDatasetRelease.objects.filter(dataset=dataset, version=version).exclude(status="failed").first()
+            # 检查是否已有相同版本的记录（失败记录允许重试）
+            existing = ImageClassificationDatasetRelease.objects.filter(dataset=dataset, version=version).first()
 
             if existing:
-                logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
-                return existing
+                if existing.status == "failed":
+                    release = existing
+                    release.status = "pending"
+                    release.file_size = 0
+                    release.metadata = {}
+                    release.save(update_fields=["status", "file_size", "metadata"])
+                else:
+                    logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
+                    raise serializers.ValidationError(f"数据集 {dataset.name} 的版本 {version} 已存在或正在处理中")
+            else:
+                # 创建 pending 状态的发布记录
+                validated_data["status"] = "pending"
+                validated_data["file_size"] = 0
+                validated_data["metadata"] = {}
 
-            # 创建 pending 状态的发布记录
-            validated_data["status"] = "pending"
-            validated_data["file_size"] = 0
-            validated_data["metadata"] = {}
+                if not name:
+                    validated_data["name"] = f"{dataset.name}_{version}"
 
-            if not name:
-                validated_data["name"] = f"{dataset.name}_{version}"
+                if not description:
+                    validated_data["description"] = f"从数据集文件自动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
 
-            if not description:
-                validated_data["description"] = f"从数据集文件自动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
-
-            release = ImageClassificationDatasetRelease.objects.create(**validated_data)
+                release = ImageClassificationDatasetRelease.objects.create(**validated_data)
 
             # 触发异步任务
             from apps.mlops.tasks.image_classification import (
                 publish_dataset_release_async,
             )
 
-            publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)
+            try:
+                publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)
+            except Exception as task_error:
+                logger.error(
+                    f"投递 Celery 任务失败 - Release ID: {release.id}, Error: {str(task_error)}",
+                    exc_info=True,
+                )
+                release.status = "failed"
+                release.save(update_fields=["status"])
+                raise serializers.ValidationError("投递异步任务失败")
 
             logger.info(f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}")
 
@@ -166,9 +198,11 @@ class ImageClassificationDatasetReleaseSerializer(AuthSerializer):
         except ImageClassificationTrainData.DoesNotExist as e:
             logger.error(f"训练数据文件不存在 - {str(e)}")
             raise serializers.ValidationError(f"训练数据文件不存在或不属于该数据集")
+        except serializers.ValidationError:
+            raise
         except Exception as e:
             logger.error(f"创建数据集发布任务失败 - {str(e)}", exc_info=True)
-            raise serializers.ValidationError(f"创建发布任务失败: {str(e)}")
+            raise serializers.ValidationError("创建发布任务失败")
 
     def validate(self, attrs):
         """验证数据集和版本的唯一性"""
@@ -186,14 +220,16 @@ class ImageClassificationDatasetReleaseSerializer(AuthSerializer):
                 raise serializers.ValidationError({"dataset_file": "必须提供数据集文件或训练数据文件ID"})
 
         if dataset and version:
+            existing_releases = ImageClassificationDatasetRelease._default_manager.filter(dataset=dataset, version=version)
             if self.instance:
-                # 更新操作，排除自身
-                exists = ImageClassificationDatasetRelease.objects.filter(dataset=dataset, version=version).exclude(pk=self.instance.pk).exists()
-            else:
-                # 创建操作
-                exists = ImageClassificationDatasetRelease.objects.filter(dataset=dataset, version=version).exists()
+                existing_releases = existing_releases.exclude(pk=self.instance.pk)
 
-            if exists:
+            existing = existing_releases.first()
+            has_file_ids = bool(train_file_id and val_file_id and test_file_id)
+            has_dataset_file = bool(attrs.get("dataset_file"))
+            allow_failed_retry = bool(existing and existing.status == "failed" and (has_file_ids or has_dataset_file))
+
+            if existing and not allow_failed_retry:
                 raise serializers.ValidationError({"version": f"数据集 {dataset.name} 的版本 {version} 已存在"})
 
         return attrs
@@ -243,6 +279,14 @@ class ImageClassificationTrainJobSerializer(AuthSerializer):
         validated_data["status"] = "pending"
         return super().create(validated_data)
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        request = self.context["request"]
+        dataset_version = attrs.get("dataset_version", getattr(self.instance, "dataset_version", None))
+        team = attrs.get("team", getattr(self.instance, "team", None))
+        assert_dataset_version_scope(dataset_version, team, request)
+        return attrs
+
     def validate_team(self, value):
         return validate_requested_teams(self.context["request"], value)
 
@@ -261,6 +305,22 @@ class ImageClassificationServingSerializer(AuthSerializer):
         model = ImageClassificationServing
         fields = "__all__"
         extra_kwargs = {"container_info": {"read_only": True}}
+
+    def validate_train_job(self, value):
+        request = self.context["request"]
+        assert_team_ownership(value, get_current_team(request), "train_job", request=request)
+        return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+
+        train_job = attrs.get("train_job", getattr(self.instance, "train_job", None))
+        team = attrs.get("team", getattr(self.instance, "team", None))
+        if train_job is not None and team is not None:
+            field_name = "train_job" if "train_job" in attrs or "team" not in attrs else "team"
+            assert_parent_team_matches(SimpleNamespace(team=team), train_job, field_name)
+
+        return attrs
 
     def get_actual_port(self, obj):
         """从 container_info 中获取实际端口"""

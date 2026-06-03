@@ -24,6 +24,7 @@ from apps.opspilot.services.knowledge_search_service import KnowledgeSearchServi
 from apps.opspilot.tasks import retrain_all
 from apps.opspilot.utils.chunk_helper import ChunkHelper
 from apps.opspilot.utils.graph_utils import GraphUtils
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class KnowledgeBaseViewSet(AuthViewSet):
@@ -53,7 +54,9 @@ class KnowledgeBaseViewSet(AuthViewSet):
     def create(self, request, *args, **kwargs):
         params = request.data
         if not params.get("team"):
-            return JsonResponse({"result": False, "message": self.loader.get("error.team_required")})
+            params["team"] = [int(request.COOKIES.get("current_team"))]
+        # 校验用户是否有目标组织的权限
+        self._validate_org_field_permission(request, params["team"])
         if "embed_model" not in params:
             params["embed_model"] = EmbedProvider.objects.get(name="FastEmbed(BAAI/bge-small-zh-v1.5)").id
         if KnowledgeBase.objects.filter(name=params["name"]).exists():
@@ -61,8 +64,6 @@ class KnowledgeBaseViewSet(AuthViewSet):
         params["created_by"] = request.user.username
         if params.get("enable_rerank") is None:
             params["enable_rerank"] = False
-        if not params.get("team"):
-            params["team"] = [int(request.COOKIES.get("current_team"))]
         params["score_threshold"] = 0.3
         params["search_type"] = "mmr"
         serializer = self.get_serializer(data=params)
@@ -70,7 +71,10 @@ class KnowledgeBaseViewSet(AuthViewSet):
         with atomic():
             self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        response = Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        if response.status_code >= 200 and response.status_code < 300:
+            log_operation(request, "create", "opspilot", f"新增知识库: {serializer.data.get('name', '')}")
+        return response
 
     @HasPermission("knowledge_list-Edit")
     def update(self, request, *args, **kwargs):
@@ -81,14 +85,24 @@ class KnowledgeBaseViewSet(AuthViewSet):
                 return JsonResponse({"result": False, "message": self.loader.get("error.knowledge_base_training")})
             delete_qa_pairs = params.pop("delete_qa_pairs", False)
             retrain_all.delay(instance.id, request.user.username, request.user.domain, delete_qa_pairs)
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            kb_name = response.data.get("name") if isinstance(response.data, dict) else None
+            if not kb_name:
+                kb_name = instance.name
+            log_operation(request, "update", "opspilot", f"编辑知识库: {kb_name}")
+        return response
 
     @action(methods=["POST"], detail=True)
     @HasPermission("knowledge_setting-Edit")
     def update_settings(self, request, *args, **kwargs):
         instance: KnowledgeBase = self.get_object()
         if not request.user.is_superuser:
-            current_team = request.COOKIES.get("current_team", "0")
+            # 验证 current_team 权限
+            current_team = self._parse_current_team_cookie(request)
+            user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
+            if current_team not in user_group_ids:
+                return JsonResponse({"result": False, "message": self.loader.get("error.permission_update_denied")})
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, instance, current_team, include_children=include_children)
             if not has_permission:
@@ -153,7 +167,10 @@ class KnowledgeBaseViewSet(AuthViewSet):
         except Exception as e:
             logger.exception(e)
             return JsonResponse({"result": False, "message": self.loader.get("error.knowledge_base_delete_related_data_failed")})
-        return super().destroy(request, *args, **kwargs)
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            log_operation(request, "delete", "opspilot", f"删除知识库: {instance.name}")
+        return response
 
     @action(detail=False, methods=["GET"])
     def get_teams(self, request):

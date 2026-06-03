@@ -1,0 +1,177 @@
+# Scenario 17: External Channel Message Dedup-Before-ACK May Cause Permanent Loss
+
+## Issue Reference
+- GitHub Issue: #2961
+- Title: [opspilot] 外部渠道消息先去重后异步 ACK，可能导致 WeChat/DingTalk 消息永久丢失
+
+## Problem Statement
+
+External channel message handlers (WeChat/DingTalk) mark messages as "processed" in cache
+BEFORE actually processing them. If the async processing thread fails (crash, restart, exception),
+the message is already marked as processed, causing platform retries to be rejected by deduplication.
+
+### Original Flow (Buggy - Before Fix)
+```
+1. Message arrives from WeChat/DingTalk
+2. is_message_processed(msg_id) → cache.set(msg_id, "1", 60s) → return False (first time)
+3. Return HTTP 200 "success" to platform (ACK)
+4. Start async thread to process message
+5. [CRASH/EXCEPTION in async thread]
+6. Platform retries → is_message_processed(msg_id) → return True (already marked!)
+7. Message permanently lost
+```
+
+### Fixed Flow (Implemented)
+```
+1. Message arrives from WeChat/DingTalk
+2. is_message_processed(msg_id) → check cache status
+   - If "completed" → return True (skip)
+   - If "processing" → return True (skip, already being handled)
+   - If None → cache.set(msg_id, "processing", 300s) → return False
+3. Return HTTP 200 "success" to platform (ACK)
+4. Dispatch Celery task: process_wechat_message / process_dingtalk_message
+5. Celery task executes ChatFlow
+6. On success: mark_message_completed(msg_id) → cache.set(msg_id, "completed", 86400s)
+7. On failure: mark_message_failed(msg_id) → cache.delete(msg_id) → Celery retries (max 3)
+8. Platform retries → can be reprocessed if not completed
+```
+
+## Affected Files
+- `server/apps/opspilot/utils/base_chat_flow_utils.py`: Two-phase dedup methods
+- `server/apps/opspilot/tasks.py`: Celery tasks `process_wechat_message`, `process_dingtalk_message`
+- `server/apps/opspilot/utils/wechat_chat_flow_utils.py`: WeChat message handler
+- `server/apps/opspilot/utils/dingtalk_chat_flow_utils.py`: DingTalk message handler
+
+## Implementation Details
+
+### Two-Phase Dedup Constants
+```python
+MESSAGE_PROCESSING_EXPIRE_SECONDS = 300   # 5 minutes - processing state TTL
+MESSAGE_COMPLETED_EXPIRE_SECONDS = 86400  # 24 hours - completed state TTL
+```
+
+### Key Methods in BaseChatFlowUtils
+```python
+def is_message_processed(self, msg_id: str) -> bool:
+    """Check if message is already processed (two-phase dedup)
+    
+    State transitions:
+    - None → processing (5min TTL) → completed (24h TTL)
+    - On failure: clear → None (allows Celery retry or platform retry)
+    """
+    cache_key = f"{self.cache_key_prefix}:{self.bot_id}:{msg_id}"
+    status = cache.get(cache_key)
+    
+    if status == "completed":
+        return True  # Already done, skip
+    if status == "processing":
+        return True  # Being handled, skip
+    
+    # Mark as processing (short TTL, allows retry on timeout)
+    cache.set(cache_key, "processing", MESSAGE_PROCESSING_EXPIRE_SECONDS)
+    return False
+
+def mark_message_completed(self, msg_id: str):
+    """Mark message as completed (long TTL)"""
+    cache_key = f"{self.cache_key_prefix}:{self.bot_id}:{msg_id}"
+    cache.set(cache_key, "completed", MESSAGE_COMPLETED_EXPIRE_SECONDS)
+
+def mark_message_failed(self, msg_id: str):
+    """Mark message as failed, clear dedup flag to allow retry"""
+    cache_key = f"{self.cache_key_prefix}:{self.bot_id}:{msg_id}"
+    cache.delete(cache_key)
+```
+
+### Celery Task Configuration
+```python
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def process_wechat_message(self, bot_id, msg_id, message, sender_id, config):
+    # ... process message ...
+    # On failure: raise exception → Celery retries
+```
+
+## Test Scenarios
+
+### Test Class: TestTwoPhaseDeduplication
+
+#### 1. test_message_marked_processing_not_completed_initially
+**Goal**: Verify message is marked as "processing" (not "completed") when first received.
+**Setup**: Mock cache, create WechatChatFlowUtils instance
+**Action**: Call `is_message_processed(msg_id="test-123")`
+**Assert**: 
+- Returns False (first time)
+- Cache contains `"processing"` state with 300s TTL
+
+#### 2. test_processing_state_blocks_duplicate
+**Goal**: Verify "processing" state blocks duplicate messages.
+**Setup**: Mock cache with "processing" state
+**Action**: Call `is_message_processed(msg_id="test-123")` twice
+**Assert**: 
+- First call returns False
+- Second call returns True (blocked by "processing" state)
+
+#### 3. test_completed_state_blocks_duplicate
+**Goal**: Verify "completed" state blocks duplicate messages.
+**Setup**: Mock cache, process message successfully
+**Action**: 
+1. Call `is_message_processed(msg_id="test-123")` → False
+2. Call `mark_message_completed(msg_id="test-123")`
+3. Call `is_message_processed(msg_id="test-123")` → True
+**Assert**: Third call returns True (blocked by "completed" state)
+
+#### 4. test_failed_processing_clears_dedup_flag
+**Goal**: Verify failed processing clears dedup flag to allow retry.
+**Setup**: Mock cache
+**Action**: 
+1. Call `is_message_processed(msg_id="test-123")` → False
+2. Call `mark_message_failed(msg_id="test-123")`
+3. Call `is_message_processed(msg_id="test-123")` → False
+**Assert**: Third call returns False (can be retried)
+
+### Test Class: TestCeleryTaskReliability
+
+#### 5. test_celery_task_marks_completed_on_success
+**Goal**: Verify Celery task marks message as completed on success.
+**Setup**: Mock ChatFlow execution to succeed
+**Action**: Call `process_wechat_message.delay(bot_id, msg_id, message, sender_id, config)`
+**Assert**: 
+- Message processed successfully
+- Cache contains "completed" state
+
+#### 6. test_celery_task_clears_flag_and_retries_on_failure
+**Goal**: Verify Celery task clears flag and retries on failure.
+**Setup**: Mock ChatFlow execution to raise exception
+**Action**: Call `process_wechat_message.delay(...)` with failing ChatFlow
+**Assert**: 
+- `mark_message_failed()` called
+- Celery retry triggered
+- Cache flag cleared (allows retry)
+
+#### 7. test_celery_max_retries_exhausted
+**Goal**: Verify behavior when all Celery retries are exhausted.
+**Setup**: Mock ChatFlow to always fail
+**Action**: Trigger task with max_retries=3
+**Assert**: 
+- Task fails after 3 retries
+- Message can be monitored via Celery dead letter queue
+
+### Test Class: TestConcurrentMessageHandling
+
+#### 8. test_concurrent_same_message_only_one_processes
+**Goal**: Verify concurrent arrivals of same message don't cause double processing.
+**Setup**: Mock cache with atomic operations
+**Action**: Simulate two concurrent calls with same msg_id
+**Assert**: 
+- Only one returns False (proceeds to processing)
+- Other returns True (blocked)
+
+#### 9. test_processing_timeout_allows_retry
+**Goal**: Verify processing timeout (5 min) allows retry.
+**Setup**: Mock cache with expired "processing" state
+**Action**: 
+1. Set "processing" state
+2. Simulate 6 minutes passing (TTL expired)
+3. Call `is_message_processed(msg_id="test-123")`
+**Assert**: Returns False (can be retried after timeout)
+
+## Test Count: 9

@@ -6,7 +6,7 @@ import React, {
   useImperativeHandle,
   useRef,
 } from 'react';
-import { Button, message, Upload } from 'antd';
+import { Button, message, Modal, Upload } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
 import { useInstanceApi } from '@/app/cmdb/api';
@@ -75,7 +75,7 @@ const ImportInst = forwardRef<FieldModalRef, FieldModalProps>(
         });
         // 创建一个Blob对象
         const blob = new Blob([response.data], {
-          type: response.headers['content-type'],
+          type: response.headers['content-type'] as string,
         });
         // 创建一个下载链接
         const link = document.createElement('a');
@@ -114,6 +114,27 @@ const ImportInst = forwardRef<FieldModalRef, FieldModalProps>(
         message.success('导入成功');
         onSuccess();
         handleCancel();
+      } catch (error: any) {
+        // 后端校验失败返回的多行明细可能很长，用 Modal 展示比 message.error 更可读
+        const detail = error?.message || '导入失败';
+        Modal.error({
+          title: '导入失败',
+          width: 640,
+          content: (
+            <pre
+              style={{
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                maxHeight: 360,
+                overflow: 'auto',
+                margin: 0,
+                fontFamily: 'inherit',
+              }}
+            >
+              {detail}
+            </pre>
+          ),
+        });
       } finally {
         setConfirmLoading(false);
       }

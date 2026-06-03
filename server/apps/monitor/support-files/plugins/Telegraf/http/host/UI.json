@@ -1,0 +1,167 @@
+{
+  "object_name": "Host",
+  "instance_type": "os",
+  "collect_type": "http",
+  "config_type": ["host"],
+  "collector": "Telegraf",
+  "instance_id": "{{cloud_region}}_{{instance_type}}_{{host}}",
+  "form_fields": [
+    {
+      "name": "host",
+      "label": "目标主机IP",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "description": "目标主机的IP地址",
+      "widget_props": {
+        "placeholder": "10.0.0.1"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.host"
+      }
+    },
+    {
+      "name": "os_type",
+      "label": "操作系统",
+      "type": "select",
+      "required": true,
+      "default_value": "linux",
+      "description": "目标主机操作系统类型",
+      "widget_props": {
+        "options": [
+          {"label": "Linux", "value": "linux"},
+          {"label": "Windows", "value": "windows"}
+        ]
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.os_type"
+      }
+    },
+    {
+      "name": "username",
+      "label": "用户名",
+      "type": "input",
+      "required": true,
+      "editable": false,
+      "description": "SSH/WinRM 登录用户名",
+      "widget_props": {
+        "placeholder": "root / Administrator"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.username"
+      }
+    },
+    {
+      "name": "password",
+      "label": "密码",
+      "type": "password",
+      "required": true,
+      "editable": false,
+      "description": "SSH/WinRM 登录密码",
+      "widget_props": {
+        "placeholder": "密码"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.password"
+      }
+    },
+    {
+      "name": "port",
+      "label": "端口",
+      "type": "input",
+      "required": false,
+      "default_value": "22",
+      "description": "连接端口 (Linux SSH: 22, Windows WinRM: 5986)",
+      "widget_props": {
+        "placeholder": "22"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.port"
+      }
+    },
+    {
+      "name": "metrics_modules",
+      "label": "采集模块",
+      "type": "input",
+      "required": false,
+      "default_value": "cpu,mem,disk,net",
+      "description": "采集模块列表，逗号分隔 (可选: cpu,mem,disk,net)",
+      "widget_props": {
+        "placeholder": "cpu,mem,disk,net"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.metrics_modules"
+      }
+    },
+    {
+      "name": "interval",
+      "label": "采集间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 60,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "widget_props": {
+        "min": 10,
+        "precision": 0,
+        "placeholder": "60",
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      }
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "widget_props": {
+        "placeholder": "请选择节点"
+      },
+      "enable_row_filter": false
+    },
+    {
+      "name": "host",
+      "label": "目标主机IP",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "10.0.0.1"
+      },
+      "change_handler": {
+        "type": "simple",
+        "source_fields": ["host"],
+        "target_field": "instance_name"
+      }
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "实例名称",
+        "disabled": false
+      }
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": false,
+      "widget_props": {
+        "placeholder": "请选择组"
+      }
+    }
+  ],
+  "extra_edit_fields": {}
+}

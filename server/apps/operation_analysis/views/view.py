@@ -3,20 +3,21 @@
 # @Time: 2025/7/14 17:22
 # @Author: windyzhao
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.operation_analysis.filters.filters import DashboardModelFilter, DirectoryModelFilter, TopologyModelFilter, ArchitectureModelFilter
+from apps.operation_analysis.filters.filters import ArchitectureModelFilter, DashboardModelFilter, DirectoryModelFilter, TopologyModelFilter
+from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Topology
 from apps.operation_analysis.serializers.directory_serializers import (
+    ArchitectureModelSerializer,
     DashboardModelSerializer,
     DirectoryModelSerializer,
     TopologyModelSerializer,
-    ArchitectureModelSerializer,
 )
 from apps.operation_analysis.services.directory_service import DictDirectoryService
 from config.drf.pagination import CustomPageNumberPagination
-from apps.operation_analysis.models.models import Dashboard, Directory, Topology, Architecture
 
 
 def _raise_if_builtin(instance, action_name="修改"):
@@ -25,6 +26,53 @@ def _raise_if_builtin(instance, action_name="修改"):
         from rest_framework.exceptions import PermissionDenied
 
         raise PermissionDenied(f"内置对象不允许{action_name}")
+
+
+def _partial_update_with_auth(viewset, request, *args, **kwargs):
+    """在 ops-analysis 本地保留 PATCH 语义，避免修改公共 AuthViewSet。"""
+    user = getattr(request, "user", None)
+    data = request.data
+    instance = viewset.get_object()
+    org_field = viewset.ORGANIZATION_FIELD
+    instance_org_value = getattr(instance, org_field, [])
+    if not isinstance(instance_org_value, list):
+        instance_org_value = []
+
+    if getattr(user, "is_superuser", False):
+        if org_field in data:
+            org_values = viewset._normalize_org_values(data, org_field)
+            delete_team = [i for i in instance_org_value if i not in org_values]
+            viewset.delete_rules(instance.id, delete_team)
+
+        serializer = viewset.get_serializer(instance, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        viewset.perform_update(serializer)
+
+        if getattr(instance, "_prefetched_objects_cache", None):
+            instance._prefetched_objects_cache = {}
+
+        return Response(serializer.data)
+
+    return AuthViewSet.update(viewset, request, *args, partial=True, **kwargs)
+
+
+def _build_validation_error_response(error):
+    detail = getattr(error, "detail", None)
+    if not isinstance(detail, dict) or "detail" not in detail or "data" not in detail:
+        raise error
+
+    message = detail.get("detail")
+    if isinstance(message, list):
+        message = message[0] if message else "请求失败"
+
+    return Response({"detail": str(message), "data": detail.get("data")}, status=400)
+
+
+def _execute_with_clean_validation_error(handler):
+    try:
+        return handler()
+    except ValidationError as error:
+        return _build_validation_error_response(error)
 
 
 class BuiltinVisibleMixin:
@@ -76,27 +124,19 @@ class DirectoryModelViewSet(BuiltinVisibleMixin, AuthViewSet):
 
     @HasPermission("view-AddCatalogue")
     def create(self, request, *args, **kwargs):
-        data = {k: v for k, v in request.data.items() if k not in ("is_build_in", "build_in_key")}
-        Directory.objects.create(**data)
-        return Response(data)
+        return super(DirectoryModelViewSet, self).create(request, *args, **kwargs)
 
     @HasPermission("view-EditCatalogue")
     def update(self, request, *args, **kwargs):
-        instance = Directory.objects.filter(id=kwargs["pk"]).first()
-        if instance:
-            _raise_if_builtin(instance, "编辑")
-        data = {k: v for k, v in request.data.items() if k not in ("is_build_in", "build_in_key")}
-        Directory.objects.filter(id=kwargs["pk"]).update(**data)
-        return Response(data)
+        instance = self.get_object()
+        _raise_if_builtin(instance, "编辑")
+        return super(DirectoryModelViewSet, self).update(request, *args, **kwargs)
 
     @HasPermission("view-EditCatalogue")
     def partial_update(self, request, *args, **kwargs):
-        instance = Directory.objects.filter(id=kwargs["pk"]).first()
-        if instance:
-            _raise_if_builtin(instance, "编辑")
-        data = {k: v for k, v in request.data.items() if k not in ("is_build_in", "build_in_key")}
-        Directory.objects.filter(id=kwargs["pk"]).update(**data)
-        return Response(data)
+        instance = self.get_object()
+        _raise_if_builtin(instance, "编辑")
+        return _partial_update_with_auth(self, request, *args, **kwargs)
 
     @HasPermission("view-DeleteCatalogue")
     def destroy(self, request, *args, **kwargs):
@@ -104,7 +144,7 @@ class DirectoryModelViewSet(BuiltinVisibleMixin, AuthViewSet):
         _raise_if_builtin(instance, "删除")
         return super(DirectoryModelViewSet, self).destroy(request, *args, **kwargs)
 
-    # @HasPermission("view-View")
+    @HasPermission("view-View")
     @action(detail=False, methods=["get"], url_path="tree")
     def tree(self, request, *args, **kwargs):
         result = DictDirectoryService.get_dict_trees(request)
@@ -135,19 +175,19 @@ class DashboardModelViewSet(BuiltinVisibleMixin, AuthViewSet):
 
     @HasPermission("view-AddChart")
     def create(self, request, *args, **kwargs):
-        return super(DashboardModelViewSet, self).create(request, *args, **kwargs)
+        return _execute_with_clean_validation_error(lambda: super(DashboardModelViewSet, self).create(request, *args, **kwargs))
 
     @HasPermission("view-EditChart")
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "编辑")
-        return super(DashboardModelViewSet, self).update(request, *args, **kwargs)
+        return _execute_with_clean_validation_error(lambda: super(DashboardModelViewSet, self).update(request, *args, **kwargs))
 
     @HasPermission("view-EditChart")
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "编辑")
-        return super(DashboardModelViewSet, self).partial_update(request, *args, **kwargs)
+        return _execute_with_clean_validation_error(lambda: _partial_update_with_auth(self, request, *args, **kwargs))
 
     @HasPermission("view-DeleteChart")
     def destroy(self, request, *args, **kwargs):
@@ -180,19 +220,19 @@ class TopologyModelViewSet(BuiltinVisibleMixin, AuthViewSet):
 
     @HasPermission("view-AddChart")
     def create(self, request, *args, **kwargs):
-        return super(TopologyModelViewSet, self).create(request, *args, **kwargs)
+        return _execute_with_clean_validation_error(lambda: super(TopologyModelViewSet, self).create(request, *args, **kwargs))
 
     @HasPermission("view-EditChart")
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "编辑")
-        return super(TopologyModelViewSet, self).update(request, *args, **kwargs)
+        return _execute_with_clean_validation_error(lambda: super(TopologyModelViewSet, self).update(request, *args, **kwargs))
 
     @HasPermission("view-EditChart")
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "编辑")
-        return super(TopologyModelViewSet, self).partial_update(request, *args, **kwargs)
+        return _execute_with_clean_validation_error(lambda: _partial_update_with_auth(self, request, *args, **kwargs))
 
     @HasPermission("view-DeleteChart")
     def destroy(self, request, *args, **kwargs):
@@ -225,19 +265,19 @@ class ArchitectureModelViewSet(BuiltinVisibleMixin, AuthViewSet):
 
     @HasPermission("view-AddChart")
     def create(self, request, *args, **kwargs):
-        return super(ArchitectureModelViewSet, self).create(request, *args, **kwargs)
+        return _execute_with_clean_validation_error(lambda: super(ArchitectureModelViewSet, self).create(request, *args, **kwargs))
 
     @HasPermission("view-EditChart")
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "编辑")
-        return super(ArchitectureModelViewSet, self).update(request, *args, **kwargs)
+        return _execute_with_clean_validation_error(lambda: super(ArchitectureModelViewSet, self).update(request, *args, **kwargs))
 
     @HasPermission("view-EditChart")
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "编辑")
-        return super(ArchitectureModelViewSet, self).partial_update(request, *args, **kwargs)
+        return _execute_with_clean_validation_error(lambda: _partial_update_with_auth(self, request, *args, **kwargs))
 
     @HasPermission("view-DeleteChart")
     def destroy(self, request, *args, **kwargs):

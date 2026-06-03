@@ -1,9 +1,13 @@
+from types import SimpleNamespace
+
 from rest_framework import serializers
 
 from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.timeseries_predict import *
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.utils.group_scope import (
+    assert_dataset_version_scope,
+    assert_parent_team_matches,
     assert_team_ownership,
     get_current_team,
     validate_requested_teams,
@@ -51,7 +55,13 @@ class TimeSeriesPredictTrainJobSerializer(AuthSerializer):
         # 只在创建时验证（更新时不强制要求）
         if not self.instance and not attrs.get("dataset_version"):
             raise serializers.ValidationError({"dataset_version": "创建训练任务时必须指定数据集版本"})
-        return super().validate(attrs)
+
+        attrs = super().validate(attrs)
+        request = self.context["request"]
+        dataset_version = attrs.get("dataset_version", getattr(self.instance, "dataset_version", None))
+        team = attrs.get("team", getattr(self.instance, "team", None))
+        assert_dataset_version_scope(dataset_version, team, request)
+        return attrs
 
     def validate_team(self, value):
         return validate_requested_teams(self.context["request"], value)
@@ -174,6 +184,22 @@ class TimeSeriesPredictServingSerializer(AuthSerializer):
         model = TimeSeriesPredictServing
         fields = "__all__"
 
+    def validate_train_job(self, value):
+        request = self.context["request"]
+        assert_team_ownership(value, get_current_team(request), "train_job", request=request)
+        return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+
+        train_job = attrs.get("train_job", getattr(self.instance, "train_job", None))
+        team = attrs.get("team", getattr(self.instance, "team", None))
+        if train_job is not None and team is not None:
+            field_name = "train_job" if "train_job" in attrs or "team" not in attrs else "team"
+            assert_parent_team_matches(SimpleNamespace(team=team), train_job, field_name)
+
+        return attrs
+
     def validate_team(self, value):
         return validate_requested_teams(self.context["request"], value)
 
@@ -191,6 +217,7 @@ class TimeSeriesPredictDatasetReleaseSerializer(AuthSerializer):
     class Meta:
         model = TimeSeriesPredictDatasetRelease
         fields = "__all__"
+        validators = []
         extra_kwargs = {
             "name": {"required": False},  # 创建时可选，会自动生成
             "dataset_file": {"required": False},  # 创建时不需要直接提供文件
@@ -202,6 +229,26 @@ class TimeSeriesPredictDatasetReleaseSerializer(AuthSerializer):
         request = self.context["request"]
         assert_team_ownership(value, get_current_team(request), "dataset", request=request)
         return value
+
+    def validate(self, attrs):
+        dataset = attrs.get("dataset")
+        version = attrs.get("version")
+        train_file_id = attrs.get("train_file_id")
+        val_file_id = attrs.get("val_file_id")
+        test_file_id = attrs.get("test_file_id")
+
+        if dataset and version:
+            existing_releases = TimeSeriesPredictDatasetRelease.objects.filter(dataset=dataset, version=version)
+            if self.instance:
+                existing_releases = existing_releases.exclude(pk=self.instance.pk)
+
+            existing = existing_releases.first()
+            allow_failed_retry = bool(train_file_id and val_file_id and test_file_id) and existing and existing.status == "failed"
+
+            if existing and not allow_failed_retry:
+                raise serializers.ValidationError({"version": f"数据集 {dataset.name} 的版本 {version} 已存在"})
+
+        return attrs
 
     def create(self, validated_data):
         """
@@ -236,30 +283,46 @@ class TimeSeriesPredictDatasetReleaseSerializer(AuthSerializer):
             val_obj = TimeSeriesPredictTrainData.objects.get(id=val_file_id, dataset=dataset)
             test_obj = TimeSeriesPredictTrainData.objects.get(id=test_file_id, dataset=dataset)
 
-            # 检查是否已有相同版本的记录（幂等性保护）
-            existing = TimeSeriesPredictDatasetRelease.objects.filter(dataset=dataset, version=version).exclude(status="failed").first()
+            # 检查是否已有相同版本的记录（失败记录允许重试）
+            existing = TimeSeriesPredictDatasetRelease.objects.filter(dataset=dataset, version=version).first()
 
             if existing:
-                logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
-                return existing
+                if existing.status == "failed":
+                    release = existing
+                    release.status = "pending"
+                    release.file_size = 0
+                    release.metadata = {}
+                    release.save(update_fields=["status", "file_size", "metadata"])
+                else:
+                    logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
+                    raise serializers.ValidationError(f"数据集 {dataset.name} 的版本 {version} 已存在或正在处理中")
+            else:
+                # 创建 pending 状态的发布记录
+                validated_data["status"] = "pending"
+                validated_data["file_size"] = 0
+                validated_data["metadata"] = {}
 
-            # 创建 pending 状态的发布记录
-            validated_data["status"] = "pending"
-            validated_data["file_size"] = 0
-            validated_data["metadata"] = {}
+                if not name:
+                    validated_data["name"] = f"{dataset.name}_v{version}"
 
-            if not name:
-                validated_data["name"] = f"{dataset.name}_v{version}"
+                if not description:
+                    validated_data["description"] = f"从数据集文件手动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
 
-            if not description:
-                validated_data["description"] = f"从数据集文件手动发布: {train_obj.name}, {val_obj.name}, {test_obj.name}"
-
-            release = TimeSeriesPredictDatasetRelease.objects.create(**validated_data)
+                release = TimeSeriesPredictDatasetRelease.objects.create(**validated_data)
 
             # 触发异步任务
             from apps.mlops.tasks.timeseries import publish_dataset_release_async
 
-            publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)
+            try:
+                publish_dataset_release_async.delay(release.id, train_file_id, val_file_id, test_file_id)
+            except Exception as task_error:
+                logger.error(
+                    f"投递 Celery 任务失败 - Release ID: {release.id}, Error: {str(task_error)}",
+                    exc_info=True,
+                )
+                release.status = "failed"
+                release.save(update_fields=["status"])
+                raise serializers.ValidationError("投递异步任务失败")
 
             logger.info(f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}")
 
@@ -268,6 +331,8 @@ class TimeSeriesPredictDatasetReleaseSerializer(AuthSerializer):
         except TimeSeriesPredictTrainData.DoesNotExist as e:
             logger.error(f"训练数据文件不存在 - {str(e)}")
             raise serializers.ValidationError(f"训练数据文件不存在或不属于该数据集")
+        except serializers.ValidationError:
+            raise
         except Exception as e:
             logger.error(f"创建数据集发布任务失败 - {str(e)}", exc_info=True)
-            raise serializers.ValidationError(f"创建发布任务失败: {str(e)}")
+            raise serializers.ValidationError("创建发布任务失败")

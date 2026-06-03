@@ -30,6 +30,7 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { ListItem } from '@/types';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
+import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { getDerivativeObjectNames } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
 const { Option } = Select;
@@ -294,9 +295,17 @@ const ViewList: React.FC<ViewListProps> = ({
       if (objName) {
         const filterMetrics = getTableDiaplay(objName) || [];
         const _columns = filterMetrics.map((item: any) => {
-          const target = (res[0] || []).find(
-            (tex: MetricItem) => tex.name === item.key
-          );
+          const metricKeys = [item.key, ...(item.fallbackKeys || [])];
+          const target = metricKeys
+            .map((metricName: string) =>
+              (res[0] || []).find((tex: MetricItem) => tex.name === metricName)
+            )
+            .find(Boolean);
+          const resolveMetricKey = (record: TableDataItem) =>
+            metricKeys.find((metricName: string) => {
+              const value = record?.[metricName]?.value;
+              return value !== undefined && value !== null && value !== '';
+            }) || item.key;
           if (item.type === 'progress') {
             return {
               title:
@@ -306,8 +315,8 @@ const ViewList: React.FC<ViewListProps> = ({
               dataIndex: item.key,
               key: item.key,
               sorter: (a: any, b: any) => {
-                const va = a[item.key]?.value;
-                const vb = b[item.key]?.value;
+                const va = a[resolveMetricKey(a)]?.value;
+                const vb = b[resolveMetricKey(b)]?.value;
                 const na = va == null || va === '';
                 const nb = vb == null || vb === '';
                 if (na && nb) return 0;
@@ -316,19 +325,25 @@ const ViewList: React.FC<ViewListProps> = ({
                 return Number(va) - Number(vb);
               },
               render: (_: unknown, record: TableDataItem) => {
+                const metricKey = resolveMetricKey(record);
                 const hasDimensions = target?.dimensions?.length > 0;
                 const size: [number, number] = hasDimensions
                   ? [220, 20]
                   : [240, 20];
-                const metricUnit = record[item.key]?.unit || target?.unit || '';
+                const metricUnit = record[metricKey]?.unit || target?.unit || '';
                 return (
                   <div className="flex items-center justify-between">
                     <Progress
                       className="flex"
                       strokeLinecap="butt"
-                      showInfo={!!record[item.key]?.value}
-                      format={(percent) => `${percent?.toFixed(2)}%`}
-                      percent={getPercent(record[item.key]?.value || 0)}
+                      strokeColor="var(--color-primary)"
+                      showInfo={!!record[metricKey]?.value}
+                      format={(percent) => (
+                        <span style={{ color: 'var(--color-text-1)' }}>
+                          {percent?.toFixed(2)}%
+                        </span>
+                      )}
+                      percent={getPercent(record[metricKey]?.value || 0)}
                       percentPosition={{ align: 'start', type: 'outer' }}
                       size={size}
                     />
@@ -358,8 +373,8 @@ const ViewList: React.FC<ViewListProps> = ({
             ...(item.type === 'value'
               ? {
                 sorter: (a: any, b: any) => {
-                  const va = a[item.key]?.value;
-                  const vb = b[item.key]?.value;
+                  const va = a[resolveMetricKey(a)]?.value;
+                  const vb = b[resolveMetricKey(b)]?.value;
                   const na = va == null || va === '';
                   const nb = vb == null || vb === '';
                   if (na && nb) return 0;
@@ -370,10 +385,11 @@ const ViewList: React.FC<ViewListProps> = ({
               }
               : {}),
             render: (_: unknown, record: TableDataItem) => {
-              const color = getEnumColor(target, record[item.key]?.value);
+              const metricKey = resolveMetricKey(record);
+              const color = getEnumColor(target, record[metricKey]?.value);
               const hasDimensions = target?.dimensions?.length > 0;
-              const metricValue = record[item.key]?.value;
-              const metricUnit = record[item.key]?.unit || target?.unit || '';
+              const metricValue = record[metricKey]?.value;
+              const metricUnit = record[metricKey]?.unit || target?.unit || '';
               const metricItem: any = {
                 unit: metricUnit,
                 name: target?.name,
@@ -500,10 +516,19 @@ const ViewList: React.FC<ViewListProps> = ({
       icon: monitorItem?.icon || OBJECT_DEFAULT_ICON,
       instance_id: app.instance_id,
       instance_name: app.instance_name,
-      instance_id_values: app.instance_id_values
+      instance_id_values: app.instance_id_values,
+      instance_id_keys: Array.isArray(monitorItem?.instance_id_keys)
+        ? monitorItem.instance_id_keys.join(',')
+        : 'instance_id'
     };
     const params = new URLSearchParams(row);
-    const targetUrl = `/monitor/view/detail?${params.toString()}`;
+    const professionalDashboardUrl = getProfessionalDashboardUrl(
+      monitorItem?.name,
+      monitorItem?.display_name,
+      params.toString()
+    );
+    const targetUrl =
+      professionalDashboardUrl || `/monitor/view/detail?${params.toString()}`;
     router.push(targetUrl);
   };
 

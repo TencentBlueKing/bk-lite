@@ -1,6 +1,4 @@
-import type { TagItem } from './namespace';
-
-export type ChartType = 'line' | 'bar' | 'pie' | 'single' | 'table';
+export type ChartType = 'line' | 'bar' | 'pie' | 'single' | 'table' | 'topN';
 
 /** 接口返回字段定义（数据源级配置） */
 export interface ResponseFieldDefinition {
@@ -37,7 +35,7 @@ export interface DatasourceItem {
   name: string;
   rest_api: string;
   desc: string;
-  is_active: boolean;
+  // [内部预留] is_active 字段仅后端/导入导出链路使用，前端不再暴露
   params: ParamItem[];
   chart_type: ChartType[];
   namespaces: number[];
@@ -45,7 +43,7 @@ export interface DatasourceItem {
     id: number;
     name: string;
   }>;
-  tag: TagItem[];
+  tag: number[];
   groups?: number[];
   hasAuth?: boolean;
   field_schema?: ResponseFieldDefinition[];

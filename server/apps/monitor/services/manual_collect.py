@@ -1,4 +1,4 @@
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.services.infra import InfraService
 from apps.monitor.services.node_mgmt import InstanceConfigService
@@ -8,6 +8,26 @@ from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
 class ManualCollectService:
+    FLOW_ONLY_FIELDS = {"cloud_region_id", "ip", "fallback_sampling_rate", "enabled_protocols"}
+
+    @staticmethod
+    def _build_manual_collect_instance_data(data: dict):
+        payload = dict(data)
+        organizations = payload.pop("organizations", [])
+        payload["auto"] = False
+        payload["id"] = str(tuple([payload["id"]]))
+        return payload, organizations
+
+    @classmethod
+    def _validate_create_fields(cls, data: dict, allow_flow_fields=False):
+        if allow_flow_fields:
+            return
+        flow_only_fields = sorted(cls.FLOW_ONLY_FIELDS.intersection(data))
+        if flow_only_fields:
+            raise ValidationAppException(
+                f"Use flow_asset for flow asset fields: {', '.join(flow_only_fields)}"
+            )
+
     @staticmethod
     def check_collect_status(object_id, instance_id) -> bool:
         """
@@ -51,15 +71,13 @@ class ManualCollectService:
         )
 
     @staticmethod
-    def create_manual_collect_instance(data: dict):
+    def create_manual_collect_instance(data: dict, *, allow_flow_fields=False):
         """
         创建手动采集实例
         """
-        organizations = data.pop("organizations", [])
-        data["auto"] = False
+        ManualCollectService._validate_create_fields(data, allow_flow_fields=allow_flow_fields)
+        data, organizations = ManualCollectService._build_manual_collect_instance_data(data)
         MonitorObjectService.validate_new_instance_name_unique(data.get("monitor_object_id"), data.get("name"))
-        instance_id = str(tuple([data["id"]]))
-        data.update(id=instance_id)
         # 建实例
         instance_obj = MonitorInstance.objects.create(**data)
         # 关联组织
@@ -71,6 +89,17 @@ class ManualCollectService:
             organizations,
         )
         return {"instance_id": instance_obj.id}
+
+    @staticmethod
+    def update_manual_collect_instance(instance_id: str, name=None, organizations=None, **extra_fields):
+        extra_fields.pop("enabled_protocols", None)
+        MonitorObjectService.update_instance(
+            instance_id=instance_id,
+            name=name,
+            organizations=organizations,
+            **extra_fields,
+        )
+        return {"instance_id": instance_id}
 
     @staticmethod
     def generate_install_command(instance_id: str, cloud_region_id: str) -> str:

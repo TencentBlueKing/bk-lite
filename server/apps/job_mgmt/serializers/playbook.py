@@ -164,6 +164,190 @@ def _extract_params_from_yaml(content: bytes) -> list:
     return params
 
 
+# ============ 文件预览相关函数 ============
+
+# 文件大小限制：1MB
+MAX_PREVIEW_SIZE = 1 * 1024 * 1024
+
+# 文件类型映射（扩展名 -> 语言类型）
+FILE_TYPE_MAP = {
+    ".yml": "yaml",
+    ".yaml": "yaml",
+    ".md": "markdown",
+    ".py": "python",
+    ".sh": "bash",
+    ".json": "json",
+    ".j2": "jinja2",
+    ".jinja2": "jinja2",
+    ".txt": "text",
+    ".cfg": "ini",
+    ".ini": "ini",
+    ".conf": "ini",
+}
+
+# 二进制文件扩展名
+BINARY_EXTENSIONS = {".pyc", ".pyo", ".so", ".dll", ".exe", ".bin", ".tar", ".gz", ".zip", ".png", ".jpg", ".jpeg", ".gif", ".ico"}
+
+
+def get_file_type(file_path: str) -> str:
+    """
+    根据文件扩展名返回语言类型
+
+    Args:
+        file_path: 文件路径
+
+    Returns:
+        语言类型字符串，用于前端语法高亮
+    """
+    ext = os.path.splitext(file_path)[1].lower()
+    return FILE_TYPE_MAP.get(ext, "text")
+
+
+def is_binary_file(file_path: str, content: bytes) -> bool:
+    """
+    检测文件是否为二进制文件
+
+    判定规则:
+    1. 文件扩展名在二进制扩展名列表中
+    2. 文件内容前 8KB 包含 null 字节
+
+    Args:
+        file_path: 文件路径
+        content: 文件内容
+
+    Returns:
+        True 如果是二进制文件，否则 False
+    """
+    # 检查扩展名
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext in BINARY_EXTENSIONS:
+        return True
+
+    # 检查内容是否包含 null 字节（检查前 8KB）
+    check_size = min(len(content), 8192)
+    return b"\x00" in content[:check_size]
+
+
+def validate_file_path(file_path: str, valid_paths: list) -> tuple[bool, str]:
+    """
+    验证文件路径的安全性
+
+    Args:
+        file_path: 用户请求的文件路径
+        valid_paths: 压缩包内的有效文件路径列表
+
+    Returns:
+        (is_valid, error_message) 元组
+    """
+    # 禁止路径遍历
+    if ".." in file_path:
+        return False, "非法文件路径"
+
+    # 禁止绝对路径
+    if file_path.startswith("/") or file_path.startswith("\\"):
+        return False, "非法文件路径"
+
+    # 必须在压缩包文件列表中
+    if file_path not in valid_paths:
+        return False, "文件不存在"
+
+    return True, ""
+
+
+def extract_file_from_archive(file_obj, file_path: str) -> dict:
+    """
+    从压缩包中提取指定文件的内容
+
+    支持 .zip, .tar.gz, .tgz 格式
+
+    Args:
+        file_obj: Django FileField 对象
+        file_path: 要提取的文件在压缩包内的相对路径
+
+    Returns:
+        dict: {
+            "file_name": str,      # 文件名
+            "file_path": str,      # 完整路径
+            "content": str,        # 文件内容
+            "file_type": str,      # 语言类型
+            "file_size": int,      # 文件大小（字节）
+        }
+
+    Raises:
+        ValueError: 文件不存在、路径非法、文件过大、二进制文件等
+    """
+    filename = file_obj.name.lower()
+    file_content = file_obj.read()
+    file_obj.seek(0)  # 重置文件指针
+
+    # 获取压缩包内所有文件路径
+    valid_paths = []
+    if filename.endswith(".zip"):
+        with zipfile.ZipFile(io.BytesIO(file_content)) as zf:
+            valid_paths = [name for name in zf.namelist() if not name.endswith("/")]
+    elif filename.endswith((".tar.gz", ".tgz")):
+        with tarfile.open(fileobj=io.BytesIO(file_content), mode="r:gz") as tf:
+            valid_paths = [m.name for m in tf.getmembers() if m.isfile()]
+
+    # 验证路径安全性
+    is_valid, error_msg = validate_file_path(file_path, valid_paths)
+    if not is_valid:
+        raise ValueError(error_msg)
+
+    # 提取文件内容
+    extracted_content = None
+    file_size = 0
+
+    if filename.endswith(".zip"):
+        with zipfile.ZipFile(io.BytesIO(file_content)) as zf:
+            info = zf.getinfo(file_path)
+            file_size = info.file_size
+
+            # 检查文件大小
+            if file_size > MAX_PREVIEW_SIZE:
+                raise ValueError(f"文件过大，不支持预览|{file_size}")
+
+            extracted_content = zf.read(file_path)
+
+    elif filename.endswith((".tar.gz", ".tgz")):
+        with tarfile.open(fileobj=io.BytesIO(file_content), mode="r:gz") as tf:
+            member = tf.getmember(file_path)
+            file_size = member.size
+
+            # 检查文件大小
+            if file_size > MAX_PREVIEW_SIZE:
+                raise ValueError(f"文件过大，不支持预览|{file_size}")
+
+            f = tf.extractfile(member)
+            if f:
+                extracted_content = f.read()
+
+    if extracted_content is None:
+        raise ValueError("文件不存在")
+
+    # 检查是否为二进制文件
+    if is_binary_file(file_path, extracted_content):
+        raise ValueError("不支持预览二进制文件")
+
+    # 解码内容
+    try:
+        content_str = extracted_content.decode("utf-8")
+    except UnicodeDecodeError:
+        # 尝试其他编码
+        try:
+            content_str = extracted_content.decode("gbk")
+        except UnicodeDecodeError:
+            content_str = extracted_content.decode("utf-8", errors="ignore")
+
+    return {
+        "file_name": os.path.basename(file_path),
+        "file_path": file_path,
+        "content": content_str,
+        "file_type": get_file_type(file_path),
+        "file_size": file_size,
+    }
+
+
 class PlaybookListSerializer(TeamSerializer):
     """Playbook列表序列化器（返回精简字段）"""
 

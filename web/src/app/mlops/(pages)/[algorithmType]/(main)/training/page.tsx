@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { useLocalizedTime } from "@/hooks/useLocalizedTime";
 import useMlopsTaskApi from '@/app/mlops/api/task';
 import useMlopsManageApi from '@/app/mlops/api/manage';
-import { Button, Input, Popconfirm, message, Tag } from 'antd';
+import { Button, Input, Popconfirm, message, Tag, Modal } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
@@ -188,15 +188,14 @@ const TrainingPage = () => {
               </Button>
             </PermissionWrapper>
             <PermissionWrapper requiredPermissions={['Delete']}>
-              <Popconfirm
-                title={t('traintask.delTraintask')}
-                description={t(`traintask.delTraintaskContent`)}
-                okText={t('common.confirm')}
-                cancelText={t('common.cancel')}
-                onConfirm={() => onDelete(record)}
+              <Button 
+                type="link" 
+                danger 
+                disabled={record.status === 'running'}
+                onClick={() => showDeleteConfirm(record)}
               >
-                <Button type="link" danger disabled={record.status === 'running'}>{t('common.delete')}</Button>
-              </Popconfirm>
+                {t('common.delete')}
+              </Button>
             </PermissionWrapper>
           </>
         )
@@ -348,6 +347,28 @@ const TrainingPage = () => {
   const onRefresh = () => {
     getTasks();
     getDatasetList();
+  };
+
+  const showDeleteConfirm = (record: TrainJob) => {
+    Modal.confirm({
+      title: t('traintask.delTraintask'),
+      centered: true,
+      content: (
+        <div className="mt-2 text-sm">
+          {String(t('traintask.delTraintaskContent')).split('\n').map((line, index) => (
+            <p key={index} className={`mb-0 leading-relaxed whitespace-pre-wrap break-words ${index > 0 ? 'mt-2 text-red-500' : 'text-gray-500'}`}>
+              {line}
+            </p>
+          ))}
+        </div>
+      ),
+      okText: t('common.confirm'),
+      okButtonProps: { danger: true },
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        await onDelete(record);
+      },
+    });
   };
 
   return (

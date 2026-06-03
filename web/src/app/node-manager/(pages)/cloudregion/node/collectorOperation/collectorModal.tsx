@@ -62,9 +62,10 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         setCollectorVisible(true);
         setType(type);
         setSystem(selectedsystem as string);
-        setCpuArchitecture((selectedArchitecture as string) || '');
+        const arch = (selectedArchitecture as string) || '';
+        setCpuArchitecture(arch);
         setNodeIds(ids || []);
-        initTypeOptions(selectedsystem || '');
+        initTypeOptions(selectedsystem || '', arch);
         type === 'startCollectorr' && getConfigData(); //先不调这个接口，因为配置文件已隐藏
       }
     }));
@@ -73,7 +74,7 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       return configList.filter((item) => item.collector_id === collector);
     }, [collector]);
 
-    const initTypeOptions = (selectedsystem: string) => {
+    const initTypeOptions = (selectedsystem: string, arch?: string) => {
       if (nodeStateEnum?.tag) {
         const tagData = nodeStateEnum.tag;
         const apps: any[] = [];
@@ -88,20 +89,25 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         const defaultType = apps.length > 0 ? apps[0].value : '';
         setSelectedType(defaultType);
         if (defaultType) {
-          getCollectors(selectedsystem, defaultType);
+          getCollectors(selectedsystem, defaultType, arch);
         }
       }
     };
 
-    const getCollectors = async (selectedsystem: string, typeTag?: string) => {
+    const getCollectors = async (
+      selectedsystem: string,
+      typeTag?: string,
+      arch?: string
+    ) => {
       setCollectorLoading(true);
       const currentType = typeTag || selectedType;
+      const currentArch = arch !== undefined ? arch : cpuArchitecture;
       try {
         const params: any = {
           node_operating_system: selectedsystem
         };
-        if (cpuArchitecture) {
-          params.cpu_architecture = cpuArchitecture;
+        if (currentArch) {
+          params.cpu_architecture = currentArch;
         }
         if (currentType) {
           params.tags = currentType;
@@ -269,11 +275,17 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       try {
         setConfirmLoading(true);
         const data = await callback(params);
+        const collectorName =
+          collectorlist.find(
+            (item: TableDataItem) =>
+              item.id === (extraConfig?.collectorId || collector)
+          )?.name || '';
         const config = {
           taskId: data.task_id || '',
           type,
           collectorId: extraConfig?.collectorId || collector || '',
-          collectorPackageId: extraConfig?.collectorPackageId
+          collectorPackageId: extraConfig?.collectorPackageId,
+          collectorName
         };
         if (!keepLoading) {
           message.success(t('common.operationSuccessful'));

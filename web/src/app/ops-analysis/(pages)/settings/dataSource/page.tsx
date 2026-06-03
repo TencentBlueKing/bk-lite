@@ -10,14 +10,14 @@ import { UploadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
-import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { useImportExportApi } from '@/app/ops-analysis/api/importExport';
 import { ImportModal } from '@/app/ops-analysis/components/importExport';
+import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 
 const Datasource: React.FC = () => {
   const { t } = useTranslation();
+  const { convertToLocalizedTime } = useLocalizedTime();
   const { getDataSourceList, deleteDataSource } = useDataSourceApi();
-  const { refreshDataSources } = useOpsAnalysis();
   const { exportObjects, downloadYaml } = useImportExportApi();
   const [searchKey, setSearchKey] = useState('');
   const [searchValue, setSearchValue] = useState('');
@@ -101,7 +101,6 @@ const Datasource: React.FC = () => {
         try {
           await deleteDataSource(row.id);
           message.success(t('successfullyDeleted'));
-          await refreshDataSources();
 
           if (pagination.current > 1 && filteredList.length === 1) {
             setPagination((prev) => ({ ...prev, current: prev.current - 1 }));
@@ -164,7 +163,7 @@ const Datasource: React.FC = () => {
       dataIndex: 'created_at',
       key: 'created_at',
       width: 180,
-      render: (text: string) => (text ? new Date(text).toLocaleString() : '-'),
+      render: (text: string) => (text ? convertToLocalizedTime(text) : '-'),
     },
     {
       title: t('common.actions'),
@@ -262,7 +261,7 @@ const Datasource: React.FC = () => {
           dataSource={filteredList}
           pagination={pagination}
           onChange={handleTableChange}
-          scroll={{ y: 'calc(100vh - 410px)' }}
+          scroll={{ y: 'calc(100vh - 430px)' }}
         />
         <OperateModal
           open={modalVisible}
@@ -270,7 +269,6 @@ const Datasource: React.FC = () => {
           onClose={() => setModalVisible(false)}
           onSuccess={async () => {
             setModalVisible(false);
-            await refreshDataSources();
             fetchDataSources();
           }}
         />

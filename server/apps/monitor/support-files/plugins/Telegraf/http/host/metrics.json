@@ -1,0 +1,215 @@
+{
+  "plugin": "Host Remote",
+  "plugin_desc": "Remote host metrics collection via SSH/WinRM through Ansible Executor. Supports CPU, memory, disk, and network metrics without agent installation on target hosts.",
+  "status_query": "any({instance_type='os', collect_type='http'}) by (instance_id)",
+  "node_selector": {
+    "is_container": true
+  },
+  "name": "Host",
+  "icon": "mm-host_主机",
+  "type": "OS",
+  "description": "Remote agentless host monitoring via SSH/WinRM",
+  "default_metric": "any({instance_type='os'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["host_cpu_usage_percent", "host_mem_used_percent", "host_disk_used_percent"],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "host_cpu_usage_percent",
+      "query": "host_cpu_usage_percent{instance_id=\"$instance_id\"}",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "%",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "CPU usage percentage"
+    },
+    {
+      "metric_group": "CPU",
+      "name": "host_cpu_core_count",
+      "query": "host_cpu_core_count{instance_id=\"$instance_id\"}",
+      "display_name": "CPU Core Count",
+      "data_type": "Number",
+      "unit": "cores",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Number of CPU cores"
+    },
+    {
+      "metric_group": "CPU",
+      "name": "host_cpu_load_1m",
+      "query": "host_cpu_load_1m{instance_id=\"$instance_id\"}",
+      "display_name": "Load Average 1m",
+      "data_type": "Number",
+      "unit": "",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "1-minute load average"
+    },
+    {
+      "metric_group": "CPU",
+      "name": "host_cpu_load_5m",
+      "query": "host_cpu_load_5m{instance_id=\"$instance_id\"}",
+      "display_name": "Load Average 5m",
+      "data_type": "Number",
+      "unit": "",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "5-minute load average"
+    },
+    {
+      "metric_group": "CPU",
+      "name": "host_cpu_load_15m",
+      "query": "host_cpu_load_15m{instance_id=\"$instance_id\"}",
+      "display_name": "Load Average 15m",
+      "data_type": "Number",
+      "unit": "",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "15-minute load average"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "host_mem_total_bytes",
+      "query": "host_mem_total_bytes{instance_id=\"$instance_id\"}",
+      "display_name": "Total Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Total physical memory in bytes"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "host_mem_used_bytes",
+      "query": "host_mem_used_bytes{instance_id=\"$instance_id\"}",
+      "display_name": "Used Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Used physical memory in bytes"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "host_mem_used_percent",
+      "query": "host_mem_used_percent{instance_id=\"$instance_id\"}",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "%",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Used physical memory percentage"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "host_mem_available_bytes",
+      "query": "host_mem_available_bytes{instance_id=\"$instance_id\"}",
+      "display_name": "Available Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Available physical memory in bytes"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "host_mem_swap_total_bytes",
+      "query": "host_mem_swap_total_bytes{instance_id=\"$instance_id\"}",
+      "display_name": "Total Swap",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Total swap space in bytes"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "host_mem_swap_used_bytes",
+      "query": "host_mem_swap_used_bytes{instance_id=\"$instance_id\"}",
+      "display_name": "Used Swap",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Used swap space in bytes"
+    },
+    {
+      "metric_group": "Disk",
+      "name": "host_disk_total_bytes",
+      "query": "host_disk_total_bytes{instance_id=\"$instance_id\"}",
+      "display_name": "Disk Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": ["mount"],
+      "instance_id_keys": ["instance_id"],
+      "description": "Total disk space in bytes per mount"
+    },
+    {
+      "metric_group": "Disk",
+      "name": "host_disk_used_bytes",
+      "query": "host_disk_used_bytes{instance_id=\"$instance_id\"}",
+      "display_name": "Disk Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": ["mount"],
+      "instance_id_keys": ["instance_id"],
+      "description": "Used disk space in bytes per mount"
+    },
+    {
+      "metric_group": "Disk",
+      "name": "host_disk_used_percent",
+      "query": "host_disk_used_percent{instance_id=\"$instance_id\"}",
+      "display_name": "Disk Usage",
+      "data_type": "Number",
+      "unit": "%",
+      "dimensions": ["mount"],
+      "instance_id_keys": ["instance_id"],
+      "description": "Disk usage percentage per mount"
+    },
+    {
+      "metric_group": "Network",
+      "name": "host_net_rx_bytes",
+      "query": "host_net_rx_bytes{instance_id=\"$instance_id\"}",
+      "display_name": "Network RX Bytes",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": ["interface"],
+      "instance_id_keys": ["instance_id"],
+      "description": "Network bytes received per interface"
+    },
+    {
+      "metric_group": "Network",
+      "name": "host_net_tx_bytes",
+      "query": "host_net_tx_bytes{instance_id=\"$instance_id\"}",
+      "display_name": "Network TX Bytes",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": ["interface"],
+      "instance_id_keys": ["instance_id"],
+      "description": "Network bytes transmitted per interface"
+    },
+    {
+      "metric_group": "Network",
+      "name": "host_net_rx_errors",
+      "query": "host_net_rx_errors{instance_id=\"$instance_id\"}",
+      "display_name": "Network RX Errors",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": ["interface"],
+      "instance_id_keys": ["instance_id"],
+      "description": "Network receive errors per interface"
+    },
+    {
+      "metric_group": "Network",
+      "name": "host_net_tx_errors",
+      "query": "host_net_tx_errors{instance_id=\"$instance_id\"}",
+      "display_name": "Network TX Errors",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": ["interface"],
+      "instance_id_keys": ["instance_id"],
+      "description": "Network transmit errors per interface"
+    }
+  ]
+}

@@ -12,18 +12,12 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from apps.alerts.common.source_adapter.base import AlertSourceAdapter
-from apps.alerts.error import AuthenticationSourceError
 
 from apps.alerts.common.source_adapter import logger
 
 
 class PrometheusAdapter(AlertSourceAdapter):
     """Prometheus告警源适配器"""
-
-    def authenticate(self) -> bool:
-        if self.secret == self.alert_source.secret:
-            return True
-        raise AuthenticationSourceError("Authentication failed")
 
     def fetch_alerts(self) -> List[Dict[str, Any]]:
         base_url = self.config.get('base_url')
@@ -61,31 +55,31 @@ class PrometheusAdapter(AlertSourceAdapter):
             annotations = {**common_annotations, **(alert.get("annotations", {}) or {})}
             alertname = labels.get("alertname") or annotations.get("alertname") or "Prometheus Alert"
             resource_name = (
-                labels.get("instance")
-                or labels.get("pod")
-                or labels.get("node")
-                or labels.get("service")
-                or labels.get("job")
+                    labels.get("instance")
+                    or labels.get("pod")
+                    or labels.get("node")
+                    or labels.get("service")
+                    or labels.get("job")
             )
             external_id = self._build_external_id(labels, alert)
             data = {
-                    "title": alertname if not resource_name else f"{alertname} ({resource_name})",
-                    "description": annotations.get("description") or annotations.get("summary") or alertname,
-                    "level": self._map_prometheus_severity(labels.get("severity")),
-                    "item": alertname,
-                    "start_time": self._iso_to_timestamp(alert.get("startsAt")),
-                    "end_time": self._iso_to_timestamp(alert.get("endsAt")),
-                    "labels": labels,
-                    "rule_id": alertname,
-                    "push_source_id": receiver,
-                    "resource_name": resource_name,
-                    "resource_id": resource_name,
-                    "resource_type": labels.get("resource_type"),
-                    "action": self._map_prometheus_status(alert.get("status")),
-                    "service": labels.get("service") or labels.get("job"),
-                    "location": labels.get("cluster") or labels.get("region"),
-                    "tags": labels.get("tags", {}),
-                }
+                "title": alertname if not resource_name else f"{alertname} ({resource_name})",
+                "description": annotations.get("description") or annotations.get("summary") or alertname,
+                "level": self._map_prometheus_severity(labels.get("severity")),
+                "item": alertname,
+                "start_time": self._iso_to_timestamp(alert.get("startsAt")),
+                "end_time": self._iso_to_timestamp(alert.get("endsAt")),
+                "labels": labels,
+                "rule_id": alertname,
+                "push_source_id": receiver,
+                "resource_name": resource_name,
+                "resource_id": resource_name,
+                "resource_type": labels.get("resource_type"),
+                "action": self._map_prometheus_status(alert.get("status")),
+                "service": labels.get("service") or labels.get("job"),
+                "location": labels.get("cluster") or labels.get("region"),
+                "tags": labels.get("tags", {}),
+            }
             if external_id:
                 data["external_id"] = external_id
 

@@ -1,17 +1,14 @@
+import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
-
 export const useNamespaceApi = () => {
   const { get, post, put, del } = useApiClient();
-
-  const getNamespaceList = async (params?: any) => {
+  const getNamespaceList = useCallback(async (params?: any) => {
     return get('/operation_analysis/api/namespace/', { params });
-  };
-
-  const getTagList = async (params?: any) => {
+  }, [get]);
+  const getTagList = useCallback(async (params?: any) => {
     return get('/operation_analysis/api/tag/', { params });
-  };
-
-  const createNamespace = async (data: {
+  }, [get]);
+  const createNamespace = useCallback(async (data: {
     name: string;
     account: string;
     password: string;
@@ -19,9 +16,8 @@ export const useNamespaceApi = () => {
     describe?: string;
   }) => {
     return post('/operation_analysis/api/namespace/', data);
-  };
-
-  const updateNamespace = async (id: number, data: {
+  }, [post]);
+  const updateNamespace = useCallback(async (id: number, data: {
     name: string;
     account: string;
     password: string;
@@ -29,20 +25,17 @@ export const useNamespaceApi = () => {
     describe?: string;
   }) => {
     return put(`/operation_analysis/api/namespace/${id}/`, data);
-  };
-
-  const deleteNamespace = async (id: number) => {
+  }, [put]);
+  const deleteNamespace = useCallback(async (id: number) => {
     return del(`/operation_analysis/api/namespace/${id}/`);
-  };
-
-  const getNamespaceDetail = async (id: number) => {
+  }, [del]);
+  const getNamespaceDetail = useCallback(async (id: number) => {
     return get(`/operation_analysis/api/namespace/${id}/`);
-  };
-
-  const toggleNamespaceStatus = async (id: number, is_active: boolean) => {
-    return put(`/operation_analysis/api/namespace/${id}/`, { is_active });
-  };
-
+  }, [get]);
+  // [内部预留] toggleNamespaceStatus 已废弃，is_active 字段仅后端/导入导出链路使用
+  // const toggleNamespaceStatus = async (id: number, is_active: boolean) => {
+  //   return put(`/operation_analysis/api/namespace/${id}/`, { is_active });
+  // };
   return {
     getNamespaceList,
     getTagList,
@@ -50,6 +43,5 @@ export const useNamespaceApi = () => {
     updateNamespace,
     deleteNamespace,
     getNamespaceDetail,
-    toggleNamespaceStatus
   };
 };

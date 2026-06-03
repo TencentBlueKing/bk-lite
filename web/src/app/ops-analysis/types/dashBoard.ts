@@ -78,11 +78,14 @@ import { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 export interface ValueConfig {
   chartType?: string;
   dataSource?: string | number;
+  compare?: boolean;
   params?: Record<string, string | number | boolean | [number, number] | null>;
   dataSourceParams?: ParamItem[];
   tableConfig?: TableConfig;
   filterBindings?: FilterBindings;
   selectedFields?: string[];
+  topNLabelField?: string;
+  topNValueField?: string;
   unit?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
@@ -113,6 +116,7 @@ export interface ViewConfigProps {
   item: ViewConfigItem;
   onConfirm?: (values: WidgetConfig) => void;
   onClose?: () => void;
+  builtinNamespaceId?: number;
 }
 
 export interface ComponentSelectorProps {

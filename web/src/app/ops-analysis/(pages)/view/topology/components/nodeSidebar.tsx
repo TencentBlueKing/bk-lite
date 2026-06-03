@@ -167,16 +167,22 @@ const Sidebar: React.FC<NodeSidebarProps> = ({
   return (
     <>
       <div
-        className={`h-full border-r border-[var(--color-border-1)] bg-[var(--color-fill-1)] transition-[width] duration-300 flex-shrink-0 relative ${
-          collapsed ? 'w-0' : 'w-44'
+        className={`h-full bg-(--color-fill-1) transition-[width] duration-300 shrink-0 relative ${
+          collapsed
+            ? 'w-0 border-r-0'
+            : 'w-42 border-r border-(--color-border-1)'
         }`}
+        style={{
+          background:
+            'linear-gradient(180deg, color-mix(in srgb, var(--color-bg-1) 92%, #eef4ff 8%) 0%, var(--color-fill-1) 100%)',
+        }}
       >
         <Button
           type="text"
           icon={collapsed ? <RightOutlined /> : <LeftOutlined />}
           onClick={handleToggleCollapsed}
           disabled={!isEditMode}
-          className="absolute top-5 bg-[var(--color-bg-1)] rounded-full shadow-sm border border-[var(--color-border-1)] hover:!bg-[var(--color-fill-2)] hover:shadow-md disabled:!opacity-50"
+          className="absolute top-5 bg-(--color-bg-1) rounded-full shadow-sm border border-(--color-border-1) hover:bg-(--color-fill-2)! hover:shadow-md disabled:opacity-50!"
           style={{
             width: '24px',
             height: '24px',
@@ -191,25 +197,40 @@ const Sidebar: React.FC<NodeSidebarProps> = ({
         />
 
         {!collapsed && (
-          <div className="h-full p-4 opacity-100 transition-opacity duration-300">
-            <div className="h-full overflow-auto">
-              <div className="space-y-3">
+          <div className="h-full p-2 pt-1 opacity-100 transition-opacity duration-300">
+            <div className="h-full overflow-auto rounded-r-2xl pr-1">
+              <div className="mb-3 px-1 pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex h-1.5 w-1.5 rounded-full bg-[#5b8cff]" />
+                  <div className="text-[11px] font-semibold tracking-[0.08em] uppercase text-(--color-text-3)">
+                    组件库
+                  </div>
+                </div>
+                <div className="mt-1 pl-3.5 text-[11px] leading-4 text-(--color-text-3)">
+                  拖拽组件到右侧画布
+                </div>
+              </div>
+              <div className="space-y-2">
                 {nodeTypes.map((nodeType) => (
                   <div
                     key={nodeType.id}
-                    className={`px-2 py-1.5 rounded-lg transition-all duration-200 bg-[var(--color-bg-1)] ${
+                    className={`rounded-xl border border-(--color-border-1) bg-(--color-bg-1) px-2 py-2 transition-all duration-200 ${
                       isEditMode
-                        ? 'cursor-grab active:cursor-grabbing'
+                        ? 'cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:border-(--color-border-2) hover:bg-(--color-fill-1) hover:shadow-[0_8px_18px_rgba(31,63,104,0.08)]'
                         : 'cursor-not-allowed opacity-60'
                     }`}
                     draggable={isEditMode}
                     onDragStart={(e) => handleDragStart(e, nodeType)}
                     onDragEnd={handleDragEnd}
                   >
-                    <div className="flex items-center space-x-3">
-                      <div>{nodeType.icon}</div>
-                      <div className="flex-1 text-[var(--color-text-2)]">
-                        {nodeType.name}
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-7.5 w-7.5 shrink-0 items-center justify-center rounded-lg border border-(--color-border-1) bg-(--color-fill-1) shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]">
+                        {nodeType.icon}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-medium leading-5 text-(--color-text-1)">
+                          {nodeType.name}
+                        </div>
                       </div>
                     </div>
                   </div>

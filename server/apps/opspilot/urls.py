@@ -15,6 +15,8 @@ from apps.opspilot.viewsets import (
     LLMModelViewSet,
     LLMViewSet,
     ManualKnowledgeViewSet,
+    MemorySpaceViewSet,
+    MemoryViewSet,
     ModelVendorViewSet,
     OCRProviderViewSet,
     QAPairsViewSet,
@@ -55,6 +57,10 @@ router.register(r"knowledge_mgmt/web_page_knowledge", WebPageKnowledgeViewSet)
 router.register(r"knowledge_mgmt/manual_knowledge", ManualKnowledgeViewSet)
 router.register(r"knowledge_mgmt/qa_pairs", QAPairsViewSet)
 router.register(r"knowledge_mgmt/knowledge_graph", KnowledgeGraphViewSet)
+
+# memory
+router.register(r"memory_mgmt/memory_space", MemorySpaceViewSet)
+router.register(r"memory_mgmt/memory", MemoryViewSet)
 
 urlpatterns = router.urls
 
@@ -105,6 +111,16 @@ urlpatterns += [
         r"bot_mgmt/interrupt_chat_flow_execution/",
         views.interrupt_chat_flow_execution,
         name="interrupt_chat_flow_execution",
+    ),
+    path(
+        r"bot_mgmt/submit_approval/",
+        views.submit_approval,
+        name="submit_approval",
+    ),
+    path(
+        r"bot_mgmt/submit_choice/",
+        views.submit_choice,
+        name="submit_choice",
     ),
     path(
         r"bot_mgmt/execute_chat_flow_wechat/<int:bot_id>/",

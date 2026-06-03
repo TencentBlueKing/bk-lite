@@ -3,6 +3,10 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.cmdb.constants.constants import PERMISSION_INSTANCES, OPERATE, VIEW
+from apps.cmdb.models.change_record import (
+    INSTANCE_EDIT_CORRECTABLE_SCENARIOS,
+    ORDINARY_ATTRIBUTE_CHANGE,
+)
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.utils.base import (
     format_group_params,
@@ -20,6 +24,26 @@ from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
 class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
+    @staticmethod
+    def _get_allowed_org_ids(request) -> list[int]:
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children") == "1"
+        user_group_ids = [i["id"] for i in request.user.group_list]
+
+        if getattr(request.user, "is_superuser", False):
+            return GroupUtils.get_all_child_groups(current_team, include_self=True, group_list=None) if include_children else [
+                current_team
+            ]
+
+        allowed_org_ids = GroupUtils.get_user_authorized_child_groups(
+            user_group_list=user_group_ids,
+            target_group_id=current_team,
+            include_children=include_children,
+        )
+        if not allowed_org_ids:
+            raise BaseAppException("抱歉！您没有该组织的权限或组织选择无效")
+        return allowed_org_ids
+
     @staticmethod
     def _parse_positive_int(value, field_name, default):
         if value in (None, ""):
@@ -68,9 +92,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 end = item.get("end")
                 if not start or not end:
                     return
-                normalized.append(
-                    {"field": field, "type": _type, "start": start, "end": end}
-                )
+                normalized.append({"field": field, "type": _type, "start": start, "end": end})
                 return
 
             if item.get("accurate") is True:
@@ -136,11 +158,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         需要把所有组织的实例权限合并后，赋值给实例 因为有可能组织A只有查看权限，组织B有操作权限，所以要合并实例在多个组织下的权限再赋值
         """
 
-        organizations_instances_map = (
-            CmdbRulesFormatUtil.format_organizations_instances_map(
-                permission_instances_map
-            )
-        )
+        organizations_instances_map = CmdbRulesFormatUtil.format_organizations_instances_map(permission_instances_map)
         for instance in instances:
             _creator = instance.get("_creator")
             if _creator == creator:
@@ -154,17 +172,13 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             for organization in organizations:
                 if organization not in organizations_instances_map:
                     continue
-                for _permission in organizations_instances_map[organization][
-                    "permission"
-                ]:
+                for _permission in organizations_instances_map[organization]["permission"]:
                     if _permission not in instance["permission"]:
                         instance["permission"].append(_permission)
 
             if not instance["permission"]:
                 if instance["inst_name"] in organizations_instances_map:
-                    instance["permission"] = list(
-                        organizations_instances_map[instance["inst_name"]]["permission"]
-                    )
+                    instance["permission"] = list(organizations_instances_map[instance["inst_name"]]["permission"])
 
     @HasPermission("asset_info-View")
     @action(methods=["post"], detail=False)
@@ -186,27 +200,17 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         """
         model_id = request.data.get("model_id")
         if not model_id:
-            return WebUtils.response_error(
-                "model_id不能为空", status_code=status.HTTP_400_BAD_REQUEST
-            )
+            return WebUtils.response_error("model_id不能为空", status_code=status.HTTP_400_BAD_REQUEST)
 
         query_list = self._normalize_query_list(request.data.get("query_list", []))
         try:
-            page = self._parse_positive_int(
-                request.data.get("page", 1), field_name="page", default=1
-            )
-            page_size = self._parse_positive_int(
-                request.data.get("page_size", 10), field_name="page_size", default=10
-            )
+            page = self._parse_positive_int(request.data.get("page", 1), field_name="page", default=1)
+            page_size = self._parse_positive_int(request.data.get("page_size", 10), field_name="page_size", default=10)
         except ValueError as err:
-            return WebUtils.response_error(
-                error_message=str(err), status_code=status.HTTP_400_BAD_REQUEST
-            )
+            return WebUtils.response_error(error_message=str(err), status_code=status.HTTP_400_BAD_REQUEST)
 
         case_sensitive = request.data.get("case_sensitive", True)
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request, model_id
-        )
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id)
         instance_list, count = InstanceManage.instance_list(
             model_id=model_id,
             params=query_list,
@@ -228,9 +232,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     def retrieve(self, request, pk: str):
         instance = InstanceManage.query_entity_by_id(int(pk))
         if not instance:
-            return WebUtils.response_error(
-                "实例不存在", status_code=status.HTTP_404_NOT_FOUND
-            )
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         if self.check_creator_and_organizations(request, instance):
             # 如果是自己创建的实例，直接返回
@@ -240,14 +242,10 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         organizations = self.organizations(request, instance)
         # 再次确认用户所在的组织
         if not organizations:
-            return WebUtils.response_error(
-                "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-            )
+            return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
 
         model_id = instance["model_id"]
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=model_id
-        )
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id)
 
         has_permission = CmdbRulesFormatUtil.has_object_permission(
             obj_type=PERMISSION_INSTANCES,
@@ -257,9 +255,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             instance=instance,
         )
         if not has_permission:
-            return WebUtils.response_error(
-                "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-            )
+            return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
 
         self.add_instance_permission(
             instances=[instance],
@@ -271,10 +267,12 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @HasPermission("asset_info-Add")
     def create(self, request):
         model_id = request.data.get("model_id")
+        allowed_org_ids = self._get_allowed_org_ids(request)
         inst = InstanceManage.instance_create(
             model_id,
             request.data.get("instance_info"),
             request.user.username,
+            allowed_org_ids=allowed_org_ids,
         )
         return WebUtils.response_success(inst)
 
@@ -282,32 +280,22 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     def destroy(self, request, pk: int):
         instance = InstanceManage.query_entity_by_id(pk)
         if not instance:
-            return WebUtils.response_error(
-                "实例不存在", status_code=status.HTTP_404_NOT_FOUND
-            )
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         if not self.check_creator_and_organizations(request, instance):
             organizations = self.organizations(request, instance)
             # 再次确认用户所在的组织
             if not organizations:
-                return WebUtils.response_error(
-                    "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-                )
+                return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
 
-            has_permission = self.check_instance_permission(
-                request, instance, operator=OPERATE
-            )
+            has_permission = self.check_instance_permission(request, instance, operator=OPERATE)
             if not has_permission:
-                return WebUtils.response_error(
-                    "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-                )
+                return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
 
         current_team = get_current_team_from_request(request)
         include_children = request.COOKIES.get("include_children") == "1"
         if include_children:
-            team_ids = get_organization_and_children_ids(
-                tree_data=request.user.group_tree, target_id=current_team
-            )
+            team_ids = get_organization_and_children_ids(tree_data=request.user.group_tree, target_id=current_team)
             user_groups = format_groups_params(team_ids)
         else:
             user_groups = format_group_params(current_team)
@@ -325,21 +313,15 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     def instance_batch_delete(self, request):
         instances = InstanceManage.query_entity_by_ids(request.data)
         if not instances:
-            return WebUtils.response_error(
-                error_message="实例不存在", status_code=status.HTTP_404_NOT_FOUND
-            )
+            return WebUtils.response_error(error_message="实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         model_id = instances[0]["model_id"]
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=model_id
-        )
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id)
         for instance in instances:
             organizations = self.organizations(request, instance)
             # 再次确认用户所在的组织
             if not organizations:
-                return WebUtils.response_error(
-                    "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-                )
+                return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
 
             if not self.check_creator_and_organizations(request, instance):
                 has_permission = CmdbRulesFormatUtil.has_object_permission(
@@ -360,9 +342,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         current_team = get_current_team_from_request(request)
         include_children = request.COOKIES.get("include_children") == "1"
         if include_children:
-            team_ids = get_organization_and_children_ids(
-                tree_data=request.user.group_tree, target_id=current_team
-            )
+            team_ids = get_organization_and_children_ids(tree_data=request.user.group_tree, target_id=current_team)
             user_groups = format_groups_params(team_ids)
         else:
             user_groups = format_group_params(current_team)
@@ -375,52 +355,48 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 request.user.username,
             )
         except BaseAppException as e:
-            return WebUtils.response_error(
-                error_message=e.message, status_code=status.HTTP_403_FORBIDDEN
-            )
+            return WebUtils.response_error(error_message=e.message, status_code=status.HTTP_403_FORBIDDEN)
         return WebUtils.response_success()
 
     @HasPermission("asset_info-Edit")
     def partial_update(self, request, pk: int):
         instance = InstanceManage.query_entity_by_id(pk)
         if not instance:
-            return WebUtils.response_error(
-                "实例不存在", status_code=status.HTTP_404_NOT_FOUND
-            )
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         if not self.check_creator_and_organizations(request, instance):
             # 如果是自己创建的实例，直接执行更新
             organizations = self.organizations(request, instance)
             # 再次确认用户所在的组织
             if not organizations:
-                return WebUtils.response_error(
-                    "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-                )
+                return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
 
-            has_permission = self.check_instance_permission(
-                request, instance, operator=OPERATE
-            )
+            has_permission = self.check_instance_permission(request, instance, operator=OPERATE)
             if not has_permission:
-                return WebUtils.response_error(
-                    "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-                )
+                return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
 
         current_team = get_current_team_from_request(request)
         include_children = request.COOKIES.get("include_children") == "1"
         if include_children:
-            team_ids = get_organization_and_children_ids(
-                tree_data=request.user.group_tree, target_id=current_team
-            )
+            team_ids = get_organization_and_children_ids(tree_data=request.user.group_tree, target_id=current_team)
             user_groups = format_groups_params(team_ids)
         else:
             user_groups = format_group_params(current_team)
+        allowed_org_ids = self._get_allowed_org_ids(request)
+
+        update_attr = {k: v for k, v in request.data.items() if k != "_scenario"}
+        scenario = request.data.get("_scenario") or ORDINARY_ATTRIBUTE_CHANGE
+        if scenario not in INSTANCE_EDIT_CORRECTABLE_SCENARIOS:
+            scenario = ORDINARY_ATTRIBUTE_CHANGE
 
         inst = InstanceManage.instance_update(
             user_groups,
             request.user.roles,
             int(pk),
-            request.data,
+            update_attr,
             request.user.username,
+            allowed_org_ids=allowed_org_ids,
+            scenario=scenario,
         )
         return WebUtils.response_success(inst)
 
@@ -429,30 +405,22 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     def instance_batch_update(self, request):
         inst_ids = request.data.get("inst_ids")
         if not isinstance(inst_ids, list) or not inst_ids:
-            return WebUtils.response_error(
-                "inst_ids 必须是非空数组", status_code=status.HTTP_400_BAD_REQUEST
-            )
+            return WebUtils.response_error("inst_ids 必须是非空数组", status_code=status.HTTP_400_BAD_REQUEST)
         update_data = request.data.get("update_data")
         if not isinstance(update_data, dict) or not update_data:
-            return WebUtils.response_error(
-                "update_data 必须是非空对象", status_code=status.HTTP_400_BAD_REQUEST
-            )
+            return WebUtils.response_error("update_data 必须是非空对象", status_code=status.HTTP_400_BAD_REQUEST)
 
         instances = InstanceManage.query_entity_by_ids(inst_ids)
         if not instances:
             return WebUtils.response_success()
 
         model_id = instances[0]["model_id"]
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=model_id
-        )
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id)
         for instance in instances:
             organizations = self.organizations(request, instance)
             # 再次确认用户所在的组织
             if not organizations:
-                return WebUtils.response_error(
-                    "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-                )
+                return WebUtils.response_error("抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN)
 
             if not self.check_creator_and_organizations(request, instance):
                 has_permission = CmdbRulesFormatUtil.has_object_permission(
@@ -473,12 +441,11 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         current_team = get_current_team_from_request(request)
         include_children = request.COOKIES.get("include_children") == "1"
         if include_children:
-            team_ids = get_organization_and_children_ids(
-                tree_data=request.user.group_tree, target_id=current_team
-            )
+            team_ids = get_organization_and_children_ids(tree_data=request.user.group_tree, target_id=current_team)
             user_groups = format_groups_params(team_ids)
         else:
             user_groups = format_group_params(current_team)
+        allowed_org_ids = self._get_allowed_org_ids(request)
 
         try:
             InstanceManage.batch_instance_update(
@@ -487,11 +454,10 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 request.data["inst_ids"],
                 request.data["update_data"],
                 request.user.username,
+                allowed_org_ids=allowed_org_ids,
             )
         except BaseAppException as e:
-            return WebUtils.response_error(
-                error_message=e.message, status_code=status.HTTP_403_FORBIDDEN
-            )
+            return WebUtils.response_error(error_message=e.message, status_code=status.HTTP_403_FORBIDDEN)
         return WebUtils.response_success()
 
     @HasPermission("asset_info-Add Associate")
@@ -503,13 +469,9 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         dst_inst = InstanceManage.query_entity_by_id(dst_inst_id)
 
         if not src_inst:
-            return WebUtils.response_error(
-                "源实例不存在", status_code=status.HTTP_404_NOT_FOUND
-            )
+            return WebUtils.response_error("源实例不存在", status_code=status.HTTP_404_NOT_FOUND)
         if not dst_inst:
-            return WebUtils.response_error(
-                "目标实例不存在", status_code=status.HTTP_404_NOT_FOUND
-            )
+            return WebUtils.response_error("目标实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         # 检查源实例权限
         if not self.check_creator_and_organizations(request, src_inst):
@@ -540,19 +502,42 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 )
 
         try:
-            asso = InstanceManage.instance_association_create(
-                request.data, request.user.username
-            )
+            asso = InstanceManage.instance_association_create(request.data, request.user.username)
             return WebUtils.response_success(asso)
         except BaseAppException as e:
-            return WebUtils.response_error(
-                error_message=e.message, status_code=status.HTTP_400_BAD_REQUEST
-            )
+            return WebUtils.response_error(error_message=e.message, status_code=status.HTTP_400_BAD_REQUEST)
 
     @HasPermission("asset_info-Delete Associate")
     @action(detail=False, methods=["delete"], url_path="association/(?P<id>.+?)")
     def instance_association_delete(self, request, id: int):
-        InstanceManage.instance_association_delete(int(id), request.user.username)
+        asso_id = int(id)
+        # 删除前必须做与 instance_association_create 对称的对象级权限校验，
+        # 否则仅凭菜单级 "asset_info-Delete Associate" 权限即可越权清除跨组织边。
+        asso_info = InstanceManage.instance_association_by_asso_id(asso_id)
+        if not asso_info:
+            return WebUtils.response_error("关联关系不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        for endpoint_key, endpoint_label in (("src", "源"), ("dst", "目标")):
+            endpoint_inst = asso_info.get(endpoint_key)
+            if not endpoint_inst:
+                return WebUtils.response_error(
+                    f"{endpoint_label}实例不存在",
+                    status_code=status.HTTP_404_NOT_FOUND,
+                )
+            if self.check_creator_and_organizations(request, endpoint_inst):
+                continue
+            if not self.organizations(request, endpoint_inst):
+                return WebUtils.response_error(
+                    f"抱歉！您没有此实例[{endpoint_inst.get('inst_name')}]的权限",
+                    status_code=status.HTTP_403_FORBIDDEN,
+                )
+            if not self.check_instance_permission(request, endpoint_inst, operator=OPERATE):
+                return WebUtils.response_error(
+                    f"抱歉！您没有此实例[{endpoint_inst.get('inst_name')}]的权限",
+                    status_code=status.HTTP_403_FORBIDDEN,
+                )
+
+        InstanceManage.instance_association_delete(asso_id, request.user.username)
         return WebUtils.response_success()
 
     @action(
@@ -564,30 +549,17 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     def instance_association_instance_list(self, request, model_id: str, inst_id: int):
         instance = InstanceManage.query_entity_by_id(int(inst_id))
         if not instance:
-            return WebUtils.response_error(
-                "实例不存在", status_code=status.HTTP_404_NOT_FOUND
-            )
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
-        if self.check_creator_and_organizations(request, instance):
-            # 如果是自己创建的实例，直接返回关联实例列表
-            organizations = self.organizations(request, instance)
-            # 再次确认用户所在的组织
-            if not organizations:
-                return WebUtils.response_error(
-                    "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-                )
-
-            has_permission = self.check_instance_permission(
-                request, instance, operator=VIEW
-            )
-            if not has_permission:
-                return WebUtils.response_error(
-                    "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-                )
-
-        asso_insts = InstanceManage.instance_association_instance_list(
-            model_id, int(inst_id)
+        permission_error = self.require_instance_permission(
+            request,
+            instance,
+            operator=VIEW,
         )
+        if permission_error:
+            return permission_error
+
+        asso_insts = InstanceManage.instance_association_instance_list(model_id, int(inst_id))
         return WebUtils.response_success(asso_insts)
 
     @action(
@@ -599,44 +571,20 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     def instance_association(self, request, model_id: str, inst_id: int):
         instance = InstanceManage.query_entity_by_id(int(inst_id))
         if not instance:
-            return WebUtils.response_error(
-                "实例不存在", status_code=status.HTTP_404_NOT_FOUND
-            )
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
-        if self.check_creator_and_organizations(request, instance):
-            # 如果是自己创建的实例，直接返回关联信息
-            asso_insts = InstanceManage.instance_association(model_id, int(inst_id))
-            return WebUtils.response_success(asso_insts)
-
-        organizations = self.organizations(request, instance)
-        # 再次确认用户所在的组织
-        if not organizations:
-            return WebUtils.response_error(
-                "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-            )
-
-        has_permission = self.check_instance_permission(
-            request, instance, operator=VIEW
-        )
-        if not has_permission:
-            return WebUtils.response_error(
-                "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-            )
+        permission_error = self.require_instance_permission(request, instance, operator=VIEW)
+        if permission_error:
+            return permission_error
 
         asso_insts = InstanceManage.instance_association(model_id, int(inst_id))
         return WebUtils.response_success(asso_insts)
 
     @HasPermission("asset_info-Add")
-    @action(
-        methods=["get"], detail=False, url_path=r"(?P<model_id>.+?)/download_template"
-    )
+    @action(methods=["get"], detail=False, url_path=r"(?P<model_id>.+?)/download_template")
     def download_template(self, request, model_id):
-        response = HttpResponse(
-            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-        response["Content-Disposition"] = (
-            f"attachment;filename={f'{model_id}_import_template.xlsx'}"
-        )
+        response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment;filename={f'{model_id}_import_template.xlsx'}"
         response.write(InstanceManage.download_import_template(model_id).read())
         return response
 
@@ -670,11 +618,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
             if getattr(request.user, "is_superuser", False):
                 allowed_org_ids = (
-                    GroupUtils.get_all_child_groups(
-                        current_team, include_self=True, group_list=None
-                    )
-                    if include_children
-                    else [current_team]
+                    GroupUtils.get_all_child_groups(current_team, include_self=True, group_list=None) if include_children else [current_team]
                 )
             else:
                 allowed_org_ids = GroupUtils.get_user_authorized_child_groups(
@@ -695,9 +639,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             # 检查是否上传了文件
             uploaded_file = request.data.get("file")
             if not uploaded_file:
-                return JsonResponse(
-                    {"data": [], "result": False, "message": "请上传Excel文件"}
-                )
+                return JsonResponse({"data": [], "result": False, "message": "请上传Excel文件"})
 
             import_result = InstanceManage().inst_import_support_edit(
                 model_id=model_id,
@@ -718,9 +660,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             else:
                 # 兼容旧的字符串返回格式
                 is_success = not str(import_result).startswith("数据导入失败")
-                return JsonResponse(
-                    {"data": [], "result": is_success, "message": str(import_result)}
-                )
+                return JsonResponse({"data": [], "result": is_success, "message": str(import_result)})
 
         except Exception as e:
             logger.error(f"模型 {model_id} 数据导入异常: {str(e)}", exc_info=True)
@@ -740,15 +680,9 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         association_list = request.data.get("association_list", [])
         inst_ids = request.data.get("inst_ids", [])
 
-        response = HttpResponse(
-            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-        response["Content-Disposition"] = (
-            f"attachment;filename={f'{model_id}_export.xlsx'}"
-        )
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request, model_id
-        )
+        response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment;filename={f'{model_id}_export.xlsx'}"
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id)
 
         response.write(
             InstanceManage.inst_export(
@@ -768,13 +702,9 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         """全文检索（兼容旧接口）"""
         search = request.data.get("search", "")
         # 为每个模型构建权限映射（与 search 方法保持一致）
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=""
-        )
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="")
 
-        result = InstanceManage.fulltext_search(
-            search=search, permission_map=permissions_map, creator=request.user.username
-        )
+        result = InstanceManage.fulltext_search(search=search, permission_map=permissions_map, creator=request.user.username)
         return WebUtils.response_success(result)
 
     @HasPermission("search-View")
@@ -786,7 +716,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         请求参数:
             - search: 搜索关键词（必填）
-            - case_sensitive: 是否区分大小写（可选，默认False即模糊匹配）
+            - case_sensitive: 是否精确匹配（可选，默认False即不区分大小写模糊匹配）
 
         返回示例:
             {
@@ -808,9 +738,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             return WebUtils.response_error("search keyword is required")
 
         # 构建权限映射
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=""
-        )
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="")
 
         result = InstanceManage.fulltext_search_stats(
             search=search,
@@ -833,7 +761,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             - model_id: 模型ID（必填）
             - page: 页码（可选，默认1）
             - page_size: 每页大小（可选，默认10，最大100）
-            - case_sensitive: 是否区分大小写（可选，默认False即模糊匹配）
+            - case_sensitive: 是否精确匹配（可选，默认False即不区分大小写模糊匹配）
 
         返回示例:
             {
@@ -874,9 +802,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             return WebUtils.response_error("page_size must be between 1 and 100")
 
         # 构建权限映射
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request, model_id=""
-        )
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="")
 
         result = InstanceManage.fulltext_search_by_model(
             search=search,
@@ -899,31 +825,19 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     def topo_search(self, request, model_id: str, inst_id: int):
         instance = InstanceManage.query_entity_by_id(inst_id)
         if not instance:
-            return WebUtils.response_error(
-                "实例不存在", status_code=status.HTTP_404_NOT_FOUND
-            )
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
-        if self.check_creator_and_organizations(request, instance):
-            # 如果是自己创建的实例，直接返回拓扑搜索结果
-            result = InstanceManage.topo_search_lite(int(inst_id), depth=3)
-            return WebUtils.response_success(result)
+        permission_error = self.require_instance_permission(request, instance, operator=VIEW)
+        if permission_error:
+            return permission_error
 
-        organizations = self.organizations(request, instance)
-        # 再次确认用户所在的组织
-        if not organizations:
-            return WebUtils.response_error(
-                "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-            )
-
-        has_permission = self.check_instance_permission(
-            request, instance, operator=VIEW
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
+        result = InstanceManage.topo_search_lite(
+            int(inst_id),
+            depth=3,
+            permission_map=permissions_map,
+            user=request.user,
         )
-        if not has_permission:
-            return WebUtils.response_error(
-                "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-            )
-
-        result = InstanceManage.topo_search_lite(int(inst_id), depth=3)
         return WebUtils.response_success(result)
 
     @action(
@@ -941,44 +855,31 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         parent_ids = request.data.get("parent_id") or []
 
         if inst_id is None:
-            return WebUtils.response_error(
-                "inst_id不能为空", status_code=status.HTTP_400_BAD_REQUEST
-            )
+            return WebUtils.response_error("inst_id不能为空", status_code=status.HTTP_400_BAD_REQUEST)
         try:
             inst_id = int(inst_id)
         except (TypeError, ValueError):
-            return WebUtils.response_error(
-                "inst_id不合法", status_code=status.HTTP_400_BAD_REQUEST
-            )
+            return WebUtils.response_error("inst_id不合法", status_code=status.HTTP_400_BAD_REQUEST)
 
         if not isinstance(parent_ids, list):
             parent_ids = [parent_ids]
 
         instance = InstanceManage.query_entity_by_id(inst_id)
         if not instance:
-            return WebUtils.response_error(
-                "实例不存在", status_code=status.HTTP_404_NOT_FOUND
-            )
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
-        if self.check_creator_and_organizations(request, instance):
-            result = InstanceManage.topo_search_expand(inst_id, parent_ids, depth=2)
-            return WebUtils.response_success(result)
+        permission_error = self.require_instance_permission(request, instance, operator=VIEW)
+        if permission_error:
+            return permission_error
 
-        organizations = self.organizations(request, instance)
-        if not organizations:
-            return WebUtils.response_error(
-                "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-            )
-
-        has_permission = self.check_instance_permission(
-            request, instance, operator=VIEW
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
+        result = InstanceManage.topo_search_expand(
+            inst_id,
+            parent_ids,
+            depth=2,
+            permission_map=permissions_map,
+            user=request.user,
         )
-        if not has_permission:
-            return WebUtils.response_error(
-                "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-            )
-
-        result = InstanceManage.topo_search_expand(inst_id, parent_ids, depth=2)
         return WebUtils.response_success(result)
 
     @action(
@@ -990,29 +891,11 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     def topo_search_test_config(self, request, model_id: str, inst_id: int):
         instance = InstanceManage.query_entity_by_id(inst_id)
         if not instance:
-            return WebUtils.response_error(
-                "实例不存在", status_code=status.HTTP_404_NOT_FOUND
-            )
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
-        if self.check_creator_and_organizations(request, instance):
-            # 如果是自己创建的实例，直接返回测试配置拓扑搜索结果
-            result = InstanceManage.topo_search_test_config(int(inst_id), model_id)
-            return WebUtils.response_success(result)
-
-        organizations = self.organizations(request, instance)
-        # 再次确认用户所在的组织
-        if not organizations:
-            return WebUtils.response_error(
-                "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-            )
-
-        has_permission = self.check_instance_permission(
-            request, instance, operator=VIEW
-        )
-        if not has_permission:
-            return WebUtils.response_error(
-                "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
-            )
+        permission_error = self.require_instance_permission(request, instance, operator=VIEW)
+        if permission_error:
+            return permission_error
 
         result = InstanceManage.topo_search_test_config(int(inst_id), model_id)
         return WebUtils.response_success(result)
@@ -1032,9 +915,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         result = InstanceManage.create_or_update(data)
         return WebUtils.response_success(result)
 
-    @action(
-        methods=["get"], detail=False, url_path=r"(?P<model_id>.+?)/show_field/detail"
-    )
+    @action(methods=["get"], detail=False, url_path=r"(?P<model_id>.+?)/show_field/detail")
     @HasPermission("asset_info-View")
     def get_info(self, request, model_id):
         result = InstanceManage.get_info(model_id, request.user.username)
@@ -1043,12 +924,8 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(methods=["get"], detail=False, url_path=r"model_inst_count")
     @HasPermission("asset_info-View")
     def model_inst_count(self, request):
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request, model_id=""
-        )
-        result = InstanceManage.model_inst_count(
-            permissions_map=permissions_map, creator=request.user.username
-        )
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request, model_id="")
+        result = InstanceManage.model_inst_count(permissions_map=permissions_map, creator=request.user.username)
         return WebUtils.response_success(result)
 
     @action(methods=["GET"], detail=False)

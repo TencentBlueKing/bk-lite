@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { message, Modal } from 'antd';
-import type { UserDataType } from '@/app/system-manager/types/user';
+import type {
+  ChangeUserStatusAction,
+  UserDataType,
+} from '@/app/system-manager/types/user';
 import { useUserApi } from '@/app/system-manager/api/user/index';
 import { useGroupApi } from '@/app/system-manager/api/group/index';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -112,8 +115,9 @@ interface UseUserTableResult {
   fetchUsers: (params?: any) => Promise<void>;
   handleUserSearch: (value: string) => void;
   handleTableChange: (page: number, pageSize: number) => void;
-  handleDeleteUser: (key: string) => Promise<void>;
-  handleBatchDelete: () => void;
+  handleDeleteUser: (key: React.Key) => Promise<void>;
+  handleChangeUserStatus: (key: React.Key, action: ChangeUserStatusAction) => Promise<void>;
+  handleBatchUserStatus: (action: string) => void;
   setSelectedRowKeys: React.Dispatch<React.SetStateAction<React.Key[]>>;
   setCurrentPage: React.Dispatch<React.SetStateAction<number>>;
 }
@@ -130,8 +134,23 @@ export function useUserTable(
   const [searchValue, setSearchValue] = useState<string>('');
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
-  const { getUsersList, deleteUser } = useUserApi();
+  const { getUsersList, deleteUser, changeUserStatus } = useUserApi();
   const { confirm } = Modal;
+
+  const isChangeUserStatusAction = (action: string): action is ChangeUserStatusAction => {
+    return ['enable', 'disable', 'unlock'].includes(action);
+  };
+
+  const getStatusConfirmTitle = useCallback((action: ChangeUserStatusAction) => {
+    switch (action) {
+      case 'enable':
+        return t('system.user.status.enableConfirm');
+      case 'disable':
+        return t('system.user.status.disableConfirm');
+      case 'unlock':
+        return t('system.user.status.unlockConfirm');
+    }
+  }, [t]);
 
   const fetchUsers = useCallback(async (params: any = {}) => {
     setLoading(true);
@@ -145,10 +164,12 @@ export function useUserTable(
         username: item.username,
         name: item.display_name,
         email: item.email,
+        phone: item.phone,
         role: item.role,
         group_role_list: item.group_role_list || [],
         roles: item.roles || [],
         last_login: item.last_login,
+        status: item.status,
       }));
       setTableData(data);
       setTotal(res.count);
@@ -169,7 +190,7 @@ export function useUserTable(
     setPageSize(newPageSize);
   }, []);
 
-  const handleDeleteUser = useCallback(async (key: string) => {
+  const handleDeleteUser = useCallback(async (key: React.Key) => {
     try {
       await deleteUser({ user_ids: [key] });
       fetchUsers({ search: searchValue, page: currentPage, page_size: pageSize });
@@ -179,25 +200,56 @@ export function useUserTable(
     }
   }, [deleteUser, fetchUsers, searchValue, currentPage, pageSize, t]);
 
-  const handleBatchDelete = useCallback(() => {
+  const handleChangeUserStatus = useCallback(async (key: React.Key, action: ChangeUserStatusAction) => {
+    try {
+      await changeUserStatus({ user_ids: [key], action });
+      fetchUsers({ search: searchValue, page: currentPage, page_size: pageSize });
+      message.success(t('common.updateSuccess'));
+    } catch {
+      message.error(t('common.operationFailed'));
+    }
+  }, [changeUserStatus, fetchUsers, searchValue, currentPage, pageSize, t]);
+
+  const handleBatchUserStatus = useCallback((action: string) => {
+    if (action !== 'delete' && !isChangeUserStatusAction(action)) {
+      return;
+    }
+
     confirm({
-      title: t('common.delConfirm'),
-      content: t('common.delConfirmCxt'),
+      title: action === 'delete' ? t('common.delConfirm') : getStatusConfirmTitle(action),
+      content: action === 'delete' ? t('common.delConfirmCxt') : undefined,
       centered: true,
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),
       async onOk() {
         try {
-          await deleteUser({ user_ids: selectedRowKeys });
+          if (action === 'delete') {
+            await deleteUser({ user_ids: selectedRowKeys });
+            message.success(t('common.delSuccess'));
+          } else {
+            await changeUserStatus({ user_ids: selectedRowKeys, action });
+            message.success(t('common.updateSuccess'));
+          }
+
           setSelectedRowKeys([]);
           fetchUsers({ search: searchValue, page: currentPage, page_size: pageSize });
-          message.success(t('common.delSuccess'));
         } catch {
-          message.error(t('common.delFailed'));
+          message.error(t(action === 'delete' ? 'common.delFailed' : 'common.operationFailed'));
         }
       },
     });
-  }, [confirm, deleteUser, selectedRowKeys, fetchUsers, searchValue, currentPage, pageSize, t]);
+  }, [
+    confirm,
+    deleteUser,
+    changeUserStatus,
+    selectedRowKeys,
+    fetchUsers,
+    searchValue,
+    currentPage,
+    pageSize,
+    t,
+    getStatusConfirmTitle,
+  ]);
 
   useEffect(() => {
     fetchUsers({ search: searchValue, page: currentPage, page_size: pageSize });
@@ -215,7 +267,8 @@ export function useUserTable(
     handleUserSearch,
     handleTableChange,
     handleDeleteUser,
-    handleBatchDelete,
+    handleChangeUserStatus,
+    handleBatchUserStatus,
     setSelectedRowKeys,
     setCurrentPage,
   };

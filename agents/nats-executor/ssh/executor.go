@@ -28,6 +28,20 @@ type sshConn interface{}
 type responseMsg interface {
 	Respond([]byte) error
 }
+type inboundMsg interface {
+	responseMsg
+	Payload() []byte
+}
+type natsInboundMsg struct{ *nats.Msg }
+
+func (m natsInboundMsg) Payload() []byte { return m.Data }
+
+type eventPublisher interface {
+	Publish(subject string, data []byte) error
+}
+type subscriber interface {
+	Subscribe(subject string, cb nats.MsgHandler) (*nats.Subscription, error)
+}
 
 type streamEvent struct {
 	ExecutionID string `json:"execution_id"`
@@ -37,7 +51,7 @@ type streamEvent struct {
 }
 
 type streamLogWriter struct {
-	nc          *nats.Conn
+	publisher   eventPublisher
 	topic       string
 	executionID string
 	stream      string
@@ -87,6 +101,9 @@ var (
 		}
 		return realSSHClient{client: client}, nil
 	}
+	subscribeSSHExecutorFn      = subscribeSSHExecutor
+	subscribeDownloadToRemoteFn = subscribeDownloadToRemote
+	subscribeUploadToRemoteFn   = subscribeUploadToRemote
 )
 
 const sshConnectTimeout = 30 * time.Second
@@ -122,8 +139,8 @@ func (s realSSHSession) Close() error                { return s.session.Close() 
 func (s realSSHSession) SetStdout(w io.Writer)       { s.session.Stdout = w }
 func (s realSSHSession) SetStderr(w io.Writer)       { s.session.Stderr = w }
 
-func newStreamLogWriter(nc *nats.Conn, topic, executionID, stream string) *streamLogWriter {
-	return &streamLogWriter{nc: nc, topic: topic, executionID: executionID, stream: stream}
+func newStreamLogWriter(publisher eventPublisher, topic, executionID, stream string) *streamLogWriter {
+	return &streamLogWriter{publisher: publisher, topic: topic, executionID: executionID, stream: stream}
 }
 
 func (w *streamLogWriter) Write(p []byte) (int, error) {
@@ -131,15 +148,22 @@ func (w *streamLogWriter) Write(p []byte) (int, error) {
 		return 0, nil
 	}
 	_, _ = w.buffer.Write(p)
+
+	var remaining bytes.Buffer
 	for {
 		line, err := w.buffer.ReadString('\n')
 		if err == io.EOF {
+			remaining.WriteString(line)
 			break
 		}
 		if err != nil {
 			return len(p), err
 		}
 		w.publish(strings.TrimRight(line, "\r\n"))
+	}
+	if remaining.Len() > 0 {
+		w.buffer.Reset()
+		_, _ = remaining.WriteTo(&w.buffer)
 	}
 	return len(p), nil
 }
@@ -153,7 +177,7 @@ func (w *streamLogWriter) Flush() {
 }
 
 func (w *streamLogWriter) publish(line string) {
-	if w.nc == nil || w.topic == "" || line == "" {
+	if w.publisher == nil || w.topic == "" || line == "" {
 		return
 	}
 	payload, err := json.Marshal(streamEvent{
@@ -166,7 +190,7 @@ func (w *streamLogWriter) publish(line string) {
 		logger.Warnf("[SSH Execute] stream marshal failed: %v", err)
 		return
 	}
-	if err := w.nc.Publish(w.topic, payload); err != nil {
+	if err := w.publisher.Publish(w.topic, payload); err != nil {
 		logger.Warnf("[SSH Execute] stream publish failed: %v", err)
 	}
 }
@@ -308,6 +332,9 @@ func handleDownloadToRemoteMessage(data []byte, instanceId string, nc sshConn) (
 		LogContext:     logContext,
 		ExecuteTimeout: remainingBudgetSeconds(deadline),
 	}
+	if downloadRequest.Password != "" {
+		localExecuteRequest.Env = map[string]string{"SSHPASS": downloadRequest.Password}
+	}
 
 	responseData := executeSCPCommand(instanceId, localExecuteRequest)
 	responseContent, err := json.Marshal(responseData)
@@ -363,6 +390,9 @@ func handleUploadToRemoteMessage(data []byte, instanceId string) ([]byte, bool) 
 		LogContext:     logContext,
 		ExecuteTimeout: remainingBudgetSeconds(deadline),
 	}
+	if uploadRequest.Password != "" {
+		localExecuteRequest.Env = map[string]string{"SSHPASS": uploadRequest.Password}
+	}
 
 	responseData := executeSCPCommand(instanceId, localExecuteRequest)
 	responseContent, _ := json.Marshal(responseData)
@@ -380,6 +410,34 @@ func respondSSHExecuteMessage(msg responseMsg, data []byte, instanceId string, n
 		return false
 	}
 	logger.Debugf("[SSH Subscribe] Instance: %s, Response sent successfully, size: %d bytes", instanceId, len(responseContent))
+	return true
+}
+
+func respondDownloadToRemoteSubscription(msg inboundMsg, instanceId string, nc sshConn) bool {
+	responseContent, ok := handleDownloadToRemoteMessage(msg.Payload(), instanceId, nc)
+	if !ok {
+		logger.Errorf("[Download Subscribe] Instance: %s, Error unmarshalling incoming message", instanceId)
+		return false
+	}
+	if err := msg.Respond(responseContent); err != nil {
+		logger.Errorf("[Download Subscribe] Instance: %s, Error responding to download request: %v", instanceId, err)
+		return false
+	}
+	logger.Debugf("[Download Subscribe] Instance: %s, Response sent successfully, size: %d bytes", instanceId, len(responseContent))
+	return true
+}
+
+func respondUploadToRemoteSubscription(msg inboundMsg, instanceId string) bool {
+	responseContent, ok := handleUploadToRemoteMessage(msg.Payload(), instanceId)
+	if !ok {
+		logger.Errorf("[Upload Subscribe] Instance: %s, Error unmarshalling incoming message", instanceId)
+		return false
+	}
+	if err := msg.Respond(responseContent); err != nil {
+		logger.Errorf("[Upload Subscribe] Instance: %s, Error responding to upload request: %v", instanceId, err)
+		return false
+	}
+	logger.Debugf("[Upload Subscribe] Instance: %s, Response sent successfully, size: %d bytes", instanceId, len(responseContent))
 	return true
 }
 
@@ -428,11 +486,11 @@ func buildSCPCommand(user, host, password, privateKey string, port uint, sourceP
 		cleanup = func() {}
 
 		if isUpload {
-			scpCommand = fmt.Sprintf("sshpass -p %s scp %s -P %d -r %s %s",
-				shellQuote(password), sshOptions, port, shellQuote(sourcePath), shellQuoteRemoteTarget(user, host, targetPath))
+			scpCommand = fmt.Sprintf("sshpass -e scp %s -P %d -r %s %s",
+				sshOptions, port, shellQuote(sourcePath), shellQuoteRemoteTarget(user, host, targetPath))
 		} else {
-			scpCommand = fmt.Sprintf("sshpass -p %s scp %s -P %d -r %s %s",
-				shellQuote(password), sshOptions, port, shellQuoteRemoteTarget(user, host, targetPath), shellQuote(sourcePath))
+			scpCommand = fmt.Sprintf("sshpass -e scp %s -P %d -r %s %s",
+				sshOptions, port, shellQuoteRemoteTarget(user, host, targetPath), shellQuote(sourcePath))
 		}
 
 		logger.Debugf("[SCP] Using password authentication with profile=%s", profile)
@@ -931,16 +989,16 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 	}
 	defer session.Close()
 
-	var stdout, stderr bytes.Buffer
-	stdoutWriter := io.Writer(&stdout)
-	stderrWriter := io.Writer(&stderr)
+	outputCapture := utils.NewSharedOutputCapture(utils.CommandOutputLimitBytes)
+	stdoutWriter := outputCapture.StdoutWriter()
+	stderrWriter := outputCapture.StderrWriter()
 	var stdoutStreamWriter *streamLogWriter
 	var stderrStreamWriter *streamLogWriter
 	if req.StreamLogs && req.StreamLogTopic != "" && nc != nil {
 		stdoutStreamWriter = newStreamLogWriter(nc, req.StreamLogTopic, req.ExecutionID, "stdout")
 		stderrStreamWriter = newStreamLogWriter(nc, req.StreamLogTopic, req.ExecutionID, "stderr")
-		stdoutWriter = io.MultiWriter(&stdout, stdoutStreamWriter)
-		stderrWriter = io.MultiWriter(&stderr, stderrStreamWriter)
+		stdoutWriter = io.MultiWriter(outputCapture.StdoutWriter(), stdoutStreamWriter)
+		stderrWriter = io.MultiWriter(outputCapture.StderrWriter(), stderrStreamWriter)
 	}
 	session.SetStdout(stdoutWriter)
 	session.SetStderr(stderrWriter)
@@ -968,7 +1026,12 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 		if stderrStreamWriter != nil {
 			stderrStreamWriter.Flush()
 		}
-		return timeoutStageResponse(instanceId, stdout.String()+stderr.String(), errMsg, sshStageCommandRun, sshCategoryRemoteTimeout)
+		snapshot := outputCapture.Snapshot()
+		output := utils.FormatCapturedOutput(string(snapshot.Stdout), string(snapshot.Stderr), snapshot)
+		if snapshot.Truncated {
+			logger.Warnf("[SSH Execute] Instance: %s, Output exceeded shared capture limit and was truncated (stdout_dropped=%dB stderr_dropped=%dB total_written=%dB)", instanceId, snapshot.StdoutDropped, snapshot.StderrDropped, snapshot.TotalWritten)
+		}
+		return timeoutStageResponse(instanceId, output, errMsg, sshStageCommandRun, sshCategoryRemoteTimeout)
 	case err := <-errChan:
 		duration := time.Since(startTime)
 		if stdoutStreamWriter != nil {
@@ -977,15 +1040,16 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 		if stderrStreamWriter != nil {
 			stderrStreamWriter.Flush()
 		}
-		output := stdout.String()
-		if stderr.Len() > 0 {
-			output += stderr.String()
-		}
+		snapshot := outputCapture.Snapshot()
+		output := utils.FormatCapturedOutput(string(snapshot.Stdout), string(snapshot.Stderr), snapshot)
 
 		if err != nil {
 			errMsg := fmt.Sprintf("Command execution failed: %v", err)
 			logger.Warnf("[SSH Execute] Instance: %s, Command execution failed after %v - Error: %v", instanceId, duration, err)
 			logger.Debugf("[SSH Execute] Instance: %s, Output: %s", instanceId, output)
+			if snapshot.Truncated {
+				logger.Warnf("[SSH Execute] Instance: %s, Output exceeded shared capture limit and was truncated (stdout_dropped=%dB stderr_dropped=%dB total_written=%dB)", instanceId, snapshot.StdoutDropped, snapshot.StderrDropped, snapshot.TotalWritten)
+			}
 			return ExecuteResponse{
 				Output:     output,
 				InstanceId: instanceId,
@@ -999,6 +1063,9 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 
 		logger.Debugf("[SSH Execute] Instance: %s, Command executed successfully in %v", instanceId, duration)
 		logger.Debugf("[SSH Execute] Instance: %s, Output length: %d bytes", instanceId, len(output))
+		if snapshot.Truncated {
+			logger.Warnf("[SSH Execute] Instance: %s, Output exceeded shared capture limit and was truncated (stdout_dropped=%dB stderr_dropped=%dB total_written=%dB)", instanceId, snapshot.StdoutDropped, snapshot.StderrDropped, snapshot.TotalWritten)
+		}
 
 		return ExecuteResponse{
 			Output:     output,
@@ -1033,61 +1100,53 @@ func buildPublicKeyAuthMethod(signer ssh.Signer, profile sshCompatibilityProfile
 	return ssh.PublicKeys(rsaSigner)
 }
 
-func SubscribeSSHExecutor(nc *nats.Conn, instanceId *string) {
+func subscribeSSHExecutor(sub subscriber, nc *nats.Conn, instanceId *string) error {
 	subject := fmt.Sprintf("ssh.execute.%s", *instanceId)
 	logger.Infof("[SSH Subscribe] Instance: %s, Subscribing to subject: %s", *instanceId, subject)
 
-	_, err := nc.Subscribe(subject, func(msg *nats.Msg) {
+	_, err := sub.Subscribe(subject, func(msg *nats.Msg) {
 		logger.Debugf("[SSH Subscribe] Instance: %s, Received message, size: %d bytes", *instanceId, len(msg.Data))
-		respondSSHExecuteMessage(msg, msg.Data, *instanceId, nc)
+		respondSSHExecuteMessage(natsInboundMsg{msg}, msg.Data, *instanceId, nc)
 	})
+	return err
+}
 
-	if err != nil {
+func SubscribeSSHExecutor(nc *nats.Conn, instanceId *string) {
+	if err := subscribeSSHExecutorFn(nc, nc, instanceId); err != nil {
 		logger.Errorf("[SSH Subscribe] Instance: %s, Failed to subscribe: %v", *instanceId, err)
 	}
 }
 
-func SubscribeDownloadToRemote(nc *nats.Conn, instanceId *string) {
+func subscribeDownloadToRemote(sub subscriber, nc sshConn, instanceId *string) error {
 	subject := fmt.Sprintf("download.remote.%s", *instanceId)
 	logger.Infof("[Download Subscribe] Instance: %s, Subscribing to subject: %s", *instanceId, subject)
 
-	nc.Subscribe(subject, func(msg *nats.Msg) {
+	_, err := sub.Subscribe(subject, func(msg *nats.Msg) {
 		logger.Debugf("[Download Subscribe] Instance: %s, Received download request, size: %d bytes", *instanceId, len(msg.Data))
-
-		responseContent, ok := handleDownloadToRemoteMessage(msg.Data, *instanceId, nc)
-		if !ok {
-			logger.Errorf("[Download Subscribe] Instance: %s, Error unmarshalling incoming message", *instanceId)
-			return
-		}
-
-		if err := msg.Respond(responseContent); err != nil {
-			logger.Errorf("[Download Subscribe] Instance: %s, Error responding to download request: %v", *instanceId, err)
-		} else {
-			logger.Debugf("[Download Subscribe] Instance: %s, Response sent successfully, size: %d bytes", *instanceId, len(responseContent))
-		}
+		respondDownloadToRemoteSubscription(natsInboundMsg{msg}, *instanceId, nc)
 	})
+	return err
 }
 
-func SubscribeUploadToRemote(nc *nats.Conn, instanceId *string) {
+func SubscribeDownloadToRemote(nc *nats.Conn, instanceId *string) {
+	if err := subscribeDownloadToRemoteFn(nc, nc, instanceId); err != nil {
+		logger.Errorf("[Download Subscribe] Instance: %s, Failed to subscribe: %v", *instanceId, err)
+	}
+}
+
+func subscribeUploadToRemote(sub subscriber, instanceId *string) error {
 	subject := fmt.Sprintf("upload.remote.%s", *instanceId)
 	logger.Infof("[Upload Subscribe] Instance: %s, Subscribing to subject: %s", *instanceId, subject)
 
-	_, err := nc.Subscribe(subject, func(msg *nats.Msg) {
+	_, err := sub.Subscribe(subject, func(msg *nats.Msg) {
 		logger.Debugf("[Upload Subscribe] Instance: %s, Received upload request, size: %d bytes", *instanceId, len(msg.Data))
-
-		responseContent, ok := handleUploadToRemoteMessage(msg.Data, *instanceId)
-		if !ok {
-			logger.Errorf("[Upload Subscribe] Instance: %s, Error unmarshalling incoming message", *instanceId)
-			return
-		}
-		if err := msg.Respond(responseContent); err != nil {
-			logger.Errorf("[Upload Subscribe] Instance: %s, Error responding to upload request: %v", *instanceId, err)
-		} else {
-			logger.Debugf("[Upload Subscribe] Instance: %s, Response sent successfully, size: %d bytes", *instanceId, len(responseContent))
-		}
+		respondUploadToRemoteSubscription(natsInboundMsg{msg}, *instanceId)
 	})
+	return err
+}
 
-	if err != nil {
+func SubscribeUploadToRemote(nc *nats.Conn, instanceId *string) {
+	if err := subscribeUploadToRemoteFn(nc, instanceId); err != nil {
 		logger.Errorf("[Upload Subscribe] Instance: %s, Failed to subscribe: %v", *instanceId, err)
 	}
 }

@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -33,7 +34,7 @@ const initData = {
 const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
     const { t } = useTranslation();
-    const { addCollector, editCollecttor, uploadPackage } = useNodeManagerApi();
+    const { addCollector, editCollecttor, uploadPackage, getControllerList } = useNodeManagerApi();
     const formRef = useRef<FormInstance>(null);
     const [form] = Form.useForm();
     const [title, setTitle] = useState<string>('editCollector');
@@ -46,9 +47,41 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
     const [fileList, setFileList] = useState<any>([]);
     const [tags, setTags] = useState<string[]>([]); //编辑时的tags
 
+    const [architectureOptions, setArchitectureOptions] = useState<Record<string, { label: string; value: string }[]>>({
+      linux: [{ label: 'x86_64', value: 'x86_64' }],
+      windows: [{ label: 'x86_64', value: 'x86_64' }],
+    });
+
+    const fetchArchitectureOptions = useCallback(async () => {
+      try {
+        const response = await getControllerList({});
+        const controllerList = Array.isArray(response)
+          ? response
+          : response?.items || response?.results || [];
+        const archMap: Record<string, Set<string>> = {};
+        controllerList.forEach((item: any) => {
+          const os = item.node_operating_system || item.os || 'linux';
+          const arch = item.cpu_architecture || 'x86_64';
+          if (!archMap[os]) archMap[os] = new Set();
+          archMap[os].add(arch);
+        });
+        const options: Record<string, { label: string; value: string }[]> = {};
+        for (const [os, archSet] of Object.entries(archMap)) {
+          options[os] = Array.from(archSet).map((arch) => ({
+            label: arch === 'arm64' ? 'ARM64' : arch,
+            value: arch,
+          }));
+        }
+        if (!options['linux']) options['linux'] = [{ label: 'x86_64', value: 'x86_64' }];
+        if (!options['windows']) options['windows'] = [{ label: 'x86_64', value: 'x86_64' }];
+        setArchitectureOptions(options);
+      } catch {
+      }
+    }, [getControllerList]);
+
     useImperativeHandle(ref, () => ({
       showModal: ({ type, form, title, key, appTag }) => {
-        console.log(type);
+        fetchArchitectureOptions();
         // 新增时使用初始值，编辑时使用传入的 form 数据
         const info =
           type === 'add'
@@ -103,10 +136,11 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
         ?.validateFields()
         .then((values) => {
           const param = {
-            id: id || `${values.name}_${values.system}`,
+            id: id || `${values.name}_${values.system}_${values.cpu_architecture || 'x86_64'}`,
             name: values.name,
             service_type: formData.service_type || 'exec',
             node_operating_system: values.system,
+            cpu_architecture: values.cpu_architecture || 'x86_64',
             introduction: values.description,
             executable_path: values.executable_path || '',
             execute_parameters: values.execute_parameters || '',
@@ -249,6 +283,30 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
                   ></Select>
                 </Form.Item>
                 <Form.Item
+                  noStyle
+                  shouldUpdate={(prev, cur) => prev.system !== cur.system}
+                >
+                  {({ getFieldValue }) => {
+                    const os = getFieldValue('system') || 'linux';
+                    const options = architectureOptions[os] || architectureOptions['linux'];
+                    return (
+                      <Form.Item
+                        label="CPU"
+                        name="cpu_architecture"
+                        rules={[
+                          { required: true, message: t('common.selectMsg') }
+                        ]}
+                      >
+                        <Select
+                          disabled={type !== 'add'}
+                          options={options}
+                          placeholder={t('common.selectMsg')}
+                        />
+                      </Form.Item>
+                    );
+                  }}
+                </Form.Item>
+                <Form.Item
                   label={t('node-manager.collector.executeFilePath')}
                   name="executable_path"
                   rules={[
@@ -286,22 +344,6 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
             )}
             {type === 'upload' && (
               <>
-                <Form.Item
-                  label="CPU架构"
-                  name="cpu_architecture"
-                  rules={[
-                    { required: true, message: t('common.selectMsg') }
-                  ]}
-                  initialValue="x86_64"
-                >
-                  <Select
-                    options={[
-                      { value: 'x86_64', label: 'x86_64' },
-                      { value: 'arm64', label: 'ARM64' }
-                    ]}
-                    placeholder={t('common.selectMsg')}
-                  />
-                </Form.Item>
                 <Form.Item
                   label={t('node-manager.packetManage.importFile')}
                   name="upload"

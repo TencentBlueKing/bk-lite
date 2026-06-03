@@ -5,23 +5,22 @@
 from django.db import models
 from django.db.models import JSONField
 
+from apps.core.models.group_info import Groups
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.core.models.group_info import Groups
 from apps.core.utils.crypto.password_crypto import PasswordCrypto
 from apps.operation_analysis.constants.constants import SECRET_KEY
 
 
 class NameSpace(MaintainerInfo, TimeInfo):
     name = models.CharField(max_length=128, verbose_name="命名空间名称", unique=True)
-    namespace = models.CharField(max_length=64, verbose_name="NATS命名空间", default="bklite",
-                                  help_text="NATS服务端的命名空间,用于消息主题前缀")
+    namespace = models.CharField(max_length=64, verbose_name="NATS命名空间", default="bklite", help_text="NATS服务端的命名空间,用于消息主题前缀")
     account = models.CharField(max_length=64, verbose_name="账号")
     password = models.CharField(max_length=128, verbose_name="密码")
     domain = models.CharField(max_length=255, verbose_name="域名")
-    enable_tls = models.BooleanField(default=False, verbose_name="启用TLS", 
-                                      help_text="是否使用TLS安全连接(tls://)")
+    enable_tls = models.BooleanField(default=False, verbose_name="启用TLS", help_text="是否使用TLS安全连接(tls://)")
     desc = models.TextField(verbose_name="描述", blank=True, null=True)
+    # [内部预留] 当前无产品功能依赖，仅用于历史兼容透传（导入导出/内置数据导入）；前端不暴露、运行时不校验
     is_active = models.BooleanField(default=True, verbose_name="是否启用")
 
     class Meta:
@@ -73,12 +72,12 @@ class NameSpace(MaintainerInfo, TimeInfo):
         加密后的密码特征:
         1. 长度 >= 44 (AES加密后base64编码的最小长度)
         2. 能够成功解密
-        
+
         :return: True 表示已加密，False 表示明文
         """
         if not self.password:
             return False
-        
+
         # 尝试解密，如果成功说明已加密
         try:
             crypto = PasswordCrypto(SECRET_KEY)
@@ -113,11 +112,11 @@ class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groups):
     name = models.CharField(max_length=255, verbose_name="数据源名称")
     rest_api = models.CharField(max_length=255, verbose_name="REST API URL")
     desc = models.TextField(verbose_name="描述", blank=True, null=True)
+    # [内部预留] 当前无产品功能依赖，仅用于历史兼容透传（导入导出/内置数据导入）；前端不暴露、运行时不校验
     is_active = models.BooleanField(default=True, verbose_name="是否启用")
     params = JSONField(help_text="API请求参数", verbose_name="请求参数", blank=True, null=True)
-    namespaces = models.ManyToManyField(NameSpace, related_name='data_sources', help_text="会话关联的事件",
-                                        verbose_name="命名空间", blank=True)
-    tag = models.ManyToManyField(to=DataSourceTag, related_name='data_sources', help_text="数据源标签", blank=True)
+    namespaces = models.ManyToManyField(NameSpace, related_name="data_sources", help_text="会话关联的事件", verbose_name="命名空间", blank=True)
+    tag = models.ManyToManyField(to=DataSourceTag, related_name="data_sources", help_text="数据源标签", blank=True)
     chart_type = JSONField(help_text="图表类型", default=list, blank=True, null=True)
     field_schema = JSONField(default=list, blank=True, help_text="接口返回字段定义（数据源级配置，表格默认列可使用）")
 
@@ -125,8 +124,5 @@ class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groups):
         db_table = "operation_analysis_data_source_api"
         verbose_name = "数据源API"
         constraints = [
-            models.UniqueConstraint(
-                fields=['name', 'rest_api'],
-                name='unique_name_rest_api'
-            ),
+            models.UniqueConstraint(fields=["name", "rest_api"], name="unique_name_rest_api"),
         ]

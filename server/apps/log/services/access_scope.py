@@ -12,6 +12,11 @@ class LogAccessScope:
     log_groups: list[str]
     queryset: object
     permission: dict
+    resolved_group_objects: list = None
+
+    def __post_init__(self):
+        if self.resolved_group_objects is None:
+            self.resolved_group_objects = []
 
 
 class LogAccessScopeService:
@@ -81,40 +86,44 @@ class LogAccessScopeService:
         if not isinstance(log_group_ids, list):
             raise ValueError("log_groups 必须是一个数组")
 
-        queryset, permission = cls.get_accessible_group_queryset(request)
-        accessible_groups = list(queryset.only("id", "name", "rule"))
-        accessible_map = {group.id: group for group in accessible_groups}
-
         requested_ids = []
-        has_default = False
         for group_id in log_group_ids:
             normalized = str(group_id).strip()
             if not normalized:
                 continue
-            if normalized == "default":
-                has_default = True
-                continue
             requested_ids.append(normalized)
 
-        unauthorized = sorted(set(requested_ids) - set(accessible_map.keys()))
-        if unauthorized:
-            raise ValueError(f"以下日志分组无权限访问或不存在: {', '.join(unauthorized)}")
+        queryset, permission = cls.get_accessible_group_queryset(request)
 
-        if has_default or not requested_ids:
-            resolved_ids = [group.id for group in accessible_groups]
-        else:
+        if requested_ids:
+            # 精确查询：只检查请求的分组是否在权限范围内
+            accessible_requested = list(queryset.filter(id__in=requested_ids).only("id", "name", "rule"))
+            accessible_map = {group.id: group for group in accessible_requested}
+
+            unauthorized = sorted(set(requested_ids) - set(accessible_map.keys()))
+            if unauthorized:
+                raise ValueError(f"以下日志分组无权限访问或不存在: {', '.join(unauthorized)}")
+
             resolved_ids = []
+            resolved_groups = []
             seen = set()
             for group_id in requested_ids:
                 if group_id in accessible_map and group_id not in seen:
                     resolved_ids.append(group_id)
+                    resolved_groups.append(accessible_map[group_id])
                     seen.add(group_id)
+        else:
+            # 空请求：返回所有可见分组（保持原有语义）
+            accessible_groups = list(queryset.only("id", "name", "rule"))
+            resolved_ids = [group.id for group in accessible_groups]
+            resolved_groups = accessible_groups
 
         if not resolved_ids:
-            raise ValueError("当前用户无可用日志分组权限")
+            raise ValueError("当前组织暂无可用的日志分组权限")
 
         return LogAccessScope(
             log_groups=resolved_ids,
             queryset=queryset.filter(id__in=resolved_ids),
             permission=permission,
+            resolved_group_objects=resolved_groups,
         )

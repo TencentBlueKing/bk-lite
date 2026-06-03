@@ -207,6 +207,7 @@ class CollectRunStatusType(object):
     TIME_OUT = 4
     WRITING = 5
     FORCE_STOP = 6
+    PARTIAL_SUCCESS = 8
 
     CHOICE = (
         (NOT_START, "未执行"),
@@ -216,6 +217,7 @@ class CollectRunStatusType(object):
         (TIME_OUT, "超时"),
         (WRITING, "正在写入"),
         (FORCE_STOP, "强制终止"),
+        (PARTIAL_SUCCESS, "部分成功"),
     )
 
 

@@ -2,7 +2,7 @@ import useApiClient from '@/utils/request';
 import { SystemSettings } from '@/app/system-manager/types/security';
 
 export const useSecurityApi = () => {
-  const { get, post, patch } = useApiClient();
+  const { get, post, patch, del } = useApiClient();
 
   /**
    * Get system settings including OTP status
@@ -100,6 +100,15 @@ export const useSecurityApi = () => {
   }
 
   /**
+   * Delete auth source
+   * @param id - Auth source ID
+   * @returns Promise with delete result
+   */
+  async function deleteAuthSource(id: number): Promise<any> {
+    return await del(`/system_mgmt/login_module/${id}/`);
+  }
+
+  /**
    * Get user login logs
    * @param params - Query parameters for filtering logs
    * @returns Promise with user login logs data
@@ -160,6 +169,7 @@ export const useSecurityApi = () => {
     updateAuthSource,
     createAuthSource,
     syncAuthSource,
+    deleteAuthSource,
     getUserLoginLogs,
     getOperationLogs,
     getErrorLogs

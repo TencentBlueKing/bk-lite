@@ -1,6 +1,11 @@
 import { DirItem } from './index';
 import type { ParamItem } from './dataSource';
-import type { ValueConfig, UnifiedFilterDefinition, TableConfig } from './dashBoard';
+import type {
+  ValueConfig,
+  UnifiedFilterDefinition,
+  TableConfig,
+  FilterBindings,
+} from './dashBoard';
 import type { Graph as X6Graph, Cell, Node, Edge } from '@antv/x6';
 
 // 基础几何类型
@@ -53,6 +58,7 @@ export interface TopologyNodeData {
   // 运行时状态字段
   isLoading?: boolean;
   hasError?: boolean;
+  errorMessage?: string;
   rawData?: any;
   isPlaceholder?: boolean;
   isNewNode?: boolean; 
@@ -182,6 +188,7 @@ export interface NodeConfPanelProps {
   readonly?: boolean;
   visible?: boolean;
   title?: string;
+  builtinNamespaceId?: number;
   onClose?: () => void;
   onConfirm?: (values: NodeConfigFormValues) => void;
   onCancel?: () => void;
@@ -220,7 +227,7 @@ export interface SerializedEdge {
 
 // 数据树节点结构
 export interface TreeNode {
-  title: string;
+  title: React.ReactNode;
   key: string;
   value?: string;
   isLeaf?: boolean;
@@ -288,8 +295,12 @@ export interface ViewConfigFormValues {
   description?: string;
   chartType?: string;
   dataSource?: number | string;
+  compare?: boolean;
   dataSourceParams?: ParamItem[];
+  filterBindings?: FilterBindings;
   selectedFields?: string[];
+  topNLabelField?: string;
+  topNValueField?: string;
   unit?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
@@ -307,10 +318,14 @@ export interface NodeConfigFormValues {
   logoType?: 'default' | 'custom';
   logoIcon?: string;
   logoUrl?: string;
+  compare?: boolean;
   selectedFields?: string[];
   chartType?: string;
   dataSource?: number;
   dataSourceParams?: ParamItem[];
+  builtinNamespaceId?: number;
+  topNLabelField?: string;
+  topNValueField?: string;
   width?: number;
   height?: number;
   backgroundColor?: string;

@@ -304,7 +304,7 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
 
     @HasPermission("image_classification-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        return self.destroy_train_job_with_runtime_cleanup(request, *args, **kwargs)
 
     @HasPermission("image_classification-Add")
     def create(self, request, *args, **kwargs):
@@ -320,6 +320,8 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
         """
         启动图片分类训练任务
         """
+        train_job = None
+        previous_status = None
         try:
             train_job = self.get_object()
 
@@ -343,6 +345,10 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
 
             if not train_job.config_url:
                 return Response({"error": "训练配置文件不存在"}, status=status.HTTP_400_BAD_REQUEST)
+
+            scope_error = self.ensure_train_job_dataset_scope(request, train_job)
+            if scope_error is not None:
+                return scope_error
 
             # 构建训练任务标识
             job_id = mlflow_service.build_job_id(
@@ -379,6 +385,10 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
             except Exception:
                 logger.warning(f"MLflow 查询失败，降级 expected_run_count=0: TrainJob ID={train_job.id}")
 
+            previous_status = self.claim_train_job_running(train_job)
+            if previous_status is None:
+                return Response({"error": "训练任务已在运行中"}, status=status.HTTP_400_BAD_REQUEST)
+
             # 启动前清理可能残留的旧训练容器
             try:
                 WebhookClient.stop(job_id)
@@ -400,10 +410,6 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
                 device=device,
             )
 
-            # 更新任务状态
-            train_job.status = TrainJobStatus.RUNNING
-            train_job.save(update_fields=["status"])
-
             # 启动异步轮询训练状态
             logger.info(f"触发轮询任务: TrainJob ID={train_job.id}, 预期 run 数量: {expected_run_count}")
             poll_train_job_status.delay(train_job.id, self.MLFLOW_PREFIX, expected_run_count)
@@ -418,13 +424,21 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
             )
 
         except WebhookTimeoutError as e:
+            if train_job and previous_status is not None:
+                self.restore_train_job_status(train_job, previous_status)
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
+            if train_job and previous_status is not None:
+                self.restore_train_job_status(train_job, previous_status)
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
+            if train_job and previous_status is not None:
+                self.restore_train_job_status(train_job, previous_status)
             logger.error(f"启动训练任务失败: {e}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
+            if train_job and previous_status is not None:
+                self.restore_train_job_status(train_job, previous_status)
             logger.error(f"启动训练任务失败: {str(e)}", exc_info=True)
             return Response(
                 {"error": f"启动训练任务失败: {str(e)}"},
@@ -519,9 +533,9 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @action(detail=False, methods=["get"], url_path="download_model/(?P<run_id>[^/]+)")
+    @action(detail=True, methods=["get"], url_path="runs/(?P<run_id>[^/]+)/download_model")
     @HasPermission("image_classification-View")
-    def download_model(self, request, run_id: str):
+    def download_model(self, request, pk=None, run_id: str = ""):
         """
         从 MLflow 下载模型并直接返回 ZIP 文件
 
@@ -529,6 +543,12 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
             run_id: MLflow run ID
         """
         try:
+            train_job = self.get_authorized_object_or_none()
+            if train_job is None:
+                return self.run_not_found_response(run_id)
+            if not self.train_job_has_run(train_job, run_id):
+                return self.run_not_found_response(run_id)
+
             logger.info(f"开始下载模型: run_id={run_id}")
 
             # 下载模型并打包为 ZIP
@@ -714,10 +734,16 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @action(detail=False, methods=["get"], url_path="runs_metrics_list/(?P<run_id>.+?)")
+    @action(detail=True, methods=["get"], url_path="runs/(?P<run_id>[^/]+)/metrics_list")
     @HasPermission("image_classification-View")
-    def get_runs_metrics_list(self, request, run_id: str):
+    def get_runs_metrics_list(self, request, pk=None, run_id: str = ""):
         try:
+            train_job = self.get_authorized_object_or_none()
+            if train_job is None:
+                return self.run_not_found_response(run_id)
+            if not self.train_job_has_run(train_job, run_id):
+                return self.run_not_found_response(run_id)
+
             # 获取运行的指标列表（过滤系统指标）
             model_metrics = mlflow_service.get_run_metrics(run_id=run_id, filter_system=True)
 
@@ -730,16 +756,22 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
             )
 
     @action(
-        detail=False,
+        detail=True,
         methods=["get"],
-        url_path="runs_metrics_history/(?P<run_id>.+?)/(?P<metric_name>.+?)",
+        url_path="runs/(?P<run_id>[^/]+)/metrics_history/(?P<metric_name>.+?)",
     )
     @HasPermission("image_classification-View")
-    def get_metric_data(self, request, run_id: str, metric_name: str):
+    def get_metric_data(self, request, pk=None, run_id: str = "", metric_name: str = ""):
         """
         获取指定 run 的指定指标的历史数据
         """
         try:
+            train_job = self.get_authorized_object_or_none()
+            if train_job is None:
+                return self.run_not_found_response(run_id)
+            if not self.train_job_has_run(train_job, run_id):
+                return self.run_not_found_response(run_id)
+
             # 获取指标历史数据（自动处理排序）
             metric_data = mlflow_service.get_metric_history(run_id, metric_name)
 
@@ -769,13 +801,19 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @action(detail=False, methods=["get"], url_path="run_params/(?P<run_id>.+?)")
+    @action(detail=True, methods=["get"], url_path="runs/(?P<run_id>[^/]+)/run_params")
     @HasPermission("image_classification-View")
-    def get_run_params(self, request, run_id: str):
+    def get_run_params(self, request, pk=None, run_id: str = ""):
         """
         获取指定 run 的配置参数（用于查看历史训练的配置）
         """
         try:
+            train_job = self.get_authorized_object_or_none()
+            if train_job is None:
+                return self.run_not_found_response(run_id)
+            if not self.train_job_has_run(train_job, run_id):
+                return self.run_not_found_response(run_id)
+
             # 获取运行信息和参数
             run = mlflow_service.get_run_info(run_id)
             params = mlflow_service.get_run_params(run_id)
@@ -888,7 +926,7 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
 
     @HasPermission("image_classification-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        return self.destroy_serving_with_runtime_cleanup(request, *args, **kwargs)
 
     @HasPermission("image_classification-Add")
     def create(self, request, *args, **kwargs):

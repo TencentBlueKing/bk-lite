@@ -1,10 +1,11 @@
-from typing import List, Optional
 import time
+from typing import List, Optional
 
-import requests
 from langchain_core.documents import Document
 from loguru import logger
 
+from apps.core.utils.safe_requests import SafeRequestsError, safe_post_llm_endpoint
+from apps.core.utils.ssrf_validator import SSRFError
 from apps.opspilot.metis.llm.rerank.rerank_config import ReRankConfig
 
 
@@ -16,13 +17,13 @@ class ReRankManager:
 
     @staticmethod
     def rerank_documents(
-            rerank_model_base_url: str,
-            rerank_model_name: str,
-            rerank_model_api_key: str,
-            search_query: str,
-            search_result: List[Document],
-            rerank_top_k: int,
-            threshold: Optional[float] = None
+        rerank_model_base_url: str,
+        rerank_model_name: str,
+        rerank_model_api_key: str,
+        search_query: str,
+        search_result: List[Document],
+        rerank_top_k: int,
+        threshold: Optional[float] = None,
     ) -> List[Document]:
         """
         统一的文档重排序处理方法
@@ -45,7 +46,7 @@ class ReRankManager:
             api_key=rerank_model_api_key,
             query=search_query,
             top_k=rerank_top_k,
-            threshold=threshold
+            threshold=threshold,
         )
 
         return ReRankManager.rerank_documents_with_config(config, search_result)
@@ -67,8 +68,7 @@ class ReRankManager:
 
         # 执行远程重排序
         logger.info(f"使用远程ReRank模型进行重排序: {config.model_base_url}")
-        reranked_docs = ReRankManager._handle_remote_rerank(
-            config, search_result)
+        reranked_docs = ReRankManager._handle_remote_rerank(config, search_result)
 
         # 应用阈值过滤（如果提供了阈值）
         if config.threshold is not None and config.threshold > 0:
@@ -96,26 +96,17 @@ class ReRankManager:
 
         for doc in docs:
             # 优先使用 relevance_score，其次使用 _score
-            score = doc.metadata.get(
-                'relevance_score', doc.metadata.get('_score', 0))
+            score = doc.metadata.get("relevance_score", doc.metadata.get("_score", 0))
             if score >= normalized_threshold:
                 filtered_docs.append(doc)
 
-        logger.info(
-            f"阈值过滤: 原始文档数={len(docs)}, 过滤后文档数={len(filtered_docs)}, 阈值={normalized_threshold}")
+        logger.info(f"阈值过滤: 原始文档数={len(docs)}, 过滤后文档数={len(filtered_docs)}, 阈值={normalized_threshold}")
         return filtered_docs
 
     @staticmethod
-    def _handle_remote_rerank(
-            config: ReRankConfig,
-            search_result: List[Document]
-    ) -> List[Document]:
+    def _handle_remote_rerank(config: ReRankConfig, search_result: List[Document]) -> List[Document]:
         """处理远程重排序模型"""
-        headers = {
-            "accept": "application/json",
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {config.api_key}"
-        }
+        headers = {"accept": "application/json", "Content-Type": "application/json", "Authorization": f"Bearer {config.api_key}"}
 
         rerank_content = [doc.page_content for doc in search_result]
         data = {
@@ -127,70 +118,49 @@ class ReRankManager:
         # 带重试的远程调用
         for attempt in range(ReRankManager.MAX_RETRY_ATTEMPTS):
             try:
-                logger.info(
-                    f"远程重排序调用尝试 {attempt + 1}/{ReRankManager.MAX_RETRY_ATTEMPTS}: {config.model_base_url}")
-                response = requests.post(
-                    config.model_base_url,
-                    headers=headers,
-                    json=data,
-                    timeout=ReRankManager.DEFAULT_REMOTE_TIMEOUT
-                )
+                logger.info(f"远程重排序调用尝试 {attempt + 1}/{ReRankManager.MAX_RETRY_ATTEMPTS}: {config.model_base_url}")
+                response = safe_post_llm_endpoint(config.model_base_url, headers=headers, json=data, timeout=ReRankManager.DEFAULT_REMOTE_TIMEOUT)
                 response.raise_for_status()
                 rerank_api_result = response.json()
 
-                if 'results' not in rerank_api_result:
+                if "results" not in rerank_api_result:
                     logger.error(f"远程ReRank API响应格式错误: {rerank_api_result}")
                     return search_result
 
-                rerank_result_items = rerank_api_result['results']
+                rerank_result_items = rerank_api_result["results"]
 
                 # 筛选有效的重排序结果项
-                valid_rerank_items = [
-                    item for item in rerank_result_items
-                    if 'relevance_score' in item and 'index' in item
-                ]
+                valid_rerank_items = [item for item in rerank_result_items if "relevance_score" in item and "index" in item]
 
                 # 按相关性分数排序
-                sorted_rerank_items = sorted(
-                    valid_rerank_items, key=lambda x: x['relevance_score'], reverse=True
-                )
+                sorted_rerank_items = sorted(valid_rerank_items, key=lambda x: x["relevance_score"], reverse=True)
 
                 top_k_search_result = []
-                for item in sorted_rerank_items[:config.top_k]:
-                    original_index = item['index']
+                for item in sorted_rerank_items[: config.top_k]:
+                    original_index = item["index"]
                     if 0 <= original_index < len(search_result):
                         doc = search_result[original_index]
-                        if hasattr(doc, 'metadata'):
-                            doc.metadata['relevance_score'] = item['relevance_score']
+                        if hasattr(doc, "metadata"):
+                            doc.metadata["relevance_score"] = item["relevance_score"]
                         top_k_search_result.append(doc)
                     else:
                         logger.warning(f"无效的原始索引 {original_index}，跳过")
 
-                logger.info(
-                    f"远程重排序成功: 原始文档数={len(search_result)}, 重排序后文档数={len(top_k_search_result)}")
+                logger.info(f"远程重排序成功: 原始文档数={len(search_result)}, 重排序后文档数={len(top_k_search_result)}")
                 return top_k_search_result
 
-            except requests.exceptions.Timeout as e:
-                logger.warning(
-                    f"远程ReRank API超时 (尝试 {attempt + 1}/{ReRankManager.MAX_RETRY_ATTEMPTS}): {e}")
+            except SSRFError as e:
+                # SSRF 安全阻断，不重试
+                logger.error(f"远程ReRank API URL 被安全策略阻断: {e}")
+                return search_result
+            except SafeRequestsError as e:
+                logger.error(f"远程ReRank API请求失败 (尝试 {attempt + 1}/{ReRankManager.MAX_RETRY_ATTEMPTS}): {e}")
                 if attempt < ReRankManager.MAX_RETRY_ATTEMPTS - 1:
-                    delay = ReRankManager.RETRY_DELAY_BASE * \
-                        (2 ** attempt)  # 指数退避
+                    delay = ReRankManager.RETRY_DELAY_BASE * (2**attempt)  # 指数退避
                     logger.info(f"等待 {delay} 秒后重试...")
                     time.sleep(delay)
                 else:
-                    logger.error(f"远程ReRank API调用最终失败，返回原始结果")
-                    return search_result
-            except requests.exceptions.RequestException as e:
-                logger.error(
-                    f"远程ReRank API请求失败 (尝试 {attempt + 1}/{ReRankManager.MAX_RETRY_ATTEMPTS}): {e}")
-                if attempt < ReRankManager.MAX_RETRY_ATTEMPTS - 1:
-                    delay = ReRankManager.RETRY_DELAY_BASE * \
-                        (2 ** attempt)  # 指数退避
-                    logger.info(f"等待 {delay} 秒后重试...")
-                    time.sleep(delay)
-                else:
-                    logger.error(f"远程ReRank API调用最终失败，返回原始结果")
+                    logger.error("远程ReRank API调用最终失败，返回原始结果")
                     return search_result
             except (KeyError, TypeError) as e:
                 logger.error(f"处理远程ReRank API响应时出错: {e}")
@@ -198,3 +168,6 @@ class ReRankManager:
             except Exception as e:
                 logger.error(f"远程重排序处理出现未知错误: {e}")
                 return search_result
+
+        # 所有重试都失败，返回原始结果
+        return search_result

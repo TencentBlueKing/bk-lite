@@ -10,6 +10,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
+import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 import type {
   ResponseFieldDefinition,
   DatasourceItem,
@@ -221,8 +222,8 @@ const ComTable: React.FC<ComTableProps> = ({
         queryList.push({
           field: key,
           type: 'time',
-          start: value[0].format('YYYY-MM-DD HH:mm:ss'),
-          end: value[1].format('YYYY-MM-DD HH:mm:ss'),
+          start: formatOpsRequestTime(value[0]),
+          end: formatOpsRequestTime(value[1]),
         });
         return;
       }
@@ -446,10 +447,10 @@ const ComTable: React.FC<ComTableProps> = ({
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col">
       {renderFilters()}
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-visible">
         <CustomTable
           columns={antColumns}
           dataSource={tableData}

@@ -22,7 +22,23 @@ export const collectNamespaceOptionsFromNodes = (
   dataSources: DatasourceItem[],
   namespaceList: Array<{ id: number; name: string }>,
 ): NamespaceOption[] => {
-  if (!graphInstance) return [];
+  const namespaceIds = collectNamespaceIdsFromNodes(graphInstance, dataSources);
+
+  if (namespaceIds.size === 0) return [];
+
+  return namespaceList
+    .filter((ns) => namespaceIds.has(ns.id))
+    .map((ns) => ({
+      label: ns.name || String(ns.id),
+      value: ns.id,
+    }));
+};
+
+export const collectNamespaceIdsFromNodes = (
+  graphInstance: Graph | null,
+  dataSources: DatasourceItem[],
+): Set<number> => {
+  if (!graphInstance) return new Set<number>();
 
   const namespaceIds = new Set<number>();
   const nodes = graphInstance.getNodes();
@@ -31,7 +47,6 @@ export const collectNamespaceOptionsFromNodes = (
     const nodeData = node.getData();
     const nodeType = nodeData?.type;
 
-    // 仅从 chart 和 single-value 节点提取命名空间
     if (nodeType !== 'chart' && nodeType !== 'single-value') {
       return;
     }
@@ -45,14 +60,7 @@ export const collectNamespaceOptionsFromNodes = (
     }
   });
 
-  if (namespaceIds.size === 0) return [];
-
-  return namespaceList
-    .filter((ns) => namespaceIds.has(ns.id))
-    .map((ns) => ({
-      label: ns.name || String(ns.id),
-      value: ns.id,
-    }));
+  return namespaceIds;
 };
 
 export const datasourceSupportsNamespace = (
@@ -227,7 +235,11 @@ export const buildValueConfig = (
       : values.dataSource,
     dataSourceParams: values.dataSourceParams,
   };
+  if (values.filterBindings && Object.keys(values.filterBindings).length > 0) {
+    valueConfig.filterBindings = values.filterBindings;
+  }
   if (values.chartType === 'single') {
+    valueConfig.compare = !!values.compare;
     valueConfig.selectedFields = values.selectedFields;
     valueConfig.thresholdColors = values.thresholdColors;
     if (values.unit !== undefined) valueConfig.unit = values.unit;
@@ -236,6 +248,10 @@ export const buildValueConfig = (
   }
   if (values.chartType === 'table' && values.tableConfig) {
     valueConfig.tableConfig = values.tableConfig;
+  }
+  if (values.chartType === 'topN') {
+    valueConfig.topNLabelField = values.topNLabelField;
+    valueConfig.topNValueField = values.topNValueField;
   }
   return valueConfig;
 };

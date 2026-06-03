@@ -18,6 +18,9 @@ class LogSearchViewSet(ViewSet):
         query = request.query_params.get("query", "*")
         log_groups = request.query_params.getlist("log_groups") or request.query_params.getlist("log_groups[]")
 
+        if not log_groups:
+            return WebUtils.response_error(error_message="缺少日志分组", status_code=400)
+
         try:
             scope = LogAccessScopeService.resolve_scope(request, log_groups)
         except ValueError as exc:
@@ -30,6 +33,7 @@ class LogSearchViewSet(ViewSet):
             validated_data.get("limit", 100),
             query=query,
             log_groups=scope.log_groups,
+            resolved_groups=scope.resolved_group_objects,
         )
         return WebUtils.response_success(data)
 
@@ -66,6 +70,7 @@ class LogSearchViewSet(ViewSet):
             validated_data.get("end_time", ""),
             validated_data.get("limit", 10),
             scope.log_groups,
+            resolved_groups=scope.resolved_group_objects,
         )
         return WebUtils.response_success(data)
 
@@ -92,6 +97,7 @@ class LogSearchViewSet(ViewSet):
             validated_data.get("fields_limit", 5),
             validated_data.get("step", "5m"),
             scope.log_groups,
+            resolved_groups=scope.resolved_group_objects,
         )
         return WebUtils.response_success(data)
 
@@ -116,6 +122,7 @@ class LogSearchViewSet(ViewSet):
             attr=validated_data["attr"],
             top_num=validated_data.get("top_num", 5),
             log_groups=scope.log_groups,
+            resolved_groups=scope.resolved_group_objects,
         )
         return WebUtils.response_success(data)
 
@@ -134,13 +141,15 @@ class LogSearchViewSet(ViewSet):
 
         if not query:
             return WebUtils.response_error("Query parameters are required.")
+        if not log_groups:
+            return WebUtils.response_error(error_message="缺少日志分组", status_code=400)
 
         try:
             scope = LogAccessScopeService.resolve_scope(request, log_groups)
         except ValueError as exc:
             return WebUtils.response_error(error_message=str(exc), status_code=403)
 
-        return SearchService.tail(query, scope.log_groups)
+        return SearchService.tail(query, scope.log_groups, resolved_groups=scope.resolved_group_objects)
 
 
 class SearchConditionViewSet(ModelViewSet):
@@ -150,25 +159,31 @@ class SearchConditionViewSet(ModelViewSet):
     serializer_class = SearchConditionSerializer
     filterset_class = SearchConditionFilter
 
-    def _is_accessible_search_condition(self, instance):
+    def _get_accessible_group_ids(self):
+        try:
+            queryset, _ = LogAccessScopeService.get_accessible_group_queryset(self.request)
+            return set(queryset.values_list("id", flat=True))
+        except ValueError:
+            return set()
+
+    def _is_accessible_search_condition(self, instance, accessible_group_ids):
         condition = instance.condition if isinstance(instance.condition, dict) else {}
         log_groups = condition.get("log_groups", [])
         if not isinstance(log_groups, list):
             return False
 
-        try:
-            LogAccessScopeService.resolve_scope(self.request, log_groups)
-        except ValueError:
-            return False
+        if not log_groups:
+            return bool(accessible_group_ids)
 
-        return True
+        return all(str(gid).strip() in accessible_group_ids for gid in log_groups if str(gid).strip())
 
     def get_queryset(self):
         """根据当前组织过滤查询集"""
         current_team = self.request.COOKIES.get("current_team")
         if current_team:
             base_queryset = SearchCondition.objects.filter(organization=int(current_team))
-            accessible_ids = [instance.id for instance in base_queryset if self._is_accessible_search_condition(instance)]
+            accessible_group_ids = self._get_accessible_group_ids()
+            accessible_ids = [instance.id for instance in base_queryset if self._is_accessible_search_condition(instance, accessible_group_ids)]
             if not accessible_ids:
                 return SearchCondition.objects.none()
             return base_queryset.filter(id__in=accessible_ids)

@@ -452,7 +452,7 @@ class ConfigFileService(object):
         if pending_count > 0:
             overall_status = "pending"
             exec_status = CollectRunStatusType.RUNNING
-            message = f"配置文件采集结果等待回传中 ({received_count}/{expected_total})"
+            message = f"配置文件采集已触发，等待回传中 ({received_count}/{expected_total})"
         elif error_count > 0:
             overall_status = "error"
             exec_status = CollectRunStatusType.ERROR
@@ -487,8 +487,23 @@ class ConfigFileService(object):
             "file_name": latest_item.get("file_name") or extract_file_name((task.params or {}).get("config_file_path", "")),
         }
 
+        add_items = []
+        add_error_count = 0
+        for item in raw_items:
+            is_success = item.get("status") == ConfigFileVersionStatus.SUCCESS
+            add_entry = {
+                "_status": "success" if is_success else "failed",
+                "instance_id": item.get("instance_id", ""),
+                "file_path": item.get("file_path") or (task.params or {}).get("config_file_path", ""),
+                "file_name": item.get("file_name") or extract_file_name((task.params or {}).get("config_file_path", "")),
+            }
+            if not is_success:
+                add_entry["_error"] = item.get("error_message", "")
+                add_error_count += 1
+            add_items.append(add_entry)
+
         format_data = {
-            "add": [],
+            "add": add_items,
             "update": [],
             "delete": [],
             "association": [],
@@ -504,15 +519,15 @@ class ConfigFileService(object):
         }
 
         collect_digest = {
-            "add": 0,
-            "add_error": 0,
+            "add": len(add_items),
+            "add_error": add_error_count,
             "update": 0,
             "update_error": 0,
             "delete": 0,
             "delete_error": 0,
             "association": 0,
             "association_error": 0,
-            "add_success": 0,
+            "add_success": len(add_items) - add_error_count,
             "update_success": 0,
             "delete_success": 0,
             "association_success": 0,
@@ -573,12 +588,13 @@ class ConfigFileService(object):
         )
 
     @staticmethod
-    def get_file_list(instance_id: str) -> list[dict]:
+    def get_file_list(instance_id: str, base_queryset=None) -> list[dict]:
+        # 权限过滤必须先于聚合：传入的 base_queryset 已按任务权限收紧，
+        # 在其之上做 Max 聚合，避免 latest_* 字段来自用户无权访问的任务版本。
+        if base_queryset is None:
+            base_queryset = ConfigFileVersion.objects.all()
         latest_ids = (
-            ConfigFileVersion.objects.filter(instance_id=instance_id)
-            .values("file_path")
-            .annotate(latest_id=Max("id"))
-            .values_list("latest_id", flat=True)
+            base_queryset.filter(instance_id=instance_id).values("file_path").annotate(latest_id=Max("id")).values_list("latest_id", flat=True)
         )
         rows = ConfigFileVersion.objects.filter(id__in=latest_ids).order_by("file_name", "file_path")
         return [
@@ -619,24 +635,50 @@ class ConfigFileService(object):
         if not isinstance(permission_data, dict) or not permission_data:
             return base_queryset
 
-        task_ids = [i["id"] for i in permission_data.get("instance", []) if isinstance(i, dict) and "id" in i]
-        team_entries = permission_data.get("team", [])
-        allowed_teams = set()
-        for team_entry in team_entries:
-            if isinstance(team_entry, dict) and "id" in team_entry:
-                allowed_teams.add(team_entry["id"])
-            elif isinstance(team_entry, int):
-                allowed_teams.add(team_entry)
-        allowed_teams &= set(query_groups)
+    @classmethod
+    def create_manual_version(cls, instance_id: str, model_id: str, file_path: str, content: str) -> dict:
+        """手动创建配置文件版本。"""
+        file_name = extract_file_name(file_path) or file_path
+        version = str(int(now().timestamp() * 1000))
+        content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
 
-        if not include_children:
-            allowed_team_query = Q()
-            for team_id in allowed_teams:
-                allowed_team_query |= Q(collect_task__team__contains=[team_id]) | Q(collect_task__team__contains=[str(team_id)])
-            if task_ids:
-                if allowed_teams:
-                    return base_queryset.filter(Q(collect_task_id__in=task_ids) | allowed_team_query)
-                return base_queryset.filter(collect_task_id__in=task_ids)
-            if allowed_teams:
-                return base_queryset.filter(allowed_team_query)
-        return base_queryset
+        # 查重：同 instance_id + file_path 最新成功版本
+        latest = (
+            ConfigFileVersion.objects.filter(
+                instance_id=instance_id,
+                file_path=file_path,
+                status=ConfigFileVersionStatus.SUCCESS,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if latest and latest.content_hash == content_hash:
+            return {"unchanged": True, "version_obj": latest}
+
+        # 截断超大内容
+        text_content = cls._truncate_content_for_storage(
+            text_content=content,
+            file_size=len(content.encode("utf-8")),
+            file_path=file_path,
+            task_id="manual",
+            instance_id=instance_id,
+        )
+        content_hash = hashlib.sha256(text_content.encode("utf-8")).hexdigest()
+        file_size = len(text_content.encode("utf-8"))
+
+        object_key = cls.build_object_key(model_id, instance_id, file_path, version)
+        version_obj = ConfigFileVersion(
+            collect_task=None,
+            instance_id=instance_id,
+            model_id=model_id,
+            version=version,
+            file_path=file_path,
+            file_name=file_name,
+            content_hash=content_hash,
+            file_size=file_size,
+            status=ConfigFileVersionStatus.SUCCESS,
+            error_message="",
+        )
+        version_obj.save_content(text_content, object_key)
+        version_obj.save()
+        return {"unchanged": False, "version_obj": version_obj}

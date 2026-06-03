@@ -17,6 +17,7 @@ from apps.node_mgmt.models import CloudRegion
 from apps.rpc.executor import Executor
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.system_mgmt import SystemMgmt
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 def _get_executor_node(cloud_region_id: int) -> str:
@@ -39,6 +40,7 @@ def _get_executor_node(cloud_region_id: int) -> str:
             "is_container": True,
             "page": 1,
             "page_size": 1,
+            "skip_permission": True,
         }
     )
     if not isinstance(result, dict):
@@ -119,7 +121,11 @@ class TargetViewSet(AuthViewSet):
 
     @HasPermission("target-Add")
     def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+        if response.status_code == status.HTTP_201_CREATED:
+            target_name = response.data.get("name") if isinstance(response.data, dict) else request.data.get("name", "")
+            log_operation(request, "create", "job", f"新增目标: {target_name}")
+        return response
 
     @action(detail=False, methods=["get"])
     @HasPermission("target-View")
@@ -276,8 +282,10 @@ class TargetViewSet(AuthViewSet):
         # 只删除当前用户有权限的目标
         queryset = self.filter_queryset(self.get_queryset())
         deleted_count, _ = queryset.filter(id__in=ids).delete()
-
-        return Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
+        response = Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
+        if response.status_code == status.HTTP_200_OK:
+            log_operation(request, "delete", "job", f"批量删除目标: (共{deleted_count}个)")
+        return response
 
     @action(detail=False, methods=["post"])
     @HasPermission("target-View")

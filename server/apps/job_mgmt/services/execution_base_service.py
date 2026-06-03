@@ -5,8 +5,9 @@ from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
 from apps.core.mixinx import EncryptMixin
-from apps.job_mgmt.constants import ExecutionStatus, ExecutorDriver, OSType, ScriptType, SSHCredentialType, TargetSource
+from apps.job_mgmt.constants import CredentialSource, ExecutionStatus, ExecutorDriver, OSType, ScriptType, SSHCredentialType, TargetSource
 from apps.job_mgmt.models import JobExecution, Target
+from apps.job_mgmt.services.callback_service import send_callback
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.node_mgmt import NodeMgmt
 from config.components.nats import NATS_NAMESPACE
@@ -75,6 +76,15 @@ class ExecutionTaskBaseService(object):
         execution.save(update_fields=update_fields)
 
     @staticmethod
+    def is_cancelled(execution_id: int) -> bool:
+        """从数据库刷新并检查执行是否已被取消"""
+        try:
+            current_status = JobExecution.objects.filter(id=execution_id).values_list("status", flat=True).first()
+            return current_status == ExecutionStatus.CANCELLED
+        except Exception:
+            return False
+
+    @staticmethod
     def update_execution_counts(execution: JobExecution):
         results = execution.execution_results or []
         execution.success_count = sum(1 for r in results if r.get("status") == ExecutionStatus.SUCCESS)
@@ -87,12 +97,26 @@ class ExecutionTaskBaseService(object):
         execution.save(update_fields=["execution_results", "updated_at"])
         execution.refresh_from_db()
         if execution.status == ExecutionStatus.CANCELLED:
-            logger.info(f"[{task_name}] 任务被取消: execution_id={execution.id}")
+            # 取消时仍保留已完成的结果和计数，但状态保持 CANCELLED
+            cls.update_execution_counts(execution)
+            execution.finished_at = timezone.now()
+            execution.save(update_fields=["finished_at", "updated_at"])
+            logger.info(
+                f"[{task_name}] 任务被取消，保留已完成结果: execution_id={execution.id}, "
+                f"success={execution.success_count}, failed={execution.failed_count}"
+            )
+            # 取消时也发送回调通知，让第三方系统知道任务被取消
+            execution.refresh_from_db()
+            send_callback(execution)
             return
         cls.update_execution_counts(execution)
         final_status = ExecutionStatus.FAILED if execution.failed_count > 0 else ExecutionStatus.SUCCESS
         cls.update_execution_status(execution, final_status, finished_at=timezone.now())
         logger.info(f"[{task_name}] 任务完成: execution_id={execution.id}, status={final_status}")
+
+        # 回调通知（如有 callback_url）
+        execution.refresh_from_db()
+        send_callback(execution)
 
     @staticmethod
     def _should_use_ansible(target_source: str, target_list: list) -> bool:
@@ -223,7 +247,7 @@ class ExecutionTaskBaseService(object):
             ValueError: 未找到可用的 Ansible 执行节点
         """
         node_mgmt = NodeMgmt()
-        result = node_mgmt.node_list({"cloud_region_id": cloud_region_id, "is_container": True, "page": 1, "page_size": 1})
+        result = node_mgmt.node_list({"cloud_region_id": cloud_region_id, "is_container": True, "page": 1, "page_size": 1, "skip_permission": True})
         if not isinstance(result, dict):
             raise ValueError(f"云区域 {cloud_region_id} 下未找到可用的 Ansible 执行节点")
         nodes = result.get("nodes", [])
@@ -244,6 +268,13 @@ class ExecutionTaskBaseService(object):
         """
         credentials = []
         for target in targets:
+            # 凭据来源检查：credential 模式暂未实现，记录警告并跳过
+            if target.credential_source == CredentialSource.CREDENTIAL:
+                logger.warning(
+                    f"[_build_host_credentials] 目标 {target.ip} 使用凭据管理(credential_id={target.credential_id})，该模式暂未实现，跳过此目标"
+                )
+                continue
+
             cred = {
                 "host": target.ip,
                 "port": target.ssh_port if target.os_type == OSType.LINUX else target.winrm_port,

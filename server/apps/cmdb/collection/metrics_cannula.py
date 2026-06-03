@@ -18,6 +18,7 @@ class MetricsCannula:
         default_metrics: dict = None,
         filter_collect_task=True,
         data_cleanup_strategy: str = None,
+        plugin_kwargs: dict = None,
     ):
         self.inst_id = inst_id
         self.organization = organization
@@ -25,6 +26,7 @@ class MetricsCannula:
         self.manual = False if default_metrics else manual
         self.inst_name = inst_name
         self.collect_plugin = collect_plugin
+        self.plugin_kwargs = plugin_kwargs or {}
         self.filter_collect_task = filter_collect_task
         self.data_cleanup_strategy = data_cleanup_strategy or DataCleanupStrategy.NO_CLEANUP
         self.collect_data = {}
@@ -39,7 +41,7 @@ class MetricsCannula:
 
     def get_collection_metrics(self):
         """获取采集指标"""
-        new_metrics = self.collect_plugin(self.inst_name, self.inst_id, self.task_id)
+        new_metrics = self.collect_plugin(self.inst_name, self.inst_id, self.task_id, **self.plugin_kwargs)
         result = new_metrics.run()
         self.collect_data = new_metrics.result
         for i in new_metrics.raw_data:

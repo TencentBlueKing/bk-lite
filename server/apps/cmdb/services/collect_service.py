@@ -13,6 +13,7 @@ from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusTy
 from apps.cmdb.models import CREATE_INST, UPDATE_INST, DELETE_INST, EXECUTE
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
+from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE
 from apps.cmdb.utils.change_record import create_change_record
 from apps.cmdb.utils.base import get_current_team_from_request
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -22,8 +23,6 @@ from apps.core.utils.web_utils import WebUtils
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.stargazer import Stargazer
 from apps.cmdb.tasks.celery_tasks import sync_collect_task
-from apps.node_mgmt.models.cloud_region import CloudRegion
-from apps.node_mgmt.models.sidecar import Node
 
 
 class CollectModelService(object):
@@ -33,6 +32,38 @@ class CollectModelService(object):
     DELAY_SYNC_THRESHOLD_MINUTES = 15
     # 延迟补跑等待时长（秒）
     DELAY_SYNC_COUNTDOWN_SECONDS = 4 * 60
+
+    # 采集任务快照不纳入超大字段 collect_data / format_data / collect_digest，
+    # 避免单条变更记录膨胀到 MB 级。
+    _SNAPSHOT_FIELDS = (
+        "id", "name", "task_type", "driver_type", "model_id",
+        "is_interval", "cycle_value_type", "cycle_value", "scan_cycle",
+        "ip_range", "instances", "access_point", "credential",
+        "timeout", "exec_status", "task_id", "params", "plugin_id",
+        "input_method", "data_cleanup_strategy", "expire_days",
+        "team", "is_system", "is_visible", "system_code",
+    )
+
+    @classmethod
+    def _snapshot_task(cls, instance):
+        """将采集任务序列化为可入库的快照 dict。"""
+        if not instance:
+            return {}
+        snapshot = {field: getattr(instance, field, None) for field in cls._SNAPSHOT_FIELDS}
+        exec_time = getattr(instance, "exec_time", None)
+        snapshot["exec_time"] = exec_time.isoformat() if exec_time else None
+        return snapshot
+
+    @staticmethod
+    def _safe_int(value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _node_mgmt_client():
+        return NodeMgmt()
 
     @staticmethod
     def should_sync_node_params(instance):
@@ -102,15 +133,26 @@ class CollectModelService(object):
     def _get_cloud_region_id_by_node(node_id):
         if node_id in (None, ""):
             return None
-        node = Node.objects.filter(id=str(node_id)).only("cloud_region_id").first()
-        return getattr(node, "cloud_region_id", None)
+        rows = CollectModelService._node_mgmt_client().get_nodes_by_ids([str(node_id)])
+        if not isinstance(rows, list) or not rows:
+            return None
+        node = rows[0] if isinstance(rows[0], dict) else {}
+        return CollectModelService._safe_int(node.get("cloud_region_id"))
 
     @staticmethod
     def _get_cloud_region_name(cloud_id):
         if cloud_id in (None, ""):
             return ""
-        cloud_name = CloudRegion.objects.filter(id=cloud_id).values_list("name", flat=True).first()
-        return str(cloud_name or "").strip()
+        rows = CollectModelService._node_mgmt_client().cloud_region_list()
+        cloud_id = CollectModelService._safe_int(cloud_id)
+        if cloud_id is None or not isinstance(rows, list):
+            return ""
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            if CollectModelService._safe_int(item.get("id")) == cloud_id:
+                return str(item.get("name") or "").strip()
+        return ""
 
     @classmethod
     def _resolve_host_cloud_meta(cls, params=None, access_point=None, instances=None, prefer_access_point=False):
@@ -118,11 +160,7 @@ class CollectModelService(object):
         access_point_item = cls._get_snapshot_item(access_point)
         instance_item = cls._get_snapshot_item(instances)
 
-        access_point_cloud = (
-            access_point_item.get("cloud")
-            or access_point_item.get("cloud_id")
-            or access_point_item.get("cloud_region")
-        )
+        access_point_cloud = access_point_item.get("cloud") or access_point_item.get("cloud_id") or access_point_item.get("cloud_region")
         access_point_cloud_name = access_point_item.get("cloud_name") or access_point_item.get("cloud_region_name")
 
         task_cloud = params.get("cloud") or instance_item.get("cloud") or instance_item.get("cloud_id")
@@ -374,6 +412,8 @@ class CollectModelService(object):
                 message=f"创建采集任务. 任务名称: {instance.name}",
                 inst_id=instance.id,
                 model_object=OPERATOR_COLLECT_TASK,
+                scenario=COLLECT_AUTOMATION_CHANGE,
+                after_data=cls._snapshot_task(instance),
             )
 
         return instance.id
@@ -425,6 +465,9 @@ class CollectModelService(object):
                 message=f"修改采集任务. 任务名称: {instance.name}",
                 inst_id=instance.id,
                 model_object=OPERATOR_COLLECT_TASK,
+                scenario=COLLECT_AUTOMATION_CHANGE,
+                before_data=cls._snapshot_task(old_instance),
+                after_data=cls._snapshot_task(instance),
             )
 
         return instance.id
@@ -436,7 +479,6 @@ class CollectModelService(object):
         instance_id = instance.id
         instance_name = instance.name
         model_id = instance.model_id
-        is_k8s = instance.is_k8s
 
         # 复制实例数据用于RPC调用
         instance_copy = copy.deepcopy(instance)
@@ -468,6 +510,8 @@ class CollectModelService(object):
                 message=f"删除采集任务. 任务名称: {instance_name}",
                 inst_id=instance_id,
                 model_object=OPERATOR_COLLECT_TASK,
+                scenario=COLLECT_AUTOMATION_CHANGE,
+                before_data=cls._snapshot_task(instance_copy),
             )
 
         cls.delete_team(instance_copy.id, instance_copy.team, [], view_self)
@@ -489,8 +533,8 @@ class CollectModelService(object):
 
     @classmethod
     def list_regions(cls, credential, cloud_name):
-        if settings.DEBUG:
-            cloud_name = f"{cloud_name}_local"
+        # if settings.DEBUG:
+        #     cloud_name = f"{cloud_name}_local"
         instance_id = f"{cloud_name}_stargazer"
         stargazer = Stargazer(instance_id=instance_id)
         result = stargazer.list_regions(credential)
@@ -506,15 +550,14 @@ class CollectModelService(object):
         }
 
     @classmethod
-    def exec_task(cls, instance, request, view_self):
+    def exec_task(cls, instance, operator):
         """
         执行任务
         """
-        cls.has_permission(request=request, instance=instance, view_self=view_self)
-
         if instance.exec_status == CollectRunStatusType.RUNNING:
             return WebUtils.response_error(error_message="任务正在执行中!无法重复执行！", status_code=400)
 
+        before_snapshot = cls._snapshot_task(instance)
         cls.repair_host_cloud_snapshot(instance)
         instance.exec_time = now()
         instance.exec_status = CollectRunStatusType.RUNNING
@@ -528,13 +571,16 @@ class CollectModelService(object):
             sync_collect_task(instance.id)
 
         create_change_record(
-            operator=request.user.username,
+            operator=operator,
             model_id=instance.model_id,
             label="采集任务",
             _type=EXECUTE,
             message=f"执行采集任务. 任务名称: {instance.name}",
             inst_id=instance.id,
             model_object=OPERATOR_COLLECT_TASK,
+            scenario=COLLECT_AUTOMATION_CHANGE,
+            before_data=before_snapshot,
+            after_data=cls._snapshot_task(instance),
         )
 
         return WebUtils.response_success(instance.id)

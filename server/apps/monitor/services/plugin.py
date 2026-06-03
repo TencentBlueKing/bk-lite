@@ -4,27 +4,62 @@ from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorPlugin, MonitorPluginUITemplate
 from apps.monitor.models.monitor_metrics import MetricGroup, Metric
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
+from apps.monitor.utils.instance_id_keys import (
+    resolve_metric_instance_id_keys,
+    resolve_monitor_object_instance_id_keys,
+)
+from apps.monitor.utils.node_selector import normalize_node_selector
 
 
 class MonitorPluginService:
     @staticmethod
+    def _extract_monitor_object_names(data: dict) -> list[str]:
+        if data.get("is_compound_object"):
+            return [item.get("name") for item in data.get("objects", []) if item.get("name")]
+        return [data.get("name")] if data.get("name") else []
+
+    @staticmethod
+    def _sync_plugin_monitor_objects(plugin_name: str, monitor_object_names: list[str]):
+        if not plugin_name:
+            return
+
+        plugin_obj = MonitorPlugin.objects.filter(name=plugin_name).first()
+        if not plugin_obj:
+            return
+
+        monitor_objects = MonitorObject.objects.filter(name__in=monitor_object_names)
+        plugin_obj.monitor_object.set(monitor_objects)
+
+    @staticmethod
     def get_ui_template_by_params(collector, collect_type, monitor_object_id):
         """获取插件的 UI 模板"""
-        obj = MonitorPluginUITemplate.objects.filter(
-            plugin__monitor_object__id=monitor_object_id,
-            plugin__collector=collector,
-            plugin__collect_type=collect_type,
-            plugin__template_type="builtin",
-        ).first()
-        return obj.content if obj else None
+        obj = (
+            MonitorPluginUITemplate.objects.filter(
+                plugin__monitor_object__id=monitor_object_id,
+                plugin__collector=collector,
+                plugin__collect_type=collect_type,
+                plugin__template_type="builtin",
+            )
+            .select_related("plugin")
+            .first()
+        )
+        return {
+            "ui_template": obj.content if obj else None,
+            "node_selector": getattr(obj.plugin, "node_selector", {}) if obj else {},
+        }
 
     @staticmethod
     def import_monitor_plugin(data: dict):
         """Import monitor plugin"""
+        plugin_name = data.get("plugin", "")
+        monitor_object_names = MonitorPluginService._extract_monitor_object_names(data)
+
         if data.get("is_compound_object"):
             MonitorPluginService.import_compound_monitor_object(data)
         else:
             MonitorPluginService.import_basic_monitor_object(data)
+
+        MonitorPluginService._sync_plugin_monitor_objects(plugin_name, monitor_object_names)
 
     @staticmethod
     def import_basic_monitor_object(data: dict):
@@ -35,6 +70,7 @@ class MonitorPluginService:
         status_query = data.pop("status_query", "")
         collector = data.pop("collector", "")
         collect_type = data.pop("collect_type", "")
+        node_selector = normalize_node_selector(data.pop("node_selector", {}))
 
         # 处理type字段：确保MonitorObjectType存在
         type_value = data.get("type")
@@ -47,6 +83,14 @@ class MonitorPluginService:
             data["type"] = obj_type
 
         monitor_obj = MonitorObject.objects.filter(name=data["name"]).first()
+        object_level = data.get("level", getattr(monitor_obj, "level", "base"))
+        object_name = data.get("name", getattr(monitor_obj, "name", ""))
+        object_instance_id_keys = resolve_monitor_object_instance_id_keys(
+            data.get("instance_id_keys", getattr(monitor_obj, "instance_id_keys", [])),
+            level=object_level,
+            object_name=object_name,
+        )
+        data["instance_id_keys"] = object_instance_id_keys
 
         if monitor_obj:
             supplementary_indicators = monitor_obj.supplementary_indicators + data.get("supplementary_indicators", [])
@@ -64,11 +108,18 @@ class MonitorPluginService:
         with transaction.atomic():
             plugin_obj, _ = MonitorPlugin.objects.update_or_create(
                 name=plugin,
-                defaults=dict(name=plugin, description=desc, status_query=status_query, collector=collector, collect_type=collect_type),
+                defaults=dict(
+                    name=plugin,
+                    description=desc,
+                    status_query=status_query,
+                    collector=collector,
+                    collect_type=collect_type,
+                    node_selector=node_selector,
+                ),
             )
             plugin_obj.monitor_object.add(monitor_obj)
 
-        old_groups = MetricGroup.objects.filter(monitor_object=monitor_obj)
+        old_groups = MetricGroup.objects.filter(monitor_object=monitor_obj, monitor_plugin=plugin_obj)
         old_groups_name = {i.name for i in old_groups}
 
         new_groups_name = {i["metric_group"] for i in metrics if i["metric_group"] not in old_groups_name}
@@ -82,7 +133,7 @@ class MonitorPluginService:
         ]
         MetricGroup.objects.bulk_create(create_metric_group, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
-        groups = MetricGroup.objects.filter(monitor_object=monitor_obj)
+        groups = MetricGroup.objects.filter(monitor_object=monitor_obj, monitor_plugin=plugin_obj)
         groups_map = {i.name: i.id for i in groups}
 
         metrics_to_update = []
@@ -101,6 +152,11 @@ class MonitorPluginService:
                 existing_metrics.pop(metric_name)
 
         for metric in metrics:
+            metric_instance_id_keys = resolve_metric_instance_id_keys(
+                metric.get("instance_id_keys", []),
+                monitor_obj.instance_id_keys,
+                strict=True,
+            )
             if metric["name"] in existing_metrics:
                 existing_metric = existing_metrics[metric["name"]]
                 existing_metric.metric_group_id = groups_map[metric["metric_group"]]
@@ -111,7 +167,7 @@ class MonitorPluginService:
                 existing_metric.data_type = metric["data_type"]
                 existing_metric.description = metric["description"]
                 existing_metric.dimensions = metric["dimensions"]
-                existing_metric.instance_id_keys = metric.get("instance_id_keys", [])
+                existing_metric.instance_id_keys = metric_instance_id_keys
                 metrics_to_update.append(existing_metric)
             else:
                 metrics_to_create.append(
@@ -126,7 +182,7 @@ class MonitorPluginService:
                         data_type=metric["data_type"],
                         description=metric["description"],
                         dimensions=metric["dimensions"],
-                        instance_id_keys=metric.get("instance_id_keys", []),
+                        instance_id_keys=metric_instance_id_keys,
                     )
                 )
 
@@ -149,6 +205,7 @@ class MonitorPluginService:
         derivative_objects = []
         collector = data.get("collector", "")
         collect_type = data.get("collect_type", "")
+        node_selector = data.get("node_selector", {})
 
         for object_info in data.get("objects", []):
             object_info.update(
@@ -157,6 +214,7 @@ class MonitorPluginService:
                 status_query=data["status_query"],
                 collector=collector,
                 collect_type=collect_type,
+                node_selector=node_selector,
             )
             if object_info.get("level") == "base":
                 base_object = object_info
@@ -192,6 +250,7 @@ class MonitorPluginService:
             "plugin_desc": plugin_obj.description,
             "collector": plugin_obj.collector,
             "collect_type": plugin_obj.collect_type,
+            "node_selector": plugin_obj.node_selector or {},
             "name": monitor_obj.name,
             "type": monitor_obj.type_id if monitor_obj.type else None,  # 导出type的id值
             "description": monitor_obj.description,
@@ -205,7 +264,7 @@ class MonitorPluginService:
                     "data_type": i.data_type,
                     "description": i.description,
                     "dimensions": i.dimensions,
-                    "instance_id_keys": i.instance_id_keys,
+                    "instance_id_keys": resolve_metric_instance_id_keys(i.instance_id_keys, monitor_obj.instance_id_keys),
                 }
                 for i in metrics
             ],
@@ -220,6 +279,7 @@ class MonitorPluginService:
             "plugin_desc": plugin_obj.description,
             "collector": plugin_obj.collector,
             "collect_type": plugin_obj.collector,
+            "node_selector": plugin_obj.node_selector or {},
             "is_compound_object": True,
             "objects": [],
         }

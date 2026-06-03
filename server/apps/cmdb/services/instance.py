@@ -1,49 +1,106 @@
 from apps.cmdb.constants.constants import (
+    ENUM_SELECT_MODE_DEFAULT,
     INSTANCE,
     INSTANCE_ASSOCIATION,
     OPERATOR_INSTANCE,
-    ENUM_SELECT_MODE_DEFAULT,
+    PERMISSION_INSTANCES,
+    VIEW,
 )
 from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
 from apps.cmdb.display_field.constants import (
     DISPLAY_FIELD_TYPES,
     DISPLAY_SUFFIX,
-    FIELD_TYPE_ORGANIZATION,
-    FIELD_TYPE_USER,
     FIELD_TYPE_ENUM,
-    FIELD_TYPE_TAG,
+    FIELD_TYPE_ORGANIZATION,
     FIELD_TYPE_TABLE,
+    FIELD_TYPE_TAG,
+    FIELD_TYPE_USER,
 )
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.graph.format_type import ParameterCollector
-from apps.cmdb.models.change_record import (
-    CREATE_INST,
-    CREATE_INST_ASST,
-    DELETE_INST,
-    DELETE_INST_ASST,
-    UPDATE_INST,
-)
+from apps.cmdb.models.change_record import CREATE_INST, CREATE_INST_ASST, DELETE_INST, DELETE_INST_ASST, UPDATE_INST
 from apps.cmdb.models.show_field import ShowField
+from apps.cmdb.permissions.instance_permission import PermissionManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.unique_rule import build_unique_rule_context
-from apps.cmdb.utils.change_record import (
-    batch_create_change_record,
-    create_change_record,
-    create_change_record_by_asso,
-)
+from apps.cmdb.models.change_record import ORDINARY_ATTRIBUTE_CHANGE
+from apps.cmdb.utils.change_record import batch_create_change_record, create_change_record, create_change_record_by_asso
 from apps.cmdb.utils.export import Export
 from apps.cmdb.utils.Import import Import
-from apps.cmdb.permissions.instance_permission import PermissionManage
+from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.cmdb.validators.field_validator import (
     TagFieldConfig,
-    normalize_tag_input_values,
-    normalize_tag_field_option,
-    validate_tag_values,
     normalize_enum_values,
+    normalize_tag_field_option,
+    normalize_tag_input_values,
     validate_enum_values,
+    validate_tag_values,
 )
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
+
+
+def _normalize_allowed_org_ids(user_groups: list | None = None, allowed_org_ids: list | None = None) -> set[int]:
+    if allowed_org_ids is not None:
+        normalized_allowed_org_ids: set[int] = set()
+        for org_id in allowed_org_ids:
+            if org_id is None:
+                continue
+            try:
+                normalized_allowed_org_ids.add(int(org_id))
+            except (TypeError, ValueError) as exc:
+                raise BaseAppException("organization 必须是整数数组") from exc
+        return normalized_allowed_org_ids
+
+    normalized_org_ids: set[int] = set()
+    for item in user_groups or []:
+        if isinstance(item, dict):
+            org_id = item.get("id")
+        else:
+            org_id = item
+        if org_id is None:
+            continue
+        try:
+            normalized_org_ids.add(int(org_id))
+        except (TypeError, ValueError) as exc:
+            raise BaseAppException("organization 必须是整数数组") from exc
+    return normalized_org_ids
+
+
+def validate_instance_organization_scope(
+    instance_data: dict,
+    *,
+    user_groups: list | None = None,
+    allowed_org_ids: list | None = None,
+) -> None:
+    if not isinstance(instance_data, dict) or "organization" not in instance_data:
+        return
+
+    organization_ids = instance_data.get("organization")
+    if organization_ids in (None, ""):
+        return
+
+    if not isinstance(organization_ids, list):
+        raise BaseAppException("organization 必须是数组")
+
+    normalized_target_org_ids: set[int] = set()
+    for org_id in organization_ids:
+        if org_id in (None, ""):
+            continue
+        try:
+            normalized_target_org_ids.add(int(org_id))
+        except (TypeError, ValueError) as exc:
+            raise BaseAppException("organization 必须是整数数组") from exc
+    if not normalized_target_org_ids:
+        return
+
+    normalized_allowed_org_ids = _normalize_allowed_org_ids(user_groups=user_groups, allowed_org_ids=allowed_org_ids)
+    if not normalized_allowed_org_ids:
+        raise BaseAppException("缺少 organization 范围上下文，请刷新后重试")
+
+    invalid_org_ids = sorted(normalized_target_org_ids - normalized_allowed_org_ids)
+    if invalid_org_ids:
+        raise BaseAppException(f"organization {invalid_org_ids} 不在当前选择组织范围内")
 
 
 def apply_tag_validation_for_instance(instance_data: dict, attrs: list[dict], model_id: str | None = None) -> dict:
@@ -162,6 +219,134 @@ def apply_enum_validation_for_instance(instance_data: dict, attrs: list[dict]) -
 
 class InstanceManage(object):
     @staticmethod
+    def _query_instance_map_by_ids(inst_ids: set[int]) -> dict[int, dict]:
+        normalized_ids = []
+        for inst_id in inst_ids:
+            try:
+                normalized_ids.append(int(inst_id))
+            except (TypeError, ValueError):
+                continue
+        if not normalized_ids:
+            return {}
+
+        with GraphClient() as ag:
+            inst_list, _ = ag.query_entity(INSTANCE, [{"field": "id", "type": "id[]", "value": sorted(normalized_ids)}])
+
+        result = {}
+        for instance in inst_list:
+            if instance.get("_id") is None:
+                continue
+            try:
+                result[int(instance["_id"])] = instance
+            except (TypeError, ValueError):
+                continue
+        return result
+
+    @staticmethod
+    def _has_topology_view_permission(instance: dict | None, permission_map: dict | None, user=None) -> bool:
+        if instance is None:
+            return False
+        if not permission_map:
+            return True
+
+        username = getattr(user, "username", "") if user is not None else ""
+        if username and instance.get("_creator") == username:
+            allowed_org_ids = set()
+            for org_id in permission_map.keys():
+                try:
+                    allowed_org_ids.add(int(org_id))
+                except (TypeError, ValueError):
+                    continue
+            instance_org_ids = set()
+            for org_id in instance.get("organization", []) or []:
+                try:
+                    instance_org_ids.add(int(org_id))
+                except (TypeError, ValueError):
+                    continue
+            if allowed_org_ids & instance_org_ids:
+                return True
+
+        return CmdbRulesFormatUtil.has_object_permission(
+            obj_type=PERMISSION_INSTANCES,
+            operator=VIEW,
+            model_id=instance.get("model_id", ""),
+            permission_instances_map=permission_map,
+            instance=instance,
+        )
+
+    @classmethod
+    def _collect_topology_node_ids(cls, node: dict | None) -> set[int]:
+        if not isinstance(node, dict):
+            return set()
+
+        result = set()
+        node_id = node.get("_id")
+        try:
+            if node_id is not None:
+                result.add(int(node_id))
+        except (TypeError, ValueError):
+            pass
+
+        for child in node.get("children") or []:
+            result.update(cls._collect_topology_node_ids(child))
+        return result
+
+    @classmethod
+    def _prune_topology_node(cls, node: dict | None, visible_ids: set[int], center_id: int) -> dict:
+        if not isinstance(node, dict):
+            return {}
+
+        node_id = node.get("_id")
+        try:
+            normalized_node_id = int(node_id) if node_id is not None else None
+        except (TypeError, ValueError):
+            normalized_node_id = None
+
+        if normalized_node_id is None:
+            return {}
+        if normalized_node_id != center_id and normalized_node_id not in visible_ids:
+            return {}
+
+        filtered_node = dict(node)
+        filtered_children = []
+        for child in node.get("children") or []:
+            filtered_child = cls._prune_topology_node(child, visible_ids, center_id)
+            if filtered_child:
+                filtered_children.append(filtered_child)
+        filtered_node["children"] = filtered_children
+        return filtered_node
+
+    @classmethod
+    def _filter_topology_result(
+        cls,
+        result: dict,
+        center_id: int,
+        permission_map: dict | None = None,
+        user=None,
+    ) -> dict:
+        if not isinstance(result, dict) or not permission_map:
+            return result
+
+        node_ids = set()
+        for key in ("src_result", "dst_result"):
+            node_ids.update(cls._collect_topology_node_ids(result.get(key)))
+        if not node_ids:
+            return result
+
+        instances_map = cls._query_instance_map_by_ids(node_ids)
+        visible_ids = {int(center_id)}
+        for node_id in node_ids:
+            if node_id == center_id:
+                continue
+            if cls._has_topology_view_permission(instances_map.get(node_id), permission_map, user=user):
+                visible_ids.add(node_id)
+
+        filtered_result = dict(result)
+        for key in ("src_result", "dst_result"):
+            filtered_result[key] = cls._prune_topology_node(result.get(key), visible_ids, int(center_id))
+        return filtered_result
+
+    @staticmethod
     def _build_format_permission_dict(permission_map: dict, creator: str = "") -> dict:
         format_permission_dict = {}
         for organization_id, organization_permission_data in permission_map.items():
@@ -256,8 +441,14 @@ class InstanceManage(object):
         roles: list = None,
     ):
         """实例权限校验，用于操作之前"""
+        if not instances:
+            return
+
         permission_params = InstanceManage.get_permission_params(user_groups=user_groups or [], roles=roles or [])
+        inst_ids = [item["_id"] for item in instances if item.get("_id") is not None]
         query_params = [{"field": "model_id", "type": "str=", "value": model_id}]
+        if inst_ids:
+            query_params.append({"field": "id", "type": "id[]", "value": inst_ids})
         if permission_params:
             query_params.extend(permission_params)
 
@@ -311,12 +502,13 @@ class InstanceManage(object):
         return inst_list, count
 
     @staticmethod
-    def instance_create(model_id: str, instance_info: dict, operator: str):
+    def instance_create(model_id: str, instance_info: dict, operator: str, allowed_org_ids: list | None = None):
         """创建实例"""
         instance_info.update(model_id=model_id)
         attrs = ModelManage.search_model_attr(model_id)
         instance_info = apply_tag_validation_for_instance(instance_info, attrs, model_id)
         instance_info = apply_enum_validation_for_instance(instance_info, attrs)
+        validate_instance_organization_scope(instance_info, allowed_org_ids=allowed_org_ids)
         check_attr_map = InstanceManage._build_unique_rule_check_attr_map(
             model_id,
             attrs,
@@ -349,7 +541,15 @@ class InstanceManage(object):
         return result
 
     @staticmethod
-    def instance_update(user_groups: list, roles: list, inst_id: int, update_attr: dict, operator: str):
+    def instance_update(
+        user_groups: list,
+        roles: list,
+        inst_id: int,
+        update_attr: dict,
+        operator: str,
+        allowed_org_ids: list | None = None,
+        scenario: str = ORDINARY_ATTRIBUTE_CHANGE,
+    ):
         """修改实例属性"""
         inst_info = InstanceManage.query_entity_by_id(inst_id)
 
@@ -368,6 +568,7 @@ class InstanceManage(object):
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
         update_attr = apply_tag_validation_for_instance(update_attr, attrs, inst_info["model_id"])
         update_attr = apply_enum_validation_for_instance(update_attr, attrs)
+        validate_instance_organization_scope(update_attr, user_groups=user_groups, allowed_org_ids=allowed_org_ids)
         check_attr_map = InstanceManage._build_unique_rule_check_attr_map(
             inst_info["model_id"],
             attrs,
@@ -401,6 +602,7 @@ class InstanceManage(object):
             operator=operator,
             model_object=OPERATOR_INSTANCE,
             message=f"修改模型实例属性. 模型:{model_info['model_name']} 实例:{result[0]['inst_name']}",
+            scenario=scenario,
         )
 
         from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
@@ -416,6 +618,7 @@ class InstanceManage(object):
         inst_ids: list,
         update_attr: dict,
         operator: str,
+        allowed_org_ids: list | None = None,
     ):
         """批量修改实例属性"""
 
@@ -436,6 +639,7 @@ class InstanceManage(object):
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
         update_attr = apply_tag_validation_for_instance(update_attr, attrs, model_info["model_id"])
         update_attr = apply_enum_validation_for_instance(update_attr, attrs)
+        validate_instance_organization_scope(update_attr, user_groups=user_groups, allowed_org_ids=allowed_org_ids)
         check_attr_map = InstanceManage._build_unique_rule_check_attr_map(
             model_info["model_id"],
             attrs,
@@ -579,6 +783,58 @@ class InstanceManage(object):
         return src_edge + dst_edge
 
     @staticmethod
+    def instance_association_map(model_id: str, inst_ids: list[int], related_model: str | None = None) -> dict[int, list[int]]:
+        """批量查询实例关联映射，避免按实例逐条查询关系。"""
+
+        normalized_ids: list[int] = []
+        seen_ids: set[int] = set()
+        for inst_id in inst_ids:
+            try:
+                normalized_id = int(inst_id)
+            except (TypeError, ValueError):
+                continue
+            if normalized_id in seen_ids:
+                continue
+            seen_ids.add(normalized_id)
+            normalized_ids.append(normalized_id)
+
+        if not normalized_ids:
+            return {}
+
+        relation_map: dict[int, set[int]] = {inst_id: set() for inst_id in normalized_ids}
+
+        with GraphClient() as ag:
+            src_query_data = [
+                {"field": "src_inst_id", "type": "int[]", "value": normalized_ids},
+                {"field": "src_model_id", "type": "str=", "value": model_id},
+            ]
+            if related_model:
+                src_query_data.append({"field": "dst_model_id", "type": "str=", "value": related_model})
+            src_edges = ag.query_edge(INSTANCE_ASSOCIATION, src_query_data)
+
+            dst_query_data = [
+                {"field": "dst_inst_id", "type": "int[]", "value": normalized_ids},
+                {"field": "dst_model_id", "type": "str=", "value": model_id},
+            ]
+            if related_model:
+                dst_query_data.append({"field": "src_model_id", "type": "str=", "value": related_model})
+            dst_edges = ag.query_edge(INSTANCE_ASSOCIATION, dst_query_data)
+
+        for edge in src_edges:
+            src_inst_id = edge.get("src_inst_id")
+            dst_inst_id = edge.get("dst_inst_id")
+            if src_inst_id in relation_map and dst_inst_id is not None:
+                relation_map[src_inst_id].add(int(dst_inst_id))
+
+        for edge in dst_edges:
+            dst_inst_id = edge.get("dst_inst_id")
+            src_inst_id = edge.get("src_inst_id")
+            if dst_inst_id in relation_map and src_inst_id is not None:
+                relation_map[dst_inst_id].add(int(src_inst_id))
+
+        return {inst_id: sorted(related_ids) for inst_id, related_ids in relation_map.items()}
+
+    @staticmethod
     def check_asso_mapping(data: dict):
         """校验关联关系的约束"""
         asso_info = ModelManage.model_association_info_search(data["model_asst_id"])
@@ -692,7 +948,11 @@ class InstanceManage(object):
                     raise BaseAppException("instance association repetition")
 
         asso_info = InstanceManage.instance_association_by_asso_id(edge["_id"])
-        message = f"创建模型关联关系. 原模型: {asso_info['src']['model_id']} 原模型实例: {asso_info['src']['inst_name']}  目标模型ID: {asso_info['dst']['model_id']} 目标模型实例: {asso_info['dst'].get('inst_name') or asso_info['dst'].get('ip_addr', '')}"
+        message = (
+            f"创建模型关联关系. 原模型: {asso_info['src']['model_id']} 原模型实例: {asso_info['src']['inst_name']} "
+            f"目标模型ID: {asso_info['dst']['model_id']} 目标模型实例: "
+            f"{asso_info['dst'].get('inst_name') or asso_info['dst'].get('ip_addr', '')}"
+        )
         create_change_record_by_asso(
             INSTANCE_ASSOCIATION,
             CREATE_INST_ASST,
@@ -712,7 +972,12 @@ class InstanceManage(object):
         with GraphClient() as ag:
             ag.delete_edge(asso_id)
 
-        message = f"删除模型关联关系. 原模型: {asso_info['src']['model_id']} 原模型实例: {asso_info['src'].get('inst_name') or asso_info['src'].get('ip_addr', '')}  目标模型ID: {asso_info['dst']['model_id']} 目标模型实例: {asso_info['dst'].get('inst_name') or asso_info['dst'].get('ip_addr', '')}"
+        message = (
+            f"删除模型关联关系. 原模型: {asso_info['src']['model_id']} 原模型实例: "
+            f"{asso_info['src'].get('inst_name') or asso_info['src'].get('ip_addr', '')} "
+            f"目标模型ID: {asso_info['dst']['model_id']} 目标模型实例: "
+            f"{asso_info['dst'].get('inst_name') or asso_info['dst'].get('ip_addr', '')}"
+        )
         create_change_record_by_asso(
             INSTANCE_ASSOCIATION,
             DELETE_INST_ASST,
@@ -763,7 +1028,7 @@ class InstanceManage(object):
             dict(
                 inst_id=i["data"]["_id"],
                 model_id=i["data"]["model_id"],
-                before_data=i["data"],
+                after_data=i["data"],
                 model_object=OPERATOR_INSTANCE,
                 message=f"导入模型实例. 模型:{model_info['model_name']} 实例:{i['data'].get('inst_name') or i['data'].get('ip_addr', '')}",
             )
@@ -810,7 +1075,7 @@ class InstanceManage(object):
             dict(
                 inst_id=i["data"]["_id"],
                 model_id=i["data"]["model_id"],
-                before_data=i["data"],
+                after_data=i["data"],
                 model_object=OPERATOR_INSTANCE,
                 message=f"导入模型实例. 模型:{model_info['model_name']} 新增模型实例:{i['data'].get('inst_name') or i['data'].get('ip_addr', '')}",
             )
@@ -823,6 +1088,7 @@ class InstanceManage(object):
                 inst_id=i["data"]["_id"],
                 model_id=i["data"]["model_id"],
                 before_data=exist_items__id_map[i["data"]["_id"]],
+                after_data=i["data"],
                 model_object=OPERATOR_INSTANCE,
                 message=f"导入模型实例. 模型:{model_info['model_name']} 更新模型实例:{i['data'].get('inst_name') or i['data'].get('ip_addr', '')}",
             )
@@ -862,19 +1128,26 @@ class InstanceManage(object):
             add_mgs = ""
         return res_status, add_mgs
 
-    @staticmethod
-    def topo_search_lite(inst_id: int, depth: int = 3):
+    @classmethod
+    def topo_search_lite(cls, inst_id: int, depth: int = 3, permission_map: dict | None = None, user=None):
         """拓扑查询（轻量）：限制返回层级，避免一次返回全量树"""
         with GraphClient() as ag:
             result = ag.query_topo_lite(INSTANCE, inst_id, depth=depth)
-        return result
+        return cls._filter_topology_result(result, int(inst_id), permission_map=permission_map, user=user)
 
-    @staticmethod
-    def topo_search_expand(inst_id: int, parent_ids: list, depth: int = 2):
+    @classmethod
+    def topo_search_expand(
+        cls,
+        inst_id: int,
+        parent_ids: list,
+        depth: int = 2,
+        permission_map: dict | None = None,
+        user=None,
+    ):
         """拓扑展开：从指定节点向后展开一层，并过滤父节点列表"""
         with GraphClient() as ag:
             result = ag.query_topo_lite(INSTANCE, inst_id, depth=depth, exclude_ids=parent_ids)
-        return result
+        return cls._filter_topology_result(result, int(inst_id), permission_map=permission_map, user=user)
 
     @staticmethod
     def inst_export(
@@ -984,16 +1257,21 @@ class InstanceManage(object):
         return f"n.inst_name IN {inst_names}"
 
     @classmethod
-    def model_inst_count(cls, permissions_map: dict, creator: str = ""):
+    def group_inst_count(cls, group_by_attr: str, permissions_map: dict, params: list = None, creator: str = ""):
         format_permission_dict = cls._build_format_permission_dict(permissions_map, creator)
 
         with GraphClient() as ag:
             data = ag.entity_count(
                 label=INSTANCE,
-                group_by_attr="model_id",
+                group_by_attr=group_by_attr,
+                params=params or [],
                 format_permission_dict=format_permission_dict,
             )
         return data
+
+    @classmethod
+    def model_inst_count(cls, permissions_map: dict, creator: str = ""):
+        return cls.group_inst_count(group_by_attr="model_id", permissions_map=permissions_map, creator=creator)
 
     @classmethod
     def _build_permission_params(cls, permission_map: dict, creator: str = ""):
@@ -1007,38 +1285,41 @@ class InstanceManage(object):
         Returns:
             permission_params: 权限过滤字符串
         """
-        # 构建所有有权限模型的权限过滤条件（与 instance_list 一致）
-        format_permission_dict = {}
-
-        for organization_id, organization_permission_data in permission_map.items():
-            # 为每个组织构建查询条件（与 instance_list 保持一致）
-            _query_list = [{"field": "organization", "type": "list[]", "value": [organization_id]}]
-
-            inst_names = organization_permission_data["inst_names"]
-            if inst_names:
-                _query_list.append({"field": "inst_name", "type": "str[]", "value": inst_names})
-
-                if creator:
-                    _query_list.append({"field": "_creator", "type": "str=", "value": creator})
-
-            # 使用 organization_id 作为 key（多个模型可能共享同一组织）
-            if organization_id not in format_permission_dict:
-                format_permission_dict[organization_id] = _query_list
-
-        # 将 format_permission_dict 转换为 full_text 需要的参数格式
         with GraphClient() as ag:
             # 使用共享的参数收集器（参数化模式）
             param_collector = ParameterCollector() if ag.ENABLE_PARAMETERIZATION else None
 
-            # 构建权限过滤字符串（与 query_entity 的逻辑一致）
+            # 构建权限过滤字符串：组织边界必须保留在单组织分支内，
+            # 仅在该分支内部组合实例名/创建人条件；多个组织分支之间再 OR。
             permission_filters = []
-            for query_list in format_permission_dict.values():
-                if not query_list:
+            for organization_id, organization_permission_data in permission_map.items():
+                organization_query = [{"field": "organization", "type": "list[]", "value": [organization_id]}]
+                organization_str, _ = ag.format_search_params(
+                    organization_query,
+                    param_type="AND",
+                    param_collector=param_collector,
+                )
+                if not organization_str:
                     continue
-                # 使用共享的 param_collector 累积参数
-                org_permission_str, _ = ag.format_search_params(query_list, param_type="OR", param_collector=param_collector)
-                if org_permission_str:
-                    permission_filters.append(org_permission_str)
+
+                branch_conditions = []
+                inst_names = organization_permission_data.get("inst_names", [])
+                if inst_names:
+                    branch_conditions.append({"field": "inst_name", "type": "str[]", "value": inst_names})
+                    if creator:
+                        branch_conditions.append({"field": "_creator", "type": "str=", "value": creator})
+
+                if branch_conditions:
+                    branch_str, _ = ag.format_search_params(
+                        branch_conditions,
+                        param_type="OR",
+                        param_collector=param_collector,
+                    )
+                    if branch_str:
+                        permission_filters.append(f"({organization_str} AND {branch_str})")
+                        continue
+
+                permission_filters.append(organization_str)
 
             # 多个组织的权限条件用 OR 连接
             permission_params = " OR ".join(permission_filters) if permission_filters else ""
@@ -1064,7 +1345,7 @@ class InstanceManage(object):
             search: 搜索关键词
             permission_map: 权限映射
             creator: 创建者
-            case_sensitive: 是否区分大小写（默认False，模糊匹配）
+            case_sensitive: 是否精确匹配（True=精确匹配，False=不区分大小写模糊匹配，默认False）
 
         Returns:
             实例列表
@@ -1103,7 +1384,7 @@ class InstanceManage(object):
             search: 搜索关键词
             permission_map: 权限映射
             creator: 创建者
-            case_sensitive: 是否区分大小写（默认False，模糊匹配）
+            case_sensitive: 是否精确匹配（True=精确匹配，False=不区分大小写模糊匹配，默认False）
 
         Returns:
             {
@@ -1152,7 +1433,7 @@ class InstanceManage(object):
             creator: 创建者
             page: 页码（从1开始）
             page_size: 每页大小
-            case_sensitive: 是否区分大小写（默认False，模糊匹配）
+            case_sensitive: 是否精确匹配（True=精确匹配，False=不区分大小写模糊匹配，默认False）
 
         Returns:
             {
@@ -1164,8 +1445,7 @@ class InstanceManage(object):
             }
         """
         logger.info(
-            f"[InstanceManage.fulltext_search_by_model] 搜索关键词: {search}, 模型: {model_id}, "
-            f"页码: {page}, 每页: {page_size}, 区分大小写: {case_sensitive}"
+            f"[InstanceManage.fulltext_search_by_model] 搜索关键词: {search}, 模型: {model_id}, " f"页码: {page}, 每页: {page_size}, 区分大小写: {case_sensitive}"
         )
 
         # 构建权限参数（统一逻辑）

@@ -1,6 +1,6 @@
 from django.core.paginator import Paginator
 from django.db import connection
-from django.db.models import Case, Count, IntegerField, Max, Min, Value, When
+from django.db.models import Count, Max, Min
 from django.db.models.functions import TruncDay
 from django.http import JsonResponse
 from django_filters import filters
@@ -15,7 +15,9 @@ from apps.opspilot.models import Bot, BotChannel, BotWorkFlow, LLMSkill, UserPin
 from apps.opspilot.serializers import BotSerializer
 from apps.opspilot.utils.bot_utils import set_time_range
 from apps.opspilot.utils.celery_task_utils import create_celery_task, delete_celery_task
+from apps.opspilot.utils.pin_mixin import PinMixin
 from apps.opspilot.utils.schedule_utils import get_crontab_next_runs
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class BotFilter(FilterSet):
@@ -30,7 +32,9 @@ class BotFilter(FilterSet):
         return qs.filter(bot_type__in=[int(i.strip()) for i in value.split(",") if i.strip()])
 
 
-class BotViewSet(AuthViewSet):
+class BotViewSet(PinMixin, AuthViewSet):
+    pin_content_type = UserPin.CONTENT_TYPE_BOT
+    pin_permission_error_key = "error.no_bot_update_permission"
     serializer_class = BotSerializer
     queryset = Bot.objects.all()
     permission_key = "bot"
@@ -38,25 +42,13 @@ class BotViewSet(AuthViewSet):
 
     def query_by_groups(self, request, queryset):
         """重写排序逻辑：当前用户置顶优先，再按 ID 倒序"""
-        new_queryset = self.get_queryset_by_permission(request, queryset)
-        username = request.user.username
-        domain = getattr(request.user, "domain", "")
-        pinned_ids = list(
-            UserPin.objects.filter(
-                username=username,
-                domain=domain,
-                content_type=UserPin.CONTENT_TYPE_BOT,
-            ).values_list("object_id", flat=True)
-        )
-        new_queryset = new_queryset.annotate(
-            is_pinned_for_user=Case(
-                When(id__in=pinned_ids, then=Value(1)),
-                default=Value(0),
-                output_field=IntegerField(),
-            )
-        )
-        return self._list(new_queryset.order_by("-is_pinned_for_user", "-id"))
+        return self.query_by_groups_with_pinned(request, queryset)
 
+    @HasPermission("bot_list-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("bot_list-View")
     def retrieve(self, request, *args, **kwargs):
         response = super().retrieve(request, *args, **kwargs)
         if not isinstance(response, Response) or not isinstance(response.data, dict):
@@ -79,51 +71,36 @@ class BotViewSet(AuthViewSet):
     @action(methods=["POST"], detail=True)
     @HasPermission("bot_settings-Edit")
     def toggle_pin(self, request, pk=None):
-        """切换工作台置顶状态（个人行为）"""
-        instance = self.get_object()
-        if not request.user.is_superuser:
-            current_team = request.COOKIES.get("current_team", "0")
-            include_children = request.COOKIES.get("include_children", "0") == "1"
-            has_permission = self.get_has_permission(request.user, instance, current_team, include_children=include_children)
-            if not has_permission:
-                message = self.loader.get("error.no_bot_update_permission") if self.loader else "You do not have permission to update this bot."
-                return JsonResponse({"result": False, "message": message})
-        username = request.user.username
-        domain = getattr(request.user, "domain", "")
-        pin_obj, created = UserPin.objects.get_or_create(
-            username=username,
-            domain=domain,
-            content_type=UserPin.CONTENT_TYPE_BOT,
-            object_id=instance.id,
-        )
-        if created:
-            is_pinned = True
-        else:
-            pin_obj.delete()
-            is_pinned = False
-        return JsonResponse({"result": True, "data": {"is_pinned": is_pinned}})
+        return super().toggle_pin(request, pk)
 
     @HasPermission("bot_list-Add")
     def create(self, request, *args, **kwargs):
+        # 验证用户有权限访问 current_team
+        current_team = self._validate_current_team_permission(request)
         data = request.data
-        current_team = data.get("team", []) or [int(request.COOKIES.get("current_team"))]
+        team = data.get("team", []) or [current_team]
+        # 校验用户是否有目标组织的权限
+        self._validate_org_field_permission(request, team)
         bot_obj = Bot.objects.create(
             name=data.get("name"),
             introduction=data.get("introduction"),
-            team=current_team,
+            team=team,
             channels=[],
             created_by=request.user.username,
             replica_count=data.get("replica_count") or 1,
             bot_type=data.get("bot_type", BotTypeChoice.PILOT),
         )
         BotWorkFlow.objects.create(bot_id=bot_obj.id)
-        return JsonResponse({"result": True})
+        response = JsonResponse({"result": True})
+        if response.status_code >= 200 and response.status_code < 300:
+            log_operation(request, "create", "opspilot", f"新增工作台: {bot_obj.name}")
+        return response
 
     @HasPermission("bot_settings-Edit")
     def update(self, request, *args, **kwargs):
         obj: Bot = self.get_object()
         if not request.user.is_superuser:
-            current_team = request.COOKIES.get("current_team", "0")
+            current_team = self._validate_current_team_permission(request)
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, obj, current_team, include_children=include_children)
             if not has_permission:
@@ -136,8 +113,6 @@ class BotViewSet(AuthViewSet):
         rasa_model = data.pop("rasa_model", None)
         node_port = data.pop("node_port", None)
         workflow_data = data.pop("workflow_data", None)
-        if (not request.user.is_superuser) and (obj.created_by != request.user.username):
-            data.pop("team", [])
         if "team" in data:
             delete_team = [i for i in obj.team if i not in data["team"]]
             self.delete_rules(obj.id, delete_team)
@@ -167,12 +142,28 @@ class BotViewSet(AuthViewSet):
             obj.online = is_publish
             obj.save()
 
-        return JsonResponse({"result": True})
+        response = JsonResponse({"result": True})
+        if response.status_code >= 200 and response.status_code < 300:
+            log_operation(request, "update", "opspilot", f"编辑工作台: {obj.name}")
+        return response
 
     @HasPermission("bot_channel-View")
     @action(methods=["GET"], detail=False)
     def get_bot_channels(self, request):
         bot_id = request.GET.get("bot_id")
+        if not bot_id:
+            return JsonResponse({"result": False, "message": "bot_id is required"}, status=400)
+        # 验证用户有权限访问该 bot
+        bot = Bot.objects.filter(id=bot_id).first()
+        if not bot:
+            return JsonResponse({"result": False, "message": "Bot not found"}, status=404)
+        if not request.user.is_superuser:
+            current_team = self._validate_current_team_permission(request)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, bot, current_team, include_children=include_children)
+            if not has_permission:
+                message = self.loader.get("error.no_bot_view_permission") if self.loader else "You do not have permission to view this bot."
+                return JsonResponse({"result": False, "message": message})
         channels = BotChannel.objects.filter(bot_id=bot_id)
         return_data = []
         for i in channels:
@@ -189,7 +180,7 @@ class BotViewSet(AuthViewSet):
         channel_config = request.data.get("channel_config")
         channel = BotChannel.objects.get(id=channel_id)
         if not request.user.is_superuser:
-            current_team = request.COOKIES.get("current_team", "0")
+            current_team = self._validate_current_team_permission(request)
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, channel.bot, current_team, include_children=include_children)
             if not has_permission:
@@ -207,7 +198,10 @@ class BotViewSet(AuthViewSet):
         obj = self.get_object()
         # 只有 CHAT_FLOW 类型,删除 Celery 任务
         delete_celery_task(obj.id)
-        return super().destroy(request, *args, **kwargs)
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            log_operation(request, "delete", "opspilot", f"删除工作台: {obj.name}")
+        return response
 
     @action(methods=["POST"], detail=False)
     @HasPermission("bot_settings-Save&Publish")
@@ -215,7 +209,7 @@ class BotViewSet(AuthViewSet):
         bot_ids = request.data.get("bot_ids")
         bots = Bot.objects.filter(id__in=bot_ids)
         if not request.user.is_superuser:
-            current_team = request.COOKIES.get("current_team", "0")
+            current_team = self._validate_current_team_permission(request)
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, bots, current_team, is_list=True, include_children=include_children)
             if not has_permission:
@@ -231,7 +225,11 @@ class BotViewSet(AuthViewSet):
                 create_celery_task(bot.id, workflow_data.web_json)
             bot.online = True
             bot.save()
-        return JsonResponse({"result": True})
+        response = JsonResponse({"result": True})
+        if response.status_code >= 200 and response.status_code < 300:
+            bot_name = "、".join(bots.values_list("name", flat=True))
+            log_operation(request, "execute", "opspilot", f"启动工作台: {bot_name}")
+        return response
 
     @action(methods=["POST"], detail=False)
     @HasPermission("bot_settings-Save&Publish")
@@ -239,7 +237,7 @@ class BotViewSet(AuthViewSet):
         bot_ids = request.data.get("bot_ids")
         bots = Bot.objects.filter(id__in=bot_ids)
         if not request.user.is_superuser:
-            current_team = request.COOKIES.get("current_team", "0")
+            current_team = self._validate_current_team_permission(request)
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, bots, current_team, is_list=True, include_children=include_children)
             if not has_permission:
@@ -252,7 +250,11 @@ class BotViewSet(AuthViewSet):
             bot.api_token = ""
             bot.online = False
             bot.save()
-        return JsonResponse({"result": True})
+        response = JsonResponse({"result": True})
+        if response.status_code >= 200 and response.status_code < 300:
+            bot_name = "、".join(bots.values_list("name", flat=True))
+            log_operation(request, "execute", "opspilot", f"停止工作台: {bot_name}")
+        return response
 
     @action(methods=["GET"], detail=False)
     @HasPermission("bot_conversation_log-View")
@@ -270,6 +272,20 @@ class BotViewSet(AuthViewSet):
             search,
             start_time,
         ) = self._set_workflow_log_params(request)
+
+        # 验证用户有权限访问该 bot
+        if not bot_id:
+            return JsonResponse({"result": False, "message": "bot_id is required"}, status=400)
+        bot = Bot.objects.filter(id=bot_id).first()
+        if not bot:
+            return JsonResponse({"result": False, "message": "Bot not found"}, status=404)
+        if not request.user.is_superuser:
+            current_team = self._validate_current_team_permission(request)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, bot, current_team, include_children=include_children)
+            if not has_permission:
+                message = self.loader.get("error.no_bot_view_permission") if self.loader else "You do not have permission to view this bot."
+                return JsonResponse({"result": False, "message": message})
 
         # 聚合查询：按天、bot_id、user_id、entry_type 分组
         # 注意：title 字段在 _get_workflow_log_by_page 中单独查询，避免 GROUP BY 子查询问题（达梦不支持）
@@ -313,8 +329,35 @@ class BotViewSet(AuthViewSet):
         根据 ids 获取具体的对话记录
         """
         ids = request.data.get("ids")
+        bot_id = request.data.get("bot_id")
         page_size = int(request.data.get("page_size", 10))
         page = int(request.data.get("page", 1))
+
+        # 验证用户有权限访问该 bot（如果提供了 bot_id）
+        if bot_id:
+            bot = Bot.objects.filter(id=bot_id).first()
+            if bot and not request.user.is_superuser:
+                current_team = self._validate_current_team_permission(request)
+                include_children = request.COOKIES.get("include_children", "0") == "1"
+                has_permission = self.get_has_permission(request.user, bot, current_team, include_children=include_children)
+                if not has_permission:
+                    message = self.loader.get("error.no_bot_view_permission") if self.loader else "You do not have permission to view this bot."
+                    return JsonResponse({"result": False, "message": message})
+        else:
+            # 如果没有提供 bot_id，从 ids 中获取第一条记录的 bot_id 进行验证
+            if ids:
+                first_history = WorkFlowConversationHistory.objects.filter(id__in=ids).first()
+                if first_history:
+                    bot = Bot.objects.filter(id=first_history.bot_id).first()
+                    if bot and not request.user.is_superuser:
+                        current_team = self._validate_current_team_permission(request)
+                        include_children = request.COOKIES.get("include_children", "0") == "1"
+                        has_permission = self.get_has_permission(request.user, bot, current_team, include_children=include_children)
+                        if not has_permission:
+                            message = (
+                                self.loader.get("error.no_bot_view_permission") if self.loader else "You do not have permission to view this bot."
+                            )
+                            return JsonResponse({"result": False, "message": message})
 
         history_list = (
             WorkFlowConversationHistory.objects.filter(id__in=ids)

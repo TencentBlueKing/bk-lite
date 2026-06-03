@@ -1,6 +1,8 @@
 package ssh
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/json"
 	"errors"
 	"io"
@@ -222,6 +224,60 @@ MIIEpAIBAAKCAQEA1234567890abcdefghijklmnopqrstuvwxyz
 	t.Logf("Generated SCP command (both auth methods): %s", cmd)
 }
 
+func TestBuildSCPCommandDownloadDirectionWithPassword(t *testing.T) {
+	cmd, cleanup, err := buildSCPCommand(
+		"testuser",
+		"192.168.1.100",
+		"testpass",
+		"",
+		22,
+		"/local/file",
+		"/remote/path",
+		false,
+		profileModern,
+	)
+	if err != nil {
+		t.Fatalf("buildSCPCommand failed: %v", err)
+	}
+	defer cleanup()
+
+	if !contains(cmd, "sshpass") || !contains(cmd, "'testuser@192.168.1.100:/remote/path' '/local/file'") {
+		t.Fatalf("unexpected download command: %s", cmd)
+	}
+}
+
+func TestBuildSCPCommandDownloadDirectionWithPrivateKey(t *testing.T) {
+	testPrivateKey := `-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEA1234567890abcdefghijklmnopqrstuvwxyz
+-----END RSA PRIVATE KEY-----`
+
+	cmd, cleanup, err := buildSCPCommand(
+		"testuser",
+		"192.168.1.100",
+		"",
+		testPrivateKey,
+		22,
+		"/local/file",
+		"/remote/path",
+		false,
+		profileModern,
+	)
+	if err != nil {
+		t.Fatalf("buildSCPCommand failed: %v", err)
+	}
+	if cleanup == nil {
+		t.Fatal("cleanup function should not be nil")
+	}
+	defer cleanup()
+
+	if !contains(cmd, "-i") || !contains(cmd, "'testuser@192.168.1.100:/remote/path' '/local/file'") {
+		t.Fatalf("unexpected private-key download command: %s", cmd)
+	}
+	if contains(cmd, "sshpass") {
+		t.Fatalf("private-key download command should not contain sshpass: %s", cmd)
+	}
+}
+
 // 测试 Execute 函数 - 密钥认证的请求结构
 func TestExecuteWithPrivateKey(t *testing.T) {
 	// 注意：这个测试只验证请求结构，不会真正连接
@@ -355,7 +411,7 @@ func TestBuildSCPCommandEscapesIntoTemporaryKeyFile(t *testing.T) {
 	}
 }
 
-func TestBuildSCPCommandPasswordPreservesLiteralValue(t *testing.T) {
+func TestBuildSCPCommandPasswordUsesEnvMode(t *testing.T) {
 	password := "pa'ss $(rm -rf /)"
 	cmd, cleanup, err := buildSCPCommand("testuser", "192.168.1.100", password, "", 22, "/local/file", "/remote/path", true, profileModern)
 	if err != nil {
@@ -363,13 +419,12 @@ func TestBuildSCPCommandPasswordPreservesLiteralValue(t *testing.T) {
 	}
 	defer cleanup()
 
-	expectedEscaped := "sshpass -p 'pa'\"'\"'ss $(rm -rf /)'"
-	if !strings.Contains(cmd, expectedEscaped) {
-		t.Fatalf("password should be shell-escaped, got: %s", cmd)
+	if !strings.Contains(cmd, "sshpass -e") {
+		t.Fatalf("command should use sshpass -e mode, got: %s", cmd)
 	}
 
-	if strings.Contains(cmd, "sshpass -p 'pa'ss") {
-		t.Fatalf("password should not appear with broken quoting: %s", cmd)
+	if strings.Contains(cmd, password) {
+		t.Fatalf("password should not appear in command: %s", cmd)
 	}
 }
 
@@ -623,6 +678,74 @@ func TestExecuteReturnsTimeoutCodeWhenDialTimeoutOccurs(t *testing.T) {
 	}
 }
 
+func TestExecuteReturnsTimeoutWhenTCPProbeConsumesRemainingBudget(t *testing.T) {
+	originalProbe := tcpProbeFn
+	originalDial := sshDialFn
+	tcpProbeFn = func(addr string, timeout time.Duration) error {
+		time.Sleep(1100 * time.Millisecond)
+		return nil
+	}
+	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+		t.Fatal("dial should not happen after probe consumes budget")
+		return nil, nil
+	}
+	defer func() {
+		tcpProbeFn = originalProbe
+		sshDialFn = originalDial
+	}()
+
+	response := Execute(ExecuteRequest{
+		Command:        "uptime",
+		ExecuteTimeout: 1,
+		Host:           "10.0.0.1",
+		Port:           22,
+		User:           "root",
+		Password:       "secret",
+		ConnectionTest: true,
+	}, "instance-1")
+
+	if response.Success || response.Code != utils.ErrorCodeTimeout || response.Stage != sshStageSSHDial {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+}
+
+func TestExecuteReturnsInvalidRequestWhenLegacyRetryPrivateKeyParseFails(t *testing.T) {
+	originalDial := sshDialFn
+	originalParse := parsePrivateKeyFn
+	parseCalls := 0
+	parsePrivateKeyFn = func(pemBytes []byte) (gossh.Signer, error) {
+		parseCalls++
+		if parseCalls == 1 {
+			privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+			if err != nil {
+				t.Fatalf("failed to generate key: %v", err)
+			}
+			return gossh.NewSignerFromSigner(privateKey)
+		}
+		return nil, errors.New("legacy parse failed")
+	}
+	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+		return nil, errors.New("no matching host key type found")
+	}
+	defer func() {
+		sshDialFn = originalDial
+		parsePrivateKeyFn = originalParse
+	}()
+
+	response := Execute(ExecuteRequest{
+		Command:        "uptime",
+		ExecuteTimeout: 5,
+		Host:           "10.0.0.1",
+		Port:           22,
+		User:           "root",
+		PrivateKey:     "dummy-key",
+	}, "instance-1")
+
+	if response.Success || response.Code != utils.ErrorCodeInvalidRequest || !strings.Contains(response.Error, "Failed to parse private key for legacy retry") {
+		t.Fatalf("unexpected response: %+v", response)
+	}
+}
+
 func TestExecuteConnectionTestReturnsFastFailureWhenTCPProbeFails(t *testing.T) {
 	originalProbe := tcpProbeFn
 	originalDial := sshDialFn
@@ -770,6 +893,55 @@ func TestHandleDownloadToRemoteMessageReturnsFastFailWhenTCPProbeFails(t *testin
 	}
 }
 
+func TestTCPProbeResponseMapsFailureModes(t *testing.T) {
+	originalProbe := tcpProbeFn
+	defer func() { tcpProbeFn = originalProbe }()
+
+	t.Run("budget exhausted before probe", func(t *testing.T) {
+		response := tcpProbeResponse("instance-1", "10.0.0.1:22", 0)
+		if response.Success || response.Code != utils.ErrorCodeTimeout {
+			t.Fatalf("unexpected response: %+v", response)
+		}
+		if !strings.Contains(response.Error, "TCP 探测前超时") {
+			t.Fatalf("unexpected error: %+v", response)
+		}
+	})
+
+	t.Run("timeout error", func(t *testing.T) {
+		tcpProbeFn = func(addr string, timeout time.Duration) error {
+			return errors.New("i/o timeout")
+		}
+		response := tcpProbeResponse("instance-1", "10.0.0.1:22", 2*time.Second)
+		if response.Success || response.Code != utils.ErrorCodeTimeout {
+			t.Fatalf("unexpected response: %+v", response)
+		}
+		if !strings.Contains(response.Error, "远程主机端口连接超时") {
+			t.Fatalf("unexpected error: %+v", response)
+		}
+	})
+
+	t.Run("network unreachable", func(t *testing.T) {
+		tcpProbeFn = func(addr string, timeout time.Duration) error {
+			return errors.New("connection refused")
+		}
+		response := tcpProbeResponse("instance-1", "10.0.0.1:22", 2*time.Second)
+		if response.Success || response.Code != utils.ErrorCodeDependencyFailure {
+			t.Fatalf("unexpected response: %+v", response)
+		}
+		if !strings.Contains(response.Error, "远程主机端口不可达") {
+			t.Fatalf("unexpected error: %+v", response)
+		}
+	})
+
+	t.Run("success", func(t *testing.T) {
+		tcpProbeFn = func(addr string, timeout time.Duration) error { return nil }
+		response := tcpProbeResponse("instance-1", "10.0.0.1:22", 2*time.Second)
+		if !response.Success {
+			t.Fatalf("expected success response, got %+v", response)
+		}
+	})
+}
+
 func TestExecuteReturnsDependencyFailureCodeWhenSessionCreationFails(t *testing.T) {
 	originalDial := sshDialFn
 	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
@@ -821,6 +993,85 @@ func TestExecuteReturnsExecutionFailureCodeWhenRemoteCommandFails(t *testing.T) 
 	}
 	if response.Code != utils.ErrorCodeExecutionFailure {
 		t.Fatalf("unexpected code: %+v", response)
+	}
+}
+
+func TestExecuteCapsCapturedRemoteOutput(t *testing.T) {
+	originalDial := sshDialFn
+	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+		return stubSSHClient{newSession: func() (sshSession, error) {
+			session := &stubSSHSession{}
+			session.run = func(cmd string) error {
+				if session.stdout != nil {
+					_, _ = session.stdout.Write([]byte(strings.Repeat("x", utils.CommandOutputLimitBytes+4096)))
+				}
+				return nil
+			}
+			return session, nil
+		}}, nil
+	}
+	defer func() { sshDialFn = originalDial }()
+
+	response := Execute(ExecuteRequest{
+		Command:        "large-output",
+		ExecuteTimeout: 5,
+		Host:           "10.0.0.1",
+		Port:           22,
+		User:           "root",
+		Password:       "secret",
+	}, "instance-1")
+
+	if !response.Success {
+		t.Fatalf("expected success, got %+v", response)
+	}
+	if len(response.Output) > utils.CommandOutputLimitBytes {
+		t.Fatalf("expected capped output, got %d bytes", len(response.Output))
+	}
+	if !strings.Contains(response.Output, "output truncated") {
+		t.Fatalf("expected truncation marker")
+	}
+}
+
+func TestExecuteAppliesSharedCapAcrossRemoteStdoutAndStderr(t *testing.T) {
+	originalDial := sshDialFn
+	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+		return stubSSHClient{newSession: func() (sshSession, error) {
+			session := &stubSSHSession{}
+			session.run = func(cmd string) error {
+				half := utils.CommandOutputLimitBytes/2 + 4096
+				if session.stdout != nil {
+					_, _ = session.stdout.Write([]byte(strings.Repeat("o", half)))
+				}
+				if session.stderr != nil {
+					_, _ = session.stderr.Write([]byte(strings.Repeat("e", half)))
+				}
+				return nil
+			}
+			return session, nil
+		}}, nil
+	}
+	defer func() { sshDialFn = originalDial }()
+
+	response := Execute(ExecuteRequest{
+		Command:        "large-both-streams",
+		ExecuteTimeout: 5,
+		Host:           "10.0.0.1",
+		Port:           22,
+		User:           "root",
+		Password:       "secret",
+	}, "instance-1")
+
+	if !response.Success {
+		t.Fatalf("expected success, got %+v", response)
+	}
+	if len(response.Output) > utils.CommandOutputLimitBytes {
+		t.Fatalf("expected shared capped output, got %d bytes", len(response.Output))
+	}
+	if !strings.Contains(response.Output, "output truncated") {
+		t.Fatal("expected truncation marker for shared cap")
+	}
+	if !strings.Contains(response.Output, strings.Repeat("o", 64)) {
+		t.Fatal("expected stdout content to be present")
 	}
 }
 

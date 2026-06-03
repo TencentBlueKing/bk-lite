@@ -21,6 +21,19 @@ import {
   hasNormalGroupSelection,
   mergeRoles,
 } from '@/app/system-manager/utils/userFormUtils';
+import { useSensitiveFieldEditBehavior as useCESensitiveFieldEditBehavior } from '@/app/system-manager/hooks/useSensitiveFieldEditBehavior';
+
+const loadSensitiveHook = () => {
+  try {
+    // EE 增强判断：优先加载 enterprise hook，缺失时回退到 CE 默认实现。
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('@/app/system-manager/(enterprise)/hooks/useSensitiveFieldEditBehavior');
+    return mod.useSensitiveFieldEditBehavior || useCESensitiveFieldEditBehavior;
+  } catch {
+    return useCESensitiveFieldEditBehavior;
+  }
+};
+const useSensitiveFieldEditBehavior = loadSensitiveHook();
 
 interface ModalConfig {
   type: 'add' | 'edit';
@@ -56,6 +69,7 @@ interface UseUserModalDataReturn {
   handleConfirm: (onSuccess: () => void) => Promise<void>;
   handleGroupChange: (newGroupIds: React.Key[]) => Promise<void>;
   handleChangeRule: (newKey: number, newRules: { [app: string]: number }) => void;
+  sensitiveBehavior: ReturnType<typeof useSensitiveFieldEditBehavior>;
 }
 
 export function useUserModalData(): UseUserModalDataReturn {
@@ -80,14 +94,17 @@ export function useUserModalData(): UseUserModalDataReturn {
   const [groupTreeData, setGroupTreeData] = useState<TreeSelectNode[]>([]);
 
   const { addUser, editUser, getUserDetail, getRoleList } = useUserApi();
-  const { getGroupDetailWithRoles } = useGroupApi();
+  const { batchGetGroupDetailWithRoles } = useGroupApi();
+
+  const sensitiveBehavior = useSensitiveFieldEditBehavior(formRef);
+  const { initField, isAnyFieldEditing, cleanPayload } = sensitiveBehavior;
 
   const fetchRoleInfoWithOrgRoles = useCallback(
     async () => {
       try {
         setRoleLoading(true);
         const roleData = await getRoleList({ client_list: clientData });
-        const processedRoleData = processRoleTreeData(roleData);
+        const processedRoleData = processRoleTreeData(roleData, t('common.externalApp'));
         setRoleTreeData(processedRoleData);
       } catch {
         message.error(t('common.fetchFailed'));
@@ -107,9 +124,9 @@ export function useUserModalData(): UseUserModalDataReturn {
       }
 
       try {
-        const groupDetails = await Promise.all(
-          groupIds.map((groupId) => getGroupDetailWithRoles({ group_id: String(groupId) }))
-        );
+        const groupDetails = await batchGetGroupDetailWithRoles({
+          group_ids: groupIds.map((id) => String(id)),
+        });
 
         const orgRoleSourceMap = groupDetails.reduce<Record<string, string>>((acc, detail) => {
           [...(detail.own_role_ids || []), ...(detail.inherited_role_ids || [])].forEach((roleId) => {
@@ -142,7 +159,7 @@ export function useUserModalData(): UseUserModalDataReturn {
         return [];
       }
     },
-    [getGroupDetailWithRoles, fetchRoleInfoWithOrgRoles]
+    [batchGetGroupDetailWithRoles, fetchRoleInfoWithOrgRoles]
   );
 
   const fetchUserDetail = useCallback(
@@ -164,8 +181,13 @@ export function useUserModalData(): UseUserModalDataReturn {
           setSelectedRoles(allRoles);
           setIsSuperuser(userDetail?.is_superuser || false);
 
-          formRef.current?.setFieldsValue(buildFormValuesFromUserDetail(userDetail, allRoles, userGroupIds));
+          const formValues = buildFormValuesFromUserDetail(userDetail, allRoles, userGroupIds);
+          formRef.current?.setFieldsValue(formValues);
           setGroupRules(buildGroupRulesFromUserDetail(userDetail));
+
+          // EE 增强判断：将 email / phone 初始化为敏感字段状态，供 enterprise hook 决定 plain / overwrite 行为。
+          initField('email', formValues.email);
+          initField('phone', formValues.phone);
         }
       } catch {
         message.error(t('common.fetchFailed'));
@@ -173,7 +195,7 @@ export function useUserModalData(): UseUserModalDataReturn {
         setLoading(false);
       }
     },
-    [clientData, getUserDetail, fetchOrganizationRoleIds, t]
+    [clientData, getUserDetail, fetchOrganizationRoleIds, initField, t]
   );
 
   const showModal = useCallback(
@@ -226,6 +248,11 @@ export function useUserModalData(): UseUserModalDataReturn {
   const handleConfirm = useCallback(
     async (onSuccess: () => void) => {
       try {
+        if (isAnyFieldEditing()) {
+          message.error(t('system.user.form.pendingSensitiveEdit'));
+          return;
+        }
+
         setIsSubmitting(true);
         const formData = await formRef.current?.validateFields();
 
@@ -244,7 +271,7 @@ export function useUserModalData(): UseUserModalDataReturn {
           return;
         }
 
-        const payload = buildUserPayload(
+        let payload = buildUserPayload(
           {
             ...formData,
             groups: selectedGroups,
@@ -255,6 +282,11 @@ export function useUserModalData(): UseUserModalDataReturn {
           groupRules,
           isSuperuser
         );
+
+        if (type === 'edit') {
+          // EE 增强判断：编辑态对敏感字段做 payload 裁剪，避免 overwrite 模式下未确认的新值误覆盖原值。
+          payload = cleanPayload(payload, ['email', 'phone']);
+        }
 
         if (type === 'add') {
           await addUser(payload);
@@ -277,7 +309,20 @@ export function useUserModalData(): UseUserModalDataReturn {
         setIsSubmitting(false);
       }
     },
-    [personalRoleIds, organizationRoleIds, groupRules, isSuperuser, type, addUser, editUser, currentUserId, selectedGroups, selectedRoles, t]
+    [
+      addUser,
+      cleanPayload,
+      currentUserId,
+      editUser,
+      groupRules,
+      isAnyFieldEditing,
+      isSuperuser,
+      personalRoleIds,
+      selectedGroups,
+      selectedRoles,
+      t,
+      type,
+    ]
   );
 
   const handleRoleChange = useCallback(
@@ -360,5 +405,6 @@ export function useUserModalData(): UseUserModalDataReturn {
     handleConfirm,
     handleGroupChange,
     handleChangeRule,
+    sensitiveBehavior,
   };
 }

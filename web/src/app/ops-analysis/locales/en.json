@@ -1,7 +1,8 @@
 {
   "common": {
     "total": "Total",
-    "items": "items"
+    "items": "items",
+    "loading": "Loading"
   },
   "topology": {
     "nodeConfig": {
@@ -26,7 +27,7 @@
       "textPosition": "Text Position",
       "close": "Close",
       "rectangle": "Rectangle",
-      "unit": "Unit",
+    "unit": "Display Unit",
       "thresholdWhenValueGte": "When value ≥",
       "default": "Default",
       "selectDataFields": "Select data fields to display",
@@ -60,7 +61,12 @@
       "uploadedImage": "Uploaded Image",
       "confirm": "Confirm",
       "noColor": "No Color",
-      "backgroundColor": "Background Color"
+      "backgroundColor": "Background Color",
+      "displayField": "Display Field",
+      "valueField": "Value Field",
+      "selectDisplayField": "Please select a display field",
+      "selectValueField": "Please select a value field",
+      "noAvailableFields": "No available fields are configured for this data source"
     },
     "singleValueNodeDefault": "Single Value Node",
     "bringToBack": "Bring to Back",
@@ -206,6 +212,7 @@
     "singleValue": "Single Value",
     "operationFailed": "Operation failed",
     "table": "Table",
+    "topN": "Top N",
     "responseFieldSchemaConfig": "API Field Definition",
     "schemaOptionalAutoGenTip": "This setting is optional. If not configured, default columns are auto-generated from returned fields on first use.",
     "addField": "Add Field",
@@ -230,9 +237,10 @@
     "lineColor": "Line Color",
     "pageSize": "Page Size",
     "selectDataSource": "Please select data source",
-    "dataFetchFailed": "Data fetch failed",
+    "dataFetchFailed": "Data query failed",
     "inputName": "Please enter widget name",
     "paramSettings": "Parameter Settings",
+    "queryParams": "Query Parameters",
     "noParamSettings": "No configurable parameters",
     "barColor": "Bar Color",
     "selectInstance": "Please select instance",
@@ -274,10 +282,11 @@
     "atLeastOneVisibleColumn": "Please keep at least one visible column",
     "invalidConfiguredFieldsTip": "Some configured fields are not in the current available field set and may be unavailable: {{fields}}",
     "columnVisible": "Visible",
-    "noSchemaFields": "No available fields. Please configure table fields in the data source first",
+    "noSchemaFields": "No available fields. Please configure table fields first",
     "noFilterFields": "No search fields configured",
     "string": "String",
     "unifiedFilterBinding": "Unified Filter",
+    "unifiedFilterLinkage": "Unified Filter Linkage",
     "noUnifiedFilters": "No unified filters configured",
     "bindingReasonNoParam": "Component has no such parameter",
     "bindingReasonTypeMismatch": "Parameter type mismatch",
@@ -287,7 +296,7 @@
     "bindingInvalidTypeMismatch": "Parameter type mismatch",
     "bindingInvalidUnknown": "Unknown reason",
     "unifiedFilterConfig": "Unified Filter Configuration",
-    "configFilter": "Filter Configure",
+    "configUnifiedFilterFields": "Configure unified filter fields",
     "filterName": "Display Name",
     "filterKey": "Parameter Key",
     "defaultValue": "Default Value",
@@ -315,6 +324,12 @@
     "filterDisabled": "Disabled",
     "filterDisabledTip": "This filter is disabled in the unified filter configuration",
     "namespaceNotSupported": "This widget is not associated with the selected namespace",
+    "comparePreviousPeriod": "Compare with previous period",
+    "compareLabel": "Period compare",
+    "comparePreviousPeriodTip": "When enabled, data from the previous period of equal duration will be compared and the percentage change displayed.",
+    "comparePreviousShortLabel": "vs prev period",
+    "compareUnavailableTip": "This data source has no recognizable time range parameter, so period comparison cannot be enabled.",
+    "displaySettings": "Display Settings",
     "exportPdf": "Export PDF",
     "exportPdfSuccess": "Export success",
     "exportPdfFailed": "Export failed"

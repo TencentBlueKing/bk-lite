@@ -73,6 +73,7 @@ from apps.opspilot.metis.llm.tools.kubernetes.resources import (
     list_kubernetes_nodes,
     list_kubernetes_pods,
     list_kubernetes_services,
+    search_workload_across_namespaces,
 )
 from apps.opspilot.metis.llm.tools.kubernetes.tracing import (
     analyze_pod_restart_pattern,
@@ -82,7 +83,7 @@ from apps.opspilot.metis.llm.tools.kubernetes.tracing import (
 )
 
 # 工具集构造参数元数据
-from apps.opspilot.metis.llm.tools.kubernetes.utils import format_bytes, parse_resource_quantity, prepare_context
+from apps.opspilot.metis.llm.tools.kubernetes.utils import format_bytes, parse_resource_quantity, prepare_context, get_current_cluster_name
 
 CONSTRUCTOR_PARAMS = [
     {
@@ -107,8 +108,8 @@ __all__ = [
     "get_kubernetes_resource_yaml",
     "get_kubernetes_pod_logs",
     "get_kubernetes_previous_pod_logs",
-    # 故障诊断和监控工具
-    "get_failed_kubernetes_pods",
+    "search_workload_across_namespaces",
+    # 故障诊断和监控工具    "get_failed_kubernetes_pods",
     "get_pending_kubernetes_pods",
     "get_high_restart_kubernetes_pods",
     "get_kubernetes_node_capacity",
@@ -171,3 +172,103 @@ __all__ = [
     "format_bytes",
     "parse_resource_quantity",
 ]
+
+
+# ---------------------------------------------------------------------------
+# 执行后验证元数据（附加到操作类工具）
+# ---------------------------------------------------------------------------
+
+_VERIFICATION_TOOLS = [
+    (
+        restart_pod,
+        {
+            "verify_tool": "list_kubernetes_pods",
+            "args_mapping": {"namespace": "namespace"},
+            "delay_seconds": 5.0,
+            "description": "验证 Pod 重启后状态是否恢复为 Running",
+        },
+    ),
+    (
+        scale_deployment,
+        {
+            "verify_tool": "list_kubernetes_deployments",
+            "args_mapping": {"namespace": "namespace"},
+            "delay_seconds": 5.0,
+            "description": "验证 Deployment 副本数是否已调整到目标值",
+        },
+    ),
+    (
+        delete_kubernetes_resource,
+        {
+            "verify_tool": "kubectl_get_resources",
+            "args_mapping": {"namespace": "namespace"},
+            "delay_seconds": 3.0,
+            "description": "验证资源是否已被成功删除",
+        },
+    ),
+    (
+        rollback_deployment,
+        {
+            "verify_tool": "list_kubernetes_deployments",
+            "args_mapping": {"namespace": "namespace"},
+            "delay_seconds": 5.0,
+            "description": "验证 Deployment 是否已成功回滚到指定版本",
+        },
+    ),
+]
+
+for _tool_obj, _verify_spec in _VERIFICATION_TOOLS:
+    if not hasattr(_tool_obj, "metadata") or _tool_obj.metadata is None:
+        _tool_obj.metadata = {}
+    _tool_obj.metadata["verification"] = _verify_spec
+
+
+# ---------------------------------------------------------------------------
+# 操作回滚元数据（附加到操作类工具）
+# ---------------------------------------------------------------------------
+
+_ROLLBACK_TOOLS = [
+    (
+        scale_deployment,
+        {
+            "snapshot_tool": "list_kubernetes_deployments",
+            "snapshot_args_mapping": {"namespace": "namespace"},
+            "rollback_tool": "scale_deployment",
+            "rollback_args_mapping": {"deployment_name": "deployment_name", "namespace": "namespace"},
+            "rollback_snapshot_args": {},
+            "strategy": "prompt",
+            "description": "回滚 Deployment 副本数到操作前的值",
+        },
+    ),
+    (
+        rollback_deployment,
+        {
+            "snapshot_tool": "get_deployment_revision_history",
+            "snapshot_args_mapping": {"deployment_name": "deployment_name", "namespace": "namespace"},
+            "rollback_tool": "rollback_deployment",
+            "rollback_args_mapping": {"deployment_name": "deployment_name", "namespace": "namespace"},
+            "rollback_snapshot_args": {},
+            "strategy": "prompt",
+            "description": "回滚操作可通过再次回滚到之前的 revision 来撤销",
+        },
+    ),
+    (
+        restart_pod,
+        {
+            "strategy": "none",
+            "description": "Pod 重启由控制器重建，不可回滚",
+        },
+    ),
+    (
+        delete_kubernetes_resource,
+        {
+            "strategy": "none",
+            "description": "资源删除不可自动回滚，需手动重新创建",
+        },
+    ),
+]
+
+for _tool_obj, _rb_spec in _ROLLBACK_TOOLS:
+    if not hasattr(_tool_obj, "metadata") or _tool_obj.metadata is None:
+        _tool_obj.metadata = {}
+    _tool_obj.metadata["rollback"] = _rb_spec

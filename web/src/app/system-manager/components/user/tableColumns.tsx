@@ -3,15 +3,17 @@ import { Button, Popconfirm, Dropdown, Menu, Tooltip } from 'antd';
 import { ColumnsType } from 'antd/es/table';
 import PermissionWrapper from '@/components/permission';
 import Icon from '@/components/icon';
-import { UserDataType } from '@/app/system-manager/types/user';
+import type { Key } from 'react';
+import type { ChangeUserStatusAction, UserDataType } from '@/app/system-manager/types/user';
 import { getRandomColor } from '@/app/system-manager/utils';
 
 interface TableColumnsProps {
   t: (key: string) => string;
   appIconMap: Map<string, string>;
-  onEditUser: (userId: string) => void;
-  onOpenPasswordModal: (userId: string) => void;
-  onDeleteUser: (userId: string) => void;
+  onEditUser: (userId: Key) => void;
+  onOpenPasswordModal: (userId: Key) => void;
+  onDeleteUser: (userId: Key) => void;
+  onChangeUserStatus: (userId: Key, action: ChangeUserStatusAction) => void;
   convertToLocalizedTime: (isoString: string, format?: string) => string;
 }
 
@@ -21,6 +23,7 @@ export const createUserTableColumns = ({
   onEditUser,
   onOpenPasswordModal,
   onDeleteUser,
+  onChangeUserStatus,
   convertToLocalizedTime,
 }: TableColumnsProps): ColumnsType<UserDataType> => {
   return [
@@ -52,9 +55,49 @@ export const createUserTableColumns = ({
       width: 100,
     },
     {
+      title: t('system.user.table.status') || 'Status',
+      dataIndex: 'status',
+      width: 120,
+      render: (status?: UserDataType['status']) => {
+        let dotColor = 'var(--color-text-4)';
+        let text: string = status || '-';
+
+        switch (status) {
+          case 'normal':
+            dotColor = 'var(--color-success)';
+            text = t('system.user.status.normal') || 'Normal';
+            break;
+          case 'disabled':
+            dotColor = 'var(--color-text-4)';
+            text = t('system.user.status.disabled') || 'Disabled';
+            break;
+          case 'locked':
+            dotColor = 'var(--color-fail)';
+            text = t('system.user.status.locked') || 'Locked';
+            break;
+          case 'password_expired':
+            dotColor = '#FF9C01';
+            text = t('system.user.status.password_expired') || 'Password Expired';
+            break;
+        }
+
+        return (
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full flex-shrink-0 relative top-[0.5px]" style={{ backgroundColor: dotColor }}></span>
+            <span className="text-[13px] leading-none" style={{ color: 'var(--color-text-2)' }}>{text}</span>
+          </div>
+        );
+      },
+    },
+    {
       title: t('system.user.table.email'),
       dataIndex: 'email',
       width: 185,
+    },
+    {
+      title: t('system.user.table.phone'),
+      dataIndex: 'phone',
+      width: 140,
     },
     {
       title: t('system.user.table.lastLogin'),
@@ -168,32 +211,70 @@ export const createUserTableColumns = ({
     {
       title: t('common.actions'),
       dataIndex: 'key',
-      width: 160,
+      width: 280,
       fixed: 'right',
-      render: (key: string) => (
-        <>
-          <PermissionWrapper requiredPermissions={['Edit User']}>
-            <Button type="link" className="mr-[8px]" onClick={() => onEditUser(key)}>
-              {t('common.edit')}
-            </Button>
-          </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit User']}>
-            <Button type="link" className="mr-[8px]" onClick={() => onOpenPasswordModal(key)}>
-              {t('system.common.password')}
-            </Button>
-          </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Delete User']}>
-            <Popconfirm
-              title={t('common.delConfirm')}
-              okText={t('common.confirm')}
-              cancelText={t('common.cancel')}
-              onConfirm={() => onDeleteUser(key)}
-            >
-              <Button type="link">{t('common.delete')}</Button>
-            </Popconfirm>
-          </PermissionWrapper>
-        </>
-      ),
+      render: (key: Key, record: UserDataType) => {
+        const { status } = record;
+        return (
+          <>
+            <PermissionWrapper requiredPermissions={['Edit User']}>
+              <Button type="link" className="mr-[8px] p-0" onClick={() => onEditUser(key)}>
+                {t('common.edit')}
+              </Button>
+            </PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['Edit User']}>
+              <Button type="link" className="mr-[8px] p-0" onClick={() => onOpenPasswordModal(key)}>
+                {t('system.common.password')}
+              </Button>
+            </PermissionWrapper>
+            {status === 'locked' && (
+              <PermissionWrapper requiredPermissions={['Edit User']}>
+                <Popconfirm
+                  title={t('system.user.status.unlockConfirm') || t('common.operateConfirm')}
+                  okText={t('common.confirm')}
+                  cancelText={t('common.cancel')}
+                  onConfirm={() => onChangeUserStatus(key, 'unlock')}
+                >
+                  <Button type="link" className="mr-[8px] p-0">{t('system.user.status.unlock') || 'Unlock'}</Button>
+                </Popconfirm>
+              </PermissionWrapper>
+            )}
+            {status === 'disabled' ? (
+              <PermissionWrapper requiredPermissions={['Edit User']}>
+                <Popconfirm
+                  title={t('system.user.status.enableConfirm') || t('common.operateConfirm')}
+                  okText={t('common.confirm')}
+                  cancelText={t('common.cancel')}
+                  onConfirm={() => onChangeUserStatus(key, 'enable')}
+                >
+                  <Button type="link" className="mr-[8px] p-0">{t('common.enable') || 'Enable'}</Button>
+                </Popconfirm>
+              </PermissionWrapper>
+            ) : (
+              <PermissionWrapper requiredPermissions={['Edit User']}>
+                <Popconfirm
+                  title={t('system.user.status.disableConfirm') || t('common.operateConfirm')}
+                  okText={t('common.confirm')}
+                  cancelText={t('common.cancel')}
+                  onConfirm={() => onChangeUserStatus(key, 'disable')}
+                >
+                  <Button type="link" className="mr-[8px] p-0">{t('common.disable') || 'Disable'}</Button>
+                </Popconfirm>
+              </PermissionWrapper>
+            )}
+            <PermissionWrapper requiredPermissions={['Delete User']}>
+              <Popconfirm
+                title={t('common.delConfirm')}
+                okText={t('common.confirm')}
+                cancelText={t('common.cancel')}
+                onConfirm={() => onDeleteUser(key)}
+              >
+                <Button type="link" className="p-0">{t('common.delete')}</Button>
+              </Popconfirm>
+            </PermissionWrapper>
+          </>
+        );
+      },
     },
   ];
 };

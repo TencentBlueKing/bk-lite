@@ -3,23 +3,37 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import Optional
 
-import nats_client
 from django.db.models import Count, Q
-from apps.core.utils.time_util import format_timestamp
+from rest_framework import serializers
 
-from apps.monitor.models import MonitorObject, Metric, MonitorInstance, MonitorAlert
-from apps.monitor.serializers.monitor_object import MonitorObjectSerializer
-from apps.monitor.serializers.monitor_metrics import MetricSerializer
-from apps.monitor.services.metrics import Metrics
-from apps.core.utils.permission_utils import (
-    check_instance_permission,
-    get_permission_rules,
-    get_permissions_rules,
-    permission_filter,
-)
-from apps.monitor.constants.permission import PermissionConstants
-from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+import nats_client
 from apps.core.logger import nats_logger as logger
+from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.permission_utils import check_instance_permission, get_permission_rules, get_permissions_rules, permission_filter
+from apps.core.utils.time_util import format_timestamp
+from apps.monitor.constants.language import LanguageConstants
+from apps.monitor.constants.permission import PermissionConstants
+from apps.monitor.models import (
+    CollectConfig,
+    Metric,
+    MetricGroup,
+    MonitorAlert,
+    MonitorAlertMetricSnapshot,
+    MonitorEvent,
+    MonitorInstance,
+    MonitorObject,
+    MonitorObjectType,
+    MonitorPlugin,
+    MonitorPolicy,
+    PolicyInstanceBaseline,
+)
+from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, MetricSerializer
+from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
+from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
+from apps.monitor.serializers.plugin import MonitorPluginSerializer
+from apps.monitor.services.metrics import Metrics
+from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
+from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
 def _normalize_monitor_query_data(query_data: dict) -> dict:
@@ -85,6 +99,14 @@ def _normalize_filter_values(value, field_name: str):
     raise ValueError(f"{field_name} 必须是字符串或列表")
 
 
+def _build_vm_query_failure_result(resp: dict, default_message: str):
+    error_message = resp.get("error") or resp.get("message") or default_message
+    error_type = resp.get("errorType")
+    if error_type:
+        error_message = f"{error_type}: {error_message}"
+    return {"result": False, "data": [], "message": error_message}
+
+
 def _normalize_step(step):
     if step in (None, ""):
         return "5m"
@@ -124,6 +146,161 @@ def _paginate_items(items: list, page, page_size):
         "page_size": page_size,
         "items": items[start:end],
     }
+
+
+def _normalize_nats_create_payload(data: dict) -> dict:
+    if not isinstance(data, dict):
+        raise ValueError("data 必须是字典")
+    return dict(data)
+
+
+def _resolve_nats_actor(user_info: Optional[dict]) -> tuple[str, str]:
+    if not isinstance(user_info, dict):
+        return "api", "domain.com"
+
+    user = _normalize_permission_user(user_info.get("user"))
+    operator = getattr(user, "username", None) or "api"
+    domain = user_info.get("domain") or getattr(user, "domain", None) or "domain.com"
+    return operator, domain
+
+
+def _ensure_maintainer_fields(data: dict, operator: str = "api", domain: str = "domain.com") -> dict:
+    data.setdefault("created_by", operator)
+    data.setdefault("updated_by", operator)
+    data.setdefault("domain", domain)
+    data.setdefault("updated_by_domain", domain)
+    return data
+
+
+def _flatten_error_message(detail, field_name: str = "") -> list[str]:
+    if isinstance(detail, dict):
+        items = []
+        for key, value in detail.items():
+            next_field = f"{field_name}.{key}" if field_name else str(key)
+            items.extend(_flatten_error_message(value, next_field))
+        return items
+    if isinstance(detail, list):
+        items = []
+        for value in detail:
+            items.extend(_flatten_error_message(value, field_name))
+        return items
+    message = str(detail)
+    return [f"{field_name}: {message}" if field_name else message]
+
+
+def _build_validation_message(exc: Exception) -> str:
+    detail = getattr(exc, "detail", exc)
+    messages = _flatten_error_message(detail)
+    return "; ".join(dict.fromkeys(messages)) if messages else str(exc)
+
+
+def _create_with_serializer(serializer_class, data: dict, operator: str = "api", domain: str = "domain.com"):
+    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator, domain=domain)
+    serializer = serializer_class(data=payload)
+    serializer.is_valid(raise_exception=True)
+    instance = serializer.save()
+    return instance, serializer.data
+
+
+def _create_monitor_object_payload(data: dict, operator: str = "api", domain: str = "domain.com"):
+    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator, domain=domain)
+    children = payload.pop("children", [])
+
+    payload["instance_id_keys"] = resolve_monitor_object_instance_id_keys(
+        payload.get("instance_id_keys"),
+        level=payload.get("level", "base"),
+        object_name=payload.get("name", ""),
+    )
+    if not payload.get("default_metric"):
+        payload["default_metric"] = f"any({{instance_type='{payload.get('name', '')}'}}) by (instance_id)"
+
+    serializer = MonitorObjectSerializer(data=payload)
+    serializer.is_valid(raise_exception=True)
+    parent_obj = serializer.save()
+
+    child_objects = []
+    for child in children:
+        if child.get("id") and child.get("name"):
+            child_objects.append(
+                MonitorObject(
+                    name=child["id"],
+                    display_name=child["name"],
+                    icon=payload.get("icon", ""),
+                    type_id=payload.get("type"),
+                    description="",
+                    level="derivative",
+                    parent=parent_obj,
+                    is_visible=True,
+                    instance_id_keys=resolve_monitor_object_instance_id_keys(
+                        [],
+                        level="derivative",
+                        object_name=child["id"],
+                    ),
+                    default_metric=f"any({{instance_type='{child['id']}'}}) by (instance_id, {child['id']})",
+                    created_by=payload["created_by"],
+                    updated_by=payload["updated_by"],
+                    domain=payload["domain"],
+                    updated_by_domain=payload["updated_by_domain"],
+                )
+            )
+    if child_objects:
+        MonitorObject.objects.bulk_create(child_objects)
+
+    return parent_obj, serializer.data
+
+
+def _create_metric_group_payload(data: dict, operator: str = "api", domain: str = "domain.com"):
+    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator, domain=domain)
+    payload.setdefault("monitor_plugin", None)
+    serializer = MetricGroupSerializer(data=payload)
+    serializer.is_valid(raise_exception=True)
+    instance = serializer.save()
+    return instance, serializer.data
+
+
+def _create_metric_payload(data: dict, operator: str = "api", domain: str = "domain.com"):
+    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator, domain=domain)
+    payload.setdefault("monitor_plugin", None)
+    serializer = MetricSerializer(data=payload)
+    serializer.is_valid(raise_exception=True)
+    instance = serializer.save()
+    return instance, serializer.data
+
+
+def _get_monitor_policy_viewset():
+    from apps.monitor.views.monitor_policy import MonitorPolicyViewSet
+
+    return MonitorPolicyViewSet()
+
+
+def _create_monitor_policy_payload(data: dict, operator: str = "api", domain: str = "domain.com"):
+    payload = _ensure_maintainer_fields(_normalize_nats_create_payload(data), operator=operator, domain=domain)
+    if not payload.get("schedule"):
+        raise ValueError("schedule 不能为空")
+
+    serializer = MonitorPolicySerializer(data=payload)
+    serializer.is_valid(raise_exception=True)
+    policy = serializer.save()
+
+    view = _get_monitor_policy_viewset()
+    view.update_or_create_task(policy.id, payload.get("schedule"))
+    view.update_policy_organizations(policy.id, payload.get("organizations", []))
+    if view.is_no_data_alert_enabled(policy):
+        view.update_policy_baselines(policy.id, policy.enable_alerts)
+
+    return policy, MonitorPolicySerializer(policy).data
+
+
+def _execute_nats_create(create_func, data: dict, user_info: Optional[dict] = None):
+    try:
+        operator, domain = _resolve_nats_actor(user_info)
+        _, result_data = create_func(data, operator=operator, domain=domain)
+        return {"result": True, "data": result_data, "message": ""}
+    except (serializers.ValidationError, ValueError) as exc:
+        return {"result": False, "data": [], "message": _build_validation_message(exc)}
+    except Exception as exc:
+        logger.exception("monitor NATS create failed, error=%s", exc)
+        return {"result": False, "data": [], "message": str(exc)}
 
 
 def _build_monitor_alert_segment(alert: MonitorAlert) -> dict:
@@ -250,9 +427,11 @@ def _get_authorized_monitor_instances(user_info: dict, monitor_obj_id: Optional[
     if error:
         return {}, error
 
-    instance_queryset = MonitorInstance.objects.filter(is_deleted=False, is_active=True).select_related(
-        "monitor_object"
-    ).prefetch_related("monitorinstanceorganization_set")
+    instance_queryset = (
+        MonitorInstance.objects.filter(is_deleted=False, is_active=True)
+        .select_related("monitor_object")
+        .prefetch_related("monitorinstanceorganization_set")
+    )
     if monitor_obj_id:
         instance_queryset = instance_queryset.filter(monitor_object_id=monitor_obj_id)
 
@@ -287,6 +466,54 @@ def _get_instance_permission_map(permission) -> dict:
     if not isinstance(instance_items, list):
         return {}
     return {item.get("id"): item.get("permission", []) for item in instance_items if isinstance(item, dict) and item.get("id")}
+
+
+@nats_client.register
+def create_monitor_object_type(data: dict, *args, **kwargs):
+    return _execute_nats_create(
+        lambda payload, operator="api", domain="domain.com": _create_with_serializer(
+            MonitorObjectTypeSerializer,
+            payload,
+            operator=operator,
+            domain=domain,
+        ),
+        data,
+        user_info=kwargs.get("user_info"),
+    )
+
+
+@nats_client.register
+def create_monitor_object(data: dict, *args, **kwargs):
+    return _execute_nats_create(_create_monitor_object_payload, data, user_info=kwargs.get("user_info"))
+
+
+@nats_client.register
+def create_monitor_plugin(data: dict, *args, **kwargs):
+    return _execute_nats_create(
+        lambda payload, operator="api", domain="domain.com": _create_with_serializer(
+            MonitorPluginSerializer,
+            payload,
+            operator=operator,
+            domain=domain,
+        ),
+        data,
+        user_info=kwargs.get("user_info"),
+    )
+
+
+@nats_client.register
+def create_metric_group(data: dict, *args, **kwargs):
+    return _execute_nats_create(_create_metric_group_payload, data, user_info=kwargs.get("user_info"))
+
+
+@nats_client.register
+def create_metric(data: dict, *args, **kwargs):
+    return _execute_nats_create(_create_metric_payload, data, user_info=kwargs.get("user_info"))
+
+
+@nats_client.register
+def create_monitor_policy(data: dict, *args, **kwargs):
+    return _execute_nats_create(_create_monitor_policy_payload, data, user_info=kwargs.get("user_info"))
 
 
 @nats_client.register
@@ -325,7 +552,15 @@ def monitor_metrics(monitor_obj_id: str, *args, **kwargs):
     metrics = Metric.objects.filter(monitor_object=monitor_obj).order_by("metric_group__sort_order", "sort_order")
 
     serializer = MetricSerializer(metrics, many=True)
-    return {"result": True, "data": serializer.data, "message": ""}
+    results = serializer.data
+    user_info = kwargs.get("user_info", {}) or {}
+    locale = user_info.get("locale", "en")
+    lan = LanguageLoader(app=LanguageConstants.APP, default_lang=locale)
+    for result in results:
+        lan_key = f"{LanguageConstants.MONITOR_OBJECT_METRIC}.{monitor_obj.name}.{result['name']}"
+        result["display_name"] = lan.get(f"{lan_key}.name") or result.get("display_name") or result["name"]
+        result["display_description"] = lan.get(f"{lan_key}.desc") or result.get("description")
+    return {"result": True, "data": results, "message": ""}
 
 
 @nats_client.register
@@ -670,11 +905,7 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
 @nats_client.register
 def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwargs):
     if query_data is None:
-        query_data = {
-            key: value
-            for key, value in kwargs.items()
-            if key not in {"user_info", "_timeout"}
-        }
+        query_data = {key: value for key, value in kwargs.items() if key not in {"user_info", "_timeout"}}
     query_data = _normalize_monitor_query_data(query_data)
     monitor_obj_id = query_data.get("monitor_obj_id")
     if monitor_obj_id not in (None, ""):
@@ -711,11 +942,15 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
         permission, error = _get_monitor_instance_permission(monitor_obj_id, user_info)
         if error:
             return error
-        authorized_qs = _get_authorized_instance_queryset(permission).filter(
-            monitor_object_id=monitor_obj_id,
-            is_deleted=False,
-            is_active=True,
-        ).select_related("monitor_object")
+        authorized_qs = (
+            _get_authorized_instance_queryset(permission)
+            .filter(
+                monitor_object_id=monitor_obj_id,
+                is_deleted=False,
+                is_active=True,
+            )
+            .select_related("monitor_object")
+        )
         authorized_instances = {str(instance.id): instance for instance in authorized_qs}
     else:
         authorized_instances, error = _get_authorized_monitor_instances(user_info)
@@ -752,8 +987,8 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
         instance = authorized_instances.get(str(alert.monitor_instance_id))
         item["monitor_obj_id"] = str(instance.monitor_object_id) if instance else None
         item["monitor_object_name"] = (
-            instance.monitor_object.display_name or instance.monitor_object.name
-        ) if instance and instance.monitor_object else None
+            (instance.monitor_object.display_name or instance.monitor_object.name) if instance and instance.monitor_object else None
+        )
         item["end_event_time"] = None
         items.append(item)
     return {
@@ -772,7 +1007,7 @@ def mm_query_range(query: str, time_range: list, step="5m", *args, **kwargs):
     start_time = format_timestamp(start_time)
     end_time = format_timestamp(end_time)
     resp = VictoriaMetricsAPI().query_range(query, start_time, end_time, step)
-    if resp["status"] == "success":
+    if resp.get("status") == "success":
         _result = resp["data"]["result"]
         if _result:
             values = _result[0].get("values", [])
@@ -782,15 +1017,14 @@ def mm_query_range(query: str, time_range: list, step="5m", *args, **kwargs):
         data = []
         for _value in values:
             data.append({"name": _value[0], "value": _value[1]})
-    else:
-        data = []
-    return {"result": True, "data": data, "message": ""}
+        return {"result": True, "data": data, "message": ""}
+    return _build_vm_query_failure_result(resp, "查询时间范围指标数据失败")
 
 
 @nats_client.register
 def mm_query(query: str, step="5m", *args, **kwargs):
     resp = VictoriaMetricsAPI().query(query, step)
-    if resp["status"] == "success":
+    if resp.get("status") == "success":
         _result = resp["data"]["result"]
         if _result:
             values = _result[0].get("value", [])
@@ -800,6 +1034,125 @@ def mm_query(query: str, step="5m", *args, **kwargs):
         data = []
         if values:
             data.append({"name": values[0], "value": values[-1]})
-    else:
-        data = []
-    return {"result": True, "data": data, "message": ""}
+        return {"result": True, "data": data, "message": ""}
+    return _build_vm_query_failure_result(resp, "查询单个指标数据失败")
+
+
+@nats_client.register
+def get_monitor_statistics(user_info=None, **kwargs):
+    """监控中心总览统计
+
+    返回资源/能力/告警三大维度全部计数指标，供 operation_analysis
+    内置仪表盘以 single 值卡片渲染（按 selectedFields 取字段）。
+
+    Args:
+        user_info: { team: int, is_superuser: bool, ... } 由 operation_analysis 注入
+
+    Returns:
+        { "result": True, "data": { 各项计数 ... }, "message": "" }
+    """
+    user_info = user_info or {}
+    team = user_info.get("team")
+    is_superuser = bool(user_info.get("is_superuser"))
+
+    def _scope_instance(qs):
+        if is_superuser or not team:
+            return qs
+        return qs.filter(monitorinstanceorganization__organization=team).distinct()
+
+    def _scope_policy(qs):
+        if is_superuser or not team:
+            return qs
+        return qs.filter(policyorganization__organization=team).distinct()
+
+    # ============ 资源概览 ============
+    monitor_object_total = MonitorObject.objects.count()
+    monitor_object_visible = MonitorObject.objects.filter(is_visible=True).count()
+    monitor_object_category = MonitorObjectType.objects.count()
+
+    instance_qs = _scope_instance(MonitorInstance.objects.filter(is_deleted=False))
+    monitor_instance_total = instance_qs.count()
+    monitor_instance_active = instance_qs.filter(is_active=True).count()
+    monitor_instance_inactive = instance_qs.filter(is_active=False).count()
+
+    # ============ 能力概览 ============
+    plugin_total = MonitorPlugin.objects.count()
+    plugin_builtin = MonitorPlugin.objects.filter(is_pre=True).count()
+    plugin_custom = MonitorPlugin.objects.filter(is_pre=False).count()
+    metric_total = Metric.objects.count()
+    metric_group_total = MetricGroup.objects.count()
+    collect_config_total = (
+        CollectConfig.objects.filter(monitor_instance_id__in=instance_qs.values_list("id", flat=True)).count()
+        if not (is_superuser or not team)
+        else CollectConfig.objects.count()
+    )
+
+    # ============ 告警概览 ============
+    policy_qs = _scope_policy(MonitorPolicy.objects.all())
+    policy_total = policy_qs.count()
+    policy_enabled = policy_qs.filter(enable=True).count()
+    policy_disabled = policy_qs.filter(enable=False).count()
+    # 阈值策略：有 threshold 配置 / 无数据策略：no_data_level 非空
+    policy_threshold = policy_qs.exclude(threshold=[]).count()
+    policy_no_data = policy_qs.exclude(no_data_level="").count()
+
+    alert_qs = MonitorAlert.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)) if not is_superuser else MonitorAlert.objects.all()
+    alert_history = alert_qs.count()
+    alert_current = alert_qs.filter(status="new").count()
+    alert_recovered = alert_qs.filter(status="recovered").count()
+    alert_closed = alert_qs.filter(status="closed").count()
+
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    alert_today = alert_qs.filter(created_at__gte=today_start).count()
+
+    event_qs = MonitorEvent.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)) if not is_superuser else MonitorEvent.objects.all()
+    event_total = event_qs.count()
+    event_today = event_qs.filter(created_at__gte=today_start).count()
+
+    alert_snapshot_total = (
+        MonitorAlertMetricSnapshot.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)).count()
+        if not is_superuser
+        else MonitorAlertMetricSnapshot.objects.count()
+    )
+
+    no_data_baseline_total = (
+        PolicyInstanceBaseline.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)).count()
+        if not is_superuser
+        else PolicyInstanceBaseline.objects.count()
+    )
+
+    return {
+        "result": True,
+        "data": {
+            # 资源
+            "monitor_object_total": monitor_object_total,
+            "monitor_object_visible": monitor_object_visible,
+            "monitor_object_category": monitor_object_category,
+            "monitor_instance_total": monitor_instance_total,
+            "monitor_instance_active": monitor_instance_active,
+            "monitor_instance_inactive": monitor_instance_inactive,
+            # 能力
+            "plugin_total": plugin_total,
+            "plugin_builtin": plugin_builtin,
+            "plugin_custom": plugin_custom,
+            "metric_total": metric_total,
+            "metric_group_total": metric_group_total,
+            "collect_config_total": collect_config_total,
+            # 告警
+            "policy_total": policy_total,
+            "policy_enabled": policy_enabled,
+            "policy_disabled": policy_disabled,
+            "alert_current": alert_current,
+            "alert_history": alert_history,
+            "alert_today": alert_today,
+            "alert_recovered": alert_recovered,
+            "alert_closed": alert_closed,
+            "policy_threshold": policy_threshold,
+            "policy_no_data": policy_no_data,
+            "event_total": event_total,
+            "event_today": event_today,
+            "alert_snapshot_total": alert_snapshot_total,
+            "no_data_baseline_total": no_data_baseline_total,
+        },
+        "message": "",
+    }

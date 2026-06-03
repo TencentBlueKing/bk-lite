@@ -12,7 +12,7 @@
       "type": "input",
       "required": true,
       "editable": false,
-      "description": "用于访问接口的用户名",
+      "description": "用于连接 MySQL 数据库的用户名",
       "widget_props": {
         "placeholder": "用户名"
       },
@@ -29,7 +29,7 @@
       "type": "password",
       "required": true,
       "editable": false,
-      "description": "对应的登录密码",
+      "description": "用于连接 MySQL 数据库的密码",
       "widget_props": {
         "placeholder": "密码"
       },

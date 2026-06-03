@@ -119,3 +119,63 @@ export interface StatisticCardConfig {
   failedCount?: number;
   showFailed?: boolean;
 }
+
+export interface NodeMgmtSyncTask {
+  id: number;
+  name: string;
+  is_builtin: boolean;
+  auto_sync_enabled: boolean;
+  auto_collect_enabled: boolean;
+  sync_interval_minutes: number;
+  collect_interval_minutes: number;
+  last_sync_at: string | null;
+  last_collect_at: string | null;
+}
+
+export type NodeMgmtSyncConfig = NodeMgmtSyncTask;
+
+export type NodeMgmtSyncSummary = CollectTaskMessage;
+
+export interface NodeMgmtSyncItem {
+  id?: string | number;
+  inst_name?: string;
+  ip_addr?: string;
+  cloud_name?: string;
+  organization?: Array<number | string>;
+  _status?: string;
+  _error?: string;
+  [key: string]: any;
+}
+
+export interface NodeMgmtSyncDetailData {
+  add?: TaskData;
+  update?: TaskData;
+  delete?: TaskData;
+  relation?: TaskData;
+  raw_data?: TaskData;
+  todo?: Array<Record<string, any>>;
+  executed?: Array<Record<string, any>>;
+}
+
+export interface NodeMgmtSyncRun {
+  id: number | null;
+  task_id?: number | null;
+  run_type: string | null;
+  status: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  message: CollectTaskMessage;
+  summary: NodeMgmtSyncSummary;
+  detail: NodeMgmtSyncDetailData;
+  error_message: string;
+}
+
+export interface NodeMgmtSyncDisplayPayload {
+  task: NodeMgmtSyncTask;
+  display_source: string;
+  display_schema: string;
+  message: CollectTaskMessage;
+  summary: NodeMgmtSyncSummary;
+  detail: NodeMgmtSyncDetailData;
+  run: NodeMgmtSyncRun;
+}

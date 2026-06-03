@@ -1,0 +1,33 @@
+场景名称: 记忆读取节点测试 (Memory Read Node)
+
+描述:
+  验证记忆读取节点在工作流中的执行逻辑。
+  入口节点 → 记忆读取节点，节点从指定 MemorySpace 中检索最近的记忆条目，
+  将记忆内容拼接为 memory_context 注入输出，同时透传原始输入。
+
+前置条件:
+  - 数据库中存在一个 online 状态的 Bot
+  - 数据库中存在一个 MemorySpace，其下有若干 Memory 条目
+  - BotWorkFlow 包含两个节点: entry_node(openai) → memory_read_node(memory_read)
+  - memory_read_node 配置: memory_space_id 指向已有 MemorySpace, top_k=5
+
+节点配置:
+  memory_read_node:
+    type: memory_read
+    config:
+      memory_space_id: <MemorySpace.id>
+      top_k: 5
+      inputParams: "last_message"
+      outputParams: "last_message"
+
+测试用例:
+  1. 透传输入: 记忆读取节点输出的 last_message 与输入一致
+  2. 注入记忆上下文: 输出包含 memory_context 字段，内容为最近 top_k 条记忆的 Markdown 拼接
+  3. 记忆排序: memory_context 中记忆按 updated_at 降序排列
+  4. top_k 限制: 当记忆条目超过 top_k 时，仅返回最近 top_k 条
+  5. 空记忆空间: 当 MemorySpace 下无记忆条目时，输出不包含 memory_context 字段
+  6. 无 memory_space_id: 当配置中未指定 memory_space_id 时，仅透传输入
+  7. 记忆格式: 每条记忆格式为 "## {title}\n{content}"，条目间以双换行分隔
+
+关联模型: apps/opspilot/models/memory_mgmt.py (MemorySpace, Memory)
+关联节点: apps/opspilot/utils/chat_flow_utils/nodes/memory/memory_read.py

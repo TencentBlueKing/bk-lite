@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import { Spin, Empty } from 'antd';
-import { randomColorForLegend } from '@/app/log/utils/randomColorForChart';
 import { formatNumericValue } from '@/app/log/utils/common';
+import useChartColors from './docker/useChartColors';
 
 interface SankeyProps {
   rawData: any;
@@ -36,7 +36,8 @@ const Sankey: React.FC<SankeyProps> = ({
   const [isDataReady, setIsDataReady] = useState(false);
   const [chartInstance, setChartInstance] = useState<any>(null);
   const chartRef = useRef<any>(null);
-  const chartColors = randomColorForLegend();
+  const colors = useChartColors();
+  const chartColors = colors.series;
 
   const transformData = (rawData: any): SankeyData => {
     if (!Array.isArray(rawData) || rawData.length === 0) {
@@ -285,7 +286,7 @@ const Sankey: React.FC<SankeyProps> = ({
         label: {
           position: 'right',
           fontSize: 10,
-          color: '#333',
+          color: colors.textSecondary,
           formatter: function (params: any) {
             // 移除前缀显示原始名称
             return params.name.replace(/^(源_|协议_|目标_)/, '');

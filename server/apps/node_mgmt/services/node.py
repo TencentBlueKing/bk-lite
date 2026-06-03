@@ -24,10 +24,46 @@ from datetime import datetime, timedelta
 from apps.system_mgmt.models import User
 from apps.core.logger import node_logger as logger
 from apps.node_mgmt.services.sidecar import Sidecar
-from jinja2 import Template as JinjaTemplate
+from apps.rpc.system_mgmt import SystemMgmt
+from apps.core.utils.safe_template import build_sandboxed_env
 
 
 class NodeService:
+    @staticmethod
+    def _build_scoped_permission(permission_data):
+        user_obj = User(username=permission_data["username"], domain=permission_data["domain"])
+        include_children = permission_data.get("include_children", False)
+        current_team = permission_data.get("current_team")
+
+        if current_team in (None, ""):
+            return {}
+
+        try:
+            current_team = int(current_team)
+        except (TypeError, ValueError):
+            return {}
+
+        scope_result = SystemMgmt(is_local_client=True).get_authorized_groups_scoped(
+            {
+                "username": permission_data["username"],
+                "domain": permission_data["domain"],
+                "current_team": current_team,
+                "is_superuser": permission_data.get("is_superuser", False),
+            },
+            include_children=include_children,
+        )
+        authorized_groups = scope_result.get("data", []) if isinstance(scope_result, dict) else []
+        if not authorized_groups:
+            return {}
+
+        return get_permission_rules(
+            user_obj,
+            current_team,
+            "node_mgmt",
+            NodeConstants.MODULE,
+            include_children=include_children,
+        )
+
     @staticmethod
     def process_node_data(node_data):
         """处理节点数据列表，并补充每个节点的采集器名称和采集器配置名称"""
@@ -86,9 +122,9 @@ class NodeService:
                 if collector["status"] == 2 and collector_obj:  # status=2 表示失败
                     # 检查是否是需要忽略错误的采集器
                     if collector_obj.name in CollectorConstants.IGNORE_ERROR_COLLECTORS:
-                        # 检查错误信息是否匹配需要忽略的消息
+                        # 检查错误信息是否匹配需要忽略的消息（使用 contains 匹配，兼容动态路径）
                         verbose_msg = collector.get("verbose_message", "")
-                        if verbose_msg in CollectorConstants.IGNORE_ERROR_COLLECTORS_MESSAGES:
+                        if any(msg in verbose_msg for msg in CollectorConstants.IGNORE_ERROR_COLLECTORS_MESSAGES):
                             # 将状态从失败改为正常
                             collector["status"] = 0
                             collector["message"] = "Running"
@@ -278,7 +314,7 @@ class NodeService:
                     logger.info(f"Node {node.id} is a container node, appending add_config for {collector.name}")
 
             # 渲染模板
-            tpl = JinjaTemplate(config_template)
+            tpl = build_sandboxed_env().from_string(config_template)
             rendered_config = tpl.render(variables)
 
             # 创建配置
@@ -311,20 +347,13 @@ class NodeService:
         is_manual,
         is_container,
         permission_data={},
+        skip_permission=False,
     ):
         """获取节点列表"""
         if permission_data:
-            user_obj = User(username=permission_data["username"], domain=permission_data["domain"])
             from apps.core.utils.permission_utils import permission_filter
 
-            include_children = permission_data.get("include_children", False)
-            permission = get_permission_rules(
-                user_obj,
-                permission_data["current_team"],
-                "node_mgmt",
-                NodeConstants.MODULE,
-                include_children=include_children,
-            )
+            permission = NodeService._build_scoped_permission(permission_data)
             # 如果提供了权限信息，使用权限过滤
             qs = permission_filter(
                 Node,
@@ -332,9 +361,12 @@ class NodeService:
                 team_key="nodeorganization__organization__in",
                 id_key="id__in",
             )
-        else:
-            # 兼容原有调用方式
+        elif skip_permission or organization_ids:
+            # 系统级调用显式跳过权限检查，或通过 organization_ids 限定范围
             qs = Node.objects.all()
+        else:
+            # 无权限上下文且无组织限定时，拒绝返回数据（fail-closed）
+            qs = Node.objects.none()
 
         if cloud_region_id:
             qs = qs.filter(cloud_region_id=cloud_region_id)
@@ -395,17 +427,9 @@ class NodeService:
             return []
 
         if permission_data:
-            user_obj = User(username=permission_data["username"], domain=permission_data["domain"])
             from apps.core.utils.permission_utils import permission_filter
 
-            include_children = permission_data.get("include_children", False)
-            permission = get_permission_rules(
-                user_obj,
-                permission_data["current_team"],
-                "node_mgmt",
-                NodeConstants.MODULE,
-                include_children=include_children,
-            )
+            permission = NodeService._build_scoped_permission(permission_data)
             qs = permission_filter(
                 Node,
                 permission,
@@ -419,6 +443,7 @@ class NodeService:
         return [
             {
                 "id": node.id,
+                "node_type": node.node_type,
                 "organization_ids": [rel.organization for rel in node.nodeorganization_set.all()],
             }
             for node in nodes
@@ -431,3 +456,23 @@ class NodeService:
             return []
 
         return list(Node.objects.filter(id__in=normalized_node_ids).values("id", "name"))
+
+    @staticmethod
+    def get_nodes_by_ids(node_ids):
+        normalized_node_ids = list({str(node_id) for node_id in node_ids if node_id not in (None, "")})
+        if not normalized_node_ids:
+            return []
+
+        nodes = Node.objects.filter(id__in=normalized_node_ids).select_related("cloud_region").prefetch_related("nodeorganization_set")
+        return [
+            {
+                "id": node.id,
+                "name": node.name,
+                "cloud_region_id": node.cloud_region_id,
+                "cloud_region_name": getattr(node.cloud_region, "name", ""),
+                "node_type": node.node_type,
+                "operating_system": node.operating_system,
+                "organization_ids": [rel.organization for rel in node.nodeorganization_set.all()],
+            }
+            for node in nodes
+        ]

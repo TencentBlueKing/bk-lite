@@ -25,7 +25,7 @@ collect_type:
   Packetbeat:
     http:
       description: 监控 HTTP 流量，分析 Web 应用程序性能并检测异常。
-      name: HTTP 协议
+      name: HTTP 流量
     dhcp:
       name: DHCP 协议
       description: 采集 DHCP 流量，监控 IP 地址分配和网络配置。

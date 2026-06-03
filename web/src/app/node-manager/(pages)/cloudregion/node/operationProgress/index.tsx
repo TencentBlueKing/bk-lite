@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { Button, Tag, notification, Modal, Alert, Progress } from 'antd';
+import { Button, Tag, notification, Modal, Alert, Progress, Tooltip } from 'antd';
 import type { TableColumnsType } from 'antd';
 import {
   CheckCircleOutlined,
@@ -408,52 +408,58 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         );
         const failureGuidance = getInstallerFailureGuidance(t, row.result);
 
+        const hasFailureInfo =
+          ['error', 'timeout'].includes(normalizedStatus) &&
+          (failureGuidance.reason || failureGuidance.suggestion);
+
+        const tooltipContent = hasFailureInfo ? (
+          <div className="max-w-[320px] text-[12px]">
+            {failureGuidance.reason && (
+              <div>
+                {t('node-manager.cloudregion.node.failureReason')}:
+                {' '}
+                {failureGuidance.reason}
+              </div>
+            )}
+            {!!failureGuidance.context?.length && (
+              <div className="mt-[4px]">
+                <div className="mb-[2px]">
+                  {t('node-manager.cloudregion.node.failureContext')}:
+                </div>
+                <div className="space-y-[2px]">
+                  {failureGuidance.context.map((entry) => (
+                    <div key={entry}>{entry}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {failureGuidance.suggestion && (
+              <div className="mt-[4px]">
+                {t('node-manager.cloudregion.node.nextAction')}:
+                {' '}
+                {failureGuidance.suggestion}
+              </div>
+            )}
+          </div>
+        ) : null;
+
         return (
           <div>
-            <Tag
-              color={status.color}
-              bordered={false}
-              icon={status.icon}
-              className="flex items-center gap-1 w-fit"
-            >
-              <span>{status.text}</span>
-            </Tag>
+            <Tooltip title={tooltipContent} overlayStyle={{ maxWidth: 360 }}>
+              <Tag
+                color={status.color}
+                bordered={false}
+                icon={status.icon}
+                className="flex items-center gap-1 w-fit cursor-pointer"
+              >
+                <span>{status.text}</span>
+              </Tag>
+            </Tooltip>
             {renderInstallerProgressSummary(
               summaryLabel,
               stepInfo,
               progressText,
               progressPercent
-            )}
-            {['error', 'timeout'].includes(normalizedStatus) &&
-              (failureGuidance.reason || failureGuidance.suggestion) && (
-                <div className="mt-[8px] max-w-[240px] rounded-[4px] bg-[var(--color-fill-1)] p-[8px] text-[12px]">
-                  {failureGuidance.reason && (
-                    <div className="text-[var(--color-error)] line-clamp-2">
-                      {t('node-manager.cloudregion.node.failureReason')}:
-                      {' '}
-                      {failureGuidance.reason}
-                    </div>
-                  )}
-                  {!!failureGuidance.context?.length && (
-                    <div className="mt-[4px] text-[var(--color-text-3)]">
-                      <div className="mb-[2px] text-[12px]">
-                        {t('node-manager.cloudregion.node.failureContext')}:
-                      </div>
-                      <div className="space-y-[2px]">
-                      {failureGuidance.context.map((entry) => (
-                        <div key={entry} className="line-clamp-1">
-                          {entry}
-                        </div>
-                      ))}
-                      </div>
-                    </div>
-                  )}
-                  <div className="mt-[4px] text-[var(--color-text-2)] line-clamp-2">
-                    {t('node-manager.cloudregion.node.nextAction')}:
-                    {' '}
-                    {failureGuidance.suggestion}
-                  </div>
-                </div>
             )}
           </div>
         );
@@ -668,14 +674,14 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         }
       }
 
-        const newTableData = normalizeControllerInstallRows(
-          data.map((item, index: number) => ({
-            ...item,
-            cpu_architecture:
-              item.cpu_architecture || item.nodeData?.cpu_architecture || '',
-            id: item.id ?? index
-          }))
-        );
+      const newTableData = normalizeControllerInstallRows(
+        data.map((item: any, index: number) => ({
+          ...item,
+          cpu_architecture:
+            item.cpu_architecture || item.nodeData?.cpu_architecture || '',
+          id: item.id ?? index
+        }))
+      );
       setTableData(newTableData);
 
       if (refreshType === 'timer' || refreshType === 'refresh') {

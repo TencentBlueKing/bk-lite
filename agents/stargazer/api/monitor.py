@@ -257,3 +257,185 @@ async def qcloud_metrics(request):
             content_type="text/plain; version=0.0.4; charset=utf-8",
             status=500,
         )
+
+
+@monitor_router.get("/oceanstor/metrics")
+async def oceanstor_metrics(request):
+    logger.info("=== OceanStor metrics collection request received ===")
+
+    username = request.headers.get("username")
+    password = request.headers.get("password")
+    base_url = request.headers.get("base_url")
+    # Do not use the incoming HTTP Host header here. Telegraf sets it to the
+    # Stargazer service address, while OceanStor collection needs the target
+    # device endpoint carried in base_url.
+    host = base_url
+    instance_id = request.headers.get("instance_id", "")
+
+    agent_id = request.headers.get("agent_id", "")
+    instance_type = request.headers.get("instance_type", "storage")
+    collect_type = request.headers.get("collect_type", "oceanstor")
+    config_type = request.headers.get("config_type", "oceanstor")
+
+    logger.info(f"Request: Host={host}, User={username}, instance_id={instance_id}")
+
+    try:
+        task_params = {
+            "monitor_type": "oceanstor",
+            "username": username,
+            "password": password,
+            "host": host,
+            "base_url": base_url,
+            "instance_id": instance_id,
+            "tags": {
+                "agent_id": agent_id,
+                "instance_id": instance_id,
+                "instance_type": instance_type,
+                "collect_type": collect_type,
+                "config_type": config_type,
+            },
+        }
+
+        task_queue = get_task_queue()
+        task_info = await task_queue.enqueue_collect_task(task_params)
+
+        logger.info(f"OceanStor metrics task queued: {task_info['task_id']}")
+
+        current_timestamp = int(time.time() * 1000)
+        prometheus_lines = [
+            "# HELP monitor_request_accepted Indicates that monitor request was accepted",
+            "# TYPE monitor_request_accepted gauge",
+            f'monitor_request_accepted{{monitor_type="oceanstor",host="{host}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}',
+        ]
+
+        metrics_response = "\n".join(prometheus_lines) + "\n"
+
+        return response.raw(
+            metrics_response,
+            content_type="text/plain; version=0.0.4; charset=utf-8",
+            headers={
+                "X-Task-ID": task_info["task_id"],
+                "X-Job-ID": task_info.get("job_id", ""),
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Error queuing OceanStor metrics task: {e}", exc_info=True)
+
+        current_timestamp = int(time.time() * 1000)
+        error_lines = [
+            "# HELP monitor_request_error Monitor request error",
+            "# TYPE monitor_request_error gauge",
+            f'monitor_request_error{{monitor_type="oceanstor",host="{host}",error="{str(e)}"}} 1 {current_timestamp}',
+        ]
+
+        return response.raw(
+            "\n".join(error_lines) + "\n",
+            content_type="text/plain; version=0.0.4; charset=utf-8",
+            status=500,
+        )
+
+
+@monitor_router.get("/host/metrics")
+async def host_metrics(request):
+    logger.info("=== Host metrics collection request received ===")
+
+    host = request.headers.get("host")
+    os_type = request.headers.get("os_type", "linux")
+    username = request.headers.get("username")
+    password = request.headers.get("password")
+    port = request.headers.get("port", "22" if os_type == "linux" else "5986")
+    metrics_modules = request.headers.get("metrics_modules", "cpu,mem,disk,net")
+    ansible_node_id = request.headers.get("ansible_node_id", "")
+
+    agent_id = request.headers.get("agent_id", "")
+    instance_id = request.headers.get("instance_id")
+    instance_type = request.headers.get("instance_type", "os")
+    collect_type = request.headers.get("collect_type", "http")
+    config_type = request.headers.get("config_type", "host")
+
+    if not host or not username or not password:
+        current_timestamp = int(time.time() * 1000)
+        error_lines = [
+            "# HELP monitor_request_error Monitor request error",
+            "# TYPE monitor_request_error gauge",
+            f'monitor_request_error{{monitor_type="host",error="missing required headers: host, username, password"}} 1 {current_timestamp}',
+        ]
+        return response.raw(
+            "\n".join(error_lines) + "\n",
+            content_type="text/plain; version=0.0.4; charset=utf-8",
+            status=400,
+        )
+
+    if not ansible_node_id:
+        current_timestamp = int(time.time() * 1000)
+        error_lines = [
+            "# HELP monitor_request_error Monitor request error",
+            "# TYPE monitor_request_error gauge",
+            f'monitor_request_error{{monitor_type="host",error="missing ansible_node_id header"}} 1 {current_timestamp}',
+        ]
+        return response.raw(
+            "\n".join(error_lines) + "\n",
+            content_type="text/plain; version=0.0.4; charset=utf-8",
+            status=400,
+        )
+
+    logger.info(f"Host metrics: host={host}, os={os_type}, modules={metrics_modules}")
+
+    try:
+        task_params = {
+            "monitor_type": "host",
+            "host": host,
+            "os_type": os_type,
+            "username": username,
+            "password": password,
+            "port": port,
+            "metrics_modules": metrics_modules,
+            "ansible_node_id": ansible_node_id,
+            "tags": {
+                "agent_id": agent_id,
+                "instance_id": instance_id,
+                "instance_type": instance_type,
+                "collect_type": collect_type,
+                "config_type": config_type,
+            },
+        }
+
+        task_queue = get_task_queue()
+        task_info = await task_queue.enqueue_collect_task(task_params)
+
+        logger.info(f"Host metrics task queued: {task_info['task_id']}")
+
+        current_timestamp = int(time.time() * 1000)
+        prometheus_lines = [
+            "# HELP monitor_request_accepted Indicates that monitor request was accepted",
+            "# TYPE monitor_request_accepted gauge",
+            f'monitor_request_accepted{{monitor_type="host",host="{host}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}',
+        ]
+
+        metrics_response = "\n".join(prometheus_lines) + "\n"
+
+        return response.raw(
+            metrics_response,
+            content_type="text/plain; version=0.0.4; charset=utf-8",
+            headers={
+                "X-Task-ID": task_info["task_id"],
+                "X-Job-ID": task_info.get("job_id", ""),
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Error queuing host metrics task: {e}", exc_info=True)
+
+        current_timestamp = int(time.time() * 1000)
+        error_lines = [
+            "# HELP monitor_request_error Monitor request error",
+            "# TYPE monitor_request_error gauge",
+            f'monitor_request_error{{monitor_type="host",host="{host}",error="{str(e)}"}} 1 {current_timestamp}',
+        ]
+
+        return response.raw(
+            "\n".join(error_lines) + "\n",
+            content_type="text/plain; version=0.0.4; charset=utf-8",
+            status=500,
+        )

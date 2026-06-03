@@ -3,7 +3,6 @@
 # @Time: 2025/7/22 18:24
 # @Author: windyzhao
 from apps.operation_analysis.nats.nats_client import DefaultNastClient
-from apps.core.logger import operation_analysis_logger as logger
 
 
 class GetNatsData:
@@ -39,9 +38,19 @@ class GetNatsData:
         """
         username = self.request.user.username
         team = int(self.request.COOKIES.get("current_team"))
+        include_children = self.request.COOKIES.get("include_children", "0") == "1"
+        permission = getattr(self.request.user, "permission", {})
+        if isinstance(permission, dict):
+            permission = {key: list(value) if isinstance(value, set) else value for key, value in permission.items()}
         self.params[self.user_param_key] = {
             "team": team,
-            "user": username
+            "user": username,
+            "domain": self.request.user.domain,
+            "timezone": getattr(self.request.user, "timezone", None),
+            "permission": permission,
+            "group_tree": getattr(self.request.user, "group_tree", []),
+            "is_superuser": getattr(self.request.user, "is_superuser", False),
+            "include_children": include_children,
         }
 
     def set_namespace_servers(self):
@@ -55,7 +64,7 @@ class GetNatsData:
             protocol = "tls" if namespace.enable_tls else "nats"
 
             # 构建完整的服务器URL
-            if ':' not in namespace.domain:
+            if ":" not in namespace.domain:
                 # 域名不包含端口,使用默认端口4222
                 server_url = f"{protocol}://{namespace.account}:{namespace.decrypt_password}@{namespace.domain}:4222"
             else:
@@ -75,48 +84,46 @@ class GetNatsData:
         从 params 中取出 namespace_id（同时移除，避免透传给 NATS 接口），
         返回本次需要查询的单个 namespace 对象。
         若未指定则返回第一个可用 namespace。
+        若显式指定但数据源未关联该命名空间，则直接报错。
         """
         namespace_id = self.params.pop("namespace_id", None)
         if namespace_id is not None:
             try:
                 namespace_id = int(namespace_id)
             except (TypeError, ValueError):
-                namespace_id = None
+                raise RuntimeError("命名空间参数无效")
 
         if namespace_id is not None:
+            if not self.namespace_list:
+                raise RuntimeError("数据源未关联命名空间")
             for ns in self.namespace_list:
                 if ns.id == namespace_id:
                     return ns
+            raise RuntimeError("数据源未关联所选命名空间")
 
         # 未指定或未匹配到，返回第一个
         return self.namespace_list[0] if self.namespace_list else None
 
     def get_data(self):
         """
-        获取单个 namespace 的 NATS 数据源数据，直接返回裸数据。
+        获取单个 namespace 的 NATS 数据源数据，保留下游返回体语义。
         """
         namespace = self._get_target_namespace()
         if namespace is None:
-            return []
+            raise RuntimeError("未找到可用的命名空间")
 
         server_url = self.namespace_server_map.get(namespace.id)
         if not server_url:
-            return []
+            raise RuntimeError(f"命名空间 {namespace.name} 未配置服务器连接")
 
         nats_namespace = getattr(namespace, "namespace", "bk_lite")
         nats_client = self._get_client(server=server_url, namespace=nats_namespace)
-        try:
-            if hasattr(nats_client, "DEFAULT_NATS"):
-                fun = getattr(nats_client, "get_customization_nast_data", None)
-            else:
-                fun = getattr(nats_client, self.path, None)
-            if fun is None:
-                raise RuntimeError(f"NamePaces({self.namespace}) Module not found func({self.path})!")
 
-            return_data = fun(**self.params)
-            return return_data.get("data", [])
-        except Exception as e:  # noqa
-            import traceback
+        if hasattr(nats_client, "DEFAULT_NATS"):
+            fun = getattr(nats_client, "get_customization_nast_data", None)
+        else:
+            fun = getattr(nats_client, self.path, None)
+        if fun is None:
+            raise RuntimeError(f"NamePaces({self.namespace}) Module not found func({self.path})!")
 
-            logger.error("==获取NATS数据源数据失败==: namespace={} error={}".format(namespace.name, traceback.format_exc()))
-            return []
+        return fun(**self.params)

@@ -1,4 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import ReactEcharts from 'echarts-for-react';
 import { Spin, Empty } from 'antd';
 import {
   getColorByThreshold,
@@ -7,99 +14,288 @@ import {
 } from '@/app/ops-analysis/utils/thresholdUtils';
 import { DEFAULT_THRESHOLD_COLORS } from '@/app/ops-analysis/constants/threshold';
 import { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import {
+  getOpsChartTheme,
+  resolveOpsChartThemeName,
+} from '@/app/ops-analysis/utils/chartTheme';
+import {
+  extractComparableValue,
+  getChangePercent,
+  toComparableNumber,
+} from '@/app/ops-analysis/utils/compareQuery';
+import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
+import { useTranslation } from '@/utils/i18n';
+
+const MAX_SPARKLINE_POINTS = 24;
+const MIN_VALUE_FONT_SIZE = 18;
+const UNIT_FONT_SCALE = 0.54;
+
+const toAlphaColor = (color: string, alpha: number) => {
+  const normalized = color.trim();
+
+  if (normalized.startsWith('#')) {
+    let hex = normalized.slice(1);
+    if (hex.length === 3) {
+      hex = hex
+        .split('')
+        .map((char) => char + char)
+        .join('');
+    }
+    if (hex.length !== 6) {
+      return color;
+    }
+
+    const red = parseInt(hex.slice(0, 2), 16);
+    const green = parseInt(hex.slice(2, 4), 16);
+    const blue = parseInt(hex.slice(4, 6), 16);
+    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+  }
+
+  const rgbMatch = normalized.match(/^rgba?\(([^)]+)\)$/i);
+  if (!rgbMatch) {
+    return color;
+  }
+
+  const [red = '0', green = '0', blue = '0'] = rgbMatch[1]
+    .split(',')
+    .map((part) => part.trim());
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+};
+
+const limitSparklinePoints = (
+  values: number[],
+  maxPoints = MAX_SPARKLINE_POINTS,
+) => {
+  if (values.length <= maxPoints) return values;
+  if (maxPoints <= 2) return [values[0], values[values.length - 1]];
+
+  const lastIndex = values.length - 1;
+  const middleCount = maxPoints - 2;
+  const step = lastIndex / (middleCount + 1);
+  const sampled = [values[0]];
+
+  for (let i = 1; i <= middleCount; i += 1) {
+    sampled.push(values[Math.round(step * i)]);
+  }
+
+  sampled.push(values[lastIndex]);
+  return sampled;
+};
+
+const getBaseFontSizeByWidth = (width: number) => {
+  const safeWidth = Math.max(width, 120);
+  return Math.max(24, Math.min(52, safeWidth / 4.75));
+};
+
+const getBaseFontSizeByHeight = (height: number, hasCompare: boolean) => {
+  const safeHeight = Math.max(height, 120);
+  return Math.max(
+    MIN_VALUE_FONT_SIZE,
+    Math.min(58, safeHeight * (hasCompare ? 0.29 : 0.36)),
+  );
+};
+
+const splitValueAndUnit = (value: string) => {
+  const normalizedValue = value.trim();
+  const match = normalizedValue.match(
+    /^([+-]?(?:(?:\d{1,3}(?:,\d{3})+)|\d+)(?:\.\d+)?|[+-]?\.\d+)(.*)$/,
+  );
+
+  if (!match) {
+    return { main: normalizedValue || '--', unit: '' };
+  }
+
+  return {
+    main: match[1],
+    unit: match[2].trim(),
+  };
+};
+
+const formatWithThousands = (value: string | number | null): string => {
+  if (value === null) return '--';
+  const strVal = String(value);
+  const parts = strVal.split('.');
+  const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return parts.length > 1 ? `${intPart}.${parts[1]}` : intPart;
+};
+
+const hashSeed = (seedSource: string) => {
+  let hash = 2166136261;
+  for (let index = 0; index < seedSource.length; index += 1) {
+    hash ^= seedSource.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+};
+
+const createSeededRandom = (seedSource: string) => {
+  let seed = hashSeed(seedSource) || 1;
+  return () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 0xffffffff;
+  };
+};
+
+const extractSparklineValues = (
+  data: unknown,
+  selectedField?: string,
+): number[] => {
+  if (!Array.isArray(data) || data.length < 2) {
+    return [];
+  }
+
+  const values = data
+    .map((item) => {
+      if (selectedField) {
+        const selectedValue = getValueByPath(item, selectedField);
+        if (
+          typeof selectedValue === 'number' ||
+          typeof selectedValue === 'string'
+        ) {
+          return toComparableNumber(selectedValue);
+        }
+      }
+
+      if (typeof item === 'number' || typeof item === 'string') {
+        return toComparableNumber(item);
+      }
+
+      return toComparableNumber(extractComparableValue(item, selectedField));
+    })
+    .filter(
+      (value): value is number => value !== null && Number.isFinite(value),
+    );
+
+  return values.length > 1 ? limitSparklinePoints(values) : [];
+};
+
+const buildFallbackSparkline = (
+  baseValue: number | null,
+  baselineValue: number | null,
+  seedSource: string,
+): number[] => {
+  const resolvedBase = Math.abs(baseValue ?? baselineValue ?? 100) || 100;
+  const random = createSeededRandom(seedSource);
+  const amplitudeRatio = 0.055 + random() * 0.04;
+  const amplitude = Math.max(resolvedBase * amplitudeRatio, 8);
+  const drift =
+    baselineValue !== null && baseValue !== null
+      ? (baseValue - baselineValue) / Math.max(Math.abs(baselineValue), 1)
+      : 0;
+  const primaryFrequency = 4.6 + random() * 1.8;
+  const secondaryFrequency = 8.8 + random() * 3.2;
+  const primaryPhase = random() * Math.PI * 1.2;
+  const secondaryPhase = random() * Math.PI * 1.8;
+  const secondaryWeight = 0.2 + random() * 0.18;
+  const tertiaryWeight = 0.08 + random() * 0.1;
+  const tertiaryFrequency = 13 + random() * 4;
+  const tertiaryPhase = random() * Math.PI * 2;
+
+  return Array.from({ length: 24 }, (_, index) => {
+    const progress = index / 23;
+    const primaryWave = Math.sin(
+      progress * Math.PI * primaryFrequency + primaryPhase,
+    );
+    const secondaryWave =
+      Math.sin(progress * Math.PI * secondaryFrequency + secondaryPhase) *
+      secondaryWeight;
+    const tertiaryWave =
+      Math.sin(progress * Math.PI * tertiaryFrequency + tertiaryPhase) *
+      tertiaryWeight;
+    const trendOffset = drift * progress * amplitude * 1.4;
+    return (
+      resolvedBase +
+      amplitude * (primaryWave + secondaryWave + tertiaryWave) +
+      trendOffset
+    );
+  });
+};
 
 interface ComSingleProps {
   rawData: unknown;
+  baselineData?: unknown;
   loading?: boolean;
   config?: ValueConfig;
   onReady?: (ready: boolean) => void;
 }
 
-const getValueByPathForSingle = (obj: unknown, path: string): unknown => {
-  if (!obj || !path) return undefined;
-
-  return path.split('.').reduce((current, key) => {
-    if (current === null || current === undefined) return undefined;
-
-    if (Array.isArray(current)) {
-      const index = parseInt(key, 10);
-      if (!isNaN(index) && index >= 0 && index < current.length) {
-        return current[index];
-      }
-      return current.length > 0 && current[0] && typeof current[0] === 'object'
-        ? (current[0] as Record<string, unknown>)[key]
-        : undefined;
-    }
-
-    return (current as Record<string, unknown>)[key];
-  }, obj);
-};
-
 const ComSingle: React.FC<ComSingleProps> = ({
   rawData,
+  baselineData,
   loading = false,
   config,
   onReady,
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const { t } = useTranslation();
+  const chartTheme = getOpsChartTheme(resolveOpsChartThemeName());
+  const contentAreaRef = useRef<HTMLDivElement>(null);
+  const valueAreaRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
+  const [valueFontSize, setValueFontSize] = useState(36);
+  const [compareSpacing, setCompareSpacing] = useState(10);
+  const [contentAreaHeight, setContentAreaHeight] = useState(0);
 
-  const extractValue = (data: unknown): number | string | null => {
-    if (data === null || data === undefined) {
-      return null;
-    }
-
-    const selectedField = config?.selectedFields?.[0];
-
-    if (selectedField) {
-      const extracted = getValueByPathForSingle(data, selectedField);
-      if (extracted !== undefined && extracted !== null) {
-        return typeof extracted === 'number' || typeof extracted === 'string'
-          ? extracted
-          : null;
-      }
-    }
-
-    if (typeof data === 'number' || typeof data === 'string') {
-      return data;
-    }
-
-    if (Array.isArray(data) && data.length > 0) {
-      const firstItem = data[0];
-      if (firstItem && typeof firstItem === 'object') {
-        const values = Object.values(firstItem as Record<string, unknown>);
-        for (const val of values) {
-          if (typeof val === 'number') return val;
-        }
-        for (const val of values) {
-          if (typeof val === 'string' && !isNaN(parseFloat(val))) return val;
-        }
-      }
-    }
-
-    if (typeof data === 'object' && data !== null) {
-      const values = Object.values(data as Record<string, unknown>);
-      for (const val of values) {
-        if (typeof val === 'number') return val;
-      }
-    }
-
-    return null;
-  };
-
-  const rawValue = extractValue(rawData);
-  const numericValue = rawValue !== null
-    ? (typeof rawValue === 'string' ? parseFloat(rawValue) : rawValue)
+  const selectedField = config?.selectedFields?.[0];
+  const rawValue = extractComparableValue(rawData, selectedField);
+  const baselineRawValue = extractComparableValue(baselineData, selectedField);
+  const numericValue =
+    rawValue !== null
+      ? typeof rawValue === 'string'
+        ? parseFloat(rawValue)
+        : rawValue
+      : null;
+  const baselineNumericValue = toComparableNumber(baselineRawValue);
+  const changePercent = config?.compare
+    ? getChangePercent(toComparableNumber(rawValue), baselineNumericValue)
     : null;
 
-  const thresholds: ThresholdColorConfig[] = config?.thresholdColors ?? DEFAULT_THRESHOLD_COLORS;
+  const thresholds: ThresholdColorConfig[] =
+    config?.thresholdColors ?? DEFAULT_THRESHOLD_COLORS;
   const color = getColorByThreshold(numericValue, thresholds, '#000000');
   const isDataReady = rawValue !== null;
   const displayValue = formatDisplayValue(
     numericValue,
-    config?.unit,
+    undefined,
     config?.decimalPlaces,
-    config?.conversionFactor
+    config?.conversionFactor,
+  );
+  const unitText = config?.unit?.trim() || '';
+  const fallbackSparklineSeed = useMemo(
+    () =>
+      JSON.stringify([
+        config?.dataSource,
+        selectedField,
+        rawValue,
+        baselineRawValue,
+        unitText,
+      ]),
+    [baselineRawValue, config?.dataSource, rawValue, selectedField, unitText],
+  );
+  const sourceSparklineData = useMemo(
+    () => extractSparklineValues(rawData, selectedField),
+    [rawData, selectedField],
+  );
+  const sparklineData = useMemo(
+    () =>
+      sourceSparklineData.length > 1
+        ? sourceSparklineData
+        : buildFallbackSparkline(
+          numericValue,
+          baselineNumericValue,
+          fallbackSparklineSeed,
+        ),
+    [
+      baselineNumericValue,
+      fallbackSparklineSeed,
+      numericValue,
+      sourceSparklineData,
+    ],
+  );
+  const showSparkline = Boolean(config?.compare) && sparklineData.length > 1;
+  const displayText = formatWithThousands(displayValue);
+  const { main: displayMainValue, unit: displayUnit } = useMemo(
+    () => splitValueAndUnit(displayText),
+    [displayText],
   );
 
   useEffect(() => {
@@ -108,24 +304,179 @@ const ComSingle: React.FC<ComSingleProps> = ({
     }
   }, [isDataReady, loading, onReady]);
 
-  useEffect(() => {
-    const element = containerRef.current;
-    if (!element) return;
+  useLayoutEffect(() => {
+    const valueArea = valueAreaRef.current;
+    const measureElement = measureRef.current;
+    if (!valueArea || !measureElement) {
+      return;
+    }
 
-    const updateSize = () => {
-      setContainerSize({
-        width: element.clientWidth,
-        height: element.clientHeight,
-      });
+    let frameId = 0;
+
+    const updateFontSize = () => {
+      const availableWidth = valueArea.clientWidth;
+      if (availableWidth <= 0) return;
+
+      const availableHeight = contentAreaRef.current?.clientHeight ?? 0;
+      let nextFontSize = Math.min(
+        getBaseFontSizeByWidth(availableWidth),
+        getBaseFontSizeByHeight(availableHeight, Boolean(config?.compare)),
+      );
+      measureElement.style.fontSize = `${nextFontSize}px`;
+
+      while (
+        nextFontSize > MIN_VALUE_FONT_SIZE &&
+        measureElement.scrollWidth > availableWidth
+      ) {
+        nextFontSize -= 0.5;
+        measureElement.style.fontSize = `${nextFontSize}px`;
+      }
+
+      setValueFontSize((prev) =>
+        Math.abs(prev - nextFontSize) < 0.1 ? prev : nextFontSize,
+      );
     };
 
-    updateSize();
+    updateFontSize();
 
-    const observer = new ResizeObserver(updateSize);
-    observer.observe(element);
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(updateFontSize);
+    });
 
-    return () => observer.disconnect();
-  }, []);
+    observer.observe(valueArea);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, [config?.compare, displayMainValue, displayUnit, showSparkline]);
+
+  useLayoutEffect(() => {
+    const contentArea = contentAreaRef.current;
+    if (!contentArea) {
+      return;
+    }
+
+    let frameId = 0;
+
+    const updateCompareSpacing = () => {
+      setContentAreaHeight((prev) =>
+        prev === contentArea.clientHeight ? prev : contentArea.clientHeight,
+      );
+      const nextSpacing = Math.max(
+        10,
+        Math.min(24, Math.round(contentArea.clientHeight * 0.1)),
+      );
+      setCompareSpacing((prev) => (prev === nextSpacing ? prev : nextSpacing));
+    };
+
+    updateCompareSpacing();
+
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(updateCompareSpacing);
+    });
+
+    observer.observe(contentArea);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, [showSparkline]);
+
+  const metricColor = color || chartTheme.singleValueColor;
+  const compareTextColor =
+    changePercent === null
+      ? chartTheme.singleValueMetaColor
+      : changePercent > 0
+        ? '#ff4d4f'
+        : changePercent < 0
+          ? '#52c41a'
+          : chartTheme.singleValueMetaColor;
+  const compareDisplayText =
+    changePercent === null
+      ? '--'
+      : `${changePercent > 0 ? '↑' : changePercent < 0 ? '↓' : ''}${Math.abs(changePercent).toFixed(1)}%`;
+  const heightDrivenCompareSize = Math.max(
+    12,
+    Math.min(20, Math.round(contentAreaHeight * 0.1)),
+  );
+  const compareLabelFontSize = Math.max(
+    11,
+    Math.min(
+      16,
+      Math.max(Math.round(valueFontSize * 0.27), heightDrivenCompareSize - 3),
+    ),
+  );
+  const compareValueFontSize = Math.max(
+    13,
+    Math.min(
+      22,
+      Math.max(Math.round(valueFontSize * 0.38), heightDrivenCompareSize),
+    ),
+  );
+  const valueGap = displayUnit
+    ? Math.max(4, Math.round(valueFontSize * 0.08))
+    : 0;
+  const sparklineLineColor = {
+    type: 'linear' as const,
+    x: 0,
+    y: 0,
+    x2: 1,
+    y2: 0,
+    colorStops: [
+      { offset: 0, color: toAlphaColor(metricColor, 0.05) },
+      { offset: 0.18, color: toAlphaColor(metricColor, 0.46) },
+      { offset: 0.82, color: toAlphaColor(metricColor, 0.46) },
+      { offset: 1, color: toAlphaColor(metricColor, 0.05) },
+    ],
+  };
+  const sparklineAreaColor = {
+    type: 'linear' as const,
+    x: 0,
+    y: 0,
+    x2: 0,
+    y2: 1,
+    colorStops: [
+      { offset: 0, color: toAlphaColor(metricColor, 0.2) },
+      { offset: 0.55, color: toAlphaColor(metricColor, 0.08) },
+      { offset: 1, color: toAlphaColor(metricColor, 0) },
+    ],
+  };
+  const sparklineOption = useMemo(
+    () => ({
+      animation: false,
+      grid: { top: 12, right: 0, bottom: 0, left: 0 },
+      xAxis: {
+        type: 'category' as const,
+        show: false,
+        data: sparklineData.map((_, index) => index),
+      },
+      yAxis: {
+        type: 'value' as const,
+        show: false,
+        scale: true,
+      },
+      series: [
+        {
+          type: 'line' as const,
+          data: sparklineData,
+          smooth: true,
+          symbol: 'none',
+          lineStyle: {
+            width: 1.1,
+            color: sparklineLineColor,
+          },
+          areaStyle: {
+            color: sparklineAreaColor,
+          },
+        },
+      ],
+    }),
+    [sparklineAreaColor, sparklineData, sparklineLineColor],
+  );
 
   if (loading) {
     return (
@@ -143,24 +494,94 @@ const ComSingle: React.FC<ComSingleProps> = ({
     );
   }
 
-  const displayText = String(displayValue);
-  const textLength = Math.max(displayText.length, 1);
-  const adaptiveFontSize = (() => {
-    const { width, height } = containerSize;
-    if (!width || !height) return 42;
-
-    const heightBasedSize = height * 0.5;
-    const widthBasedSize = width / Math.max(textLength * 0.6, 2.6);
-    return Math.max(36, Math.min(104, Math.min(heightBasedSize, widthBasedSize)));
-  })();
-
   return (
-    <div ref={containerRef} className="h-full flex flex-col items-center justify-center px-4">
+    <div className="flex h-full w-full flex-col overflow-hidden px-2">
       <div
-        className="font-bold transition-colors duration-300 leading-none text-center"
-        style={{ color, fontSize: adaptiveFontSize }}
+        ref={contentAreaRef}
+        className="flex min-h-0 flex-1 flex-col justify-center"
       >
-        {displayText}
+        <div className="min-w-0">
+          <div ref={valueAreaRef} className="relative min-w-0 max-w-full">
+            <div
+              className="inline-flex max-w-full items-end whitespace-nowrap font-semibold leading-none"
+              style={{
+                color: metricColor,
+                fontSize: `${valueFontSize}px`,
+                letterSpacing: '-0.02em',
+                gap: `${valueGap}px`,
+                textShadow: chartTheme.singleValueGlow,
+              }}
+            >
+              <span>{displayMainValue}</span>
+              {displayUnit || unitText ? (
+                <span
+                  className="shrink-0 font-semibold leading-none"
+                  style={{ fontSize: `${UNIT_FONT_SCALE}em` }}
+                >
+                  {displayUnit || unitText}
+                </span>
+              ) : null}
+            </div>
+            <div
+              ref={measureRef}
+              className="pointer-events-none absolute left-0 top-0 inline-flex items-end whitespace-nowrap font-semibold leading-none opacity-0"
+              aria-hidden
+              style={{
+                gap: `${valueGap}px`,
+              }}
+            >
+              <span>{displayMainValue}</span>
+              {displayUnit || unitText ? (
+                <span
+                  className="shrink-0 font-semibold leading-none"
+                  style={{ fontSize: `${UNIT_FONT_SCALE}em` }}
+                >
+                  {displayUnit || unitText}
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          {config?.compare && (
+            <div
+              className="flex flex-wrap items-center gap-1"
+              style={{
+                marginTop: compareSpacing,
+                color: chartTheme.singleValueMetaColor,
+                lineHeight: 1.2,
+              }}
+            >
+              <span
+                style={{
+                  color: chartTheme.singleValueMetaColor,
+                  fontSize: compareLabelFontSize,
+                }}
+              >
+                {t('dashboard.comparePreviousShortLabel')}
+              </span>
+              <span
+                className="font-semibold"
+                style={{
+                  color: compareTextColor,
+                  fontSize: compareValueFontSize,
+                  lineHeight: 1,
+                }}
+              >
+                {compareDisplayText}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {showSparkline ? (
+          <div className="mt-1.5 h-7 w-full shrink-0">
+            <ReactEcharts
+              option={sparklineOption}
+              style={{ height: '100%', width: '100%' }}
+              opts={{ renderer: 'canvas' }}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );

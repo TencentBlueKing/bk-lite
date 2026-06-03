@@ -14,7 +14,8 @@
     "tags": [
       "linux",
       "jmx",
-      "monitor"
+      "monitor",
+      "x86_64"
     ],
     "package_name": "jmx_jvm",
     "cpu_architecture": "x86_64",

@@ -26,6 +26,9 @@ from .assignment_shield import (
 # 事故
 from .incident import IncidentModelSerializer
 
+# 事故协作更新
+from .incident_update import IncidentUpdateSerializer
+
 # 系统设置
 from .system_setting import SystemSettingModelSerializer
 
@@ -49,6 +52,7 @@ __all__ = [
     "AlertShieldModelSerializer",
     # 事故
     "IncidentModelSerializer",
+    "IncidentUpdateSerializer",
     # 系统设置
     "SystemSettingModelSerializer",
     # 操作日志

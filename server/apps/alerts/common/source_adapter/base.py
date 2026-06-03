@@ -7,19 +7,22 @@ import uuid
 import hashlib
 import json
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+
+from django.db import IntegrityError
 
 from django.utils import timezone
 
 from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
 from apps.alerts.common.shield import execute_shield_check_for_events
-from apps.alerts.constants.constants import LevelType, EventAction
+from apps.alerts.constants.constants import LevelType, EventAction, AlertStatus
 from apps.alerts.constants.init_data import INIT_ALERT_ENRICH
+from apps.alerts.error import AuthenticationSourceError
 from apps.alerts.models.sys_setting import SystemSetting
-from apps.alerts.models.models import Event, Level
+from apps.alerts.models.models import Alert, Event, Level
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.common.source_adapter import logger
-from apps.alerts.utils.util import split_list
+from apps.alerts.utils.util import decode_team_secret, split_list
 from apps.rpc.cmdb import CMDB
 
 
@@ -33,8 +36,10 @@ class AlertSourceAdapter(ABC):
         self.events = events
         self.mapping = self.alert_source.config.get("event_fields_mapping", {})
         self.unique_fields = ["title"]
-        self.info_level, self.levels = self.get_event_level()  # 默认级别为最低级别
+        self.info_level, self.levels = self.get_event_level()
         self.enable_rich_event = self.enable_enrich()
+        self.resolved_team = self._resolve_team_from_secret(secret)
+        self.team_secrets = set(self.alert_source.team_secrets.values())
 
     @staticmethod
     def enable_enrich():
@@ -47,17 +52,43 @@ class AlertSourceAdapter(ABC):
             return False
         return instance.value.get("enable", False)
 
+    def _resolve_team_from_secret(self, secret: str) -> List:
+        if not secret:
+            return []
+        team_secrets = getattr(self.alert_source, "team_secrets", None) or {}
+        for team_id, team_secret in team_secrets.items():
+            if team_secret != secret:
+                continue
+            payload = decode_team_secret(team_secret)
+            if not payload:
+                continue
+            if payload.get("source_secret") != self.alert_source.secret:
+                continue
+            payload_team_id = payload.get("team_id")
+            if payload_team_id not in {str(team_id), team_id}:
+                continue
+            try:
+                return [int(payload_team_id)]
+            except (TypeError, ValueError):
+                try:
+                    return [int(team_id)]
+                except (TypeError, ValueError):
+                    return [team_id]
+        return []
+
     @staticmethod
     def get_event_level() -> tuple:
         """获取事件级别"""
-        instance = list(Level.objects.filter(level_type=LevelType.EVENT).order_by("level_id").values_list("level_id", flat=True))
+        instance = list(
+            Level.objects.filter(level_type=LevelType.EVENT).order_by("level_id").values_list("level_id", flat=True))
 
         return str(max(instance)), [str(i) for i in instance]
 
-    @abstractmethod
-    def authenticate(self, *args, **kwargs) -> bool:
-        """认证告警源"""
-        pass
+    def authenticate(self) -> bool:
+        # 这里可以实现一些通用的认证逻辑
+        if self.secret in self.team_secrets:
+            return True
+        raise AuthenticationSourceError("Authentication failed")
 
     @abstractmethod
     def fetch_alerts(self) -> List[Dict[str, Any]]:
@@ -115,7 +146,7 @@ class AlertSourceAdapter(ABC):
                         # 如果元数据里也没有，直接跳过
                         continue
 
-            if _value and key == "start_time" or key == "end_time":
+            if _value and (key == "start_time" or key == "end_time"):
                 _value = self.timestamp_to_datetime(_value)
 
             if key == "value":
@@ -147,21 +178,136 @@ class AlertSourceAdapter(ABC):
         return bulk_events
 
     @staticmethod
-    def generate_external_id(item: str, resource_name: str, source_id) -> str:
-        components = f"{item or ''}|{resource_name or ''}|{source_id or ''}"
+    def generate_external_id(item: str, resource_id: str, resource_name: str, resource_type: str, source_id) -> str:
+        components = "|".join(
+            [
+                str(item or ""),
+                str(resource_id or ""),
+                str(resource_name or ""),
+                str(resource_type or ""),
+                str(source_id or ""),
+            ]
+        )
         return hashlib.md5(components.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _normalize_lookup_value(value) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    def resolve_recovery_external_id(self, event: Event) -> Optional[str]:
+        if event.action not in [EventAction.RECOVERY, EventAction.CLOSED]:
+            return None
+
+        item = self._normalize_lookup_value(event.item)
+        resource_name = self._normalize_lookup_value(event.resource_name)
+        resource_id = self._normalize_lookup_value(event.resource_id)
+        resource_type = self._normalize_lookup_value(event.resource_type)
+
+        if not item or not resource_name or resource_id or resource_type:
+            return None
+
+        candidate_alerts = (
+            Alert.objects.filter(
+                status__in=AlertStatus.ACTIVATE_STATUS,
+                events__source=self.alert_source,
+                events__item=item,
+                events__resource_name=resource_name,
+                events__action=EventAction.CREATED,
+            )
+            .prefetch_related("events__source")
+            .distinct()
+        )
+
+        matched_external_ids = []
+        for alert in candidate_alerts:
+            created_external_ids = {
+                existing_event.external_id
+                for existing_event in alert.events.all()
+                if existing_event.action == EventAction.CREATED
+                   and existing_event.source_id == self.alert_source.id
+                   and self._normalize_lookup_value(existing_event.item) == item
+                   and self._normalize_lookup_value(existing_event.resource_name) == resource_name
+                   and existing_event.external_id
+            }
+            if len(created_external_ids) == 1:
+                matched_external_ids.append(next(iter(created_external_ids)))
+
+        matched_external_ids = list(dict.fromkeys(matched_external_ids))
+
+        if len(matched_external_ids) == 1:
+            logger.info(
+                "Resolved recovery external_id from active alert: source_id=%s item=%s resource_name=%s",
+                self.alert_source.source_id,
+                item,
+                resource_name,
+            )
+            return matched_external_ids[0]
+
+        if len(matched_external_ids) > 1:
+            logger.warning(
+                "Ambiguous recovery external_id candidates, skip compatibility resolution: source_id=%s item=%s resource_name=%s",
+                self.alert_source.source_id,
+                item,
+                resource_name,
+            )
+
+        return None
 
     def add_base_fields(self, event: Event, alert: Dict[str, Any]):
         """添加基础字段"""
 
         event.source = self.alert_source
-        event.push_source_id = getattr(event, "push_source_id", None) or alert.get("source_id") or "default"
+        event.push_source_id = (
+            alert.get("push_source_id")
+            or getattr(event, "push_source_id", None)
+            or alert.get("source_id")
+            or "default"
+        )
         event.raw_data = alert
         event.event_id = f"EVENT-{uuid.uuid4().hex}"
+        event.team = self.resolved_team
 
         if not event.external_id or not str(event.external_id).strip():
-            event.external_id = self.generate_external_id(event.item, event.resource_name, self.alert_source.source_id)
+            event.external_id = self.resolve_recovery_external_id(event) or self.generate_external_id(
+                event.item,
+                event.resource_id,
+                event.resource_name,
+                event.resource_type,
+                self.alert_source.source_id,
+            )
             logger.debug(f"Generated external_id for event: {event.event_id}")
+
+    @staticmethod
+    def build_ingress_dedup_key(event: Event) -> Optional[str]:
+        """
+        构造接入层幂等去重键。
+
+        ingest_key 语义：
+        1. event_id 保持“单条数据库记录唯一 ID”；
+        2. external_id 保持“业务链路关联键”；
+        3. ingest_key 专门作为“接入幂等键”，用于去重与数据库唯一兜底。
+        """
+        if getattr(event, "ingest_key", None):
+            return event.ingest_key
+
+        ingest_key = event.calculate_ingest_key()
+        event.ingest_key = ingest_key
+        return ingest_key
+
+    @staticmethod
+    def _log_duplicate_event(reason: str, event: Event):
+        logger.info(
+            "%s: source_id=%s push_source_id=%s external_id=%s action=%s start_time=%s ingest_key=%s",
+            reason,
+            getattr(event, "source_id", None) or getattr(getattr(event, "source", None), "id", None),
+            getattr(event, "push_source_id", None),
+            getattr(event, "external_id", None),
+            getattr(event, "action", None),
+            getattr(event, "start_time", None),
+            getattr(event, "ingest_key", None),
+        )
 
     @staticmethod
     def bulk_save_events(events: List[Event]):
@@ -179,16 +325,71 @@ class AlertSourceAdapter(ABC):
         if not events:
             return []
 
+        # 当前采用 ingest_key 作为接入幂等键：
+        # - 应用层先按 ingest_key 批内去重和预查询
+        # - 数据库再通过唯一约束兜底，减少并发重复写入
+        unique_events = []
+        seen_dedup_keys = set()
+
+        for event in events:
+            dedup_key = AlertSourceAdapter.build_ingress_dedup_key(event)
+            if dedup_key is None:
+                unique_events.append(event)
+                continue
+
+            if dedup_key in seen_dedup_keys:
+                AlertSourceAdapter._log_duplicate_event("Skip duplicated ingress event in current batch", event)
+                continue
+
+            seen_dedup_keys.add(dedup_key)
+            unique_events.append(event)
+
+        if not unique_events:
+            return []
+
+        queryable_ingest_keys = [event.ingest_key for event in unique_events if getattr(event, "ingest_key", None)]
+        existing_ingest_keys = set()
+        if queryable_ingest_keys:
+            source_ids = {
+                getattr(event, "source_id", None) or getattr(getattr(event, "source", None), "id", None)
+                for event in unique_events
+                if getattr(event, "ingest_key", None)
+            }
+            push_source_ids = {getattr(event, "push_source_id", None) or "default" for event in unique_events if getattr(event, "ingest_key", None)}
+
+            existing_events = Event.objects.filter(
+                source_id__in=source_ids,
+                push_source_id__in=push_source_ids,
+                ingest_key__in=queryable_ingest_keys,
+            ).only("ingest_key")
+
+            existing_ingest_keys = {existing_event.ingest_key for existing_event in existing_events if existing_event.ingest_key}
+
+        events_to_create = []
+        for event in unique_events:
+            ingest_key = getattr(event, "ingest_key", None)
+            if ingest_key is not None and ingest_key in existing_ingest_keys:
+                AlertSourceAdapter._log_duplicate_event("Skip already persisted ingress event", event)
+                continue
+            events_to_create.append(event)
+
+        if not events_to_create:
+            logger.info("No new events to save after ingress deduplication.")
+            return []
+
         # 1. 分批保存
-        bulk_create_events = split_list(events, 100)
+        bulk_create_events = split_list(events_to_create, 100)
         all_event_ids = []
 
         for event_batch in bulk_create_events:
-            Event.objects.bulk_create(event_batch, ignore_conflicts=True)
+            try:
+                Event.objects.bulk_create(event_batch, ignore_conflicts=True)
+            except IntegrityError:
+                logger.warning("Bulk create hit ingest_key unique conflict, treating as idempotent retry.", exc_info=True)
             # 收集所有 event_id 用于后续查询
             all_event_ids.extend([e.event_id for e in event_batch])
 
-        logger.info(f"Bulk saved {len(events)} events.")
+        logger.info(f"Bulk saved {len(events_to_create)} events.")
 
         # 2. 优化：立即查询返回带 pk 的对象（1 次查询）
         # 避免后续 event_operator 需要用 event_id 再查一遍

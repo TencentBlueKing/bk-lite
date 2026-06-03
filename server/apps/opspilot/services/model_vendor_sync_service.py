@@ -2,10 +2,10 @@ import logging
 from collections import defaultdict
 from typing import ContextManager, cast
 
-import requests
 from django.db import transaction
 
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.safe_requests import safe_get, safe_post
 from apps.opspilot.models import EmbedProvider, LLMModel, OCRProvider, RerankProvider
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,25 @@ class ModelVendorSyncService:
 
     @staticmethod
     def is_supported(vendor):
+        """检查供应商是否支持模型同步"""
+        # anthropic 类型不支持模型同步（Anthropic API 不提供 /models 端点）
+        if vendor.vendor_type == "anthropic":
+            return False
+        # other 类型根据 protocol_type 判断
+        if vendor.vendor_type == "other":
+            return True  # 无论 openai 还是 anthropic 协议都支持
+        # 其他 OpenAI 兼容类型
         return vendor.vendor_type in OPENAI_COMPATIBLE_VENDOR_TYPES
+
+    @staticmethod
+    def _get_protocol_type(vendor):
+        """获取供应商的协议类型"""
+        if vendor.vendor_type == "anthropic":
+            return "anthropic"
+        # deepseek 和 other 类型支持协议选择
+        if vendor.vendor_type in ("deepseek", "other"):
+            return getattr(vendor, "protocol_type", "openai") or "openai"
+        return "openai"
 
     @staticmethod
     def classify_model_type(model_id):
@@ -34,14 +52,27 @@ class ModelVendorSyncService:
         return "llm"
 
     @classmethod
-    def fetch_models_with_credentials(cls, api_base, api_key, locale=None):
+    def fetch_models_with_credentials(cls, api_base, api_key, protocol_type="openai", locale=None):
+        """根据协议类型获取模型列表
+
+        注意：Anthropic API 不提供 /models 端点，此方法仅支持 OpenAI 兼容协议。
+        对于 Anthropic 协议，请使用 test_anthropic_connection 验证连接。
+        """
+        loader = cls._get_loader(locale)
+        if protocol_type == "anthropic":
+            raise ValueError(loader.get("error.anthropic_no_models_endpoint", "Anthropic API 不支持模型列表查询，请手动添加模型"))
+        return cls._fetch_openai_models(api_base, api_key, locale)
+
+    @classmethod
+    def _fetch_openai_models(cls, api_base, api_key, locale=None):
+        """获取 OpenAI 兼容 API 的模型列表"""
         loader = cls._get_loader(locale)
         normalized_api_base = (api_base or "").rstrip("/")
         if not normalized_api_base:
             raise ValueError(loader.get("error.vendor_api_base_required", "供应商 API 地址不能为空"))
         if not api_key:
             raise ValueError(loader.get("error.vendor_api_key_required", "供应商 API Key 不能为空"))
-        response = requests.get(
+        response = safe_get(
             f"{normalized_api_base}/models",
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=15,
@@ -51,12 +82,62 @@ class ModelVendorSyncService:
         return payload.get("data", []) if isinstance(payload, dict) else []
 
     @classmethod
+    def test_anthropic_connection(cls, api_base, api_key, model=None, locale=None):
+        """测试 Anthropic 协议连接
+
+        用于验证 Anthropic 协议端点是否可用，支持自定义模型（如 DeepSeek）。
+
+        Args:
+            api_base: API 基础地址
+            api_key: API 密钥
+            model: 用于测试的模型名称，默认使用 claude-3-haiku-20240307
+            locale: 语言环境
+        """
+        loader = cls._get_loader(locale)
+        if not api_key:
+            raise ValueError(loader.get("error.vendor_api_key_required", "供应商 API Key 不能为空"))
+
+        normalized_api_base = (api_base or "https://api.anthropic.com").rstrip("/")
+        test_model = model or "claude-3-haiku-20240307"
+
+        response = safe_post(
+            f"{normalized_api_base}/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": test_model,
+                "max_tokens": 1,
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+            timeout=15,
+        )
+        if response.status_code == 401:
+            raise ValueError(loader.get("error.vendor_api_key_invalid", "API Key 无效"))
+        if response.status_code >= 400:
+            error_msg = response.text[:200] if response.text else f"HTTP {response.status_code}"
+            raise ValueError(f"API 连接失败: {error_msg}")
+
+    @classmethod
     def sync_vendor_models(cls, vendor, locale=None):
+        loader = cls._get_loader(locale)
         if not cls.is_supported(vendor):
-            loader = cls._get_loader(locale)
+            if vendor.vendor_type == "anthropic":
+                raise ValueError(loader.get("error.anthropic_sync_not_supported", "Anthropic API 不支持模型同步，请手动添加模型"))
             raise ValueError(loader.get("error.vendor_sync_not_supported", "当前仅支持 OpenAI-compatible 供应商同步"))
 
-        remote_models = cls.fetch_models_with_credentials(vendor.api_base, vendor.decrypted_api_key, locale=locale)
+        # 所有支持同步的供应商都使用 OpenAI /models 端点
+        # 对于 deepseek 使用 anthropic 协议的情况，需要转换 API base
+        api_base = vendor.api_base
+        if vendor.vendor_type == "deepseek" and vendor.protocol_type == "anthropic":
+            # DeepSeek Anthropic 协议的 api_base 可能是 https://api.deepseek.com/anthropic
+            # 模型同步需要用 https://api.deepseek.com/v1
+            api_base = (api_base or "").replace("/anthropic", "/v1").rstrip("/")
+            if not api_base.endswith("/v1"):
+                api_base = "https://api.deepseek.com/v1"
+        remote_models = cls._fetch_openai_models(api_base, vendor.decrypted_api_key, locale=locale)
         grouped = defaultdict(list)
         for item in remote_models:
             model_id = item.get("id", "")

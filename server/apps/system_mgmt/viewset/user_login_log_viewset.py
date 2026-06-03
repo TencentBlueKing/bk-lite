@@ -8,6 +8,7 @@ from rest_framework import permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import UserLoginLog
 from apps.system_mgmt.serializers.user_login_log_serializer import UserLoginLogSerializer
@@ -68,6 +69,10 @@ class UserLoginLogViewSet(GroupFilterMixin, LanguageViewSet):
     filterset_class = UserLoginLogFilter
     permission_classes = [permissions.IsAuthenticated]
 
+    @HasPermission("audit_log-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
     def get_http_method_names(self):
         """动态返回允许的HTTP方法"""
         # export_excel action 允许 POST，其他只允许 GET
@@ -82,6 +87,7 @@ class UserLoginLogViewSet(GroupFilterMixin, LanguageViewSet):
         return super().http_method_not_allowed(request, *args, **kwargs)
 
     @action(detail=False, methods=["get"])
+    @HasPermission("audit_log-View")
     def statistics(self, request):
         """
         获取登录日志统计信息
@@ -111,6 +117,7 @@ class UserLoginLogViewSet(GroupFilterMixin, LanguageViewSet):
         )
 
     @action(detail=False, methods=["post"])
+    @HasPermission("audit_log-View")
     def export_excel(self, request):
         """
         导出登录日志为Excel文件

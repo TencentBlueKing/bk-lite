@@ -15,18 +15,25 @@ import { useTranslation } from '@/utils/i18n';
 interface UnifiedFilterBarProps {
   definitions: UnifiedFilterDefinition[];
   values: Record<string, FilterValue>;
-  onChange: (values: Record<string, FilterValue>) => void;
+  onChange?: (values: Record<string, FilterValue>) => void;
+  onSearch?: (values: Record<string, FilterValue>) => void;
+  onReset?: (values: Record<string, FilterValue>) => void;
   prefixContent?: React.ReactNode;
+  containerClassName?: string;
+  appearance?: 'default' | 'embedded';
 }
 
 const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   definitions,
   values,
   onChange,
+  onSearch,
+  onReset,
   prefixContent,
+  containerClassName,
+  appearance = 'default',
 }) => {
   const { t } = useTranslation();
-  // 本地状态，用于暂存用户输入，点击搜索后才同步到父组件
   const [localValues, setLocalValues] =
     useState<Record<string, FilterValue>>(values);
 
@@ -34,7 +41,6 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
     .filter((d) => d.enabled)
     .sort((a, b) => a.order - b.order);
 
-  // 当外部 values 变化时同步到本地
   useEffect(() => {
     setLocalValues(values);
   }, [values]);
@@ -42,6 +48,8 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   if (enabledDefinitions.length === 0 && !prefixContent) {
     return null;
   }
+
+  const isEmbedded = appearance === 'embedded';
 
   const handleLocalValueChange = (filterId: string, value: FilterValue) => {
     setLocalValues((prev) => ({
@@ -62,22 +70,28 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
         selectValue: originValue ?? 0,
       };
       handleLocalValueChange(filterId, timeRangeValue);
-    } else {
-      handleLocalValueChange(filterId, null);
+      return;
     }
+
+    handleLocalValueChange(filterId, null);
   };
 
   const getTimeSelectorDefaultValue = (
     value: FilterValue,
-  ): { selectValue: number; rangePickerVaule: [dayjs.Dayjs, dayjs.Dayjs] | null } => {
+  ): {
+    selectValue: number;
+    rangePickerVaule: [dayjs.Dayjs, dayjs.Dayjs] | null;
+  } => {
     const timeValue = value as TimeRangeValue | null | undefined;
     if (!timeValue || !timeValue.start || !timeValue.end) {
       return { selectValue: 15, rangePickerVaule: null };
     }
+
     const selectVal = timeValue.selectValue ?? 0;
     if (selectVal > 0) {
       return { selectValue: selectVal, rangePickerVaule: null };
     }
+
     return {
       selectValue: 0,
       rangePickerVaule: [dayjs(timeValue.start), dayjs(timeValue.end)],
@@ -85,7 +99,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   };
 
   const handleSearch = () => {
-    onChange(localValues);
+    (onSearch || onChange)?.(localValues);
   };
 
   const handleReset = () => {
@@ -94,7 +108,13 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
       emptyValues[def.id] = def.defaultValue ?? null;
     });
     setLocalValues(emptyValues);
-    onChange(emptyValues);
+
+    if (onReset) {
+      onReset(emptyValues);
+      return;
+    }
+
+    (onSearch || onChange)?.(emptyValues);
   };
 
   const renderFilterControl = (definition: UnifiedFilterDefinition) => {
@@ -122,7 +142,9 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           return (
             <Select
               value={(value as string) || undefined}
-              onChange={(val) => handleLocalValueChange(definition.id, val ?? null)}
+              onChange={(val) =>
+                handleLocalValueChange(definition.id, val ?? null)
+              }
               placeholder={definition.name}
               allowClear
               style={{ minWidth: 160 }}
@@ -130,13 +152,13 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
             />
           );
         }
+
         return (
           <Input
             value={(value as string) || ''}
             onChange={(e) =>
               handleLocalValueChange(definition.id, e.target.value)
             }
-            onPressEnter={handleSearch}
             placeholder={definition.name}
             allowClear
             style={{ minWidth: 160 }}
@@ -146,12 +168,27 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   };
 
   return (
-    <div className="mx-3 mt-3 rounded-lg border border-(--color-border-2) bg-(--color-bg-1) p-3">
-      <div className="flex flex-wrap items-center gap-4">
+    <div
+      className={
+        isEmbedded
+          ? `border-b border-(--color-border-2) bg-transparent px-4 py-3 ${containerClassName ?? ''}`
+          : `rounded-lg border border-(--color-border-2) bg-(--color-bg-1) px-3 py-2 ${containerClassName ?? 'mx-[10px] mt-1 mb-2'}`
+      }
+    >
+      <div
+        className={`flex flex-wrap items-center ${isEmbedded ? 'gap-x-4 gap-y-2' : 'gap-x-3 gap-y-2.5'}`}
+      >
         {prefixContent}
         {enabledDefinitions.map((definition) => (
-          <div key={definition.id} className="flex items-center gap-2">
-            <span className="text-sm text-(--color-text-2) whitespace-nowrap">
+          <div
+            key={definition.id}
+            className={
+              isEmbedded
+                ? 'flex items-center gap-2'
+                : 'flex items-center gap-2 px-1 py-1'
+            }
+          >
+            <span className="text-xs font-medium tracking-[0.02em] text-(--color-text-2) whitespace-nowrap">
               {definition.name}:
             </span>
             {renderFilterControl(definition)}
@@ -161,17 +198,23 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           className="flex shrink-0 items-center gap-2 whitespace-nowrap"
           data-export-hidden="true"
         >
-        <Button
-          type="primary"
-          size="small"
-          icon={<SearchOutlined />}
-          onClick={handleSearch}
-        >
-          {t('common.search')}
-        </Button>
-        <Button size="small" icon={<ReloadOutlined />} onClick={handleReset}>
-          {t('common.reset')}
-        </Button>
+          <Button
+            type="primary"
+            size="middle"
+            icon={<SearchOutlined />}
+            onClick={handleSearch}
+            className="rounded-lg!"
+          >
+            {t('common.search')}
+          </Button>
+          <Button
+            size="middle"
+            icon={<ReloadOutlined />}
+            onClick={handleReset}
+            className="rounded-lg!"
+          >
+            {t('common.reset')}
+          </Button>
         </div>
       </div>
     </div>

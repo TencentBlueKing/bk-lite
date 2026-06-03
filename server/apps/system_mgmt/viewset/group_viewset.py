@@ -15,8 +15,67 @@ from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
 
 
 class GroupViewSet(LanguageViewSet, ViewSetUtils):
+    """组织 ViewSet - 禁用所有内置 CRUD 接口，仅使用自定义 action
+
+    权限校验：
+    - 所有接口需要对应的 HasPermission 装饰器
+    - get_detail/get_group_detail_with_roles 校验用户是否有权限访问指定组
+    """
+
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
+    # 仅允许 GET (actions), POST (actions)
+    # 禁用所有内置 CRUD 方法
+    http_method_names = ["get", "post", "options"]
+
+    def _get_user_group_ids(self, user):
+        """获取用户有权限的组ID集合"""
+        if getattr(user, "is_superuser", False):
+            return None  # superuser 返回 None 表示有权限访问所有组
+        return {g["id"] for g in getattr(user, "group_list", [])}
+
+    def _validate_group_permission(self, request, group_id):
+        """校验用户是否有权限访问指定组
+
+        Args:
+            request: 请求对象
+            group_id: 要校验的组ID
+
+        Returns:
+            tuple: (is_valid, error_response)
+        """
+        if getattr(request.user, "is_superuser", False):
+            return True, None
+
+        user_group_ids = self._get_user_group_ids(request.user)
+        if group_id not in user_group_ids:
+            message = self.loader.get("error.no_permission_access_group") if self.loader else "无权访问该组织"
+            return False, JsonResponse({"result": False, "message": message}, status=403)
+        return True, None
+
+    def list(self, request, *args, **kwargs):
+        """禁用内置 list 接口 - 使用 search_group_list action"""
+        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
+
+    def retrieve(self, request, *args, **kwargs):
+        """禁用内置 retrieve 接口 - 使用 get_detail action"""
+        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
+
+    def create(self, request, *args, **kwargs):
+        """禁用内置 create 接口 - 使用 create_group action"""
+        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
+
+    def update(self, request, *args, **kwargs):
+        """禁用内置 update 接口 - 使用 update_group action"""
+        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
+
+    def partial_update(self, request, *args, **kwargs):
+        """禁用内置 partial_update 接口 - 使用 update_group action"""
+        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
+
+    def destroy(self, request, *args, **kwargs):
+        """禁用内置 destroy 接口 - 使用 delete_groups action"""
+        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
 
     @action(detail=False, methods=["GET"])
     def get_teams(self, request):
@@ -37,7 +96,13 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
     @action(detail=False, methods=["GET"])
     @HasPermission("user_group-View")
     def get_detail(self, request):
-        group = Group.objects.get(id=request.GET["group_id"])
+        group_id = int(request.GET["group_id"])
+        # 校验用户是否有权限访问该组
+        is_valid, error_response = self._validate_group_permission(request, group_id)
+        if not is_valid:
+            return error_response
+
+        group = Group.objects.get(id=group_id)
         return JsonResponse(
             {"result": True, "data": {"name": group.name, "id": group.id, "parent_id": group.parent_id, "is_virtual": group.is_virtual}}
         )
@@ -63,7 +128,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         group = Group.objects.create(parent_id=parent_id, name=group_name, is_virtual=is_virtual)
 
         # 记录操作日志
-        log_operation(request, "create", "group", f"新增组织: {group_name}")
+        log_operation(request, "create", "system-manager", f"新增组织: {group_name}")
 
         # 返回结果
         return JsonResponse(
@@ -187,7 +252,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
             logger.exception(e)
 
         # 记录操作日志
-        log_operation(request, "update", "group", f"编辑组织: {request.data.get('group_name')}")
+        log_operation(request, "update", "system-manager", f"编辑组织: {request.data.get('group_name')}")
 
         return JsonResponse({"result": True})
 
@@ -242,17 +307,24 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         Group.objects.filter(id__in=groups_to_delete).delete()
 
         # 记录操作日志
-        log_operation(request, "delete", "group", f"删除组织: {obj.name} (包含{len(groups_to_delete)}个子组)")
+        log_operation(request, "delete", "system-manager", f"删除组织: {obj.name} (包含{len(groups_to_delete)}个子组)")
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])
     @HasPermission("user_group-View")
     def get_group_detail_with_roles(self, request):
         group_id = request.data.get("group_id")
+
+        # 校验用户是否有权限访问该组
+        is_valid, error_response = self._validate_group_permission(request, int(group_id))
+        if not is_valid:
+            return error_response
+
         try:
             group = Group.objects.prefetch_related("roles").get(id=group_id)
         except Group.DoesNotExist:
-            return JsonResponse({"result": False, "message": "组织不存在"})
+            message = self.loader.get("error.group_not_found") if self.loader else "组织不存在"
+            return JsonResponse({"result": False, "message": message})
 
         own_role_ids = list(group.roles.values_list("id", flat=True))
 
@@ -287,3 +359,52 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
                 },
             }
         )
+
+    @action(detail=False, methods=["POST"])
+    @HasPermission("user_group-View")
+    def batch_get_group_detail_with_roles(self, request):
+        """批量获取多个组织的角色详情，避免前端逐个请求"""
+        group_ids = request.data.get("group_ids", [])
+        if not group_ids or not isinstance(group_ids, list):
+            return JsonResponse({"result": False, "message": "group_ids 参数是必填的列表"}, status=400)
+
+        all_groups = {g.id: g for g in Group.objects.prefetch_related("roles").all()}
+
+        results = []
+        for gid in group_ids:
+            gid = int(gid)
+            group = all_groups.get(gid)
+            if not group:
+                continue
+
+            own_role_ids = list(group.roles.values_list("id", flat=True))
+
+            inherited_role_ids = []
+            inherited_role_source_map = {}
+            if group.parent_id:
+                visited = set()
+                current_parent_id = group.parent_id
+                while current_parent_id and current_parent_id not in visited:
+                    visited.add(current_parent_id)
+                    parent = all_groups.get(current_parent_id)
+                    if not parent or not parent.allow_inherit_roles:
+                        break
+                    for role in parent.roles.all():
+                        if role.id not in inherited_role_ids:
+                            inherited_role_ids.append(role.id)
+                            inherited_role_source_map[str(role.id)] = parent.name
+                    current_parent_id = parent.parent_id or 0
+
+            results.append(
+                {
+                    "group_id": group.id,
+                    "group_name": group.name,
+                    "allow_inherit_roles": group.allow_inherit_roles,
+                    "own_role_ids": own_role_ids,
+                    "inherited_role_ids": inherited_role_ids,
+                    "inherited_role_source": ", ".join(dict.fromkeys(inherited_role_source_map.values())),
+                    "inherited_role_source_map": inherited_role_source_map,
+                }
+            )
+
+        return JsonResponse({"result": True, "data": results})

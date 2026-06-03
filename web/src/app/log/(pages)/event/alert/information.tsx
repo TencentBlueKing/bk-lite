@@ -207,6 +207,9 @@ const Information: React.FC<TableDataItem> = ({
   };
 
   const checkDetail = () => {
+    const logGroups = Array.isArray(formData.log_groups)
+      ? formData.log_groups.filter(Boolean)
+      : [];
     const params = {
       query: formData.alert_condition?.query as string,
       startTime: String(
@@ -221,7 +224,10 @@ const Information: React.FC<TableDataItem> = ({
     if (isAggregate) {
       params.query = buildVictoriaLogsQuery();
     }
-    const queryString = new URLSearchParams(params).toString();
+    const queryString = new URLSearchParams([
+      ...Object.entries(params),
+      ...logGroups.map((group) => ['log_groups', String(group)])
+    ]).toString();
     const url = `/log/search?${queryString}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };

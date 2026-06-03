@@ -1,3 +1,4 @@
+import json
 from typing import Dict, List, Any, Optional
 import uuid
 from django.utils import timezone
@@ -5,6 +6,7 @@ from apps.alerts.models.models import Alert, Event, Level
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.constants.constants import AlertStatus, SessionStatus, LevelType
 from apps.alerts.aggregation.window.factory import WindowFactory
+from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.core.logger import alert_logger as logger
 
 
@@ -90,6 +92,109 @@ class AlertBuilder:
         return str(mapped_level)
 
     @staticmethod
+    def _get_safe_strategy_team(strategy: AlarmStrategy) -> List[int]:
+        try:
+            dispatch_team = normalize_team_ids(strategy.dispatch_team)
+        except ValueError:
+            logger.warning(
+                "告警策略 dispatch_team 非法，回退为空列表: strategy_id=%s dispatch_team=%s",
+                strategy.id,
+                strategy.dispatch_team,
+            )
+            return []
+
+        if not dispatch_team:
+            return []
+
+        return dispatch_team
+
+    @staticmethod
+    def _get_unique_scalar_value(values: List[Any]) -> Any:
+        unique_values = {value for value in values}
+        if len(unique_values) == 1:
+            return values[0]
+        return None
+
+    @staticmethod
+    def _get_consistent_labels(events: List[Event]) -> Dict[str, Any]:
+        if not events:
+            return {}
+
+        serialized_labels = [
+            json.dumps(event.labels or {}, sort_keys=True, ensure_ascii=False)
+            for event in events
+        ]
+
+        if len(set(serialized_labels)) == 1:
+            return events[0].labels or {}
+
+        return {}
+
+    @staticmethod
+    def _resolve_standard_fields(events) -> Dict[str, Any]:
+        event_list = list(events)
+        if not event_list:
+            return {
+                "source_name": None,
+                "resource_id": None,
+                "resource_name": None,
+                "resource_type": None,
+                "item": None,
+                "labels": {},
+            }
+
+        return {
+            "source_name": AlertBuilder._get_unique_scalar_value(
+                [event.source.name for event in event_list]
+            ),
+            "resource_id": AlertBuilder._get_unique_scalar_value(
+                [event.resource_id for event in event_list]
+            ),
+            "resource_name": AlertBuilder._get_unique_scalar_value(
+                [event.resource_name for event in event_list]
+            ),
+            "resource_type": AlertBuilder._get_unique_scalar_value(
+                [event.resource_type for event in event_list]
+            ),
+            "item": AlertBuilder._get_unique_scalar_value(
+                [event.item for event in event_list]
+            ),
+                "labels": AlertBuilder._get_consistent_labels(event_list),
+        }
+
+    @staticmethod
+    def _resolve_dimensions(events: List[Event], group_by_field: str) -> Dict[str, str]:
+        event_list = list(events)
+        if not event_list or not group_by_field:
+            return {}
+
+        dimension_names = [item.strip() for item in group_by_field.split(",") if item.strip()]
+        dimensions: Dict[str, str] = {}
+
+        for dimension_name in dimension_names:
+            values = set()
+            for event in event_list:
+                value = getattr(event, dimension_name, None)
+                if value is None:
+                    continue
+                normalized_value = str(value).strip()
+                if normalized_value:
+                    values.add(normalized_value)
+
+            if len(values) == 1:
+                dimensions[dimension_name] = values.pop()
+
+        return dimensions
+
+    @staticmethod
+    def _get_events_by_ids(event_ids: List) -> List[Event]:
+        return list(
+            Event.objects.select_related("source")
+            .filter(event_id__in=event_ids)
+            .order_by("pk")
+        )
+
+    @staticmethod
     def create_or_update_alert(
         aggregation_result: Dict[str, Any],
         strategy: AlarmStrategy,
@@ -138,6 +243,9 @@ class AlertBuilder:
         group_by_field: str,
     ) -> Alert:
         alert_id = f"ALERT-{uuid.uuid4().hex.upper()}"
+        events = AlertBuilder._get_events_by_ids(event_ids) if event_ids else []
+        standard_fields = AlertBuilder._resolve_standard_fields(events)
+        dimensions = AlertBuilder._resolve_dimensions(events, group_by_field)
 
         window_config = WindowFactory.create_from_strategy(strategy)
 
@@ -156,18 +264,26 @@ class AlertBuilder:
             status=AlertStatus.UNASSIGNED,
             first_event_time=result["first_event_time"],
             last_event_time=result["last_event_time"],
+            labels=standard_fields["labels"],
+            item=standard_fields["item"],
+            resource_id=standard_fields["resource_id"],
+            resource_name=standard_fields["resource_name"],
+            resource_type=standard_fields["resource_type"],
+            source_name=standard_fields["source_name"],
             group_by_field=group_by_field,
+            dimensions=dimensions,
             is_session_alert=is_session_alert,
-            session_status=SessionStatus.OBSERVING if session_timeout_minutes else None,
+            session_status=SessionStatus.OBSERVING
+            if is_session_alert and session_timeout_minutes
+            else None,
             session_end_time=window_config.get_session_end_time()
-            if session_timeout_minutes
+            if is_session_alert and session_timeout_minutes
             else None,
             rule_id=strategy.id,  # 软关联告警策略
-            team=strategy.dispatch_team,
+            team=AlertBuilder._get_safe_strategy_team(strategy),
         )
 
-        if event_ids:
-            events = Event.objects.filter(event_id__in=event_ids)
+        if events:
             alert.events.add(*events)
 
             # 初始化新创建Alert的缓存
@@ -182,6 +298,7 @@ class AlertBuilder:
         event_ids: List,
         strategy: AlarmStrategy,
     ) -> Alert:
+        events_to_validate = AlertBuilder._get_events_by_ids(event_ids) if event_ids else []
         alert.last_event_time = result["last_event_time"]
         # 确保level在ALERT类型的有效范围内
         alert.level = AlertBuilder._map_event_level_to_alert(result["alert_level"])
@@ -194,10 +311,6 @@ class AlertBuilder:
             if time_out:
                 window_config = WindowFactory.create_from_strategy(strategy)
                 alert.session_end_time = window_config.get_session_end_time()
-
-        alert.save(
-            update_fields=["last_event_time", "level", "updated_at", "session_end_time"]
-        )
 
         if event_ids:
             # 性能优化：使用类级别缓存避免重复查询已关联的event_id
@@ -215,4 +328,33 @@ class AlertBuilder:
                 # 更新缓存
                 existing_event_ids.update(new_event_ids)
 
+        standard_fields = AlertBuilder._resolve_standard_fields(
+            alert.events.select_related("source").all().order_by("pk")
+        )
+        dimensions = AlertBuilder._resolve_dimensions(
+            alert.events.all().order_by("pk"),
+            alert.group_by_field or "",
+        )
+        alert.source_name = standard_fields["source_name"]
+        alert.resource_id = standard_fields["resource_id"]
+        alert.resource_name = standard_fields["resource_name"]
+        alert.resource_type = standard_fields["resource_type"]
+        alert.item = standard_fields["item"]
+        alert.labels = standard_fields["labels"]
+        alert.dimensions = dimensions
+        alert.save(
+            update_fields=[
+                "last_event_time",
+                "level",
+                "updated_at",
+                "session_end_time",
+                "source_name",
+                "resource_id",
+                "resource_name",
+                "resource_type",
+                "item",
+                "labels",
+                "dimensions",
+            ]
+        )
         return alert

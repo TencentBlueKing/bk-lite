@@ -136,25 +136,31 @@ def poll_train_job_status(
             f"连续错误: {consecutive_errors}"
         )
         if consecutive_errors >= 10:
-            logger.error(
-                f"连续错误达到熔断阈值: TrainJob ID={train_job_id}, 标记为失败"
+            return _handle_observation_failure(
+                self=self,
+                train_job_id=train_job_id,
+                mlflow_prefix=mlflow_prefix,
+                expected_run_count=expected_run_count,
+                consecutive_errors=consecutive_errors,
             )
-            _mark_train_job_failed(train_job_id, mlflow_prefix)
-            return {"result": False, "reason": "consecutive errors circuit breaker"}
-        raise self.retry(
-            args=(),
-            kwargs={
-                "train_job_id": train_job_id,
-                "mlflow_prefix": mlflow_prefix,
-                "expected_run_count": expected_run_count,
-                "consecutive_errors": consecutive_errors,
-            },
+        return _retry_or_handle_max_retries(
+            self=self,
+            train_job_id=train_job_id,
+            mlflow_prefix=mlflow_prefix,
+            expected_run_count=expected_run_count,
+            consecutive_errors=consecutive_errors,
         )
 
     except self.MaxRetriesExceededError:
         logger.error(f"超过最大重试次数: TrainJob ID: {train_job_id}")
-        _mark_train_job_failed(train_job_id, mlflow_prefix)
-        return {"result": False, "reason": "max retries exceeded"}
+        return _handle_observation_failure(
+            self=self,
+            train_job_id=train_job_id,
+            mlflow_prefix=mlflow_prefix,
+            expected_run_count=expected_run_count,
+            consecutive_errors=consecutive_errors,
+            from_max_retries=True,
+        )
 
     except Retry:
         raise
@@ -167,20 +173,20 @@ def poll_train_job_status(
             exc_info=True,
         )
         if consecutive_errors >= 10:
-            logger.error(
-                f"连续错误达到熔断阈值: TrainJob ID={train_job_id}, 标记为失败"
+            return _handle_observation_failure(
+                self=self,
+                train_job_id=train_job_id,
+                mlflow_prefix=mlflow_prefix,
+                expected_run_count=expected_run_count,
+                consecutive_errors=consecutive_errors,
             )
-            _mark_train_job_failed(train_job_id, mlflow_prefix)
-            return {"result": False, "reason": "consecutive errors circuit breaker"}
-        raise self.retry(
-            args=(),
+        return _retry_or_handle_max_retries(
+            self=self,
+            train_job_id=train_job_id,
+            mlflow_prefix=mlflow_prefix,
+            expected_run_count=expected_run_count,
+            consecutive_errors=consecutive_errors,
             exc=e,
-            kwargs={
-                "train_job_id": train_job_id,
-                "mlflow_prefix": mlflow_prefix,
-                "expected_run_count": expected_run_count,
-                "consecutive_errors": consecutive_errors,
-            },
         )
 
 
@@ -236,39 +242,168 @@ def _get_train_job_model(mlflow_prefix: str):
     return getattr(module, class_name)
 
 
-def _mark_train_job_failed(train_job_id: int, mlflow_prefix: str) -> None:
-    """超过最大重试次数时标记训练任务为失败，并尝试停止残留容器"""
-    from apps.mlops.constants import TrainJobStatus
+def _retry_or_handle_max_retries(
+    self,
+    train_job_id: int,
+    mlflow_prefix: str,
+    expected_run_count: int,
+    consecutive_errors: int,
+    exc: Exception | None = None,
+    countdown: int | None = None,
+):
+    retry_kwargs = {
+        "train_job_id": train_job_id,
+        "mlflow_prefix": mlflow_prefix,
+        "expected_run_count": expected_run_count,
+        "consecutive_errors": consecutive_errors,
+    }
+
+    try:
+        if exc is not None and countdown is not None:
+            raise self.retry(args=(), kwargs=retry_kwargs, exc=exc, countdown=countdown)
+        if exc is not None:
+            raise self.retry(args=(), kwargs=retry_kwargs, exc=exc)
+        if countdown is not None:
+            raise self.retry(args=(), kwargs=retry_kwargs, countdown=countdown)
+        raise self.retry(args=(), kwargs=retry_kwargs)
+    except self.MaxRetriesExceededError:
+        return _handle_observation_failure(
+            self=self,
+            train_job_id=train_job_id,
+            mlflow_prefix=mlflow_prefix,
+            expected_run_count=expected_run_count,
+            consecutive_errors=consecutive_errors,
+            from_max_retries=True,
+        )
+
+
+def _handle_observation_failure(
+    self,
+    train_job_id: int,
+    mlflow_prefix: str,
+    expected_run_count: int,
+    consecutive_errors: int,
+    from_max_retries: bool = False,
+) -> dict:
     from apps.mlops.utils import mlflow_service
-    from apps.mlops.utils.webhook_client import (
-        WebhookClient,
-        WebhookConnectionError,
-        WebhookError,
-        WebhookTimeoutError,
+    from apps.mlops.utils.webhook_client import WebhookClient, WebhookError
+
+    retry_kwargs = {
+        "train_job_id": train_job_id,
+        "mlflow_prefix": mlflow_prefix,
+        "expected_run_count": expected_run_count,
+        "consecutive_errors": consecutive_errors,
+    }
+
+    trigger_reason = "超过最大重试次数" if from_max_retries else "连续错误达到熔断阈值"
+    logger.error(f"{trigger_reason}: TrainJob ID={train_job_id}, 开始核实训练容器状态")
+
+    train_job = _load_train_job(train_job_id, mlflow_prefix)
+    if train_job is None:
+        return {"result": False, "reason": "train_job not found or not running"}
+
+    job_id = mlflow_service.build_job_id(
+        prefix=mlflow_prefix,
+        algorithm=train_job.algorithm,
+        train_job_id=train_job_id,
     )
+
+    try:
+        statuses = WebhookClient.get_status([job_id])
+    except WebhookError as e:
+        logger.warning(
+            f"训练状态查询异常后核实容器状态失败: TrainJob ID={train_job_id}, job_id={job_id}, error={e}"
+        )
+        if from_max_retries:
+            self.apply_async(
+                args=(),
+                kwargs=retry_kwargs,
+                countdown=300,
+            )
+            return {
+                "result": False,
+                "reason": "container status check failed after max retries; rescheduled polling",
+            }
+        return _retry_or_handle_max_retries(
+            self=self,
+            train_job_id=train_job_id,
+            mlflow_prefix=mlflow_prefix,
+            expected_run_count=expected_run_count,
+            consecutive_errors=consecutive_errors,
+            countdown=300,
+        )
+
+    container_info = statuses[0] if statuses else None
+    container_state = (container_info or {}).get("state")
+    container_status = (container_info or {}).get("status")
+    container_message = str((container_info or {}).get("message", "")).lower()
+
+    if container_status == "success" and container_state == "running":
+        logger.warning(
+            f"MLflow 连续异常但训练容器仍在运行: TrainJob ID={train_job_id}, job_id={job_id}, 继续低频重试"
+        )
+        if from_max_retries:
+            self.apply_async(
+                args=(),
+                kwargs=retry_kwargs,
+                countdown=300,
+            )
+            return {"result": False, "reason": "container still running after max retries; rescheduled polling"}
+        return _retry_or_handle_max_retries(
+            self=self,
+            train_job_id=train_job_id,
+            mlflow_prefix=mlflow_prefix,
+            expected_run_count=expected_run_count,
+            consecutive_errors=consecutive_errors,
+            countdown=300,
+        )
+
+    if container_status == "error" and "not found" in container_message:
+        logger.error(
+            f"MLflow 连续异常且训练容器不存在: TrainJob ID={train_job_id}, job_id={job_id}, 标记为失败"
+        )
+        _mark_train_job_failed(train_job_id, mlflow_prefix)
+        return {"result": False, "reason": "container not running after observation failures"}
+
+    if container_status == "success" and container_state != "running":
+        logger.error(
+            f"MLflow 连续异常且训练容器已停止: TrainJob ID={train_job_id}, job_id={job_id}, state={container_state}, 标记为失败"
+        )
+        _mark_train_job_failed(train_job_id, mlflow_prefix)
+        return {"result": False, "reason": "container not running after observation failures"}
+
+    logger.warning(
+        f"MLflow 连续异常后无法确认训练容器状态: TrainJob ID={train_job_id}, job_id={job_id}, container_info={container_info}, 继续低频重试"
+    )
+    if from_max_retries:
+        self.apply_async(
+            args=(),
+            kwargs=retry_kwargs,
+            countdown=300,
+        )
+        return {
+            "result": False,
+            "reason": "container state unclear after max retries; rescheduled polling",
+        }
+    return _retry_or_handle_max_retries(
+        self=self,
+        train_job_id=train_job_id,
+        mlflow_prefix=mlflow_prefix,
+        expected_run_count=expected_run_count,
+        consecutive_errors=consecutive_errors,
+        countdown=300,
+    )
+
+
+def _mark_train_job_failed(train_job_id: int, mlflow_prefix: str) -> None:
+    """在确认轮询任务无法继续推进时，仅将训练任务标记为失败。"""
+    from apps.mlops.constants import TrainJobStatus
 
     model_class = _get_train_job_model(mlflow_prefix)
     if model_class is None:
         return
 
     try:
-        # 先尝试停止容器（即使失败也继续标记 DB 状态）
-        train_job = model_class.objects.filter(id=train_job_id).first()
-        if train_job:
-            job_id = mlflow_service.build_job_id(
-                prefix=mlflow_prefix,
-                algorithm=train_job.algorithm,
-                train_job_id=train_job_id,
-            )
-            try:
-                WebhookClient.stop(job_id)
-                logger.info(f"已停止训练容器: job_id={job_id}")
-            except (WebhookError, WebhookConnectionError, WebhookTimeoutError) as e:
-                logger.warning(
-                    f"停止训练容器失败（容器可能已停止）: job_id={job_id}, error={e}"
-                )
-
-        # 标记 DB 状态
         model_class.objects.filter(
             id=train_job_id, status=TrainJobStatus.RUNNING
         ).update(status=TrainJobStatus.FAILED)

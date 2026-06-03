@@ -16,6 +16,7 @@ from apps.job_mgmt.serializers.script import (
     ScriptUpdateSerializer,
 )
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class ScriptViewSet(AuthViewSet):
@@ -53,9 +54,12 @@ class ScriptViewSet(AuthViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        # 校验用户是否有目标组织的权限
+        team = data.get("team", [])
+        self._validate_org_field_permission(request, team)
+
         # 高危命令检测
         script_content = data.get("content", "")
-        team = data.get("team", [])
         check_result = DangerousChecker.check_command(script_content, team)
         if not check_result.can_execute:
             forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
@@ -69,7 +73,10 @@ class ScriptViewSet(AuthViewSet):
         # 返回完整的对象信息
         instance = Script.objects.get(pk=serializer.instance.pk)
         response_serializer = ScriptSerializer(instance)
-        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        response = Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        if response.status_code == status.HTTP_201_CREATED:
+            log_operation(request, "create", "job", f"新增脚本: {response.data.get('name')}")
+        return response
 
     @HasPermission("script_library-Edit")
     def update(self, request, *args, **kwargs):
@@ -79,9 +86,12 @@ class ScriptViewSet(AuthViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        # 校验用户是否有目标组织的权限
+        team = data.get("team", instance.team)
+        self._validate_org_field_permission(request, team)
+
         # 高危命令检测（仅当修改了脚本内容时）
         script_content = data.get("content", instance.content)
-        team = data.get("team", instance.team)
         check_result = DangerousChecker.check_command(script_content, team)
         if not check_result.can_execute:
             forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
@@ -91,7 +101,10 @@ class ScriptViewSet(AuthViewSet):
             )
 
         self.perform_update(serializer)
-        return Response(ScriptSerializer(instance).data)
+        response = Response(ScriptSerializer(instance).data)
+        if response.status_code == status.HTTP_200_OK:
+            log_operation(request, "update", "job", f"编辑脚本: {response.data.get('name')}")
+        return response
 
     @action(detail=False, methods=["post"])
     @HasPermission("script_library-Delete")
@@ -104,5 +117,7 @@ class ScriptViewSet(AuthViewSet):
         # 只删除当前用户有权限的脚本
         queryset = self.filter_queryset(self.get_queryset())
         deleted_count, _ = queryset.filter(id__in=ids).delete()
-
-        return Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
+        response = Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
+        if response.status_code == status.HTTP_200_OK:
+            log_operation(request, "delete", "job", f"批量删除脚本: (共{deleted_count}个)")
+        return response

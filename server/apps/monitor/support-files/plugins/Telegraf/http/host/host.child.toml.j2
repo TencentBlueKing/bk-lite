@@ -1,0 +1,19 @@
+[[inputs.prometheus]]
+    startup_error_behavior = "retry"
+    urls = ["${STARGAZER_URL}/api/monitor/host/metrics"]
+    interval = "{{ interval | default(60, true) }}s"
+    timeout = "{{ timeout | default(60, true) }}s"
+    response_timeout = "{{ response_timeout | default(60, true) }}s"
+
+    [inputs.prometheus.http_headers]
+        host = "{{ host }}"
+        os_type = "{{ os_type | default('linux', true) }}"
+        username = "{{ username }}"
+        password = "{{ password }}"
+        port = "{{ port | default('22', true) }}"
+        metrics_modules = "{{ metrics_modules | default('cpu,mem,disk,net', true) }}"
+        ansible_node_id = "${ANSIBLE_NODE_ID}"
+        instance_id = "{{ instance_id }}"
+        instance_type = "os"
+        collect_type = "http"
+        config_type = "host"

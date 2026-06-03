@@ -7,13 +7,16 @@
 - 读写操作完全不变：obj.field = {...} 和 data = obj.field
 - 自动处理 S3 上传/下载和压缩/解压
 """
+
+import copy
 import gzip
 import json
 import uuid
 from typing import Any, Optional
 
 from django.core.files.base import ContentFile
-from django.db import models
+from django.db import connections, models, transaction
+from django.db.models.signals import post_save
 from django_minio_backend import MinioBackend
 
 from apps.core.logger import logger
@@ -29,10 +32,11 @@ def s3_json_upload_path(instance, filename):
     格式: YYYY/MM/DD/{model_name}_{pk}_{uuid}.json.gz
     """
     from datetime import datetime
+
     now = datetime.now()
 
     model_name = instance.__class__.__name__.lower()
-    pk = instance.pk or 'new'
+    pk = instance.pk or "new"
     unique_id = uuid.uuid4().hex[:8]
 
     # 统一使用 .json.gz 扩展名（实际是否压缩由字段的 compressed 属性控制）
@@ -68,7 +72,10 @@ class S3JSONField(models.CharField):
 
     description = "JSON data stored in S3/MinIO with optional compression (transparent JSONField replacement)"
 
-    def __init__(self, bucket_name='default', compressed=True, upload_to=None, *args, **kwargs):
+    CLEANUP_TASKS_ATTR = "_s3json_cleanup_tasks"
+    PENDING_VALUE_ATTR_TEMPLATE = "_s3json_pending_{field_name}"
+
+    def __init__(self, bucket_name="default", compressed=True, upload_to=None, *args, **kwargs):
         """
         初始化 S3JSONField
 
@@ -81,12 +88,13 @@ class S3JSONField(models.CharField):
         self.bucket_name = bucket_name
         self.compressed = compressed
         self.upload_to = upload_to or s3_json_upload_path
+        self.delete_previous_on_update = kwargs.pop("delete_previous_on_update", False)
 
         # 标记 storage 是否已经初始化
         self._minio_storage = None
 
         # 设置 CharField 的 max_length（存储 S3 路径）
-        kwargs.setdefault('max_length', 500)
+        kwargs.setdefault("max_length", 500)
 
         super().__init__(*args, **kwargs)
 
@@ -99,6 +107,14 @@ class S3JSONField(models.CharField):
 
         # 使用自定义描述符来拦截字段访问
         setattr(cls, name, S3JSONFieldDescriptor(self))
+
+        if self.delete_previous_on_update:
+            post_save.connect(
+                _handle_s3jsonfield_post_save_cleanup,
+                sender=cls,
+                weak=False,
+                dispatch_uid=f"s3jsonfield_cleanup_{cls._meta.label_lower}_{name}",
+            )
 
     @property
     def storage(self):
@@ -118,12 +134,21 @@ class S3JSONField(models.CharField):
         Returns:
             文件路径字符串（将保存到数据库）
         """
+        pending_attr = self._pending_value_attr_name
+        if pending_attr in model_instance.__dict__:
+            file_field = model_instance.__dict__.pop(pending_attr)
+            # 直接设 __dict__，不触发 descriptor 的 __set__（避免重新写入 pending 导致下次 save 覆盖数据）
+            model_instance.__dict__[self.attname] = file_field
+
         # 获取字段当前值
         file_field = getattr(model_instance, self.attname)
 
-        # 处理空值
-        if file_field is None or file_field == '':
-            return ''
+        # 处理空值：如果内存中为 None 但 DB 里有路径，保留 DB 值不覆盖
+        if file_field is None or file_field == "":
+            db_path = model_instance.__dict__.get(self.attname)
+            if isinstance(db_path, str) and db_path:
+                return db_path
+            return ""
 
         # 如果已经是文件路径（字符串），说明已经上传过了，直接返回
         if isinstance(file_field, str):
@@ -132,11 +157,13 @@ class S3JSONField(models.CharField):
         # 如果是 Python 对象（list/dict），需要上传到 S3
         if isinstance(file_field, (list, dict)):
             try:
+                previous_path = self._get_raw_db_value(model_instance)
                 # 上传到 S3 并获取文件路径
                 uploaded_path = self._upload_to_s3(model_instance, file_field)
 
                 # 更新模型实例的字段值为文件路径
                 setattr(model_instance, self.attname, uploaded_path)
+                self._register_cleanup_task(model_instance, previous_path, uploaded_path)
 
                 logger.debug(f"S3JSONField uploaded: {uploaded_path}")
                 return uploaded_path
@@ -147,6 +174,51 @@ class S3JSONField(models.CharField):
 
         # 其他情况（如 FieldFile 对象）调用父类方法
         return super().pre_save(model_instance, add)
+
+    def _get_db_alias(self, instance):
+        return getattr(getattr(instance, "_state", None), "db", None) or "default"
+
+    def _get_raw_db_value(self, instance):
+        if not self.delete_previous_on_update or not getattr(instance, "pk", None):
+            return ""
+
+        meta = instance._meta
+        db_alias = self._get_db_alias(instance)
+        connection = connections[db_alias]
+        quote_name = connection.ops.quote_name
+        query = f"SELECT {quote_name(self.column)} FROM {quote_name(meta.db_table)} WHERE {quote_name(meta.pk.column)} = %s"
+
+        with connection.cursor() as cursor:
+            cursor.execute(query, [instance.pk])
+            row = cursor.fetchone()
+
+        if not row:
+            return ""
+
+        value = row[0]
+        return value if isinstance(value, str) else ""
+
+    def _register_cleanup_task(self, instance, previous_path, current_path):
+        if not self.delete_previous_on_update:
+            return
+        if not previous_path or not current_path or previous_path == current_path:
+            return
+
+        tasks = getattr(instance, self.CLEANUP_TASKS_ATTR, [])
+        task = {
+            "field_name": self.attname,
+            "storage": self.storage,
+            "old_path": previous_path,
+            "new_path": current_path,
+            "using": self._get_db_alias(instance),
+        }
+        tasks = [item for item in tasks if item.get("field_name") != self.attname]
+        tasks.append(task)
+        setattr(instance, self.CLEANUP_TASKS_ATTR, tasks)
+
+    @property
+    def _pending_value_attr_name(self):
+        return self.PENDING_VALUE_ATTR_TEMPLATE.format(field_name=self.attname)
 
     def _upload_to_s3(self, instance, json_data) -> str:
         """
@@ -161,15 +233,15 @@ class S3JSONField(models.CharField):
         """
         # 序列化 JSON
         json_str = json.dumps(json_data, ensure_ascii=False, indent=None)
-        json_bytes = json_str.encode('utf-8')
+        json_bytes = json_str.encode("utf-8")
 
         # 压缩（如果启用）
         if self.compressed:
             content_bytes = gzip.compress(json_bytes, compresslevel=6)
-            content_type = 'application/gzip'
+            content_type = "application/gzip"
         else:
             content_bytes = json_bytes
-            content_type = 'application/json'
+            content_type = "application/json"
 
         # 生成文件名 - 直接调用 upload_to 函数，避免使用 generate_filename（它会触发 Django 的 default storage 查找）
         if callable(self.upload_to):
@@ -187,21 +259,16 @@ class S3JSONField(models.CharField):
             f"Uploaded to S3: {saved_path}, "
             f"original={len(json_bytes)} bytes, "
             f"compressed={len(content_bytes)} bytes, "
-            f"ratio={len(content_bytes)/len(json_bytes):.1%}"
+            f"ratio={len(content_bytes) / len(json_bytes):.1%}"
         )
 
         return saved_path
 
     def from_db_value(self, value, expression, connection):
-        """
-        从数据库读取后的处理 - 透明地从 S3 加载 JSON
-
-        这是实现透明替换的关键：用户读取字段时，自动从 S3 下载并解析
-        """
         if not value:
             return None
-
-        return self._load_from_s3(value)
+        # 返回路径字符串，延迟到 descriptor __get__ 访问时才从 S3 加载
+        return value
 
     def to_python(self, value):
         """
@@ -209,7 +276,7 @@ class S3JSONField(models.CharField):
 
         处理各种输入情况：None、已加载的对象、文件路径等
         """
-        if value is None or value == '':
+        if value is None or value == "":
             return None
 
         # 如果已经是 Python 对象（缓存的数据）
@@ -248,7 +315,7 @@ class S3JSONField(models.CharField):
                 return None
 
             # 读取文件内容
-            with self.storage.open(file_path, 'rb') as f:
+            with self.storage.open(file_path, "rb") as f:
                 content_bytes = f.read()
 
             logger.info(f"[S3JSONField] Read {len(content_bytes)} bytes from S3")
@@ -268,10 +335,12 @@ class S3JSONField(models.CharField):
                 logger.info(f"[S3JSONField] Not gzipped, using raw content")
 
             # 解析 JSON
-            json_str = json_bytes.decode('utf-8')
+            json_str = json_bytes.decode("utf-8")
             data = json.loads(json_str)
 
-            logger.info(f"[S3JSONField] Successfully loaded from S3: {file_path}, type: {type(data)}, items: {len(data) if isinstance(data, (list, dict)) else 'N/A'}")
+            logger.info(
+                f"[S3JSONField] Successfully loaded from S3: {file_path}, type: {type(data)}, items: {len(data) if isinstance(data, (list, dict)) else 'N/A'}"
+            )
             return data
 
         except json.JSONDecodeError as e:
@@ -304,7 +373,7 @@ class S3JSONField(models.CharField):
 
     def get_internal_type(self):
         """返回内部字段类型"""
-        return 'CharField'
+        return "CharField"
 
     def deconstruct(self):
         """
@@ -315,16 +384,17 @@ class S3JSONField(models.CharField):
         name, path, args, kwargs = super().deconstruct()
 
         # 添加自定义参数
-        kwargs['bucket_name'] = self.bucket_name
-        kwargs['compressed'] = self.compressed
+        kwargs["bucket_name"] = self.bucket_name
+        kwargs["compressed"] = self.compressed
+        kwargs["delete_previous_on_update"] = self.delete_previous_on_update
 
         # 使用全局函数引用（而不是实例方法）
         # 这样 Django 在对比迁移时才能正确识别字段定义没有变化
-        if 'upload_to' in kwargs:
-            kwargs['upload_to'] = s3_json_upload_path
+        if "upload_to" in kwargs:
+            kwargs["upload_to"] = s3_json_upload_path
 
         # 移除 storage 参数（会在运行时自动重建）
-        kwargs.pop('storage', None)
+        kwargs.pop("storage", None)
 
         return name, path, args, kwargs
 
@@ -335,9 +405,9 @@ class S3JSONField(models.CharField):
         返回文件路径而不是 JSON 数据
         """
         value = self.value_from_object(obj)
-        if value is None or value == '':
-            return ''
-        return str(value) if isinstance(value, str) else ''
+        if value is None or value == "":
+            return ""
+        return str(value) if isinstance(value, str) else ""
 
     def formfield(self, **kwargs):
         """
@@ -348,9 +418,9 @@ class S3JSONField(models.CharField):
         from django import forms
 
         defaults = {
-            'form_class': forms.JSONField,
-            'encoder': None,
-            'decoder': None,
+            "form_class": forms.JSONField,
+            "encoder": None,
+            "decoder": None,
         }
         defaults.update(kwargs)
 
@@ -368,24 +438,18 @@ class S3JSONFieldDescriptor:
         self.field = field
 
     def __get__(self, instance, owner):
-        """
-        获取字段值时调用
-
-        确保从 S3 加载数据
-        """
         if instance is None:
             return self
 
-        # 先从实例中获取原始值
         value = instance.__dict__.get(self.field.attname)
 
-        # 如果是文件路径，尝试从 S3 加载
-        if isinstance(value, str):
+        if isinstance(value, str) and value:
             loaded_value = self.field._load_from_s3(value)
-
-            # 更新实例中的值（避免重复加载）
+            if loaded_value is None:
+                # S3 加载失败时保留路径，避免后续 save 把 DB 中的引用清空
+                logger.warning(f"[S3JSONField] Load failed for {value}, preserving path reference")
+                return None
             instance.__dict__[self.field.attname] = loaded_value
-
             return loaded_value
 
         return value
@@ -397,9 +461,50 @@ class S3JSONFieldDescriptor:
         直接设置实例的属性，绕过模型的 save() 方法
         """
         if isinstance(value, (list, dict)):
-            # 如果是可序列化的对象，先上传到 S3
-            value = self.field._upload_to_s3(instance, value)
+            instance.__dict__[self.field._pending_value_attr_name] = copy.deepcopy(value)
+            current_value = instance.__dict__.get(self.field.attname)
+
+            if isinstance(current_value, str):
+                return
 
         # 设置实例的属性
         instance.__dict__[self.field.attname] = value
 
+
+def _handle_s3jsonfield_post_save_cleanup(sender, instance, **kwargs):
+    tasks = getattr(instance, S3JSONField.CLEANUP_TASKS_ATTR, None)
+    if not tasks:
+        return
+
+    remaining_tasks = []
+
+    for task in tasks:
+        old_path = task.get("old_path")
+        new_path = task.get("new_path")
+        storage = task.get("storage")
+        using = task.get("using") or "default"
+        if not old_path or not new_path or not storage:
+            continue
+
+        def _cleanup_old_object(old_path=old_path, new_path=new_path, storage=storage, model_label=sender._meta.label, pk=instance.pk):
+            try:
+                storage.delete(old_path)
+                logger.info(
+                    "Deleted previous S3JSONField object for %s(%s): %s -> %s",
+                    model_label,
+                    pk,
+                    old_path,
+                    new_path,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to delete previous S3JSONField object for %s(%s): %s, error=%s",
+                    model_label,
+                    pk,
+                    old_path,
+                    exc,
+                )
+
+        transaction.on_commit(_cleanup_old_object, using=using)
+
+    setattr(instance, S3JSONField.CLEANUP_TASKS_ATTR, remaining_tasks)

@@ -22,5 +22,4 @@ class IisCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "phys_path": "phys_path",
         "server_name": "server_name",
         "max_concur_connect": "max_concur_connect",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

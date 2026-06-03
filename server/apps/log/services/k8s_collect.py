@@ -18,7 +18,6 @@ class K8sLogCollectService:
     TOKEN_MAX_USAGE = 5
     REQUEST_TIMEOUT = 30
     TOKEN_CACHE_PREFIX = "log_k8s_install_token"
-    CLUSTER_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
     RUNTIME_PROFILES = {"standard", "docker", "custom"}
     PATH_UNSAFE_PATTERN = re.compile(r"[\r\n']")
 
@@ -30,8 +29,6 @@ class K8sLogCollectService:
     def validate_cluster_name(cls, cluster_name: str):
         if not cluster_name:
             raise BaseAppException("集群名称不能为空")
-        if not cls.CLUSTER_NAME_PATTERN.fullmatch(cluster_name):
-            raise BaseAppException("集群名称格式不正确，仅支持字母、数字、下划线和中划线")
 
     @classmethod
     def validate_host_path(cls, path: str, field_name: str):
@@ -263,8 +260,8 @@ class K8sLogCollectService:
         query = f'collect_type:"kubernetes" AND instance_id:"{instance.id}"'
         data = SearchService.search_logs(
             query,
-            start_time.strftime("%Y-%m-%d %H:%M:%S"),
-            end_time.strftime("%Y-%m-%d %H:%M:%S"),
+            start_time.isoformat(timespec="seconds"),
+            end_time.isoformat(timespec="seconds"),
             1,
         )
         return bool(data)

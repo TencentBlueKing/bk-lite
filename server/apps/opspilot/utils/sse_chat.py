@@ -1,6 +1,5 @@
 import json
 import re
-import threading
 import time
 
 from django.http import StreamingHttpResponse
@@ -261,6 +260,12 @@ def _generate_agent_stream(graph, request, skill_name, show_think):
 
 
 def _log_and_update_tokens_sync(final_stats, skill_name, skill_id, current_ip, kwargs, user_message, show_think, history_log=None):
+    """
+    同步记录日志和更新 token 统计。
+
+    此函数在流结束后调用，不会阻塞流式响应。
+    失败时记录错误日志但不抛出异常，确保不影响已发送的响应。
+    """
     try:
         # 处理最终内容
         final_content = final_stats["content"]
@@ -288,7 +293,14 @@ def _log_and_update_tokens_sync(final_stats, skill_name, skill_id, current_ip, k
             insert_skill_log(current_ip, skill_id, log_data, kwargs, user_message=user_message)
 
     except Exception as e:
-        logger.error(f"Log update error: {e}")
+        # 记录详细错误信息，包含上下文便于排查
+        logger.error(
+            "SSE persistence failed: skill_name=%s, skill_id=%s, error=%s",
+            skill_name,
+            skill_id,
+            str(e),
+            exc_info=True,
+        )
 
 
 def stream_chat(params, skill_name, kwargs, current_ip, user_message, skill_id=None, history_log=None):
@@ -308,7 +320,7 @@ def stream_chat(params, skill_name, kwargs, current_ip, user_message, skill_id=N
 def create_stream_generator(params, skill_name, kwargs, current_ip, user_message, skill_id=None, history_log=None):
     """创建流式生成器 - 返回异步生成器供内部或外部使用"""
     llm_model = LLMModel.objects.get(id=params["llm_model"])
-    show_think = params.pop("show_think", True)
+    show_think = params.get("show_think", True)  # 使用 get 而不是 pop，保留值给 format_chat_server_kwargs
     skill_type = params.get("skill_type")
     params.pop("group", 0)
 
@@ -330,13 +342,10 @@ def create_stream_generator(params, skill_name, kwargs, current_ip, user_message
                     # 收集统计信息
                     _, final_stats["content"] = chunk
 
-                    # 在流结束时同步处理日志记录
+                    # 流已结束，同步执行持久化（不会阻塞流式响应）
+                    # 注意：STATS 事件是流的最后一个事件，此时客户端已收到所有数据
                     if final_stats["content"]:
-                        # 使用线程异步处理日志记录，避免阻塞流式响应
-                        def log_in_background():
-                            _log_and_update_tokens_sync(final_stats, skill_name, skill_id, current_ip, kwargs, user_message, show_think, history_log)
-
-                        threading.Thread(target=log_in_background, daemon=True).start()
+                        _log_and_update_tokens_sync(final_stats, skill_name, skill_id, current_ip, kwargs, user_message, show_think, history_log)
                 else:
                     # 发送流式数据
                     yield chunk

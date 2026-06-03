@@ -2,18 +2,19 @@
 # @File: tasks.py
 # @Time: 2025/3/3 15:34
 # @Author: windyzhao
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from celery import shared_task
 from django.utils.timezone import now
 
 from apps.cmdb.collection.collect_tasks.job_collect import JobCollect
 from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
-from apps.core.logger import cmdb_logger as logger
+from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
 from apps.cmdb.models.collect_model import CollectModels
-from apps.cmdb.constants.constants import CollectRunStatusType
+from apps.cmdb.services.collect_tool_service import CollectToolService
 from apps.cmdb.services.subscription_task import SubscriptionTaskService
-from apps.cmdb.constants.constants import CollectPluginTypes
+from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
+from apps.core.logger import cmdb_logger as logger
 
 
 def _build_safe_error_message(err: Exception) -> str:
@@ -46,7 +47,7 @@ def sync_collect_task(instance_id):
     CollectModelService.repair_host_cloud_snapshot(instance)
     if instance.exec_status == CollectRunStatusType.NOT_START:
         CollectModels._default_manager.filter(id=instance_id).update(exec_status=CollectRunStatusType.RUNNING)
-    # # 防止周期触发与延迟补跑重叠导致同一任务并发执行
+    # 防止周期触发与延迟补跑重叠导致同一任务并发执行
     # if instance.exec_status == CollectRunStatusType.RUNNING:
     #     logger.info("采集任务已在执行中，跳过重复执行 task_id={}".format(instance_id))
     #     return
@@ -60,6 +61,7 @@ def sync_collect_task(instance_id):
     )
     exec_error_message = ""
     task_exec_status = CollectRunStatusType.SUCCESS
+    config_file_pending = False
     try:
         if instance.is_job:
             # 脚本采集
@@ -70,7 +72,11 @@ def sync_collect_task(instance_id):
             collect = ProtocolCollect(task=instance)
             result, format_data = collect.main()
 
-        if instance.task_type == CollectPluginTypes.CONFIG_FILE and (result.get("config_file") or {}).get("status") == "pending":
+        config_file_pending = (
+            instance.task_type == CollectPluginTypes.CONFIG_FILE
+            and (result.get("config_file") or {}).get("status") == "pending"
+        )
+        if config_file_pending:
             instance.exec_status = CollectRunStatusType.RUNNING
         else:
             instance.exec_status = CollectRunStatusType.SUCCESS
@@ -107,8 +113,8 @@ def sync_collect_task(instance_id):
         # 如果任务执行失败，添加错误信息提示
         if task_exec_status == CollectRunStatusType.ERROR:
             collect_digest["message"] = exec_error_message
-        elif instance.task_type == CollectPluginTypes.CONFIG_FILE and (result.get("config_file") or {}).get("status") == "pending":
-            collect_digest["message"] = "配置文件采集结果等待回传中"
+        elif config_file_pending:
+            collect_digest["message"] = "配置文件采集已触发，等待回传中"
         elif format_data.get("__raw_data__", []).__len__() == 0:
             collect_digest["message"] = "没有发现任何有效数据!"
             instance.exec_status = CollectRunStatusType.ERROR
@@ -120,8 +126,37 @@ def sync_collect_task(instance_id):
                     if i["__time__"] > last_time:
                         last_time = i["__time__"]
             collect_digest["last_time"] = last_time
+
+            # 任务状态判定以"整体成败"为口径，而非单个操作类型是否全挂：
+            # - 实例数据(add/update/delete)有要写、但成功 0 条 → ERROR（写库整体失败，最危险）
+            # - 否则只要存在任意失败(含 association) → PARTIAL_SUCCESS（部分成功，需运维感知）
+            # - 全部成功 → 保持 SUCCESS
+            # 注：association 失败不单独升级为 ERROR（目标实例未采到等场景常见且非致命）。
+            data_keys = ("add", "update", "delete")
+            data_total = sum(collect_digest.get(k, 0) for k in data_keys)
+            data_error = sum(collect_digest.get(f"{k}_error", 0) for k in data_keys)
+            data_success = data_total - data_error
+            any_failure = any(
+                collect_digest.get(f"{k}_error", 0) > 0 for k in ("add", "update", "delete", "association")
+            )
+            if data_total > 0 and data_success == 0:
+                instance.exec_status = CollectRunStatusType.ERROR
+                collect_digest["message"] = "实例数据写入全部失败，请检查 add/update/delete 错误数"
+            elif any_failure:
+                instance.exec_status = CollectRunStatusType.PARTIAL_SUCCESS
+                collect_digest["message"] = "部分数据写入失败，请检查 add/update/delete/association 错误数"
         instance.collect_digest = collect_digest
-        instance.save()
+        if config_file_pending:
+            updated = CollectModels._default_manager.filter(id=instance_id, collect_data={}).update(
+                collect_data=result,
+                format_data=format_data,
+                collect_digest=collect_digest,
+                updated_at=now(),
+            )
+            if not updated:
+                logger.info("配置文件采集结果已由回调更新，跳过本地 pending 覆盖 task_id=%s", instance_id)
+        else:
+            instance.save()
     except Exception as err:
         import traceback
 
@@ -142,11 +177,22 @@ def sync_periodic_update_task_status():
     :return:
     """
     logger.info("==开始周期执行修改采集状态==")
-    five_minutes_ago = datetime.now() - timedelta(minutes=5)
-    rows = CollectModels._default_manager.filter(exec_status=CollectRunStatusType.RUNNING, exec_time__lt=five_minutes_ago).update(
+    five_minutes_ago = now() - timedelta(minutes=5)
+    config_file_rows = CollectModels._default_manager.filter(
+        task_type=CollectPluginTypes.CONFIG_FILE,
+        exec_status=CollectRunStatusType.RUNNING,
+        exec_time__lt=five_minutes_ago,
+    ).update(
+        exec_status=CollectRunStatusType.ERROR,
+        collect_digest={"message": "配置文件采集已触发，但在 5 分钟内未收到回传结果"},
+    )
+    rows = CollectModels._default_manager.filter(
+        exec_status=CollectRunStatusType.RUNNING,
+        exec_time__lt=five_minutes_ago,
+    ).exclude(task_type=CollectPluginTypes.CONFIG_FILE).update(
         exec_status=CollectRunStatusType.ERROR
     )
-    logger.info("开始周期执行修改采集状态完成, rows={}".format(rows))
+    logger.info("开始周期执行修改采集状态完成, rows={}, config_file_rows={}".format(rows, config_file_rows))
 
 
 @shared_task
@@ -173,9 +219,7 @@ def sync_cmdb_display_fields_task(data: dict):
     try:
         from apps.cmdb.display_field import DisplayFieldSynchronizer
 
-        logger.info(
-            f"[SyncCMDBDisplayFields] 开始同步 CMDB _display 字段, 组织数: {len(data.get('organizations', []))}, 用户数: {len(data.get('users', []))}"
-        )
+        logger.info(f"[SyncCMDBDisplayFields] 开始同步 CMDB _display 字段, 组织数: {len(data.get('organizations', []))}, 用户数: {len(data.get('users', []))}")
 
         # 执行同步
         result = DisplayFieldSynchronizer.sync_all(data)
@@ -194,6 +238,24 @@ def sync_cmdb_display_fields_task(data: dict):
             "result": False,
             "message": f"Failed to sync CMDB display fields: {str(exc)}",
         }
+
+
+@shared_task
+def execute_collect_tool_debug_task(debug_id: str, payload: dict, service_name: str, timeout: int):
+    logger.info(f"开始执行采集工具调试任务 debug_id={debug_id}, action={payload.get('action')}")
+    try:
+        return CollectToolService.run_debug_task(debug_id, payload, service_name, timeout)
+    except Exception as exc:
+        logger.error(f"采集工具调试任务失败 debug_id={debug_id}, error={exc}", exc_info=True)
+        result = CollectToolService.build_error_result(
+            debug_id=debug_id,
+            payload=payload,
+            stage="unknown",
+            summary=f"调试任务执行失败: {exc}",
+            raw_log=str(exc),
+        )
+        CollectToolService.save_debug_state(debug_id, "error", result)
+        return result
 
 
 @shared_task
@@ -238,3 +300,19 @@ def full_sync_auto_association_rule_task(model_asst_id: str) -> dict:
 
     logger.info("[AutoRelationRule] start rule full sync, model_asst_id=%s", model_asst_id)
     return AutoRelationRuleReconcileService.full_sync_rule(model_asst_id)
+
+
+@shared_task
+def sync_node_mgmt_hosts() -> dict:
+    logger.info("==开始同步节点管理主机信息==")
+    data =  NodeMgmtSyncService.trigger_sync()
+    logger.info("==同步节点管理主机信息完成==")
+    return data
+
+
+@shared_task
+def collect_node_mgmt_hosts():
+    logger.info("==开始采集节点管理主机信息==")
+    NodeMgmtSyncService.trigger_collect()
+    logger.info("==采集采集节点管理主机信息结束==")
+

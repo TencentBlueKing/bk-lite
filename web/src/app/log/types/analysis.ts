@@ -14,7 +14,7 @@ export interface WidgetConfig {
   chartType?: string;
   dataSource?: string | number;
   params?: { [key: string]: any };
-  dataSourceParams?: any[];
+  dataSourceParams?: any;
   color?: string;
   [key: string]: any;
 }
@@ -24,7 +24,12 @@ export interface DirItem {
   name: string;
   desc?: string;
   collectTypeName?: string;
-  filters?: Record<string, any>;
+  filters?: {
+    group?: boolean;
+    instance?: boolean;
+    container?: boolean;
+    [key: string]: any;
+  };
   other?: Record<string, any>;
   view_sets?: Array<any>;
 }

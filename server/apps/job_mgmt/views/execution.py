@@ -2,11 +2,13 @@
 
 import json
 
+from celery import current_app
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import job_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.constants import ExecutionStatus, JobType, TargetSource, TriggerSource
 from apps.job_mgmt.filters.execution import JobExecutionFilter
@@ -20,6 +22,7 @@ from apps.job_mgmt.serializers.execution import (
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_playbook_task, execute_script_task
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class JobExecutionViewSet(AuthViewSet):
@@ -80,13 +83,16 @@ class JobExecutionViewSet(AuthViewSet):
         username = request.user.username if request.user else ""
         name = data["name"]
         timeout = data.get("timeout", 600)
-        team = data.get("team", [])
+        team = data.get("team", []) or [int(request.COOKIES.get("current_team") or 0)]
         params = data.get("params", [])
 
         # 处理新格式参数：解析 is_modified=False 的参数
         script = None
         if data.get("script_id"):
             script = Script.objects.filter(id=data["script_id"]).first()
+            # 如果前端未显式传 timeout，使用脚本库定义的超时时间
+            if script and "timeout" not in request.data:
+                timeout = script.timeout
         resolved_params = ScriptParamsService.resolve_params(params, script=script)
         params_str = ScriptParamsService.params_to_string(resolved_params)
         # 根据模式创建执行记录
@@ -105,6 +111,7 @@ class JobExecutionViewSet(AuthViewSet):
                 target_source=target_source,
                 target_list=target_list,
                 team=team,
+                executor_user=username,
                 created_by=username,
                 updated_by=username,
             )
@@ -141,14 +148,19 @@ class JobExecutionViewSet(AuthViewSet):
                 target_source=target_source,
                 target_list=target_list,
                 team=team,
+                executor_user=username,
                 created_by=username,
                 updated_by=username,
             )
             task_func = execute_script_task
 
-        # 触发异步任务
-        # task_func.delay(execution.id)
-        task_func(execution.id)
+        # 触发异步任务并保存 Celery task_id
+        result = task_func.delay(execution.id)
+        execution.celery_task_id = result.id
+        execution.save(update_fields=["celery_task_id", "updated_at"])
+
+        playbook_name = playbook.name if data.get("playbook_id") else name
+        log_operation(request, "execute", "job", f"快速执行作业: {playbook_name}")
 
         return Response(
             JobExecutionDetailSerializer(execution).data,
@@ -234,13 +246,17 @@ class JobExecutionViewSet(AuthViewSet):
             target_source=target_source,
             target_list=target_list,
             team=data.get("team", []),
+            executor_user=username,
             created_by=username,
             updated_by=username,
         )
 
-        # 触发异步任务
-        # distribute_files_task.delay(execution.id)
-        distribute_files_task(execution.id)
+        # 触发异步任务并保存 Celery task_id
+        result = distribute_files_task.delay(execution.id)
+        execution.celery_task_id = result.id
+        execution.save(update_fields=["celery_task_id", "updated_at"])
+
+        log_operation(request, "execute", "job", "文件分发")
 
         return Response(
             JobExecutionDetailSerializer(execution).data,
@@ -261,6 +277,9 @@ class JobExecutionViewSet(AuthViewSet):
     def cancel(self, request, pk=None):
         """
         取消执行（仅限等待中或执行中的任务）
+
+        L0: 尝试 revoke Celery 队列中尚未被 worker 取走的任务
+        L1: 设置 CANCELLED 状态，Runner 循环中检测到后停止后续目标执行
         """
         execution = self.get_object()
 
@@ -270,9 +289,19 @@ class JobExecutionViewSet(AuthViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 更新状态
+        # L0: 尝试 revoke Celery 任务（仅对队列中尚未被 worker 取走的任务有效）
+        if execution.celery_task_id:
+            try:
+                current_app.control.revoke(execution.celery_task_id)
+                logger.info(f"[cancel] 已 revoke Celery 任务: execution_id={execution.id}, task_id={execution.celery_task_id}")
+            except Exception as e:
+                logger.warning(f"[cancel] revoke Celery 任务失败: execution_id={execution.id}, error={e}")
+
+        # L1: 更新状态为 CANCELLED，Runner 循环中会检测此状态并停止后续目标
         execution.status = ExecutionStatus.CANCELLED
         execution.save(update_fields=["status", "updated_at"])
+        logger.info(f"[cancel] 执行已取消: execution_id={execution.id}")
+        log_operation(request, "execute", "job", f"取消执行: {execution.id}")
 
         return Response({"message": "已取消执行"})
 
@@ -308,6 +337,7 @@ class JobExecutionViewSet(AuthViewSet):
                 target_source=original.target_source,
                 target_list=target_list,
                 team=original.team,
+                executor_user=username,
                 created_by=username,
                 updated_by=username,
             )
@@ -331,6 +361,7 @@ class JobExecutionViewSet(AuthViewSet):
                 target_source=original.target_source,
                 target_list=target_list,
                 team=original.team,
+                executor_user=username,
                 created_by=username,
                 updated_by=username,
             )
@@ -360,13 +391,16 @@ class JobExecutionViewSet(AuthViewSet):
                 target_source=original.target_source,
                 target_list=target_list,
                 team=original.team,
+                executor_user=username,
                 created_by=username,
                 updated_by=username,
             )
             task_func = execute_script_task
 
-        # 触发异步任务
-        task_func.delay(execution.id)
+        # 触发异步任务并保存 Celery task_id
+        result = task_func.delay(execution.id)
+        execution.celery_task_id = result.id
+        execution.save(update_fields=["celery_task_id", "updated_at"])
 
         return Response(
             JobExecutionDetailSerializer(execution).data,

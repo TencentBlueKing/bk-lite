@@ -13,6 +13,7 @@
     "detail": "详情",
     "add": "添加",
     "name": "名称",
+    "value": "值",
     "set": "设置",
     "search": "搜索",
     "create": "创建",
@@ -30,6 +31,7 @@
     "cancel": "取消",
     "confirm": "确认",
     "retry": "重试",
+    "regenerate": "重新生成",
     "initializeFailed": "图谱初始化失败",
     "uploadText": "点击或拖动文件到此处上传",
     "supports": "支持",
@@ -43,6 +45,7 @@
     "error": "错误",
     "delConfirm": "你确定要删除选中的项吗？",
     "delConfirmCxt": "删除后，数据无法恢复。",
+    "disassociationContent": "取消后数据无法恢复。",
     "delSuccess": "删除成功",
     "delFailed": "删除失败",
     "valFailed": "验证失败",
@@ -145,6 +148,7 @@
     "inputPassword": "请输入密码",
     "builtin": "内置",
     "mcp": "MCP",
+    "externalApp": "外部",
     "unreadNotifications": "未读通知",
     "allNotifications": "所有通知",
     "noMore": "没有更多了",
@@ -156,7 +160,8 @@
     "noUnreadNotifications": "没有未读通知",
     "sessionExpiredTitle": "登录已过期",
     "sessionExpiredDescription": "当前页面需要重新验证身份后继续操作。",
-    "reloginSuccess": "重新登录成功"
+    "reloginSuccess": "重新登录成功",
+    "portalSlogan": "AI 原生的轻量化运维平台"
   },
   "userInfo": {
     "basicInfo": "基础信息",

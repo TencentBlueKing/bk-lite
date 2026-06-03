@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import dayjs, { Dayjs } from 'dayjs';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
+import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
+import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 
 type FormParamValue = string | number | boolean | Dayjs | [number, number] | null;
 type FormParams = Record<string, FormParamValue>;
@@ -12,8 +14,8 @@ export const useDataSourceManager = () => {
     dataSources,
     dataSourcesLoading,
     fetchDataSources,
-    refreshDataSources,
   } = useOpsAnalysis();
+  const { getDataSourceDetail } = useDataSourceApi();
 
   const findDataSource = (
     dataSourceId?: string | number
@@ -23,6 +25,26 @@ export const useDataSourceManager = () => {
       return dataSources.find((ds) => ds.id === id);
     }
     return undefined;
+  };
+
+  const ensureDataSource = async (
+    dataSourceId?: string | number
+  ): Promise<DatasourceItem | undefined> => {
+    if (!dataSourceId) {
+      return undefined;
+    }
+
+    const existing = findDataSource(dataSourceId);
+    if (existing) {
+      return existing;
+    }
+
+    const id = typeof dataSourceId === 'string' ? parseInt(dataSourceId, 10) : dataSourceId;
+    try {
+      return await getDataSourceDetail(id);
+    } catch {
+      return undefined;
+    }
   };
 
   const setDefaultParamValues = (params: ParamItem[], formParams: FormParams): void => {
@@ -76,9 +98,9 @@ export const useDataSourceManager = () => {
       if (param.type === 'date' && value) {
         // 转换 Dayjs 为字符串
         if (dayjs.isDayjs(value)) {
-          processedParams[param.name] = value.format('YYYY-MM-DD HH:mm:ss');
+          processedParams[param.name] = formatOpsRequestTime(value);
         } else if (typeof value === 'string' || typeof value === 'number') {
-          processedParams[param.name] = value;
+          processedParams[param.name] = formatOpsRequestTime(value);
         }
       } else if (value !== undefined && value !== null) {
         // 其他类型直接使用（已经是正确的类型）
@@ -101,8 +123,8 @@ export const useDataSourceManager = () => {
     selectedDataSource,
     setSelectedDataSource,
     fetchDataSources,
-    refreshDataSources,
     findDataSource,
+    ensureDataSource,
     setDefaultParamValues,
     restoreUserParamValues,
     processFormParamsForSubmit,

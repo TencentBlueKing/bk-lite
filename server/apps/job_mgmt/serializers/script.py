@@ -88,6 +88,12 @@ class ScriptCreateSerializer(serializers.ModelSerializer):
             ParamCrypto.encrypt_param_defaults(value)
         return value
 
+    def validate_team(self, value):
+        """验证组织不能为空"""
+        if not value:
+            raise serializers.ValidationError("组织不能为空")
+        return value
+
 
 class ScriptUpdateSerializer(serializers.ModelSerializer):
     """脚本更新序列化器"""
@@ -115,6 +121,12 @@ class ScriptUpdateSerializer(serializers.ModelSerializer):
         """加密参数定义中的默认值"""
         if value:
             ParamCrypto.encrypt_param_defaults(value)
+        return value
+
+    def validate_team(self, value):
+        """验证组织不能为空"""
+        if not value:
+            raise serializers.ValidationError("组织不能为空")
         return value
 
 

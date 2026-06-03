@@ -8,6 +8,8 @@ from apps.alerts.constants import (
     HeartbeatStatus,
 )
 from apps.alerts.models.alert_operator import AlarmStrategy
+from apps.alerts.utils.permission_scope import get_authorized_group_ids, normalize_team_ids
+from apps.alerts.utils.util import parse_aggregation_window_size
 
 
 class AlarmStrategySerializer(serializers.ModelSerializer):
@@ -23,6 +25,34 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at", "updated_at", "last_execute_time"]
         extra_kwargs = {}
 
+    def _validate_authorized_team_ids(self, value, field_name):
+        try:
+            team_ids = normalize_team_ids(value)
+        except ValueError as error:
+            raise serializers.ValidationError(str(error))
+
+        request = self.context.get("request")
+        if request is None:
+            return team_ids
+
+        user = getattr(request, "user", None)
+        if user and getattr(user, "is_superuser", False):
+            return team_ids
+
+        authorized_group_ids = get_authorized_group_ids(request)
+        unauthorized_teams = sorted(set(team_ids) - set(authorized_group_ids))
+        if unauthorized_teams:
+            raise serializers.ValidationError(
+                f"You are not authorized to assign {field_name}: {unauthorized_teams}"
+            )
+        return team_ids
+
+    def validate_team(self, value):
+        return self._validate_authorized_team_ids(value, "teams")
+
+    def validate_dispatch_team(self, value):
+        return self._validate_authorized_team_ids(value, "dispatch_team")
+
     def validate(self, attrs):
         strategy_type = attrs.get(
             "strategy_type",
@@ -31,12 +61,37 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
 
         if strategy_type == AlarmStrategyType.MISSING_DETECTION:
             attrs = self._validate_missing_detection(attrs)
+        else:
+            attrs = self._validate_aggregation_strategy(attrs)
 
         if self.instance:
             attrs["last_execute_time"] = self.instance.last_execute_time
         else:
             attrs["last_execute_time"] = None
 
+        return attrs
+
+    def _validate_aggregation_strategy(self, attrs):
+        existing_params = {}
+        if self.instance and self.instance.strategy_type != AlarmStrategyType.MISSING_DETECTION:
+            existing_params = dict(self.instance.params or {})
+
+        params = dict(existing_params)
+        params.update(dict(attrs.get("params") or {}))
+        params_errors = {}
+
+        try:
+            normalized_window_size, _ = parse_aggregation_window_size(
+                params.get("window_size")
+            )
+            params["window_size"] = normalized_window_size
+        except ValueError as error:
+            params_errors["window_size"] = str(error)
+
+        if params_errors:
+            raise serializers.ValidationError({"params": params_errors})
+
+        attrs["params"] = params
         return attrs
 
     def _validate_missing_detection(self, attrs):

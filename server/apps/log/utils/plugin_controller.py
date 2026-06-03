@@ -1,17 +1,57 @@
+import json
 import os
 import uuid
-import json
 from collections.abc import Mapping
 
-from jinja2 import Environment, FileSystemLoader, DebugUndefined
+from jinja2 import DebugUndefined, Environment, FileSystemLoader
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.safe_template import build_sandboxed_env
 from apps.log.constants.database import DatabaseConstants
 from apps.log.constants.plugin import PluginConstants
 from apps.log.models import CollectConfig, CollectType
 from apps.rpc.node_mgmt import NodeMgmt
 
 from apps.core.logger import log_logger as logger
+
+
+_DEFAULT_JINJA_ENV = Environment()
+_LOG_TEMPLATE_ALLOWED_FILTERS = (
+    "default",
+    "int",
+    "join",
+    "list",
+    "lower",
+    "map",
+    "reject",
+    "replace",
+    "tojson",
+    "trim",
+)
+_LOG_TEMPLATE_ALLOWED_TESTS = (
+    "equalto",
+    "string",
+)
+
+
+def _build_log_template_env(template_dir: str):
+    env = build_sandboxed_env(
+        loader=FileSystemLoader(template_dir),
+        undefined=DebugUndefined,
+        extra_filters={"to_json": lambda obj: json.dumps(obj, ensure_ascii=False)},
+    )
+
+    missing_filters = [name for name in _LOG_TEMPLATE_ALLOWED_FILTERS if name not in _DEFAULT_JINJA_ENV.filters]
+    if missing_filters:
+        raise BaseAppException(f"Missing default Jinja filters: {', '.join(missing_filters)}")
+
+    missing_tests = [name for name in _LOG_TEMPLATE_ALLOWED_TESTS if name not in _DEFAULT_JINJA_ENV.tests]
+    if missing_tests:
+        raise BaseAppException(f"Missing default Jinja tests: {', '.join(missing_tests)}")
+
+    env.filters.update({name: _DEFAULT_JINJA_ENV.filters[name] for name in _LOG_TEMPLATE_ALLOWED_FILTERS})
+    env.tests.update({name: _DEFAULT_JINJA_ENV.tests[name] for name in _LOG_TEMPLATE_ALLOWED_TESTS})
+    return env
 
 
 class Controller:
@@ -58,12 +98,7 @@ class Controller:
         :return: 渲染后的配置字符串
         """
         _context = {**context}
-        env = Environment(
-            loader=FileSystemLoader(template_dir), undefined=DebugUndefined
-        )
-
-        # 添加 to_json 过滤器
-        env.filters["to_json"] = lambda obj: json.dumps(obj, ensure_ascii=False)
+        env = _build_log_template_env(template_dir)
 
         template = env.get_template(file_name)
         return template.render(_context)
@@ -106,6 +141,11 @@ class Controller:
         configs = self.format_configs()
         node_configs, node_child_configs, collect_configs = [], [], []
 
+        # 批量查询节点操作系统信息，用于模板渲染时区分平台差异
+        node_ids = list({config_info["node_id"] for config_info in configs})
+        nodes_info = NodeMgmt().get_nodes_by_ids(node_ids)
+        node_os_map = {node["id"]: node.get("operating_system", "linux") for node in nodes_info}
+
         # 查询 CollectType 获取 config_section
         collect_type_obj = CollectType.objects.filter(
             name=self.data["collect_type"], collector=self.data["collector"]
@@ -136,7 +176,8 @@ class Controller:
                 template_config = self.render_template(
                     template_dir,
                     f"{template['type']}.{template['config_type']}.{template['file_type']}.j2",
-                    {**tls_context, **config_info, "config_id": config_id.upper()},
+                    {**tls_context, **config_info, "config_id": config_id.upper(),
+                     "operating_system": node_os_map.get(config_info["node_id"], "linux")},
                 )
 
                 # 节点管理创建配置
@@ -229,10 +270,17 @@ class Controller:
         if not isinstance(context_data, Mapping):
             context_data = {}
 
+        # 查询节点操作系统信息
+        operating_system = "linux"
+        if node_id:
+            nodes_info = NodeMgmt().get_nodes_by_ids([node_id])
+            if nodes_info:
+                operating_system = nodes_info[0].get("operating_system", "linux")
+
         content = self.render_template(
             template_dir,
             f"{template['type']}.{template['config_type']}.{template['file_type']}.j2",
-            {**tls_context, "instance_id": instance_id, **context_data},
+            {**tls_context, "instance_id": instance_id, "operating_system": operating_system, **context_data},
         )
 
         return content

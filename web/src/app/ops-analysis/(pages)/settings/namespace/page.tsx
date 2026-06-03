@@ -12,9 +12,11 @@ import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { useImportExportApi } from '@/app/ops-analysis/api/importExport';
 import { ImportModal } from '@/app/ops-analysis/components/importExport';
+import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 
 const Namespace: React.FC = () => {
   const { t } = useTranslation();
+  const { convertToLocalizedTime } = useLocalizedTime();
   const { getNamespaceList, deleteNamespace } = useNamespaceApi();
   const { refreshNamespaces } = useOpsAnalysis();
   const { exportObjects, downloadYaml } = useImportExportApi();
@@ -190,7 +192,7 @@ const Namespace: React.FC = () => {
       dataIndex: 'created_at',
       key: 'created_at',
       width: 180,
-      render: (text: string) => (text ? new Date(text).toLocaleString() : '-'),
+      render: (text: string) => (text ? convertToLocalizedTime(text) : '-'),
     },
     {
       title: t('common.actions'),
@@ -288,7 +290,7 @@ const Namespace: React.FC = () => {
           dataSource={filteredList}
           pagination={pagination}
           onChange={handleTableChange}
-          scroll={{ y: 'calc(100vh - 410px)' }}
+          scroll={{ y: 'calc(100vh - 430px)' }}
         />
         <OperateModal
           open={modalVisible}

@@ -10,6 +10,7 @@ export const useStorageConfig = () => {
     groupIds: {},
     collectTypes: {
       'Storage IPMI': 'ipmi',
+      OceanStor: 'oceanstor',
     },
   };
 };

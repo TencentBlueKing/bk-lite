@@ -34,17 +34,17 @@
           "withParentPermission": true
         },
         {
-          "title": "变更记录",
-          "icon": "shujumoxingguanli",
-          "url": "/cmdb/assetData/detail/changeRecords",
-          "name": "asset_change_records",
-          "withParentPermission": true
-        },
-        {
           "title": "配置文件",
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetData/detail/configFiles",
           "name": "asset_config_files",
+          "withParentPermission": true
+        },
+        {
+          "title": "变更记录",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/assetData/detail/changeRecords",
+          "name": "asset_change_records",
           "withParentPermission": true
         }
       ]
@@ -107,8 +107,14 @@
             {
               "title": "SOID特征库",
               "icon": "shujumoxingguanli",
-              "url": "/cmdb/assetManage/autoDiscovery/featureLibrary",
+              "url": "/cmdb/assetManage/autoDiscovery/featureLibrary/soid",
               "name": "soid_library"
+            },
+            {
+              "title": "采集工具",
+              "icon": "shujumoxingguanli",
+              "url": "/cmdb/assetManage/autoDiscovery/featureLibrary/collectionTool",
+              "name": "collection_tool"
             }
           ]
         },
@@ -156,17 +162,17 @@
           "withParentPermission": true
         },
         {
-          "title": "Change Records",
-          "icon": "shujumoxingguanli",
-          "url": "/cmdb/assetData/detail/changeRecords",
-          "name": "asset_change_records",
-          "withParentPermission": true
-        },
-        {
           "title": "Config Files",
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetData/detail/configFiles",
           "name": "asset_config_files",
+          "withParentPermission": true
+        },
+        {
+          "title": "Change Records",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/assetData/detail/changeRecords",
+          "name": "asset_change_records",
           "withParentPermission": true
         }
       ]
@@ -229,8 +235,14 @@
             {
               "title": "SOID library",
               "icon": "shujumoxingguanli",
-              "url": "/cmdb/assetManage/autoDiscovery/featureLibrary",
+              "url": "/cmdb/assetManage/autoDiscovery/featureLibrary/soid",
               "name": "soid_library"
+            },
+            {
+              "title": "Collection Tool",
+              "icon": "shujumoxingguanli",
+              "url": "/cmdb/assetManage/autoDiscovery/featureLibrary/collectionTool",
+              "name": "collection_tool"
             }
           ]
         },

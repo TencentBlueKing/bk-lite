@@ -81,10 +81,27 @@ def init_user_set(request):
     except Exception:
         return JsonResponse({"result": False, "message": loader.get("error.parse_request_failed", "Failed to parse request body")})
 
+    # 校验当前用户是否处于首次登录状态（仅属于默认组 OpsPilotGuest）
+    group_list = getattr(request.user, "group_list", [])
+    if not group_list or len(group_list) != 1:
+        return JsonResponse({"result": False, "message": loader.get("error.not_first_login", "User has already been initialized")})
+
+    first_group = group_list[0]
+    group_name = first_group.get("name") if isinstance(first_group, dict) else str(first_group)
+    if group_name != "OpsPilotGuest":
+        return JsonResponse({"result": False, "message": loader.get("error.not_first_login", "User has already been initialized")})
+
+    # 使用当前登录用户的身份，不信任前端传入的 user_id
+    try:
+        user = User.objects.get(username=request.user.username, domain=request.user.domain)
+    except User.DoesNotExist:
+        return JsonResponse({"result": False, "message": loader.get("error.user_not_found", "User not found")})
+
     client = SystemMgmt()
-    res = client.init_user_default_attributes(kwargs["user_id"], kwargs["group_name"], request.user.group_list[0]["id"])
+    res = client.init_user_default_attributes(user.id, kwargs["group_name"], group_list[0]["id"])
     if not res["result"]:
         return JsonResponse(res)
+    log_operation(request, "create", "console_mgmt", f"初始化用户设置: {request.user.username}")
     return JsonResponse(res)
 
 
@@ -115,7 +132,8 @@ def update_user_base_info(request):
 
 
 def validate_pwd(request):
-    password = request.GET.get("password")
+    body = json.loads(request.body)
+    password = body.get("password")
     username = request.user.username
     domain = request.user.domain
 

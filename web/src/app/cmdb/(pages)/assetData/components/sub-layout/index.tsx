@@ -5,9 +5,10 @@ import SideMenu from './side-menu';
 import sideMenuStyle from './index.module.scss';
 import Icon from '@/components/icon';
 import { Segmented } from 'antd';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { MenuItem } from '@/types/index';
 import { usePermissions } from '@/context/permissions';
+import { isConfigFileSupportedModel } from '@/app/cmdb/constants/configFile';
 
 export interface WithSideMenuLayoutProps {
   intro?: React.ReactNode;
@@ -44,7 +45,9 @@ const SideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
 }) => {
   const router = useRouter();
   const curRouterName = usePathname();
+  const searchParams = useSearchParams();
   const pathname = pagePathName ?? curRouterName;
+  const modelId = searchParams.get('model_id');
   const { menus } = usePermissions();
   const [selectedKey, setSelectedKey] = useState<string>(pathname);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
@@ -73,8 +76,11 @@ const SideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
   const updateMenuItems = useMemo(() => getMenuItemsForPath(menus, pathname), [pathname]);
 
   useEffect(() => {
-    setMenuItems(updateMenuItems?.filter(menu => !menu.isNotMenuItem));
-  }, [updateMenuItems]);
+    setMenuItems(updateMenuItems?.filter(menu => (
+      !menu.isNotMenuItem
+      && (menu.name !== 'asset_config_files' || isConfigFileSupportedModel(modelId))
+    )));
+  }, [updateMenuItems, modelId]);
 
   useEffect(() => {
     let urlKey: string | undefined = curRouterName;

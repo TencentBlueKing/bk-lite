@@ -1,10 +1,10 @@
-from django.db.models import Case, IntegerField, Value, When
 from django.http import JsonResponse, StreamingHttpResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from redis.exceptions import RedisError
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
@@ -15,7 +15,6 @@ from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.metis.llm.tools.elasticsearch.connection import normalize_es_instance, test_es_instance
 from apps.opspilot.metis.llm.tools.jenkins.connection import normalize_jenkins_instance, test_jenkins_instance
 from apps.opspilot.metis.llm.tools.kubernetes.connection import normalize_kubernetes_instance, test_kubernetes_instance
-from apps.opspilot.metis.llm.tools.mssql.connection import normalize_mssql_instance, test_mssql_instance
 from apps.opspilot.metis.llm.tools.mysql.connection import normalize_mysql_instance, test_mysql_instance
 from apps.opspilot.metis.llm.tools.oracle.connection import normalize_oracle_instance, test_oracle_instance
 from apps.opspilot.metis.llm.tools.postgres.connection import normalize_postgres_instance, test_postgres_instance
@@ -35,7 +34,11 @@ from apps.opspilot.services.builtin_tools import (
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.mcp_cache import get_cached_mcp_tools, set_cached_mcp_tools
 from apps.opspilot.utils.mcp_client import MCPClient
+from apps.opspilot.utils.pin_mixin import PinMixin
+from apps.opspilot.utils.skill_execution_params import resolve_request_tools
 from apps.opspilot.utils.sse_chat import stream_chat
+from apps.opspilot.utils.vendor_model_mixin import VendorModelMixin
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class LLMFilter(FilterSet):
@@ -51,7 +54,9 @@ class LLMFilter(FilterSet):
         return qs.filter(skill_type__in=[int(i.strip()) for i in value.split(",") if i.strip()])
 
 
-class LLMViewSet(AuthViewSet):
+class LLMViewSet(PinMixin, AuthViewSet):
+    pin_content_type = UserPin.CONTENT_TYPE_SKILL
+    pin_permission_error_key = "error.permission_update_denied"
     serializer_class = LLMSerializer
     queryset = LLMSkill.objects.all()
     filterset_class = LLMFilter
@@ -59,51 +64,12 @@ class LLMViewSet(AuthViewSet):
 
     def query_by_groups(self, request, queryset):
         """重写排序逻辑：当前用户置顶优先，再按 ID 倒序"""
-        new_queryset = self.get_queryset_by_permission(request, queryset)
-        username = request.user.username
-        domain = getattr(request.user, "domain", "")
-        pinned_ids = list(
-            UserPin.objects.filter(
-                username=username,
-                domain=domain,
-                content_type=UserPin.CONTENT_TYPE_SKILL,
-            ).values_list("object_id", flat=True)
-        )
-        new_queryset = new_queryset.annotate(
-            is_pinned_for_user=Case(
-                When(id__in=pinned_ids, then=Value(1)),
-                default=Value(0),
-                output_field=IntegerField(),
-            )
-        )
-        return self._list(new_queryset.order_by("-is_pinned_for_user", "-id"))
+        return self.query_by_groups_with_pinned(request, queryset)
 
     @action(methods=["POST"], detail=True)
     @HasPermission("skill_setting-Edit")
     def toggle_pin(self, request, pk=None):
-        """切换技能置顶状态（个人行为）"""
-        instance = self.get_object()
-        if not request.user.is_superuser:
-            current_team = request.COOKIES.get("current_team", "0")
-            include_children = request.COOKIES.get("include_children", "0") == "1"
-            has_permission = self.get_has_permission(request.user, instance, current_team, include_children=include_children)
-            if not has_permission:
-                message = self.loader.get("error.permission_update_denied") if self.loader else "You do not have permission to update this instance"
-                return JsonResponse({"result": False, "message": message})
-        username = request.user.username
-        domain = getattr(request.user, "domain", "")
-        pin_obj, created = UserPin.objects.get_or_create(
-            username=username,
-            domain=domain,
-            content_type=UserPin.CONTENT_TYPE_SKILL,
-            object_id=instance.id,
-        )
-        if created:
-            is_pinned = True
-        else:
-            pin_obj.delete()
-            is_pinned = False
-        return JsonResponse({"result": True, "data": {"is_pinned": is_pinned}})
+        return super().toggle_pin(request, pk)
 
     @action(methods=["GET"], detail=False)
     @HasPermission("skill_list-View")
@@ -118,11 +84,19 @@ class LLMViewSet(AuthViewSet):
 
     @HasPermission("skill_list-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        instance = self.get_object()
+        skill_name = instance.name
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            log_operation(request, "delete", "opspilot", f"删除智能体: {skill_name}")
+        return response
 
     @HasPermission("skill_list-Add")
     def create(self, request, *args, **kwargs):
         params = request.data
+        params["team"] = params.get("team", []) or [int(request.COOKIES.get("current_team"))]
+        # 校验用户是否有目标组织的权限
+        self._validate_org_field_permission(request, params["team"])
         validate_msg = self._validate_name(params["name"], request.user.group_list, params["team"])
         if validate_msg:
             message = (
@@ -131,7 +105,6 @@ class LLMViewSet(AuthViewSet):
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
-        params["team"] = params.get("team", []) or [int(request.COOKIES.get("current_team"))]
         params["enable_conversation_history"] = True
         params[
             "skill_prompt"
@@ -147,7 +120,12 @@ class LLMViewSet(AuthViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        response = Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        skill_name = response.data.get("name") if isinstance(response.data, dict) else None
+        if not skill_name:
+            skill_name = request.data.get("name", "")
+        log_operation(request, "create", "opspilot", f"新增智能体: {skill_name}")
+        return response
 
     @HasPermission("skill_setting-Edit")
     def update(self, request, *args, **kwargs):
@@ -182,8 +160,6 @@ class LLMViewSet(AuthViewSet):
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
-        if (not request.user.is_superuser) and (instance.created_by != request.user.username):
-            params.pop("team", [])
         if "team" in params:
             delete_team = [i for i in instance.team if i not in params["team"]]
             self.delete_rules(instance.id, delete_team)
@@ -220,6 +196,7 @@ class LLMViewSet(AuthViewSet):
             instance.knowledge_base.clear()
             instance.rag_score_threshold_map = {}
         instance.save()
+        log_operation(request, "update", "opspilot", f"编辑智能体: {instance.name}")
         return JsonResponse({"result": True})
 
     @staticmethod
@@ -294,12 +271,13 @@ class LLMViewSet(AuthViewSet):
                 current_ip = request.META.get("REMOTE_ADDR", "")
                 # 这里可以添加具体的配额检查逻辑
             params["skill_type"] = skill_obj.skill_type
-            params["tools"] = params.get("tools", [])
+            params["tools"] = resolve_request_tools(params.get("tools"), skill_obj.tools)
             params["group"] = params["group"] if params.get("group") else skill_obj.team[0]
             params["enable_km_route"] = params["enable_km_route"] if params.get("enable_km_route") else skill_obj.enable_km_route
             params["km_llm_model"] = params["km_llm_model"] if params.get("km_llm_model") else skill_obj.km_llm_model
             params["enable_suggest"] = params["enable_suggest"] if params.get("enable_suggest") else skill_obj.enable_suggest
             params["enable_query_rewrite"] = params["enable_query_rewrite"] if params.get("enable_query_rewrite") else skill_obj.enable_query_rewrite
+            params["show_think"] = params["show_think"] if params.get("show_think") is not None else skill_obj.show_think
             params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
             # 合并前端传入的 skill_params 和 DB 中的值（处理 ****** 掩码）
             from apps.opspilot.utils.prompt_utils import merge_skill_params
@@ -368,12 +346,13 @@ class LLMViewSet(AuthViewSet):
                 current_ip = request.META.get("REMOTE_ADDR", "")
 
             params["skill_type"] = skill_obj.skill_type
-            params["tools"] = params.get("tools", [])
+            params["tools"] = resolve_request_tools(params.get("tools"), skill_obj.tools)
             params["group"] = params["group"] if params.get("group") else skill_obj.team[0]
             params["enable_km_route"] = params["enable_km_route"] if params.get("enable_km_route") else skill_obj.enable_km_route
             params["km_llm_model"] = params["km_llm_model"] if params.get("km_llm_model") else skill_obj.km_llm_model
             params["enable_suggest"] = params["enable_suggest"] if params.get("enable_suggest") else skill_obj.enable_suggest
             params["enable_query_rewrite"] = params["enable_query_rewrite"] if params.get("enable_query_rewrite") else skill_obj.enable_query_rewrite
+            params["show_think"] = params["show_think"] if params.get("show_think") is not None else skill_obj.show_think
             params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
             params["browser_use_force_task"] = True
             # 合并前端传入的 skill_params 和 DB 中的值（处理 ****** 掩码）
@@ -405,11 +384,55 @@ class ObjFilter(FilterSet):
         return qs.filter(enabled=enabled)
 
 
-class LLMModelViewSet(AuthViewSet):
+class LLMModelViewSet(VendorModelMixin, AuthViewSet):
     serializer_class = LLMModelSerializer
     queryset = LLMModel.objects.all()
     permission_key = "provider.llm_model"
     filterset_class = ObjFilter
+
+    def _validate_llm_model_name(self, name, group_list, org_value, vendor_id, exclude_id=None):
+        """验证 LLM 模型名称在同一供应商和团队中的唯一性"""
+        import logging
+
+        logger = logging.getLogger(__name__)
+        try:
+            if not name or not isinstance(name, str):
+                return ""
+
+            if not isinstance(group_list, list) or not isinstance(org_value, list):
+                return ""
+
+            if not vendor_id:
+                return ""
+
+            org_field = self.ORGANIZATION_FIELD
+            # 添加 vendor_id 过滤条件
+            queryset = self.queryset.filter(name=name, vendor_id=vendor_id)
+            if exclude_id:
+                queryset = queryset.exclude(id=exclude_id)
+
+            team_list = list(queryset.values_list(org_field, flat=True))
+            existing_teams = []
+
+            for team_data in team_list:
+                if isinstance(team_data, list):
+                    existing_teams.extend(team_data)
+
+            team_name_map = {}
+            for group in group_list:
+                if isinstance(group, dict) and "id" in group and "name" in group:
+                    team_name_map[group["id"]] = group["name"]
+
+            for team_id in org_value:
+                if team_id in existing_teams:
+                    conflict_team_name = team_name_map.get(team_id, f"Team-{team_id}")
+                    return conflict_team_name
+
+            return ""
+
+        except Exception as e:
+            logger.error(f"Error in _validate_llm_model_name: {e}")
+            return ""
 
     @HasPermission("provide_list-View")
     def list(self, request, *args, **kwargs):
@@ -427,7 +450,14 @@ class LLMModelViewSet(AuthViewSet):
         if not params.get("team"):
             message = self.loader.get("error.team_empty") if self.loader else "The team is empty."
             return JsonResponse({"result": False, "message": message})
-        validate_msg = self._validate_name(params["name"], request.user.group_list, params["team"])
+        # 校验用户是否有目标组织的权限
+        self._validate_org_field_permission(request, params["team"])
+        validate_msg = self._validate_llm_model_name(
+            params["name"],
+            request.user.group_list,
+            params["team"],
+            params.get("vendor"),
+        )
         if validate_msg:
             message = (
                 self.loader.get("error.llm_model_name_exists")
@@ -446,16 +476,21 @@ class LLMModelViewSet(AuthViewSet):
             label=params.get("label"),
             is_build_in=False,
         )
-        return JsonResponse({"result": True})
+        response = JsonResponse({"result": True})
+        log_operation(request, "create", "opspilot", f"新增模型: {params['name']}")
+        return response
 
     @HasPermission("provide_list-Setting")
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         params = request.data
-        validate_msg = self._validate_name(
+        # 更新时使用请求中的 vendor，如果没有则使用实例原有的 vendor
+        vendor_id = params.get("vendor") or instance.vendor_id
+        validate_msg = self._validate_llm_model_name(
             params["name"],
             request.user.group_list,
             params["team"],
+            vendor_id,
             exclude_id=instance.id,
         )
         if validate_msg:
@@ -467,19 +502,23 @@ class LLMModelViewSet(AuthViewSet):
             if self.loader:
                 message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            model_name = response.data.get("name") if isinstance(response.data, dict) else None
+            if not model_name:
+                model_name = params.get("name", instance.name)
+            log_operation(request, "update", "opspilot", f"编辑模型: {model_name}")
+        return response
 
     @HasPermission("provide_list-Delete")
     def destroy(self, request, *args, **kwargs):
-        obj = self.get_object()
-        if obj.is_build_in:
-            return JsonResponse(
-                {
-                    "result": False,
-                    "message": self.loader.get("error.builtin_model_delete_denied") if self.loader else "Built-in model is not allowed to be deleted",
-                }
-            )
-        return super().destroy(request, *args, **kwargs)
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            model_name = response.data.get("name") if isinstance(response.data, dict) else None
+            if not model_name:
+                model_name = request.data.get("name", "")
+            log_operation(request, "delete", "opspilot", f"删除模型: {model_name}")
+        return response
 
 
 class LogFilter(FilterSet):
@@ -490,17 +529,42 @@ class LogFilter(FilterSet):
 
 
 class SkillRequestLogViewSet(LanguageViewSet):
+    """技能调用日志 ViewSet - 仅暴露 list 接口，验证 skill 的 team 权限"""
+
     serializer_class = SkillRequestLogSerializer
     queryset = SkillRequestLog.objects.all()
     filterset_class = LogFilter
     ordering = ("-created_at",)
+    # 仅允许 GET (list)，禁用其他内置接口
+    http_method_names = ["get", "head", "options"]
 
     @HasPermission("skill_invocation_logs-View")
     def list(self, request, *args, **kwargs):
-        if not request.GET.get("skill_id"):
+        skill_id = request.GET.get("skill_id")
+        if not skill_id:
             message = self.loader.get("error.skill_not_found") if self.loader else "Skill id not found"
             return JsonResponse({"result": False, "message": message})
+
+        # 验证 skill 存在且用户有权限访问
+        skill = LLMSkill.objects.filter(id=skill_id).first()
+        if not skill:
+            message = self.loader.get("error.skill_not_found") if self.loader else "Skill not found"
+            return JsonResponse({"result": False, "message": message})
+
+        # 验证 current_team 权限
+        if not request.user.is_superuser:
+            current_team = self._parse_current_team_cookie(request)
+            user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
+            if current_team not in user_group_ids:
+                raise PermissionDenied(self.loader.get("error.no_permission_access_team") if self.loader else "无权访问该团队数据")
+            if current_team not in (skill.team or []):
+                raise PermissionDenied(self.loader.get("error.no_permission_access_skill") if self.loader else "无权访问该技能的日志")
+
         return super().list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        """禁用 retrieve 接口"""
+        return JsonResponse({"result": False, "message": "接口未启用"}, status=405)
 
 
 class ToolsFilter(FilterSet):
@@ -530,15 +594,33 @@ class SkillToolsViewSet(AuthViewSet):
 
     @HasPermission("tool_list-Add")
     def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            tool_name = response.data.get("name") if isinstance(response.data, dict) else None
+            if not tool_name:
+                tool_name = request.data.get("name", "")
+            log_operation(request, "create", "opspilot", f"新增工具: {tool_name}")
+        return response
 
     @HasPermission("tool_list-Setting")
     def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            tool_name = response.data.get("name") if isinstance(response.data, dict) else None
+            if not tool_name:
+                tool_name = request.data.get("name", "")
+            log_operation(request, "update", "opspilot", f"编辑工具: {tool_name}")
+        return response
 
     @HasPermission("tool_list-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code >= 200 and response.status_code < 300:
+            tool_name = response.data.get("name") if isinstance(response.data, dict) else None
+            if not tool_name:
+                tool_name = request.data.get("name", "")
+            log_operation(request, "delete", "opspilot", f"删除工具: {tool_name}")
+        return response
 
     @action(methods=["POST"], detail=False)
     @HasPermission("tool_list-View")
@@ -652,6 +734,8 @@ class SkillToolsViewSet(AuthViewSet):
     @action(methods=["POST"], detail=False)
     @HasPermission("tool_list-View")
     def test_mssql_connection(self, request):
+        from apps.opspilot.metis.llm.tools.mssql.connection import normalize_mssql_instance, test_mssql_instance
+
         try:
             instance = normalize_mssql_instance(request.data)
             if test_mssql_instance(instance):

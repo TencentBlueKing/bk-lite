@@ -36,26 +36,11 @@
           ]
         },
         {
-          "id": "bot_channel",
-          "name": "APP Channel",
-          "operation": [
-            "View",
-            "Setting"
-          ]
-        },
-        {
           "id": "bot_conversation_log",
           "name": "APP Conversation-Log",
           "operation": [
             "View",
             "Mark"
-          ]
-        },
-        {
-          "id": "bot_statistics",
-          "name": "APP Statistics",
-          "operation": [
-            "View"
           ]
         },
         {
@@ -88,30 +73,6 @@
             "Edit",
             "Test",
             "Mark"
-          ]
-        },
-        {
-          "id": "skill_rule",
-          "name": "Agent Rule",
-          "operation": [
-            "View",
-            "Add",
-            "Edit",
-            "Delete"
-          ]
-        },
-        {
-          "id": "skill_invocation_logs",
-          "name": "Agent Invocation Logs",
-          "operation": [
-            "View"
-          ]
-        },
-        {
-          "id": "skill_api",
-          "name": "Agent Api",
-          "operation": [
-            "View"
           ]
         }
       ]
@@ -194,6 +155,21 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Memory",
+      "children": [
+        {
+          "id": "memory_list",
+          "name": "Memory list",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        }
+      ]
     }
   ],
   "roles": [
@@ -208,18 +184,15 @@
       "menus": [
         "bot_list-View",
         "bot_settings-View",
-        "bot_channel-View",
         "bot_conversation_log-View",
-        "bot_statistics-View",
         "knowledge_document-View",
         "knowledge_list-View",
         "knowledge_setting-View",
         "knowledge_testing-View",
         "provide_list-View",
-        "skill_api-View",
         "skill_list-View",
-        "skill_rule-View",
-        "skill_setting-View"
+        "skill_setting-View",
+        "memory_list-View"
       ]
     }
   ]

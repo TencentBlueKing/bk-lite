@@ -1,4 +1,8 @@
 # -- coding: utf-8 --
+from datetime import timedelta
+
+from django.utils import timezone
+from django.utils.translation import get_language
 from rest_framework.response import Response
 
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
@@ -12,8 +16,10 @@ from rest_framework import status
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.alerts.filters import AlertSourceModelFilter
 from apps.alerts.models.alert_source import AlertSource
+from apps.alerts.models.models import Event
 from apps.alerts.serializers import AlertSourceModelSerializer
 from apps.alerts.service.k8s_install import K8sInstallService
+from apps.alerts.utils.util import encode_team_secret
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
 from apps.rpc.node_mgmt import NodeMgmt
@@ -65,7 +71,8 @@ class AlertSourceModelViewSet(ModelViewSet):
         adapter_class = AlertSourceAdapterFactory.get_adapter(alert_source)
         adapter = adapter_class(alert_source=alert_source)
         base_url = request.build_absolute_uri("/").rstrip("/")
-        return Response(adapter.get_integration_guide(base_url))
+        language = getattr(request, "LANGUAGE_CODE", None) or get_language() or "zh-hans"
+        return Response(adapter.get_integration_guide(base_url, language=language))
 
     @staticmethod
     def _get_k8s_source():
@@ -152,7 +159,8 @@ class AlertSourceModelViewSet(ModelViewSet):
     @action(methods=["post"], detail=False, url_path="snmp_trap_nodes")
     def snmp_trap_nodes(self, request):
         current_team = _get_valid_current_team(request)
-        organization_ids = [] if request.user.is_superuser else [i["id"] for i in getattr(request.user, "group_list", [])]
+        organization_ids = [] if request.user.is_superuser else [i["id"] for i in
+                                                                 getattr(request.user, "group_list", [])]
         query_data = {
             "cloud_region_id": request.data.get("cloud_region_id"),
             "organization_ids": organization_ids,
@@ -241,3 +249,80 @@ class AlertSourceModelViewSet(ModelViewSet):
             push_source_id=payload["push_source_id"],
         )
         return WebUtils.response_file(yaml_content.encode("utf-8"), file_meta["file_name"])
+
+    @HasPermission("Integration-Edit")
+    @action(methods=["get"], detail=True, url_path="team_secrets")
+    def list_team_secrets(self, request, pk=None):
+        source = self.get_object()
+        team_secrets = source.team_secrets or {}
+        result = [{"team_id": tid, "secret": sec} for tid, sec in team_secrets.items()]
+        return WebUtils.response_success(result)
+
+    @HasPermission("Integration-Edit")
+    @action(methods=["post"], detail=True, url_path="team_secrets/add")
+    def add_team_secret(self, request, pk=None):
+        source = self.get_object()
+        team_id = request.data.get("team_id")
+        if team_id is None:
+            return Response({"detail": "team_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+        team_id_str = str(team_id)
+        team_secrets = source.team_secrets or {}
+        if team_id_str in team_secrets:
+            return Response({"detail": f"Team {team_id} already has a secret."}, status=status.HTTP_400_BAD_REQUEST)
+        source_secret = encode_team_secret(source.secret, team_id_str)
+        team_secrets[team_id_str] = source_secret
+        source.team_secrets = team_secrets
+        source.save(update_fields=["team_secrets"])
+        return WebUtils.response_success({"team_id": team_id_str, "secret": source_secret})
+
+    @HasPermission("Integration-Edit")
+    @action(methods=["post"], detail=True, url_path="team_secrets/regenerate")
+    def regenerate_team_secret(self, request, pk=None):
+        source = self.get_object()
+        team_id = request.data.get("team_id")
+        if team_id is None:
+            return Response({"detail": "team_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+        team_id_str = str(team_id)
+        team_secrets = source.team_secrets or {}
+        if team_id_str not in team_secrets:
+            return Response({"detail": f"Team {team_id} does not have a secret."}, status=status.HTTP_404_NOT_FOUND)
+        source_secret = encode_team_secret(source.secret, team_id_str)
+        team_secrets[team_id_str] = source_secret
+        source.team_secrets = team_secrets
+        source.save(update_fields=["team_secrets"])
+        return WebUtils.response_success({"team_id": team_id_str, "secret": source_secret})
+
+    @HasPermission("Integration-Edit")
+    @action(methods=["post"], detail=True, url_path="team_secrets/remove")
+    def remove_team_secret(self, request, pk=None):
+        source = self.get_object()
+        team_id = request.data.get("team_id")
+        if team_id is None:
+            return Response({"detail": "team_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+        team_id_str = str(team_id)
+        team_secrets = source.team_secrets or {}
+        if team_id_str not in team_secrets:
+            return Response({"detail": f"Team {team_id} does not have a secret."}, status=status.HTTP_404_NOT_FOUND)
+        del team_secrets[team_id_str]
+        source.team_secrets = team_secrets
+        source.save(update_fields=["team_secrets"])
+        return WebUtils.response_success({"removed_team_id": team_id_str})
+
+    @HasPermission("Integration-View")
+    @action(methods=["get"], detail=False, url_path="daily_event_stats")
+    def daily_event_stats(self, request):
+        """Return today's and yesterday's total event counts across all sources."""
+        now = timezone.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        yesterday_start = today_start - timedelta(days=1)
+
+        today_count = Event.objects.filter(received_at__gte=today_start).count()
+        yesterday_count = Event.objects.filter(
+            received_at__gte=yesterday_start,
+            received_at__lt=today_start,
+        ).count()
+
+        return WebUtils.response_success({
+            "today_count": today_count,
+            "yesterday_count": yesterday_count,
+        })

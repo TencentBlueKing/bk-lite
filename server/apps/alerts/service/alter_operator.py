@@ -17,6 +17,7 @@ from apps.alerts.constants.constants import (
     LogAction,
 )
 from apps.alerts.service.base import get_default_notify_params
+from apps.alerts.utils.operator_scope import validate_alert_assignees
 from apps.core.logger import alert_logger as logger
 
 
@@ -30,9 +31,15 @@ class AlertOperator(object):
     未分派——待响应——处理中——转派——待响应——处理中——关闭
     """
 
-    def __init__(self, user):
+    def __init__(self, user, allowed_alert_ids=None):
         self.user = user
         self.status_map = dict(AlertStatus.CHOICES)
+        self.allowed_alert_ids = None if allowed_alert_ids is None else {str(item) for item in allowed_alert_ids}
+
+    def _is_alert_allowed(self, alert_id: str) -> bool:
+        if self.allowed_alert_ids is None:
+            return True
+        return str(alert_id) in self.allowed_alert_ids
 
     def operate(self, action: str, alert_id: str, data: dict) -> dict:
         """
@@ -51,6 +58,10 @@ class AlertOperator(object):
         if not func:
             logger.error(f"不支持的操作类型: {action}")
             raise ValueError(f"Unsupported action: {action}")
+
+        if not self._is_alert_allowed(alert_id):
+            logger.warning(f"用户 {self.user} 无权限操作告警: alert_id={alert_id}")
+            return {"result": False, "message": "您没有权限操作此告警", "data": {}}
 
         try:
             result = func(alert_id, data)
@@ -143,6 +154,10 @@ class AlertOperator(object):
 
             if not assignee:
                 return {"result": False, "message": "请指定处理人", "data": {}}
+
+            assignee, validation_message = validate_alert_assignees(alert, assignee)
+            if validation_message:
+                return {"result": False, "message": validation_message, "data": {}}
 
             # 更新告警状态和处理人
             alert.status = AlertStatus.PENDING
@@ -297,6 +312,10 @@ class AlertOperator(object):
             if not new_assignee:
                 logger.warning(f"转派操作缺少新处理人信息: alert_id={alert_id}")
                 return {"result": False, "message": "请指定新的处理人", "data": {}}
+
+            new_assignee, validation_message = validate_alert_assignees(alert, new_assignee)
+            if validation_message:
+                return {"result": False, "message": validation_message, "data": {}}
 
             old_assignee = alert.operator.copy()
 

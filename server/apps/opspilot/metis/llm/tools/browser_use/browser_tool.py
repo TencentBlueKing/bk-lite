@@ -19,7 +19,7 @@ from langchain_core.tools import tool
 from loguru import logger
 from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
-from apps.opspilot.utils.execution_interrupt import is_interrupt_requested
+from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
 
 # 安全配置
 MAX_RETRIES = 2
@@ -970,7 +970,7 @@ def _create_step_callback_adapter(
         """适配器：将 browser-use 的回调参数转换为 BrowserStepInfo"""
         import inspect
 
-        if execution_id and is_interrupt_requested(execution_id):
+        if execution_id and await is_interrupt_requested_async(execution_id):
             raise BrowserExecutionInterruptedError("浏览器执行已中断")
 
         # 提取动作信息

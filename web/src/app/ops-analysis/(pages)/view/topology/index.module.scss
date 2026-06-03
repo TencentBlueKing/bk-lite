@@ -9,7 +9,19 @@
 
 .topologyContainer {
   :global(.x6-graph-svg) {
-    background: linear-gradient(135deg, #bbdefb, #ecd5f0) !important;
+    background:
+      radial-gradient(circle at 18% 16%, rgba(113, 170, 255, 0.14) 0%, transparent 32%),
+      radial-gradient(circle at 82% 20%, rgba(190, 155, 255, 0.12) 0%, transparent 28%),
+      linear-gradient(
+        135deg,
+        #eff7ff 0%,
+        #f9fbff 48%,
+        #f8f2ff 100%
+      ) !important;
+  }
+
+  :global(.x6-graph-grid line) {
+    stroke: rgba(112, 140, 180, 0.12) !important;
   }
 
   :global(.x6-node foreignObject) {
@@ -46,21 +58,21 @@
   height: 135px;
   border: 1px solid var(--color-border-1);
   border-radius: 8px;
-  box-shadow: 
-    0 4px 12px rgba(0, 0, 0, 0.05),
-    0 2px 6px rgba(0, 0, 0, 0.03);
-  background: linear-gradient(135deg, 
-    rgba(255, 255, 255, 0.95) 0%, 
-    rgba(248, 249, 250, 0.95) 100%);
+  box-shadow:
+    0 12px 30px rgba(31, 63, 104, 0.1),
+    0 3px 8px rgba(31, 63, 104, 0.06);
+  background: linear-gradient(135deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(246, 250, 255, 0.96) 100%);
   backdrop-filter: blur(6px);
   z-index: 10;
   overflow: hidden;
   transition: all 0.3s ease;
   
   &:hover {
-    box-shadow: 
-      0 6px 16px rgba(0, 0, 0, 0.08),
-      0 3px 8px rgba(0, 0, 0, 0.04);
+    box-shadow:
+      0 16px 34px rgba(31, 63, 104, 0.12),
+      0 4px 10px rgba(31, 63, 104, 0.06);
     transform: translateY(-1px);
   }
   
@@ -147,9 +159,9 @@
     
     // 视窗样式
     :global(.x6-widget-minimap-viewport) {
-      border: 1px solid #1890ff !important;
+      border: 1px solid rgba(46, 99, 255, 0.72) !important;
       border-radius: 4px !important;
-      background: rgba(24, 144, 255, 0.04) !important;
+      background: rgba(46, 99, 255, 0.05) !important;
       backdrop-filter: blur(1px) !important;
       box-shadow: 
         0 2px 8px rgba(24, 144, 255, 0.12),
@@ -159,7 +171,7 @@
       &:hover {
         background: rgba(24, 144, 255, 0.06) !important;
         box-shadow: 
-          0 3px 12px rgba(24, 144, 255, 0.15),
+          0 3px 12px rgba(46, 99, 255, 0.16),
           inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
       }
     }
@@ -197,9 +209,9 @@
     rgba(248, 249, 250, 0.95) 100%);
   border: 1px solid var(--color-border-1);
   border-radius: 10px;
-  box-shadow: 
-    0 4px 12px rgba(0, 0, 0, 0.08),
-    0 2px 6px rgba(0, 0, 0, 0.04);
+  box-shadow:
+    0 12px 30px rgba(31, 63, 104, 0.12),
+    0 3px 8px rgba(31, 63, 104, 0.06);
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;

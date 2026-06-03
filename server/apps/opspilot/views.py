@@ -4,6 +4,7 @@ import time
 import uuid
 from typing import Any
 
+from asgiref.sync import sync_to_async
 from django.db.models import Count
 from django.db.models.functions import TruncDate
 from django.http import HttpResponse, JsonResponse
@@ -229,13 +230,20 @@ def get_skill_and_params(kwargs, team, bot_id=None):
 
 
 def invoke_chat(params, skill_obj, kwargs, current_ip, user_message, history_log=None):
-    return_data, _ = get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_log)
+    return_data, _, is_error = get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_log)
+    if is_error:
+        return JsonResponse(return_data, status=500)
     return JsonResponse(return_data)
 
 
 def format_knowledge_sources(content, skill_obj, doc_map=None, title_map=None):
     """Format and append knowledge source references if enabled"""
     if skill_obj.enable_rag_knowledge_source:
+        stripped_content = content.strip()
+        if (stripped_content.startswith("{") and stripped_content.endswith("}")) or (
+            stripped_content.startswith("[") and stripped_content.endswith("]")
+        ):
+            return content
         doc_map = doc_map or {}
         title_map = title_map or {}
         knowledge_titles = sorted({doc_map.get(k, {}).get("name") for k in title_map.keys() if doc_map.get(k, {}).get("name")})
@@ -248,6 +256,17 @@ def format_knowledge_sources(content, skill_obj, doc_map=None, title_map=None):
 def get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_log=None):
     # 使用同步版本的 invoke_chat
     data, doc_map, title_map = ChatService.invoke_chat(params)
+
+    # 检查执行是否失败
+    if data.get("success") is False:
+        error_response = {
+            "error": {
+                "message": data.get("error", data.get("message", "Unknown error")),
+                "type": data.get("error_type", "ExecutionError"),
+                "code": "execution_failed",
+            }
+        }
+        return error_response, None, True  # 第三个返回值表示是否失败
 
     content = format_knowledge_sources(data["message"], skill_obj, doc_map, title_map)
     return_data = {
@@ -279,7 +298,7 @@ def get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_lo
         history_log.citing_knowledge = list(doc_map.values())
         history_log.save()
     insert_skill_log(current_ip, skill_obj.id, return_data, kwargs, user_message=user_message)
-    return return_data, content
+    return return_data, content, False  # 第三个返回值表示是否失败
 
 
 @api_exempt
@@ -534,9 +553,9 @@ def set_channel_type_line(end_time, queryset, start_time):
 
 
 @api_exempt
-def execute_chat_flow(request, bot_id, node_id):
+async def execute_chat_flow(request, bot_id, node_id):
     """执行ChatFlow流程（支持流式响应）"""
-    loader = get_loader(request)
+    loader = await sync_to_async(get_loader, thread_sensitive=True)(request)
     if not bot_id or not node_id:
         return JsonResponse({"result": False, "message": loader.get("error.bot_node_id_required", "Bot ID and Node ID are required.")})
 
@@ -554,7 +573,7 @@ def execute_chat_flow(request, bot_id, node_id):
 
     # 验证token
     token = extract_api_token(request)
-    is_valid, msg = validate_openai_token(token, request.COOKIES.get("current_team") or None, is_mobile)
+    is_valid, msg = await sync_to_async(validate_openai_token, thread_sensitive=False)(token, request.COOKIES.get("current_team") or None, is_mobile)
     if not is_valid:
         return JsonResponse(msg)
 
@@ -569,12 +588,12 @@ def execute_chat_flow(request, bot_id, node_id):
 
     if not is_test:
         filter_dict["online"] = True
-    bot_obj = Bot.objects.filter(**filter_dict).first()
+    bot_obj = await sync_to_async(Bot.objects.filter(**filter_dict).first, thread_sensitive=False)()
     if not bot_obj:
         return JsonResponse({"result": False, "message": loader.get("error.bot_not_online", "No bot online")})
 
     # 获取Bot的工作流配置
-    bot_chat_flow = BotWorkFlow.objects.filter(bot_id=bot_obj.id).first()
+    bot_chat_flow = await sync_to_async(BotWorkFlow.objects.filter(bot_id=bot_obj.id).first, thread_sensitive=False)()
     if not bot_chat_flow:
         return JsonResponse({"result": False, "message": loader.get("error.no_chat_flow_configured", "No chat flow configured for this bot.")})
 
@@ -605,7 +624,10 @@ def execute_chat_flow(request, bot_id, node_id):
         logger.info(f"开始执行ChatFlow流程，bot_id: {bot_id}, node_id: {node_id}, user: {user.username}, node_type: {node_type}")
 
         if is_test:
-            has_running_test = WorkFlowTaskResult.objects.filter(bot_work_flow__bot_id=bot_obj.id, status=WorkFlowTaskStatus.RUNNING).exists()
+            has_running_test = await sync_to_async(
+                WorkFlowTaskResult.objects.filter(bot_work_flow__bot_id=bot_obj.id, status=WorkFlowTaskStatus.RUNNING).exists,
+                thread_sensitive=False,
+            )()
             if has_running_test:
                 msg = loader.get("error.chat_flow_test_running", "A workflow test execution is already running for this bot.")
                 return JsonResponse({"result": False, "message": msg})
@@ -625,10 +647,10 @@ def execute_chat_flow(request, bot_id, node_id):
 
             # 直接返回 engine.sse_execute 的 StreamingHttpResponse（与 execute_agui 保持一致）
             logger.info(f"[ChatFlow] 调用流式执行 - bot_id: {bot_id}, node_id: {node_id}, node_type: {node_type}")
-            return engine.sse_execute(input_data)
+            return await sync_to_async(engine.sse_execute, thread_sensitive=False)(input_data)
 
-        # 非流式节点，使用普通执行
-        result = engine.execute(input_data)
+        # 非流式节点，使用普通执行（在线程池中执行，不阻塞事件循环）
+        result = await sync_to_async(engine.execute, thread_sensitive=False)(input_data)
         return JsonResponse({"result": True, "data": {"content": result, "execution_time": time.time()}})
 
     except Exception as e:
@@ -670,6 +692,82 @@ def interrupt_chat_flow_execution(request):
             },
         }
     )
+
+
+@api_exempt
+def submit_approval(request):
+    """提交审批决策 — 用户对 Agent 危险操作的批准/拒绝。"""
+    if request.method != "POST":
+        return JsonResponse({"result": False, "message": "Method not allowed"}, status=405)
+
+    try:
+        kwargs = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError) as e:
+        return JsonResponse({"result": False, "message": f"Invalid JSON: {e}"}, status=400)
+
+    execution_id = kwargs.get("execution_id", "")
+    node_id = kwargs.get("node_id", "")
+    tool_call_id = kwargs.get("tool_call_id", "")
+    decision = kwargs.get("decision", "")
+
+    if not all([execution_id, node_id, tool_call_id, decision]):
+        return JsonResponse(
+            {"result": False, "message": "execution_id, node_id, tool_call_id, decision are all required"},
+            status=400,
+        )
+
+    if decision not in ("approve", "reject"):
+        return JsonResponse({"result": False, "message": "decision must be 'approve' or 'reject'"}, status=400)
+
+    from apps.opspilot.utils.approval import submit_approval_decision
+
+    submit_approval_decision(
+        execution_id=execution_id,
+        node_id=node_id,
+        tool_call_id=tool_call_id,
+        decision=decision,
+        reason=kwargs.get("reason", ""),
+        decided_by=kwargs.get("decided_by", getattr(request.user, "username", "")),
+    )
+
+    return JsonResponse({"result": True, "data": {"execution_id": execution_id, "node_id": node_id, "decision": decision}})
+
+
+@api_exempt
+def submit_choice(request):
+    """提交用户选择 — 用户从多个选项中选择的结果。"""
+    if request.method != "POST":
+        return JsonResponse({"result": False, "message": "Method not allowed"}, status=405)
+
+    try:
+        kwargs = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError) as e:
+        return JsonResponse({"result": False, "message": f"Invalid JSON: {e}"}, status=400)
+
+    execution_id = kwargs.get("execution_id", "")
+    node_id = kwargs.get("node_id", "")
+    choice_id = kwargs.get("choice_id", "")
+    selected = kwargs.get("selected", [])
+
+    if not all([execution_id, node_id, choice_id]):
+        return JsonResponse(
+            {"result": False, "message": "execution_id, node_id, choice_id are all required"},
+            status=400,
+        )
+
+    if not isinstance(selected, list) or len(selected) == 0:
+        return JsonResponse({"result": False, "message": "selected must be a non-empty list"}, status=400)
+
+    from apps.opspilot.utils.user_choice import submit_user_choice
+
+    submit_user_choice(
+        execution_id=execution_id,
+        node_id=node_id,
+        choice_id=choice_id,
+        selected=selected,
+    )
+
+    return JsonResponse({"result": True, "data": {"execution_id": execution_id, "node_id": node_id, "selected": selected}})
 
 
 @api_exempt

@@ -1,11 +1,37 @@
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.system_mgmt.models import Group, Role, User
+from apps.system_mgmt.utils.user_status import get_password_validity_days, get_user_derived_status
+
+
+USER_PUBLIC_FIELDS = [
+    "id",
+    "username",
+    "display_name",
+    "email",
+    "phone",
+    "disabled",
+    "locale",
+    "timezone",
+    "group_list",
+    "role_list",
+    "temporary_pwd",
+    "domain",
+    "last_login",
+    "password_last_modified",
+    "password_error_count",
+    "account_locked_until",
+    "status",
+    "group_role_list",
+    "is_superuser",
+]
 
 
 class UserSerializer(serializers.ModelSerializer):
     group_role_list = serializers.SerializerMethodField()
     is_superuser = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
 
     # 类级别缓存，避免每次实例化都查询数据库
     _super_role_id_cache = None
@@ -14,6 +40,8 @@ class UserSerializer(serializers.ModelSerializer):
         super().__init__(*args, **kwargs)
         self._group_roles_map = None
         self.super_role_id = self._get_super_role_id()
+        self._status_now = timezone.now()
+        self._password_validity_days = get_password_validity_days()
 
         # 仅在列表序列化时（many=True）进行批量查询
         if kwargs.get("many", False):
@@ -60,7 +88,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = "__all__"
+        fields = USER_PUBLIC_FIELDS
 
     def get_is_superuser(self, obj):
         return self.super_role_id in obj.role_list
@@ -90,3 +118,6 @@ class UserSerializer(serializers.ModelSerializer):
         groups = Group.objects.filter(id__in=group_list).prefetch_related("roles")
         role_names = {f"{role.app}@@{role.name}" if role.app else role.name for group in groups for role in group.roles.all()}
         return list(role_names)
+
+    def get_status(self, obj):
+        return get_user_derived_status(obj, now=self._status_now, validity_days=self._password_validity_days)

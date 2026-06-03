@@ -1,4 +1,6 @@
 import json
+from django.core.exceptions import MultipleObjectsReturned
+from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
 from apps.core.logger import opspilot_logger as logger
 
@@ -23,50 +25,70 @@ def crontab_format(value_type: str, value: str):
 
 class CeleryUtils:
     @staticmethod
-    def create_or_update_periodic_task(name, crontab=None, interval=None, task=None, args=None, kwargs=None,
-                                       enabled=True):
+    def get_or_create_crontab_schedule(minute, hour, day_of_month, month_of_year, day_of_week):
+        """获取或创建 crontab 调度，兼容历史重复数据。"""
+        schedule_data = dict(
+            minute=minute,
+            hour=hour,
+            day_of_month=day_of_month,
+            month_of_year=month_of_year,
+            day_of_week=day_of_week,
+            timezone=timezone.get_default_timezone(),
+        )
+
+        try:
+            schedule, _ = CrontabSchedule.objects.get_or_create(**schedule_data, defaults=schedule_data)
+        except MultipleObjectsReturned:
+            logger.warning(f"检测到重复的 CrontabSchedule，复用首条记录: {schedule_data}")
+            schedule = CrontabSchedule.objects.filter(**schedule_data).order_by("id").first()
+            if schedule is None:
+                raise
+
+        return schedule
+
+    @staticmethod
+    def create_or_update_periodic_task(name, crontab=None, interval=None, task=None, args=None, kwargs=None, enabled=True):
         """
         创建或更新周期任务
         """
         logger.info(f"创建或更新周期任务: name={name}, crontab={crontab}, interval={interval}, task={task}, enabled={enabled}")
-        
+
         if crontab:
             minute, hour, day_of_month, month_of_year, day_of_week = crontab.split()
-            schedule_data = dict(
+            schedule = CeleryUtils.get_or_create_crontab_schedule(
                 minute=minute,
                 hour=hour,
                 day_of_month=day_of_month,
                 month_of_year=month_of_year,
                 day_of_week=day_of_week,
             )
-            schedule, created = CrontabSchedule.objects.get_or_create(**schedule_data, defaults=schedule_data)
             schedule_type = "crontab"
         elif interval:
-            schedule_data = dict(every=interval, period='seconds')
+            schedule_data = dict(every=interval, period="seconds")
             schedule, created = IntervalSchedule.objects.get_or_create(**schedule_data, defaults=schedule_data)
             schedule_type = "interval"
         else:
-            raise ValueError('Either crontab or interval must be provided')
+            raise ValueError("Either crontab or interval must be provided")
 
         defaults = dict(
             task=task,
-            args=json.dumps(args) if args else '[]',
-            kwargs=json.dumps(kwargs) if kwargs else '{}',
+            args=json.dumps(args) if args else "[]",
+            kwargs=json.dumps(kwargs) if kwargs else "{}",
             enabled=enabled,
         )
-        
+
         if schedule_type == "crontab":
-            defaults['crontab'] = schedule
-            defaults['interval'] = None
+            defaults["crontab"] = schedule
+            defaults["interval"] = None
         else:
-            defaults['interval'] = schedule
-            defaults['crontab'] = None
+            defaults["interval"] = schedule
+            defaults["crontab"] = None
 
         task_obj, task_created = PeriodicTask.objects.update_or_create(name=name, defaults=defaults)
-        
+
         action = "创建" if task_created else "更新"
         logger.info(f"{action}周期任务成功: {name}")
-        
+
         return task_obj
 
     @staticmethod

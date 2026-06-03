@@ -1,0 +1,398 @@
+{
+  "name": "PELT",
+  "display_name": "PELT",
+  "image": "bk-lite.tencentcloudcr.com/bklite/classify_anomaly_server:latest",
+  "scenario_description": "适用于运营与运维关键指标监控，重点发现时序数据中的变点和状态切换，适合识别发布、配置变更或流量变化导致的性能基线突变问题。",
+  "form_config": {
+    "groups": {
+      "hyperparams": [
+        {
+          "title": "基础配置",
+          "fields": [
+            {
+              "name": [
+                "hyperparams",
+                "metric"
+              ],
+              "type": "select",
+              "label": "优化指标",
+              "options": [
+                {
+                  "label": "Changepoint F1 (变点F1，推荐)",
+                  "value": "changepoint_f1"
+                },
+                {
+                  "label": "Changepoint Precision (变点精确率)",
+                  "value": "changepoint_precision"
+                },
+                {
+                  "label": "Changepoint Recall (变点召回率)",
+                  "value": "changepoint_recall"
+                }
+              ],
+              "tooltip": "推荐优先使用变点级指标进行 PELT 超参数优化。点级 F1/Precision/Recall/AUC 仅用于兼容现有通用评估路径，不建议作为 PELT 的首选优化目标",
+              "required": true,
+              "placeholder": "选择优化目标指标",
+              "defaultValue": "changepoint_f1"
+            },
+            {
+              "max": 2147483647,
+              "min": 0,
+              "name": [
+                "hyperparams",
+                "random_state"
+              ],
+              "step": 1,
+              "type": "inputNumber",
+              "label": "随机种子",
+              "tooltip": "控制随机性，确保实验可复现。相同种子+相同参数=相同结果",
+              "required": true,
+              "placeholder": "例: 42",
+              "defaultValue": 42
+            },
+            {
+              "name": [
+                "hyperparams",
+                "cost_model"
+              ],
+              "type": "select",
+              "label": "检测方法",
+              "options": [
+                {
+                  "label": "L1 (中位数变化)",
+                  "value": "l1"
+                },
+                {
+                  "label": "L2 (均值变化)",
+                  "value": "l2"
+                },
+                {
+                  "label": "RBF (分布变化)",
+                  "value": "rbf"
+                }
+              ],
+              "tooltip": "选择变化点检测的代价函数：L1 = 中位数变化（更鲁棒），L2 = 均值变化（默认、直观），RBF = 分布变化（更通用）",
+              "required": true,
+              "placeholder": "选择变化点检测方法",
+              "defaultValue": "l2"
+            },
+            {
+              "max": 1000000,
+              "min": 0,
+              "name": [
+                "hyperparams",
+                "event_window"
+              ],
+              "step": 1,
+              "type": "inputNumber",
+              "label": "匹配/投影窗口",
+              "tooltip": "PELT 专属参数。用于将检测到的变点投影为点级异常范围，并在评估时定义变点匹配容忍度。0 表示仅标记变点本身，1 表示标记变点前后各 1 个点（总计 3 个点）。建议当前默认使用 1",
+              "required": true,
+              "placeholder": "例: 1",
+              "defaultValue": 1
+            }
+          ]
+        },
+        {
+          "title": "搜索空间 (Search Space)",
+          "fields": [
+            {
+              "name": [
+                "hyperparams",
+                "search_space",
+                "pen"
+              ],
+              "type": "stringArray",
+              "label": "惩罚系数",
+              "tooltip": "控制检测到的变化点数量。值越大越保守、变化点越少；值越小越敏感、变化点越多。建议从 1-50 范围内调优",
+              "required": true,
+              "placeholder": "例: 10,20,30",
+              "defaultValue": "10,20,30"
+            },
+            {
+              "name": [
+                "hyperparams",
+                "search_space",
+                "min_size"
+              ],
+              "type": "stringArray",
+              "label": "最小分段长度",
+              "tooltip": "相邻变化点之间的最少数据点数。值越大越能抑制短时噪声引起的误检",
+              "required": true,
+              "placeholder": "例: 3,5,10",
+              "defaultValue": "3,5,10"
+            },
+            {
+              "name": [
+                "hyperparams",
+                "search_space",
+                "jump"
+              ],
+              "type": "stringArray",
+              "label": "搜索步长",
+              "tooltip": "控制搜索精度与速度的平衡。1 表示逐点搜索（最精确），更大的值表示跳点搜索（更快但更粗）",
+              "required": false,
+              "placeholder": "例: 1,2,5",
+              "defaultValue": "1,2,5"
+            }
+          ]
+        },
+        {
+          "title": "",
+          "fields": [
+            {
+              "name": [
+                "hyperparams",
+                "use_feature_engineering"
+              ],
+              "type": "switch",
+              "label": "启用特征工程",
+              "layout": "horizontal",
+              "tooltip": "PELT 仅支持原始单变量时序输入，必须关闭特征工程",
+              "defaultValue": false
+            }
+          ],
+          "subtitle": "特征工程"
+        }
+      ],
+      "preprocessing": [
+        {
+          "title": "数据预处理 (Preprocessing)",
+          "fields": [
+            {
+              "name": [
+                "preprocessing",
+                "handle_missing"
+              ],
+              "type": "select",
+              "label": "缺失值处理",
+              "options": [
+                {
+                  "label": "线性插值 (interpolate)",
+                  "value": "interpolate"
+                },
+                {
+                  "label": "前向填充 (ffill)",
+                  "value": "ffill"
+                },
+                {
+                  "label": "后向填充 (bfill)",
+                  "value": "bfill"
+                },
+                {
+                  "label": "删除 (drop)",
+                  "value": "drop"
+                },
+                {
+                  "label": "中位数填充 (median)",
+                  "value": "median"
+                }
+              ],
+              "required": true,
+              "placeholder": "选择缺失值处理方式",
+              "defaultValue": "interpolate"
+            },
+            {
+              "max": 1,
+              "min": 0,
+              "name": [
+                "preprocessing",
+                "max_missing_ratio"
+              ],
+              "step": 0.1,
+              "type": "inputNumber",
+              "label": "最大缺失率",
+              "tooltip": "数据缺失比例超过此阈值将拒绝训练",
+              "required": true,
+              "placeholder": "0.0 - 1.0",
+              "defaultValue": 0.3
+            },
+            {
+              "max": 100,
+              "min": 1,
+              "name": [
+                "preprocessing",
+                "interpolation_limit"
+              ],
+              "step": 1,
+              "type": "inputNumber",
+              "label": "插值限制",
+              "tooltip": "连续缺失值最多插值的数量，超过此数量的连续缺失不进行插值。推荐范围: 1-100",
+              "required": true,
+              "placeholder": "例: 5",
+              "defaultValue": 5
+            },
+            {
+              "name": [
+                "preprocessing",
+                "label_column"
+              ],
+              "type": "input",
+              "label": "标签列名",
+              "tooltip": "数据集中标签列的名称，用于区分正常和异常样本",
+              "required": true,
+              "placeholder": "例: label",
+              "defaultValue": "label"
+            }
+          ]
+        }
+      ],
+      "feature_engineering": [
+        {
+          "title": "特征工程 (Feature Engineering)",
+          "fields": [
+            {
+              "name": [
+                "feature_engineering",
+                "lag_periods"
+              ],
+              "type": "stringArray",
+              "label": "滞后期",
+              "tooltip": "PELT 不支持特征工程，此字段仅为保持通用表单结构，实际训练中不会启用",
+              "required": true,
+              "placeholder": "例: 1,2,3",
+              "defaultValue": "1,2,3",
+              "dependencies": [
+                [
+                  "hyperparams",
+                  "use_feature_engineering"
+                ]
+              ]
+            },
+            {
+              "name": [
+                "feature_engineering",
+                "rolling_windows"
+              ],
+              "type": "stringArray",
+              "label": "滚动窗口大小",
+              "tooltip": "PELT 不支持特征工程，此字段仅为保持通用表单结构，实际训练中不会启用",
+              "required": true,
+              "placeholder": "例: 12,24,48",
+              "defaultValue": "12,24,48",
+              "dependencies": [
+                [
+                  "hyperparams",
+                  "use_feature_engineering"
+                ]
+              ]
+            },
+            {
+              "name": [
+                "feature_engineering",
+                "rolling_features"
+              ],
+              "type": "multiSelect",
+              "label": "滚动窗口统计",
+              "options": [
+                {
+                  "label": "均值 (mean)",
+                  "value": "mean"
+                },
+                {
+                  "label": "标准差 (std)",
+                  "value": "std"
+                },
+                {
+                  "label": "最小值 (min)",
+                  "value": "min"
+                },
+                {
+                  "label": "最大值 (max)",
+                  "value": "max"
+                }
+              ],
+              "required": true,
+              "placeholder": "选择统计函数",
+              "defaultValue": [
+                "mean",
+                "std",
+                "min",
+                "max"
+              ],
+              "dependencies": [
+                [
+                  "hyperparams",
+                  "use_feature_engineering"
+                ]
+              ]
+            },
+            {
+              "name": [
+                "feature_engineering",
+                "use_temporal_features"
+              ],
+              "type": "switch",
+              "label": "时间特征",
+              "layout": "horizontal",
+              "tooltip": "PELT 不支持特征工程，此字段仅为保持通用表单结构，实际训练中不会启用",
+              "defaultValue": true,
+              "dependencies": [
+                [
+                  "hyperparams",
+                  "use_feature_engineering"
+                ]
+              ]
+            },
+            {
+              "name": [
+                "feature_engineering",
+                "use_cyclical_features"
+              ],
+              "type": "switch",
+              "label": "周期性编码",
+              "layout": "horizontal",
+              "tooltip": "PELT 不支持特征工程，此字段仅为保持通用表单结构，实际训练中不会启用",
+              "defaultValue": false,
+              "dependencies": [
+                [
+                  "hyperparams",
+                  "use_feature_engineering"
+                ]
+              ]
+            },
+            {
+              "name": [
+                "feature_engineering",
+                "use_diff_features"
+              ],
+              "type": "switch",
+              "label": "差分特征",
+              "layout": "horizontal",
+              "tooltip": "PELT 不支持特征工程，此字段仅为保持通用表单结构，实际训练中不会启用",
+              "defaultValue": true,
+              "dependencies": [
+                [
+                  "hyperparams",
+                  "use_feature_engineering"
+                ]
+              ]
+            },
+            {
+              "name": [
+                "feature_engineering",
+                "diff_periods"
+              ],
+              "type": "stringArray",
+              "label": "差分期数",
+              "tooltip": "PELT 不支持特征工程，此字段仅为保持通用表单结构，实际训练中不会启用",
+              "required": true,
+              "placeholder": "例: 1",
+              "defaultValue": "1",
+              "dependencies": [
+                [
+                  "hyperparams",
+                  "use_feature_engineering"
+                ],
+                [
+                  "feature_engineering",
+                  "use_diff_features"
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

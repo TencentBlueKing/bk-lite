@@ -64,12 +64,16 @@ const PermissionRule: React.FC<PermissionRuleProps> = ({
     moduleData,
     pagination,
     loadSpecificData,
-    handleTableChange
+    handleTableChange,
+    updateModuleDataItem
   } = usePermissionData(clientId, permissions, formGroupId);
 
   const [activeKey, setActiveKey] = useState<string>('');
   const [activeSubModule, setActiveSubModule] = useState<string>('');
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const permissionsRef = useRef(permissions);
+  permissionsRef.current = permissions;
+  const initializedRef = useRef(false);
 
   useEffect(() => {
     if (modules.length > 0 && moduleConfig.length === 0) {
@@ -85,45 +89,32 @@ const PermissionRule: React.FC<PermissionRuleProps> = ({
     }
   }, [moduleConfig, modules, value, moduleTree]);
 
+  // Initialize active tab once when moduleTree becomes available
   useEffect(() => {
-    if (modules.length > 0 && Object.keys(moduleTree).length > 0 && !activeKey) {
-      const firstModule = modules[0];
-      setActiveKey(firstModule);
+    if (initializedRef.current) return;
+    if (modules.length === 0 || Object.keys(moduleTree).length === 0) return;
 
-      const firstModuleConfig = moduleTree[firstModule];
-      if (firstModuleConfig?.children && firstModuleConfig.children.length > 0) {
-        const firstLeafModule = getFirstLeafModule(firstModuleConfig);
-        setActiveSubModule(firstLeafModule);
+    initializedRef.current = true;
+    const firstModule = modules[0];
+    setActiveKey(firstModule);
 
-        setTimeout(() => {
-          if (editableModules.includes(firstLeafModule)) {
-            const providerConfig = permissions[firstModule] as ProviderPermissionConfig;
-            const subModuleConfig = findPermissionInTree(providerConfig, firstLeafModule);
-            if (subModuleConfig?.type === 'specific') {
-              loadSpecificData(firstModule, firstLeafModule);
-            }
-          }
-        }, 100);
-      } else {
-        setActiveSubModule('');
-        setTimeout(() => {
-          if (editableModules.includes(firstModule)) {
-            const modulePermConfig = permissions[firstModule] as ModulePermissionConfig;
-            if (modulePermConfig?.type === 'specific') {
-              loadSpecificData(firstModule);
-            }
-          }
-        }, 100);
-      }
+    const firstModuleConfig = moduleTree[firstModule];
+    if (firstModuleConfig?.children && firstModuleConfig.children.length > 0) {
+      const firstLeafModule = getFirstLeafModule(firstModuleConfig);
+      setActiveSubModule(firstLeafModule);
+    } else {
+      setActiveSubModule('');
     }
-  }, [modules, moduleTree, activeKey, permissions, editableModules, loadSpecificData]);
+  }, [modules, moduleTree]);
 
+  // Load data when active tab changes
   useEffect(() => {
-    if (!activeKey || Object.keys(permissions).length === 0 || Object.keys(moduleTree).length === 0) {
-      return;
-    }
+    if (!activeKey || Object.keys(moduleTree).length === 0) return;
 
-    const modulePermission = permissions[activeKey];
+    const currentPermissions = permissionsRef.current;
+    if (Object.keys(currentPermissions).length === 0) return;
+
+    const modulePermission = currentPermissions[activeKey];
     if (!modulePermission) return;
 
     if (!hasSubModules(modulePermission)) {
@@ -138,7 +129,7 @@ const PermissionRule: React.FC<PermissionRuleProps> = ({
         loadSpecificData(activeKey, activeSubModule);
       }
     }
-  }, [activeKey, activeSubModule, moduleTree, permissions, loadSpecificData]);
+  }, [activeKey, activeSubModule, moduleTree, loadSpecificData]);
 
   const handleTypeChange = useCallback((e: RadioChangeEvent, module: string, subModule?: string) => {
     const newPermissions = { ...permissions };
@@ -263,6 +254,13 @@ const PermissionRule: React.FC<PermissionRuleProps> = ({
       newPermissions[module] = modulePermConfig;
     }
 
+    // Update moduleData to reflect the change in UI immediately
+    const updatedRecord = { ...record };
+    if (type === 'view' && !record.view) {
+      updatedRecord.operate = false;
+    }
+    updateModuleDataItem(module, updatedRecord, subModule);
+
     setPermissions(newPermissions);
 
     if (onChange) {
@@ -273,7 +271,7 @@ const PermissionRule: React.FC<PermissionRuleProps> = ({
         onChange(newPermissions);
       }, 50);
     }
-  }, [permissions, moduleTree, onChange]);
+  }, [permissions, moduleTree, onChange, updateModuleDataItem]);
 
   const handleTabChange = useCallback((key: string) => {
     if (key === activeKey) return;

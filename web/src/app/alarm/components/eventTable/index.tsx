@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import CustomTable from '@/components/custom-table';
-import Icon from '@/components/icon';
+import LevelIcon from '@/app/alarm/components/levelIcon';
 import { Drawer, Button, Tag } from 'antd';
 import { ColumnsType } from 'antd/es/table';
 import { useTranslation } from '@/utils/i18n';
@@ -54,7 +54,7 @@ const EventTable: React.FC<EventTableProps> = ({
         return (
           <Tag color={levelMapEvent[level || '']}>
             <div className="flex items-center">
-              <Icon type={target?.icon || ''} className="mr-1" />
+              <LevelIcon icon={target?.icon || ''} className="mr-1 w-4 h-4" />
               {target?.level_display_name || '--'}
             </div>
           </Tag>

@@ -3,6 +3,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 
 def _install_module(monkeypatch, name, **attrs):
     module = types.ModuleType(name)
@@ -140,3 +142,524 @@ def test_get_nodes_keeps_opspilot_guest_group_ids(monkeypatch):
     module.NodeMgmtView().get_nodes(request)
 
     assert set(captured["payload"]["organization_ids"]) == {8, 10}
+
+
+def test_get_nodes_applies_plugin_node_selector(monkeypatch):
+    captured = {}
+
+    class NodeMgmt:
+        def node_list(self, payload):
+            captured["payload"] = payload
+            return payload
+
+    class InstanceConfigService:
+        @staticmethod
+        def _get_plugin_node_selector(plugin_id):
+            assert plugin_id == 12
+            return {"is_container": True}
+
+    module = _load_node_mgmt_view(monkeypatch)
+    module.NodeMgmt = NodeMgmt
+    module.InstanceConfigService = InstanceConfigService
+
+    request = types.SimpleNamespace(
+        COOKIES={"current_team": "7"},
+        data={"monitor_plugin_id": 12},
+        user=types.SimpleNamespace(
+            username="api-user",
+            domain="domain.com",
+            is_superuser=False,
+            group_list=[7],
+        ),
+    )
+
+    module.NodeMgmtView().get_nodes(request)
+
+    assert captured["payload"]["is_container"] is True
+
+
+class _MonitorInstanceQuerySet:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def values(self, *fields):
+        return _ValuesResult([{field: row[field] for field in fields} for row in self.rows])
+
+
+class _ValuesResult(list):
+    def first(self):
+        return self[0] if self else None
+
+
+class _AuthorizedInstanceQuerySet:
+    def __init__(self, ids):
+        self.ids = [str(instance_id) for instance_id in ids]
+
+    def filter(self, **kwargs):
+        requested = {str(item) for item in kwargs.get("id__in", [])}
+        return _AuthorizedInstanceQuerySet([instance_id for instance_id in self.ids if instance_id in requested])
+
+    def values_list(self, field, flat=False):
+        return list(self.ids)
+
+
+class _MonitorInstanceOrganizationQuerySet:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def values_list(self, *fields):
+        return [tuple(row[field] for field in fields) for row in self.rows]
+
+
+class _MonitorInstance:
+    rows = []
+
+    class objects:
+        @staticmethod
+        def filter(**kwargs):
+            rows = list(_MonitorInstance.rows)
+            if "id__in" in kwargs:
+                requested = {str(item) for item in kwargs["id__in"]}
+                rows = [row for row in rows if str(row["id"]) in requested]
+            return _MonitorInstanceQuerySet(rows)
+
+
+class _MonitorInstanceOrganization:
+    rows = []
+
+    class objects:
+        @staticmethod
+        def filter(**kwargs):
+            rows = list(_MonitorInstanceOrganization.rows)
+            if "monitor_instance_id__in" in kwargs:
+                requested = {str(item) for item in kwargs["monitor_instance_id__in"]}
+                rows = [row for row in rows if str(row["monitor_instance_id"]) in requested]
+            return _MonitorInstanceOrganizationQuerySet(rows)
+
+
+class _MonitorObjectOrganizationRuleQuerySet:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def all(self):
+        return _MonitorObjectOrganizationRuleQuerySet(list(self.rows))
+
+    def select_related(self, *args):
+        return self
+
+    def filter(self, **kwargs):
+        rows = list(self.rows)
+        if "id__in" in kwargs:
+            requested = {int(item) for item in kwargs["id__in"]}
+            rows = [row for row in rows if int(row.id) in requested]
+        if "id" in kwargs:
+            rows = [row for row in rows if int(row.id) == int(kwargs["id"])]
+        return _MonitorObjectOrganizationRuleQuerySet(rows)
+
+    def none(self):
+        return _MonitorObjectOrganizationRuleQuerySet([])
+
+    def first(self):
+        return self.rows[0] if self.rows else None
+
+    def __iter__(self):
+        return iter(self.rows)
+
+
+class _MonitorObjectOrganizationRule:
+    rows = []
+
+    class objects:
+        @staticmethod
+        def all():
+            return _MonitorObjectOrganizationRuleQuerySet(list(_MonitorObjectOrganizationRule.rows))
+
+        @staticmethod
+        def filter(**kwargs):
+            return _MonitorObjectOrganizationRule.objects.all().filter(**kwargs)
+
+
+def _load_monitor_instance_view(monkeypatch, authorized_ids=None, scope_groups=None):
+    class ViewSet:
+        pass
+
+    def action(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
+    class UnauthorizedException(Exception):
+        pass
+
+    class InstanceConfigService:
+        @staticmethod
+        def _get_actor_scope_groups(actor_context):
+            return scope_groups if scope_groups is not None else [actor_context["current_team"]]
+
+        @staticmethod
+        def _get_authorized_monitor_instances(actor_context, monitor_object_id, require_operate=False):
+            return _AuthorizedInstanceQuerySet(authorized_ids or [])
+
+    _install_module(monkeypatch, "rest_framework.viewsets", ViewSet=ViewSet)
+    _install_module(monkeypatch, "rest_framework.decorators", action=action)
+    _install_module(
+        monkeypatch,
+        "apps.core.exceptions.base_app_exception",
+        BaseAppException=Exception,
+        UnauthorizedException=UnauthorizedException,
+    )
+    _install_module(
+        monkeypatch,
+        "apps.core.logger",
+        monitor_logger=types.SimpleNamespace(debug=lambda *args, **kwargs: None),
+    )
+    _install_module(
+        monkeypatch,
+        "apps.core.utils.user_group",
+        normalize_user_group_ids=lambda groups: [
+            int(group.get("id") if isinstance(group, dict) else group)
+            for group in groups
+            if (group.get("id") if isinstance(group, dict) else group) is not None
+        ],
+    )
+    _install_module(
+        monkeypatch,
+        "apps.core.utils.permission_utils",
+        get_permission_rules=lambda *args, **kwargs: {},
+        permission_filter=lambda *args, **kwargs: None,
+    )
+    _install_module(
+        monkeypatch,
+        "apps.core.utils.web_utils",
+        WebUtils=types.SimpleNamespace(response_success=lambda data=None: data),
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.constants.permission",
+        PermissionConstants=types.SimpleNamespace(INSTANCE_MODULE="instance", DEFAULT_PERMISSION=["View", "Operate"]),
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.models",
+        MonitorInstance=_MonitorInstance,
+        MonitorInstanceOrganization=_MonitorInstanceOrganization,
+        MonitorObject=object,
+        CollectConfig=object,
+        MonitorObjectOrganizationRule=object,
+    )
+    _install_module(monkeypatch, "apps.monitor.services.monitor_instance", InstanceSearch=object)
+    _install_module(
+        monkeypatch,
+        "apps.monitor.services.node_mgmt",
+        InstanceConfigService=InstanceConfigService,
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.services.monitor_object",
+        MonitorObjectService=object,
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.services.policy_source_cleanup",
+        cleanup_policy_sources=lambda *args: None,
+    )
+    _install_module(monkeypatch, "apps.monitor.services.metrics", Metrics=object)
+    _install_module(
+        monkeypatch,
+        "apps.monitor.utils.pagination",
+        parse_page_params=lambda *args, **kwargs: (1, 10),
+    )
+    _install_module(monkeypatch, "apps.rpc.node_mgmt", NodeMgmt=object)
+
+    return _load_module(
+        "monitor_instance_view_test_module",
+        Path(__file__).resolve().parents[1] / "views" / "monitor_instance.py",
+    )
+
+
+def _load_organization_rule_view(monkeypatch, authorized_ids=None, scope_groups=None):
+    class ModelViewSet:
+        queryset = None
+
+        def get_queryset(self):
+            return self.queryset.all()
+
+    class StubBaseAppException(Exception):
+        pass
+
+    class UnauthorizedException(Exception):
+        pass
+
+    class InstanceConfigService:
+        @staticmethod
+        def _get_actor_scope_groups(actor_context):
+            return scope_groups if scope_groups is not None else [actor_context["current_team"]]
+
+        @staticmethod
+        def _get_authorized_monitor_instances(actor_context, monitor_object_id, require_operate=False):
+            return _AuthorizedInstanceQuerySet(authorized_ids or [])
+
+    def _build_actor_context(request):
+        return {
+            "username": request.user.username,
+            "domain": request.user.domain,
+            "current_team": int(request.COOKIES["current_team"]),
+            "include_children": request.COOKIES.get("include_children", "0") == "1",
+            "is_superuser": request.user.is_superuser,
+            "group_list": [int(group) for group in request.user.group_list],
+        }
+
+    def _ensure_target_organizations(organizations, actor_context):
+        allowed = set(InstanceConfigService._get_actor_scope_groups(actor_context) or [])
+        requested = {int(org) for org in organizations if org not in (None, "")}
+        if requested - allowed:
+            raise UnauthorizedException("无权限关联指定组织")
+
+    def _ensure_operate_instances(request, instance_ids, actor_context=None):
+        allowed = {str(instance_id) for instance_id in (authorized_ids or [])}
+        requested = {str(instance_id) for instance_id in instance_ids if instance_id not in (None, "")}
+        if requested - allowed:
+            raise UnauthorizedException("无权限操作指定监控实例")
+        return list(requested)
+
+    _install_module(monkeypatch, "rest_framework.viewsets", ModelViewSet=ModelViewSet, ViewSet=ModelViewSet)
+    _install_module(
+        monkeypatch,
+        "apps.core.exceptions.base_app_exception",
+        BaseAppException=StubBaseAppException,
+        UnauthorizedException=UnauthorizedException,
+    )
+    _install_module(
+        monkeypatch,
+        "apps.core.utils.web_utils",
+        WebUtils=types.SimpleNamespace(response_success=lambda data=None: data),
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.filters.monitor_object",
+        MonitorObjectOrganizationRuleFilter=object,
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.models",
+        MonitorObjectOrganizationRule=_MonitorObjectOrganizationRule,
+        MonitorInstance=_MonitorInstance,
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.serializers.monitor_object",
+        MonitorObjectOrganizationRuleSerializer=object,
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.services.organization_rule",
+        OrganizationRule=types.SimpleNamespace(del_organization_rule=lambda **kwargs: kwargs),
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.services.node_mgmt",
+        InstanceConfigService=InstanceConfigService,
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.views.monitor_instance",
+        _build_actor_context=_build_actor_context,
+        _ensure_operate_instances=_ensure_operate_instances,
+        _ensure_target_organizations=_ensure_target_organizations,
+    )
+    _install_module(monkeypatch, "config.drf.pagination", CustomPageNumberPagination=object)
+
+    return _load_module(
+        "monitor_organization_rule_view_test_module",
+        Path(__file__).resolve().parents[1] / "views" / "organization_rule.py",
+    )
+
+
+def _monitor_request(current_team="7"):
+    return types.SimpleNamespace(
+        COOKIES={"current_team": current_team},
+        user=types.SimpleNamespace(
+            username="operator",
+            domain="domain.com",
+            is_superuser=False,
+            group_list=[int(current_team)],
+        ),
+    )
+
+
+def test_monitor_instance_actor_context_keeps_node_mgmt_shape(monkeypatch):
+    module = _load_monitor_instance_view(monkeypatch)
+
+    actor_context = module._build_actor_context(_monitor_request())
+
+    assert actor_context == {
+        "username": "operator",
+        "domain": "domain.com",
+        "current_team": 7,
+        "include_children": False,
+        "is_superuser": False,
+        "group_list": [7],
+    }
+
+
+def test_monitor_instance_operate_guard_rejects_unauthorized_instance(monkeypatch):
+    _MonitorInstance.rows = [{"id": "inst-a", "monitor_object_id": 1}]
+    _MonitorInstanceOrganization.rows = [{"monitor_instance_id": "inst-a", "organization": 7}]
+    module = _load_monitor_instance_view(monkeypatch, authorized_ids=[])
+
+    with pytest.raises(module.UnauthorizedException):
+        module._ensure_operate_instances(_monitor_request(), ["inst-a"])
+
+
+def test_monitor_instance_operate_guard_accepts_authorized_instance(monkeypatch):
+    _MonitorInstance.rows = [{"id": "inst-a", "monitor_object_id": 1}]
+    _MonitorInstanceOrganization.rows = [{"monitor_instance_id": "inst-a", "organization": 7}]
+    module = _load_monitor_instance_view(monkeypatch, authorized_ids=["inst-a"])
+
+    assert module._ensure_operate_instances(_monitor_request(), ["inst-a", "inst-a"]) == ["inst-a"]
+
+
+def test_monitor_instance_scope_guard_rejects_cross_org_instance(monkeypatch):
+    _MonitorInstance.rows = [{"id": "inst-a", "monitor_object_id": 1}]
+    _MonitorInstanceOrganization.rows = [
+        {"monitor_instance_id": "inst-a", "organization": 7},
+        {"monitor_instance_id": "inst-a", "organization": 9},
+    ]
+    module = _load_monitor_instance_view(monkeypatch, authorized_ids=["inst-a"], scope_groups=[7])
+
+    with pytest.raises(module.UnauthorizedException):
+        module._ensure_operate_instances(_monitor_request(), ["inst-a"])
+
+
+def test_monitor_instance_target_organization_guard_rejects_out_of_scope_org(monkeypatch):
+    module = _load_monitor_instance_view(monkeypatch, scope_groups=[7])
+    actor_context = module._build_actor_context(_monitor_request())
+
+    with pytest.raises(module.UnauthorizedException):
+        module._ensure_target_organizations([9], actor_context)
+
+
+def test_query_by_instance_fails_closed_when_effective_instance_keys_missing(monkeypatch):
+    class ViewSet:
+        pass
+
+    def action(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
+    class StubBaseAppException(Exception):
+        pass
+
+    class StubMetricQuerySet:
+        def __init__(self, metric):
+            self.metric = metric
+
+        def select_related(self, *args):
+            return self
+
+        def first(self):
+            return self.metric
+
+    class StubMetricManager:
+        def __init__(self, metric):
+            self.metric = metric
+
+        def filter(self, **kwargs):
+            return StubMetricQuerySet(self.metric)
+
+    metric = types.SimpleNamespace(query="cpu{__$labels__}", dimensions=[], unit="", monitor_object=types.SimpleNamespace(instance_id_keys=[]))
+
+    class StubMetricsService:
+        query_called = False
+
+        @staticmethod
+        def get_effective_metric_instance_id_keys(metric_obj):
+            raise StubBaseAppException("指标未配置有效的 instance_id_keys，无法按实例查询")
+
+        @staticmethod
+        def query_metric_by_instance(**kwargs):
+            StubMetricsService.query_called = True
+            return {"status": "success"}
+
+    _install_module(monkeypatch, "rest_framework.viewsets", ViewSet=ViewSet)
+    _install_module(monkeypatch, "rest_framework.decorators", action=action)
+    _install_module(monkeypatch, "apps.core.exceptions.base_app_exception", BaseAppException=StubBaseAppException)
+    _install_module(
+        monkeypatch,
+        "apps.core.utils.web_utils",
+        WebUtils=types.SimpleNamespace(response_success=lambda data=None: data),
+    )
+    _install_module(monkeypatch, "apps.core.logger", monitor_logger=types.SimpleNamespace(warning=lambda *args, **kwargs: None))
+    _install_module(
+        monkeypatch,
+        "apps.monitor.models.monitor_metrics",
+        Metric=types.SimpleNamespace(objects=StubMetricManager(metric)),
+    )
+    _install_module(monkeypatch, "apps.monitor.services.metrics", Metrics=StubMetricsService)
+    _install_module(monkeypatch, "apps.monitor.utils.unit_converter", UnitConverter=types.SimpleNamespace())
+
+    module = _load_module(
+        "metrics_instance_view_test_module",
+        Path(__file__).resolve().parents[1] / "views" / "metrics_instance.py",
+    )
+
+    request = types.SimpleNamespace(
+        GET={
+            "monitor_object_id": "1",
+            "metric_id": "2",
+            "instance_id": "('host-1',)",
+        }
+    )
+
+    with pytest.raises(StubBaseAppException, match="instance_id_keys"):
+        module.MetricsInstanceViewSet().query_by_instance(request)
+
+    assert StubMetricsService.query_called is False
+
+
+def test_organization_rule_queryset_hides_cross_org_rules(monkeypatch):
+    _MonitorObjectOrganizationRule.rows = [
+        types.SimpleNamespace(id=1, monitor_object_id=1, organizations=[7], monitor_instance_id="inst-a"),
+        types.SimpleNamespace(id=2, monitor_object_id=1, organizations=[9], monitor_instance_id="inst-a"),
+    ]
+    _MonitorInstance.rows = [{"id": "inst-a", "monitor_object_id": 1}]
+    module = _load_organization_rule_view(monkeypatch, authorized_ids=["inst-a"], scope_groups=[7])
+
+    view = module.MonitorObjectOrganizationRuleViewSet()
+    view.request = _monitor_request()
+    view.action = "list"
+
+    assert [rule.id for rule in view.get_queryset()] == [1]
+
+
+def test_organization_rule_queryset_requires_operate_permission_for_destroy(monkeypatch):
+    _MonitorObjectOrganizationRule.rows = [
+        types.SimpleNamespace(id=1, monitor_object_id=1, organizations=[7], monitor_instance_id="inst-a"),
+    ]
+    _MonitorInstance.rows = [{"id": "inst-a", "monitor_object_id": 1}]
+    module = _load_organization_rule_view(monkeypatch, authorized_ids=[], scope_groups=[7])
+
+    view = module.MonitorObjectOrganizationRuleViewSet()
+    view.request = _monitor_request()
+    view.action = "destroy"
+
+    assert list(view.get_queryset()) == []
+
+
+def test_organization_rule_payload_rejects_mismatched_monitor_object(monkeypatch):
+    _MonitorInstance.rows = [{"id": "inst-a", "monitor_object_id": 1}]
+    module = _load_organization_rule_view(monkeypatch, authorized_ids=["inst-a"], scope_groups=[7])
+
+    with pytest.raises(module.BaseAppException):
+        module._validate_rule_payload(_monitor_request(), module._build_actor_context(_monitor_request()), 2, "inst-a", [7])
+
+
+def test_organization_rule_payload_rejects_out_of_scope_organization(monkeypatch):
+    _MonitorInstance.rows = [{"id": "inst-a", "monitor_object_id": 1}]
+    module = _load_organization_rule_view(monkeypatch, authorized_ids=["inst-a"], scope_groups=[7])
+
+    with pytest.raises(module.UnauthorizedException):
+        module._validate_rule_payload(_monitor_request(), module._build_actor_context(_monitor_request()), 1, "inst-a", [9])

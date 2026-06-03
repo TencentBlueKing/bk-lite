@@ -159,7 +159,7 @@
     "selectDatasets": "Please select a dataset",
     "selectTraindata": "Please select training data parameters",
     "delTraintask": "Delete Training Task",
-    "delTraintaskContent": "Are you sure you want to delete this training task?",
+    "delTraintaskContent": "Are you sure you want to delete this training task?\n Deleting this training task will also delete the model services associated with it in capability release. Please confirm there are no model services in capability release that still need to be associated with this training task before deleting.",
     "getTrainStatusFailed": "Error retrieving training status"
   },
   "model-release": {

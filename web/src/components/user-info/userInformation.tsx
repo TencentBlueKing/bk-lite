@@ -147,7 +147,7 @@ const UserInformation: React.FC<UserInformationProps> = ({ visible, onClose }) =
   const handleVerifyPassword = async (values: any) => {
     try {
       setVerifyPasswordLoading(true);
-      await get(`/console_mgmt/validate_pwd/?password=${values.password}`);
+      await post('/console_mgmt/validate_pwd/', { password: values.password });
       setVerifyIdentityModalVisible(false);
       verifyForm.resetFields();
 

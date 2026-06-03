@@ -20,7 +20,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.enum import WorkFlowExecuteType, WorkFlowTaskStatus
 from apps.opspilot.models import BotWorkFlow
 from apps.opspilot.models.bot_mgmt import WorkFlowConversationHistory, WorkFlowTaskNodeResult, WorkFlowTaskResult
-from apps.opspilot.utils.execution_interrupt import is_interrupt_requested
+from apps.opspilot.utils.execution_interrupt import is_interrupt_requested, is_interrupt_requested_async
 
 from .core.base_executor import BaseNodeExecutor
 from .core.enums import NodeStatus
@@ -105,6 +105,9 @@ class ChatFlowEngine:
 
     def _check_interrupt_requested(self) -> bool:
         return is_interrupt_requested(self.execution_id)
+
+    async def _check_interrupt_requested_async(self) -> bool:
+        return await is_interrupt_requested_async(self.execution_id)
 
     def _finalize_interrupted_execution(self, input_data: Dict[str, Any], result: Any = None, start_node_type: str = None) -> None:
         task_result = self._ensure_execution_result_started(input_data, start_node_type)
@@ -273,12 +276,18 @@ class ChatFlowEngine:
         """异步记录节点执行明细（用于 async 上下文）
 
         使用 sync_to_async 包装同步的 ORM 操作，避免在异步上下文中直接调用同步数据库操作。
+        注意：使用 thread_sensitive=False 避免在 LangGraph 异步节点中触发
+        "You cannot submit onto CurrentThreadExecutor from its own thread" 错误。
         """
-        await sync_to_async(self._record_node_execution_result, thread_sensitive=True)(node_id, context)
+        await sync_to_async(self._record_node_execution_result, thread_sensitive=False)(node_id, context)
 
     async def _record_execution_result_async(self, input_data: Dict[str, Any], result: Any, success: bool, start_node_type: str = None) -> None:
-        """异步记录工作流执行结果（用于 async 上下文）"""
-        await sync_to_async(self._record_execution_result, thread_sensitive=True)(input_data, result, success, start_node_type)
+        """异步记录工作流执行结果（用于 async 上下文）
+
+        注意：使用 thread_sensitive=False 避免在 LangGraph 异步节点中触发
+        "You cannot submit onto CurrentThreadExecutor from its own thread" 错误。
+        """
+        await sync_to_async(self._record_execution_result, thread_sensitive=False)(input_data, result, success, start_node_type)
 
     def _get_start_node(self) -> Optional[Dict[str, Any]]:
         """获取起始节点
@@ -505,7 +514,7 @@ class ChatFlowEngine:
                 chunk_index = 0
                 # 直接迭代异步生成器
                 async for chunk in stream_generator:
-                    if self._check_interrupt_requested():
+                    if await self._check_interrupt_requested_async():
                         interrupt_data = {"type": "INTERRUPTED", "error": "执行已中断", "timestamp": int(time.time() * 1000)}
                         yield f"data: {json.dumps(interrupt_data, ensure_ascii=False)}\n\n"
                         await self._record_execution_result_async(
@@ -546,24 +555,21 @@ class ChatFlowEngine:
                 self._update_node_execution_order(agent_node_id)
                 await self._record_node_execution_result_async(agent_node_id, agent_context)
 
-                # 记录系统输出到对话历史
+                # 记录系统输出到对话历史（流已结束，使用异步版本）
                 if accumulated_content:
-                    threading.Thread(
-                        target=lambda: self._record_conversation_history(
-                            user_id,
-                            accumulated_content,
-                            "bot",
-                            entry_type,
-                            node_id,
-                            session_id,
-                        ),
-                        daemon=True,
-                    ).start()
+                    await self._record_conversation_history_async(
+                        user_id,
+                        accumulated_content,
+                        "bot",
+                        entry_type,
+                        node_id,
+                        session_id,
+                    )
 
                 # 检查是否有后续节点
                 next_nodes = self._get_next_nodes(target_agent_node.get("id"), {"success": True, "data": {}})
 
-                if self._check_interrupt_requested():
+                if await self._check_interrupt_requested_async():
                     await self._record_execution_result_async(
                         input_data,
                         self._interrupt_result(),
@@ -574,20 +580,14 @@ class ChatFlowEngine:
                     # 有后续节点：不在此处记录，让后续节点执行完成后统一记录
                     pass
                 else:
-                    # 没有后续节点：直接记录成功执行结果
-                    # 捕获变量，避免闭包延迟绑定问题
-                    captured_final_message = final_message
-                    captured_start_node_type = start_node.get("type", "") if start_node else None
-
-                    threading.Thread(
-                        target=lambda: self._record_execution_result(
-                            input_data,
-                            captured_final_message,
-                            True,
-                            captured_start_node_type,
-                        ),
-                        daemon=True,
-                    ).start()
+                    # 没有后续节点：记录成功执行结果
+                    # 注意：必须使用异步版本，因为当前在 async 上下文中
+                    await self._record_execution_result_async(
+                        input_data,
+                        final_message,
+                        True,
+                        start_node.get("type", "") if start_node else None,
+                    )
 
                 # 执行后续节点(在后台异步执行,不阻塞流式响应)
                 self._execute_subsequent_nodes_async(target_agent_node, accumulated_content)
@@ -608,20 +608,13 @@ class ChatFlowEngine:
                 yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 
                 # 记录失败执行结果到 WorkFlowTaskResult
-                # 捕获异常信息，避免闭包引用在 except 块结束后被删除的变量
-                error_msg = str(e)
-                error_type_name = type(e).__name__
-                start_node_type = start_node.get("type", "") if start_node else None
-
-                threading.Thread(
-                    target=lambda: self._record_execution_result(
-                        input_data,
-                        {"success": False, "error": error_msg, "error_type": error_type_name},
-                        False,
-                        start_node_type,
-                    ),
-                    daemon=True,
-                ).start()
+                # 注意：必须使用异步版本，因为当前在 async 上下文中
+                await self._record_execution_result_async(
+                    input_data,
+                    {"success": False, "error": str(e), "error_type": type(e).__name__},
+                    False,
+                    start_node.get("type", "") if start_node else None,
+                )
 
         # 直接使用嵌套的异步生成器创建 StreamingHttpResponse
         return self._create_sse_stream_response(generate_stream)
@@ -981,11 +974,16 @@ class ChatFlowEngine:
                 # 从累积的内容中提取最终消息
                 final_message = self._extract_final_message(agent_output)
 
-                # 更新全局变量
-                self.variable_manager.set_variable("last_message", final_message)
+                agent_config = agent_node.get("data", {}).get("config", {})
+                agent_output_key = agent_config.get("outputParams", "last_message")
 
-                # 准备节点输入
-                node_input = {"last_message": final_message}
+                # 与同步执行链路保持一致：使用当前节点的 outputParams 作为后续节点输入来源
+                if agent_output_key == "last_message":
+                    self.variable_manager.set_variable("last_message", final_message)
+                    node_input = {"last_message": final_message}
+                else:
+                    self.variable_manager.set_variable(agent_output_key, final_message)
+                    node_input = {agent_output_key: final_message}
                 first_input_data = node_input.copy()
 
                 # 执行每个后续节点
@@ -1232,7 +1230,7 @@ class ChatFlowEngine:
             WorkFlowTaskNodeResult.objects.filter(execution_id=self.execution_id, task_result__isnull=True).update(task_result=task_result)
 
         except Exception as e:
-            logger.exception(f"记录工作流执行结果失败: {str(e)}")
+            logger.exception(f"记录工作流执行结果失败: execution_id={self.execution_id}, success={success}, error={str(e)}")
             # 记录失败不影响主流程
 
     def validate_flow(self) -> List[str]:
@@ -1466,7 +1464,13 @@ class ChatFlowEngine:
                 execution_id=self.execution_id,
             )
         except Exception as e:
-            logger.error(f"记录{role}对话历史失败: {str(e)}")
+            logger.error(f"记录{role}对话历史失败: execution_id={self.execution_id}, user_id={user_id}, error={str(e)}")
+
+    async def _record_conversation_history_async(
+        self, user_id: str, message: Any, role: str, entry_type: str, node_id: str = "", session_id: str = ""
+    ):
+        """记录对话历史（异步版本，用于 async 上下文）"""
+        await sync_to_async(self._record_conversation_history, thread_sensitive=False)(user_id, message, role, entry_type, node_id, session_id)
 
     def _check_chain_result(self, chain_result: Dict[str, Any]) -> tuple:
         """检查节点链执行结果，判断是否有节点执行失败

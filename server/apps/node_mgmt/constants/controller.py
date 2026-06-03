@@ -27,7 +27,12 @@ class ControllerConstants:
             "cpu_architecture": NodeConstants.X86_64_ARCH,
             "name": "Controller",
             "description": "The Controller is primarily used to manage various types of collectors, composed of Sidecarand NAS Executor, enabling automated deployment, resource coordination, and task execution on servers.",
-            "version_command": f"type {WINDOWS_INSTALL_DIR}\\VERSION",
+            "version_command": (
+                f'powershell -NoProfile -Command "'
+                f"if (Test-Path '{WINDOWS_INSTALL_DIR}\\VERSION') "
+                f"{{ (Get-Content '{WINDOWS_INSTALL_DIR}\\VERSION' -Raw).Trim() }} "
+                f"else {{ Write-Output '' }}\""
+            ),
         },
     ]
 
@@ -136,6 +141,11 @@ class ControllerConstants:
 
     # Sidecar 服务重启命令
     SIDECAR_RESTART_CMD = {
-        NodeConstants.LINUX_OS: ("systemctl restart sidecar.service", None),
+        NodeConstants.LINUX_OS: (
+            "if systemctl list-unit-files bk-sidecar.service >/dev/null 2>&1; "
+            "then systemctl restart bk-sidecar.service; "
+            "else systemctl restart sidecar.service; fi",
+            None,
+        ),
         NodeConstants.WINDOWS_OS: ("Restart-Service sidecar", "powershell"),
     }

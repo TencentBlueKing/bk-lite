@@ -1,6 +1,7 @@
 from django.http import StreamingHttpResponse
 import time
 import asyncio
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import AsyncIterator
 
@@ -9,8 +10,38 @@ from apps.log.utils.query_log import VictoriaMetricsAPI
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.core.logger import log_logger as logger
 
+DEFAULT_TIME_WINDOW_MINUTES = 15
+
 
 class SearchService:
+    @staticmethod
+    def _apply_default_time_window(start_time: str, end_time: str) -> tuple[str, str]:
+        if not start_time and not end_time:
+            now = datetime.now(timezone.utc)
+            end_time = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            start_time = (now - timedelta(minutes=DEFAULT_TIME_WINDOW_MINUTES)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        return start_time, end_time
+
+    @staticmethod
+    def _compact_query(query, limit=300):
+        text = (query or "").strip()
+        if len(text) <= limit:
+            return text
+        return f"{text[:limit]}..."
+
+    @staticmethod
+    def _log_query_context(action, raw_query, final_query, log_groups=None, group_info=None, **extra):
+        logger.info(
+            f"日志查询上下文: {action}",
+            extra={
+                "raw_query": SearchService._compact_query(raw_query or "*"),
+                "final_query": SearchService._compact_query(final_query or "*"),
+                "log_groups": log_groups or [],
+                "group_info": group_info or [],
+                **extra,
+            },
+        )
+
     @staticmethod
     def _append_filter(query, extra_filter):
         base_query = (query or "").strip()
@@ -36,10 +67,20 @@ class SearchService:
         return float(ratio.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
 
     @staticmethod
-    def field_values(start_time, end_time, field, limit=100, query="*", log_groups=None):
+    def field_values(start_time, end_time, field, limit=100, query="*", log_groups=None, resolved_groups=None):
         """获取字段值列表"""
+        start_time, end_time = SearchService._apply_default_time_window(start_time, end_time)
         value_filter_query = SearchService._append_filter(query, f"{field}:*")
-        final_query, _ = LogGroupQueryBuilder.build_query_with_groups(value_filter_query, log_groups)
+        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(value_filter_query, log_groups, resolved_groups=resolved_groups)
+        SearchService._log_query_context(
+            "field_values",
+            query,
+            final_query,
+            log_groups=log_groups,
+            group_info=group_info,
+            field=field,
+            limit=limit,
+        )
 
         # Create an instance of the VictoriaMetricsAPI
         vm_api = VictoriaMetricsAPI()
@@ -55,9 +96,17 @@ class SearchService:
         return SearchService.field_values(start_time, end_time, field, limit, query=query, log_groups=log_groups)
 
     @staticmethod
-    def all_field_names(query, start_time, end_time, log_groups=None):
+    def all_field_names(query, start_time, end_time, log_groups=None, resolved_groups=None):
         """根据当前搜索条件获取字段名列表"""
-        final_query, _ = LogGroupQueryBuilder.build_query_with_groups(query, log_groups)
+        start_time, end_time = SearchService._apply_default_time_window(start_time, end_time)
+        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups, resolved_groups=resolved_groups)
+        SearchService._log_query_context(
+            "all_field_names",
+            query,
+            final_query,
+            log_groups=log_groups,
+            group_info=group_info,
+        )
 
         vm_api = VictoriaMetricsAPI()
         response = vm_api.all_field_names(final_query, start_time, end_time)
@@ -74,7 +123,7 @@ class SearchService:
         return sorted(set(field_names))
 
     @staticmethod
-    def search_logs(query, start_time, end_time, limit=10, log_groups=None):
+    def search_logs(query, start_time, end_time, limit=10, log_groups=None, resolved_groups=None):
         """搜索日志，支持日志分组过滤
 
         Args:
@@ -83,9 +132,19 @@ class SearchService:
             end_time: 结束时间
             limit: 返回结果限制
             log_groups: 日志分组ID列表
+            resolved_groups: 已解析的 LogGroup 对象列表
         """
+        start_time, end_time = SearchService._apply_default_time_window(start_time, end_time)
         # 处理日志分组规则
-        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups)
+        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups, resolved_groups=resolved_groups)
+        SearchService._log_query_context(
+            "search_logs",
+            query,
+            final_query,
+            log_groups=log_groups,
+            group_info=group_info,
+            limit=limit,
+        )
 
         # Create an instance of the VictoriaMetricsAPI
         vm_api = VictoriaMetricsAPI()
@@ -100,10 +159,21 @@ class SearchService:
         return response
 
     @staticmethod
-    def search_hits(query, start_time, end_time, field, fields_limit=5, step="5m", log_groups=None):
+    def search_hits(query, start_time, end_time, field, fields_limit=5, step="5m", log_groups=None, resolved_groups=None):
         """搜索命中统计，支持日志分组过滤"""
+        start_time, end_time = SearchService._apply_default_time_window(start_time, end_time)
         # 处理日志分组规则
-        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups)
+        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups, resolved_groups=resolved_groups)
+        SearchService._log_query_context(
+            "search_hits",
+            query,
+            final_query,
+            log_groups=log_groups,
+            group_info=group_info,
+            field=field,
+            fields_limit=fields_limit,
+            step=step,
+        )
 
         # Create an instance of the VictoriaMetricsAPI
         vm_api = VictoriaMetricsAPI()
@@ -118,10 +188,20 @@ class SearchService:
         return response
 
     @staticmethod
-    def top_stats(query, start_time, end_time, attr, top_num=5, log_groups=None):
+    def top_stats(query, start_time, end_time, attr, top_num=5, log_groups=None, resolved_groups=None):
         """按字段返回 TopN 统计结果，支持日志分组过滤。"""
+        start_time, end_time = SearchService._apply_default_time_window(start_time, end_time)
         value_filter_query = SearchService._append_filter(query, f"{attr}:*")
-        final_filter_query, group_info = LogGroupQueryBuilder.build_query_with_groups(value_filter_query, log_groups)
+        final_filter_query, group_info = LogGroupQueryBuilder.build_query_with_groups(value_filter_query, log_groups, resolved_groups=resolved_groups)
+        SearchService._log_query_context(
+            "top_stats",
+            query,
+            final_filter_query,
+            log_groups=log_groups,
+            group_info=group_info,
+            attr=attr,
+            top_num=top_num,
+        )
 
         vm_api = VictoriaMetricsAPI()
 
@@ -156,10 +236,17 @@ class SearchService:
         return response
 
     @staticmethod
-    def tail(query, log_groups=None):
+    def tail(query, log_groups=None, resolved_groups=None):
         """实时日志流，支持日志分组过滤 - ASGI兼容版本"""
         # 处理日志分组规则
-        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups)
+        final_query, group_info = LogGroupQueryBuilder.build_query_with_groups(query, log_groups, resolved_groups=resolved_groups)
+        SearchService._log_query_context(
+            "tail",
+            query,
+            final_query,
+            log_groups=log_groups,
+            group_info=group_info,
+        )
 
         async def async_event_stream() -> AsyncIterator[str]:
             """异步事件流生成器，与ASGI兼容"""

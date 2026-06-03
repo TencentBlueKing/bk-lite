@@ -18,5 +18,4 @@ class ApacheCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "error_log": "error_log",
         "custom_Log": partial(MiddlewareCollectMetrics.pick_value, keys=("custom_Log", "custom_log")),
         "include": "include",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

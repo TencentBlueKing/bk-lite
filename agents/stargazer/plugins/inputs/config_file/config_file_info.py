@@ -27,8 +27,9 @@ class ConfigFileInfo(SSHPlugin):
                 return response
 
             if not response.get("success"):
+                error_msg = response.get("error") or response.get("result") or "Unknown error"
                 return {
-                    "result": {"cmdb_collect_error": response.get("result")},
+                    "result": {"cmdb_collect_error": error_msg},
                     "success": False,
                 }
 
@@ -63,7 +64,7 @@ class ConfigFileInfo(SSHPlugin):
         from core.nats_utils import nats_request
 
         return await nats_request(
-            subject, payload=payload, timeout=self.execute_timeout
+            subject, payload=payload, timeout=self.nats_timeout
         )
 
     def _get_config_file_path(self) -> str:

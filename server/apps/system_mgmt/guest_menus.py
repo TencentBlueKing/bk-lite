@@ -55,6 +55,8 @@ CMDB_MENUS = [
     "auto_collection-Delete",
     "auto_collection-Execute",
     "soid_library-View",
+    "collection_tool-View",
+    "collection_tool-Execute",
     "model_management-View",
     "model_management-Add Model",
     "model_management-Add Group",

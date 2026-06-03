@@ -1,0 +1,36 @@
+场景名称: 消息裁剪测试
+
+对应计划: Phase 2 — #9 消息裁剪
+
+功能描述:
+  在 compaction 之前执行的轻量级裁剪，处理单条消息过长和图片消息堆积问题。
+  MessageTrimConfig 控制单条消息最大 token 数、保留最近 N 条含图片消息。
+  agent_node 每步在 compaction 前调用 trim_messages。
+
+当前状态: 已实现
+
+涉及代码:
+  - server/apps/opspilot/metis/llm/chain/node.py: agent_node L1088-1092（trim_messages 调用）
+  - server/apps/opspilot/metis/llm/chain/message_trim.py: trim_messages L91（核心裁剪逻辑）
+  - server/apps/opspilot/metis/llm/chain/entity.py: MessageTrimConfig L117-123（max_single_message_tokens=4000, image_retain_recent=3）
+
+测试用例:
+
+  TestSingleMessageTruncation:
+    1. 单条消息超过 max_single_message_tokens 时截断: 保留前 N tokens + 截断提示
+    2. 单条消息未超限时不截断: 内容不变
+    3. 截断提示包含保留的 token 数
+
+  TestImageRetention:
+    4. 保留最近 image_retain_recent 条含图片消息: 更早的图片移除仅保留文字
+    5. 图片消息数量未超限时不处理
+    6. image_retain_recent=0 时移除所有图片
+
+  TestTrimDisabled:
+    7. enabled=False 时不裁剪: 消息列表不变
+
+  TestTrimWithCompaction:
+    8. trim 在 compaction 之前执行: 先裁剪再压缩，两者协作不冲突
+
+关联测试文件: cases/test_message_trim.py
+状态: GREEN（功能已实现）

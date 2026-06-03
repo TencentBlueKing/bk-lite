@@ -6,17 +6,66 @@ import hashlib
 import json
 import os
 import base64
+from typing import Dict, Any, List, Optional, Tuple
+
+from cryptography.fernet import InvalidToken
 from functools import wraps
-from typing import Dict, Any, List
 
 from django.utils.crypto import get_random_string
 
+from apps.cmdb.utils.credential import Credential
 from apps.core.backends import logger
+
+
+DEFAULT_AGGREGATION_WINDOW_SIZE_MINUTES = 10
+MAX_AGGREGATION_WINDOW_SIZE_MINUTES = 1440
 
 
 def gen_app_secret():
     """生成app_secret方法"""
     return get_random_string(32)
+
+
+def build_team_secret_payload(source_secret: str, team_id: str) -> str:
+    return json.dumps(
+        {
+            "source_secret": source_secret,
+            "team_id": str(team_id),
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+
+
+def encode_team_secret(source_secret: str, team_id: str) -> str:
+    credential = Credential()
+    payload = build_team_secret_payload(source_secret, team_id)
+    return credential.encrypt_data(payload)
+
+
+def decode_team_secret(team_secret: str) -> Optional[Dict[str, str]]:
+    if not team_secret:
+        return None
+
+    credential = Credential()
+    try:
+        payload = credential.decrypt_data(team_secret)
+    except InvalidToken:
+        return None
+
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+
+    source_secret = data.get("source_secret")
+    team_id = data.get("team_id")
+    if not source_secret or team_id in (None, ""):
+        return None
+    return {
+        "source_secret": str(source_secret),
+        "team_id": str(team_id),
+    }
 
 
 def catch_exception(func):
@@ -167,3 +216,28 @@ def window_size_to_int(window_size: str) -> int:
         return max(1, seconds // 60)  # 秒转分钟，最少1分钟
     else:
         raise ValueError(f"无法解析窗口大小: {window_size}")
+
+
+def parse_aggregation_window_size(
+    window_size: Any,
+    *,
+    default: int = DEFAULT_AGGREGATION_WINDOW_SIZE_MINUTES,
+    clamp: bool = False,
+) -> Tuple[int, Optional[str]]:
+    """解析聚合窗口大小，支持校验模式和运行时兜底模式。"""
+    if window_size is None:
+        return default, None
+
+    if isinstance(window_size, bool) or not isinstance(window_size, int) or window_size <= 0:
+        if clamp:
+            return default, f"invalid:{window_size}"
+        raise ValueError("窗口大小必须为大于 0 的整数分钟。")
+
+    if window_size > MAX_AGGREGATION_WINDOW_SIZE_MINUTES:
+        if clamp:
+            return MAX_AGGREGATION_WINDOW_SIZE_MINUTES, f"clamped:{window_size}"
+        raise ValueError(
+            f"窗口大小不能超过 {MAX_AGGREGATION_WINDOW_SIZE_MINUTES} 分钟。"
+        )
+
+    return window_size, None

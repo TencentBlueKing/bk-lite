@@ -5,6 +5,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.models import EmbedProvider
 from apps.opspilot.serializers.embed_serializer import EmbedProviderSerializer
+from apps.opspilot.utils.vendor_model_mixin import VendorModelMixin
 
 
 class ObjFilter(FilterSet):
@@ -21,7 +22,7 @@ class ObjFilter(FilterSet):
         return qs.filter(enabled=enabled)
 
 
-class EmbedProviderViewSet(AuthViewSet):
+class EmbedProviderViewSet(VendorModelMixin, AuthViewSet):
     serializer_class = EmbedProviderSerializer
     queryset = EmbedProvider.objects.all()
     permission_key = "provider.embed_model"
@@ -29,8 +30,7 @@ class EmbedProviderViewSet(AuthViewSet):
 
     @HasPermission("provide_list-View")
     def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-        return self.query_by_groups(request, queryset)
+        return super().list(request, *args, **kwargs)
 
     @HasPermission("provide_list-Add")
     def create(self, request, *args, **kwargs):

@@ -23,5 +23,4 @@ class KafkaCollectionPlugin(BaseMiddlewareCollectionPlugin):
         "socket_receive_buffer_bytes": "socket_receive_buffer_bytes",
         "socket_request_max_bytes": "socket_request_max_bytes",
         "socket_send_buffer_bytes": "socket_send_buffer_bytes",
-        "assos": MiddlewareCollectMetrics.get__host_assos,
     }

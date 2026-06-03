@@ -39,6 +39,8 @@ import {
   WechatOfficialNode,
   WebChatNode,
   MobileNode,
+  MemoryReadNode,
+  MemoryWriteNode,
 } from './nodes';
 import { useNodeExecution } from './hooks/useNodeExecution';
 import { useNodeDeletion } from './hooks/useNodeDeletion';
@@ -287,6 +289,8 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       enterprise_wechat: createNodeComponent(EnterpriseWechatNode),
       dingtalk: createNodeComponent(DingtalkNode),
       wechat_official: createNodeComponent(WechatOfficialNode),
+      memory_read: createNodeComponent(MemoryReadNode),
+      memory_write: createNodeComponent(MemoryWriteNode),
     };
   }, []);
 
@@ -522,6 +526,9 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
           items={executionProps.executionDetails}
           activeNodeId={executionProps.activeExecutionNodeId}
           onClose={executionProps.closePreviewPanel}
+          approvalRequests={executionProps.approvalRequests}
+          token={executionProps.token || ''}
+          onApprovalDecision={executionProps.handleApprovalDecision}
         />
       </div>
 

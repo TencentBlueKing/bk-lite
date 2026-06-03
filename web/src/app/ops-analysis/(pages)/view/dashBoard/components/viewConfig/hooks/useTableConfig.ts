@@ -1,9 +1,18 @@
 import { useState, useCallback } from 'react';
 import { message } from 'antd';
 import type { FormInstance } from 'antd';
-import type { TableFilterFieldConfig, TableColumnConfigItem } from '@/app/ops-analysis/types/dashBoard';
+import type {
+  TableFilterFieldConfig,
+  TableColumnConfigItem,
+  FilterBindings,
+  UnifiedFilterDefinition,
+  FilterValue,
+} from '@/app/ops-analysis/types/dashBoard';
 import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
-import { formatTimeRange } from '@/app/ops-analysis/utils/widgetDataTransform';
+import {
+  formatTimeRange,
+  processDataSourceParams,
+} from '@/app/ops-analysis/utils/widgetDataTransform';
 import {
   DisplayColumnRow,
   buildDisplayColumnsFromSchema,
@@ -28,6 +37,10 @@ interface UseTableConfigProps {
     formParams: Record<string, any>,
     sourceParams: ParamItem[],
   ) => ParamItem[];
+  unifiedFilterValues?: Record<string, FilterValue>;
+  filterBindings?: FilterBindings;
+  filterDefinitions?: UnifiedFilterDefinition[];
+  builtinNamespaceId?: number;
   t: (key: string) => string;
 }
 
@@ -43,6 +56,10 @@ export function useTableConfig({
   availableFields,
   getSourceDataByApiId,
   processFormParamsForSubmit,
+  unifiedFilterValues,
+  filterBindings,
+  filterDefinitions,
+  builtinNamespaceId,
   t,
 }: UseTableConfigProps) {
   const [filterFields, setFilterFields] = useState<FilterFieldRow[]>([]);
@@ -172,22 +189,46 @@ export function useTableConfig({
       const payload: Record<string, any> = {};
       const sourceParams = targetDataSource.params || [];
       const processedParams = processFormParamsForSubmit(formParams, sourceParams);
-      processedParams.forEach((param) => {
-        if (param.type === 'timeRange') {
-          payload[param.name] = formatTimeRange(param.value);
-        } else {
-          payload[param.name] = param.value;
-        }
-      });
+      const userParams = processedParams.reduce<Record<string, any>>((acc, param) => {
+        acc[param.name] = param.value;
+        return acc;
+      }, {});
+
+      Object.assign(
+        payload,
+        processDataSourceParams({
+          sourceParams: processedParams,
+          userParams,
+          unifiedFilterValues,
+          filterBindings,
+          filterDefinitions,
+          timeRangeFormatter: formatTimeRange,
+        }),
+      );
 
       if (chartType === 'table') {
         payload.page = 1;
         payload.page_size = 20;
       }
 
+      if (
+        builtinNamespaceId !== undefined &&
+        Array.isArray(targetDataSource.namespaces) &&
+        targetDataSource.namespaces.length > 0
+      ) {
+        payload.namespace_id = builtinNamespaceId;
+      }
+
       return payload;
     },
-    [chartType, processFormParamsForSubmit],
+    [
+      chartType,
+      processFormParamsForSubmit,
+      unifiedFilterValues,
+      filterBindings,
+      filterDefinitions,
+      builtinNamespaceId,
+    ],
   );
 
   const probeDefaultDisplayColumns = useCallback(

@@ -2,7 +2,7 @@
   {
     "name": "日志命中数",
     "desc": "",
-    "rest_api": "hits",
+    "rest_api": "log/log_hits",
     "tag": [
       "log"
     ],
@@ -51,7 +51,7 @@
   {
     "name": "告警趋势",
     "desc": "查询告警趋势的数据",
-    "rest_api": "get_alert_trend_data",
+    "rest_api": "alert/get_alert_trend_data",
     "tag": [
       "alerts"
     ],
@@ -115,7 +115,7 @@
   {
     "name": "日志搜索",
     "desc": "",
-    "rest_api": "search",
+    "rest_api": "log/log_search",
     "tag": [
       "log"
     ],
@@ -299,70 +299,43 @@
     ]
 },
 {
-    "name": "CMDB资产实例查询",
-    "desc": "分页查询CMDB资产实例（用于表格组件）",
-    "rest_api": "cmdb/query_asset_instances",
+    "name": "监控中心总览统计",
+    "desc": "监控中心资源/能力/告警总览统计数据",
+    "rest_api": "monitor/get_monitor_statistics",
     "tag": [
-        "cmdb"
+        "monitor"
     ],
     "chart_type": [
-        "table"
+        "single"
     ],
+    "params": [],
     "field_schema": [
-        {
-            "key": "namespace_id",
-            "title": "命名空间",
-            "value_type": "string",
-            "description": "命名空间（前端固定首列）"
-        },
-        {
-            "key": "model_id",
-            "title": "模型ID",
-            "value_type": "string",
-            "description": "CMDB模型ID"
-        },
-        {
-            "key": "inst_name",
-            "title": "实例名称",
-            "value_type": "string",
-            "description": "CMDB实例名称"
-        },
-        {
-            "key": "_id",
-            "title": "实例ID",
-            "value_type": "string",
-            "description": "CMDB实例内部ID"
-        }
-    ],
-    "params": [
-        {
-            "name": "model_id",
-            "type": "string",
-            "value": "",
-            "alias_name": "模型ID",
-            "filterType": "params"
-        },
-        {
-            "name": "inst_name",
-            "type": "string",
-            "value": "",
-            "alias_name": "实例名称",
-            "filterType": "params"
-        },
-        {
-            "name": "page",
-            "type": "number",
-            "value": 1,
-            "alias_name": "页码",
-            "filterType": "fixed"
-        },
-        {
-            "name": "page_size",
-            "type": "number",
-            "value": 20,
-            "alias_name": "每页条数",
-            "filterType": "fixed"
-        }
+        {"key": "monitor_object_total", "title": "监控对象总数", "value_type": "number", "description": "监控对象定义总数"},
+        {"key": "monitor_object_visible", "title": "可见监控对象数", "value_type": "number", "description": "可见的监控对象数"},
+        {"key": "monitor_object_category", "title": "监控对象分类数", "value_type": "number", "description": "监控对象分类总数"},
+        {"key": "monitor_instance_total", "title": "监控实例总数", "value_type": "number", "description": "未删除的监控实例总数"},
+        {"key": "monitor_instance_active", "title": "活跃实例数", "value_type": "number", "description": "处于启用状态的监控实例数"},
+        {"key": "monitor_instance_inactive", "title": "停用实例数", "value_type": "number", "description": "处于停用状态的监控实例数"},
+        {"key": "plugin_total", "title": "监控插件总数", "value_type": "number", "description": "监控插件总数"},
+        {"key": "plugin_builtin", "title": "内置插件数", "value_type": "number", "description": "系统内置的监控插件数"},
+        {"key": "plugin_custom", "title": "自定义插件数", "value_type": "number", "description": "用户自定义的监控插件数"},
+        {"key": "metric_total", "title": "指标定义总数", "value_type": "number", "description": "指标定义条目总数"},
+        {"key": "metric_group_total", "title": "指标分组总数", "value_type": "number", "description": "指标分组总数"},
+        {"key": "collect_config_total", "title": "采集配置总数", "value_type": "number", "description": "采集配置总数"},
+        {"key": "policy_total", "title": "告警策略总数", "value_type": "number", "description": "告警策略总数"},
+        {"key": "policy_enabled", "title": "启用策略数", "value_type": "number", "description": "启用的告警策略数"},
+        {"key": "policy_disabled", "title": "禁用策略数", "value_type": "number", "description": "禁用的告警策略数"},
+        {"key": "alert_current", "title": "当前告警总数", "value_type": "number", "description": "当前未处理的告警总数"},
+        {"key": "alert_history", "title": "历史告警总数", "value_type": "number", "description": "历史告警总数"},
+        {"key": "alert_today", "title": "今日新增告警数", "value_type": "number", "description": "今日新增的告警数"},
+        {"key": "alert_recovered", "title": "已恢复告警数", "value_type": "number", "description": "已恢复状态的告警数"},
+        {"key": "alert_closed", "title": "已关闭告警数", "value_type": "number", "description": "已关闭状态的告警数"},
+        {"key": "policy_threshold", "title": "阈值策略数", "value_type": "number", "description": "配置了阈值的策略数"},
+        {"key": "policy_no_data", "title": "无数据策略数", "value_type": "number", "description": "配置了无数据检测的策略数"},
+        {"key": "event_total", "title": "监控事件总数", "value_type": "number", "description": "监控事件总数"},
+        {"key": "event_today", "title": "今日新增事件数", "value_type": "number", "description": "今日新增的监控事件数"},
+        {"key": "alert_snapshot_total", "title": "告警快照总数", "value_type": "number", "description": "告警指标快照总数"},
+        {"key": "no_data_baseline_total", "title": "无数据基准总数", "value_type": "number", "description": "策略实例基准总数"}
     ]
-  }
+}
 ]

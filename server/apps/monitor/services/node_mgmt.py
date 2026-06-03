@@ -15,12 +15,15 @@ from apps.monitor.models import (
     MonitorObjectOrganizationRule,
     Metric,
 )
-from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.dimension import parse_instance_id, normalize_instance_identity
 from apps.monitor.utils.config_format import ConfigFormat
 from apps.monitor.utils.plugin_controller import Controller
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.system_mgmt.models import User
 from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.node_mgmt.constants.controller import ControllerConstants
+from apps.monitor.models import MonitorPlugin
+from apps.monitor.utils.node_selector import normalize_node_selector
 
 
 class InstanceConfigService:
@@ -28,6 +31,7 @@ class InstanceConfigService:
         "Pod": "pod_status_phase",
         "Node": "node_status_condition",
     }
+    _HOST_MONITOR_OBJECT_NAME = "Host"
 
     @staticmethod
     def _build_permission_data(actor_context):
@@ -189,6 +193,43 @@ class InstanceConfigService:
             sanitized_instance["group_ids"] = sorted(group_ids)
             sanitized_instances.append(sanitized_instance)
         return sanitized_instances
+
+    @staticmethod
+    def _get_plugin_node_selector(monitor_plugin_id):
+        if not monitor_plugin_id:
+            return {}
+
+        plugin = MonitorPlugin.objects.filter(id=monitor_plugin_id).only("id", "node_selector").first()
+        if not plugin:
+            raise BaseAppException("监控插件不存在")
+        return normalize_node_selector(plugin.node_selector or {})
+
+    @staticmethod
+    def _validate_nodes_against_selector(nodes, node_selector):
+        if not node_selector:
+            return
+
+        if node_selector.get("is_container") is True:
+            invalid_nodes = [str(node.get("id")) for node in nodes if node.get("node_type") != ControllerConstants.NODE_TYPE_CONTAINER]
+            if invalid_nodes:
+                raise BaseAppException(f"当前插件仅允许选择容器节点: {', '.join(invalid_nodes)}")
+
+    @staticmethod
+    def _validate_instances_with_plugin_selector(instances, monitor_plugin_id, actor_context=None):
+        node_selector = InstanceConfigService._get_plugin_node_selector(monitor_plugin_id)
+        if not node_selector:
+            return
+
+        requested_node_ids = []
+        for instance in instances:
+            requested_node_ids.extend(instance.get("node_ids", []))
+
+        if not requested_node_ids:
+            return
+
+        permission_data = InstanceConfigService._build_permission_data(actor_context) if actor_context is not None else None
+        nodes = NodeMgmt().get_authorized_nodes_by_ids(requested_node_ids, permission_data)
+        InstanceConfigService._validate_nodes_against_selector(nodes, node_selector)
 
     @classmethod
     def _get_default_group_metric(cls, child_obj):
@@ -447,9 +488,13 @@ class InstanceConfigService:
         Raises:
             BaseAppException: 当配置已存在时抛出异常
         """
-        # 格式化实例ID
+        # 格式化实例ID：优先使用 Host adapter 已计算好的 storage_instance_key，否则沿用旧逻辑
         for instance in instances:
-            instance["instance_id"] = str(tuple([instance["instance_id"]]))
+            storage_key = instance.get("storage_instance_key")
+            if storage_key:
+                instance["instance_id"] = storage_key
+            else:
+                instance["instance_id"] = str((instance["instance_id"],))
 
         # 检查已存在的实例（只需要查询 is_deleted 字段）
         instance_ids = [inst["instance_id"] for inst in instances]
@@ -528,11 +573,18 @@ class InstanceConfigService:
             updated_count = InstanceConfigService._sync_existing_instance_attrs(existing_instances, deleted_ids)
             logger.info(f"复用已存在实例数量: {len(existing_instances)}, 同步属性并激活: {updated_count}, 恢复已删除实例: {len(deleted_ids)}")
 
-            # 为已存在的实例创建组织关联（如果还没有）
-            for instance in existing_instances:
-                instance_id = instance["instance_id"]
-                for group_id in instance["group_ids"]:
-                    MonitorInstanceOrganization.objects.get_or_create(monitor_instance_id=instance_id, organization=group_id)
+            # 清除所有复用实例的历史组织关联，以当前 group_ids 为唯一真值，避免跨组织纳管漂移
+            all_existing_ids = [inst["instance_id"] for inst in existing_instances]
+            MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=all_existing_ids).delete()
+
+            # 以当前 group_ids 重建组织关联
+            org_objs = [
+                MonitorInstanceOrganization(monitor_instance_id=inst["instance_id"], organization=group_id)
+                for inst in existing_instances
+                for group_id in inst["group_ids"]
+            ]
+            if org_objs:
+                MonitorInstanceOrganization.objects.bulk_create(org_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
         # 批量创建实例的默认分组规则（优化：一次性查询+批量创建）
         instances_to_process = new_instances + existing_instances
@@ -579,6 +631,37 @@ class InstanceConfigService:
         return instance_objs, association_objs, instance_ids
 
     @staticmethod
+    def _should_use_host_identity_adapter(monitor_object_name: str) -> bool:
+        """判断当前监控对象是否为 Host，Host 接入需要 identity adapter 处理实例ID。"""
+        return monitor_object_name == InstanceConfigService._HOST_MONITOR_OBJECT_NAME
+
+    @staticmethod
+    def _prepare_host_identity_instances(instances: list) -> list:
+        """对 Host 实例列表应用 identity adapter，统一 storage/logical/raw 三层 ID。
+
+        Args:
+            instances: 原始实例列表，每个 instance 包含 instance_id 等字段
+
+        Returns:
+            enriched 实例列表，每个实例追加了
+            raw_instance_id / logical_instance_value / storage_instance_key
+            并将 instance_id 重写为 storage_instance_key
+        """
+        prepared = []
+        for instance in instances:
+            identity = normalize_instance_identity(instance.get("instance_id"))
+            prepared.append(
+                {
+                    **instance,
+                    "raw_instance_id": identity["raw_input"],
+                    "logical_instance_value": identity["logical_instance_value"],
+                    "storage_instance_key": identity["storage_instance_key"],
+                    "instance_id": identity["storage_instance_key"],
+                }
+            )
+        return prepared
+
+    @staticmethod
     def create_monitor_instance_by_node_mgmt(data, actor_context=None):
         """创建监控对象实例（支持同一实例ID多种采集方式）"""
         instances = data.get("instances", [])
@@ -586,7 +669,6 @@ class InstanceConfigService:
         collect_type = data.get("collect_type", "")
         collector = data.get("collector", "")
         monitor_plugin_id = data.get("monitor_plugin_id")
-
         # 快速失败:无实例直接返回
         if not instances:
             logger.info("没有需要创建的实例")
@@ -596,10 +678,27 @@ class InstanceConfigService:
         if actor_context is not None:
             sanitized_instances = InstanceConfigService._sanitize_instances_for_onboarding(instances, actor_context)
 
+        InstanceConfigService._validate_instances_with_plugin_selector(
+            sanitized_instances,
+            monitor_plugin_id,
+            actor_context,
+        )
+
+        # 对 Host 对象应用 identity adapter，统一 storage/logical/raw 三层 ID
+        monitor_object = MonitorObject.objects.filter(id=monitor_object_id).only("id", "name").first()
+        monitor_object_name = monitor_object.name if monitor_object else ""
+        prepared_instances = sanitized_instances
+        if InstanceConfigService._should_use_host_identity_adapter(monitor_object_name):
+            try:
+                prepared_instances = InstanceConfigService._prepare_host_identity_instances(sanitized_instances)
+            except ValueError as e:
+                logger.error(f"实例识别失败: {e}")
+                raise BaseAppException(f"实例识别失败：{e}")
+
         # ============ 阶段1: 参数预校验与数据准备 ============
         try:
             new_instances, existing_instances, deleted_ids = InstanceConfigService._prepare_instances_for_creation(
-                sanitized_instances,
+                prepared_instances,
                 monitor_object_id,
                 collect_type,
                 collector,

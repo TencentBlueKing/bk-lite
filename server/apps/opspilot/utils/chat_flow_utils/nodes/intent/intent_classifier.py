@@ -2,9 +2,8 @@
 
 from typing import Any, Dict
 
-import jinja2
-
 from apps.core.logger import opspilot_logger as logger
+from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 from apps.opspilot.enum import SkillTypeChoices
 from apps.opspilot.services.chat_service import ChatService
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
@@ -59,8 +58,10 @@ class IntentClassifierNode(BaseNodeExecutor):
 
         try:
             template_context = self.variable_manager.get_all_variables()
-            template = jinja2.Template(prompt)
-            return template.render(**template_context)
+            return safe_render(prompt, template_context)
+        except TemplateSecurityError as e:
+            logger.error("意图分类节点 %s 分类规则安全校验失败: %s", node_id, str(e))
+            raise ValueError(f"模板包含不安全内容: {e}")
         except Exception as e:
             logger.error("意图分类节点 %s 分类规则渲染失败: %s", node_id, str(e))
             return prompt
@@ -77,7 +78,9 @@ class IntentClassifierNode(BaseNodeExecutor):
 
         return f"{intent_prompt}\n\n### 补充分类规则\n{rendered_rules}"
 
-    def _build_llm_params(self, node_id: str, config: Dict[str, Any], message: Any, flow_input: Dict[str, Any], intent_names: list[str]) -> Dict[str, Any]:
+    def _build_llm_params(
+        self, node_id: str, config: Dict[str, Any], message: Any, flow_input: Dict[str, Any], intent_names: list[str]
+    ) -> Dict[str, Any]:
         """构造意图分类节点的最小 LLM 调用参数。"""
         llm_model = config.get("llmModel")
         if not llm_model:
@@ -157,6 +160,18 @@ class IntentClassifierNode(BaseNodeExecutor):
             llm_params = self._build_llm_params(node_id, config, previous_node_output, flow_input, intent_names)
             result, _, _ = ChatService.invoke_chat(llm_params)
 
+            # 检查 invoke_chat 是否执行失败
+            if result.get("success") is False:
+                logger.error("意图分类节点 %s invoke_chat 执行失败: %s", node_id, result.get("error"))
+                return {
+                    "success": False,
+                    "error": result.get("error"),
+                    "error_type": result.get("error_type"),
+                    output_key: result.get("message", ""),
+                    "intent_result": "error",
+                    "previous_output": previous_node_output,
+                }
+
             # 获取LLM返回的意图文本（如："知识问答"、"工单问题"）
             intent_text = result.get("message", "").strip()
             logger.info("意图分类节点 %s LLM返回意图: %r", node_id, intent_text)
@@ -164,10 +179,15 @@ class IntentClassifierNode(BaseNodeExecutor):
             # 验证意图是否在配置的intents列表中
             if intent_text not in intent_names:
                 logger.warning("意图分类节点 %s 返回的意图 %r 不在配置列表中: %r", node_id, intent_text, intent_names)
-                # 使用第一个意图作为默认值
-                if intent_names:
-                    intent_text = intent_names[0]
-                    logger.info("意图分类节点 %s 使用默认意图: %r", node_id, intent_text)
+                # 不再静默回退到第一个意图，而是返回显式错误
+                return {
+                    "success": False,
+                    "error": f"意图 '{intent_text}' 不在配置列表中: {intent_names}",
+                    "error_type": "IntentNotFoundError",
+                    output_key: intent_text,
+                    "intent_result": "error",
+                    "previous_output": previous_node_output,
+                }
 
             # 返回结果，intent_result将用于匹配edge的sourceHandle
             return {
@@ -178,6 +198,12 @@ class IntentClassifierNode(BaseNodeExecutor):
 
         except Exception as e:
             logger.exception("意图分类节点 %s 执行失败: %r", node_id, e)
-            # 失败时使用第一个意图作为默认值
-            default_intent = intents[0].get("name", "") if intents else "error"
-            return {output_key: str(e), "intent_result": default_intent, "previous_output": previous_node_output}
+            # 不再静默回退到第一个意图，而是返回显式错误
+            return {
+                "success": False,
+                "error": str(e),
+                "error_type": type(e).__name__,
+                output_key: str(e),
+                "intent_result": "error",
+                "previous_output": previous_node_output,
+            }

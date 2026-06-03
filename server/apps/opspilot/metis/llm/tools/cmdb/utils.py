@@ -76,7 +76,7 @@ def _get_user_teams(current_team: int, include_children: bool, user_group_ids: L
     if not current_team:
         return []
     if not user_group_ids:
-        return [current_team]
+        return []
     if include_children:
         return GroupUtils.get_user_authorized_child_groups(user_group_ids, current_team, include_children=True)
     if current_team in user_group_ids:
@@ -96,28 +96,13 @@ def build_permission_map(
     if not isinstance(permission_rules, dict):
         permission_rules = {}
 
-    teams = permission_rules.get("team", [])
-    instance_rules = permission_rules.get("instance", [])
-    permission_instances_map = CmdbRulesFormatUtil.format_permission_instances_list(instances=instance_rules)
-    inst_names = list(permission_instances_map.keys())
-
     user_group_ids = _get_user_group_ids(user)
     user_teams = _get_user_teams(current_team, include_children, user_group_ids)
-    if not user_teams:
-        user_teams = [current_team]
-
-    permission_rule_map: Dict[int, Dict[str, Any]] = {}
-    for team in user_teams:
-        if not include_children and team not in teams:
-            continue
-        if team in teams:
-            permission_rule_map[team] = {"permission_instances_map": {}, "inst_names": []}
-        else:
-            permission_rule_map[team] = {
-                "permission_instances_map": permission_instances_map,
-                "inst_names": inst_names,
-            }
-    return permission_rule_map
+    return CmdbRulesFormatUtil.build_permission_rule_map(
+        user_teams=user_teams,
+        permission_rules=permission_rules,
+        fallback_team_id=current_team,
+    )
 
 
 def ensure_model_permission(

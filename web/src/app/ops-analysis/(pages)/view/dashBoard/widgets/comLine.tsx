@@ -1,9 +1,14 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import ChartLegend from '../components/chartLegend';
 import { Spin, Empty } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
+import { useTranslation } from '@/utils/i18n';
+import {
+  getOpsChartTheme,
+  resolveOpsChartThemeName,
+} from '@/app/ops-analysis/utils/chartTheme';
+import ChartLegend from '../components/chartLegend';
 
 interface EChartsInstance {
   dispatchAction: (payload: Record<string, any>) => void;
@@ -15,13 +20,44 @@ interface TrendLineProps {
   onReady?: (ready: boolean) => void;
 }
 
+const withAlpha = (color: string, alpha: number) => {
+  const normalized = color.trim();
+
+  if (normalized.startsWith('rgba(')) {
+    const parts = normalized
+      .slice(5, -1)
+      .split(',')
+      .map((part) => part.trim());
+    return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${alpha})`;
+  }
+
+  if (normalized.startsWith('rgb(')) {
+    const parts = normalized
+      .slice(4, -1)
+      .split(',')
+      .map((part) => part.trim());
+    return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${alpha})`;
+  }
+
+  return color;
+};
+
+const getGradientStops = (color: string, baseOpacity: number) => [
+  { offset: 0, color: withAlpha(color, Math.min(baseOpacity * 3.8, 0.26)) },
+  { offset: 0.55, color: withAlpha(color, Math.min(baseOpacity * 1.7, 0.12)) },
+  { offset: 1, color: withAlpha(color, 0) },
+];
+
 const TrendLine: React.FC<TrendLineProps> = ({
   rawData,
   loading = false,
   onReady,
 }) => {
+  const { t } = useTranslation();
   const chartRef = useRef<any>(null);
-  const chartColors = randomColorForLegend();
+  const themeName = resolveOpsChartThemeName();
+  const chartTheme = getOpsChartTheme(themeName);
+  const chartColors = randomColorForLegend(themeName);
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
   const [zoomRange, setZoomRange] = useState<{ start: number; end: number }>({ start: 0, end: 100 });
 
@@ -123,8 +159,8 @@ const TrendLine: React.FC<TrendLineProps> = ({
           icon: { zoom: 'none', back: 'none' },
           brushStyle: {
             borderWidth: 2,
-            color: 'rgba(24, 144, 255, 0.25)',
-            borderColor: 'rgba(24, 144, 255, 0.8)',
+            color: chartTheme.zoomBrushColor,
+            borderColor: chartTheme.zoomBrushBorderColor,
           },
         },
       },
@@ -147,11 +183,27 @@ const TrendLine: React.FC<TrendLineProps> = ({
       axisPointer: {
         type: 'cross',
       },
-      enterable: true,
+      enterable: false,
       confine: true,
-      extraCssText: 'box-shadow: 0 0 3px rgba(150,150,150, 0.7);',
+      position: function (point: number[], _params: any, _dom: any, _rect: any, size: any) {
+        const tooltipWidth = size.contentSize[0];
+        const chartWidth = size.viewSize[0];
+        // 默认放右上方，离鼠标远一些
+        let x = point[0] + 40;
+        const y = 10;
+        // 如果右边放不下，放左边
+        if (x + tooltipWidth > chartWidth) {
+          x = point[0] - tooltipWidth - 40;
+        }
+        return [x, y];
+      },
+      backgroundColor: chartTheme.tooltipBackgroundColor,
+      borderWidth: 1,
+      borderColor: chartTheme.tooltipBorderColor,
+      extraCssText: `box-shadow: ${chartTheme.tooltipShadow};`,
       textStyle: {
         fontSize: 12,
+        color: chartTheme.tooltipTextColor,
       },
       formatter: function (params: any) {
         if (!params || params.length === 0) return '';
@@ -171,10 +223,10 @@ const TrendLine: React.FC<TrendLineProps> = ({
       },
     },
     grid: {
-      top: 14,
-      left: 24,
-      right: 24,
-      bottom: 20,
+      top: 8,
+      left: 16,
+      right: 16,
+      bottom: 8,
       containLabel: true,
     },
     xAxis: {
@@ -184,7 +236,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
       axisLabel: {
         margin: 15,
         textStyle: {
-          color: '#7f92a7',
+          color: chartTheme.axisLabelColor,
           fontSize: 11,
         },
         rotate: 0,
@@ -195,7 +247,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
       },
       axisLine: {
         lineStyle: {
-          color: '#e8e8e8',
+          color: chartTheme.axisLineColor,
         },
       },
       axisTick: {
@@ -204,7 +256,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
       splitLine: {
         show: false,
         lineStyle: {
-          color: '#f0f0f0',
+          color: chartTheme.splitLineColor,
         },
       },
     },
@@ -225,13 +277,13 @@ const TrendLine: React.FC<TrendLineProps> = ({
           return value.toString();
         },
         textStyle: {
-          color: '#7f92a7',
+          color: chartTheme.axisLabelColor,
         },
       },
       splitLine: {
         show: true,
         lineStyle: {
-          color: '#f0f0f0',
+          color: chartTheme.splitLineColor,
           type: 'solid',
         },
       },
@@ -239,15 +291,87 @@ const TrendLine: React.FC<TrendLineProps> = ({
   };
 
   // 根据数据类型设置 series
+  // 自动双Y轴：当多系列最大值差距超过5倍时启用
+  const DUAL_AXIS_THRESHOLD = 5;
+  let useDualAxis = false;
+  let largeSeriesIndices: number[] = [];
+
+  if (chartData && chartData.series && chartData.series.length >= 2) {
+    const seriesMaxValues = chartData.series.map((item: any) => {
+      const nums = (item.data || []).filter((v: any) => typeof v === 'number' && v > 0);
+      return nums.length > 0 ? Math.max(...nums) : 0;
+    });
+    const maxVal = Math.max(...seriesMaxValues);
+    const minVal = Math.min(...seriesMaxValues.filter((v: number) => v > 0));
+    if (minVal > 0 && maxVal / minVal >= DUAL_AXIS_THRESHOLD) {
+      useDualAxis = true;
+      // 把最大值最大的那些系列放左轴，其余放右轴
+      const threshold = maxVal / DUAL_AXIS_THRESHOLD;
+      largeSeriesIndices = seriesMaxValues
+        .map((v: number, i: number) => (v >= threshold ? i : -1))
+        .filter((i: number) => i >= 0);
+    }
+  }
+
+  if (useDualAxis) {
+    // 双Y轴配置
+    option.yAxis = [
+      {
+        type: 'value',
+        minInterval: 1,
+        axisTick: { show: false },
+        axisLine: { show: false },
+        axisLabel: {
+          formatter: (value: number) => value >= 1000 ? (value / 1000).toFixed(1) + 'k' : value.toString(),
+          textStyle: { color: chartTheme.axisLabelColor },
+        },
+        splitLine: {
+          show: true,
+          lineStyle: { color: chartTheme.splitLineColor, type: 'solid' },
+        },
+      },
+      {
+        type: 'value',
+        minInterval: 1,
+        axisTick: { show: false },
+        axisLine: { show: false },
+        axisLabel: {
+          formatter: (value: number) => value >= 1000 ? (value / 1000).toFixed(1) + 'k' : value.toString(),
+          textStyle: { color: chartTheme.axisLabelColor },
+        },
+        splitLine: { show: false },
+      },
+    ];
+    option.grid.right = 40;
+  }
+
   if (chartData && chartData.series) {
-    option.series = chartData.series.map((item: any) => ({
+    option.series = chartData.series.map((item: any, index: number) => ({
       name: item.name,
       type: 'line',
       data: item.data,
       smooth: true,
       symbol: 'none',
+      yAxisIndex: useDualAxis
+        ? largeSeriesIndices.includes(index)
+          ? 0
+          : 1
+        : 0,
       lineStyle: {
-        width: 1,
+        width: chartTheme.lineWidth,
+      },
+      areaStyle: {
+        color: {
+          type: 'linear',
+          x: 0,
+          y: 0,
+          x2: 0,
+          y2: 1,
+          colorStops: getGradientStops(
+            chartColors[index % chartColors.length],
+            chartTheme.lineAreaOpacity,
+          ),
+        },
       },
       emphasis: {
         focus: 'series',
@@ -256,13 +380,26 @@ const TrendLine: React.FC<TrendLineProps> = ({
   } else {
     option.series = [
       {
-        name: '告警数',
+        name: t('topology.treeValueTitle'),
         type: 'line',
         data: chartData && chartData.values ? chartData.values : [],
         smooth: true,
         symbol: 'none',
         lineStyle: {
-          width: 1,
+          width: chartTheme.lineWidth,
+        },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: getGradientStops(
+              chartColors[0],
+              chartTheme.lineAreaOpacity,
+            ),
+          },
         },
         emphasis: {
           focus: 'series',
@@ -270,6 +407,10 @@ const TrendLine: React.FC<TrendLineProps> = ({
       },
     ];
   }
+
+  const legendData = option.series.map((item: { name?: string }) => ({
+    name: item.name || t('topology.treeValueTitle'),
+  }));
 
   if (loading) {
     return (
@@ -290,13 +431,28 @@ const TrendLine: React.FC<TrendLineProps> = ({
   return (
     <div className="h-full flex">
       {/* 图表区域 */}
-      <div className="flex-1 relative">
+      <div className="flex-1 min-w-0 relative">
         {isZoomed && (
           <button
             onClick={handleResetZoom}
-            className="absolute top-0 right-1 z-10 px-1.5 py-0.5 text-[10px] leading-tight bg-white border border-gray-300 rounded shadow-sm text-gray-600 hover:bg-gray-50 hover:text-blue-600 hover:border-blue-300 transition-colors cursor-pointer"
+            className="absolute top-0 right-1 z-10 px-1.5 py-0.5 text-[10px] leading-tight rounded shadow-sm transition-colors cursor-pointer"
+            style={{
+              backgroundColor: 'var(--color-bg-2)',
+              border: '1px solid var(--color-border-1)',
+              color: 'var(--color-text-2)',
+            }}
+            onMouseEnter={(event) => {
+              event.currentTarget.style.backgroundColor = 'var(--color-fill-2)';
+              event.currentTarget.style.borderColor = 'var(--color-border-2)';
+              event.currentTarget.style.color = 'var(--color-text-1)';
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.backgroundColor = 'var(--color-bg-2)';
+              event.currentTarget.style.borderColor = 'var(--color-border-1)';
+              event.currentTarget.style.color = 'var(--color-text-2)';
+            }}
           >
-            恢复
+            {t('common.reset')}
           </button>
         )}
         <ReactEcharts
@@ -309,14 +465,14 @@ const TrendLine: React.FC<TrendLineProps> = ({
         />
       </div>
 
-      {chartData?.series && chartData.series.length > 1 && (
-        <div className="w-38 ml-2 shrink-0 h-full">
-          <ChartLegend
-            data={chartData.series}
-            colors={chartColors}
-            onSelectionChange={handleLegendChange}
-          />
-        </div>
+      {/* 右侧图例 */}
+      {legendData.length > 0 && (
+        <ChartLegend
+          data={legendData}
+          colors={chartColors}
+          layout="vertical"
+          onSelectionChange={handleLegendChange}
+        />
       )}
     </div>
   );

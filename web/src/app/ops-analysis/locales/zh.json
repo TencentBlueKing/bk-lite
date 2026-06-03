@@ -1,7 +1,8 @@
 {
   "common": {
     "total": "共",
-    "items": "条"
+    "items": "条",
+    "loading": "加载中"
   },
   "topology": {
     "nodeConfig": {
@@ -26,7 +27,7 @@
       "textPosition": "文字位置",
       "close": "关闭",
       "rectangle": "矩形",
-      "unit": "单位",
+    "unit": "显示单位",
       "thresholdWhenValueGte": "当值 ≥",
       "default": "默认",
       "selectDataFields": "选择要显示的数据字段",
@@ -60,7 +61,12 @@
       "uploadedImage": "已上传的图片",
       "confirm": "确认",
       "noColor": "无颜色",
-      "backgroundColor": "背景颜色"
+      "backgroundColor": "背景颜色",
+      "displayField": "展示字段",
+      "valueField": "数值字段",
+      "selectDisplayField": "请选择展示字段",
+      "selectValueField": "请选择数值字段",
+      "noAvailableFields": "当前数据源未配置可用字段"
     },
     "singleValueNodeDefault": "单值节点",
     "bringToBack": "置底",
@@ -206,6 +212,7 @@
     "singleValue": "单值",
     "operationFailed": "操作失败",
     "table": "表格",
+    "topN": "排行榜",
     "responseFieldSchemaConfig": "接口字段定义",
     "schemaOptionalAutoGenTip": "该配置为可选项；如不配置，表格组件首次使用时将按返回字段自动生成默认列。",
     "addField": "添加字段",
@@ -230,9 +237,10 @@
     "lineColor": "线条颜色",
     "pageSize": "每页条数",
     "selectDataSource": "请选择数据源",
-    "dataFetchFailed": "数据获取失败",
+    "dataFetchFailed": "数据查询失败",
     "inputName": "请输入组件名称",
     "paramSettings": "参数设置",
+    "queryParams": "查询参数",
     "noParamSettings": "暂无需配置参数",
     "barColor": "柱状图颜色",
     "selectInstance": "请选择实例",
@@ -274,10 +282,11 @@
     "atLeastOneVisibleColumn": "请至少保留一列可见",
     "invalidConfiguredFieldsTip": "部分已配置字段不在当前可用字段集合中，可能不可用：{{fields}}",
     "columnVisible": "是否显示",
-    "noSchemaFields": "暂无可用字段，请先在数据源中配置表格字段",
+    "noSchemaFields": "暂无可用字段，请先配置表格字段",
     "noFilterFields": "暂未配置搜索字段",
     "string": "字符串",
     "unifiedFilterBinding": "统一筛选参数",
+    "unifiedFilterLinkage": "筛选联动",
     "noUnifiedFilters": "暂无统一筛选项",
     "bindingReasonNoParam": "组件无此参数",
     "bindingReasonTypeMismatch": "参数类型不匹配",
@@ -287,7 +296,7 @@
     "bindingInvalidTypeMismatch": "参数类型不匹配",
     "bindingInvalidUnknown": "未知原因",
     "unifiedFilterConfig": "统一筛选配置",
-    "configFilter": "筛选配置",
+    "configUnifiedFilterFields": "配置统一筛选字段",
     "filterName": "显示名称",
     "filterKey": "参数名",
     "defaultValue": "默认值",
@@ -315,6 +324,12 @@
     "filterDisabled": "未启用",
     "filterDisabledTip": "该筛选项在统一筛选配置中未启用",
     "namespaceNotSupported": "当前组件未关联所选命名空间",
+    "comparePreviousPeriod": "相对上个周期变化",
+    "compareLabel": "周期对比",
+    "comparePreviousPeriodTip": "开启后将自动对比上一个等长周期的数据，并显示变化百分比。",
+    "comparePreviousShortLabel": "较上周期",
+    "compareUnavailableTip": "当前数据源未配置可识别的时间范围参数，无法开启周期比较。",
+    "displaySettings": "展示设置",
     "exportPdf": "导出 PDF",
     "exportPdfSuccess": "导出成功",
     "exportPdfFailed": "导出失败"

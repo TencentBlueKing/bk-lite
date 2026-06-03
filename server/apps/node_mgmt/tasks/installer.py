@@ -1,3 +1,4 @@
+import logging
 import uuid
 import json
 import queue
@@ -32,6 +33,7 @@ from apps.node_mgmt.utils.installer import (
     unzip_file,
 )
 from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.step_tracker import (
     advance_step,
@@ -56,6 +58,7 @@ from apps.node_mgmt.utils.task_result_schema import (
 from config.components.nats import NATS_NAMESPACE
 from nats_client.clients import subscribe_lines_sync
 
+logger = logging.getLogger(__name__)
 
 CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS = InstallerConstants.CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS
 
@@ -140,6 +143,14 @@ def _get_execution_attempt(node_obj) -> int:
     if isinstance(attempt, int) and attempt > 0:
         return attempt
     return 1
+
+
+def _matches_install_connectivity_target(task_node, node_id: str, node_ip: str | None = None) -> bool:
+    result = task_node.result or {}
+    install_node_id = result.get(InstallerConstants.INSTALL_NODE_ID_KEY)
+    if install_node_id:
+        return install_node_id == node_id
+    return bool(node_ip) and task_node.ip == node_ip
 
 
 def _add_step(node_obj, action, status, message, timestamp=None, details=None):
@@ -554,10 +565,9 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
             )
 
             install_node_id = uuid.uuid4().hex
-            node_obj.result = {
-                **(node_obj.result or {}),
-                InstallerConstants.INSTALL_NODE_ID_KEY: install_node_id,
-            }
+            result = node_obj.result or {}
+            result[InstallerConstants.INSTALL_NODE_ID_KEY] = install_node_id
+            node_obj.result = result
             node_obj.save(update_fields=["result"])
 
             install_command = InstallerService.get_install_command(
@@ -716,7 +726,7 @@ def converge_controller_install_connectivity_for_node(node_id):
         return
 
     running_task_nodes = ControllerTaskNode.objects.filter(
-        **{f"result__{InstallerConstants.INSTALL_NODE_ID_KEY}": node_id},
+        ip=node.ip,
         status="running",
         task__type="install",
     ).select_related("task")
@@ -724,6 +734,9 @@ def converge_controller_install_connectivity_for_node(node_id):
     affected_task_ids = set()
 
     for task_node in running_task_nodes:
+        if not _matches_install_connectivity_target(task_node, node_id, node.ip):
+            continue
+
         if _get_execution_phase(task_node) != InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING:
             continue
 
@@ -857,6 +870,12 @@ def retry_controller(task_id, task_node_ids, password=None, private_key=None, pa
 
     _dispatch_or_finalize_controller_task(task_id)
 
+    # Schedule a fresh timeout fallback for the retried attempt
+    timeout_controller_install_task.apply_async(
+        args=[task_id],
+        countdown=CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
+    )
+
 
 @shared_task
 def uninstall_controller(task_id):
@@ -971,7 +990,27 @@ def install_collector(task_id):
     """安装采集器"""
     task_obj = CollectorTask.objects.filter(id=task_id).first()
     if not task_obj:
-        raise BaseAppException("Task not found")
+        logger.error("install_collector: task_id=%s not found", task_id)
+        return
+
+    try:
+        _install_collector_inner(task_obj)
+    except Exception:
+        logger.exception("install_collector: unhandled exception for task_id=%s", task_id)
+        task_obj.collectortasknode_set.filter(status="waiting").update(
+            status="error",
+            result=apply_result_envelope(
+                {},
+                overall_status="error",
+                final_message="Collector installation failed due to an unexpected error",
+                failure=None,
+            ),
+        )
+        task_obj.status = "finished"
+        task_obj.save()
+
+
+def _install_collector_inner(task_obj):
     package_obj = PackageVersion.objects.filter(id=task_obj.package_version_id).first()
     if not package_obj:
         raise BaseAppException("Package version not found")

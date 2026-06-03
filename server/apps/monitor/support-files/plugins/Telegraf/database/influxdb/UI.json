@@ -63,6 +63,29 @@
         "addonAfter": "s"
       },
       "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      }
+    },
+    {
+      "name": "timeout",
+      "label": "超时时间",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 30,
+      "description": "单次请求 `debug/vars` 接口的超时时间（单位：秒）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "超时时间",
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
         "origin_path": "child.content.config.timeout",
         "to_form": {
           "regex": "^(\\d+)s$"
@@ -149,9 +172,9 @@
       "rules": [
         {
           "type": "pattern",
-          "pattern": "^(http|https)://.*",
-          "message": "服务器地址必须以http://或https://开头",
-          "excel_formula": "OR(LEFT({{CELL}},7)=\"http://\",LEFT({{CELL}},8)=\"https://\")"
+          "pattern": "^(http|https)://.+/debug/vars$",
+          "message": "服务器地址必须是以http://或https://开头的完整 debug/vars 地址",
+          "excel_formula": "AND(OR(LEFT({{CELL}},7)=\"http://\",LEFT({{CELL}},8)=\"https://\"),RIGHT({{CELL}},11)=\"/debug/vars\")"
         }
       ],
       "change_handler": {

@@ -1,21 +1,21 @@
 import json
-import logging
 import os
 
+import requests
 from django.conf import settings as django_settings
 from django.http import JsonResponse
 from django.shortcuts import render
 from rest_framework.decorators import api_view
 
+from apps.core.logger import logger
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.rpc.base import RpcClient
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import UserLoginLog
+from apps.system_mgmt.models.login_module import LoginModule
 from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.utils.login_log_utils import log_user_login_from_request
-
-logger = logging.getLogger(__name__)
 
 PORTAL_BRANDING_KEYS = ("portal_name", "portal_logo_url", "portal_favicon_url", "watermark_enabled", "watermark_text")
 
@@ -45,6 +45,121 @@ def _parse_request_data(request):
         except json.JSONDecodeError:
             return request.POST.dict()
     return request.POST.dict()
+
+
+def _set_auth_cookie_on_response(response, token):
+    """
+    统一设置认证 cookie。
+
+    在所有登录入口成功后调用此函数，确保 cookie 设置的一致性。
+    """
+    login_expired_time = 3600 * 24  # default 24h
+    try:
+        setting = SystemSettings.objects.filter(key="login_expired_time").first()
+        if setting:
+            login_expired_time = int(float(setting.value) * 3600)
+    except Exception:
+        pass
+
+    response.set_cookie(
+        "bklite_token",
+        token,
+        max_age=login_expired_time,
+        path="/",
+        secure=not django_settings.DEBUG,
+        httponly=True,
+        samesite="Lax",
+    )
+
+
+def _get_client_ip(request):
+    """
+    Get client IP address from request.
+
+    Handles X-Forwarded-For header for proxied requests.
+    """
+    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+    if x_forwarded_for:
+        # Take the first IP in the chain (original client)
+        ip = x_forwarded_for.split(",")[0].strip()
+    else:
+        ip = request.META.get("REMOTE_ADDR", "")
+    return ip
+
+
+def verify_wechat_code(code: str) -> dict:
+    """
+    真实微信 API 验证 code。
+
+    Returns:
+        {
+            "success": bool,
+            "openid": str,       # 成功时
+            "nickname": str,     # 成功时
+            "unionid": str,      # 成功时（可选）
+            "error": str,        # 失败时
+            "errcode": int       # 失败时（可选）
+        }
+    """
+    try:
+        # 直接从数据库获取微信配置，避免通过 NATS 接口暴露 app_secret
+        login_module = LoginModule.objects.filter(source_type="wechat", enabled=True).first()
+        if not login_module:
+            return {"success": False, "error": "WeChat login is not enabled"}
+
+        app_id = login_module.app_id
+        app_secret = login_module.decrypted_app_secret
+
+        # Step 1: code 换 access_token
+        token_url = (
+            f"https://api.weixin.qq.com/sns/oauth2/access_token"
+            f"?appid={app_id}"
+            f"&secret={app_secret}"
+            f"&code={code}"
+            f"&grant_type=authorization_code"
+        )
+
+        token_resp = requests.get(token_url, timeout=10)
+        token_data = token_resp.json()
+
+        if "errcode" in token_data:
+            logger.warning(f"WeChat token exchange failed: {token_data}")
+            return {
+                "success": False,
+                "error": token_data.get("errmsg", "Unknown error"),
+                "errcode": token_data.get("errcode"),
+            }
+
+        # Step 2: 获取用户信息
+        userinfo_url = (
+            f"https://api.weixin.qq.com/sns/userinfo" f"?access_token={token_data['access_token']}" f"&openid={token_data['openid']}" f"&lang=zh_CN"
+        )
+
+        userinfo_resp = requests.get(userinfo_url, timeout=10)
+        userinfo_data = userinfo_resp.json()
+
+        if "errcode" in userinfo_data:
+            logger.warning(f"WeChat userinfo fetch failed: {userinfo_data}")
+            return {
+                "success": False,
+                "error": userinfo_data.get("errmsg", "Unknown error"),
+                "errcode": userinfo_data.get("errcode"),
+            }
+
+        return {
+            "success": True,
+            "openid": userinfo_data["openid"],
+            "nickname": userinfo_data.get("nickname", ""),
+            "unionid": userinfo_data.get("unionid"),
+            "headimgurl": userinfo_data.get("headimgurl"),
+        }
+
+    except requests.Timeout:
+        logger.error("WeChat API timeout")
+        return {"success": False, "error": "WeChat API timeout"}
+    except Exception as e:
+        logger.exception(f"WeChat verification error: {e}")
+        return {"success": False, "error": str(e)}
 
 
 def _safe_get_user_id_by_username(client, username):
@@ -130,28 +245,11 @@ def login(request):
                     res["data"] = {}
                 res["data"]["redirect_url"] = c_url
                 logger.info(f"Login successful for user: {username}, redirect to: {c_url}")
-
         response = JsonResponse(res)
 
         # Set bklite_token cookie with secure attributes on successful login
         if res.get("result") and res.get("data", {}).get("token"):
-            token = res["data"]["token"]
-            login_expired_time = 3600 * 24  # default 24h
-            try:
-                setting = SystemSettings.objects.filter(key="login_expired_time").first()
-                if setting:
-                    login_expired_time = int(float(setting.value) * 3600)
-            except Exception:
-                pass
-            response.set_cookie(
-                "bklite_token",
-                token,
-                max_age=login_expired_time,
-                path="/",
-                secure=not django_settings.DEBUG,
-                httponly=True,
-                samesite="Lax",
-            )
+            _set_auth_cookie_on_response(response, res["data"]["token"])
 
         return response
     except Exception as e:
@@ -198,53 +296,97 @@ def logout(request):
 
 
 @api_exempt
-def wechat_user_register(request):
+def wechat_login(request):
+    """
+    微信扫码登录接口。
+
+    接收微信授权 code，后端验证后签发 token。
+
+    Request:
+        POST { "code": "微信授权码" }
+
+    Response:
+        成功: { "result": true, "data": { "id", "username", "token", ... } }
+        失败: { "result": false, "message": "错误信息" }
+    """
+    if request.method != "POST":
+        return JsonResponse({"result": False, "message": "Method not allowed"}, status=405)
+
     try:
         data = _parse_request_data(request)
-        user_id = data.get("user_id", "").strip()
-        nick_name = data.get("nick_name", "").strip()
+        code = data.get("code", "").strip()
 
-        if not user_id:
-            # 记录微信注册失败日志 - user_id 为空
+        if not code:
             loader = _get_loader(request)
-            msg = loader.get("error.user_id_empty", "user_id cannot be empty")
+            msg = loader.get("error.code_empty", "code is required")
             log_user_login_from_request(
                 request,
-                user_id or "unknown",
+                "unknown",
                 UserLoginLog.STATUS_FAILED,
-                "domain.com",
+                "wechat",
                 failure_reason=msg,
             )
             return JsonResponse({"result": False, "message": msg})
 
-        client = _create_system_mgmt_client()
-        res = client.wechat_user_register(user_id, nick_name)
+        # 验证微信 code
+        verify_result = verify_wechat_code(code)
 
-        if not res.get("result"):
-            logger.warning(f"WeChat registration failed for user_id: {user_id}")
-            # 记录微信注册失败日志
-            failure_reason = res.get("message", "WeChat registration failed")
+        if not verify_result["success"]:
+            error_msg = verify_result.get("error", "WeChat verification failed")
+            logger.warning(f"WeChat login failed: {error_msg}")
             log_user_login_from_request(
                 request,
-                user_id,
+                "unknown",
                 UserLoginLog.STATUS_FAILED,
-                "domain.com",
+                "wechat",
+                failure_reason=error_msg,
+            )
+            return JsonResponse({"result": False, "message": error_msg})
+
+        # 用 openid 创建/获取用户
+        openid = verify_result["openid"]
+        nickname = verify_result.get("nickname", openid)
+
+        client = _create_system_mgmt_client()
+        res = client.wechat_user_register(openid, nickname)
+
+        if not res.get("result"):
+            logger.warning(f"WeChat user registration failed for openid: {openid}")
+            failure_reason = res.get("message", "User registration failed")
+            log_user_login_from_request(
+                request,
+                openid,
+                UserLoginLog.STATUS_FAILED,
+                "wechat",
                 failure_reason=str(failure_reason),
             )
-        else:
-            # 记录微信注册成功日志
-            logger.info(f"WeChat registration successful for user_id: {user_id}")
-            log_user_login_from_request(request, user_id, UserLoginLog.STATUS_SUCCESS, "domain.com")
+            return JsonResponse(res)
 
-        return JsonResponse(res)
+        # 记录登录成功
+        logger.info(f"WeChat login successful for openid: {openid}")
+        log_user_login_from_request(request, openid, UserLoginLog.STATUS_SUCCESS, "wechat")
+
+        # 添加微信 profile 数据到响应
+        if res.get("data"):
+            res["data"]["openid"] = openid
+            res["data"]["unionid"] = verify_result.get("unionid")
+            res["data"]["display_name"] = nickname
+
+        response = JsonResponse(res)
+
+        # 设置 cookie
+        if res.get("data", {}).get("token"):
+            _set_auth_cookie_on_response(response, res["data"]["token"])
+
+        return response
+
     except Exception as e:
-        logger.error(f"WeChat registration error: {e}")
-        # 记录系统错误导致的微信注册失败
+        logger.error(f"WeChat login error: {e}")
         log_user_login_from_request(
             request,
-            user_id if "user_id" in locals() else "unknown",
+            "unknown",
             UserLoginLog.STATUS_FAILED,
-            "domain.com",
+            "wechat",
             failure_reason=f"System error: {str(e)}",
         )
         return JsonResponse(
@@ -282,21 +424,20 @@ def get_bk_settings(request):
     return JsonResponse(res)
 
 
-@api_exempt
 def reset_pwd(request):
     try:
         data = _parse_request_data(request)
-        username = data.get("username", "").strip()
-        domain = data.get("domain", "").strip()
+        username = request.user.username
+        domain = getattr(request.user, "domain", "")
         password = data.get("password", "")
 
-        if not username or not password:
+        if not password:
             return JsonResponse(
                 {
                     "result": False,
                     "message": _get_loader(request).get(
                         "error.username_password_empty",
-                        "Username or password cannot be empty",
+                        "Password cannot be empty",
                     ),
                 }
             )
@@ -358,24 +499,30 @@ def login_info(request):
         )
 
 
-@api_exempt
 def generate_qr_code(request):
-    try:
-        username = request.GET.get("username", "").strip()
+    """
+    Generate OTP QR code for the current authenticated user.
 
-        if not username:
+    Requires authentication - only generates QR code for request.user.
+    """
+    try:
+        # Use authenticated user instead of username parameter
+        if not hasattr(request, "user") or not request.user or not request.user.id:
             return JsonResponse(
                 {
                     "result": False,
-                    "message": _get_loader(request).get("error.username_empty", "Username cannot be empty"),
-                }
+                    "message": _get_loader(request).get("error.unauthorized", "Authentication required"),
+                },
+                status=401,
             )
 
+        user_id = request.user.id
+
         client = _create_system_mgmt_client()
-        res = client.generate_qr_code(username)
+        res = client.generate_qr_code_by_user_id(user_id)
 
         if not res.get("result"):
-            logger.warning(f"QR code generation failed for user: {username}")
+            logger.warning(f"QR code generation failed for user_id: {user_id}")
 
         return JsonResponse(res)
     except Exception as e:
@@ -388,30 +535,92 @@ def generate_qr_code(request):
         )
 
 
-@api_exempt
 def verify_otp_code(request):
-    try:
-        data = _parse_request_data(request)
-        username = data.get("username", "").strip()
-        otp_code = data.get("otp_code", "").strip()
+    """
+    Verify OTP code for the current authenticated user (for OTP binding).
 
-        if not username or not otp_code:
+    Requires authentication - only verifies OTP for request.user.
+    """
+    try:
+        # Use authenticated user instead of username parameter
+        if not hasattr(request, "user") or not request.user or not request.user.id:
             return JsonResponse(
                 {
                     "result": False,
-                    "message": _get_loader(request).get("error.otp_empty", "Username or OTP code cannot be empty"),
+                    "message": _get_loader(request).get("error.unauthorized", "Authentication required"),
+                },
+                status=401,
+            )
+
+        data = _parse_request_data(request)
+        otp_code = data.get("otp_code", "").strip()
+
+        if not otp_code:
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": _get_loader(request).get("error.otp_empty", "OTP code cannot be empty"),
                 }
             )
 
+        user_id = request.user.id
+
         client = _create_system_mgmt_client()
-        res = client.verify_otp_code(username, otp_code)
+        res = client.verify_otp_code_by_user_id(user_id, otp_code)
 
         if not res.get("result"):
-            logger.warning(f"OTP verification failed for user: {username}")
+            logger.warning(f"OTP verification failed for user_id: {user_id}")
 
         return JsonResponse(res)
     except Exception as e:
         logger.error(f"OTP verification error: {e}")
+        return JsonResponse(
+            {
+                "result": False,
+                "message": _get_loader(request).get("error.system_error", "System error occurred"),
+            }
+        )
+
+
+@api_exempt
+def verify_otp_login(request):
+    """
+    Verify OTP code with challenge_id and complete two-factor authentication.
+
+    This is the second phase of login for OTP-enabled users.
+    On success, issues JWT token and sets bklite_token cookie.
+    """
+    try:
+        data = _parse_request_data(request)
+        challenge_id = data.get("challenge_id", "").strip()
+        otp_code = data.get("otp_code", "").strip()
+
+        if not challenge_id or not otp_code:
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": _get_loader(request).get("error.otp_challenge_empty", "Challenge ID and OTP code are required"),
+                }
+            )
+
+        # Get client IP for rate limiting
+        client_ip = _get_client_ip(request)
+
+        client = _create_system_mgmt_client()
+        res = client.verify_otp_login(challenge_id, otp_code, client_ip)
+
+        response = JsonResponse(res)
+
+        # Set bklite_token cookie on successful OTP verification
+        if res.get("result") and res.get("data", {}).get("token"):
+            _set_auth_cookie_on_response(response, res["data"]["token"])
+            logger.info(f"OTP login successful for user: {res['data'].get('username')}")
+        else:
+            logger.warning(f"OTP login failed: {res.get('message')}")
+
+        return response
+    except Exception as e:
+        logger.error(f"OTP login error: {e}")
         return JsonResponse(
             {
                 "result": False,

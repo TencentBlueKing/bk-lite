@@ -15,7 +15,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import LLMModel, SkillRequestLog
 from apps.opspilot.services.chat_service import chat_service
 from apps.opspilot.utils.agent_factory import create_agent_instance, create_sse_response_headers
-from apps.opspilot.utils.execution_interrupt import is_interrupt_requested
+from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
 from apps.opspilot.utils.sse_chat import _process_think_content, _split_think_content
 
 
@@ -263,9 +263,11 @@ def _handle_tool_transition_event(event_type: str, data_json: dict, state: dict,
     if event_type == "TOOL_CALL_START":
         parent_message_id = data_json.get("parent_message_id")
         if state["buffer_pre_tool_content"] and parent_message_id == state["active_message_id"]:
-            lines = _flush_pending_content_as_thinking(state) if state["emit_pending_as_thinking"] else []
-            if not state["emit_pending_as_thinking"]:
-                state["pending_content_events"].clear()
+            if state["emit_pending_as_thinking"]:
+                lines = _flush_pending_content_as_thinking(state)
+            else:
+                # 将缓冲的文字内容作为正常 TEXT_MESSAGE_CONTENT 发送给前端
+                lines = _flush_pending_content_events(state)
             state["buffer_pre_tool_content"] = False
             return lines
         return []
@@ -354,10 +356,14 @@ def _handle_agui_data_event(data_json: dict, state: dict, show_think: bool, enab
         return "", []
 
     if event_type == "THINKING_TEXT_MESSAGE_CONTENT":
-        return (
-            _build_sse_line(_build_thinking_event(data_json.get("delta", ""), data_json.get("timestamp"))),
-            [],
-        )
+        # 只有在 show_think=True 时才输出 thinking 事件
+        if show_think:
+            return (
+                _build_sse_line(_build_thinking_event(data_json.get("delta", ""), data_json.get("timestamp"))),
+                [],
+            )
+        else:
+            return "", []
 
     if event_type == "TEXT_MESSAGE_CONTENT":
         return _handle_text_message_content_event(data_json, state, show_think, enable_thinking_split)
@@ -383,7 +389,7 @@ async def _generate_agui_stream(
         execution_id = (request.extra_config or {}).get("execution_id") or request.thread_id
 
         async for sse_line in graph.agui_stream(request):
-            if execution_id and is_interrupt_requested(execution_id):
+            if execution_id and await is_interrupt_requested_async(execution_id):
                 interrupt_data = {"type": "INTERRUPTED", "error": "执行已中断", "execution_id": execution_id, "timestamp": int(time.time() * 1000)}
                 yield _build_sse_line(interrupt_data)
                 return
@@ -487,7 +493,7 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
         StreamingHttpResponse: AGUI协议格式的流式响应
     """
     llm_model = LLMModel.objects.get(id=params["llm_model"])
-    show_think = params.pop("show_think", True)
+    show_think = params.get("show_think", True)  # 使用 get 而不是 pop，保留值给 format_chat_server_kwargs
     skill_type = params.get("skill_type")
     params.pop("group", 0)
     params["execution_id"] = params.get("execution_id") or params.get("thread_id") or str(int(time.time() * 1000))

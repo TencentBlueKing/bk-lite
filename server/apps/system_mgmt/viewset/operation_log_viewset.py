@@ -8,6 +8,7 @@ from rest_framework import permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import OperationLog
 from apps.system_mgmt.serializers.operation_log_serializer import OperationLogSerializer
@@ -70,6 +71,10 @@ class OperationLogViewSet(GroupFilterMixin, LanguageViewSet):
     filterset_class = OperationLogFilter
     permission_classes = [permissions.IsAuthenticated]
 
+    @HasPermission("audit_log-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
     def get_http_method_names(self):
         """动态返回允许的HTTP方法"""
         # export_excel action 允许 POST，其他只允许 GET
@@ -88,6 +93,7 @@ class OperationLogViewSet(GroupFilterMixin, LanguageViewSet):
         return Response({"result": False, "message": "Detail view is not supported"}, status=405)
 
     @action(detail=False, methods=["post"])
+    @HasPermission("audit_log-View")
     def export_excel(self, request):
         """
         导出操作日志为Excel文件

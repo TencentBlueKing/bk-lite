@@ -9,6 +9,7 @@ from apps.job_mgmt.constants import DangerousLevel, MatchType
 from apps.job_mgmt.filters.dangerous_path import DangerousPathFilter
 from apps.job_mgmt.models import DangerousPath
 from apps.job_mgmt.serializers.dangerous_path import DangerousPathCreateSerializer, DangerousPathSerializer, DangerousPathUpdateSerializer
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class DangerousPathViewSet(AuthViewSet):
@@ -38,15 +39,27 @@ class DangerousPathViewSet(AuthViewSet):
 
     @HasPermission("dangerous_path-Add")
     def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+        if response.status_code == 201:
+            path = response.data.get("pattern") if isinstance(response.data, dict) else request.data.get("pattern", "")
+            log_operation(request, "create", "job", f"新增危险路径: {path}")
+        return response
 
     @HasPermission("dangerous_path-Edit")
     def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        if response.status_code == 200:
+            path = response.data.get("pattern") if isinstance(response.data, dict) else request.data.get("pattern", "")
+            log_operation(request, "update", "job", f"编辑危险路径: {path}")
+        return response
 
     @HasPermission("dangerous_path-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        instance = self.get_object()
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code in (200, 204):
+            log_operation(request, "delete", "job", f"删除危险路径: {instance.pattern}")
+        return response
 
     @action(detail=False, methods=["GET"])
     def enabled_paths(self, request):

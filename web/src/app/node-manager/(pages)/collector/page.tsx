@@ -31,9 +31,14 @@ const Collector = () => {
   const [search, setSearch] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
   const [appTags, setAppTags] = useState<any[]>([]);
-  const [systemTags, setSystemTags] = useState<any[]>([]);
+  const [osTags, setOsTags] = useState<any[]>([]);
+  const [kindTags, setKindTags] = useState<any[]>([]);
   const [selectedAppTag, setSelectedAppTag] = useState<string>('');
+  const [selectedOsTags, setSelectedOsTags] = useState<string[]>([]);
   const [selectedSystemTags, setSelectedSystemTags] = useState<string[]>([]);
+  const [selectedArchitectureTags, setSelectedArchitectureTags] = useState<
+    string[]
+  >([]);
   const [tagEnum, setTagEnum] = useState<Record<string, any>>({});
 
   useEffect(() => {
@@ -54,11 +59,10 @@ const Collector = () => {
     const { apps, tagEnum: newTagEnum } = getTags();
     const defaultAppTag = apps && apps.length > 0 ? apps[0].value : '';
     setSelectedAppTag(defaultAppTag);
-    fetchCollectorlist({
+    fetchCollectorData({
       searchValue: '',
       appTag: defaultAppTag,
-      sysTags: [],
-      tagEnum: newTagEnum,
+      tagEnum: newTagEnum
     });
   };
 
@@ -71,29 +75,41 @@ const Collector = () => {
     if (nodeStateEnum?.tag) {
       const tagData = nodeStateEnum.tag;
       const apps: any[] = [];
-      const systems: any[] = [];
+      const osOptions: any[] = [];
+      const kindOptions: any[] = [];
       Object.keys(tagData).forEach((key) => {
         const item = tagData[key];
         if (item.is_app) {
           apps.push({ label: item.name, value: key });
+        } else if (['linux', 'windows'].includes(key)) {
+          osOptions.push({ label: item.name, value: key });
         } else {
-          systems.push({ label: item.name, value: key });
+          kindOptions.push({ label: item.name, value: key });
         }
       });
       setAppTags(apps);
-      setSystemTags(systems);
+      setOsTags(osOptions);
+      setKindTags(kindOptions);
       setTagEnum(tagData);
-      return { apps, tagEnum: tagData };
+      return { apps, osOptions, kindOptions, tagEnum: tagData };
     }
-    return { apps: [], tagEnum: {} };
+    return { apps: [], osOptions: [], kindOptions: [], tagEnum: {} };
   };
+
+  const architectureTags = [
+    { label: 'x86_64', value: 'x86_64' },
+    { label: 'ARM64', value: 'arm64' }
+  ];
 
   const handleResult = (res: any, enumMap?: Record<string, any>) => {
     const currentTagEnum = enumMap || tagEnum;
     const tempdata = (res || []).map((item: any) => {
       const tagList = item.tags || [];
-      const displayTags = tagList.map((tag: string) => {
-        return currentTagEnum[tag]?.name || tag;
+      const nonArchitectureTags = tagList.filter(
+        (tag: string) => !['x86_64', 'arm64'].includes(tag)
+      );
+      const displayTags = nonArchitectureTags.map((tag: string) => {
+        return currentTagEnum[tag]?.name || (tag === 'arm64' ? 'ARM64' : tag);
       });
       const architectureDisplay =
         item.architecture_display ||
@@ -114,41 +130,62 @@ const Collector = () => {
         tagList: architectureDisplay
           ? [...displayTags, architectureDisplay]
           : displayTags,
-        originalTags: tagList,
+        originalTags: tagList
       };
     });
     setCollectorCards(tempdata);
   };
 
-  const fetchCollectorlist = async (params: {
+  const buildSelectedTags = ({
+    appTag = selectedAppTag,
+    osTags = [],
+    kindTags = selectedSystemTags,
+    architectureTags = selectedArchitectureTags
+  }: {
+    appTag?: string;
+    osTags?: string[];
+    kindTags?: string[];
+    architectureTags?: string[];
+  }) => {
+    return [appTag, ...osTags, ...kindTags, ...architectureTags].filter(
+      Boolean
+    );
+  };
+
+  const fetchCollectorData = async ({
+    searchValue = search,
+    appTag = selectedAppTag,
+    osTags = selectedOsTags,
+    sysTags = selectedSystemTags,
+    architectureValues = selectedArchitectureTags,
+    tagEnum: enumMap
+  }: {
     searchValue?: string;
     appTag?: string;
+    osTags?: string[];
     sysTags?: string[];
+    architectureValues?: string[];
     tagEnum?: Record<string, any>;
-  }) => {
+  } = {}) => {
     // 取消上一次请求
     collectorAbortControllerRef.current?.abort();
     const abortController = new AbortController();
     collectorAbortControllerRef.current = abortController;
     const currentRequestId = ++collectorRequestIdRef.current;
-    const { searchValue, appTag, sysTags, tagEnum: enumMap } = params;
     const requestParams: any = { name: searchValue };
-    const tagsArray: string[] = [];
-    const currentAppTag = appTag !== undefined ? appTag : selectedAppTag;
-    const currentSysTags = sysTags !== undefined ? sysTags : selectedSystemTags;
-    if (currentAppTag) {
-      tagsArray.push(currentAppTag);
-    }
-    if (currentSysTags.length > 0) {
-      tagsArray.push(...currentSysTags);
-    }
+    const tagsArray = buildSelectedTags({
+      appTag,
+      osTags,
+      kindTags: sysTags,
+      architectureTags: architectureValues
+    });
     if (tagsArray.length > 0) {
       requestParams.tags = tagsArray.join(',');
     }
     try {
       setLoading(true);
       const res = await getCollectorlist(requestParams, {
-        signal: abortController.signal,
+        signal: abortController.signal
       });
       // 只有最新请求才处理数据
       if (currentRequestId !== collectorRequestIdRef.current) return;
@@ -172,13 +209,13 @@ const Collector = () => {
       type: config?.type,
       form,
       key: config?.key,
-      appTag: selectedAppTag,
+      appTag: selectedAppTag
     });
   };
 
   const handleSubmit = (type?: string) => {
     if (type === 'upload') return;
-    fetchCollectorlist({ searchValue: search });
+    fetchCollectorData({ searchValue: search });
   };
 
   const handleDelete = (id: string) => {
@@ -193,12 +230,12 @@ const Collector = () => {
           try {
             await deleteCollector({ id });
             message.success(t('common.successfullyDeleted'));
-            fetchCollectorlist({ searchValue: search });
+            fetchCollectorData({ searchValue: search });
           } finally {
             return resolve(true);
           }
         });
-      },
+      }
     });
   };
 
@@ -242,25 +279,55 @@ const Collector = () => {
     [menuItem]
   );
 
+  const handleOsTagClick = (tag: string) => {
+    const newSelectedTags = selectedOsTags.includes(tag)
+      ? selectedOsTags.filter((t: string) => t !== tag)
+      : [...selectedOsTags, tag];
+    setSelectedOsTags(newSelectedTags);
+    fetchCollectorData({
+      searchValue: search,
+      appTag: selectedAppTag,
+      osTags: newSelectedTags,
+      sysTags: selectedSystemTags
+    });
+  };
+
   const handleSystemTagClick = (tag: string) => {
     const newSelectedTags = selectedSystemTags.includes(tag)
       ? selectedSystemTags.filter((t: string) => t !== tag)
       : [...selectedSystemTags, tag];
     setSelectedSystemTags(newSelectedTags);
-    fetchCollectorlist({
+    fetchCollectorData({
       searchValue: search,
       appTag: selectedAppTag,
-      sysTags: newSelectedTags,
+      osTags: selectedOsTags,
+      sysTags: newSelectedTags
     });
   };
 
   const handleAppTagChange = (value: string | number) => {
     const newAppTag = value as string;
     setSelectedAppTag(newAppTag);
-    fetchCollectorlist({
+    fetchCollectorData({
       searchValue: search,
       appTag: newAppTag,
+      osTags: selectedOsTags,
       sysTags: selectedSystemTags,
+      architectureValues: selectedArchitectureTags
+    });
+  };
+
+  const handleArchitectureTagClick = (tag: string) => {
+    const newSelectedTags = selectedArchitectureTags.includes(tag)
+      ? selectedArchitectureTags.filter((item) => item !== tag)
+      : [...selectedArchitectureTags, tag];
+    setSelectedArchitectureTags(newSelectedTags);
+    fetchCollectorData({
+      searchValue: search,
+      appTag: selectedAppTag,
+      osTags: selectedOsTags,
+      sysTags: selectedSystemTags,
+      architectureValues: newSelectedTags
     });
   };
 
@@ -270,14 +337,14 @@ const Collector = () => {
         openModal({
           title: t('node-manager.collector.addCollector'),
           type: 'add',
-          form: {},
-        }),
+          form: {}
+        })
     };
   };
 
   const onSearch = (searchValue: string) => {
     setSearch(searchValue);
-    fetchCollectorlist({ searchValue });
+    fetchCollectorData({ searchValue });
   };
 
   return (
@@ -300,7 +367,19 @@ const Collector = () => {
             )}
             <div className="flex items-center w-full">
               <div className="flex items-center flex-1 mr-[10px] overflow-x-auto">
-                {(systemTags || []).map((tag: any) => (
+                {(osTags || []).map((tag: any) => (
+                  <Tag
+                    key={tag.value}
+                    color={
+                      selectedOsTags.includes(tag.value) ? 'blue' : 'default'
+                    }
+                    className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
+                    onClick={() => handleOsTagClick(tag.value)}
+                  >
+                    {tag.label}
+                  </Tag>
+                ))}
+                {(kindTags || []).map((tag: any) => (
                   <Tag
                     key={tag.value}
                     color={
@@ -310,6 +389,20 @@ const Collector = () => {
                     }
                     className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
                     onClick={() => handleSystemTagClick(tag.value)}
+                  >
+                    {tag.label}
+                  </Tag>
+                ))}
+                {architectureTags.map((tag) => (
+                  <Tag
+                    key={tag.value}
+                    color={
+                      selectedArchitectureTags.includes(tag.value)
+                        ? 'blue'
+                        : 'default'
+                    }
+                    className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
+                    onClick={() => handleArchitectureTagClick(tag.value)}
                   >
                     {tag.label}
                   </Tag>

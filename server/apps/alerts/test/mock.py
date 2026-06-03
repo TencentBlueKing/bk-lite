@@ -13,9 +13,9 @@ import json
 def generate_mock_events(num_events=100):
     # 基础数据模板
     base_event = {
-        "title": "CPU Usage High",
-        "description": "CPU usage exceeded 80%",
-        "value": 85.0,
+        "title": "CPU Usage High22",
+        "description": "CPU usage exceeded 90%",
+        "value": 90.0,
         "item": "cpu_usage",
         "level": "0",
         "start_time": "1747277570",
@@ -26,14 +26,14 @@ def generate_mock_events(num_events=100):
         "status": "firing",
         "resource_id": 1,
         "resource_type": "host",
-        "resource_name": "host-1",
+        "resource_name": "host-90909",
         # 新增字段
         "service": "monitoring-service",
         "event_type": 1,  # EventType.ALERT
         "tags": {},
-        "location": "us-east-1",
+        "location": "us-east-12",
         "action": "created",
-        "rule_id": "cpu_threshold_rule",
+        "rule_id": "cpu_threshold_rule1",
         "push_source_id": "default",
         "event_id": "",  # 将在循环中生成唯一ID
         "assignee": [],
@@ -351,7 +351,7 @@ def generate_website_monitoring_events(num_websites=3):
 
 if __name__ == "__main__":
     # 生成100个mock事件
-    mock_data = generate_mock_events(5)
+    mock_data = generate_mock_events(10)
 
     with open("mock_monitor_events.json", "w") as f:
         json.dump(mock_data, f, indent=2)

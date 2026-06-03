@@ -2,6 +2,8 @@
 # @File: models.py
 # @Time: 2025/5/14 16:14
 # @Author: windyzhao
+import hashlib
+import json
 from zoneinfo import ZoneInfo
 
 from django.db import models
@@ -16,6 +18,7 @@ from apps.alerts.constants.constants import (
     EventType,
     IncidentOperate,
     IncidentStatus,
+    IncidentUpdateType,
     LevelType,
     SessionStatus,
 )
@@ -51,6 +54,7 @@ class Event(models.Model):
         default=EventAction.CREATED,
         help_text="事件动作",
     )
+    ingest_key = models.CharField(max_length=64, null=True, blank=True, db_index=True, help_text="接入幂等键")
     rule_id = models.CharField(max_length=100, null=True, blank=True, help_text="触发该事件的规则ID")
     # f"EVENT-{uuid.uuid4().hex}"
     event_id = models.CharField(max_length=100, unique=True, db_index=True, help_text="事件唯一ID")
@@ -67,6 +71,7 @@ class Event(models.Model):
     assignee = JSONField(default=list, blank=True, help_text="事件责任人")
     # note = models.TextField(null=True, blank=True, help_text="事件备注")
     value = models.FloatField(blank=True, null=True, verbose_name="事件值")
+    team = JSONField(default=list, help_text="归属组织")
 
     class Meta:
         db_table = "alerts_event"
@@ -75,10 +80,50 @@ class Event(models.Model):
             # 注意: JSONField 索引在部分数据库（如达梦）上不支持，通过 migrate_patch 处理
             models.Index(fields=["labels"], name="event_labels_gin"),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source", "push_source_id", "ingest_key"],
+                name="event_source_push_ingest_key_uniq",
+            ),
+        ]
         ordering = ["-received_at"]
 
     def __str__(self):
         return f"{self.title} ({self.level}) at {self.received_at}"
+
+    @staticmethod
+    def _normalize_ingest_component(value):
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    @classmethod
+    def build_ingest_key(cls, source_id, push_source_id, external_id, action, start_time):
+        if not source_id or not external_id or not action or not start_time:
+            return None
+
+        fingerprint = {
+            "source_id": source_id,
+            "push_source_id": cls._normalize_ingest_component(push_source_id),
+            "external_id": cls._normalize_ingest_component(external_id),
+            "action": cls._normalize_ingest_component(action),
+            "start_time": start_time.isoformat() if hasattr(start_time, "isoformat") else str(start_time),
+        }
+        return hashlib.sha256(json.dumps(fingerprint, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+    def calculate_ingest_key(self):
+        return self.build_ingest_key(
+            getattr(self, "source_id", None),
+            getattr(self, "push_source_id", None),
+            getattr(self, "external_id", None),
+            getattr(self, "action", None),
+            getattr(self, "start_time", None),
+        )
+
+    def save(self, *args, **kwargs):
+        if not self.ingest_key:
+            self.ingest_key = self.calculate_ingest_key()
+        super().save(*args, **kwargs)
 
 
 class Alert(models.Model):
@@ -119,6 +164,7 @@ class Alert(models.Model):
     # 核心指纹字段（用于聚合）
     fingerprint = models.CharField(max_length=32, db_index=True, help_text="告警指纹")  # group_by_field:group_by_value
     group_by_field = models.CharField(max_length=200, null=True, blank=True, help_text="聚合字段")
+    dimensions = JSONField(default=dict, help_text="聚合维度键值对")
     rule_id = models.CharField(max_length=256, null=True, blank=True, help_text="触发该事件的规则ID")
 
     # 会话窗口字段（用于自愈检查）
@@ -196,8 +242,10 @@ class Incident(MaintainerInfo):
         help_text="操作",
     )
     operator = JSONField(default=list, blank=True, help_text="处理人")
+    collaborators = JSONField(default=list, blank=True, help_text="协作者")
     # 核心指纹字段（用于聚合）
     fingerprint = models.CharField(max_length=32, null=True, blank=True, db_index=True, help_text="事件指纹")
+    team = JSONField(default=list, help_text="管理组织")
 
     class Meta:
         db_table = "alerts_incident"
@@ -236,3 +284,24 @@ class Level(models.Model):
 
     def __str__(self):
         return f"{self.level_name}({self.level_id})"
+
+
+class IncidentUpdate(models.Model):
+    """事故协作更新"""
+
+    incident = models.ForeignKey(Incident, on_delete=models.CASCADE, related_name="updates", help_text="关联事故")
+    parent = models.ForeignKey("self", on_delete=models.CASCADE, null=True, blank=True, related_name="replies", help_text="回复的父更新")
+    author = models.CharField(max_length=64, help_text="发布者")
+    update_type = models.CharField(max_length=32, choices=IncidentUpdateType.CHOICES, help_text="更新类型")
+    content = models.TextField(max_length=1000, help_text="更新内容")
+    attachments = JSONField(default=list, blank=True, help_text="附件列表")
+    is_key_info = models.BooleanField(default=False, help_text="是否标记为关键信息")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True, help_text="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, help_text="更新时间")
+
+    class Meta:
+        db_table = "alerts_incident_update"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.author} - {self.get_update_type_display()} ({self.created_at})"

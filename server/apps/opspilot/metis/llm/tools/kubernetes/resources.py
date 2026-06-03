@@ -196,15 +196,23 @@ def list_kubernetes_nodes(config: RunnableConfig):
 
 
 @tool()
-def list_kubernetes_deployments(namespace=None, config: RunnableConfig = None):
+def list_kubernetes_deployments(namespace=None, limit=30, offset=0, config: RunnableConfig = None):
     """
-    List deployments with optional namespace filter
+    List deployments with optional namespace filter and pagination.
 
     Args:
-        namespaces (list, optional): A list of namespace names to filter pods by.
-            If None, pods from all namespaces will be returned. Defaults to None.
+        namespace (str, optional): Namespace to filter. If None, returns all namespaces.
+        limit (int, optional): Maximum number of deployments to return (default 30, max 50).
+        offset (int, optional): Number of deployments to skip for pagination (default 0).
+        config (RunnableConfig): Configuration for the tool.
+
+    Returns:
+        JSON with fields: items (list), total (int), returned (int), offset (int), has_more (bool).
     """
     prepare_context(config)
+    limit = max(1, min(int(limit or 30), 50))
+    offset = max(0, int(offset or 0))
+
     apps_v1 = client.AppsV1Api()
     try:
         if namespace:
@@ -212,8 +220,12 @@ def list_kubernetes_deployments(namespace=None, config: RunnableConfig = None):
         else:
             deployments = apps_v1.list_deployment_for_all_namespaces()
 
+        all_items = deployments.items
+        total_count = len(all_items)
+        paged_items = all_items[offset:offset + limit]
+
         result = []
-        for deployment in deployments.items:
+        for deployment in paged_items:
             result.append(
                 {
                     "name": deployment.metadata.name,
@@ -227,7 +239,7 @@ def list_kubernetes_deployments(namespace=None, config: RunnableConfig = None):
                     "selector": deployment.spec.selector.match_labels if deployment.spec.selector else {},
                 }
             )
-        return json.dumps(result)
+        return json.dumps({"items": result, "total": total_count, "returned": len(result), "offset": offset, "has_more": (offset + len(result)) < total_count})
     except ApiException as e:
         return json.dumps({"error": f"获取Deployment列表失败: {str(e)}"})
 
@@ -397,6 +409,15 @@ def get_kubernetes_resource_yaml(namespace, resource_type, resource_name, config
 
         # Convert to dict and then to YAML
         resource_dict = client.ApiClient().sanitize_for_serialization(resource_data)
+
+        # 过滤冗余字段以减少 token 消耗和 Content Filter 触发风险
+        if "metadata" in resource_dict:
+            resource_dict["metadata"].pop("managedFields", None)
+            annotations = resource_dict["metadata"].get("annotations")
+            if isinstance(annotations, dict):
+                annotations.pop("kubectl.kubernetes.io/last-applied-configuration", None)
+        resource_dict.pop("status", None)
+
         yaml_str = yaml.dump(resource_dict, default_flow_style=False)
 
         return yaml_str
@@ -574,3 +595,113 @@ def get_kubernetes_previous_pod_logs(namespace, pod_name, container=None, lines=
             return f"获取 previous Pod 日志失败: {error_message}"
     except Exception as e:
         return f"获取 previous Pod 日志时发生未知错误: {str(e)}"
+
+
+@tool()
+def search_workload_across_namespaces(workload_name: str, config: RunnableConfig = None):
+    """
+    在所有已配置的集群和命名空间中搜索指定名称的工作负载（Deployment/StatefulSet/DaemonSet）。
+
+    **何时使用此工具：**
+    - 用户指定了工作负载名称但没有指定集群或命名空间
+    - 需要知道某个应用部署在哪些集群和命名空间中
+    - 判断某个应用是否全局唯一（只存在于一个集群的一个命名空间）
+    - **替代逐个空间调用 list_kubernetes_deployments 的方式，一次完成搜索**
+
+    **工具能力：**
+    - 自动遍历所有已配置的 Kubernetes 集群
+    - 在每个集群的所有命名空间中搜索
+    - 同时搜索 Deployment、StatefulSet、DaemonSet 三种工作负载类型
+    - 返回找到的位置列表（含集群名）和是否唯一的标志
+
+    **典型使用场景：**
+    1. 用户说"检查 scheduler 的配置" → 搜索发现只在 minikube/production 有 → 直接检查，不问用户
+    2. 用户说"检查 order-api 的配置" → 搜索发现在多个集群/空间 → 让用户选择
+
+    Args:
+        workload_name (str): 工作负载名称（必填），如 "order-api"、"scheduler"
+        config (RunnableConfig): 工具配置（自动传递）
+
+    Returns:
+        JSON格式，包含：
+        - workload_name: 搜索的工作负载名称
+        - found: 是否找到
+        - unique: 是否全局唯一（只在一个集群的一个命名空间中存在）
+        - locations: 找到的位置列表，每项包含 cluster、namespace、kind、replicas、ready_replicas
+        - total_count: 找到的总数
+    """
+    from apps.opspilot.metis.llm.tools.kubernetes.connection import get_kubernetes_instances_from_configurable
+
+    configurable = config.get("configurable", {}) if config else {}
+    instances = get_kubernetes_instances_from_configurable(configurable)
+
+    locations = []
+
+    def _search_current_cluster(cluster_name):
+        """Search for the workload in the currently loaded cluster context."""
+        try:
+            apps_v1 = client.AppsV1Api()
+
+            for dep in apps_v1.list_deployment_for_all_namespaces().items:
+                if dep.metadata.name == workload_name:
+                    locations.append({
+                        "cluster": cluster_name,
+                        "namespace": dep.metadata.namespace,
+                        "kind": "Deployment",
+                        "replicas": dep.spec.replicas,
+                        "ready_replicas": dep.status.ready_replicas or 0,
+                    })
+
+            for sts in apps_v1.list_stateful_set_for_all_namespaces().items:
+                if sts.metadata.name == workload_name:
+                    locations.append({
+                        "cluster": cluster_name,
+                        "namespace": sts.metadata.namespace,
+                        "kind": "StatefulSet",
+                        "replicas": sts.spec.replicas,
+                        "ready_replicas": sts.status.ready_replicas or 0,
+                    })
+
+            for ds in apps_v1.list_daemon_set_for_all_namespaces().items:
+                if ds.metadata.name == workload_name:
+                    locations.append({
+                        "cluster": cluster_name,
+                        "namespace": ds.metadata.namespace,
+                        "kind": "DaemonSet",
+                        "replicas": ds.status.desired_number_scheduled or 0,
+                        "ready_replicas": ds.status.number_ready or 0,
+                    })
+        except ApiException as e:
+            logger.warning("搜索集群 %s 中的工作负载失败: %s", cluster_name, str(e))
+
+    if instances and len(instances) > 0:
+        # Multi-instance: iterate through all configured clusters
+        for instance in instances:
+            cluster_name = instance.get("name", "unknown")
+            try:
+                kubeconfig_data = instance.get("kubeconfig_data", "")
+                if kubeconfig_data:
+                    from kubernetes import config as kube_config
+                    from apps.opspilot.metis.llm.tools.kubernetes.utils import _preprocess_kubeconfig
+                    import io as _io
+
+                    if isinstance(kubeconfig_data, str):
+                        kubeconfig_data = kubeconfig_data.replace("\\n", "\n")
+                    kubeconfig_data = _preprocess_kubeconfig(kubeconfig_data)
+                    kubeconfig_io = _io.StringIO(kubeconfig_data)
+                    kube_config.load_kube_config(config_file=kubeconfig_io)
+                    _search_current_cluster(cluster_name)
+            except Exception as e:
+                logger.warning("加载集群 %s 配置失败: %s", cluster_name, str(e))
+    else:
+        # Single instance or default kubeconfig
+        prepare_context(config)
+        _search_current_cluster("default")
+
+    return json.dumps({
+        "workload_name": workload_name,
+        "found": len(locations) > 0,
+        "unique": len(locations) == 1,
+        "locations": locations,
+        "total_count": len(locations),
+    })

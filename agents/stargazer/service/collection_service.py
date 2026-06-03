@@ -138,6 +138,7 @@ class CollectionService:
                 strict_enterprise=strict_enterprise,
             )
             result = await executor.execute()
+            logger.info("Raw collection result: {}".format(result))
 
             if self.params.get("callback_subject"):
                 logger.info("✅ Collection completed successfully (callback mode)")
@@ -346,7 +347,7 @@ class CollectionService:
             return
 
         try:
-            exec_params = {"args": [{"page_size": -1}], "kwargs": {}}
+            exec_params = {"args": [{"page_size": -1, "skip_permission": True}], "kwargs": {}}
             subject = f"{self.namespace}.node_list"
             payload = json.dumps(exec_params).encode()
 

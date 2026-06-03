@@ -2,8 +2,9 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import ChartLegend from '../components/chartLegend';
 import { Spin, Empty } from 'antd';
-import { randomColorForLegend } from '@/app/log/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/log/utils/chartDataTransform';
+import useChartColors from './docker/useChartColors';
+import { createSoftLineArea } from './chartStyle';
 
 const LEGEND_WIDTH_CLASS = 'w-40';
 const LEGEND_WIDTH_PX = 160; // w-40 = 10rem = 160px
@@ -29,7 +30,8 @@ const TrendLine: React.FC<TrendLineProps> = ({
   const chartRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
-  const chartColors = randomColorForLegend();
+  const colors = useChartColors();
+  const seriesColors = colors.series;
 
   const containerCallbackRef = useCallback((node: HTMLDivElement | null) => {
     if (observerRef.current) {
@@ -92,7 +94,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
   }, [chartData, loading, onReady]);
 
   const option: any = {
-    color: chartColors,
+    color: seriesColors,
     animation: false,
     calculable: true,
     title: { show: false },
@@ -102,11 +104,12 @@ const TrendLine: React.FC<TrendLineProps> = ({
     toolbox: { show: false },
     tooltip: {
       trigger: 'axis',
+      appendToBody: true,
       axisPointer: {
         type: 'cross'
       },
       enterable: true,
-      confine: true,
+      confine: false,
       extraCssText: 'box-shadow: 0 0 3px rgba(150,150,150, 0.7);',
       textStyle: {
         fontSize: 12
@@ -148,7 +151,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
       axisLabel: {
         margin: 15,
         textStyle: {
-          color: '#7f92a7',
+          color: colors.axisLabel,
           fontSize: 11
         },
         rotate: 0,
@@ -159,7 +162,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
       },
       axisLine: {
         lineStyle: {
-          color: '#e8e8e8'
+          color: colors.axisLine
         }
       },
       axisTick: {
@@ -168,7 +171,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
       splitLine: {
         show: false,
         lineStyle: {
-          color: '#f0f0f0'
+          color: colors.splitLine
         }
       }
     },
@@ -189,13 +192,13 @@ const TrendLine: React.FC<TrendLineProps> = ({
           return value.toString();
         },
         textStyle: {
-          color: '#7f92a7'
+          color: colors.axisLabel
         }
       },
       splitLine: {
         show: true,
         lineStyle: {
-          color: '#f0f0f0',
+          color: colors.splitLine,
           type: 'solid'
         }
       }
@@ -218,23 +221,9 @@ const TrendLine: React.FC<TrendLineProps> = ({
       },
       areaStyle: {
         opacity: areaOpacity,
-        color: {
-          type: 'linear',
-          x: 0,
-          y: 0,
-          x2: 0,
-          y2: 1,
-          colorStops: [
-            {
-              offset: 0,
-              color: chartColors[index % chartColors.length] || '#1890ff'
-            },
-            {
-              offset: 1,
-              color: 'rgba(255, 255, 255, 0)'
-            }
-          ]
-        }
+        color: createSoftLineArea(
+          seriesColors[index % seriesColors.length] || colors.primary
+        ).color
       },
       emphasis: {
         focus: 'series'
@@ -253,23 +242,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
         },
         areaStyle: {
           opacity: areaOpacity,
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              {
-                offset: 0,
-                color: chartColors[0] || '#1890ff'
-              },
-              {
-                offset: 1,
-                color: 'rgba(255, 255, 255, 0)'
-              }
-            ]
-          }
+          color: createSoftLineArea(seriesColors[0] || colors.primary).color
         },
         emphasis: {
           focus: 'series'
@@ -318,7 +291,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
           <ChartLegend
             chart={chartInstance}
             data={chartData.series}
-            colors={chartColors}
+            colors={seriesColors}
           />
         </div>
       )}

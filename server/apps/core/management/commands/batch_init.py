@@ -22,7 +22,7 @@ class Command(BaseCommand):
 
         # 如果为空，初始化所有应用
         if not apps:
-            apps_list = ["system_mgmt", "cmdb", "monitor", "node_mgmt", "alerts", "operation_analysis", "opspilot", "log"]
+            apps_list = ["system_mgmt", "cmdb", "monitor", "node_mgmt", "alerts", "operation_analysis", "opspilot", "log", "mlops"]
         else:
             apps_list = [app.strip() for app in apps.split(",")]
 
@@ -52,6 +52,8 @@ class Command(BaseCommand):
                     self._init_opspilot()
                 elif app == "log":
                     self._init_log()
+                elif app == "mlops":
+                    self._init_mlops()
                 else:
                     self.stdout.write(self.style.WARNING(f"未知模块: {app}"))
             except Exception as e:
@@ -111,6 +113,7 @@ class Command(BaseCommand):
         call_command("init_alert_sources")
         call_command("init_alert_levels")
         call_command("init_system_settings")
+        call_command("init_alert_rules")
 
     def _init_operation_analysis(self):
         """运营分析系统资源初始化"""
@@ -131,6 +134,11 @@ class Command(BaseCommand):
         """日志模块初始化"""
         self.stdout.write("日志模块初始化...")
         call_command("log_init")
+
+    def _init_mlops(self):
+        """MLOPS资源初始化"""
+        self.stdout.write("MLOPS资源初始化...")
+        call_command("init_algorithm_config")
 
     def _preload_language_cache(self):
         """预热语言缓存"""

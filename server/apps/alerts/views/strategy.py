@@ -7,6 +7,7 @@ from apps.alerts.filters import AlarmStrategyModelFilter
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.operator_log import OperatorLog
 from apps.alerts.serializers import AlarmStrategySerializer
+from apps.alerts.utils.permission_scope import apply_team_scope_for_request
 from apps.core.decorators.api_permission import HasPermission
 from config.drf.pagination import CustomPageNumberPagination
 from apps.core.logger import alert_logger as logger
@@ -22,9 +23,25 @@ class AlarmStrategyModelViewSet(viewsets.ModelViewSet):
     ordering = ["-created_at"]
     pagination_class = CustomPageNumberPagination
 
+    def get_queryset(self):
+        queryset = AlarmStrategy.objects.all()
+        request = getattr(self, "request", None)
+        if request is None:
+            return queryset
+
+        user = getattr(request, "user", None)
+        if getattr(user, "is_superuser", False):
+            return queryset
+
+        return apply_team_scope_for_request(queryset, request, field_name="team")
+
     @HasPermission("correlation_rules-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @HasPermission("correlation_rules-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
 
     @HasPermission("correlation_rules-Add")
     @transaction.atomic
@@ -93,6 +110,15 @@ class AlarmStrategyModelViewSet(viewsets.ModelViewSet):
     @HasPermission("correlation_rules-Edit")
     @transaction.atomic
     def update(self, request, *args, **kwargs):
+        return self._update_strategy(request, *args, **kwargs)
+
+    @HasPermission("correlation_rules-Edit")
+    @transaction.atomic
+    def partial_update(self, request, *args, **kwargs):
+        kwargs["partial"] = True
+        return self._update_strategy(request, *args, **kwargs)
+
+    def _update_strategy(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
 

@@ -9,7 +9,12 @@ include = [{{ include | map('tojson') | join(', ') }}]
 {% if exclude %}
 exclude = [{{ exclude | map('tojson') | join(', ') }}]
 {% endif %}
+{% set os_name = (operating_system | default('', true) | lower) %}
+{% if os_name == "windows" %}
+data_dir = "C:\\fusion-collectors"
+{% else %}
 data_dir = "/opt/fusion-collectors"
+{% endif %}
 {% if ignore_older_secs %}
 ignore_older_secs = {{ ignore_older_secs }}
 {% endif %}
@@ -82,7 +87,11 @@ password = "${NATS_PASSWORD}"
 [sinks.vmlogs_{{ component_suffix }}.tls]
 enabled = true
 verify_certificate = true
+{% if os_name == "windows" %}
+ca_file = "${NATS_TLS_CA_WIN_FILE}"
+{% else %}
 ca_file = "${NATS_TLS_CA_FILE}"
+{% endif %}
 {% endif %}
 
 [sinks.vmlogs_{{ component_suffix }}.encoding]

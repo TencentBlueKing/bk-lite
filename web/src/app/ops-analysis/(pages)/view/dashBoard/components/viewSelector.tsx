@@ -1,16 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Menu, List, Input, Spin, Empty, Tag } from 'antd';
-import {
-  LineChartOutlined,
-  BarChartOutlined,
-  PieChartOutlined,
-  NumberOutlined,
-  DashboardOutlined,
-  LockOutlined,
-} from '@ant-design/icons';
+import { LockOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { ComponentSelectorProps } from '@/app/ops-analysis/types/dashBoard';
-import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
+import { TagItem } from '@/app/ops-analysis/types/namespace';
+import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
+import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
 import type {
   DatasourceItem,
   ChartType,
@@ -24,89 +19,102 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
   const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
+  const [hoveredDatasourceId, setHoveredDatasourceId] = useState<number | null>(
+    null,
+  );
   const [currentDataSources, setCurrentDataSources] = useState<
     DatasourceItem[]
   >([]);
+  const [tagList, setTagList] = useState<TagItem[]>([]);
+  const [tagsLoading, setTagsLoading] = useState(false);
+  const [dataSourcesLoading, setDataSourcesLoading] = useState(false);
 
-  const {
-    tagList,
-    tagsLoading,
-    fetchTags,
-    fetchDataSources,
-    dataSources,
-    dataSourcesLoading,
-  } = useOpsAnalysis();
+  const { getDataSourceBriefList } = useDataSourceApi();
+  const { getTagList } = useNamespaceApi();
 
-  const getChartIcon = (chartTypes: ChartType[]) => {
-    const iconClass = 'text-[16px] text-[var(--color-primary)]';
+  const chartTypeLabels: Record<string, string> = {
+    line: t('dataSource.lineChart'),
+    bar: t('dataSource.barChart'),
+    pie: t('dataSource.pieChart'),
+    single: t('dataSource.singleValue'),
+    table: t('dataSource.table'),
+    topN: t('dataSource.topN'),
+  };
 
-    const iconMap = {
-      line: <LineChartOutlined className={iconClass} />,
-      bar: <BarChartOutlined className={iconClass} />,
-      pie: <PieChartOutlined className={iconClass} />,
-      single: <NumberOutlined className={iconClass} />,
-    };
-
-    if (!chartTypes?.length) {
-      return (
-        <DashboardOutlined className="text-[20px] text-[var(--color-primary)]" />
-      );
-    }
-
-    const icons = chartTypes.map((type, index) => (
-      <span key={index} className="inline-block">
-        {iconMap[type as keyof typeof iconMap] || (
-          <DashboardOutlined className={iconClass} />
-        )}
-      </span>
-    ));
-
-    return <div className="flex gap-1">{icons}</div>;
+  const getChartTags = (chartTypes: ChartType[]) => {
+    if (!chartTypes?.length) return null;
+    return (
+      <div className="flex gap-1.5 flex-wrap pt-0.5">
+        {chartTypes.map((type, index) => (
+          <Tag
+            key={index}
+            bordered={false}
+            className="m-0 rounded-full border border-(--color-border-3) bg-(--color-fill-3) px-2 py-0 text-xs font-medium leading-5 text-(--color-text-2) shadow-sm"
+          >
+            {chartTypeLabels[type] || type}
+          </Tag>
+        ))}
+      </div>
+    );
   };
 
   useEffect(() => {
+    const fetchTags = async () => {
+      try {
+        setTagsLoading(true);
+        const response = await getTagList({ page_size: -1 });
+        setTagList(Array.isArray(response) ? response : []);
+      } catch (error) {
+        console.error('获取标签列表失败:', error);
+        setTagList([]);
+      } finally {
+        setTagsLoading(false);
+      }
+    };
+
     if (visible) {
-      void fetchTags();
-      void fetchDataSources();
+      if (tagList.length === 0) {
+        void fetchTags();
+      }
     } else {
-      setSelectedTagId(null);
-      setCurrentDataSources([]);
+      setHoveredDatasourceId(null);
       setSearch('');
     }
-  }, [visible, fetchDataSources, fetchTags]);
+  }, [getTagList, visible]);
 
   useEffect(() => {
-    if (!selectedTagId) {
-      setCurrentDataSources([]);
-      return;
-    }
-
-    const nextDataSources = dataSources.filter((item) => {
-      if (!Array.isArray(item.tag)) {
-        return false;
+    const fetchBriefList = async () => {
+      if (!selectedTagId) {
+        setCurrentDataSources([]);
+        return;
       }
 
-      return item.tag.some((tag) => {
-        if (typeof tag === 'number' || typeof tag === 'string') {
-          return Number(tag) === selectedTagId;
-        }
+      try {
+        setDataSourcesLoading(true);
+        const response = await getDataSourceBriefList({
+          tags: selectedTagId,
+          search: search.trim() || undefined,
+          page_size: -1,
+        });
+        setCurrentDataSources(Array.isArray(response) ? response : []);
+      } catch (error) {
+        console.error('获取数据源候选列表失败:', error);
+        setCurrentDataSources([]);
+      } finally {
+        setDataSourcesLoading(false);
+      }
+    };
 
-        return Number((tag as { id?: number | string })?.id) === selectedTagId;
-      });
-    });
-    setCurrentDataSources(nextDataSources);
-  }, [dataSources, selectedTagId]);
+    if (visible && selectedTagId) {
+      void fetchBriefList();
+    }
+  }, [getDataSourceBriefList, search, selectedTagId]);
 
   useEffect(() => {
     if (visible && tagList.length > 0 && !selectedTagId) {
       setSelectedTagId(tagList[0].id);
     }
   }, [visible, tagList, selectedTagId]);
-
-  const filteredDataSources = currentDataSources.filter(
-    (item: DatasourceItem) =>
-      item.name.toLowerCase().includes(search.toLowerCase())
-  );
 
   const handleTagSelect = (tagItemId: number) => {
     setSelectedTagId(tagItemId);
@@ -129,7 +137,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
       open={visible}
       onCancel={onCancel}
       footer={null}
-      width={680}
+      width={700}
       style={{ top: '16%' }}
       styles={{ body: { height: '50vh', overflowY: 'hidden' } }}
     >
@@ -176,7 +184,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
             <div className="h-96 overflow-y-auto">
               <List
                 size="small"
-                dataSource={filteredDataSources}
+                dataSource={currentDataSources}
                 locale={{
                   emptyText: (
                     <Empty
@@ -187,13 +195,35 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
                 }}
                 renderItem={(item: DatasourceItem) => (
                   <List.Item
-                    className="cursor-pointer hover:bg-blue-50 flex items-center gap-3 justify-between p-3 border border-gray-200 rounded mb-2 last:mb-0"
-                    onClick={() => handleConfig(item)}
+                    className={`flex items-center gap-3 justify-between p-3 rounded mb-2 last:mb-0 transition-colors ${item.hasAuth === false ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                    style={{
+                      border: '1px solid var(--color-border-1)',
+                      backgroundColor:
+                        hoveredDatasourceId === item.id
+                          ? 'var(--color-fill-2)'
+                          : 'var(--color-fill-1)',
+                    }}
+                    onMouseEnter={() => {
+                      if (item.hasAuth !== false) {
+                        setHoveredDatasourceId(item.id);
+                      }
+                    }}
+                    onMouseLeave={() => {
+                      if (hoveredDatasourceId === item.id) {
+                        setHoveredDatasourceId(null);
+                      }
+                    }}
+                    onClick={() => item.hasAuth !== false && handleConfig(item)}
                   >
-                    <div className="flex flex-col gap-1 leading-relaxed flex-1">
+                    <div className="flex flex-col gap-1 leading-relaxed w-full">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium leading-5">
+                        <span className="font-medium leading-5 text-(--color-text-1) break-all">
                           {item.name}
+                          {item.rest_api && (
+                            <span className="font-normal text-xs text-gray-400 ml-1">
+                              ({item.rest_api})
+                            </span>
+                          )}
                         </span>
                         {item.hasAuth === false && (
                           <Tag icon={<LockOutlined />} color="warning">
@@ -201,11 +231,13 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
                           </Tag>
                         )}
                       </div>
-                      <span className="text-xs text-[var(--color-text-2)] leading-4">
-                        {item.desc || '--'}
-                      </span>
+                      {item.desc ? (
+                        <span className="text-xs text-(--color-text-2) leading-4">
+                          {item.desc}
+                        </span>
+                      ) : null}
+                      {getChartTags(item.chart_type)}
                     </div>
-                    {getChartIcon(item.chart_type)}
                   </List.Item>
                 )}
               />

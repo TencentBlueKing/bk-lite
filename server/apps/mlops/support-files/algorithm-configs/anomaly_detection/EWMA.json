@@ -1,0 +1,304 @@
+{
+  "name": "EWMA",
+  "display_name": "EWMA",
+  "image": "bk-lite.tencentcloudcr.com/bklite/classify_anomaly_server:latest",
+  "scenario_description": "适用于运营指标与资源监控场景，可检测单变量时间序列中的渐进式异常，如 CPU/内存使用率持续爬升、接口时延逐步恶化、业务流量缓慢偏离历史基线等场景，帮助识别非突发但持续扩大的异常趋势。",
+  "form_config": {
+    "groups": {
+      "hyperparams": [
+        {
+          "title": "基础配置",
+          "fields": [
+            {
+              "name": [
+                "hyperparams",
+                "metric"
+              ],
+              "type": "select",
+              "label": "优化指标",
+              "options": [
+                {
+                  "label": "F1 Score (F1分数)",
+                  "value": "f1"
+                },
+                {
+                  "label": "Precision (精确率)",
+                  "value": "precision"
+                },
+                {
+                  "label": "Recall (召回率)",
+                  "value": "recall"
+                },
+                {
+                  "label": "AUC-ROC (ROC曲线下面积)",
+                  "value": "auc"
+                },
+                {
+                  "label": "Drift Precision (漂移段精确率)",
+                  "value": "drift_precision"
+                },
+                {
+                  "label": "Drift Recall (漂移段召回率)",
+                  "value": "drift_recall"
+                },
+                {
+                  "label": "Drift F1 (漂移段F1)",
+                  "value": "drift_f1"
+                }
+              ],
+              "required": true,
+              "placeholder": "选择优化目标指标",
+              "defaultValue": "drift_f1"
+            },
+            {
+              "max": 2147483647,
+              "min": 0,
+              "name": [
+                "hyperparams",
+                "random_state"
+              ],
+              "step": 1,
+              "type": "inputNumber",
+              "label": "随机种子",
+              "tooltip": "控制随机性，确保实验可复现。相同种子+相同参数=相同结果",
+              "required": true,
+              "placeholder": "例: 42",
+              "defaultValue": 42
+            },
+            {
+              "max": 10000,
+              "min": 1,
+              "name": [
+                "hyperparams",
+                "max_evals"
+              ],
+              "step": 1,
+              "type": "inputNumber",
+              "label": "最大评估次数",
+              "tooltip": "超参数搜索时允许的最大评估次数，用于控制搜索成本与训练时长",
+              "required": true,
+              "placeholder": "例: 50",
+              "defaultValue": 50
+            },
+            {
+              "name": [
+                "hyperparams",
+                "scale_method"
+              ],
+              "type": "select",
+              "label": "波动缩放方式",
+              "options": [
+                {
+                  "label": "Rolling Std (滚动标准差)",
+                  "value": "rolling_std"
+                }
+              ],
+              "tooltip": "EWMA 当前固定使用 rolling_std 对偏离程度做标准化缩放",
+              "required": true,
+              "placeholder": "选择波动缩放方式",
+              "defaultValue": "rolling_std"
+            },
+            {
+              "max": 1000000,
+              "min": 0.1,
+              "name": [
+                "hyperparams",
+                "severity_cap"
+              ],
+              "step": 0.1,
+              "type": "inputNumber",
+              "label": "严重度上限",
+              "tooltip": "用于将异常分数线性映射到 anomaly_severity，超过该值的分数将被截断到 1.0",
+              "required": true,
+              "placeholder": "例: 10.0",
+              "defaultValue": 10
+            }
+          ]
+        },
+        {
+          "title": "搜索空间 (Search Space)",
+          "fields": [
+            {
+              "name": [
+                "hyperparams",
+                "search_space",
+                "alpha"
+              ],
+              "type": "stringArray",
+              "label": "EWMA 平滑系数",
+              "tooltip": "控制模型对最新观测值的敏感度。值越大越强调最新数据，越小越平滑",
+              "required": true,
+              "placeholder": "例: 0.1,0.2,0.3,0.5",
+              "defaultValue": "0.1,0.2,0.3,0.5"
+            },
+            {
+              "name": [
+                "hyperparams",
+                "search_space",
+                "scale_window"
+              ],
+              "type": "stringArray",
+              "label": "滚动标准差窗口",
+              "tooltip": "用于计算 rolling_std 的窗口大小。窗口越大，波动估计越平滑",
+              "required": true,
+              "placeholder": "例: 10,20,30",
+              "defaultValue": "10,20,30"
+            },
+            {
+              "name": [
+                "hyperparams",
+                "search_space",
+                "threshold"
+              ],
+              "type": "stringArray",
+              "label": "异常阈值",
+              "tooltip": "标准化偏离分数超过该阈值时视为候选异常点，阈值越高越保守",
+              "required": true,
+              "placeholder": "例: 2.0,3.0,4.0",
+              "defaultValue": "2.0,3.0,4.0"
+            },
+            {
+              "name": [
+                "hyperparams",
+                "search_space",
+                "n_consecutive"
+              ],
+              "type": "stringArray",
+              "label": "连续异常点数",
+              "tooltip": "只有连续达到指定数量的候选异常点才会被判定为最终异常，用于过滤短暂抖动",
+              "required": true,
+              "placeholder": "例: 1,3,5",
+              "defaultValue": "1,3,5"
+            }
+          ]
+        },
+        {
+          "title": "",
+          "fields": [
+            {
+              "name": [
+                "hyperparams",
+                "use_feature_engineering"
+              ],
+              "type": "switch",
+              "label": "启用特征工程",
+              "layout": "horizontal",
+              "tooltip": "EWMA 当前要求关闭特征工程，直接基于原始单变量序列进行检测",
+              "disabled": true,
+              "defaultValue": false
+            }
+          ],
+          "subtitle": "特征工程"
+        }
+      ],
+      "preprocessing": [
+        {
+          "title": "数据预处理 (Preprocessing)",
+          "fields": [
+            {
+              "name": [
+                "preprocessing",
+                "handle_missing"
+              ],
+              "type": "select",
+              "label": "缺失值处理",
+              "options": [
+                {
+                  "label": "线性插值 (interpolate)",
+                  "value": "interpolate"
+                },
+                {
+                  "label": "前向填充 (ffill)",
+                  "value": "ffill"
+                },
+                {
+                  "label": "后向填充 (bfill)",
+                  "value": "bfill"
+                },
+                {
+                  "label": "删除 (drop)",
+                  "value": "drop"
+                },
+                {
+                  "label": "中位数填充 (median)",
+                  "value": "median"
+                }
+              ],
+              "required": true,
+              "placeholder": "选择缺失值处理方式",
+              "defaultValue": "interpolate"
+            },
+            {
+              "max": 1,
+              "min": 0,
+              "name": [
+                "preprocessing",
+                "max_missing_ratio"
+              ],
+              "step": 0.1,
+              "type": "inputNumber",
+              "label": "最大缺失率",
+              "tooltip": "数据缺失比例超过此阈值将拒绝训练",
+              "required": true,
+              "placeholder": "0.0 - 1.0",
+              "defaultValue": 0.3
+            },
+            {
+              "max": 100,
+              "min": 1,
+              "name": [
+                "preprocessing",
+                "interpolation_limit"
+              ],
+              "step": 1,
+              "type": "inputNumber",
+              "label": "插值限制",
+              "tooltip": "连续缺失值最多插值的数量，超过此数量的连续缺失不进行插值。推荐范围: 1-100",
+              "required": true,
+              "placeholder": "例: 5",
+              "defaultValue": 5
+            },
+            {
+              "name": [
+                "preprocessing",
+                "label_column"
+              ],
+              "type": "input",
+              "label": "标签列名",
+              "tooltip": "数据集中标签列的名称，用于区分正常和异常样本",
+              "required": true,
+              "placeholder": "例: label",
+              "defaultValue": "label"
+            }
+          ]
+        }
+      ],
+      "feature_engineering": [
+        {
+          "title": "特征工程 (Feature Engineering)",
+          "fields": [
+            {
+              "name": [
+                "feature_engineering",
+                "notice"
+              ],
+              "type": "input",
+              "label": "说明",
+              "tooltip": "EWMA 当前不支持特征工程配置，训练时需保持关闭",
+              "disabled": true,
+              "required": false,
+              "placeholder": "EWMA 当前不支持特征工程",
+              "defaultValue": "EWMA 当前不支持特征工程，请保持 hyperparams.use_feature_engineering=false",
+              "dependencies": [
+                [
+                  "hyperparams",
+                  "use_feature_engineering"
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

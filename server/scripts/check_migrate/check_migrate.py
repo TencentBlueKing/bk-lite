@@ -210,13 +210,19 @@ def main(argv=None):
         parser.add_argument("filenames", nargs="*")
         args = parser.parse_args(argv)
         field_library = get_field_library()
+        project_dir = os.path.dirname(os.path.dirname(BASE_DIR))
+        repo_dir = os.path.dirname(project_dir)
         result = []
         for file_path in args.filenames:
             directory = file_path.split(os.sep)
             if len(directory) > 1:
                 if directory[-2] == "migrations" and directory[-1].endswith(".py"):
-                    base_dir = os.path.dirname(os.path.dirname(BASE_DIR))
-                    full_path = os.path.join(base_dir, file_path)
+                    project_relative_path = os.path.join(project_dir, file_path)
+                    repo_relative_path = os.path.join(repo_dir, file_path)
+                    if os.path.exists(project_relative_path):
+                        full_path = project_relative_path
+                    else:
+                        full_path = repo_relative_path
                     create_err_field = handle_create_model(full_path, field_library)
                     alter_err_field = handle_add_alter_model(full_path, field_library)
                     rename_err_field = handle_rename_model(full_path, field_library)

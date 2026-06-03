@@ -66,6 +66,9 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
     allUsers,
     loadingUsers,
     loadUsers,
+    memorySpaces,
+    loadingMemorySpaces,
+    loadMemorySpaces,
   } = useNodeConfigData();
 
   const paramRows = useKeyValueRows([{ key: '', value: '' }]);
@@ -130,6 +133,11 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
         setNotificationType(type);
         loadChannels(type);
         loadUsers();
+      }
+
+      // 加载记忆空间列表（记忆读取/写入节点）
+      if (node.data.type === 'memory_read' || node.data.type === 'memory_write') {
+        loadMemorySpaces();
       }
     } else {
       form.resetFields();
@@ -238,6 +246,8 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
             loadChannels={loadChannels}
             allUsers={allUsers}
             loadingUsers={loadingUsers}
+            memorySpaces={memorySpaces}
+            loadingMemorySpaces={loadingMemorySpaces}
             form={form}
           />
         )}

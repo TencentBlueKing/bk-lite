@@ -2,6 +2,7 @@
     const navItems = [
         { key: 'workspace', label: '工作台', href: '../工作台/工作台.html', icon: 'workspace' },
         { key: 'agent', label: '智能体', href: '../智能体/智能体.html', icon: 'agent' },
+        { key: 'memory', label: '记忆', href: '../记忆/记忆.html', icon: 'memory' },
         { key: 'knowledge', label: '知识库', href: '../知识库/知识库.html', icon: 'knowledge' },
         { key: 'tool', label: '工具', href: '../工具/工具.html', icon: 'tool' },
         { key: 'model', label: '模型', href: '../模型/模型.html', icon: 'model' }
@@ -444,6 +445,7 @@
     function getIcon(name) {
         const icons = {
             workspace: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"></rect><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"></rect><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"></rect><rect x="9" y="9" width="4.5" height="4.5" rx="1"></rect></svg>',
+            memory: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.25h6.1L12.75 6.9V12A1.25 1.25 0 0 1 11.5 13.25H4.25A1.25 1.25 0 0 1 3 12z"></path><path d="M9.1 3.25V6.9h3.65"></path><path d="M5.3 8.1h4.8"></path><path d="M5.3 10.1h3.8"></path></svg>',
             agent: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="4" width="10" height="8" rx="2"></rect><path d="M8 1.75v1.5"></path><path d="M5.6 7.7h0.01"></path><path d="M10.4 7.7h0.01"></path><path d="M6 10.4h4"></path></svg>',
             knowledge: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.25 3.25h6a1.5 1.5 0 0 1 1.5 1.5v7.5h-6a1.5 1.5 0 0 0-1.5 1.5z"></path><path d="M4.25 3.25v9"></path></svg>',
             tool: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.8 2.3a3 3 0 0 0 1.35 4.2L6.7 10.95a1.5 1.5 0 1 0 2.12 2.12l4.45-4.45A3 3 0 1 0 9.8 2.3z"></path></svg>',
@@ -458,6 +460,10 @@
 
     function getActiveKey() {
         const pathname = decodeURIComponent(window.location.pathname);
+
+        if (pathname.includes('/记忆/')) {
+            return 'memory';
+        }
 
         if (pathname.includes('/智能体/')) {
             return 'agent';

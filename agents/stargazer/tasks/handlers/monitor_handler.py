@@ -6,13 +6,16 @@
 监控指标采集任务处理器
 处理 VMware、QCloud 等监控平台的指标采集任务
 """
+
 import time
 import traceback
 from typing import Dict, Any
 from sanic.log import logger
 
 
-async def collect_vmware_metrics_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[str, Any]:
+async def collect_vmware_metrics_task(
+    ctx: Dict, params: Dict[str, Any], task_id: str
+) -> Dict[str, Any]:
     """
     VMware 监控指标采集任务处理器
 
@@ -35,7 +38,9 @@ async def collect_vmware_metrics_task(ctx: Dict, params: Dict[str, Any], task_id
         collector = VmwareCollector(params)
         metrics_data = await collector.collect()
 
-        logger.info(f"[VMware Task] {task_id} completed, data size: {len(metrics_data)} bytes")
+        logger.info(
+            f"[VMware Task] {task_id} completed, data size: {len(metrics_data)} bytes"
+        )
 
         # 推送到 NATS
         await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
@@ -45,11 +50,13 @@ async def collect_vmware_metrics_task(ctx: Dict, params: Dict[str, Any], task_id
             "status": "success",
             "monitor_type": "vmware_vc",
             "data_size": len(metrics_data),
-            "completed_at": int(time.time() * 1000)
+            "completed_at": int(time.time() * 1000),
         }
 
     except Exception as e:
-        logger.error(f"[VMware Task] {task_id} failed: {str(e)}\n{traceback.format_exc()}")
+        logger.error(
+            f"[VMware Task] {task_id} failed: {str(e)}\n{traceback.format_exc()}"
+        )
 
         from tasks.utils.nats_helper import publish_metrics_to_nats
         from tasks.utils.metrics_helper import generate_monitor_error_metrics
@@ -65,11 +72,13 @@ async def collect_vmware_metrics_task(ctx: Dict, params: Dict[str, Any], task_id
             "status": "failed",
             "error": str(e),
             "monitor_type": "vmware_vc",
-            "completed_at": int(time.time() * 1000)
+            "completed_at": int(time.time() * 1000),
         }
 
 
-async def collect_qcloud_metrics_task(ctx: Dict, params: Dict[str, Any], task_id: str) -> Dict[str, Any]:
+async def collect_qcloud_metrics_task(
+    ctx: Dict, params: Dict[str, Any], task_id: str
+) -> Dict[str, Any]:
     """
     QCloud 监控指标采集任务处理器
 
@@ -92,7 +101,9 @@ async def collect_qcloud_metrics_task(ctx: Dict, params: Dict[str, Any], task_id
         collector = QCloudCollector(params)
         metrics_data = await collector.collect()
 
-        logger.info(f"[QCloud Task] {task_id} completed, data size: {len(metrics_data)} bytes")
+        logger.info(
+            f"[QCloud Task] {task_id} completed, data size: {len(metrics_data)} bytes"
+        )
 
         # 推送到 NATS
         await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
@@ -102,11 +113,13 @@ async def collect_qcloud_metrics_task(ctx: Dict, params: Dict[str, Any], task_id
             "status": "success",
             "monitor_type": "qcloud",
             "data_size": len(metrics_data),
-            "completed_at": int(time.time() * 1000)
+            "completed_at": int(time.time() * 1000),
         }
 
     except Exception as e:
-        logger.error(f"[QCloud Task] {task_id} failed: {str(e)}\n{traceback.format_exc()}")
+        logger.error(
+            f"[QCloud Task] {task_id} failed: {str(e)}\n{traceback.format_exc()}"
+        )
 
         from tasks.utils.nats_helper import publish_metrics_to_nats
         from tasks.utils.metrics_helper import generate_monitor_error_metrics
@@ -122,6 +135,97 @@ async def collect_qcloud_metrics_task(ctx: Dict, params: Dict[str, Any], task_id
             "status": "failed",
             "error": str(e),
             "monitor_type": "qcloud",
-            "completed_at": int(time.time() * 1000)
+            "completed_at": int(time.time() * 1000),
         }
 
+
+async def collect_oceanstor_metrics_task(
+    ctx: Dict, params: Dict[str, Any], task_id: str
+) -> Dict[str, Any]:
+    logger.info(f"[OceanStor Task] Processing: {task_id}")
+
+    try:
+        from tasks.collectors.oceanstor_collector import OceanStorCollector
+        from tasks.utils.nats_helper import publish_metrics_to_nats
+
+        collector = OceanStorCollector(params)
+        metrics_data = await collector.collect()
+
+        logger.info(
+            f"[OceanStor Task] {task_id} completed, data size: {len(metrics_data)} bytes"
+        )
+
+        await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
+
+        return {
+            "task_id": task_id,
+            "status": "success",
+            "monitor_type": "oceanstor",
+            "data_size": len(metrics_data),
+            "completed_at": int(time.time() * 1000),
+        }
+
+    except Exception as e:
+        logger.error(
+            f"[OceanStor Task] {task_id} failed: {str(e)}\n{traceback.format_exc()}"
+        )
+
+        from tasks.utils.nats_helper import publish_metrics_to_nats
+        from tasks.utils.metrics_helper import generate_monitor_error_metrics
+
+        error_metrics = generate_monitor_error_metrics(params, e)
+        await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
+
+        return {
+            "task_id": task_id,
+            "status": "failed",
+            "error": str(e),
+            "monitor_type": "oceanstor",
+            "completed_at": int(time.time() * 1000),
+        }
+
+
+async def collect_host_metrics_task(
+    ctx: Dict, params: Dict[str, Any], task_id: str
+) -> Dict[str, Any]:
+    logger.info(f"[Host Task] Processing: {task_id}")
+
+    try:
+        from tasks.collectors.host_collector import HostCollector
+        from tasks.utils.nats_helper import publish_metrics_to_nats
+
+        collector = HostCollector(params)
+        metrics_data = await collector.collect()
+
+        logger.info(
+            f"[Host Task] {task_id} completed, data size: {len(metrics_data)} bytes"
+        )
+
+        await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
+
+        return {
+            "task_id": task_id,
+            "status": "success",
+            "monitor_type": "host",
+            "data_size": len(metrics_data),
+            "completed_at": int(time.time() * 1000),
+        }
+
+    except Exception as e:
+        logger.error(
+            f"[Host Task] {task_id} failed: {str(e)}\n{traceback.format_exc()}"
+        )
+
+        from tasks.utils.nats_helper import publish_metrics_to_nats
+        from tasks.utils.metrics_helper import generate_monitor_error_metrics
+
+        error_metrics = generate_monitor_error_metrics(params, e)
+        await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
+
+        return {
+            "task_id": task_id,
+            "status": "failed",
+            "error": str(e),
+            "monitor_type": "host",
+            "completed_at": int(time.time() * 1000),
+        }
