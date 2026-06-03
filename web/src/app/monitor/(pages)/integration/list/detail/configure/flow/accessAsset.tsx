@@ -126,6 +126,21 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
     [existingAssets]
   );
 
+  const handleAccessTypeChange = (value: FlowAssetFormValues['accessType']) => {
+    if (value === 'existing') {
+      form.setFieldsValue({
+        organizations: undefined,
+        fallback_sampling_rate: undefined
+      });
+      return;
+    }
+
+    form.setFieldsValue({
+      organizations: selectedGroup?.id ? [Number(selectedGroup.id)] : undefined,
+      fallback_sampling_rate: FALLBACK_SAMPLING_RATE_DEFAULT
+    });
+  };
+
   const handleExistingAssetChange = (value: string) => {
     const selectedAsset = existingAssetMap[String(value)];
     form.setFieldsValue({
@@ -133,8 +148,8 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
       name: selectedAsset?.instance_name || selectedAsset?.name,
       cloud_region_id: undefined,
       ip: undefined,
-      organizations: selectedGroup?.id ? [Number(selectedGroup.id)] : undefined,
-      fallback_sampling_rate: FALLBACK_SAMPLING_RATE_DEFAULT
+      organizations: undefined,
+      fallback_sampling_rate: undefined
     });
   };
 
@@ -211,7 +226,14 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
               noStyle
               rules={[{ required: true, message: t('common.required') }]}
             >
-              <Radio.Group style={{ width: FORM_CONTROL_WIDTH }}>
+              <Radio.Group
+                style={{ width: FORM_CONTROL_WIDTH }}
+                onChange={(event) =>
+                  handleAccessTypeChange(
+                    event.target.value as FlowAssetFormValues['accessType']
+                  )
+                }
+              >
                 <Radio value="new">{t('monitor.integrations.flow.newAsset')}</Radio>
                 <Radio value="existing">
                   {t('monitor.integrations.flow.existingAsset')}
