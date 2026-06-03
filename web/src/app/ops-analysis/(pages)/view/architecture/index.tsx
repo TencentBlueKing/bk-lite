@@ -27,6 +27,10 @@ import kubernetesIsopack from '@isoflow/isopacks/dist/kubernetes';
 import ArchitectureToolbar from './components/toolbar';
 import { DEFAULT_COLORS } from '@/app/ops-analysis/constants/common';
 import { svgToBase64 } from '@/app/ops-analysis/utils/common';
+import {
+  AppViewFullscreenExit,
+  useAppViewFullscreen,
+} from '../components/appFullscreen';
 
 const Isoflow = dynamic(
   () => import('x-isoflow-react-19').then((mod) => ({ default: mod.Isoflow })),
@@ -74,6 +78,9 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     const [loadedArchitectureId, setLoadedArchitectureId] = useState<
       string | null
     >(null);
+    const resumeEditModeAfterFullscreenRef = useRef(false);
+    const { isFullscreen, enterFullscreen, exitFullscreen } =
+      useAppViewFullscreen();
 
     const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const lastModelUpdateRef = useRef<string>('');
@@ -199,6 +206,28 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       }
     };
 
+    useEffect(() => {
+      if (isFullscreen || !resumeEditModeAfterFullscreenRef.current) {
+        return;
+      }
+
+      resumeEditModeAfterFullscreenRef.current = false;
+      setIsEditMode(true);
+    }, [isFullscreen]);
+
+    const handleFullscreenToggle = useCallback(() => {
+      if (isFullscreen) {
+        exitFullscreen();
+        return;
+      }
+
+      resumeEditModeAfterFullscreenRef.current = isEditMode;
+      if (isEditMode) {
+        setIsEditMode(false);
+      }
+      enterFullscreen();
+    }, [enterFullscreen, exitFullscreen, isEditMode, isFullscreen]);
+
     const saveDiagram = async () => {
       if (!selectedArchitecture?.data_id || !currentModel) {
         return;
@@ -302,14 +331,29 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     }, []);
 
     return (
-      <div className="h-full flex-1 p-4 pb-0 overflow-auto flex flex-col">
-        <ArchitectureToolbar
-          selectedArchitecture={selectedArchitecture}
-          isEditMode={isEditMode}
-          loading={loading}
-          onEdit={toggleEditMode}
-          onSave={saveDiagram}
-        />
+      <div
+        className={`flex flex-col ${
+          isFullscreen
+            ? 'fixed inset-0 h-screen w-screen overflow-hidden p-4'
+            : 'h-full flex-1 overflow-auto p-4 pb-0'
+        }`}
+        style={{
+          backgroundColor: 'var(--color-fill-1)',
+          zIndex: isFullscreen ? 1100 : undefined,
+        }}
+      >
+        <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
+        {!isFullscreen && (
+          <ArchitectureToolbar
+            selectedArchitecture={selectedArchitecture}
+            isEditMode={isEditMode}
+            isFullscreen={isFullscreen}
+            loading={loading}
+            onEdit={toggleEditMode}
+            onSave={saveDiagram}
+            onFullscreenToggle={handleFullscreenToggle}
+          />
+        )}
 
         <div
           className={`flex-1 relative architecture-canvas ${styles.architectureCanvas}`}

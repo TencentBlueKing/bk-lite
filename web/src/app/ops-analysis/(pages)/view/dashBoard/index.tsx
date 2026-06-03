@@ -47,6 +47,7 @@ import {
   ReloadOutlined,
   SettingOutlined,
   DownloadOutlined,
+  FullscreenOutlined,
 } from '@ant-design/icons';
 import { useDashBoardApi } from '@/app/ops-analysis/api/dashBoard';
 import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
@@ -73,6 +74,10 @@ import {
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import { exportDashboardToPdf } from '@/app/ops-analysis/utils/exportPdf';
+import {
+  AppViewFullscreenExit,
+  useAppViewFullscreen,
+} from '../components/appFullscreen';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
@@ -135,6 +140,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const exportRef = useRef<HTMLDivElement>(null);
     const getDashboardDetailRef = useRef(getDashboardDetail);
     const [exporting, setExporting] = useState(false);
+    const resumeEditModeAfterFullscreenRef = useRef(false);
+    const { isFullscreen, enterFullscreen, exitFullscreen } =
+      useAppViewFullscreen();
 
     useEffect(() => {
       getDashboardDetailRef.current = getDashboardDetail;
@@ -672,6 +680,28 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setIsEditMode(!isEditMode);
     };
 
+    useEffect(() => {
+      if (isFullscreen || !resumeEditModeAfterFullscreenRef.current) {
+        return;
+      }
+
+      resumeEditModeAfterFullscreenRef.current = false;
+      setIsEditMode(true);
+    }, [isFullscreen]);
+
+    const handleFullscreenToggle = useCallback(() => {
+      if (isFullscreen) {
+        exitFullscreen();
+        return;
+      }
+
+      resumeEditModeAfterFullscreenRef.current = isEditMode;
+      if (isEditMode) {
+        setIsEditMode(false);
+      }
+      enterFullscreen();
+    }, [enterFullscreen, exitFullscreen, isEditMode, isFullscreen]);
+
     const handleCancelEdit = () => {
       const revertedFilterValues = syncFilterValuesWithDefinitions(
         originalDefinitions,
@@ -854,137 +884,157 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
     return (
       <div
-        className="h-full flex-1 overflow-auto flex flex-col"
+        className={`flex flex-col ${
+          isFullscreen
+            ? 'fixed inset-0 h-screen w-screen overflow-hidden'
+            : 'h-full flex-1 overflow-auto'
+        }`}
         style={{
           backgroundColor: isDarkTheme ? 'var(--color-fill-1)' : '#f7f8fa',
+          zIndex: isFullscreen ? 1100 : undefined,
         }}
       >
+        <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
         <div
           ref={exportRef}
           className="flex-1 min-h-0 flex flex-col"
           data-export-expand="true"
         >
-          <div
-            className="w-full mb-2 flex items-center justify-between bg-(--color-bg-1) px-4 py-2 border-b border-(--color-border-2)"
-          >
-            <div className="flex-1 mr-8">
-              {selectedDashboard && (
-                <div>
-                  <h2 className="text-base leading-6 font-semibold text-(--color-text-1)">
-                    {selectedDashboard.name}
-                    {selectedDashboard.is_build_in && (
-                      <Tag
-                        color="blue"
-                        className="ml-2 text-xs align-middle rounded-full! px-2! py-0.5!"
-                      >
-                        {t('common.builtIn')}
-                      </Tag>
+          {!isFullscreen && (
+            <div className="w-full mb-2 flex items-center justify-between bg-(--color-bg-1) px-4 py-2 border-b border-(--color-border-2)">
+              <div className="flex-1 mr-8">
+                {selectedDashboard && (
+                  <div>
+                    <h2 className="text-base leading-6 font-semibold text-(--color-text-1)">
+                      {selectedDashboard.name}
+                      {selectedDashboard.is_build_in && (
+                        <Tag
+                          color="blue"
+                          className="ml-2 text-xs align-middle rounded-full! px-2! py-0.5!"
+                        >
+                          {t('common.builtIn')}
+                        </Tag>
+                      )}
+                    </h2>
+                    {selectedDashboard.desc && (
+                      <p className="text-xs leading-4 text-(--color-text-3) mt-0.5">
+                        {selectedDashboard.desc}
+                      </p>
                     )}
-                  </h2>
-                  {selectedDashboard.desc && (
-                    <p className="text-xs leading-4 text-(--color-text-3) mt-0.5">
-                      {selectedDashboard.desc}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-            {/* 右侧：工具栏 */}
-            <div
-              className="flex items-center gap-1.5"
-              data-export-hidden="true"
-            >
-              <Tooltip title={t('common.refresh')}>
-                <Button
-                  type="text"
-                  icon={<ReloadOutlined style={{ fontSize: 16 }} />}
-                  onClick={handleRefresh}
-                  className="rounded-full!"
-                />
-              </Tooltip>
-
-              {!isEditMode && (
-                <Tooltip title={t('dashboard.exportPdf')}>
+                  </div>
+                )}
+              </div>
+              {/* 右侧：工具栏 */}
+              <div
+                className="flex items-center gap-1.5"
+                data-export-hidden="true"
+              >
+                <Tooltip title={t('common.refresh')}>
                   <Button
                     type="text"
-                    icon={<DownloadOutlined style={{ fontSize: 16 }} />}
-                    loading={exporting}
-                    onClick={handleExportPdf}
+                    icon={<ReloadOutlined style={{ fontSize: 16 }} />}
+                    onClick={handleRefresh}
                     className="rounded-full!"
                   />
                 </Tooltip>
-              )}
 
-              {isEditMode && (
-                <>
-                  <PermissionWrapper requiredPermissions={['EditChart']}>
-                    <Tooltip title={t('dashboard.configUnifiedFilterFields')}>
-                      <Button
-                        type="text"
-                        icon={<SettingOutlined style={{ fontSize: 16 }} />}
-                        onClick={() => setFilterConfigModalVisible(true)}
-                        className="rounded-full!"
-                      />
-                    </Tooltip>
-                  </PermissionWrapper>
-                  <PermissionWrapper requiredPermissions={['EditChart']}>
+                <Tooltip title={t('common.fullscreen')}>
+                  <Button
+                    type="text"
+                    icon={<FullscreenOutlined style={{ fontSize: 16 }} />}
+                    onClick={handleFullscreenToggle}
+                    className="rounded-full!"
+                  />
+                </Tooltip>
+
+                {!isEditMode && (
+                  <Tooltip title={t('dashboard.exportPdf')}>
                     <Button
-                      type="default"
-                      icon={<PlusOutlined />}
-                      onClick={openAddModal}
+                      type="text"
+                      icon={<DownloadOutlined style={{ fontSize: 16 }} />}
+                      loading={exporting}
+                      onClick={handleExportPdf}
                       className="rounded-full!"
-                      style={{
-                        borderColor: chartTheme.panelBorderColor,
-                        color: 'var(--color-text-1)',
-                        background: chartTheme.panelBg,
-                      }}
-                    >
-                      {t('dashboard.addView')}
-                    </Button>
-                  </PermissionWrapper>
-                </>
-              )}
+                    />
+                  </Tooltip>
+                )}
 
-              <div>
-                <PermissionWrapper requiredPermissions={['EditChart']}>
-                  {!isEditMode ? (
-                    <Tooltip title={t('common.edit')}>
+                {isEditMode && (
+                  <>
+                    <PermissionWrapper requiredPermissions={['EditChart']}>
+                      <Tooltip title={t('dashboard.configUnifiedFilterFields')}>
+                        <Button
+                          type="text"
+                          icon={<SettingOutlined style={{ fontSize: 16 }} />}
+                          onClick={() => setFilterConfigModalVisible(true)}
+                          className="rounded-full!"
+                        />
+                      </Tooltip>
+                    </PermissionWrapper>
+                    <PermissionWrapper requiredPermissions={['EditChart']}>
                       <Button
-                        type="text"
-                        aria-label={t('common.edit')}
-                        icon={<EditOutlined aria-hidden="true" style={{ fontSize: 16 }} />}
-                        disabled={
-                          !selectedDashboard?.data_id ||
-                          selectedDashboard?.is_build_in
-                        }
-                        onClick={toggleEditMode}
+                        type="default"
+                        icon={<PlusOutlined />}
+                        onClick={openAddModal}
                         className="rounded-full!"
-                      />
-                    </Tooltip>
-                  ) : (
-                    <div className="flex items-center gap-2 ml-4">
-                      <Button
-                        disabled={!selectedDashboard?.data_id}
-                        onClick={handleCancelEdit}
-                        className="rounded-full!"
+                        style={{
+                          borderColor: chartTheme.panelBorderColor,
+                          color: 'var(--color-text-1)',
+                          background: chartTheme.panelBg,
+                        }}
                       >
-                        {t('common.cancel')}
+                        {t('dashboard.addView')}
                       </Button>
-                      <Button
-                        type="primary"
-                        loading={saving}
-                        disabled={!selectedDashboard?.data_id}
-                        onClick={handleSave}
-                        className="rounded-full!"
-                      >
-                        {t('common.save')}
-                      </Button>
-                    </div>
-                  )}
-                </PermissionWrapper>
+                    </PermissionWrapper>
+                  </>
+                )}
+
+                <div>
+                  <PermissionWrapper requiredPermissions={['EditChart']}>
+                    {!isEditMode ? (
+                      <Tooltip title={t('common.edit')}>
+                        <Button
+                          type="text"
+                          aria-label={t('common.edit')}
+                          icon={
+                            <EditOutlined
+                              aria-hidden="true"
+                              style={{ fontSize: 16 }}
+                            />
+                          }
+                          disabled={
+                            !selectedDashboard?.data_id ||
+                            selectedDashboard?.is_build_in
+                          }
+                          onClick={toggleEditMode}
+                          className="rounded-full!"
+                        />
+                      </Tooltip>
+                    ) : (
+                      <div className="flex items-center gap-2 ml-4">
+                        <Button
+                          disabled={!selectedDashboard?.data_id}
+                          onClick={handleCancelEdit}
+                          className="rounded-full!"
+                        >
+                          {t('common.cancel')}
+                        </Button>
+                        <Button
+                          type="primary"
+                          loading={saving}
+                          disabled={!selectedDashboard?.data_id}
+                          onClick={handleSave}
+                          className="rounded-full!"
+                        >
+                          {t('common.save')}
+                        </Button>
+                      </div>
+                    )}
+                  </PermissionWrapper>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div
             className="flex-1 overflow-hidden flex flex-col"
@@ -1001,6 +1051,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                   onSearch={handleFilterSearch}
                   onReset={handleFilterReset}
                   prefixContent={namespaceSelectorElement}
+                  popupZIndex={isFullscreen ? 1200 : undefined}
                 />
               </div>
             )}
@@ -1099,7 +1150,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                                   aria-label={t('common.more')}
                                   className="no-drag text-(--color-text-2) hover:text-(--color-text-1) transition-colors cursor-pointer"
                                 >
-                                  <MoreOutlined aria-hidden="true" style={{ fontSize: '18px' }} />
+                                  <MoreOutlined
+                                    aria-hidden="true"
+                                    style={{ fontSize: '18px' }}
+                                  />
                                 </button>
                               </Dropdown>
                             )}

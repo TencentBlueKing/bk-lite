@@ -12,7 +12,11 @@ import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
 import { useTranslation } from '@/utils/i18n';
 import { useTopologyApi } from '@/app/ops-analysis/api/topology';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
-import { TopologyNodeData, SerializedEdge } from '@/app/ops-analysis/types/topology';
+import {
+  TopologyNodeData,
+  SerializedEdge,
+  TopologyViewportConfig,
+} from '@/app/ops-analysis/types/topology';
 import type { ValueConfig, UnifiedFilterDefinition, FilterValue } from '@/app/ops-analysis/types/dashBoard';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import { DirItem } from '@/app/ops-analysis/types';
@@ -127,7 +131,8 @@ export const useGraphData = (
 
   const handleSaveTopology = useCallback(async (
     selectedTopology: DirItem,
-    filters?: UnifiedFilterDefinition[]
+    filters?: UnifiedFilterDefinition[],
+    viewport?: TopologyViewportConfig | null,
   ) => {
     if (!selectedTopology?.data_id) {
       message.error(t('topology.saveTopologySelectMsg'));
@@ -143,6 +148,7 @@ export const useGraphData = (
           nodes: topologyData.nodes,
           edges: topologyData.edges,
           ...(filters && filters.length > 0 ? { filters } : {}),
+          ...(viewport ? { viewport } : {}),
         },
       };
 
@@ -340,8 +346,16 @@ export const useGraphData = (
     });
   }, [graphInstance, startLoadingAnimation]);
 
-  const handleLoadTopology = useCallback(async (topologyId: string | number): Promise<UnifiedFilterDefinition[]> => {
-    if (!graphInstance) return [];
+  const handleLoadTopology = useCallback(async (topologyId: string | number): Promise<{
+    filters: UnifiedFilterDefinition[];
+    viewport: TopologyViewportConfig | null;
+  }> => {
+    if (!graphInstance) {
+      return {
+        filters: [],
+        viewport: null,
+      };
+    }
 
     setLoading(true);
     try {
@@ -353,10 +367,20 @@ export const useGraphData = (
 
       const rawFilters = viewSets.filters;
       const loadedFilters: UnifiedFilterDefinition[] = Array.isArray(rawFilters) ? rawFilters : [];
-      return loadedFilters;
+      const rawViewport = viewSets.viewport;
+      const loadedViewport = rawViewport && typeof rawViewport === 'object'
+        ? (rawViewport as TopologyViewportConfig)
+        : null;
+      return {
+        filters: loadedFilters,
+        viewport: loadedViewport,
+      };
     } catch (error) {
       console.error('加载拓扑图失败:', error);
-      return [];
+      return {
+        filters: [],
+        viewport: null,
+      };
     } finally {
       setLoading(false);
     }
