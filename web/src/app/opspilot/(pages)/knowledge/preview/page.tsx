@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import dynamic from "next/dynamic";
 import { Alert, Spin } from "antd";
+import DOMPurify from "dompurify";
 import { useAuth } from "@/context/auth";
 import { useSearchParams } from "next/navigation";
 import { remark } from "remark";
@@ -75,6 +76,14 @@ const getFileTypeForViewer = (contentType: string | null, fileName: string | nul
   return Object.entries(typeByContentType).find(([key]) => contentType.includes(key))?.[1] || null;
 };
 
+const sanitizeMarkdownHtml = (unsafeHtml: string): string => {
+  return DOMPurify.sanitize(unsafeHtml, {
+    ALLOWED_TAGS: ["p", "br", "strong", "em", "u", "code", "pre", "span", "div", "a", "ul", "ol", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "table", "thead", "tbody", "tr", "th", "td", "img", "hr", "del", "ins", "sup", "sub"],
+    ALLOWED_ATTR: ["class", "href", "target", "rel", "src", "alt", "width", "height"],
+    ALLOW_DATA_ATTR: false,
+  });
+};
+
 const PreviewPage: React.FC = () => {
   const searchParams = useSearchParams();
   const id = searchParams?.get("id") || null;
@@ -122,7 +131,7 @@ const PreviewPage: React.FC = () => {
         if (isMarkdownFile(contentType, resolvedFileName)) {
           const rawMarkdown = await blob.text();
           const processedContent = await remark().use(gfm).use(html).process(rawMarkdown);
-          setMarkdownHtml(processedContent.toString());
+          setMarkdownHtml(sanitizeMarkdownHtml(processedContent.toString()));
           setFileUrl(null);
           setViewerType(null);
           setLoading(false);
@@ -173,22 +182,22 @@ const PreviewPage: React.FC = () => {
           const workbook = new ExcelJS.Workbook();
           await workbook.xlsx.load(arrayBuffer);
           const worksheet = workbook.worksheets[0];
-          let htmlStr = '<table>';
+          const container = xlsxContainerRef.current;
+          if (!worksheet || !container) return;
+
+          const table = document.createElement("table");
           worksheet.eachRow((row, rowNumber) => {
-            htmlStr += '<tr>';
+            const tableRow = document.createElement("tr");
             row.eachCell({ includeEmpty: true }, (cell) => {
-              const cellValue = cell.value?.toString() || '';
-              htmlStr += rowNumber === 1 ? `<th>${cellValue}</th>` : `<td>${cellValue}</td>`;
+              const cellElement = document.createElement(rowNumber === 1 ? "th" : "td");
+              cellElement.textContent = cell.text || "";
+              tableRow.appendChild(cellElement);
             });
-            htmlStr += '</tr>';
-          })
-          htmlStr += '</table>';
+            table.appendChild(tableRow);
+          });
 
-          if (xlsxContainerRef?.current) {
-            xlsxContainerRef.current.innerHTML = htmlStr;
-          }
+          container.replaceChildren(table);
 
-          const table = xlsxContainerRef?.current?.querySelector("table");
           if (table) {
             table.style.borderCollapse = "collapse";
             table.style.width = "100%";

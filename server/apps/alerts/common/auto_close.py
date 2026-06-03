@@ -68,12 +68,14 @@ class AlertAutoClose:
         rule_ids = [rid for rid in rule_ids if isinstance(rid, str) and rid.isdigit()]
         # 查询启用了自动关闭的告警策略
         # 过滤条件：is_active=True, auto_close=True, close_minutes > 0
+        # 排除 INSTANT 即时告警策略：PRD 明确不引入自动关闭策略
+        from apps.alerts.constants.constants import AlarmStrategyType
         strategies = AlarmStrategy.objects.filter(
             id__in=rule_ids,
             is_active=True,
             auto_close=True,
             close_minutes__gt=0
-        )
+        ).exclude(strategy_type=AlarmStrategyType.INSTANT)
 
         # 建立映射字典: rule_id -> AlarmStrategy
         rule_mapping = {str(strategy.id): strategy for strategy in strategies}

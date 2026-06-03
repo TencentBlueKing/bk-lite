@@ -181,6 +181,47 @@ def test_process_aggregation_smart_denoise_creates_alert(source):
     assert Alert.objects.exists()
 
 
+@pytest.mark.django_db
+def test_process_aggregation_smart_denoise_updates_last_execute_time_without_events():
+    strategy = AlarmStrategy.objects.create(
+        name="无事件降噪",
+        strategy_type="smart_denoise",
+        is_active=True,
+        team=[1],
+        dispatch_team=[1],
+        match_rules=[[{"key": "title", "operator": "eq", "value": "CPU高"}]],
+        params={"window_size": 60, "group_by": ["service"]},
+    )
+
+    AggregationProcessor().process_aggregation()
+    strategy.refresh_from_db()
+
+    assert strategy.last_execute_time is not None
+
+
+@pytest.mark.django_db
+def test_process_aggregation_smart_denoise_updates_last_execute_time_without_matches(source):
+    strategy = AlarmStrategy.objects.create(
+        name="无匹配降噪",
+        strategy_type="smart_denoise",
+        is_active=True,
+        team=[1],
+        dispatch_team=[1],
+        match_rules=[[{"key": "title", "operator": "eq", "value": "CPU高"}]],
+        params={"window_size": 60, "group_by": ["service"]},
+    )
+    Event.objects.create(
+        source=source, raw_data={}, title="MEM高", level="1", start_time=timezone.now(),
+        event_id="E-no-match", action=EventAction.CREATED, service="svc-a",
+        resource_name="host1", item="mem", external_id="ext-no-match",
+    )
+
+    AggregationProcessor().process_aggregation()
+    strategy.refresh_from_db()
+
+    assert strategy.last_execute_time is not None
+
+
 # --------------------------------------------------------------------------
 # missing_detection 路径
 # --------------------------------------------------------------------------

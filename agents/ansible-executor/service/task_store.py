@@ -14,6 +14,7 @@ SENSITIVE_CREDENTIAL_KEYS = {
     "ansible_password",
     "ansible_ssh_passphrase",
     "ansible_become_password",
+    "inventory_content",
 }
 
 
@@ -72,6 +73,7 @@ class TaskStore:
                     task_id TEXT PRIMARY KEY,
                     status TEXT NOT NULL,
                     payload_json TEXT NOT NULL,
+                    execution_payload_json TEXT,
                     callback_json TEXT,
                     result_json TEXT,
                     execution_status TEXT NOT NULL DEFAULT 'queued',
@@ -89,6 +91,7 @@ class TaskStore:
             migrations = {
                 "execution_status": "ALTER TABLE task_state ADD COLUMN execution_status TEXT NOT NULL DEFAULT 'queued'",
                 "callback_status": "ALTER TABLE task_state ADD COLUMN callback_status TEXT NOT NULL DEFAULT 'none'",
+                "execution_payload_json": "ALTER TABLE task_state ADD COLUMN execution_payload_json TEXT",
                 "lease_owner": "ALTER TABLE task_state ADD COLUMN lease_owner TEXT",
                 "lease_expires_at": "ALTER TABLE task_state ADD COLUMN lease_expires_at TEXT",
                 "heartbeat_at": "ALTER TABLE task_state ADD COLUMN heartbeat_at TEXT",
@@ -121,6 +124,7 @@ class TaskStore:
                     task_id,
                     status,
                     payload_json,
+                    execution_payload_json,
                     callback_json,
                     result_json,
                     execution_status,
@@ -128,12 +132,13 @@ class TaskStore:
                     created_at,
                     updated_at
                 )
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     task_id,
                     status,
                     json.dumps(_sanitize_payload_for_storage(payload), ensure_ascii=False),
+                    json.dumps(payload or {}, ensure_ascii=False),
                     json.dumps(callback or {}, ensure_ascii=False),
                     json.dumps({}, ensure_ascii=False),
                     status,
@@ -340,3 +345,18 @@ class TaskStore:
                 "created_at": row[11],
                 "updated_at": row[12],
             }
+
+    def get_execution_payload(self, task_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                SELECT execution_payload_json
+                FROM task_state
+                WHERE task_id = ?
+                """,
+                (task_id,),
+            )
+            row = cursor.fetchone()
+            if not row or not row[0]:
+                return None
+            return json.loads(row[0])

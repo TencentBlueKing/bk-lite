@@ -6,6 +6,7 @@ from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import ExecutionStatus, ScriptType, TargetSource
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
+from apps.job_mgmt.services.shell_utils import build_heredoc_command, parse_shebang
 from apps.rpc.executor import Executor
 
 
@@ -146,7 +147,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
             return result
 
         try:
-            shell = ScriptType.SHELL_MAPPING.get(script_type, "sh")
+            shell = parse_shebang(script_content) or ScriptType.SHELL_MAPPING.get(script_type, "bash")
             if target_source in (TargetSource.NODE_MGMT, TargetSource.SYNC):
                 node_id = target_info.get("node_id")
                 executor = Executor(node_id)
@@ -158,8 +159,9 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                     raise ValueError(f"无法获取目标凭据: target_id={target_id}")
 
                 executor = Executor(ssh_creds["node_id"])
+                ssh_command = build_heredoc_command(shell, script_content)
                 exec_result = executor.execute_ssh(
-                    command=script_content,
+                    command=ssh_command,
                     host=ssh_creds["host"],
                     username=ssh_creds["username"],
                     password=ssh_creds["password"],

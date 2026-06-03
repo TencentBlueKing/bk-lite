@@ -444,8 +444,27 @@ def check_kubernetes_endpoints(namespace=None, config: RunnableConfig = None):
         return json.dumps({"error": f"检查Endpoints失败: {str(e)}"})
 
 
+def build_config_analysis_next_step_hint(problematic_count: int, target_name: str | None = None) -> str:
+    hint_parts = [f"分析完成，共 {problematic_count} 个工作负载存在问题。"]
+    if problematic_count > 30:
+        hint_parts.append(
+            "目标数量较多，建议优先聚焦 high/critical 问题，或限定特定命名空间查看。"
+        )
+    if target_name:
+        hint_parts.append(
+            f"当前结果已经覆盖用户指定的工作负载 {target_name}。"
+        )
+    hint_parts.append(
+        "本轮先输出一次完整检查结果。"
+        "输出完整检查报告后，调用 request_user_choice 让用户选择修复展示方式："
+        "按问题类别聚合、按工作负载聚合、或全部一次性展示。"
+        "等用户选择后，再调用 generate_repair_report。"
+    )
+    return "".join(hint_parts)
+
+
 @tool()
-def analyze_deployment_configurations(namespace=None, instance_name=None, limit=50, offset=0, config: RunnableConfig = None):
+def analyze_deployment_configurations(namespace=None, instance_name=None, name=None, limit=50, offset=0, config: RunnableConfig = None):
     """
     分析 Deployment 配置的合理性
 
@@ -460,6 +479,7 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, limit=
     Args:
         namespace (str, optional): 要分析的命名空间，不传则扫描全部命名空间
         instance_name (str, optional): 要操作的 Kubernetes 实例名称，多集群时必传
+        name (str, optional): 要分析的特定 Deployment 名称。指定后只分析该 Deployment，忽略 limit/offset
         limit (int, optional): 每次返回的最大 Deployment 数量，默认 20，硬上限 50
         offset (int, optional): 跳过前 N 个 Deployment，用于分页，默认 0
         config (RunnableConfig): 工具配置
@@ -488,8 +508,36 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, limit=
 
         all_items = deployments.items
         total_count = len(all_items)
-        # 分页切片
-        paged_items = all_items[offset:offset + limit]
+
+        # 大规模集群保护：超过 100 个且未指定 name 时，强制要求缩小范围
+        if not name and total_count > 100:
+            # 统计各 namespace 的 deployment 数量，供用户选择
+            ns_counts = {}
+            for d in all_items:
+                ns = d.metadata.namespace
+                ns_counts[ns] = ns_counts.get(ns, 0) + 1
+            ns_list = sorted(ns_counts.items(), key=lambda x: -x[1])[:15]
+
+            return json.dumps({
+                "error": "scope_too_large",
+                "total": total_count,
+                "namespace_distribution": [{"namespace": ns, "count": c} for ns, c in ns_list],
+                "_next_step_hint": (
+                    f"集群中有 {total_count} 个 Deployment，超过分析上限（100）。"
+                    "【必须】调用 request_user_choice 工具让用户选择要检查的命名空间，"
+                    "然后用 namespace 参数重新调用 analyze_deployment_configurations。"
+                    "禁止在不指定 namespace 的情况下继续分析。"
+                ),
+            })
+
+        # 如果指定了 name，只分析该 deployment
+        if name:
+            all_items = [d for d in all_items if d.metadata.name == name]
+            total_count = len(all_items)
+            paged_items = all_items
+        else:
+            # 分页切片
+            paged_items = all_items[offset:offset + limit]
 
         cluster_name = get_current_cluster_name()
         analysis_results = []
@@ -592,26 +640,10 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, limit=
         _problematic_count = sum(1 for a in analysis_results if a.get("issues") or a.get("recommendations"))
         _healthy_count = len(analysis_results) - _problematic_count
 
-        _hint_parts = [f"分析完成，共 {_problematic_count} 个工作负载存在问题。"]
-        if _problematic_count > 30:
-            _hint_parts.append(
-                "目标数量较多，建议让用户选择只修复 critical/high 级别的问题，或限定特定命名空间。"
-            )
-        _hint_parts.append(
-            "下一步：调用 generate_repair_report 工具生成修复报告。"
-            f"参数：items 留空，group_by='category'，expected_target_count={_problematic_count}。"
-            "如果用户指定了特定工作负载名称，target_names 设为该名称列表。"
-            "不要调用 get_kubernetes_resource_yaml，修复方案基于分析数据直接生成。"
+        next_step_hint = build_config_analysis_next_step_hint(
+            problematic_count=_problematic_count,
+            target_name=name,
         )
-
-        # 构建按问题类型聚合的摘要（精简版返回给 LLM）
-        _issue_counter: dict = {}
-        for a in analysis_results:
-            for issue in a.get("issues", []):
-                _issue_counter[issue] = _issue_counter.get(issue, 0) + 1
-            for c in a.get("config_analysis", {}).get("containers", []):
-                for ci in c.get("issues", []):
-                    _issue_counter[ci] = _issue_counter.get(ci, 0) + 1
 
         # 安全术语中性化（仅摘要文本）
         _term_neutralize = {
@@ -626,9 +658,59 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, limit=
                 text = text.replace(sensitive, neutral)
             return text
 
-        issues_summary = [
-            f"{_neutralize(issue)}（{count} 个工作负载）"
-            for issue, count in sorted(_issue_counter.items(), key=lambda x: -x[1])
+        # 问题到严重等级的映射（key 须与 analysis 中 append 的文本完全一致）
+        _issue_severity = {
+            "明文敏感信息": "critical",
+            "特权模式容器": "critical",
+            "使用hostNetwork": "critical",
+            "使用hostPID": "critical",
+            "使用hostIPC": "critical",
+            "可能以root用户运行": "medium",
+            "未设置capabilities drop ALL": "medium",
+            "未设置readOnlyRootFilesystem": "medium",
+            "未禁止权限提升": "medium",
+            "使用default ServiceAccount": "medium",
+            "单副本部署": "medium",
+            "未设置资源请求": "high",
+            "未设置资源限制": "high",
+            "未配置存活探针": "high",
+            "未配置就绪探针": "high",
+            "Recreate": "high",
+            ":latest": "high",
+            "imagePullPolicy": "low",
+        }
+
+        def _get_severity(issue_text: str) -> str:
+            for key, sev in _issue_severity.items():
+                if key in issue_text:
+                    return sev
+            return "low"
+
+        # 构建按问题类型到工作负载名称的映射（供 LLM 输出报告时使用真实名称）
+        _issue_to_workloads: dict = {}
+        for a in analysis_results:
+            _wl_name = a.get("name", "unknown")
+            _wl_namespace = a.get("namespace", "")
+            _wl_label = f"{_wl_name} ({_wl_namespace})" if _wl_namespace else _wl_name
+            for issue in a.get("issues", []):
+                _issue_to_workloads.setdefault(issue, []).append(_wl_label)
+            for c in a.get("config_analysis", {}).get("containers", []):
+                for ci in c.get("issues", []):
+                    _issue_to_workloads.setdefault(ci, []).append(_wl_label)
+
+        # 按严重等级排序：critical > high > medium > low
+        _sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        issues_detail = [
+            {
+                "severity": _get_severity(issue),
+                "issue": _neutralize(issue),
+                "count": len(workloads),
+                "workloads": workloads,
+            }
+            for issue, workloads in sorted(
+                _issue_to_workloads.items(),
+                key=lambda x: (_sev_order.get(_get_severity(x[0]), 3), -len(x[1]))
+            )
         ]
 
         result = {
@@ -639,8 +721,8 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, limit=
             "offset": offset,
             "limit": limit,
             "has_more": (offset + len(analysis_results)) < total_count,
-            "issues_summary": issues_summary,
-            "_next_step_hint": "".join(_hint_parts),
+            "issues_detail": issues_detail,
+            "_next_step_hint": next_step_hint,
             # 完整数据供缓存使用，会在进入 LLM context 前被剥离
             "_deployments_full": analysis_results,
         }

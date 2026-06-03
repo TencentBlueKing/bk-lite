@@ -171,6 +171,7 @@ __all__ = [
     "prepare_context",
     "format_bytes",
     "parse_resource_quantity",
+    "get_current_cluster_name",
 ]
 
 

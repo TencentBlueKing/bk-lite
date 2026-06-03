@@ -117,6 +117,131 @@ def normalize_messages_for_llm(messages: List[Any]) -> List[Any]:
         return non_system_messages
 
 
+def build_post_tool_directives(result_messages: List[BaseMessage]) -> List[SystemMessage]:
+    directives: List[SystemMessage] = []
+
+    for message in result_messages:
+        message_name = getattr(message, "name", "")
+        message_content = getattr(message, "content", "")
+
+        if message_name == "analyze_deployment_configurations":
+            try:
+                parsed = json.loads(message_content) if isinstance(message_content, str) else message_content
+            except Exception:
+                parsed = None
+
+            if isinstance(parsed, dict) and parsed.get("issues_detail"):
+                directives.append(
+                    SystemMessage(
+                        content=(
+                            "【配置检查输出规则】不要同时输出“问题摘要”和“配置问题报告”两个重复板块。"
+                            "如果已经输出按严重级别或问题类别展开的详细问题报告，就不要再单独重复一段摘要。"
+                            "优先保留详细问题报告，并把总数、集群名、影响范围合并到报告标题或开头一句。"
+                            "本轮先输出一次完整配置检查结果。"
+                            "如果检查结果存在问题项，输出完整配置检查报告后，必须主动调用 request_user_choice，"
+                            "让用户选择修复展示方式（按问题类别聚合 / 按工作负载聚合 / 全部一次性展示）。"
+                            "不要主动调用 generate_repair_report，必须等待用户完成选择后再生成修复对比。"
+                            "如果检查结果没有问题，则直接结束，不要追加修复交互。"
+                        )
+                    )
+                )
+
+        if message_name == "generate_repair_report" and ("修复命令" in message_content or "```" in message_content):
+            directives.append(
+                SystemMessage(
+                    content=(
+                        "【强制输出规则】用户无法看到工具返回的内容（ToolMessage 对用户不可见）。"
+                        "你必须在你的回复中完整列出工具结果中的所有修复命令。"
+                        "格式要求：按工作负载分组，每条命令用 ```bash 代码块包裹。"
+                        "严禁省略任何命令，严禁说'见上方'或'复制以上命令'。"
+                        "用户只能看到你的文字回复，所以命令必须出现在你的回复中。"
+                    )
+                )
+            )
+
+    return directives
+
+
+def build_config_analysis_report_markdown(parsed: Dict[str, Any]) -> str:
+    cluster_name = parsed.get("cluster_name") or "Kubernetes"
+    problematic = parsed.get("problematic", 0)
+    healthy = parsed.get("healthy")
+    total = parsed.get("total")
+    issues_detail = parsed.get("issues_detail") or []
+
+    lines = [f"# 配置检查报告 - {cluster_name}"]
+    summary_parts = []
+    if total is not None:
+        summary_parts.append(f"总计 {total} 个工作负载")
+    if problematic is not None:
+        summary_parts.append(f"存在问题 {problematic} 个")
+    if healthy is not None:
+        summary_parts.append(f"健康 {healthy} 个")
+    if summary_parts:
+        lines.append("；".join(summary_parts))
+
+    severity_titles = {
+        "critical": "Critical",
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low",
+        "warning": "Warning",
+        "info": "Info",
+    }
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for item in issues_detail:
+        grouped.setdefault(item.get("severity", "info"), []).append(item)
+
+    severity_order = ["critical", "high", "medium", "low", "warning", "info"]
+    for severity in severity_order:
+        items = grouped.get(severity)
+        if not items:
+            continue
+        lines.append(f"## {severity_titles.get(severity, severity.title())}")
+        for item in items:
+            issue = item.get("issue", "未知问题")
+            count = item.get("count", 0)
+            workloads = item.get("workloads") or []
+            workload_preview = "、".join(workloads[:5])
+            if len(workloads) > 5:
+                workload_preview += f" 等 {len(workloads)} 个工作负载"
+            elif workload_preview:
+                workload_preview = f"：{workload_preview}"
+            lines.append(f"- {issue}（{count} 个工作负载{workload_preview}）")
+
+    return "\n\n".join(lines)
+
+
+def find_pending_k8s_analysis_choice(messages: List[BaseMessage]) -> Optional[Dict[str, Any]]:
+    latest_index = -1
+    latest_payload: Optional[Dict[str, Any]] = None
+
+    for index, message in enumerate(messages):
+        if getattr(message, "type", "") != "tool" or getattr(message, "name", "") != "analyze_deployment_configurations":
+            continue
+        content = getattr(message, "content", "")
+        try:
+            parsed = json.loads(content) if isinstance(content, str) else content
+        except Exception:
+            continue
+        if isinstance(parsed, dict) and parsed.get("issues_detail"):
+            latest_index = index
+            latest_payload = parsed
+
+    if latest_index < 0 or latest_payload is None:
+        return None
+
+    for message in messages[latest_index + 1 :]:
+        if getattr(message, "type", "") == "tool" and getattr(message, "name", "") in {"request_user_choice", "generate_repair_report"}:
+            return None
+        if getattr(message, "type", "") == "ai":
+            tool_calls = getattr(message, "tool_calls", []) or []
+            if any(tool_call.get("name") == "request_user_choice" for tool_call in tool_calls):
+                return None
+
+    return latest_payload
+
+
 # --- Patch 1: Response deserialization (preserve reasoning_content) ----------
 
 # Different providers use different field names for thinking/reasoning content:
@@ -730,6 +855,24 @@ class ToolsNodes(BasicNode):
             return "streamable_http"
 
         return "sse"
+
+    @staticmethod
+    def _is_k8s_tool_server(tool_server) -> bool:
+        tool_url = (getattr(tool_server, "url", "") or "").strip().lower()
+        return tool_url in {
+            "langchain:kubernetes",
+            "langchain:kubernetes_data_collection",
+        }
+
+    def _should_apply_first_turn_greeting_filter(self, request) -> bool:
+        tool_servers = list(getattr(request, "tools_servers", []) or [])
+        if not tool_servers:
+            return False
+
+        return all(
+            (getattr(server, "url", "") or "").startswith("langchain:") and self._is_k8s_tool_server(server)
+            for server in tool_servers
+        )
 
     async def call_with_structured_output(self, llm, user_message: str, pydantic_model):
         """
@@ -1970,14 +2113,38 @@ class ToolsNodes(BasicNode):
 
             # ========== 寒暄检测：第一步+非技术消息 → 标记不绑工具 ==========
             _is_greeting = False
-            if step_counter["count"] == 1:
+            if step_counter["count"] == 1 and self._should_apply_first_turn_greeting_filter(graph_request):
                 _user_msg_sc = ""
                 for _m_sc in reversed(state.get("messages", [])):
                     if getattr(_m_sc, "type", "") == "human":
                         _user_msg_sc = str(getattr(_m_sc, "content", "")).strip()
                         break
-                _k8s_kws_sc = {"k8s", "kubernetes", "集群", "工作负载", "deployment", "pod", "检查", "配置", "节点", "namespace", "服务", "检测", "诊断", "排查", "修复", "告警", "监控", "日志", "容器", "镜像"}
-                _is_greeting = not (len(_user_msg_sc) > 10 or any(kw in _user_msg_sc.lower() for kw in _k8s_kws_sc))
+                _k8s_kws_sc = {
+                    "k8s",
+                    "kubernetes",
+                    "集群",
+                    "工作负载",
+                    "deployment",
+                    "pod",
+                    "检查",
+                    "配置",
+                    "节点",
+                    "namespace",
+                    "服务",
+                    "检测",
+                    "诊断",
+                    "排查",
+                    "修复",
+                    "告警",
+                    "监控",
+                    "日志",
+                    "容器",
+                    "镜像",
+                }
+                _is_greeting = not (
+                    len(_user_msg_sc) > 10
+                    or any(kw in _user_msg_sc.lower() for kw in _k8s_kws_sc)
+                )
 
             # DEBUG: 写入调试文件确认 agent_node 被调用
             try:
@@ -2147,19 +2314,26 @@ class ToolsNodes(BasicNode):
                 logger.info(f"[{trace_id}] Token 预算软阈值触发 wrap-up (step={step_counter['count']}, {used_pct}%)")
 
             # ========== 选择后续行预处理：检测 request_user_choice 结果并注入提示 ==========
-            # 策略：检查最近一条 AIMessage 是否调用了 request_user_choice。
-            # 如果是，说明当前步骤紧跟用户选择，需要注入续行提示。
-            # 但不再强制 tool_choice="any"——有些模型对此不稳定，改为仅注入提示引导。
+            # 策略：检查最近 N 条消息中是否存在未处理的 request_user_choice 结果。
+            # "未处理"定义：存在 request_user_choice 的 ToolMessage，且其后尚未出现 generate_repair_report 的工具调用。
+            # 这样即使中间有重试或额外的 AIMessage，也能正确注入续行提示，防止 LLM 重复输出检查结果。
             _has_pending_choice = False
             if choice_tool_instance:
-                for _rmsg in reversed(messages):
-                    _msg_type = getattr(_rmsg, "type", "")
-                    if _msg_type == "ai":
-                        _tool_calls = getattr(_rmsg, "tool_calls", []) or []
-                        for _tc in _tool_calls:
-                            if isinstance(_tc, dict) and _tc.get("name") == "request_user_choice":
-                                _has_pending_choice = True
-                        break  # 只检查最近一条 AIMessage
+                _RECENT_WINDOW = 20  # 向前查看最多 20 条消息
+                _recent_msgs = messages[-_RECENT_WINDOW:] if len(messages) > _RECENT_WINDOW else messages
+                # 检查近期消息中是否有 request_user_choice 的工具结果
+                _choice_tool_msg_found = any(
+                    getattr(m, "type", "") == "tool" and getattr(m, "name", "") == "request_user_choice"
+                    for m in _recent_msgs
+                )
+                if _choice_tool_msg_found:
+                    # 检查 generate_repair_report 是否已被调用（避免重复注入）
+                    _repair_already_done = any(
+                        getattr(m, "name", "") == "generate_repair_report" and getattr(m, "type", "") == "tool"
+                        for m in _recent_msgs
+                    )
+                    if not _repair_already_done:
+                        _has_pending_choice = True
 
                 if _has_pending_choice:
                     from langchain_core.messages import SystemMessage as _PreSM
@@ -2224,22 +2398,49 @@ class ToolsNodes(BasicNode):
                             _group_instruction = f"设置 {_group_by_hint}。" if _group_by_hint else "根据用户选择的维度设置 group_by 参数（target/category/all）。"
                             _continuation_hint = (
                                 f"用户已选择（{_choice_summary}），问题是「{_choice_question}」。"
-                                f"请立即调用 generate_repair_report 工具。{_group_instruction}"
+                                f"【禁止】输出任何文字、报告或解释。直接调用 generate_repair_report 工具。{_group_instruction}"
                                 "items 留空即可（工具会自动从分析结果生成完整报告），只需传 title、group_by、expected_target_count。"
+                                "不要重复输出检查报告内容。"
                             )
                         else:
                             _continuation_hint = (
                                 f"用户已完成选择（{_choice_summary}），请基于选择结果继续执行下一步操作。"
+                                "【禁止】重复输出之前已展示过的检查报告内容。"
                                 "不要再询问用户，不要再调用 request_user_choice，不要要求用户澄清。"
-                                "直接基于已有的分析数据生成结果，避免重复获取原始数据。"
-                                "如果用户选择查看详情，展示所有工作负载的完整问题列表。"
-                                "如果用户需要文本形式的输出（如命令、配置等），直接以文本回复即可。"
+                                "直接基于已有的分析数据执行操作（调用工具或简短回复），避免冗余文字。"
                             )
                     else:
                         _continuation_hint = "用户已完成选择，请基于选择结果继续执行下一步操作。"
                     messages = list(messages) + [_PreSM(content=_continuation_hint)]
                     logger.info(f"[{trace_id}] agent_node: 最近 AIMessage 调用了 request_user_choice，"
                                 f"注入续行提示 (step={step_counter['count']}), choices={_choice_summary!r}")
+
+            _pending_k8s_analysis_choice = find_pending_k8s_analysis_choice(messages)
+            if choice_tool_instance and _pending_k8s_analysis_choice:
+                logger.info(f"[{trace_id}] agent_node: K8s 配置检查已完成，直接合成 request_user_choice，跳过中间 LLM 总结")
+                return {
+                    "messages": [
+                        AIMessage(
+                            content="",
+                            tool_calls=[
+                                {
+                                    "name": "request_user_choice",
+                                    "args": {
+                                        "question": "请选择修复展示方式",
+                                        "question_type": "single_select",
+                                        "options": [
+                                            "按问题类别聚合",
+                                            "按工作负载聚合",
+                                            "全部一次性展示",
+                                        ],
+                                    },
+                                    "id": f"repair-mode-{uuid.uuid4().hex[:8]}",
+                                    "type": "tool_call",
+                                }
+                            ],
+                        )
+                    ]
+                }
 
 
             # 获取 LLM 并绑定工具
@@ -2361,6 +2562,16 @@ class ToolsNodes(BasicNode):
                 # 重置续行标记
                 choice_continuation["retried_at_step"] = -1
 
+                # ========== 拦截并发冲突：request_user_choice 与 generate_repair_report 同时出现 ==========
+                # LLM 有时会并发调用这两个工具，但 generate_repair_report 必须在用户选择后才能执行
+                if choice_tool_instance and any(tc.get("name") == "request_user_choice" for tc in tool_calls):
+                    _conflicting_report_calls = [tc for tc in tool_calls if tc.get("name") == "generate_repair_report"]
+                    if _conflicting_report_calls:
+                        # 移除 generate_repair_report，让用户先完成选择
+                        tool_calls = [tc for tc in tool_calls if tc.get("name") != "generate_repair_report"]
+                        response.tool_calls = tool_calls
+                        logger.info(f"[{trace_id}] agent_node: 拦截并发冲突，移除 generate_repair_report（共 {len(_conflicting_report_calls)} 个），等待用户选择后再生成报告")
+
                 # ========== 拦截是否题：报告已生成时不再提问 ==========
                 if choice_tool_instance and any(tc.get("name") == "request_user_choice" for tc in tool_calls):
                     # 检查修复报告是否已生成
@@ -2464,6 +2675,35 @@ class ToolsNodes(BasicNode):
                                     should_force_choice = True
 
                     if should_force_choice:
+                        _repair_mode_keywords = ("修复展示方式", "请选择修复展示方式", "请选择修复展示方式")
+                        _is_k8s_repair_mode_prompt = _has_analysis_context and any(
+                            kw in response_content for kw in _repair_mode_keywords
+                        )
+                        if _is_k8s_repair_mode_prompt:
+                            from langchain_core.messages import AIMessage as _CombinedAI
+
+                            logger.info(f"[{trace_id}] agent_node: 检测到 K8s 修复方式纯文本提问，直接合成 request_user_choice")
+                            synthetic_choice_response = _CombinedAI(
+                                content="",
+                                tool_calls=[
+                                    {
+                                        "name": "request_user_choice",
+                                        "args": {
+                                            "question": "请选择修复展示方式",
+                                            "question_type": "single_select",
+                                            "options": [
+                                                "按问题类别聚合",
+                                                "按工作负载聚合",
+                                                "全部一次性展示",
+                                            ],
+                                        },
+                                        "id": f"repair-mode-{uuid.uuid4().hex[:8]}",
+                                        "type": "tool_call",
+                                    }
+                                ],
+                            )
+                            return {"messages": [synthetic_choice_response]}
+
                         logger.warning(
                             f"[{trace_id}] agent_node: 检测到纯文本提问/选项列表，强制重试使用 request_user_choice"
                         )
@@ -2524,11 +2764,10 @@ class ToolsNodes(BasicNode):
                         nudge_msg = _RetrySystemMessage(
                             content=(
                                 "你刚才返回了空响应，这是不允许的。用户已完成选择，你必须立即行动。"
-                                "请根据用户的选择结果和之前的对话上下文，直接输出相应内容。"
-                                "如果用户选择了查看详情，展示所有目标的完整问题列表。"
-                                "如果用户选择了导出命令，直接输出修复命令。"
-                                "如果用户选择了修复方案，调用 generate_repair_report 工具生成修复对比。"
-                                "不要返回空内容，不要再次提问，不要调用 request_user_choice。"
+                                "【禁止】重复输出之前已经展示过的配置检查结果或问题摘要，用户已经看过了。"
+                                "请根据用户的选择结果，直接调用 generate_repair_report 工具生成修复报告（items 留空，"
+                                "group_by 根据用户选择设置：全部展示→all，按工作负载→target，按类别→category）。"
+                                "不要返回空内容，不要再次提问，不要调用 request_user_choice，不要重复分析结果。"
                             )
                         )
                         logger.info(f"[{trace_id}] agent_node: request_user_choice 后 LLM 未调用工具，" f"二次重试 (step={current_step})")
@@ -2616,6 +2855,33 @@ class ToolsNodes(BasicNode):
                     interrupted_msgs.append(ToolMessage(content="[执行已中断]", tool_call_id=tc_id))
                 return {"messages": interrupted_msgs}
 
+            # ========== 拦截并发冲突：request_user_choice 与 generate_repair_report 同时出现 ==========
+            # tool_node.ainvoke(state) 读取的是 state["messages"][-1].tool_calls（即 last_message），
+            # 必须在此处直接修改 last_message.tool_calls，才能阻止 generate_repair_report 执行。
+            _tc_name_set = {
+                (tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", ""))
+                for tc in tool_calls
+            }
+            if "request_user_choice" in _tc_name_set and "generate_repair_report" in _tc_name_set:
+                _filtered_tool_calls = [
+                    tc for tc in tool_calls
+                    if (tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "")) != "generate_repair_report"
+                ]
+                _removed_count = len(tool_calls) - len(_filtered_tool_calls)
+                logger.info(
+                    f"[{trace_id}] logged_tool_node: 拦截并发冲突，移除 {_removed_count} 个 generate_repair_report，"
+                    f"等待用户选择后再生成修复报告"
+                )
+                # 直接修改 state 中的 AIMessage，tool_node 读取 state["messages"][-1].tool_calls
+                try:
+                    last_message.tool_calls = _filtered_tool_calls
+                except Exception:
+                    try:
+                        object.__setattr__(last_message, "tool_calls", _filtered_tool_calls)
+                    except Exception:
+                        logger.warning(f"[{trace_id}] logged_tool_node: 无法修改 last_message.tool_calls，并发拦截可能失效")
+                tool_calls = _filtered_tool_calls
+
             # ========== 操作前快照（回滚用）==========
             rollback_cfg = graph_request.rollback_config
             snapshots: Dict[str, str] = {}  # tool_call_id -> snapshot_result
@@ -2690,32 +2956,32 @@ class ToolsNodes(BasicNode):
                         _rm_content = getattr(_rm, "content", "")
                         _parsed = _json_cache.loads(_rm_content) if isinstance(_rm_content, str) else _rm_content
                         if isinstance(_parsed, dict) and "_deployments_full" in _parsed:
-                            _analysis_cache["deployments"] = _parsed["_deployments_full"]
+                            # 追加而非覆盖，支持分页场景下多次调用累积结果
+                            if "deployments" not in _analysis_cache:
+                                _analysis_cache["deployments"] = []
+                            _analysis_cache["deployments"].extend(_parsed["_deployments_full"])
                             _analysis_cache["cluster_name"] = _parsed.get("cluster_name", "")
-                            logger.info(f"[{trace_id}] 缓存分析结果: {len(_parsed['_deployments_full'])} 个 deployment")
+                            logger.info(f"[{trace_id}] 缓存分析结果: 本次 {len(_parsed['_deployments_full'])} 个，累计 {len(_analysis_cache['deployments'])} 个 deployment")
                             # 剥离完整数据，只保留精简摘要进入 LLM context
                             _parsed.pop("_deployments_full", None)
                             _rm.content = _json_cache.dumps(_parsed, ensure_ascii=False)
+                            if _parsed.get("issues_detail"):
+                                dispatch_custom_event(
+                                    "config_analysis_report",
+                                    {
+                                        "report_id": str(uuid.uuid4())[:8],
+                                        "markdown": build_config_analysis_report_markdown(_parsed),
+                                    },
+                                )
                     except Exception:
                         pass
 
-            # ========== 修复报告后注入命令输出指令 ==========
-            for _rm in result_messages:
-                _rm_name = getattr(_rm, "name", "")
-                if _rm_name == "generate_repair_report":
-                    _rm_content = getattr(_rm, "content", "")
-                    if "修复命令" in _rm_content or "```" in _rm_content:
-                        from langchain_core.messages import SystemMessage as _CmdOutputSM
-                        _cmd_directive = _CmdOutputSM(content=(
-                            "【强制输出规则】用户无法看到工具返回的内容（ToolMessage 对用户不可见）。"
-                            "你必须在你的回复中完整列出工具结果中的所有修复命令。"
-                            "格式要求：按工作负载分组，每条命令用 ```bash 代码块包裹。"
-                            "严禁省略任何命令，严禁说'见上方'或'复制以上命令'。"
-                            "用户只能看到你的文字回复，所以命令必须出现在你的回复中。"
-                        ))
-                        result_messages.append(_cmd_directive)
-                        logger.info(f"[{trace_id}] 注入命令输出指令")
-                    break
+            # ========== 根据工具结果注入输出指令 ==========
+            _post_tool_directives = build_post_tool_directives(result_messages)
+            if _post_tool_directives:
+                result_messages.extend(_post_tool_directives)
+                if any("修复命令" in directive.content for directive in _post_tool_directives):
+                    logger.info(f"[{trace_id}] 注入命令输出指令")
 
             # ========== 防护：截断 YAML 内容防止 context 溢出 ==========
             if yaml_call_ids:

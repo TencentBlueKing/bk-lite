@@ -132,7 +132,8 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
             <Tooltip title={t('topology.deleteSelected')}>
               <Button
                 type="text"
-                icon={<DeleteOutlined style={{ fontSize: 16 }} />}
+                aria-label={t('topology.deleteSelected')}
+                icon={<DeleteOutlined aria-hidden="true" style={{ fontSize: 16 }} />}
                 onClick={onDelete}
                 className={iconButtonClassName}
               />
@@ -142,7 +143,8 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
                 <Tooltip title={t('dashboard.configUnifiedFilterFields')}>
                   <Button
                     type="text"
-                    icon={<SettingOutlined style={{ fontSize: 16 }} />}
+                    aria-label={t('dashboard.configUnifiedFilterFields')}
+                    icon={<SettingOutlined aria-hidden="true" style={{ fontSize: 16 }} />}
                     onClick={onFilterConfig}
                     className={iconButtonClassName}
                   />

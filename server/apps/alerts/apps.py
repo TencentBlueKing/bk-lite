@@ -20,6 +20,8 @@ class AlertsConfig(AppConfig):
             # 注册告警源适配器
             adapters()
             import apps.alerts.nats.nats # noqa
+            # 注册即时告警策略缓存失效信号
+            _register_instant_cache_signals()
 
 
 def adapters():
@@ -38,3 +40,22 @@ def adapters():
     except Exception as e:
         logger.error(f"Failed to register alert source adapter: {e}", exc_info=True)
         raise
+
+
+def _register_instant_cache_signals():
+    """注册 AlarmStrategy save/delete 信号 → 失效即时告警策略缓存。
+
+    确保启停 / 编辑 / 删除策略后旁路立即生效，避免最长 60s TTL 窗口内的不一致。
+    """
+    try:
+        from django.db.models.signals import post_save, post_delete
+        from apps.alerts.aggregation.processor.instant_dispatcher import InstantStrategyCache
+        from apps.alerts.models.alert_operator import AlarmStrategy
+
+        def _invalidate(sender, **kwargs):
+            InstantStrategyCache.cache_clear()
+
+        post_save.connect(_invalidate, sender=AlarmStrategy, dispatch_uid="instant_cache_post_save")
+        post_delete.connect(_invalidate, sender=AlarmStrategy, dispatch_uid="instant_cache_post_delete")
+    except Exception as e:  # noqa
+        logger.error(f"Failed to register instant cache signals: {e}", exc_info=True)

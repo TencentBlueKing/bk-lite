@@ -90,6 +90,15 @@ export interface HeartbeatParams {
     alert_template: HeartbeatAlertTemplate;
 }
 
+export interface InstantAlertTemplate {
+    title: string;
+    description: string;
+}
+
+export interface InstantParams {
+    alert_template: InstantAlertTemplate;
+}
+
 export interface CorrelationRule {
     id: number;
     created_at: string;
@@ -97,11 +106,11 @@ export interface CorrelationRule {
     created_by: string;
     updated_by: string;
     name: string;
-    strategy_type?: 'smart_denoise' | 'missing_detection';
+    strategy_type?: 'smart_denoise' | 'missing_detection' | 'instant';
     team?: string[];
     dispatch_team?: string[];
     match_rules?: FilterRule[][];
-    params?: AlarmStrategyParams | HeartbeatParams;
+    params?: AlarmStrategyParams | HeartbeatParams | InstantParams;
     auto_close?: boolean;
     close_minutes?: number;
     last_execute_time?: string;

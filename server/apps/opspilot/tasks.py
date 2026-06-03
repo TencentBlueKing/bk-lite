@@ -850,7 +850,7 @@ def chat_flow_test_execute_task(workflow_id, node_id, input_data, entry_type, ex
             engine.execute(input_data)
             logger.info(f"ChatFlow测试异步任务完成: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}")
         except Exception as e:
-            logger.error(f"ChatFlow测试异步任务失败: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}, error={str(e)}")
+            logger.error(f"ChatFlow测试异步任务失败: workflow_id={workflow_id}, node_id={node_id}, " f"execution_id={execution_id}, error={str(e)}")
 
     return _run_in_native_thread(_execute)
 
@@ -1064,6 +1064,7 @@ def process_memory_write(
     owner_username: str,
     owner_domain: str,
     organization_id: int = None,
+    model_id: int = None,
 ):
     """异步写入记忆条目，每个用户/组织在每个记忆空间只有一条记忆
 
@@ -1071,6 +1072,9 @@ def process_memory_write(
     - 个人记忆：按 owner_username + owner_domain + memory_space_id 查找唯一记忆
     - 组织记忆：按 organization_id + memory_space_id 查找唯一记忆
     - 找到则合并内容，未找到则创建新记忆
+
+    Args:
+        model_id: 可选，用于覆盖记忆空间的默认模型（workflow 节点级别配置）
     """
     import json
     import re
@@ -1082,18 +1086,14 @@ def process_memory_write(
     from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
 
     is_org_memory = organization_id is not None
-    entity_desc = f"org_id={organization_id}" if is_org_memory else f"user={owner_username}@{owner_domain}"
-    logger.info(f"[MemoryWriteTask] 开始执行: space_id={memory_space_id}, {entity_desc}, title={title}")
-    logger.info(f"[MemoryWriteTask] 原始内容长度: {len(content)} 字符")
-
     try:
         close_old_connections()
 
         # 获取记忆空间配置
         memory_space = MemorySpace.objects.get(id=memory_space_id)
         write_rule = memory_space.write_rule
-        default_model = memory_space.default_model
-
+        # 优先使用传入的 model_id（workflow 节点配置），否则使用记忆空间的默认模型
+        effective_model_id = model_id if model_id else memory_space.default_model
         # Step 1: 查找该实体的现有记忆（每个用户/组织只有一条）
         if is_org_memory:
             existing_memory = Memory.objects.filter(
@@ -1108,22 +1108,15 @@ def process_memory_write(
                 organization_id__isnull=True,
             ).first()
 
-        if existing_memory:
-            logger.info(f"[MemoryWriteTask] 找到现有记忆: id={existing_memory.id}")
-        else:
-            logger.info("[MemoryWriteTask] 未找到现有记忆，将创建新记忆")
-
         # 如果没有配置模型，直接创建或追加内容
-        if not default_model:
-            logger.info("[MemoryWriteTask] 未配置 default_model，直接处理")
+        if not effective_model_id:
             if existing_memory:
                 # 简单追加内容
                 existing_memory.content = f"{existing_memory.content}\n\n---\n\n{content}"
                 existing_memory.updated_by = owner_username
                 existing_memory.save()
-                logger.info(f"[MemoryWriteTask] 记忆追加成功: id={existing_memory.id}")
             else:
-                memory = Memory.objects.create(
+                Memory.objects.create(
                     memory_space_id=memory_space_id,
                     title=title,
                     content=content,
@@ -1133,12 +1126,11 @@ def process_memory_write(
                     created_by=owner_username,
                     updated_by=owner_username,
                 )
-                logger.info(f"[MemoryWriteTask] 记忆创建成功: id={memory.id}")
             return
 
         # 获取 LLM 客户端
         try:
-            llm_model = LLMModel.objects.get(id=default_model)
+            llm_model = LLMModel.objects.get(id=effective_model_id)
             llm_request = BasicLLMRequest(
                 openai_api_base=llm_model.openai_api_base,
                 openai_api_key=llm_model.openai_api_key,
@@ -1148,14 +1140,13 @@ def process_memory_write(
             )
             client = LLMClientFactory.create_client(llm_request, disable_stream=True)
         except LLMModel.DoesNotExist:
-            logger.warning(f"[MemoryWriteTask] 配置的模型不存在: model_id={default_model}，直接处理")
+            logger.warning(f"[MemoryWriteTask] 配置的模型不存在: model_id={effective_model_id}，直接处理")
             if existing_memory:
                 existing_memory.content = f"{existing_memory.content}\n\n---\n\n{content}"
                 existing_memory.updated_by = owner_username
                 existing_memory.save()
-                logger.info(f"[MemoryWriteTask] 记忆追加成功: id={existing_memory.id}")
             else:
-                memory = Memory.objects.create(
+                Memory.objects.create(
                     memory_space_id=memory_space_id,
                     title=title,
                     content=content,
@@ -1165,13 +1156,11 @@ def process_memory_write(
                     created_by=owner_username,
                     updated_by=owner_username,
                 )
-                logger.info(f"[MemoryWriteTask] 记忆创建成功: id={memory.id}")
             return
 
         # Step 2: 使用 write_rule 规范化新内容（如果配置了）
         processed_content = content
         if write_rule:
-            logger.info("[MemoryWriteTask] 使用 write_rule 规范化内容")
             try:
                 messages = [
                     SystemMessage(content=write_rule),
@@ -1179,14 +1168,12 @@ def process_memory_write(
                 ]
                 response = client.invoke(messages)
                 processed_content = response.content if hasattr(response, "content") else str(response)
-                logger.info(f"[MemoryWriteTask] 规范化完成: 处理后长度={len(processed_content)} 字符")
             except Exception as e:
                 logger.error(f"[MemoryWriteTask] 规范化失败: {e}，使用原始内容", exc_info=True)
 
         # Step 3: 如果没有现有记忆，直接创建
         if not existing_memory:
-            logger.info("[MemoryWriteTask] 无现有记忆，直接创建新记忆")
-            memory = Memory.objects.create(
+            Memory.objects.create(
                 memory_space_id=memory_space_id,
                 title=title,
                 content=processed_content,
@@ -1196,7 +1183,6 @@ def process_memory_write(
                 created_by=owner_username,
                 updated_by=owner_username,
             )
-            logger.info(f"[MemoryWriteTask] 记忆创建成功: id={memory.id}")
             return
 
         # Step 4: 有现有记忆，使用 LLM 智能合并
@@ -1250,7 +1236,6 @@ def process_memory_write(
 }}
 ```"""
 
-        logger.info("[MemoryWriteTask] 请求 LLM 合并记忆内容")
         try:
             messages = [
                 SystemMessage(content="你是一个记忆管理助手，负责智能合并新旧记忆内容。请严格按照 JSON 格式输出。"),
@@ -1258,7 +1243,6 @@ def process_memory_write(
             ]
             response = client.invoke(messages)
             merge_text = response.content if hasattr(response, "content") else str(response)
-            logger.info(f"[MemoryWriteTask] LLM 合并响应: {merge_text[:200]}...")
 
             # 解析 JSON 响应
             json_match = re.search(r"```json\s*(.*?)\s*```", merge_text, re.DOTALL)
@@ -1278,20 +1262,17 @@ def process_memory_write(
             existing_memory.content = merged_content
             existing_memory.updated_by = owner_username
             existing_memory.save()
-            logger.info(f"[MemoryWriteTask] 记忆合并更新成功: id={existing_memory.id}")
 
         except json.JSONDecodeError as e:
             logger.error(f"[MemoryWriteTask] JSON 解析失败: {e}，简单追加内容")
             existing_memory.content = f"{existing_memory.content}\n\n---\n\n{processed_content}"
             existing_memory.updated_by = owner_username
             existing_memory.save()
-            logger.info(f"[MemoryWriteTask] 记忆追加成功: id={existing_memory.id}")
         except Exception as e:
             logger.error(f"[MemoryWriteTask] LLM 合并失败: {e}，简单追加内容", exc_info=True)
             existing_memory.content = f"{existing_memory.content}\n\n---\n\n{processed_content}"
             existing_memory.updated_by = owner_username
             existing_memory.save()
-            logger.info(f"[MemoryWriteTask] 记忆追加成功: id={existing_memory.id}")
 
     except MemorySpace.DoesNotExist:
         logger.error(f"[MemoryWriteTask] 记忆空间不存在: space_id={memory_space_id}")

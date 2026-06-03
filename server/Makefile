@@ -31,7 +31,7 @@ collect-static:
 	uv run python manage.py collectstatic --noinput
 
 dev:
-	uv run uvicorn asgi:application --host 0.0.0.0 --port 8001 --reload --workers 1
+	uv run uvicorn asgi:application --host 0.0.0.0 --port 8011 --reload --workers 1
 
 clean-migrate:
 	cd apps &&\

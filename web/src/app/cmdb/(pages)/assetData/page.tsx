@@ -21,6 +21,7 @@ import CustomTable from '@/components/custom-table';
 import GroupTreeSelector from '@/components/group-tree-select';
 import PermissionWrapper from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import RefreshIconButton from '@/components/refresh-icon-button';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
 import { deepClone, getAssetColumns } from '@/app/cmdb/utils/common';
@@ -998,6 +999,10 @@ const AssetDataContent = () => {
                   onSearch={handleSearch}
                   onChange={handleFilterBarChange}
                   onFilterChange={handleFilterBarChange}
+                />
+                <RefreshIconButton
+                  loading={loading}
+                  onClick={() => fetchData()}
                 />
               </Space>
             </div>

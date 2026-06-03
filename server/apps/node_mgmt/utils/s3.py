@@ -6,9 +6,13 @@ from apps.rpc.jetstream import JetStreamService
 async def upload_file_to_s3(file, s3_file_path):
     jetstream = JetStreamService()
     await jetstream.connect()
-    file_data = file.read()
-    file_name = file.name
-    await jetstream.put(s3_file_path, file_data, description=file_name)
+    if hasattr(file, "open"):
+        file.open("rb")
+    stream = getattr(file, "file", file)
+    if hasattr(stream, "seek"):
+        stream.seek(0)
+    file_name = getattr(file, "name", getattr(stream, "name", s3_file_path))
+    await jetstream.put(s3_file_path, stream, description=file_name)
     await jetstream.close()
 
 
@@ -20,9 +24,7 @@ async def download_file_by_s3(s3_file_path):
     return file, name
 
 
-async def stream_download_file_by_s3(
-    s3_file_path: str, chunk_size: int = 1024 * 1024
-) -> AsyncGenerator[tuple[bytes, str, int], None]:
+async def stream_download_file_by_s3(s3_file_path: str, chunk_size: int = 1024 * 1024) -> AsyncGenerator[tuple[bytes, str, int], None]:
     """
     流式下载文件，避免大文件内存堆积。
 
@@ -32,9 +34,7 @@ async def stream_download_file_by_s3(
     jetstream = JetStreamService()
     await jetstream.connect()
     try:
-        async for chunk, filename, total_size in jetstream.get_streaming(
-            s3_file_path, chunk_size
-        ):
+        async for chunk, filename, total_size in jetstream.get_streaming(s3_file_path, chunk_size):
             yield chunk, filename, total_size
     finally:
         await jetstream.close()
