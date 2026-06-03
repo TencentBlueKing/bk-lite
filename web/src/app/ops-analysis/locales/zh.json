@@ -2,7 +2,9 @@
   "common": {
     "total": "共",
     "items": "条",
-    "loading": "加载中"
+    "loading": "加载中",
+    "expand": "展开",
+    "collapse": "收起"
   },
   "topology": {
     "nodeConfig": {
@@ -336,6 +338,14 @@
     "comparePreviousShortLabel": "较上周期",
     "compareUnavailableTip": "当前数据源未配置可识别的时间范围参数，无法开启周期比较。",
     "displaySettings": "展示设置",
+    "addGroup": "新增分组",
+    "editGroup": "编辑分组",
+    "unGroup": "取消分组",
+    "unGroupConfirm": "取消分组后，组内组件会保留，但会回到未分组区域，确认继续？",
+    "deleteEntireGroup": "删除整个分组",
+    "editMode": "编辑态",
+    "deleteEntireGroupConfirm": "删除整个分组会同时删除分组下的所有组件，确认继续？",
+    "groupNamePlaceholder": "请输入分组名称",
     "exportPdf": "导出 PDF",
     "exportPdfSuccess": "导出成功",
     "exportPdfFailed": "导出失败"

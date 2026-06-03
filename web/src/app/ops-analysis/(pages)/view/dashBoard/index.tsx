@@ -10,61 +10,31 @@ import React, {
 import { v4 as uuidv4 } from 'uuid';
 import ViewSelector from './components/viewSelector';
 import ViewConfig from './components/viewConfig';
-import GridLayout, { WidthProvider } from 'react-grid-layout';
-import {
-  Button,
-  Empty,
-  Dropdown,
-  Menu,
-  Modal,
-  message,
-  Spin,
-  Tooltip,
-  Select,
-  Tag,
-} from 'antd';
+import DashboardCanvas from './components/dashboardCanvas';
+import DashboardToolbar from './components/dashboardToolbar';
+import { Input, Modal, message, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { useCanvasResources } from '@/app/ops-analysis/hooks/useCanvasResources';
-import dayjs from 'dayjs';
 import {
-  LayoutItem,
+  DashboardLayoutItem,
+  DashboardWidgetLayoutItem,
   OtherConfig,
-  LayoutChangeItem,
+  LayoutItem,
   WidgetConfig,
   UnifiedFilterDefinition,
   FilterValue,
-  FilterBindings,
-  TimeRangeValue,
 } from '@/app/ops-analysis/types/dashBoard';
 import { DirItem } from '@/app/ops-analysis/types';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useUnifiedFilter } from '@/app/ops-analysis/hooks/useUnifiedFilter';
-import {
-  PlusOutlined,
-  MoreOutlined,
-  EditOutlined,
-  ReloadOutlined,
-  SettingOutlined,
-  DownloadOutlined,
-  FullscreenOutlined,
-} from '@ant-design/icons';
 import { useDashBoardApi } from '@/app/ops-analysis/api/dashBoard';
-import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
-import WidgetWrapper from './components/widgetWrapper';
-import PermissionWrapper from '@/components/permission';
+import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import {
   UnifiedFilterBar,
   UnifiedFilterConfigModal,
 } from '@/app/ops-analysis/components/unifiedFilter';
-import {
-  getFilterDefinitionId,
-  getBindableFilterParams,
-  buildDefaultFilterBindings,
-} from '@/app/ops-analysis/utils/widgetDataTransform';
-import {
-  collectNamespaceOptions,
-} from '@/app/ops-analysis/utils/namespaceFilter';
+import { collectNamespaceOptions } from '@/app/ops-analysis/utils/namespaceFilter';
 import {
   collectDashboardDataSourceIds,
   collectDashboardNamespaceIds,
@@ -80,6 +50,21 @@ import {
 } from '../components/appFullscreen';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
+import { useSession } from 'next-auth/react';
+import { useDashboardLayoutSync } from './hooks/useDashboardLayoutSync';
+import {
+  deserializeDashboardGridStackLayout,
+  serializeDashboardGridStackLayout,
+} from '@/app/ops-analysis/utils/dashboardGridStack';
+import {
+  buildDashboardGroupStorageKey,
+  getDashboardGroupWidgetIds,
+  insertDashboardWidgetIntoGroup,
+  isDashboardGroupItem,
+  isDashboardWidgetItem,
+  removeDashboardGroupHeader,
+  sanitizeCollapsedGroups,
+} from '@/app/ops-analysis/utils/dashboardGroups';
 
 interface DashboardProps {
   selectedDashboard?: DirItem | null;
@@ -89,25 +74,33 @@ export interface DashboardRef {
   hasUnsavedChanges: () => boolean;
 }
 
-const ResponsiveGridLayout = WidthProvider(GridLayout) as any;
-
 const Dashboard = forwardRef<DashboardRef, DashboardProps>(
   ({ selectedDashboard }, ref) => {
     const { t } = useTranslation();
+    const { data: session } = useSession();
     const themeName = resolveOpsChartThemeName();
     const chartTheme = getOpsChartTheme(themeName);
     const isDarkTheme = themeName === 'dark';
     const { getDashboardDetail, saveDashboard } = useDashBoardApi();
     const dataSourceManager = useDataSourceManager();
-    const {
-      namespaceList,
-      loadCanvasNamespaces,
-    } = useOpsAnalysis();
+    const { namespaceList, loadCanvasNamespaces } = useOpsAnalysis();
     const { syncCanvasResources } = useCanvasResources();
     const [isEditMode, setIsEditMode] = useState(false);
     const [addModalVisible, setAddModalVisible] = useState(false);
-    const [layout, setLayout] = useState<LayoutItem[]>([]);
-    const [originalLayout, setOriginalLayout] = useState<LayoutItem[]>([]);
+    const [layout, setLayout] = useState<DashboardLayoutItem[]>([]);
+    const [originalLayout, setOriginalLayout] = useState<DashboardLayoutItem[]>(
+      [],
+    );
+    const [collapsedGroups, setCollapsedGroups] = useState<
+      Record<string, true>
+    >({});
+    const [groupNameModalVisible, setGroupNameModalVisible] = useState(false);
+    const [groupNameDraft, setGroupNameDraft] = useState('');
+    const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+    const [isCreatingGroupName, setIsCreatingGroupName] = useState(false);
+    const [pendingNewWidgetGroupId, setPendingNewWidgetGroupId] = useState<
+      string | null
+    >(null);
     const [configDrawerVisible, setConfigDrawerVisible] = useState(false);
     const [currentConfigItem, setCurrentConfigItem] = useState<LayoutItem>();
     const [isNewComponentConfig, setIsNewComponentConfig] = useState(false);
@@ -119,7 +112,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [loading, setLoading] = useState(false);
     const [otherConfig, setOtherConfig] = useState<OtherConfig>({});
     const [originalOtherConfig, setOriginalOtherConfig] = useState<OtherConfig>(
-      {}
+      {},
     );
     const [filterConfigModalVisible, setFilterConfigModalVisible] =
       useState(false);
@@ -139,6 +132,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [namespaceSearchVersion, setNamespaceSearchVersion] = useState(0);
     const exportRef = useRef<HTMLDivElement>(null);
     const getDashboardDetailRef = useRef(getDashboardDetail);
+    const collapsedGroupsHydratedKeyRef = useRef<string | null>(null);
+    const skipCollapsedGroupsPersistRef = useRef(false);
+    const [collapsedGroupsLayoutReadyId, setCollapsedGroupsLayoutReadyId] =
+      useState<number | string | null>(null);
     const [exporting, setExporting] = useState(false);
     const resumeEditModeAfterFullscreenRef = useRef(false);
     const { isFullscreen, enterFullscreen, exitFullscreen } =
@@ -155,7 +152,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       updateDefinitions,
       setDefinitions,
     } = useUnifiedFilter();
-    const [originalDefinitions, setOriginalDefinitions] = useState<UnifiedFilterDefinition[]>([]);
+    const [originalDefinitions, setOriginalDefinitions] = useState<
+      UnifiedFilterDefinition[]
+    >([]);
 
     const applyQueryState = useCallback(
       (
@@ -170,221 +169,61 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       [],
     );
 
-    const syncFilterStateAfterLayoutChange = useCallback(
-      (
-        nextDefinitions: UnifiedFilterDefinition[],
-        nextDraftValues: Record<string, FilterValue>,
-        nextAppliedValues: Record<string, FilterValue>,
-      ) => {
-        setDefinitions(nextDefinitions);
-        setFilterValues(nextDraftValues);
-        applyQueryState(nextDefinitions, nextAppliedValues, appliedNamespaceId);
+    const syncDashboardCanvasResources = useCallback(
+      async (nextLayout: DashboardLayoutItem[]) => {
+        const nextWidgetLayout = nextLayout.filter(isDashboardWidgetItem);
+
+        return syncCanvasResources({
+          source: nextWidgetLayout,
+          getDataSourceIds: collectDashboardDataSourceIds,
+          getNamespaceIds: collectDashboardNamespaceIds,
+        });
       },
-      [setDefinitions, setFilterValues, applyQueryState, appliedNamespaceId],
+      [syncCanvasResources],
     );
 
-    const syncDashboardCanvasResources = useCallback(async (
-      nextLayout: LayoutItem[],
-    ) => {
-      return syncCanvasResources({
-        source: nextLayout,
-        getDataSourceIds: collectDashboardDataSourceIds,
-        getNamespaceIds: collectDashboardNamespaceIds,
-      });
-    }, [syncCanvasResources]);
+    const {
+      buildFiltersFromLayout,
+      resolveLayoutNamespaceId,
+      syncFilterStateAfterLayoutChange,
+      syncFilterValuesWithDefinitions,
+      syncLayoutFilterBindings,
+    } = useDashboardLayoutSync({
+      dataSources: dataSourceManager.dataSources,
+      namespaceDraftId,
+      appliedNamespaceId,
+      applyQueryState,
+      setDefinitions,
+      setFilterValues,
+    });
 
-    const resolveLayoutNamespaceId = useCallback((
-      nextLayout: LayoutItem[],
-      canvasDataSources: DatasourceItem[],
-    ) => {
-      if (namespaceDraftId !== undefined) {
-        return namespaceDraftId;
+    const widgetLayoutItems = useMemo(
+      () => layout.filter(isDashboardWidgetItem),
+      [layout],
+    );
+
+    const groupIds = useMemo(
+      () => new Set(layout.filter(isDashboardGroupItem).map((item) => item.i)),
+      [layout],
+    );
+
+    const collapsedGroupStorageKey = useMemo(() => {
+      const username = (session?.user as { username?: string } | undefined)
+        ?.username;
+      if (!username || !selectedDashboard?.data_id) {
+        return null;
       }
-      if (appliedNamespaceId !== undefined) {
-        return appliedNamespaceId;
-      }
 
-      const namespaceIds = Array.from(
-        collectDashboardNamespaceIds(nextLayout, canvasDataSources),
-      );
-      return namespaceIds[0];
-    }, [appliedNamespaceId, namespaceDraftId]);
-
-    const buildFiltersFromLayout = (
-      nextLayout: LayoutItem[],
-      previousDefinitions: UnifiedFilterDefinition[],
-    ): UnifiedFilterDefinition[] => {
-      const discoveredParams = new Map<
-        string,
-        ParamItem & { type: 'string' | 'timeRange' }
-      >();
-
-      nextLayout.forEach((item) => {
-        const dataSourceId = item.valueConfig?.dataSource;
-        const normalizedId =
-          typeof dataSourceId === 'string' ? parseInt(dataSourceId, 10) : dataSourceId;
-        const dataSource = dataSourceManager.dataSources.find(
-          (source) => source.id === normalizedId,
-        );
-        // 始终使用数据源的当前 params 来发现可绑定参数，
-        // 而非 widget 保存时的快照（快照可能已过时）
-        const params = dataSource?.params;
-
-        getBindableFilterParams(params).forEach((param) => {
-          const id = getFilterDefinitionId(param.name, param.type);
-          if (!discoveredParams.has(id)) {
-            discoveredParams.set(id, param);
-          }
-        });
-      });
-
-      const existingDefinitions = new Map(
-        previousDefinitions.map((definition) => [definition.id, definition]),
-      );
-
-      return Array.from(discoveredParams.entries()).map(([id, param], index) => {
-        const existing =
-          existingDefinitions.get(id) ||
-          previousDefinitions.find(
-            (definition) =>
-              definition.key === param.name && definition.type === param.type,
-          );
-
-        let defaultValue: FilterValue = null;
-        if (existing?.defaultValue !== undefined) {
-          defaultValue = existing.defaultValue;
-        } else if (param.value !== undefined && param.value !== null) {
-          if (param.type === 'timeRange' && typeof param.value === 'number') {
-            const end = dayjs();
-            const start = end.subtract(param.value, 'minute');
-            defaultValue = { start: start.toISOString(), end: end.toISOString(), selectValue: param.value };
-          } else {
-            defaultValue = param.value as FilterValue;
-          }
-        }
-
-        return {
-          id,
-          key: param.name,
-          name: existing?.name || param.alias_name || param.name,
-          type: param.type,
-          defaultValue,
-          order: index,
-          enabled: existing?.enabled ?? true,
-        };
-      });
-    };
-
-    const syncLayoutFilterBindings = (
-      nextLayout: LayoutItem[],
-      definitions: UnifiedFilterDefinition[],
-    ) => {
-      const allowedIds = new Set(definitions.map((definition) => definition.id));
-
-      return nextLayout.map((item) => {
-        const existingBindings = item.valueConfig?.filterBindings;
-        // 使用数据源当前 params 来决定绑定关系，而非保存时的快照
-        const dataSourceId = item.valueConfig?.dataSource;
-        const normalizedId =
-          typeof dataSourceId === 'string' ? parseInt(dataSourceId, 10) : dataSourceId;
-        const dataSource = dataSourceManager.dataSources.find(
-          (source) => source.id === normalizedId,
-        );
-        const currentParams = dataSource?.params;
-
-        const autoBindings = buildDefaultFilterBindings(
-          currentParams,
-          definitions,
-          existingBindings,
-        );
-
-        if (!autoBindings) {
-          if (existingBindings === undefined) {
-            return item;
-          }
-          return {
-            ...item,
-            valueConfig: {
-              ...item.valueConfig,
-              filterBindings: undefined,
-            },
-          };
-        }
-
-        const prunedBindings = Object.entries(autoBindings).reduce<FilterBindings>(
-          (acc, [filterId, enabled]) => {
-            if (allowedIds.has(filterId)) {
-              acc[filterId] = enabled;
-            }
-            return acc;
-          },
-          {},
-        );
-
-        const newBindings = Object.keys(prunedBindings).length ? prunedBindings : undefined;
-        
-        if (JSON.stringify(existingBindings) === JSON.stringify(newBindings)) {
-          return item;
-        }
-
-        return {
-          ...item,
-          valueConfig: {
-            ...item.valueConfig,
-            filterBindings: newBindings,
-          },
-        };
-      });
-    };
-
-    const syncFilterValuesWithDefinitions = (
-      nextDefinitions: UnifiedFilterDefinition[],
-      currentValues: Record<string, FilterValue>,
-    ): Record<string, FilterValue> => {
-      const updatedValues: Record<string, FilterValue> = { ...currentValues };
-      nextDefinitions.forEach((def) => {
-        if (def.enabled && def.defaultValue !== null && def.defaultValue !== undefined) {
-          if (updatedValues[def.id] === undefined || updatedValues[def.id] === null) {
-            if (def.type === 'timeRange') {
-              const rawValue = def.defaultValue;
-              if (typeof rawValue === 'number') {
-                const end = dayjs();
-                const start = end.subtract(rawValue, 'minute');
-                updatedValues[def.id] = {
-                  start: start.toISOString(),
-                  end: end.toISOString(),
-                } as TimeRangeValue;
-              } else if (
-                rawValue &&
-                typeof rawValue === 'object' &&
-                'start' in rawValue &&
-                'end' in rawValue
-              ) {
-                const trv = rawValue as TimeRangeValue;
-                if (trv.selectValue && trv.selectValue > 0) {
-                  const end = dayjs();
-                  const start = end.subtract(trv.selectValue, 'minute');
-                  updatedValues[def.id] = {
-                    start: start.toISOString(),
-                    end: end.toISOString(),
-                    selectValue: trv.selectValue,
-                  } as TimeRangeValue;
-                } else {
-                  updatedValues[def.id] = rawValue;
-                }
-              }
-            } else {
-              updatedValues[def.id] = def.defaultValue;
-            }
-          }
-        }
-      });
-      return updatedValues;
-    };
+      return buildDashboardGroupStorageKey(username, selectedDashboard.data_id);
+    }, [selectedDashboard?.data_id, session?.user]);
 
     const namespaceOptions = useMemo(() => {
-      return collectNamespaceOptions(layout, dataSourceManager.dataSources, namespaceList);
-    }, [layout, dataSourceManager.dataSources, namespaceList]);
+      return collectNamespaceOptions(
+        widgetLayoutItems,
+        dataSourceManager.dataSources,
+        namespaceList,
+      );
+    }, [widgetLayoutItems, dataSourceManager.dataSources, namespaceList]);
 
     useEffect(() => {
       if (namespaceOptions.length > 0) {
@@ -430,6 +269,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     useEffect(() => {
       const loadDashboardData = async () => {
         if (!selectedDashboard) {
+          setCollapsedGroupsLayoutReadyId(null);
           setLayout([]);
           setOriginalLayout([]);
           setOtherConfig({});
@@ -446,15 +286,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           const dashboardData = await getDashboardDetailRef.current(
             selectedDashboard.data_id,
           );
-          const nextLayout =
-            dashboardData.view_sets && Array.isArray(dashboardData.view_sets)
-              ? dashboardData.view_sets
-              : [];
+          const nextLayout = deserializeDashboardGridStackLayout(
+            dashboardData.view_sets,
+          );
           await syncDashboardCanvasResources(nextLayout);
-          if (
-            dashboardData.view_sets &&
-            Array.isArray(dashboardData.view_sets)
-          ) {
+          if (nextLayout.length) {
             setLayout(nextLayout);
             setOriginalLayout([...nextLayout]);
           } else {
@@ -463,17 +299,24 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             void loadCanvasNamespaces([]);
           }
 
+          setCollapsedGroupsLayoutReadyId(selectedDashboard.data_id);
+
           const savedOtherConfig = dashboardData.other || {};
           setOtherConfig(savedOtherConfig);
           setOriginalOtherConfig({ ...savedOtherConfig });
 
           // Handle both legacy (unifiedFilters) and new (direct array) format
           const rawFilters = dashboardData.filters;
-          const loadedDefinitions: UnifiedFilterDefinition[] =
-            Array.isArray(rawFilters) ? rawFilters :
-            (rawFilters?.definitions || rawFilters?.unifiedFilters || []);
-          
-          const initialValues = syncFilterValuesWithDefinitions(loadedDefinitions, {});
+          const loadedDefinitions: UnifiedFilterDefinition[] = Array.isArray(
+            rawFilters,
+          )
+            ? rawFilters
+            : rawFilters?.definitions || rawFilters?.unifiedFilters || [];
+
+          const initialValues = syncFilterValuesWithDefinitions(
+            loadedDefinitions,
+            {},
+          );
 
           setDefinitions(loadedDefinitions);
           setFilterValues(initialValues);
@@ -482,6 +325,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           setOriginalDefinitions([...loadedDefinitions]);
         } catch (error) {
           console.error('加载仪表盘数据失败:', error);
+          setCollapsedGroupsLayoutReadyId(selectedDashboard.data_id);
           setLayout([]);
           setOriginalLayout([]);
           setOtherConfig({});
@@ -496,15 +340,26 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         }
       };
       loadDashboardData();
-    }, [selectedDashboard?.data_id, loadCanvasNamespaces, syncDashboardCanvasResources]);
+    }, [
+      selectedDashboard?.data_id,
+      loadCanvasNamespaces,
+      syncDashboardCanvasResources,
+    ]);
 
     // 监听 selectedDashboard 的变化，重置状态
     useEffect(() => {
+      collapsedGroupsHydratedKeyRef.current = null;
+      skipCollapsedGroupsPersistRef.current = false;
+      setCollapsedGroupsLayoutReadyId(null);
       setIsEditMode(false);
       setAddModalVisible(false);
       setConfigDrawerVisible(false);
       setCurrentConfigItem(undefined);
       setIsNewComponentConfig(false);
+      setGroupNameModalVisible(false);
+      setGroupNameDraft('');
+      setEditingGroupId(null);
+      setIsCreatingGroupName(false);
       setSaving(false);
       setDashboardReloadVersion(0);
       setFilterSearchVersion(0);
@@ -514,12 +369,112 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setAppliedFilterValues({});
       setNamespaceDraftId(undefined);
       setAppliedNamespaceId(undefined);
+      setPendingNewWidgetGroupId(null);
     }, [selectedDashboard?.data_id]);
 
-    const openAddModal = () => {
+    useEffect(() => {
+      const selectedDashboardId = selectedDashboard?.data_id;
+
+      if (!collapsedGroupStorageKey) {
+        collapsedGroupsHydratedKeyRef.current = null;
+        setCollapsedGroups({});
+        return;
+      }
+
+      if (
+        loading ||
+        collapsedGroupsLayoutReadyId !== selectedDashboardId ||
+        collapsedGroupsHydratedKeyRef.current === collapsedGroupStorageKey
+      ) {
+        return;
+      }
+
+      let parsedValue: unknown = {};
+
+      try {
+        const rawValue = window.localStorage.getItem(collapsedGroupStorageKey);
+        parsedValue = rawValue ? JSON.parse(rawValue) : {};
+      } catch {
+        parsedValue = {};
+      }
+
+      collapsedGroupsHydratedKeyRef.current = collapsedGroupStorageKey;
+      skipCollapsedGroupsPersistRef.current = true;
+      setCollapsedGroups(sanitizeCollapsedGroups(parsedValue, groupIds));
+    }, [
+      collapsedGroupStorageKey,
+      collapsedGroupsLayoutReadyId,
+      groupIds,
+      loading,
+      selectedDashboard?.data_id,
+    ]);
+
+    useEffect(() => {
+      const selectedDashboardId = selectedDashboard?.data_id;
+
+      if (
+        !collapsedGroupStorageKey ||
+        loading ||
+        collapsedGroupsLayoutReadyId !== selectedDashboardId ||
+        collapsedGroupsHydratedKeyRef.current !== collapsedGroupStorageKey
+      ) {
+        return;
+      }
+
+      if (skipCollapsedGroupsPersistRef.current) {
+        skipCollapsedGroupsPersistRef.current = false;
+        return;
+      }
+
+      const sanitized = sanitizeCollapsedGroups(collapsedGroups, groupIds);
+
+      if (Object.keys(sanitized).length === 0) {
+        window.localStorage.removeItem(collapsedGroupStorageKey);
+        return;
+      }
+
+      window.localStorage.setItem(
+        collapsedGroupStorageKey,
+        JSON.stringify(sanitized),
+      );
+    }, [
+      collapsedGroupStorageKey,
+      collapsedGroups,
+      collapsedGroupsLayoutReadyId,
+      groupIds,
+      loading,
+      selectedDashboard?.data_id,
+    ]);
+
+    const toggleCollapsedGroup = useCallback((groupId: string) => {
+      setCollapsedGroups((previous) => {
+        if (previous[groupId]) {
+          const next = { ...previous };
+          delete next[groupId];
+          return next;
+        }
+
+        return { ...previous, [groupId]: true };
+      });
+    }, []);
+
+    const openAddModal = (groupId?: string) => {
       setIsEditMode(true);
+      setPendingNewWidgetGroupId(groupId ?? null);
       setAddModalVisible(true);
     };
+
+    const closeAddModal = () => {
+      setAddModalVisible(false);
+      setPendingNewWidgetGroupId(null);
+    };
+
+    const closeGroupNameModal = useCallback(() => {
+      setGroupNameModalVisible(false);
+      setGroupNameDraft('');
+      setEditingGroupId(null);
+      setIsCreatingGroupName(false);
+    }, []);
 
     // 检查是否有未保存的更改
     const hasUnsavedChanges = () => {
@@ -539,8 +494,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         const otherConfigChanged =
           JSON.stringify(otherConfig) !== JSON.stringify(originalOtherConfig);
         const filtersChanged =
-          JSON.stringify(definitions) !==
-          JSON.stringify(originalDefinitions);
+          JSON.stringify(definitions) !== JSON.stringify(originalDefinitions);
         return layoutChanged || otherConfigChanged || filtersChanged;
       } catch (error) {
         console.error('检查未保存更改时出错:', error);
@@ -564,7 +518,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       try {
         await exportDashboardToPdf(
           exportRef.current,
-          selectedDashboard?.name || 'dashboard'
+          selectedDashboard?.name || 'dashboard',
         );
         message.success(t('dashboard.exportPdfSuccess'));
       } catch (err) {
@@ -575,25 +529,36 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       }
     }, [selectedDashboard?.name, t]);
 
-    const onLayoutChange = (newLayout: LayoutChangeItem[]) => {
-      setLayout((prevLayout) => {
-        return prevLayout.map((item) => {
-          const newItem = newLayout.find((l) => l.i === item.i);
-          if (newItem) {
-            return { ...item, ...newItem };
+    const handleLayoutCommit = useCallback(
+      (newLayout: DashboardLayoutItem[]) => {
+        if (!isEditMode) {
+          return;
+        }
+
+        setLayout((prevLayout) => {
+          if (JSON.stringify(prevLayout) === JSON.stringify(newLayout)) {
+            return prevLayout;
           }
-          return item;
+
+          return newLayout;
         });
-      });
-    };
+      },
+      [isEditMode],
+    );
 
     const handleAddComponent = (config: WidgetConfig) => {
-      const newWidget: LayoutItem = {
+      const nextUngroupedY = layout.reduce(
+        (maxY, item) => Math.max(maxY, item.y + item.h),
+        0,
+      );
+
+      const newWidget: DashboardWidgetLayoutItem = {
         i: uuidv4(),
-        x: (layout.length % 3) * 4,
-        y: Infinity,
+        x: 0,
+        y: nextUngroupedY,
         w: 4,
         h: 3,
+        groupId: null,
         name: config?.name || '',
         description: config?.description || '',
         valueConfig: {
@@ -612,40 +577,57 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           compare: config.compare,
         },
       };
-      const nextLayout = [...layout, newWidget];
+      const nextLayout = pendingNewWidgetGroupId
+        ? insertDashboardWidgetIntoGroup(
+          layout,
+          newWidget,
+          pendingNewWidgetGroupId,
+        )
+        : [...layout, newWidget];
       const nextDefinitions = buildFiltersFromLayout(nextLayout, definitions);
-      const syncedLayout = syncLayoutFilterBindings(nextLayout, nextDefinitions);
-      const nextFilterValues = syncFilterValuesWithDefinitions(nextDefinitions, filterValues);
+      const syncedLayout = syncLayoutFilterBindings(
+        nextLayout,
+        nextDefinitions,
+      );
+      const nextFilterValues = syncFilterValuesWithDefinitions(
+        nextDefinitions,
+        filterValues,
+      );
       const nextAppliedValues = syncFilterValuesWithDefinitions(
         nextDefinitions,
         appliedFilterValues,
       );
 
       setLayout(syncedLayout);
-      void syncDashboardCanvasResources(syncedLayout).then((canvasDataSources) => {
-        const nextNamespaceId = resolveLayoutNamespaceId(
-          syncedLayout,
-          canvasDataSources,
-        );
-        const shouldApplyNamespace =
-          nextNamespaceId !== undefined || appliedNamespaceId === undefined;
+      void syncDashboardCanvasResources(syncedLayout).then(
+        (canvasDataSources) => {
+          const nextNamespaceId = resolveLayoutNamespaceId(
+            syncedLayout,
+            canvasDataSources,
+          );
+          const shouldApplyNamespace =
+            nextNamespaceId !== undefined || appliedNamespaceId === undefined;
 
-        setDefinitions(nextDefinitions);
-        setFilterValues(nextFilterValues);
-        applyQueryState(
-          nextDefinitions,
-          nextAppliedValues,
-          shouldApplyNamespace ? nextNamespaceId : appliedNamespaceId,
-        );
+          setDefinitions(nextDefinitions);
+          setFilterValues(nextFilterValues);
+          applyQueryState(
+            nextDefinitions,
+            nextAppliedValues,
+            shouldApplyNamespace ? nextNamespaceId : appliedNamespaceId,
+          );
 
-        if (shouldApplyNamespace) {
-          setNamespaceDraftId(nextNamespaceId);
-        }
-        if ((shouldApplyNamespace ? nextNamespaceId : appliedNamespaceId) !== appliedNamespaceId) {
-          setNamespaceSearchVersion((prev) => prev + 1);
-        }
-        setAddModalVisible(false);
-      });
+          if (shouldApplyNamespace) {
+            setNamespaceDraftId(nextNamespaceId);
+          }
+          if (
+            (shouldApplyNamespace ? nextNamespaceId : appliedNamespaceId) !==
+            appliedNamespaceId
+          ) {
+            setNamespaceSearchVersion((prev) => prev + 1);
+          }
+          closeAddModal();
+        },
+      );
     };
 
     const handleSave = async () => {
@@ -661,7 +643,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           desc: selectedDashboard.desc || '',
           filters: definitions,
           other: otherConfig,
-          view_sets: layout,
+          view_sets: serializeDashboardGridStackLayout(layout),
         };
         await saveDashboard(selectedDashboard.data_id, saveData);
         setOriginalLayout([...layout]);
@@ -720,12 +702,16 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       );
       setIsEditMode(false);
       setDashboardReloadVersion((prev) => prev + 1);
+      closeGroupNameModal();
     };
 
-    const removeWidget = (id: string) => {
-      const nextLayout = layout.filter((item) => item.i !== id);
+    const removeLayoutItems = (idsToRemove: Set<string>) => {
+      const nextLayout = layout.filter((item) => !idsToRemove.has(item.i));
       const nextDefinitions = buildFiltersFromLayout(nextLayout, definitions);
-      const syncedLayout = syncLayoutFilterBindings(nextLayout, nextDefinitions);
+      const syncedLayout = syncLayoutFilterBindings(
+        nextLayout,
+        nextDefinitions,
+      );
       const nextFilterValues = syncFilterValuesWithDefinitions(
         nextDefinitions,
         filterValues,
@@ -745,14 +731,165 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       });
     };
 
+    const removeWidget = (id: string) => {
+      removeLayoutItems(new Set([id]));
+    };
+
+    const handleAddGroup = () => {
+      setIsCreatingGroupName(true);
+      setEditingGroupId(null);
+      setGroupNameDraft('');
+      setGroupNameModalVisible(true);
+    };
+
+    const handleRenameGroup = (groupId: string) => {
+      const groupItem = layout.find((item) => item.i === groupId);
+
+      if (!groupItem || !isDashboardGroupItem(groupItem)) {
+        return;
+      }
+
+      setEditingGroupId(groupItem.i);
+      setIsCreatingGroupName(false);
+      setGroupNameDraft(groupItem.name);
+      setGroupNameModalVisible(true);
+    };
+
+    const handleGroupNameConfirm = () => {
+      const nextName = groupNameDraft.trim();
+
+      if (!nextName) {
+        return;
+      }
+
+      if (isCreatingGroupName) {
+        const nextY = layout.reduce(
+          (maxY, item) => Math.max(maxY, item.y + item.h),
+          0,
+        );
+        const newGroup: DashboardLayoutItem = {
+          i: `group-${uuidv4()}`,
+          itemType: 'group',
+          x: 0,
+          y: nextY,
+          w: 12,
+          h: 1,
+          name: nextName,
+        };
+
+        setLayout((prevLayout) => [...prevLayout, newGroup]);
+        closeGroupNameModal();
+        return;
+      }
+
+      if (!editingGroupId) {
+        return;
+      }
+
+      setLayout((prevLayout) =>
+        prevLayout.map((item) =>
+          item.i === editingGroupId && isDashboardGroupItem(item)
+            ? { ...item, name: nextName }
+            : item,
+        ),
+      );
+      closeGroupNameModal();
+    };
+
+    const handleRemoveGroup = (groupId: string) => {
+      Modal.confirm({
+        title: t('dashboard.unGroup'),
+        content: t('dashboard.unGroupConfirm'),
+        okText: t('common.confirm'),
+        cancelText: t('common.cancel'),
+        centered: true,
+        onOk: async () => {
+          const nextLayout = removeDashboardGroupHeader(layout, groupId);
+          const nextDefinitions = buildFiltersFromLayout(
+            nextLayout,
+            definitions,
+          );
+          const syncedLayout = syncLayoutFilterBindings(
+            nextLayout,
+            nextDefinitions,
+          );
+          const nextFilterValues = syncFilterValuesWithDefinitions(
+            nextDefinitions,
+            filterValues,
+          );
+          const nextAppliedValues = syncFilterValuesWithDefinitions(
+            nextDefinitions,
+            appliedFilterValues,
+          );
+
+          setLayout(syncedLayout);
+          void syncDashboardCanvasResources(syncedLayout).then(() => {
+            syncFilterStateAfterLayoutChange(
+              nextDefinitions,
+              nextFilterValues,
+              nextAppliedValues,
+            );
+          });
+
+          setCollapsedGroups((previous) => {
+            if (!previous[groupId]) {
+              return previous;
+            }
+
+            const next = { ...previous };
+            delete next[groupId];
+            return next;
+          });
+
+          if (editingGroupId === groupId) {
+            closeGroupNameModal();
+          }
+        },
+      });
+    };
+
+    const handleDeleteEntireGroup = (groupId: string) => {
+      Modal.confirm({
+        title: t('dashboard.deleteEntireGroup'),
+        content: t('dashboard.deleteEntireGroupConfirm'),
+        okText: t('common.confirm'),
+        cancelText: t('common.cancel'),
+        centered: true,
+        onOk: async () => {
+          removeLayoutItems(
+            new Set([groupId, ...getDashboardGroupWidgetIds(layout, groupId)]),
+          );
+          setCollapsedGroups((previous) => {
+            if (!previous[groupId]) {
+              return previous;
+            }
+
+            const next = { ...previous };
+            delete next[groupId];
+            return next;
+          });
+
+          if (editingGroupId === groupId) {
+            closeGroupNameModal();
+          }
+        },
+      });
+    };
+
     const handleEdit = (id: string) => {
       const item = layout.find((i) => i.i === id);
+      if (!item || !isDashboardWidgetItem(item)) {
+        return;
+      }
+
       setCurrentConfigItem(item);
       setIsNewComponentConfig(false);
       setConfigDrawerVisible(true);
     };
 
     const handleOpenConfig = (item: DatasourceItem) => {
+      setAddModalVisible(false);
+
       const configItem = {
         i: '',
         x: 0,
@@ -778,7 +915,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       } else {
         const editedWidgetId = currentConfigItem?.i;
         const nextLayout = layout.map((item) => {
-          if (item.i === editedWidgetId) {
+          if (item.i === editedWidgetId && isDashboardWidgetItem(item)) {
             return {
               ...item,
               name: values.name,
@@ -805,8 +942,14 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         });
 
         const nextDefinitions = buildFiltersFromLayout(nextLayout, definitions);
-        const syncedLayout = syncLayoutFilterBindings(nextLayout, nextDefinitions);
-        const nextFilterValues = syncFilterValuesWithDefinitions(nextDefinitions, filterValues);
+        const syncedLayout = syncLayoutFilterBindings(
+          nextLayout,
+          nextDefinitions,
+        );
+        const nextFilterValues = syncFilterValuesWithDefinitions(
+          nextDefinitions,
+          filterValues,
+        );
         const nextAppliedValues = syncFilterValuesWithDefinitions(
           nextDefinitions,
           appliedFilterValues,
@@ -820,7 +963,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             nextAppliedValues,
           );
         });
-        
+
         // Only refresh the edited widget, not all widgets
         if (editedWidgetId) {
           setWidgetReloadVersions((prev) => ({
@@ -838,6 +981,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setConfigDrawerVisible(false);
       setCurrentConfigItem(undefined);
       setIsNewComponentConfig(false);
+      setPendingNewWidgetGroupId(null);
     };
 
     const handleFilterSearch = (values: Record<string, FilterValue>) => {
@@ -860,7 +1004,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       newDefinitions: UnifiedFilterDefinition[],
     ) => {
       updateDefinitions(newDefinitions);
-      const updatedValues = syncFilterValuesWithDefinitions(newDefinitions, filterValues);
+      const updatedValues = syncFilterValuesWithDefinitions(
+        newDefinitions,
+        filterValues,
+      );
       setFilterValues(updatedValues);
     };
 
@@ -901,139 +1048,23 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           data-export-expand="true"
         >
           {!isFullscreen && (
-            <div className="w-full mb-2 flex items-center justify-between bg-(--color-bg-1) px-4 py-2 border-b border-(--color-border-2)">
-              <div className="flex-1 mr-8">
-                {selectedDashboard && (
-                  <div>
-                    <h2 className="text-base leading-6 font-semibold text-(--color-text-1)">
-                      {selectedDashboard.name}
-                      {selectedDashboard.is_build_in && (
-                        <Tag
-                          color="blue"
-                          className="ml-2 text-xs align-middle rounded-full! px-2! py-0.5!"
-                        >
-                          {t('common.builtIn')}
-                        </Tag>
-                      )}
-                    </h2>
-                    {selectedDashboard.desc && (
-                      <p className="text-xs leading-4 text-(--color-text-3) mt-0.5">
-                        {selectedDashboard.desc}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-              {/* 右侧：工具栏 */}
-              <div
-                className="flex items-center gap-1.5"
-                data-export-hidden="true"
-              >
-                <Tooltip title={t('common.refresh')}>
-                  <Button
-                    type="text"
-                    icon={<ReloadOutlined style={{ fontSize: 16 }} />}
-                    onClick={handleRefresh}
-                    className="rounded-full!"
-                  />
-                </Tooltip>
-
-                <Tooltip title={t('common.fullscreen')}>
-                  <Button
-                    type="text"
-                    icon={<FullscreenOutlined style={{ fontSize: 16 }} />}
-                    onClick={handleFullscreenToggle}
-                    className="rounded-full!"
-                  />
-                </Tooltip>
-
-                {!isEditMode && (
-                  <Tooltip title={t('dashboard.exportPdf')}>
-                    <Button
-                      type="text"
-                      icon={<DownloadOutlined style={{ fontSize: 16 }} />}
-                      loading={exporting}
-                      onClick={handleExportPdf}
-                      className="rounded-full!"
-                    />
-                  </Tooltip>
-                )}
-
-                {isEditMode && (
-                  <>
-                    <PermissionWrapper requiredPermissions={['EditChart']}>
-                      <Tooltip title={t('dashboard.configUnifiedFilterFields')}>
-                        <Button
-                          type="text"
-                          icon={<SettingOutlined style={{ fontSize: 16 }} />}
-                          onClick={() => setFilterConfigModalVisible(true)}
-                          className="rounded-full!"
-                        />
-                      </Tooltip>
-                    </PermissionWrapper>
-                    <PermissionWrapper requiredPermissions={['EditChart']}>
-                      <Button
-                        type="default"
-                        icon={<PlusOutlined />}
-                        onClick={openAddModal}
-                        className="rounded-full!"
-                        style={{
-                          borderColor: chartTheme.panelBorderColor,
-                          color: 'var(--color-text-1)',
-                          background: chartTheme.panelBg,
-                        }}
-                      >
-                        {t('dashboard.addView')}
-                      </Button>
-                    </PermissionWrapper>
-                  </>
-                )}
-
-                <div>
-                  <PermissionWrapper requiredPermissions={['EditChart']}>
-                    {!isEditMode ? (
-                      <Tooltip title={t('common.edit')}>
-                        <Button
-                          type="text"
-                          aria-label={t('common.edit')}
-                          icon={
-                            <EditOutlined
-                              aria-hidden="true"
-                              style={{ fontSize: 16 }}
-                            />
-                          }
-                          disabled={
-                            !selectedDashboard?.data_id ||
-                            selectedDashboard?.is_build_in
-                          }
-                          onClick={toggleEditMode}
-                          className="rounded-full!"
-                        />
-                      </Tooltip>
-                    ) : (
-                      <div className="flex items-center gap-2 ml-4">
-                        <Button
-                          disabled={!selectedDashboard?.data_id}
-                          onClick={handleCancelEdit}
-                          className="rounded-full!"
-                        >
-                          {t('common.cancel')}
-                        </Button>
-                        <Button
-                          type="primary"
-                          loading={saving}
-                          disabled={!selectedDashboard?.data_id}
-                          onClick={handleSave}
-                          className="rounded-full!"
-                        >
-                          {t('common.save')}
-                        </Button>
-                      </div>
-                    )}
-                  </PermissionWrapper>
-                </div>
-              </div>
-            </div>
+            <DashboardToolbar
+              selectedDashboard={selectedDashboard}
+              chartTheme={chartTheme}
+              exporting={exporting}
+              isFullscreen={isFullscreen}
+              isEditMode={isEditMode}
+              saving={saving}
+              onRefresh={handleRefresh}
+              onToggleFullscreen={handleFullscreenToggle}
+              onExportPdf={handleExportPdf}
+              onOpenFilterConfig={() => setFilterConfigModalVisible(true)}
+              onOpenAddView={() => openAddModal()}
+              onOpenAddGroup={handleAddGroup}
+              onToggleEditMode={toggleEditMode}
+              onCancelEdit={handleCancelEdit}
+              onSave={handleSave}
+            />
           )}
 
           <div
@@ -1056,143 +1087,40 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               </div>
             )}
             <div className="flex-1 overflow-auto" data-export-expand="true">
-              {(() => {
-                if (loading) {
-                  return (
-                    <div className="h-full flex items-center justify-center">
-                      <Spin size="large" />
-                    </div>
-                  );
-                }
-
-                if (!layout.length) {
-                  return (
-                    <div className="h-full flex flex-col items-center justify-center">
-                      <Empty
-                        image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        description={
-                          <span className="text-(--color-text-2)">
-                            {t('dashboard.addView')}
-                          </span>
-                        }
-                      >
-                        <PermissionWrapper requiredPermissions={['EditChart']}>
-                          <Button
-                            type="primary"
-                            icon={<PlusOutlined aria-hidden="true" />}
-                            onClick={openAddModal}
-                            disabled={selectedDashboard?.is_build_in}
-                          >
-                            {t('dashboard.addView')}
-                          </Button>
-                        </PermissionWrapper>
-                      </Empty>
-                    </div>
-                  );
-                }
-                return (
-                  <ResponsiveGridLayout
-                    className="layout w-full flex-1"
-                    layout={layout}
-                    onLayoutChange={onLayoutChange}
-                    cols={12}
-                    rowHeight={40}
-                    margin={[8, 8]}
-                    containerPadding={[10, 4]}
-                    draggableCancel=".no-drag, .widget-body"
-                    isDraggable={isEditMode}
-                    isResizable={isEditMode}
-                  >
-                    {layout.map((item) => {
-                      const isTableWidget =
-                        item.valueConfig?.chartType === 'table';
-                      const menu = (
-                        <Menu>
-                          <Menu.Item
-                            key="edit"
-                            onClick={() => handleEdit(item.i)}
-                          >
-                            {t('common.edit')}
-                          </Menu.Item>
-                          <Menu.Item
-                            key="delete"
-                            onClick={() => handleDelete(item.i)}
-                          >
-                            {t('common.delete')}
-                          </Menu.Item>
-                        </Menu>
-                      );
-
-                      return (
-                        <div
-                          key={item.i}
-                          className="widget rounded-lg overflow-hidden p-3 flex flex-col"
-                          style={{
-                            backgroundColor: chartTheme.panelBg,
-                            border: `1px solid ${chartTheme.panelBorderColor}`,
-                          }}
-                        >
-                          <div className="widget-header mb-2 flex justify-between items-start gap-2">
-                            <div className="flex-1 min-w-0">
-                              <h4 className="truncate text-[14px] font-medium leading-5 text-(--color-text-2)">
-                                {item.name}
-                              </h4>
-                              {item.description?.trim() && (
-                                <p className="mt-0.5 text-[11px] leading-4 text-(--color-text-3) wrap-break-word whitespace-normal">
-                                  {item.description}
-                                </p>
-                              )}
-                            </div>
-                            {isEditMode && (
-                              <Dropdown overlay={menu} trigger={['click']}>
-                                <button
-                                  type="button"
-                                  aria-label={t('common.more')}
-                                  className="no-drag text-(--color-text-2) hover:text-(--color-text-1) transition-colors cursor-pointer"
-                                >
-                                  <MoreOutlined
-                                    aria-hidden="true"
-                                    style={{ fontSize: '18px' }}
-                                  />
-                                </button>
-                              </Dropdown>
-                            )}
-                          </div>
-                          <div
-                            className={`widget-body flex-1 h-full`}
-                            style={{
-                              overflow: isTableWidget ? 'visible' : 'hidden',
-                            }}
-                          >
-                            <WidgetWrapper
-                              widgetId={item.i}
-                              key={item.i}
-                              chartType={item.valueConfig?.chartType}
-                              config={item.valueConfig}
-                              filterSearchVersion={filterSearchVersion}
-                              namespaceSearchVersion={namespaceSearchVersion}
-                              reloadVersion={`${dashboardReloadVersion}:${widgetReloadVersions[item.i] || 0}`}
-                              dataSource={dataSourceManager.findDataSource(
-                                item.valueConfig?.dataSource,
-                              )}
-                              unifiedFilterValues={appliedFilterValues}
-                              filterDefinitions={appliedFilterDefinitions}
-                              builtinNamespaceId={appliedNamespaceId}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </ResponsiveGridLayout>
-                );
-              })()}
+              <DashboardCanvas
+                dashboardId={selectedDashboard?.data_id}
+                loading={loading}
+                isEditMode={isEditMode}
+                isDarkTheme={isDarkTheme}
+                key={selectedDashboard?.data_id ?? 'dashboard'}
+                layout={layout}
+                collapsedGroups={collapsedGroups}
+                chartTheme={chartTheme}
+                filterSearchVersion={filterSearchVersion}
+                namespaceSearchVersion={namespaceSearchVersion}
+                dashboardReloadVersion={dashboardReloadVersion}
+                widgetReloadVersions={widgetReloadVersions}
+                dataSourceResolver={dataSourceManager.findDataSource}
+                appliedFilterValues={appliedFilterValues}
+                appliedFilterDefinitions={appliedFilterDefinitions}
+                appliedNamespaceId={appliedNamespaceId}
+                selectedDashboardLocked={selectedDashboard?.is_build_in}
+                onOpenAddModal={openAddModal}
+                onLayoutChange={handleLayoutCommit}
+                onToggleCollapsedGroup={toggleCollapsedGroup}
+                onRenameGroup={handleRenameGroup}
+                onRemoveGroup={handleRemoveGroup}
+                onDeleteEntireGroup={handleDeleteEntireGroup}
+                onEditWidget={handleEdit}
+                onDeleteWidget={handleDelete}
+              />
             </div>
           </div>
         </div>
 
         <ViewSelector
           visible={addModalVisible}
-          onCancel={() => setAddModalVisible(false)}
+          onCancel={closeAddModal}
           onOpenConfig={handleOpenConfig}
         />
         <ViewConfig
@@ -1210,12 +1138,33 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           onCancel={() => setFilterConfigModalVisible(false)}
           onConfirm={handleFilterConfigConfirm}
           definitions={definitions}
-          layoutItems={layout}
+          layoutItems={widgetLayoutItems}
           dataSources={dataSourceManager.dataSources}
         />
+        <Modal
+          title={
+            isCreatingGroupName
+              ? t('dashboard.addGroup')
+              : t('dashboard.editGroup')
+          }
+          open={groupNameModalVisible}
+          onOk={handleGroupNameConfirm}
+          onCancel={closeGroupNameModal}
+          okText={t('common.confirm')}
+          cancelText={t('common.cancel')}
+          okButtonProps={{ disabled: !groupNameDraft.trim() }}
+          centered
+        >
+          <Input
+            value={groupNameDraft}
+            onChange={(event) => setGroupNameDraft(event.target.value)}
+            placeholder={t('dashboard.groupNamePlaceholder')}
+            maxLength={50}
+          />
+        </Modal>
       </div>
     );
-  }
+  },
 );
 
 Dashboard.displayName = 'Dashboard';
