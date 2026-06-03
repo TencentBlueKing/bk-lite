@@ -11,6 +11,7 @@ from apps.job_mgmt.services.callback_service import send_callback
 from apps.job_mgmt.services.shell_utils import ANSIBLE_SHELL_EXECUTABLES, build_heredoc_command, parse_shebang
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.node_mgmt import NodeMgmt
+from apps.rpc.sensitive import sanitize_sensitive_data
 from config.components.nats import NATS_NAMESPACE
 
 
@@ -227,9 +228,9 @@ class ExecutionTaskBaseService(object):
         if module == "shell":
             if shell_interpreter in ANSIBLE_SHELL_EXECUTABLES:
                 extra_vars["ansible_shell_executable"] = f"/bin/{shell_interpreter}"
-
             else:
                 module_args = build_heredoc_command(shell_interpreter, script_content)
+
         # 调用 Ansible Executor
         executor = AnsibleExecutor(ansible_node_id)
         result = executor.adhoc(
@@ -242,7 +243,7 @@ class ExecutionTaskBaseService(object):
             extra_vars=extra_vars if extra_vars else None,
         )
 
-        logger.info(f"[{task_name}] Ansible 任务已提交: execution_id={execution.id}, result={result}")
+        logger.info(f"[{task_name}] Ansible 任务已提交: execution_id={execution.id}, result={sanitize_sensitive_data(result)}")
 
     @staticmethod
     def _get_ansible_node(cloud_region_id: int) -> str:
