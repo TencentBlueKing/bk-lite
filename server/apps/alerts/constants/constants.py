@@ -5,6 +5,11 @@
 
 SYSTEM_OPERATOR_USER = "admin"
 
+# SNMP Trap 暂不参与组织级 secret 路由：bridge 用源级 secret 接入，事件统一归默认组织。
+SNMP_TRAP_SOURCE_ID = "snmp_trap"
+# Default 组 ID 由 system_mgmt 的 clean_group_data 强制保证为 1（如不为 1 会自动迁移）。
+DEFAULT_GROUP_ID = 1
+
 PERMISSION_EVENT = "event"
 PERMISSION_ALERT = "alert"
 PERMISSION_INCIDENT = "incident"

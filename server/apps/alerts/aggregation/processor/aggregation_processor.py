@@ -126,12 +126,14 @@ class AggregationProcessor:
 
             if not events.exists():
                 logger.info(f"策略 {strategy.name}: 无事件需要处理")
+                self._mark_strategy_executed(strategy, now)
                 return
 
             matched_events = StrategyMatcher.match_events_to_strategy(events, cast(List[List[Dict]], strategy.match_rules or []))
 
             if not matched_events.exists():
                 logger.info(f"策略 {strategy.name}: 无匹配规则的事件")
+                self._mark_strategy_executed(strategy, now)
                 return
 
             params = cast(Dict[str, Any], strategy.params or {})
@@ -472,6 +474,7 @@ class AggregationProcessor:
             load_success = self.db_conn.load_events_to_memory(events)
             if not load_success:
                 logger.info(f"策略 {strategy.name}过滤后无事件，跳过聚合")
+                self._mark_strategy_executed(strategy, now)
                 return False
 
             window_config = WindowFactory.create_from_strategy(strategy)
@@ -490,6 +493,7 @@ class AggregationProcessor:
 
             if not results:
                 logger.info(f"策略 {strategy.name}: 聚合结果为空")
+                self._mark_strategy_executed(strategy, now)
                 return False
 
             logger.info(f"策略 {strategy.name}: 聚合完成, 生成 {len(results)} 个告警组")

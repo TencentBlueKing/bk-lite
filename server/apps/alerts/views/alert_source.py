@@ -26,6 +26,8 @@ from apps.rpc.node_mgmt import NodeMgmt
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
 
+from apps.alerts.constants.constants import SNMP_TRAP_SOURCE_ID
+
 K8S_SOURCE_ID = "k8s"
 K8S_IMAGE_REFERENCE = "ghcr.io/resmoio/kubernetes-event-exporter:latest"
 K8S_SUPPORT_DIR = Path(__file__).resolve().parents[1] / "support-files" / "kubernetes-event-exporter"
@@ -262,6 +264,11 @@ class AlertSourceModelViewSet(ModelViewSet):
     @action(methods=["post"], detail=True, url_path="team_secrets/add")
     def add_team_secret(self, request, pk=None):
         source = self.get_object()
+        if source.source_id == SNMP_TRAP_SOURCE_ID:
+            return Response(
+                {"detail": "SNMP Trap source does not support team secrets; events are always attributed to the default organization."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         team_id = request.data.get("team_id")
         if team_id is None:
             return Response({"detail": "team_id is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -279,6 +286,11 @@ class AlertSourceModelViewSet(ModelViewSet):
     @action(methods=["post"], detail=True, url_path="team_secrets/regenerate")
     def regenerate_team_secret(self, request, pk=None):
         source = self.get_object()
+        if source.source_id == SNMP_TRAP_SOURCE_ID:
+            return Response(
+                {"detail": "SNMP Trap source does not support team secrets."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         team_id = request.data.get("team_id")
         if team_id is None:
             return Response({"detail": "team_id is required."}, status=status.HTTP_400_BAD_REQUEST)

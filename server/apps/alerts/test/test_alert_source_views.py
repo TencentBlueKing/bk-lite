@@ -118,6 +118,27 @@ def test_team_secret_add_list_remove(superuser):
 
 
 @pytest.mark.django_db
+def test_team_secret_add_rejected_for_snmp_trap(superuser):
+    """SNMP Trap 源不允许配置组织密钥。"""
+    src = _make_source("snmp_trap")
+    request = _request("post", f"/alert_source/{src.id}/team_secrets/add/", superuser, data={"team_id": 5})
+    response = AlertSourceModelViewSet.as_view({"post": "add_team_secret"})(request, pk=str(src.id))
+    _render(response)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    src.refresh_from_db()
+    assert src.team_secrets == {}
+
+
+@pytest.mark.django_db
+def test_team_secret_regenerate_rejected_for_snmp_trap(superuser):
+    src = _make_source("snmp_trap", team_secrets={"5": "old"})
+    request = _request("post", f"/alert_source/{src.id}/team_secrets/regenerate/", superuser, data={"team_id": 5})
+    response = AlertSourceModelViewSet.as_view({"post": "regenerate_team_secret"})(request, pk=str(src.id))
+    _render(response)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
 def test_team_secret_add_requires_team_id(superuser):
     src = _make_source("s1")
     request = _request("post", f"/alert_source/{src.id}/team_secrets/add/", superuser, data={})

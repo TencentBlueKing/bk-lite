@@ -15,7 +15,7 @@ from django.utils import timezone
 
 from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
 from apps.alerts.common.shield import execute_shield_check_for_events
-from apps.alerts.constants.constants import LevelType, EventAction, AlertStatus
+from apps.alerts.constants.constants import LevelType, EventAction, AlertStatus, SNMP_TRAP_SOURCE_ID, DEFAULT_GROUP_ID
 from apps.alerts.constants.init_data import INIT_ALERT_ENRICH
 from apps.alerts.error import AuthenticationSourceError
 from apps.alerts.models.sys_setting import SystemSetting
@@ -87,6 +87,15 @@ class AlertSourceAdapter(ABC):
     def authenticate(self) -> bool:
         # 这里可以实现一些通用的认证逻辑
         if self.secret in self.team_secrets:
+            return True
+        # SNMP Trap 暂不参与组织级 secret 路由：bridge 用源级 secret 接入即可，事件统一归默认组织。
+        # 后续迭代再做按 trap 内容/节点的精细归属，参考日志模块的 LogGroup 规则模型。
+        if (
+            self.alert_source.source_id == SNMP_TRAP_SOURCE_ID
+            and self.secret
+            and self.secret == self.alert_source.secret
+        ):
+            self.resolved_team = [DEFAULT_GROUP_ID]
             return True
         raise AuthenticationSourceError("Authentication failed")
 
