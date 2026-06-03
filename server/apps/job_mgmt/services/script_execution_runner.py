@@ -6,7 +6,7 @@ from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import ExecutionStatus, ScriptType, TargetSource
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
-from apps.job_mgmt.services.shell_utils import parse_shebang
+from apps.job_mgmt.services.shell_utils import build_heredoc_command, parse_shebang
 from apps.rpc.executor import Executor
 
 
@@ -159,7 +159,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                     raise ValueError(f"无法获取目标凭据: target_id={target_id}")
 
                 executor = Executor(ssh_creds["node_id"])
-                ssh_command = f"{shell} <<'__SCRIPT__'\n{script_content}\n__SCRIPT__"
+                ssh_command = build_heredoc_command(shell, script_content)
                 exec_result = executor.execute_ssh(
                     command=ssh_command,
                     host=ssh_creds["host"],
