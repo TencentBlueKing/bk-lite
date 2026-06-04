@@ -7,7 +7,10 @@ import PermissionWrapper from '@/components/permission';
 import {
   ZoomInOutlined,
   ZoomOutOutlined,
+  PlusSquareOutlined,
   FullscreenOutlined,
+  FullscreenExitOutlined,
+  DesktopOutlined,
   DeleteOutlined,
   SelectOutlined,
   EditOutlined,
@@ -19,11 +22,13 @@ import {
 const TopologyToolbar: React.FC<ToolbarProps> = ({
   isSelectMode,
   isEditMode = false,
+  isFullscreen = false,
   selectedTopology,
   onZoomIn,
   onZoomOut,
   onEdit,
   onSave,
+  onFullscreenToggle,
   onFit,
   onDelete,
   onSelectMode,
@@ -35,6 +40,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
   onFrequencyChange,
   onCancel,
   onFilterConfig,
+  onPresentationConfig,
 }) => {
   const { t } = useTranslation();
   const iconButtonClassName =
@@ -89,8 +95,26 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
           <Tooltip title={t('topology.fitView')}>
             <Button
               type="text"
-              icon={<FullscreenOutlined style={{ fontSize: 16 }} />}
+              icon={<PlusSquareOutlined style={{ fontSize: 16 }} />}
               onClick={onFit}
+              className={iconButtonClassName}
+            />
+          </Tooltip>
+          <Tooltip
+            title={
+              isFullscreen ? t('common.exitFullscreen') : t('common.fullscreen')
+            }
+          >
+            <Button
+              type="text"
+              icon={
+                isFullscreen ? (
+                  <FullscreenExitOutlined style={{ fontSize: 16 }} />
+                ) : (
+                  <FullscreenOutlined style={{ fontSize: 16 }} />
+                )
+              }
+              onClick={onFullscreenToggle}
               className={iconButtonClassName}
             />
           </Tooltip>
@@ -133,7 +157,9 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
               <Button
                 type="text"
                 aria-label={t('topology.deleteSelected')}
-                icon={<DeleteOutlined aria-hidden="true" style={{ fontSize: 16 }} />}
+                icon={
+                  <DeleteOutlined aria-hidden="true" style={{ fontSize: 16 }} />
+                }
                 onClick={onDelete}
                 className={iconButtonClassName}
               />
@@ -144,11 +170,28 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
                   <Button
                     type="text"
                     aria-label={t('dashboard.configUnifiedFilterFields')}
-                    icon={<SettingOutlined aria-hidden="true" style={{ fontSize: 16 }} />}
+                    icon={
+                      <SettingOutlined
+                        aria-hidden="true"
+                        style={{ fontSize: 16 }}
+                      />
+                    }
                     onClick={onFilterConfig}
                     className={iconButtonClassName}
                   />
                 </Tooltip>
+              </PermissionWrapper>
+            )}
+            {onPresentationConfig && (
+              <PermissionWrapper requiredPermissions={['EditChart']}>
+                <Button
+                  type="text"
+                  icon={<DesktopOutlined style={{ fontSize: 16 }} />}
+                  onClick={onPresentationConfig}
+                  className="rounded-full! px-3!"
+                >
+                  {t('topology.presentationConfig')}
+                </Button>
               </PermissionWrapper>
             )}
           </div>

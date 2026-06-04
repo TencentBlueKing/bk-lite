@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Input, Button, Select } from 'antd';
+import { Input, Button, ConfigProvider, Select } from 'antd';
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import TimeSelector from '@/components/time-selector';
@@ -21,6 +21,7 @@ interface UnifiedFilterBarProps {
   prefixContent?: React.ReactNode;
   containerClassName?: string;
   appearance?: 'default' | 'embedded';
+  popupZIndex?: number;
 }
 
 const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
@@ -32,6 +33,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   prefixContent,
   containerClassName,
   appearance = 'default',
+  popupZIndex,
 }) => {
   const { t } = useTranslation();
   const [localValues, setLocalValues] =
@@ -168,56 +170,69 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   };
 
   return (
-    <div
-      className={
-        isEmbedded
-          ? `border-b border-(--color-border-2) bg-transparent px-4 py-3 ${containerClassName ?? ''}`
-          : `rounded-lg border border-(--color-border-2) bg-(--color-bg-1) px-3 py-2 ${containerClassName ?? 'mx-[10px] mt-1 mb-2'}`
+    <ConfigProvider
+      getPopupContainer={() => document.body}
+      theme={
+        popupZIndex
+          ? {
+              token: {
+                zIndexPopupBase: popupZIndex,
+              },
+            }
+          : undefined
       }
     >
       <div
-        className={`flex flex-wrap items-center ${isEmbedded ? 'gap-x-4 gap-y-2' : 'gap-x-3 gap-y-2.5'}`}
+        className={
+          isEmbedded
+            ? `border-b border-(--color-border-2) bg-transparent px-4 py-3 ${containerClassName ?? ''}`
+            : `rounded-lg border border-(--color-border-2) bg-(--color-bg-1) px-3 py-2 ${containerClassName ?? 'mx-2.5 mt-1 mb-2'}`
+        }
       >
-        {prefixContent}
-        {enabledDefinitions.map((definition) => (
-          <div
-            key={definition.id}
-            className={
-              isEmbedded
-                ? 'flex items-center gap-2'
-                : 'flex items-center gap-2 px-1 py-1'
-            }
-          >
-            <span className="text-xs font-medium tracking-[0.02em] text-(--color-text-2) whitespace-nowrap">
-              {definition.name}:
-            </span>
-            {renderFilterControl(definition)}
-          </div>
-        ))}
         <div
-          className="flex shrink-0 items-center gap-2 whitespace-nowrap"
-          data-export-hidden="true"
+          className={`flex flex-wrap items-center ${isEmbedded ? 'gap-x-4 gap-y-2' : 'gap-x-3 gap-y-2.5'}`}
         >
-          <Button
-            type="primary"
-            size="middle"
-            icon={<SearchOutlined />}
-            onClick={handleSearch}
-            className="rounded-lg!"
+          {prefixContent}
+          {enabledDefinitions.map((definition) => (
+            <div
+              key={definition.id}
+              className={
+                isEmbedded
+                  ? 'flex items-center gap-2'
+                  : 'flex items-center gap-2 px-1 py-1'
+              }
+            >
+              <span className="text-xs font-medium tracking-[0.02em] text-(--color-text-2) whitespace-nowrap">
+                {definition.name}:
+              </span>
+              {renderFilterControl(definition)}
+            </div>
+          ))}
+          <div
+            className="flex shrink-0 items-center gap-2 whitespace-nowrap"
+            data-export-hidden="true"
           >
-            {t('common.search')}
-          </Button>
-          <Button
-            size="middle"
-            icon={<ReloadOutlined />}
-            onClick={handleReset}
-            className="rounded-lg!"
-          >
-            {t('common.reset')}
-          </Button>
+            <Button
+              type="primary"
+              size="middle"
+              icon={<SearchOutlined />}
+              onClick={handleSearch}
+              className="rounded-lg!"
+            >
+              {t('common.search')}
+            </Button>
+            <Button
+              size="middle"
+              icon={<ReloadOutlined />}
+              onClick={handleReset}
+              className="rounded-lg!"
+            >
+              {t('common.reset')}
+            </Button>
+          </div>
         </div>
       </div>
-    </div>
+    </ConfigProvider>
   );
 };
 

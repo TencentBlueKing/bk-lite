@@ -109,6 +109,24 @@ export interface LayoutItem {
   valueConfig?: ValueConfig;
 }
 
+export interface DashboardWidgetLayoutItem extends LayoutItem {
+  itemType?: 'widget';
+  groupId?: string | null;
+}
+
+export interface DashboardGroupLayoutItem {
+  i: string;
+  itemType: 'group';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  name: string;
+  description?: string;
+}
+
+export type DashboardLayoutItem = DashboardWidgetLayoutItem | DashboardGroupLayoutItem;
+
 export type ViewConfigItem = LayoutItem | TopologyNodeData;
 
 export interface ViewConfigProps {

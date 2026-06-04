@@ -177,6 +177,7 @@ const ViewPage: React.FC = () => {
         ) : selectedType === 'dashboard' ? (
           <Dashboard
             ref={dashboardRef}
+            key={selectedItem.dashboard?.data_id ?? 'dashboard-empty'}
             selectedDashboard={selectedItem.dashboard}
           />
         ) : (

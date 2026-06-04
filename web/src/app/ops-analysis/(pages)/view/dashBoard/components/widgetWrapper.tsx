@@ -65,6 +65,14 @@ const validateTopNData = (
 };
 
 const inflightWidgetRequests = new Map<string, Promise<unknown>>();
+const widgetRequestCache = new Map<
+  string,
+  {
+    rawData: any;
+    baselineData: any;
+    dataValidation: { isValid: boolean; message?: string } | null;
+  }
+>();
 
 const getOrCreateInflightRequest = async <T,>(
   requestKey: string,
@@ -86,6 +94,7 @@ const getOrCreateInflightRequest = async <T,>(
 };
 
 interface WidgetWrapperProps {
+  dashboardId?: number | string;
   widgetId: string;
   chartType?: string;
   config?: ValueConfig;
@@ -100,6 +109,7 @@ interface WidgetWrapperProps {
 }
 
 const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
+  dashboardId,
   widgetId,
   chartType,
   config,
@@ -219,6 +229,21 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     });
   }, [normalizedDataSourceId, requestSignatureParams]);
 
+  const requestKey = useMemo(() => {
+    if (!requestSignature) {
+      return null;
+    }
+
+    return `${dashboardId ?? 'dashboard'}:${widgetId}:${reloadVersion}:${filterSearchVersion}:${namespaceSearchVersion}:${requestSignature}`;
+  }, [
+    dashboardId,
+    filterSearchVersion,
+    namespaceSearchVersion,
+    reloadVersion,
+    requestSignature,
+    widgetId,
+  ]);
+
   const invalidBindings = useMemo((): BindingValidationResult[] => {
     const bindings = config?.filterBindings;
     if (!bindings || !filterDefinitions || !Array.isArray(dataSource?.params)) {
@@ -309,8 +334,13 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     [config, t],
   );
 
-  const fetchDataRef = useRef<(params: Record<string, any>, key: string) => Promise<void>>(undefined!);
-  fetchDataRef.current = async (nextRequestParams: Record<string, any>, requestKey: string) => {
+  const fetchDataRef = useRef<
+    (params: Record<string, any>, key: string) => Promise<void>
+      >(undefined!);
+  fetchDataRef.current = async (
+    nextRequestParams: Record<string, any>,
+    requestKey: string,
+  ) => {
     const isTableChart = chartType === 'table';
 
     if (!normalizedDataSourceId) {
@@ -353,6 +383,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
       const validation = validateChartData(data.currentData, chartType);
       setDataValidation(validation);
+      widgetRequestCache.set(requestKey, {
+        rawData: data.currentData,
+        baselineData: data.baselineData,
+        dataValidation: validation,
+      });
     } catch (err) {
       if (currentFetchId !== fetchIdRef.current) return;
       console.error('获取数据失败:', err);
@@ -362,6 +397,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         isValid: false,
         message: getRequestErrorMessage(err, t('dashboard.dataFetchFailed')),
       });
+      widgetRequestCache.delete(requestKey);
     } finally {
       if (currentFetchId !== fetchIdRef.current) return;
       if (isTableChart) {
@@ -399,13 +435,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       });
       return;
     }
-
-  }, [
-    normalizedDataSourceId,
-    dataSource,
-    dataSource?.hasAuth,
-    t,
-  ]);
+  }, [normalizedDataSourceId, dataSource, dataSource?.hasAuth, t]);
 
   const previousRequestRef = useRef<{
     signature: string | null;
@@ -424,6 +454,41 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   });
 
   useEffect(() => {
+    if (!requestEnabled || !requestSignature || !requestKey) {
+      return;
+    }
+
+    const cached = widgetRequestCache.get(requestKey);
+
+    if (!cached) {
+      return;
+    }
+
+    setRawData(cached.rawData);
+    setBaselineData(cached.baselineData);
+    setDataValidation(cached.dataValidation);
+    setLoading(false);
+    setTableLoading(false);
+    previousRequestRef.current = {
+      signature: requestSignature,
+      filterSearchVersion,
+      namespaceSearchVersion,
+      reloadVersion,
+      tableQueryKey,
+      hasRequested: true,
+    };
+  }, [
+    dashboardId,
+    filterSearchVersion,
+    namespaceSearchVersion,
+    reloadVersion,
+    requestEnabled,
+    requestKey,
+    requestSignature,
+    tableQueryKey,
+  ]);
+
+  useEffect(() => {
     const previousRequest = previousRequestRef.current;
     const signatureChanged = previousRequest.signature !== requestSignature;
     const filterSearchChanged =
@@ -439,7 +504,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       namespaceSearchChanged && widgetUsesNamespace;
     const shouldFetchForTableQuery = chartType === 'table' && tableQueryChanged;
 
-    if (!requestEnabled || !requestSignature || !requestParams) {
+    if (!requestEnabled || !requestSignature || !requestParams || !requestKey) {
       previousRequestRef.current = {
         signature: requestSignature,
         filterSearchVersion,
@@ -472,12 +537,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       return;
     }
 
-    const requestKey = `${widgetId}:${reloadVersion}:${filterSearchVersion}:${namespaceSearchVersion}:${requestSignature}`;
     fetchDataRef.current(requestParams, requestKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    widgetId,
     requestEnabled,
+    requestKey,
     requestSignature,
     requestParams,
     filterSearchVersion,
@@ -567,18 +631,20 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   return (
     <div style={{ position: 'relative', height: '100%' }}>
       {renderBindingWarning()}
-        <WidgetRenderer
-          chartType={chartType}
-          rawData={rawData}
-          baselineData={baselineData}
-          loading={chartType === 'table' ? tableLoading : loading}
-          config={config}
+      <WidgetRenderer
+        chartType={chartType}
+        rawData={rawData}
+        baselineData={baselineData}
+        loading={chartType === 'table' ? tableLoading : loading}
+        config={config}
         dataSource={dataSource}
         onReady={onReady}
         onQueryChange={
           chartType === 'table' ? handleTableQueryChange : undefined
         }
-        fallback={renderError(`${t('dashboard.unknownComponentType')}: ${chartType}`)}
+        fallback={renderError(
+          `${t('dashboard.unknownComponentType')}: ${chartType}`,
+        )}
       />
     </div>
   );

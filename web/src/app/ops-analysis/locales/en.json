@@ -2,7 +2,9 @@
   "common": {
     "total": "Total",
     "items": "items",
-    "loading": "Loading"
+    "loading": "Loading",
+    "expand": "Expand",
+    "collapse": "Collapse"
   },
   "topology": {
     "nodeConfig": {
@@ -139,6 +141,12 @@
     "viewMonitorDetails": "View Monitor Details",
     "doubleArrowConnection": "Double Arrow Connection",
     "saveTopologySelectMsg": "Please select a topology to save",
+    "presentationConfig": "Presentation",
+    "commonResolutions": "Common Resolutions",
+    "clearPresentationConfig": "Clear Configuration",
+    "fixedResolutionWidth": "Fixed Width",
+    "fixedResolutionHeight": "Fixed Height",
+    "fixedResolutionIncomplete": "Both width and height are required for a fixed resolution.",
     "minimapCollapse": "Collapse Minimap",
     "singleArrowConnection": "Single Arrow Connection",
     "existingInterface": "Existing Interface",
@@ -330,6 +338,14 @@
     "comparePreviousShortLabel": "vs prev period",
     "compareUnavailableTip": "This data source has no recognizable time range parameter, so period comparison cannot be enabled.",
     "displaySettings": "Display Settings",
+    "addGroup": "Add group",
+    "editGroup": "Edit group",
+    "unGroup": "Ungroup",
+    "unGroupConfirm": "Ungrouping will keep the widgets, but move them back to the ungrouped area. Continue?",
+    "deleteEntireGroup": "Delete entire group",
+    "editMode": "Edit mode",
+    "deleteEntireGroupConfirm": "Deleting the entire group will also delete all widgets inside it. Continue?",
+    "groupNamePlaceholder": "Enter group name",
     "exportPdf": "Export PDF",
     "exportPdfSuccess": "Export success",
     "exportPdfFailed": "Export failed"

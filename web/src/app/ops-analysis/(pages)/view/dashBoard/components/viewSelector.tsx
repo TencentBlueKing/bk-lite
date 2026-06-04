@@ -123,7 +123,6 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
 
   const handleConfig = (item: DatasourceItem) => {
     onOpenConfig?.(item);
-    onCancel();
   };
 
   const menuItems = tagList.map((tag) => ({
