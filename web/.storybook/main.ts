@@ -18,6 +18,7 @@ const config: StorybookConfig = {
       config.resolve.alias = {
         ...config.resolve.alias,
         '@/context/auth': path.resolve(__dirname, './mocks/auth.tsx'),
+        '@/context/client': path.resolve(__dirname, './mocks/client.tsx'),
         '@/app/system-manager/api/application': path.resolve(__dirname, './mocks/system-manager/application-api.ts'),
         '@/app/system-manager/api/application/index': path.resolve(__dirname, './mocks/system-manager/application-api.ts'),
         '@/app/system-manager/api/security': path.resolve(__dirname, './mocks/system-manager/security-api.ts'),
