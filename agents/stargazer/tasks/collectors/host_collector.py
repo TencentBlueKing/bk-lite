@@ -112,21 +112,23 @@ def parse_metrics_to_prometheus(
 
 class HostCollector(BaseCollector):
 
-    async def collect(self) -> str:
-        from core.ansible_rpc import ansible_adhoc
+    def _resolve_modules(self) -> List[str]:
+        modules_str = self.params.get("metrics_modules", "cpu,mem,disk,net")
+        modules = [m.strip() for m in modules_str.split(",") if m.strip() in VALID_MODULES]
+        if not modules:
+            modules = list(VALID_MODULES)
+        return modules
 
+    def _resolve_execution_config(self) -> Dict[str, Any]:
         host = self.params["host"]
         os_type = self.params.get("os_type", "linux")
         username = self.params["username"]
         password = self.params["password"]
         port = int(self.params.get("port", 22 if os_type == "linux" else 5986))
         ansible_node_id = self.params["ansible_node_id"]
-        modules_str = self.params.get("metrics_modules", "cpu,mem,disk,net")
         execute_timeout = int(self.params.get("execute_timeout", 60))
 
-        modules = [m.strip() for m in modules_str.split(",") if m.strip() in VALID_MODULES]
-        if not modules:
-            modules = list(VALID_MODULES)
+        modules = self._resolve_modules()
 
         logger.info(f"[Host Collector] host={host}, os={os_type}, modules={modules}")
 
@@ -143,13 +145,42 @@ class HostCollector(BaseCollector):
             "port": port,
         }]
 
-        result = await ansible_adhoc(
-            ansible_node_id=ansible_node_id,
-            host_credentials=host_credentials,
-            module=module,
-            module_args=script,
-            execute_timeout=execute_timeout,
+        return {
+            "host": host,
+            "os_type": os_type,
+            "ansible_node_id": ansible_node_id,
+            "host_credentials": host_credentials,
+            "module": module,
+            "module_args": script,
+            "execute_timeout": execute_timeout,
+        }
+
+    async def submit_collection(
+        self, callback_subject: str, callback_payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        _ = callback_payload
+        return await self._execute_collection(
+            callback={"subject": callback_subject, "timeout": 10}
         )
+
+    async def _execute_collection(
+        self, callback: Dict[str, Any] | None = None
+    ) -> Dict[str, Any]:
+        from core.ansible_rpc import ansible_adhoc
+
+        config = self._resolve_execution_config()
+        return await ansible_adhoc(
+            ansible_node_id=config["ansible_node_id"],
+            host_credentials=config["host_credentials"],
+            module=config["module"],
+            module_args=config["module_args"],
+            execute_timeout=config["execute_timeout"],
+            callback=callback,
+        )
+
+    def process_adhoc_result(self, result: Dict[str, Any]) -> str:
+        host = self.params["host"]
+        os_type = self.params.get("os_type", "linux")
 
         if not result.get("success"):
             error_msg = result.get("error") or result.get("message") or "Ansible adhoc failed"
@@ -175,6 +206,10 @@ class HostCollector(BaseCollector):
 
         logger.info(f"[Host Collector] Completed: host={host}, metrics_size={len(prometheus_metrics)}")
         return prometheus_metrics
+
+    async def collect(self) -> str:
+        result = await self._execute_collection()
+        return self.process_adhoc_result(result)
 
     def _extract_stdout(self, result: Dict[str, Any]) -> str:
         task_result = result.get("result", {})

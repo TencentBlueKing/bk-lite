@@ -198,6 +198,78 @@ class TestHostCollectorCollect:
     """测试完整采集流程（mock Ansible RPC）"""
 
     @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    async def test_submit_collection_passes_callback_and_returns_accepted_response(self, mock_adhoc):
+        mock_adhoc.return_value = {
+            "success": True,
+            "message": "accepted",
+            "task_id": "task-123",
+        }
+
+        collector = HostCollector({
+            "host": "10.0.0.1",
+            "os_type": "linux",
+            "username": "root",
+            "password": "secret",
+            "port": "22",
+            "ansible_node_id": "region1",
+            "metrics_modules": "cpu",
+            "tags": {"instance_id": "region1_host_10.0.0.1"},
+        })
+
+        result = await collector.submit_collection(
+            "stargazer.host.callback",
+            {"collector": "host"},
+        )
+
+        assert result == mock_adhoc.return_value
+
+        mock_adhoc.assert_called_once()
+        call_kwargs = mock_adhoc.call_args[1]
+        assert call_kwargs["ansible_node_id"] == "region1"
+        assert call_kwargs["module"] == "shell"
+        assert call_kwargs["host_credentials"][0]["connection"] == "ssh"
+        assert call_kwargs["callback"] == {
+            "subject": "stargazer.host.callback",
+            "timeout": 10,
+        }
+
+    async def test_process_adhoc_result_returns_prometheus_metrics(self):
+        collector = HostCollector({
+            "host": "10.0.0.1",
+            "os_type": "linux",
+            "username": "root",
+            "password": "secret",
+            "ansible_node_id": "region1",
+            "metrics_modules": "cpu",
+            "tags": {"instance_id": "region1_host_10.0.0.1"},
+        })
+
+        result = {
+            "success": True,
+            "result": {
+                "contacted": {
+                    "10.0.0.1": {
+                        "stdout": json.dumps({
+                            "cpu": {
+                                "usage_percent": 25.0,
+                                "core_count": 4,
+                                "load_1m": 0.5,
+                                "load_5m": 0.3,
+                                "load_15m": 0.1,
+                            }
+                        }),
+                        "rc": 0,
+                    }
+                }
+            },
+        }
+
+        metrics = collector.process_adhoc_result(result)
+
+        assert "host_cpu_usage_percent" in metrics
+        assert 'instance_id="region1_host_10.0.0.1"' in metrics
+
+    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_successful_collect_linux(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
