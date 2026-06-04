@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 import { expect, within } from 'storybook/test';
 import PermissionModal from '@/app/system-manager/components/user/permissionModal';
 import {
+  groupRuleResponse,
   permissionNode,
   permissionRules,
 } from './system-manager-user-org-modal.fixtures';
@@ -21,6 +22,8 @@ const baseArgs = {
   rules: {},
   onOk: async () => {},
   onCancel: () => {},
+  clientModules: ['monitor', 'cmdb'],
+  fetchGroupDataRule: async () => groupRuleResponse,
 };
 
 export const Default: Story = {
@@ -50,6 +53,12 @@ export const LoadingRules: Story = {
       // Storybook-only sentinel: this key matches the delayed mock below so the loading UI can be asserted.
       key: 'loading-rules',
       title: 'Loading Team',
+    },
+    fetchGroupDataRule: async () => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 1200);
+      });
+      return groupRuleResponse;
     },
   },
   play: async () => {

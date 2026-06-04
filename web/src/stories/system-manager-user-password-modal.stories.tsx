@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 import { useEffect, useRef } from 'react';
 import { expect, userEvent, within } from 'storybook/test';
 import PasswordModal, { PasswordModalRef } from '@/app/system-manager/components/user/passwordModal';
+import { passwordSettings } from './system-manager-user-org-modal.fixtures';
 
 const PasswordModalStory = () => {
   const ref = useRef<PasswordModalRef>(null);
@@ -10,7 +11,14 @@ const PasswordModalStory = () => {
     ref.current?.showModal({ userId: 'demo-user' });
   }, []);
 
-  return <PasswordModal ref={ref} onSuccess={() => {}} />;
+  return (
+    <PasswordModal
+      ref={ref}
+      onSuccess={() => {}}
+      fetchSystemSettings={async () => passwordSettings}
+      setUserPasswordAction={async () => ({ success: true })}
+    />
+  );
 };
 
 const meta = {
