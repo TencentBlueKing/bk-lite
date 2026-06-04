@@ -12,6 +12,8 @@ import traceback
 from typing import Dict, Any
 from sanic.log import logger
 
+import core.host_remote_callback as host_remote_callback
+
 
 async def collect_vmware_metrics_task(
     ctx: Dict, params: Dict[str, Any], task_id: str
@@ -191,16 +193,10 @@ async def collect_host_metrics_task(
     logger.info(f"[Host Task] Processing: {task_id}")
 
     try:
-        from core.nats import get_nats
-        from service.nats_server import (
-            HOST_REMOTE_CALLBACK_HANDLER,
-            register_host_remote_callback_context,
-        )
         from tasks.collectors.host_collector import HostCollector
-        from tasks.utils.nats_helper import publish_metrics_to_nats
 
         collector = HostCollector(params)
-        callback_subject = f"{get_nats().service_name}.{HOST_REMOTE_CALLBACK_HANDLER}"
+        callback_subject = host_remote_callback.get_host_remote_callback_subject()
         callback_payload = {
             "collect_task_id": task_id,
             "instance_id": params.get("tags", {}).get("instance_id", params.get("host")),
@@ -221,7 +217,9 @@ async def collect_host_metrics_task(
         if not accepted_task_id:
             raise RuntimeError("Host Remote submission missing accepted task_id")
 
-        register_host_remote_callback_context(accepted_task_id, params, ctx)
+        await host_remote_callback.store_host_remote_callback_context(
+            accepted_task_id, params, ctx
+        )
         logger.info(
             f"[Host Task] Remote collection accepted: collect_task_id={task_id}, "
             f"accepted_task_id={accepted_task_id}"

@@ -53,8 +53,52 @@ def _load_nats_server_module(monkeypatch):
     debug_service_module.ProtocolDebugService = MagicMock()
     monkeypatch.setitem(sys.modules, "service.collection_service", collection_service_module)
     monkeypatch.setitem(sys.modules, "service.debug.protocol_debug_service", debug_service_module)
+    influxdb_client_module = types.ModuleType("influxdb_client")
+    influxdb_client_module.Point = MagicMock()
+    influxdb_client_module.WritePrecision = MagicMock()
+    monkeypatch.setitem(sys.modules, "influxdb_client", influxdb_client_module)
     monkeypatch.delitem(sys.modules, "service.nats_server", raising=False)
     return importlib.import_module("service.nats_server")
+
+
+def _load_monitor_handler_module(monkeypatch):
+    monkeypatch.delitem(sys.modules, "tasks.handlers.monitor_handler", raising=False)
+    return importlib.import_module("tasks.handlers.monitor_handler")
+
+
+def _install_fake_host_remote_callback_store(monkeypatch):
+    import core.host_remote_callback as host_remote_callback_module
+
+    callback_contexts = {}
+
+    async def store_context(task_id, params, ctx=None):
+        callback_contexts[str(task_id)] = {
+            "ctx": dict(ctx or {}),
+            "params": dict(params or {}),
+        }
+
+    async def load_context(task_id):
+        return callback_contexts.get(str(task_id))
+
+    async def clear_context(task_id):
+        return callback_contexts.pop(str(task_id), None)
+
+    monkeypatch.setattr(
+        host_remote_callback_module,
+        "store_host_remote_callback_context",
+        store_context,
+    )
+    monkeypatch.setattr(
+        host_remote_callback_module,
+        "load_host_remote_callback_context",
+        load_context,
+    )
+    monkeypatch.setattr(
+        host_remote_callback_module,
+        "clear_host_remote_callback_context",
+        clear_context,
+    )
+    return host_remote_callback_module, callback_contexts
 
 
 def _build_host_params():
@@ -239,11 +283,19 @@ class TestHostRemoteMonitorTask:
     async def test_collect_host_metrics_task_submits_callback_flow_and_returns_queued_status(
         self, monkeypatch
     ):
-        from tasks.handlers import monitor_handler
         import tasks.collectors.host_collector as host_collector_module
-        import core.nats as core_nats
+        import core.host_remote_callback as host_remote_callback_module
 
-        nats_server = _load_nats_server_module(monkeypatch)
+        class UnexpectedNatsServerModule(types.ModuleType):
+            def __getattr__(self, name):
+                raise AssertionError("collect_host_metrics_task must not depend on service.nats_server")
+
+        monkeypatch.setitem(
+            sys.modules,
+            "service.nats_server",
+            UnexpectedNatsServerModule("service.nats_server"),
+        )
+        monitor_handler = _load_monitor_handler_module(monkeypatch)
         accepted_response = {
             "success": True,
             "result": {
@@ -262,10 +314,17 @@ class TestHostRemoteMonitorTask:
                 self.submit_collection = submit_collection
 
         monkeypatch.setattr(host_collector_module, "HostCollector", FakeCollector)
+        store_callback_context = AsyncMock()
+        get_callback_subject = MagicMock(return_value="stargazer-service.host_remote.callback")
         monkeypatch.setattr(
-            core_nats,
-            "get_nats",
-            lambda: types.SimpleNamespace(service_name="stargazer-service"),
+            host_remote_callback_module,
+            "store_host_remote_callback_context",
+            store_callback_context,
+        )
+        monkeypatch.setattr(
+            host_remote_callback_module,
+            "get_host_remote_callback_subject",
+            get_callback_subject,
         )
 
         params = _build_host_params()
@@ -276,10 +335,9 @@ class TestHostRemoteMonitorTask:
         assert result["monitor_type"] == "host"
         assert result["accepted_task_id"] == "ansible-task-123"
         collect.assert_not_awaited()
-        expected_subject = f"stargazer-service.{nats_server.HOST_REMOTE_CALLBACK_HANDLER}"
-        assert nats_server.HOST_REMOTE_CALLBACK_HANDLER in core_nats._nats_instance.handlers
+        get_callback_subject.assert_called_once_with()
         submit_collection.assert_awaited_once_with(
-            expected_subject,
+            "stargazer-service.host_remote.callback",
             {
                 "collect_task_id": "collect-task-1",
                 "instance_id": "region1_host_10.0.0.9",
@@ -287,10 +345,7 @@ class TestHostRemoteMonitorTask:
                 "model_id": "host",
             },
         )
-        assert nats_server.get_host_remote_callback_context("collect-task-1") is None
-        stored_context = nats_server.get_host_remote_callback_context("ansible-task-123")
-        assert stored_context is not None
-        assert stored_context["params"] == params
+        store_callback_context.assert_awaited_once_with("ansible-task-123", params, {})
 
     async def test_collect_host_metrics_task_publishes_error_metrics_on_submission_failure(
         self, monkeypatch
@@ -298,6 +353,10 @@ class TestHostRemoteMonitorTask:
         from tasks.handlers import monitor_handler
         import core.nats as core_nats
         import tasks.collectors.host_collector as host_collector_module
+        influxdb_client_module = types.ModuleType("influxdb_client")
+        influxdb_client_module.Point = MagicMock()
+        influxdb_client_module.WritePrecision = MagicMock()
+        monkeypatch.setitem(sys.modules, "influxdb_client", influxdb_client_module)
         import tasks.utils.nats_helper as nats_helper_module
         import tasks.utils.metrics_helper as metrics_helper_module
 
@@ -598,8 +657,54 @@ class TestHostCollectorCollect:
 
 @pytest.mark.asyncio
 class TestHostRemoteCallbackHandler:
+    async def test_host_remote_callback_handler_reads_context_via_shared_helper(self, monkeypatch):
+        nats_server = _load_nats_server_module(monkeypatch)
+        params = _build_host_params()
+        callback_payload = {
+            "task_id": "task-122",
+            "success": True,
+            "result": [
+                {
+                    "host": "10.0.0.9",
+                    "status": "success",
+                    "stdout": json.dumps({
+                        "cpu": {
+                            "usage_percent": 42.0,
+                            "core_count": 4,
+                            "load_1m": 0.2,
+                            "load_5m": 0.1,
+                            "load_15m": 0.05,
+                        }
+                    }),
+                    "stderr": "",
+                    "exit_code": 0,
+                }
+            ],
+        }
+        load_context = AsyncMock(return_value={"ctx": {}, "params": params})
+        clear_context = AsyncMock(return_value={"ctx": {}, "params": params})
+        publish_metrics = AsyncMock()
+        monkeypatch.setattr(
+            nats_server.host_remote_callback,
+            "load_host_remote_callback_context",
+            load_context,
+        )
+        monkeypatch.setattr(
+            nats_server.host_remote_callback,
+            "clear_host_remote_callback_context",
+            clear_context,
+        )
+        monkeypatch.setattr(nats_server, "publish_metrics_to_nats", publish_metrics)
+
+        result = await nats_server.handle_host_remote_callback({"args": [callback_payload], "kwargs": {}})
+
+        assert result["status"] == "success"
+        load_context.assert_awaited_once_with("task-122")
+        clear_context.assert_awaited_once_with("task-122")
+
     async def test_host_remote_callback_handler_publishes_processed_metrics(self, monkeypatch):
         nats_server = _load_nats_server_module(monkeypatch)
+        _, callback_contexts = _install_fake_host_remote_callback_store(monkeypatch)
         params = _build_host_params()
         callback_payload = {
             "task_id": "task-123",
@@ -625,7 +730,7 @@ class TestHostRemoteCallbackHandler:
         publish_metrics = AsyncMock()
         monkeypatch.setattr(nats_server, "publish_metrics_to_nats", publish_metrics)
 
-        nats_server.register_host_remote_callback_context("task-123", params)
+        await nats_server.host_remote_callback.store_host_remote_callback_context("task-123", params)
 
         result = await nats_server.handle_host_remote_callback({"args": [callback_payload], "kwargs": {}})
 
@@ -635,10 +740,11 @@ class TestHostRemoteCallbackHandler:
         assert publish_args[2] == params
         assert publish_args[3] == "task-123"
         assert "host_cpu_usage_percent" in publish_args[1]
-        assert nats_server.get_host_remote_callback_context("task-123") is None
+        assert callback_contexts.get("task-123") is None
 
     async def test_host_remote_callback_handler_publishes_error_metrics_on_processing_failure(self, monkeypatch):
         nats_server = _load_nats_server_module(monkeypatch)
+        _, callback_contexts = _install_fake_host_remote_callback_store(monkeypatch)
         params = _build_host_params()
         callback_payload = {"task_id": "task-456", "success": False, "error": "Connection refused"}
         publish_metrics = AsyncMock()
@@ -647,7 +753,7 @@ class TestHostRemoteCallbackHandler:
         monkeypatch.setattr(nats_server, "publish_metrics_to_nats", publish_metrics)
         monkeypatch.setattr(nats_server, "generate_monitor_error_metrics", generate_error_metrics)
 
-        nats_server.register_host_remote_callback_context("task-456", params)
+        await nats_server.host_remote_callback.store_host_remote_callback_context("task-456", params)
 
         result = await nats_server.handle_host_remote_callback({"args": [callback_payload], "kwargs": {}})
 
@@ -655,10 +761,11 @@ class TestHostRemoteCallbackHandler:
         assert "Host collection failed" in result["error"]
         generate_error_metrics.assert_called_once()
         publish_metrics.assert_awaited_once_with({}, error_metrics, params, "task-456")
-        assert nats_server.get_host_remote_callback_context("task-456") is None
+        assert callback_contexts.get("task-456") is None
 
     async def test_host_remote_callback_handler_keeps_context_until_publish_succeeds(self, monkeypatch):
         nats_server = _load_nats_server_module(monkeypatch)
+        _, callback_contexts = _install_fake_host_remote_callback_store(monkeypatch)
         params = _build_host_params()
         callback_payload = {
             "task_id": "task-789",
@@ -686,19 +793,20 @@ class TestHostRemoteCallbackHandler:
             assert task_id == "task-789"
             assert publish_params == params
             assert "host_cpu_usage_percent" in metrics_data
-            assert nats_server.get_host_remote_callback_context("task-789") is not None
+            assert callback_contexts.get("task-789") is not None
 
         monkeypatch.setattr(nats_server, "publish_metrics_to_nats", publish_metrics)
 
-        nats_server.register_host_remote_callback_context("task-789", params)
+        await nats_server.host_remote_callback.store_host_remote_callback_context("task-789", params)
 
         result = await nats_server.handle_host_remote_callback({"args": [callback_payload], "kwargs": {}})
 
         assert result["status"] == "success"
-        assert nats_server.get_host_remote_callback_context("task-789") is None
+        assert callback_contexts.get("task-789") is None
 
     async def test_host_remote_callback_handler_keeps_context_when_publish_fails(self, monkeypatch):
         nats_server = _load_nats_server_module(monkeypatch)
+        _, callback_contexts = _install_fake_host_remote_callback_store(monkeypatch)
         params = _build_host_params()
         callback_payload = {
             "task_id": "task-790",
@@ -724,17 +832,18 @@ class TestHostRemoteCallbackHandler:
         publish_metrics = AsyncMock(side_effect=RuntimeError("publish failed"))
         monkeypatch.setattr(nats_server, "publish_metrics_to_nats", publish_metrics)
 
-        nats_server.register_host_remote_callback_context("task-790", params)
+        await nats_server.host_remote_callback.store_host_remote_callback_context("task-790", params)
 
         with pytest.raises(RuntimeError, match="publish failed"):
             await nats_server.handle_host_remote_callback({"args": [callback_payload], "kwargs": {}})
 
-        assert nats_server.get_host_remote_callback_context("task-790") is not None
+        assert callback_contexts.get("task-790") is not None
 
     async def test_host_remote_callback_handler_keeps_context_when_error_metrics_publish_fails(
         self, monkeypatch
     ):
         nats_server = _load_nats_server_module(monkeypatch)
+        _, callback_contexts = _install_fake_host_remote_callback_store(monkeypatch)
         params = _build_host_params()
         callback_payload = {"task_id": "task-791", "success": False, "error": "Connection refused"}
         publish_metrics = AsyncMock(side_effect=RuntimeError("publish failed"))
@@ -743,15 +852,16 @@ class TestHostRemoteCallbackHandler:
         monkeypatch.setattr(nats_server, "publish_metrics_to_nats", publish_metrics)
         monkeypatch.setattr(nats_server, "generate_monitor_error_metrics", generate_error_metrics)
 
-        nats_server.register_host_remote_callback_context("task-791", params)
+        await nats_server.host_remote_callback.store_host_remote_callback_context("task-791", params)
 
         with pytest.raises(RuntimeError, match="publish failed"):
             await nats_server.handle_host_remote_callback({"args": [callback_payload], "kwargs": {}})
 
-        assert nats_server.get_host_remote_callback_context("task-791") is not None
+        assert callback_contexts.get("task-791") is not None
 
     async def test_host_remote_callback_handler_raises_for_missing_context(self, monkeypatch):
         nats_server = _load_nats_server_module(monkeypatch)
+        _install_fake_host_remote_callback_store(monkeypatch)
 
         with pytest.raises(RuntimeError, match="Missing Host Remote callback context for task_id=task-missing"):
             await nats_server.handle_host_remote_callback(
@@ -762,6 +872,10 @@ class TestHostRemoteCallbackHandler:
 @pytest.mark.asyncio
 class TestPublishMetricsToNats:
     async def test_publish_metrics_to_nats_raises_when_any_line_publish_fails(self, monkeypatch):
+        influxdb_client_module = types.ModuleType("influxdb_client")
+        influxdb_client_module.Point = MagicMock()
+        influxdb_client_module.WritePrecision = MagicMock()
+        monkeypatch.setitem(sys.modules, "influxdb_client", influxdb_client_module)
         import tasks.utils.nats_helper as nats_helper_module
 
         published = []
