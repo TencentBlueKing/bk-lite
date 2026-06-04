@@ -30,6 +30,7 @@ from apps.alerts.aggregation.builder.synthetic_alert_builder import (
 from apps.core.logger import alert_logger as logger
 from apps.alerts.utils.util import parse_aggregation_window_size, str_to_md5
 from apps.alerts.constants.constants import LevelType
+from apps.alerts.serializers.strategy import ALLOWED_DIMENSIONS, DIMENSION_NAME_PATTERN
 
 
 class AggregationProcessor:
@@ -38,6 +39,28 @@ class AggregationProcessor:
     def __init__(self):
         self.sql_builder = SQLBuilder()
         self.db_conn = DuckDBConnection()
+
+    @staticmethod
+    def _validate_dimensions(raw_dimensions: list, strategy_name: str) -> List[str]:
+        """二次防护：校验并过滤维度名，防止 SQL 注入"""
+        if not raw_dimensions:
+            return ["event_id"]
+
+        validated = []
+        for dim in raw_dimensions:
+            if not isinstance(dim, str):
+                logger.warning(f"策略 {strategy_name}: 维度名非字符串，已跳过: {dim}")
+                continue
+            dim = dim.strip()
+            if not DIMENSION_NAME_PATTERN.match(dim):
+                logger.warning(f"策略 {strategy_name}: 维度名格式非法，已跳过: {dim}")
+                continue
+            if dim not in ALLOWED_DIMENSIONS:
+                logger.warning(f"策略 {strategy_name}: 不支持的维度名，已跳过: {dim}")
+                continue
+            validated.append(dim)
+
+        return validated or ["event_id"]
 
     def process_aggregation(self):
         try:
@@ -137,7 +160,8 @@ class AggregationProcessor:
                 return
 
             params = cast(Dict[str, Any], strategy.params or {})
-            dimensions = params.get("group_by", []) or ["event_id"]
+            raw_dimensions = params.get("group_by", []) or ["event_id"]
+            dimensions = self._validate_dimensions(raw_dimensions, strategy.name)
             logger.info(f"策略 {strategy.name}: 聚合维度={dimensions}")
 
             if self._aggregate_for_dimensions(strategy, matched_events, dimensions, now):

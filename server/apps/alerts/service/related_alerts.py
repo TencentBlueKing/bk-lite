@@ -25,7 +25,7 @@ MATCH_REASON_MAP = {
 
 
 class RelatedAlertsService:
-    DEFAULT_TIME_WINDOW_MINUTES = 600
+    DEFAULT_TIME_WINDOW_MINUTES = 60
     MAX_CANDIDATES = 100
 
     @classmethod
