@@ -66,17 +66,29 @@ def extend_menus_by_install_apps(menu_data: dict, install_apps: set[str]) -> dic
     if result.get("client_id") != "system-manager" or "license_mgmt" not in install_apps:
         return result
 
+    organization_menu = next((item for item in result.get("menus", []) if item.get("name") == "Organization"), None)
     setting_menu = next((item for item in result.get("menus", []) if item.get("name") == "Setting"), None)
-    if not setting_menu:
+
+    setting_children = setting_menu.setdefault("children", [])
+    if any(child.get("id") == "license_mgmt" for child in setting_children):
+        return result
+    
+    if not organization_menu or not setting_menu:
         return result
 
-    children = setting_menu.setdefault("children", [])
-    if any(child.get("id") == "license_mgmt" for child in children):
-        return result
+    setting_children.append({"id": "license_mgmt", "name": "License", "operation": ["View", "Add", "Edit", "Delete"]})
+    setting_children.append({"id": "portal_settings", "name": "Portal Settings", "operation": ["View", "Edit"]})
 
-    children.append({"id": "license_mgmt", "name": "License", "operation": ["View", "Add", "Edit", "Delete"]})
-    children.append({"id": "portal_settings", "name": "Portal Settings", "operation": ["View", "Edit"]})
-    children.append({"id": "sensitive_info", "name": "Sensitive Info", "operation": ["View", "Edit", "Add", "Delete"]})
+    organization_children = organization_menu.setdefault("children", [])
+    organization_children.append({"id": "sensitive_info", "name": "Sensitive Info", "operation": ["View", "Edit", "Add", "Delete"]})
+
+    security_role = next((item for item in result.get("roles", []) if item.get("name") == "security"), None)
+    if security_role:
+        security_role_menus = security_role.setdefault("menus", [])
+        for menu_name in ("sensitive_info-View", "sensitive_info-Add","sensitive_info-Edit","sensitive_info-Delete"):
+            if menu_name not in security_role_menus:
+                security_role_menus.append(menu_name)
+
     return result
 
 
