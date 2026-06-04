@@ -226,6 +226,7 @@ export const useRoleApi = () => {
   const getGroupDataRule = async (request: {
     params?: { group_id?: string | number; app?: string; search?: string };
   }) => {
+    // Storybook-only sentinel used by LoadingRules to keep the loading state visible long enough to assert.
     if (String(request.params?.group_id) === 'loading-rules') {
       await new Promise((resolve) => {
         setTimeout(resolve, 1200);

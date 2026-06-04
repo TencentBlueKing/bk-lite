@@ -47,8 +47,18 @@ export const LoadingRules: Story = {
     ...baseArgs,
     node: {
       ...permissionNode,
+      // Storybook-only sentinel: this key matches the delayed mock below so the loading UI can be asserted.
       key: 'loading-rules',
       title: 'Loading Team',
     },
+  },
+  play: async () => {
+    const modal = within(document.body);
+
+    await expect(modal.getByText('Loading Team')).toBeInTheDocument();
+    expect(document.body.querySelector('.ant-spin-spinning')).not.toBeNull();
+
+    await expect(await modal.findByText('system.permission.app')).toBeInTheDocument();
+    await expect(await modal.findByText('system.permission.dataPermission')).toBeInTheDocument();
   },
 };
