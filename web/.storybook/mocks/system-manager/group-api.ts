@@ -1,4 +1,7 @@
-import { groupDetailWithRoles } from '../../../src/stories/system-manager-user-org-modal.fixtures';
+import {
+  armRoleListLoadingMock,
+  groupDetailWithRoles,
+} from '../../../src/stories/system-manager-user-org-modal.fixtures';
 
 const groupTree = [
   {
@@ -98,7 +101,13 @@ export const useGroupApi = () => {
     { id: 1002, name: 'Edit Dashboard', app: 'monitor' },
   ]);
 
-  const getGroupDetailWithRoles = async (request?: { group_id?: string | number }) => resolveGroupDetail(request?.group_id);
+  const getGroupDetailWithRoles = async (request?: { group_id?: string | number }) => {
+    if (String(request?.group_id) === 'loading-roles') {
+      armRoleListLoadingMock();
+    }
+
+    return resolveGroupDetail(request?.group_id);
+  };
   const batchGetGroupDetailWithRoles = async (request?: { group_ids?: Array<string | number> }) => {
     const groupIds = request?.group_ids || [];
     if (groupIds.length === 0) {
