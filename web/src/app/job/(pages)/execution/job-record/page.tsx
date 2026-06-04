@@ -13,6 +13,8 @@ import {
   Tabs,
   Table,
   Empty,
+  Modal,
+  Alert,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -33,7 +35,7 @@ import MarkdownRenderer from '@/components/markdown';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
-import { JobRecord, JobRecordStatus, JobRecordSource, JobRecordDetail, ExecutionTarget, Playbook, FileTreeNode } from '@/app/job/types';
+import { JobRecord, JobRecordStatus, JobRecordSource, JobRecordDetail, ExecutionTarget, Playbook, FileTreeNode, PlaybookFilePreview } from '@/app/job/types';
 import { ColumnItem } from '@/types';
 import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
@@ -50,7 +52,7 @@ const JobRecordPage = () => {
   const searchParams = useSearchParams();
   const recordId = searchParams.get('id');
   const { isLoading: isApiReady } = useApiClient();
-  const { getJobRecordList, getJobRecordDetail, getPlaybookDetail } = useJobApi();
+  const { getJobRecordList, getJobRecordDetail, getPlaybookDetail, previewPlaybookFile } = useJobApi();
 
   // List state
   const [data, setData] = useState<JobRecord[]>([]);
@@ -74,6 +76,10 @@ const JobRecordPage = () => {
   const [playbookDrawerOpen, setPlaybookDrawerOpen] = useState(false);
   const [viewingPlaybook, setViewingPlaybook] = useState<Playbook | null>(null);
   const [playbookDetailLoading, setPlaybookDetailLoading] = useState(false);
+  const [filePreviewModalOpen, setFilePreviewModalOpen] = useState(false);
+  const [filePreviewLoading, setFilePreviewLoading] = useState(false);
+  const [filePreviewData, setFilePreviewData] = useState<PlaybookFilePreview | null>(null);
+  const [filePreviewError, setFilePreviewError] = useState<string | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -588,26 +594,69 @@ const JobRecordPage = () => {
     return detail.script_content.split('\n').length;
   }, [detail?.script_content]);
 
-  const renderPlaybookFileTree = useCallback((nodes: FileTreeNode[], depth = 0) => {
+  const handlePreviewPlaybookFile = useCallback(async (filePath: string, parentPaths: string[] = []) => {
+    if (!viewingPlaybook) {
+      return;
+    }
+
+    const fullPath = [...parentPaths, filePath].join('/');
+    setFilePreviewLoading(true);
+    setFilePreviewError(null);
+    setFilePreviewData(null);
+    setFilePreviewModalOpen(true);
+
+    try {
+      const result = await previewPlaybookFile(viewingPlaybook.id, fullPath);
+      setFilePreviewData(result);
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string }; status?: number } };
+      const detailMessage = err?.response?.data?.detail;
+      const status = err?.response?.status;
+
+      if (status === 413) {
+        setFilePreviewError(t('job.filePreviewTooLarge'));
+      } else if (status === 404) {
+        setFilePreviewError(t('job.filePreviewNotFound'));
+      } else if (detailMessage) {
+        setFilePreviewError(detailMessage);
+      } else {
+        setFilePreviewError(t('job.filePreviewError'));
+      }
+    } finally {
+      setFilePreviewLoading(false);
+    }
+  }, [previewPlaybookFile, t, viewingPlaybook]);
+
+  const renderPlaybookFileTree = useCallback((nodes: FileTreeNode[], depth = 0, parentPaths: string[] = []) => {
     return nodes.map((node, idx) => (
       <div key={`${depth}-${idx}-${node.name}`}>
         <div
-          className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-(--color-fill-2)"
+          className="flex items-center justify-between rounded px-2 py-1.5 hover:bg-(--color-fill-2)"
           style={{ paddingLeft: `${depth * 20 + 8}px` }}
         >
-          {node.type === 'directory' ? (
-            <FolderOutlined style={{ color: '#faad14' }} />
-          ) : (
-            <FileOutlined style={{ color: 'var(--color-text-3)' }} />
+          <div className="flex items-center gap-2">
+            {node.type === 'directory' ? (
+              <FolderOutlined style={{ color: '#faad14' }} />
+            ) : (
+              <FileOutlined style={{ color: 'var(--color-text-3)' }} />
+            )}
+            <span className="text-sm" style={{ color: 'var(--color-text-1)' }}>
+              {node.name}
+            </span>
+          </div>
+          {node.type === 'file' && (
+            <a
+              className="cursor-pointer text-sm text-[var(--color-primary)]"
+              onClick={() => handlePreviewPlaybookFile(node.name, parentPaths)}
+            >
+              {t('job.preview')}
+            </a>
           )}
-          <span className="text-sm" style={{ color: 'var(--color-text-1)' }}>
-            {node.name}
-          </span>
         </div>
-        {node.type === 'directory' && node.children && renderPlaybookFileTree(node.children, depth + 1)}
+        {node.type === 'directory' && node.children && renderPlaybookFileTree(node.children, depth + 1, [...parentPaths, node.name])}
       </div>
     ));
-  }, []);
+  }, [handlePreviewPlaybookFile, t]);
 
   const playbookViewTabs = useMemo(() => {
     if (!viewingPlaybook) {
@@ -1157,6 +1206,9 @@ const JobRecordPage = () => {
           onClose={() => {
             setPlaybookDrawerOpen(false);
             setViewingPlaybook(null);
+            setFilePreviewModalOpen(false);
+            setFilePreviewData(null);
+            setFilePreviewError(null);
           }}
           placement="right"
           width={600}
@@ -1182,6 +1234,50 @@ const JobRecordPage = () => {
             />
           )}
         </Drawer>
+
+        <Modal
+          title={filePreviewData ? `${t('job.preview')}: ${filePreviewData.file_name}` : t('job.preview')}
+          open={filePreviewModalOpen}
+          onCancel={() => {
+            setFilePreviewModalOpen(false);
+            setFilePreviewData(null);
+            setFilePreviewError(null);
+          }}
+          footer={null}
+          width={800}
+          styles={{ body: { maxHeight: '70vh', overflow: 'auto' } }}
+        >
+          {filePreviewLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Spin tip={t('job.loading')} />
+            </div>
+          ) : filePreviewError ? (
+            <Alert
+              message={t('job.filePreviewFailed')}
+              description={filePreviewError}
+              type="error"
+              showIcon
+            />
+          ) : filePreviewData ? (
+            <div>
+              <div className="mb-2 text-xs" style={{ color: 'var(--color-text-3)' }}>
+                {filePreviewData.file_path} ({filePreviewData.file_size} bytes)
+              </div>
+              <pre
+                className="overflow-auto rounded p-4 text-sm"
+                style={{
+                  backgroundColor: 'var(--color-bg-1)',
+                  border: '1px solid var(--color-border)',
+                  maxHeight: '60vh',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                <code>{filePreviewData.content}</code>
+              </pre>
+            </div>
+          ) : null}
+        </Modal>
       </div>
     );
   }
