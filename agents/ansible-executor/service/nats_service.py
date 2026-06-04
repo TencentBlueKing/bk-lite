@@ -461,7 +461,7 @@ class AnsibleNATSService:
             error = f"ansible {task.task_type} failed with exit code {code}"
 
         output_truncated = bool(output_meta.get("truncated"))
-        parsed_results = [] if output_truncated else (parse_ansible_output_per_host(output) if output else [])
+        parsed_results = parse_ansible_output_per_host(output, output_truncated=output_truncated) if output else []
         if not parsed_results and output and not output_truncated:
             parsed_results = parse_playbook_recap(output)
 
