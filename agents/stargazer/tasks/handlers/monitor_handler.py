@@ -213,6 +213,7 @@ async def collect_host_metrics_task(
 
         collector = HostCollector(params)
         callback_task_id = str(task_id)
+        callback_timestamp = int(time.time() * 1000)
         callback_subject = host_remote_callback.get_host_remote_callback_subject()
         callback_payload = {
             "collect_task_id": callback_task_id,
@@ -221,6 +222,7 @@ async def collect_host_metrics_task(
             "model_id": params.get("model_id", params.get("monitor_type", "host")),
         }
         callback_params = _build_host_remote_callback_params(params)
+        callback_params["callback_timestamp"] = callback_timestamp
 
         await host_remote_callback.store_host_remote_callback_context(
             callback_task_id,
@@ -261,7 +263,7 @@ async def collect_host_metrics_task(
             "accepted": accepted_result.get("accepted", True),
             "accepted_task_id": accepted_task_id,
             "defer_running_clear": True,
-            "submitted_at": int(time.time() * 1000),
+            "submitted_at": callback_timestamp,
         }
 
     except Exception as e:

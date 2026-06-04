@@ -195,6 +195,37 @@ class TestBuildScript:
 class TestParseMetricsToPrometheus:
     """测试 JSON 指标数据到 Prometheus 格式转换"""
 
+    def test_explicit_timestamp_is_used_when_provided(self):
+        data = {
+            "cpu": {
+                "usage_percent": 45.2,
+                "core_count": 4,
+                "load_1m": 1.5,
+                "load_5m": 1.2,
+                "load_15m": 0.9,
+            }
+        }
+
+        result = parse_metrics_to_prometheus(data, "test_instance", "linux", timestamp=1234567890000)
+
+        assert "1234567890000" in result
+
+    @patch("tasks.collectors.host_collector.time.time", return_value=1234.567)
+    def test_timestamp_defaults_to_current_time_when_not_provided(self, _mock_time):
+        data = {
+            "cpu": {
+                "usage_percent": 45.2,
+                "core_count": 4,
+                "load_1m": 1.5,
+                "load_5m": 1.2,
+                "load_15m": 0.9,
+            }
+        }
+
+        result = parse_metrics_to_prometheus(data, "test_instance", "linux")
+
+        assert "1234567" in result
+
     def test_cpu_metrics(self):
         data = {
             "cpu": {
@@ -330,6 +361,7 @@ class TestHostRemoteMonitorTask:
             UnexpectedNatsServerModule("service.nats_server"),
         )
         monitor_handler = _load_monitor_handler_module(monkeypatch)
+        monkeypatch.setattr(monitor_handler.time, "time", lambda: 1234.567)
         accepted_response = {
             "success": True,
             "result": {
@@ -378,6 +410,7 @@ class TestHostRemoteMonitorTask:
         assert result["monitor_type"] == "host"
         assert result["accepted_task_id"] == "collect-task-1"
         assert result["defer_running_clear"] is True
+        assert result["submitted_at"] == 1234567
         collect.assert_not_awaited()
         assert host_remote_callback_module.HOST_REMOTE_CALLBACK_HANDLER == "host_remote.callback"
         assert registered_service_name == host_remote_callback_module.get_stargazer_service_name()
@@ -403,6 +436,7 @@ class TestHostRemoteMonitorTask:
         store_callback_context.assert_awaited_once_with(
             "collect-task-1",
             {
+                "callback_timestamp": 1234567,
                 "host": "10.0.0.9",
                 "os_type": "linux",
                 "monitor_type": "host",
@@ -504,6 +538,7 @@ class TestHostRemoteMonitorTask:
         clear_callback_context = AsyncMock(side_effect=clear_callback_context)
 
         monkeypatch.setattr(host_collector_module, "HostCollector", FakeCollector)
+        monkeypatch.setattr(monitor_handler.time, "time", lambda: 1234.567)
         monkeypatch.setattr(
             core_nats,
             "get_nats",
@@ -533,6 +568,7 @@ class TestHostRemoteMonitorTask:
         store_callback_context.assert_awaited_once_with(
             "collect-task-3",
             {
+                "callback_timestamp": 1234567,
                 "host": "10.0.0.9",
                 "os_type": "linux",
                 "monitor_type": "host",
@@ -698,6 +734,123 @@ class TestHostCollectorCollect:
 
         assert "host_cpu_usage_percent" in metrics
         assert 'instance_id="region1_host_10.0.0.8"' in metrics
+
+    async def test_process_adhoc_result_uses_stored_callback_timestamp(self):
+        collector = HostCollector({
+            "host": "10.0.0.8",
+            "os_type": "linux",
+            "username": "root",
+            "password": "secret",
+            "ansible_node_id": "region1",
+            "metrics_modules": "cpu",
+            "callback_timestamp": 1234567890000,
+            "tags": {"instance_id": "region1_host_10.0.0.8"},
+        })
+
+        result = {
+            "task_id": "task-123",
+            "success": True,
+            "result": [
+                {
+                    "host": "10.0.0.8",
+                    "status": "success",
+                    "stdout": json.dumps({
+                        "cpu": {
+                            "usage_percent": 25.0,
+                            "core_count": 4,
+                            "load_1m": 0.5,
+                            "load_5m": 0.3,
+                            "load_15m": 0.1,
+                        }
+                    }),
+                    "stderr": "",
+                    "exit_code": 0,
+                }
+            ],
+        }
+
+        metrics = collector.process_adhoc_result(result)
+
+        assert "1234567890000" in metrics
+
+    async def test_process_adhoc_result_reuses_stored_callback_timestamp_on_retry(self):
+        collector = HostCollector({
+            "host": "10.0.0.8",
+            "os_type": "linux",
+            "username": "root",
+            "password": "secret",
+            "ansible_node_id": "region1",
+            "metrics_modules": "cpu",
+            "callback_timestamp": 1234567890000,
+            "tags": {"instance_id": "region1_host_10.0.0.8"},
+        })
+
+        result = {
+            "task_id": "task-123",
+            "success": True,
+            "result": [
+                {
+                    "host": "10.0.0.8",
+                    "status": "success",
+                    "stdout": json.dumps({
+                        "cpu": {
+                            "usage_percent": 25.0,
+                            "core_count": 4,
+                            "load_1m": 0.5,
+                            "load_5m": 0.3,
+                            "load_15m": 0.1,
+                        }
+                    }),
+                    "stderr": "",
+                    "exit_code": 0,
+                }
+            ],
+        }
+
+        first_metrics = collector.process_adhoc_result(result)
+        second_metrics = collector.process_adhoc_result(result)
+
+        assert first_metrics == second_metrics
+
+    @patch("tasks.collectors.host_collector.time.time", return_value=1234.567)
+    async def test_process_adhoc_result_without_callback_timestamp_uses_current_time(
+        self, _mock_time
+    ):
+        collector = HostCollector({
+            "host": "10.0.0.8",
+            "os_type": "linux",
+            "username": "root",
+            "password": "secret",
+            "ansible_node_id": "region1",
+            "metrics_modules": "cpu",
+            "tags": {"instance_id": "region1_host_10.0.0.8"},
+        })
+
+        result = {
+            "task_id": "task-123",
+            "success": True,
+            "result": [
+                {
+                    "host": "10.0.0.8",
+                    "status": "success",
+                    "stdout": json.dumps({
+                        "cpu": {
+                            "usage_percent": 25.0,
+                            "core_count": 4,
+                            "load_1m": 0.5,
+                            "load_5m": 0.3,
+                            "load_15m": 0.1,
+                        }
+                    }),
+                    "stderr": "",
+                    "exit_code": 0,
+                }
+            ],
+        }
+
+        metrics = collector.process_adhoc_result(result)
+
+        assert "1234567" in metrics
 
     @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_successful_collect_linux(self, mock_adhoc):

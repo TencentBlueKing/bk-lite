@@ -35,10 +35,10 @@ def _read_script(path: Path) -> str:
 
 
 def parse_metrics_to_prometheus(
-    data: Dict[str, Any], instance_id: str, os_type: str
+    data: Dict[str, Any], instance_id: str, os_type: str, timestamp: int | None = None
 ) -> str:
     lines = []
-    timestamp = int(time.time() * 1000)
+    timestamp = int(timestamp) if timestamp is not None else int(time.time() * 1000)
     base_labels = f'instance_id="{instance_id}",os_type="{os_type}"'
 
     if "cpu" in data:
@@ -219,7 +219,13 @@ class HostCollector(BaseCollector):
             raise RuntimeError(f"Failed to parse metrics JSON from {host}: {e}") from e
 
         instance_id = self.params.get("tags", {}).get("instance_id", host)
-        prometheus_metrics = parse_metrics_to_prometheus(metrics_data, instance_id, os_type)
+        callback_timestamp = self.params.get("callback_timestamp")
+        prometheus_metrics = parse_metrics_to_prometheus(
+            metrics_data,
+            instance_id,
+            os_type,
+            timestamp=callback_timestamp,
+        )
 
         logger.info(f"[Host Collector] Completed: host={host}, metrics_size={len(prometheus_metrics)}")
         return prometheus_metrics
