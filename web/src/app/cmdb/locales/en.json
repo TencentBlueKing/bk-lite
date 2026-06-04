@@ -261,7 +261,10 @@
         "defaultValueHint": "The system auto-fills this default value only when creating a new instance from the page.",
         "exportModelConfig": "Export Config",
         "importModelConfig": "Import Config",
-        "importSuccess": "Import successful"
+        "importSuccess": "Import successful",
+        "manageLayout": "Manage Layout",
+        "hidden": "Hidden",
+        "discardLayoutConfirm": "Unsaved changes will be discarded. Continue?"
     },
     "PublicEnumLibrary": {
         "title": "Public Option Library",
