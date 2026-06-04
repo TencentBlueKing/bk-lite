@@ -31,9 +31,11 @@ export const Default: Story = {
     await expect(
       await modal.findByText('system.security.passwordLengthRange: 10-20')
     ).toBeInTheDocument();
-    await expect(await modal.findByText('system.security.requireUppercase')).toBeInTheDocument();
-    await expect(await modal.findByText('system.security.requireLowercase')).toBeInTheDocument();
-    await expect(await modal.findByText('system.security.requireDigit')).toBeInTheDocument();
+    await expect(
+      await modal.findByText(
+        'system.security.passwordComplexity: system.security.requireUppercase、system.security.requireLowercase、system.security.requireDigit'
+      )
+    ).toBeInTheDocument();
   },
 };
 
