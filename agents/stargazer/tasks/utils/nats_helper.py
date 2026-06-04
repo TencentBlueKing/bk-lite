@@ -155,6 +155,7 @@ async def publish_metrics_to_nats(
         logger.error(
             f"[NATS Helper] Failed to publish metrics: {e}\n{traceback.format_exc()}"
         )
+        raise
 
 
 def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -> list:

@@ -27,8 +27,16 @@ def register_host_remote_callback_context(task_id, params, ctx=None):
     }
 
 
-def pop_host_remote_callback_context(task_id):
+def get_host_remote_callback_context(task_id):
+    return _HOST_REMOTE_CALLBACK_CONTEXTS.get(str(task_id or "").strip())
+
+
+def clear_host_remote_callback_context(task_id):
     return _HOST_REMOTE_CALLBACK_CONTEXTS.pop(str(task_id or "").strip(), None)
+
+
+def pop_host_remote_callback_context(task_id):
+    return clear_host_remote_callback_context(task_id)
 
 
 def _extract_host_remote_callback_payload(data):
@@ -100,7 +108,7 @@ async def handle_host_remote_callback(data: dict) -> dict:
     if not task_id:
         raise RuntimeError("Host Remote callback payload missing task_id")
 
-    callback_context = pop_host_remote_callback_context(task_id)
+    callback_context = get_host_remote_callback_context(task_id)
     if not callback_context:
         raise RuntimeError(f"Missing Host Remote callback context for task_id={task_id}")
 
@@ -110,20 +118,23 @@ async def handle_host_remote_callback(data: dict) -> dict:
     try:
         collector = HostCollector(params)
         metrics_data = collector.process_adhoc_result(payload)
-        await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
-        return {
-            "task_id": task_id,
-            "status": "success",
-            "monitor_type": params.get("monitor_type", "host"),
-            "data_size": len(metrics_data),
-        }
     except Exception as err:
         logger.error(f"Host Remote callback processing failed for {task_id}: {err}", exc_info=True)
         error_metrics = generate_monitor_error_metrics(params, err)
         await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
+        clear_host_remote_callback_context(task_id)
         return {
             "task_id": task_id,
             "status": "failed",
             "error": str(err),
             "monitor_type": params.get("monitor_type", "host"),
         }
+
+    await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
+    clear_host_remote_callback_context(task_id)
+    return {
+        "task_id": task_id,
+        "status": "success",
+        "monitor_type": params.get("monitor_type", "host"),
+        "data_size": len(metrics_data),
+    }

@@ -191,24 +191,49 @@ async def collect_host_metrics_task(
     logger.info(f"[Host Task] Processing: {task_id}")
 
     try:
+        from core.nats import get_nats
+        from service.nats_server import (
+            HOST_REMOTE_CALLBACK_HANDLER,
+            register_host_remote_callback_context,
+        )
         from tasks.collectors.host_collector import HostCollector
         from tasks.utils.nats_helper import publish_metrics_to_nats
 
         collector = HostCollector(params)
-        metrics_data = await collector.collect()
+        callback_subject = f"{get_nats().service_name}.{HOST_REMOTE_CALLBACK_HANDLER}"
+        callback_payload = {
+            "collect_task_id": task_id,
+            "instance_id": params.get("tags", {}).get("instance_id", params.get("host")),
+            "instance_name": params.get("host"),
+            "model_id": params.get("model_id", params.get("monitor_type", "host")),
+        }
 
+        logger.info(f"[Host Task] Submitting remote collection: {task_id}")
+        accepted = await collector.submit_collection(callback_subject, callback_payload)
+        accepted_result = accepted.get("result") or {}
+        if accepted.get("success") is False or accepted_result.get("accepted") is False:
+            raise RuntimeError(
+                accepted.get("error")
+                or accepted_result.get("error")
+                or "Host Remote submission failed"
+            )
+        accepted_task_id = str(accepted_result.get("task_id") or "").strip()
+        if not accepted_task_id:
+            raise RuntimeError("Host Remote submission missing accepted task_id")
+
+        register_host_remote_callback_context(accepted_task_id, params, ctx)
         logger.info(
-            f"[Host Task] {task_id} completed, data size: {len(metrics_data)} bytes"
+            f"[Host Task] Remote collection accepted: collect_task_id={task_id}, "
+            f"accepted_task_id={accepted_task_id}"
         )
-
-        await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
 
         return {
             "task_id": task_id,
-            "status": "success",
+            "status": accepted_result.get("status", "queued"),
             "monitor_type": "host",
-            "data_size": len(metrics_data),
-            "completed_at": int(time.time() * 1000),
+            "accepted": accepted_result.get("accepted", True),
+            "accepted_task_id": accepted_task_id,
+            "submitted_at": int(time.time() * 1000),
         }
 
     except Exception as e:
