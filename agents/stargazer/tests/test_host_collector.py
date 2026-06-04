@@ -26,6 +26,7 @@ from tasks.collectors.host_collector import (
     build_script,
     parse_metrics_to_prometheus,
     HostCollector,
+    HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT,
     VALID_MODULES,
     SCRIPTS_DIR,
 )
@@ -597,8 +598,32 @@ class TestHostCollectorCollect:
             "instance_name": "10.0.0.1",
             "model_id": "host",
             "subject": "stargazer.host.callback",
-            "timeout": 10,
+            "timeout": HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT,
         }
+
+    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    async def test_submit_collection_uses_configured_callback_timeout(self, mock_adhoc):
+        mock_adhoc.return_value = {"success": True, "result": {"accepted": True, "status": "queued"}}
+
+        collector = HostCollector({
+            "host": "10.0.0.1",
+            "os_type": "linux",
+            "username": "root",
+            "password": "secret",
+            "port": "22",
+            "ansible_node_id": "region1",
+            "metrics_modules": "cpu",
+            "host_remote_callback_timeout": 90,
+            "tags": {"instance_id": "region1_host_10.0.0.1"},
+        })
+
+        await collector.submit_collection(
+            "collect-123",
+            "stargazer.host.callback",
+            {"collect_task_id": "collect-123"},
+        )
+
+        assert mock_adhoc.call_args[1]["callback"]["timeout"] == 90
 
     async def test_process_adhoc_result_returns_prometheus_metrics(self):
         collector = HostCollector({

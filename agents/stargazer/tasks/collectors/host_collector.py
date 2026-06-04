@@ -12,6 +12,7 @@ logger = logging.getLogger("stargazer.host_collector")
 SCRIPTS_DIR = Path(__file__).parent / "scripts"
 
 VALID_MODULES = {"cpu", "mem", "disk", "net"}
+HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT = 60
 
 
 def build_script(os_type: str, modules: List[str]) -> str:
@@ -155,11 +156,24 @@ class HostCollector(BaseCollector):
             "execute_timeout": execute_timeout,
         }
 
+    def _resolve_callback_timeout(self) -> int:
+        return int(
+            self.params.get(
+                "host_remote_callback_timeout",
+                HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT,
+            )
+        )
+
     async def submit_collection(
         self, task_id: str, callback_subject: str, callback_payload: Dict[str, Any]
     ) -> Dict[str, Any]:
         callback = dict(callback_payload or {})
-        callback.update({"subject": callback_subject, "timeout": 10})
+        callback.update(
+            {
+                "subject": callback_subject,
+                "timeout": self._resolve_callback_timeout(),
+            }
+        )
         return await self._execute_collection(
             callback=callback,
             task_id=task_id,
