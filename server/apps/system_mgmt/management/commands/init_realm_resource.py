@@ -85,7 +85,7 @@ def extend_menus_by_install_apps(menu_data: dict, install_apps: set[str]) -> dic
     security_role = next((item for item in result.get("roles", []) if item.get("name") == "security"), None)
     if security_role:
         security_role_menus = security_role.setdefault("menus", [])
-        for menu_name in ("sensitive_info-View", "sensitive_info-Edit"):
+        for menu_name in ("sensitive_info-View", "sensitive_info-Add","sensitive_info-Edit","sensitive_info-Delete"):
             if menu_name not in security_role_menus:
                 security_role_menus.append(menu_name)
 
