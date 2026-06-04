@@ -263,6 +263,59 @@ class TaskQueue:
             logger.error(traceback.format_exc())
             raise
 
+    async def enqueue_host_remote_processing_task(
+            self,
+            task_id: str,
+            params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        if not self._is_healthy:
+            logger.warning("Redis connection unhealthy, attempting to reconnect...")
+            try:
+                await self.connect()
+            except Exception as e:
+                self.metrics["tasks_failed"] += 1
+                raise RuntimeError(f"Task queue unavailable: {e}")
+
+        if not self.pool:
+            await self.connect()
+
+        processing_task_id = str(task_id).strip()
+        if not processing_task_id:
+            raise ValueError("task_id is required for host remote processing task")
+
+        processing_job_id = f"process_host_remote_callback:{processing_task_id}"
+        logger.info(
+            f"[Task Queue] Enqueuing host remote processing task: {processing_task_id}"
+        )
+        job = await self.pool.enqueue_job(
+            'process_host_remote_callback_task',
+            params=params or {},
+            task_id=processing_task_id,
+            _job_id=processing_job_id,
+        )
+
+        if not job:
+            existing_status = await self.get_job_status(processing_job_id)
+            if existing_status is not None:
+                return {
+                    "task_id": processing_task_id,
+                    "job_id": processing_job_id,
+                    "status": "queued",
+                    "enqueued_at": int(time.time() * 1000),
+                }
+
+            raise RuntimeError(
+                f"Failed to enqueue host remote processing task {processing_task_id}"
+            )
+
+        self.metrics["tasks_enqueued"] += 1
+        return {
+            "task_id": processing_task_id,
+            "job_id": job.job_id,
+            "status": "queued",
+            "enqueued_at": int(time.time() * 1000),
+        }
+
     async def mark_task_completed(self, task_id: str):
         """
         标记任务完成，清除运行中标记

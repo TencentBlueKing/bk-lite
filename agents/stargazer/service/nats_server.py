@@ -6,12 +6,10 @@ from datetime import datetime, timezone
 
 import core.host_remote_callback as host_remote_callback
 from core.nats import get_nats, register_handler
+from core.task_queue import get_task_queue
 from sanic.log import logger
 from service.collection_service import CollectionService
 from service.debug.protocol_debug_service import ProtocolDebugService
-from tasks.collectors.host_collector import HostCollector
-from tasks.utils.metrics_helper import generate_monitor_error_metrics
-from tasks.utils.nats_helper import publish_metrics_to_nats
 
 
 def _extract_host_remote_callback_payload(data):
@@ -110,31 +108,29 @@ async def handle_host_remote_callback(data: dict) -> dict:
     if not callback_context:
         raise RuntimeError(f"Missing Host Remote callback context for task_id={task_id}")
 
-    params = callback_context["params"]
-    ctx = callback_context.get("ctx") or {}
+    if callback_context.get("raw_callback") is None:
+        callback_context = await host_remote_callback.record_host_remote_callback_payload(
+            task_id,
+            payload,
+        )
 
-    try:
-        collector = HostCollector(params)
-        metrics_data = collector.process_adhoc_result(payload)
-    except Exception as err:
-        logger.error(f"Host Remote callback processing failed for {task_id}: {err}", exc_info=True)
-        error_metrics = generate_monitor_error_metrics(params, err)
-        await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
-        await _clear_host_remote_running_flag_best_effort(task_id)
-        await _clear_host_remote_callback_context_best_effort(task_id)
-        return {
-            "task_id": task_id,
-            "status": "failed",
-            "error": str(err),
-            "monitor_type": params.get("monitor_type", "host"),
-        }
-
-    await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
     await _clear_host_remote_running_flag_best_effort(task_id)
-    await _clear_host_remote_callback_context_best_effort(task_id)
+
+    task_queue = get_task_queue()
+    task_info = await task_queue.enqueue_host_remote_processing_task(task_id)
+    await host_remote_callback.mark_host_remote_processing_enqueued(
+        task_id,
+        processing_job_id=task_info.get("job_id"),
+    )
+    host_remote_callback.log_host_remote_event(
+        "callback_processing_queued",
+        task_id,
+        processing_job_id=task_info.get("job_id"),
+    )
+
     return {
         "task_id": task_id,
-        "status": "success",
-        "monitor_type": params.get("monitor_type", "host"),
-        "data_size": len(metrics_data),
+        "status": "accepted",
+        "monitor_type": (callback_context.get("params") or {}).get("monitor_type", "host"),
+        "processing_job_id": task_info.get("job_id", ""),
     }
