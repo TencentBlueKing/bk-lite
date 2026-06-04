@@ -257,6 +257,7 @@ async def collect_host_metrics_task(
             )
 
         remote_submission_accepted = True
+        await host_remote_callback.mark_host_remote_submit_accepted(callback_task_id)
         host_remote_callback.log_host_remote_event(
             "submit_accepted",
             callback_task_id,

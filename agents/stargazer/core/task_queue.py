@@ -20,6 +20,16 @@ from sanic.log import logger
 from core.redis_config import REDIS_CONFIG, print_redis_config
 
 
+def _resolve_running_flag_ttl(params: Dict[str, Any]) -> int:
+    base_ttl = int(os.getenv("TASK_JOB_TIMEOUT", "600")) + 60
+    if (params or {}).get("monitor_type") != "host":
+        return base_ttl
+
+    callback_deadline = int(os.getenv("HOST_REMOTE_CALLBACK_DEADLINE_SECONDS", "1200")) + 60
+    submit_accept_timeout = int(os.getenv("HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS", "300")) + 60
+    return max(base_ttl, callback_deadline, submit_accept_timeout)
+
+
 class TaskQueue:
     """任务队列管理器 - 使用统一的 Redis 配置"""
 
@@ -244,8 +254,8 @@ class TaskQueue:
                 raise RuntimeError(f"Failed to enqueue job {task_id}, enqueue_job returned None")
 
             # ✅ 标记任务为运行中（设置 TTL，防止任务失败后永久锁定）
-            # TTL 设置为 job_timeout + 60 秒的缓冲时间
-            ttl = int(os.getenv("TASK_JOB_TIMEOUT", "600")) + 60
+            # TTL 设置为 job_timeout + 60 秒的缓冲时间；host remote 任务需覆盖 callback 等待窗口
+            ttl = _resolve_running_flag_ttl(params)
             await self.pool.set(running_key, job.job_id, ex=ttl)
 
             self.metrics["tasks_enqueued"] += 1
