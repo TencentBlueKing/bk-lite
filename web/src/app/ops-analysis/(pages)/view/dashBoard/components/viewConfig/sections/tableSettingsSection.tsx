@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Input, Select, Switch, Tooltip } from 'antd';
+import { AutoComplete, Button, Input, Select, Switch, Tooltip } from 'antd';
 import {
   PlusCircleOutlined,
   MinusCircleOutlined,
@@ -20,8 +20,10 @@ interface FilterFieldOption {
 interface TableSettingsSectionProps {
   t: (key: string) => string;
   displayColumns: DisplayColumnRow[];
+  displayColumnOptions: FilterFieldOption[];
   filterFields: FilterFieldRow[];
   filterFieldOptions: FilterFieldOption[];
+  showFilterFields: boolean;
   invalidConfiguredFieldKeys: string[];
   isProbingColumns: boolean;
   paramsChangedAfterProbe: boolean;
@@ -51,8 +53,10 @@ interface TableSettingsSectionProps {
 export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
   t,
   displayColumns,
+  displayColumnOptions,
   filterFields,
   filterFieldOptions,
+  showFilterFields,
   invalidConfiguredFieldKeys,
   isProbingColumns,
   paramsChangedAfterProbe,
@@ -164,12 +168,18 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
       key: 'key',
       width: 180,
       render: (_: unknown, record: DisplayColumnRow) => (
-        <Input
+        <AutoComplete
           value={record.key}
-          placeholder={t('common.inputMsg')}
-          onChange={(e) =>
-            onDisplayColumnChange(record.id, 'key', e.target.value)
+          placeholder={t('common.selectTip')}
+          style={{ width: '100%' }}
+          options={displayColumnOptions}
+          filterOption={(inputValue, option) =>
+            (option?.label || '')
+              .toString()
+              .toLowerCase()
+              .includes(inputValue.toLowerCase())
           }
+          onChange={(value) => onDisplayColumnChange(record.id, 'key', value)}
           onBlur={() => onDisplayColumnKeyBlur(record.id)}
         />
       ),
@@ -329,40 +339,44 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
         )}
       </div>
 
-      <div>
-        <div
-          style={{
-            marginBottom: '8px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <span style={{ fontWeight: 500 }}>{t('dashboard.filterFields')}</span>
-          <Button
-            type="dashed"
-            size="small"
-            icon={<PlusCircleOutlined />}
-            onClick={onAddNewFilterField}
-            disabled={filterFieldOptions.length === 0}
+      {showFilterFields && (
+        <div>
+          <div
+            style={{
+              marginBottom: '8px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
           >
-            {t('common.add')}
-          </Button>
+            <span style={{ fontWeight: 500 }}>
+              {t('dashboard.filterFields')}
+            </span>
+            <Button
+              type="dashed"
+              size="small"
+              icon={<PlusCircleOutlined />}
+              onClick={onAddNewFilterField}
+              disabled={filterFieldOptions.length === 0}
+            >
+              {t('common.add')}
+            </Button>
+          </div>
+          {filterFieldOptions.length === 0 ? (
+            <CompactEmptyState description={t('dashboard.noSchemaFields')} />
+          ) : filterFields.length > 0 ? (
+            <CustomTable
+              rowKey="id"
+              columns={filterFieldColumns}
+              dataSource={filterFields}
+              pagination={false}
+              scroll={{ y: 320 }}
+            />
+          ) : (
+            <CompactEmptyState description={t('dashboard.noFilterFields')} />
+          )}
         </div>
-        {filterFieldOptions.length === 0 ? (
-          <CompactEmptyState description={t('dashboard.noSchemaFields')} />
-        ) : filterFields.length > 0 ? (
-          <CustomTable
-            rowKey="id"
-            columns={filterFieldColumns}
-            dataSource={filterFields}
-            pagination={false}
-            scroll={{ y: 320 }}
-          />
-        ) : (
-          <CompactEmptyState description={t('dashboard.noFilterFields')} />
-        )}
-      </div>
+      )}
     </div>
   );
 };

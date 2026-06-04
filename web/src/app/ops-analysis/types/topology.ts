@@ -313,6 +313,9 @@ export interface ViewConfigFormValues {
   unit?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
+  gaugeMin?: number;
+  gaugeMax?: number;
+  gaugeShape?: 'semicircle' | 'circle';
   thresholdColors?: Array<{
     value: string;
     color: string;

@@ -368,14 +368,13 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       const bodyElement = groupBodyElementsRef.current.get(node.id);
       const groupElement = rootItemElementsRef.current.get(node.id);
       const isCollapsed = Boolean(collapsedGroupsRef.current[node.id]);
-      const visibleChildRows = Math.max(node.h - node.item.h, 0);
 
       if (bodyElement) {
         bodyElement.style.display = isCollapsed ? 'none' : '';
-        bodyElement.style.minHeight =
-          visibleChildRows > 0
-            ? `${visibleChildRows * DASHBOARD_GRID_ROW_HEIGHT + Math.max(visibleChildRows - 1, 0) * DASHBOARD_GRID_MARGIN[1] + 8}px`
-            : '0';
+        // bodyElement.style.minHeight =
+        //   visibleChildRows > 0
+        //     ? `${visibleChildRows * DASHBOARD_GRID_ROW_HEIGHT + Math.max(visibleChildRows - 1, 0) * DASHBOARD_GRID_MARGIN[1] + 8}px`
+        //     : '0';
       }
 
       if (!rootGrid || !groupElement) {

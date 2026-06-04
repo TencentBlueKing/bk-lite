@@ -48,7 +48,6 @@ import {
   AppViewFullscreenExit,
   useAppViewFullscreen,
 } from '../components/appFullscreen';
-import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { useSession } from 'next-auth/react';
 import { useDashboardLayoutSync } from './hooks/useDashboardLayoutSync';
@@ -574,6 +573,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           conversionFactor: config.conversionFactor,
           decimalPlaces: config.decimalPlaces,
           thresholdColors: config.thresholdColors,
+          gaugeMin: config.gaugeMin,
+          gaugeMax: config.gaugeMax,
+          gaugeShape: config.gaugeShape,
           compare: config.compare,
         },
       };
@@ -934,6 +936,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                 conversionFactor: values.conversionFactor,
                 decimalPlaces: values.decimalPlaces,
                 thresholdColors: values.thresholdColors,
+                gaugeMin: values.gaugeMin,
+                gaugeMax: values.gaugeMax,
+                gaugeShape: values.gaugeShape,
                 compare: values.compare,
               },
             };
