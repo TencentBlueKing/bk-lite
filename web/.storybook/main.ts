@@ -18,6 +18,14 @@ const config: StorybookConfig = {
       config.resolve.alias = {
         ...config.resolve.alias,
         '@/context/auth': path.resolve(__dirname, './mocks/auth.tsx'),
+        '@/app/system-manager/api/application': path.resolve(__dirname, './mocks/system-manager/application-api.ts'),
+        '@/app/system-manager/api/application/index': path.resolve(__dirname, './mocks/system-manager/application-api.ts'),
+        '@/app/system-manager/api/security': path.resolve(__dirname, './mocks/system-manager/security-api.ts'),
+        '@/app/system-manager/api/security/index': path.resolve(__dirname, './mocks/system-manager/security-api.ts'),
+        '@/app/system-manager/api/group': path.resolve(__dirname, './mocks/system-manager/group-api.ts'),
+        '@/app/system-manager/api/group/index': path.resolve(__dirname, './mocks/system-manager/group-api.ts'),
+        '@/app/system-manager/api/user': path.resolve(__dirname, './mocks/system-manager/user-api.ts'),
+        '@/app/system-manager/api/user/index': path.resolve(__dirname, './mocks/system-manager/user-api.ts'),
       };
     }
     return config;
