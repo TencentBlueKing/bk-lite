@@ -12,6 +12,7 @@ def validate_host_remote_runtime_config() -> None:
     nats_servers = os.getenv("NATS_SERVERS", "").strip()
     task_job_timeout = int(os.getenv("TASK_JOB_TIMEOUT", "600"))
     callback_deadline = host_remote_callback.HOST_REMOTE_CALLBACK_DEADLINE_SECONDS
+    submit_accept_timeout = host_remote_callback.HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS
 
     if not nats_urls and nats_servers:
         logger.warning(
@@ -26,6 +27,11 @@ def validate_host_remote_runtime_config() -> None:
     if callback_deadline >= task_job_timeout:
         logger.warning(
             "[Host Remote Runtime] HOST_REMOTE_CALLBACK_DEADLINE_SECONDS >= TASK_JOB_TIMEOUT; waiting callbacks may overlap worker job timeout assumptions"
+        )
+
+    if submit_accept_timeout >= task_job_timeout:
+        logger.warning(
+            "[Host Remote Runtime] HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS >= TASK_JOB_TIMEOUT; pre-accept waiting may overlap worker job timeout assumptions"
         )
 
 
@@ -45,7 +51,20 @@ async def sweep_host_remote_callback_contexts() -> None:
 
         if execution == "waiting_callback":
             deadline_at = int(callback_context.get("callback_deadline_at") or 0)
-            if deadline_at and deadline_at <= now_ms:
+            if not deadline_at:
+                created_at = int(callback_context.get("created_at") or 0)
+                if created_at and (
+                    created_at
+                    + host_remote_callback.HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS * 1000
+                    <= now_ms
+                ):
+                    await host_remote_callback.mark_host_remote_callback_timeout(
+                        task_id,
+                        reason="submit accept timeout",
+                    )
+                    await host_remote_callback.clear_host_remote_running_flag(task_id)
+                    continue
+            elif deadline_at <= now_ms:
                 await host_remote_callback.mark_host_remote_callback_timeout(task_id)
                 await host_remote_callback.clear_host_remote_running_flag(task_id)
                 continue

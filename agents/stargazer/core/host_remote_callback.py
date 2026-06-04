@@ -9,8 +9,11 @@ HOST_REMOTE_CALLBACK_HANDLER = "host_remote.callback"
 HOST_REMOTE_CALLBACK_CONTEXT_TTL_SECONDS = int(
     os.getenv("HOST_REMOTE_CALLBACK_CONTEXT_TTL_SECONDS", "3600")
 )
+HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS = int(
+    os.getenv("HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS", "300")
+)
 HOST_REMOTE_CALLBACK_DEADLINE_SECONDS = int(
-    os.getenv("HOST_REMOTE_CALLBACK_DEADLINE_SECONDS", "300")
+    os.getenv("HOST_REMOTE_CALLBACK_DEADLINE_SECONDS", "1200")
 )
 HOST_REMOTE_PROCESSING_STALE_SECONDS = int(
     os.getenv("HOST_REMOTE_PROCESSING_STALE_SECONDS", "300")
@@ -201,7 +204,7 @@ async def store_host_remote_callback_context(task_id, params, ctx=None, ttl_seco
         "updated_at": created_at,
         "raw_callback": None,
         "callback_received_at": None,
-        "callback_deadline_at": created_at + HOST_REMOTE_CALLBACK_DEADLINE_SECONDS * 1000,
+        "callback_deadline_at": None,
         "process_enqueued_at": None,
         "process_started_at": None,
         "process_completed_at": None,
@@ -219,6 +222,23 @@ async def store_host_remote_callback_context(task_id, params, ctx=None, ttl_seco
         execution="waiting_callback",
         delivery="not_ready",
     )
+
+
+async def mark_host_remote_submit_accepted(task_id):
+    deadline_at = _now_ms() + HOST_REMOTE_CALLBACK_DEADLINE_SECONDS * 1000
+    updated_context = await update_host_remote_callback_context(
+        task_id,
+        callback_deadline_at=deadline_at,
+        last_error=None,
+    )
+    log_host_remote_event(
+        "callback_deadline_started",
+        task_id,
+        execution=(updated_context or {}).get("status", {}).get("execution"),
+        delivery=(updated_context or {}).get("status", {}).get("delivery"),
+        callback_deadline_at=deadline_at,
+    )
+    return updated_context
 
 
 async def load_host_remote_callback_context(task_id):

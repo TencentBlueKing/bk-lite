@@ -83,6 +83,11 @@ def _load_worker_module(monkeypatch):
     return importlib.import_module("core.worker")
 
 
+def _load_task_queue_module(monkeypatch):
+    monkeypatch.delitem(sys.modules, "core.task_queue", raising=False)
+    return importlib.import_module("core.task_queue")
+
+
 def _load_host_remote_handler_module(monkeypatch):
     monkeypatch.delitem(sys.modules, "tasks.handlers.host_remote_handler", raising=False)
     return importlib.import_module("tasks.handlers.host_remote_handler")
@@ -667,6 +672,9 @@ class TestHostRemoteMonitorTask:
             },
             {},
         )
+        loaded_context = callback_contexts["collect-task-1"]
+        assert loaded_context["callback_deadline_at"] is not None
+        assert loaded_context["callback_deadline_at"] >= 1234567 + 1200 * 1000
         assert [entry[0] for entry in call_order] == ["store", "submit"]
 
     async def test_collect_host_metrics_task_publishes_error_metrics_on_submission_failure(
@@ -1307,12 +1315,50 @@ class TestHostRemoteCallbackHelper:
         loaded = await host_remote_callback_module.load_host_remote_callback_context("task-redis")
         cleared = await host_remote_callback_module.clear_host_remote_callback_context("task-redis")
 
+        stored = json.loads(fake_pool.last_set[1])
         assert fake_pool.last_set[0] == "host_remote:callback_context:task-redis"
         assert fake_pool.last_set[2] == 123
-        assert json.loads(fake_pool.last_set[1]) == {"ctx": ctx, "params": params}
-        assert loaded == {"ctx": ctx, "params": params}
-        assert cleared == {"ctx": ctx, "params": params}
+        assert stored["ctx"] == ctx
+        assert stored["params"] == params
+        assert stored["callback_deadline_at"] is None
+        assert loaded["ctx"] == ctx
+        assert loaded["params"] == params
+        assert loaded["callback_deadline_at"] is None
+        assert cleared["ctx"] == ctx
+        assert cleared["params"] == params
+        assert cleared["callback_deadline_at"] is None
         assert fake_pool.deleted_keys == ["host_remote:callback_context:task-redis"]
+
+    @pytest.mark.asyncio
+    async def test_store_host_remote_callback_context_does_not_start_deadline_until_submit_accepted(
+        self, monkeypatch
+    ):
+        import core.host_remote_callback as host_remote_callback_module
+
+        fake_pool = _install_fake_host_remote_callback_pool(monkeypatch)
+        monkeypatch.setattr(host_remote_callback_module, "_now_ms", lambda: 1000)
+
+        await host_remote_callback_module.store_host_remote_callback_context("task-deadline", {"host": "10.0.0.9"})
+
+        stored = json.loads(fake_pool.last_set[1])
+        assert stored["callback_deadline_at"] is None
+
+    @pytest.mark.asyncio
+    async def test_mark_host_remote_submit_accepted_sets_deadline_from_accept_time(self, monkeypatch):
+        import core.host_remote_callback as host_remote_callback_module
+
+        fake_pool = _install_fake_host_remote_callback_pool(monkeypatch)
+        log_events = []
+        monkeypatch.setattr(host_remote_callback_module, "log_host_remote_event", lambda event, task_id, level="info", **fields: log_events.append((event, task_id, fields)))
+        monkeypatch.setattr(host_remote_callback_module, "_now_ms", lambda: 1000)
+
+        await host_remote_callback_module.store_host_remote_callback_context("task-deadline", {"host": "10.0.0.9"})
+        monkeypatch.setattr(host_remote_callback_module, "_now_ms", lambda: 5000)
+
+        updated = await host_remote_callback_module.mark_host_remote_submit_accepted("task-deadline")
+
+        assert updated["callback_deadline_at"] == 5000 + host_remote_callback_module.HOST_REMOTE_CALLBACK_DEADLINE_SECONDS * 1000
+        assert any(event == "callback_deadline_started" for event, _task_id, _fields in log_events)
 
 
 @pytest.mark.asyncio
@@ -1671,6 +1717,52 @@ class TestHostRemoteRuntime:
 
         assert any("NATS_URLS and NATS_SERVERS differ" in message for message in warnings)
 
+    def test_validate_host_remote_runtime_config_warns_when_submit_accept_timeout_overlaps_job_timeout(
+        self, monkeypatch
+    ):
+        runtime_module = _load_host_remote_runtime_module(monkeypatch)
+
+        warnings = []
+        monkeypatch.setenv("TASK_JOB_TIMEOUT", "300")
+        monkeypatch.setattr(runtime_module.logger, "warning", lambda message: warnings.append(message))
+        monkeypatch.setattr(runtime_module.host_remote_callback, "HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS", 300)
+
+        runtime_module.validate_host_remote_runtime_config()
+
+        assert any("HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS >= TASK_JOB_TIMEOUT" in message for message in warnings)
+
+    async def test_sweeper_marks_pre_accept_waiting_context_timeout(self, monkeypatch):
+        runtime_module = _load_host_remote_runtime_module(monkeypatch)
+
+        _, callback_contexts = _install_fake_host_remote_callback_store(monkeypatch)
+        callback_contexts["task-submit-timeout"] = {
+            "task_id": "task-submit-timeout",
+            "ctx": {},
+            "params": _build_host_params(),
+            "status": {"execution": "waiting_callback", "delivery": "not_ready"},
+            "created_at": 1,
+            "callback_deadline_at": None,
+        }
+        monkeypatch.setattr(
+            runtime_module.host_remote_callback,
+            "list_host_remote_callback_contexts",
+            AsyncMock(return_value=[callback_contexts["task-submit-timeout"]]),
+        )
+        monkeypatch.setattr(runtime_module.host_remote_callback, "_now_ms", lambda: 400_000)
+        monkeypatch.setattr(runtime_module.host_remote_callback, "HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS", 300)
+        clear_running_flag = AsyncMock()
+        monkeypatch.setattr(
+            runtime_module.host_remote_callback,
+            "clear_host_remote_running_flag",
+            clear_running_flag,
+        )
+
+        await runtime_module.sweep_host_remote_callback_contexts()
+
+        assert callback_contexts["task-submit-timeout"]["status"]["execution"] == "callback_timeout"
+        assert callback_contexts["task-submit-timeout"]["last_error"] == "submit accept timeout"
+        clear_running_flag.assert_awaited_once_with("task-submit-timeout")
+
 
 @pytest.mark.asyncio
 class TestPublishMetricsToNats:
@@ -1722,6 +1814,27 @@ class TestPublishMetricsToNats:
 
 @pytest.mark.asyncio
 class TestWorkerRunningFlag:
+    def test_host_running_flag_ttl_covers_callback_deadline(self, monkeypatch):
+        task_queue_module = _load_task_queue_module(monkeypatch)
+
+        monkeypatch.setenv("TASK_JOB_TIMEOUT", "600")
+        monkeypatch.setenv("HOST_REMOTE_CALLBACK_DEADLINE_SECONDS", "1200")
+        monkeypatch.setenv("HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS", "300")
+
+        ttl = task_queue_module._resolve_running_flag_ttl({"monitor_type": "host"})
+
+        assert ttl == 1260
+
+    def test_non_host_running_flag_ttl_uses_job_timeout(self, monkeypatch):
+        task_queue_module = _load_task_queue_module(monkeypatch)
+
+        monkeypatch.setenv("TASK_JOB_TIMEOUT", "600")
+        monkeypatch.setenv("HOST_REMOTE_CALLBACK_DEADLINE_SECONDS", "1200")
+
+        ttl = task_queue_module._resolve_running_flag_ttl({"monitor_type": "vmware"})
+
+        assert ttl == 660
+
     async def test_collect_task_does_not_clear_running_flag_when_handler_defers_cleanup(
         self, monkeypatch
     ):
