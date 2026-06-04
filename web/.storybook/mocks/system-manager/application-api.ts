@@ -226,6 +226,13 @@ export const useRoleApi = () => {
   const getGroupDataRule = async (request: {
     params?: { group_id?: string | number; app?: string; search?: string };
   }) => {
+    if (String(request.params?.group_id) === 'loading-rules') {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 1200);
+      });
+      return groupDataRuleResponse;
+    }
+
     if (request.params?.group_id) {
       return groupDataRuleResponse;
     }

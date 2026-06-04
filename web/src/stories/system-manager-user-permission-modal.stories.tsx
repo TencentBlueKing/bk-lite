@@ -32,13 +32,13 @@ export const PrefilledRules: Story = {
     ...baseArgs,
     rules: permissionRules,
   },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async () => {
+    const modal = within(document.body);
 
-    await expect(canvas.getByText('system.permission.app')).toBeInTheDocument();
-    await expect(canvas.getByText('system.permission.dataPermission')).toBeInTheDocument();
-    await expect(canvas.getByText('Dashboard Admin')).toBeInTheDocument();
-    await expect(canvas.getByText('Topology Readonly')).toBeInTheDocument();
+    await expect(await modal.findByText('system.permission.app')).toBeInTheDocument();
+    await expect(await modal.findByText('system.permission.dataPermission')).toBeInTheDocument();
+    await expect(await modal.findByText('Dashboard Admin')).toBeInTheDocument();
+    await expect(await modal.findByText('Topology Readonly')).toBeInTheDocument();
   },
 };
 
@@ -47,7 +47,7 @@ export const LoadingRules: Story = {
     ...baseArgs,
     node: {
       ...permissionNode,
-      key: 99,
+      key: 'loading-rules',
       title: 'Loading Team',
     },
   },
