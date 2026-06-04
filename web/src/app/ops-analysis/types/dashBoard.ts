@@ -90,6 +90,9 @@ export interface ValueConfig {
   conversionFactor?: number;
   decimalPlaces?: number;
   thresholdColors?: ThresholdColorConfig[];
+  gaugeMin?: number;
+  gaugeMax?: number;
+  gaugeShape?: 'semicircle' | 'circle';
 }
 
 export interface WidgetConfig extends ValueConfig {

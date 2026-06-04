@@ -64,6 +64,115 @@ const validateTopNData = (
     : { isValid: false, message: errorMessage || '数据格式不匹配' };
 };
 
+const validateGaugeData = (
+  data: unknown,
+  config?: ValueConfig,
+): { isValid: boolean; message?: string } => {
+  if (!data || (Array.isArray(data) && data.length === 0)) {
+    return { isValid: true };
+  }
+
+  const selectedField = config?.selectedFields?.[0];
+  const failMessage =
+    '数据结构不符：仪表盘期望 number，或包含数值字段的对象/数组（可通过“展示字段”指定）';
+
+  const hasNumericValue = (value: unknown) => {
+    if (typeof value === 'number') return Number.isFinite(value);
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed);
+    }
+    return false;
+  };
+
+  if (Array.isArray(data)) {
+    const firstItem = data[0];
+    if (selectedField && firstItem && typeof firstItem === 'object') {
+      return hasNumericValue(getValueByPath(firstItem, selectedField))
+        ? { isValid: true }
+        : { isValid: false, message: failMessage };
+    }
+
+    if (hasNumericValue(firstItem)) {
+      return { isValid: true };
+    }
+
+    if (firstItem && typeof firstItem === 'object') {
+      const values = Object.values(firstItem as Record<string, unknown>);
+      return values.some((item) => hasNumericValue(item))
+        ? { isValid: true }
+        : { isValid: false, message: failMessage };
+    }
+
+    return { isValid: false, message: failMessage };
+  }
+
+  if (typeof data === 'object') {
+    if (selectedField) {
+      return hasNumericValue(getValueByPath(data, selectedField))
+        ? { isValid: true }
+        : { isValid: false, message: failMessage };
+    }
+
+    const values = Object.values(data as Record<string, unknown>);
+    return values.some((item) => hasNumericValue(item))
+      ? { isValid: true }
+      : { isValid: false, message: failMessage };
+  }
+
+  return hasNumericValue(data)
+    ? { isValid: true }
+    : { isValid: false, message: failMessage };
+};
+
+const validateMessageData = (
+  data: unknown,
+): { isValid: boolean; message?: string } => {
+  if (!data || (Array.isArray(data) && data.length === 0)) {
+    return { isValid: true };
+  }
+
+  const failMessage =
+    '数据结构不符：事件表期望 Array<{timestamp, level, source, message}> 或 {items: [...] }';
+
+  const list = Array.isArray(data)
+    ? data
+    : data &&
+        typeof data === 'object' &&
+        Array.isArray((data as Record<string, unknown>).items)
+      ? ((data as Record<string, unknown>).items as unknown[])
+      : null;
+
+  if (!list) {
+    return { isValid: false, message: failMessage };
+  }
+
+  if (list.length === 0) {
+    return { isValid: true };
+  }
+
+  const hasExpectedRow = list.some((item) => {
+    if (!item || typeof item !== 'object') {
+      return false;
+    }
+
+    const row = item as Record<string, unknown>;
+    const timestamp =
+      row.timestamp ||
+      row.time ||
+      row._time ||
+      row.event_time ||
+      row.created_at;
+    const msg = row.message || row.msg || row.content || row.detail || row.body;
+
+    return Boolean(timestamp) && Boolean(msg);
+  });
+
+  return hasExpectedRow
+    ? { isValid: true }
+    : { isValid: false, message: failMessage };
+};
+
 const inflightWidgetRequests = new Map<string, Promise<unknown>>();
 const widgetRequestCache = new Map<
   string,
@@ -325,6 +434,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           return ChartDataTransformer.validateLineBarData(data, errorMessage);
         case 'topN':
           return validateTopNData(data, config, errorMessage);
+        case 'gauge':
+          return validateGaugeData(data, config);
+        case 'message':
+          return validateMessageData(data);
         case 'table':
           return { isValid: true };
         default:

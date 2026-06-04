@@ -1,4 +1,12 @@
-export type ChartType = 'line' | 'bar' | 'pie' | 'single' | 'table' | 'topN';
+export type ChartType =
+  | 'line'
+  | 'bar'
+  | 'pie'
+  | 'single'
+  | 'table'
+  | 'topN'
+  | 'gauge'
+  | 'message';
 
 /** 接口返回字段定义（数据源级配置） */
 export interface ResponseFieldDefinition {

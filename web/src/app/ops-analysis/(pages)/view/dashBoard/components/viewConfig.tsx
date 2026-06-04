@@ -47,6 +47,7 @@ import ComponentSelector from './viewSelector';
 import { useTableConfig } from './viewConfig/hooks/useTableConfig';
 import { TableSettingsSection } from './viewConfig/sections/tableSettingsSection';
 import { TopNSettingsSection } from './viewConfig/sections/topNSettingsSection';
+import { GaugeSettingsSection } from './viewConfig/sections/gaugeSettingsSection';
 import {
   buildDisplayColumnsFromSchema,
   isDisplayableDefaultField,
@@ -67,6 +68,9 @@ interface FormValues {
   unit?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
+  gaugeMin?: number;
+  gaugeMax?: number;
+  gaugeShape?: 'semicircle' | 'circle';
 }
 
 interface ViewConfigPropsWithManager extends ViewConfigProps {
@@ -177,6 +181,17 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     previewFilterDefinitions.length > 0 && Boolean(selectedDataSource?.params);
   const hasUnifiedFilterBindings = bindableFilterParams.length > 0;
 
+  const gaugeFieldOptions = useMemo(
+    () =>
+      availableFields
+        .filter((field) => field.value_type === 'number')
+        .map((field) => ({
+          label: field.title ? `${field.key} (${field.title})` : field.key,
+          value: field.key,
+        })),
+    [availableFields],
+  );
+
   const tableConfig = useTableConfig({
     form,
     chartType,
@@ -236,6 +251,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         unit: undefined,
         conversionFactor: undefined,
         decimalPlaces: undefined,
+        gaugeMin: 0,
+        gaugeMax: 100,
+        gaugeShape: 'semicircle',
         compare: false,
       });
 
@@ -476,6 +494,15 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (valueConfig?.decimalPlaces !== undefined) {
       formValues.decimalPlaces = valueConfig.decimalPlaces;
     }
+    if (valueConfig?.gaugeMin !== undefined) {
+      formValues.gaugeMin = valueConfig.gaugeMin;
+    }
+    if (valueConfig?.gaugeMax !== undefined) {
+      formValues.gaugeMax = valueConfig.gaugeMax;
+    }
+    if (valueConfig?.gaugeShape !== undefined) {
+      formValues.gaugeShape = valueConfig.gaugeShape;
+    }
     if (valueConfig?.compare !== undefined) {
       formValues.compare = valueConfig.compare && canEnableCompare({
         config: { chartType: 'single', dataSourceParams: targetDataSource?.params },
@@ -620,6 +647,25 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           result.conversionFactor = conversionFactorValue;
         if (decimalPlacesValue !== undefined)
           result.decimalPlaces = decimalPlacesValue;
+      }
+
+      if (chartType === 'gauge') {
+        result.selectedFields = singleValueConfig.selectedFields;
+        result.thresholdColors = singleValueConfig.thresholdColors;
+        const unitValue = form.getFieldValue('unit');
+        const conversionFactorValue = form.getFieldValue('conversionFactor');
+        const decimalPlacesValue = form.getFieldValue('decimalPlaces');
+        const gaugeMinValue = form.getFieldValue('gaugeMin');
+        const gaugeMaxValue = form.getFieldValue('gaugeMax');
+        const gaugeShapeValue = form.getFieldValue('gaugeShape');
+        if (unitValue !== undefined) result.unit = unitValue;
+        if (conversionFactorValue !== undefined)
+          result.conversionFactor = conversionFactorValue;
+        if (decimalPlacesValue !== undefined)
+          result.decimalPlaces = decimalPlacesValue;
+        if (gaugeMinValue !== undefined) result.gaugeMin = gaugeMinValue;
+        if (gaugeMaxValue !== undefined) result.gaugeMax = gaugeMaxValue;
+        if (gaugeShapeValue !== undefined) result.gaugeShape = gaugeShapeValue;
       }
 
       if (chartType === 'topN') {
@@ -800,6 +846,20 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             onAddThreshold={singleValueConfig.addThreshold}
             onRemoveThreshold={singleValueConfig.removeThreshold}
             compareAvailable={singleValueConfig.compareAvailable}
+          />
+        )}
+
+        {chartType === 'gauge' && (
+          <GaugeSettingsSection
+            t={t}
+            sectionTitle={t('dashboard.gaugeSettings')}
+            selectedDataSource={selectedDataSource}
+            fieldOptions={gaugeFieldOptions}
+            thresholdColors={singleValueConfig.thresholdColors}
+            onThresholdChange={singleValueConfig.handleThresholdChange}
+            onThresholdBlur={singleValueConfig.handleThresholdBlur}
+            onAddThreshold={singleValueConfig.addThreshold}
+            onRemoveThreshold={singleValueConfig.removeThreshold}
           />
         )}
 
