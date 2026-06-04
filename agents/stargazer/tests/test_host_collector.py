@@ -377,7 +377,16 @@ class TestHostRemoteMonitorTask:
                 "model_id": "host",
             },
         )
-        store_callback_context.assert_awaited_once_with("ansible-task-123", params, {})
+        store_callback_context.assert_awaited_once_with(
+            "ansible-task-123",
+            {
+                "host": "10.0.0.9",
+                "os_type": "linux",
+                "monitor_type": "host",
+                "tags": {"instance_id": "region1_host_10.0.0.9"},
+            },
+            {},
+        )
 
     async def test_collect_host_metrics_task_publishes_error_metrics_on_submission_failure(
         self, monkeypatch
@@ -872,6 +881,53 @@ class TestHostRemoteCallbackHandler:
         assert result["status"] == "success"
         assert callback_contexts.get("task-789") is None
 
+    async def test_host_remote_callback_handler_does_not_fail_when_cleanup_fails_after_publish(
+        self, monkeypatch
+    ):
+        nats_server = _load_nats_server_module(monkeypatch)
+        params = _build_host_params()
+        callback_payload = {
+            "task_id": "task-789-cleanup",
+            "success": True,
+            "result": [
+                {
+                    "host": "10.0.0.9",
+                    "status": "success",
+                    "stdout": json.dumps({
+                        "cpu": {
+                            "usage_percent": 42.0,
+                            "core_count": 4,
+                            "load_1m": 0.2,
+                            "load_5m": 0.1,
+                            "load_15m": 0.05,
+                        }
+                    }),
+                    "stderr": "",
+                    "exit_code": 0,
+                }
+            ],
+        }
+        load_context = AsyncMock(return_value={"ctx": {}, "params": params})
+        clear_context = AsyncMock(side_effect=RuntimeError("cleanup failed"))
+        publish_metrics = AsyncMock()
+        monkeypatch.setattr(
+            nats_server.host_remote_callback,
+            "load_host_remote_callback_context",
+            load_context,
+        )
+        monkeypatch.setattr(
+            nats_server.host_remote_callback,
+            "clear_host_remote_callback_context",
+            clear_context,
+        )
+        monkeypatch.setattr(nats_server, "publish_metrics_to_nats", publish_metrics)
+
+        result = await nats_server.handle_host_remote_callback({"args": [callback_payload], "kwargs": {}})
+
+        assert result["status"] == "success"
+        publish_metrics.assert_awaited_once()
+        clear_context.assert_awaited_once_with("task-789-cleanup")
+
     async def test_host_remote_callback_handler_keeps_context_when_publish_fails(self, monkeypatch):
         nats_server = _load_nats_server_module(monkeypatch)
         _, callback_contexts = _install_fake_host_remote_callback_store(monkeypatch)
@@ -926,6 +982,41 @@ class TestHostRemoteCallbackHandler:
             await nats_server.handle_host_remote_callback({"args": [callback_payload], "kwargs": {}})
 
         assert callback_contexts.get("task-791") is not None
+
+    async def test_host_remote_callback_handler_does_not_fail_when_error_cleanup_fails_after_publish(
+        self, monkeypatch
+    ):
+        nats_server = _load_nats_server_module(monkeypatch)
+        params = _build_host_params()
+        callback_payload = {
+            "task_id": "task-791-cleanup",
+            "success": False,
+            "error": "Connection refused",
+        }
+        error_metrics = "monitor_collection_status{status=\"error\"} 1 1\n"
+        load_context = AsyncMock(return_value={"ctx": {}, "params": params})
+        clear_context = AsyncMock(side_effect=RuntimeError("cleanup failed"))
+        publish_metrics = AsyncMock()
+        generate_error_metrics = MagicMock(return_value=error_metrics)
+        monkeypatch.setattr(
+            nats_server.host_remote_callback,
+            "load_host_remote_callback_context",
+            load_context,
+        )
+        monkeypatch.setattr(
+            nats_server.host_remote_callback,
+            "clear_host_remote_callback_context",
+            clear_context,
+        )
+        monkeypatch.setattr(nats_server, "publish_metrics_to_nats", publish_metrics)
+        monkeypatch.setattr(nats_server, "generate_monitor_error_metrics", generate_error_metrics)
+
+        result = await nats_server.handle_host_remote_callback({"args": [callback_payload], "kwargs": {}})
+
+        assert result["status"] == "failed"
+        assert "Host collection failed" in result["error"]
+        publish_metrics.assert_awaited_once_with({}, error_metrics, params, "task-791-cleanup")
+        clear_context.assert_awaited_once_with("task-791-cleanup")
 
     async def test_host_remote_callback_handler_raises_for_missing_context(self, monkeypatch):
         nats_server = _load_nats_server_module(monkeypatch)

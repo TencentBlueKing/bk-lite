@@ -15,6 +15,20 @@ from sanic.log import logger
 import core.host_remote_callback as host_remote_callback
 
 
+def _build_host_remote_callback_params(params: Dict[str, Any]) -> Dict[str, Any]:
+    callback_params = {}
+    for key in ("host", "os_type", "monitor_type"):
+        value = params.get(key)
+        if value is not None:
+            callback_params[key] = value
+
+    tags = params.get("tags")
+    if isinstance(tags, dict):
+        callback_params["tags"] = dict(tags)
+
+    return callback_params
+
+
 async def collect_vmware_metrics_task(
     ctx: Dict, params: Dict[str, Any], task_id: str
 ) -> Dict[str, Any]:
@@ -218,7 +232,7 @@ async def collect_host_metrics_task(
             raise RuntimeError("Host Remote submission missing accepted task_id")
 
         await host_remote_callback.store_host_remote_callback_context(
-            accepted_task_id, params, ctx
+            accepted_task_id, _build_host_remote_callback_params(params), ctx
         )
         logger.info(
             f"[Host Task] Remote collection accepted: collect_task_id={task_id}, "

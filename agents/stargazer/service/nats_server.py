@@ -29,6 +29,16 @@ def _extract_host_remote_callback_payload(data):
     return data
 
 
+async def _clear_host_remote_callback_context_best_effort(task_id: str) -> None:
+    try:
+        await host_remote_callback.clear_host_remote_callback_context(task_id)
+    except Exception as err:
+        logger.error(
+            f"Host Remote callback context cleanup failed for {task_id}: {err}",
+            exc_info=True,
+        )
+
+
 @register_handler("list_regions")
 async def list_regions(data):
     """处理 list_regions 请求"""
@@ -97,7 +107,7 @@ async def handle_host_remote_callback(data: dict) -> dict:
         logger.error(f"Host Remote callback processing failed for {task_id}: {err}", exc_info=True)
         error_metrics = generate_monitor_error_metrics(params, err)
         await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
-        await host_remote_callback.clear_host_remote_callback_context(task_id)
+        await _clear_host_remote_callback_context_best_effort(task_id)
         return {
             "task_id": task_id,
             "status": "failed",
@@ -106,7 +116,7 @@ async def handle_host_remote_callback(data: dict) -> dict:
         }
 
     await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
-    await host_remote_callback.clear_host_remote_callback_context(task_id)
+    await _clear_host_remote_callback_context_best_effort(task_id)
     return {
         "task_id": task_id,
         "status": "success",
