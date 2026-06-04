@@ -113,3 +113,31 @@ class ClassificationManage(object):
 
         classifications.sort(key=lambda c: (c.get("order", 999), c["classification_id"]))
         return classifications
+
+    @staticmethod
+    def update_classification_layout(items: list):
+        """
+        批量更新分类排序与可见性。
+        Args:
+            items: [{"classification_id": "x", "order": 0, "is_visible": True}, ...]
+                order 必填；is_visible 可选，缺省时不修改原有可见性
+        """
+        with GraphClient() as ag:
+            classifications, _ = ag.query_entity(CLASSIFICATION, [])
+            by_id = {c["classification_id"]: c for c in classifications}
+            for item in items:
+                target = by_id.get(item["classification_id"])
+                if not target:
+                    continue
+                props: dict = {"order": int(item["order"])}
+                if "is_visible" in item:
+                    props["is_visible"] = bool(item["is_visible"])
+                ag.set_entity_properties(
+                    CLASSIFICATION,
+                    [target["_id"]],
+                    props,
+                    {},
+                    [],
+                    False,
+                )
+        return True

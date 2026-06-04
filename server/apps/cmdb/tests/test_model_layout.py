@@ -119,3 +119,34 @@ class TestSearchClassificationVisibility:
         legacy = next(c for c in result if c["classification_id"] == "legacy")
         assert legacy["order"] == 999
         assert legacy["is_visible"] is True
+
+
+class TestUpdateClassificationLayout:
+    def test_writes_order_and_visibility_per_item(self, fake_graph):
+        fake_graph.query_entity.return_value = (
+            [
+                {"_id": 1, "classification_id": "infra"},
+                {"_id": 2, "classification_id": "biz"},
+            ], 2,
+        )
+        ClassificationManage.update_classification_layout([
+            {"classification_id": "infra", "order": 0, "is_visible": True},
+            {"classification_id": "biz", "order": 1, "is_visible": False},
+        ])
+        calls = fake_graph.set_entity_properties.call_args_list
+        assert len(calls) == 2
+        args1, _ = calls[0]
+        assert args1[1] == [1]
+        assert args1[2] == {"order": 0, "is_visible": True}
+        args2, _ = calls[1]
+        assert args2[1] == [2]
+        assert args2[2] == {"order": 1, "is_visible": False}
+
+    def test_skips_unknown_classification(self, fake_graph):
+        fake_graph.query_entity.return_value = (
+            [{"_id": 1, "classification_id": "infra"}], 1,
+        )
+        ClassificationManage.update_classification_layout([
+            {"classification_id": "ghost", "order": 0, "is_visible": True},
+        ])
+        fake_graph.set_entity_properties.assert_not_called()
