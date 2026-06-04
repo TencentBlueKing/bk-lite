@@ -674,7 +674,10 @@ class TestHostRemoteMonitorTask:
         )
         loaded_context = callback_contexts["collect-task-1"]
         assert loaded_context["callback_deadline_at"] is not None
-        assert loaded_context["callback_deadline_at"] >= 1234567 + 1200 * 1000
+        assert loaded_context["callback_deadline_at"] >= (
+            1234567
+            + host_remote_callback_module.HOST_REMOTE_CALLBACK_DEADLINE_SECONDS * 1000
+        )
         assert [entry[0] for entry in call_order] == ["store", "submit"]
 
     async def test_collect_host_metrics_task_publishes_error_metrics_on_submission_failure(
