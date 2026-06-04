@@ -293,6 +293,44 @@ class TestBuildScript:
         # 应该只有 header + cpu + footer, 不含 mem/disk/net 内容
         assert script  # 非空即可
 
+    def test_linux_cpu_script_uses_delta_sampling(self):
+        script = build_script("linux", ["cpu"])
+
+        assert "sleep 1" in script
+        assert "cpu_user_1" in script
+        assert "cpu_user_2" in script
+        assert "used_delta" in script
+
+    def test_linux_disk_script_filters_container_overlay_mounts(self):
+        script = build_script("linux", ["disk"])
+
+        assert "overlay:*" in script
+        assert "/var/lib/docker/overlay2/*/merged" in script
+        assert "/data/lib/docker/overlay2/*/merged" in script
+
+    def test_linux_header_script_provides_json_escape_helper(self):
+        script = build_script("linux", ["disk"])
+
+        assert "json_escape()" in script
+        assert "python3 -c" in script
+
+    def test_linux_disk_and_net_scripts_escape_string_fields(self):
+        disk_script = build_script("linux", ["disk"])
+        net_script = build_script("linux", ["net"])
+
+        assert 'mount_json=$(json_escape "$mount")' in disk_script
+        assert '\\"mount\\":\\"$mount_json\\"' in disk_script
+        assert 'iface_json=$(json_escape "$iface")' in net_script
+        assert '\\"interface\\":\\"$iface_json\\"' in net_script
+
+    def test_linux_net_script_filters_virtual_interfaces(self):
+        script = build_script("linux", ["net"])
+
+        assert "docker0" in script
+        assert "br-*" in script
+        assert "veth*" in script
+        assert "cni*" in script
+
     def test_empty_modules_still_has_header_footer(self):
         script = build_script("linux", [])
         # 即使无模块，也应有 header + footer
