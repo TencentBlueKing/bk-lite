@@ -65,6 +65,7 @@ class JobExecutionDetailSerializer(serializers.ModelSerializer):
             "status_display",
             "script",
             "playbook",
+            "playbook_version",
             "params",
             "script_type",
             "script_type_display",

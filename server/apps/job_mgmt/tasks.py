@@ -127,6 +127,7 @@ def execute_scheduled_task(scheduled_task_id: int):
         status=ExecutionStatus.PENDING,
         script=scheduled_task.script,
         playbook=scheduled_task.playbook,
+        playbook_version=scheduled_task.playbook.version if scheduled_task.playbook else "",
         scheduled_task=scheduled_task,
         params=params_str,
         script_type=script_type,
