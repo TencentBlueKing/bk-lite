@@ -50,13 +50,13 @@ export const Default: Story = {
 export const ValidationHint: Story = {
   play: async () => {
     const modal = within(document.body);
+    const dialog = await modal.findByRole('dialog');
 
     await expect(await modal.findByText('system.user.passwordTitle')).toBeInTheDocument();
 
-    const passwordInput = document.body.querySelector('input[type="password"]') as HTMLInputElement | null;
-    expect(passwordInput).not.toBeNull();
+    const passwordInput = await within(dialog).findByLabelText('system.user.form.password');
 
-    await userEvent.type(passwordInput!, 'Abc1234567');
+    await userEvent.type(passwordInput, 'Abc1234567');
 
     await expect(await modal.findByText('system.user.passwordValidation')).toBeInTheDocument();
     await expect(await modal.findByText('system.security.requireUppercase')).toBeInTheDocument();

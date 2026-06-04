@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Form, Input, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useClientData } from '@/context/client';
@@ -35,8 +35,11 @@ const PermissionModal: React.FC<PermissionModalProps & PermissionModalStoryProps
   const [appData, setAppData] = useState<AppPermission[]>([]);
   const [appLoadingStates, setAppLoadingStates] = useState<{ [key: string]: boolean }>({});
 
-  const clientModules = injectedClientModules
-    ?? clientData.filter(client => client.name !== 'ops-console').map(client => client.name);
+  const clientModules = useMemo(
+    () => injectedClientModules
+      ?? clientData.filter(client => client.name !== 'ops-console').map(client => client.name),
+    [clientData, injectedClientModules]
+  );
   const fetchGroupDataRule = injectedFetchGroupDataRule ?? getGroupDataRule;
 
   useEffect(() => {
