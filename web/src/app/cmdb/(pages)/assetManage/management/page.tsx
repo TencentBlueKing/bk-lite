@@ -26,6 +26,7 @@ import ModelModal from './list/modelModal';
 import CopyModelModal from './list/copyModelModal';
 import PublicEnumLibraryModal, { PublicEnumLibraryModalRef } from './list/publicEnumLibraryModal';
 import ImportModelConfigModal, { ImportModelConfigModalRef } from './list/importModelConfigModal';
+import ManageToolbar from './list/manageToolbar';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
@@ -61,6 +62,9 @@ const AssetManage = () => {
   const [rawModelGroup, setRawModelGroup] = useState<GroupItem[]>([]);
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null);
   const [exportLoading, setExportLoading] = useState<boolean>(false);
+  const [manageMode, setManageMode] = useState<boolean>(false);
+  const [savingLayout, setSavingLayout] = useState<boolean>(false);
+  const [layoutDirty, setLayoutDirty] = useState<boolean>(false);
 
   const showConfigButtons = isSuperUser && selectedGroup?.name === 'Default';
 
@@ -309,6 +313,16 @@ const AssetManage = () => {
               >
                 {t('PublicEnumLibrary.manage')}
               </Button>
+            )}
+            {showConfigButtons && (
+              <ManageToolbar
+                manageMode={manageMode}
+                dirty={layoutDirty}
+                saving={savingLayout}
+                onEnter={() => setManageMode(true)}
+                onCancel={() => setManageMode(false)}
+                onSave={() => { /* implemented in Task D5 */ }}
+              />
             )}
           </div>
         </div>
