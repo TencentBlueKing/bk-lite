@@ -72,7 +72,7 @@ const AssetManage = () => {
   const { getClassificationList, deleteClassification } =
     useClassificationApi();
   const { getModelInstanceCount } = useInstanceApi();
-  const { exportModelConfig, getModelList } = useModelApi();
+  const { exportModelConfig, getModelList, saveModelLayout } = useModelApi();
   const { isSuperUser, selectedGroup } = useUserInfoContext();
   const authContext = useAuth();
   const { data: session } = useSession();
@@ -363,6 +363,52 @@ const AssetManage = () => {
     markDirty();
   };
 
+  const handleSaveLayout = async () => {
+    setSavingLayout(true);
+    try {
+      const payload = {
+        classifications: draftLayout.map((g, idx) => ({
+          classification_id: g.classification_id,
+          order: idx,
+          is_visible: g.is_visible,
+        })),
+        models: draftLayout.flatMap(g =>
+          g.models.map((m, idx) => ({
+            model_id: m.model_id,
+            order_id: idx,
+            is_visible: m.is_visible,
+          }))
+        ),
+      };
+      await saveModelLayout(payload);
+      message.success(t('common.updateSuccess'));
+      if (commonContext?.refreshModelList) {
+        await commonContext.refreshModelList();
+      }
+      setManageMode(false);
+      getModelGroup();
+    } catch (err: any) {
+      message.error(err?.message || t('common.operationFailed'));
+    } finally {
+      setSavingLayout(false);
+    }
+  };
+
+  const handleCancelLayout = () => {
+    if (layoutDirty) {
+      Modal.confirm({
+        title: t('common.prompt') || '提示',
+        content: t('Model.discardLayoutConfirm') || '当前改动未保存，确认放弃？',
+        okText: t('common.confirm'),
+        cancelText: t('common.cancel'),
+        centered: true,
+        onOk: () => setManageMode(false),
+      });
+      return;
+    }
+    setManageMode(false);
+  };
+
   const handleModelDragEnd = (gi: number) => (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -457,8 +503,8 @@ const AssetManage = () => {
                 dirty={layoutDirty}
                 saving={savingLayout}
                 onEnter={() => setManageMode(true)}
-                onCancel={() => setManageMode(false)}
-                onSave={() => { /* implemented in Task D5 */ }}
+                onCancel={handleCancelLayout}
+                onSave={handleSaveLayout}
               />
             )}
           </div>
