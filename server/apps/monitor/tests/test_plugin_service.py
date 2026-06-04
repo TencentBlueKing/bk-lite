@@ -444,6 +444,26 @@ def test_render_template_supports_default_filter(monkeypatch):
     assert rendered == "none"
 
 
+def test_host_remote_template_renders_ansible_executor_instance_id(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+    template_path = Path(__file__).resolve().parents[1] / "support-files" / "plugins" / "Telegraf" / "http" / "host" / "host.child.toml.j2"
+    template_content = template_path.read_text()
+
+    rendered = plugin_controller_module.Controller({}).render_template(
+        template_content,
+        {
+            "host": "10.0.0.8",
+            "username": "root",
+            "password": "secret",
+            "instance_id": "('MTVmOTFiYTM5ODZk',)",
+            "logical_instance_value": "MTVmOTFiYTM5ODZk",
+            "ansible_node_id": "default",
+        },
+    )
+
+    assert 'ansible_node_id = "default"' in rendered
+
+
 def test_controller_raises_identity_error_when_instance_value_is_invalid(monkeypatch):
     template_rows = [
         {"type": "host", "config_type": "main", "file_type": "toml", "content": "{{ instance_id }}"}

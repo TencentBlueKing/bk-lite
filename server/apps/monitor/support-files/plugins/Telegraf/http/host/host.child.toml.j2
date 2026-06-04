@@ -12,7 +12,7 @@
         password = "{{ password }}"
         port = "{{ port | default('22', true) }}"
         metrics_modules = "{{ metrics_modules | default('cpu,mem,disk,net', true) }}"
-        ansible_node_id = "${ANSIBLE_NODE_ID}"
+        ansible_node_id = "{{ ansible_node_id }}"
         instance_id = "{{ instance_id }}"
         instance_type = "os"
         collect_type = "http"
