@@ -1,4 +1,5 @@
 import type { DataNode as TreeDataNode } from 'antd/lib/tree';
+import type { ClientData } from '@/types/index';
 import type { DataItem, DataPermission, PermissionRuleItem } from '@/app/system-manager/types/permission';
 import type { SystemSettings } from '@/app/system-manager/types/security';
 
@@ -103,6 +104,18 @@ const toRoleTreeResponseNode = (node: TreeDataNode): RoleTreeResponseNode => ({
 });
 
 export const roleTreeResponse: RoleTreeResponseNode[] = groupRoleTree.map(toRoleTreeResponseNode);
+
+export const storybookLoadingSentinel = 'storybook-loading-sentinel';
+
+export const storybookLoadingClientData = [
+  {
+    id: storybookLoadingSentinel,
+    name: storybookLoadingSentinel,
+    display_name: 'Storybook Loading Sentinel',
+    description: 'Storybook-only sentinel client for loading stories',
+    url: '/storybook-loading-sentinel',
+  },
+] satisfies ClientData[];
 
 export interface GroupDetailWithRoles {
   group_id: number;

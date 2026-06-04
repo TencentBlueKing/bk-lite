@@ -1,7 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ComponentType, type ReactNode } from 'react';
 import { expect, within } from 'storybook/test';
 import GroupEditModal, { GroupModalRef } from '@/app/system-manager/components/group/GroupEditModal';
+import { ClientProvider } from '@/context/client';
+import { storybookLoadingClientData } from './system-manager-user-org-modal.fixtures';
 
 interface GroupEditModalStoryProps {
   groupId: string | number;
@@ -21,6 +23,17 @@ const GroupEditModalStory = ({ groupId, groupName }: GroupEditModalStoryProps) =
 
   return <GroupEditModal ref={ref} onSuccess={() => {}} />;
 };
+
+const StorybookClientProvider = ClientProvider as ComponentType<{
+  children: ReactNode;
+  clientData?: typeof storybookLoadingClientData;
+}>;
+
+const LoadingRoleTransferStory = (args: GroupEditModalStoryProps) => (
+  <StorybookClientProvider clientData={storybookLoadingClientData}>
+    <GroupEditModalStory {...args} />
+  </StorybookClientProvider>
+);
 
 const meta = {
   title: 'System Manager/User Org/GroupEditModal',
@@ -74,6 +87,7 @@ export const LoadingRoleTransfer: Story = {
     groupId: 11,
     groupName: 'Backend Team',
   },
+  render: (args) => <LoadingRoleTransferStory {...args} />,
   play: async () => {
     const dialog = await within(document.body).findByRole('dialog', {
       name: 'system.group.editGroup',

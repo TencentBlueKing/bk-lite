@@ -1,4 +1,7 @@
-import { roleTreeResponse } from '../../../src/stories/system-manager-user-org-modal.fixtures';
+import {
+  roleTreeResponse,
+  storybookLoadingSentinel,
+} from '../../../src/stories/system-manager-user-org-modal.fixtures';
 
 const users = [
   {
@@ -140,8 +143,6 @@ const clientDetails: Record<string, { name: string; display_name: string; descri
   },
 };
 
-const buildRoleTree = () => roleTreeResponse;
-
 const pickUser = (userId?: string) => users.find((user) => user.id === userId) || users[0];
 
 export const useUserApi = () => {
@@ -178,12 +179,16 @@ export const useUserApi = () => {
     return clientDetails[name] || clientDetails['system-manager'];
   };
 
-  const getRoleList = async () => {
-    await new Promise((resolve) => {
-      setTimeout(resolve, 250);
-    });
+  const getRoleList = async (request: { client_list?: Array<{ name?: string | null }> } = {}) => {
+    const shouldDelay = request.client_list?.some((client) => client.name === storybookLoadingSentinel);
 
-    return buildRoleTree();
+    if (shouldDelay) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 250);
+      });
+    }
+
+    return roleTreeResponse;
   };
 
   const getUserDetail = async (request: { user_id?: string } = {}) => {

@@ -14,7 +14,7 @@ interface ClientContextValue {
   refreshAppConfig: () => Promise<AppConfigItem[]>;
 }
 
-const clientData = [
+const defaultClientData = [
   {
     id: 'system-manager',
     name: 'system-manager',
@@ -47,19 +47,24 @@ const clientData = [
 
 const ClientContext = createContext<ClientContextValue | undefined>(undefined);
 
-export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <ClientContext.Provider
-    value={{
-      clientData,
-      appConfigList: [],
-      loading: false,
-      appConfigLoading: false,
-      getAll: async () => clientData,
-      reset: () => {},
-      refresh: async () => clientData,
-      refreshAppConfig: async () => [],
-    }}
-  >
+interface ClientProviderProps {
+  children: React.ReactNode;
+  clientData?: ClientData[];
+}
+
+const createContextValue = (clientData: ClientData[]): ClientContextValue => ({
+  clientData,
+  appConfigList: [],
+  loading: false,
+  appConfigLoading: false,
+  getAll: async () => clientData,
+  reset: () => {},
+  refresh: async () => clientData,
+  refreshAppConfig: async () => [],
+});
+
+export const ClientProvider: React.FC<ClientProviderProps> = ({ children, clientData = defaultClientData }) => (
+  <ClientContext.Provider value={createContextValue(clientData)}>
     {children}
   </ClientContext.Provider>
 );
@@ -68,13 +73,13 @@ export const useClientData = () => {
   const context = useContext(ClientContext);
   if (context === undefined) {
     return {
-      clientData,
+      clientData: defaultClientData,
       appConfigList: [],
       loading: false,
       appConfigLoading: false,
-      getAll: async () => clientData,
+      getAll: async () => defaultClientData,
       reset: () => {},
-      refresh: async () => clientData,
+      refresh: async () => defaultClientData,
       refreshAppConfig: async () => [],
     };
   }
