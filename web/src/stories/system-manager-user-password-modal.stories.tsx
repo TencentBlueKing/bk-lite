@@ -54,7 +54,9 @@ export const ValidationHint: Story = {
 
     await expect(await modal.findByText('system.user.passwordTitle')).toBeInTheDocument();
 
-    const passwordInput = await within(dialog).findByLabelText('system.user.form.password');
+    const passwordInput = await within(dialog).findByLabelText('system.user.form.password', {
+      selector: 'input',
+    });
 
     await userEvent.type(passwordInput, 'Abc1234567');
 
