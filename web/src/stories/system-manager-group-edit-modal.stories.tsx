@@ -56,6 +56,7 @@ export const WithInheritedRoles: Story = {
   play: async () => {
     const modal = within(document.body);
 
+    await expect(await modal.findByDisplayValue('Backend Team')).toBeInTheDocument();
     await expect(await modal.findByText('system.group.allowInheritRoles')).toBeInTheDocument();
     await expect(await modal.findByText('View Topology')).toBeInTheDocument();
     await expect(await modal.findByText('system.role.inheritedRole')).toBeInTheDocument();
@@ -71,6 +72,9 @@ export const LoadingRoleTransfer: Story = {
     const modal = within(document.body);
 
     await expect(await modal.findByText('system.group.form.name')).toBeInTheDocument();
+    await expect(await modal.findByDisplayValue('Backend Team')).toBeInTheDocument();
+    await expect(await modal.findByText('system.group.allowInheritRoles')).toBeInTheDocument();
+    await expect(await modal.findByRole('switch')).toBeChecked();
     expect(document.body.querySelector('.ant-spin-spinning')).not.toBeNull();
 
     await expect(await modal.findByText('View Topology')).toBeInTheDocument();
