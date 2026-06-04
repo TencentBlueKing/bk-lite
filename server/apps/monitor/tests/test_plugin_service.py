@@ -457,11 +457,11 @@ def test_host_remote_template_renders_ansible_executor_instance_id(monkeypatch):
             "password": "secret",
             "instance_id": "('MTVmOTFiYTM5ODZk',)",
             "logical_instance_value": "MTVmOTFiYTM5ODZk",
-            "ansible_node_id": "default",
+            "node_id": "node-1",
         },
     )
 
-    assert 'ansible_node_id = "default"' in rendered
+    assert 'ansible_node_id = "node-1"' in rendered
 
 
 def test_controller_raises_identity_error_when_instance_value_is_invalid(monkeypatch):

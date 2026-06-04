@@ -273,7 +273,7 @@ def test_get_instance_configs_filters_by_monitor_plugin_id(monkeypatch):
     assert [item["collect_type"] for item in items] == ["host", "host"]
 
 
-def test_create_monitor_instance_passes_region_scoped_ansible_executor_id_for_host_remote(monkeypatch):
+def test_create_monitor_instance_does_not_replace_selected_host_remote_node_id(monkeypatch):
     from apps.monitor.services import node_mgmt as module
 
     captured = {}
@@ -295,8 +295,7 @@ def test_create_monitor_instance_passes_region_scoped_ansible_executor_id_for_ho
     class _NodeMgmt:
         @staticmethod
         def get_nodes_by_ids(node_ids):
-            assert node_ids == ["node-1"]
-            return [{"id": "node-1", "cloud_region_id": 1, "cloud_region_name": "default"}]
+            raise AssertionError("Host Remote should use the selected node_id directly")
 
     class _Controller:
         def __init__(self, data):
@@ -354,7 +353,7 @@ def test_create_monitor_instance_passes_region_scoped_ansible_executor_id_for_ho
     )
 
     assert captured["called"] is True
-    assert captured["data"]["instances"][0]["ansible_node_id"] == "default"
+    assert "ansible_node_id" not in captured["data"]["instances"][0]
 
 
 class _MonitorInstanceQuerySet:

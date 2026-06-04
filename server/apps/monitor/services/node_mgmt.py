@@ -21,9 +21,7 @@ from apps.monitor.utils.plugin_controller import Controller
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.system_mgmt.models import User
 from apps.system_mgmt.utils.group_utils import GroupUtils
-from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
-from apps.node_mgmt.services.cloudregion import RegionService
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.utils.node_selector import normalize_node_selector
 
@@ -672,51 +670,6 @@ class InstanceConfigService:
         return prepared
 
     @staticmethod
-    def _should_use_region_ansible_executor_id(monitor_object_name: str, collector: str, collect_type: str) -> bool:
-        return (
-            monitor_object_name == InstanceConfigService._HOST_MONITOR_OBJECT_NAME
-            and collector == "Telegraf"
-            and collect_type == "http"
-        )
-
-    @staticmethod
-    def _attach_region_ansible_executor_id(instances: list) -> list:
-        node_ids = list({node_id for instance in instances for node_id in instance.get("node_ids", []) if node_id})
-        if not node_ids:
-            return instances
-
-        node_rows = NodeMgmt().get_nodes_by_ids(node_ids) or []
-        region_name_by_node_id = {
-            row.get("id"): row.get("cloud_region_name")
-            for row in node_rows
-            if row.get("id") and row.get("cloud_region_name")
-        }
-
-        prepared = []
-        for instance in instances:
-            region_names = {
-                region_name_by_node_id.get(node_id)
-                for node_id in instance.get("node_ids", [])
-                if region_name_by_node_id.get(node_id)
-            }
-            if not region_names:
-                raise BaseAppException(f"未找到远程采集节点所属云区域: node_ids={instance.get('node_ids', [])}")
-            if len(region_names) > 1:
-                raise BaseAppException(f"远程采集节点必须属于同一云区域: node_ids={instance.get('node_ids', [])}")
-
-            region_name = next(iter(region_names))
-            prepared.append(
-                {
-                    **instance,
-                    "ansible_node_id": RegionService.get_region_service_instance_id(
-                        region_name,
-                        CloudRegionServiceConstants.NATS_EXECUTOR_SERVICE_NAME,
-                    ),
-                }
-            )
-        return prepared
-
-    @staticmethod
     def create_monitor_instance_by_node_mgmt(data, actor_context=None):
         """创建监控对象实例（支持同一实例ID多种采集方式）"""
         instances = data.get("instances", [])
@@ -749,8 +702,6 @@ class InstanceConfigService:
             except ValueError as e:
                 logger.error(f"实例识别失败: {e}")
                 raise BaseAppException(f"实例识别失败：{e}")
-        if InstanceConfigService._should_use_region_ansible_executor_id(monitor_object_name, collector, collect_type):
-            prepared_instances = InstanceConfigService._attach_region_ansible_executor_id(prepared_instances)
 
         # ============ 阶段1: 参数预校验与数据准备 ============
         try:
