@@ -79,28 +79,37 @@ class ClassificationManage(object):
         return model[0]
 
     @staticmethod
-    def search_model_classification(language: str = "en"):
+    def search_model_classification(language: str = "en", include_hidden: bool = False):
         """
         查询模型分类
+        Args:
+            language: 语言
+            include_hidden: True 时返回包含已隐藏（is_visible=False）的分类；
+                默认 False 过滤掉
         """
         with GraphClient() as ag:
             classifications, _ = ag.query_entity(CLASSIFICATION, [])
             models, _ = ag.query_entity(MODEL, [])
 
-        # 判断模型分类下是否存在模型
         exist_model_classifications = {i["classification_id"] for i in models}
         for classification in classifications:
-            if classification["classification_id"] in exist_model_classifications:
-                classification["exist_model"] = True
-            else:
-                classification["exist_model"] = False
+            classification["exist_model"] = (
+                classification["classification_id"] in exist_model_classifications
+            )
+            if "order" not in classification:
+                classification["order"] = 999
+            if "is_visible" not in classification:
+                classification["is_visible"] = True
 
         lan = SettingLanguage(language)
-
         for classification in classifications:
             classification["classification_name"] = (
                 lan.get_val("CLASSIFICATION", classification["classification_id"])
                 or classification["classification_name"]
             )
 
+        if not include_hidden:
+            classifications = [c for c in classifications if c.get("is_visible", True)]
+
+        classifications.sort(key=lambda c: (c.get("order", 999), c["classification_id"]))
         return classifications

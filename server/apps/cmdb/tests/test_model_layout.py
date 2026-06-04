@@ -3,6 +3,7 @@
 import pytest
 from unittest.mock import MagicMock
 
+from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.model import ModelManage
 
 
@@ -83,3 +84,38 @@ class TestUpdateModelOrders:
         args, _ = fake_graph.set_entity_properties.call_args
         _, _, props, *_ = args
         assert props == {"order_id": 3}
+
+
+class TestSearchClassificationVisibility:
+    def _classifications(self):
+        return [
+            {"classification_id": "infra", "classification_name": "Infra",
+             "order": 2, "is_visible": True},
+            {"classification_id": "biz", "classification_name": "Biz",
+             "order": 0, "is_visible": False},
+            {"classification_id": "legacy", "classification_name": "Legacy"},
+        ]
+
+    def test_default_filters_hidden_and_sorts(self, fake_graph):
+        fake_graph.query_entity.side_effect = [
+            (self._classifications(), 3),
+            ([], 0),
+        ]
+        result = ClassificationManage.search_model_classification(language="en")
+        ids = [c["classification_id"] for c in result]
+        assert ids == ["infra", "legacy"]
+        assert all(c["is_visible"] is True for c in result)
+
+    def test_include_hidden_returns_all_sorted(self, fake_graph):
+        fake_graph.query_entity.side_effect = [
+            (self._classifications(), 3),
+            ([], 0),
+        ]
+        result = ClassificationManage.search_model_classification(
+            language="en", include_hidden=True,
+        )
+        ids = [c["classification_id"] for c in result]
+        assert ids == ["biz", "infra", "legacy"]
+        legacy = next(c for c in result if c["classification_id"] == "legacy")
+        assert legacy["order"] == 999
+        assert legacy["is_visible"] is True
