@@ -13,8 +13,7 @@ import traceback
 from typing import Dict, Any
 from sanic.log import logger
 from influxdb_client import Point, WritePrecision
-from core.nats import NATSClient, NATSConfig
-from core.nats_utils import nats_publish
+from core.nats_utils import nats_publish, nats_publish_lines
 
 
 async def publish_callback_to_nats(
@@ -101,52 +100,16 @@ async def publish_metrics_to_nats(
                     f"[NATS Helper] ... and {total_lines - preview_count} more lines"
                 )
 
-        # 创建 NATS 配置
-        nats_config = NATSConfig.from_env()
-        logger.info(
-            f"[NATS Helper] NATS config: servers={nats_config.servers}, tls_enabled={nats_config.tls_enabled}, user={nats_config.user}"
-        )
-
-        # 使用 async with 自动管理连接
+        # 复用进程级共享长连接逐行发送（与 Telegraf 保持一致）
+        # 不再每次采集都新建 TLS 连接，避免事件循环繁忙时握手超时被 reset
         try:
-            logger.info(f"[NATS Helper] Attempting to connect to NATS...")
-            async with NATSClient(nats_config) as nats_client:
-                logger.info(
-                    f"[NATS Helper] NATS client connected: {nats_client.is_connected}"
-                )
-
-                # 检查连接状态
-                if not nats_client.nc:
-                    raise ConnectionError("NATS client nc is None after connect")
-
-                if nats_client.nc.is_closed:
-                    raise ConnectionError("NATS connection is closed")
-
-                # 逐行发送消息（与 Telegraf 保持一致）
-                success_count = 0
-                for index, line in enumerate(influx_lines, start=1):
-                    try:
-                        await nats_client.nc.publish(subject, line.encode("utf-8"))
-                        success_count += 1
-                    except Exception as pub_err:
-                        logger.error(
-                            f"[NATS Helper] Failed to publish metrics line "
-                            f"{index}/{total_lines} to '{subject}' for task {task_id}: "
-                            f"{line[:100]}, error: {pub_err}",
-                            exc_info=True,
-                        )
-                        raise
-
-                logger.info(
-                    f"[NATS Helper] Successfully published {success_count}/{total_lines} metrics to '{subject}' for task {task_id}"
-                )
-
-        except ConnectionError as ce:
-            logger.error(f"[NATS Helper] Connection error: {ce}")
-            raise
+            success_count = await nats_publish_lines(subject, influx_lines)
+            logger.info(
+                f"[NATS Helper] Successfully published {success_count}/{total_lines} metrics to '{subject}' for task {task_id}"
+            )
         except Exception as conn_err:
             logger.error(
-                f"[NATS Helper] Failed to connect to NATS: {conn_err}\n{traceback.format_exc()}"
+                f"[NATS Helper] Failed to publish metrics to NATS: {conn_err}\n{traceback.format_exc()}"
             )
             raise
 
