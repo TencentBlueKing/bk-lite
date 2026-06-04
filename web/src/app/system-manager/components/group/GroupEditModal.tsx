@@ -65,6 +65,7 @@ const GroupEditModal = forwardRef<GroupModalRef, ModalProps>(({
   const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
   const [inheritedRoleIds, setInheritedRoleIds] = useState<number[]>([]);
   const [inheritedRoleSourceMap, setInheritedRoleSourceMap] = useState<Record<string, string>>({});
+  const [allowInheritRoles, setAllowInheritRoles] = useState(false);
 
   const { updateGroup, getGroupDetailWithRoles } = useGroupApi();
   const { getRoleList } = useUserApi();
@@ -79,10 +80,11 @@ const GroupEditModal = forwardRef<GroupModalRef, ModalProps>(({
         formRef.current?.setFieldsValue({
           groupName: currentGroupName,
           roleIds: selectedRoleIds,
+          allowInheritRoles,
         });
       }, 0);
     }
-  }, [visible, currentGroupName, selectedRoleIds]);
+  }, [visible, currentGroupName, selectedRoleIds, allowInheritRoles]);
 
   const fetchAvailableRoles = async () => {
     try {
@@ -117,8 +119,9 @@ const GroupEditModal = forwardRef<GroupModalRef, ModalProps>(({
       setInheritedRoleIds(detail.inherited_role_ids || []);
       setInheritedRoleSourceMap(detail.inherited_role_source_map || {});
       setSelectedRoleIds(detail.own_role_ids || []);
+      setAllowInheritRoles(detail.allow_inherit_roles ?? false);
       formRef.current?.setFieldsValue({
-        allowInheritRoles: detail.allow_inherit_roles,
+        allowInheritRoles: detail.allow_inherit_roles ?? false,
         roleIds: detail.own_role_ids || [],
       });
     } catch (error) {
@@ -131,6 +134,7 @@ const GroupEditModal = forwardRef<GroupModalRef, ModalProps>(({
       setVisible(true);
       setCurrentGroupId(groupId);
       setCurrentGroupName(groupName || '');
+      setAllowInheritRoles(false);
       formRef.current?.resetFields();
 
       if (type === 'edit') {
@@ -181,6 +185,7 @@ const GroupEditModal = forwardRef<GroupModalRef, ModalProps>(({
   };
 
   const handleAllowInheritRolesChange = (checked: boolean) => {
+    setAllowInheritRoles(checked);
     formRef.current?.setFieldsValue({ allowInheritRoles: checked });
   };
 

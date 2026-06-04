@@ -114,6 +114,7 @@ export const WithInheritedRoles: Story = {
 
     await expect(await modal.findByDisplayValue('Backend Team')).toBeInTheDocument();
     await expect(await modal.findByText('system.group.allowInheritRoles')).toBeInTheDocument();
+    await expect(await modal.findByRole('switch')).toBeChecked();
     await expect(await modal.findByText('View Topology')).toBeInTheDocument();
     await expect(await modal.findByText('system.role.inheritedRole')).toBeInTheDocument();
   },
