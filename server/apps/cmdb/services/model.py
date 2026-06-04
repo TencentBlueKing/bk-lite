@@ -1691,9 +1691,13 @@ class ModelManage(object):
     @staticmethod
     def update_model_orders(model_orders: list):
         """
-        批量更新模型排序
+        批量更新模型排序及可见性
         Args:
-            model_orders: [{"model_id": "model_1", "order_id": 1}, ...]
+            model_orders: [
+                {"model_id": "model_1", "order_id": 1},
+                {"model_id": "model_2", "order_id": 2, "is_visible": False},
+            ]
+            order_id 必填；is_visible 可选，缺省时不修改原有可见性
         """
         with GraphClient() as ag:
             for order_info in model_orders:
@@ -1706,10 +1710,13 @@ class ModelManage(object):
                 if model_count == 0:
                     continue
                 model_info = models[0]
+                props: dict = {"order_id": order_info["order_id"]}
+                if "is_visible" in order_info:
+                    props["is_visible"] = bool(order_info["is_visible"])
                 ag.set_entity_properties(
                     MODEL,
                     [model_info["_id"]],
-                    {"order_id": order_info["order_id"]},
+                    props,
                     {},
                     [],
                     False,

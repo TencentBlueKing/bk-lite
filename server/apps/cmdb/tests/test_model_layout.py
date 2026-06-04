@@ -58,3 +58,28 @@ class TestSearchModelVisibility:
         kwargs = fake_graph.query_entity.call_args.kwargs
         assert kwargs.get("order") == "order_id"
         assert kwargs.get("order_type") == "ASC"
+
+
+class TestUpdateModelOrders:
+    def test_writes_order_and_visibility(self, fake_graph):
+        fake_graph.query_entity.return_value = (
+            [{"_id": 101, "model_id": "host"}], 1,
+        )
+        ModelManage.update_model_orders([
+            {"model_id": "host", "order_id": 3, "is_visible": False},
+        ])
+        args, _ = fake_graph.set_entity_properties.call_args
+        label, ids, props, *_ = args
+        assert ids == [101]
+        assert props == {"order_id": 3, "is_visible": False}
+
+    def test_omits_visibility_if_not_provided(self, fake_graph):
+        fake_graph.query_entity.return_value = (
+            [{"_id": 101, "model_id": "host"}], 1,
+        )
+        ModelManage.update_model_orders([
+            {"model_id": "host", "order_id": 3},
+        ])
+        args, _ = fake_graph.set_entity_properties.call_args
+        _, _, props, *_ = args
+        assert props == {"order_id": 3}
