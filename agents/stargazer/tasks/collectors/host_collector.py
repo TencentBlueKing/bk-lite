@@ -158,9 +158,10 @@ class HostCollector(BaseCollector):
     async def submit_collection(
         self, callback_subject: str, callback_payload: Dict[str, Any]
     ) -> Dict[str, Any]:
-        _ = callback_payload
+        callback = dict(callback_payload or {})
+        callback.update({"subject": callback_subject, "timeout": 10})
         return await self._execute_collection(
-            callback={"subject": callback_subject, "timeout": 10}
+            callback=callback
         )
 
     async def _execute_collection(

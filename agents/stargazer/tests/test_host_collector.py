@@ -201,8 +201,11 @@ class TestHostCollectorCollect:
     async def test_submit_collection_passes_callback_and_returns_accepted_response(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
-            "message": "accepted",
-            "task_id": "task-123",
+            "result": {
+                "accepted": True,
+                "status": "queued",
+                "task_id": "task-123",
+            },
         }
 
         collector = HostCollector({
@@ -218,10 +221,17 @@ class TestHostCollectorCollect:
 
         result = await collector.submit_collection(
             "stargazer.host.callback",
-            {"collector": "host"},
+            {
+                "collect_task_id": "collect-123",
+                "instance_id": "region1_host_10.0.0.1",
+                "instance_name": "10.0.0.1",
+                "model_id": "host",
+            },
         )
 
-        assert result == mock_adhoc.return_value
+        assert result["result"]["accepted"] is True
+        assert result["result"]["status"] == "queued"
+        assert result["result"]["task_id"] == "task-123"
 
         mock_adhoc.assert_called_once()
         call_kwargs = mock_adhoc.call_args[1]
@@ -229,6 +239,10 @@ class TestHostCollectorCollect:
         assert call_kwargs["module"] == "shell"
         assert call_kwargs["host_credentials"][0]["connection"] == "ssh"
         assert call_kwargs["callback"] == {
+            "collect_task_id": "collect-123",
+            "instance_id": "region1_host_10.0.0.1",
+            "instance_name": "10.0.0.1",
+            "model_id": "host",
             "subject": "stargazer.host.callback",
             "timeout": 10,
         }
