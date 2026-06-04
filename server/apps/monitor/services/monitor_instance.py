@@ -158,7 +158,7 @@ class InstanceSearch:
 
     @staticmethod
     def _project_instance_identity(qs):
-        return qs.only("id", "name")
+        return qs.only("id", "name", "cloud_region_id", "ip", "fallback_sampling_rate")
 
     def search(self):
         """特殊搜索接口，特殊对象不通用的查询条件"""
@@ -344,6 +344,12 @@ class InstanceSearch:
         start = (page - 1) * page_size
         end = start + page_size
         results = self._project_instance_identity(qs)[start:end]
+        org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[obj.id for obj in results])
+        org_map = {}
+        for org in org_objs:
+            if org.monitor_instance_id not in org_map:
+                org_map[org.monitor_instance_id] = set()
+            org_map[org.monitor_instance_id].add(org.organization)
 
         return dict(
             count=count,
@@ -352,6 +358,10 @@ class InstanceSearch:
                     "instance_id": obj.id,
                     "instance_name": obj.name,
                     "instance_id_values": list(parse_instance_id(obj.id)),
+                    "cloud_region_id": obj.cloud_region_id,
+                    "ip": obj.ip,
+                    "fallback_sampling_rate": obj.fallback_sampling_rate,
+                    "organizations": list(org_map.get(obj.id, [])),
                 }
                 for obj in results
             ],

@@ -24,6 +24,7 @@ async def ansible_adhoc(
     hosts: str = "all",
     execute_timeout: int = 60,
     extra_vars: Optional[Dict[str, Any]] = None,
+    callback: Optional[Dict[str, Any]] = None,
     task_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
@@ -61,7 +62,7 @@ async def ansible_adhoc(
         "module": module,
         "module_args": module_args,
         "extra_vars": extra_vars or {},
-        "callback": {},
+        "callback": callback or {},
         "task_id": task_id,
         "execute_timeout": execute_timeout,
     }
