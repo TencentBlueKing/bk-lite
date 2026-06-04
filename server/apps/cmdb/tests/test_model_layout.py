@@ -150,3 +150,132 @@ class TestUpdateClassificationLayout:
             {"classification_id": "ghost", "order": 0, "is_visible": True},
         ])
         fake_graph.set_entity_properties.assert_not_called()
+
+
+from django.contrib.auth import get_user_model
+from rest_framework.test import APIClient
+
+
+MODEL_BASE_URL = "/api/v1/cmdb/api/model/"
+
+
+@pytest.fixture
+def superuser(db):
+    User = get_user_model()
+    return User.objects.create_superuser(
+        username="root", email="root@example.com", password="x",
+    )
+
+
+@pytest.fixture
+def normal_user(db):
+    User = get_user_model()
+    user = User.objects.create_user(
+        username="alice", email="a@example.com", password="x",
+    )
+    # Grant cmdb View so HasPermission decorator does not 403 early —
+    # tests target the view-level behavior, not the permission gate.
+    user.permission = {"cmdb": {"model_management-View"}}
+    return user
+
+
+@pytest.fixture
+def patch_view_helpers(monkeypatch):
+    """Bypass DB-backed helpers used by the list view."""
+    monkeypatch.setattr(
+        "apps.cmdb.views.model.CmdbRulesFormatUtil.format_user_groups_permissions",
+        lambda *a, **kw: {},
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.views.model.get_default_group_id",
+        lambda: ("default", None),
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.views.model.get_current_team_from_request",
+        lambda request: "default",
+    )
+
+
+@pytest.mark.django_db
+class TestModelLayoutAPI:
+    def test_list_default_passes_include_hidden_false(
+        self, superuser, monkeypatch, patch_view_helpers,
+    ):
+        calls = {"include_hidden": None}
+        def fake_search(**kwargs):
+            calls.update(kwargs)
+            return []
+        monkeypatch.setattr(
+            "apps.cmdb.views.model.ModelManage.search_model", fake_search,
+        )
+        client = APIClient()
+        client.force_authenticate(user=superuser)
+        client.get(MODEL_BASE_URL)
+        assert calls.get("include_hidden") is False
+
+    def test_list_include_hidden_true_for_superuser(
+        self, superuser, monkeypatch, patch_view_helpers,
+    ):
+        calls = {}
+        def fake_search(**kwargs):
+            calls.update(kwargs)
+            return []
+        monkeypatch.setattr(
+            "apps.cmdb.views.model.ModelManage.search_model", fake_search,
+        )
+        client = APIClient()
+        client.force_authenticate(user=superuser)
+        client.get(MODEL_BASE_URL + "?include_hidden=true")
+        assert calls.get("include_hidden") is True
+
+    def test_list_ignores_include_hidden_for_normal_user(
+        self, normal_user, monkeypatch, patch_view_helpers,
+    ):
+        calls = {"include_hidden": None}
+        def fake_search(**kwargs):
+            calls.update(kwargs)
+            return []
+        monkeypatch.setattr(
+            "apps.cmdb.views.model.ModelManage.search_model", fake_search,
+        )
+        client = APIClient()
+        client.force_authenticate(user=normal_user)
+        client.get(MODEL_BASE_URL + "?include_hidden=true")
+        assert calls.get("include_hidden") is False
+
+    def test_save_layout_writes_both(self, superuser, monkeypatch):
+        cls_calls, mdl_calls = [], []
+        monkeypatch.setattr(
+            "apps.cmdb.views.model.ClassificationManage.update_classification_layout",
+            lambda items: cls_calls.append(items),
+        )
+        monkeypatch.setattr(
+            "apps.cmdb.views.model.ModelManage.update_model_orders",
+            lambda orders: mdl_calls.append(orders),
+        )
+        client = APIClient()
+        client.force_authenticate(user=superuser)
+        resp = client.post(
+            MODEL_BASE_URL + "save_layout/",
+            {
+                "classifications": [
+                    {"classification_id": "infra", "order": 0, "is_visible": True},
+                ],
+                "models": [
+                    {"model_id": "host", "order_id": 0, "is_visible": True},
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 200
+        assert cls_calls and mdl_calls
+
+    def test_save_layout_forbidden_for_normal_user(self, normal_user):
+        client = APIClient()
+        client.force_authenticate(user=normal_user)
+        resp = client.post(
+            MODEL_BASE_URL + "save_layout/",
+            {"classifications": [], "models": []},
+            format="json",
+        )
+        assert resp.status_code in (401, 403)
