@@ -76,36 +76,104 @@ const customMenus: CustomMenu[] = [
   },
 ];
 
-const customMenuDetail = {
-  ...customMenus[0],
-  menus: [
-    {
-      name: 'dashboard',
-      title: 'Dashboard',
-      url: '/system-manager/monitor/dashboard',
-      icon: 'dashboard',
-      children: [
-        {
-          name: 'dashboard-overview',
-          title: 'Overview',
-          url: '/system-manager/monitor/dashboard/overview',
-          icon: 'overview',
-        },
-        {
-          name: 'dashboard-alert',
-          title: 'Alert',
-          url: '/system-manager/monitor/dashboard/alert',
-          icon: 'alert',
-        },
-      ],
-    },
-    {
-      name: 'topology',
-      title: 'Topology',
-      url: '/system-manager/cmdb/topology',
-      icon: 'topology',
-    },
-  ],
+const customMenuDetails = [
+  {
+    ...customMenus[0],
+    menus: [
+      {
+        name: 'dashboard',
+        title: 'Dashboard',
+        url: '/system-manager/monitor/dashboard',
+        icon: 'dashboard',
+        children: [
+          {
+            name: 'dashboard-overview',
+            title: 'Overview',
+            url: '/system-manager/monitor/dashboard/overview',
+            icon: 'overview',
+          },
+          {
+            name: 'dashboard-alert',
+            title: 'Alert',
+            url: '/system-manager/monitor/dashboard/alert',
+            icon: 'alert',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    ...customMenus[1],
+    menus: [
+      {
+        name: 'topology',
+        title: 'Topology',
+        url: '/system-manager/cmdb/topology',
+        icon: 'topology',
+      },
+    ],
+  },
+];
+
+const normalizeText = (value?: string) => value?.trim().toLowerCase() || '';
+
+const getCustomMenuParams = (request: {
+  params?: { app?: string; page?: number; page_size?: number; search?: string };
+} = {}) => request.params || {};
+
+const filterCustomMenus = (request: {
+  params?: { app?: string; page?: number; page_size?: number; search?: string };
+} = {}) => {
+  const { app, page = 1, page_size = customMenus.length, search } = getCustomMenuParams(request);
+  const normalizedApp = normalizeText(app);
+  const normalizedSearch = normalizeText(search);
+
+  const filtered = customMenus.filter((menu) => {
+    const matchesApp = normalizedApp ? normalizeText(menu.app) === normalizedApp : true;
+    const matchesSearch = normalizedSearch
+      ? [menu.display_name, menu.description, menu.app]
+        .filter(Boolean)
+        .some((value) => normalizeText(value).includes(normalizedSearch))
+      : true;
+
+    return matchesApp && matchesSearch;
+  });
+
+  const start = Math.max((page - 1) * page_size, 0);
+  const items = filtered.slice(start, start + page_size);
+
+  return {
+    count: filtered.length,
+    items,
+  };
+};
+
+const pickCustomMenuDetail = (request: {
+  id?: number | string;
+  app?: string;
+  params?: { app?: string };
+} = {}) => {
+  const requestedId = request.id;
+  const requestedApp = normalizeText(request.app || request.params?.app);
+  const normalizedId = requestedId === undefined ? undefined : String(requestedId);
+
+  const exactMatch = customMenuDetails.find((menu) => String(menu.id) === normalizedId && (!requestedApp || normalizeText(menu.app) === requestedApp));
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  if (normalizedId !== undefined) {
+    const idMatch = customMenuDetails.find((menu) => String(menu.id) === normalizedId);
+    if (idMatch) {
+      return idMatch;
+    }
+  }
+
+  if (requestedApp) {
+    return customMenuDetails.find((menu) => normalizeText(menu.app) === requestedApp) || customMenuDetails[0];
+  }
+
+  return customMenuDetails[0];
 };
 
 export const useRoleApi = () => {
@@ -187,11 +255,14 @@ export const useRoleApi = () => {
   const addRoleGroups = async () => ({ success: true });
   const deleteRoleGroups = async () => ({ success: true });
 
-  const getCustomMenus = async (): Promise<CustomMenuListResponse> => ({
-    count: customMenus.length,
-    items: customMenus,
-  });
-  const getCustomMenuDetail = async () => customMenuDetail;
+  const getCustomMenus = async (request: {
+    params?: { app?: string; page?: number; page_size?: number; search?: string };
+  } = {}): Promise<CustomMenuListResponse> => filterCustomMenus(request);
+  const getCustomMenuDetail = async (request: {
+    id?: number | string;
+    app?: string;
+    params?: { app?: string };
+  } = {}) => pickCustomMenuDetail(request);
   const addCustomMenu = async () => ({ success: true });
   const updateCustomMenu = async () => ({ success: true });
   const deleteCustomMenu = async () => ({ success: true });
