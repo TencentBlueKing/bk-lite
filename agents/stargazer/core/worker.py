@@ -121,6 +121,14 @@ async def collect_task(
             logger.info(f"Task {task_id} deferred running flag cleanup to callback completion")
 
 
+async def process_host_remote_callback_task(
+    ctx: Dict, params: Dict[str, Any], task_id: str
+) -> Dict[str, Any]:
+    from tasks.handlers.host_remote_handler import process_host_remote_callback_task as handler
+
+    return await handler(ctx, params, task_id)
+
+
 async def _clear_running_flag(task_id: str):
     """
     清除任务运行标记
@@ -172,7 +180,7 @@ class WorkerSettings:
     )
 
     # 注册的任务函数
-    functions = [collect_task]
+    functions = [collect_task, process_host_remote_callback_task]
 
     # Worker 运行配置
     max_jobs = int(os.getenv("TASK_MAX_JOBS", "10"))

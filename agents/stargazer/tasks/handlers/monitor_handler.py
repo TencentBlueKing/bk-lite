@@ -230,6 +230,12 @@ async def collect_host_metrics_task(
             ctx,
         )
         callback_context_stored = True
+        host_remote_callback.log_host_remote_event(
+            "submit_received",
+            callback_task_id,
+            monitor_type="host",
+            host=params.get("host"),
+        )
 
         logger.info(f"[Host Task] Submitting remote collection: {task_id}")
         accepted = await collector.submit_collection(
@@ -251,6 +257,13 @@ async def collect_host_metrics_task(
             )
 
         remote_submission_accepted = True
+        host_remote_callback.log_host_remote_event(
+            "submit_accepted",
+            callback_task_id,
+            monitor_type="host",
+            host=params.get("host"),
+            accepted_task_id=accepted_task_id,
+        )
         logger.info(
             f"[Host Task] Remote collection accepted: collect_task_id={task_id}, "
             f"accepted_task_id={accepted_task_id}"
@@ -285,6 +298,14 @@ async def collect_host_metrics_task(
 
         error_metrics = generate_monitor_error_metrics(params, e)
         await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
+        host_remote_callback.log_host_remote_event(
+            "submit_failed",
+            task_id,
+            level="error",
+            monitor_type="host",
+            host=params.get("host"),
+            error=str(e),
+        )
 
         return {
             "task_id": task_id,
