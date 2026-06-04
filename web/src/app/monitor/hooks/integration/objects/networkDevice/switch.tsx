@@ -62,7 +62,9 @@ export const useSwitchConfig = () => {
       default: ['instance_id']
     },
     collectTypes: {
-      'Switch SNMP General': 'snmp'
+      'Switch SNMP General': 'snmp',
+      'Switch Flow NetFlow': 'netflow',
+      'Switch Flow sFlow': 'sflow'
     }
   };
 };

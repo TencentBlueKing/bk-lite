@@ -8,9 +8,10 @@ from apps.core.mixinx import EncryptMixin
 from apps.job_mgmt.constants import CredentialSource, ExecutionStatus, ExecutorDriver, OSType, ScriptType, SSHCredentialType, TargetSource
 from apps.job_mgmt.models import JobExecution, Target
 from apps.job_mgmt.services.callback_service import send_callback
-from apps.job_mgmt.services.shell_utils import ANSIBLE_SHELL_EXECUTABLES, parse_shebang
+from apps.job_mgmt.services.shell_utils import ANSIBLE_SHELL_EXECUTABLES, build_heredoc_command, parse_shebang
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.node_mgmt import NodeMgmt
+from apps.rpc.sensitive import sanitize_sensitive_data
 from config.components.nats import NATS_NAMESPACE
 
 
@@ -219,26 +220,30 @@ class ExecutionTaskBaseService(object):
         }
         module = shell_mapping.get(script_type, "shell")
 
-        # Linux shell 模块：通过 ansible_shell_executable 传递解释器（仅限 sh/bash）
+        shell_interpreter = parse_shebang(script_content) or ScriptType.SHELL_MAPPING.get(script_type, "bash")
+        module_args = script_content
+
+        # Linux shell 模块：sh/bash 走 ansible_shell_executable，其他解释器走 heredoc 包装
         extra_vars = {}
         if module == "shell":
-            shell_interpreter = parse_shebang(script_content) or ScriptType.SHELL_MAPPING.get(script_type, "bash")
             if shell_interpreter in ANSIBLE_SHELL_EXECUTABLES:
                 extra_vars["ansible_shell_executable"] = f"/bin/{shell_interpreter}"
+            else:
+                module_args = build_heredoc_command(shell_interpreter, script_content)
 
         # 调用 Ansible Executor
         executor = AnsibleExecutor(ansible_node_id)
         result = executor.adhoc(
             host_credentials=host_credentials,
             module=module,
-            module_args=script_content,
+            module_args=module_args,
             callback=callback_config,
             task_id=str(execution.id),
             timeout=execution.timeout,
             extra_vars=extra_vars if extra_vars else None,
         )
 
-        logger.info(f"[{task_name}] Ansible 任务已提交: execution_id={execution.id}, result={result}")
+        logger.info(f"[{task_name}] Ansible 任务已提交: execution_id={execution.id}, result={sanitize_sensitive_data(result)}")
 
     @staticmethod
     def _get_ansible_node(cloud_region_id: int) -> str:

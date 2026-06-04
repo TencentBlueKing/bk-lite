@@ -7,6 +7,7 @@ from rest_framework.response import Response
 
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
 from pathlib import Path
+import hashlib
 import subprocess
 import tempfile
 
@@ -25,6 +26,8 @@ from apps.core.utils.web_utils import WebUtils
 from apps.rpc.node_mgmt import NodeMgmt
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
+
+from apps.alerts.constants.constants import SNMP_TRAP_SOURCE_ID
 
 K8S_SOURCE_ID = "k8s"
 K8S_IMAGE_REFERENCE = "ghcr.io/resmoio/kubernetes-event-exporter:latest"
@@ -79,7 +82,13 @@ class AlertSourceModelViewSet(ModelViewSet):
         return AlertSource.objects.filter(source_id=K8S_SOURCE_ID).first()
 
     @staticmethod
-    def _build_k8s_deploy_yaml(receiver_url: str, secret: str, cluster_name: str, push_source_id: str):
+    def _build_k8s_deploy_yaml(
+        receiver_url: str,
+        secret: str,
+        cluster_name: str,
+        push_source_id: str,
+        insecure_skip_verify: bool = False,
+    ):
         secret_template = (K8S_SUPPORT_DIR / "secret.yaml.template").read_text(encoding="utf-8").strip()
         exporter_template = (K8S_SUPPORT_DIR / "bk-lite-k8s-event-exporter.yaml").read_text(encoding="utf-8").strip()
         secret_template = secret_template.replace("your-k8s-cluster", cluster_name)
@@ -88,6 +97,17 @@ class AlertSourceModelViewSet(ModelViewSet):
         secret_template = secret_template.replace("your-alert-source-secret", secret)
         secret_template = secret_template.replace("BK_LITE_PUSH_SOURCE_ID: k8s",
                                                   f"BK_LITE_PUSH_SOURCE_ID: {push_source_id}")
+        # 把基于 secret 的 hash 注入 Deployment template 的 annotation，
+        # 让 secret 变更后 kubectl apply 触发滚动重启（envFrom 注入的环境变量在 Pod 启动时一次性固化）。
+        secret_hash = hashlib.sha256((secret or "").encode("utf-8")).hexdigest()[:16]
+        exporter_template = exporter_template.replace("PLACEHOLDER_SECRET_HASH", secret_hash)
+        # 自签证书场景：在 webhook receiver 的 endpoint 后插入 tls.insecureSkipVerify=true。
+        # 缩进必须对齐 ConfigMap 内嵌 config.yaml 的层级（endpoint 10 空格 → tls 10 空格 → insecureSkipVerify 12 空格）。
+        if insecure_skip_verify:
+            exporter_template = exporter_template.replace(
+                'endpoint: "${BK_LITE_RECEIVER_URL}"',
+                'endpoint: "${BK_LITE_RECEIVER_URL}"\n          tls:\n            insecureSkipVerify: true',
+            )
         guide_header = "\n".join(
             [
                 "# BK-Lite K8s Event Exporter Deployment Template",
@@ -97,7 +117,9 @@ class AlertSourceModelViewSet(ModelViewSet):
                 "",
             ]
         )
-        return f"{guide_header}{secret_template}\n---\n{exporter_template}\n"
+        # exporter_template 先出（含 Namespace 声明），再出 secret_template，
+        # 否则 kubectl apply 时 Secret 可能撞上 Namespace 还未生效的窗口。
+        return f"{guide_header}{exporter_template}\n---\n{secret_template}\n"
 
     @staticmethod
     def _build_k8s_image_tar_file():
@@ -115,15 +137,37 @@ class AlertSourceModelViewSet(ModelViewSet):
         return open(temp_file.name, "rb")
 
     @classmethod
+    def _resolve_k8s_team_secret(cls, request, source: AlertSource) -> str:
+        """K8s 接入强制走"组织密钥"路径：必须传 team_secret 且确实在 source.team_secrets 中。
+
+        bridge / exporter 一旦部署就长期运行，不能让任意字符串混入 deploy.yaml，
+        否则 exporter 拿着无效 secret 上报会一直 403，且排查成本高。
+        """
+        team_secret = (request.data.get("team_secret") or "").strip()
+        if not team_secret:
+            raise BaseAppException(
+                "team_secret is required for K8s integration; please select an organization first."
+            )
+        configured = set((source.team_secrets or {}).values())
+        if team_secret not in configured:
+            raise BaseAppException(
+                "Invalid team_secret: must belong to the current K8s alert source."
+            )
+        return team_secret
+
+    @classmethod
     def _build_k8s_render_payload(cls, request, source: AlertSource):
+        team_secret = cls._resolve_k8s_team_secret(request, source)
         payload = K8sInstallService.build_render_payload(
             source_id=source.source_id,
-            source_secret=source.secret,
+            source_secret=team_secret,
             receiver_path=source.config.get("url", ""),
             server_url=request.data.get("server_url", ""),
             cluster_name=request.data.get("cluster_name", ""),
             push_source_id=request.data.get("push_source_id"),
         )
+        # 视图层补一个开关字段，避免改动 K8sInstallService 通用签名。
+        payload["insecure_skip_verify"] = bool(request.data.get("insecure_skip_verify"))
         return payload
 
     @HasPermission("Integration-View")
@@ -202,6 +246,7 @@ class AlertSourceModelViewSet(ModelViewSet):
             secret=payload["secret"],
             cluster_name=payload["cluster_name"],
             push_source_id=payload["push_source_id"],
+            insecure_skip_verify=payload.get("insecure_skip_verify", False),
         )
         return WebUtils.response_file(yaml_content.encode("utf-8"), K8S_DOWNLOAD_FILES["deploy_yaml"]["file_name"])
 
@@ -247,6 +292,7 @@ class AlertSourceModelViewSet(ModelViewSet):
             secret=payload["secret"],
             cluster_name=payload["cluster_name"],
             push_source_id=payload["push_source_id"],
+            insecure_skip_verify=payload.get("insecure_skip_verify", False),
         )
         return WebUtils.response_file(yaml_content.encode("utf-8"), file_meta["file_name"])
 
@@ -262,6 +308,11 @@ class AlertSourceModelViewSet(ModelViewSet):
     @action(methods=["post"], detail=True, url_path="team_secrets/add")
     def add_team_secret(self, request, pk=None):
         source = self.get_object()
+        if source.source_id == SNMP_TRAP_SOURCE_ID:
+            return Response(
+                {"detail": "SNMP Trap source does not support team secrets; events are always attributed to the default organization."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         team_id = request.data.get("team_id")
         if team_id is None:
             return Response({"detail": "team_id is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -279,6 +330,11 @@ class AlertSourceModelViewSet(ModelViewSet):
     @action(methods=["post"], detail=True, url_path="team_secrets/regenerate")
     def regenerate_team_secret(self, request, pk=None):
         source = self.get_object()
+        if source.source_id == SNMP_TRAP_SOURCE_ID:
+            return Response(
+                {"detail": "SNMP Trap source does not support team secrets."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         team_id = request.data.get("team_id")
         if team_id is None:
             return Response({"detail": "team_id is required."}, status=status.HTTP_400_BAD_REQUEST)

@@ -138,6 +138,7 @@ const CorrelationRulesPage: React.FC = () => {
       render: (text: string) => {
         if (text === 'smart_denoise') return t('settings.correlation.noiseReduction');
         if (text === 'missing_detection') return t('settings.correlation.missingDetection');
+        if (text === 'instant') return t('settings.correlation.instantAlert');
         return text || '-';
       },
     },

@@ -178,6 +178,94 @@ def test_get_nodes_applies_plugin_node_selector(monkeypatch):
     assert captured["payload"]["is_container"] is True
 
 
+def test_get_instance_child_config_passes_monitor_plugin_id(monkeypatch):
+    captured = {}
+
+    class InstanceConfigService:
+        @staticmethod
+        def get_instance_configs(instance_id, actor_context=None, monitor_plugin_id=None, collector=None, collect_type=None):
+            captured["instance_id"] = instance_id
+            captured["actor_context"] = actor_context
+            captured["monitor_plugin_id"] = monitor_plugin_id
+            captured["collector"] = collector
+            captured["collect_type"] = collect_type
+            return []
+
+    module = _load_node_mgmt_view(monkeypatch)
+    module.InstanceConfigService = InstanceConfigService
+
+    request = types.SimpleNamespace(
+        COOKIES={"current_team": "7"},
+        data={"instance_id": "inst-a", "monitor_plugin_id": 18},
+        user=types.SimpleNamespace(
+            username="api-user",
+            domain="domain.com",
+            is_superuser=False,
+            group_list=[7],
+        ),
+    )
+
+    module.NodeMgmtView().get_instance_child_config(request)
+
+    assert captured["instance_id"] == "inst-a"
+    assert captured["monitor_plugin_id"] == 18
+    assert captured["collector"] is None
+    assert captured["collect_type"] is None
+    assert captured["actor_context"]["current_team"] == 7
+
+
+def test_get_instance_configs_filters_by_monitor_plugin_id(monkeypatch):
+    from apps.monitor.services import node_mgmt as module
+
+    class StubConfig:
+        def __init__(self, config_id, collect_type, config_type, monitor_plugin_id):
+            self.id = config_id
+            self.collector = "Telegraf"
+            self.collect_type = collect_type
+            self.config_type = config_type
+            self.monitor_plugin_id = monitor_plugin_id
+            self.monitor_instance_id = "inst-a"
+            self.is_child = True
+
+    class StubCollectConfigManager:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def filter(self, **kwargs):
+            result = [row for row in self.rows if row.monitor_instance_id == kwargs["monitor_instance_id"]]
+            monitor_plugin_id = kwargs.get("monitor_plugin_id")
+            if monitor_plugin_id is not None:
+                result = [row for row in result if row.monitor_plugin_id == monitor_plugin_id]
+            return result
+
+    monkeypatch.setattr(
+        module.InstanceConfigService,
+        "_ensure_instance_access",
+        classmethod(lambda cls, collect_instance_id, actor_context=None, require_operate=False: None),
+    )
+    monkeypatch.setattr(
+        module.CollectConfig,
+        "objects",
+        StubCollectConfigManager(
+            [
+                StubConfig("cfg-http", "http", "host", 208),
+                StubConfig("cfg-cpu", "host", "cpu", 18),
+                StubConfig("cfg-disk", "host", "disk", 18),
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        module.InstanceConfigService,
+        "get_config_content",
+        staticmethod(lambda ids, actor_context=None: {"child": {"id": ids[0]}}),
+    )
+
+    items = module.InstanceConfigService.get_instance_configs("inst-a", monitor_plugin_id=18)
+
+    assert [item["monitor_plugin_id"] for item in items] == [18, 18]
+    assert [item["collect_type"] for item in items] == ["host", "host"]
+
+
 class _MonitorInstanceQuerySet:
     def __init__(self, rows):
         self.rows = rows

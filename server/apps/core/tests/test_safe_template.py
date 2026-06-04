@@ -89,6 +89,11 @@ class TestBuildSandboxedEnv:
         tpl = env.from_string("{{ name | upper }}")
         assert tpl.render(name="hello") == "HELLO"
 
+    def test_default_filter_not_enabled_by_default(self):
+        env = build_sandboxed_env()
+        with pytest.raises(Exception, match="No filter named 'default'"):
+            env.from_string("{{ value | default('fallback', true) }}")
+
     def test_control_statements_work(self):
         env = build_sandboxed_env()
         tpl = env.from_string("{% for i in items %}{{ i }},{% endfor %}")

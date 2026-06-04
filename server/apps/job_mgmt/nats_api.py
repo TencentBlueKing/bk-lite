@@ -13,6 +13,7 @@ from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_script_task
 from apps.node_mgmt.utils.s3 import delete_s3_file
+from apps.rpc.sensitive import sanitize_sensitive_data, summarize_ansible_callback
 
 
 @nats_client.register
@@ -98,7 +99,7 @@ def ansible_task_callback(data: dict):
     Returns:
         {"success": True/False, "message": "..."}
     """
-    logger.info(f"[ansible_task_callback] {data}")
+    logger.info("[ansible_task_callback] %s", summarize_ansible_callback(data))
 
     task_id = data.get("task_id")
     if not task_id:
@@ -119,6 +120,7 @@ def ansible_task_callback(data: dict):
     # 辅助函数：将执行记录收敛到 FAILED 终态
     def _fail_execution(error_message: str):
         """将执行记录收敛到 FAILED 终态"""
+        safe_error_message = str(sanitize_sensitive_data(error_message))
         target_list_for_fail = execution.target_list or []
         execution.status = ExecutionStatus.FAILED
         execution.finished_at = timezone.now()
@@ -129,9 +131,9 @@ def ansible_task_callback(data: dict):
                 "ip": t.get("ip", ""),
                 "status": ExecutionStatus.FAILED,
                 "stdout": "",
-                "stderr": error_message,
+                "stderr": safe_error_message,
                 "exit_code": 1,
-                "error_message": error_message,
+                "error_message": safe_error_message,
                 "started_at": execution.started_at.isoformat() if execution.started_at else "",
                 "finished_at": timezone.now().isoformat(),
             }
@@ -149,18 +151,18 @@ def ansible_task_callback(data: dict):
                 "updated_at",
             ]
         )
-        logger.warning(f"[ansible_task_callback] 任务异常收敛到 FAILED: task_id={task_id}, reason={error_message}")
+        logger.warning("[ansible_task_callback] 任务异常收敛到 FAILED: task_id=%s, reason=%s", task_id, safe_error_message)
         send_callback(execution)
 
     # 解析新版本结构化回调数据
     raw_result = data.get("result", [])
-    error_output = data.get("error", "")
+    error_output = str(sanitize_sensitive_data(data.get("error", "")))
     finished_at_str = data.get("finished_at")
     target_list = execution.target_list or []
     execution_results = []
 
     if not (isinstance(raw_result, list) and raw_result and all(isinstance(item, dict) for item in raw_result)):
-        _fail_execution(f"回调结果格式非法: {raw_result}")
+        _fail_execution(f"回调结果格式非法: {sanitize_sensitive_data(raw_result)}")
         return {"success": False, "message": "非法的新版本结果格式，已收敛到 FAILED"}
 
     target_map = {}
@@ -190,10 +192,10 @@ def ansible_task_callback(data: dict):
                 "name": target_info.get("name", host_key),
                 "ip": target_info.get("ip", host_key),
                 "status": final_status,
-                "stdout": str(host_result.get("stdout", "")),
-                "stderr": str(host_result.get("stderr", "")),
+                "stdout": str(sanitize_sensitive_data(str(host_result.get("stdout", "")))),
+                "stderr": str(sanitize_sensitive_data(str(host_result.get("stderr", "")))),
                 "exit_code": host_result.get("exit_code", 0),
-                "error_message": str(host_result.get("error_message", "")),
+                "error_message": str(sanitize_sensitive_data(str(host_result.get("error_message", "")))),
                 "started_at": execution.started_at.isoformat() if execution.started_at else "",
                 "finished_at": finished_at_str or timezone.now().isoformat(),
             }

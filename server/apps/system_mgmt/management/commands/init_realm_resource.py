@@ -107,6 +107,7 @@ def create_resource(app_inst: App, menus):
                     update_obj = menu_map[name]
                     update_obj.display_name = f"{child['name']}-{operate}"
                     update_obj.order = index
+                    update_obj.menu_type = i["name"]
                     update_menu_list.append(update_obj)
                     menu_map.pop(name)
                 else:
@@ -129,7 +130,7 @@ def create_resource(app_inst: App, menus):
             i.menu_list = [j for j in i.menu_list if j not in delete_menus]
     Role.objects.bulk_update(role_list, ["menu_list"], batch_size=100)
     Menu.objects.bulk_create(create_menu_list, batch_size=100)
-    Menu.objects.bulk_update(update_menu_list, ["display_name", "order"], batch_size=100)
+    Menu.objects.bulk_update(update_menu_list, ["display_name", "order", "menu_type"], batch_size=100)
 
 
 def create_default_roles(app_inst: App, roles):

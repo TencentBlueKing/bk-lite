@@ -114,6 +114,8 @@ class Command(BaseCommand):
         call_command("init_alert_levels")
         call_command("init_system_settings")
         call_command("init_alert_rules")
+        call_command("backfill_alert_dimensions")
+        call_command("backfill_event_default_team")
 
     def _init_operation_analysis(self):
         """运营分析系统资源初始化"""

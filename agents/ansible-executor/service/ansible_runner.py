@@ -21,6 +21,11 @@ from core.config import ServiceConfig, logger
 from service.runtime import current_entrypoint_command
 
 BASE_TASK_DIR = Path(os.getenv("ANSIBLE_WORK_DIR", "/tmp/ansible-executor"))
+DEFAULT_MAX_OUTPUT_BYTES = 256 * 1024
+PLAYBOOK_ARCHIVE_MAX_SIZE_BYTES = 20 * 1024 * 1024
+PLAYBOOK_ARCHIVE_MAX_MEMBERS = 2000
+PLAYBOOK_ARCHIVE_MAX_MEMBER_SIZE_BYTES = 5 * 1024 * 1024
+PLAYBOOK_ARCHIVE_MAX_EXPANDED_SIZE_BYTES = 50 * 1024 * 1024
 
 _SENSITIVE_INVENTORY_PATTERNS = (
     "ansible_password",
@@ -257,6 +262,9 @@ async def download_object_to_workspace(config: ServiceConfig, workspace: Path, b
     try:
         js = nc.jetstream(timeout=120)
         object_store = await js.object_store(bucket_name)
+        info = await object_store.get_info(file_key)
+        if (info.size or 0) > PLAYBOOK_ARCHIVE_MAX_SIZE_BYTES:
+            raise ValueError(f"object store file too large: {file_key}")
         destination.parent.mkdir(parents=True, exist_ok=True)
         with destination.open("wb") as target_file:
             await object_store.get(file_key, writeinto=target_file)
@@ -283,10 +291,20 @@ def _safe_workspace_path(workspace: Path, relative_path: str, field_name: str) -
 
 
 def _safe_extract_zip(zip_file: zipfile.ZipFile, workspace: Path) -> None:
+    file_count = 0
+    total_size = 0
     for member in zip_file.infolist():
         safe_target = _safe_workspace_path(workspace, member.filename, "zip member")
         if member.is_dir():
             continue
+        file_count += 1
+        total_size += member.file_size
+        if file_count > PLAYBOOK_ARCHIVE_MAX_MEMBERS:
+            raise ValueError("zip archive has too many files")
+        if member.file_size > PLAYBOOK_ARCHIVE_MAX_MEMBER_SIZE_BYTES:
+            raise ValueError(f"zip member exceeds size limit: {member.filename}")
+        if total_size > PLAYBOOK_ARCHIVE_MAX_EXPANDED_SIZE_BYTES:
+            raise ValueError("zip archive expanded size exceeds limit")
         mode = member.external_attr >> 16
         if stat.S_ISLNK(mode):
             raise ValueError(f"zip member must not be symlink: {member.filename}")
@@ -517,8 +535,15 @@ def _extract_host_task_output(lines: list[str], host: str) -> str:
 
     for line in lines:
         # 匹配 ok: [host], changed: [host], fatal: [host], skipping: [host] 等
-        if re.match(rf"^(ok|changed|fatal|failed|skipping|unreachable):\s+\[{re.escape(host)}\]", line):
+        matched = re.match(
+            rf"^(ok|changed|fatal|failed|skipping|unreachable):\s+\[{re.escape(host)}\](?:\s+(=>|>>)\s*(.*))?$",
+            line,
+        )
+        if matched:
             capturing = True
+            initial_output = (matched.group(3) or "").strip()
+            if initial_output:
+                host_lines.append(initial_output)
             continue
 
         # 新 TASK 或 PLAY 行结束当前捕获
@@ -915,7 +940,7 @@ def build_playbook_winrm_preflight_command(payload: PlaybookRequest) -> list[str
     ]
 
 
-async def run_command(cmd: list[str], timeout: int) -> tuple[int, str]:
+async def run_command(cmd: list[str], timeout: int, max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES) -> tuple[int, str, dict[str, Any]]:
     process_kwargs: dict[str, Any] = {}
     if os.name == "posix":
         process_kwargs["start_new_session"] = True
@@ -925,8 +950,38 @@ async def run_command(cmd: list[str], timeout: int) -> tuple[int, str]:
         stderr=asyncio.subprocess.STDOUT,
         **process_kwargs,
     )
+
+    async def _collect_output() -> tuple[bytes, dict[str, Any]]:
+        assert proc.stdout is not None
+        chunks: list[bytes] = []
+        retained_bytes = 0
+        total_bytes = 0
+        truncated = False
+
+        while True:
+            chunk = await proc.stdout.read(8192)
+            if not chunk:
+                break
+            total_bytes += len(chunk)
+            remaining = max_output_bytes - retained_bytes
+            if remaining > 0:
+                kept = chunk[:remaining]
+                if kept:
+                    chunks.append(kept)
+                    retained_bytes += len(kept)
+            if len(chunk) > max(remaining, 0):
+                truncated = True
+
+        return b"".join(chunks), {
+            "truncated": truncated,
+            "output_bytes_total": total_bytes,
+            "output_bytes_retained": retained_bytes,
+            "output_max_bytes": max_output_bytes,
+        }
+
     try:
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        stdout, output_meta = await asyncio.wait_for(_collect_output(), timeout=timeout)
+        await asyncio.wait_for(proc.wait(), timeout=5)
     except asyncio.TimeoutError:
         if os.name == "posix":
             with contextlib.suppress(ProcessLookupError):
@@ -939,15 +994,26 @@ async def run_command(cmd: list[str], timeout: int) -> tuple[int, str]:
             proc.kill()
             await proc.wait()
         logger.error("command timed out: %s", " ".join(shlex.quote(part) for part in cmd))
-        return 124, "command timed out"
+        return (
+            124,
+            "command timed out",
+            {
+                "truncated": False,
+                "output_bytes_total": 0,
+                "output_bytes_retained": 0,
+                "output_max_bytes": max_output_bytes,
+            },
+        )
     output, decode_strategy = decode_command_output(stdout)
     exit_code = proc.returncode or 0
     logger.info(
-        "command output log: exit_code=%s strategy=%s bytes=%s raw_prefix=%s decoded_prefix=%r",
+        "command output log: exit_code=%s strategy=%s bytes=%s retained=%s truncated=%s raw_prefix=%s decoded_prefix=%r",
         exit_code,
         decode_strategy,
-        len(stdout),
+        output_meta["output_bytes_total"],
+        output_meta["output_bytes_retained"],
+        output_meta["truncated"],
         stdout[:32].hex(),
         output[:120],
     )
-    return exit_code, output
+    return exit_code, output, output_meta

@@ -13,7 +13,7 @@
     "clean": "rm -rf .next",
     "test:installer-progress": "pnpm exec tsx scripts/installer-progress-test.ts",
     "test:related-alerts": "pnpm exec tsx scripts/related-alerts-validation.ts",
-    "type-check": "pnpm clean && pnpm prepare-enterprise && tsc -p tsconfig.lint.json --noEmit",
+    "type-check": "pnpm clean && pnpm prepare-enterprise && pnpm precommit && tsc -p tsconfig.lint.json --noEmit",
     "precommit": "node -r dotenv/config scripts/generate-tsconfig.js dotenv_config_path=.env.local",
     "prepare": "husky install",
     "analyze": "pnpm prepare-enterprise && cross-env ANALYZE=true next build",

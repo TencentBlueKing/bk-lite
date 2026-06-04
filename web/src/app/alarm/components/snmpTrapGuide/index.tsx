@@ -103,7 +103,7 @@ const SnmpTrapGuide: React.FC = () => {
                             {t('integration.snmpTrapTargetIp')}:
                           </span>
                           <span className="ml-[10px] font-mono font-semibold text-[var(--color-primary)]">
-                            {selectedNodeIp}
+                            {t('integration.snmpTrapTargetIpValue')}
                           </span>
                         </div>
                         <div>

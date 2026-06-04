@@ -1,4 +1,3 @@
-import io
 import json
 import shlex
 
@@ -9,8 +8,10 @@ from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import ExecutionStatus
 from apps.job_mgmt.models import Target
 from apps.job_mgmt.services import ExecutionTaskBaseService
+from apps.job_mgmt.utils.playbook_archive import enforce_archive_limits
 from apps.node_mgmt.utils.s3 import delete_s3_file, upload_file_to_s3
 from apps.rpc.ansible import AnsibleExecutor
+from apps.rpc.sensitive import sanitize_sensitive_data
 from config.components.nats import NATS_NAMESPACE
 
 
@@ -136,7 +137,7 @@ class PlaybookExecution(ExecutionTaskBaseService):
 
         # 构建 extra_vars（从 execution.params 和 playbook.params 还原）
         extra_vars = cls._build_extra_vars(execution.params, playbook.params)
-        logger.info(f"[{task_name}] extra_vars: {extra_vars}")
+        logger.info(f"[{task_name}] extra_vars_keys: {list(extra_vars.keys())}")
 
         # 将 Playbook ZIP 从 MinIO 中转到 NATS JetStream Object Store
         # ansible-executor 只能从 NATS OS 下载文件，而 Playbook 存储在 MinIO 中
@@ -147,17 +148,14 @@ class PlaybookExecution(ExecutionTaskBaseService):
             try:
                 minio_file = playbook.file
                 minio_file.open("rb")
-                file_data = minio_file.read()
-                minio_file.close()
-                logger.info(f"[{task_name}] 从 MinIO 读取成功: size={len(file_data)} bytes")
-
-                # 包装为类文件对象供 upload_file_to_s3 使用
-                file_obj = io.BytesIO(file_data)
-                file_obj.name = playbook.file_name
-                async_to_sync(upload_file_to_s3)(file_obj, nats_file_key)
+                archive_info = enforce_archive_limits(minio_file)
+                logger.info(f"[{task_name}] 从 MinIO 校验成功: size={archive_info.raw_size} bytes")
+                async_to_sync(upload_file_to_s3)(minio_file, nats_file_key)
                 logger.info(f"[{task_name}] 上传到 NATS OS 成功: key={nats_file_key}")
             except Exception as e:
                 raise ValueError(f"Playbook 文件中转失败: {e}") from e
+            finally:
+                minio_file.close()
 
             files.append(
                 {
@@ -190,7 +188,7 @@ class PlaybookExecution(ExecutionTaskBaseService):
             timeout=execution.timeout,
         )
 
-        logger.info(f"[{task_name}] Ansible Playbook 任务已提交: execution_id={execution.id}, result={result}")
+        logger.info(f"[{task_name}] Ansible Playbook 任务已提交: execution_id={execution.id}, result={sanitize_sensitive_data(result)}")
 
         return nats_file_key
 

@@ -217,7 +217,6 @@ class TestScheduledTaskTransactionProtection:
                         "cron_expression": "* * * * *",
                     }
                 )
-
             # 验证错误信息
             assert "创建定时调度任务失败" in str(exc_info.value)
 
@@ -289,3 +288,81 @@ class TestScheduledTaskTransactionProtection:
             # 验证更新成功（禁用状态不需要 PeriodicTask）
             assert result == mock_instance
             assert mock_instance.save.called
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestAnsibleInterpreterSelection:
+    """测试 ansible 路径的解释器选择行为"""
+
+    def _build_target(self):
+        target = MagicMock()
+        target.cloud_region_id = 1
+        return target
+
+    def _build_execution(self):
+        execution = MagicMock()
+        execution.id = 100
+        execution.timeout = 60
+        return execution
+
+    def test_python_shebang_wraps_script_with_interpreter_command(self):
+        from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
+
+        execution = self._build_execution()
+        target = self._build_target()
+
+        with patch("apps.job_mgmt.services.execution_base_service.Target.objects.filter", return_value=[target]), patch(
+            "apps.job_mgmt.services.execution_base_service.ExecutionTaskBaseService._get_ansible_node", return_value="node-1"
+        ), patch(
+            "apps.job_mgmt.services.execution_base_service.ExecutionTaskBaseService._build_host_credentials", return_value=[{"host": "10.0.0.1"}]
+        ), patch(
+            "apps.job_mgmt.services.execution_base_service.AnsibleExecutor"
+        ) as mock_executor_cls:
+            mock_executor = MagicMock()
+            mock_executor.adhoc.return_value = {"accepted": True}
+            mock_executor_cls.return_value = mock_executor
+
+            script_content = "#!/usr/bin/env python3\nimport sys\nprint(sys.version)"
+            ExecutionTaskBaseService._execute_script_via_ansible(
+                execution=execution,
+                target_list=[{"target_id": 1}],
+                script_content=script_content,
+                script_type="shell",
+            )
+
+            mock_executor.adhoc.assert_called_once()
+            _, kwargs = mock_executor.adhoc.call_args
+            assert kwargs["module"] == "shell"
+            assert kwargs["module_args"] == "python3 <<'__SCRIPT__'\n#!/usr/bin/env python3\nimport sys\nprint(sys.version)\n__SCRIPT__"
+            assert kwargs["extra_vars"] is None
+
+    def test_bash_shebang_uses_ansible_shell_executable(self):
+        from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
+
+        execution = self._build_execution()
+        target = self._build_target()
+
+        with patch("apps.job_mgmt.services.execution_base_service.Target.objects.filter", return_value=[target]), patch(
+            "apps.job_mgmt.services.execution_base_service.ExecutionTaskBaseService._get_ansible_node", return_value="node-1"
+        ), patch(
+            "apps.job_mgmt.services.execution_base_service.ExecutionTaskBaseService._build_host_credentials", return_value=[{"host": "10.0.0.1"}]
+        ), patch(
+            "apps.job_mgmt.services.execution_base_service.AnsibleExecutor"
+        ) as mock_executor_cls:
+            mock_executor = MagicMock()
+            mock_executor.adhoc.return_value = {"accepted": True}
+            mock_executor_cls.return_value = mock_executor
+
+            script_content = "#!/bin/bash\necho hello"
+            ExecutionTaskBaseService._execute_script_via_ansible(
+                execution=execution,
+                target_list=[{"target_id": 1}],
+                script_content=script_content,
+                script_type="shell",
+            )
+
+            _, kwargs = mock_executor.adhoc.call_args
+            assert kwargs["module"] == "shell"
+            assert kwargs["module_args"] == script_content
+            assert kwargs["extra_vars"] == {"ansible_shell_executable": "/bin/bash"}
