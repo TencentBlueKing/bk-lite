@@ -47,12 +47,6 @@ const PasswordModal = forwardRef<PasswordModalRef, { onSuccess: () => void }>(
       }
     }, [visible]);
 
-    useEffect(() => {
-      if (visible) {
-        fetchPasswordRules();
-      }
-    }, [visible]);
-
     const fetchPasswordRules = async () => {
       try {
         setRulesLoading(true);
