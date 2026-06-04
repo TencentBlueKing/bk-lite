@@ -124,23 +124,22 @@ async def publish_metrics_to_nats(
 
                 # 逐行发送消息（与 Telegraf 保持一致）
                 success_count = 0
-                for line in influx_lines:
+                for index, line in enumerate(influx_lines, start=1):
                     try:
                         await nats_client.nc.publish(subject, line.encode("utf-8"))
                         success_count += 1
                     except Exception as pub_err:
                         logger.error(
-                            f"[NATS Helper] Failed to publish line: {line[:100]}, error: {pub_err}"
+                            f"[NATS Helper] Failed to publish metrics line "
+                            f"{index}/{total_lines} to '{subject}' for task {task_id}: "
+                            f"{line[:100]}, error: {pub_err}",
+                            exc_info=True,
                         )
+                        raise
 
                 logger.info(
                     f"[NATS Helper] Successfully published {success_count}/{total_lines} metrics to '{subject}' for task {task_id}"
                 )
-
-                if success_count < total_lines:
-                    logger.warning(
-                        f"[NATS Helper] Failed to publish {total_lines - success_count} metrics"
-                    )
 
         except ConnectionError as ce:
             logger.error(f"[NATS Helper] Connection error: {ce}")

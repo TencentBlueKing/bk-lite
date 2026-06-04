@@ -276,8 +276,10 @@ class TestHostRemoteMonitorTask:
         assert result["monitor_type"] == "host"
         assert result["accepted_task_id"] == "ansible-task-123"
         collect.assert_not_awaited()
+        expected_subject = f"stargazer-service.{nats_server.HOST_REMOTE_CALLBACK_HANDLER}"
+        assert nats_server.HOST_REMOTE_CALLBACK_HANDLER in core_nats._nats_instance.handlers
         submit_collection.assert_awaited_once_with(
-            "stargazer-service.host_remote.callback",
+            expected_subject,
             {
                 "collect_task_id": "collect-task-1",
                 "instance_id": "region1_host_10.0.0.9",
@@ -729,6 +731,25 @@ class TestHostRemoteCallbackHandler:
 
         assert nats_server.get_host_remote_callback_context("task-790") is not None
 
+    async def test_host_remote_callback_handler_keeps_context_when_error_metrics_publish_fails(
+        self, monkeypatch
+    ):
+        nats_server = _load_nats_server_module(monkeypatch)
+        params = _build_host_params()
+        callback_payload = {"task_id": "task-791", "success": False, "error": "Connection refused"}
+        publish_metrics = AsyncMock(side_effect=RuntimeError("publish failed"))
+        error_metrics = "monitor_collection_status{status=\"error\"} 1 1\n"
+        generate_error_metrics = MagicMock(return_value=error_metrics)
+        monkeypatch.setattr(nats_server, "publish_metrics_to_nats", publish_metrics)
+        monkeypatch.setattr(nats_server, "generate_monitor_error_metrics", generate_error_metrics)
+
+        nats_server.register_host_remote_callback_context("task-791", params)
+
+        with pytest.raises(RuntimeError, match="publish failed"):
+            await nats_server.handle_host_remote_callback({"args": [callback_payload], "kwargs": {}})
+
+        assert nats_server.get_host_remote_callback_context("task-791") is not None
+
     async def test_host_remote_callback_handler_raises_for_missing_context(self, monkeypatch):
         nats_server = _load_nats_server_module(monkeypatch)
 
@@ -736,3 +757,47 @@ class TestHostRemoteCallbackHandler:
             await nats_server.handle_host_remote_callback(
                 {"args": [{"task_id": "task-missing", "success": True, "result": []}], "kwargs": {}}
             )
+
+
+@pytest.mark.asyncio
+class TestPublishMetricsToNats:
+    async def test_publish_metrics_to_nats_raises_when_any_line_publish_fails(self, monkeypatch):
+        import tasks.utils.nats_helper as nats_helper_module
+
+        published = []
+
+        class FakeNatsConnection:
+            is_closed = False
+
+            async def publish(self, subject, payload):
+                published.append((subject, payload))
+                if len(published) == 2:
+                    raise RuntimeError("line publish failed")
+
+        class FakeNatsClient:
+            def __init__(self, config):
+                self.nc = FakeNatsConnection()
+                self.is_connected = True
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        monkeypatch.setattr(
+            nats_helper_module,
+            "convert_prometheus_to_influx",
+            MagicMock(return_value=["metric value=1 1", "metric value=2 2"]),
+        )
+        monkeypatch.setattr(
+            nats_helper_module.NATSConfig,
+            "from_env",
+            MagicMock(return_value=types.SimpleNamespace(servers=["nats://example"], tls_enabled=False, user="demo")),
+        )
+        monkeypatch.setattr(nats_helper_module, "NATSClient", FakeNatsClient)
+
+        with pytest.raises(RuntimeError, match="line publish failed"):
+            await nats_helper_module.publish_metrics_to_nats({}, "ignored", {"monitor_type": "host"}, "task-900")
+
+        assert len(published) == 2
