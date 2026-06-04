@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { resolveVersionMarkdownPath } from '../version-log-path';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -11,11 +12,21 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const base = path.resolve(process.cwd(), 'public', 'app');
-    const fullPath = path.resolve(base, filePath);
+    let fullPath: string;
 
-    if (!fullPath.startsWith(base + path.sep)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (filePath.startsWith('versions/')) {
+      const resolvedVersionPath = resolveVersionMarkdownPath(filePath);
+      if (!resolvedVersionPath) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      fullPath = resolvedVersionPath;
+    } else {
+      const base = path.resolve(process.cwd(), 'public', 'app');
+      fullPath = path.resolve(base, filePath);
+
+      if (!fullPath.startsWith(base + path.sep)) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     const fileContents = fs.readFileSync(fullPath, 'utf8');
