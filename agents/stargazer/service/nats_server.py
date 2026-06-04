@@ -4,10 +4,49 @@
 # @Author: windyzhao
 from datetime import datetime, timezone
 
+import core.host_remote_callback as host_remote_callback
 from core.nats import get_nats, register_handler
 from sanic.log import logger
 from service.collection_service import CollectionService
 from service.debug.protocol_debug_service import ProtocolDebugService
+from tasks.collectors.host_collector import HostCollector
+from tasks.utils.metrics_helper import generate_monitor_error_metrics
+from tasks.utils.nats_helper import publish_metrics_to_nats
+
+
+def _extract_host_remote_callback_payload(data):
+    if not isinstance(data, dict):
+        raise RuntimeError("Host Remote callback payload must be an object")
+
+    args = data.get("args")
+    if isinstance(args, list) and args and isinstance(args[0], dict):
+        return args[0]
+
+    kwargs = data.get("kwargs")
+    if isinstance(kwargs, dict) and isinstance(kwargs.get("data"), dict):
+        return kwargs["data"]
+
+    return data
+
+
+async def _clear_host_remote_callback_context_best_effort(task_id: str) -> None:
+    try:
+        await host_remote_callback.clear_host_remote_callback_context(task_id)
+    except Exception as err:
+        logger.error(
+            f"Host Remote callback context cleanup failed for {task_id}: {err}",
+            exc_info=True,
+        )
+
+
+async def _clear_host_remote_running_flag_best_effort(task_id: str) -> None:
+    try:
+        await host_remote_callback.clear_host_remote_running_flag(task_id)
+    except Exception as err:
+        logger.error(
+            f"Host Remote running flag cleanup failed for {task_id}: {err}",
+            exc_info=True,
+        )
 
 
 @register_handler("list_regions")
@@ -55,3 +94,47 @@ async def debug_ipmi(data: dict) -> dict:
     """
     logger.info(f"debug_ipmi received: action={data.get('action')} target={data.get('target')}")
     return await ProtocolDebugService(data).execute()
+
+
+@register_handler(
+    host_remote_callback.HOST_REMOTE_CALLBACK_HANDLER,
+    queue=host_remote_callback.get_host_remote_callback_queue(),
+)
+async def handle_host_remote_callback(data: dict) -> dict:
+    payload = _extract_host_remote_callback_payload(data)
+    task_id = str(payload.get("task_id") or "").strip()
+    if not task_id:
+        raise RuntimeError("Host Remote callback payload missing task_id")
+
+    callback_context = await host_remote_callback.load_host_remote_callback_context(task_id)
+    if not callback_context:
+        raise RuntimeError(f"Missing Host Remote callback context for task_id={task_id}")
+
+    params = callback_context["params"]
+    ctx = callback_context.get("ctx") or {}
+
+    try:
+        collector = HostCollector(params)
+        metrics_data = collector.process_adhoc_result(payload)
+    except Exception as err:
+        logger.error(f"Host Remote callback processing failed for {task_id}: {err}", exc_info=True)
+        error_metrics = generate_monitor_error_metrics(params, err)
+        await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
+        await _clear_host_remote_running_flag_best_effort(task_id)
+        await _clear_host_remote_callback_context_best_effort(task_id)
+        return {
+            "task_id": task_id,
+            "status": "failed",
+            "error": str(err),
+            "monitor_type": params.get("monitor_type", "host"),
+        }
+
+    await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
+    await _clear_host_remote_running_flag_best_effort(task_id)
+    await _clear_host_remote_callback_context_best_effort(task_id)
+    return {
+        "task_id": task_id,
+        "status": "success",
+        "monitor_type": params.get("monitor_type", "host"),
+        "data_size": len(metrics_data),
+    }
