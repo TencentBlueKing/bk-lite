@@ -279,3 +279,47 @@ class TestModelLayoutAPI:
             format="json",
         )
         assert resp.status_code in (401, 403)
+
+
+class TestClassificationListAPI:
+    def test_default_include_hidden_false(self, superuser, monkeypatch):
+        calls = {"include_hidden": None}
+        def fake_search(language, include_hidden=False):
+            calls["include_hidden"] = include_hidden
+            return []
+        monkeypatch.setattr(
+            "apps.cmdb.views.classification.ClassificationManage.search_model_classification",
+            fake_search,
+        )
+        client = APIClient()
+        client.force_authenticate(user=superuser)
+        client.get("/api/v1/cmdb/api/classification/")
+        assert calls["include_hidden"] is False
+
+    def test_include_hidden_true_for_superuser(self, superuser, monkeypatch):
+        calls = {"include_hidden": None}
+        def fake_search(language, include_hidden=False):
+            calls["include_hidden"] = include_hidden
+            return []
+        monkeypatch.setattr(
+            "apps.cmdb.views.classification.ClassificationManage.search_model_classification",
+            fake_search,
+        )
+        client = APIClient()
+        client.force_authenticate(user=superuser)
+        client.get("/api/v1/cmdb/api/classification/?include_hidden=true")
+        assert calls["include_hidden"] is True
+
+    def test_include_hidden_ignored_for_normal_user(self, normal_user, monkeypatch):
+        calls = {"include_hidden": None}
+        def fake_search(language, include_hidden=False):
+            calls["include_hidden"] = include_hidden
+            return []
+        monkeypatch.setattr(
+            "apps.cmdb.views.classification.ClassificationManage.search_model_classification",
+            fake_search,
+        )
+        client = APIClient()
+        client.force_authenticate(user=normal_user)
+        client.get("/api/v1/cmdb/api/classification/?include_hidden=true")
+        assert calls["include_hidden"] is False
