@@ -17,7 +17,6 @@ import {
   DownloadOutlined,
   UploadOutlined,
   DownOutlined,
-  HolderOutlined,
   EyeOutlined,
   EyeInvisibleOutlined,
 } from '@ant-design/icons';
