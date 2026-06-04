@@ -329,6 +329,7 @@ class SubscriptionTaskService:
             TriggerType.EXPIRATION.value: ("临近到期提醒", "个实例临近到期提醒"),
             TriggerType.INSTANCE_ADDED.value: ("出现新增实例", "个新增实例"),
             TriggerType.INSTANCE_DELETED.value: ("已删除", "个实例已删除"),
+            TriggerType.CONFIG_FILE.value: ("配置文件关联", "个实例配置文件关联"),
         }
 
         single_suffix, multi_suffix = type_display_map.get(
@@ -375,6 +376,8 @@ class SubscriptionTaskService:
             summary_parts.append(f"到期提醒 {count_by_type[TriggerType.EXPIRATION.value]} 个")
         if count_by_type.get(TriggerType.INSTANCE_DELETED.value, 0) > 0:
             summary_parts.append(f"删除 {count_by_type[TriggerType.INSTANCE_DELETED.value]} 个")
+        if count_by_type.get(TriggerType.CONFIG_FILE.value, 0) > 0:
+            summary_parts.append(f"配置文件关联 {count_by_type[TriggerType.CONFIG_FILE.value]} 个")
 
         return "；".join(summary_parts) if summary_parts else "发生变化"
 

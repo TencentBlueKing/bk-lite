@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 from croniter import croniter
 
@@ -10,6 +12,16 @@ from apps.alerts.constants import (
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.utils.permission_scope import get_authorized_group_ids, normalize_team_ids
 from apps.alerts.utils.util import parse_aggregation_window_size
+
+# 允许的聚合维度白名单（防止 SQL 注入）
+ALLOWED_DIMENSIONS = frozenset({
+    "event_id", "service", "location", "resource_name", "item",
+    "external_id", "source", "level", "title", "description",
+    "resource_id", "resource_type",
+})
+
+# 维度名格式校验（仅允许标识符格式）
+DIMENSION_NAME_PATTERN = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]{0,63}$')
 
 
 class AlarmStrategySerializer(serializers.ModelSerializer):
@@ -101,6 +113,22 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
             params["window_size"] = normalized_window_size
         except ValueError as error:
             params_errors["window_size"] = str(error)
+
+        group_by = params.get("group_by", [])
+        if group_by:
+            if not isinstance(group_by, list):
+                params_errors["group_by"] = "group_by 必须是列表"
+            else:
+                for dim in group_by:
+                    if not isinstance(dim, str):
+                        params_errors["group_by"] = "维度名必须是字符串"
+                        break
+                    if not DIMENSION_NAME_PATTERN.match(dim):
+                        params_errors["group_by"] = f"维度名格式非法: {dim}"
+                        break
+                    if dim not in ALLOWED_DIMENSIONS:
+                        params_errors["group_by"] = f"不支持的聚合维度: {dim}"
+                        break
 
         if params_errors:
             raise serializers.ValidationError({"params": params_errors})

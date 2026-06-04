@@ -177,6 +177,8 @@ class SubscriptionTriggerService:
             )
         if TriggerType.EXPIRATION.value in self.rule.trigger_types:
             self.events.extend(self._check_expiration(instances, current_snapshot))
+        if TriggerType.CONFIG_FILE.value in self.rule.trigger_types:
+            self.events.extend(self._check_config_file(instances, current_snapshot, checkpoint))
 
         self._update_snapshot(current_snapshot, checkpoint)
         logger.info(f"[Subscription] 触发检测结束 rule_id={self.rule.id}, events_count={len(self.events)}")
@@ -745,3 +747,87 @@ class SubscriptionTriggerService:
             except Exception:
                 return None
         return None
+
+    def _check_config_file(
+        self,
+        instances: list[dict[str, Any]],
+        current_snapshot: dict[str, Any],
+        checkpoint: datetime,
+    ) -> list[TriggerEvent]:
+        from apps.cmdb.models.config_file_version import ConfigFileVersion, ConfigFileVersionStatus
+
+        events: list[TriggerEvent] = []
+
+        if self.rule.model_id != "host":
+            logger.info(
+                f"[Subscription] 配置文件触发仅对主机模型生效，跳过 "
+                f"rule_id={self.rule.id}, model_id={self.rule.model_id}"
+            )
+            return events
+
+        instance_ids = [str(inst.get("_id")) for inst in instances if inst.get("_id") is not None]
+        if not instance_ids:
+            return events
+
+        instance_map = {str(inst.get("_id")): inst for inst in instances if inst.get("_id") is not None}
+
+        last_check = self.rule.last_check_time or self.rule.created_at
+        versions = ConfigFileVersion.objects.filter(
+            instance_id__in=instance_ids,
+            model_id="host",
+            status=ConfigFileVersionStatus.SUCCESS,
+            created_at__gt=last_check,
+            created_at__lte=checkpoint,
+        ).order_by("created_at")
+
+        if not versions.exists():
+            logger.info(
+                f"[Subscription] 配置文件检测窗口无新增记录 "
+                f"rule_id={self.rule.id}, last_check={last_check.isoformat()}, "
+                f"checkpoint={checkpoint.isoformat()}"
+            )
+            return events
+
+        previous_notified = set(
+            ((self.rule.snapshot_data or {}).get("config_file_notified", {}) or {}).keys()
+        )
+        current_notified: dict[str, str] = {}
+        now_str = timezone.now().isoformat()
+        notified_instance_ids: set[str] = set()
+
+        for version in versions:
+            dedup_key = str(version.instance_id)
+
+            if dedup_key in previous_notified or dedup_key in current_notified:
+                continue
+
+            if version.instance_id in notified_instance_ids:
+                continue
+
+            notified_instance_ids.add(version.instance_id)
+            current_notified[dedup_key] = now_str
+
+            inst = instance_map.get(version.instance_id, {})
+            inst_name = inst.get("inst_name") or inst.get("ip_addr") or version.instance_id
+
+            events.append(
+                TriggerEvent(
+                    rule_id=self.rule.id,
+                    rule_name=self.rule.name,
+                        model_id=self.rule.model_id,
+                        model_name=self.model_name,
+                        trigger_type=TriggerType.CONFIG_FILE.value,
+                        inst_id=int(version.instance_id),
+                        inst_name=inst_name,
+                        change_summary="检测到配置采集任务采集到配置文件",
+                        triggered_at=now_str,
+                    )
+                )
+
+        current_snapshot["config_file_notified"] = current_notified
+
+        logger.info(
+            f"[Subscription] 配置文件检测完成 "
+            f"rule_id={self.rule.id}, events_count={len(events)}"
+        )
+        return events
