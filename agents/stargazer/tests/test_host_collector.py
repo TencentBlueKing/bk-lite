@@ -27,8 +27,11 @@ from tasks.collectors.host_collector import (
     parse_metrics_to_prometheus,
     HostCollector,
     HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT,
+    LINUX_SCRIPT_WRAPPER_EOF,
     VALID_MODULES,
     SCRIPTS_DIR,
+    _escape_prometheus_label_value,
+    _extract_json_payload,
 )
 
 
@@ -283,6 +286,12 @@ class TestBuildScript:
         # 应包含 header + 4 modules + footer
         assert script.count("\n") > 10
 
+    def test_linux_script_is_wrapped_with_bash_heredoc(self):
+        script = build_script("linux", ["cpu"])
+
+        assert script.startswith(f"bash <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n")
+        assert script.endswith(f"{LINUX_SCRIPT_WRAPPER_EOF}\n")
+
     def test_windows_all_modules(self):
         script = build_script("windows", ["cpu", "mem", "disk", "net"])
         # Windows 脚本应包含 PowerShell 相关内容
@@ -436,6 +445,22 @@ class TestParseMetricsToPrometheus:
         assert 'mount="/data"' in result
         assert "host_disk_used_percent" in result
 
+    def test_disk_metrics_escape_prometheus_label_values(self):
+        data = {
+            "disk": [
+                {
+                    "mount": '/mnt/data"with\\chars\nline',
+                    "total_bytes": 100000,
+                    "used_bytes": 50000,
+                    "used_percent": 50.0,
+                },
+            ]
+        }
+
+        result = parse_metrics_to_prometheus(data, "inst1", "linux")
+
+        assert 'mount="/mnt/data\\"with\\\\chars\\nline"' in result
+
     def test_network_metrics_with_interface(self):
         data = {
             "net": [
@@ -447,6 +472,23 @@ class TestParseMetricsToPrometheus:
         assert 'os_type="windows"' in result
         assert "host_net_rx_bytes" in result
         assert "host_net_tx_bytes" in result
+
+    def test_network_metrics_escape_prometheus_label_values(self):
+        data = {
+            "net": [
+                {
+                    "interface": 'eth0"prod\\uplink\nline',
+                    "rx_bytes": 1000,
+                    "tx_bytes": 2000,
+                    "rx_errors": 0,
+                    "tx_errors": 0,
+                },
+            ]
+        }
+
+        result = parse_metrics_to_prometheus(data, "inst1", "linux")
+
+        assert 'interface="eth0\\"prod\\\\uplink\\nline"' in result
 
     def test_empty_data(self):
         result = parse_metrics_to_prometheus({}, "inst1", "linux")
@@ -505,6 +547,23 @@ class TestHostCollectorExtractStdout:
         # 空 dict 应返回 JSON 序列化
         stdout = self.collector._extract_stdout(result)
         assert stdout == "{}"
+
+
+class TestHostCollectorHelpers:
+    def test_extract_json_payload_returns_first_complete_json_object(self):
+        stdout = '[WARNING]: interpreter issue\n{"cpu":{"usage_percent":1}}\ntrailing noise'
+
+        assert _extract_json_payload(stdout) == '{"cpu":{"usage_percent":1}}'
+
+    def test_extract_json_payload_skips_invalid_braced_text(self):
+        stdout = 'prefix {not json} middle {"cpu":{"usage_percent":2}} suffix'
+
+        assert _extract_json_payload(stdout) == '{"cpu":{"usage_percent":2}}'
+
+    def test_escape_prometheus_label_value_escapes_special_chars(self):
+        value = 'foo"bar\\baz\nqux'
+
+        assert _escape_prometheus_label_value(value) == 'foo\\"bar\\\\baz\\nqux'
 
 
 @pytest.mark.asyncio
@@ -1130,6 +1189,65 @@ class TestHostCollectorCollect:
 
         with pytest.raises(RuntimeError, match="Failed to parse metrics JSON"):
             await collector.collect()
+
+    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    async def test_process_adhoc_result_extracts_json_from_warning_polluted_stdout(self, mock_adhoc):
+        warning_stdout = (
+            "[WARNING]: Platform linux on host 10.0.0.1 is using the discovered Python interpreter\n"
+            '{"cpu":{"usage_percent":25.0,"core_count":4,"load_1m":0.5,"load_5m":0.3,"load_15m":0.1}}\n'
+            "shared connection closed\n"
+        )
+        mock_adhoc.return_value = {
+            "success": True,
+            "result": {"contacted": {"10.0.0.1": {"stdout": warning_stdout, "rc": 0}}},
+        }
+
+        collector = HostCollector({
+            "host": "10.0.0.1",
+            "os_type": "linux",
+            "username": "root",
+            "password": "secret",
+            "ansible_node_id": "region1",
+            "metrics_modules": "cpu",
+            "tags": {"instance_id": "x"},
+        })
+
+        result = await collector.collect()
+
+        assert "host_cpu_usage_percent" in result
+        assert "25.0" in result
+
+    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    async def test_successful_collect_linux_uses_bash_wrapped_script(self, mock_adhoc):
+        mock_adhoc.return_value = {
+            "success": True,
+            "result": {
+                "contacted": {
+                    "10.0.0.1": {
+                        "stdout": json.dumps({
+                            "cpu": {"usage_percent": 25.0, "core_count": 4, "load_1m": 0.5, "load_5m": 0.3, "load_15m": 0.1},
+                        }),
+                        "rc": 0,
+                    }
+                }
+            },
+        }
+
+        collector = HostCollector({
+            "host": "10.0.0.1",
+            "os_type": "linux",
+            "username": "root",
+            "password": "secret",
+            "port": "22",
+            "ansible_node_id": "region1",
+            "metrics_modules": "cpu",
+            "tags": {"instance_id": "region1_host_10.0.0.1"},
+        })
+
+        await collector.collect()
+
+        call_kwargs = mock_adhoc.call_args[1]
+        assert call_kwargs["module_args"].startswith(f"bash <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n")
 
     @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_default_modules_when_invalid(self, mock_adhoc):

@@ -13,6 +13,7 @@ SCRIPTS_DIR = Path(__file__).parent / "scripts"
 
 VALID_MODULES = {"cpu", "mem", "disk", "net"}
 HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT = 60
+LINUX_SCRIPT_WRAPPER_EOF = "STARGAZER_HOST_COLLECT_EOF"
 
 
 def build_script(os_type: str, modules: List[str]) -> str:
@@ -25,8 +26,16 @@ def build_script(os_type: str, modules: List[str]) -> str:
         if script_file.exists():
             parts.append(_read_script(script_file))
     parts.append(_read_script(base_dir / f"footer{ext}"))
+    body = "\n".join(parts)
 
-    return "\n".join(parts)
+    if os_type == "linux":
+        body = (
+            f"bash <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n"
+            f"{body}\n"
+            f"{LINUX_SCRIPT_WRAPPER_EOF}\n"
+        )
+
+    return body
 
 
 def _read_script(path: Path) -> str:
@@ -34,12 +43,65 @@ def _read_script(path: Path) -> str:
         return f.read()
 
 
+def _extract_json_payload(stdout: str) -> str:
+    start = None
+    depth = 0
+    in_string = False
+    escape = False
+
+    for idx, char in enumerate(stdout):
+        if start is None:
+            if char == "{":
+                start = idx
+                depth = 1
+                in_string = False
+                escape = False
+            continue
+
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                candidate = stdout[start : idx + 1]
+                try:
+                    json.loads(candidate)
+                except json.JSONDecodeError:
+                    start = None
+                    continue
+                return candidate
+
+    return stdout
+
+
+def _escape_prometheus_label_value(value: Any) -> str:
+    return str(value).replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+
+
+def _format_prometheus_labels(**labels: Any) -> str:
+    return ",".join(
+        f'{key}="{_escape_prometheus_label_value(value)}"'
+        for key, value in labels.items()
+    )
+
+
 def parse_metrics_to_prometheus(
     data: Dict[str, Any], instance_id: str, os_type: str, timestamp: int | None = None
 ) -> str:
     lines = []
     timestamp = int(timestamp) if timestamp is not None else int(time.time() * 1000)
-    base_labels = f'instance_id="{instance_id}",os_type="{os_type}"'
+    base_labels = _format_prometheus_labels(instance_id=instance_id, os_type=os_type)
 
     if "cpu" in data:
         cpu = data["cpu"]
@@ -84,7 +146,7 @@ def parse_metrics_to_prometheus(
             lines.append(f"# TYPE host_disk_used_percent gauge")
             for disk in disks:
                 mount = disk.get("mount", "unknown")
-                disk_labels = f'{base_labels},mount="{mount}"'
+                disk_labels = f"{base_labels},{_format_prometheus_labels(mount=mount)}"
                 lines.append(f"host_disk_total_bytes{{{disk_labels}}} {disk.get('total_bytes', 0)} {timestamp}")
                 lines.append(f"host_disk_used_bytes{{{disk_labels}}} {disk.get('used_bytes', 0)} {timestamp}")
                 lines.append(f"host_disk_used_percent{{{disk_labels}}} {disk.get('used_percent', 0)} {timestamp}")
@@ -102,7 +164,7 @@ def parse_metrics_to_prometheus(
             lines.append(f"# TYPE host_net_tx_errors gauge")
             for net in nets:
                 iface = net.get("interface", "unknown")
-                net_labels = f'{base_labels},interface="{iface}"'
+                net_labels = f"{base_labels},{_format_prometheus_labels(interface=iface)}"
                 lines.append(f"host_net_rx_bytes{{{net_labels}}} {net.get('rx_bytes', 0)} {timestamp}")
                 lines.append(f"host_net_tx_bytes{{{net_labels}}} {net.get('tx_bytes', 0)} {timestamp}")
                 lines.append(f"host_net_rx_errors{{{net_labels}}} {net.get('rx_errors', 0)} {timestamp}")
@@ -209,14 +271,27 @@ class HostCollector(BaseCollector):
             logger.error(f"[Host Collector] Empty stdout from {host}, result keys: {list(result.keys())}")
             raise RuntimeError(f"Host collection returned empty stdout for {host}")
 
+        cleaned_stdout = stdout.strip()
+
         try:
-            metrics_data = json.loads(stdout)
+            metrics_data = json.loads(cleaned_stdout)
         except json.JSONDecodeError as e:
-            logger.error(
-                f"[Host Collector] JSON parse failed for {host}: {e}. "
-                f"stdout preview: {stdout[:500]}"
-            )
-            raise RuntimeError(f"Failed to parse metrics JSON from {host}: {e}") from e
+            extracted_payload = _extract_json_payload(cleaned_stdout)
+            if extracted_payload != cleaned_stdout:
+                try:
+                    metrics_data = json.loads(extracted_payload)
+                except json.JSONDecodeError:
+                    logger.error(
+                        f"[Host Collector] JSON parse failed for {host}: {e}. "
+                        f"stdout preview: {stdout[:500]}"
+                    )
+                    raise RuntimeError(f"Failed to parse metrics JSON from {host}: {e}") from e
+            else:
+                logger.error(
+                    f"[Host Collector] JSON parse failed for {host}: {e}. "
+                    f"stdout preview: {stdout[:500]}"
+                )
+                raise RuntimeError(f"Failed to parse metrics JSON from {host}: {e}") from e
 
         instance_id = self.params.get("tags", {}).get("instance_id", host)
         callback_timestamp = self.params.get("callback_timestamp")
