@@ -54,7 +54,7 @@ import { useCommon } from '@/app/cmdb/context/common';
 import { useUserInfoContext } from '@/context/userInfo';
 import type { MenuProps } from 'antd';
 
-type DraftClassification = {
+interface DraftClassification {
   classification_id: string;
   classification_name: string;
   is_visible: boolean;
@@ -66,7 +66,7 @@ type DraftClassification = {
     is_visible: boolean;
     order_id: number;
   }>;
-};
+}
 
 const AssetManage = () => {
   const { getClassificationList, deleteClassification } =
@@ -180,6 +180,16 @@ const AssetManage = () => {
       setLayoutDirty(false);
     }
   }, [manageMode]);
+
+  useEffect(() => {
+    if (!manageMode || !layoutDirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [manageMode, layoutDirty]);
 
   const showDeleteConfirm = (row: GroupItem) => {
     confirm({
