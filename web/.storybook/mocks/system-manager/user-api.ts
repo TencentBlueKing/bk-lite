@@ -181,7 +181,7 @@ export const useUserApi = () => {
     return clientDetails[name] || clientDetails['system-manager'];
   };
 
-  const getRoleList = async (request: { client_list?: unknown[] } = {}) => {
+  const getRoleList = async () => {
     if (consumeRoleListLoadingMock()) {
       await new Promise((resolve) => {
         setTimeout(resolve, 1200);

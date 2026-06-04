@@ -1,5 +1,4 @@
 import {
-  armRoleListLoadingMock,
   groupDetailWithRoles,
 } from '../../../src/stories/system-manager-user-org-modal.fixtures';
 
@@ -102,10 +101,6 @@ export const useGroupApi = () => {
   ]);
 
   const getGroupDetailWithRoles = async (request?: { group_id?: string | number }) => {
-    if (String(request?.group_id) === 'loading-roles') {
-      armRoleListLoadingMock();
-    }
-
     return resolveGroupDetail(request?.group_id);
   };
   const batchGetGroupDetailWithRoles = async (request?: { group_ids?: Array<string | number> }) => {

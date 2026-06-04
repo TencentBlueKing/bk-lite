@@ -2,6 +2,10 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 import { useEffect, useRef } from 'react';
 import { expect, within } from 'storybook/test';
 import GroupEditModal, { GroupModalRef } from '@/app/system-manager/components/group/GroupEditModal';
+import {
+  armRoleListLoadingMock,
+  resetRoleListLoadingMock,
+} from './system-manager-user-org-modal.fixtures';
 
 interface GroupEditModalStoryProps {
   groupId: string | number;
@@ -12,11 +16,19 @@ const GroupEditModalStory = ({ groupId, groupName }: GroupEditModalStoryProps) =
   const ref = useRef<GroupModalRef>(null);
 
   useEffect(() => {
+    if (groupId === 'loading-roles') {
+      armRoleListLoadingMock();
+    }
+
     ref.current?.showModal({
       type: 'edit',
       groupId,
       groupName,
     });
+
+    return () => {
+      resetRoleListLoadingMock();
+    };
   }, [groupId, groupName]);
 
   return <GroupEditModal ref={ref} onSuccess={() => {}} />;
@@ -38,7 +50,10 @@ export const Default: Story = {
     groupName: 'Frontend Team',
   },
   play: async () => {
-    const modal = within(document.body);
+    const dialog = await within(document.body).findByRole('dialog', {
+      name: 'system.group.editGroup',
+    });
+    const modal = within(dialog);
 
     await expect(await modal.findByText('system.group.form.name')).toBeInTheDocument();
     await expect(await modal.findByDisplayValue('Frontend Team')).toBeInTheDocument();
@@ -54,7 +69,10 @@ export const WithInheritedRoles: Story = {
     groupName: 'Backend Team',
   },
   play: async () => {
-    const modal = within(document.body);
+    const dialog = await within(document.body).findByRole('dialog', {
+      name: 'system.group.editGroup',
+    });
+    const modal = within(dialog);
 
     await expect(await modal.findByDisplayValue('Backend Team')).toBeInTheDocument();
     await expect(await modal.findByText('system.group.allowInheritRoles')).toBeInTheDocument();
@@ -69,13 +87,16 @@ export const LoadingRoleTransfer: Story = {
     groupName: 'Backend Team',
   },
   play: async () => {
-    const modal = within(document.body);
+    const dialog = await within(document.body).findByRole('dialog', {
+      name: 'system.group.editGroup',
+    });
+    const modal = within(dialog);
 
     await expect(await modal.findByText('system.group.form.name')).toBeInTheDocument();
     await expect(await modal.findByDisplayValue('Backend Team')).toBeInTheDocument();
     await expect(await modal.findByText('system.group.allowInheritRoles')).toBeInTheDocument();
     await expect(await modal.findByRole('switch')).toBeChecked();
-    expect(document.body.querySelector('.ant-spin-spinning')).not.toBeNull();
+    expect(dialog.querySelector('.ant-spin-spinning')).not.toBeNull();
 
     await expect(await modal.findByText('View Topology')).toBeInTheDocument();
     await expect(await modal.findByText('system.role.inheritedRole')).toBeInTheDocument();
