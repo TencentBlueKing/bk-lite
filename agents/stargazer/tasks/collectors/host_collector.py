@@ -215,6 +215,24 @@ class HostCollector(BaseCollector):
         task_result = result.get("result", {})
         if isinstance(task_result, str):
             return task_result
+        if isinstance(task_result, list):
+            expected_host = self.params.get("host")
+            fallback_stdout = ""
+            for host_data in task_result:
+                if not isinstance(host_data, dict):
+                    continue
+                stdout = host_data.get("stdout", "")
+                host_key = host_data.get("host", "")
+                if stdout and host_key == expected_host:
+                    return stdout
+                if stdout and not fallback_stdout:
+                    fallback_stdout = stdout
+                if not stdout:
+                    logger.warning(
+                        f"[Host Collector] No stdout for host_key={host_key}, "
+                        f"status={host_data.get('status')}, stderr={host_data.get('stderr', '')[:200]}"
+                    )
+            return fallback_stdout
         if isinstance(task_result, dict):
             hosts_result = task_result.get("contacted", task_result)
             for host_key, host_data in hosts_result.items():

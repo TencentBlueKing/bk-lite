@@ -269,6 +269,44 @@ class TestHostCollectorCollect:
         assert "host_cpu_usage_percent" in metrics
         assert 'instance_id="region1_host_10.0.0.1"' in metrics
 
+    async def test_process_adhoc_result_supports_callback_result_list(self):
+        collector = HostCollector({
+            "host": "10.0.0.8",
+            "os_type": "linux",
+            "username": "root",
+            "password": "secret",
+            "ansible_node_id": "region1",
+            "metrics_modules": "cpu",
+            "tags": {"instance_id": "region1_host_10.0.0.8"},
+        })
+
+        result = {
+            "task_id": "task-123",
+            "success": True,
+            "result": [
+                {
+                    "host": "10.0.0.8",
+                    "status": "success",
+                    "stdout": json.dumps({
+                        "cpu": {
+                            "usage_percent": 25.0,
+                            "core_count": 4,
+                            "load_1m": 0.5,
+                            "load_5m": 0.3,
+                            "load_15m": 0.1,
+                        }
+                    }),
+                    "stderr": "",
+                    "exit_code": 0,
+                }
+            ],
+        }
+
+        metrics = collector.process_adhoc_result(result)
+
+        assert "host_cpu_usage_percent" in metrics
+        assert 'instance_id="region1_host_10.0.0.8"' in metrics
+
     @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_successful_collect_linux(self, mock_adhoc):
         mock_adhoc.return_value = {
