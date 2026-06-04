@@ -62,5 +62,10 @@ export function resolveVersionMarkdownPath(filePath: string) {
     path.join(getLegacyVersionsDirectory(clientId, locale), fileName),
   ];
 
-  return candidates.find(candidate => fs.existsSync(candidate)) ?? candidates[0];
+  const resolvedPath = candidates.find(candidate => fs.existsSync(candidate));
+
+  return {
+    fullPath: resolvedPath ?? candidates[0],
+    exists: Boolean(resolvedPath),
+  };
 }

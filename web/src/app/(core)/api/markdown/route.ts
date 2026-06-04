@@ -19,7 +19,10 @@ export async function GET(req: NextRequest) {
       if (!resolvedVersionPath) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
-      fullPath = resolvedVersionPath;
+      if (!resolvedVersionPath.exists) {
+        return NextResponse.json({ error: 'File not found' }, { status: 404 });
+      }
+      fullPath = resolvedVersionPath.fullPath;
     } else {
       const base = path.resolve(process.cwd(), 'public', 'app');
       fullPath = path.resolve(base, filePath);
