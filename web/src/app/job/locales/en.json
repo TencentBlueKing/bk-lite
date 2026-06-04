@@ -399,6 +399,7 @@
     "download": "Download",
     "upgradeVersion": "Upgrade Version",
     "executionVersion": "Execution Version",
+    "viewVersion": "View Version",
     "currentVersion": "Current Version",
     "recentUpdateTime": "Last Updated",
     "uploader": "Uploader",
