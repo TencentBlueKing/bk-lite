@@ -17,6 +17,9 @@ import {
   DownloadOutlined,
   UploadOutlined,
   DownOutlined,
+  HolderOutlined,
+  EyeOutlined,
+  EyeInvisibleOutlined,
 } from '@ant-design/icons';
 import Image from 'next/image';
 import assetManageStyle from './index.module.scss';
@@ -303,6 +306,30 @@ const AssetManage = () => {
     showCopyModelModal(model);
   };
 
+  const markDirty = () => setLayoutDirty(true);
+
+  const toggleGroupVisible = (gi: number) => {
+    setDraftLayout(prev =>
+      prev.map((g, i) => (i === gi ? { ...g, is_visible: !g.is_visible } : g))
+    );
+    markDirty();
+  };
+
+  const toggleModelVisible = (gi: number, mi: number) => {
+    setDraftLayout(prev =>
+      prev.map((g, i) => {
+        if (i !== gi) return g;
+        return {
+          ...g,
+          models: g.models.map((m, j) =>
+            j === mi ? { ...m, is_visible: !m.is_visible } : m
+          ),
+        };
+      })
+    );
+    markDirty();
+  };
+
   return (
     <div className={assetManageStyle.container}>
       <Introduction title={t('Model.title')} message={t('Model.message')} />
@@ -389,7 +416,60 @@ const AssetManage = () => {
           </div>
         </div>
         <Spin spinning={loading}>
-          {modelGroup.length ? (
+          {manageMode ? (
+            <div className="manage-layout">
+              {draftLayout.map((group, gi) => (
+                <div className="model-group" key={group.classification_id}
+                     style={{ opacity: group.is_visible ? 1 : 0.5 }}>
+                  <div className={`${assetManageStyle.groupTitle} flex items-center mt-[20px] text-[14px]`}>
+                    <span className="border-l-[4px] border-[var(--color-primary)] px-[4px] py-[1px] font-[600]">
+                      {group.classification_name}（{group.models.length}）
+                      {!group.is_visible && (
+                        <span className="ml-[8px] text-[12px] text-[var(--color-text-3)]">
+                          {t('Model.hidden') || '已隐藏'}
+                        </span>
+                      )}
+                    </span>
+                    <div className={assetManageStyle.groupOperate}>
+                      <Tooltip title={group.is_visible ? (t('common.hide') || '隐藏') : (t('common.show') || '显示')}>
+                        {group.is_visible
+                          ? <EyeOutlined className="cursor-pointer ml-[8px]" onClick={() => toggleGroupVisible(gi)} />
+                          : <EyeInvisibleOutlined className="cursor-pointer ml-[8px]" onClick={() => toggleGroupVisible(gi)} />}
+                      </Tooltip>
+                    </div>
+                  </div>
+                  <ul className={assetManageStyle.modelList}>
+                    {group.models.map((model, mi) => (
+                      <li key={model.model_id}
+                          className={`bg-[var(--color-bg)] flex justify-between items-center ${assetManageStyle.modelListItem}`}
+                          style={{ opacity: model.is_visible ? 1 : 0.5, cursor: 'default' }}>
+                        <div className={assetManageStyle.leftSide} style={{ pointerEvents: 'none' }}>
+                          <div style={{ width: 40 }}>
+                            <Image
+                              src={getIconUrl(model as any)}
+                              className="block w-auto h-10"
+                              alt={t('picture')}
+                              width={40}
+                              height={40}
+                            />
+                          </div>
+                          <div className="flex flex-col pl-[10px]">
+                            <span className="text-[14px] pb-[4px] font-[600]">{model.model_name}</span>
+                            <span className="text-[12px] text-[var(--color-text-3)]">{model.model_id}</span>
+                          </div>
+                        </div>
+                        <Tooltip title={model.is_visible ? (t('common.hide') || '隐藏') : (t('common.show') || '显示')}>
+                          {model.is_visible
+                            ? <EyeOutlined className="cursor-pointer mr-[8px]" onClick={() => toggleModelVisible(gi, mi)} />
+                            : <EyeInvisibleOutlined className="cursor-pointer mr-[8px]" onClick={() => toggleModelVisible(gi, mi)} />}
+                        </Tooltip>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ) : modelGroup.length ? (
             modelGroup.map(item => {
               return (
                 <div className="model-group" key={item.classification_id}>
