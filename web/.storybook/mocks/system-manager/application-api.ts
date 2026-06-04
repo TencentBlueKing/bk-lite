@@ -3,6 +3,7 @@ import {
   groupDataRuleResponse,
   roleTreeResponse,
 } from '../../../src/stories/system-manager-user-org-modal.fixtures';
+import type { CustomMenu, CustomMenuListResponse } from '../../../src/app/system-manager/types/menu';
 
 const appModules = [
   {
@@ -41,6 +42,71 @@ const menus = [
     operation: ['view', 'operate'],
   },
 ];
+
+const customMenus: CustomMenu[] = [
+  {
+    id: 1,
+    app: 'monitor',
+    display_name: 'Default Menu',
+    description: 'Built-in menu for monitor',
+    is_enabled: true,
+    is_build_in: true,
+    menu_count: 2,
+    created_at: '2026-06-03 08:00:00',
+    updated_at: '2026-06-03 08:15:00',
+    created_by: 'system',
+    updated_by: 'alice',
+    domain: 'domain.com',
+    updated_by_domain: 'domain.com',
+  },
+  {
+    id: 2,
+    app: 'cmdb',
+    display_name: 'CMDB Custom Menu',
+    description: 'Storybook-friendly CMDB menu',
+    is_enabled: false,
+    is_build_in: false,
+    menu_count: 1,
+    created_at: '2026-06-03 08:30:00',
+    updated_at: '2026-06-03 08:45:00',
+    created_by: 'bob',
+    updated_by: 'bob',
+    domain: 'domain.com',
+    updated_by_domain: 'domain.com',
+  },
+];
+
+const customMenuDetail = {
+  ...customMenus[0],
+  menus: [
+    {
+      name: 'dashboard',
+      title: 'Dashboard',
+      url: '/system-manager/monitor/dashboard',
+      icon: 'dashboard',
+      children: [
+        {
+          name: 'dashboard-overview',
+          title: 'Overview',
+          url: '/system-manager/monitor/dashboard/overview',
+          icon: 'overview',
+        },
+        {
+          name: 'dashboard-alert',
+          title: 'Alert',
+          url: '/system-manager/monitor/dashboard/alert',
+          icon: 'alert',
+        },
+      ],
+    },
+    {
+      name: 'topology',
+      title: 'Topology',
+      url: '/system-manager/cmdb/topology',
+      icon: 'topology',
+    },
+  ],
+};
 
 export const useRoleApi = () => {
   const getRoles = async () => flatRoles;
@@ -121,8 +187,11 @@ export const useRoleApi = () => {
   const addRoleGroups = async () => ({ success: true });
   const deleteRoleGroups = async () => ({ success: true });
 
-  const getCustomMenus = async () => [];
-  const getCustomMenuDetail = async () => ({ id: 1, name: 'Default Menu' });
+  const getCustomMenus = async (): Promise<CustomMenuListResponse> => ({
+    count: customMenus.length,
+    items: customMenus,
+  });
+  const getCustomMenuDetail = async () => customMenuDetail;
   const addCustomMenu = async () => ({ success: true });
   const updateCustomMenu = async () => ({ success: true });
   const deleteCustomMenu = async () => ({ success: true });

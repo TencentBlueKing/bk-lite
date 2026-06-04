@@ -9,7 +9,7 @@ export const permissionNode: TreeDataNode = {
 
 export const permissionRules = {
   monitor: 2,
-  cmdb: 0,
+  cmdb: 3,
 };
 
 export const groupDataRuleResponse: Array<DataPermission & { app: string }> = [
@@ -44,7 +44,7 @@ export const groupDataRulePageResponse: { count: number; items: DataItem[] } = {
       group_name: 'Frontend Team',
       rules: {
         cmdb: [
-          { id: '0', name: 'All', permission: ['View'] },
+          { id: '3', name: 'Topology Readonly', permission: ['View'] },
         ],
       },
     },
