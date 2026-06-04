@@ -11,10 +11,12 @@ import dayjs from 'dayjs';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
-import type {
-  ResponseFieldDefinition,
-  DatasourceItem,
-} from '@/app/ops-analysis/types/dataSource';
+import {
+  parseTableLikeData,
+  resolveTableLikeColumns,
+  type TableLikePaginationState,
+} from './shared/tableLikeData';
+import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
   ValueConfig,
   TableColumnConfigItem,
@@ -52,53 +54,19 @@ const ComTable: React.FC<ComTableProps> = ({
   );
   const [activeKeywordFieldKey, setActiveKeywordFieldKey] =
     useState<string>('');
-  const [queryPagination, setQueryPagination] = useState<{
-    current: number;
-    pageSize: number;
-  }>({
-    current: 1,
-    pageSize: 20,
-  });
+  const [queryPagination, setQueryPagination] =
+    useState<TableLikePaginationState>({
+      current: 1,
+      pageSize: 20,
+    });
   
   const { tableData, pagination } = useMemo(() => {
-    const empty = {
-      tableData: [],
-      pagination: {
-        current: queryPagination.current,
-        pageSize: queryPagination.pageSize,
-        total: 0,
-      },
+    const parsed = parseTableLikeData<TableDataItem>(rawData, queryPagination);
+
+    return {
+      tableData: parsed.rows,
+      pagination: parsed.pagination,
     };
-
-    if (!rawData) return empty;
-
-    if (
-      typeof rawData === 'object' &&
-      !Array.isArray(rawData) &&
-      Array.isArray(rawData.items)
-    ) {
-      return {
-        tableData: rawData.items as TableDataItem[],
-        pagination: {
-          current: queryPagination.current,
-          pageSize: queryPagination.pageSize,
-          total: Number(rawData.count) || rawData.items.length,
-        },
-      };
-    }
-
-    if (Array.isArray(rawData)) {
-      return {
-        tableData: rawData as TableDataItem[],
-        pagination: {
-          current: queryPagination.current,
-          pageSize: queryPagination.pageSize,
-          total: rawData.length,
-        },
-      };
-    }
-
-    return empty;
   }, [rawData, queryPagination.current, queryPagination.pageSize]);
 
   const filterFields = useMemo<TableFilterFieldConfig[]>(() => {
@@ -136,36 +104,11 @@ const ComTable: React.FC<ComTableProps> = ({
   }, [searchableFilterFields, activeKeywordFieldKey]);
 
   const columnConfigs = useMemo((): TableColumnConfigItem[] => {
-    const widgetColumns = config?.tableConfig?.columns;
-    if (widgetColumns && widgetColumns.length > 0) {
-      return widgetColumns
-        .filter((col) => col.visible)
-        .sort((a, b) => a.order - b.order);
-    }
-
-    const schemaFields = dataSource?.field_schema;
-    if (schemaFields && schemaFields.length > 0) {
-      return schemaFields.map(
-        (field: ResponseFieldDefinition, index: number) => ({
-          key: field.key,
-          title: field.title || field.key,
-          visible: true,
-          order: index,
-        }),
-      );
-    }
-
-    if (tableData.length > 0) {
-      const firstRow = tableData[0];
-      return Object.keys(firstRow).map((key, index) => ({
-        key,
-        title: key,
-        visible: true,
-        order: index,
-      }));
-    }
-
-    return [];
+    return resolveTableLikeColumns({
+      configuredColumns: config?.tableConfig?.columns,
+      schemaFields: dataSource?.field_schema,
+      rows: tableData,
+    }).filter((col) => col.visible);
   }, [config?.tableConfig?.columns, dataSource?.field_schema, tableData]);
 
   const antColumns = useMemo((): ColumnsType<TableDataItem> => {

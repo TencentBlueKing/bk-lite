@@ -125,7 +125,7 @@ const validateGaugeData = (
     : { isValid: false, message: failMessage };
 };
 
-const validateMessageData = (
+const validateEventTableData = (
   data: unknown,
 ): { isValid: boolean; message?: string } => {
   if (!data || (Array.isArray(data) && data.length === 0)) {
@@ -133,7 +133,7 @@ const validateMessageData = (
   }
 
   const failMessage =
-    '数据结构不符：事件表期望 Array<{timestamp, level, source, message}> 或 {items: [...] }';
+    '数据结构不符：事件表期望数组，或包含 items 数组的分页结构';
 
   const list = Array.isArray(data)
     ? data
@@ -152,20 +152,7 @@ const validateMessageData = (
   }
 
   const hasExpectedRow = list.some((item) => {
-    if (!item || typeof item !== 'object') {
-      return false;
-    }
-
-    const row = item as Record<string, unknown>;
-    const timestamp =
-      row.timestamp ||
-      row.time ||
-      row._time ||
-      row.event_time ||
-      row.created_at;
-    const msg = row.message || row.msg || row.content || row.detail || row.body;
-
-    return Boolean(timestamp) && Boolean(msg);
+    return Boolean(item) && typeof item === 'object';
   });
 
   return hasExpectedRow
@@ -256,6 +243,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     }
     return config?.dataSource;
   }, [config?.dataSource]);
+  const isTableLikeChart = chartType === 'table' || chartType === 'eventTable';
   const widgetUsesNamespace = useMemo(
     () =>
       Array.isArray(dataSource?.namespaces) && dataSource.namespaces.length > 0,
@@ -279,7 +267,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         ...(widgetUsesNamespace && builtinNamespaceId !== undefined
           ? { namespace_id: builtinNamespaceId }
           : {}),
-        ...(chartType === 'table' ? tableQueryParams : {}),
+        ...(isTableLikeChart ? tableQueryParams : {}),
       },
       unifiedFilterValues,
       filterBindings: config?.filterBindings,
@@ -291,7 +279,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     dataSource,
     widgetUsesNamespace,
     builtinNamespaceId,
-    chartType,
+    isTableLikeChart,
     tableQueryParams,
     unifiedFilterValues,
     filterDefinitions,
@@ -309,7 +297,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         ...(widgetUsesNamespace && builtinNamespaceId !== undefined
           ? { namespace_id: builtinNamespaceId }
           : {}),
-        ...(chartType === 'table' ? tableQueryParams : {}),
+        ...(isTableLikeChart ? tableQueryParams : {}),
       },
       unifiedFilterValues,
       filterBindings: config?.filterBindings,
@@ -321,7 +309,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     dataSource,
     widgetUsesNamespace,
     builtinNamespaceId,
-    chartType,
+    isTableLikeChart,
     tableQueryParams,
     unifiedFilterValues,
     filterDefinitions,
@@ -436,8 +424,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           return validateTopNData(data, config, errorMessage);
         case 'gauge':
           return validateGaugeData(data, config);
-        case 'message':
-          return validateMessageData(data);
+        case 'eventTable':
+          return validateEventTableData(data);
         case 'table':
           return { isValid: true };
         default:
@@ -454,8 +442,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     nextRequestParams: Record<string, any>,
     requestKey: string,
   ) => {
-    const isTableChart = chartType === 'table';
-
     if (!normalizedDataSourceId) {
       return;
     }
@@ -463,7 +449,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     const currentFetchId = ++fetchIdRef.current;
 
     try {
-      if (isTableChart) {
+      if (isTableLikeChart) {
         setTableLoading(true);
       } else {
         setLoading(true);
@@ -513,7 +499,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       widgetRequestCache.delete(requestKey);
     } finally {
       if (currentFetchId !== fetchIdRef.current) return;
-      if (isTableChart) {
+      if (isTableLikeChart) {
         setTableLoading(false);
       } else {
         setLoading(false);
@@ -615,7 +601,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       filterSearchChanged && hasEnabledFilterBindings;
     const shouldFetchForNamespaceSearch =
       namespaceSearchChanged && widgetUsesNamespace;
-    const shouldFetchForTableQuery = chartType === 'table' && tableQueryChanged;
+    const shouldFetchForTableQuery = isTableLikeChart && tableQueryChanged;
 
     if (!requestEnabled || !requestSignature || !requestParams || !requestKey) {
       previousRequestRef.current = {
@@ -662,6 +648,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     reloadVersion,
     tableQueryKey,
     chartType,
+    isTableLikeChart,
     hasEnabledFilterBindings,
     widgetUsesNamespace,
   ]);
@@ -726,7 +713,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     <WidgetErrorState message={message} />
   );
 
-  if (loading && chartType !== 'table') {
+  if (loading && !isTableLikeChart) {
     return (
       <div className="h-full flex items-center justify-center">
         <Spin spinning={loading} />
@@ -748,13 +735,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         chartType={chartType}
         rawData={rawData}
         baselineData={baselineData}
-        loading={chartType === 'table' ? tableLoading : loading}
+        loading={isTableLikeChart ? tableLoading : loading}
         config={config}
         dataSource={dataSource}
         onReady={onReady}
-        onQueryChange={
-          chartType === 'table' ? handleTableQueryChange : undefined
-        }
+        onQueryChange={isTableLikeChart ? handleTableQueryChange : undefined}
         fallback={renderError(
           `${t('dashboard.unknownComponentType')}: ${chartType}`,
         )}

@@ -39,7 +39,8 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
     single: t('dataSource.singleValue'),
     gauge: t('dataSource.gauge'),
     table: t('dataSource.table'),
-    message: t('dataSource.message'),
+    eventTable: t('dataSource.eventTable'),
+    message: t('dataSource.eventTable'),
     topN: t('dataSource.topN'),
   };
 

@@ -11,7 +11,7 @@ export const getChartTypeList = (): ChartTypeItem[] => {
     { label: 'dataSource.singleValue', value: 'single' },
     { label: 'dataSource.gauge', value: 'gauge' },
     { label: 'dataSource.table', value: 'table' },
-    { label: 'dataSource.message', value: 'message' },
+    { label: 'dataSource.eventTable', value: 'eventTable' },
     { label: 'dataSource.topN', value: 'topN' },
   ];
 };

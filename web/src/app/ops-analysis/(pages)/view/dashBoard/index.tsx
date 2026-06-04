@@ -574,6 +574,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           conversionFactor: config.conversionFactor,
           decimalPlaces: config.decimalPlaces,
           thresholdColors: config.thresholdColors,
+          gaugeMin: config.gaugeMin,
+          gaugeMax: config.gaugeMax,
+          gaugeShape: config.gaugeShape,
           compare: config.compare,
         },
       };
@@ -934,6 +937,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                 conversionFactor: values.conversionFactor,
                 decimalPlaces: values.decimalPlaces,
                 thresholdColors: values.thresholdColors,
+                gaugeMin: values.gaugeMin,
+                gaugeMax: values.gaugeMax,
+                gaugeShape: values.gaugeShape,
                 compare: values.compare,
               },
             };

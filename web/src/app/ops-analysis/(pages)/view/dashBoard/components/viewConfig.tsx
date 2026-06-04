@@ -52,6 +52,11 @@ import {
   buildDisplayColumnsFromSchema,
   isDisplayableDefaultField,
 } from './viewConfig/utils/columnProbing';
+import {
+  buildDisplayColumnFieldOptions,
+  resolveDatasourceChartTypes,
+  shouldShowTableFilterFields,
+} from './viewConfig/utils/tableSettingsBehavior';
 
 interface FormValues {
   name: string;
@@ -115,12 +120,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (!dataSource?.chart_type?.length) {
       return [];
     }
-    const allChartTypes = getChartTypeList();
-    return dataSource.chart_type
-      .map((type: string) =>
-        allChartTypes.find((chart) => chart.value === type),
-      )
-      .filter((item): item is ChartTypeItem => Boolean(item));
+    return resolveDatasourceChartTypes({
+      chartTypes: dataSource.chart_type,
+      chartTypeDefinitions: getChartTypeList(),
+    });
   };
 
   const getDataSourceChartTypes = useMemo(() => {
@@ -181,17 +184,6 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     previewFilterDefinitions.length > 0 && Boolean(selectedDataSource?.params);
   const hasUnifiedFilterBindings = bindableFilterParams.length > 0;
 
-  const gaugeFieldOptions = useMemo(
-    () =>
-      availableFields
-        .filter((field) => field.value_type === 'number')
-        .map((field) => ({
-          label: field.title ? `${field.key} (${field.title})` : field.key,
-          value: field.key,
-        })),
-    [availableFields],
-  );
-
   const tableConfig = useTableConfig({
     form,
     chartType,
@@ -205,6 +197,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     builtinNamespaceId,
     t,
   });
+  const isTableLikeChartType =
+    chartType === 'table' || chartType === 'eventTable';
 
   const singleValueConfig = useSingleValueConfig({
     form,
@@ -226,7 +220,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       singleValueConfig.resetSingleValueConfig();
 
       // 加载完整数据源（brief 模式不含 params）
-      const fullItem = await ensureDataSource(item.id) || item;
+      const fullItem = (await ensureDataSource(item.id)) || item;
 
       // 设置新数据源
       setSelectedDataSource(fullItem);
@@ -259,18 +253,28 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
       // 重建 filter bindings
       if (fullItem.params?.length) {
-        const previewDefs = computePreviewDefinitions(filterDefinitions, fullItem);
-        setFilterBindings(buildDefaultFilterBindings(fullItem.params, previewDefs));
+        const previewDefs = computePreviewDefinitions(
+          filterDefinitions,
+          fullItem,
+        );
+        setFilterBindings(
+          buildDefaultFilterBindings(fullItem.params, previewDefs),
+        );
       }
 
-      // 如果默认图表类型是 table，尝试探测列
-      if (defaultChartType === 'table') {
+      // 如果默认图表类型是 table-like，尝试探测列
+      if (defaultChartType === 'table' || defaultChartType === 'eventTable') {
         const schemaFields = fullItem.field_schema;
         if (schemaFields && schemaFields.length > 0) {
-          tableConfig.setDisplayColumns(buildDisplayColumnsFromSchema(schemaFields));
+          tableConfig.setDetectedDisplayColumns(
+            buildDisplayColumnsFromSchema(schemaFields),
+          );
         } else {
-          const probedColumns = await tableConfig.probeDefaultDisplayColumns(fullItem, params);
-          tableConfig.setDisplayColumns(probedColumns);
+          const probedColumns = await tableConfig.probeDefaultDisplayColumns(
+            fullItem,
+            params,
+          );
+          tableConfig.setDetectedDisplayColumns(probedColumns);
         }
       }
     },
@@ -305,35 +309,37 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     [availableFields],
   );
 
-  const filterFieldOptions = useMemo(() => {
-    const columnOptions = tableConfig.displayColumns
-      .filter((col) => !!col.key?.trim())
-      .map((col) => ({
-        label: col.key,
-        value: col.key,
-      }));
+  const displayColumnOptions = useMemo(
+    () =>
+      buildDisplayColumnFieldOptions({
+        availableFields,
+        displayColumns: tableConfig.displayColumns,
+        detectedColumns: tableConfig.detectedDisplayColumns,
+      }),
+    [
+      availableFields,
+      tableConfig.displayColumns,
+      tableConfig.detectedDisplayColumns,
+    ],
+  );
 
-    if (columnOptions.length > 0) {
-      const unique = new Map<string, { label: string; value: string }>();
-      columnOptions.forEach((item) => {
-        if (!unique.has(item.value)) {
-          unique.set(item.value, item);
-        }
-      });
-      return Array.from(unique.values());
+  const showTableFilterFields = useMemo(
+    () => shouldShowTableFilterFields(chartType),
+    [chartType],
+  );
+
+  const filterFieldOptions = useMemo(() => {
+    if (!showTableFilterFields) {
+      return [];
     }
 
-    return availableFields.map((f) => ({
-      label: f.key,
-      value: f.key,
-    }));
-  }, [tableConfig.displayColumns, availableFields]);
+    return displayColumnOptions;
+  }, [displayColumnOptions, showTableFilterFields]);
 
   const invalidConfiguredFieldKeys = useMemo(() => {
     const availableFieldKeySet = new Set([
       ...availableFields.map((field) => field.key),
-      ...tableConfig.displayColumns
-        .filter((col) => col.isDefault)
+      ...tableConfig.detectedDisplayColumns
         .map((col) => (col.key || '').trim())
         .filter(Boolean),
     ]);
@@ -344,13 +350,20 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
     const configuredKeys = [
       ...tableConfig.displayColumns.map((col) => (col.key || '').trim()),
-      ...tableConfig.filterFields.map((field) => (field.key || '').trim()),
+      ...(showTableFilterFields
+        ? tableConfig.filterFields.map((field) => (field.key || '').trim())
+        : []),
     ].filter(Boolean);
 
     return Array.from(
       new Set(configuredKeys.filter((key) => !availableFieldKeySet.has(key))),
     );
-  }, [availableFields, tableConfig.displayColumns, tableConfig.filterFields]);
+  }, [
+    availableFields,
+    tableConfig.displayColumns,
+    tableConfig.filterFields,
+    showTableFilterFields,
+  ]);
 
   const handleChartTypeChange = async (e: any) => {
     const newChartType = e.target.value;
@@ -437,6 +450,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           (probedColumns || []).map((col) => col.key),
         );
 
+        tableConfig.setDetectedDisplayColumns(
+          (targetDataSource?.field_schema || []).length > 0
+            ? buildDisplayColumnsFromSchema(
+              targetDataSource?.field_schema || [],
+            )
+            : probedColumns,
+        );
+
         tableConfig.setDisplayColumns(
           valueConfig.tableConfig.columns.map((c, idx) => ({
             ...c,
@@ -449,11 +470,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
       if (
         !valueConfig?.tableConfig?.columns?.length &&
-        formValues.chartType === 'table'
+        (formValues.chartType === 'table' ||
+          formValues.chartType === 'eventTable')
       ) {
         const schemaFields = targetDataSource?.field_schema;
         if (schemaFields && schemaFields.length > 0) {
-          tableConfig.setDisplayColumns(
+          tableConfig.setDetectedDisplayColumns(
             buildDisplayColumnsFromSchema(schemaFields),
           );
         } else {
@@ -461,7 +483,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             targetDataSource,
             formValues.params || {},
           );
-          tableConfig.setDisplayColumns(probedColumns);
+          tableConfig.setDetectedDisplayColumns(probedColumns);
         }
       }
     } else {
@@ -469,6 +491,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       if (!valueConfig?.tableConfig?.columns?.length) {
         tableConfig.setDisplayColumns([]);
       }
+      tableConfig.setDetectedDisplayColumns([]);
     }
 
     if (valueConfig?.selectedFields) {
@@ -526,7 +549,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   };
 
   const handleFormValuesChange = (changedValues: Record<string, any>) => {
-    if (chartType !== 'table') {
+    if (!isTableLikeChartType) {
       return;
     }
     if ('params' in changedValues && selectedDataSource) {
@@ -570,11 +593,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         delete values.params;
       }
 
-      if (chartType === 'table') {
+      if (isTableLikeChartType) {
         tableConfig.setDisplayColumnsError('');
         const tableConfigData: TableConfig = {};
 
-        if (tableConfig.filterFields.length > 0) {
+        if (showTableFilterFields && tableConfig.filterFields.length > 0) {
           tableConfigData.filterFields = tableConfig.filterFields
             .filter((f) => f.key)
             .map(({ key, label, inputType }) => ({
@@ -792,12 +815,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           </div>
         )}
 
-        {chartType === 'table' && (
+        {isTableLikeChartType && (
           <TableSettingsSection
             t={t}
             displayColumns={tableConfig.displayColumns}
+            displayColumnOptions={displayColumnOptions}
             filterFields={tableConfig.filterFields}
             filterFieldOptions={filterFieldOptions}
+            showFilterFields={showTableFilterFields}
             invalidConfiguredFieldKeys={invalidConfiguredFieldKeys}
             isProbingColumns={tableConfig.isProbingColumns}
             paramsChangedAfterProbe={tableConfig.paramsChangedAfterProbe}
@@ -854,8 +879,16 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             t={t}
             sectionTitle={t('dashboard.gaugeSettings')}
             selectedDataSource={selectedDataSource}
-            fieldOptions={gaugeFieldOptions}
+            singleValueTreeData={singleValueConfig.singleValueTreeData}
+            selectedFields={singleValueConfig.selectedFields}
+            loadingSingleValueData={singleValueConfig.loadingSingleValueData}
             thresholdColors={singleValueConfig.thresholdColors}
+            onFetchSingleValueDataFields={
+              singleValueConfig.fetchSingleValueDataFields
+            }
+            onSingleValueFieldChange={
+              singleValueConfig.handleSingleValueFieldChange
+            }
             onThresholdChange={singleValueConfig.handleThresholdChange}
             onThresholdBlur={singleValueConfig.handleThresholdBlur}
             onAddThreshold={singleValueConfig.addThreshold}

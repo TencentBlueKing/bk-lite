@@ -4,6 +4,7 @@ export type ChartType =
   | 'pie'
   | 'single'
   | 'table'
+  | 'eventTable'
   | 'topN'
   | 'gauge'
   | 'message';
