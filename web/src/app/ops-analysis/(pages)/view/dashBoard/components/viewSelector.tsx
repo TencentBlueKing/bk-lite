@@ -37,7 +37,10 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
     bar: t('dataSource.barChart'),
     pie: t('dataSource.pieChart'),
     single: t('dataSource.singleValue'),
+    gauge: t('dataSource.gauge'),
     table: t('dataSource.table'),
+    eventTable: t('dataSource.eventTable'),
+    message: t('dataSource.eventTable'),
     topN: t('dataSource.topN'),
   };
 
