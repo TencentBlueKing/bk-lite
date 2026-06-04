@@ -1517,24 +1517,6 @@ class TestHostRemoteRuntime:
 
 
 @pytest.mark.asyncio
-class TestCollectApiRouteSeparation:
-    async def test_collect_info_rejects_host_model_id(self):
-        from api.collect import collect
-
-        class DummyRequest:
-            headers = {"cmdbmodel_id": "host"}
-            query_args = []
-
-            async def receive_body(self):
-                return b""
-
-        response_obj = await collect(DummyRequest())
-
-        assert response_obj.status == 400
-        assert response_obj.headers.get("X-Route-Hint") == "/api/monitor/host/metrics"
-
-
-@pytest.mark.asyncio
 class TestPublishMetricsToNats:
     async def test_publish_metrics_to_nats_raises_when_any_line_publish_fails(self, monkeypatch):
         influxdb_client_module = types.ModuleType("influxdb_client")

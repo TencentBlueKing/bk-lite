@@ -87,7 +87,7 @@ Telegraf
 ## Route separation
 
 - remote host collection must use `/api/monitor/host/metrics`
-- `/api/collect/collect_info` now rejects `model_id=host` with an explicit route hint
+- CMDB collection traffic on `/api/collect/collect_info` remains unchanged and is not blocked by the host remote monitoring flow changes
 
 ## Runtime validation
 

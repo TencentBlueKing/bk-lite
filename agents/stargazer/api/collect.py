@@ -121,7 +121,6 @@ async def collect(request):
     config_type = request.headers.get("config_type")
 
     model_id = params.get("model_id")
-    plugin_name = params.get("plugin_name")
     if not model_id:
         # 返回错误指标
         current_timestamp = int(time.time() * 1000)
@@ -139,27 +138,6 @@ async def collect(request):
 
 
     try:
-        if model_id == "host":
-            current_timestamp = int(time.time() * 1000)
-            error_lines = [
-                "# HELP collection_request_error Collection request error",
-                "# TYPE collection_request_error gauge",
-                f'collection_request_error{{model_id="host",error="host remote collection must use /api/monitor/host/metrics"}} 1 {current_timestamp}'
-            ]
-            logger.warning(
-                "Host remote collection rejected on /api/collect/collect_info; use /api/monitor/host/metrics instead"
-            )
-            return response.raw(
-                "\n".join(error_lines) + "\n",
-                content_type='text/plain; version=0.0.4; charset=utf-8',
-                status=400,
-                headers={
-                    'X-Route-Hint': '/api/monitor/host/metrics',
-                    'X-Rejected-Model-ID': model_id,
-                    'X-Rejected-Plugin-Name': str(plugin_name or ''),
-                }
-            )
-
         # 3. 构建基础任务参数
         task_params = {
             **params,  # 原有参数（包含 plugin_name）
