@@ -39,6 +39,16 @@ async def _clear_host_remote_callback_context_best_effort(task_id: str) -> None:
         )
 
 
+async def _clear_host_remote_running_flag_best_effort(task_id: str) -> None:
+    try:
+        await host_remote_callback.clear_host_remote_running_flag(task_id)
+    except Exception as err:
+        logger.error(
+            f"Host Remote running flag cleanup failed for {task_id}: {err}",
+            exc_info=True,
+        )
+
+
 @register_handler("list_regions")
 async def list_regions(data):
     """处理 list_regions 请求"""
@@ -86,7 +96,10 @@ async def debug_ipmi(data: dict) -> dict:
     return await ProtocolDebugService(data).execute()
 
 
-@register_handler(host_remote_callback.HOST_REMOTE_CALLBACK_HANDLER)
+@register_handler(
+    host_remote_callback.HOST_REMOTE_CALLBACK_HANDLER,
+    queue=host_remote_callback.get_host_remote_callback_queue(),
+)
 async def handle_host_remote_callback(data: dict) -> dict:
     payload = _extract_host_remote_callback_payload(data)
     task_id = str(payload.get("task_id") or "").strip()
@@ -107,6 +120,7 @@ async def handle_host_remote_callback(data: dict) -> dict:
         logger.error(f"Host Remote callback processing failed for {task_id}: {err}", exc_info=True)
         error_metrics = generate_monitor_error_metrics(params, err)
         await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
+        await _clear_host_remote_running_flag_best_effort(task_id)
         await _clear_host_remote_callback_context_best_effort(task_id)
         return {
             "task_id": task_id,
@@ -116,6 +130,7 @@ async def handle_host_remote_callback(data: dict) -> dict:
         }
 
     await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
+    await _clear_host_remote_running_flag_best_effort(task_id)
     await _clear_host_remote_callback_context_best_effort(task_id)
     return {
         "task_id": task_id,

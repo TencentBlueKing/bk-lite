@@ -17,6 +17,10 @@ def get_host_remote_callback_subject(service_name: str | None = None) -> str:
     return f"{service_name or get_stargazer_service_name()}.{HOST_REMOTE_CALLBACK_HANDLER}"
 
 
+def get_host_remote_callback_queue(service_name: str | None = None) -> str:
+    return get_host_remote_callback_subject(service_name)
+
+
 def _normalize_task_id(task_id) -> str:
     normalized_task_id = str(task_id or "").strip()
     if not normalized_task_id:
@@ -26,6 +30,10 @@ def _normalize_task_id(task_id) -> str:
 
 def _build_callback_context_key(task_id) -> str:
     return f"{_HOST_REMOTE_CALLBACK_CONTEXT_KEY_PREFIX}:{_normalize_task_id(task_id)}"
+
+
+def get_task_running_key(task_id) -> str:
+    return f"task:running:{_normalize_task_id(task_id)}"
 
 
 def _make_json_safe_dict(value) -> dict:
@@ -98,3 +106,8 @@ async def clear_host_remote_callback_context(task_id):
     redis_pool = await _get_host_remote_callback_pool()
     await redis_pool.delete(_build_callback_context_key(task_id))
     return callback_context
+
+
+async def clear_host_remote_running_flag(task_id):
+    redis_pool = await _get_host_remote_callback_pool()
+    await redis_pool.delete(get_task_running_key(task_id))

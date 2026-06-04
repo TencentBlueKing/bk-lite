@@ -156,16 +156,17 @@ class HostCollector(BaseCollector):
         }
 
     async def submit_collection(
-        self, callback_subject: str, callback_payload: Dict[str, Any]
+        self, task_id: str, callback_subject: str, callback_payload: Dict[str, Any]
     ) -> Dict[str, Any]:
         callback = dict(callback_payload or {})
         callback.update({"subject": callback_subject, "timeout": 10})
         return await self._execute_collection(
-            callback=callback
+            callback=callback,
+            task_id=task_id,
         )
 
     async def _execute_collection(
-        self, callback: Dict[str, Any] | None = None
+        self, callback: Dict[str, Any] | None = None, task_id: str | None = None
     ) -> Dict[str, Any]:
         from core.ansible_rpc import ansible_adhoc
 
@@ -177,6 +178,7 @@ class HostCollector(BaseCollector):
             module_args=config["module_args"],
             execute_timeout=config["execute_timeout"],
             callback=callback,
+            task_id=task_id,
         )
 
     def process_adhoc_result(self, result: Dict[str, Any]) -> str:
