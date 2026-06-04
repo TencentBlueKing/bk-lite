@@ -10,6 +10,9 @@ import {
   Input,
   Drawer,
   DatePicker,
+  Tabs,
+  Table,
+  Empty,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -22,12 +25,15 @@ import {
   ArrowDownOutlined,
   CheckCircleFilled,
   CloseCircleFilled,
+  FolderOutlined,
+  FileOutlined,
 } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
+import MarkdownRenderer from '@/components/markdown';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
-import { JobRecord, JobRecordStatus, JobRecordSource, JobRecordDetail, ExecutionTarget } from '@/app/job/types';
+import { JobRecord, JobRecordStatus, JobRecordSource, JobRecordDetail, ExecutionTarget, Playbook, FileTreeNode } from '@/app/job/types';
 import { ColumnItem } from '@/types';
 import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
@@ -44,7 +50,7 @@ const JobRecordPage = () => {
   const searchParams = useSearchParams();
   const recordId = searchParams.get('id');
   const { isLoading: isApiReady } = useApiClient();
-  const { getJobRecordList, getJobRecordDetail } = useJobApi();
+  const { getJobRecordList, getJobRecordDetail, getPlaybookDetail } = useJobApi();
 
   // List state
   const [data, setData] = useState<JobRecord[]>([]);
@@ -65,6 +71,9 @@ const JobRecordPage = () => {
   const [logSearch, setLogSearch] = useState('');
   const [autoScroll, setAutoScroll] = useState(false);
   const [scriptDrawerOpen, setScriptDrawerOpen] = useState(false);
+  const [playbookDrawerOpen, setPlaybookDrawerOpen] = useState(false);
+  const [viewingPlaybook, setViewingPlaybook] = useState<Playbook | null>(null);
+  const [playbookDetailLoading, setPlaybookDetailLoading] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -252,6 +261,24 @@ const JobRecordPage = () => {
 
     router.push('/job/execution/quick-exec?mode=reexecute');
   }, [detail, router]);
+
+  const handleOpenPlaybook = useCallback(async () => {
+    if (!detail?.playbook) {
+      return;
+    }
+
+    setPlaybookDrawerOpen(true);
+    setPlaybookDetailLoading(true);
+    try {
+      const playbookDetail = await getPlaybookDetail(detail.playbook);
+      setViewingPlaybook(playbookDetail);
+    } catch {
+      message.error(t('job.loadPlaybookDetailFailed'));
+      setPlaybookDrawerOpen(false);
+    } finally {
+      setPlaybookDetailLoading(false);
+    }
+  }, [detail?.playbook, getPlaybookDetail, t]);
 
   useEffect(() => {
     if (!isApiReady) {
@@ -561,6 +588,127 @@ const JobRecordPage = () => {
     return detail.script_content.split('\n').length;
   }, [detail?.script_content]);
 
+  const renderPlaybookFileTree = useCallback((nodes: FileTreeNode[], depth = 0) => {
+    return nodes.map((node, idx) => (
+      <div key={`${depth}-${idx}-${node.name}`}>
+        <div
+          className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-(--color-fill-2)"
+          style={{ paddingLeft: `${depth * 20 + 8}px` }}
+        >
+          {node.type === 'directory' ? (
+            <FolderOutlined style={{ color: '#faad14' }} />
+          ) : (
+            <FileOutlined style={{ color: 'var(--color-text-3)' }} />
+          )}
+          <span className="text-sm" style={{ color: 'var(--color-text-1)' }}>
+            {node.name}
+          </span>
+        </div>
+        {node.type === 'directory' && node.children && renderPlaybookFileTree(node.children, depth + 1)}
+      </div>
+    ));
+  }, []);
+
+  const playbookViewTabs = useMemo(() => {
+    if (!viewingPlaybook) {
+      return [];
+    }
+
+    const basicInfoItems = [
+      { label: t('job.executionVersion'), value: detail?.playbook ? (detail.playbook_version || '-') : null },
+      { label: t('job.playbookName'), value: viewingPlaybook.name },
+      { label: t('job.playbookDescription'), value: viewingPlaybook.description || '-' },
+      { label: t('job.currentVersion'), value: viewingPlaybook.version || '-' },
+      { label: t('job.recentUpdateTime'), value: viewingPlaybook.updated_at ? dayjs(viewingPlaybook.updated_at).format('YYYY-MM-DD HH:mm:ss') : '-' },
+      { label: t('job.uploader'), value: viewingPlaybook.created_by || '-' },
+    ].filter((item): item is { label: string; value: string | null } => item.value !== null);
+
+    return [
+      {
+        key: 'basicInfo',
+        label: t('job.basicInfoTab'),
+        children: (
+          <div className="space-y-4 py-2">
+            {basicInfoItems.map((item, idx) => (
+              <div key={idx} className="flex">
+                <span
+                  className="w-32 shrink-0 text-sm"
+                  style={{ color: 'var(--color-text-3)' }}
+                >
+                  {item.label}
+                </span>
+                <span className="text-sm" style={{ color: 'var(--color-text-1)' }}>
+                  {item.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        ),
+      },
+      {
+        key: 'params',
+        label: t('job.paramsDescriptionTab'),
+        children:
+          viewingPlaybook.params && viewingPlaybook.params.length > 0 ? (
+            <Table
+              dataSource={viewingPlaybook.params}
+              rowKey="name"
+              pagination={false}
+              size="small"
+              columns={[
+                {
+                  title: t('job.parameterName'),
+                  dataIndex: 'name',
+                  key: 'name',
+                  render: (text: string) => (
+                    <span className="font-mono text-[var(--color-primary)]">{text}</span>
+                  ),
+                },
+                {
+                  title: t('job.defaultVal'),
+                  dataIndex: 'default',
+                  key: 'default',
+                  render: (text: string) => text || '-',
+                },
+                {
+                  title: t('job.paramDesc'),
+                  dataIndex: 'description',
+                  key: 'description',
+                  render: (text: string) => text || '-',
+                },
+              ]}
+            />
+          ) : (
+            <Empty description={t('job.noParams')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          ),
+      },
+      {
+        key: 'fileList',
+        label: t('job.fileListTab'),
+        children:
+          viewingPlaybook.file_list && viewingPlaybook.file_list.length > 0 ? (
+            <div
+              className="rounded-md border p-2"
+              style={{ borderColor: 'var(--color-border-1)' }}
+            >
+              {renderPlaybookFileTree(viewingPlaybook.file_list)}
+            </div>
+          ) : (
+            <Empty description={t('job.noFiles')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          ),
+      },
+      {
+        key: 'readme',
+        label: t('job.readmeTab'),
+        children: viewingPlaybook.readme ? (
+          <MarkdownRenderer content={viewingPlaybook.readme} />
+        ) : (
+          <Empty description={t('job.noReadme')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        ),
+      },
+    ];
+  }, [detail?.playbook, detail?.playbook_version, renderPlaybookFileTree, t, viewingPlaybook]);
+
   // Download log as file
   const handleDownloadLog = () => {
     const content = selectedTarget?.stdout || selectedTarget?.stderr || '';
@@ -657,12 +805,14 @@ const JobRecordPage = () => {
                 {getStatusConfig(detail.status).label}
               </Tag>
             </div>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={handleReExecute}
-            >
-              {t('job.reExecute')}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={handleReExecute}
+              >
+                {t('job.reExecute')}
+              </Button>
+            </div>
           </div>
 
           {/* Meta Info Row */}
@@ -719,14 +869,21 @@ const JobRecordPage = () => {
                 </span>
               </div>
             </div>
-            {detail.job_type === 'script' && detail.script_content && (
-              <Button
-                icon={<FileTextOutlined />}
-                onClick={() => setScriptDrawerOpen(true)}
-              >
-                {t('job.viewScriptBtn')}
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {detail.playbook && (
+                <Button icon={<FileTextOutlined />} onClick={handleOpenPlaybook}>
+                  {t('job.viewVersion')}
+                </Button>
+              )}
+              {detail.job_type === 'script' && detail.script_content && (
+                <Button
+                  icon={<FileTextOutlined />}
+                  onClick={() => setScriptDrawerOpen(true)}
+                >
+                  {t('job.viewScriptBtn')}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -993,6 +1150,37 @@ const JobRecordPage = () => {
               ))}
             </pre>
           </div>
+        </Drawer>
+
+        <Drawer
+          open={playbookDrawerOpen}
+          onClose={() => {
+            setPlaybookDrawerOpen(false);
+            setViewingPlaybook(null);
+          }}
+          placement="right"
+          width={600}
+          title={
+            viewingPlaybook ? (
+              <div className="flex items-center gap-3">
+                <span>{viewingPlaybook.name}</span>
+                <Tag color="blue">{viewingPlaybook.version || 'v1.0.0'}</Tag>
+              </div>
+            ) : null
+          }
+          loading={playbookDetailLoading}
+          styles={{
+            body: {
+              padding: '0 24px 24px',
+            },
+          }}
+        >
+          {viewingPlaybook && (
+            <Tabs
+              items={playbookViewTabs}
+              className="h-full [&_.ant-tabs-content]:h-full [&_.ant-tabs-tabpane]:h-full [&_.ant-tabs-tabpane]:overflow-auto"
+            />
+          )}
         </Drawer>
       </div>
     );
