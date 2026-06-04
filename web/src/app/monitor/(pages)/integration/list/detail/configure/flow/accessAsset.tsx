@@ -28,6 +28,10 @@ interface ExistingAssetItem {
   name?: string;
   agent_id?: string;
   time?: string;
+  cloud_region_id?: number;
+  ip?: string;
+  organizations?: React.Key[];
+  fallback_sampling_rate?: number;
 }
 
 interface AccessAssetProps {
@@ -137,18 +141,12 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
   );
 
   const handleAccessTypeChange = (value: FlowAssetFormValues['accessType']) => {
-    if (value === 'existing') {
+    if (value === 'new') {
       form.setFieldsValue({
-        organizations: undefined,
-        fallback_sampling_rate: undefined
+        organizations: selectedGroup?.id ? [Number(selectedGroup.id)] : undefined,
+        fallback_sampling_rate: FALLBACK_SAMPLING_RATE_DEFAULT
       });
-      return;
     }
-
-    form.setFieldsValue({
-      organizations: selectedGroup?.id ? [Number(selectedGroup.id)] : undefined,
-      fallback_sampling_rate: FALLBACK_SAMPLING_RATE_DEFAULT
-    });
   };
 
   const handleExistingAssetChange = (value: string) => {
@@ -156,10 +154,10 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
     form.setFieldsValue({
       instance_id: value,
       name: selectedAsset?.instance_name || selectedAsset?.name,
-      cloud_region_id: undefined,
-      ip: undefined,
-      organizations: undefined,
-      fallback_sampling_rate: undefined
+      cloud_region_id: selectedAsset?.cloud_region_id,
+      ip: selectedAsset?.ip,
+      organizations: selectedAsset?.organizations,
+      fallback_sampling_rate: selectedAsset?.fallback_sampling_rate
     });
   };
 
