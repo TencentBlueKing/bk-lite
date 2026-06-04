@@ -306,7 +306,7 @@ class InstanceConfigService:
         return result
 
     @staticmethod
-    def get_instance_configs(collect_instance_id, actor_context=None):
+    def get_instance_configs(collect_instance_id, actor_context=None, monitor_plugin_id=None, collector=None, collect_type=None):
         """获取实例配置"""
 
         InstanceConfigService._ensure_instance_access(
@@ -315,7 +315,15 @@ class InstanceConfigService:
             require_operate=False,
         )
 
-        config_objs = CollectConfig.objects.filter(monitor_instance_id=collect_instance_id)
+        filter_kwargs = {"monitor_instance_id": collect_instance_id}
+        if monitor_plugin_id not in (None, ""):
+            filter_kwargs["monitor_plugin_id"] = monitor_plugin_id
+        if collector not in (None, ""):
+            filter_kwargs["collector"] = collector
+        if collect_type not in (None, ""):
+            filter_kwargs["collect_type"] = collect_type
+
+        config_objs = CollectConfig.objects.filter(**filter_kwargs)
 
         configs = []
 
