@@ -2,10 +2,6 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 import { useEffect, useRef } from 'react';
 import { expect, within } from 'storybook/test';
 import GroupEditModal, { GroupModalRef } from '@/app/system-manager/components/group/GroupEditModal';
-import {
-  armRoleListLoadingMock,
-  resetRoleListLoadingMock,
-} from './system-manager-user-org-modal.fixtures';
 
 interface GroupEditModalStoryProps {
   groupId: string | number;
@@ -16,19 +12,11 @@ const GroupEditModalStory = ({ groupId, groupName }: GroupEditModalStoryProps) =
   const ref = useRef<GroupModalRef>(null);
 
   useEffect(() => {
-    if (groupId === 'loading-roles') {
-      armRoleListLoadingMock();
-    }
-
     ref.current?.showModal({
       type: 'edit',
       groupId,
       groupName,
     });
-
-    return () => {
-      resetRoleListLoadingMock();
-    };
   }, [groupId, groupName]);
 
   return <GroupEditModal ref={ref} onSuccess={() => {}} />;
@@ -83,7 +71,7 @@ export const WithInheritedRoles: Story = {
 
 export const LoadingRoleTransfer: Story = {
   args: {
-    groupId: 'loading-roles',
+    groupId: 11,
     groupName: 'Backend Team',
   },
   play: async () => {

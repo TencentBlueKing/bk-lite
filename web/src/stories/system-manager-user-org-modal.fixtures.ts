@@ -125,19 +125,3 @@ export const groupDetailWithRoles: GroupDetailWithRoles = {
     '2001': 'Default / Frontend Team',
   },
 };
-
-let roleListLoadingArmed = false;
-
-export const armRoleListLoadingMock = () => {
-  roleListLoadingArmed = true;
-};
-
-export const resetRoleListLoadingMock = () => {
-  roleListLoadingArmed = false;
-};
-
-export const consumeRoleListLoadingMock = () => {
-  const shouldDelay = roleListLoadingArmed;
-  roleListLoadingArmed = false;
-  return shouldDelay;
-};

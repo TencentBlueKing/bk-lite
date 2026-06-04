@@ -1,7 +1,4 @@
-import {
-  consumeRoleListLoadingMock,
-  roleTreeResponse,
-} from '../../../src/stories/system-manager-user-org-modal.fixtures';
+import { roleTreeResponse } from '../../../src/stories/system-manager-user-org-modal.fixtures';
 
 const users = [
   {
@@ -182,11 +179,9 @@ export const useUserApi = () => {
   };
 
   const getRoleList = async () => {
-    if (consumeRoleListLoadingMock()) {
-      await new Promise((resolve) => {
-        setTimeout(resolve, 1200);
-      });
-    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, 250);
+    });
 
     return buildRoleTree();
   };
