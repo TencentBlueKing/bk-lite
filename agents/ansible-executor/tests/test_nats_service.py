@@ -376,8 +376,11 @@ async def test_enqueue_callback_retry_uses_compact_payload(tmp_path):
     assert published["payload"]["result"] == ""
 
 
-def test_build_task_result_marks_truncated_output(monkeypatch):
-    monkeypatch.setattr("service.nats_service.parse_ansible_output_per_host", lambda output: [{"host": "should-not-be-used"}])
+def test_build_task_result_keeps_structured_results_when_output_is_truncated(monkeypatch):
+    monkeypatch.setattr(
+        "service.nats_service.parse_ansible_output_per_host",
+        lambda output, output_truncated=False: [{"host": "10.10.41.149", "output_truncated": output_truncated}],
+    )
     monkeypatch.setattr("service.nats_service.parse_playbook_recap", lambda output: [{"host": "should-not-be-used"}])
 
     task = QueuedTask(task_id="task-output", task_type="adhoc", payload={"task_id": "task-output"}, callback={}, instance_id="default")
@@ -398,7 +401,7 @@ def test_build_task_result_marks_truncated_output(monkeypatch):
 
     assert result["success"] is True
     assert result["output_truncated"] is True
-    assert result["result"] == "x" * 32
+    assert result["result"] == [{"host": "10.10.41.149", "output_truncated": True}]
     assert result["result_summary"]["output_bytes_total"] == 1024
     assert result["result_summary"]["output_bytes_retained"] == 32
     assert result["result_summary"]["output_max_bytes"] == 32

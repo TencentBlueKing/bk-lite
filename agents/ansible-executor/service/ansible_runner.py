@@ -408,7 +408,14 @@ def _normalize_ansible_host_status(raw_status: str) -> str:
     return "failed"
 
 
-def _build_parsed_host_result(host: str, raw_status: str, exit_code: int | None, output_lines: list[str]) -> dict[str, Any]:
+def _build_parsed_host_result(
+    host: str,
+    raw_status: str,
+    exit_code: int | None,
+    output_lines: list[str],
+    *,
+    output_truncated: bool = False,
+) -> dict[str, Any]:
     output = "\n".join(output_lines).strip()
     status = _normalize_ansible_host_status(raw_status)
     final_exit_code = exit_code if exit_code is not None else (0 if status == "success" else 1)
@@ -422,10 +429,11 @@ def _build_parsed_host_result(host: str, raw_status: str, exit_code: int | None,
         "stderr": stderr,
         "exit_code": final_exit_code,
         "error_message": "" if status == "success" else output,
+        "output_truncated": output_truncated or None,
     }
 
 
-def parse_ansible_output_per_host(output: str) -> list[dict[str, Any]]:
+def parse_ansible_output_per_host(output: str, *, output_truncated: bool = False) -> list[dict[str, Any]]:
     host_line_pattern = re.compile(r"^(\S+)\s+\|\s+(SUCCESS|CHANGED|FAILED|UNREACHABLE!?|SKIPPED)(?:\s+\|\s+rc=(-?\d+))?\s+(>>|=>)\s*(.*)$")
     results: list[dict[str, Any]] = []
     current_host: str | None = None
@@ -444,6 +452,7 @@ def parse_ansible_output_per_host(output: str) -> list[dict[str, Any]]:
                         current_status,
                         current_exit_code,
                         current_output_lines,
+                        output_truncated=output_truncated,
                     )
                 )
             current_host = matched.group(1)
@@ -469,6 +478,7 @@ def parse_ansible_output_per_host(output: str) -> list[dict[str, Any]]:
                 current_status,
                 current_exit_code,
                 current_output_lines,
+                output_truncated=output_truncated,
             )
         )
 

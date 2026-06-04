@@ -8,6 +8,7 @@ from service.ansible_runner import (
     PlaybookRequest,
     _safe_extract_zip,
     _safe_workspace_path,
+    parse_ansible_output_per_host,
     parse_playbook_recap,
     prepare_playbook_execution,
     run_command,
@@ -233,5 +234,28 @@ PLAY RECAP *********************************************************************
             "stderr": "",
             "exit_code": 0,
             "error_message": "",
+        }
+    ]
+
+
+def test_parse_ansible_output_per_host_keeps_structured_result_when_output_is_truncated():
+    output = """[WARNING]: Platform linux on host 10.10.41.149 is using the discovered Python
+10.10.41.149 | CHANGED | rc=0 >>
+xx
+xx
+""".strip()
+
+    result = parse_ansible_output_per_host(output, output_truncated=True)
+
+    assert result == [
+        {
+            "host": "10.10.41.149",
+            "status": "success",
+            "raw_status": "CHANGED",
+            "stdout": "[WARNING]: Platform linux on host 10.10.41.149 is using the discovered Python\nxx\nxx",
+            "stderr": "",
+            "exit_code": 0,
+            "error_message": "",
+            "output_truncated": True,
         }
     ]
