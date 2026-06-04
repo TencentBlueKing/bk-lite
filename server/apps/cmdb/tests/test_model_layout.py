@@ -51,3 +51,10 @@ class TestSearchModelVisibility:
         assert set(ids) == {"host", "switch", "legacy"}
         legacy = next(m for m in result if m["model_id"] == "legacy")
         assert legacy["is_visible"] is True
+
+    def test_default_sort_passes_order_id_to_query(self, fake_graph):
+        fake_graph.query_entity.return_value = ([], 0)
+        ModelManage.search_model(language="en")
+        kwargs = fake_graph.query_entity.call_args.kwargs
+        assert kwargs.get("order") == "order_id"
+        assert kwargs.get("order_type") == "ASC"
