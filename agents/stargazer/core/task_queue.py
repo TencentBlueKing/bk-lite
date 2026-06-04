@@ -25,8 +25,13 @@ def _resolve_running_flag_ttl(params: Dict[str, Any]) -> int:
     if (params or {}).get("monitor_type") != "host":
         return base_ttl
 
-    callback_deadline = int(os.getenv("HOST_REMOTE_CALLBACK_DEADLINE_SECONDS", "1200")) + 60
-    submit_accept_timeout = int(os.getenv("HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS", "300")) + 60
+    # 复用 host_remote_callback 解析后的时限，避免与其默认值不一致
+    from core import host_remote_callback
+
+    callback_deadline = host_remote_callback.HOST_REMOTE_CALLBACK_DEADLINE_SECONDS + 60
+    submit_accept_timeout = (
+        host_remote_callback.HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS + 60
+    )
     return max(base_ttl, callback_deadline, submit_accept_timeout)
 
 

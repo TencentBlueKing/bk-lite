@@ -9,11 +9,29 @@ HOST_REMOTE_CALLBACK_HANDLER = "host_remote.callback"
 HOST_REMOTE_CALLBACK_CONTEXT_TTL_SECONDS = int(
     os.getenv("HOST_REMOTE_CALLBACK_CONTEXT_TTL_SECONDS", "3600")
 )
-HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS = int(
-    os.getenv("HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS", "300")
+_TASK_JOB_TIMEOUT_SECONDS = int(os.getenv("TASK_JOB_TIMEOUT", "600"))
+
+
+def _resolve_host_remote_timeout(env_name: str, ratio: float, floor: int) -> int:
+    """解析 host-remote 等待时限。
+
+    显式设置环境变量时以其为准；否则按 TASK_JOB_TIMEOUT 的比例派生，
+    保证默认配置下 submit-accept 等待与 callback 时限始终小于 worker job 超时，
+    避免等待与 arq job 超时重叠（否则会触发启动告警且行为不一致）。
+    """
+    explicit = os.getenv(env_name)
+    if explicit:
+        return int(explicit)
+    return max(floor, int(_TASK_JOB_TIMEOUT_SECONDS * ratio))
+
+
+# submit-accept 等待发生在 worker job 内部，须明显小于 job 超时
+HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS = _resolve_host_remote_timeout(
+    "HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS", 0.5, 60
 )
-HOST_REMOTE_CALLBACK_DEADLINE_SECONDS = int(
-    os.getenv("HOST_REMOTE_CALLBACK_DEADLINE_SECONDS", "1200")
+# callback 时限由 sweeper 兜底，保持小于 job 超时以避免重叠
+HOST_REMOTE_CALLBACK_DEADLINE_SECONDS = _resolve_host_remote_timeout(
+    "HOST_REMOTE_CALLBACK_DEADLINE_SECONDS", 0.8, 120
 )
 HOST_REMOTE_PROCESSING_STALE_SECONDS = int(
     os.getenv("HOST_REMOTE_PROCESSING_STALE_SECONDS", "300")
