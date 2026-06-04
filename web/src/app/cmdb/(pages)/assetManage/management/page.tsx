@@ -35,11 +35,25 @@ import { useCommon } from '@/app/cmdb/context/common';
 import { useUserInfoContext } from '@/context/userInfo';
 import type { MenuProps } from 'antd';
 
+type DraftClassification = {
+  classification_id: string;
+  classification_name: string;
+  is_visible: boolean;
+  order: number;
+  models: Array<{
+    model_id: string;
+    model_name: string;
+    icn?: string;
+    is_visible: boolean;
+    order_id: number;
+  }>;
+};
+
 const AssetManage = () => {
   const { getClassificationList, deleteClassification } =
     useClassificationApi();
   const { getModelInstanceCount } = useInstanceApi();
-  const { exportModelConfig } = useModelApi();
+  const { exportModelConfig, getModelList } = useModelApi();
   const { isSuperUser, selectedGroup } = useUserInfoContext();
   const authContext = useAuth();
   const { data: session } = useSession();
@@ -65,6 +79,8 @@ const AssetManage = () => {
   const [manageMode, setManageMode] = useState<boolean>(false);
   const [savingLayout, setSavingLayout] = useState<boolean>(false);
   const [layoutDirty, setLayoutDirty] = useState<boolean>(false);
+  const [draftLayout, setDraftLayout] = useState<DraftClassification[]>([]);
+  const originalLayoutRef = useRef<DraftClassification[]>([]);
 
   const showConfigButtons = isSuperUser && selectedGroup?.name === 'Default';
 
@@ -99,6 +115,52 @@ const AssetManage = () => {
     }, []);
     setModelGroup(filtered);
   }, [searchText, rawModelGroup]);
+
+  useEffect(() => {
+    if (!manageMode) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const [groups, models] = await Promise.all([
+          getClassificationList(true),
+          getModelList(true),
+        ]);
+        if (cancelled) return;
+        const grouped: DraftClassification[] = groups.map((g: any) => ({
+          classification_id: g.classification_id,
+          classification_name: g.classification_name,
+          is_visible: g.is_visible ?? true,
+          order: g.order ?? 999,
+          models: models
+            .filter((m: any) => m.classification_id === g.classification_id)
+            .map((m: any) => ({
+              model_id: m.model_id,
+              model_name: m.model_name,
+              icn: m.icn,
+              is_visible: m.is_visible ?? true,
+              order_id: m.order_id ?? 0,
+            }))
+            .sort((a: any, b: any) => a.order_id - b.order_id),
+        }));
+        grouped.sort((a, b) => a.order - b.order);
+        setDraftLayout(grouped);
+        originalLayoutRef.current = JSON.parse(JSON.stringify(grouped));
+        setLayoutDirty(false);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [manageMode]);
+
+  useEffect(() => {
+    if (!manageMode) {
+      setDraftLayout([]);
+      originalLayoutRef.current = [];
+      setLayoutDirty(false);
+    }
+  }, [manageMode]);
 
   const showDeleteConfirm = (row: GroupItem) => {
     confirm({
