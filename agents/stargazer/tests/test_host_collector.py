@@ -33,11 +33,12 @@ from tasks.collectors.host_collector import (
 
 def _load_nats_server_module(monkeypatch):
     import core.nats as core_nats
+    import core.host_remote_callback as host_remote_callback_module
 
     class DummyNatsInstance:
         def __init__(self):
             self.handlers = {}
-            self.service_name = "stargazer-service"
+            self.service_name = host_remote_callback_module.get_stargazer_service_name()
 
         def register_handler(self, subject, queue=None):
             def decorator(handler):
@@ -99,6 +100,31 @@ def _install_fake_host_remote_callback_store(monkeypatch):
         clear_context,
     )
     return host_remote_callback_module, callback_contexts
+
+
+def _install_fake_host_remote_callback_pool(monkeypatch):
+    import core.host_remote_callback as host_remote_callback_module
+
+    class FakeRedisPool:
+        def __init__(self):
+            self.values = {}
+            self.last_set = None
+            self.deleted_keys = []
+
+        async def set(self, key, value, ex=None):
+            self.last_set = (key, value, ex)
+            self.values[key] = value
+
+        async def get(self, key):
+            return self.values.get(key)
+
+        async def delete(self, key):
+            self.deleted_keys.append(key)
+            self.values.pop(key, None)
+
+    fake_pool = FakeRedisPool()
+    monkeypatch.setattr(host_remote_callback_module, "_host_remote_callback_pool", fake_pool)
+    return fake_pool
 
 
 def _build_host_params():
@@ -315,29 +341,35 @@ class TestHostRemoteMonitorTask:
 
         monkeypatch.setattr(host_collector_module, "HostCollector", FakeCollector)
         store_callback_context = AsyncMock()
-        get_callback_subject = MagicMock(return_value="stargazer-service.host_remote.callback")
         monkeypatch.setattr(
             host_remote_callback_module,
             "store_host_remote_callback_context",
             store_callback_context,
         )
-        monkeypatch.setattr(
-            host_remote_callback_module,
-            "get_host_remote_callback_subject",
-            get_callback_subject,
-        )
 
+        nats_server = _load_nats_server_module(monkeypatch)
         params = _build_host_params()
         result = await monitor_handler.collect_host_metrics_task({}, params, "collect-task-1")
+        callback_subject = host_remote_callback_module.get_host_remote_callback_subject()
+        registered_service_name = nats_server.get_nats().service_name
+        registered_subject = host_remote_callback_module.get_host_remote_callback_subject(
+            registered_service_name
+        )
 
         assert result["task_id"] == "collect-task-1"
         assert result["status"] == "queued"
         assert result["monitor_type"] == "host"
         assert result["accepted_task_id"] == "ansible-task-123"
         collect.assert_not_awaited()
-        get_callback_subject.assert_called_once_with()
+        assert host_remote_callback_module.HOST_REMOTE_CALLBACK_HANDLER == "host_remote.callback"
+        assert registered_service_name == host_remote_callback_module.get_stargazer_service_name()
+        assert callback_subject == registered_subject
+        assert (
+            nats_server.get_nats().handlers[host_remote_callback_module.HOST_REMOTE_CALLBACK_HANDLER]
+            is nats_server.handle_host_remote_callback
+        )
         submit_collection.assert_awaited_once_with(
-            "stargazer-service.host_remote.callback",
+            callback_subject,
             {
                 "collect_task_id": "collect-task-1",
                 "instance_id": "region1_host_10.0.0.9",
@@ -653,6 +685,42 @@ class TestHostCollectorCollect:
         result = await collector.collect()
         # 应该正常完成（使用全部模块的脚本）
         assert "host_cpu" in result
+
+
+class TestHostRemoteCallbackHelper:
+    def test_get_host_remote_callback_subject_uses_service_name(self):
+        import core.host_remote_callback as host_remote_callback_module
+
+        assert host_remote_callback_module.get_host_remote_callback_subject("stargazer-service") == (
+            "stargazer-service.host_remote.callback"
+        )
+
+    @pytest.mark.asyncio
+    async def test_store_load_and_clear_host_remote_callback_context_with_fake_redis_pool(
+        self, monkeypatch
+    ):
+        import core.host_remote_callback as host_remote_callback_module
+
+        fake_pool = _install_fake_host_remote_callback_pool(monkeypatch)
+        params = {"host": "10.0.0.9"}
+        ctx = {"trace_id": "abc"}
+
+        await host_remote_callback_module.store_host_remote_callback_context(
+            "task-redis",
+            params,
+            ctx,
+            ttl_seconds=123,
+        )
+
+        loaded = await host_remote_callback_module.load_host_remote_callback_context("task-redis")
+        cleared = await host_remote_callback_module.clear_host_remote_callback_context("task-redis")
+
+        assert fake_pool.last_set[0] == "host_remote:callback_context:task-redis"
+        assert fake_pool.last_set[2] == 123
+        assert json.loads(fake_pool.last_set[1]) == {"ctx": ctx, "params": params}
+        assert loaded == {"ctx": ctx, "params": params}
+        assert cleared == {"ctx": ctx, "params": params}
+        assert fake_pool.deleted_keys == ["host_remote:callback_context:task-redis"]
 
 
 @pytest.mark.asyncio
