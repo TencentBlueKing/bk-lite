@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Form, Input, InputNumber, Radio, Select, message } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
@@ -62,6 +62,16 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
   const [assetLoading, setAssetLoading] = useState(false);
   const [existingAssets, setExistingAssets] = useState<ExistingAssetItem[]>([]);
   const accessType = Form.useWatch('accessType', form);
+  const getCloudRegionListRef = useRef(getCloudRegionList);
+  const getInstanceListRef = useRef(getInstanceList);
+
+  useEffect(() => {
+    getCloudRegionListRef.current = getCloudRegionList;
+  }, [getCloudRegionList]);
+
+  useEffect(() => {
+    getInstanceListRef.current = getInstanceList;
+  }, [getInstanceList]);
 
   useEffect(() => {
     const fetchOptions = async () => {
@@ -69,9 +79,9 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
       setAssetLoading(true);
       try {
         const [regions, assets] = await Promise.all([
-          getCloudRegionList({ page_size: -1 }),
+          getCloudRegionListRef.current({ page_size: -1 }),
           objectId
-            ? getInstanceList(objectId, { page_size: -1 })
+            ? getInstanceListRef.current(objectId, { page_size: -1 })
             : Promise.resolve({ results: [] })
         ]);
         const nextRegions = regions || [];
@@ -98,7 +108,7 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
     };
 
     fetchOptions();
-  }, [form, getCloudRegionList, getInstanceList, initialState, objectId, selectedGroup?.id]);
+  }, [form, initialState, objectId, selectedGroup?.id]);
 
   const existingAssetMap = useMemo(
     () =>
