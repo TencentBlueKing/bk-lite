@@ -146,8 +146,20 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 "classifications and models must be lists",
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
+        # Snapshot prior classification state so we can revert if the
+        # subsequent model write fails (graph DB has no native transaction).
+        prior_classifications = ClassificationManage.snapshot_classification_layout(
+            [c.get("classification_id") for c in classifications if c.get("classification_id")]
+        )
         ClassificationManage.update_classification_layout(classifications)
-        ModelManage.update_model_orders(models)
+        try:
+            ModelManage.update_model_orders(models)
+        except Exception:
+            # Best-effort revert of classification side. Model side either
+            # raised before any write or partially wrote; partial model state
+            # can be safely re-applied on user retry because save is idempotent.
+            ClassificationManage.update_classification_layout(prior_classifications)
+            raise
         return WebUtils.response_success()
 
     @HasPermission("model_management-Delete Model")

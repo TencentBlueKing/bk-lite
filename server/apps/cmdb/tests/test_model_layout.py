@@ -323,3 +323,77 @@ class TestClassificationListAPI:
         client.force_authenticate(user=normal_user)
         client.get("/api/v1/cmdb/api/classification/?include_hidden=true")
         assert calls["include_hidden"] is False
+
+
+class TestSingleModelLookup:
+    def test_search_model_info_returns_hidden_model(self, fake_graph):
+        """search_model_info must NOT apply the is_visible filter — hidden
+        models must remain resolvable by ID so instance pages can still
+        render the model name for references to a hidden model."""
+        fake_graph.query_entity.return_value = (
+            [{
+                "model_id": "ghost",
+                "model_name": "Ghost",
+                "classification_id": "infra",
+                "is_visible": False,
+                "order_id": 0,
+            }], 1,
+        )
+        result = ModelManage.search_model_info("ghost")
+        assert result["model_id"] == "ghost"
+        assert result["is_visible"] is False
+
+
+@pytest.mark.django_db
+class TestSaveLayoutAtomicity:
+    def test_reverts_classifications_when_model_update_fails(
+        self, superuser, monkeypatch,
+    ):
+        apply_calls = []
+        snapshot_calls = []
+
+        def fake_snapshot(ids):
+            snapshot_calls.append(list(ids))
+            return [{"classification_id": "infra", "order": 7, "is_visible": True}]
+
+        def fake_apply(items):
+            apply_calls.append(items)
+
+        def boom(orders):
+            raise RuntimeError("graph offline")
+
+        monkeypatch.setattr(
+            "apps.cmdb.views.model.ClassificationManage.snapshot_classification_layout",
+            fake_snapshot,
+        )
+        monkeypatch.setattr(
+            "apps.cmdb.views.model.ClassificationManage.update_classification_layout",
+            fake_apply,
+        )
+        monkeypatch.setattr(
+            "apps.cmdb.views.model.ModelManage.update_model_orders",
+            boom,
+        )
+
+        from rest_framework.test import APIClient
+        client = APIClient()
+        client.force_authenticate(user=superuser)
+        resp = client.post(
+            "/api/v1/cmdb/api/model/save_layout/",
+            {
+                "classifications": [
+                    {"classification_id": "infra", "order": 0, "is_visible": True},
+                ],
+                "models": [
+                    {"model_id": "host", "order_id": 0, "is_visible": True},
+                ],
+            },
+            format="json",
+        )
+        # the view should bubble the failure
+        assert resp.status_code >= 500
+        # snapshot taken before write
+        assert snapshot_calls == [["infra"]]
+        # apply called twice: once forward, once for revert with the snapshot
+        assert len(apply_calls) == 2
+        assert apply_calls[1] == [{"classification_id": "infra", "order": 7, "is_visible": True}]

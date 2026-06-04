@@ -115,6 +115,29 @@ class ClassificationManage(object):
         return classifications
 
     @staticmethod
+    def snapshot_classification_layout(classification_ids: list):
+        """
+        快照当前一组分类的 order/is_visible 现状，用于失败时回滚。
+        缺失 order/is_visible 的旧节点回填默认值。
+        """
+        if not classification_ids:
+            return []
+        with GraphClient() as ag:
+            classifications, _ = ag.query_entity(CLASSIFICATION, [])
+        by_id = {c["classification_id"]: c for c in classifications}
+        snapshot = []
+        for cid in classification_ids:
+            target = by_id.get(cid)
+            if not target:
+                continue
+            snapshot.append({
+                "classification_id": cid,
+                "order": int(target.get("order", 999)),
+                "is_visible": bool(target.get("is_visible", True)),
+            })
+        return snapshot
+
+    @staticmethod
     def update_classification_layout(items: list):
         """
         批量更新分类排序与可见性。
