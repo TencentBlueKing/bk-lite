@@ -104,15 +104,6 @@ async def collect_plugin_task(
             f"[Plugin Task] {task_id} failed: {str(e)}\n{traceback.format_exc()}"
         )
 
-        if metrics_published and not params.get("callback_subject"):
-            return {
-                "task_id": task_id,
-                "status": "failed",
-                "error": str(e),
-                "plugin_name": plugin_name,
-                "completed_at": int(time.time() * 1000),
-            }
-
         # 导入工具函数
         from tasks.utils.nats_helper import publish_metrics_to_nats
         from tasks.utils.nats_helper import publish_callback_to_nats
@@ -121,7 +112,9 @@ async def collect_plugin_task(
         from core.task_queue import get_task_queue
 
         execution_result = _build_credential_execution_result(params, None, e)
-        await _handle_multicred_post_execute(params, task_id, execution_result, CredentialStateCache, get_task_queue)
+        await _handle_multicred_post_execute(
+            params, task_id, execution_result, CredentialStateCache, get_task_queue
+        )
 
         if params.get("callback_subject"):
             identity = _resolve_callback_identity(params) if _is_config_file_callback(params) else {
@@ -145,7 +138,7 @@ async def collect_plugin_task(
                 params,
                 task_id,
             )
-        else:
+        elif not metrics_published:
             error_metrics = generate_plugin_error_metrics(params, e)
             await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
 
