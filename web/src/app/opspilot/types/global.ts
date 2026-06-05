@@ -156,35 +156,62 @@ export interface ConfigAnalysisReportItem {
   count: number;
   workloads: string[];
   risk: string;
+  [key: string]: unknown;
+}
+
+export interface ConfigAnalysisReportScope {
+  cluster_name?: string;
+  namespace?: string | null;
+  instance_name?: string | null;
+  name?: string | null;
+  target_name?: string | null;
+  [key: string]: unknown;
+}
+
+export interface ConfigAnalysisReportScanRange {
+  offset?: number;
+  limit?: number;
+  has_more?: boolean;
+  [key: string]: unknown;
+}
+
+export interface ConfigAnalysisReportSummary {
+  total?: number;
+  problematic?: number;
+  healthy?: number;
+  top_recommendation?: string;
+  [key: string]: unknown;
 }
 
 export interface ConfigAnalysisSeveritySection {
   severity: 'critical' | 'high' | 'medium' | 'low' | 'warning' | 'info';
   title: string;
-  items: ConfigAnalysisReportItem[];
+  issues: ConfigAnalysisReportItem[];
+  items?: ConfigAnalysisReportItem[];
+  [key: string]: unknown;
 }
 
 export interface ConfigAnalysisRecommendation {
-  priority: 'P1' | 'P2' | 'P3';
+  priority: 'P0' | 'P1' | 'P2' | 'P3';
   action: string;
   target: string;
   benefit: string;
+  [key: string]: unknown;
 }
 
 export interface ConfigAnalysisReport {
   report_id: string;
   title: string;
   cluster_name: string;
-  summary: {
-    total?: number;
-    problematic?: number;
-    healthy?: number;
-    top_recommendation?: string;
-  };
+  scope?: ConfigAnalysisReportScope;
+  scan_range?: ConfigAnalysisReportScanRange;
+  summary: ConfigAnalysisReportSummary;
   severity_sections: ConfigAnalysisSeveritySection[];
   recommendations: ConfigAnalysisRecommendation[];
+  markdown: string;
   fallback_markdown: string;
   received_at: number;
+  [key: string]: unknown;
 }
 
 export interface ReportFileDownload {

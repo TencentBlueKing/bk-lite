@@ -10,6 +10,9 @@ import {
   BrowserStepProgressValue,
   BrowserTaskReceivedValue,
   ConfigAnalysisReportValue,
+  ConfigAnalysisReportItemValue,
+  ConfigAnalysisSeveritySectionValue,
+  StructuredConfigAnalysisReportValue,
   ConfigDiffReportValue,
   RepairCommandsValue,
   ReportFileDownloadValue,
@@ -51,6 +54,39 @@ type ContentBlock =
   | { type: 'fileDownload'; downloadId: string }
   | { type: 'repairCommands'; commandsId: string }
   | { type: 'userChoice'; choiceId: string };
+
+const normalizeConfigAnalysisIssues = (
+  section: ConfigAnalysisSeveritySectionValue
+): ConfigAnalysisReportItemValue[] => {
+  if (Array.isArray(section.issues)) {
+    return section.issues;
+  }
+
+  if (Array.isArray(section.items)) {
+    return section.items;
+  }
+
+  return [];
+};
+
+const normalizeConfigAnalysisSection = (
+  section: ConfigAnalysisSeveritySectionValue
+): ConfigAnalysisSeveritySectionValue => ({
+  ...section,
+  issues: normalizeConfigAnalysisIssues(section),
+});
+
+const isStructuredConfigAnalysisReport = (
+  value: ConfigAnalysisReportValue
+): value is StructuredConfigAnalysisReportValue => (
+  Boolean(value.report_id) &&
+  Boolean(value.title) &&
+  Boolean(value.cluster_name) &&
+  value.summary !== undefined &&
+  Array.isArray(value.severity_sections) &&
+  Array.isArray(value.recommendations) &&
+  typeof value.markdown === 'string'
+);
 
 export class AGUIMessageHandler {
   private contentBlocks: ContentBlock[] = [];
@@ -478,24 +514,17 @@ export class AGUIMessageHandler {
   handleConfigAnalysisReport(value: ConfigAnalysisReportValue) {
     this.flushCurrentTextBlock();
 
-    const hasStructuredPayload =
-      Boolean(value.title) &&
-      Boolean(value.cluster_name) &&
-      value.summary !== undefined &&
-      Array.isArray(value.severity_sections) &&
-      Array.isArray(value.recommendations);
-
-    if (hasStructuredPayload) {
+    if (isStructuredConfigAnalysisReport(value)) {
       const existingIndex = this.configAnalysisReports.findIndex(
         report => report.report_id === value.report_id
       );
+      const severity_sections = value.severity_sections.map(normalizeConfigAnalysisSection);
       const report: ConfigAnalysisReport = {
-        report_id: value.report_id,
-        title: value.title || '',
-        cluster_name: value.cluster_name || '',
+        ...value,
         summary: value.summary || {},
-        severity_sections: value.severity_sections || [],
+        severity_sections,
         recommendations: value.recommendations || [],
+        markdown: value.markdown,
         fallback_markdown: value.fallback_markdown || value.markdown,
         received_at: Date.now(),
       };
@@ -513,7 +542,10 @@ export class AGUIMessageHandler {
         this.contentBlocks.push({ type: 'configAnalysis', reportId: value.report_id });
       }
     } else {
-      this.contentBlocks.push({ type: 'text', content: value.fallback_markdown || value.markdown });
+      const fallbackMarkdown = value.fallback_markdown || value.markdown;
+      if (fallbackMarkdown) {
+        this.contentBlocks.push({ type: 'text', content: fallbackMarkdown });
+      }
     }
 
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
