@@ -52,10 +52,12 @@ async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_
     max_retries = _metrics_publish_retry_times()
     last_error = ""
     success_count = 0
+    best_success_count = 0
 
     for attempt in range(1, max_retries + 2):
         try:
             success_count = await nats_publish_lines(subject, influx_lines)
+            best_success_count = max(best_success_count, success_count)
             logger.info(
                 f"[NATS Helper] Metrics publish attempt={attempt} task_id={task_id} "
                 f"subject={subject} success_count={success_count} total_lines={total_lines}"
@@ -83,7 +85,7 @@ async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_
         task_id=task_id,
         subject=subject,
         total_lines=total_lines,
-        success_count=success_count,
+        success_count=best_success_count,
         attempts=max_retries + 1,
         reason=last_error,
     )
