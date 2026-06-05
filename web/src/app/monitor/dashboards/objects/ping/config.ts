@@ -86,6 +86,17 @@ export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       footer: [{ label: '最大延迟', metric: 'ping_latency_max', unit: 'ms' }]
     },
     {
+      title: '最大延迟',
+      metric: 'ping_latency_max',
+      unit: 'ms',
+      color: '#ff8a1f',
+      icon: 'clock',
+      compare: true,
+      compareFavorableDirection: 'down',
+      guide: [{ label: '最大延迟', detail: '探测节点的最大往返延迟，用于捕捉延迟尖刺。' }],
+      footer: [{ label: '平均延迟', metric: 'ping_latency_avg', unit: 'ms' }]
+    },
+    {
       title: '平均丢包率',
       metric: 'ping_packet_loss_avg',
       color: '#ff4d4f',

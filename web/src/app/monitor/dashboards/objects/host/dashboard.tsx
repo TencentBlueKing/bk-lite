@@ -6,10 +6,12 @@ import {
   DashboardShell,
   FlexiblePanelSection,
   KpiSection,
+  useFilteredBarPanels,
   useFilteredChartPanels,
   useFilteredRingPanels
 } from '../common/dashboard-components';
 import {
+  HorizontalBarPanel,
   RingChartPanel,
   TrendChartPanel
 } from '../../shared/widgets';
@@ -19,12 +21,15 @@ import styles from './index.module.scss';
 const TOP_CHART_TITLES = ['资源使用趋势', '系统负载趋势'];
 const LOWER_CHART_TITLES = ['网络吞吐趋势', '磁盘吞吐趋势', '进程状态趋势'];
 const RING_TITLES = ['CPU 时间分布', '内存占用分布', '进程状态分布'];
+const BAR_TITLES = ['主机压力信号'];
 
 export default function HostDashboardPage() {
   const dashboard = useSimpleDashboardData(HOST_DASHBOARD_CONFIG);
   const topCharts = useFilteredChartPanels(dashboard.chartPanels, TOP_CHART_TITLES);
   const lowerCharts = useFilteredChartPanels(dashboard.chartPanels, LOWER_CHART_TITLES);
   const rings = useFilteredRingPanels(dashboard.ringPanels, RING_TITLES);
+  const bars = useFilteredBarPanels(dashboard.barPanels, BAR_TITLES);
+  const [pressureBar] = bars;
 
   const [resourceChart, loadChart] = topCharts;
   const [networkChart, diskChart, processChart] = lowerCharts;
@@ -111,6 +116,17 @@ export default function HostDashboardPage() {
                 centerCaption={processRing.panel.centerCaption}
                 isEmpty={processRing.isEmpty}
                 className={styles.span4}
+                styles={styles}
+              />
+            ) : null}
+            {pressureBar ? (
+              <HorizontalBarPanel
+                key={pressureBar.panel.title}
+                title={pressureBar.panel.title}
+                subtitle={pressureBar.panel.subtitle}
+                guide={pressureBar.panel.guide}
+                items={pressureBar.items}
+                className={styles.span12}
                 styles={styles}
               />
             ) : null}

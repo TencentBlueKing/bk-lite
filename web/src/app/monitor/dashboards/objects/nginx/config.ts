@@ -174,6 +174,18 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     }
   ],
-  barPanels: [],
+  barPanels: [
+    {
+      title: '连接压力',
+      subtitle: 'Reading / Writing / Waiting',
+      showTrend: true,
+      guide: [{ label: '连接压力', detail: '读取/写入/等待中的连接构成。Reading、Writing 偏高代表处理压力大，Waiting 为 keepalive 空闲连接。' }],
+      items: [
+        { label: 'Reading', metric: 'nginx_reading', color: '#2f6bff', unit: 'counts' },
+        { label: 'Writing', metric: 'nginx_writing', color: '#ff8a1f', unit: 'counts' },
+        { label: 'Waiting', metric: 'nginx_waiting', color: '#9aa9bf', unit: 'counts' }
+      ]
+    }
+  ],
   details: []
 };

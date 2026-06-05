@@ -93,6 +93,17 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       footer: [{ label: '失败占比', metric: 'website_failure_rate_avg', unit: 'percent' }]
     },
     {
+      title: '异常状态码',
+      guide: [{ label: '异常状态码', detail: '当前返回 5xx 的探测节点数，非零表示服务端错误，需立即排查。' }],
+      metric: 'website_status_code_5xx_count',
+      unit: 'counts',
+      color: '#ff4d4f',
+      icon: 'api',
+      compare: true,
+      compareFavorableDirection: 'down',
+      footer: [{ label: '4xx 节点', metric: 'website_status_code_4xx_count', unit: 'counts' }]
+    },
+    {
       title: '平均响应时间',
       guide: [{ label: '平均响应时间', detail: '优先观察平均响应是否持续升高，再对比峰值判断是否存在抖动。' }],
       metric: 'website_response_time_avg',
@@ -100,14 +111,6 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'clock',
       compare: true,
       footer: [{ label: '峰值响应', metric: 'website_response_time_max', unit: 's' }]
-    },
-    {
-      title: '平均内容长度',
-      guide: [{ label: '平均内容长度', detail: '观察返回体积是否异常放大，并辅助判断页面内容是否出现偏差。' }],
-      metric: 'website_content_length_avg',
-      color: '#597ef7',
-      icon: 'node',
-      footer: [{ label: '5xx 节点', metric: 'website_status_code_5xx_count', unit: 'counts' }]
     }
   ],
   charts: [

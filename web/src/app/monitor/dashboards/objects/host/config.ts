@@ -327,6 +327,19 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     }
   ],
-  barPanels: [],
+  barPanels: [
+    {
+      title: '主机压力信号',
+      subtitle: 'I/O Wait、阻塞/僵尸进程、负载',
+      showTrend: true,
+      guide: [{ label: '主机压力信号', detail: '汇总 I/O Wait、阻塞进程、僵尸进程与 1 分钟负载。阻塞/僵尸进程非零或 I/O Wait 偏高即需排查。' }],
+      items: [
+        { label: 'I/O Wait', metric: 'cpu_usage_iowait_total', color: '#ff8a1f', unit: 'percent' },
+        { label: '阻塞进程', metric: 'processes_blocked', color: '#ff4d4f', unit: 'counts' },
+        { label: '僵尸进程', metric: 'processes_zombies', color: '#faad14', unit: 'counts' },
+        { label: '1 分钟负载', metric: 'system_load1', color: '#2f6bff', unit: 'none' }
+      ]
+    }
+  ],
   details: []
 };
