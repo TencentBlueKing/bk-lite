@@ -631,6 +631,18 @@ export default function RedisDashboardPage() {
                     <CollectionStatusCard styles={styles} status={collectionStatus} timeline={collectionStatusTimeline} />
                     <StatCard
                       styles={styles}
+                      title={<TitleWithGuide styles={styles} title="实时 OPS" items={[{ label: '实时 OPS', detail: '每秒操作数（instantaneous_ops_per_sec），反映 Redis 当前吞吐。' }]} className={styles.statTitleWithGuide} />}
+                      value={renderMetricValue('redis_instantaneous_ops_per_sec', opsDisplay.value)}
+                      unit={hasMetricData('redis_instantaneous_ops_per_sec') ? opsDisplay.unit : ''}
+                      icon={<DatabaseOutlined />}
+                      iconStyle={{ background: 'rgba(39, 194, 116, 0.12)', color: '#27c274' }}
+                      color="#27c274"
+                      footer={<span>命令处理 {renderMetricValue('redis_total_commands_processed_rate', `${commandRateDisplay.value}${commandRateDisplay.unit}`)}</span>}
+                      trendData={metricMap.redis_instantaneous_ops_per_sec?.viewData || []}
+                      noDataType={getNoDataType('redis_instantaneous_ops_per_sec')}
+                    />
+                    <StatCard
+                      styles={styles}
                       title={<TitleWithGuide styles={styles} title="内存使用率" items={memoryGuide} className={styles.statTitleWithGuide} />}
                       value={maxMemoryValue > 0 && hasMetricData('redis_memory_utilization') ? memoryUtilDisplay.value : '--'}
                       unit={maxMemoryValue > 0 && hasMetricData('redis_memory_utilization') ? memoryUtilDisplay.unit : ''}

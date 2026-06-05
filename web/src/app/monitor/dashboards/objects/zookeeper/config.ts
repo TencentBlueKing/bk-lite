@@ -186,12 +186,15 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       footer: [{ label: '最大延迟', metric: 'zookeeper_max_latency', unit: 'ms' }]
     },
     {
-      title: 'ZNode 数',
-      metric: 'zookeeper_znode_count',
-      color: '#2f6bff',
+      title: 'Fsync 风险',
+      metric: 'zookeeper_fsync_threshold_exceed_count',
+      unit: 'counts',
+      color: '#ff4d4f',
       icon: 'database',
-      guide: [{ label: 'ZNode', detail: '当前 Zookeeper znode 数量，反映数据结构规模。' }],
-      footer: [{ label: 'Watch 数', metric: 'zookeeper_watch_count', unit: 'counts' }]
+      compare: true,
+      compareFavorableDirection: 'down',
+      guide: [{ label: 'Fsync 风险', detail: 'fsync 超过阈值的累计次数，常为 0；非零表示磁盘同步存在延迟问题，需排查磁盘性能。' }],
+      footer: [{ label: '超阈速率', metric: 'zookeeper_fsync_threshold_exceed_rate', unit: 'cps' }]
     },
     {
       title: 'FD 使用率',
@@ -291,7 +294,7 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       subtitle: '数据与容量',
       rows: [
         { label: '数据大小', metric: 'zookeeper_approximate_data_size', unit: 'bytes' },
-        { label: 'Fsync 超阈次数', metric: 'zookeeper_fsync_threshold_exceed_count', unit: 'counts' }
+        { label: 'ZNode 数', metric: 'zookeeper_znode_count', unit: 'counts' }
       ]
     }
   ]

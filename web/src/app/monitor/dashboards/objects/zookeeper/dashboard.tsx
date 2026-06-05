@@ -17,7 +17,7 @@ import { HorizontalBarPanel, RingChartPanel, TrendChartPanel } from '../../share
 import { ZOOKEEPER_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
-const SUMMARY_TITLES = ['存活连接数', 'Outstanding 请求', '平均延迟', 'ZNode 数', 'FD 使用率'];
+const SUMMARY_TITLES = ['存活连接数', 'Outstanding 请求', '平均延迟', 'Fsync 风险', 'FD 使用率'];
 const CHART_TITLES = ['包收发速率趋势', '请求延迟趋势', '连接数趋势', 'Outstanding 请求趋势', '数据对象趋势'];
 const RING_TITLES = ['文件描述符分布'];
 const BAR_TITLES = ['Fsync 超阈快照'];

@@ -613,6 +613,18 @@ export default function MongoDashboardPage() {
                 <CollectionStatusCard styles={styles} status={collectionStatus} timeline={collectionStatusTimeline} />
                 <StatCard
                   styles={styles}
+                  title={<TitleWithGuide styles={styles} title="命令吞吐" items={[{ label: '命令吞吐', detail: '每秒命令数，反映 MongoDB 当前业务吞吐。' }]} className={styles.statTitleWithGuide} />}
+                  value={renderMetricValue('mongodb_commands_rate', commandsDisplay.value)}
+                  unit={hasMetricData('mongodb_commands_rate') ? commandsDisplay.unit : ''}
+                  icon={<NodeIndexOutlined />}
+                  iconStyle={{ background: 'rgba(39, 194, 116, 0.12)', color: '#27c274' }}
+                  color="#27c274"
+                  footer={<span>查询吞吐 {renderMetricValue('mongodb_queries_rate', `${queriesDisplay.value}${queriesDisplay.unit}`)}</span>}
+                  trendData={metricMap.mongodb_commands_rate?.viewData || []}
+                  noDataType={getNoDataType('mongodb_commands_rate')}
+                />
+                <StatCard
+                  styles={styles}
                   title={<TitleWithGuide styles={styles} title="排队读" items={queuedReadsGuide} className={styles.statTitleWithGuide} />}
                   value={renderMetricValue('mongodb_queued_reads', formatMetricValue(queuedReads, 'counts').value)}
                   unit=""
