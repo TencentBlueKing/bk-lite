@@ -1,6 +1,7 @@
 import sys
 import asyncio
 from pathlib import Path
+import pytest
 
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -346,3 +347,83 @@ def test_collect_endpoint_accepts_legacy_single_credential_headers(monkeypatch):
     assert "credential_count" not in queued_task
     assert "credentials_pool" not in queued_task
     assert "collect_task_id" not in queued_task
+
+
+@pytest.mark.parametrize("partial_mode", ["success_count", "delivered_count"])
+def test_publish_lines_with_retry_stops_after_partial_delivery(monkeypatch, partial_mode):
+    from core.nats_utils import NatsLinesPublishError
+    from tasks.utils.nats_helper import MetricsPublishError, _publish_lines_with_retry
+
+    attempts = []
+
+    async def fake_publish_lines(subject, lines):
+        attempts.append(list(lines))
+        if partial_mode == "success_count":
+            if len(attempts) == 1:
+                return 1
+        else:
+            if len(attempts) == 1:
+                raise NatsLinesPublishError(subject, 1, RuntimeError("partial delivery"))
+        return len(lines)
+
+    monkeypatch.setenv("NATS_METRICS_PUBLISH_RETRIES", "3")
+    monkeypatch.setattr("tasks.utils.nats_helper.nats_publish_lines", fake_publish_lines)
+
+    with pytest.raises(MetricsPublishError) as exc_info:
+        asyncio.run(_publish_lines_with_retry("metrics.mysql", ["line-1", "line-2"], "task-1"))
+
+    assert exc_info.value.success_count == 1
+    assert exc_info.value.attempts == 1
+    assert attempts == [["line-1", "line-2"]]
+
+
+def test_collect_plugin_task_preserves_collection_failure_when_publish_fails(monkeypatch):
+    import tasks.handlers.plugin_handler as plugin_handler
+
+    captured = {}
+    publish_calls = []
+    collection_error_metrics = (
+        'cmdb_collect_error,host="10.0.0.1",credential_id="cred-1",error="authentication denied" '
+        'status="error" 1710000000000'
+    )
+
+    class FakeCollectionService:
+        def __init__(self, params):
+            self.params = params
+
+        async def collect(self):
+            return collection_error_metrics
+
+    async def fake_publish_metrics_to_nats(ctx, metrics_data, params, task_id):
+        publish_calls.append(metrics_data)
+        if len(publish_calls) == 1:
+            raise RuntimeError("nats publish down")
+
+    async def fake_post_execute(params, task_id, execution_result, cache_cls, get_queue_func):
+        captured["execution_result"] = execution_result
+
+    monkeypatch.setattr("service.collection_service.CollectionService", FakeCollectionService)
+    monkeypatch.setattr("tasks.utils.nats_helper.publish_metrics_to_nats", fake_publish_metrics_to_nats)
+    monkeypatch.setattr(plugin_handler, "_handle_multicred_post_execute", fake_post_execute)
+
+    result = asyncio.run(
+        plugin_handler.collect_plugin_task(
+            {},
+            {
+                "plugin_name": "mysql_info",
+                "model_id": "mysql",
+                "host": "10.0.0.1",
+                "credential_id": "cred-1",
+                "credential_index": 0,
+                "credentials_pool": [{"credential_id": "cred-1"}],
+                "collect_task_id": "collect-1",
+                "executor_type": "job",
+            },
+            "task-1",
+        )
+    )
+
+    assert result["status"] == "failed"
+    assert captured["execution_result"]["success"] is False
+    assert captured["execution_result"]["failure_kind"] == "credential"
+    assert captured["execution_result"]["error_message"] == collection_error_metrics

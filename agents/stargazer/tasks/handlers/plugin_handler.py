@@ -63,6 +63,7 @@ async def collect_plugin_task(
     """
     plugin_name = params.get("plugin_name")
     metrics_published = False
+    execution_result = None
     logger.info(f"[Plugin Task] Processing: {task_id}, plugin: {plugin_name}")
 
     try:
@@ -115,7 +116,12 @@ async def collect_plugin_task(
         real_metrics_delivered = metrics_published or (
             isinstance(e, MetricsPublishError) and getattr(e, "success_count", 0) > 0
         )
-        execution_result = _build_credential_execution_result(params, None, e)
+        preserved_execution_result = (
+            execution_result
+            if isinstance(execution_result, dict) and not execution_result.get("success", True)
+            else None
+        )
+        execution_result = preserved_execution_result or _build_credential_execution_result(params, None, e)
         await _handle_multicred_post_execute(
             params, task_id, execution_result, CredentialStateCache, get_task_queue
         )
