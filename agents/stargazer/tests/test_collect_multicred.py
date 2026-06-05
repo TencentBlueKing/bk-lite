@@ -398,6 +398,69 @@ def test_publish_lines_with_retry_stops_after_flush_failure_with_all_lines_deliv
     assert attempts == [["line-1", "line-2"]]
 
 
+def test_publish_metrics_to_nats_returns_zero_when_no_influx_lines(monkeypatch):
+    from tasks.utils.nats_helper import publish_metrics_to_nats
+
+    monkeypatch.setattr("tasks.utils.nats_helper.convert_prometheus_to_influx", lambda metrics_data, params: [])
+
+    delivered_count = asyncio.run(
+        publish_metrics_to_nats({}, "ignored", {"plugin_name": "mysql_info"}, "task-1")
+    )
+
+    assert delivered_count == 0
+
+
+def test_collect_plugin_task_publishes_synthetic_error_when_no_metrics_were_delivered(monkeypatch):
+    import tasks.handlers.plugin_handler as plugin_handler
+
+    publish_calls = []
+    post_execute_calls = []
+
+    class FakeCollectionService:
+        def __init__(self, params):
+            self.params = params
+
+        async def collect(self):
+            return "ignored"
+
+    async def fake_publish_metrics_to_nats(ctx, metrics_data, params, task_id):
+        publish_calls.append(metrics_data)
+        return 0 if len(publish_calls) == 1 else 1
+
+    async def fake_post_execute(params, task_id, execution_result, cache_cls, get_queue_func):
+        post_execute_calls.append(execution_result)
+        if len(post_execute_calls) == 1:
+            raise RuntimeError("post execute failed")
+
+    monkeypatch.setattr("service.collection_service.CollectionService", FakeCollectionService)
+    monkeypatch.setattr("tasks.utils.nats_helper.publish_metrics_to_nats", fake_publish_metrics_to_nats)
+    monkeypatch.setattr(
+        "tasks.utils.metrics_helper.generate_plugin_error_metrics",
+        lambda params, err: "synthetic-error-metrics",
+    )
+    monkeypatch.setattr(plugin_handler, "_handle_multicred_post_execute", fake_post_execute)
+
+    result = asyncio.run(
+        plugin_handler.collect_plugin_task(
+            {},
+            {
+                "plugin_name": "mysql_info",
+                "model_id": "mysql",
+                "host": "10.0.0.1",
+                "credential_id": "cred-1",
+                "credential_index": 0,
+                "credentials_pool": [{"credential_id": "cred-1"}],
+                "collect_task_id": "collect-1",
+                "executor_type": "job",
+            },
+            "task-1",
+        )
+    )
+
+    assert result["status"] == "failed"
+    assert publish_calls == ["ignored", "synthetic-error-metrics"]
+
+
 def test_collect_plugin_task_preserves_collection_failure_when_publish_fails(monkeypatch):
     import tasks.handlers.plugin_handler as plugin_handler
 

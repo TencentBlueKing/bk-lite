@@ -208,7 +208,7 @@ async def publish_credential_result_to_nats(result: Dict[str, Any], params: Dict
 
 async def publish_metrics_to_nats(
     ctx: Dict, metrics_data: str, params: Dict[str, Any], task_id: str
-):
+) -> int:
     """
     将采集结果推送到 NATS 的 metrics 主题
 
@@ -237,7 +237,7 @@ async def publish_metrics_to_nats(
     influx_lines = convert_prometheus_to_influx(metrics_data, params)
 
     if not influx_lines:
-        return
+        return 0
 
     # 复用进程级共享长连接逐行发送（与 Telegraf 保持一致）
     # 不再每次采集都新建 TLS 连接，避免事件循环繁忙时握手超时被 reset
@@ -246,6 +246,7 @@ async def publish_metrics_to_nats(
         f"[NATS Helper] Successfully published {success_count}/{len(influx_lines)} metrics "
         f"to '{subject}' for task {task_id}"
     )
+    return success_count
 
 
 def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -> list:
