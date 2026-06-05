@@ -1,0 +1,200 @@
+import React from 'react';
+
+import { ConfigAnalysisReport, ConfigAnalysisReportItem, ConfigAnalysisSeveritySection } from '@/app/opspilot/types/global';
+
+interface ConfigAnalysisReportCardProps {
+  report: ConfigAnalysisReport;
+}
+
+const severityStyles: Record<ConfigAnalysisSeveritySection['severity'], { badge: string; text: string; border: string }> = {
+  critical: { badge: 'bg-rose-100 text-rose-700', text: '严重', border: 'border-rose-200' },
+  high: { badge: 'bg-orange-100 text-orange-700', text: '高危', border: 'border-orange-200' },
+  medium: { badge: 'bg-amber-100 text-amber-700', text: '中风险', border: 'border-amber-200' },
+  low: { badge: 'bg-lime-100 text-lime-700', text: '低风险', border: 'border-lime-200' },
+  warning: { badge: 'bg-yellow-100 text-yellow-700', text: '警告', border: 'border-yellow-200' },
+  info: { badge: 'bg-sky-100 text-sky-700', text: '提示', border: 'border-sky-200' },
+};
+
+const normalizeItems = (section: ConfigAnalysisSeveritySection): ConfigAnalysisReportItem[] => {
+  if (Array.isArray(section.issues)) {
+    return section.issues;
+  }
+
+  if (Array.isArray(section.items)) {
+    return section.items;
+  }
+
+  return [];
+};
+
+const formatCount = (value?: number) => (typeof value === 'number' ? value : '--');
+
+const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ report }) => {
+  const severitySections = report.severity_sections
+    .map(section => ({
+      ...section,
+      issues: normalizeItems(section),
+    }))
+    .filter(section => section.issues.length > 0);
+  const recommendationRows = Array.isArray(report.recommendations) ? report.recommendations : [];
+  const hasIssues = severitySections.length > 0 || (report.summary.problematic || 0) > 0;
+  const scopeItems = [
+    report.scope?.cluster_name || report.cluster_name,
+    report.scope?.namespace ? `命名空间：${report.scope.namespace}` : null,
+    report.scope?.instance_name ? `实例：${report.scope.instance_name}` : null,
+    report.scope?.target_name
+      ? `对象：${report.scope.target_name}`
+      : report.scope?.name
+        ? `对象：${report.scope.name}`
+        : null,
+  ].filter(Boolean);
+  const hasScanRange = typeof report.scan_range?.offset === 'number' && typeof report.scan_range?.limit === 'number';
+  const scanRangeStart = hasScanRange ? report.scan_range!.offset! + 1 : null;
+  const scanRangeEnd = hasScanRange ? report.scan_range!.offset! + report.scan_range!.limit! : null;
+
+  return (
+    <section className="mt-3 max-w-[720px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <header className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white px-4 py-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700">
+            配置分析
+          </span>
+          <h3 className="text-sm font-semibold text-slate-900">{report.title}</h3>
+          <span className="ml-auto rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600">
+            {report.cluster_name}
+          </span>
+        </div>
+        {scopeItems.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+            {scopeItems.map(item => (
+              <span key={item} className="rounded-full bg-slate-100 px-2.5 py-1">
+                {item}
+              </span>
+            ))}
+          </div>
+        )}
+      </header>
+
+      <div className="space-y-4 px-4 py-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[
+            { label: '扫描对象', value: formatCount(report.summary.total), tone: 'text-slate-900' },
+            { label: '发现问题', value: formatCount(report.summary.problematic), tone: 'text-rose-600' },
+            { label: '健康对象', value: formatCount(report.summary.healthy), tone: 'text-emerald-600' },
+          ].map(card => (
+            <div key={card.label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <div className="text-xs text-slate-500">{card.label}</div>
+              <div className={`mt-1 text-2xl font-semibold ${card.tone}`}>{card.value}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-3 text-sm text-slate-700">
+          <div className="text-xs font-medium uppercase tracking-wide text-sky-700">建议摘要</div>
+          <div className="mt-1">{report.summary.top_recommendation || '建议优先处理高风险配置项。'}</div>
+          {hasScanRange && report.scan_range?.has_more && (
+            <div className="mt-2 text-xs text-sky-700">
+              当前展示第 {scanRangeStart} - {scanRangeEnd} 项结果，仍有更多对象待继续检查。
+            </div>
+          )}
+        </div>
+
+        {!hasIssues ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+            <div className="text-sm font-semibold text-emerald-700">未发现明显配置问题</div>
+            <div className="mt-1 text-sm text-emerald-700/80">
+              当前扫描范围内的工作负载配置表现正常，可继续按需巡检。
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {severitySections.map(section => {
+              const style = severityStyles[section.severity];
+
+              return (
+                <div key={`${report.report_id}-${section.severity}`} className={`overflow-hidden rounded-xl border ${style.border}`}>
+                  <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-3">
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${style.badge}`}>
+                      {style.text}
+                    </span>
+                    <span className="text-sm font-medium text-slate-800">{section.title}</span>
+                    <span className="ml-auto text-xs text-slate-500">问题类别</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                      <thead className="bg-white text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">问题类别</th>
+                          <th className="px-3 py-2 font-medium">影响数量</th>
+                          <th className="px-3 py-2 font-medium">涉及工作负载</th>
+                          <th className="px-3 py-2 font-medium">风险说明</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
+                        {section.issues.map(item => (
+                          <tr key={`${section.severity}-${item.issue}`}>
+                            <td className="px-3 py-3 font-medium text-slate-800">{item.issue}</td>
+                            <td className="px-3 py-3">{item.count}</td>
+                            <td className="px-3 py-3">
+                              <div className="flex flex-wrap gap-1.5">
+                                {item.workloads.map(workload => (
+                                  <span
+                                    key={workload}
+                                    className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600"
+                                  >
+                                    {workload}
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-slate-600">{item.risk}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
+
+            {recommendationRows.length > 0 && (
+              <div className="overflow-hidden rounded-xl border border-slate-200">
+                <div className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-800">
+                  修复建议
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                    <thead className="bg-white text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">优先级</th>
+                        <th className="px-3 py-2 font-medium">建议动作</th>
+                        <th className="px-3 py-2 font-medium">目标范围</th>
+                        <th className="px-3 py-2 font-medium">预期收益</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
+                      {recommendationRows.map(row => (
+                        <tr key={`${row.priority}-${row.action}`}>
+                          <td className="px-3 py-3">
+                            <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                              {row.priority}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 font-medium text-slate-800">{row.action}</td>
+                          <td className="px-3 py-3">{row.target}</td>
+                          <td className="px-3 py-3 text-slate-600">{row.benefit}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+};
+
+export default ConfigAnalysisReportCard;

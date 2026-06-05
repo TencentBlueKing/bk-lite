@@ -20,6 +20,7 @@ import AgentStepProgress from './AgentStepProgress';
 import ApprovalCard from './ApprovalCard';
 import UserChoiceCard from './UserChoiceCard';
 import DiffReportCard from './DiffReportCard';
+import ConfigAnalysisReportCard from './ConfigAnalysisReportCard';
 import ReportDownloadCard from './ReportDownloadCard';
 import RepairCommandsCard from './RepairCommandsCard';
 import {Annotation, CustomChatMessage} from '@/app/opspilot/types/global';
@@ -500,7 +501,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }, [updateMessages]);
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, reportFileDownloads, repairCommands, agentStepProgress } = msg;
+    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress } = msg;
 
     let replacedContent = parseReferenceLinks(content || '');
     replacedContent = parseSuggestionLinks(replacedContent);
@@ -510,7 +511,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       if (!content) return null;
 
       // Check if content has inline markers
-      const markerPattern = /<!--(CONFIG_DIFF|USER_CHOICE):([^-]+)-->/g;
+      const markerPattern = /<!--(CONFIG_DIFF|CONFIG_ANALYSIS|USER_CHOICE):([^>]+)-->/g;
       const hasMarkers = markerPattern.test(replacedContent);
 
       if (!hasMarkers) {
@@ -531,6 +532,13 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               <div className="mt-2">
                 {[...configDiffReports].sort((a, b) => (a.received_at || 0) - (b.received_at || 0)).map(report => (
                   <DiffReportCard key={report.report_id} report={report} />
+                ))}
+              </div>
+            )}
+            {Array.isArray(configAnalysisReports) && configAnalysisReports.length > 0 && (
+              <div className="mt-2">
+                {[...configAnalysisReports].sort((a, b) => (a.received_at || 0) - (b.received_at || 0)).map(report => (
+                  <ConfigAnalysisReportCard key={report.report_id} report={report} />
                 ))}
               </div>
             )}
@@ -577,16 +585,17 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       }
 
       // Has markers — split and interleave
-      const segments = replacedContent.split(/<!--(?:CONFIG_DIFF|USER_CHOICE):[^-]+-->/);
+      const segments = replacedContent.split(/<!--(?:CONFIG_DIFF|CONFIG_ANALYSIS|USER_CHOICE):[^>]+-->/);
       const markers: Array<{ type: string; id: string }> = [];
       let match;
-      const re = /<!--(CONFIG_DIFF|USER_CHOICE):([^-]+)-->/g;
+      const re = /<!--(CONFIG_DIFF|CONFIG_ANALYSIS|USER_CHOICE):([^>]+)-->/g;
       while ((match = re.exec(replacedContent)) !== null) {
         markers.push({ type: match[1], id: match[2] });
       }
 
       // Track which reports/choices are rendered inline
       const renderedDiffIds = new Set<string>();
+      const renderedConfigAnalysisIds = new Set<string>();
       const renderedChoiceIds = new Set<string>();
 
       const elements: React.ReactNode[] = [];
@@ -616,6 +625,12 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               renderedDiffIds.add(marker.id);
               elements.push(<DiffReportCard key={`diff-${marker.id}`} report={report} />);
             }
+          } else if (marker.type === 'CONFIG_ANALYSIS') {
+            const report = configAnalysisReports?.find(r => r.report_id === marker.id);
+            if (report) {
+              renderedConfigAnalysisIds.add(marker.id);
+              elements.push(<ConfigAnalysisReportCard key={`config-analysis-${marker.id}`} report={report} />);
+            }
           } else if (marker.type === 'USER_CHOICE') {
             const req = userChoiceRequests?.find(r => r.choice_id === marker.id);
             if (req) {
@@ -635,6 +650,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
       // Render any remaining items not matched by markers (fallback)
       const remainingDiffs = configDiffReports?.filter(r => !renderedDiffIds.has(r.report_id)) || [];
+      const remainingConfigAnalysisReports = configAnalysisReports?.filter(
+        r => !renderedConfigAnalysisIds.has(r.report_id)
+      ) || [];
       const remainingChoices = userChoiceRequests?.filter(r => !renderedChoiceIds.has(r.choice_id)) || [];
 
       if (remainingDiffs.length > 0) {
@@ -642,6 +660,15 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           <div key="remaining-diffs" className="mt-2">
             {remainingDiffs.map(report => (
               <DiffReportCard key={report.report_id} report={report} />
+            ))}
+          </div>
+        );
+      }
+      if (remainingConfigAnalysisReports.length > 0) {
+        elements.push(
+          <div key="remaining-config-analysis" className="mt-2">
+            {remainingConfigAnalysisReports.map(report => (
+              <ConfigAnalysisReportCard key={report.report_id} report={report} />
             ))}
           </div>
         );
