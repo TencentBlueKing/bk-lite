@@ -111,19 +111,17 @@ class CmdbRulesFormatUtil:
             permission_instances_map)
 
         if obj_type == "model":
-            if default_group_id in instance["group"] and operator == VIEW:
+            groups = instance.get("group", [])
+            if default_group_id in groups and operator == VIEW:
                 return True
-            for group in instance["group"]:
-                if group in organizations_instances_map:
-                    # 全选
+
+            for group in groups:
+                if group in organizations_instances_map and operator in organizations_instances_map[group]["permission"]:
                     return True
-                # 具体实例权限判断
-                if model_id in organizations_instances_map:
-                    permission = organizations_instances_map[model_id]["permission"]
-                    if operator in permission:
-                        return True
-                    else:
-                        return group == default_group_id
+
+            permission_data = organizations_instances_map.get(model_id)
+            if permission_data and operator in permission_data["permission"]:
+                return bool(set(groups) & permission_data["organization"])
 
             return False
 
@@ -132,11 +130,12 @@ class CmdbRulesFormatUtil:
             inst_name = instance.get("inst_name")
             organizations = instance.get("organization", [])
             for organization in organizations:
-                if organization in organizations_instances_map:
+                if organization in organizations_instances_map and operator in organizations_instances_map[organization]["permission"]:
                     return True
-            if inst_name in organizations_instances_map:
-                permission = organizations_instances_map[inst_name]["permission"]
-                return operator in permission
+
+            permission_data = organizations_instances_map.get(inst_name)
+            if permission_data and operator in permission_data["permission"]:
+                return bool(set(organizations) & permission_data["organization"])
 
         return False
 
