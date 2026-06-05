@@ -16,7 +16,7 @@ sys.modules.setdefault("falkordb.asyncio", _falkordb_asyncio)
 
 from langchain_core.messages import SystemMessage, ToolMessage
 
-from apps.opspilot.metis.llm.chain.node import build_post_tool_directives
+from apps.opspilot.metis.llm.chain.node import build_config_analysis_report_payload, build_post_tool_directives
 from apps.opspilot.metis.llm.tools.kubernetes.analysis import build_config_analysis_next_step_hint
 
 
@@ -71,3 +71,43 @@ def test_build_config_analysis_next_step_hint_requests_repair_mode_choice():
     assert "request_user_choice" in hint
     assert "修复展示方式" in hint
     assert "generate_repair_report" in hint
+
+
+def test_build_config_analysis_report_payload_structures_k8s_report():
+    parsed = {
+        "cluster_name": "Kubernetes - 1",
+        "problematic": 2,
+        "healthy": 7,
+        "total": 9,
+        "issues_detail": [
+            {
+                "severity": "critical",
+                "issue": "容器以 root 运行",
+                "count": 1,
+                "workloads": ["api (default)"],
+            },
+            {
+                "severity": "high",
+                "issue": "未配置存活探针",
+                "count": 3,
+                "workloads": ["nginx (default)", "worker (default)"],
+            },
+        ],
+    }
+
+    payload = build_config_analysis_report_payload(parsed)
+
+    assert payload["title"] == "配置检查报告 - Kubernetes - 1"
+    assert payload["cluster_name"] == "Kubernetes - 1"
+    assert payload["summary"] == {"total": 9, "problematic": 2, "healthy": 7}
+    assert [section["severity"] for section in payload["severity_sections"]] == ["critical", "high"]
+    assert payload["severity_sections"][0]["issues"][0]["issue"] == "容器以 root 运行"
+    assert payload["severity_sections"][0]["issues"][0]["risk"] == (
+        "容器以 root 用户运行，容器逃逸后攻击者将获得宿主机 root 权限，安全风险极高。"
+    )
+    assert payload["severity_sections"][1]["issues"][0]["issue"] == "未配置存活探针"
+    assert payload["severity_sections"][1]["issues"][0]["risk"] == (
+        "无存活探针时 Kubernetes 无法自动检测和重启不健康的容器，故障容器将持续运行。"
+    )
+    assert payload["fallback_markdown"] == payload["markdown"]
+    assert payload["fallback_markdown"].startswith("# 配置检查报告 - Kubernetes - 1")
