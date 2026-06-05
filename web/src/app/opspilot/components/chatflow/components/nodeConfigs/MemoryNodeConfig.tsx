@@ -1,5 +1,5 @@
 import React, {useEffect} from 'react';
-import {Button, Form, Select} from 'antd';
+import {Button, Form, InputNumber, Select} from 'antd';
 import {PlusOutlined} from '@ant-design/icons';
 import Link from 'next/link';
 import {filterModelOption, getModelOptionText, renderModelOptionLabel} from '@/app/opspilot/utils/modelOption';
@@ -127,6 +127,15 @@ export const MemoryNodeConfig: React.FC<MemoryNodeConfigProps> = ({
           </Form.Item>
           <Form.Item name="llmModelName" className="hidden">
             <input type="hidden" />
+          </Form.Item>
+
+          <Form.Item
+            name="writeBatchSize"
+            label={t('chatflow.nodeConfig.memoryWriteBatchSize')}
+            tooltip={t('chatflow.nodeConfig.memoryWriteBatchSizeTooltip')}
+            rules={[{ required: true, message: t('chatflow.nodeConfig.pleaseEnterMemoryWriteBatchSize') }]}
+          >
+            <InputNumber min={1} max={500} precision={0} className="w-full" />
           </Form.Item>
         </>
       )}
