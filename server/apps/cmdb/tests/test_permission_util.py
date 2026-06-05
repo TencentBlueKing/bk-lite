@@ -165,6 +165,12 @@ def test_has_object_permission_instances_same_name_other_org_denied():
     assert U.has_object_permission("instances", VIEW, "vmware_vc", pmap, instance) is False
 
 
+def test_has_object_permission_instances_same_name_same_org_allowed():
+    pmap = {6: {"permission_instances_map": {"prod-vc": ["View"]}}}
+    instance = {"inst_name": "prod-vc", "organization": [6]}
+    assert U.has_object_permission("instances", VIEW, "vmware_vc", pmap, instance) is True
+
+
 def test_has_object_permission_model_same_model_id_other_org_denied():
     pmap = {6: {"permission_instances_map": {"vmware_vc": ["Operate"]}}}
     model = {"model_id": "vmware_vc", "group": [9]}
