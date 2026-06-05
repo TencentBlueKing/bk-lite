@@ -23,11 +23,6 @@ export const usePingConfig = () => {
         },
       },
     ],
-    tableDiaplay: [
-      { type: 'value', key: 'ping_average_response_ms' },
-      { type: 'progress', key: 'ping_percent_packet_loss' },
-      { type: 'enum', key: 'ping_result_code' },
-    ],
     groupIds: {},
     collectTypes: {
       Ping: 'ping',

@@ -83,15 +83,6 @@ export const useMysqlConfig = () => {
         }
       }
     ],
-    tableDiaplay: [
-      { type: 'value', key: 'mysql_threads_running' },
-      { type: 'value', key: 'mysql_threads_connected' },
-      { type: 'value', key: 'mysql_queries_rate' },
-      { type: 'value', key: 'mysql_slow_queries_rate' },
-      { type: 'value', key: 'mysql_buffer_pool_hit_ratio' },
-      { type: 'value', key: 'mysql_innodb_buffer_pool_reads_rate' },
-      { type: 'value', key: 'mysql_tmp_disk_table_ratio' }
-    ],
     groupIds: {},
     collectTypes: {
       'Mysql-Exporter': 'exporter',

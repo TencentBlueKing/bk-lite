@@ -95,12 +95,6 @@ export const useNodeConfig = () => {
         }
       }
     ],
-    tableDiaplay: [
-      { type: 'enum', key: 'node_status_condition' },
-      { type: 'progress', key: 'node_cpu_utilization' },
-      { type: 'progress', key: 'node_memory_utilization' },
-      { type: 'progress', key: 'node_disk_usage_rate' }
-    ],
     groupIds: {
       list: ['node'],
       default: ['node']
