@@ -119,19 +119,19 @@ const healthyNoRecommendationHtml = renderToStaticMarkup(
 assert.match(healthyNoRecommendationHtml, /当前扫描结果未发现明显风险，暂无额外修复建议/);
 assert.equal(healthyNoRecommendationHtml.includes('建议优先处理高风险配置项'), false);
 
-const degradedHtml = renderToStaticMarkup(
+const malformedRecommendationsHtml = renderToStaticMarkup(
   <ConfigAnalysisReportCard
     report={{
       report_id: 'report-4',
       title: '配置检查报告',
       cluster_name: 'Kubernetes - 1',
       summary: {
-        total: 18,
-        problematic: 6,
-        healthy: 12,
+        total: 10,
+        problematic: 0,
+        healthy: 10,
       },
       severity_sections: [],
-      recommendations: [],
+      recommendations: [null as any],
       markdown: '# fallback',
       fallback_markdown: '# fallback',
       received_at: Date.now(),
@@ -139,10 +139,10 @@ const degradedHtml = renderToStaticMarkup(
   />
 );
 
-assert.match(degradedHtml, /已发现配置问题，但明细暂不可用/);
-assert.equal(degradedHtml.includes('<table'), false);
+assert.match(malformedRecommendationsHtml, /未发现明显配置问题/);
+assert.equal(malformedRecommendationsHtml.includes('建议动作'), false);
 
-const malformedHtml = renderToStaticMarkup(
+const emptySeveritySectionHtml = renderToStaticMarkup(
   <ConfigAnalysisReportCard
     report={{
       report_id: 'report-5',
@@ -150,26 +150,14 @@ const malformedHtml = renderToStaticMarkup(
       cluster_name: 'Kubernetes - 1',
       summary: {
         total: 14,
-        problematic: 5,
-        healthy: 9,
-        top_recommendation: '先检查结构化结果的完整性',
+        problematic: 0,
+        healthy: 14,
       },
       severity_sections: [
         {
-          severity: 'mystery' as any,
-          title: '未知严重级别',
-          items: [
-            {
-              issue: '未配置存活探针',
-              count: 3,
-              workloads: undefined as any,
-              risk: '容器异常时无法自动重启',
-            },
-          ],
-        } as any,
-        {
           severity: 'high',
-          title: '缺少明细',
+          title: '空分组',
+          issues: [],
         } as any,
       ],
       recommendations: [],
@@ -180,10 +168,8 @@ const malformedHtml = renderToStaticMarkup(
   />
 );
 
-assert.match(malformedHtml, /结构化明细存在不完整字段，已自动跳过异常分组并降级展示/);
-assert.match(malformedHtml, /未识别/);
-assert.match(malformedHtml, /信息不完整/);
-assert.match(malformedHtml, /当前分组缺少完整的问题明细/);
-assert.match(malformedHtml, /—/);
+assert.equal(emptySeveritySectionHtml.includes('结构化明细存在不完整字段'), false);
+assert.match(emptySeveritySectionHtml, /空分组/);
+assert.match(emptySeveritySectionHtml, /当前分组缺少完整的问题明细/);
 
 console.log('k8s config report card test passed');

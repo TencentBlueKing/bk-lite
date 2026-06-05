@@ -36,6 +36,13 @@ interface NormalizedSection {
   degraded: boolean;
 }
 
+interface NormalizedRecommendation {
+  priority: 'P0' | 'P1' | 'P2' | 'P3';
+  action: string;
+  target: string;
+  benefit: string;
+}
+
 const normalizeSeverity = (value: unknown): NormalizedSection['severity'] => {
   return typeof value === 'string' && knownSeverities.has(value as ConfigAnalysisSeveritySection['severity'])
     ? (value as ConfigAnalysisSeveritySection['severity'])
@@ -49,9 +56,9 @@ const normalizeItems = (section: Record<string, unknown>): { items: NormalizedIs
     ? section.issues
     : Array.isArray(section.items)
       ? section.items
-      : [];
+      : null;
 
-  if (!Array.isArray(source) || source.length === 0) {
+  if (!source) {
     return { items: [], degraded: true };
   }
 
@@ -92,6 +99,39 @@ const normalizeItems = (section: Record<string, unknown>): { items: NormalizedIs
   };
 };
 
+const normalizeRecommendations = (recommendations: unknown): NormalizedRecommendation[] => {
+  if (!Array.isArray(recommendations)) {
+    return [];
+  }
+
+  return recommendations
+    .map((recommendation): NormalizedRecommendation | null => {
+      if (!recommendation || typeof recommendation !== 'object') {
+        return null;
+      }
+
+      const recommendationRecord = recommendation as Record<string, unknown>;
+      const priority = typeof recommendationRecord.priority === 'string' && ['P0', 'P1', 'P2', 'P3'].includes(recommendationRecord.priority)
+        ? recommendationRecord.priority as NormalizedRecommendation['priority']
+        : null;
+      const action = typeof recommendationRecord.action === 'string' ? recommendationRecord.action.trim() : '';
+      const target = typeof recommendationRecord.target === 'string' ? recommendationRecord.target.trim() : '';
+      const benefit = typeof recommendationRecord.benefit === 'string' ? recommendationRecord.benefit.trim() : '';
+
+      if (!priority || !action || !target || !benefit) {
+        return null;
+      }
+
+      return {
+        priority,
+        action,
+        target,
+        benefit,
+      };
+    })
+    .filter((recommendation): recommendation is NormalizedRecommendation => Boolean(recommendation));
+};
+
 const normalizeSection = (section: unknown, index: number): NormalizedSection | null => {
   if (!section || typeof section !== 'object') {
     return null;
@@ -119,7 +159,7 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
       .map(normalizeSection)
       .filter((section): section is NormalizedSection => Boolean(section))
     : [];
-  const recommendationRows = Array.isArray(report.recommendations) ? report.recommendations : [];
+  const recommendationRows = normalizeRecommendations(report.recommendations);
   const problematicCount = typeof report.summary.problematic === 'number' && Number.isFinite(report.summary.problematic)
     ? report.summary.problematic
     : 0;

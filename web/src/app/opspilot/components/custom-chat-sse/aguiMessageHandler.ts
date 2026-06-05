@@ -11,6 +11,7 @@ import {
   BrowserTaskReceivedValue,
   ConfigAnalysisReportValue,
   ConfigAnalysisReportItemValue,
+  ConfigAnalysisRecommendationValue,
   ConfigAnalysisSeveritySectionValue,
   StructuredConfigAnalysisReportValue,
   ConfigDiffReportValue,
@@ -25,6 +26,7 @@ import {
   BrowserStepProgressData,
   BrowserStepsHistory,
   ConfigAnalysisReport,
+  ConfigAnalysisRecommendation,
   ConfigDiffReport,
   CustomChatMessage,
   RepairCommands,
@@ -75,6 +77,40 @@ const normalizeConfigAnalysisSection = (
   ...section,
   issues: normalizeConfigAnalysisIssues(section),
 });
+
+const normalizeConfigAnalysisRecommendations = (
+  recommendations: ConfigAnalysisRecommendationValue[] | undefined
+): ConfigAnalysisRecommendation[] => {
+  if (!Array.isArray(recommendations)) {
+    return [];
+  }
+
+  return recommendations
+    .map((recommendation): ConfigAnalysisRecommendation | null => {
+      if (!recommendation || typeof recommendation !== 'object') {
+        return null;
+      }
+
+      const priority = typeof recommendation.priority === 'string' && ['P0', 'P1', 'P2', 'P3'].includes(recommendation.priority)
+        ? recommendation.priority as ConfigAnalysisRecommendation['priority']
+        : null;
+      const action = typeof recommendation.action === 'string' ? recommendation.action.trim() : '';
+      const target = typeof recommendation.target === 'string' ? recommendation.target.trim() : '';
+      const benefit = typeof recommendation.benefit === 'string' ? recommendation.benefit.trim() : '';
+
+      if (!priority || !action || !target || !benefit) {
+        return null;
+      }
+
+      return {
+        priority,
+        action,
+        target,
+        benefit,
+      };
+    })
+    .filter((recommendation): recommendation is ConfigAnalysisRecommendation => Boolean(recommendation));
+};
 
 const isStructuredConfigAnalysisReport = (
   value: ConfigAnalysisReportValue
@@ -523,7 +559,7 @@ export class AGUIMessageHandler {
         ...value,
         summary: value.summary || {},
         severity_sections,
-        recommendations: value.recommendations || [],
+        recommendations: normalizeConfigAnalysisRecommendations(value.recommendations),
         markdown: value.markdown,
         fallback_markdown: value.fallback_markdown || value.markdown,
         received_at: Date.now(),
