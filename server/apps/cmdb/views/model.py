@@ -47,9 +47,15 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                     if _permission not in model_info["permission"]:
                         model_info["permission"].append(_permission)
 
-            if not model_info["permission"]:
-                if model_info["model_id"] in group_instances_map:
-                    model_info["permission"] = list(group_instances_map[model_info["model_id"]]["permission"])
+            permission_data = group_instances_map.get(model_info["model_id"])
+            if not permission_data:
+                continue
+
+            organization_permission_map = permission_data.get("organization_permission_map", {})
+            for group in groups:
+                for _permission in organization_permission_map.get(group, set()):
+                    if _permission not in model_info["permission"]:
+                        model_info["permission"].append(_permission)
 
         return permission_instances_map
 
