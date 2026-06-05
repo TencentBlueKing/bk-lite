@@ -5,6 +5,7 @@
 
 from django.db import models
 from django.db.models import JSONField
+import copy
 
 from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
 from apps.core.models.time_info import TimeInfo
@@ -165,32 +166,50 @@ class CollectModels(MaintainerInfo, TimeInfo):
         :return: 解密后的凭据列表
         {"port": "22", "password": "password", "username": "admin"}
         """
-        if not self.credential or not isinstance(self.credential, dict):
+        if not self.credential:
             return self.credential
 
         encrypted_fields = get_collect_model_passwords(collect_model_id=self.model_id, driver_type=self.driver_type)
 
-        for encrypted_field in encrypted_fields:
-            password = self.credential.get(encrypted_field)
-            if not password:
-                continue
-            self.credential[encrypted_field] = self.decrypt_password(password)
+        def decrypt_item(raw_item):
+            item = copy.deepcopy(raw_item)
+            if not isinstance(item, dict):
+                return item
+            for encrypted_field in encrypted_fields:
+                password = item.get(encrypted_field)
+                if not password:
+                    continue
+                item[encrypted_field] = self.decrypt_password(password)
+            return item
 
+        if isinstance(self.credential, list):
+            return [decrypt_item(item) for item in self.credential]
+        if isinstance(self.credential, dict):
+            return decrypt_item(self.credential)
         return self.credential
 
     def save(self, *args, **kwargs):
         # 只有在密码未加密时才进行加密
-        if self.credential and isinstance(self.credential, dict):
+        if self.credential:
             encrypted_fields = get_collect_model_passwords(collect_model_id=self.model_id, driver_type=self.driver_type)
-            for encrypted_field in encrypted_fields:
-                password = self.credential.get(encrypted_field)
-                if not password:
-                    continue
-                # 检查是否已加密（通过前缀判断）
-                if isinstance(password, str) and password.startswith(ENCRYPTED_PREFIX):
-                    continue
-                # 加密明文密码
-                self.credential[encrypted_field] = self.encrypt_password(password)
+
+            def encrypt_item(raw_item):
+                if not isinstance(raw_item, dict):
+                    return raw_item
+                item = copy.deepcopy(raw_item)
+                for encrypted_field in encrypted_fields:
+                    password = item.get(encrypted_field)
+                    if not password:
+                        continue
+                    if isinstance(password, str) and password.startswith(ENCRYPTED_PREFIX):
+                        continue
+                    item[encrypted_field] = self.encrypt_password(password)
+                return item
+
+            if isinstance(self.credential, list):
+                self.credential = [encrypt_item(item) for item in self.credential]
+            elif isinstance(self.credential, dict):
+                self.credential = encrypt_item(self.credential)
         super().save(*args, **kwargs)
 
 

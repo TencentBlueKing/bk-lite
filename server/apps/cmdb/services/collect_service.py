@@ -13,6 +13,8 @@ from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusTy
 from apps.cmdb.models import CREATE_INST, UPDATE_INST, DELETE_INST, EXECUTE
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
+from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
+from apps.cmdb.services.collect_hit_state_service import CollectHitStateService
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE
 from apps.cmdb.utils.change_record import create_change_record
 from apps.cmdb.utils.base import get_current_team_from_request
@@ -289,11 +291,29 @@ class CollectModelService(object):
                 data["credential"]["regions"] = regions
         else:
             old_credential = instance.decrypt_credentials
-            if not isinstance(old_credential, dict):
-                old_credential = {}
             if credential is None:
                 data["credential"] = old_credential
                 return
+            if isinstance(credential, list):
+                old_pool = old_credential if isinstance(old_credential, list) else []
+                old_pool_map = {
+                    item.get("credential_id"): dict(item)
+                    for item in old_pool
+                    if isinstance(item, dict) and item.get("credential_id")
+                }
+                merged_pool = []
+                for item in credential:
+                    if not isinstance(item, dict):
+                        raise BaseAppException("采集凭据格式错误！")
+                    credential_id = item.get("credential_id")
+                    merged = dict(old_pool_map.get(credential_id, {}))
+                    merged.update(item)
+                    merged_pool.append(merged)
+                data["credential"] = merged_pool
+                return
+
+            if not isinstance(old_credential, dict):
+                old_credential = {}
             if not isinstance(credential, dict):
                 raise BaseAppException("采集凭据格式错误！")
             old_credential.update(credential)
@@ -375,6 +395,9 @@ class CollectModelService(object):
     @classmethod
     def create(cls, request, view_self):
         create_data, is_interval, scan_cycle = cls.format_params(request.data)
+        if create_data.get("credential"):
+            create_data["credential"] = CollectCredentialPoolService.normalize_pool(create_data["credential"])
+            CollectCredentialPoolService.validate_pool_shape(create_data["credential"])
         cls.enrich_host_cloud_snapshot_payload(create_data)
 
         # 使用数据库事务保证原子性：DB + 外部操作要么全成功，要么全失败
@@ -427,6 +450,14 @@ class CollectModelService(object):
         cls.has_permission(request, instance, view_self)
         update_data, is_interval, scan_cycle = cls.format_params(request.data)
         cls.format_update_credential(instance, update_data)
+        if update_data.get("credential"):
+            old_pool = CollectCredentialPoolService.normalize_pool(instance.decrypt_credentials)
+            new_pool = CollectCredentialPoolService.normalize_pool(update_data["credential"])
+            CollectCredentialPoolService.validate_pool_shape(new_pool)
+            update_data["credential"] = new_pool
+            credential_pool_diff = CollectCredentialPoolService.diff_pool(old_pool, new_pool)
+        else:
+            credential_pool_diff = ([], [], [])
         cls.enrich_host_cloud_snapshot_payload(update_data)
         # 使用数据库事务保证原子性
         with transaction.atomic():
@@ -456,6 +487,16 @@ class CollectModelService(object):
                 raise BaseAppException(f"更新采集任务失败：{str(e)}")
 
             cls.delete_team(instance.id, old_instance.team, request.data["team"], view_self)
+            invalidated_credential_ids = list(dict.fromkeys(credential_pool_diff[1] + credential_pool_diff[2]))
+            cleared_hit_count = CollectHitStateService.clear_by_credential_ids(instance.id, invalidated_credential_ids)
+            logger.info(
+                "[CollectCredentialPool] update task_id=%s added=%s removed=%s edited=%s cleared_hit_count=%s",
+                instance.id,
+                credential_pool_diff[0],
+                credential_pool_diff[1],
+                credential_pool_diff[2],
+                cleared_hit_count,
+            )
             # 只有所有操作都成功，才创建变更记录
             create_change_record(
                 operator=request.user.username,

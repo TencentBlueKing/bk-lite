@@ -171,6 +171,7 @@ class TaskQueue:
             "plugin_name": params.get("plugin_name"),
             "host": params.get("host"),
             "port": params.get("port"),
+            "credential_id": params.get("credential_id"),
             "instance_id": params.get("tags", {}).get("instance_id"),
             "collect_type": params.get("collect_type"),
         }
