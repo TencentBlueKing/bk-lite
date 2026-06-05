@@ -530,7 +530,73 @@ def test_collect_plugin_task_suppresses_synthetic_error_metrics_when_delivery_de
 
     assert result["status"] == "failed"
     assert publish_calls == ["ignored"]
-    assert len(post_execute_calls) == 1
+    assert post_execute_calls == []
+
+
+@pytest.mark.parametrize(
+    ("success_count", "delivery_detected"),
+    [(1, False), (0, True)],
+    ids=["real_delivery", "uncertain_delivery"],
+)
+def test_collect_plugin_task_skips_multicred_failure_reconciliation_after_transport_only_publish_failure(
+    monkeypatch, success_count, delivery_detected
+):
+    import tasks.handlers.plugin_handler as plugin_handler
+    from tasks.utils.nats_helper import MetricsPublishError
+
+    publish_calls = []
+    post_execute_calls = []
+
+    class FakeCollectionService:
+        def __init__(self, params):
+            self.params = params
+
+        async def collect(self):
+            return "ignored"
+
+    async def fake_publish_metrics_to_nats(ctx, metrics_data, params, task_id):
+        publish_calls.append(metrics_data)
+        raise MetricsPublishError(
+            task_id=task_id,
+            subject="metrics.mysql",
+            total_lines=2,
+            success_count=success_count,
+            delivery_detected=delivery_detected,
+            attempts=1,
+            reason="flush failed after writes",
+        )
+
+    async def fake_post_execute(params, task_id, execution_result, cache_cls, get_queue_func):
+        post_execute_calls.append(execution_result)
+
+    monkeypatch.setattr("service.collection_service.CollectionService", FakeCollectionService)
+    monkeypatch.setattr("tasks.utils.nats_helper.publish_metrics_to_nats", fake_publish_metrics_to_nats)
+    monkeypatch.setattr(
+        "tasks.utils.metrics_helper.generate_plugin_error_metrics",
+        lambda params, err: "synthetic-error-metrics",
+    )
+    monkeypatch.setattr(plugin_handler, "_handle_multicred_post_execute", fake_post_execute)
+
+    result = asyncio.run(
+        plugin_handler.collect_plugin_task(
+            {},
+            {
+                "plugin_name": "mysql_info",
+                "model_id": "mysql",
+                "host": "10.0.0.1",
+                "credential_id": "cred-1",
+                "credential_index": 0,
+                "credentials_pool": [{"credential_id": "cred-1"}],
+                "collect_task_id": "collect-1",
+                "executor_type": "job",
+            },
+            "task-1",
+        )
+    )
+
+    assert result["status"] == "failed"
+    assert publish_calls == ["ignored"]
+    assert post_execute_calls == []
 
 
 def test_collect_plugin_task_does_not_mark_multicred_success_when_zero_metrics_delivered(monkeypatch):

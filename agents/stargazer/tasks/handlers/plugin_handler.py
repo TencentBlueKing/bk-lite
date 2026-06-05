@@ -121,15 +121,22 @@ async def collect_plugin_task(
                 or getattr(e, "delivery_detected", False)
             )
         )
-        preserved_execution_result = (
-            execution_result
-            if isinstance(execution_result, dict) and not execution_result.get("success", True)
-            else None
+        should_skip_failure_reconciliation = (
+            not params.get("callback_subject")
+            and real_metrics_delivered
+            and isinstance(execution_result, dict)
+            and execution_result.get("success") is True
         )
-        execution_result = preserved_execution_result or _build_credential_execution_result(params, None, e)
-        await _handle_multicred_post_execute(
-            params, task_id, execution_result, CredentialStateCache, get_task_queue
-        )
+        if not should_skip_failure_reconciliation:
+            preserved_execution_result = (
+                execution_result
+                if isinstance(execution_result, dict) and not execution_result.get("success", True)
+                else None
+            )
+            execution_result = preserved_execution_result or _build_credential_execution_result(params, None, e)
+            await _handle_multicred_post_execute(
+                params, task_id, execution_result, CredentialStateCache, get_task_queue
+            )
 
         if params.get("callback_subject"):
             identity = _resolve_callback_identity(params) if _is_config_file_callback(params) else {
