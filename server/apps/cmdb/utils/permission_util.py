@@ -120,8 +120,13 @@ class CmdbRulesFormatUtil:
                     return True
 
             permission_data = organizations_instances_map.get(model_id)
-            if permission_data and operator in permission_data["permission"]:
-                return bool(set(groups) & permission_data["organization"])
+            if not permission_data:
+                return False
+
+            organization_permission_map = permission_data.get("organization_permission_map", {})
+            for group in groups:
+                if operator in organization_permission_map.get(group, set()):
+                    return True
 
             return False
 
@@ -134,8 +139,13 @@ class CmdbRulesFormatUtil:
                     return True
 
             permission_data = organizations_instances_map.get(inst_name)
-            if permission_data and operator in permission_data["permission"]:
-                return bool(set(organizations) & permission_data["organization"])
+            if not permission_data:
+                return False
+
+            organization_permission_map = permission_data.get("organization_permission_map", {})
+            for organization in organizations:
+                if operator in organization_permission_map.get(organization, set()):
+                    return True
 
         return False
 
@@ -252,19 +262,25 @@ class CmdbRulesFormatUtil:
             instances_map = _permission_data.get("permission_instances_map", {})
             if "__default_model" in _permission_data:
                 organizations_instances_map[organizations_id] = {"permission": {VIEW},
-                                                                 "organization": {organizations_id}}
+                                                                 "organization": {organizations_id},
+                                                                 "organization_permission_map": {organizations_id: {VIEW}}}
                 continue
             if not instances_map:
                 # 说明这个组织没有额外配置条件 则全选都有权限
                 organizations_instances_map[organizations_id] = {"permission": {VIEW, OPERATE},
-                                                                 "organization": {organizations_id}}
+                                                                 "organization": {organizations_id},
+                                                                 "organization_permission_map": {organizations_id: {VIEW, OPERATE}}}
                 continue
             for inst_name, permission in instances_map.items():
                 if inst_name not in organizations_instances_map:
                     organizations_instances_map[inst_name] = {"permission": set(permission),
-                                                              "organization": {organizations_id}}
+                                                              "organization": {organizations_id},
+                                                              "organization_permission_map": {organizations_id: set(permission)}}
                 else:
                     organizations_instances_map[inst_name]["permission"].update(set(permission))
                     organizations_instances_map[inst_name]["organization"].add(organizations_id)
+                    organizations_instances_map[inst_name].setdefault("organization_permission_map", {}).setdefault(
+                        organizations_id, set()
+                    ).update(set(permission))
 
         return organizations_instances_map

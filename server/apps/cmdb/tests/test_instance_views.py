@@ -4,6 +4,7 @@
 包含纯函数 _normalize_query_list/_parse_positive_int/add_instance_permission。
 """
 
+import importlib
 import json
 
 import pytest
@@ -164,7 +165,7 @@ def test_add_instance_permission_by_org():
 
 
 def test_add_instance_permission_by_inst_name():
-    instances = [{"_creator": "bob", "inst_name": "VC3", "organization": [99]}]
+    instances = [{"_creator": "bob", "inst_name": "VC3", "organization": [6]}]
     pmap = {6: {"permission_instances_map": {"VC3": ["View"]}}}
     InstanceViewSet.add_instance_permission(instances, pmap, creator="alice")
     assert instances[0]["permission"] == ["View"]
@@ -180,6 +181,16 @@ def test_add_instance_permission_same_name_other_org_denied():
 def test_add_instance_permission_same_name_same_org_allowed():
     instances = [{"_creator": "bob", "inst_name": "prod-vc", "organization": [6]}]
     pmap = {6: {"permission_instances_map": {"prod-vc": ["View"]}}}
+    InstanceViewSet.add_instance_permission(instances, pmap, creator="alice")
+    assert instances[0]["permission"] == ["View"]
+
+
+def test_add_instance_permission_same_name_ignores_other_org_permissions():
+    instances = [{"_creator": "bob", "inst_name": "prod-vc", "organization": [6]}]
+    pmap = {
+        6: {"permission_instances_map": {"prod-vc": ["View"]}},
+        8: {"permission_instances_map": {"prod-vc": ["Operate"]}},
+    }
     InstanceViewSet.add_instance_permission(instances, pmap, creator="alice")
     assert instances[0]["permission"] == ["View"]
 
@@ -244,13 +255,24 @@ def test_retrieve_creator(superuser, monkeypatch):
 
 @pytest.mark.django_db
 def test_retrieve_denied_when_name_permission_only_exists_in_other_org(superuser, monkeypatch):
+    permission_module = importlib.reload(importlib.import_module("apps.cmdb.utils.permission_util"))
+
     monkeypatch.setattr(
         f"{VIEWS}.InstanceManage.query_entity_by_id",
         lambda pk: {"_id": 5, "model_id": "vmware_vc", "inst_name": "prod-vc", "organization": [9], "_creator": "alice"},
     )
     monkeypatch.setattr(f"{VIEWS}.InstanceViewSet.check_creator_and_organizations", lambda self, r, i: False)
     monkeypatch.setattr(f"{VIEWS}.InstanceViewSet.organizations", lambda self, r, i: [9])
-    monkeypatch.setattr(f"{VIEWS}.CmdbRulesFormatUtil.has_object_permission", lambda **kwargs: False)
+    monkeypatch.setattr(
+        f"{VIEWS}.CmdbRulesFormatUtil.has_object_permission",
+        permission_module.CmdbRulesFormatUtil.has_object_permission,
+    )
+    monkeypatch.setattr(
+        f"{VIEWS}.CmdbRulesFormatUtil.format_user_groups_permissions",
+        lambda request, model_id="", permission_type=None: {
+            6: {"permission_instances_map": {"prod-vc": ["View"]}, "inst_names": ["prod-vc"]}
+        },
+    )
     request = _req("get", superuser, team="9")
     response = _call({"get": "retrieve"}, request, pk="5")
     assert response.status_code == status.HTTP_403_FORBIDDEN
