@@ -30,6 +30,26 @@ export default function RabbitMQDashboardPage() {
 
   const [memoryRing] = rings;
   const [resourceDetail] = details;
+  const [memoryChart, messageChart, handleChart, loadChart] = charts;
+
+  const renderChart = (chart: typeof charts[number], spanClass: string) =>
+    chart ? (
+      <TrendChartPanel
+        key={chart.chart.title}
+        title={chart.chart.title}
+        subtitle={chart.chart.subtitle}
+        guide={chart.chart.guide}
+        legends={chart.legends}
+        data={chart.data}
+        metric={chart.metric}
+        unit={chart.unit}
+        loading={dashboard.loading}
+        seriesStyles={chart.seriesStyles}
+        onXRangeChange={dashboard.onXRangeChange}
+        className={`${spanClass} ${styles.compactTrend}`}
+        styles={styles}
+      />
+    ) : null;
 
   return (
     <DashboardShell
@@ -39,23 +59,7 @@ export default function RabbitMQDashboardPage() {
         <>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
           <FlexiblePanelSection styles={styles}>
-            {charts.map((chart) => chart ? (
-              <TrendChartPanel
-                key={chart.chart.title}
-                title={chart.chart.title}
-                subtitle={chart.chart.subtitle}
-                guide={chart.chart.guide}
-                legends={chart.legends}
-                data={chart.data}
-                metric={chart.metric}
-                unit={chart.unit}
-                loading={dashboard.loading}
-                seriesStyles={chart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span6} ${styles.compactTrend}`}
-                styles={styles}
-              />
-            ) : null)}
+            {/* R1: 内存分布环 span4 + 内存压力趋势 span8 = 12 —— 环图配同主题折线,消除中部留白 */}
             {memoryRing ? (
               <RingChartPanel
                 key={memoryRing.panel.title}
@@ -66,10 +70,16 @@ export default function RabbitMQDashboardPage() {
                 centerValue={memoryRing.centerValue}
                 centerCaption={memoryRing.panel.centerCaption}
                 isEmpty={memoryRing.isEmpty}
-                className={styles.span6}
+                className={styles.span4}
                 styles={styles}
               />
             ) : null}
+            {renderChart(memoryChart, styles.span8)}
+            {/* R2: 消息流转 span6 + 节点负载 span6 = 12 */}
+            {renderChart(messageChart, styles.span6)}
+            {renderChart(loadChart, styles.span6)}
+            {/* R3: 句柄资源 span6 + 队列与资源详情 span6 = 12 —— 详情配折线 */}
+            {renderChart(handleChart, styles.span6)}
             {resourceDetail ? (
               <DetailPanelCard
                 key={resourceDetail.panel.title}

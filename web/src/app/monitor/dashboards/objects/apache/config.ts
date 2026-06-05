@@ -9,14 +9,6 @@ export const APACHE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   metaItems: ['Telegraf', 'middleware'],
   metrics: [
     {
-      name: 'apache_ServerUptimeSeconds',
-      display_name: '服务运行时长',
-      description: 'Apache 服务自启动以来的运行时长。',
-      unit: 's',
-      query: 'apache_ServerUptimeSeconds{__$labels__}',
-      color: '#27c274'
-    },
-    {
       name: 'apache_ReqPerSec',
       display_name: '请求处理速率',
       description: 'Apache 每秒处理请求数量。',
@@ -241,7 +233,6 @@ export const APACHE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '运行细节',
       subtitle: '连接速率 · 缓存 · 配置',
       rows: [
-        { label: '服务运行时长', metric: 'apache_ServerUptimeSeconds', unit: 's', formatter: 'duration' },
         { label: 'Open 连接变化速率', metric: 'apache_scboard_open_rate', unit: 'cps' },
         { label: '缓存当前条目', metric: 'apache_CacheCurrentEntries', unit: 'counts' },
         { label: '配置重载次数', metric: 'apache_ParentServerConfigGeneration', unit: 'counts' }

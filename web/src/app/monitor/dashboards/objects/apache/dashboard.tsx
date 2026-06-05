@@ -39,7 +39,7 @@ export default function ApacheDashboardPage() {
       dashboardContent={
         <>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
-          {/* Row 1: throughput chart (span6) + worker chart (span6) = 12 */}
+          {/* Row 1: 请求吞吐 span6 + Worker 状态 span6 = 12 */}
           <FlexiblePanelSection styles={styles}>
             {[throughputChart, workerChart].map((chart) => chart ? (
               <TrendChartPanel
@@ -58,21 +58,18 @@ export default function ApacheDashboardPage() {
                 styles={styles}
               />
             ) : null)}
-            {/* Row 2: scoreboard chart (span6) + load chart (span6) = 12 */}
-            {scoreboardChart ? (
-              <TrendChartPanel
-                key={scoreboardChart.chart.title}
-                title={scoreboardChart.chart.title}
-                subtitle={scoreboardChart.chart.subtitle}
-                guide={scoreboardChart.chart.guide}
-                legends={scoreboardChart.legends}
-                data={scoreboardChart.data}
-                metric={scoreboardChart.metric}
-                unit={scoreboardChart.unit}
-                loading={dashboard.loading}
-                seriesStyles={scoreboardChart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span6} ${styles.compactTrend}`}
+            {/* Row 2: Worker 使用环 span4 + 系统负载趋势 span8 = 12 —— 环图配折线消除中部留白 */}
+            {workerRing ? (
+              <RingChartPanel
+                key={workerRing.panel.title}
+                title={workerRing.panel.title}
+                subtitle={workerRing.panel.subtitle}
+                guide={workerRing.panel.guide}
+                data={workerRing.data}
+                centerValue={workerRing.centerValue}
+                centerCaption={workerRing.panel.centerCaption}
+                isEmpty={workerRing.isEmpty}
+                className={styles.span4}
                 styles={styles}
               />
             ) : null}
@@ -89,24 +86,25 @@ export default function ApacheDashboardPage() {
                 loading={dashboard.loading}
                 seriesStyles={loadChart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span6} ${styles.compactTrend}`}
+                className={`${styles.span8} ${styles.compactTrend}`}
                 styles={styles}
               />
             ) : null}
-          </FlexiblePanelSection>
-          {/* Row 3: worker ring (span6) + 运行细节详情 (span6) = 12 —— 配对避免单卡留白 */}
-          <FlexiblePanelSection styles={styles}>
-            {workerRing ? (
-              <RingChartPanel
-                key={workerRing.panel.title}
-                title={workerRing.panel.title}
-                subtitle={workerRing.panel.subtitle}
-                guide={workerRing.panel.guide}
-                data={workerRing.data}
-                centerValue={workerRing.centerValue}
-                centerCaption={workerRing.panel.centerCaption}
-                isEmpty={workerRing.isEmpty}
-                className={styles.span6}
+            {/* Row 3: Scoreboard 趋势 span6 + 运行细节详情 span6 = 12 —— 详情配折线 */}
+            {scoreboardChart ? (
+              <TrendChartPanel
+                key={scoreboardChart.chart.title}
+                title={scoreboardChart.chart.title}
+                subtitle={scoreboardChart.chart.subtitle}
+                guide={scoreboardChart.chart.guide}
+                legends={scoreboardChart.legends}
+                data={scoreboardChart.data}
+                metric={scoreboardChart.metric}
+                unit={scoreboardChart.unit}
+                loading={dashboard.loading}
+                seriesStyles={scoreboardChart.seriesStyles}
+                onXRangeChange={dashboard.onXRangeChange}
+                className={`${styles.span6} ${styles.compactTrend}`}
                 styles={styles}
               />
             ) : null}

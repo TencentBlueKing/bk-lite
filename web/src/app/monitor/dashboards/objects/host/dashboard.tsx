@@ -119,6 +119,9 @@ export default function HostDashboardPage() {
                 styles={styles}
               />
             ) : null}
+          </FlexiblePanelSection>
+          <FlexiblePanelSection styles={styles}>
+            {/* 主机压力信号条 span6 + 网络吞吐 span6 = 12 —— 信号条不再独占整行 */}
             {pressureBar ? (
               <HorizontalBarPanel
                 key={pressureBar.panel.title}
@@ -126,12 +129,10 @@ export default function HostDashboardPage() {
                 subtitle={pressureBar.panel.subtitle}
                 guide={pressureBar.panel.guide}
                 items={pressureBar.items}
-                className={styles.span12}
+                className={styles.span6}
                 styles={styles}
               />
             ) : null}
-          </FlexiblePanelSection>
-          <FlexiblePanelSection styles={styles}>
             {networkChart ? (
               <TrendChartPanel
                 key={networkChart.chart.title}
@@ -179,7 +180,7 @@ export default function HostDashboardPage() {
                 loading={dashboard.loading}
                 seriesStyles={processChart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span12} ${styles.compactTrend}`}
+                className={`${styles.span6} ${styles.compactTrend}`}
                 styles={styles}
               />
             ) : null}

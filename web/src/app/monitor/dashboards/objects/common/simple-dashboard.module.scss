@@ -908,7 +908,9 @@
 }
 
 .barsTrend .barSpark {
-  max-width: 360px;
+  // 弹性撑满行内余宽,封顶放宽到 560px:宽屏/宽卡(span8、span12)下缩略图延伸至数值前,
+  // 不再 strand 出大片空白;窄卡(span4/6)由 1fr 列自然约束,不会过长。
+  max-width: min(100%, 560px);
 }
 
 .barLabel {
@@ -1080,10 +1082,10 @@
 }
 
 .detailRowViz {
-  // 缩略图撑满弹性列但封顶适中宽度(同 barsTrend 的 360px),既不过长、又不留单边空白;
+  // 缩略图撑满弹性列但封顶放宽到 560px(同 barsTrend):宽卡下延伸至数值前消除空白,窄卡由 1fr 约束;
   // 空行也渲染本占位以保证数值跨行对齐。
   width: 100%;
-  max-width: 360px;
+  max-width: min(100%, 560px);
   min-width: 0;
   display: flex;
   align-items: center;
