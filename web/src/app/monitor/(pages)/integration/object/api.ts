@@ -130,6 +130,21 @@ const useObjectApi = () => {
     }));
   };
 
+  // 获取子对象原始数据（含真实 id 与 display_fields，用于展示列配置）
+  const getObjectChildrenRaw = async (
+    parentId: number
+  ): Promise<MonitorObjectItem[]> => {
+    const res = await get('/monitor/api/monitor_object/', {
+      params: { parent: parentId }
+    });
+    const items: MonitorObjectItem[] = Array.isArray(res) ? res : res?.results || [];
+    return items.map((item) => ({
+      ...item,
+      type_id: item.type,
+      display_name: item.display_name || item.name
+    }));
+  };
+
   // 创建对象（支持同时创建子对象）
   const createObject = async (
     data: ObjectFormData
@@ -241,6 +256,7 @@ const useObjectApi = () => {
     getObjects,
     getObjectDetail,
     getObjectChildren,
+    getObjectChildrenRaw,
     createObject,
     updateObject,
     deleteObject,
