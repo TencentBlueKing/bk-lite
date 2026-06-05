@@ -10,10 +10,14 @@ from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.enum import SkillTypeChoices
 from apps.opspilot.models import LLMModel, SkillTools
 from apps.opspilot.services.builtin_tools import (
+    BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
+    BUILTIN_MONITOR_TOOL_NAME,
     BUILTIN_MSSQL_TOOL_NAME,
     BUILTIN_MYSQL_TOOL_NAME,
     BUILTIN_ORACLE_TOOL_NAME,
     BUILTIN_REDIS_TOOL_NAME,
+    build_builtin_attachment_file_runtime_tool,
+    build_builtin_monitor_runtime_tool,
     build_builtin_mssql_runtime_tool,
     build_builtin_mysql_runtime_tool,
     build_builtin_oracle_runtime_tool,
@@ -169,12 +173,16 @@ class ChatService:
         selected_tools = kwargs.get("tools", [])
         selected_builtin_kwargs = {}
         builtin_tool_names = {
+            BUILTIN_ATTACHMENT_FILE_TOOL_NAME: None,
+            BUILTIN_MONITOR_TOOL_NAME: None,
             BUILTIN_REDIS_TOOL_NAME: None,
             BUILTIN_MYSQL_TOOL_NAME: None,
             BUILTIN_ORACLE_TOOL_NAME: None,
             BUILTIN_MSSQL_TOOL_NAME: None,
         }
         builtin_builders = {
+            BUILTIN_ATTACHMENT_FILE_TOOL_NAME: build_builtin_attachment_file_runtime_tool,
+            BUILTIN_MONITOR_TOOL_NAME: build_builtin_monitor_runtime_tool,
             BUILTIN_REDIS_TOOL_NAME: build_builtin_redis_runtime_tool,
             BUILTIN_MYSQL_TOOL_NAME: build_builtin_mysql_runtime_tool,
             BUILTIN_ORACLE_TOOL_NAME: build_builtin_oracle_runtime_tool,
@@ -188,7 +196,11 @@ class ChatService:
             if tool.get("name") in builtin_tool_names:
                 selected_builtin_kwargs[tool["name"]] = {u["key"]: u["value"] for u in tool.get("kwargs", []) if u.get("key")}
 
-        tool_map = {i["id"]: {u["key"]: u["value"] for u in i["kwargs"] if u.get("key")} for i in selected_tools if "id" in i}
+        tool_map = {
+            i["id"]: {u["key"]: u["value"] for u in i["kwargs"] if u.get("key")}
+            for i in selected_tools
+            if isinstance(i.get("id"), int) and i["id"] > 0
+        }
 
         skill_tools_queryset = SkillTools.objects.filter(id__in=list(tool_map.keys()))
         tools = []
@@ -214,6 +226,7 @@ class ChatService:
             k8s_instances_raw = tool_kwargs.get("kubernetes_instances")
             # 使用 parse_kubernetes_instances 正确解析（支持 JSON 字符串和 list）
             from apps.opspilot.metis.llm.tools.kubernetes.connection import parse_kubernetes_instances
+
             k8s_instances = parse_kubernetes_instances(k8s_instances_raw) if k8s_instances_raw else []
             if len(k8s_instances) > 1:
                 instance_names = [inst.get("name", "") for inst in k8s_instances if inst.get("name")]
@@ -244,6 +257,8 @@ class ChatService:
         for i in tool_map.values():
             extra_config.update(i)
         extra_config.update({"execution_id": chat_kwargs["execution_id"]})
+        if kwargs.get("attachment_id"):
+            extra_config["attachment_id"] = kwargs["attachment_id"]
         if kwargs.get("node_id"):
             extra_config["node_id"] = kwargs["node_id"]
         if kwargs.get("trigger_type"):
@@ -326,6 +341,8 @@ class ChatService:
             ChatService._process_tools_and_extra_config(kwargs, chat_kwargs, extra_config)
         elif extra_config:
             extra_config.update({"execution_id": chat_kwargs["execution_id"]})
+            if kwargs.get("attachment_id"):
+                extra_config["attachment_id"] = kwargs["attachment_id"]
             if kwargs.get("node_id"):
                 extra_config["node_id"] = kwargs["node_id"]
             if kwargs.get("trigger_type"):

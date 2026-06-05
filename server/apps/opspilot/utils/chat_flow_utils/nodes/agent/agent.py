@@ -8,7 +8,8 @@ from typing import Any, Dict
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.safe_template import TemplateSecurityError, safe_render
-from apps.opspilot.models import LLMModel, LLMSkill
+from apps.opspilot.models import LLMModel, LLMSkill, WorkflowAttachmentAsset
+from apps.opspilot.services.builtin_tools import BUILTIN_ATTACHMENT_FILE_TOOL_NAME
 from apps.opspilot.services.chat_service import ChatService, chat_service
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
@@ -214,8 +215,37 @@ class AgentNode(BaseNodeExecutor):
             "locale": flow_input.get("locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化
             "thread_id": flow_input.get("execution_id", ""),
             "execution_id": flow_input.get("execution_id", ""),
-            "node_id": flow_input.get("node_id", ""),
+            "node_id": flow_input.get("node_id", "") or self.variable_manager.get_variable("current_node_id", ""),
+            "flow_id": self.variable_manager.get_variable("flow_id", ""),
             "trigger_type": self._resolve_trigger_type(flow_input),
+        }
+
+    @staticmethod
+    def _skill_supports_attachment_generation(skill: LLMSkill) -> bool:
+        return any(isinstance(tool, dict) and tool.get("name") == BUILTIN_ATTACHMENT_FILE_TOOL_NAME for tool in (skill.tools or []))
+
+    def _sync_generated_attachment_link(self, node_id: str, execution_id: str) -> Dict[str, Any]:
+        normalized_node_id = str(node_id or "").strip()
+        if not normalized_node_id or not execution_id:
+            return {}
+
+        asset = (
+            WorkflowAttachmentAsset.objects.filter(execution_id=execution_id, source_node_id=normalized_node_id)
+            .order_by("-created_at", "-id")
+            .first()
+        )
+        if not asset:
+            return {}
+
+        self.variable_manager.set_variable(normalized_node_id, asset.download_url)
+        return {
+            normalized_node_id: asset.download_url,
+            "generated_attachment": {
+                "attachment_id": asset.attachment_id,
+                "filename": asset.filename,
+                "file_url": asset.download_url,
+                "mime_type": asset.mime_type,
+            },
         }
 
     def sse_execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]):
@@ -224,7 +254,7 @@ class AgentNode(BaseNodeExecutor):
         input_key = config.get("inputParams", "last_message")
         skill_id = config.get("agent")
 
-        llm_params, skill_name = self.set_llm_params(node_id, config, input_data)
+        llm_params, skill_name, _ = self.set_llm_params(node_id, config, input_data)
 
         # 导入 create_stream_generator 而不是 stream_chat
         from apps.opspilot.utils.sse_chat import create_stream_generator
@@ -237,7 +267,7 @@ class AgentNode(BaseNodeExecutor):
         config = node_config["data"].get("config", {})
 
         # 获取 LLM 参数
-        llm_params, skill_name = self.set_llm_params(node_id, config, input_data)
+        llm_params, skill_name, _ = self.set_llm_params(node_id, config, input_data)
 
         # 获取 LLM 模型并构建请求参数
         llm_model = LLMModel.objects.get(id=llm_params["llm_model"])
@@ -314,14 +344,14 @@ class AgentNode(BaseNodeExecutor):
         # 构建LLM参数
         llm_params = self._build_llm_params(skill, final_message, flow_input)
 
-        return llm_params, skill.name
+        return llm_params, skill.name, self._skill_supports_attachment_generation(skill)
 
     def execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]) -> Dict[str, Any]:
         """非流式执行agent节点"""
         config = node_config["data"].get("config", {})
         output_key = config.get("outputParams", "last_message")
 
-        llm_params, _ = self.set_llm_params(node_id, config, input_data)
+        llm_params, _, supports_attachment_generation = self.set_llm_params(node_id, config, input_data)
 
         # 使用同步版本的 invoke_chat,避免异步上下文冲突
         data, _, _ = ChatService.invoke_chat(llm_params)
@@ -336,6 +366,8 @@ class AgentNode(BaseNodeExecutor):
             }
 
         result = {output_key: data["message"]}
+        if supports_attachment_generation:
+            result.update(self._sync_generated_attachment_link(node_id, llm_params.get("execution_id", "")))
         if data.get("browser_steps"):
             result["browser_steps"] = data["browser_steps"]
         return result

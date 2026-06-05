@@ -15,6 +15,10 @@ from apps.opspilot.enum import BotTypeChoice, ChannelChoices, WorkFlowExecuteTyp
 BOT_CONVERSATION_ROLE_CHOICES = [("user", "用户"), ("bot", "机器人")]
 
 
+def generate_workflow_attachment_download_token():
+    return uuid.uuid4().hex
+
+
 class Bot(MaintainerInfo):
     name = models.CharField(max_length=255, verbose_name="名称")
     introduction = models.TextField(blank=True, null=True, verbose_name="描述")
@@ -281,6 +285,45 @@ class WorkFlowTaskResult(models.Model):
     output_data = models.JSONField(verbose_name="输出数据", default=dict)
     last_output = models.TextField(verbose_name="最后输出", blank=True, null=True)
     execute_type = models.CharField(max_length=50, default="restful")
+
+
+class WorkflowAttachmentAsset(models.Model):
+    execution_id = models.CharField(max_length=36, db_index=True, verbose_name="执行实例ID")
+    flow_id = models.CharField(max_length=36, default="", blank=True, verbose_name="工作流ID")
+    source_node_id = models.CharField(max_length=100, default="", blank=True, verbose_name="来源节点ID")
+    attachment_id = models.CharField(max_length=100, verbose_name="附件ID")
+    filename = models.CharField(max_length=255, verbose_name="文件名")
+    mime_type = models.CharField(max_length=120, default="", blank=True, verbose_name="MIME类型")
+    file_knowledge = models.ForeignKey(
+        "FileKnowledge",
+        on_delete=models.CASCADE,
+        related_name="workflow_attachments",
+        verbose_name="附件文件",
+    )
+    created_by = models.CharField(max_length=100, default="", blank=True, verbose_name="创建者")
+    download_token = models.CharField(
+        max_length=32,
+        unique=True,
+        db_index=True,
+        default=generate_workflow_attachment_download_token,
+        verbose_name="下载令牌",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "工作流附件"
+        verbose_name_plural = verbose_name
+        db_table = "bot_mgmt_workflowattachmentasset"
+        constraints = [
+            models.UniqueConstraint(fields=["execution_id", "attachment_id"], name="uniq_workflow_attachment_execution"),
+        ]
+        indexes = [
+            models.Index(fields=["execution_id", "created_at"]),
+        ]
+
+    @property
+    def download_url(self) -> str:
+        return f"/api/v1/opspilot/bot_mgmt/workflow_attachment/download/{self.download_token}/"
 
 
 class WorkFlowTaskNodeResult(models.Model):

@@ -1,3 +1,4 @@
+import base64
 import json
 
 
@@ -12,6 +13,44 @@ def test_kubernetes_constructor_params_expose_structured_instances_only():
             "description": "Kubernetes 实例列表，每个实例包含 id、name、kubeconfig_data",
         }
     ]
+
+
+def test_build_generated_file_download_event_returns_generic_payload():
+    from apps.opspilot.services.generated_file_delivery_service import build_generated_file_download_event
+
+    event = build_generated_file_download_event(
+        filename="report.docx",
+        content_bytes=b"hello",
+        mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+
+    assert event["filename"] == "report.docx"
+    assert event["mime_type"] == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    assert len(event["download_id"]) == 8
+    assert base64.b64decode(event["content_base64"]) == b"hello"
+
+
+def test_generate_k8s_report_docx_keeps_k8s_specific_rendering():
+    from apps.opspilot.metis.llm.tools.kubernetes.report_generator import generate_k8s_report_docx
+
+    report_bytes = generate_k8s_report_docx(
+        {
+            "cluster_name": "test-cluster",
+            "raw_items": [
+                {
+                    "namespace": "default",
+                    "target_name": "api",
+                    "target_type": "Deployment",
+                    "severity": "high",
+                    "summary": "镜像标签使用 latest",
+                    "category": "image",
+                }
+            ],
+        }
+    )
+
+    assert isinstance(report_bytes, bytes)
+    assert report_bytes.startswith(b"PK")
 
 
 def test_get_kubernetes_instances_prompt_targets_all_when_unspecified():

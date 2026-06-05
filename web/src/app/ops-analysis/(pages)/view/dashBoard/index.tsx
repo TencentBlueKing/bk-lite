@@ -47,7 +47,7 @@ import { exportDashboardToPdf } from '@/app/ops-analysis/utils/exportPdf';
 import {
   AppViewFullscreenExit,
   useAppViewFullscreen,
-} from '../components/appFullscreen';
+} from '@/app/ops-analysis/components/appFullscreen';
 import 'react-resizable/css/styles.css';
 import { useSession } from 'next-auth/react';
 import { useDashboardLayoutSync } from './hooks/useDashboardLayoutSync';

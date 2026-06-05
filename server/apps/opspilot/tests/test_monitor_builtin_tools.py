@@ -1,4 +1,10 @@
+from datetime import timedelta
+
+import pytest
+from django.utils import timezone
+
 from apps.core.utils.loader import LanguageLoader
+from apps.opspilot.models import WorkflowAttachmentAsset
 from apps.opspilot.services import builtin_tools
 from apps.opspilot.services.chat_service import ChatService
 
@@ -33,6 +39,149 @@ def test_build_builtin_monitor_tool_exposes_constructor_and_subtools(mocker):
     assert data["params"]["url"] == "langchain:monitor"
     assert [item["key"] for item in data["params"]["kwargs"]] == ["username", "password", "domain", "team_id"]
     assert any(tool["name"] == "monitor_list_objects" for tool in data["tools"])
+
+
+def test_build_builtin_attachment_tool_exposes_subtool(mocker):
+    mocker.patch.object(
+        LanguageLoader,
+        "get",
+        side_effect=lambda key: {
+            f"tools.{builtin_tools.BUILTIN_ATTACHMENT_FILE_TOOL_NAME}.description": "Attachment built-in tool",
+            f"tools.{builtin_tools.BUILTIN_ATTACHMENT_FILE_TOOL_NAME}.tools.generate_attachment_file.description": "Generate attachment file",
+        }.get(key, ""),
+    )
+    loader = LanguageLoader(app="opspilot", default_lang="en")
+
+    data = builtin_tools.build_builtin_attachment_file_tool(loader)
+
+    assert data["name"] == "attachment_file"
+    assert data["params"]["url"] == "langchain:attachment_file"
+    assert data["params"]["kwargs"] == []
+    assert any(tool["name"] == "generate_attachment_file" for tool in data["tools"])
+
+
+@pytest.mark.django_db
+def test_generate_attachment_file_creates_workflow_asset():
+    from apps.opspilot.metis.llm.tools.attachment.generate_attachment import generate_attachment_file
+
+    result = generate_attachment_file.func(
+        filename="report.md",
+        content="# report",
+        file_type="md",
+        title="Daily Report",
+        config={
+            "configurable": {
+                "execution_id": "exec-1",
+                "attachment_id": "daily_report",
+                "node_id": "agent_node",
+                "flow_id": "flow-1",
+                "user_id": "tester",
+            }
+        },
+    )
+
+    asset = WorkflowAttachmentAsset.objects.get(execution_id="exec-1", attachment_id="daily_report")
+    asset.file_knowledge.file.open("rb")
+    try:
+        content = asset.file_knowledge.file.read()
+    finally:
+        asset.file_knowledge.file.close()
+
+    assert result["file_url"] == asset.download_url
+    assert result["filename"] == "report.md"
+    assert content == b"# report"
+
+
+@pytest.mark.django_db
+def test_workflow_attachment_download_url_uses_relative_path(settings):
+    settings.OPSPILOT_WEB_URL = "https://ops-pilot.canway.net"
+
+    asset = WorkflowAttachmentAsset(download_token="token-123")
+
+    assert asset.download_url == "/api/v1/opspilot/bot_mgmt/workflow_attachment/download/token-123/"
+
+
+@pytest.mark.django_db
+def test_generate_attachment_file_auto_generates_unique_attachment_ids():
+    from apps.opspilot.metis.llm.tools.attachment.generate_attachment import generate_attachment_file
+
+    first = generate_attachment_file.func(
+        filename="report.md",
+        content="# report",
+        file_type="md",
+        config={
+            "configurable": {
+                "execution_id": "exec-2",
+                "node_id": "agent_node",
+                "flow_id": "flow-1",
+                "user_id": "tester",
+            }
+        },
+    )
+    second = generate_attachment_file.func(
+        filename="report-2.md",
+        content="# report 2",
+        file_type="md",
+        config={
+            "configurable": {
+                "execution_id": "exec-2",
+                "node_id": "agent_node",
+                "flow_id": "flow-1",
+                "user_id": "tester",
+            }
+        },
+    )
+
+    first_asset = WorkflowAttachmentAsset.objects.get(execution_id="exec-2", attachment_id=first["attachment_id"])
+    second_asset = WorkflowAttachmentAsset.objects.get(execution_id="exec-2", attachment_id=second["attachment_id"])
+
+    assert first_asset.attachment_id == "agent_node"
+    assert second_asset.attachment_id == "agent_node__1"
+    assert first_asset.source_node_id == "agent_node"
+    assert second_asset.source_node_id == "agent_node"
+
+
+@pytest.mark.django_db
+def test_cleanup_expired_workflow_attachments_removes_old_assets():
+    from apps.opspilot.services.workflow_attachment_service import cleanup_expired_workflow_attachments, create_workflow_attachment_asset
+
+    expired_asset = create_workflow_attachment_asset(
+        execution_id="exec-old",
+        attachment_id="old-1",
+        filename="old.md",
+        content_bytes=b"old",
+        mime_type="text/markdown",
+        source_node_id="agent_node",
+        flow_id="flow-1",
+        created_by="tester",
+    )
+    recent_asset = create_workflow_attachment_asset(
+        execution_id="exec-new",
+        attachment_id="new-1",
+        filename="new.md",
+        content_bytes=b"new",
+        mime_type="text/markdown",
+        source_node_id="agent_node",
+        flow_id="flow-1",
+        created_by="tester",
+    )
+
+    WorkflowAttachmentAsset.objects.filter(id=expired_asset.id).update(created_at=timezone.now() - timedelta(days=4))
+
+    deleted_count = cleanup_expired_workflow_attachments(retention_days=3)
+
+    assert deleted_count == 1
+    assert not WorkflowAttachmentAsset.objects.filter(id=expired_asset.id).exists()
+    assert not type(expired_asset.file_knowledge).objects.filter(id=expired_asset.file_knowledge_id).exists()
+    assert WorkflowAttachmentAsset.objects.filter(id=recent_asset.id).exists()
+
+
+def test_opspilot_config_registers_workflow_attachment_cleanup_schedule():
+    from apps.opspilot import config
+
+    cleanup_schedule = config.CELERY_BEAT_SCHEDULE["cleanup-expired-workflow-attachments"]
+
+    assert cleanup_schedule["task"] == "apps.opspilot.tasks.cleanup_expired_workflow_attachments_task"
 
 
 def test_build_builtin_monitor_runtime_tool_has_langchain_url():
@@ -89,5 +238,52 @@ def test_chat_service_passes_monitor_kwargs_to_extra_param_prompt(mocker):
             "enable_auth": False,
             "auth_token": "",
             "extra_param_prompt": {"username": "alice", "password": "secret", "domain": "tenant-a.com"},
+        }
+    ]
+
+
+def test_chat_service_passes_attachment_id_to_extra_config(mocker):
+    llm_model = mocker.Mock()
+    llm_model.openai_api_base = "https://example.com/v1"
+    llm_model.openai_api_key = "key"
+    llm_model.model_name = "gpt-4o"
+    llm_model.protocol_type = "openai"
+
+    mocker.patch("apps.opspilot.services.history_service.history_service.process_user_message_and_images", return_value=("hello", []))
+    mocker.patch("apps.opspilot.services.history_service.history_service.process_chat_history", return_value=[])
+    mocker.patch("apps.opspilot.services.chat_service.resolve_skill_params", return_value="system")
+
+    kwargs = {
+        "user_message": "hello",
+        "chat_history": [],
+        "skill_prompt": "system",
+        "skill_params": [],
+        "temperature": 0.1,
+        "user_id": 1,
+        "enable_rag": False,
+        "enable_rag_knowledge_source": False,
+        "skill_type": 1,
+        "locale": "zh-Hans",
+        "attachment_id": "daily_report",
+        "tools": [
+            {
+                "id": builtin_tools.BUILTIN_ATTACHMENT_FILE_TOOL_ID,
+                "name": builtin_tools.BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
+                "kwargs": [],
+            }
+        ],
+    }
+
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(kwargs, llm_model)
+
+    assert chat_kwargs["extra_config"]["attachment_id"] == "daily_report"
+    assert chat_kwargs["tools_servers"] == [
+        {
+            "name": "attachment_file",
+            "url": "langchain:attachment_file",
+            "enable_auth": False,
+            "auth_token": "",
+            "extra_tools_prompt": "",
+            "extra_param_prompt": {},
         }
     ]

@@ -110,6 +110,11 @@ urlpatterns += [
         name="execute_chat_flow",
     ),
     path(
+        r"bot_mgmt/workflow_attachment/download/<str:download_token>/",
+        views.download_workflow_attachment,
+        name="download_workflow_attachment",
+    ),
+    path(
         r"bot_mgmt/interrupt_chat_flow_execution/",
         views.interrupt_chat_flow_execution,
         name="interrupt_chat_flow_execution",

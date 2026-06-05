@@ -146,6 +146,7 @@
     "clearPresentationConfig": "Clear Configuration",
     "fixedResolutionWidth": "Fixed Width",
     "fixedResolutionHeight": "Fixed Height",
+    "fixedResolutionBackground": "Presentation Background",
     "fixedResolutionIncomplete": "Both width and height are required for a fixed resolution.",
     "minimapCollapse": "Collapse Minimap",
     "singleArrowConnection": "Single Arrow Connection",
