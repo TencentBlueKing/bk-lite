@@ -176,9 +176,16 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                     if _permission not in instance["permission"]:
                         instance["permission"].append(_permission)
 
-            if not instance["permission"]:
-                if instance["inst_name"] in organizations_instances_map:
-                    instance["permission"] = list(organizations_instances_map[instance["inst_name"]]["permission"])
+            permission_data = organizations_instances_map.get(instance["inst_name"])
+            if not permission_data:
+                continue
+
+            if not set(organizations) & permission_data["organization"]:
+                continue
+
+            for _permission in permission_data["permission"]:
+                if _permission not in instance["permission"]:
+                    instance["permission"].append(_permission)
 
     @HasPermission("asset_info-View")
     @action(methods=["post"], detail=False)

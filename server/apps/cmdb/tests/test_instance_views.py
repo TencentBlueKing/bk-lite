@@ -170,6 +170,20 @@ def test_add_instance_permission_by_inst_name():
     assert instances[0]["permission"] == ["View"]
 
 
+def test_add_instance_permission_same_name_other_org_denied():
+    instances = [{"_creator": "bob", "inst_name": "prod-vc", "organization": [9]}]
+    pmap = {6: {"permission_instances_map": {"prod-vc": ["View"]}}}
+    InstanceViewSet.add_instance_permission(instances, pmap, creator="alice")
+    assert instances[0]["permission"] == []
+
+
+def test_add_instance_permission_same_name_same_org_allowed():
+    instances = [{"_creator": "bob", "inst_name": "prod-vc", "organization": [6]}]
+    pmap = {6: {"permission_instances_map": {"prod-vc": ["View"]}}}
+    InstanceViewSet.add_instance_permission(instances, pmap, creator="alice")
+    assert instances[0]["permission"] == ["View"]
+
+
 # --------------------------------------------------------------------------
 # search
 # --------------------------------------------------------------------------
@@ -226,6 +240,20 @@ def test_retrieve_creator(superuser, monkeypatch):
     body = _body(response)
     assert response.status_code == status.HTTP_200_OK
     assert set(body["data"]["permission"]) == {"View", "Operate"}
+
+
+@pytest.mark.django_db
+def test_retrieve_denied_when_name_permission_only_exists_in_other_org(superuser, monkeypatch):
+    monkeypatch.setattr(
+        f"{VIEWS}.InstanceManage.query_entity_by_id",
+        lambda pk: {"_id": 5, "model_id": "vmware_vc", "inst_name": "prod-vc", "organization": [9], "_creator": "alice"},
+    )
+    monkeypatch.setattr(f"{VIEWS}.InstanceViewSet.check_creator_and_organizations", lambda self, r, i: False)
+    monkeypatch.setattr(f"{VIEWS}.InstanceViewSet.organizations", lambda self, r, i: [9])
+    monkeypatch.setattr(f"{VIEWS}.CmdbRulesFormatUtil.has_object_permission", lambda **kwargs: False)
+    request = _req("get", superuser, team="9")
+    response = _call({"get": "retrieve"}, request, pk="5")
+    assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
 # --------------------------------------------------------------------------
