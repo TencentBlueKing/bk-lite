@@ -57,14 +57,6 @@ export const APACHE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#ff8a1f'
     },
     {
-      name: 'apache_CPULoad',
-      display_name: 'CPU Load',
-      description: 'Apache 进程 CPU 负载。',
-      unit: 'percent',
-      query: 'apache_CPULoad{__$labels__}',
-      color: '#8a5cff'
-    },
-    {
       name: 'apache_Load1',
       display_name: '1 分钟负载',
       description: '系统 1 分钟平均负载。',
@@ -155,16 +147,6 @@ export const APACHE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   ],
   summaryCards: [
     {
-      title: '服务运行时长',
-      metric: 'apache_ServerUptimeSeconds',
-      color: '#27c274',
-      icon: 'clock',
-      formatter: 'duration',
-      isUptimeCard: true,
-      guide: [{ label: '运行时长', detail: 'Apache 服务自启动以来持续运行的时间。' }],
-      footer: [{ label: 'CPU Load', metric: 'apache_CPULoad', unit: 'percent' }]
-    },
-    {
       title: '请求处理速率',
       metric: 'apache_ReqPerSec',
       color: '#2f6bff',
@@ -190,17 +172,6 @@ export const APACHE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       compareFavorableDirection: 'down',
       guide: [{ label: 'Worker 饱和度', detail: '忙碌 Worker 占总 Worker 比例。逼近 100% 说明处理容量即将耗尽，新请求将排队等待。' }],
       footer: [{ label: '空闲 Worker', metric: 'apache_IdleWorkers', unit: 'counts' }]
-    },
-    {
-      title: 'CPU Load',
-      metric: 'apache_CPULoad',
-      color: '#8a5cff',
-      icon: 'thunder',
-      guide: [
-        { label: 'CPU Load', detail: 'Apache 进程 CPU 占比，仅反映 httpd 进程自身用量。' },
-        { label: '注意', detail: '与系统负载（apache_Load*）不同：系统负载含所有进程，不能等同于 Apache 的 CPU 压力。' }
-      ],
-      footer: [{ label: '5 分钟负载', metric: 'apache_Load5', unit: 'none' }]
     }
   ],
   charts: [
@@ -270,6 +241,7 @@ export const APACHE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '运行细节',
       subtitle: '连接速率 · 缓存 · 配置',
       rows: [
+        { label: '服务运行时长', metric: 'apache_ServerUptimeSeconds', unit: 's', formatter: 'duration' },
         { label: 'Open 连接变化速率', metric: 'apache_scboard_open_rate', unit: 'cps' },
         { label: '缓存当前条目', metric: 'apache_CacheCurrentEntries', unit: 'counts' },
         { label: '配置重载次数', metric: 'apache_ParentServerConfigGeneration', unit: 'counts' }

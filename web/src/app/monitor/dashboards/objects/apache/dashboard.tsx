@@ -16,7 +16,7 @@ import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { APACHE_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
-const SUMMARY_TITLES = ['服务运行时长', '请求处理速率', '数据传输速率', 'Worker 饱和度', 'CPU Load'];
+const SUMMARY_TITLES = ['请求处理速率', '数据传输速率', 'Worker 饱和度'];
 const CHART_TITLES = ['请求吞吐趋势', 'Worker 状态趋势', 'Scoreboard 状态趋势', '系统负载趋势'];
 const RING_TITLES = ['Worker 使用分布'];
 const DETAIL_TITLES = ['运行细节'];
