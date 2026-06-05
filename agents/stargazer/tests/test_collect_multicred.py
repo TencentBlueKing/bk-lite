@@ -377,6 +377,27 @@ def test_publish_lines_with_retry_stops_after_partial_delivery(monkeypatch, part
     assert attempts == [["line-1", "line-2"]]
 
 
+def test_publish_lines_with_retry_stops_after_flush_failure_with_all_lines_delivered(monkeypatch):
+    from core.nats_utils import NatsLinesPublishError
+    from tasks.utils.nats_helper import MetricsPublishError, _publish_lines_with_retry
+
+    attempts = []
+
+    async def fake_publish_lines(subject, lines):
+        attempts.append(list(lines))
+        raise NatsLinesPublishError(subject, len(lines), RuntimeError("flush failed"))
+
+    monkeypatch.setenv("NATS_METRICS_PUBLISH_RETRIES", "3")
+    monkeypatch.setattr("tasks.utils.nats_helper.nats_publish_lines", fake_publish_lines)
+
+    with pytest.raises(MetricsPublishError) as exc_info:
+        asyncio.run(_publish_lines_with_retry("metrics.mysql", ["line-1", "line-2"], "task-1"))
+
+    assert exc_info.value.success_count == 2
+    assert exc_info.value.attempts == 1
+    assert attempts == [["line-1", "line-2"]]
+
+
 def test_collect_plugin_task_preserves_collection_failure_when_publish_fails(monkeypatch):
     import tasks.handlers.plugin_handler as plugin_handler
 

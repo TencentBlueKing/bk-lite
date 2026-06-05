@@ -47,8 +47,8 @@ def _metrics_publish_retry_times() -> int:
         return 2
 
 
-def _has_partial_delivery(delivered_count: int, total_lines: int) -> bool:
-    return 0 < delivered_count < total_lines
+def _has_confirmed_delivery(delivered_count: int) -> bool:
+    return delivered_count > 0
 
 
 async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_id: str) -> int:
@@ -68,13 +68,13 @@ async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_
             )
             if success_count == total_lines:
                 return success_count
-            if _has_partial_delivery(success_count, total_lines):
+            if _has_confirmed_delivery(success_count):
                 last_error = (
-                    f"partial delivery detected ({success_count}/{total_lines}); "
+                    f"delivery detected ({success_count}/{total_lines}); "
                     "aborting retry to avoid duplicate metrics"
                 )
                 logger.error(
-                    f"[NATS Helper] Metrics publish partial delivery attempt={attempt} task_id={task_id} "
+                    f"[NATS Helper] Metrics publish delivery detected attempt={attempt} task_id={task_id} "
                     f"subject={subject} success_count={success_count} total_lines={total_lines} "
                     f"action=abort_full_batch_retry"
                 )
@@ -95,13 +95,13 @@ async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_
             success_count = err.delivered_count
             best_success_count = max(best_success_count, success_count)
             last_error = f"{type(err).__name__}: {err}"
-            if _has_partial_delivery(success_count, total_lines):
+            if _has_confirmed_delivery(success_count):
                 last_error = (
-                    f"{type(err).__name__}: partial delivery detected ({success_count}/{total_lines}); "
+                    f"{type(err).__name__}: delivery detected ({success_count}/{total_lines}); "
                     "aborting retry to avoid duplicate metrics"
                 )
                 logger.error(
-                    f"[NATS Helper] Metrics publish partial delivery attempt={attempt} task_id={task_id} "
+                    f"[NATS Helper] Metrics publish delivery detected attempt={attempt} task_id={task_id} "
                     f"subject={subject} success_count={success_count} total_lines={total_lines} "
                     f"error={err} action=abort_full_batch_retry"
                 )
@@ -124,6 +124,24 @@ async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_
             success_count = getattr(err, "delivered_count", 0)
             best_success_count = max(best_success_count, success_count)
             last_error = f"{type(err).__name__}: {err}"
+            if _has_confirmed_delivery(success_count):
+                last_error = (
+                    f"{type(err).__name__}: delivery detected ({success_count}/{total_lines}); "
+                    "aborting retry to avoid duplicate metrics"
+                )
+                logger.error(
+                    f"[NATS Helper] Metrics publish delivery detected attempt={attempt} task_id={task_id} "
+                    f"subject={subject} success_count={success_count} total_lines={total_lines} "
+                    f"error={err} action=abort_full_batch_retry"
+                )
+                raise MetricsPublishError(
+                    task_id=task_id,
+                    subject=subject,
+                    total_lines=total_lines,
+                    success_count=best_success_count,
+                    attempts=attempt,
+                    reason=last_error,
+                ) from err
             logger.warning(
                 f"[NATS Helper] Metrics publish failed attempt={attempt} task_id={task_id} "
                 f"subject={subject} success_count={success_count} total_lines={total_lines} "
