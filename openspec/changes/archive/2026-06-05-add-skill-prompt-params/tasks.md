@@ -53,6 +53,6 @@
 
 - [x] 12.1 运行 `cd server && make test` 确保后端测试通过
 - [x] 12.2 运行 `cd web && pnpm lint && pnpm type-check` 确保前端检查通过
-- [ ] 12.3 手动验证：创建带 password 参数的 LLMSkill，确认 API 返回掩码值
-- [ ] 12.4 手动验证：执行带参数的 skill，确认 prompt 中 `{{key}}` 被正确替换
-- [ ] 12.5 手动验证：在设置页右侧聊天面板测试执行，确认 password 参数能正确替换（非 "******"）
+- [x] 12.3 手动验证：创建带 password 参数的 LLMSkill，确认 API 返回掩码值
+- [x] 12.4 手动验证：执行带参数的 skill，确认 prompt 中 `{{key}}` 被正确替换
+- [x] 12.5 手动验证：在设置页右侧聊天面板测试执行，确认 password 参数能正确替换（非 "******"）

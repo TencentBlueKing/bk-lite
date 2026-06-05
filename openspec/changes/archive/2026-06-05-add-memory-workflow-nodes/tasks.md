@@ -70,10 +70,10 @@
 
 ## 11. Testing and Verification
 
-- [ ] 11.1 Test memory space CRUD via API
-- [ ] 11.2 Test memory read node execution with personal scope (creator vs non-creator)
-- [ ] 11.3 Test memory read node execution with team scope
-- [ ] 11.4 Test memory write node execution with async task
-- [ ] 11.5 Test memory extraction and merge with LLM
-- [ ] 11.6 Test frontend memory management pages
-- [ ] 11.7 Test workflow editor with new nodes
+- [x] 11.1 Test memory space CRUD via API
+- [x] 11.2 Test memory read node execution with personal scope (creator vs non-creator)
+- [x] 11.3 Test memory read node execution with team scope
+- [x] 11.4 Test memory write node execution with async task
+- [x] 11.5 Test memory extraction and merge with LLM
+- [x] 11.6 Test frontend memory management pages
+- [x] 11.7 Test workflow editor with new nodes

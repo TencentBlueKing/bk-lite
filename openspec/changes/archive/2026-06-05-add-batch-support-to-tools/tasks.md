@@ -58,6 +58,6 @@
 
 ## 10. 验证与收尾
 
-- [ ] 10.1 在 `server/` 目录执行 `make test`，确认所有现有测试通过
-- [ ] 10.2 逐个确认新增工具函数被 `tools_loader._extract_tools_from_module` 自动发现（通过 `get_all_tools_metadata()` 返回列表验证）
-- [ ] 10.3 确认 `postgres/connection.py` 新增后，`tools_loader.py` 中 postgres 条目 `enable_extra_prompt` 可酌情改为 `True`（对齐其他 DB 工具）
+- [x] 10.1 在 `server/` 目录执行 `make test`，确认所有现有测试通过
+- [x] 10.2 逐个确认新增工具函数被 `tools_loader._extract_tools_from_module` 自动发现（通过 `get_all_tools_metadata()` 返回列表验证）
+- [x] 10.3 确认 `postgres/connection.py` 新增后，`tools_loader.py` 中 postgres 条目 `enable_extra_prompt` 可酌情改为 `True`（对齐其他 DB 工具）
