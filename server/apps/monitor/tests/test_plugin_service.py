@@ -339,13 +339,35 @@ def test_normalize_instance_identity_rejects_empty_value():
 def _load_plugin_controller_module(monkeypatch, template_rows=None):
     """Load plugin_controller.py with all Django dependencies stubbed out."""
     from jinja2 import BaseLoader, DebugUndefined
+    from jinja2 import meta
     from jinja2.sandbox import SandboxedEnvironment
+
+    class _FakeTemplateSecurityError(ValueError):
+        pass
 
     def _fake_build_sandboxed_env(loader=None, undefined=DebugUndefined, extra_filters=None):
         env = SandboxedEnvironment(loader=loader or BaseLoader(), undefined=undefined)
+        env.globals.clear()
         if extra_filters:
             env.filters.update(extra_filters)
         return env
+
+    def _fake_sanitize_template_context(value, max_depth=8):
+        if max_depth < 0:
+            return ""
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, dict):
+            return {str(k): _fake_sanitize_template_context(v, max_depth - 1) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [_fake_sanitize_template_context(v, max_depth - 1) for v in value]
+        return str(value)
+
+    def _fake_validate_template_variables(template_str, env, allowed_variables):
+        ast = env.parse(template_str)
+        unexpected = meta.find_undeclared_variables(ast) - allowed_variables
+        if unexpected:
+            raise _FakeTemplateSecurityError(f"模板包含未授权变量: {', '.join(sorted(unexpected))}")
 
     _rows = template_rows or []
     _fake_qs = types.SimpleNamespace(values=lambda *args, **kwargs: iter(_rows))
@@ -360,7 +382,14 @@ def _load_plugin_controller_module(monkeypatch, template_rows=None):
     _install_module(monkeypatch, "apps.core.exceptions")
     _install_module(monkeypatch, "apps.core.exceptions.base_app_exception", BaseAppException=Exception)
     _install_module(monkeypatch, "apps.core.utils")
-    _install_module(monkeypatch, "apps.core.utils.safe_template", build_sandboxed_env=_fake_build_sandboxed_env)
+    _install_module(
+        monkeypatch,
+        "apps.core.utils.safe_template",
+        TemplateSecurityError=_FakeTemplateSecurityError,
+        build_sandboxed_env=_fake_build_sandboxed_env,
+        sanitize_template_context=_fake_sanitize_template_context,
+        validate_template_variables=_fake_validate_template_variables,
+    )
     _install_module(monkeypatch, "apps.core.logger", monitor_logger=logging.getLogger("monitor"))
     _install_module(monkeypatch, "apps.monitor")
     _install_module(monkeypatch, "apps.monitor.constants")
@@ -444,6 +473,105 @@ def test_render_template_supports_default_filter(monkeypatch):
     assert rendered == "none"
 
 
+def test_render_template_allows_business_default_variables(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+
+    rendered = plugin_controller_module.Controller({}).render_template(
+        '{{ interval | default(60, true) }}',
+        {"instance_id": "host-1"},
+    )
+
+    assert rendered == "60"
+
+
+def test_render_template_blocks_unknown_template_variable(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+
+    with pytest.raises(Exception, match="未授权变量"):
+        plugin_controller_module.Controller({}).render_template(
+            "{{ settings.SECRET_KEY }}",
+            {"instance_id": "host-1"},
+        )
+
+
+def test_render_template_treats_payload_value_as_plain_text(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+    payload = "{{ cycler.__init__.__globals__.os.popen('id').read() }}"
+
+    rendered = plugin_controller_module.Controller({}).render_template(
+        'community = "{{ community }}"',
+        {
+            "instance_id": "host-1",
+            "community": payload,
+        },
+    )
+
+    assert payload in rendered
+
+
+def test_render_template_sanitizes_python_objects(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+
+    class DangerousObject:
+        secret = "should-not-render"
+
+        def __str__(self):
+            return "safe-string"
+
+    rendered = plugin_controller_module.Controller({}).render_template(
+        "{{ obj }}",
+        {
+            "instance_id": "host-1",
+            "obj": DangerousObject(),
+        },
+    )
+
+    assert rendered == "safe-string"
+    assert "should-not-render" not in rendered
+
+
+def test_to_toml_dict_escapes_quoted_values(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+
+    rendered = plugin_controller_module.to_toml_dict({"safe": 'x"\nmalicious = "yes'})
+
+    assert '\\"' in rendered
+    assert "\\nmalicious" in rendered
+    assert '\nmalicious = "yes"' not in rendered
+
+
+def test_render_template_escapes_toml_string_values(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+
+    rendered = plugin_controller_module.Controller({}).render_template(
+        'community = "{{ community }}"',
+        {
+            "instance_id": "host-1",
+            "community": 'public"\nmalicious = "yes',
+        },
+        escape_toml_strings=True,
+    )
+
+    assert 'public\\"\\nmalicious = \\"yes' in rendered
+    assert '\nmalicious = "yes"' not in rendered
+
+
+def test_render_template_preserves_sidecar_env_placeholders(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+
+    rendered = plugin_controller_module.Controller({}).render_template(
+        'url = "${STARGAZER_URL}/metrics"\npassword = "${PASSWORD__{{ config_id }}}"',
+        {
+            "instance_id": "host-1",
+            "config_id": "CONFIG1",
+        },
+        escape_toml_strings=True,
+    )
+
+    assert '${STARGAZER_URL}/metrics' in rendered
+    assert '${PASSWORD__CONFIG1}' in rendered
+
+
 def test_host_remote_template_renders_ansible_executor_instance_id(monkeypatch):
     plugin_controller_module = _load_plugin_controller_module(monkeypatch)
     template_path = Path(__file__).resolve().parents[1] / "support-files" / "plugins" / "Telegraf" / "http" / "host" / "host.child.toml.j2"
@@ -458,6 +586,13 @@ def test_host_remote_template_renders_ansible_executor_instance_id(monkeypatch):
             "instance_id": "('MTVmOTFiYTM5ODZk',)",
             "logical_instance_value": "MTVmOTFiYTM5ODZk",
             "node_id": "node-1",
+            "config_id": "CONFIG1",
+            "interval": 60,
+            "timeout": 60,
+            "response_timeout": 60,
+            "os_type": "linux",
+            "port": 22,
+            "metrics_modules": "cpu,mem,disk,net",
         },
     )
 

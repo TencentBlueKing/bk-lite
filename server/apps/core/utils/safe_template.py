@@ -12,9 +12,11 @@
 """
 
 import re
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from jinja2 import BaseLoader, DebugUndefined
+from jinja2 import meta
 from jinja2.sandbox import SandboxedEnvironment
 
 from apps.core.logger import logger
@@ -24,6 +26,35 @@ class TemplateSecurityError(ValueError):
     """模板安全校验失败异常"""
 
     pass
+
+
+class StrictSandboxedEnvironment(SandboxedEnvironment):
+    """SandboxedEnvironment with stricter attribute and callable access rules."""
+
+    FORBIDDEN_ATTRIBUTES = {
+        "mro",
+        "base",
+        "bases",
+        "subclasses",
+        "globals",
+        "func_globals",
+        "builtins",
+        "gi_frame",
+        "f_globals",
+        "f_locals",
+        "cr_frame",
+        "tb_frame",
+    }
+
+    def is_safe_attribute(self, obj: Any, attr: str, value: Any) -> bool:
+        if attr.startswith("_") or attr.lower() in self.FORBIDDEN_ATTRIBUTES:
+            return False
+        if callable(value):
+            return False
+        return super().is_safe_attribute(obj, attr, value)
+
+    def is_safe_callable(self, obj: Any) -> bool:
+        return False
 
 
 # ============================================================
@@ -139,6 +170,41 @@ def safe_render(template_str: str, context: dict[str, Any]) -> str:
     return SAFE_VAR_PATTERN.sub(replace_var, template_str)
 
 
+SAFE_PRIMITIVE_TYPES = (str, int, float, bool, type(None))
+
+
+def sanitize_template_context(value: Any, *, max_depth: int = 8) -> Any:
+    """
+    Convert template context to plain data so templates cannot traverse Python
+    objects, Django model instances, modules, functions, or classes.
+    """
+    if max_depth < 0:
+        return ""
+    if isinstance(value, SAFE_PRIMITIVE_TYPES):
+        return value
+    if isinstance(value, Mapping):
+        return {
+            str(key): sanitize_template_context(item, max_depth=max_depth - 1)
+            for key, item in value.items()
+            if isinstance(key, SAFE_PRIMITIVE_TYPES)
+        }
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [sanitize_template_context(item, max_depth=max_depth - 1) for item in value]
+    return str(value)
+
+
+def validate_template_variables(template_str: str, env: SandboxedEnvironment, allowed_variables: set[str]) -> None:
+    """
+    Ensure a Jinja template references only explicitly allowed top-level
+    business variables.
+    """
+    ast = env.parse(template_str)
+    referenced = meta.find_undeclared_variables(ast)
+    unexpected = sorted(referenced - allowed_variables)
+    if unexpected:
+        raise TemplateSecurityError(f"模板包含未授权变量: {', '.join(unexpected)}")
+
+
 # ============================================================
 # 方案 C：安全 Jinja2 沙箱环境（需要完整模板能力时使用）
 # ============================================================
@@ -165,7 +231,7 @@ def build_sandboxed_env(
     Returns:
         配置好的 SandboxedEnvironment 实例
     """
-    env = SandboxedEnvironment(
+    env = StrictSandboxedEnvironment(
         loader=loader or BaseLoader(),
         undefined=undefined,
     )
