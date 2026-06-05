@@ -316,7 +316,6 @@ def build_config_analysis_report_payload(parsed: Dict[str, Any]) -> Dict[str, An
             recommendations.append(
                 {
                     "priority": severity_priority.get(severity, "P3"),
-                    "issue": issue,
                     "action": _config_analysis_fix_description(issue),
                     "target": workloads[0] if workloads else "",
                     "benefit": issue_payload["risk"],

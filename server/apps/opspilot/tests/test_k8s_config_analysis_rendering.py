@@ -109,5 +109,19 @@ def test_build_config_analysis_report_payload_structures_k8s_report():
     assert payload["severity_sections"][1]["issues"][0]["risk"] == (
         "无存活探针时 Kubernetes 无法自动检测和重启不健康的容器，故障容器将持续运行。"
     )
+    assert payload["recommendations"] == [
+        {
+            "priority": "P0",
+            "action": "配置 securityContext.runAsNonRoot: true 和 runAsUser: 1000，禁止容器以 root 运行。",
+            "target": "api (default)",
+            "benefit": "容器以 root 用户运行，容器逃逸后攻击者将获得宿主机 root 权限，安全风险极高。",
+        },
+        {
+            "priority": "P1",
+            "action": "添加 livenessProbe 配置（建议 httpGet 方式），设置合理的 initialDelaySeconds 和 periodSeconds。",
+            "target": "nginx (default)",
+            "benefit": "无存活探针时 Kubernetes 无法自动检测和重启不健康的容器，故障容器将持续运行。",
+        },
+    ]
     assert payload["fallback_markdown"] == payload["markdown"]
     assert payload["fallback_markdown"].startswith("# 配置检查报告 - Kubernetes - 1")
