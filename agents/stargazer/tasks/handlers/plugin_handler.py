@@ -105,12 +105,16 @@ async def collect_plugin_task(
         )
 
         # 导入工具函数
+        from tasks.utils.nats_helper import MetricsPublishError
         from tasks.utils.nats_helper import publish_metrics_to_nats
         from tasks.utils.nats_helper import publish_callback_to_nats
         from tasks.utils.metrics_helper import generate_plugin_error_metrics
         from core.credential_state_cache import CredentialStateCache
         from core.task_queue import get_task_queue
 
+        real_metrics_delivered = metrics_published or (
+            isinstance(e, MetricsPublishError) and getattr(e, "success_count", 0) > 0
+        )
         execution_result = _build_credential_execution_result(params, None, e)
         await _handle_multicred_post_execute(
             params, task_id, execution_result, CredentialStateCache, get_task_queue
@@ -138,7 +142,7 @@ async def collect_plugin_task(
                 params,
                 task_id,
             )
-        elif not metrics_published:
+        elif not real_metrics_delivered:
             error_metrics = generate_plugin_error_metrics(params, e)
             await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
 
