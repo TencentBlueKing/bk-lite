@@ -8,10 +8,9 @@ export type MetricUnit =
   | 'bytes'
   | 'byteps'
   | 'ms'
-  | 'ops'
-  | 'permin';
+  | 'none';
 
-export interface MysqlMetricConfig {
+export interface RedisMetricConfig {
   name: string;
   display_name: string;
   description: string;
@@ -22,13 +21,7 @@ export interface MysqlMetricConfig {
   groupId?: number | string;
 }
 
-export interface MetricOriginMeta {
-  kind: 'raw' | 'derived';
-  sources: string[];
-  queryHint: string;
-}
-
-export interface MetricSeries extends MysqlMetricConfig {
+export interface MetricSeries extends RedisMetricConfig {
   viewData: ChartData[];
   loadState: 'success' | 'error';
 }
