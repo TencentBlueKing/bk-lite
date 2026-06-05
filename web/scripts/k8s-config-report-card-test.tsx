@@ -142,4 +142,48 @@ const degradedHtml = renderToStaticMarkup(
 assert.match(degradedHtml, /已发现配置问题，但明细暂不可用/);
 assert.equal(degradedHtml.includes('<table'), false);
 
+const malformedHtml = renderToStaticMarkup(
+  <ConfigAnalysisReportCard
+    report={{
+      report_id: 'report-5',
+      title: '配置检查报告',
+      cluster_name: 'Kubernetes - 1',
+      summary: {
+        total: 14,
+        problematic: 5,
+        healthy: 9,
+        top_recommendation: '先检查结构化结果的完整性',
+      },
+      severity_sections: [
+        {
+          severity: 'mystery' as any,
+          title: '未知严重级别',
+          items: [
+            {
+              issue: '未配置存活探针',
+              count: 3,
+              workloads: undefined as any,
+              risk: '容器异常时无法自动重启',
+            },
+          ],
+        } as any,
+        {
+          severity: 'high',
+          title: '缺少明细',
+        } as any,
+      ],
+      recommendations: [],
+      markdown: '# fallback',
+      fallback_markdown: '# fallback',
+      received_at: Date.now(),
+    }}
+  />
+);
+
+assert.match(malformedHtml, /结构化明细存在不完整字段，已自动跳过异常分组并降级展示/);
+assert.match(malformedHtml, /未识别/);
+assert.match(malformedHtml, /信息不完整/);
+assert.match(malformedHtml, /当前分组缺少完整的问题明细/);
+assert.match(malformedHtml, /—/);
+
 console.log('k8s config report card test passed');
