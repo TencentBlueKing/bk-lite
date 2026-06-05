@@ -37,7 +37,14 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
     }))
     .filter(section => section.issues.length > 0);
   const recommendationRows = Array.isArray(report.recommendations) ? report.recommendations : [];
-  const hasIssues = severitySections.length > 0 || (report.summary.problematic || 0) > 0;
+  const problematicCount = report.summary.problematic || 0;
+  const hasIssues = severitySections.length > 0 || problematicCount > 0;
+  const hasIssueDetails = severitySections.length > 0 || recommendationRows.length > 0;
+  const summaryText =
+    report.summary.top_recommendation?.trim() ||
+    (hasIssues
+      ? '当前报告返回了问题统计，但结构化明细暂未返回，请结合原始扫描结果继续排查。'
+      : '当前扫描结果未发现明显风险，暂无额外修复建议。');
   const scopeItems = [
     report.scope?.cluster_name || report.cluster_name,
     report.scope?.namespace ? `命名空间：${report.scope.namespace}` : null,
@@ -91,7 +98,7 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
 
         <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-3 text-sm text-slate-700">
           <div className="text-xs font-medium uppercase tracking-wide text-sky-700">建议摘要</div>
-          <div className="mt-1">{report.summary.top_recommendation || '建议优先处理高风险配置项。'}</div>
+          <div className="mt-1">{summaryText}</div>
           {hasScanRange && report.scan_range?.has_more && (
             <div className="mt-2 text-xs text-sky-700">
               当前展示第 {scanRangeStart} - {scanRangeEnd} 项结果，仍有更多对象待继续检查。
@@ -104,6 +111,13 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
             <div className="text-sm font-semibold text-emerald-700">未发现明显配置问题</div>
             <div className="mt-1 text-sm text-emerald-700/80">
               当前扫描范围内的工作负载配置表现正常，可继续按需巡检。
+            </div>
+          </div>
+        ) : !hasIssueDetails ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">
+            <div className="text-sm font-semibold text-amber-800">已发现配置问题，但明细暂不可用</div>
+            <div className="mt-1 text-sm text-amber-800/80">
+              当前报告仅返回问题统计，详细分项尚未提供，请结合原始扫描结果继续排查。
             </div>
           </div>
         ) : (
