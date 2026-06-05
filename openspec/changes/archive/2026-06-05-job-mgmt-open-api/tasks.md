@@ -1,7 +1,7 @@
 ## 1. Model 层变更
 
 - [x] 1.1 JobExecution model 新增 `callback_url` 字段（CharField, max_length=512, null=True, blank=True）
-- [ ] 1.2 生成并执行 migration（`python manage.py makemigrations job_mgmt && python manage.py migrate`）
+- [x] 1.2 生成并执行 migration（`python manage.py makemigrations job_mgmt && python manage.py migrate`）
 
 ## 2. 回调机制
 
@@ -26,7 +26,7 @@
 - [x] 5.1 为 4 个 NATS handler 编写单元测试（mock NATS 调用和 task 执行）
 - [x] 5.2 为文件上传 REST 接口编写单元测试（mock JetStream 和 APISecretAuthBackend）
 - [x] 5.3 为 callback_service 编写单元测试（mock requests.post，验证重试逻辑）
-- [ ] 5.4 运行 `make test` 确保全量测试通过
+- [x] 5.4 运行 `make test` 确保全量测试通过
 
 ## 6. 调用文档
 
