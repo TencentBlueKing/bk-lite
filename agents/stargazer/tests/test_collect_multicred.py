@@ -410,7 +410,7 @@ def test_publish_metrics_to_nats_returns_zero_when_no_influx_lines(monkeypatch):
     assert delivered_count == 0
 
 
-def test_collect_plugin_task_publishes_synthetic_error_when_no_metrics_were_delivered(monkeypatch):
+def test_collect_plugin_task_keeps_failure_reconciliation_for_real_metric_delivery(monkeypatch):
     import tasks.handlers.plugin_handler as plugin_handler
 
     publish_calls = []
@@ -425,7 +425,7 @@ def test_collect_plugin_task_publishes_synthetic_error_when_no_metrics_were_deli
 
     async def fake_publish_metrics_to_nats(ctx, metrics_data, params, task_id):
         publish_calls.append(metrics_data)
-        return 0 if len(publish_calls) == 1 else 1
+        return 1
 
     async def fake_post_execute(params, task_id, execution_result, cache_cls, get_queue_func):
         post_execute_calls.append(execution_result)
@@ -458,7 +458,50 @@ def test_collect_plugin_task_publishes_synthetic_error_when_no_metrics_were_deli
     )
 
     assert result["status"] == "failed"
-    assert publish_calls == ["ignored", "synthetic-error-metrics"]
+    assert publish_calls == ["ignored"]
+
+
+def test_collect_plugin_task_does_not_mark_multicred_success_when_zero_metrics_delivered(monkeypatch):
+    import tasks.handlers.plugin_handler as plugin_handler
+
+    post_execute_calls = []
+
+    class FakeCollectionService:
+        def __init__(self, params):
+            self.params = params
+
+        async def collect(self):
+            return "ignored"
+
+    async def fake_publish_metrics_to_nats(ctx, metrics_data, params, task_id):
+        return 0
+
+    async def fake_post_execute(params, task_id, execution_result, cache_cls, get_queue_func):
+        post_execute_calls.append(execution_result)
+
+    monkeypatch.setattr("service.collection_service.CollectionService", FakeCollectionService)
+    monkeypatch.setattr("tasks.utils.nats_helper.publish_metrics_to_nats", fake_publish_metrics_to_nats)
+    monkeypatch.setattr(plugin_handler, "_handle_multicred_post_execute", fake_post_execute)
+
+    result = asyncio.run(
+        plugin_handler.collect_plugin_task(
+            {},
+            {
+                "plugin_name": "mysql_info",
+                "model_id": "mysql",
+                "host": "10.0.0.1",
+                "credential_id": "cred-1",
+                "credential_index": 0,
+                "credentials_pool": [{"credential_id": "cred-1"}],
+                "collect_task_id": "collect-1",
+                "executor_type": "job",
+            },
+            "task-1",
+        )
+    )
+
+    assert result["status"] == "success"
+    assert post_execute_calls == []
 
 
 def test_collect_plugin_task_preserves_collection_failure_when_publish_fails(monkeypatch):

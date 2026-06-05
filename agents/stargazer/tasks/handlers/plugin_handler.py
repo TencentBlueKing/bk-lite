@@ -89,9 +89,10 @@ async def collect_plugin_task(
         else:
             delivered_count = await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
             metrics_published = delivered_count > 0
-            await _handle_multicred_post_execute(
-                params, task_id, execution_result, CredentialStateCache, get_task_queue
-            )
+            if metrics_published:
+                await _handle_multicred_post_execute(
+                    params, task_id, execution_result, CredentialStateCache, get_task_queue
+                )
 
         return {
             "task_id": task_id,
