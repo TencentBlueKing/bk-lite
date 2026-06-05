@@ -11,11 +11,11 @@
   "description": "Remote agentless host monitoring via SSH/WinRM",
   "default_metric": "any({instance_type='os'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["host_cpu_usage", "mem_used_percent", "disk_used_percent"],
+  "supplementary_indicators": ["cpu_usage_total", "mem_used_percent", "disk_used_percent"],
   "metrics": [
     {
       "metric_group": "CPU",
-      "name": "host_cpu_usage",
+      "name": "cpu_usage_total",
       "query": "host_cpu_usage_percent_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "CPU Usage",
       "data_type": "Number",

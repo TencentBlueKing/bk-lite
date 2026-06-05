@@ -11,6 +11,7 @@ import time
 import traceback
 import hashlib
 import asyncio
+import uuid
 from typing import Optional, Dict, Any
 from arq import create_pool
 from arq.connections import RedisSettings, ArqRedis
@@ -18,6 +19,27 @@ from arq.jobs import Job
 from sanic import Sanic
 from sanic.log import logger
 from core.redis_config import REDIS_CONFIG, print_redis_config
+
+
+async def _is_host_remote_callback_pending(task_id: str) -> bool:
+    try:
+        import core.host_remote_callback as host_remote_callback
+
+        callback_context = await host_remote_callback.load_host_remote_callback_context(task_id)
+        if not callback_context:
+            return False
+
+        status = callback_context.get("status") or {}
+        return (
+            status.get("execution") == "waiting_callback"
+            and callback_context.get("callback_received_at") is None
+        )
+    except Exception as err:
+        logger.warning(
+            f"[Task Queue] Failed to inspect host remote callback context for task {task_id}: {err}",
+            exc_info=True,
+        )
+        return False
 
 
 def _resolve_running_flag_ttl(params: Dict[str, Any]) -> int:
@@ -197,7 +219,10 @@ class TaskQueue:
 
         # 生成任务ID（用于业务去重）
         if not task_id:
-            task_id = self._generate_task_id(params)
+            if (params or {}).get("monitor_type") == "host":
+                task_id = f"collect_host_{uuid.uuid4().hex}"
+            else:
+                task_id = self._generate_task_id(params)
 
         try:
             # ✅ 应用层去重：检查我们自己维护的任务状态键
@@ -228,6 +253,24 @@ class TaskQueue:
                         "dedupe_ttl": remaining_ttl,
                         "timestamp": int(time.time() * 1000)
                     }
+
+                if (params or {}).get("monitor_type") == "host":
+                    callback_pending = await _is_host_remote_callback_pending(task_id)
+                    if callback_pending:
+                        self.metrics["tasks_skipped"] += 1
+                        remaining_ttl = await self.pool.ttl(running_key)
+                        logger.warning(
+                            f"Task {task_id} is still waiting for host remote callback, skipping enqueue "
+                            f"(job_id={existing_job_id}, ttl={remaining_ttl}s)"
+                        )
+                        return {
+                            "task_id": task_id,
+                            "job_id": existing_job_id,
+                            "status": "skipped",
+                            "reason": "Host remote callback still pending",
+                            "dedupe_ttl": remaining_ttl,
+                            "timestamp": int(time.time() * 1000)
+                        }
 
                 logger.warning(
                     f"Detected stale running marker for task {task_id}, clearing and re-enqueueing"
