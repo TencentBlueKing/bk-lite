@@ -115,7 +115,11 @@ async def collect_plugin_task(
         from core.task_queue import get_task_queue
 
         real_metrics_delivered = metrics_published or (
-            isinstance(e, MetricsPublishError) and getattr(e, "success_count", 0) > 0
+            isinstance(e, MetricsPublishError)
+            and (
+                getattr(e, "success_count", 0) > 0
+                or getattr(e, "delivery_detected", False)
+            )
         )
         preserved_execution_result = (
             execution_result

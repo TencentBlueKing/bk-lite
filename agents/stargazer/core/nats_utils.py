@@ -38,13 +38,21 @@ _connect_lock: Optional[asyncio.Lock] = None
 
 
 class NatsLinesPublishError(RuntimeError):
-    def __init__(self, subject: str, delivered_count: int, error: Exception):
+    def __init__(
+        self,
+        subject: str,
+        attempted_count_before_failure: int,
+        delivery_detected: bool,
+        error: Exception,
+    ):
         self.subject = subject
-        self.delivered_count = delivered_count
+        self.attempted_count_before_failure = attempted_count_before_failure
+        self.delivery_detected = delivery_detected
         self.error = error
         super().__init__(
-            f"NATS publish lines failed [{subject}] after delivering "
-            f"{delivered_count} lines: {type(error).__name__}: {error}"
+            f"NATS publish lines failed [{subject}] after writing "
+            f"{attempted_count_before_failure} lines before confirmation "
+            f"(delivery_detected={delivery_detected}): {type(error).__name__}: {error}"
         )
         self.__cause__ = error
 
@@ -217,5 +225,10 @@ async def nats_publish_lines(subject: str, lines: List[str]) -> int:
             count += 1
         await nc.flush()
     except Exception as e:
-        raise NatsLinesPublishError(subject, count, e) from e
+        raise NatsLinesPublishError(
+            subject=subject,
+            attempted_count_before_failure=count,
+            delivery_detected=count > 0,
+            error=e,
+        ) from e
     return count

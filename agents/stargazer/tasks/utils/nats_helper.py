@@ -24,6 +24,7 @@ class MetricsPublishError(RuntimeError):
         subject: str,
         total_lines: int,
         success_count: int,
+        delivery_detected: bool,
         attempts: int,
         reason: str,
     ):
@@ -31,11 +32,13 @@ class MetricsPublishError(RuntimeError):
         self.subject = subject
         self.total_lines = total_lines
         self.success_count = success_count
+        self.delivery_detected = delivery_detected
         self.attempts = attempts
         self.reason = reason
         super().__init__(
             f"metrics publish incomplete: task_id={task_id}, subject={subject}, "
-            f"success={success_count}/{total_lines}, attempts={attempts}, reason={reason}"
+            f"success={success_count}/{total_lines}, delivery_detected={delivery_detected}, "
+            f"attempts={attempts}, reason={reason}"
         )
 
 
@@ -51,24 +54,29 @@ def _has_confirmed_delivery(delivered_count: int) -> bool:
     return delivered_count > 0
 
 
+def _has_any_delivery(success_count: int, delivery_detected: bool) -> bool:
+    return _has_confirmed_delivery(success_count) or delivery_detected
+
+
 async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_id: str) -> int:
     total_lines = len(influx_lines)
     max_retries = _metrics_publish_retry_times()
     last_error = ""
-    success_count = 0
     best_success_count = 0
+    delivery_detected = False
 
     for attempt in range(1, max_retries + 2):
         try:
             success_count = await nats_publish_lines(subject, influx_lines)
             best_success_count = max(best_success_count, success_count)
+            delivery_detected = delivery_detected or _has_confirmed_delivery(success_count)
             logger.info(
                 f"[NATS Helper] Metrics publish attempt={attempt} task_id={task_id} "
                 f"subject={subject} success_count={success_count} total_lines={total_lines}"
             )
             if success_count == total_lines:
                 return success_count
-            if _has_confirmed_delivery(success_count):
+            if _has_any_delivery(success_count, delivery_detected):
                 last_error = (
                     f"delivery detected ({success_count}/{total_lines}); "
                     "aborting retry to avoid duplicate metrics"
@@ -83,6 +91,7 @@ async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_
                     subject=subject,
                     total_lines=total_lines,
                     success_count=best_success_count,
+                    delivery_detected=delivery_detected,
                     attempts=attempt,
                     reason=last_error,
                 )
@@ -92,17 +101,19 @@ async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_
                 f"subject={subject} success_count={success_count} total_lines={total_lines}"
             )
         except NatsLinesPublishError as err:
-            success_count = err.delivered_count
-            best_success_count = max(best_success_count, success_count)
+            attempted_count = err.attempted_count_before_failure
+            delivery_detected = delivery_detected or err.delivery_detected
             last_error = f"{type(err).__name__}: {err}"
-            if _has_confirmed_delivery(success_count):
+            if _has_any_delivery(best_success_count, delivery_detected):
                 last_error = (
-                    f"{type(err).__name__}: delivery detected ({success_count}/{total_lines}); "
+                    f"{type(err).__name__}: delivery detected "
+                    f"(attempted_before_failure={attempted_count}/{total_lines}); "
                     "aborting retry to avoid duplicate metrics"
                 )
                 logger.error(
                     f"[NATS Helper] Metrics publish delivery detected attempt={attempt} task_id={task_id} "
-                    f"subject={subject} success_count={success_count} total_lines={total_lines} "
+                    f"subject={subject} success_count={best_success_count} total_lines={total_lines} "
+                    f"attempted_count_before_failure={attempted_count} "
                     f"error={err} action=abort_full_batch_retry"
                 )
                 raise MetricsPublishError(
@@ -110,21 +121,26 @@ async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_
                     subject=subject,
                     total_lines=total_lines,
                     success_count=best_success_count,
+                    delivery_detected=delivery_detected,
                     attempts=attempt,
                     reason=last_error,
                 ) from err
             logger.warning(
                 f"[NATS Helper] Metrics publish failed attempt={attempt} task_id={task_id} "
-                f"subject={subject} success_count={success_count} total_lines={total_lines} "
+                f"subject={subject} success_count={best_success_count} total_lines={total_lines} "
+                f"attempted_count_before_failure={attempted_count} "
                 f"error={last_error}"
             )
         except MetricsPublishError:
             raise
         except Exception as err:
-            success_count = getattr(err, "delivered_count", 0)
+            success_count = getattr(err, "success_count", 0)
             best_success_count = max(best_success_count, success_count)
+            delivery_detected = delivery_detected or bool(
+                getattr(err, "delivery_detected", False)
+            )
             last_error = f"{type(err).__name__}: {err}"
-            if _has_confirmed_delivery(success_count):
+            if _has_any_delivery(success_count, delivery_detected):
                 last_error = (
                     f"{type(err).__name__}: delivery detected ({success_count}/{total_lines}); "
                     "aborting retry to avoid duplicate metrics"
@@ -139,6 +155,7 @@ async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_
                     subject=subject,
                     total_lines=total_lines,
                     success_count=best_success_count,
+                    delivery_detected=delivery_detected,
                     attempts=attempt,
                     reason=last_error,
                 ) from err
@@ -156,6 +173,7 @@ async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_
         subject=subject,
         total_lines=total_lines,
         success_count=best_success_count,
+        delivery_detected=delivery_detected,
         attempts=attempt,
         reason=last_error,
     )

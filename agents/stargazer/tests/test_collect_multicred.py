@@ -349,7 +349,7 @@ def test_collect_endpoint_accepts_legacy_single_credential_headers(monkeypatch):
     assert "collect_task_id" not in queued_task
 
 
-@pytest.mark.parametrize("partial_mode", ["success_count", "delivered_count"])
+@pytest.mark.parametrize("partial_mode", ["confirmed_count", "delivery_detected"])
 def test_publish_lines_with_retry_stops_after_partial_delivery(monkeypatch, partial_mode):
     from core.nats_utils import NatsLinesPublishError
     from tasks.utils.nats_helper import MetricsPublishError, _publish_lines_with_retry
@@ -358,12 +358,17 @@ def test_publish_lines_with_retry_stops_after_partial_delivery(monkeypatch, part
 
     async def fake_publish_lines(subject, lines):
         attempts.append(list(lines))
-        if partial_mode == "success_count":
+        if partial_mode == "confirmed_count":
             if len(attempts) == 1:
                 return 1
         else:
             if len(attempts) == 1:
-                raise NatsLinesPublishError(subject, 1, RuntimeError("partial delivery"))
+                raise NatsLinesPublishError(
+                    subject,
+                    attempted_count_before_failure=1,
+                    delivery_detected=True,
+                    error=RuntimeError("partial delivery"),
+                )
         return len(lines)
 
     monkeypatch.setenv("NATS_METRICS_PUBLISH_RETRIES", "3")
@@ -372,12 +377,14 @@ def test_publish_lines_with_retry_stops_after_partial_delivery(monkeypatch, part
     with pytest.raises(MetricsPublishError) as exc_info:
         asyncio.run(_publish_lines_with_retry("metrics.mysql", ["line-1", "line-2"], "task-1"))
 
-    assert exc_info.value.success_count == 1
+    expected_success_count = 1 if partial_mode == "confirmed_count" else 0
+    assert exc_info.value.success_count == expected_success_count
+    assert exc_info.value.delivery_detected is True
     assert exc_info.value.attempts == 1
     assert attempts == [["line-1", "line-2"]]
 
 
-def test_publish_lines_with_retry_stops_after_flush_failure_with_all_lines_delivered(monkeypatch):
+def test_publish_lines_with_retry_treats_flush_failure_as_uncertain_delivery(monkeypatch):
     from core.nats_utils import NatsLinesPublishError
     from tasks.utils.nats_helper import MetricsPublishError, _publish_lines_with_retry
 
@@ -385,7 +392,12 @@ def test_publish_lines_with_retry_stops_after_flush_failure_with_all_lines_deliv
 
     async def fake_publish_lines(subject, lines):
         attempts.append(list(lines))
-        raise NatsLinesPublishError(subject, len(lines), RuntimeError("flush failed"))
+        raise NatsLinesPublishError(
+            subject,
+            attempted_count_before_failure=len(lines),
+            delivery_detected=True,
+            error=RuntimeError("flush failed"),
+        )
 
     monkeypatch.setenv("NATS_METRICS_PUBLISH_RETRIES", "3")
     monkeypatch.setattr("tasks.utils.nats_helper.nats_publish_lines", fake_publish_lines)
@@ -393,7 +405,8 @@ def test_publish_lines_with_retry_stops_after_flush_failure_with_all_lines_deliv
     with pytest.raises(MetricsPublishError) as exc_info:
         asyncio.run(_publish_lines_with_retry("metrics.mysql", ["line-1", "line-2"], "task-1"))
 
-    assert exc_info.value.success_count == 2
+    assert exc_info.value.success_count == 0
+    assert exc_info.value.delivery_detected is True
     assert exc_info.value.attempts == 1
     assert attempts == [["line-1", "line-2"]]
 
@@ -459,6 +472,65 @@ def test_collect_plugin_task_keeps_failure_reconciliation_for_real_metric_delive
 
     assert result["status"] == "failed"
     assert publish_calls == ["ignored"]
+
+
+def test_collect_plugin_task_suppresses_synthetic_error_metrics_when_delivery_detected(monkeypatch):
+    import tasks.handlers.plugin_handler as plugin_handler
+    from tasks.utils.nats_helper import MetricsPublishError
+
+    publish_calls = []
+    post_execute_calls = []
+
+    class FakeCollectionService:
+        def __init__(self, params):
+            self.params = params
+
+        async def collect(self):
+            return "ignored"
+
+    async def fake_publish_metrics_to_nats(ctx, metrics_data, params, task_id):
+        publish_calls.append(metrics_data)
+        raise MetricsPublishError(
+            task_id=task_id,
+            subject="metrics.mysql",
+            total_lines=2,
+            success_count=0,
+            delivery_detected=True,
+            attempts=1,
+            reason="flush failed after writes",
+        )
+
+    async def fake_post_execute(params, task_id, execution_result, cache_cls, get_queue_func):
+        post_execute_calls.append(execution_result)
+
+    monkeypatch.setattr("service.collection_service.CollectionService", FakeCollectionService)
+    monkeypatch.setattr("tasks.utils.nats_helper.publish_metrics_to_nats", fake_publish_metrics_to_nats)
+    monkeypatch.setattr(
+        "tasks.utils.metrics_helper.generate_plugin_error_metrics",
+        lambda params, err: "synthetic-error-metrics",
+    )
+    monkeypatch.setattr(plugin_handler, "_handle_multicred_post_execute", fake_post_execute)
+
+    result = asyncio.run(
+        plugin_handler.collect_plugin_task(
+            {},
+            {
+                "plugin_name": "mysql_info",
+                "model_id": "mysql",
+                "host": "10.0.0.1",
+                "credential_id": "cred-1",
+                "credential_index": 0,
+                "credentials_pool": [{"credential_id": "cred-1"}],
+                "collect_task_id": "collect-1",
+                "executor_type": "job",
+            },
+            "task-1",
+        )
+    )
+
+    assert result["status"] == "failed"
+    assert publish_calls == ["ignored"]
+    assert len(post_execute_calls) == 1
 
 
 def test_collect_plugin_task_does_not_mark_multicred_success_when_zero_metrics_delivered(monkeypatch):
