@@ -15,7 +15,7 @@ import { TrendChartPanel } from '../../shared/widgets';
 import { ACTIVEMQ_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
-const SUMMARY_TITLES = ['当前积压', '消费者数', '入队速率', '出队速率'];
+const SUMMARY_TITLES = ['当前积压', '净流入速率', '入队速率', '消费者数'];
 const CHART_TITLES = ['消息吞吐趋势', '积压与消费趋势'];
 const DETAIL_TITLES = ['Topic 指标详情'];
 

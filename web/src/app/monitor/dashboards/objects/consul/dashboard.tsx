@@ -14,7 +14,7 @@ import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { CONSUL_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
-const SUMMARY_TITLES = ['整体健康状态', '检查总数', '危险检查数', '通过检查数'];
+const SUMMARY_TITLES = ['整体健康状态', '通过率', '危险检查数'];
 const CHART_TITLES = ['健康检查趋势'];
 const RING_TITLES = ['健康检查状态分布'];
 

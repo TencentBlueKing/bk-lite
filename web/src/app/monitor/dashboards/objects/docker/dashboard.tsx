@@ -16,7 +16,7 @@ import { HorizontalBarPanel, TrendChartPanel } from '../../shared/widgets';
 import { DOCKER_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
-const SUMMARY_TITLES = ['运行容器数', '停止容器占比', '停止容器数', '容器 CPU 使用率', '容器内存使用率'];
+const SUMMARY_TITLES = ['运行容器数', '停止容器占比', '重启风险', '容器 CPU 使用率', '容器内存使用率'];
 const CHART_TITLES = ['容器资源使用趋势', '网络吞吐趋势', '块设备吞吐趋势'];
 const BAR_TITLES = ['容器异常信号'];
 const DETAIL_TITLES = ['容器运行详情'];

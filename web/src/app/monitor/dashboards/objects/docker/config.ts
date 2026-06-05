@@ -150,12 +150,15 @@ export const DOCKER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       footer: [{ label: '停止数', metric: 'docker_n_containers_stopped', unit: 'counts' }]
     },
     {
-      title: '停止容器数',
-      metric: 'docker_n_containers_stopped',
-      color: '#ff8a1f',
-      icon: 'api',
-      guide: [{ label: '停止容器', detail: '停止状态容器数量，持续升高时需关注业务是否异常退出。' }],
-      footer: [{ label: '总容器', metric: 'docker_n_containers', unit: 'counts' }]
+      title: '重启风险',
+      metric: 'docker_container_restart_recent',
+      unit: 'counts',
+      color: '#ff4d4f',
+      icon: 'thunder',
+      compare: true,
+      compareFavorableDirection: 'down',
+      guide: [{ label: '重启风险', detail: '近 1 小时容器重启增量，非零代表正在发生的崩溃循环，优先排查。' }],
+      footer: [{ label: '停止数', metric: 'docker_n_containers_stopped', unit: 'counts' }]
     },
     {
       title: '容器 CPU 使用率',
@@ -209,11 +212,10 @@ export const DOCKER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   barPanels: [
     {
       title: '容器异常信号',
-      subtitle: '近 1h 重启、网络错误',
+      subtitle: '网络错误速率',
       showTrend: true,
-      guide: [{ label: '异常信号', detail: '汇总最近 1 小时重启增量与网络错误速率。重启增量非零代表正在发生的崩溃循环，优先排查。' }],
+      guide: [{ label: '异常信号', detail: '容器网络接收/发送错误速率。重启增量已提为「重启风险」KPI。' }],
       items: [
-        { label: '近 1h 重启', metric: 'docker_container_restart_recent', color: '#ff4d4f', unit: 'counts' },
         { label: '接收错误', metric: 'docker_container_net_rx_errors_rate', color: '#ff8a1f', unit: 'cps' },
         { label: '发送错误', metric: 'docker_container_net_tx_errors_rate', color: '#faad14', unit: 'cps' }
       ]

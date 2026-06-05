@@ -53,6 +53,14 @@ export const CONSUL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       unit: 'counts',
       query: 'sum(consul_health_checks_critical{__$labels__})',
       color: '#ff4d4f'
+    },
+    {
+      name: 'consul_checks_pass_ratio',
+      display_name: '通过率',
+      description: '通过检查数占检查总数的比例（passing/total）。',
+      unit: 'percent',
+      query: 'clamp_max(100 * sum(consul_health_checks_passing{__$labels__}) / clamp_min(count(consul_health_checks_status{__$labels__}), 1), 100)',
+      color: '#27c274'
     }
   ],
   summaryCards: [
@@ -66,13 +74,15 @@ export const CONSUL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       footer: [{ label: '危险检查', metric: 'consul_checks_critical', unit: 'counts' }]
     },
     {
-      title: '检查总数',
-      metric: 'consul_checks_total',
-      unit: 'counts',
-      color: '#2f6bff',
+      title: '通过率',
+      metric: 'consul_checks_pass_ratio',
+      unit: 'percent',
+      color: '#27c274',
       icon: 'node',
-      guide: [{ label: '检查总数', detail: '当前注册的健康检查总数，反映该 Consul 节点纳管的服务/检查规模。' }],
-      footer: [{ label: '通过检查', metric: 'consul_checks_passing', unit: 'counts' }]
+      compare: true,
+      compareFavorableDirection: 'up',
+      guide: [{ label: '通过率', detail: '通过检查数占检查总数的比例，越接近 100% 越健康。' }],
+      footer: [{ label: '危险检查', metric: 'consul_checks_critical', unit: 'counts' }]
     },
     {
       title: '危险检查数',
@@ -84,15 +94,6 @@ export const CONSUL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       compareFavorableDirection: 'down',
       guide: [{ label: '危险检查', detail: '处于危险状态的检查数量，非零代表有服务不可用，需立即排查。' }],
       footer: [{ label: '警告检查', metric: 'consul_checks_warning', unit: 'counts' }]
-    },
-    {
-      title: '通过检查数',
-      metric: 'consul_checks_passing',
-      unit: 'counts',
-      color: '#27c274',
-      icon: 'node',
-      guide: [{ label: '通过检查', detail: '处于通过状态的检查数量，正常情况下应等于检查总数。' }],
-      footer: [{ label: '检查总数', metric: 'consul_checks_total', unit: 'counts' }]
     }
   ],
   charts: [

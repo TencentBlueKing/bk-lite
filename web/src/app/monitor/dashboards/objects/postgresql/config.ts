@@ -322,11 +322,12 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   barPanels: [
     {
       title: '异常事件热点',
-      subtitle: '死锁、冲突与临时文件',
+      subtitle: '回滚、死锁、冲突与临时文件',
       showTrend: true,
-      guide: [{ label: '异常事件', detail: '死锁、并发冲突与临时文件创建速率，用于快速定位异常负载。' }],
+      guide: [{ label: '异常事件', detail: '回滚、死锁、并发冲突与临时文件创建速率，用于快速定位异常负载。' }],
       items: [
-        { label: '死锁速率', metric: 'postgresql_deadlocks_rate', color: '#ff4d4f', unit: 'cps' },
+        { label: '回滚速率', metric: 'postgresql_xact_rollback_rate', color: '#ff4d4f', unit: 'cps' },
+        { label: '死锁速率', metric: 'postgresql_deadlocks_rate', color: '#fa8c16', unit: 'cps' },
         { label: '并发冲突', metric: 'postgresql_conflicts_rate', color: '#faad14', unit: 'cps' },
         { label: '临时文件', metric: 'postgresql_temp_files_rate', color: '#8a5cff', unit: 'cps' }
       ]

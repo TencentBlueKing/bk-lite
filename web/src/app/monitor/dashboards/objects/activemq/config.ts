@@ -55,6 +55,14 @@ export const ACTIVEMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       unit: 'cps',
       query: 'rate(activemq_topics_enqueue_count{__$labels__}[5m])',
       color: '#2f6bff'
+    },
+    {
+      name: 'activemq_topics_net_enqueue_rate',
+      display_name: '净流入速率',
+      description: '入队速率 − 出队速率；持续 >0 说明生产快于消费、积压扩大，<0 说明积压在缩小。',
+      unit: 'cps',
+      query: 'rate(activemq_topics_enqueue_count{__$labels__}[5m]) - rate(activemq_topics_dequeue_count{__$labels__}[5m])',
+      color: '#ff8a1f'
     }
   ],
   summaryCards: [
@@ -67,6 +75,17 @@ export const ACTIVEMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       compareFavorableDirection: 'down',
       guide: [{ label: '当前积压', detail: 'Topic 当前存储消息数量，持续升高时说明消费落后于生产。' }],
       footer: [{ label: '消费者数', metric: 'activemq_topics_consumer_count', unit: 'counts' }]
+    },
+    {
+      title: '净流入速率',
+      metric: 'activemq_topics_net_enqueue_rate',
+      unit: 'cps',
+      color: '#ff8a1f',
+      icon: 'thunder',
+      compare: true,
+      compareFavorableDirection: 'down',
+      guide: [{ label: '净流入速率', detail: '入队速率 − 出队速率；持续 >0 积压扩大，<0 积压在缩小。' }],
+      footer: [{ label: '当前积压', metric: 'activemq_topics_size', unit: 'counts' }]
     },
     {
       title: '消费者数',
@@ -83,14 +102,6 @@ export const ACTIVEMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'thunder',
       guide: [{ label: '入队速率', detail: 'Topic 每秒入队消息数量，反映生产侧写入压力。' }],
       footer: [{ label: '当前积压', metric: 'activemq_topics_size', unit: 'counts' }]
-    },
-    {
-      title: '出队速率',
-      metric: 'activemq_topics_dequeue_rate',
-      color: '#27c274',
-      icon: 'thunder',
-      guide: [{ label: '出队速率', detail: 'Topic 每秒出队消息数量，反映消费侧处理能力。' }],
-      footer: [{ label: '消费者数', metric: 'activemq_topics_consumer_count', unit: 'counts' }]
     }
   ],
   charts: [

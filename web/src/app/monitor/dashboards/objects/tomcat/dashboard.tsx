@@ -16,7 +16,7 @@ import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { TOMCAT_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
-const SUMMARY_TITLES = ['线程池利用率', '错误请求速率', '请求处理速率', 'JVM 堆使用率', '最大处理耗时'];
+const SUMMARY_TITLES = ['线程池利用率', '错误占比', '请求处理速率', 'JVM 堆使用率', '最大处理耗时'];
 const CHART_TITLES = ['请求错误趋势', '线程池趋势', 'JVM 内存趋势', '发送流量趋势', 'MemoryPool 趋势'];
 const RING_TITLES = ['线程池占用分布'];
 const DETAIL_TITLES = ['Connector 实时速率详情'];

@@ -203,16 +203,16 @@ export const TOMCAT_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     },
     {
-      title: '错误请求速率',
-      metric: 'tomcat_connector_error_count_rate',
-      unit: 'cps',
+      title: '错误占比',
+      metric: 'tomcat_connector_error_rate_pct',
+      unit: 'percent',
       color: '#ff4d4f',
       icon: 'api',
       compare: true,
       compareFavorableDirection: 'down',
-      guide: [{ label: '错误请求速率', detail: 'Tomcat 每秒错误请求数量，升高时需关注服务异常，结合错误占比判断影响范围。' }],
+      guide: [{ label: '错误占比', detail: '错误请求占总请求的比例，比错误速率更直观地反映服务降级风险。' }],
       footer: [
-        { label: '错误占比', metric: 'tomcat_connector_error_rate_pct', unit: 'percent' }
+        { label: '错误速率', metric: 'tomcat_connector_error_count_rate', unit: 'cps' }
       ]
     },
     {
@@ -254,13 +254,12 @@ export const TOMCAT_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   charts: [
     {
       title: '请求错误趋势',
-      subtitle: '请求速率、错误速率、错误占比',
+      subtitle: '请求速率、错误速率',
       metric: 'tomcat_connector_request_count_rate',
-      guide: [{ label: '请求错误', detail: '对比请求处理速率、错误请求速率和错误占比，识别可靠性波动。错误占比（%轴）持续上升是服务降级信号。' }],
+      guide: [{ label: '请求错误', detail: '对比请求处理速率与错误请求速率（均为每秒次数），识别可靠性波动。' }],
       series: [
         { metric: 'tomcat_connector_request_count_rate', label: '请求速率', color: '#2f6bff', unit: 'cps' },
-        { metric: 'tomcat_connector_error_count_rate', label: '错误速率', color: '#ff4d4f', unit: 'cps' },
-        { metric: 'tomcat_connector_error_rate_pct', label: '错误占比', color: '#faad14', unit: 'percent' }
+        { metric: 'tomcat_connector_error_count_rate', label: '错误速率', color: '#ff4d4f', unit: 'cps' }
       ]
     },
     {
