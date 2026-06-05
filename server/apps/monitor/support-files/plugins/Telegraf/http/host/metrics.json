@@ -12,6 +12,7 @@
   "default_metric": "any({instance_type='host', collect_type='http'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["host_cpu_usage_percent", "host_mem_used_bytes"],
+  "display_fields": [{"name": "CPU Usage", "sort_order": 0, "metrics": [{"plugin": "Host Remote", "metric": "host_cpu_usage_percent"}]}, {"name": "Used Memory", "sort_order": 1, "metrics": [{"plugin": "Host Remote", "metric": "host_mem_used_bytes"}]}],
   "metrics": [
     {
       "metric_group": "CPU",

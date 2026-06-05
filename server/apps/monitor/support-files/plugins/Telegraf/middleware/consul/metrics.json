@@ -9,6 +9,7 @@
   "default_metric": "any({instance_type='consul'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["consul_health_checks_passing", "consul_health_checks_critical", "consul_health_checks_status"],
+  "display_fields": [{"name": "Health Checks Passing", "sort_order": 0, "metrics": [{"plugin": "Consul", "metric": "consul_health_checks_passing"}]}, {"name": "Health Checks Critical", "sort_order": 1, "metrics": [{"plugin": "Consul", "metric": "consul_health_checks_critical"}]}, {"name": "Health Checks Status", "sort_order": 2, "metrics": [{"plugin": "Consul", "metric": "consul_health_checks_status"}]}],
   "metrics": [
     {
       "metric_group": "Health",

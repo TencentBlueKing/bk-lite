@@ -9,6 +9,7 @@
   "default_metric": "any({instance_type='elasticsearch'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["elasticsearch_jvm_mem_heap_used_percent", "elasticsearch_fs_data_0_available_in_bytes", "elasticsearch_process_cpu_percent"],
+  "display_fields": [{"name": "JVM Heap Usage", "sort_order": 0, "metrics": [{"plugin": "ElasticSearch", "metric": "elasticsearch_jvm_mem_heap_used_percent"}]}, {"name": "Node Available Disk Space", "sort_order": 1, "metrics": [{"plugin": "ElasticSearch", "metric": "elasticsearch_fs_data_0_available_in_bytes"}]}, {"name": "Process CPU Usage", "sort_order": 2, "metrics": [{"plugin": "ElasticSearch", "metric": "elasticsearch_process_cpu_percent"}]}],
   "metrics": [
     {
       "metric_group": "Base",
