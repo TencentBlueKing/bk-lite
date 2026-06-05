@@ -1,3 +1,4 @@
+import json
 import sys
 import types
 from types import SimpleNamespace
@@ -21,12 +22,97 @@ from apps.opspilot.metis.llm.chain.node import (
     build_post_tool_directives,
     should_emit_config_analysis_report,
 )
-from apps.opspilot.metis.llm.tools.kubernetes.analysis import build_config_analysis_next_step_hint
+from apps.opspilot.metis.llm.tools.kubernetes.analysis import (
+    analyze_deployment_configurations,
+    build_config_analysis_next_step_hint,
+)
 
 
 @pytest.fixture
 def settings():
     return SimpleNamespace(MIDDLEWARE=(), CACHES={})
+
+
+def _make_container(
+    *,
+    image="nginx:1.25.3",
+    has_requests=True,
+    has_limits=True,
+    has_liveness=True,
+    has_readiness=True,
+    run_as_non_root=True,
+):
+    resources = SimpleNamespace(
+        requests={"cpu": "100m"} if has_requests else None,
+        limits={"memory": "256Mi"} if has_limits else None,
+    )
+    security_context = (
+        SimpleNamespace(run_as_non_root=run_as_non_root)
+        if run_as_non_root is not None
+        else None
+    )
+    return SimpleNamespace(
+        name="main",
+        image=image,
+        resources=resources,
+        liveness_probe=object() if has_liveness else None,
+        readiness_probe=object() if has_readiness else None,
+        security_context=security_context,
+    )
+
+
+def _make_deployment(*, name="demo", namespace="default", replicas=2, containers=None, affinity=None):
+    return SimpleNamespace(
+        metadata=SimpleNamespace(name=name, namespace=namespace),
+        spec=SimpleNamespace(
+            replicas=replicas,
+            strategy=SimpleNamespace(type="RollingUpdate"),
+            selector=SimpleNamespace(match_labels={"app": name}),
+            template=SimpleNamespace(
+                spec=SimpleNamespace(containers=containers or [_make_container()], affinity=affinity)
+            ),
+        ),
+    )
+
+
+def _make_pdb_for(deployment_name):
+    return SimpleNamespace(
+        spec=SimpleNamespace(selector=SimpleNamespace(match_labels={"app": deployment_name}))
+    )
+
+
+def _run_config_analysis(monkeypatch, deployments, pdbs_by_namespace=None):
+    pdbs_by_namespace = pdbs_by_namespace or {}
+
+    class _AppsV1Api:
+        def list_deployment_for_all_namespaces(self):
+            return SimpleNamespace(items=deployments)
+
+        def list_namespaced_deployment(self, namespace):
+            return SimpleNamespace(items=[d for d in deployments if d.metadata.namespace == namespace])
+
+    class _CoreV1Api:
+        def list_namespaced_pod_disruption_budget(self, namespace):
+            return SimpleNamespace(items=pdbs_by_namespace.get(namespace, []))
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.tools.kubernetes.analysis.prepare_context",
+        lambda config: None,
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.tools.kubernetes.analysis.get_current_cluster_name",
+        lambda: "Kubernetes - 1",
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.tools.kubernetes.analysis.client.AppsV1Api",
+        _AppsV1Api,
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.tools.kubernetes.analysis.client.CoreV1Api",
+        _CoreV1Api,
+    )
+
+    return json.loads(analyze_deployment_configurations.invoke({}))
 
 
 def test_build_post_tool_directives_prevents_duplicate_config_summary_and_report():
@@ -169,3 +255,74 @@ def test_build_config_analysis_report_payload_keeps_scan_context_for_healthy_sca
     assert "未发现明显配置问题" in payload["fallback_markdown"]
     assert "总计 25 个工作负载" in payload["fallback_markdown"]
     assert "100" not in payload["fallback_markdown"]
+
+
+def test_analyze_deployment_configurations_counts_container_only_issues_consistently(monkeypatch):
+    result = _run_config_analysis(
+        monkeypatch,
+        deployments=[
+            _make_deployment(
+                name="api",
+                containers=[_make_container(has_liveness=False)],
+                affinity=object(),
+            )
+        ],
+        pdbs_by_namespace={"default": [_make_pdb_for("api")]},
+    )
+
+    payload = build_config_analysis_report_payload(result)
+
+    assert result["problematic"] == 1
+    assert result["healthy"] == 0
+    assert result["issues_detail"] == [
+        {
+            "severity": "high",
+            "issue": "未配置存活探针",
+            "count": 1,
+            "workloads": ["api (default)"],
+        }
+    ]
+    assert payload["summary"] == {"total": 1, "problematic": 1, "healthy": 0}
+    assert payload["severity_sections"][0]["issues"][0]["issue"] == "未配置存活探针"
+    assert "未发现明显配置问题" not in payload["fallback_markdown"]
+    assert "request_user_choice" in result["_next_step_hint"]
+
+
+def test_analyze_deployment_configurations_treats_recommendation_only_workload_as_healthy(monkeypatch):
+    result = _run_config_analysis(
+        monkeypatch,
+        deployments=[_make_deployment(name="api")],
+        pdbs_by_namespace={"default": []},
+    )
+
+    payload = build_config_analysis_report_payload(result)
+
+    assert result["problematic"] == 0
+    assert result["healthy"] == 1
+    assert result["issues_detail"] == []
+    assert payload["summary"] == {"total": 1, "problematic": 0, "healthy": 1}
+    assert payload["severity_sections"] == []
+    assert payload["recommendations"] == []
+    assert "未发现明显配置问题" in payload["fallback_markdown"]
+    assert "不要调用 request_user_choice" in result["_next_step_hint"]
+    assert "不要调用 generate_repair_report" in result["_next_step_hint"]
+
+
+def test_analyze_deployment_configurations_marks_healthy_workload_consistently(monkeypatch):
+    result = _run_config_analysis(
+        monkeypatch,
+        deployments=[_make_deployment(name="api", affinity=object())],
+        pdbs_by_namespace={"default": [_make_pdb_for("api")]},
+    )
+
+    payload = build_config_analysis_report_payload(result)
+
+    assert result["problematic"] == 0
+    assert result["healthy"] == 1
+    assert result["issues_detail"] == []
+    assert payload["summary"] == {"total": 1, "problematic": 0, "healthy": 1}
+    assert payload["severity_sections"] == []
+    assert payload["recommendations"] == []
+    assert "未发现明显配置问题" in payload["fallback_markdown"]
+    assert "不要调用 request_user_choice" in result["_next_step_hint"]
+    assert "不要调用 generate_repair_report" in result["_next_step_hint"]
