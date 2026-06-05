@@ -79,12 +79,16 @@ async def collect_plugin_task(
 
         logger.info(f"[Plugin Task] {task_id} completed successfully")
 
-        await _handle_multicred_post_execute(params, task_id, execution_result, CredentialStateCache, get_task_queue)
-
         if params.get("callback_subject"):
+            await _handle_multicred_pre_callback(
+                params, task_id, execution_result, CredentialStateCache, get_task_queue
+            )
             await publish_callback_to_nats(metrics_data, params, task_id)
         else:
             await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
+            await _handle_multicred_post_execute(
+                params, task_id, execution_result, CredentialStateCache, get_task_queue
+            )
 
         return {
             "task_id": task_id,
@@ -170,6 +174,10 @@ def _build_credential_execution_result(params: Dict[str, Any], metrics_data: Any
         "finished_at": datetime.now(timezone.utc).isoformat(),
         "snapshot": {"host": host, "model_id": params.get("model_id")},
     }
+
+
+async def _handle_multicred_pre_callback(params, task_id, execution_result, cache_cls, get_queue_func):
+    await _handle_multicred_post_execute(params, task_id, execution_result, cache_cls, get_queue_func)
 
 
 async def _handle_multicred_post_execute(params, task_id, execution_result, cache_cls, get_queue_func):
