@@ -130,7 +130,7 @@ def build_post_tool_directives(result_messages: List[BaseMessage]) -> List[Syste
             except Exception:
                 parsed = None
 
-            if isinstance(parsed, dict) and parsed.get("issues_detail"):
+            if isinstance(parsed, dict) and (parsed.get("issues_detail") or should_emit_config_analysis_report(parsed)):
                 directives.append(
                     SystemMessage(
                         content=(

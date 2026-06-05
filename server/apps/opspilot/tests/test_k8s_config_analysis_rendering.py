@@ -155,6 +155,26 @@ def test_build_post_tool_directives_requests_repair_mode_choice_after_problem_re
     )
 
 
+def test_build_post_tool_directives_prevents_duplicate_summary_for_healthy_scan():
+    directives = build_post_tool_directives(
+        [
+            ToolMessage(
+                name="analyze_deployment_configurations",
+                tool_call_id="call-1",
+                content='{"cluster_name":"Kubernetes - 1","total":9,"problematic":0,"healthy":9,"issues_detail":[]}',
+            )
+        ]
+    )
+
+    assert any(isinstance(message, SystemMessage) for message in directives)
+    assert any(
+        "不要同时输出“问题摘要”和“配置问题报告”两个重复板块" in message.content
+        and "如果检查结果没有问题，则直接结束" in message.content
+        for message in directives
+        if isinstance(message, SystemMessage)
+    )
+
+
 def test_build_config_analysis_next_step_hint_requests_repair_mode_choice():
     hint = build_config_analysis_next_step_hint(problematic_count=32, target_name=None)
 
