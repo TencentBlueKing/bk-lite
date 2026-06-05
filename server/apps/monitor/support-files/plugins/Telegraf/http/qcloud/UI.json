@@ -17,13 +17,14 @@
       }
     },
     {
-      "name": "password",
+      "name": "ENV_PASSWORD",
       "label": "密码",
       "type": "password",
       "required": true,
       "editable": false,
+      "encrypted": true,
       "transform_on_edit": {
-        "origin_path": "child.content.config.http_headers.password"
+        "origin_path": "child.env_config.PASSWORD__{{config_id}}"
       }
     }
   ],

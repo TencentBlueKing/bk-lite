@@ -106,6 +106,18 @@ monitor_object_metric:
     system_load15:
       name: 15分钟平均负载
       desc: 表示系统在最近 15 分钟内的平均运行负载，用于评估系统负载的长期稳定性。
+    host_cpu_core_count:
+      name: CPU核心数
+      desc: 表示主机可用的逻辑 CPU 核心数量，用于评估计算资源规模和容量基线。
+    host_cpu_load_1m:
+      name: 1分钟平均负载
+      desc: 表示主机最近 1 分钟的平均负载，用于观察系统的瞬时运行压力。
+    host_cpu_load_5m:
+      name: 5分钟平均负载
+      desc: 表示主机最近 5 分钟的平均负载，用于分析短时间范围内的负载趋势。
+    host_cpu_load_15m:
+      name: 15分钟平均负载
+      desc: 表示主机最近 15 分钟的平均负载，用于判断系统是否长期处于高负载状态。
     diskio_io_util:
       name: 磁盘IO使用率
       desc: 表示磁盘设备处于忙碌状态的时间占比，用于衡量磁盘 I/O 资源的整体利用情况。持续高位通常意味着磁盘 I/O 成为性能瓶颈。
@@ -130,9 +142,15 @@ monitor_object_metric:
     disk_total:
       name: 磁盘总空间
       desc: 表示磁盘或文件系统的总容量，用于容量规划与资源管理。
+    host_disk_total_bytes:
+      name: 文件系统总容量
+      desc: 表示单个挂载点对应文件系统的总容量，用于评估各挂载点的容量基线。
     disk_free:
       name: 磁盘剩余空间
       desc: 表示磁盘或文件系统当前可用的剩余容量，用于监控磁盘空间风险。
+    host_disk_used_bytes:
+      name: 文件系统已用容量
+      desc: 表示单个挂载点当前已使用的磁盘容量，用于分析各文件系统的空间占用情况。
     disk_used_percent:
       name: 磁盘使用率
       desc: 表示磁盘已使用空间占总容量的比例，是磁盘容量监控的核心指标。
@@ -154,12 +172,27 @@ monitor_object_metric:
     mem_total:
       name: 内存总量
       desc: 表示系统可使用的物理内存总容量，是内存资源评估的基础指标。
+    host_mem_total_bytes:
+      name: 物理内存总量
+      desc: 表示主机物理内存总容量，用于评估主机可提供的内存资源上限。
+    host_mem_used_bytes:
+      name: 已用物理内存
+      desc: 表示主机当前已使用的物理内存容量，用于衡量实际内存消耗情况。
     mem_available:
       name: 可用内存
       desc: 表示系统在不触发明显性能下降的情况下，可分配给应用使用的内存容量。
+    host_mem_available_bytes:
+      name: 可用物理内存
+      desc: 表示当前可直接分配给业务或系统使用的物理内存容量，用于判断内存余量。
     mem_used_percent:
       name: 内存使用率
       desc: 表示已使用内存占总内存的比例，用于评估系统的内存压力水平。
+    host_mem_swap_total_bytes:
+      name: 交换分区总量
+      desc: 表示主机可用交换分区的总容量，用于评估内存紧张时的缓冲空间。
+    host_mem_swap_used_bytes:
+      name: 已用交换分区
+      desc: 表示主机当前已使用的交换分区容量，用于观察内存回收与换页压力。
     mem_swap_free:
       name: 空闲交换内存
       desc: 表示当前剩余可用的交换内存空间，用于监控内存紧张情况下的缓冲能力。
@@ -181,15 +214,27 @@ monitor_object_metric:
     net_bytes_recv_rate:
       name: 网络接收吞吐速率
       desc: 表示网络接口单位时间内接收的数据量，用于评估网络接收带宽使用情况。
+    host_net_rx_bytes:
+      name: 网络接收字节数
+      desc: 表示单个网络接口累计接收的字节数，用于分析网卡接收流量规模。
     net_bytes_sent_rate:
       name: 网络发送吞吐速率
       desc: 表示网络接口单位时间内发送的数据量，用于评估网络发送带宽使用情况。
+    host_net_tx_bytes:
+      name: 网络发送字节数
+      desc: 表示单个网络接口累计发送的字节数，用于分析网卡发送流量规模。
     net_err_in_rate:
       name: 网络接收错误包速率
       desc: 表示网络接口单位时间内接收到的错误数据包数量，用于监控网络质量。
+    host_net_rx_errors:
+      name: 网络接收错误数
+      desc: 表示单个网络接口累计接收错误次数，用于发现链路质量或驱动异常问题。
     net_err_out_rate:
       name: 网络发送错误包速率
       desc: 表示网络接口单位时间内发送失败的错误数据包数量。
+    host_net_tx_errors:
+      name: 网络发送错误数
+      desc: 表示单个网络接口累计发送错误次数，用于辅助排查网络发送异常或设备故障。
     net_drop_in_rate:
       name: 网络接收丢包速率
       desc: 表示网络接口单位时间内被丢弃的接收数据包数量，用于评估网络拥塞或异常情况。
@@ -2873,6 +2918,9 @@ monitor_object_plugin:
   Host:
     desc: 通过Telegraf采集器收集和分析主机的性能数据，包括CPU、内存、磁盘和网络使用情况。
     name: 主机（Telegraf）
+  Host Remote:
+    name: 主机远程采集（Telegraf）
+    desc: 通过 Telegraf 结合 Stargazer 的远程能力，以 SSH/WinRM 无 Agent 方式采集主机的 CPU、内存、磁盘和网络指标。
   Ping:
     desc: 通过Telegraf采集器定期发送ICMP回显请求（ECHO_REQUEST）来检查目标主机或网络设备的连通性和响应时间。
     name: Ping（Telegraf）

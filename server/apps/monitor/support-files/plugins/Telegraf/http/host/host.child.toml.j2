@@ -9,7 +9,7 @@
         host = "{{ host }}"
         os_type = "{{ os_type | default('linux', true) }}"
         username = "{{ username }}"
-        password = "{{ password }}"
+        password = "${PASSWORD__{{ config_id }}}"
         port = "{{ port | default('22', true) }}"
         metrics_modules = "{{ metrics_modules | default('cpu,mem,disk,net', true) }}"
         ansible_node_id = "{{ node_id }}"
