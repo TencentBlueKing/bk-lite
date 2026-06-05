@@ -1,3 +1,4 @@
+import json
 import sys
 import types
 from types import SimpleNamespace
@@ -17,6 +18,7 @@ sys.modules.setdefault("falkordb.asyncio", _falkordb_asyncio)
 from langchain_core.messages import SystemMessage, ToolMessage
 
 from apps.opspilot.metis.llm.chain.node import build_post_tool_directives
+from apps.opspilot.metis.llm.tools.kubernetes import analysis as k8s_analysis
 from apps.opspilot.metis.llm.tools.kubernetes.analysis import build_config_analysis_next_step_hint
 
 
@@ -71,3 +73,38 @@ def test_build_config_analysis_next_step_hint_requests_repair_mode_choice():
     assert "request_user_choice" in hint
     assert "修复展示方式" in hint
     assert "generate_repair_report" in hint
+
+
+def test_analyze_deployment_configurations_reports_missing_named_deployment(monkeypatch):
+    monkeypatch.setattr(k8s_analysis, "prepare_context", lambda config: None)
+
+    class _FakeAppsV1Api:
+        def list_namespaced_deployment(self, namespace):
+            return SimpleNamespace(
+                items=[
+                    SimpleNamespace(
+                        metadata=SimpleNamespace(name="nginx-test", namespace=namespace),
+                    )
+                ]
+            )
+
+    monkeypatch.setattr(k8s_analysis.client, "AppsV1Api", lambda: _FakeAppsV1Api())
+    monkeypatch.setattr(k8s_analysis.client, "CoreV1Api", lambda: SimpleNamespace())
+
+    result = json.loads(
+        k8s_analysis.analyze_deployment_configurations.invoke(
+            {"namespace": "default", "name": "missing"}
+        )
+    )
+
+    assert result == {
+        "success": False,
+        "error": "deployment_not_found",
+        "message": "未找到名为 default/missing 的 Deployment",
+        "target_name": "missing",
+        "namespace": "default",
+        "_next_step_hint": (
+            "未找到名为 default/missing 的 Deployment。"
+            "请先确认名称是否正确，必要时先调用 list_kubernetes_deployments 重新查看可用 Deployment。"
+        ),
+    }

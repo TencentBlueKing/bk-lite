@@ -534,6 +534,19 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
         if name:
             all_items = [d for d in all_items if d.metadata.name == name]
             total_count = len(all_items)
+            if total_count == 0:
+                scoped_name = f"{namespace}/{name}" if namespace else name
+                return json.dumps({
+                    "success": False,
+                    "error": "deployment_not_found",
+                    "message": f"未找到名为 {scoped_name} 的 Deployment",
+                    "target_name": name,
+                    "namespace": namespace,
+                    "_next_step_hint": (
+                        f"未找到名为 {scoped_name} 的 Deployment。"
+                        "请先确认名称是否正确，必要时先调用 list_kubernetes_deployments 重新查看可用 Deployment。"
+                    ),
+                })
             paged_items = all_items
         else:
             # 分页切片
