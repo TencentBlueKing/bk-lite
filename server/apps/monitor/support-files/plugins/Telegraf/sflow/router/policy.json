@@ -1,0 +1,34 @@
+{
+  "object": "Router",
+  "plugin": "Router Flow sFlow",
+  "templates": [
+    {
+      "name": "设备总入流量过高",
+      "alert_name": "路由器${resource_name} 总入流量过高",
+      "description": "sFlow 总入流量过高告警。",
+      "metric_name": "device_total_incoming_sflow_traffic",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 900,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "设备总出流量过高",
+      "alert_name": "路由器${resource_name} 总出流量过高",
+      "description": "sFlow 总出流量过高告警。",
+      "metric_name": "device_total_outgoing_sflow_traffic",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 900,
+          "method": ">"
+        }
+      ]
+    }
+  ]
+}

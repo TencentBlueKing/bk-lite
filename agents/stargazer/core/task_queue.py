@@ -11,6 +11,7 @@ import time
 import traceback
 import hashlib
 import asyncio
+import uuid
 from typing import Optional, Dict, Any
 from arq import create_pool
 from arq.connections import RedisSettings, ArqRedis
@@ -18,6 +19,42 @@ from arq.jobs import Job
 from sanic import Sanic
 from sanic.log import logger
 from core.redis_config import REDIS_CONFIG, print_redis_config
+
+
+async def _is_host_remote_callback_pending(task_id: str) -> bool:
+    try:
+        import core.host_remote_callback as host_remote_callback
+
+        callback_context = await host_remote_callback.load_host_remote_callback_context(task_id)
+        if not callback_context:
+            return False
+
+        status = callback_context.get("status") or {}
+        return (
+            status.get("execution") == "waiting_callback"
+            and callback_context.get("callback_received_at") is None
+        )
+    except Exception as err:
+        logger.warning(
+            f"[Task Queue] Failed to inspect host remote callback context for task {task_id}: {err}",
+            exc_info=True,
+        )
+        return False
+
+
+def _resolve_running_flag_ttl(params: Dict[str, Any]) -> int:
+    base_ttl = int(os.getenv("TASK_JOB_TIMEOUT", "600")) + 60
+    if (params or {}).get("monitor_type") != "host":
+        return base_ttl
+
+    # 复用 host_remote_callback 解析后的时限，避免与其默认值不一致
+    from core import host_remote_callback
+
+    callback_deadline = host_remote_callback.HOST_REMOTE_CALLBACK_DEADLINE_SECONDS + 60
+    submit_accept_timeout = (
+        host_remote_callback.HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS + 60
+    )
+    return max(base_ttl, callback_deadline, submit_accept_timeout)
 
 
 class TaskQueue:
@@ -188,7 +225,10 @@ class TaskQueue:
 
         # 生成任务ID（用于业务去重）
         if not task_id:
-            task_id = self._generate_task_id(params)
+            if (params or {}).get("monitor_type") == "host":
+                task_id = f"collect_host_{uuid.uuid4().hex}"
+            else:
+                task_id = self._generate_task_id(params)
 
         try:
             # ✅ 应用层去重：检查我们自己维护的任务状态键
@@ -220,6 +260,24 @@ class TaskQueue:
                         "timestamp": int(time.time() * 1000)
                     }
 
+                if (params or {}).get("monitor_type") == "host":
+                    callback_pending = await _is_host_remote_callback_pending(task_id)
+                    if callback_pending:
+                        self.metrics["tasks_skipped"] += 1
+                        remaining_ttl = await self.pool.ttl(running_key)
+                        logger.warning(
+                            f"Task {task_id} is still waiting for host remote callback, skipping enqueue "
+                            f"(job_id={existing_job_id}, ttl={remaining_ttl}s)"
+                        )
+                        return {
+                            "task_id": task_id,
+                            "job_id": existing_job_id,
+                            "status": "skipped",
+                            "reason": "Host remote callback still pending",
+                            "dedupe_ttl": remaining_ttl,
+                            "timestamp": int(time.time() * 1000)
+                        }
+
                 logger.warning(
                     f"Detected stale running marker for task {task_id}, clearing and re-enqueueing"
                 )
@@ -245,8 +303,8 @@ class TaskQueue:
                 raise RuntimeError(f"Failed to enqueue job {task_id}, enqueue_job returned None")
 
             # ✅ 标记任务为运行中（设置 TTL，防止任务失败后永久锁定）
-            # TTL 设置为 job_timeout + 60 秒的缓冲时间
-            ttl = int(os.getenv("TASK_JOB_TIMEOUT", "600")) + 60
+            # TTL 设置为 job_timeout + 60 秒的缓冲时间；host remote 任务需覆盖 callback 等待窗口
+            ttl = _resolve_running_flag_ttl(params)
             await self.pool.set(running_key, job.job_id, ex=ttl)
 
             self.metrics["tasks_enqueued"] += 1
@@ -263,6 +321,59 @@ class TaskQueue:
             logger.error(f"Failed to enqueue task {task_id}: {e}")
             logger.error(traceback.format_exc())
             raise
+
+    async def enqueue_host_remote_processing_task(
+            self,
+            task_id: str,
+            params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        if not self._is_healthy:
+            logger.warning("Redis connection unhealthy, attempting to reconnect...")
+            try:
+                await self.connect()
+            except Exception as e:
+                self.metrics["tasks_failed"] += 1
+                raise RuntimeError(f"Task queue unavailable: {e}")
+
+        if not self.pool:
+            await self.connect()
+
+        processing_task_id = str(task_id).strip()
+        if not processing_task_id:
+            raise ValueError("task_id is required for host remote processing task")
+
+        processing_job_id = f"process_host_remote_callback:{processing_task_id}"
+        logger.info(
+            f"[Task Queue] Enqueuing host remote processing task: {processing_task_id}"
+        )
+        job = await self.pool.enqueue_job(
+            'process_host_remote_callback_task',
+            params=params or {},
+            task_id=processing_task_id,
+            _job_id=processing_job_id,
+        )
+
+        if not job:
+            existing_status = await self.get_job_status(processing_job_id)
+            if existing_status is not None:
+                return {
+                    "task_id": processing_task_id,
+                    "job_id": processing_job_id,
+                    "status": "queued",
+                    "enqueued_at": int(time.time() * 1000),
+                }
+
+            raise RuntimeError(
+                f"Failed to enqueue host remote processing task {processing_task_id}"
+            )
+
+        self.metrics["tasks_enqueued"] += 1
+        return {
+            "task_id": processing_task_id,
+            "job_id": job.job_id,
+            "status": "queued",
+            "enqueued_at": int(time.time() * 1000),
+        }
 
     async def mark_task_completed(self, task_id: str):
         """

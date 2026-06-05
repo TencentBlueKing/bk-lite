@@ -1,0 +1,16 @@
+{
+  "model_id": "mysql",
+  "instance_count_min": 1,
+  "expected_instance_subset": {
+    "inst_name":     "10.0.0.41-mysql-3306",
+    "ip_addr":       "10.0.0.41",
+    "port":          "3306",
+    "version":       "8.0.36",
+    "enable_binlog": "ON",
+    "basedir":       "/usr/local/mysql",
+    "datadir":       "/var/lib/mysql",
+    "bind_address":  "0.0.0.0",
+    "slow_query_log": "ON",
+    "wait_timeout":  "28800"
+  }
+}

@@ -295,9 +295,17 @@ const ViewList: React.FC<ViewListProps> = ({
       if (objName) {
         const filterMetrics = getTableDiaplay(objName) || [];
         const _columns = filterMetrics.map((item: any) => {
-          const target = (res[0] || []).find(
-            (tex: MetricItem) => tex.name === item.key
-          );
+          const metricKeys = [item.key, ...(item.fallbackKeys || [])];
+          const target = metricKeys
+            .map((metricName: string) =>
+              (res[0] || []).find((tex: MetricItem) => tex.name === metricName)
+            )
+            .find(Boolean);
+          const resolveMetricKey = (record: TableDataItem) =>
+            metricKeys.find((metricName: string) => {
+              const value = record?.[metricName]?.value;
+              return value !== undefined && value !== null && value !== '';
+            }) || item.key;
           if (item.type === 'progress') {
             return {
               title:
@@ -307,8 +315,8 @@ const ViewList: React.FC<ViewListProps> = ({
               dataIndex: item.key,
               key: item.key,
               sorter: (a: any, b: any) => {
-                const va = a[item.key]?.value;
-                const vb = b[item.key]?.value;
+                const va = a[resolveMetricKey(a)]?.value;
+                const vb = b[resolveMetricKey(b)]?.value;
                 const na = va == null || va === '';
                 const nb = vb == null || vb === '';
                 if (na && nb) return 0;
@@ -317,24 +325,25 @@ const ViewList: React.FC<ViewListProps> = ({
                 return Number(va) - Number(vb);
               },
               render: (_: unknown, record: TableDataItem) => {
+                const metricKey = resolveMetricKey(record);
                 const hasDimensions = target?.dimensions?.length > 0;
                 const size: [number, number] = hasDimensions
                   ? [220, 20]
                   : [240, 20];
-                const metricUnit = record[item.key]?.unit || target?.unit || '';
+                const metricUnit = record[metricKey]?.unit || target?.unit || '';
                 return (
                   <div className="flex items-center justify-between">
                     <Progress
                       className="flex"
                       strokeLinecap="butt"
                       strokeColor="var(--color-primary)"
-                      showInfo={!!record[item.key]?.value}
+                      showInfo={!!record[metricKey]?.value}
                       format={(percent) => (
                         <span style={{ color: 'var(--color-text-1)' }}>
                           {percent?.toFixed(2)}%
                         </span>
                       )}
-                      percent={getPercent(record[item.key]?.value || 0)}
+                      percent={getPercent(record[metricKey]?.value || 0)}
                       percentPosition={{ align: 'start', type: 'outer' }}
                       size={size}
                     />
@@ -364,8 +373,8 @@ const ViewList: React.FC<ViewListProps> = ({
             ...(item.type === 'value'
               ? {
                 sorter: (a: any, b: any) => {
-                  const va = a[item.key]?.value;
-                  const vb = b[item.key]?.value;
+                  const va = a[resolveMetricKey(a)]?.value;
+                  const vb = b[resolveMetricKey(b)]?.value;
                   const na = va == null || va === '';
                   const nb = vb == null || vb === '';
                   if (na && nb) return 0;
@@ -376,10 +385,11 @@ const ViewList: React.FC<ViewListProps> = ({
               }
               : {}),
             render: (_: unknown, record: TableDataItem) => {
-              const color = getEnumColor(target, record[item.key]?.value);
+              const metricKey = resolveMetricKey(record);
+              const color = getEnumColor(target, record[metricKey]?.value);
               const hasDimensions = target?.dimensions?.length > 0;
-              const metricValue = record[item.key]?.value;
-              const metricUnit = record[item.key]?.unit || target?.unit || '';
+              const metricValue = record[metricKey]?.value;
+              const metricUnit = record[metricKey]?.unit || target?.unit || '';
               const metricItem: any = {
                 unit: metricUnit,
                 name: target?.name,

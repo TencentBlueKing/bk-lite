@@ -7,6 +7,7 @@ import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
 import UserAvatar from '@/components/user-avatar';
 import Introduction from '@/app/alarm/components/introduction';
+import { STATUS_TEXT } from '@/app/alarm/constants/colors';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { AlertAssignListItem } from '@/app/alarm/types/settings';
 import { useSettingApi } from '@/app/alarm/api/settings';
@@ -95,9 +96,9 @@ const AlertAssign: React.FC = () => {
       render: (_: unknown, row: AlertAssignListItem) => {
         const { is_active } = row;
         return is_active ? (
-          <span style={{ color: '#00ba6c' }}>{t('settings.effective')}</span>
+          <span style={{ color: STATUS_TEXT.ACTIVE_GREEN }}>{t('settings.effective')}</span>
         ) : (
-          <span style={{ color: '#CE241B' }}>
+          <span style={{ color: STATUS_TEXT.INACTIVE_RED }}>
             {t('settings.ineffective')}
           </span>
         );
@@ -144,6 +145,7 @@ const AlertAssign: React.FC = () => {
             <Button
               type="link"
               size="small"
+              danger
               onClick={() => handleDelete(row)}
             >
               {t('common.delete')}

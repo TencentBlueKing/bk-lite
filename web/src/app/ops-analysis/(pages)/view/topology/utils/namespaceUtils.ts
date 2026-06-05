@@ -246,6 +246,16 @@ export const buildValueConfig = (
     if (values.conversionFactor !== undefined) valueConfig.conversionFactor = values.conversionFactor;
     if (values.decimalPlaces !== undefined) valueConfig.decimalPlaces = values.decimalPlaces;
   }
+  if (values.chartType === 'gauge') {
+    valueConfig.selectedFields = values.selectedFields;
+    valueConfig.thresholdColors = values.thresholdColors;
+    if (values.unit !== undefined) valueConfig.unit = values.unit;
+    if (values.conversionFactor !== undefined) valueConfig.conversionFactor = values.conversionFactor;
+    if (values.decimalPlaces !== undefined) valueConfig.decimalPlaces = values.decimalPlaces;
+    if (values.gaugeMin !== undefined) valueConfig.gaugeMin = values.gaugeMin;
+    if (values.gaugeMax !== undefined) valueConfig.gaugeMax = values.gaugeMax;
+    if (values.gaugeShape !== undefined) valueConfig.gaugeShape = values.gaugeShape;
+  }
   if (values.chartType === 'table' && values.tableConfig) {
     valueConfig.tableConfig = values.tableConfig;
   }

@@ -9,6 +9,7 @@ import Introduction from '@/app/alarm/components/introduction';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { AlertShieldListItem } from '@/app/alarm/types/settings';
 import { useSettingApi } from '@/app/alarm/api/settings';
+import { STATUS_TEXT } from '@/app/alarm/constants/colors';
 import { Button, Input, Switch } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { typeLabel, weekMap } from '@/app/alarm/constants/settings';
@@ -82,9 +83,9 @@ const ShieldStrategy: React.FC = () => {
       render: (_: unknown, row: AlertShieldListItem) => {
         const { is_active } = row;
         return is_active ? (
-          <span style={{ color: '#00ba6c' }}>{t('settings.effective')}</span>
+          <span style={{ color: STATUS_TEXT.ACTIVE_GREEN }}>{t('settings.effective')}</span>
         ) : (
-          <span style={{ color: '#CE241B' }}>
+          <span style={{ color: STATUS_TEXT.INACTIVE_RED }}>
             {t('settings.ineffective')}
           </span>
         );
@@ -131,6 +132,7 @@ const ShieldStrategy: React.FC = () => {
             <Button
               type="link"
               size="small"
+              danger
               onClick={() => handleDelete(row)}
             >
               {t('common.delete')}

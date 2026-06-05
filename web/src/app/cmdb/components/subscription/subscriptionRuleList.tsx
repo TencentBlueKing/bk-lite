@@ -139,6 +139,7 @@ const SubscriptionRuleList: React.FC<SubscriptionRuleListProps> = ({
                 <Button
                   type="link"
                   size="small"
+                  danger
                   style={{ padding: 0 }}
                   disabled={!record.can_manage}
                 >

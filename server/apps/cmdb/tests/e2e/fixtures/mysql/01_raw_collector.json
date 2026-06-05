@@ -1,0 +1,17 @@
+{
+  "ip_addr": "10.0.0.41",
+  "port": "3306",
+  "version": "8.0.36",
+  "enable_binlog": "ON",
+  "sync_binlog": "1",
+  "max_conn": "1000",
+  "max_mem": "4294967296",
+  "basedir": "/usr/local/mysql",
+  "datadir": "/var/lib/mysql",
+  "socket": "/var/run/mysqld/mysqld.sock",
+  "bind_address": "0.0.0.0",
+  "slow_query_log": "ON",
+  "slow_query_log_file": "/var/log/mysql/slow.log",
+  "log_error": "/var/log/mysql/error.log",
+  "wait_timeout": "28800"
+}

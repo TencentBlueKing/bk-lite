@@ -12,6 +12,7 @@ from django.conf import settings
 from nats.aio.client import Client
 
 from apps.core.logger import nats_logger as logger
+from apps.rpc.sensitive import sanitize_sensitive_data
 
 from .exceptions import NatsClientException
 from .types import ResponseType
@@ -41,6 +42,13 @@ def _mask_servers(servers) -> str:
     if isinstance(servers, (list, tuple)):
         return ",".join(_mask_server_url(str(s)) for s in servers)
     return _mask_server_url(str(servers))
+
+
+def _stringify_error_detail(detail) -> str:
+    sanitized = sanitize_sensitive_data(detail)
+    if isinstance(sanitized, str):
+        return sanitized
+    return str(sanitized)
 
 
 async def nat_request(
@@ -118,28 +126,28 @@ async def request(namespace: str, method_name: str, *args, _timeout: Optional[fl
         if "error" in parsed and parsed["error"]:
             error_message = parsed["error"]
             if "message" in parsed and parsed["message"]:
-                error_message += f": {parsed['message']}"
+                error_message += f": {_stringify_error_detail(parsed['message'])}"
             elif error_message == "BaseAppException":
                 decoded_message = _decode_pickled_exception_message()
                 if decoded_message:
-                    error_message += f": {decoded_message}"
+                    error_message += f": {_stringify_error_detail(decoded_message)}"
             # 如果有result字段，将其作为详细信息添加
             if "result" in parsed and parsed["result"]:
-                error_message += f" | Output: {parsed['result']}"
+                error_message += f" | Output: {_stringify_error_detail(parsed['result'])}"
             exc = NatsClientException(error_message)
         elif "result" in parsed and parsed["result"]:
             # 兼容仅返回 result 的服务端实现
-            exc = NatsClientException(str(parsed["result"]))
+            exc = NatsClientException(_stringify_error_detail(parsed["result"]))
         else:
             # 向后兼容：尝试使用旧的pickled_exc格式
             decoded_message = _decode_pickled_exception_message()
             if decoded_message:
-                exc = NatsClientException(decoded_message)
+                exc = NatsClientException(_stringify_error_detail(decoded_message))
             else:
                 # 最后的降级方案：打印完整响应便于排查
-                logger.error(f"NATS error response missing error details, full response: {parsed}")
+                logger.error("NATS error response missing error details, full response: %s", sanitize_sensitive_data(parsed))
                 fallback_message = parsed.get("message", "Unknown error occurred")
-                exc = NatsClientException(fallback_message)
+                exc = NatsClientException(_stringify_error_detail(fallback_message))
 
         raise exc
 
@@ -189,28 +197,28 @@ async def request_v2(
         if "error" in parsed and parsed["error"]:
             error_message = parsed["error"]
             if "message" in parsed and parsed["message"]:
-                error_message += f": {parsed['message']}"
+                error_message += f": {_stringify_error_detail(parsed['message'])}"
             elif error_message == "BaseAppException":
                 decoded_message = _decode_pickled_exception_message()
                 if decoded_message:
-                    error_message += f": {decoded_message}"
+                    error_message += f": {_stringify_error_detail(decoded_message)}"
             # 如果有result字段，将其作为详细信息添加
             if "result" in parsed and parsed["result"]:
-                error_message += f" | Output: {parsed['result']}"
+                error_message += f" | Output: {_stringify_error_detail(parsed['result'])}"
             exc = NatsClientException(error_message)
         elif "result" in parsed and parsed["result"]:
             # 兼容仅返回 result 的服务端实现
-            exc = NatsClientException(str(parsed["result"]))
+            exc = NatsClientException(_stringify_error_detail(parsed["result"]))
         else:
             # 向后兼容：尝试使用旧的pickled_exc格式
             decoded_message = _decode_pickled_exception_message()
             if decoded_message:
-                exc = NatsClientException(decoded_message)
+                exc = NatsClientException(_stringify_error_detail(decoded_message))
             else:
                 # 最后的降级方案：打印完整响应便于排查
-                logger.error(f"NATS error response missing error details, full response: {parsed}")
+                logger.error("NATS error response missing error details, full response: %s", sanitize_sensitive_data(parsed))
                 fallback_message = parsed.get("message", "Unknown error occurred")
-                exc = NatsClientException(fallback_message)
+                exc = NatsClientException(_stringify_error_detail(fallback_message))
 
         raise exc
 

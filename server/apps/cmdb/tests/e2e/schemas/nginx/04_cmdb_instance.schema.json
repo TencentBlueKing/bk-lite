@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CMDB nginx instance",
+  "type": "object",
+  "required": ["ip_addr", "port"],
+  "properties": {
+    "inst_name":   {"type": "string"},
+    "ip_addr":     {"type": "string"},
+    "port":        {"type": "string"},
+    "version":     {"type": "string"},
+    "bin_path":    {"type": "string"},
+    "log_path":    {"type": "string"},
+    "conf_path":   {"type": "string"},
+    "server_name": {"type": "string"},
+    "include":     {"type": "string"},
+    "ssl_version": {"type": "string"}
+  }
+}

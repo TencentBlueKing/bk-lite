@@ -27,6 +27,7 @@ from apps.opspilot.viewsets import (
     WebPageKnowledgeViewSet,
     WorkFlowTaskResultViewSet,
 )
+from apps.opspilot.viewsets.memory_engine_view import MemoryEngineViewSet
 
 router = routers.DefaultRouter()
 # model_provider
@@ -61,6 +62,7 @@ router.register(r"knowledge_mgmt/knowledge_graph", KnowledgeGraphViewSet)
 # memory
 router.register(r"memory_mgmt/memory_space", MemorySpaceViewSet)
 router.register(r"memory_mgmt/memory", MemoryViewSet)
+router.register(r"memory_mgmt/memory_engines", MemoryEngineViewSet, basename="memory_engines")
 
 urlpatterns = router.urls
 

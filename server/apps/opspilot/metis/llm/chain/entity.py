@@ -123,7 +123,7 @@ class TimeoutConfig(BaseModel):
     enabled: bool = True
     total_timeout_seconds: float = Field(default=300.0, description="总超时（秒），从首步开始计时，0=不限制")
     step_timeout_seconds: float = Field(default=60.0, description="单步工具执行超时（秒），0=不限制")
-    llm_timeout_seconds: float = Field(default=120.0, description="单次 LLM 调用超时（秒），0=不限制")
+    llm_timeout_seconds: float = Field(default=300.0, description="单次 LLM 调用超时（秒），0=不限制")
 
 
 class MessageTrimConfig(BaseModel):

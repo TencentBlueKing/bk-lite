@@ -1,0 +1,11 @@
+{
+  "collect_task_id": 8001,
+  "instance_name": "10.0.0.51",
+  "model_id": "host",
+  "file_path": "/etc/nginx/nginx.conf",
+  "file_name": "nginx.conf",
+  "version": "1700000000",
+  "status": "success",
+  "size": 4096,
+  "content_base64": "dXNlciB3d3ctZGF0YTsKd29ya2VyX3Byb2Nlc3NlcyBhdXRvOwo="
+}

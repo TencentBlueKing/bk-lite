@@ -5,6 +5,8 @@ import ComBar from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/comBar';
 import ComTable from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/comTable';
 import ComSingle from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/comSingle';
 import ComTopN from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/comTopN';
+import ComGauge from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/comGauge';
+import EventTable from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/eventTable/eventTable';
 
 export const widgetRegistry: Record<string, ComponentType<any>> = {
   line: ComLine,
@@ -13,6 +15,8 @@ export const widgetRegistry: Record<string, ComponentType<any>> = {
   table: ComTable,
   single: ComSingle,
   topN: ComTopN,
+  gauge: ComGauge,
+  eventTable: EventTable,
 };
 
 export const getWidgetComponent = (chartType?: string) => {

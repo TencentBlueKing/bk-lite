@@ -28,14 +28,16 @@ def normalize_canvas_view_sets_for_storage(view_sets: Any, object_type: ObjectTy
 
     if object_type == ObjectType.TOPOLOGY:
         if not isinstance(view_sets, dict):
-            return {"nodes": [], "edges": [], "filters": []}
+            return {"nodes": [], "edges": [], "filters": [], "viewport": {}}
         nodes = view_sets.get("nodes", [])
         edges = view_sets.get("edges", [])
         filters = view_sets.get("filters", [])
+        viewport = view_sets.get("viewport", {})
         return {
             "nodes": nodes if isinstance(nodes, list) else [],
             "edges": edges if isinstance(edges, list) else [],
             "filters": filters if isinstance(filters, list) else [],
+            "viewport": viewport if isinstance(viewport, dict) else {},
         }
 
     if object_type == ObjectType.ARCHITECTURE:
@@ -72,6 +74,7 @@ def rewrite_canvas_view_sets_refs_for_yaml(view_sets: list | dict, object_type: 
             "nodes": _rewrite_datasource_refs(view_sets.get("nodes", []), ds_key_map),
             "edges": _rewrite_datasource_refs(view_sets.get("edges", []), ds_key_map),
             "filters": view_sets.get("filters", []) if isinstance(view_sets.get("filters", []), list) else [],
+            "viewport": view_sets.get("viewport", {}) if isinstance(view_sets.get("viewport", {}), dict) else {},
         }
 
     if object_type == ObjectType.ARCHITECTURE:
@@ -94,6 +97,7 @@ def rewrite_canvas_view_sets_refs_for_storage(view_sets: list | dict, object_typ
             "nodes": _rewrite_datasource_refs(normalized.get("nodes", []), datasource_key_to_id),
             "edges": _rewrite_datasource_refs(normalized.get("edges", []), datasource_key_to_id),
             "filters": normalized.get("filters", []) if isinstance(normalized.get("filters", []), list) else [],
+            "viewport": normalized.get("viewport", {}) if isinstance(normalized.get("viewport", {}), dict) else {},
         }
 
     if object_type == ObjectType.ARCHITECTURE:

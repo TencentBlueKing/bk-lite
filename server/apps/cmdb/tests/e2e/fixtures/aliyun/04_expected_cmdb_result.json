@@ -1,0 +1,19 @@
+{
+  "model_id": "aliyun_ecs",
+  "instance_count_min": 1,
+  "expected_instance_subset": {
+    "inst_name":     "web-prod-01(i-bp1abcdef1234567)",
+    "resource_name": "web-prod-01",
+    "resource_id":   "i-bp1abcdef1234567",
+    "ip_addr":       "172.16.0.11",
+    "public_ip":     "47.96.10.20",
+    "region":        "cn-hangzhou",
+    "zone":          "cn-hangzhou-h",
+    "vpc":           "vpc-bp1zzzzz",
+    "status":        "Running",
+    "instance_type": "ecs.g6.large",
+    "vcpus":         2,
+    "memory_mb":     8192,
+    "charge_type":   "PostPaid"
+  }
+}

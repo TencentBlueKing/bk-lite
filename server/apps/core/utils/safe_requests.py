@@ -187,6 +187,15 @@ def safe_request_llm_endpoint(
         raise SafeRequestsError(f"HTTP 请求失败: {e}")
 
 
+def safe_get_llm_endpoint(url: str, **kwargs: Any) -> Response:
+    """安全的 GET 请求（LLM/Rerank 端点宽松模式）
+
+    允许私网地址和 localhost，仅阻断云元数据地址。
+    适用于内网部署的 LLM/Rerank/Embedding 端点（vLLM, Ollama, LocalAI 等）。
+    """
+    return safe_request_llm_endpoint("GET", url, **kwargs)
+
+
 def safe_post_llm_endpoint(url: str, **kwargs: Any) -> Response:
     """安全的 POST 请求（LLM/Rerank 端点宽松模式）
 

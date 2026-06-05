@@ -1,0 +1,18 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "vector",
+    "result": [
+      {
+        "metric": {
+          "__name__": "network_system_info_gauge",
+          "instance_id": "snmp-task-01-10.0.0.1",
+          "ip_addr": "10.0.0.1",
+          "sysobjectid": "1.3.6.1.4.1.9.1.1208",
+          "port": "161"
+        },
+        "value": [9999999999, "1"]
+      }
+    ]
+  }
+}

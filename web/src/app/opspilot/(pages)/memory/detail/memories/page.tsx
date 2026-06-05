@@ -7,14 +7,19 @@ import { useMemoryApi, Memory } from '@/app/opspilot/api/memory';
 import { Table, Select, Button, message, Input, Popconfirm } from 'antd';
 import PermissionWrapper from '@/components/permission';
 import MarkdownRenderer from '@/components/markdown';
+import { useMemoryContext } from '../layout';
 
 export default function MemoriesPage() {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
   const { fetchMemories, updateMemory, deleteMemory } = useMemoryApi();
+  const { space } = useMemoryContext();
   
   const idStr = searchParams.get('id');
   const id = idStr ? parseInt(idStr, 10) : 0;
+
+  // Determine if this is a team memory space
+  const isTeamScope = space?.scope === 'team';
 
   const [loading, setLoading] = useState(false);
   const [memories, setMemories] = useState<Memory[]>([]);
@@ -118,7 +123,7 @@ export default function MemoriesPage() {
               <span className="text-[13px] font-semibold text-[#314660] dark:text-gray-200">{t('memory.memoryList')}</span>
               <Select
                 allowClear
-                placeholder={t('memory.filterUser')}
+                placeholder={isTeamScope ? t('memory.filterOrganization') : t('memory.filterUser')}
                 value={selectedUser}
                 onChange={setSelectedUser}
                 className="w-[140px] [&>.ant-select-selector]:rounded-md [&>.ant-select-selector]:border-[#d5dce6] dark:[&>.ant-select-selector]:border-gray-700 dark:bg-[#1a1c21] text-[12px] [&>.ant-select-selector]:h-[30px]"
@@ -140,7 +145,7 @@ export default function MemoriesPage() {
                 className="[&_.ant-table]:bg-transparent [&_.ant-table-thead>tr>th]:bg-[#fafbfc] dark:[&_.ant-table-thead>tr>th]:bg-[#1f2128] [&_.ant-table-thead>tr>th]:text-[#5c6d84] dark:[&_.ant-table-thead>tr>th]:text-gray-400 [&_.ant-table-thead>tr>th]:font-semibold [&_.ant-table-thead>tr>th]:text-[12px] [&_.ant-table-thead>tr>th]:border-b [&_.ant-table-thead>tr>th]:border-[#e7edf6] dark:[&_.ant-table-thead>tr>th]:border-gray-700 [&_.ant-table-tbody>tr>td]:text-[12px] [&_.ant-table-tbody>tr>td]:text-[#3d4f6a] dark:[&_.ant-table-tbody>tr>td]:text-gray-300 [&_.ant-table-tbody>tr>td]:border-b [&_.ant-table-tbody>tr>td]:border-[#e7edf6] dark:[&_.ant-table-tbody>tr>td]:border-gray-700 [&_.ant-table-tbody>tr]:hover:bg-[#f5f8ff] dark:[&_.ant-table-tbody>tr]:hover:bg-gray-800"
                 columns={[
                   { 
-                    title: t('memory.user'), 
+                    title: isTeamScope ? t('memory.organization') : t('memory.user'), 
                     dataIndex: 'owner_username', 
                     key: 'owner_username', 
                     width: 100,

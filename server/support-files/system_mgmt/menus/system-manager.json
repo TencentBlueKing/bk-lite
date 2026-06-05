@@ -35,6 +35,26 @@
             "Add",
             "Delete"
           ]
+        },
+        {
+          "id": "auth_sources",
+          "name": "Auth Sources",
+          "operation": [
+            "View",
+            "Edit",
+            "Add",
+            "Delete"
+          ]
+        },
+        {
+          "id": "security_settings",
+          "name": "Security Settings",
+          "operation": [
+            "View",
+            "Edit",
+            "Add",
+            "Delete"
+          ]
         }
       ]
     },
@@ -114,39 +134,21 @@
       ]
     },
     {
-      "name": "Security Management",
+      "name": "Setting",
+      "icon": "settings-fill",
       "children": [
         {
-          "id": "security_settings",
-          "name": "Security Settings",
+          "id": "api_secret_key",
+          "name": "API Secret Key",
           "operation": [
             "View",
-            "Edit",
             "Add",
             "Delete"
           ]
         },
         {
-          "id": "auth_sources",
-          "name": "Auth Sources",
-          "operation": [
-            "View",
-            "Edit",
-            "Add",
-            "Delete"
-          ]
-        },
-        {
-          "id": "user_logs",
-          "name": "Login Logs",
-          "operation": [
-            "View",
-            "Delete"
-          ]
-        },
-        {
-          "id": "operation_logs",
-          "name": "Operation Logs",
+          "id": "audit_log",
+          "name": "Audit Logs",
           "operation": [
             "View"
           ]
@@ -159,21 +161,6 @@
           ]
         }
       ]
-    },
-    {
-      "name": "Setting",
-      "icon": "settings-fill",
-      "children": [
-        {
-          "id": "api_secret_key",
-          "name": "API Secret Key",
-          "operation": [
-            "View",
-            "Add",
-            "Delete"
-          ]
-        }
-      ]
     }
   ],
   "roles": [
@@ -181,6 +168,35 @@
       "name": "admin",
       "role_name": "system-manager_admin",
       "menus": []
+    },
+    {
+      "name": "security",
+      "role_name": "system-manager_security",
+      "menus": [
+        "user_group-View",
+        "user_group-Add User",
+        "user_group-Add Group",
+        "user_group-Edit User",
+        "user_group-Edit Group",
+        "user_group-Delete Group",
+        "user_group-Delete User",
+        "auth_sources-View",
+        "auth_sources-Add",
+        "auth_sources-Edit",
+        "auth_sources-Delete",
+        "security_settings-View",
+        "security_settings-Add",
+        "security_settings-Edit",
+        "security_settings-Delete"
+      ]
+    },
+    {
+      "name": "audit",
+      "role_name": "system-manager_audit",
+      "menus": [
+        "audit_log-View",
+        "error_logs-View"
+      ]
     },
     {
       "name": "normal",

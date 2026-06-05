@@ -1,7 +1,8 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Input, message, Button, Spin, Popconfirm } from "antd";
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import { ColumnsType } from "antd/es/table";
 import { useTranslation } from "@/utils/i18n";
 import CustomTable from "@/components/custom-table";
@@ -31,6 +32,7 @@ interface ChannelRow {
 const ChannelSettingsPage: React.FC = () => {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   const channelType: ChannelType = (searchParams?.get("id") || "email") as ChannelType;
 
@@ -179,21 +181,35 @@ const ChannelSettingsPage: React.FC = () => {
     setPageSize(pageSize);
   };
 
+  const handleBack = () => {
+    router.push("/system-manager/channel");
+  };
+
   return (
     <div>
-      <div className="w-full mb-4 flex justify-end">
-        <Search
-          allowClear
-          enterButton
-          className="w-60 mr-2"
-          placeholder={`${t("common.search")}...`}
-          onSearch={handleSearchChange}
-        />
-        <PermissionWrapper requiredPermissions={['Add']}>
-          <Button type="primary" className="mr-2" onClick={() => openChannelModal("add")}>
-            + {t("common.add")}
+      <div className="w-full mb-4 flex justify-between items-center">
+        <div className="flex items-center">
+          <Button 
+            color="default" variant="link"
+            icon={<ArrowLeftOutlined />} 
+            onClick={handleBack}
+          >
           </Button>
-        </PermissionWrapper>
+        </div>
+        <div className="flex">
+          <Search
+            allowClear
+            enterButton
+            className="w-60 mr-2"
+            placeholder={`${t("common.search")}...`}
+            onSearch={handleSearchChange}
+          />
+          <PermissionWrapper requiredPermissions={['Add']}>
+            <Button type="primary" className="mr-2" onClick={() => openChannelModal("add")}>
+              + {t("common.add")}
+            </Button>
+          </PermissionWrapper>
+        </div>
         <ChannelModal
           visible={isModalVisible}
           onClose={() => setIsModalVisible(false)}

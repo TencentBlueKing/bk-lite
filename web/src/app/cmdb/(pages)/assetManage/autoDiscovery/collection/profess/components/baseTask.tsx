@@ -474,6 +474,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
           <Button
             type="link"
             size="small"
+            danger
             onClick={() => handleDeleteRow(record)}
           >
             {t('common.delete')}

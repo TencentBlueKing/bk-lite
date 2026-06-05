@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SNMP 网络设备 PromQL 响应",
+  "type": "object",
+  "required": ["status", "data"],
+  "properties": {
+    "status": {"type": "string"},
+    "data": {
+      "type": "object",
+      "required": ["resultType", "result"],
+      "properties": {
+        "resultType": {"type": "string", "enum": ["vector"]},
+        "result": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["metric", "value"],
+            "properties": {
+              "metric": {
+                "type": "object",
+                "required": ["__name__", "instance_id", "ip_addr"],
+                "properties": {
+                  "__name__":    {"type": "string", "enum": ["network_system_info_gauge", "network_interfaces_info_gauge", "network_topo_info_gauge"]},
+                  "instance_id": {"type": "string"},
+                  "ip_addr":     {"type": "string"},
+                  "sysobjectid": {"type": "string", "pattern": "^[0-9.]+$"}
+                }
+              },
+              "value": {
+                "type": "array",
+                "items": [{"type": "number"}, {"type": "string"}],
+                "minItems": 2, "maxItems": 2
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

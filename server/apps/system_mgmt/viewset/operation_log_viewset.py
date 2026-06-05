@@ -71,7 +71,7 @@ class OperationLogViewSet(GroupFilterMixin, LanguageViewSet):
     filterset_class = OperationLogFilter
     permission_classes = [permissions.IsAuthenticated]
 
-    @HasPermission("operation_logs-View")
+    @HasPermission("audit_log-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
@@ -93,7 +93,7 @@ class OperationLogViewSet(GroupFilterMixin, LanguageViewSet):
         return Response({"result": False, "message": "Detail view is not supported"}, status=405)
 
     @action(detail=False, methods=["post"])
-    @HasPermission("operation_logs-View")
+    @HasPermission("audit_log-View")
     def export_excel(self, request):
         """
         导出操作日志为Excel文件

@@ -49,6 +49,7 @@ const CorrelationRulesPage: React.FC = () => {
       content: t('common.delConfirmCxt'),
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),
+      okButtonProps: { danger: true },
       centered: true,
       maskClosable: false,
       onOk: async () => {
@@ -137,6 +138,7 @@ const CorrelationRulesPage: React.FC = () => {
       render: (text: string) => {
         if (text === 'smart_denoise') return t('settings.correlation.noiseReduction');
         if (text === 'missing_detection') return t('settings.correlation.missingDetection');
+        if (text === 'instant') return t('settings.correlation.instantAlert');
         return text || '-';
       },
     },
@@ -200,6 +202,7 @@ const CorrelationRulesPage: React.FC = () => {
             <Button
               type="link"
               size="small"
+              danger
               onClick={() => handleDelete(row)}
             >
               {t('common.delete')}

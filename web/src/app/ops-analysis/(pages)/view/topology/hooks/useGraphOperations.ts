@@ -1,7 +1,7 @@
 /**
  * 拓扑图操作管理核心 Hook，负责图形的初始化、事件处理、节点操作和用户交互
  */
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { Graph as X6Graph, Node, Edge } from '@antv/x6';
 import { v4 as uuidv4 } from 'uuid';
 import { buildDefaultFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
@@ -87,10 +87,16 @@ export const useGraphOperations = (
   containerRef: React.RefObject<HTMLDivElement | null>,
   state: ReturnType<typeof import('./useTopologyState').useTopologyState>,
   minimapContainerRef?: React.RefObject<HTMLDivElement | null>,
-  onNodeRemoved?: () => void
+  onNodeRemoved?: () => void,
+  isZoomLocked = false,
 ) => {
   const { t } = useTranslation();
   const { getSourceDataByApiId } = useDataSourceApi();
+  const isZoomLockedRef = useRef(isZoomLocked);
+
+  useEffect(() => {
+    isZoomLockedRef.current = isZoomLocked;
+  }, [isZoomLocked]);
 
   const {
     graphInstance,
@@ -409,6 +415,10 @@ export const useGraphOperations = (
     });
 
     const handleWheel = (e: WheelEvent) => {
+      if (isZoomLockedRef.current) {
+        return;
+      }
+
       if (e.ctrlKey || e.metaKey) {
         return;
       }
@@ -808,6 +818,10 @@ export const useGraphOperations = (
   }, []);
 
   const zoomIn = useCallback(() => {
+    if (isZoomLockedRef.current) {
+      return;
+    }
+
     if (graphInstance) {
       const next = scale + 0.1;
       graphInstance.zoom(next, { absolute: true });
@@ -815,6 +829,10 @@ export const useGraphOperations = (
   }, [graphInstance, scale]);
 
   const zoomOut = useCallback(() => {
+    if (isZoomLockedRef.current) {
+      return;
+    }
+
     if (graphInstance) {
       const next = scale - 0.1 > 0.1 ? scale - 0.1 : 0.1;
       graphInstance.zoom(next, { absolute: true });
@@ -822,6 +840,10 @@ export const useGraphOperations = (
   }, [graphInstance, scale]);
 
   const handleFit = useCallback(() => {
+    if (isZoomLockedRef.current) {
+      return;
+    }
+
     if (graphInstance && containerRef.current) {
       graphInstance.zoomToFit({ padding: 20, maxScale: 1 });
     }

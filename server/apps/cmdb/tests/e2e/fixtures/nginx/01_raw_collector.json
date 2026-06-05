@@ -1,0 +1,11 @@
+{
+  "ip_addr": "10.0.0.21",
+  "port": "80",
+  "version": "1.24.0",
+  "bin_path": "/usr/sbin/nginx",
+  "log_path": "/var/log/nginx",
+  "conf_path": "/etc/nginx/nginx.conf",
+  "server_name": "_",
+  "include": "/etc/nginx/conf.d/*.conf",
+  "ssl_version": "TLSv1.2 TLSv1.3"
+}

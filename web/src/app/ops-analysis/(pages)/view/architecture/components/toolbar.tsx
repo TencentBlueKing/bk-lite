@@ -1,6 +1,11 @@
 import React from 'react';
 import { Button, Tooltip, Tag } from 'antd';
-import { SaveOutlined, EditOutlined } from '@ant-design/icons';
+import {
+  SaveOutlined,
+  EditOutlined,
+  FullscreenOutlined,
+  FullscreenExitOutlined,
+} from '@ant-design/icons';
 import { ArchitectureProps } from '@/app/ops-analysis/types/architecture';
 import PermissionWrapper from '@/components/permission';
 import { useTranslation } from '@/utils/i18n';
@@ -8,21 +13,25 @@ import { useTranslation } from '@/utils/i18n';
 interface ArchitectureToolbarProps {
   selectedArchitecture: ArchitectureProps['selectedArchitecture'];
   isEditMode: boolean;
+  isFullscreen: boolean;
   loading: boolean;
   onEdit: () => void;
   onSave: () => void;
+  onFullscreenToggle: () => void;
 }
 
 const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
   selectedArchitecture,
   isEditMode,
+  isFullscreen,
   loading,
   onEdit,
   onSave,
+  onFullscreenToggle,
 }) => {
   const { t } = useTranslation();
   return (
-    <div className="w-full mb-2 flex items-center justify-between rounded-lg shadow-sm p-3 border border-[var(--color-border-2)] bg-[var(--color-bg-1)]">
+    <div className="w-full mb-2 flex items-center justify-between rounded-lg shadow-sm p-3 border border-(--color-border-2) bg-(--color-bg-1)">
       {/* 左侧：架构图信息 */}
       <div className="flex-1 mr-8">
         {selectedArchitecture && (
@@ -30,7 +39,9 @@ const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
             <h2 className="text-lg font-semibold mb-1">
               {selectedArchitecture.name}
               {selectedArchitecture.is_build_in && (
-                <Tag color="blue" className="ml-2 text-xs align-middle">{t('common.builtIn')}</Tag>
+                <Tag color="blue" className="ml-2 text-xs align-middle">
+                  {t('common.builtIn')}
+                </Tag>
               )}
             </h2>
             <p className="text-sm text-gray-500">
@@ -42,6 +53,23 @@ const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
 
       {/* 右侧：工具栏 */}
       <div className="flex items-center space-x-2">
+        <Tooltip
+          title={
+            isFullscreen ? t('common.exitFullscreen') : t('common.fullscreen')
+          }
+        >
+          <Button
+            type="text"
+            icon={
+              isFullscreen ? (
+                <FullscreenExitOutlined style={{ fontSize: 16 }} />
+              ) : (
+                <FullscreenOutlined style={{ fontSize: 16 }} />
+              )
+            }
+            onClick={onFullscreenToggle}
+          />
+        </Tooltip>
         <PermissionWrapper requiredPermissions={['EditChart']}>
           {isEditMode ? (
             <Button

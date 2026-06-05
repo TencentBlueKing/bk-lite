@@ -10,9 +10,12 @@ import TeamSecretsManager from '@/app/alarm/components/teamSecretsManager';
 import ZabbixGuide from '@/app/alarm/components/zabbixGuide';
 import CustomBreadcrumb from '@/app/alarm/components/customBreadcrumb';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import GroupTreeSelect from '@/components/group-tree-select';
+import RefreshIconButton from '@/components/refresh-icon-button';
 import {
   CheckCircleFilled,
   CopyOutlined,
+  PlusOutlined,
   ReloadOutlined,
   RightOutlined,
 } from '@ant-design/icons';
@@ -20,11 +23,12 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useCommon } from '@/app/alarm/context/common';
-import { AlertSourceIntegrationGuide, K8sMeta, SourceItem } from '@/app/alarm/types/integration';
+import { useUserInfoContext } from '@/context/userInfo';
+import { AlertSourceIntegrationGuide, K8sMeta, SourceItem, TeamSecretItem } from '@/app/alarm/types/integration';
 import { useAlarmApi } from '@/app/alarm/api/alarms';
 import { EventItem } from '@/app/alarm/types/alarms';
 import { useSourceApi } from '@/app/alarm/api/integration';
-import { Empty, Descriptions, message, Tabs, DatePicker, Spin } from 'antd';
+import { Alert, Button, Empty, Descriptions, message, Select, Tabs, DatePicker, Spin } from 'antd';
 
 const IntegrationDetail: FC = () => {
   const { t } = useTranslation();
@@ -36,7 +40,10 @@ const IntegrationDetail: FC = () => {
     getAlertSourceIntegrationGuide,
     getK8sMeta,
     downloadK8sFile,
+    listTeamSecrets,
+    addTeamSecret,
   } = useSourceApi();
+  const { flatGroups } = useUserInfoContext();
   const { getEventList } = useAlarmApi();
   const [loading, setLoading] = useState<boolean>(false);
   const [source, setSource] = useState<SourceItem>();
@@ -60,6 +67,12 @@ const IntegrationDetail: FC = () => {
     value: string;
   } | null>(null);
   const [logoLoadFailed, setLogoLoadFailed] = useState<boolean>(false);
+  const [guideTeamSecrets, setGuideTeamSecrets] = useState<TeamSecretItem[]>([]);
+  const [guideTeamSecretsLoading, setGuideTeamSecretsLoading] = useState<boolean>(false);
+  const [selectedGuideTeamId, setSelectedGuideTeamId] = useState<string | undefined>();
+  const [showInlineAddTeam, setShowInlineAddTeam] = useState<boolean>(false);
+  const [inlineAddTeamId, setInlineAddTeamId] = useState<number | undefined>();
+  const [inlineAddSubmitting, setInlineAddSubmitting] = useState<boolean>(false);
 
   const isK8sSource = source?.source_id === 'k8s';
   const isSnmpTrapSource = source?.source_id === 'snmp_trap';
@@ -118,6 +131,76 @@ const IntegrationDetail: FC = () => {
   const copySecret = (text: string = '') => {
     navigator.clipboard.writeText(text);
     message.success(t('alarmCommon.copied'));
+  };
+
+  const fetchGuideTeamSecrets = async (autoSelect = false) => {
+    if (!source?.id) return;
+    setGuideTeamSecretsLoading(true);
+    try {
+      const res = await listTeamSecrets(source.id);
+      const list: TeamSecretItem[] = Array.isArray(res)
+        ? res
+        : (res?.team_secrets || []);
+      const normalized = list.map((item) => ({
+        ...item,
+        team_name:
+          item.team_name ||
+          flatGroups.find((g) => String(g.id) === item.team_id)?.name ||
+          item.team_id,
+      }));
+      setGuideTeamSecrets(normalized);
+      if (autoSelect && normalized.length > 0 && !selectedGuideTeamId) {
+        setSelectedGuideTeamId(normalized[0].team_id);
+      }
+    } catch (error) {
+      console.error('Failed to load team secrets:', error);
+    } finally {
+      setGuideTeamSecretsLoading(false);
+    }
+  };
+
+  const guideUsesDefaultRenderer =
+    !!source && !isK8sSource && !isSnmpTrapSource && !isZabbixSource;
+  const guideHasTeamSecretSupport =
+    !!source && (guideUsesDefaultRenderer || isZabbixSource || isK8sSource);
+
+  useEffect(() => {
+    if (guideHasTeamSecretSupport) {
+      fetchGuideTeamSecrets(true);
+    } else {
+      setGuideTeamSecrets([]);
+      setSelectedGuideTeamId(undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source?.id, guideHasTeamSecretSupport]);
+
+  const selectedGuideSecret =
+    guideTeamSecrets.find((item) => item.team_id === selectedGuideTeamId)?.secret;
+
+  const renderExampleWithSelectedSecret = (raw?: string) => {
+    if (!raw) return '';
+    if (!selectedGuideSecret || !source?.secret) return raw;
+    return raw.split(source.secret).join(selectedGuideSecret);
+  };
+
+  const handleInlineAddTeamSecret = async () => {
+    if (!source?.id || !inlineAddTeamId) {
+      message.warning(t('incidents.teamRequired'));
+      return;
+    }
+    setInlineAddSubmitting(true);
+    try {
+      const res = await addTeamSecret(source.id, String(inlineAddTeamId));
+      message.success(t('integration.teamSecretAdded'));
+      setShowInlineAddTeam(false);
+      setInlineAddTeamId(undefined);
+      await fetchGuideTeamSecrets();
+      if (res?.team_id) setSelectedGuideTeamId(res.team_id);
+    } catch (error) {
+      console.error('Failed to add team secret:', error);
+    } finally {
+      setInlineAddSubmitting(false);
+    }
   };
 
   const fetchEventList = async () => {
@@ -542,8 +625,177 @@ const IntegrationDetail: FC = () => {
     </div>
   );
 
+  const renderTeamSecretSelector = (options?: { showSecretRow?: boolean; wrapperClassName?: string }) => {
+    const showSecretRow = options?.showSecretRow !== false;
+    const wrapperClassName = options?.wrapperClassName ?? '';
+    const existingTeamIds = guideTeamSecrets.map((item) => item.team_id);
+    const availableTeams = flatGroups.filter(
+      (g) => !existingTeamIds.includes(String(g.id))
+    );
+    const hasAnySecret = guideTeamSecrets.length > 0;
+    const placeholder = '<' + t('integration.selectTeamPlaceholder') + '>';
+
+    return (
+      <div className={wrapperClassName}>
+        {!hasAnySecret && !guideTeamSecretsLoading ? (
+          <Alert
+            className="mb-3"
+            type="warning"
+            showIcon
+            message={t('integration.noTeamSecretGuideTitle')}
+            description={t('integration.noTeamSecretGuideDesc')}
+          />
+        ) : null}
+
+        <div className="mb-3">
+          <div className="text-[13px] text-[var(--color-text-2)] mb-2">
+            {t('integration.selectTeamForReportingLabel')}
+          </div>
+          <Spin spinning={guideTeamSecretsLoading}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Select
+                style={{ minWidth: 240 }}
+                placeholder={t('integration.selectTeamPlaceholder')}
+                value={selectedGuideTeamId}
+                onChange={(val) => setSelectedGuideTeamId(val)}
+                options={guideTeamSecrets.map((item) => ({
+                  label: item.team_name,
+                  value: item.team_id,
+                }))}
+                notFoundContent={t('integration.noTeamSecrets')}
+              />
+              {showInlineAddTeam ? (
+                <>
+                  <GroupTreeSelect
+                    value={inlineAddTeamId ? [inlineAddTeamId] : []}
+                    onChange={(val) =>
+                      setInlineAddTeamId(Array.isArray(val) ? val[0] : val)
+                    }
+                    placeholder={t('incidents.selectTeam')}
+                    multiple={false}
+                    mode="ownership"
+                    style={{ width: 240 }}
+                  />
+                  <Button
+                    type="primary"
+                    size="small"
+                    loading={inlineAddSubmitting}
+                    disabled={!inlineAddTeamId || availableTeams.length === 0}
+                    onClick={handleInlineAddTeamSecret}
+                  >
+                    {t('common.confirm')}
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setShowInlineAddTeam(false);
+                      setInlineAddTeamId(undefined);
+                    }}
+                  >
+                    {t('common.cancel')}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<PlusOutlined />}
+                  onClick={() => setShowInlineAddTeam(true)}
+                >
+                  {t('integration.addTeamSecretInline')}
+                </Button>
+              )}
+              <Button
+                type="link"
+                size="small"
+                onClick={() => setActiveTab('teamSecrets')}
+              >
+                {t('integration.manageTeamSecrets')}
+              </Button>
+            </div>
+          </Spin>
+        </div>
+
+        {showSecretRow ? (
+          <Descriptions bordered size="small" column={1} labelStyle={{ width: 120 }}>
+            <Descriptions.Item label={t('integration.secret')}>
+              {selectedGuideSecret ? (
+                <>
+                  <span className="font-mono">{'******************'}</span>
+                  <CopyOutlined
+                    className="ml-[10px] cursor-pointer hover:text-blue-500"
+                    onClick={() => copySecret(selectedGuideSecret)}
+                  />
+                </>
+              ) : (
+                <span className="text-[var(--color-text-3)]">{placeholder}</span>
+              )}
+            </Descriptions.Item>
+          </Descriptions>
+        ) : null}
+      </div>
+    );
+  };
+
+  const renderCredentialsCard = () => {
+    const placeholder = '<' + t('integration.selectTeamPlaceholder') + '>';
+    const curlRendered = renderExampleWithSelectedSecret(source?.config?.examples?.CURL);
+    const pythonRendered = renderExampleWithSelectedSecret(source?.config?.examples?.Python);
+    const displayCurl = selectedGuideSecret ? curlRendered : (source?.config?.examples?.CURL || '');
+    const displayPython = selectedGuideSecret ? pythonRendered : (source?.config?.examples?.Python || '');
+
+    return (
+      <div className="rounded-[16px] border border-[var(--color-primary-bg-active)] bg-[var(--color-bg-1)] p-4 mb-4">
+        <h4 className="mb-3 font-medium pl-2 border-l-4 border-blue-400 inline-block leading-tight">
+          {t('integration.credentialsAndExamples')}
+        </h4>
+
+        {renderTeamSecretSelector({ showSecretRow: false })}
+
+        <Descriptions bordered size="small" column={1} labelStyle={{ width: 120 }}>
+          <Descriptions.Item label={t('integration.secret')}>
+            {selectedGuideSecret ? (
+              <>
+                <span className="font-mono">{'******************'}</span>
+                <CopyOutlined
+                  className="ml-[10px] cursor-pointer hover:text-blue-500"
+                  onClick={() => copySecret(selectedGuideSecret)}
+                />
+              </>
+            ) : (
+              <span className="text-[var(--color-text-3)]">{placeholder}</span>
+            )}
+          </Descriptions.Item>
+          <Descriptions.Item label="CURL">
+            <div className="relative">
+              <pre className="bg-[var(--color-bg-5)] p-2 pr-10 rounded border border-[var(--color-border-1)] text-[13px] font-mono leading-relaxed whitespace-pre-wrap break-all max-w-full">
+                <code>{displayCurl}</code>
+              </pre>
+              <CopyOutlined
+                className={`absolute top-3 right-3 ${selectedGuideSecret ? 'cursor-pointer hover:text-blue-500' : 'cursor-not-allowed text-[var(--color-text-4)]'}`}
+                onClick={() => selectedGuideSecret && copySecret(displayCurl)}
+              />
+            </div>
+          </Descriptions.Item>
+          <Descriptions.Item label="Python">
+            <div className="relative">
+              <pre className="bg-[var(--color-bg-5)] p-2 pr-10 rounded border border-[var(--color-border-1)] text-[13px] font-mono leading-relaxed whitespace-pre-wrap break-all max-w-full">
+                <code>{displayPython}</code>
+              </pre>
+              <CopyOutlined
+                className={`absolute top-3 right-3 ${selectedGuideSecret ? 'cursor-pointer hover:text-blue-500' : 'cursor-not-allowed text-[var(--color-text-4)]'}`}
+                onClick={() => selectedGuideSecret && copySecret(displayPython)}
+              />
+            </div>
+          </Descriptions.Item>
+        </Descriptions>
+      </div>
+    );
+  };
+
   const renderGuideTab = () => (
     <div className="rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-4 max-h-[calc(100vh-330px)] overflow-y-auto">
+      {renderCredentialsCard()}
       <h4 className="mb-2 font-medium pl-2 border-l-4 border-blue-400 inline-block leading-tight">
         {t('integration.baseInfo')}
       </h4>
@@ -569,35 +821,6 @@ const IntegrationDetail: FC = () => {
         </Descriptions.Item>
         <Descriptions.Item label="description">
           {source?.description}
-        </Descriptions.Item>
-        <Descriptions.Item label="secret">
-          {'******************'}
-          <CopyOutlined
-            className="ml-[10px]"
-            onClick={() => copySecret(source?.secret)}
-          />
-        </Descriptions.Item>
-        <Descriptions.Item label="CURL">
-          <div className="relative">
-            <pre className="bg-[var(--color-bg-5)] p-2 pr-10 rounded border border-[var(--color-border-1)] text-[13px] font-mono leading-relaxed whitespace-pre-wrap break-all max-w-full">
-              <code>{source?.config?.examples?.CURL || ''}</code>
-            </pre>
-            <CopyOutlined
-              className="absolute top-3 right-3 cursor-pointer hover:text-blue-500"
-              onClick={() => copySecret(source?.config?.examples?.CURL)}
-            />
-          </div>
-        </Descriptions.Item>
-        <Descriptions.Item label="Python">
-          <div className="relative">
-            <pre className="bg-[var(--color-bg-5)] p-2 pr-10 rounded border border-[var(--color-border-1)] text-[13px] font-mono leading-relaxed whitespace-pre-wrap break-all max-w-full">
-              <code>{source?.config?.examples?.Python || ''}</code>
-            </pre>
-            <CopyOutlined
-              className="absolute top-3 right-3 cursor-pointer hover:text-blue-500"
-              onClick={() => copySecret(source?.config?.examples?.Python)}
-            />
-          </div>
         </Descriptions.Item>
       </Descriptions>
       <h4 className="mt-6 mb-2 font-medium pl-2 border-l-4 border-blue-400 inline-block leading-tight">
@@ -643,10 +866,16 @@ const IntegrationDetail: FC = () => {
 
   const renderEventFilters = () => (
     <div className="mb-4 flex flex-wrap items-center gap-4">
-      <SearchFilter
-        attrList={eventAttrList}
-        onSearch={onFilterSearch}
-      />
+      <div className="flex items-center gap-2">
+        <SearchFilter
+          attrList={eventAttrList}
+          onSearch={onFilterSearch}
+        />
+        <RefreshIconButton
+          loading={eventLoading}
+          onClick={() => fetchEventList()}
+        />
+      </div>
       <div>
         <span className="mr-2">{t('integration.timeRange')}</span>
         <DatePicker.RangePicker
@@ -688,6 +917,8 @@ const IntegrationDetail: FC = () => {
                             meta={k8sMeta}
                             loading={k8sMetaLoading}
                             onDownload={handleK8sDownload}
+                            selectedTeamSecret={selectedGuideSecret}
+                            credentialsSlot={renderTeamSecretSelector({ showSecretRow: true })}
                           />
                         ),
                       },
@@ -753,13 +984,19 @@ const IntegrationDetail: FC = () => {
                         <SnmpTrapGuide />
                       ) : isZabbixSource ? (
                         <Spin spinning={integrationGuideLoading}>
-                          <ZabbixGuide guide={integrationGuide} />
+                          <ZabbixGuide
+                            guide={integrationGuide}
+                            selectedTeamSecret={selectedGuideSecret}
+                            credentialsSlot={renderTeamSecretSelector({ showSecretRow: true })}
+                          />
                         </Spin>
                       ) : renderGuideTab()}
                     </Tabs.TabPane>
-                    <Tabs.TabPane key="teamSecrets" tab={t('integration.teamSecrets')}>
-                      <TeamSecretsManager sourceId={source.id} />
-                    </Tabs.TabPane>
+                    {isSnmpTrapSource ? null : (
+                      <Tabs.TabPane key="teamSecrets" tab={t('integration.teamSecrets')}>
+                        <TeamSecretsManager sourceId={source.id} />
+                      </Tabs.TabPane>
+                    )}
                   </Tabs>
                 </div>
               </>

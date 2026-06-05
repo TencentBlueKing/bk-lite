@@ -1,0 +1,58 @@
+{
+  "status": "success",
+  "data": {
+    "resultType": "vector",
+    "result": [
+      {
+        "metric": {
+          "__name__": "host_info_gauge",
+          "instance_id": "cmdb_1001",
+          "collect_status": "success",
+          "hostname": "web01.prod.example.com",
+          "ip_addr": "10.0.0.11",
+          "os_type": "Linux",
+          "os_name": "Ubuntu",
+          "os_version": "22.04.4 LTS",
+          "cpu_architecture": "x86_64",
+          "cpu_cores": "8",
+          "mem_total_mb": "16384.0",
+          "disk_total_gb": "500.0",
+          "mac_address": "02:42:ac:11:00:02"
+        },
+        "value": [9999999999, "1"]
+      },
+      {
+        "metric": {
+          "__name__": "host_proc_usage_info_gauge",
+          "instance_id": "cmdb_1001",
+          "collect_status": "success",
+          "self_device": "web01.prod.example.com",
+          "ip_addr": "10.0.0.11",
+          "pid": "1234",
+          "name": "nginx",
+          "arg": "-g daemon off;",
+          "exe": "/usr/sbin/nginx",
+          "cwd": "/",
+          "ports": "80,443"
+        },
+        "value": [9999999999, "1"]
+      },
+      {
+        "metric": {
+          "__name__": "host_proc_usage_info_gauge",
+          "instance_id": "cmdb_1001",
+          "collect_status": "success",
+          "self_device": "web01.prod.example.com",
+          "ip_addr": "10.0.0.11",
+          "pid": "5678",
+          "name": "redis-server",
+          "arg": "*:6379",
+          "exe": "/usr/bin/redis-server",
+          "cwd": "/var/lib/redis",
+          "ports": "6379"
+        },
+        "value": [9999999999, "1"]
+      }
+    ]
+  }
+}

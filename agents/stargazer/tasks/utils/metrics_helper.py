@@ -57,3 +57,35 @@ def generate_monitor_error_metrics(params: Dict[str, Any], error: Exception) -> 
 
     return "\n".join(prometheus_lines) + "\n"
 
+
+def generate_host_remote_state_metric(
+    event: str,
+    task_id: str,
+    status: str,
+    value: int = 1,
+    monitor_type: str = "host",
+    extra_labels: Dict[str, Any] | None = None,
+) -> str:
+    current_timestamp = int(time.time() * 1000)
+    labels = {
+        "monitor_type": monitor_type,
+        "event": event,
+        "task_id": str(task_id or ""),
+        "status": status,
+    }
+    if isinstance(extra_labels, dict):
+        for key, label_value in extra_labels.items():
+            if label_value is not None:
+                labels[key] = label_value
+
+    rendered_labels = ",".join(
+        f'{key}="{str(value).replace("\\", "\\\\").replace("\"", "\\\"")}"'
+        for key, value in labels.items()
+    )
+    return "\n".join(
+        [
+            "# HELP host_remote_state Host remote collection lifecycle state",
+            "# TYPE host_remote_state gauge",
+            f"host_remote_state{{{rendered_labels}}} {value} {current_timestamp}",
+        ]
+    ) + "\n"

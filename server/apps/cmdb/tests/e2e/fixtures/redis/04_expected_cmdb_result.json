@@ -1,0 +1,18 @@
+{
+  "model_id": "redis",
+  "instance_count_min": 1,
+  "expected_instance_subset": {
+    "inst_name":     "10.0.0.31-redis-6379",
+    "ip_addr":       "10.0.0.31",
+    "port":          "6379",
+    "version":       "7.2.4",
+    "install_path":  "/usr/local/redis",
+    "max_conn":      "10000",
+    "max_mem":       "8589934592",
+    "database_role": "master",
+    "topo_mode":     "cluster",
+    "cluster_uuid":  "abcd1234ef567890",
+    "slaves":        "10.0.0.32:6379,10.0.0.33:6379",
+    "master":        ""
+  }
+}

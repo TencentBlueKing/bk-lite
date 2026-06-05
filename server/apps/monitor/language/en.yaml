@@ -479,6 +479,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
+    device_total_incoming_netflow_traffic:
+      name: Device Total Incoming NetFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_outgoing_netflow_traffic:
+      name: Device Total Outgoing NetFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_incoming_sflow_traffic:
+      name: Device Total Incoming sFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_total_outgoing_sflow_traffic:
+      name: Device Total Outgoing sFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
   Jetty-JMX:
     jetty_queuedthreadpool_threads_value:
       name: Thread Count
@@ -620,6 +632,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
+    device_total_incoming_netflow_traffic:
+      name: Device Total Incoming NetFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_outgoing_netflow_traffic:
+      name: Device Total Outgoing NetFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_incoming_sflow_traffic:
+      name: Device Total Incoming sFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_total_outgoing_sflow_traffic:
+      name: Device Total Outgoing sFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
   ActiveMQ:
     activemq_topics_consumer_count:
       name: Topic Consumer Count
@@ -1942,6 +1966,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
+    device_total_incoming_netflow_traffic:
+      name: Device Total Incoming NetFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_outgoing_netflow_traffic:
+      name: Device Total Outgoing NetFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_incoming_sflow_traffic:
+      name: Device Total Incoming sFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_total_outgoing_sflow_traffic:
+      name: Device Total Outgoing sFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
   Router:
     snmp_uptime:
       name: System Uptime
@@ -1985,6 +2021,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
+    device_total_incoming_netflow_traffic:
+      name: Device Total Incoming NetFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_outgoing_netflow_traffic:
+      name: Device Total Outgoing NetFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_incoming_sflow_traffic:
+      name: Device Total Incoming sFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_total_outgoing_sflow_traffic:
+      name: Device Total Outgoing sFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
   Consul:
     consul_health_checks_passing:
       name: Health Checks Passing
@@ -3089,6 +3137,14 @@ monitor_object_plugin:
     desc: Through the Telegraf collector, utilize the SNMP protocol to regularly collect
       key IF-MIB metrics from switch interfaces, including traffic volume, packet
       loss, and error counts.
+  Switch Flow NetFlow:
+    name: Switch Flow Analysis (NetFlow)
+    desc: Use NetFlow to collect switch traffic and convert it into normalized device
+      traffic metrics.
+  Switch Flow sFlow:
+    name: Switch Flow Analysis (sFlow)
+    desc: Use sFlow to collect switch traffic and convert it into normalized device
+      traffic metrics.
   WebLogic-JMX:
     name: WebLogic(JMX)
     desc: Through the WebLogic-JMX collector, regularly collect key WebLogic metrics,
@@ -3118,6 +3174,14 @@ monitor_object_plugin:
       key IF-MIB metrics from load balancer interfaces, including traffic volume,
       packet loss, and error counts.
     name: Load Balancer General (Telegraf)
+  Loadbalance Flow NetFlow:
+    name: Load Balancer Flow Analysis (NetFlow)
+    desc: Use NetFlow to collect load balancer traffic and convert it into normalized
+      device traffic metrics.
+  Loadbalance Flow sFlow:
+    name: Load Balancer Flow Analysis (sFlow)
+    desc: Use sFlow to collect load balancer traffic and convert it into normalized
+      device traffic metrics.
   Bastion Host SNMP General:
     desc: The SNMP universal plugin is designed to monitor and manage bastion hosts
       via SNMP. It enables administrators to retrieve critical device information
@@ -3145,6 +3209,14 @@ monitor_object_plugin:
       key IF-MIB metrics from firewall interfaces, including traffic volume, packet
       loss, and error counts.
     name: Firewall General (Telegraf)
+  Firewall Flow NetFlow:
+    name: Firewall Flow Analysis (NetFlow)
+    desc: Use NetFlow to collect firewall traffic and convert it into normalized
+      device traffic metrics.
+  Firewall Flow sFlow:
+    name: Firewall Flow Analysis (sFlow)
+    desc: Use sFlow to collect firewall traffic and convert it into normalized device
+      traffic metrics.
   SNMP Trap:
     desc: The SNMP Trap monitoring plugin is designed to receive and process alerts
       or status notifications (Trap messages) actively pushed by network devices,
@@ -3155,6 +3227,14 @@ monitor_object_plugin:
       key IF-MIB metrics from router interfaces, including traffic volume, packet
       loss, and error counts.
     name: Router General(Telegraf)
+  Router Flow NetFlow:
+    name: Router Flow Analysis (NetFlow)
+    desc: Use NetFlow to collect router traffic and convert it into normalized device
+      traffic metrics.
+  Router Flow sFlow:
+    name: Router Flow Analysis (sFlow)
+    desc: Use sFlow to collect router traffic and convert it into normalized device
+      traffic metrics.
   ActiveMQ-JMX:
     name: ActiveMQ-JMX
     desc: The ActiveMQ plugin, based on JMX collection, acquires key performance metrics
@@ -3305,3 +3385,48 @@ monitor_object_type:
   Tencent Cloud: Tencent Cloud
   Network Device: Network Equipment
   K8S: K8s
+
+flow_onboarding_ui:
+  accessAsset: Access Asset
+  accessGuide: Access Guide
+  accessComplete: Access Complete
+  accessCompleteTitle: Access Complete
+  accessCompleteDesc: Your Flow asset is ready. The platform will ingest incoming Flow traffic for this asset.
+  accessCompleteSubDesc: You can view the asset list, onboard another asset, or return to the template list.
+  newAsset: New Asset
+  existingAsset: Existing Asset
+  accessAssetDesc: New Asset creates a new Flow monitoring asset. Existing Asset binds this protocol to an existing monitoring asset.
+  selectExistingAsset: Please select an existing Flow asset
+  existingAssetDesc: Select an existing Flow asset to reuse its identity and organization ownership.
+  cloudRegion: Cloud Region
+  selectCloudRegion: Please select cloud region
+  cloudRegionDesc: Select the cloud region where this asset belongs. The Flow listener endpoint will use that region.
+  assetIp: Asset IP
+  assetIpDesc: Enter the device source IP that sends Flow data. It must match the exporter source address.
+  assetName: Asset Name
+  assetNameDesc: Use a recognizable asset name, such as Core Switch - Beijing.
+  organization: Organization
+  organizationDesc: Only selected organizations can view and manage this Flow asset.
+  fallbackSamplingRate: Fallback Sampling Rate
+  fallbackSamplingRateDesc: Default 1000. Used when the exporter payload does not provide an effective sampling rate after normalization.
+  assetTipTitle: Flow access prerequisites
+  assetTipDesc: Create or select a monitoring asset for the selected protocol, and keep the asset IP consistent with the exporter source address.
+  guideIntroTitle: Configure device export
+  guideIntroDesc: Follow the device steps below, then run detection after traffic is exported to the listener endpoint.
+  protocol: Protocol
+  endpoint: Endpoint
+  normalizationRule: Normalization and sampling rule
+  deviceGuide: Device guide
+  detectHintTitle: Detection
+  detectHintDesc: After completing device configuration, trigger detection to confirm the platform has received recent Flow data.
+  detectAccess: Detect Access
+  detectSuccess: Access Successful
+  detectSuccessDesc: Recent Flow data has been received for this asset. The wizard will continue automatically.
+  detectFailed: No Data Detected
+  detectFailedDesc: No recent Flow data was detected. Check the exporter address, protocol, and source IP, then try again.
+  lastSeenAt: Last Seen At
+  effectiveSamplingRate: Effective Sampling Rate
+  samplingRateSource: Sampling Rate Source
+  viewAssetList: View Asset List
+  addAnotherAsset: Add Another Asset
+  backToTemplateList: Back to Template List

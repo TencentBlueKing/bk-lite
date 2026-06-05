@@ -83,7 +83,13 @@ class NodeMgmtView(ViewSet):
     @action(methods=["post"], detail=False, url_path="get_instance_asso_config")
     def get_instance_child_config(self, request):
         actor_context = _build_actor_context(request)
-        data = InstanceConfigService.get_instance_configs(request.data["instance_id"], actor_context)
+        data = InstanceConfigService.get_instance_configs(
+            request.data["instance_id"],
+            actor_context,
+            monitor_plugin_id=request.data.get("monitor_plugin_id"),
+            collector=request.data.get("collector"),
+            collect_type=request.data.get("collect_type"),
+        )
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="get_config_content")

@@ -1,0 +1,5 @@
+{
+  "model_id": "k8s_namespace",
+  "expected_namespace_names": ["default", "kube-system"],
+  "expected_inst_name_pattern": "default(k8s-cluster-prod)"
+}

@@ -555,9 +555,9 @@ class ChatFlowEngine:
                 self._update_node_execution_order(agent_node_id)
                 await self._record_node_execution_result_async(agent_node_id, agent_context)
 
-                # 记录系统输出到对话历史（流已结束，同步执行不会阻塞）
+                # 记录系统输出到对话历史（流已结束，使用异步版本）
                 if accumulated_content:
-                    self._record_conversation_history(
+                    await self._record_conversation_history_async(
                         user_id,
                         accumulated_content,
                         "bot",
@@ -1465,6 +1465,12 @@ class ChatFlowEngine:
             )
         except Exception as e:
             logger.error(f"记录{role}对话历史失败: execution_id={self.execution_id}, user_id={user_id}, error={str(e)}")
+
+    async def _record_conversation_history_async(
+        self, user_id: str, message: Any, role: str, entry_type: str, node_id: str = "", session_id: str = ""
+    ):
+        """记录对话历史（异步版本，用于 async 上下文）"""
+        await sync_to_async(self._record_conversation_history, thread_sensitive=False)(user_id, message, role, entry_type, node_id, session_id)
 
     def _check_chain_result(self, chain_result: Dict[str, Any]) -> tuple:
         """检查节点链执行结果，判断是否有节点执行失败

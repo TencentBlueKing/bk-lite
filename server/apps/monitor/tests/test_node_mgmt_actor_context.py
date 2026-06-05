@@ -1,6 +1,7 @@
 import importlib.util
 import sys
 import types
+from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
@@ -34,7 +35,13 @@ def _load_node_mgmt_view(monkeypatch):
 
     _install_module(monkeypatch, "rest_framework.viewsets", ViewSet=ViewSet)
     _install_module(monkeypatch, "rest_framework.decorators", action=action)
-    _install_module(monkeypatch, "apps.core.exceptions.base_app_exception", BaseAppException=Exception)
+    _install_module(
+        monkeypatch,
+        "apps.core.exceptions.base_app_exception",
+        BaseAppException=Exception,
+        ValidationAppException=Exception,
+        UnauthorizedException=Exception,
+    )
     _install_module(monkeypatch, "apps.core.utils.web_utils", WebUtils=types.SimpleNamespace(response_success=lambda data=None: data))
     _install_module(
         monkeypatch,
@@ -178,6 +185,177 @@ def test_get_nodes_applies_plugin_node_selector(monkeypatch):
     assert captured["payload"]["is_container"] is True
 
 
+def test_get_instance_child_config_passes_monitor_plugin_id(monkeypatch):
+    captured = {}
+
+    class InstanceConfigService:
+        @staticmethod
+        def get_instance_configs(instance_id, actor_context=None, monitor_plugin_id=None, collector=None, collect_type=None):
+            captured["instance_id"] = instance_id
+            captured["actor_context"] = actor_context
+            captured["monitor_plugin_id"] = monitor_plugin_id
+            captured["collector"] = collector
+            captured["collect_type"] = collect_type
+            return []
+
+    module = _load_node_mgmt_view(monkeypatch)
+    module.InstanceConfigService = InstanceConfigService
+
+    request = types.SimpleNamespace(
+        COOKIES={"current_team": "7"},
+        data={"instance_id": "inst-a", "monitor_plugin_id": 18},
+        user=types.SimpleNamespace(
+            username="api-user",
+            domain="domain.com",
+            is_superuser=False,
+            group_list=[7],
+        ),
+    )
+
+    module.NodeMgmtView().get_instance_child_config(request)
+
+    assert captured["instance_id"] == "inst-a"
+    assert captured["monitor_plugin_id"] == 18
+    assert captured["collector"] is None
+    assert captured["collect_type"] is None
+    assert captured["actor_context"]["current_team"] == 7
+
+
+def test_get_instance_configs_filters_by_monitor_plugin_id(monkeypatch):
+    from apps.monitor.services import node_mgmt as module
+
+    class StubConfig:
+        def __init__(self, config_id, collect_type, config_type, monitor_plugin_id):
+            self.id = config_id
+            self.collector = "Telegraf"
+            self.collect_type = collect_type
+            self.config_type = config_type
+            self.monitor_plugin_id = monitor_plugin_id
+            self.monitor_instance_id = "inst-a"
+            self.is_child = True
+
+    class StubCollectConfigManager:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def filter(self, **kwargs):
+            result = [row for row in self.rows if row.monitor_instance_id == kwargs["monitor_instance_id"]]
+            monitor_plugin_id = kwargs.get("monitor_plugin_id")
+            if monitor_plugin_id is not None:
+                result = [row for row in result if row.monitor_plugin_id == monitor_plugin_id]
+            return result
+
+    monkeypatch.setattr(
+        module.InstanceConfigService,
+        "_ensure_instance_access",
+        classmethod(lambda cls, collect_instance_id, actor_context=None, require_operate=False: None),
+    )
+    monkeypatch.setattr(
+        module.CollectConfig,
+        "objects",
+        StubCollectConfigManager(
+            [
+                StubConfig("cfg-http", "http", "host", 208),
+                StubConfig("cfg-cpu", "host", "cpu", 18),
+                StubConfig("cfg-disk", "host", "disk", 18),
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        module.InstanceConfigService,
+        "get_config_content",
+        staticmethod(lambda ids, actor_context=None: {"child": {"id": ids[0]}}),
+    )
+
+    items = module.InstanceConfigService.get_instance_configs("inst-a", monitor_plugin_id=18)
+
+    assert [item["monitor_plugin_id"] for item in items] == [18, 18]
+    assert [item["collect_type"] for item in items] == ["host", "host"]
+
+
+def test_create_monitor_instance_does_not_replace_selected_host_remote_node_id(monkeypatch):
+    from apps.monitor.services import node_mgmt as module
+
+    captured = {}
+
+    class _MonitorObjectQuerySet:
+        @staticmethod
+        def only(*args, **kwargs):
+            return _MonitorObjectQuerySet()
+
+        @staticmethod
+        def first():
+            return types.SimpleNamespace(name="Host")
+
+    class _MonitorObjectManager:
+        @staticmethod
+        def filter(**kwargs):
+            return _MonitorObjectQuerySet()
+
+    class _NodeMgmt:
+        @staticmethod
+        def get_nodes_by_ids(node_ids):
+            raise AssertionError("Host Remote should use the selected node_id directly")
+
+    class _Controller:
+        def __init__(self, data):
+            captured["data"] = data
+
+        def controller(self):
+            captured["called"] = True
+
+    monkeypatch.setattr(module.MonitorObject, "objects", _MonitorObjectManager())
+    monkeypatch.setattr(module, "NodeMgmt", _NodeMgmt)
+    monkeypatch.setattr(module, "Controller", _Controller)
+    monkeypatch.setattr(module.transaction, "atomic", lambda: nullcontext())
+    monkeypatch.setattr(
+        module.InstanceConfigService,
+        "_sanitize_instances_for_onboarding",
+        staticmethod(lambda instances, actor_context: instances),
+    )
+    monkeypatch.setattr(
+        module.InstanceConfigService,
+        "_validate_instances_with_plugin_selector",
+        staticmethod(lambda instances, monitor_plugin_id, actor_context: None),
+    )
+    monkeypatch.setattr(
+        module.InstanceConfigService,
+        "_prepare_host_identity_instances",
+        staticmethod(lambda instances: instances),
+    )
+    monkeypatch.setattr(
+        module.InstanceConfigService,
+        "_prepare_instances_for_creation",
+        staticmethod(lambda instances, monitor_object_id, collect_type, collector, configs: (instances, [], [])),
+    )
+    monkeypatch.setattr(
+        module.InstanceConfigService,
+        "_create_instances_in_db",
+        staticmethod(lambda new_instances, existing_instances, deleted_ids, monitor_object_id: (["inst-a"], [])),
+    )
+
+    module.InstanceConfigService.create_monitor_instance_by_node_mgmt(
+        {
+            "collector": "Telegraf",
+            "collect_type": "http",
+            "monitor_object_id": 20,
+            "monitor_plugin_id": 208,
+            "configs": [{"type": "host"}],
+            "instances": [
+                {
+                    "instance_id": "('inst-a',)",
+                    "instance_name": "remote-host",
+                    "node_ids": ["node-1"],
+                    "type": "host",
+                }
+            ],
+        }
+    )
+
+    assert captured["called"] is True
+    assert "ansible_node_id" not in captured["data"]["instances"][0]
+
+
 class _MonitorInstanceQuerySet:
     def __init__(self, rows):
         self.rows = rows
@@ -307,6 +485,7 @@ def _load_monitor_instance_view(monkeypatch, authorized_ids=None, scope_groups=N
         monkeypatch,
         "apps.core.exceptions.base_app_exception",
         BaseAppException=Exception,
+        ValidationAppException=Exception,
         UnauthorizedException=UnauthorizedException,
     )
     _install_module(
@@ -428,6 +607,7 @@ def _load_organization_rule_view(monkeypatch, authorized_ids=None, scope_groups=
         monkeypatch,
         "apps.core.exceptions.base_app_exception",
         BaseAppException=StubBaseAppException,
+        ValidationAppException=StubBaseAppException,
         UnauthorizedException=UnauthorizedException,
     )
     _install_module(
@@ -570,6 +750,15 @@ def test_query_by_instance_fails_closed_when_effective_instance_keys_missing(mon
         def filter(self, **kwargs):
             return StubMetricQuerySet(self.metric)
 
+    class StubAuthorizedQuerySet:
+        @staticmethod
+        def filter(**kwargs):
+            return StubAuthorizedQuerySet()
+
+        @staticmethod
+        def exists():
+            return True
+
     metric = types.SimpleNamespace(query="cpu{__$labels__}", dimensions=[], unit="", monitor_object=types.SimpleNamespace(instance_id_keys=[]))
 
     class StubMetricsService:
@@ -586,7 +775,13 @@ def test_query_by_instance_fails_closed_when_effective_instance_keys_missing(mon
 
     _install_module(monkeypatch, "rest_framework.viewsets", ViewSet=ViewSet)
     _install_module(monkeypatch, "rest_framework.decorators", action=action)
-    _install_module(monkeypatch, "apps.core.exceptions.base_app_exception", BaseAppException=StubBaseAppException)
+    _install_module(
+        monkeypatch,
+        "apps.core.exceptions.base_app_exception",
+        BaseAppException=StubBaseAppException,
+        ValidationAppException=StubBaseAppException,
+        UnauthorizedException=StubBaseAppException,
+    )
     _install_module(
         monkeypatch,
         "apps.core.utils.web_utils",
@@ -595,9 +790,16 @@ def test_query_by_instance_fails_closed_when_effective_instance_keys_missing(mon
     _install_module(monkeypatch, "apps.core.logger", monitor_logger=types.SimpleNamespace(warning=lambda *args, **kwargs: None))
     _install_module(
         monkeypatch,
+        "apps.core.utils.permission_utils",
+        get_permission_rules=lambda *args, **kwargs: {},
+        permission_filter=lambda *args, **kwargs: StubAuthorizedQuerySet(),
+    )
+    _install_module(
+        monkeypatch,
         "apps.monitor.models.monitor_metrics",
         Metric=types.SimpleNamespace(objects=StubMetricManager(metric)),
     )
+    _install_module(monkeypatch, "apps.monitor.models", MonitorInstance=object)
     _install_module(monkeypatch, "apps.monitor.services.metrics", Metrics=StubMetricsService)
     _install_module(monkeypatch, "apps.monitor.utils.unit_converter", UnitConverter=types.SimpleNamespace())
 
@@ -607,11 +809,18 @@ def test_query_by_instance_fails_closed_when_effective_instance_keys_missing(mon
     )
 
     request = types.SimpleNamespace(
+        COOKIES={"current_team": "7"},
         GET={
             "monitor_object_id": "1",
             "metric_id": "2",
             "instance_id": "('host-1',)",
-        }
+        },
+        user=types.SimpleNamespace(
+            username="operator",
+            domain="domain.com",
+            is_superuser=False,
+            group_list=[7],
+        ),
     )
 
     with pytest.raises(StubBaseAppException, match="instance_id_keys"):

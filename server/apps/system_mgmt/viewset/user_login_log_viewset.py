@@ -69,7 +69,7 @@ class UserLoginLogViewSet(GroupFilterMixin, LanguageViewSet):
     filterset_class = UserLoginLogFilter
     permission_classes = [permissions.IsAuthenticated]
 
-    @HasPermission("user_logs-View")
+    @HasPermission("audit_log-View")
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
@@ -87,7 +87,7 @@ class UserLoginLogViewSet(GroupFilterMixin, LanguageViewSet):
         return super().http_method_not_allowed(request, *args, **kwargs)
 
     @action(detail=False, methods=["get"])
-    @HasPermission("user_logs-View")
+    @HasPermission("audit_log-View")
     def statistics(self, request):
         """
         获取登录日志统计信息
@@ -117,7 +117,7 @@ class UserLoginLogViewSet(GroupFilterMixin, LanguageViewSet):
         )
 
     @action(detail=False, methods=["post"])
-    @HasPermission("user_logs-View")
+    @HasPermission("audit_log-View")
     def export_excel(self, request):
         """
         导出登录日志为Excel文件

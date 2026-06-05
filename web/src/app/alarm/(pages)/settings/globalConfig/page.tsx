@@ -13,6 +13,7 @@ import {
 } from '@/app/alarm/types/settings';
 import { Card, Form, Spin, Modal, message } from 'antd';
 import { LevelItem } from '@/app/alarm/types/index';
+import { BRAND } from '@/app/alarm/constants/colors';
 import NoDispatchConfigCard from './components/noDispatchConfigCard';
 import LevelManagementPanel from './components/levelManagementPanel';
 import LevelFormModal from './components/levelFormModal';
@@ -177,7 +178,7 @@ export default function UnallocatedNotificationConfig() {
       levelForm.setFieldsValue({
         level_id: row?.level_id ?? nextId,
         level_display_name: row?.level_display_name ?? '',
-        color: row?.color || '#F43B2C',
+        color: row?.color || BRAND.FAIL,
         icon: row?.icon || 'huoyanhuodongtuijian',
         level_type: levelType,
         built_in: row?.built_in,
@@ -225,6 +226,7 @@ export default function UnallocatedNotificationConfig() {
       content: t('common.delConfirmCxt'),
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),
+      okButtonProps: { danger: true },
       centered: true,
       onOk: async () => {
         await deleteLevel(row.id);

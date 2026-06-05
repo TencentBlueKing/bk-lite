@@ -1,22 +1,22 @@
 {
   "plugin": "Host Remote",
   "plugin_desc": "Remote host metrics collection via SSH/WinRM through Ansible Executor. Supports CPU, memory, disk, and network metrics without agent installation on target hosts.",
-  "status_query": "any({instance_type='host', collect_type='http'}) by (instance_id)",
+  "status_query": "any({instance_type='os', collect_type='http'}) by (instance_id)",
   "node_selector": {
     "is_container": true
   },
-  "name": "Remote Host",
-  "icon": "mm-host",
-  "type": "Host",
+  "name": "Host",
+  "icon": "mm-host_主机",
+  "type": "OS",
   "description": "Remote agentless host monitoring via SSH/WinRM",
-  "default_metric": "any({instance_type='host', collect_type='http'}) by (instance_id)",
+  "default_metric": "any({instance_type='os'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["host_cpu_usage_percent", "host_mem_used_bytes"],
+  "supplementary_indicators": ["cpu_usage_total", "mem_used_percent", "disk_used_percent"],
   "metrics": [
     {
       "metric_group": "CPU",
-      "name": "host_cpu_usage_percent",
-      "query": "host_cpu_usage_percent{instance_id=\"$instance_id\"}",
+      "name": "cpu_usage_total",
+      "query": "host_cpu_usage_percent_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "%",
@@ -27,7 +27,7 @@
     {
       "metric_group": "CPU",
       "name": "host_cpu_core_count",
-      "query": "host_cpu_core_count{instance_id=\"$instance_id\"}",
+      "query": "host_cpu_core_count_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "CPU Core Count",
       "data_type": "Number",
       "unit": "cores",
@@ -38,7 +38,7 @@
     {
       "metric_group": "CPU",
       "name": "host_cpu_load_1m",
-      "query": "host_cpu_load_1m{instance_id=\"$instance_id\"}",
+      "query": "host_cpu_load_1m_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "Load Average 1m",
       "data_type": "Number",
       "unit": "",
@@ -49,7 +49,7 @@
     {
       "metric_group": "CPU",
       "name": "host_cpu_load_5m",
-      "query": "host_cpu_load_5m{instance_id=\"$instance_id\"}",
+      "query": "host_cpu_load_5m_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "Load Average 5m",
       "data_type": "Number",
       "unit": "",
@@ -60,7 +60,7 @@
     {
       "metric_group": "CPU",
       "name": "host_cpu_load_15m",
-      "query": "host_cpu_load_15m{instance_id=\"$instance_id\"}",
+      "query": "host_cpu_load_15m_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "Load Average 15m",
       "data_type": "Number",
       "unit": "",
@@ -71,7 +71,7 @@
     {
       "metric_group": "Memory",
       "name": "host_mem_total_bytes",
-      "query": "host_mem_total_bytes{instance_id=\"$instance_id\"}",
+      "query": "host_mem_total_bytes_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "Total Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -82,7 +82,7 @@
     {
       "metric_group": "Memory",
       "name": "host_mem_used_bytes",
-      "query": "host_mem_used_bytes{instance_id=\"$instance_id\"}",
+      "query": "host_mem_used_bytes_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "Used Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -92,8 +92,19 @@
     },
     {
       "metric_group": "Memory",
+      "name": "mem_used_percent",
+      "query": "host_mem_used_percent_gauge{instance_type=\"os\", __$labels__}",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "%",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Used physical memory percentage"
+    },
+    {
+      "metric_group": "Memory",
       "name": "host_mem_available_bytes",
-      "query": "host_mem_available_bytes{instance_id=\"$instance_id\"}",
+      "query": "host_mem_available_bytes_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "Available Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -104,7 +115,7 @@
     {
       "metric_group": "Memory",
       "name": "host_mem_swap_total_bytes",
-      "query": "host_mem_swap_total_bytes{instance_id=\"$instance_id\"}",
+      "query": "host_mem_swap_total_bytes_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "Total Swap",
       "data_type": "Number",
       "unit": "bytes",
@@ -115,7 +126,7 @@
     {
       "metric_group": "Memory",
       "name": "host_mem_swap_used_bytes",
-      "query": "host_mem_swap_used_bytes{instance_id=\"$instance_id\"}",
+      "query": "host_mem_swap_used_bytes_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "Used Swap",
       "data_type": "Number",
       "unit": "bytes",
@@ -126,7 +137,7 @@
     {
       "metric_group": "Disk",
       "name": "host_disk_total_bytes",
-      "query": "host_disk_total_bytes{instance_id=\"$instance_id\"}",
+      "query": "host_disk_total_bytes_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "Disk Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -137,7 +148,7 @@
     {
       "metric_group": "Disk",
       "name": "host_disk_used_bytes",
-      "query": "host_disk_used_bytes{instance_id=\"$instance_id\"}",
+      "query": "host_disk_used_bytes_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "Disk Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -147,8 +158,8 @@
     },
     {
       "metric_group": "Disk",
-      "name": "host_disk_used_percent",
-      "query": "host_disk_used_percent{instance_id=\"$instance_id\"}",
+      "name": "disk_used_percent",
+      "query": "host_disk_used_percent_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "Disk Usage",
       "data_type": "Number",
       "unit": "%",
@@ -159,7 +170,7 @@
     {
       "metric_group": "Network",
       "name": "host_net_rx_bytes",
-      "query": "host_net_rx_bytes{instance_id=\"$instance_id\"}",
+      "query": "host_net_rx_bytes_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "Network RX Bytes",
       "data_type": "Number",
       "unit": "bytes",
@@ -170,7 +181,7 @@
     {
       "metric_group": "Network",
       "name": "host_net_tx_bytes",
-      "query": "host_net_tx_bytes{instance_id=\"$instance_id\"}",
+      "query": "host_net_tx_bytes_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "Network TX Bytes",
       "data_type": "Number",
       "unit": "bytes",
@@ -181,7 +192,7 @@
     {
       "metric_group": "Network",
       "name": "host_net_rx_errors",
-      "query": "host_net_rx_errors{instance_id=\"$instance_id\"}",
+      "query": "host_net_rx_errors_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "Network RX Errors",
       "data_type": "Number",
       "unit": "counts",
@@ -192,7 +203,7 @@
     {
       "metric_group": "Network",
       "name": "host_net_tx_errors",
-      "query": "host_net_tx_errors{instance_id=\"$instance_id\"}",
+      "query": "host_net_tx_errors_gauge{instance_type=\"os\", __$labels__}",
       "display_name": "Network TX Errors",
       "data_type": "Number",
       "unit": "counts",

@@ -179,6 +179,45 @@ def async_auto_assignment_for_alerts(alert_ids):
         }
 
 
+@shared_task(
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 3},
+)
+def build_instant_alerts(hits_payload):
+    """即时告警异步兜底任务。
+
+    仅在 InstantAlertDispatcher 检测到命中数超过 INSTANT_SYNC_THRESHOLD 时
+    被调度。任务内部完成 bulk_create Alert + M2M + 触发异步分派。
+
+    Args:
+        hits_payload: [{"strategy_id": int, "event_id": str}, ...]
+    """
+    if not hits_payload:
+        return {"created": 0}
+
+    from apps.alerts.aggregation.processor.instant_dispatcher import (
+        InstantHit,
+        _bulk_build_instant_alerts,
+        _trigger_dispatch_async,
+    )
+
+    hits = [
+        InstantHit(strategy_id=item["strategy_id"], event_id=item["event_id"])
+        for item in hits_payload
+        if isinstance(item, dict) and "strategy_id" in item and "event_id" in item
+    ]
+    alert_ids = _bulk_build_instant_alerts(hits)
+    logger.info(
+        "instant async build_instant_alerts done: hits=%s created=%s",
+        len(hits),
+        len(alert_ids),
+    )
+    if alert_ids:
+        _trigger_dispatch_async(alert_ids)
+    return {"created": len(alert_ids)}
+
+
 @shared_task
 def sync_notify(params):
     """

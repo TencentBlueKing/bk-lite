@@ -1,0 +1,17 @@
+{
+  "resource_name": "web-prod-01",
+  "resource_id": "i-bp1abcdef1234567",
+  "ip_addr": "172.16.0.11",
+  "public_ip": "47.96.10.20",
+  "region": "cn-hangzhou",
+  "zone": "cn-hangzhou-h",
+  "vpc": "vpc-bp1zzzzz",
+  "status": "Running",
+  "instance_type": "ecs.g6.large",
+  "os_name": "Ubuntu 22.04 64位",
+  "vcpus": "2",
+  "memory": "8192",
+  "charge_type": "PostPaid",
+  "create_time": "2024-01-15 10:30:00",
+  "expired_time": "2099-12-31 23:59:59"
+}

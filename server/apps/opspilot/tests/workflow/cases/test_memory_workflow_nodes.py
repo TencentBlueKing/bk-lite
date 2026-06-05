@@ -321,7 +321,7 @@ class TestMemoryWritePassthrough:
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_team.id, title="Test")
 
-        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
             mock_task.delay = MagicMock()
             result = node.execute("mem_write_1", node_config, {"last_message": "Important info"})
 
@@ -343,12 +343,12 @@ class TestMemoryWriteAsyncTask:
     """MemoryWrite triggers async Celery task."""
 
     def test_triggers_celery_task(self, memory_space_team):
-        """process_memory_write.delay is called with correct args."""
+        """process_memory_write.delay is called with correct args for team memory."""
         vm = create_variable_manager("alice@test.com")
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_team.id, title="My Title")
 
-        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
             mock_task.delay = MagicMock()
             node.execute("mem_write_1", node_config, {"last_message": "Content to save"})
 
@@ -357,8 +357,9 @@ class TestMemoryWriteAsyncTask:
             assert call_kwargs["memory_space_id"] == memory_space_team.id
             assert call_kwargs["title"] == "My Title"
             assert call_kwargs["content"] == "Content to save"
-            assert call_kwargs["owner_username"] == "alice"
-            assert call_kwargs["owner_domain"] == "test.com"
+            # Team memory uses organization_id, owner_username is org name
+            assert call_kwargs["organization_id"] == 1
+            assert "组织" in call_kwargs["owner_username"] or call_kwargs["owner_username"] == "组织-1"
 
     def test_auto_generates_title(self, memory_space_team):
         """Title is auto-generated if not provided."""
@@ -366,7 +367,7 @@ class TestMemoryWriteAsyncTask:
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_team.id, title="")
 
-        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
             mock_task.delay = MagicMock()
             node.execute("mem_write_1", node_config, {"last_message": "Content"})
 
@@ -384,7 +385,7 @@ class TestMemoryWriteSkipConditions:
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_team.id, title="Test")
 
-        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
             mock_task.delay = MagicMock()
             result = node.execute("mem_write_1", node_config, {"last_message": ""})
 
@@ -397,7 +398,7 @@ class TestMemoryWriteSkipConditions:
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=None)
 
-        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
             mock_task.delay = MagicMock()
             result = node.execute("mem_write_1", node_config, {"last_message": "Content"})
 
@@ -410,7 +411,7 @@ class TestMemoryWriteSkipConditions:
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_team.id)
 
-        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
             mock_task.delay = MagicMock()
             result = node.execute("mem_write_1", node_config, {"other_key": "value"})
 
@@ -428,7 +429,7 @@ class TestMemoryWriteErrorHandling:
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_team.id, title="Test")
 
-        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
             mock_task.delay.side_effect = Exception("Celery connection failed")
             result = node.execute("mem_write_1", node_config, {"last_message": "Content"})
 
@@ -438,49 +439,67 @@ class TestMemoryWriteErrorHandling:
 
 @pytest.mark.django_db
 class TestMemoryWriteUserExtraction:
-    """MemoryWrite correctly extracts user info."""
+    """MemoryWrite correctly extracts user/org info based on scope."""
 
-    def test_extracts_username_and_domain(self, memory_space_team):
-        """User ID is split into username and domain."""
+    def test_personal_memory_extracts_username_and_domain(self, memory_space_personal):
+        """Personal memory: User ID is split into username and domain."""
         vm = create_variable_manager("bob@company.org")
         node = MemoryWriteNode(vm)
-        node_config = build_node_config(memory_space_id=memory_space_team.id, title="Test")
+        node_config = build_node_config(memory_space_id=memory_space_personal.id, title="Test")
 
-        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
             mock_task.delay = MagicMock()
             node.execute("mem_write_1", node_config, {"last_message": "Content"})
 
             call_kwargs = mock_task.delay.call_args[1]
             assert call_kwargs["owner_username"] == "bob"
             assert call_kwargs["owner_domain"] == "company.org"
+            assert call_kwargs["organization_id"] is None
 
-    def test_handles_username_without_domain(self, memory_space_team):
-        """User ID without @ is treated as username only."""
+    def test_personal_memory_handles_username_without_domain(self, memory_space_personal):
+        """Personal memory: User ID without @ is treated as username only."""
         vm = create_variable_manager("admin")
         node = MemoryWriteNode(vm)
-        node_config = build_node_config(memory_space_id=memory_space_team.id, title="Test")
+        node_config = build_node_config(memory_space_id=memory_space_personal.id, title="Test")
 
-        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
             mock_task.delay = MagicMock()
             node.execute("mem_write_1", node_config, {"last_message": "Content"})
 
             call_kwargs = mock_task.delay.call_args[1]
             assert call_kwargs["owner_username"] == "admin"
             assert call_kwargs["owner_domain"] == ""
+            assert call_kwargs["organization_id"] is None
 
-    def test_handles_empty_user_id(self, memory_space_team):
-        """Empty user_id defaults to 'system'."""
+    def test_personal_memory_handles_empty_user_id(self, memory_space_personal):
+        """Personal memory: Empty user_id defaults to 'system'."""
         vm = create_variable_manager("")
         node = MemoryWriteNode(vm)
-        node_config = build_node_config(memory_space_id=memory_space_team.id, title="Test")
+        node_config = build_node_config(memory_space_id=memory_space_personal.id, title="Test")
 
-        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
             mock_task.delay = MagicMock()
             node.execute("mem_write_1", node_config, {"last_message": "Content"})
 
             call_kwargs = mock_task.delay.call_args[1]
             assert call_kwargs["owner_username"] == "system"
             assert call_kwargs["owner_domain"] == ""
+            assert call_kwargs["organization_id"] is None
+
+    def test_team_memory_uses_organization_id(self, memory_space_team):
+        """Team memory: Uses organization_id from memory_space.team."""
+        vm = create_variable_manager("bob@company.org")
+        node = MemoryWriteNode(vm)
+        node_config = build_node_config(memory_space_id=memory_space_team.id, title="Test")
+
+        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
+            mock_task.delay = MagicMock()
+            node.execute("mem_write_1", node_config, {"last_message": "Content"})
+
+            call_kwargs = mock_task.delay.call_args[1]
+            assert call_kwargs["organization_id"] == 1
+            # owner_username is org name (or fallback)
+            assert "组织" in call_kwargs["owner_username"] or call_kwargs["owner_username"] == "组织-1"
 
 
 # ---------------------------------------------------------------------------
@@ -1271,7 +1290,7 @@ class TestMemoryWorkflowIntegration:
         engine.custom_node_executors["agents"] = FakeAgentExecutorWithMemory(engine.variable_manager)
 
         # Mock memory_write task to avoid Celery
-        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
             mock_task.delay = MagicMock()
 
             result = engine.execute(
@@ -1294,7 +1313,7 @@ class TestMemoryWorkflowIntegration:
 
         engine.custom_node_executors["agents"] = FakeAgentExecutorWithMemory(engine.variable_manager)
 
-        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
             mock_task.delay = MagicMock()
 
             engine.execute(
@@ -1320,7 +1339,7 @@ class TestMemoryWorkflowIntegration:
 
         engine.custom_node_executors["agents"] = FakeAgentExecutorWithMemory(engine.variable_manager)
 
-        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
             mock_task.delay = MagicMock()
 
             engine.execute(
@@ -1398,7 +1417,7 @@ class TestMemoryWorkflowIntegration:
         engine = create_chat_flow_engine(workflow, "entry_node")
         engine.custom_node_executors["agents"] = FakeAgentExecutorWithMemory(engine.variable_manager)
 
-        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
             mock_task.delay = MagicMock()
 
             # Execute as Alice

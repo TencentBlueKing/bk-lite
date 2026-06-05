@@ -6,6 +6,7 @@ import { Toast, SpinLoading, ImageViewer } from 'antd-mobile';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChatInfo } from '@/types/conversation';
 import MarkdownIt from 'markdown-it';
+import DOMPurify from 'dompurify';
 import { ConversationHeader, ConversationSidebar, MessageList, CustomInput, MessageContent } from './components';
 import { useMessages } from './hooks';
 import { conversationStyles, parseHistoryEvents } from './utils';
@@ -19,6 +20,14 @@ import { useConversationManager } from '@/context/conversation';
 
 // localStorage key 用于存储用户最后打开的对话页
 const LAST_CONVERSATION_KEY = 'bk_lite_last_conversation';
+
+const sanitizeMarkdownHtml = (unsafeHtml: string): string => (
+  DOMPurify.sanitize(unsafeHtml, {
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'hr', 'del', 'ins', 'sup', 'sub'],
+    ALLOWED_ATTR: ['class', 'href', 'target', 'rel', 'src', 'alt', 'width', 'height'],
+    ALLOW_DATA_ATTR: false,
+  })
+);
 
 export default function ConversationDetail() {
   const router = useRouter();
@@ -113,7 +122,7 @@ export default function ConversationDetail() {
 
   // Markdown 渲染函数
   const renderMarkdown = (text: string) => {
-    const html = md.render(text);
+    const html = sanitizeMarkdownHtml(md.render(text));
     return <div dangerouslySetInnerHTML={{ __html: html }} className="markdown-body" />;
   };
 

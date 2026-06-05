@@ -107,6 +107,11 @@ spec:
     metadata:
       labels:
         app: kubernetes-event-exporter
+      annotations:
+        # 由 BK-Lite 渲染填充：基于 BK_LITE_SECRET 的短 hash。
+        # secret 一变此值变 → Deployment template 变 → kubectl apply 自动滚动 Pod，
+        # 否则 Secret 资源更新后 Pod env 不会刷新。
+        bk-lite.tencent.com/secret-hash: PLACEHOLDER_SECRET_HASH
     spec:
       serviceAccountName: kubernetes-event-exporter
       containers:

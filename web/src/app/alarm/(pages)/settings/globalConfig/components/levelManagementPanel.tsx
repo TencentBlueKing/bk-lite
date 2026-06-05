@@ -8,10 +8,11 @@ import { Grid, Typography, Row, Col, Table, Tag, Button, Space } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
 import { LevelItem, LevelMetaGroup } from '@/app/alarm/types/index';
+import { BRAND, NEUTRAL } from '@/app/alarm/constants/colors';
 
 const getLevelTagStyle = (color?: string, compact?: boolean) => ({
-  backgroundColor: color || '#FFAD42',
-  color: '#fff',
+  backgroundColor: color || BRAND.LEVEL_FALLBACK_AMBER,
+  color: NEUTRAL.ON_DARK_FG,
   border: 'none',
   borderRadius: compact ? 7 : 8,
   display: 'inline-flex',
@@ -80,7 +81,7 @@ export default function LevelManagementPanel({
             <LevelIcon
               icon={record.icon}
               className={isCompactLevelView ? 'h-3 w-3' : 'h-3.5 w-3.5'}
-              style={{ color: '#fff', lineHeight: 1 }}
+              style={{ color: NEUTRAL.ON_DARK_FG, lineHeight: 1 }}
             />
           </span>
           <span
@@ -118,7 +119,8 @@ export default function LevelManagementPanel({
             <Button
               type="link"
               size="small"
-              className="px-0 text-[#2F6BFF]"
+              danger
+              className="px-0"
               onClick={() => onDeleteLevel(record)}
             >
               {t('common.delete')}

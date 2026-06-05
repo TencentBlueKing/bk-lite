@@ -44,6 +44,7 @@ async def collect_task(
     logger.info("=" * 60)
 
     result = None
+    should_clear_running_flag = True
     try:
         # 根据任务类型分发到对应的 handler
         if monitor_type == "vmware":
@@ -107,11 +108,25 @@ async def collect_task(
                 "completed_at": int(time.time() * 1000),
             }
 
+        should_clear_running_flag = not bool(
+            isinstance(result, dict) and result.get("defer_running_clear")
+        )
         return result
 
     finally:
         # 清除运行标记，允许相同参数的任务再次入队
-        await _clear_running_flag(task_id)
+        if should_clear_running_flag:
+            await _clear_running_flag(task_id)
+        else:
+            logger.info(f"Task {task_id} deferred running flag cleanup to callback completion")
+
+
+async def process_host_remote_callback_task(
+    ctx: Dict, params: Dict[str, Any], task_id: str
+) -> Dict[str, Any]:
+    from tasks.handlers.host_remote_handler import process_host_remote_callback_task as handler
+
+    return await handler(ctx, params, task_id)
 
 
 async def _clear_running_flag(task_id: str):
@@ -165,7 +180,7 @@ class WorkerSettings:
     )
 
     # 注册的任务函数
-    functions = [collect_task]
+    functions = [collect_task, process_host_remote_callback_task]
 
     # Worker 运行配置
     max_jobs = int(os.getenv("TASK_MAX_JOBS", "10"))

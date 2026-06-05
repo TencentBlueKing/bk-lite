@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stargazer aliyun ECS 采集脚本原始输出",
+  "type": "object",
+  "required": ["resource_name", "resource_id", "region", "status"],
+  "properties": {
+    "resource_name":  {"type": "string"},
+    "resource_id":    {"type": "string", "pattern": "^i-[a-zA-Z0-9]+$"},
+    "ip_addr":        {"type": "string"},
+    "public_ip":      {"type": "string"},
+    "region":         {"type": "string", "pattern": "^[a-z]+-[a-z]+$"},
+    "zone":           {"type": "string"},
+    "vpc":            {"type": "string"},
+    "status":         {"type": "string", "enum": ["Running", "Stopped", "Starting", "Stopping"]},
+    "instance_type":  {"type": "string"},
+    "os_name":        {"type": "string"},
+    "vcpus":          {"type": "string"},
+    "memory":         {"type": "string"},
+    "charge_type":    {"type": "string", "enum": ["PrePaid", "PostPaid"]},
+    "create_time":    {"type": "string"},
+    "expired_time":   {"type": "string"}
+  }
+}

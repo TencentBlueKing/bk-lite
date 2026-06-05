@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { useTranslation } from '@/utils/i18n';
-import { useMemoryApi, Memory } from '@/app/opspilot/api/memory';
-import { useSkillApi } from '@/app/opspilot/api/skill';
-import { Form, Input, Select, Button, message, Spin } from 'antd';
+import React, {useEffect, useState} from 'react';
+import {useSearchParams} from 'next/navigation';
+import {useTranslation} from '@/utils/i18n';
+import {Memory, useMemoryApi} from '@/app/opspilot/api/memory';
+import {useSkillApi} from '@/app/opspilot/api/skill';
+import {Button, Form, Input, message, Select, Spin} from 'antd';
 import PermissionWrapper from '@/components/permission';
 import GroupTreeSelect from '@/components/group-tree-select';
 
@@ -196,9 +196,9 @@ export default function MemoryConfigPage() {
                     </Select>
                   </Form.Item>
                   <Form.Item 
-                    label={t('memory.team')} 
+                    label={t('memory.organization')} 
                     name="team"
-                    rules={[{ required: true, message: `${t('common.selectMsg')}${t('memory.team')}` }]}
+                    rules={[{ required: true, message: `${t('common.selectMsg')}${t('memory.organization')}` }]}
                     labelCol={{ style: { width: '92px', textAlign: 'right' } }}
                     wrapperCol={{ flex: 1 }}
                     style={{ marginBottom: '12px' }}

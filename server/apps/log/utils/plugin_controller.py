@@ -1,9 +1,9 @@
+import json
 import os
 import uuid
-import json
 from collections.abc import Mapping
 
-from jinja2 import FileSystemLoader, DebugUndefined
+from jinja2 import DebugUndefined, Environment, FileSystemLoader
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.safe_template import build_sandboxed_env
@@ -13,6 +13,45 @@ from apps.log.models import CollectConfig, CollectType
 from apps.rpc.node_mgmt import NodeMgmt
 
 from apps.core.logger import log_logger as logger
+
+
+_DEFAULT_JINJA_ENV = Environment()
+_LOG_TEMPLATE_ALLOWED_FILTERS = (
+    "default",
+    "int",
+    "join",
+    "list",
+    "lower",
+    "map",
+    "reject",
+    "replace",
+    "tojson",
+    "trim",
+)
+_LOG_TEMPLATE_ALLOWED_TESTS = (
+    "equalto",
+    "string",
+)
+
+
+def _build_log_template_env(template_dir: str):
+    env = build_sandboxed_env(
+        loader=FileSystemLoader(template_dir),
+        undefined=DebugUndefined,
+        extra_filters={"to_json": lambda obj: json.dumps(obj, ensure_ascii=False)},
+    )
+
+    missing_filters = [name for name in _LOG_TEMPLATE_ALLOWED_FILTERS if name not in _DEFAULT_JINJA_ENV.filters]
+    if missing_filters:
+        raise BaseAppException(f"Missing default Jinja filters: {', '.join(missing_filters)}")
+
+    missing_tests = [name for name in _LOG_TEMPLATE_ALLOWED_TESTS if name not in _DEFAULT_JINJA_ENV.tests]
+    if missing_tests:
+        raise BaseAppException(f"Missing default Jinja tests: {', '.join(missing_tests)}")
+
+    env.filters.update({name: _DEFAULT_JINJA_ENV.filters[name] for name in _LOG_TEMPLATE_ALLOWED_FILTERS})
+    env.tests.update({name: _DEFAULT_JINJA_ENV.tests[name] for name in _LOG_TEMPLATE_ALLOWED_TESTS})
+    return env
 
 
 class Controller:
@@ -59,11 +98,7 @@ class Controller:
         :return: 渲染后的配置字符串
         """
         _context = {**context}
-        env = build_sandboxed_env(
-            loader=FileSystemLoader(template_dir),
-            undefined=DebugUndefined,
-            extra_filters={"to_json": lambda obj: json.dumps(obj, ensure_ascii=False)},
-        )
+        env = _build_log_template_env(template_dir)
 
         template = env.get_template(file_name)
         return template.render(_context)
