@@ -12,7 +12,7 @@ import styles from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { setLocaleData } from './utils/localeStore';
-import { Button, InputNumber, Modal, Select, Spin, message } from 'antd';
+import { Button, Input, InputNumber, Modal, Select, Spin, message } from 'antd';
 import { AppstoreOutlined, CloseOutlined } from '@ant-design/icons';
 import { v4 as uuidv4 } from 'uuid';
 import { useTopologyState } from './hooks/useTopologyState';
@@ -66,9 +66,11 @@ import {
 import {
   AppViewFullscreenExit,
   useAppViewFullscreen,
-} from '../components/appFullscreen';
+} from '@/app/ops-analysis/components/appFullscreen';
 import {
+  buildTopologyViewportFocusTransform,
   buildTopologyLetterboxLayout,
+  DEFAULT_TOPOLOGY_LETTERBOX_COLOR,
   getTopologyViewportDraft,
   normalizeTopologyViewportConfig,
 } from './utils/viewport';
@@ -732,6 +734,37 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       [],
     );
 
+    const focusViewportGuide = useCallback(
+      (nextViewport?: TopologyViewportConfig | null) => {
+        const graph = state.graphInstance as any;
+        const host = canvasContainerRef.current;
+        const normalized = normalizeTopologyViewportConfig(nextViewport);
+
+        if (!graph || !host || !normalized) {
+          return;
+        }
+
+        const nextTransform = buildTopologyViewportFocusTransform(
+          host.clientWidth,
+          host.clientHeight,
+          normalized,
+        );
+
+        if (!nextTransform) {
+          return;
+        }
+
+        if (typeof graph.zoom === 'function') {
+          graph.zoom(nextTransform.scale, { absolute: true });
+        }
+
+        if (typeof graph.translate === 'function') {
+          graph.translate(nextTransform.tx, nextTransform.ty);
+        }
+      },
+      [state.graphInstance],
+    );
+
     const handleClearPresentationConfig = useCallback(() => {
       setPresentationConfigDraft(getTopologyViewportDraft(null));
     }, []);
@@ -751,7 +784,13 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
 
       setViewportConfig(getTopologyViewportDraft(nextViewport));
       setPresentationConfigModalVisible(false);
-    }, [presentationConfigDraft, t]);
+
+      if (nextViewport) {
+        window.requestAnimationFrame(() => {
+          focusViewportGuide(nextViewport);
+        });
+      }
+    }, [focusViewportGuide, presentationConfigDraft, t]);
 
     const handleEnterEditMode = useCallback(() => {
       if (state.graphInstance) {
@@ -1118,7 +1157,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
     const NodePanel = getNodeType() === 'single-value' ? SingleValueNodePanel : ShapeNodePanel;
 
     const panelStyle = {
-      border: `1px solid ${chartTheme.panelBorderColor}`,
+      //   border: `1px solid ${chartTheme.panelBorderColor}`,
       backgroundColor: chartTheme.panelBg,
     };
 
@@ -1136,9 +1175,9 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
                 width={normalizedViewport.width}
                 height={normalizedViewport.height}
                 fill="none"
-                stroke="rgba(46, 99, 255, 0.78)"
-                strokeDasharray="10 8"
-                strokeWidth={1.5}
+                stroke="rgba(92, 117, 153, 0.56)"
+                strokeDasharray="6 8"
+                strokeWidth={1}
                 vectorEffect="non-scaling-stroke"
               />
             </g>
@@ -1286,9 +1325,9 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
               style={
                 isLetterboxFullscreen && normalizedViewport
                   ? {
-                      backgroundColor:
+                    backgroundColor:
                         normalizedViewport.letterboxColor || '#000000',
-                    }
+                  }
                   : undefined
               }
             >
@@ -1301,13 +1340,13 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
                 style={
                   isLetterboxFullscreen && normalizedViewport
                     ? {
-                        width:
+                      width:
                           letterboxLayout?.renderedWidth ||
                           normalizedViewport.width,
-                        height:
+                      height:
                           letterboxLayout?.renderedHeight ||
                           normalizedViewport.height,
-                      }
+                    }
                     : undefined
                 }
               >
@@ -1320,13 +1359,13 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
                     ...panelStyle,
                     ...(isLetterboxFullscreen && normalizedViewport
                       ? {
-                          width:
+                        width:
                             letterboxLayout?.renderedWidth ||
                             normalizedViewport.width,
-                          height:
+                        height:
                             letterboxLayout?.renderedHeight ||
                             normalizedViewport.height,
-                        }
+                      }
                       : {}),
                   }}
                 >
@@ -1463,6 +1502,42 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
                     handlePresentationDraftChange({
                       height: typeof value === 'number' ? value : undefined,
                     })
+                  }
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-1 text-sm text-(--color-text-2)">
+                {t('topology.fixedResolutionBackground')}
+              </div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={
+                    presentationConfigDraft.letterboxColor ||
+                    DEFAULT_TOPOLOGY_LETTERBOX_COLOR
+                  }
+                  aria-label={t('topology.fixedResolutionBackground')}
+                  className="h-10 w-14 cursor-pointer rounded border border-(--color-border-1) bg-transparent p-1"
+                  onChange={(event) =>
+                    setPresentationConfigDraft((prev) => ({
+                      ...prev,
+                      letterboxColor: event.target.value,
+                    }))
+                  }
+                />
+                <Input
+                  value={
+                    presentationConfigDraft.letterboxColor ||
+                    DEFAULT_TOPOLOGY_LETTERBOX_COLOR
+                  }
+                  placeholder={DEFAULT_TOPOLOGY_LETTERBOX_COLOR}
+                  onChange={(event) =>
+                    setPresentationConfigDraft((prev) => ({
+                      ...prev,
+                      letterboxColor: event.target.value,
+                    }))
                   }
                 />
               </div>
