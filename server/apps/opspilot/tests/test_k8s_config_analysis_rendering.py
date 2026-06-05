@@ -405,3 +405,24 @@ def test_analyze_deployment_configurations_marks_healthy_workload_consistently(m
     assert "未发现明显配置问题" in payload["fallback_markdown"]
     assert "不要调用 request_user_choice" in result["_next_step_hint"]
     assert "不要调用 generate_repair_report" in result["_next_step_hint"]
+
+
+def test_analyze_deployment_configurations_reports_missing_named_deployment(monkeypatch):
+    result = _run_config_analysis(
+        monkeypatch,
+        deployments=[_make_deployment(name="nginx-test")],
+        pdbs_by_namespace={"default": []},
+        name="missing",
+    )
+
+    assert result == {
+        "success": False,
+        "error": "未找到名为 missing 的 Deployment",
+        "code": "deployment_not_found",
+        "target_name": "missing",
+        "namespace": None,
+        "_next_step_hint": (
+            "未找到名为 missing 的 Deployment。"
+            "请先确认名称是否正确，必要时先调用 list_kubernetes_deployments 重新查看可用 Deployment。"
+        ),
+    }
