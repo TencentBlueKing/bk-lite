@@ -67,9 +67,40 @@ export interface ConfigDiffReportValue {
   }>;
 }
 
+export interface ConfigAnalysisReportItemValue {
+  issue: string;
+  count: number;
+  workloads: string[];
+  risk: string;
+}
+
+export interface ConfigAnalysisSeveritySectionValue {
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'warning' | 'info';
+  title: string;
+  items: ConfigAnalysisReportItemValue[];
+}
+
+export interface ConfigAnalysisRecommendationValue {
+  priority: 'P1' | 'P2' | 'P3';
+  action: string;
+  target: string;
+  benefit: string;
+}
+
 export interface ConfigAnalysisReportValue {
   report_id: string;
+  title?: string;
+  cluster_name?: string;
+  summary?: {
+    total?: number;
+    problematic?: number;
+    healthy?: number;
+    top_recommendation?: string;
+  };
+  severity_sections?: ConfigAnalysisSeveritySectionValue[];
+  recommendations?: ConfigAnalysisRecommendationValue[];
   markdown: string;
+  fallback_markdown?: string;
 }
 
 export interface ReportFileDownloadValue {

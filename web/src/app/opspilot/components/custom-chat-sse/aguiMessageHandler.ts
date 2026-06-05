@@ -21,6 +21,7 @@ import {
   ApprovalRequest,
   BrowserStepProgressData,
   BrowserStepsHistory,
+  ConfigAnalysisReport,
   ConfigDiffReport,
   CustomChatMessage,
   RepairCommands,
@@ -46,6 +47,7 @@ type ContentBlock =
   | { type: 'toolCall'; id: string }
   | { type: 'thinking' }
   | { type: 'configDiff'; reportId: string }
+  | { type: 'configAnalysis'; reportId: string }
   | { type: 'fileDownload'; downloadId: string }
   | { type: 'repairCommands'; commandsId: string }
   | { type: 'userChoice'; choiceId: string };
@@ -63,6 +65,7 @@ export class AGUIMessageHandler {
   private approvalRequests: ApprovalRequest[] = [];
   private userChoiceRequests: UserChoiceRequest[] = [];
   private configDiffReports: ConfigDiffReport[] = [];
+  private configAnalysisReports: ConfigAnalysisReport[] = [];
   private reportFileDownloads: ReportFileDownload[] = [];
   private repairCommandsList: RepairCommands[] = [];
   private agentStepProgressList: AgentStepProgressData[] = [];
@@ -120,6 +123,9 @@ export class AGUIMessageHandler {
             configDiffReports: this.configDiffReports.length > 0
               ? this.configDiffReports
               : msgItem.configDiffReports,
+            configAnalysisReports: this.configAnalysisReports.length > 0
+              ? this.configAnalysisReports
+              : msgItem.configAnalysisReports,
             reportFileDownloads: this.reportFileDownloads.length > 0
               ? this.reportFileDownloads
               : msgItem.reportFileDownloads,
@@ -177,6 +183,10 @@ export class AGUIMessageHandler {
         // Insert placeholder marker for React component rendering
         parts.push(`\n\n<!--CONFIG_DIFF:${block.reportId}-->`);
         lastBlockType = 'configDiff';
+      } else if (block.type === 'configAnalysis') {
+        flushToolCalls();
+        parts.push(`\n\n<!--CONFIG_ANALYSIS:${block.reportId}-->`);
+        lastBlockType = 'configAnalysis';
       } else if (block.type === 'fileDownload') {
         flushToolCalls();
         // File download cards are rendered via reportFileDownloads, no inline marker needed
@@ -467,7 +477,45 @@ export class AGUIMessageHandler {
 
   handleConfigAnalysisReport(value: ConfigAnalysisReportValue) {
     this.flushCurrentTextBlock();
-    this.contentBlocks.push({ type: 'text', content: value.markdown });
+
+    const hasStructuredPayload =
+      Boolean(value.title) &&
+      Boolean(value.cluster_name) &&
+      value.summary !== undefined &&
+      Array.isArray(value.severity_sections) &&
+      Array.isArray(value.recommendations);
+
+    if (hasStructuredPayload) {
+      const existingIndex = this.configAnalysisReports.findIndex(
+        report => report.report_id === value.report_id
+      );
+      const report: ConfigAnalysisReport = {
+        report_id: value.report_id,
+        title: value.title || '',
+        cluster_name: value.cluster_name || '',
+        summary: value.summary || {},
+        severity_sections: value.severity_sections || [],
+        recommendations: value.recommendations || [],
+        fallback_markdown: value.fallback_markdown || value.markdown,
+        received_at: Date.now(),
+      };
+
+      if (existingIndex >= 0) {
+        this.configAnalysisReports[existingIndex] = report;
+      } else {
+        this.configAnalysisReports.push(report);
+      }
+
+      const hasMarker = this.contentBlocks.some(
+        block => block.type === 'configAnalysis' && block.reportId === value.report_id
+      );
+      if (!hasMarker) {
+        this.contentBlocks.push({ type: 'configAnalysis', reportId: value.report_id });
+      }
+    } else {
+      this.contentBlocks.push({ type: 'text', content: value.fallback_markdown || value.markdown });
+    }
+
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
