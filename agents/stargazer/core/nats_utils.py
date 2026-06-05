@@ -37,6 +37,18 @@ _shared_nc: Optional[NATS] = None
 _connect_lock: Optional[asyncio.Lock] = None
 
 
+class NatsLinesPublishError(RuntimeError):
+    def __init__(self, subject: str, delivered_count: int, error: Exception):
+        self.subject = subject
+        self.delivered_count = delivered_count
+        self.error = error
+        super().__init__(
+            f"NATS publish lines failed [{subject}] after delivering "
+            f"{delivered_count} lines: {type(error).__name__}: {error}"
+        )
+        self.__cause__ = error
+
+
 def _get_lock() -> asyncio.Lock:
     """惰性创建锁，确保绑定到当前运行的事件循环。"""
     global _connect_lock
@@ -199,8 +211,11 @@ async def nats_publish_lines(subject: str, lines: List[str]) -> int:
 
     nc = await get_shared_nats()
     count = 0
-    for line in lines:
-        await nc.publish(subject, line.encode("utf-8"))
-        count += 1
-    await nc.flush()
+    try:
+        for line in lines:
+            await nc.publish(subject, line.encode("utf-8"))
+            count += 1
+        await nc.flush()
+    except Exception as e:
+        raise NatsLinesPublishError(subject, count, e) from e
     return count

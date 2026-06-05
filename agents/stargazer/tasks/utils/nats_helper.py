@@ -14,7 +14,7 @@ import traceback
 from typing import Dict, Any
 from sanic.log import logger
 from influxdb_client import Point, WritePrecision
-from core.nats_utils import nats_publish, nats_publish_lines
+from core.nats_utils import NatsLinesPublishError, nats_publish, nats_publish_lines
 
 
 class MetricsPublishError(RuntimeError):
@@ -69,8 +69,18 @@ async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_
                 f"[NATS Helper] Metrics publish incomplete attempt={attempt} task_id={task_id} "
                 f"subject={subject} success_count={success_count} total_lines={total_lines}"
             )
+        except NatsLinesPublishError as err:
+            success_count = err.delivered_count
+            best_success_count = max(best_success_count, success_count)
+            last_error = f"{type(err).__name__}: {err}"
+            logger.warning(
+                f"[NATS Helper] Metrics publish failed attempt={attempt} task_id={task_id} "
+                f"subject={subject} success_count={success_count} total_lines={total_lines} "
+                f"error={last_error}"
+            )
         except Exception as err:
-            success_count = 0
+            success_count = getattr(err, "delivered_count", 0)
+            best_success_count = max(best_success_count, success_count)
             last_error = f"{type(err).__name__}: {err}"
             logger.warning(
                 f"[NATS Helper] Metrics publish failed attempt={attempt} task_id={task_id} "
