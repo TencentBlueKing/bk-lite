@@ -56,12 +56,25 @@ async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_
     for attempt in range(1, max_retries + 2):
         try:
             success_count = await nats_publish_lines(subject, influx_lines)
+            logger.info(
+                f"[NATS Helper] Metrics publish attempt={attempt} task_id={task_id} "
+                f"subject={subject} success_count={success_count} total_lines={total_lines}"
+            )
             if success_count == total_lines:
                 return success_count
             last_error = f"publish incomplete ({success_count}/{total_lines})"
+            logger.warning(
+                f"[NATS Helper] Metrics publish incomplete attempt={attempt} task_id={task_id} "
+                f"subject={subject} success_count={success_count} total_lines={total_lines}"
+            )
         except Exception as err:
             success_count = 0
             last_error = f"{type(err).__name__}: {err}"
+            logger.warning(
+                f"[NATS Helper] Metrics publish failed attempt={attempt} task_id={task_id} "
+                f"subject={subject} success_count={success_count} total_lines={total_lines} "
+                f"error={last_error}"
+            )
 
         if attempt <= max_retries:
             await asyncio.sleep(min(attempt * 0.2, 1.0))
@@ -156,7 +169,11 @@ async def publish_metrics_to_nats(
 
     # 复用进程级共享长连接逐行发送（与 Telegraf 保持一致）
     # 不再每次采集都新建 TLS 连接，避免事件循环繁忙时握手超时被 reset
-    await _publish_lines_with_retry(subject, influx_lines, task_id)
+    success_count = await _publish_lines_with_retry(subject, influx_lines, task_id)
+    logger.info(
+        f"[NATS Helper] Successfully published {success_count}/{len(influx_lines)} metrics "
+        f"to '{subject}' for task {task_id}"
+    )
 
 
 def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -> list:
