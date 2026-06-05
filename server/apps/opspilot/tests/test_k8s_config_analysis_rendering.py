@@ -146,20 +146,26 @@ def test_should_emit_config_analysis_report_for_summary_only_result():
 
 
 def test_build_config_analysis_report_payload_keeps_scan_context_for_healthy_scan():
+    deployments_full = [{"name": f"deploy-{i}"} for i in range(25)]
     parsed = {
         "cluster_name": "Kubernetes - 1",
         "problematic": 0,
-        "healthy": 9,
-        "total": 9,
+        "healthy": 25,
+        "total": 100,
         "offset": 50,
         "limit": 25,
         "has_more": True,
         "issues_detail": [],
+        "_deployments_full": deployments_full,
     }
 
     payload = build_config_analysis_report_payload(parsed)
 
     assert payload["scope"] == {"cluster_name": "Kubernetes - 1"}
     assert payload["scan_range"] == {"offset": 50, "limit": 25, "has_more": True}
+    assert payload["summary"] == {"total": 25, "problematic": 0, "healthy": 25}
     assert payload["severity_sections"] == []
     assert payload["recommendations"] == []
+    assert "未发现明显配置问题" in payload["fallback_markdown"]
+    assert "总计 25 个工作负载" in payload["fallback_markdown"]
+    assert "100" not in payload["fallback_markdown"]

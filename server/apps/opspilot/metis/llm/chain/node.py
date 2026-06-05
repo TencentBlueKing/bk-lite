@@ -166,7 +166,7 @@ def build_config_analysis_report_markdown(parsed: Dict[str, Any]) -> str:
     cluster_name = parsed.get("cluster_name") or "Kubernetes"
     problematic = parsed.get("problematic", 0)
     healthy = parsed.get("healthy")
-    total = parsed.get("total")
+    total = _build_config_analysis_report_total(parsed)
     issues_detail = parsed.get("issues_detail") or []
 
     lines = [f"# 配置检查报告 - {cluster_name}"]
@@ -179,6 +179,9 @@ def build_config_analysis_report_markdown(parsed: Dict[str, Any]) -> str:
         summary_parts.append(f"健康 {healthy} 个")
     if summary_parts:
         lines.append("；".join(summary_parts))
+
+    if not issues_detail:
+        lines.append("未发现明显配置问题")
 
     severity_titles = {
         "critical": "Critical",
@@ -320,9 +323,24 @@ def _build_config_analysis_scan_range(parsed: Dict[str, Any]) -> Dict[str, Any]:
     return scan_range
 
 
+def _build_config_analysis_report_total(parsed: Dict[str, Any]) -> Optional[int]:
+    healthy = parsed.get("healthy")
+    problematic = parsed.get("problematic")
+    if isinstance(healthy, int) and isinstance(problematic, int):
+        return healthy + problematic
+
+    deployments_full = parsed.get("_deployments_full")
+    if isinstance(deployments_full, list):
+        return len(deployments_full)
+
+    total = parsed.get("total")
+    return total if isinstance(total, int) else None
+
+
 def build_config_analysis_report_payload(parsed: Dict[str, Any]) -> Dict[str, Any]:
     cluster_name = parsed.get("cluster_name") or "Kubernetes"
     issues_detail = parsed.get("issues_detail") or []
+    report_total = _build_config_analysis_report_total(parsed)
 
     severity_titles = {
         "critical": "Critical",
@@ -389,7 +407,7 @@ def build_config_analysis_report_payload(parsed: Dict[str, Any]) -> Dict[str, An
         "scope": _build_config_analysis_scope(parsed),
         "scan_range": _build_config_analysis_scan_range(parsed),
         "summary": {
-            "total": parsed.get("total"),
+            "total": report_total,
             "problematic": parsed.get("problematic"),
             "healthy": parsed.get("healthy"),
         },
