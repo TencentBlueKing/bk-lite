@@ -1,5 +1,7 @@
 import os
 
+from celery.schedules import crontab
+
 # REMOTE_SERVICE
 METIS_SERVER_URL = os.getenv("METIS_SERVER_URL", "http://rag-server-api/")
 # BOT 环境变量
@@ -24,3 +26,11 @@ PILOT_RUNTIME = os.getenv("PILOT_RUNTIME", "kubernetes")
 LAB_RUNTIME = os.getenv("LAB_RUNTIME", "kubernetes")
 
 LOGIN_URL = os.getenv("LOGIN_URL", "http://bklite-server:8000/api/v1/core/api/login/")
+
+
+CELERY_BEAT_SCHEDULE = {
+    "cleanup-expired-workflow-attachments": {
+        "task": "apps.opspilot.tasks.cleanup_expired_workflow_attachments_task",
+        "schedule": crontab(hour=3, minute=0),
+    }
+}

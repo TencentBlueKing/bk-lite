@@ -65,6 +65,13 @@ export const getDefaultConfig = (nodeType: string) => {
         prompt: '',
         uploadedFiles: []
       };
+    case 'notification':
+      return {
+        ...baseConfig,
+        notificationType: 'email',
+        notificationMethod: '',
+        notificationChannels: []
+      };
     case 'agui':
       return {
         name: 'AG-UI',
@@ -116,9 +123,6 @@ export const getDefaultConfig = (nodeType: string) => {
         appTags: [],
         appDescription: ''
       };
-    case 'restful':
-    case 'openai':
-      return baseConfig;
     case 'memory_read':
       return {
         ...baseConfig,
@@ -131,6 +135,8 @@ export const getDefaultConfig = (nodeType: string) => {
         memory_space_id: null,
         title: ''
       };
+    case 'restful':
+    case 'openai':
     default:
       return baseConfig;
   }

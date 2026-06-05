@@ -3,7 +3,7 @@
  * 用于将历史会话中的 AG-UI 协议消息解析并渲染为 HTML
  */
 
-import { BrowserStepProgressData, BrowserStepsHistory, BrowserTaskReceivedData } from '@/app/opspilot/types/global';
+import { BrowserStepProgressData, BrowserStepsHistory, BrowserTaskReceivedData, ReportFileDownload } from '@/app/opspilot/types/global';
 import { initToolCallTooltips, renderErrorMessage, ToolCallInfo } from './toolCallRenderer';
 
 const escapeNewlinesInStrings = (raw: string) => {
@@ -297,9 +297,27 @@ const parseJsonArray = (raw: string): any[] | null => {
   return parseObjectsLenient(unwrapped) || parseObjectsLenient(normalized) || null;
 };
 
+const parseAttachmentToolResult = (content: string) => {
+  try {
+    return JSON.parse(content);
+  } catch {
+    const extractField = (field: string) => {
+      const match = content.match(new RegExp(`[\"']${field}[\"']\\s*:\\s*[\"']([^\"']+)[\"']`));
+      return match?.[1];
+    };
+
+    return {
+      filename: extractField('filename'),
+      file_url: extractField('file_url'),
+      mime_type: extractField('mime_type'),
+    };
+  }
+};
+
 const buildFromEvents = (events: any[], finalize = true) => {
   const parts: string[] = [];
   const toolCalls = new Map<string, ToolCallInfo>();
+  const reportFileDownloads: ReportFileDownload[] = [];
   let currentText = '';
   let thinking = '';
   let isThinking = false;
@@ -404,6 +422,22 @@ const buildFromEvents = (events: any[], finalize = true) => {
           if (tool) {
             tool.result = msg.content || '';
             tool.status = 'completed';
+            if (tool.name === 'generate_attachment_file') {
+              try {
+                const parsed = parseAttachmentToolResult(msg.content || '{}');
+                if (parsed?.file_url && parsed?.filename) {
+                  reportFileDownloads.push({
+                    download_id: `attachment_${msg.toolCallId}`,
+                    filename: parsed.filename,
+                    file_url: parsed.file_url,
+                    mime_type: parsed.mime_type || 'application/octet-stream',
+                    received_at: Date.now(),
+                  });
+                }
+              } catch {
+                // ignore invalid tool result payloads
+              }
+            }
           }
         }
         break;
@@ -511,6 +545,7 @@ const buildFromEvents = (events: any[], finalize = true) => {
     browserStepProgress: lastStep,
     browserStepsHistory,
     agentStepProgress: agentSteps.length > 0 ? agentSteps : undefined,
+    reportFileDownloads: reportFileDownloads.length > 0 ? reportFileDownloads : undefined,
     toolCalls: toolCalls.size > 0 ? Array.from(toolCalls.entries()).map(([id, info]) => ({
       id, name: info.name, args: info.args, status: info.status as 'calling' | 'completed', result: info.result
     })) : undefined
@@ -565,6 +600,7 @@ export const processHistoryMessageWithExtras = (
   browserStepProgress?: BrowserStepProgressData | null;
   browserStepsHistory?: BrowserStepsHistory | null;
   agentStepProgress?: import('@/app/opspilot/types/global').AgentStepProgressData[];
+  reportFileDownloads?: ReportFileDownload[];
   toolCalls?: Array<{ id: string; name: string; args: string; status: 'calling' | 'completed'; result?: string }>;
 } => {
   if (role !== 'bot') {
@@ -573,7 +609,8 @@ export const processHistoryMessageWithExtras = (
       thinking: '',
       isThinking: false,
       browserStepProgress: null,
-      browserStepsHistory: null
+      browserStepsHistory: null,
+      reportFileDownloads: undefined,
     };
   }
 
@@ -587,7 +624,8 @@ export const processHistoryMessageWithExtras = (
       thinking: '',
       isThinking: false,
       browserStepProgress: null,
-      browserStepsHistory: null
+      browserStepsHistory: null,
+      reportFileDownloads: undefined,
     };
   }
 
@@ -598,7 +636,8 @@ export const processHistoryMessageWithExtras = (
       thinking: '',
       isThinking: false,
       browserStepProgress: null,
-      browserStepsHistory: null
+      browserStepsHistory: null,
+      reportFileDownloads: undefined,
     };
   }
 

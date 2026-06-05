@@ -309,6 +309,7 @@ export class AGUIMessageHandler {
     if (toolCall) {
       toolCall.status = 'completed';
       toolCall.result = content;
+      this.syncAttachmentDownloadFromToolResult(toolCallId, toolCall.name, content);
 
       // Fallback: if report_config_diff completed but CUSTOM event wasn't received,
       // construct the DiffReportCard from tool args
@@ -337,6 +338,54 @@ export class AGUIMessageHandler {
 
       closeActiveToolCallPanel(toolCallId);
       this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
+    }
+  }
+
+  private syncAttachmentDownloadFromToolResult(toolCallId: string, toolName: string, content: string) {
+    if (toolName !== 'generate_attachment_file') {
+      return;
+    }
+
+    try {
+      const parsed = this.parseAttachmentToolResult(content);
+      if (!parsed?.file_url || !parsed?.filename) {
+        return;
+      }
+
+      const downloadId = `attachment_${toolCallId}`;
+      const existed = this.reportFileDownloads.some(download => download.download_id === downloadId);
+      if (existed) {
+        return;
+      }
+
+      this.reportFileDownloads.push({
+        download_id: downloadId,
+        filename: parsed.filename,
+        file_url: parsed.file_url,
+        mime_type: parsed.mime_type || 'application/octet-stream',
+        received_at: Date.now(),
+      });
+      this.flushCurrentTextBlock();
+      this.contentBlocks.push({ type: 'fileDownload', downloadId });
+    } catch {
+      // ignore invalid tool result payloads
+    }
+  }
+
+  private parseAttachmentToolResult(content: string) {
+    try {
+      return JSON.parse(content);
+    } catch {
+      const extractField = (field: string) => {
+        const match = content.match(new RegExp(`[\"']${field}[\"']\\s*:\\s*[\"']([^\"']+)[\"']`));
+        return match?.[1];
+      };
+
+      return {
+        filename: extractField('filename'),
+        file_url: extractField('file_url'),
+        mime_type: extractField('mime_type'),
+      };
     }
   }
 

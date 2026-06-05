@@ -1229,6 +1229,8 @@
     "connectNodes": "Connect Nodes",
     "triggerFrequency": "Trigger Frequency",
     "notificationMethod": "Notification Method",
+    "notificationAutoAttachmentsTip": "Email notifications automatically include all attachments generated during this workflow run.",
+    "notificationAutoAttachmentsSummary": "auto-send all attachments",
     "enterpriseWechatBot": "Enterprise WeChat Bot",
     "feishuBot": "Feishu Bot",
     "dingtalkBot": "DingTalk Bot",

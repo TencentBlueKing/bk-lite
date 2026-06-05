@@ -71,7 +71,8 @@ export const formatConfigInfo = (data: ChatflowNodeData, t: any) => {
         );
         const channelName = selectedChannel ? selectedChannel.name : `ID: ${notificationConfig.notificationMethod}`;
         const typeDisplay = notificationConfig.notificationType === 'email' ? t('chatflow.email') : t('chatflow.enterpriseWechatBot');
-        return `${typeDisplay} - ${channelName}`;
+        const attachmentDisplay = notificationConfig.notificationType === 'email' ? ` · ${t('chatflow.notificationAutoAttachmentsSummary')}` : '';
+        return `${typeDisplay} - ${channelName}${attachmentDisplay}`;
       } else if (notificationConfig.notificationType) {
         const typeDisplay = notificationConfig.notificationType === 'email' ? t('chatflow.email') : t('chatflow.enterpriseWechatBot');
         return `${typeDisplay} - ${t('chatflow.notificationMethod')}: --`;

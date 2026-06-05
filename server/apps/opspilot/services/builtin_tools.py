@@ -1,5 +1,11 @@
 from apps.core.utils.loader import LanguageLoader
 
+BUILTIN_MONITOR_TOOL_ID = -6
+BUILTIN_MONITOR_TOOL_NAME = "monitor"
+
+BUILTIN_ATTACHMENT_FILE_TOOL_ID = -5
+BUILTIN_ATTACHMENT_FILE_TOOL_NAME = "attachment_file"
+
 BUILTIN_REDIS_TOOL_ID = -1
 BUILTIN_REDIS_TOOL_NAME = "redis"
 
@@ -40,8 +46,82 @@ def _build_sub_tools(tool_name, exports, loader: LanguageLoader):
     return sub_tools
 
 
+def build_builtin_monitor_tool(loader: LanguageLoader):
+    from apps.opspilot.metis.llm.tools.monitor import CONSTRUCTOR_PARAMS as monitor_constructor_params
+    from apps.opspilot.metis.llm.tools.monitor import __all__ as monitor_exports
+
+    description = loader.get(f"tools.{BUILTIN_MONITOR_TOOL_NAME}.description") or "Monitor built-in tool"
+    return {
+        "id": BUILTIN_MONITOR_TOOL_ID,
+        "name": BUILTIN_MONITOR_TOOL_NAME,
+        "display_name": "Monitor",
+        "description": description,
+        "description_tr": description,
+        "icon": "gongjuji",
+        "team": [],
+        "tags": [],
+        "params": {
+            "name": BUILTIN_MONITOR_TOOL_NAME,
+            "url": f"langchain:{BUILTIN_MONITOR_TOOL_NAME}",
+            "kwargs": _build_kwargs_from_params(monitor_constructor_params),
+            "enable_auth": False,
+            "auth_token": "",
+        },
+        "is_build_in": True,
+        "tools": _build_sub_tools(BUILTIN_MONITOR_TOOL_NAME, monitor_exports, loader),
+    }
+
+
+def build_builtin_monitor_runtime_tool(tool_kwargs):
+    return {
+        "name": BUILTIN_MONITOR_TOOL_NAME,
+        "url": f"langchain:{BUILTIN_MONITOR_TOOL_NAME}",
+        "enable_auth": False,
+        "auth_token": "",
+        "extra_param_prompt": tool_kwargs or {},
+    }
+
+
+def build_builtin_attachment_file_tool(loader: LanguageLoader):
+    from apps.opspilot.metis.llm.tools.attachment import CONSTRUCTOR_PARAMS as attachment_constructor_params
+    from apps.opspilot.metis.llm.tools.attachment import __all__ as attachment_exports
+
+    description = loader.get(f"tools.{BUILTIN_ATTACHMENT_FILE_TOOL_NAME}.description") or "Workflow attachment built-in tool"
+    return {
+        "id": BUILTIN_ATTACHMENT_FILE_TOOL_ID,
+        "name": BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
+        "display_name": "Attachment File",
+        "description": description,
+        "description_tr": description,
+        "icon": "gongjuji",
+        "team": [],
+        "tags": [],
+        "params": {
+            "name": BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
+            "url": f"langchain:{BUILTIN_ATTACHMENT_FILE_TOOL_NAME}",
+            "kwargs": _build_kwargs_from_params(attachment_constructor_params),
+            "enable_auth": False,
+            "auth_token": "",
+        },
+        "is_build_in": True,
+        "tools": _build_sub_tools(BUILTIN_ATTACHMENT_FILE_TOOL_NAME, attachment_exports, loader),
+    }
+
+
+def build_builtin_attachment_file_runtime_tool(tool_kwargs):
+    return {
+        "name": BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
+        "url": f"langchain:{BUILTIN_ATTACHMENT_FILE_TOOL_NAME}",
+        "enable_auth": False,
+        "auth_token": "",
+        "extra_tools_prompt": "",
+        "extra_param_prompt": tool_kwargs or {},
+    }
+
+
 def build_builtin_redis_tool(loader: LanguageLoader):
-    from apps.opspilot.metis.llm.tools.redis import CONSTRUCTOR_PARAMS as redis_constructor_params, __all__ as redis_exports
+    from apps.opspilot.metis.llm.tools.redis import CONSTRUCTOR_PARAMS as redis_constructor_params
+    from apps.opspilot.metis.llm.tools.redis import __all__ as redis_exports
 
     description = loader.get(f"tools.{BUILTIN_REDIS_TOOL_NAME}.description") or "Redis built-in tool"
     return {
@@ -78,7 +158,8 @@ def build_builtin_redis_runtime_tool(tool_kwargs):
 
 
 def build_builtin_mysql_tool(loader: LanguageLoader):
-    from apps.opspilot.metis.llm.tools.mysql import CONSTRUCTOR_PARAMS as mysql_constructor_params, __all__ as mysql_exports
+    from apps.opspilot.metis.llm.tools.mysql import CONSTRUCTOR_PARAMS as mysql_constructor_params
+    from apps.opspilot.metis.llm.tools.mysql import __all__ as mysql_exports
 
     description = loader.get(f"tools.{BUILTIN_MYSQL_TOOL_NAME}.description") or "MySQL built-in tool"
     return {
@@ -115,7 +196,8 @@ def build_builtin_mysql_runtime_tool(tool_kwargs):
 
 
 def build_builtin_oracle_tool(loader: LanguageLoader):
-    from apps.opspilot.metis.llm.tools.oracle import CONSTRUCTOR_PARAMS as oracle_constructor_params, __all__ as oracle_exports
+    from apps.opspilot.metis.llm.tools.oracle import CONSTRUCTOR_PARAMS as oracle_constructor_params
+    from apps.opspilot.metis.llm.tools.oracle import __all__ as oracle_exports
 
     description = loader.get(f"tools.{BUILTIN_ORACLE_TOOL_NAME}.description") or "Oracle built-in tool"
     return {
@@ -152,7 +234,8 @@ def build_builtin_oracle_runtime_tool(tool_kwargs):
 
 
 def build_builtin_mssql_tool(loader: LanguageLoader):
-    from apps.opspilot.metis.llm.tools.mssql import CONSTRUCTOR_PARAMS as mssql_constructor_params, __all__ as mssql_exports
+    from apps.opspilot.metis.llm.tools.mssql import CONSTRUCTOR_PARAMS as mssql_constructor_params
+    from apps.opspilot.metis.llm.tools.mssql import __all__ as mssql_exports
 
     description = loader.get(f"tools.{BUILTIN_MSSQL_TOOL_NAME}.description") or "MSSQL built-in tool"
     return {

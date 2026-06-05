@@ -7,10 +7,10 @@ import smtplib
 import time
 import urllib.parse
 from email import encoders
+from email.header import Header
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.utils import encode_rfc2231
 from urllib.parse import unquote, urlparse
 
 import requests
@@ -129,11 +129,11 @@ def send_email_to_user(channel_config, content, receivers, title, attachments=No
 
                 part = MIMEBase("application", "octet-stream")
                 part.set_payload(file_data)
-                # 使用 RFC 2231 编码处理中文文件名
+                header_filename = filename if filename.isascii() else Header(filename, "utf-8").encode()
                 part.add_header(
                     "Content-Disposition",
                     "attachment",
-                    filename=encode_rfc2231(filename, "utf-8"),
+                    filename=header_filename,
                 )
                 # 对附件内容进行 base64 编码
                 encoders.encode_base64(part)
