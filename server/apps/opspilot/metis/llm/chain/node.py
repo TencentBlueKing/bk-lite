@@ -311,8 +311,24 @@ def should_emit_config_analysis_report(parsed: Dict[str, Any]) -> bool:
 
 
 def _build_config_analysis_scope(parsed: Dict[str, Any]) -> Dict[str, Any]:
+    scope = parsed.get("scope") if isinstance(parsed.get("scope"), dict) else {}
+    result = {}
+
     cluster_name = parsed.get("cluster_name")
-    return {"cluster_name": cluster_name} if cluster_name else {}
+    if cluster_name:
+        result["cluster_name"] = cluster_name
+
+    for key in ("namespace", "instance_name", "name", "target_name"):
+        value = scope.get(key) or parsed.get(key)
+        if value not in (None, ""):
+            result[key] = value
+
+    fallback_target = scope.get("target_name") or scope.get("name") or parsed.get("target_name") or parsed.get("name")
+    if fallback_target:
+        result.setdefault("name", fallback_target)
+        result.setdefault("target_name", fallback_target)
+
+    return result
 
 
 def _build_config_analysis_scan_range(parsed: Dict[str, Any]) -> Dict[str, Any]:

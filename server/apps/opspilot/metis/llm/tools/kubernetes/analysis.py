@@ -484,12 +484,16 @@ def _collect_issue_workloads(analysis_results):
         workload_has_issue = False
 
         for issue in analysis.get("issues", []):
-            issue_to_workloads.setdefault(issue, []).append(workload_label)
+            issue_to_workloads.setdefault(issue, [])
+            if workload_label not in issue_to_workloads[issue]:
+                issue_to_workloads[issue].append(workload_label)
             workload_has_issue = True
 
         for container in analysis.get("config_analysis", {}).get("containers", []):
             for issue in container.get("issues", []):
-                issue_to_workloads.setdefault(issue, []).append(workload_label)
+                issue_to_workloads.setdefault(issue, [])
+                if workload_label not in issue_to_workloads[issue]:
+                    issue_to_workloads[issue].append(workload_label)
                 workload_has_issue = True
 
         if workload_has_issue:
@@ -738,6 +742,16 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
 
         result = {
             "cluster_name": cluster_name,
+            "scope": {
+                key: value
+                for key, value in {
+                    "namespace": namespace,
+                    "instance_name": instance_name,
+                    "name": name,
+                    "target_name": name,
+                }.items()
+                if value not in (None, "")
+            },
             "total": total_count,
             "healthy": _healthy_count,
             "problematic": _problematic_count,

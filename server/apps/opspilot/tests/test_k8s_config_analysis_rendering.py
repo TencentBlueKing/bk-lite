@@ -81,7 +81,7 @@ def _make_pdb_for(deployment_name):
     )
 
 
-def _run_config_analysis(monkeypatch, deployments, pdbs_by_namespace=None):
+def _run_config_analysis(monkeypatch, deployments, pdbs_by_namespace=None, **invoke_kwargs):
     pdbs_by_namespace = pdbs_by_namespace or {}
 
     class _AppsV1Api:
@@ -112,7 +112,7 @@ def _run_config_analysis(monkeypatch, deployments, pdbs_by_namespace=None):
         _CoreV1Api,
     )
 
-    return json.loads(analyze_deployment_configurations.invoke({}))
+    return json.loads(analyze_deployment_configurations.invoke(invoke_kwargs))
 
 
 def test_build_post_tool_directives_prevents_duplicate_config_summary_and_report():
@@ -288,6 +288,38 @@ def test_analyze_deployment_configurations_counts_container_only_issues_consiste
     assert "request_user_choice" in result["_next_step_hint"]
 
 
+def test_analyze_deployment_configurations_dedupes_workload_labels_per_issue(monkeypatch):
+    result = _run_config_analysis(
+        monkeypatch,
+        deployments=[
+            _make_deployment(
+                name="api",
+                containers=[
+                    _make_container(has_liveness=False, has_readiness=False),
+                    _make_container(has_liveness=False, has_readiness=False),
+                ],
+                affinity=object(),
+            )
+        ],
+        pdbs_by_namespace={"default": [_make_pdb_for("api")]},
+    )
+
+    assert result["issues_detail"] == [
+        {
+            "severity": "high",
+            "issue": "未配置存活探针",
+            "count": 1,
+            "workloads": ["api (default)"],
+        },
+        {
+            "severity": "high",
+            "issue": "未配置就绪探针",
+            "count": 1,
+            "workloads": ["api (default)"],
+        },
+    ]
+
+
 def test_analyze_deployment_configurations_treats_recommendation_only_workload_as_healthy(monkeypatch):
     result = _run_config_analysis(
         monkeypatch,
@@ -306,6 +338,33 @@ def test_analyze_deployment_configurations_treats_recommendation_only_workload_a
     assert "未发现明显配置问题" in payload["fallback_markdown"]
     assert "不要调用 request_user_choice" in result["_next_step_hint"]
     assert "不要调用 generate_repair_report" in result["_next_step_hint"]
+
+
+def test_analyze_deployment_configurations_carries_scan_scope_into_payload(monkeypatch):
+    result = _run_config_analysis(
+        monkeypatch,
+        deployments=[_make_deployment(name="api", namespace="payments")],
+        pdbs_by_namespace={"payments": [_make_pdb_for("api")]},
+        namespace="payments",
+        instance_name="prod-cluster",
+        name="api",
+    )
+
+    payload = build_config_analysis_report_payload(result)
+
+    assert result["scope"] == {
+        "namespace": "payments",
+        "instance_name": "prod-cluster",
+        "name": "api",
+        "target_name": "api",
+    }
+    assert payload["scope"] == {
+        "cluster_name": "Kubernetes - 1",
+        "namespace": "payments",
+        "instance_name": "prod-cluster",
+        "name": "api",
+        "target_name": "api",
+    }
 
 
 def test_analyze_deployment_configurations_marks_healthy_workload_consistently(monkeypatch):
