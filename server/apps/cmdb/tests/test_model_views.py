@@ -97,6 +97,13 @@ def test_model_add_permission_same_model_id_ignores_other_org_permissions():
     assert models[0]["permission"] == ["View"]
 
 
+def test_model_add_permission_merges_default_group_and_same_org_permission():
+    models = [{"model_id": "host", "group": [1, 6]}]
+    pmap = {6: {"permission_instances_map": {"host": ["Operate"]}}}
+    ModelViewSet.model_add_permission(models, permission_instances_map=pmap, default_group=1)
+    assert set(models[0]["permission"]) == {"View", "Operate"}
+
+
 # --------------------------------------------------------------------------
 # get_model_info
 # --------------------------------------------------------------------------
