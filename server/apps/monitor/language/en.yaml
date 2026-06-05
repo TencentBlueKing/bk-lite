@@ -106,6 +106,18 @@ monitor_object_metric:
     system_load15:
       name: 15 Minute Average Load
       desc: Represents the average system load over the last 15 minutes, commonly used to evaluate long-term load stability.
+    host_cpu_core_count:
+      name: CPU Core Count
+      desc: Represents the number of logical CPU cores available on the host, used to evaluate compute capacity and resource baseline.
+    host_cpu_load_1m:
+      name: 1 Minute Average Load
+      desc: Represents the host's average system load over the last 1 minute, used to observe instantaneous runtime pressure.
+    host_cpu_load_5m:
+      name: 5 Minute Average Load
+      desc: Represents the host's average system load over the last 5 minutes, used to evaluate short-term load trends.
+    host_cpu_load_15m:
+      name: 15 Minute Average Load
+      desc: Represents the host's average system load over the last 15 minutes, used to determine whether the system remains under sustained load.
     diskio_io_util:
       name: Disk I/O Usage
       desc: Indicates the proportion of time a disk device is busy handling I/O operations. Sustained high values usually suggest disk I/O saturation.
@@ -130,9 +142,15 @@ monitor_object_metric:
     disk_total:
       name: Disk Total
       desc: Represents the total capacity of a disk or filesystem, used for capacity planning and resource management.
+    host_disk_total_bytes:
+      name: Filesystem Total Capacity
+      desc: Represents the total capacity of the filesystem for a specific mount point, used to evaluate per-mount capacity baselines.
     disk_free:
       name: Disk Free
       desc: Represents the currently available free space of a disk or filesystem, used to monitor capacity risks.
+    host_disk_used_bytes:
+      name: Filesystem Used Capacity
+      desc: Represents the amount of disk space currently consumed on a specific mount point, used to analyze filesystem space usage.
     disk_used_percent:
       name: Disk Usage
       desc: Represents the percentage of disk space that has been consumed, a core metric for disk capacity monitoring.
@@ -154,12 +172,27 @@ monitor_object_metric:
     mem_total:
       name: Total Memory
       desc: Represents the total amount of physical memory available on the system, serving as a baseline for memory evaluation.
+    host_mem_total_bytes:
+      name: Total Physical Memory
+      desc: Represents the total physical memory capacity of the host, used to evaluate the upper bound of available memory resources.
+    host_mem_used_bytes:
+      name: Used Physical Memory
+      desc: Represents the amount of physical memory currently consumed on the host, used to measure actual memory usage.
     mem_available:
       name: Available Memory
       desc: Represents the amount of memory available for applications without causing significant performance degradation.
+    host_mem_available_bytes:
+      name: Available Physical Memory
+      desc: Represents the amount of physical memory currently available for workloads or the operating system, used to judge remaining memory headroom.
     mem_used_percent:
       name: Memory Usage
       desc: Represents the percentage of memory currently in use, indicating overall memory pressure.
+    host_mem_swap_total_bytes:
+      name: Total Swap Space
+      desc: Represents the total swap capacity available on the host, used to evaluate buffering capacity under memory pressure.
+    host_mem_swap_used_bytes:
+      name: Used Swap Space
+      desc: Represents the amount of swap space currently in use on the host, used to observe paging and memory reclamation pressure.
     mem_swap_free:
       name: Swap Free Memory
       desc: Represents the amount of free swap space available, used to monitor buffering capacity under memory pressure.
@@ -181,15 +214,27 @@ monitor_object_metric:
     net_bytes_recv_rate:
       name: Network Receive Throughput Rate
       desc: Represents the amount of data received per unit time on a network interface, used to evaluate inbound bandwidth utilization.
+    host_net_rx_bytes:
+      name: Network Received Bytes
+      desc: Represents the cumulative number of bytes received on a specific network interface, used to analyze inbound traffic volume.
     net_bytes_sent_rate:
       name: Network Send Throughput Rate
       desc: Represents the amount of data sent per unit time on a network interface, used to evaluate outbound bandwidth utilization.
+    host_net_tx_bytes:
+      name: Network Transmitted Bytes
+      desc: Represents the cumulative number of bytes transmitted on a specific network interface, used to analyze outbound traffic volume.
     net_err_in_rate:
       name: Network Receive Error Rate
       desc: Represents the number of errored packets received per unit time, used to monitor network quality.
+    host_net_rx_errors:
+      name: Network Receive Errors
+      desc: Represents the cumulative receive error count on a specific network interface, useful for identifying link quality or driver issues.
     net_err_out_rate:
       name: Network Send Error Rate
       desc: Represents the number of errored packets sent per unit time on a network interface.
+    host_net_tx_errors:
+      name: Network Transmit Errors
+      desc: Represents the cumulative transmit error count on a specific network interface, useful for troubleshooting outbound network anomalies or device faults.
     net_drop_in_rate:
       name: Network Receive Drop Rate
       desc: Represents the number of incoming packets dropped per unit time, indicating congestion or abnormal conditions.
@@ -3281,6 +3326,9 @@ monitor_object_plugin:
     desc: Through the Telegraf collector, gather and analyze host performance data,
       including CPU, memory, disk, and network utilization.
     name: Host(Telegraf)
+  Host Remote:
+    name: Host Remote(Telegraf)
+    desc: Through Telegraf combined with Stargazer remote capabilities, collect host CPU, memory, disk, and network metrics over SSH/WinRM without installing an agent.
   Ping:
     desc: Through the Telegraf collector, regularly send ICMP Echo Requests (ECHO_REQUEST)
       to check the connectivity and response time of target hosts or network devices.
