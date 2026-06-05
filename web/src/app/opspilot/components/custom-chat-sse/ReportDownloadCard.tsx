@@ -10,7 +10,25 @@ interface ReportDownloadCardProps {
 }
 
 const ReportDownloadCard: React.FC<ReportDownloadCardProps> = ({ download }) => {
+  const normalizedFileUrl = download.file_url?.startsWith('/api/v1/')
+    ? download.file_url.replace('/api/v1/', '/api/proxy/')
+    : download.file_url;
+
   const handleDownload = useCallback(() => {
+    if (normalizedFileUrl) {
+      const link = document.createElement('a');
+      link.href = normalizedFileUrl;
+      link.download = download.filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+
+    if (!download.content_base64) {
+      return;
+    }
+
     const byteCharacters = atob(download.content_base64);
     const byteNumbers = new Array(byteCharacters.length);
     for (let i = 0; i < byteCharacters.length; i++) {
@@ -26,7 +44,7 @@ const ReportDownloadCard: React.FC<ReportDownloadCardProps> = ({ download }) => 
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [download]);
+  }, [download, normalizedFileUrl]);
 
   return (
     <Tag

@@ -7,7 +7,7 @@ from typing import Any
 from asgiref.sync import sync_to_async
 from django.db.models import Count
 from django.db.models.functions import TruncDate
-from django.http import HttpResponse, JsonResponse
+from django.http import FileResponse, HttpResponse, JsonResponse
 from ipware import get_client_ip
 from wechatpy.enterprise import WeChatCrypto
 
@@ -16,7 +16,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.enum import WorkFlowTaskStatus
-from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill, WorkFlowTaskResult
+from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill, WorkflowAttachmentAsset, WorkFlowTaskResult
 from apps.opspilot.services.chat_service import ChatService
 from apps.opspilot.services.skill_execute_service import SkillExecuteService
 from apps.opspilot.tasks import chat_flow_test_execute_task
@@ -107,6 +107,19 @@ def get_bot_detail(request, bot_id):
         ],
     }
     return JsonResponse(return_data)
+
+
+@api_exempt
+def download_workflow_attachment(request, download_token):
+    asset = WorkflowAttachmentAsset.objects.filter(download_token=download_token).select_related("file_knowledge").first()
+    if not asset:
+        return JsonResponse({"result": False, "message": "Attachment not found"}, status=404)
+
+    asset.file_knowledge.file.open("rb")
+    response = FileResponse(asset.file_knowledge.file, as_attachment=True, filename=asset.filename)
+    if asset.mime_type:
+        response["Content-Type"] = asset.mime_type
+    return response
 
 
 def validate_openai_token(token, team=None, is_mobile=False):

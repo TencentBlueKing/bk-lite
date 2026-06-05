@@ -204,6 +204,20 @@ error:
   knowledge_base_not_found: Knowledge base not found.
   knowledge_base_required: knowledge_base_id is required.
 tools:
+  monitor:
+    name: Monitor
+    description: |
+      Query BK-Lite monitor objects, instances, metrics, and alerts by using the current user's monitor identity.
+    tools:
+      monitor_list_objects:
+        description: List available monitor object types.
+  attachment_file:
+    name: Workflow Attachment File
+    description: |
+      Generate markdown, PDF, or Word attachment files for workflow execution and return a downloadable link.
+    tools:
+      generate_attachment_file:
+        description: Generate a workflow attachment file, persist it to MinIO-backed storage, and return its download link.
   kubernetes:
     name: Kubernetes Tools
     description: |

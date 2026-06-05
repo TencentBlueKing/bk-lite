@@ -10,8 +10,6 @@
 不包含修复命令（命令通过前端事件单独展示）。
 """
 
-import base64
-import uuid
 from collections import OrderedDict
 from datetime import datetime
 from io import BytesIO
@@ -19,17 +17,18 @@ from typing import Any, Dict, List
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Cm, Pt, RGBColor
 from docx.oxml.ns import qn
-
+from docx.shared import Pt, RGBColor
 
 # 严重度配置
-_SEVERITY_CONFIG = OrderedDict([
-    ("critical", {"label": "严重问题 (Critical)", "color": RGBColor(0xCC, 0x00, 0x00), "desc": "需立即修复", "priority": "P0 — 立即修复（安全风险）"}),
-    ("high", {"label": "高危问题 (High)", "color": RGBColor(0xE6, 0x5C, 0x00), "desc": "建议本周内修复", "priority": "P1 — 本周完成（生产稳定性）"}),
-    ("warning", {"label": "中等问题 (Medium)", "color": RGBColor(0xCC, 0x99, 0x00), "desc": "建议两周内修复", "priority": "P2 — 两周内完成（安全加固）"}),
-    ("info", {"label": "低级告警 (Low)", "color": RGBColor(0x33, 0x66, 0xCC), "desc": "持续改进", "priority": "P3 — 持续改进"}),
-])
+_SEVERITY_CONFIG = OrderedDict(
+    [
+        ("critical", {"label": "严重问题 (Critical)", "color": RGBColor(0xCC, 0x00, 0x00), "desc": "需立即修复", "priority": "P0 — 立即修复（安全风险）"}),
+        ("high", {"label": "高危问题 (High)", "color": RGBColor(0xE6, 0x5C, 0x00), "desc": "建议本周内修复", "priority": "P1 — 本周完成（生产稳定性）"}),
+        ("warning", {"label": "中等问题 (Medium)", "color": RGBColor(0xCC, 0x99, 0x00), "desc": "建议两周内修复", "priority": "P2 — 两周内完成（安全加固）"}),
+        ("info", {"label": "低级告警 (Low)", "color": RGBColor(0x33, 0x66, 0xCC), "desc": "持续改进", "priority": "P3 — 持续改进"}),
+    ]
+)
 
 _TABLE_HEADER_BG = "1F4E79"
 _TABLE_HEADER_COLOR = RGBColor(0xFF, 0xFF, 0xFF)
@@ -55,6 +54,7 @@ def generate_k8s_report_docx(
     style_rpr_fonts = style_rpr.find(qn("w:rFonts"))
     if style_rpr_fonts is None:
         from docx.oxml import OxmlElement
+
         style_rpr_fonts = OxmlElement("w:rFonts")
         style_rpr.append(style_rpr_fonts)
     style_rpr_fonts.set(qn("w:eastAsia"), "Microsoft YaHei")
@@ -65,9 +65,7 @@ def generate_k8s_report_docx(
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M GMT+8")
 
     # 收集涉及的命名空间
-    namespaces = sorted(set(
-        item.get("namespace", "") for item in items if item.get("namespace")
-    ))
+    namespaces = sorted({item.get("namespace", "") for item in items if item.get("namespace")})
     ns_text = ", ".join(namespaces) if namespaces else "default"
 
     # === 1. 封面标题 ===
@@ -89,10 +87,7 @@ def generate_k8s_report_docx(
 
     severity_counts = _count_severities(items)
     total_issues = sum(severity_counts.values())
-    workload_count = len(set(
-        f"{i.get('namespace','')}/{i.get('target_name', i.get('workload_name',''))}"
-        for i in items
-    ))
+    workload_count = len({f"{i.get('namespace', '')}/{i.get('target_name', i.get('workload_name', ''))}" for i in items})
 
     overview_table = doc.add_table(rows=1, cols=3)
     overview_table.style = "Table Grid"
@@ -212,10 +207,7 @@ def generate_k8s_report_docx(
     # === 5. 页脚 ===
     doc.add_paragraph()
     _add_styled_para(doc, "— 报告结束 —", size=10, color=RGBColor(0x99, 0x99, 0x99), align="center")
-    _add_styled_para(
-        doc, f"由 WeOpsX 自动生成 | {generated_at}",
-        size=9, color=RGBColor(0xAA, 0xAA, 0xAA), align="center"
-    )
+    _add_styled_para(doc, f"由 WeOpsX 自动生成 | {generated_at}", size=9, color=RGBColor(0xAA, 0xAA, 0xAA), align="center")
 
     # === 导出 ===
     buffer = BytesIO()
@@ -223,39 +215,10 @@ def generate_k8s_report_docx(
     return buffer.getvalue()
 
 
-def generate_report_download_event(
-    report_data: Dict[str, Any],
-    commands_text: str = "",
-) -> Dict[str, str]:
-    """生成报告并返回可直接用于 dispatch 的事件数据"""
-    try:
-        docx_bytes = generate_k8s_report_docx(report_data)
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).error("docx 报告生成失败: %s", str(e), exc_info=True)
-        return {
-            "error": f"报告生成失败: {str(e)}",
-        }
-
-    content_b64 = base64.b64encode(docx_bytes).decode("utf-8")
-
-    cluster_name = report_data.get("cluster_name", "集群")
-    date_str = datetime.now().strftime("%Y%m%d")
-    filename = f"K8S配置检查报告_{cluster_name}_{date_str}.docx"
-
-    return {
-        "download_id": str(uuid.uuid4())[:8],
-        "filename": filename,
-        "content_base64": content_b64,
-        "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    }
-
-
 # === 辅助函数 ===
 
 
-def _add_styled_para(doc, text: str, size: float = 11, bold: bool = False,
-                     color: RGBColor = None, align: str = None):
+def _add_styled_para(doc, text: str, size: float = 11, bold: bool = False, color: RGBColor = None, align: str = None):
     """添加样式化段落"""
     para = doc.add_paragraph()
     run = para.add_run(text)

@@ -27,6 +27,7 @@ from apps.opspilot.models import (
     WebPageKnowledge,
 )
 from apps.opspilot.services.knowledge_search_service import KnowledgeSearchService
+from apps.opspilot.services.workflow_attachment_service import cleanup_expired_workflow_attachments
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.chunk_helper import ChunkHelper
 from apps.opspilot.utils.graph_utils import GraphUtils
@@ -1280,3 +1281,10 @@ def process_memory_write(
     except Exception as e:
         logger.error(f"[MemoryWriteTask] 记忆写入失败: {e}", exc_info=True)
         raise
+
+
+@shared_task
+def cleanup_expired_workflow_attachments_task():
+    deleted_count = cleanup_expired_workflow_attachments(retention_days=3)
+    logger.info("清理过期工作流附件完成: deleted_count=%s", deleted_count)
+    return deleted_count
