@@ -168,7 +168,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     name: 'mysql_innodb_data_reads_rate',
     display_name: 'InnoDB 物理读速率',
     description: 'InnoDB 物理读操作速率。',
-    unit: 'ops',
+    unit: 'cps',
     query: 'rate(mysql_innodb_data_reads{__$labels__}[5m])',
     color: '#2f6bff'
   },
@@ -176,7 +176,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     name: 'mysql_innodb_data_writes_rate',
     display_name: 'InnoDB 物理写速率',
     description: 'InnoDB 物理写操作速率。',
-    unit: 'ops',
+    unit: 'cps',
     query: 'rate(mysql_innodb_data_writes{__$labels__}[5m])',
     color: '#52c41a'
   },
@@ -184,7 +184,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     name: 'mysql_innodb_os_log_fsyncs_rate',
     display_name: 'Redo 刷盘',
     description: 'Redo 日志刷盘频率，反映事务提交压力。',
-    unit: 'ops',
+    unit: 'cps',
     query: 'rate(mysql_innodb_os_log_fsyncs{__$labels__}[5m])',
     color: '#fa8c16'
   },
@@ -551,7 +551,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     name: 'mysql_innodb_data_fsyncs_rate',
     display_name: 'InnoDB 数据文件刷盘速率',
     description: 'InnoDB 数据文件执行刷盘的速率。',
-    unit: 'ops',
+    unit: 'cps',
     query: 'rate(mysql_innodb_data_fsyncs{__$labels__}[5m])',
     color: '#597ef7'
   },
@@ -666,5 +666,6 @@ export const TREND_LEGENDS: Record<string, TrendLegendItem[]> = {
     { label: '接收速率', color: '#2f6bff', primary: true },
     { label: '发送速率', color: '#27c274' }
   ],
+  lockWaits: [{ label: '行锁等待速率', color: '#ff4d4f', primary: true }],
   replication: [{ label: '复制延迟', color: '#2f6bff', primary: true }]
 };

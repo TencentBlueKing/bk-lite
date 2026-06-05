@@ -2348,6 +2348,42 @@ monitor_object_metric:
       name: 最大延迟峰值
       desc: 过去5分钟内记录的最大延迟值，用于识别时间段内的最严重性能事件。
   Kafka:
+    kafka_up_gauge:
+      name: 监控探针状态
+      desc: 监控探针的运行状态。0代表连接服务不正常，1代表连接服务正常。需要注意无数据的情况可能是连接不存在。
+    kafka_brokers_gauge:
+      name: Broker数量
+      desc: Kafka集群中的 Broker 数量。
+    kafka_broker_info_gauge:
+      name: 节点信息
+      desc: Kafka节点的信息，包含节点地址和节点ID。
+    kafka_topic_partition_count:
+      name: 主题分区数
+      desc: 主题的分区数量。
+    kafka_topic_partition_current_offset:
+      name: 分区当前偏移量
+      desc: 指定主题和分区的当前偏移量。
+    kafka_topic_partition_oldest_offset:
+      name: 分区最早偏移量
+      desc: 指定主题和分区的最早偏移量。
+    kafka_topic_partition_in_sync_replica:
+      name: 分区同步副本数
+      desc: 指定主题和分区的同步副本数量。
+    kafka_topic_partition_leader_is_preferred:
+      name: 分区首选领导者状态
+      desc: 若主题/分区正在使用首选 Broker节点，则值为 1，否则为 0。
+    kafka_topic_partition_replicas:
+      name: 分区副本数
+      desc: 指定主题和分区的副本数量。
+    kafka_topic_partition_under_replicated_partition:
+      name: 分区副本不足状态
+      desc: 若主题/分区处于副本不足状态，则值为 1，否则为 0。
+    kafka_consumergroup_current_offset:
+      name: 消费者组当前偏移量
+      desc: 指定消费者组在指定主题和分区的当前偏移量。
+    kafka_consumergroup_lag:
+      name: 消费者组滞后偏移量
+      desc: 指定消费者组在指定主题和分区的当前近似滞后偏移量。
     up_gauge:
       name: 监控探针状态
       desc: 监控探针的运行状态。0代表连接服务不正常，1代表连接服务正常。需要注意无数据的情况可能是连接不存在。
@@ -2399,6 +2435,152 @@ monitor_object_metric:
     process_virtual_memory_bytes_gauge:
       name: 探针进程虚拟内存大小
       desc: 监控探针进程当前虚拟内存的大小。
+  Etcd:
+    etcd_server_has_leader_gauge:
+      name: 集群是否有主节点
+      desc: 当前成员是否能感知到集群主节点。
+    etcd_server_is_leader_gauge:
+      name: 当前角色
+      desc: 当前成员在集群中的角色。
+    etcd_network_active_peers_gauge:
+      name: 活跃节点连接数
+      desc: 当前可用的节点间连接数。
+    etcd_server_leader_changes_seen_total_counter_rate:
+      name: 主节点切换频率
+      desc: 最近5分钟主节点切换频率。
+    etcd_server_heartbeat_send_failures_total_counter_rate:
+      name: 心跳发送失败频率
+      desc: 最近5分钟心跳发送失败频率。
+    etcd_server_health_failures_counter_rate:
+      name: 健康检查失败频率
+      desc: 最近5分钟健康检查失败频率。
+    etcd_mvcc_db_total_size_in_bytes_gauge:
+      name: 后端已分配空间
+      desc: etcd后端存储当前已分配的物理空间。
+    etcd_mvcc_db_total_size_in_use_in_bytes_gauge:
+      name: 后端实际使用空间
+      desc: etcd后端存储当前实际使用的逻辑空间。
+    etcd_server_quota_backend_bytes_gauge:
+      name: 后端存储配额
+      desc: 后端存储配置的容量上限。
+    etcd_backend_allocated_usage_percent:
+      name: 后端存储使用率
+      desc: 后端已分配空间占总配额的比例。
+    etcd_backend_remaining_bytes:
+      name: 后端剩余容量
+      desc: 后端存储距离配额上限还剩多少空间。
+    etcd_backend_fragmentation_percent:
+      name: 后端碎片率
+      desc: 后端已分配空间与实际使用空间之间的碎片比例。
+    etcd_backend_urgent_defrag:
+      name: 是否需要整理碎片
+      desc: 当前后端空间是否已经达到需要尽快整理碎片的阈值。
+    etcd_debugging_mvcc_keys_total_gauge:
+      name: 键数量
+      desc: 当前存储中的键总数。
+    process_resident_memory_bytes_gauge:
+      name: 进程常驻内存
+      desc: etcd进程当前占用的常驻内存。
+    etcd_disk_wal_fsync_p99_seconds:
+      name: WAL 刷盘延迟 P99
+      desc: 最近5分钟 WAL 刷盘延迟的 P99。
+    etcd_disk_backend_commit_p99_seconds:
+      name: 后端提交延迟 P99
+      desc: 最近5分钟后端提交延迟的 P99。
+    etcd_debugging_snap_save_total_avg_seconds:
+      name: 快照平均耗时
+      desc: 最近5分钟快照保存的平均耗时。
+    etcd_server_proposals_pending_gauge:
+      name: 提案积压数
+      desc: 当前等待提交的提案数量。
+    etcd_server_proposals_failed_total_counter_rate:
+      name: 提案失败频率
+      desc: 最近5分钟提案失败频率。
+    etcd_server_proposals_committed_rate:
+      name: 提案提交频率
+      desc: 最近5分钟提案提交频率。
+    etcd_server_proposals_applied_rate:
+      name: 提案应用频率
+      desc: 最近5分钟提案应用频率。
+    etcd_server_proposals_apply_lag:
+      name: 提案应用落后数
+      desc: 已提交提案与已应用提案之间的差值。
+    etcd_server_slow_apply_total_counter_rate:
+      name: 慢应用请求频率
+      desc: 最近5分钟慢应用请求频率。
+    etcd_server_read_indexes_failed_total_counter_rate:
+      name: 读索引失败频率
+      desc: 最近5分钟读索引失败频率。
+    etcd_server_slow_read_indexes_total_counter_rate:
+      name: 慢读索引频率
+      desc: 最近5分钟慢读索引请求频率。
+    etcd_server_client_requests_total_counter_rate:
+      name: 客户端请求频率
+      desc: 最近5分钟 etcd 处理的客户端请求频率。
+    etcd_rpc_rate:
+      name: RPC 请求频率
+      desc: 最近5分钟一元 RPC 请求频率。
+    etcd_rpc_failed_rate:
+      name: RPC 失败频率
+      desc: 最近5分钟非 OK 的一元 RPC 失败频率。
+    etcd_network_client_grpc_received_bytes_total_counter_rate:
+      name: 客户端入站流量
+      desc: 最近5分钟来自客户端 gRPC 请求的入站流量。
+    etcd_network_client_grpc_sent_bytes_total_counter_rate:
+      name: 客户端出站流量
+      desc: 最近5分钟发送给客户端 gRPC 请求的出站流量。
+    etcd_network_peer_received_bytes_total_counter_rate:
+      name: 节点间入站流量
+      desc: 最近5分钟来自对等节点的入站流量。
+    etcd_network_peer_sent_bytes_total_counter_rate:
+      name: 节点间出站流量
+      desc: 最近5分钟发送给对等节点的出站流量。
+    etcd_network_peer_sent_failures_total_counter_rate:
+      name: 节点间发送失败频率
+      desc: 最近5分钟节点间发送失败频率。
+    etcd_debugging_mvcc_watcher_total_gauge:
+      name: 监听器数量
+      desc: 当前监听器数量。
+    etcd_watch_streams_active:
+      name: 活跃监听流
+      desc: 根据已建立和已结束的流式 RPC 推算出的当前活跃监听流数量。
+    etcd_debugging_mvcc_db_compaction_keys_total_counter_rate:
+      name: 压缩键处理频率
+      desc: 最近5分钟压缩处理的键数量频率。
+    etcd_mvcc_put_total_counter_rate:
+      name: 写入频率
+      desc: 最近5分钟写入操作频率。
+    etcd_mvcc_delete_total_counter_rate:
+      name: 删除频率
+      desc: 最近5分钟删除操作频率。
+  InfluxDB:
+    influxdb_database_numSeries:
+      name: Series 数量
+      desc: 单个 InfluxDB 数据库中当前的 Series 总数，是高基数风险的重要指标。
+    influxdb_httpd_authFail_rate:
+      name: HTTP 认证失败速率
+      desc: 最近5分钟 HTTP 认证失败的平均速率。
+    influxdb_httpd_clientError_rate:
+      name: HTTP 4XX 错误速率
+      desc: 最近5分钟 HTTP 4XX 响应的平均速率。
+    influxdb_httpd_serverError_rate:
+      name: HTTP 5XX 错误速率
+      desc: 最近5分钟 HTTP 5XX 响应的平均速率。
+    influxdb_httpd_pointsWrittenDropped_rate:
+      name: 写入点丢弃速率
+      desc: 最近5分钟写入 API 已接受但在持久化前被丢弃的数据点平均速率。
+    influxdb_httpd_pointsWrittenFail_rate:
+      name: 写入持久化失败速率
+      desc: 最近5分钟写入 API 已接受但持久化失败的数据点平均速率。
+    influxdb_httpd_writeReq_rate:
+      name: 写请求速率
+      desc: 最近5分钟写请求的平均速率。
+    influxdb_httpd_queryReq_rate:
+      name: 查询请求速率
+      desc: 最近5分钟查询请求的平均速率。
+    influxdb_runtime_HeapAlloc:
+      name: 运行时堆内存分配
+      desc: Go 运行时当前已分配且正在使用的堆内存大小。
 monitor_object_metric_group:
   Dameng:
     Base: 基础
@@ -2584,6 +2766,7 @@ monitor_object_metric_group:
     Disk: 磁盘
     Memory: 内存
   Mysql:
+    Base: 基础信息
     ConnStatus: 连接状态
     QueryPerf: 查询性能
     InnoDBPerf: InnoDB 性能
@@ -2701,6 +2884,18 @@ monitor_object_metric_group:
     Storage: 存储
     Connection: 连接
     Wait: 等待时间
+  Etcd:
+    集群状态: 集群状态
+    存储与碎片: 存储与碎片
+    磁盘时延: 磁盘时延
+    提案与一致性: 提案与一致性
+    请求与流量: 请求与流量
+    监听与压缩: 监听与压缩
+  InfluxDB:
+    数据库: 数据库
+    请求与错误: 请求与错误
+    写入稳定性: 写入稳定性
+    运行时: 运行时
 monitor_object_plugin:
   DM-Exporter:
     name: 达梦数据库监控探针

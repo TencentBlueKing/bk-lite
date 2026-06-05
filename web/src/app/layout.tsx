@@ -18,7 +18,8 @@ import TopMenu from '@/components/top-menu';
 import { ConfigProvider, Watermark, message } from 'antd';
 import Spin from '@/components/spin';
 import { portalBrandingDefaults, usePortalBranding } from '@/hooks/usePortalBranding';
-import { isProfessionalDashboardRoute } from '@/app/monitor/dashboards/utils';
+import { getProfessionalDashboardPermissionPath } from '@/app/monitor/dashboards/registry';
+import { isProfessionalDashboardRoute } from '@/app/monitor/dashboards/shared/utils';
 import '@/styles/globals.css';
 import { MenuItem } from '@/types/index'
 import WithSideMenuLayout from '@/components/sub-layout'
@@ -120,8 +121,10 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
           return;
         }
 
-        if (pathname && isPathInMenu(pathname, configMenus)) {
-          if (hasPermission(pathname)) {
+        const permissionPath = getProfessionalDashboardPermissionPath(pathname) || pathname;
+
+        if (permissionPath && isPathInMenu(permissionPath, configMenus)) {
+          if (hasPermission(permissionPath)) {
             setIsAllowed(true);
           } else {
             setIsAllowed(false);
