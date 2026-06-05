@@ -30,7 +30,11 @@ class TemplateSecurityError(ValueError):
 # 危险模式检测（基于已知 SSTI bypass 技术）
 # ============================================================
 
-DANGEROUS_PATTERNS: list[tuple[str, str]] = [
+GLOBAL_DANGEROUS_PATTERNS: list[tuple[str, str]] = [
+    (r"\{%", "Jinja2 控制语句"),
+]
+
+EXPRESSION_DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     # Python 内省
     (r"__\w+__", "dunder 属性访问 (如 __class__, __globals__)"),
     (r"\bmro\b", "MRO 链访问"),
@@ -55,8 +59,7 @@ DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     (r"\bgetattr\b", "getattr 函数"),
     (r"\bsetattr\b", "setattr 函数"),
     (r"\bdelattr\b", "delattr 函数"),
-    # Jinja2 语法
-    (r"\{%", "Jinja2 控制语句"),
+    # Jinja2 表达式语法
     (r"\|", "Jinja2 过滤器"),
     (r"\[", "下标/切片访问"),
     (r"\(", "函数调用"),
@@ -67,6 +70,15 @@ DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     (r"\burl_for\b", "url_for 函数"),
     (r"\bg\b", "Flask g 对象"),
 ]
+
+JINJA_EXPRESSION_PATTERN = re.compile(r"\{\{.*?\}\}", re.DOTALL)
+
+
+def _find_dangerous_pattern(content: str, patterns: list[tuple[str, str]]) -> str | None:
+    for pattern, description in patterns:
+        if re.search(pattern, content, re.IGNORECASE):
+            return description
+    return None
 
 
 def check_dangerous_patterns(template_str: str) -> None:
@@ -80,8 +92,16 @@ def check_dangerous_patterns(template_str: str) -> None:
         TemplateSecurityError: 发现危险模式时抛出
     """
     template_lower = template_str.lower()
-    for pattern, description in DANGEROUS_PATTERNS:
-        if re.search(pattern, template_lower, re.IGNORECASE):
+
+    description = _find_dangerous_pattern(template_lower, GLOBAL_DANGEROUS_PATTERNS)
+    if description:
+        logger.warning(f"[SSTI] 检测到危险模式: {description}, template={template_str[:100]}...")
+        raise TemplateSecurityError(f"模板包含禁止的模式: {description}")
+
+    # 仅在真正的 Jinja2 表达式内部检查高危替代，避免将普通文本字符误判为 SSTI。
+    for expression in JINJA_EXPRESSION_PATTERN.findall(template_lower):
+        description = _find_dangerous_pattern(expression, EXPRESSION_DANGEROUS_PATTERNS)
+        if description:
             logger.warning(f"[SSTI] 检测到危险模式: {description}, template={template_str[:100]}...")
             raise TemplateSecurityError(f"模板包含禁止的模式: {description}")
 

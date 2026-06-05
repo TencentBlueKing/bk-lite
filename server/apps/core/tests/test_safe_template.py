@@ -1,11 +1,6 @@
 import pytest
 
-from apps.core.utils.safe_template import (
-    TemplateSecurityError,
-    build_sandboxed_env,
-    check_dangerous_patterns,
-    safe_render,
-)
+from apps.core.utils.safe_template import TemplateSecurityError, build_sandboxed_env, check_dangerous_patterns, safe_render
 
 
 class TestCheckDangerousPatterns:
@@ -19,7 +14,7 @@ class TestCheckDangerousPatterns:
 
     def test_blocks_popen(self):
         with pytest.raises(TemplateSecurityError):
-            check_dangerous_patterns("popen('id')")
+            check_dangerous_patterns("{{ popen('id') }}")
 
     def test_blocks_import(self):
         with pytest.raises(TemplateSecurityError):
@@ -29,11 +24,16 @@ class TestCheckDangerousPatterns:
         check_dangerous_patterns("hello world 123")
 
     def test_allows_toml_content(self):
-        # SNMP TOML 内容不应包含任何危险模式（无 {{ }}）
+        # 纯文本配置片段不应因基础字符被误判
         snippet = '[[inputs.snmp.field]]\n  oid = ".1.3.6.1.2.1.1.3.0"\n  name = "sysUpTime"'
-        # 注意: 此内容含 [ 会被当前正则匹配，这是 check_dangerous_patterns 对 snippet 的预期行为
+        check_dangerous_patterns(snippet)
+
+    def test_allows_markdown_table_text(self):
+        check_dangerous_patterns("| 输入 | 意图 | 理由 |")
+
+    def test_blocks_filter_only_inside_expression(self):
         with pytest.raises(TemplateSecurityError):
-            check_dangerous_patterns(snippet)
+            check_dangerous_patterns("{{ name | upper }}")
 
 
 class TestSafeRender:
@@ -70,6 +70,7 @@ class TestBuildSandboxedEnv:
         env = build_sandboxed_env()
         tpl = env.from_string("{{ cycler.__init__.__globals__ }}")
         from jinja2.sandbox import SecurityError as JinjaSandboxError
+
         with pytest.raises((JinjaSandboxError, Exception)):
             tpl.render()
 
@@ -104,6 +105,7 @@ class TestBuildSandboxedEnv:
         # 即使传入对象，沙箱也会阻止访问 __globals__
         tpl = env.from_string("{{ obj.__class__.__mro__ }}")
         from jinja2.sandbox import SecurityError as JinjaSandboxError
+
         with pytest.raises(JinjaSandboxError):
             tpl.render(obj="test")
 
