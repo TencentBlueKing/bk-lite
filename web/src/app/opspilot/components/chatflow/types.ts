@@ -98,6 +98,9 @@ export interface MemoryReadNodeConfig extends BaseNodeConfig {
 export interface MemoryWriteNodeConfig extends BaseNodeConfig {
   memory_space_id: number | null;
   title: string;
+  llmModel?: number | null;
+  llmModelName?: string;
+  writeBatchSize?: number;
 }
 
 /** Mobile 节点配置 */

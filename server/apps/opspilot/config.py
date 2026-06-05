@@ -32,5 +32,9 @@ CELERY_BEAT_SCHEDULE = {
     "cleanup-expired-workflow-attachments": {
         "task": "apps.opspilot.tasks.cleanup_expired_workflow_attachments_task",
         "schedule": crontab(hour=3, minute=0),
-    }
+    },
+    "flush-pending-memory-write-cache": {
+        "task": "apps.opspilot.tasks.flush_all_pending_memory_write_cache",
+        "schedule": crontab(hour=0, minute=0),
+    },
 }
