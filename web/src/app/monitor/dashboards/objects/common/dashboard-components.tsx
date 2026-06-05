@@ -17,12 +17,20 @@ import {
   NodeIndexOutlined,
   ThunderboltOutlined
 } from '@ant-design/icons';
+import {
+  HealthIcon,
+  MemoryIcon,
+  UnackedIcon,
+  BacklogIcon,
+  PublishIcon
+} from '../../shared/widgets/metric-icons';
 import MetricViews from '@/app/monitor/components/metric-views';
 import {
   CollectionStatusCard,
   DashboardInstanceCard,
   DashboardPageHeader,
   HorizontalBarPanel,
+  MiniTrendChart,
   RingChartPanel,
   StatCard,
   TitleWithGuide,
@@ -33,10 +41,13 @@ import {
   PreparedChartPanel,
   PreparedRingPanel,
   PreparedBarPanel,
+  PreparedStatusPanel,
   PreparedDetailPanel,
+  DetailRowViz,
   SummaryCardConfig,
   useSimpleDashboardData
 } from './simple-dashboard-core';
+import { ChartData } from '@/app/monitor/types';
 
 // ─── Icon helper ─────────────────────────────────────────────────────────────
 
@@ -46,7 +57,13 @@ export const getIcon = (type: SummaryCardConfig['icon']): React.ReactNode => {
     clock: <ClockCircleOutlined />,
     database: <DatabaseOutlined />,
     node: <NodeIndexOutlined />,
-    thunder: <ThunderboltOutlined />
+    thunder: <ThunderboltOutlined />,
+    // Bespoke duotone metric icons (KPI cards)
+    health: <HealthIcon />,
+    memory: <MemoryIcon />,
+    unacked: <UnackedIcon />,
+    backlog: <BacklogIcon />,
+    publish: <PublishIcon />
   };
   return iconMap[type] ?? <DatabaseOutlined />;
 };
@@ -121,6 +138,17 @@ export function useFilteredBarPanels(
   all: PreparedBarPanel[],
   titles: string[]
 ): PreparedBarPanel[] {
+  return useMemo(
+    () => pickDefined(titles.map((t) => all.find((p) => p.panel.title === t))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [all, titles.join(',')]
+  );
+}
+
+export function useFilteredStatusPanels(
+  all: PreparedStatusPanel[],
+  titles: string[]
+): PreparedStatusPanel[] {
   return useMemo(
     () => pickDefined(titles.map((t) => all.find((p) => p.panel.title === t))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -357,6 +385,69 @@ export const InsightSection = ({
 
 // ─── DetailSection ────────────────────────────────────────────────────────────
 
+const DETAIL_TONE_COLORS: Record<'error' | 'warning' | 'normal', string> = {
+  error: '#ff4d4f',
+  warning: '#faad14',
+  normal: '#2f6bff'
+};
+
+export interface DetailMetricRowProps {
+  label: string;
+  value: React.ReactNode;
+  /** spark=速率/计数迷你趋势；bar=百分比进度条；none=纯数值 */
+  viz?: DetailRowViz;
+  /** spark 用:完整时序 */
+  trend?: ChartData[];
+  /** bar 用:当前值(0–100) */
+  barValue?: number;
+  tone?: 'error' | 'warning' | 'normal';
+  /** 枚举/状态行:状态语义色(前置色点 + 文案着色),优先于 tone */
+  statusColor?: string;
+  /** sparkline 配色:取该指标语义色,与 KPI/趋势/异常信号条统一;缺省回退 tone 色 */
+  color?: string;
+  styles: DashboardStyles;
+}
+
+/**
+ * 详情面板单行:标签 · 缩略图 · 数值。共享给 DetailPanelCard 以及自定义仪表盘
+ * (如 MongoDB)的详情面板,确保实时数值的缩略图渲染口径一致。
+ */
+export const DetailMetricRow = ({
+  label,
+  value,
+  viz = 'none',
+  trend = [],
+  barValue = 0,
+  tone = 'normal',
+  statusColor,
+  color,
+  styles
+}: DetailMetricRowProps) => {
+  const toneColor = DETAIL_TONE_COLORS[tone];
+  // sparkline/进度条配色:优先指标语义色(与 KPI/趋势/异常信号条同源),回退 tone 色。
+  const vizColor = color ?? toneColor;
+  // 数值文字颜色:枚举状态色优先,其次手动 tone(error/warning),否则默认。
+  const valueColor = statusColor ?? (tone === 'normal' ? undefined : toneColor);
+  return (
+    <div className={styles.detailMetricRow}>
+      <span className={styles.detailMetricLabel}>{label}</span>
+      {/* 缩略图列始终渲染(空行也占位),保证三列网格对齐:标签 · 缩略图 · 数值。 */}
+      <span className={styles.detailRowViz}>
+        {viz === 'spark' && <MiniTrendChart data={trend} color={vizColor} styles={styles} />}
+        {viz === 'bar' && (
+          <span className={styles.detailBar}>
+            <span className={styles.detailBarFill} style={{ width: `${barValue}%`, background: vizColor }} />
+          </span>
+        )}
+      </span>
+      <span className={styles.detailMetricValue} style={valueColor ? { color: valueColor } : undefined}>
+        {statusColor && <span className={styles.detailStatusDot} style={{ background: statusColor }} />}
+        {value}
+      </span>
+    </div>
+  );
+};
+
 export interface DetailPanelCardProps {
   detailPanel: PreparedDetailPanel;
   className?: string;
@@ -371,12 +462,22 @@ export const DetailPanelCard = ({ detailPanel, className, styles }: DetailPanelC
       <h3 className={styles.panelTitle}>{panel.title}</h3>
       <div className={styles.panelSubTitle}>{panel.subtitle}</div>
       {hasData ? (
-        rows.map((row) => (
-          <div key={row.label} className={styles.detailMetricRow}>
-            <span>{row.label}</span>
-            <span className={styles.detailMetricValue}>{row.value}</span>
-          </div>
-        ))
+        <div className={styles.detailRowsFill}>
+          {rows.map((row) => (
+            <DetailMetricRow
+              key={row.label}
+              label={row.label}
+              value={row.value}
+              viz={row.viz}
+              trend={row.trend}
+              barValue={row.barValue}
+              tone={row.tone}
+              statusColor={row.statusColor}
+              color={row.color}
+              styles={styles}
+            />
+          ))}
+        </div>
       ) : (
         <div className={styles.detailEmpty}>当前时间范围内暂无可展示详情</div>
       )}
@@ -485,6 +586,7 @@ export const DashboardShell = ({
           onFrequenceChange={dashboard.setFrequence}
           onRefresh={dashboard.onRefresh}
           onBack={dashboard.onBack}
+          showTimeSelector={false}
           styles={styles}
         />
         <DashboardInstanceCard
@@ -502,6 +604,12 @@ export const DashboardShell = ({
           }
           selectorTitle={dashboard.currentInstanceLabel}
           isDashboardMode={dashboard.isDashboardMode}
+          timeSelectorProps={{
+            timeDefaultValue: dashboard.timeDefaultValue,
+            onTimeChange: dashboard.onTimeChange,
+            onFrequenceChange: dashboard.setFrequence,
+            onRefresh: dashboard.onRefresh
+          }}
           styles={styles}
         />
       </div>

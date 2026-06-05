@@ -323,6 +323,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       title: '异常事件热点',
       subtitle: '死锁、冲突与临时文件',
+      showTrend: true,
       guide: [{ label: '异常事件', detail: '死锁、并发冲突与临时文件创建速率，用于快速定位异常负载。' }],
       items: [
         { label: '死锁速率', metric: 'postgresql_deadlocks_rate', color: '#ff4d4f', unit: 'cps' },
@@ -333,6 +334,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       title: '缓冲区写入来源',
       subtitle: '检查点、后端与后台',
+      showTrend: true,
       guide: [{ label: '写入来源', detail: '比较检查点、后端和后台清理写出缓冲区的压力来源。' }],
       items: [
         { label: '检查点写入', metric: 'postgresql_buffers_checkpoint_rate', color: '#2f6bff', unit: 'cps' },

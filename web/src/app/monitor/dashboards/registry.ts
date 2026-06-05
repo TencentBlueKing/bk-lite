@@ -5,6 +5,13 @@ import ElasticsearchDashboard from './objects/elasticsearch';
 import HostDashboard from './objects/host';
 import MssqlDashboard from './objects/mssql';
 import NginxDashboard from './objects/nginx';
+import DockerDashboard from './objects/docker';
+import ActiveMQDashboard from './objects/activemq';
+import ApacheDashboard from './objects/apache';
+import ConsulDashboard from './objects/consul';
+import RabbitMQDashboard from './objects/rabbitmq';
+import TomcatDashboard from './objects/tomcat';
+import ZookeeperDashboard from './objects/zookeeper';
 import PingDashboard from './objects/ping';
 import PostgresqlDashboard from './objects/postgresql';
 import { ProfessionalDashboardRegistryItem } from './shared/types';
@@ -59,6 +66,65 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: 'Nginx',
     inheritedPermissionPath: '/monitor/view',
     component: NginxDashboard
+  },
+  {
+    key: 'docker',
+    groupKey: 'middleware',
+    objectName: 'Docker',
+    objectDisplayName: 'Docker',
+    inheritedPermissionPath: '/monitor/view',
+    component: DockerDashboard
+  },
+  {
+    key: 'activemq',
+    aliases: ['active_mq'],
+    groupKey: 'middleware',
+    objectName: 'ActiveMQ',
+    objectDisplayName: 'ActiveMQ',
+    inheritedPermissionPath: '/monitor/view',
+    component: ActiveMQDashboard
+  },
+  {
+    key: 'apache',
+    groupKey: 'middleware',
+    objectName: 'Apache',
+    objectDisplayName: 'Apache',
+    inheritedPermissionPath: '/monitor/view',
+    component: ApacheDashboard
+  },
+  {
+    key: 'consul',
+    groupKey: 'middleware',
+    objectName: 'Consul',
+    objectDisplayName: 'Consul',
+    inheritedPermissionPath: '/monitor/view',
+    component: ConsulDashboard
+  },
+  {
+    key: 'rabbitmq',
+    aliases: ['rabbit_mq'],
+    groupKey: 'middleware',
+    objectName: 'RabbitMQ',
+    objectDisplayName: 'RabbitMQ',
+    inheritedPermissionPath: '/monitor/view',
+    component: RabbitMQDashboard
+  },
+  {
+    key: 'tomcat',
+    groupKey: 'middleware',
+    objectName: 'Tomcat',
+    objectDisplayName: 'Tomcat',
+    inheritedPermissionPath: '/monitor/view',
+    component: TomcatDashboard
+  },
+  {
+    key: 'zookeeper',
+    aliases: ['zk'],
+    groupKey: 'middleware',
+    objectName: 'Zookeeper',
+    objectDisplayName: 'Zookeeper',
+    inheritedPermissionPath: '/monitor/view',
+    component: ZookeeperDashboard
   },
   {
     key: 'postgres',

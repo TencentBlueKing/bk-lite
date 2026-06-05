@@ -92,20 +92,48 @@
 }
 
 .toolbarTimeSelector > div > div:first-child {
-  width: 256px;
+  width: 212px;
 }
 
+// 刷新组（手动刷新 ⟳ + 自动刷新间隔）合并为一个连体控件：与左侧时间范围拉开 12px 独立成组，
+// 单层外边框 + 内部发丝线分隔，让"刷新"两件相关功能读起来是一个整体。
 .toolbarTimeSelector > div > div:last-child {
-  margin-left: 0 !important;
+  margin-left: 12px !important;
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  border: 1px solid #dbe5f1;
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
 }
 
 .toolbarTimeSelector > div > div:first-child :global(.ant-select),
 .toolbarTimeSelector > div > div:first-child :global(.ant-picker) {
-  width: 256px !important;
+  width: 212px !important;
 }
 
+// 左段：手动刷新按钮——去独立边框/圆角/底色，仅留右侧发丝线作为分隔。
+.toolbarTimeSelector > div > div:last-child :global(.ant-btn) {
+  height: 100% !important;
+  border: none !important;
+  border-right: 1px solid #eef2f7 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 10px !important;
+}
+
+// 右段：自动刷新间隔下拉——去独立边框，融入连体控件。
 .toolbarTimeSelector > div > div:last-child :global(.ant-select) {
-  width: 92px !important;
+  width: 104px !important;
+}
+
+.toolbarTimeSelector > div > div:last-child :global(.ant-select-selector) {
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .toolbarBackBtn {
@@ -174,6 +202,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 12px;
   flex-shrink: 0;
 }
 
@@ -184,11 +213,29 @@
 }
 
 .instanceMetaDivider {
-  color: #b7c4d6;
+  // 隐藏共享组件硬编码的竖线字符，改用更轻的中点分隔。
+  font-size: 0;
+  line-height: 1;
+}
+
+.instanceMetaDivider::before {
+  content: '·';
+  color: #cad4e1;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+// 次要环境信息（实例ID、时区等）：弱化为浅灰常规字重。
+.instanceMetaMuted {
+  color: #8a9bb4;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.35;
+  min-width: 0;
 }
 
 .inlineInstanceSelector {
-  width: 240px;
+  width: 190px;
   padding: 0 10px;
   border-radius: 12px;
   background: #ffffff;
@@ -210,6 +257,27 @@
   font-weight: 700;
 }
 
+.inlineInstanceSelector :global(.ant-select-item-option-content) {
+  color: #22324a;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.inlineInstanceSelector :global(.ant-select-arrow) {
+  color: #8aa0bc;
+}
+
+// 身份/状态胶囊组的横向布局（胶囊配色由各仪表盘按品牌自定义）。
+.instanceIdentityGroup {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
 .primaryGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -226,7 +294,8 @@
 }
 
 .statCard {
-  min-height: 224px;
+  // 收紧卡高:内容自然高度即可,sparkline 由 margin-top:auto 钉底,不再被强行拉空。
+  min-height: 168px;
   padding: 16px 16px 14px;
   display: flex;
   flex-direction: column;
@@ -260,13 +329,13 @@
 }
 
 .statBody {
-  margin-top: 12px;
-  flex: 1;
+  // 不再 flex:1 + space-between 撑开:内容(值/对比/footer)按自然高度紧凑堆叠在顶部,
+  // 余量交给 .miniTrend 的 margin-top:auto 钉到卡底,消除文字之间的大块空白。
+  margin-top: 10px;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 9px;
-  justify-content: space-between;
+  gap: 8px;
 }
 
 .statValue {
@@ -298,7 +367,7 @@
   gap: 8px;
   flex-wrap: wrap;
   min-height: 18px;
-  color: #93a2b4;
+  color: #64748b;
   font-size: 14px;
   font-weight: 500;
 }
@@ -320,10 +389,11 @@
   align-items: center;
   gap: 6px 10px;
   flex-wrap: wrap;
-  color: #8192a8;
+  color: #64748b;
   font-size: 14px;
   line-height: 1.5;
-  min-height: 44px;
+  // 仅按内容占高(单行约 22px,多行自动撑高),不再预留 44px 造成卡内空白。
+  min-height: 22px;
   align-content: flex-start;
 }
 
@@ -397,7 +467,7 @@
 }
 
 .uptimeStatusEmpty .uptimeStatusMain {
-  color: #7d8da3;
+  color: #64748b;
 }
 
 .miniTrendPlaceholder {
@@ -406,8 +476,8 @@
 }
 
 .collectionStatusCard {
-  justify-content: space-between;
-  min-height: 188px;
+  justify-content: flex-start;
+  min-height: 168px;
 }
 
 .collectionStatusHeader {
@@ -415,10 +485,11 @@
 }
 
 .collectionStatusBody {
-  display: grid;
+  // 由 3 等高行(把每块拉开)改为自然高度紧凑堆叠,文字之间只留固定小间距。
+  display: flex;
+  flex-direction: column;
   flex: 1;
-  grid-template-rows: repeat(3, minmax(0, 1fr));
-  row-gap: 8px;
+  gap: 10px;
   min-height: 0;
 }
 
@@ -489,12 +560,15 @@
 .collectionStatusLegend {
   display: flex;
   align-items: center;
-  gap: 18px;
-  flex-wrap: wrap;
+  // 三项（正常/无数据/异常）必须保持在一行：用 nowrap + 紧凑 gap/字号，
+  // 即便采集状态卡被压到 KPI 最小宽度（200px）也放得下，不再错位换行。
+  flex-wrap: nowrap;
+  gap: 10px;
   margin-top: 8px;
   color: #42556d;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .collectionStatusLegendItem,
@@ -642,10 +716,13 @@
 }
 
 .ringCard {
+  // donut 居左、图例(metricList)弹性占满剩余宽度并将数值锚定面板右缘，
+  // 消除宽面板内的大片留白；窄断点由媒体查询回退为堆叠。
   display: grid;
-  grid-template-columns: minmax(156px, 176px) minmax(0, 1fr);
-  gap: 18px;
-  align-items: stretch;
+  grid-template-columns: auto minmax(0, 1fr);
+  justify-content: stretch;
+  gap: 32px;
+  align-items: center;
   min-height: 190px;
   margin-top: 14px;
 }
@@ -727,6 +804,10 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  // 图例占满 ringCard 的弹性列(1fr)：每行 space-between 将指标名锚左、数值锚右，
+  // 填满宽面板余宽，避免单边留白。
+  width: 100%;
+  max-width: 100%;
 }
 
 .metricRow {
@@ -803,16 +884,31 @@
 }
 
 .barsFull {
+  // 行组在卡内垂直居中 + 固定适中行距,卡片等高时上下留白均衡、行距不被拉散。
   flex: 1;
-  justify-content: space-evenly;
-  padding: 14px 0 6px;
+  justify-content: center;
+  gap: 16px;
+  padding: 14px 0;
 }
 
 .barRow {
   display: grid;
-  grid-template-columns: minmax(88px, 128px) 1fr minmax(64px, 92px);
-  gap: 10px;
+  // 进度条/缩略图列弹性撑满行内余宽,数值锚定面板右缘 —— 与详情行一致,消除右侧留白。
+  grid-template-columns: minmax(88px, 128px) 1fr auto;
+  justify-content: stretch;
+  gap: 12px;
   align-items: center;
+}
+
+// 趋势(sparkline)面板：每个指标独占一行（标签 · sparkline · 数值），关联最清晰。
+// sparkline 占据行内余宽但封顶适中宽度，数值锚定面板右缘——既不过长、又不留单边大片空白。
+.barsTrend .barRow {
+  grid-template-columns: minmax(88px, 128px) 1fr auto;
+  justify-content: stretch;
+}
+
+.barsTrend .barSpark {
+  max-width: 360px;
 }
 
 .barLabel {
@@ -834,37 +930,206 @@
   border-radius: 999px;
 }
 
+.barSpark {
+  width: 100%;
+  height: 28px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
 .barValue {
-  text-align: right;
-  color: #7388a5;
-  font-size: 14px;
-  font-weight: 600;
+  // 数值是焦点:加大加深加粗,条退为配角。
+  color: #22324a;
+  font-size: 16px;
+  font-weight: 800;
   line-height: 1.2;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
-.detailMetricRow {
+/* ── Status board (boolean/flag signals: dot + state badge) ───── */
+.statusList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  flex: 1;
+  justify-content: center;
+}
+
+.statusRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid #edf2f9;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f7f9fc;
+  border: 1px solid #eef2f8;
+}
+
+.statusRowOk {
+  background: #f3fcf7;
+  border-color: #d6f0e0;
+}
+
+.statusRowAlarm {
+  background: #fff1f0;
+  border-color: #ffd6d4;
+}
+
+.statusRowUnknown {
+  background: #f7f9fc;
+  border-color: #eef2f8;
+}
+
+.statusDotUnknown {
+  background: #cbd5e1;
+}
+
+.statusBadgeUnknown {
+  color: #64748b;
+  background: #eef2f7;
+}
+
+.statusMain {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #cbd5e1;
+  flex-shrink: 0;
+}
+
+.statusDotOk {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.14);
+}
+
+.statusDotAlarm {
+  background: #ff4d4f;
+  box-shadow: 0 0 0 3px rgba(255, 77, 79, 0.16);
+}
+
+.statusLabel {
+  font-size: 14px;
+  font-weight: 700;
+  color: #42556d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statusBadge {
+  font-size: 12px;
+  font-weight: 800;
+  padding: 2px 10px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: #eef2f7;
+  color: #64748b;
+}
+
+.statusBadgeOk {
+  color: #1fa971;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.statusBadgeAlarm {
+  color: #d4380d;
+  background: rgba(255, 77, 79, 0.14);
+}
+
+.detailMetricRow {
+  display: grid;
+  // 标签 · 缩略图 · 数值:缩略图列弹性撑满行内余宽(封顶见 detailRowViz),
+  // 数值锚定面板右缘 —— 消除卡内右侧大片空白,与 barsTrend 口径一致。
+  grid-template-columns: minmax(88px, 140px) minmax(0, 1fr) auto;
+  justify-content: stretch;
+  align-items: center;
+  gap: 14px;
+  // 行间距交由 detailRowsFill 的 gap 统一管理(与异常信号条一致);去掉分隔线让两类面板缩略图样式统一。
+  padding: 0;
   color: #667b96;
   font-size: 13px;
   font-weight: 700;
 }
 
-.detailMetricRow:last-child {
-  border-bottom: 0;
-}
-
 .detailMetricValue {
   color: #1f3047;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 850;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  // 数值贴右,跨行对齐成一列(无论该行是 sparkline 还是纯文本)。
+  justify-self: end;
+}
+
+.detailMetricLabel {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.detailRowViz {
+  // 缩略图撑满弹性列但封顶适中宽度(同 barsTrend 的 360px),既不过长、又不留单边空白;
+  // 空行也渲染本占位以保证数值跨行对齐。
+  width: 100%;
+  max-width: 360px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  height: 30px;
+}
+
+// 详情行容器:行组在卡内垂直居中 + 固定行距,与异常信号条(barsFull)节奏一致。
+.detailRowsFill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  padding: 14px 0;
+}
+
+// 自定义详情面板(redis/mongodb 经 DetailPanel)的内层容器:撑满卡高,使标题置顶、行组居中。
+.detailCard {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.detailBar {
+  width: 100%;
+  height: 8px;
+  border-radius: 5px;
+  background: #eef2f7;
+  overflow: hidden;
+}
+
+.detailBarFill {
+  height: 100%;
+  border-radius: 5px;
+  transition: none;
+}
+
+.detailStatusDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-right: 6px;
+  vertical-align: middle;
 }
 
 .detailEmpty {
@@ -937,8 +1202,10 @@
 }
 
 .kpiGrid {
-  display: grid;
-  grid-template-columns: repeat(var(--kpi-cols, 5), minmax(0, 1fr));
+  // 用 flex 而非 grid：换行后末行卡片会弹性撑满整行，避免落单卡片右侧留大片空白
+  //（grid 的 auto-fit + 1fr 在卡片数无法整除列数时必然产生空白轨道）。
+  display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   min-width: 0;
   align-items: stretch;
@@ -946,7 +1213,13 @@
 }
 
 .kpiGrid > * {
-  height: 100%;
+  // 不要写 height: 100%！flex 列项设 height:100% 会以内容高度排布，
+  // 抵消父容器的 align-items: stretch，导致同一行卡片高度参差。
+  // 保持 height: auto，由 stretch 把同行卡片统一拉到该行最高卡的高度。
+  // 基准宽度 = 整行的 1/N（扣除 N-1 个 gap）→ 宽屏每行恰好 N 张；
+  // 收窄到 min-width 以下时自动换行，flex-grow:1 让换行后的卡片撑满整行。
+  flex: 1 1 calc((100% - (var(--kpi-cols, 5) - 1) * 12px) / var(--kpi-cols, 5));
+  min-width: 200px;
 }
 
 .dashboardSection {
@@ -995,19 +1268,12 @@
   justify-content: start;
 }
 
-@media (max-width: 1600px) {
-  .kpiGrid {
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  }
-}
+// KPI 区已改用 flex 自适应，无需再按断点切换列数：
+// 卡片随宽度自动换行，末行靠 flex-grow 撑满，不会留空白。
 
 @media (max-width: 1200px) {
   .overviewGrid {
     grid-template-columns: 1fr;
-  }
-
-  .kpiGrid {
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   }
 
   .span8,
@@ -1024,8 +1290,9 @@
   }
 
   .ringCard {
-    grid-template-columns: minmax(144px, 160px) minmax(0, 1fr);
-    max-width: 560px;
+    // 全宽断点:donut 居中、图例堆叠其下并占满宽度,避免横向拉伸过宽。
+    grid-template-columns: 1fr;
+    justify-items: center;
   }
 }
 
@@ -1130,6 +1397,31 @@
   border-color: #2a3a50;
 }
 
+// 暗色连体刷新框：外框承深色边框/底色，内部按钮与下拉透明、仅留深色发丝线分隔。
+:global(html.dark) .toolbarTimeSelector > div > div:last-child {
+  background: #0f1a28;
+  border-color: #2a3a50;
+}
+
+:global(html.dark) .toolbarTimeSelector > div > div:last-child :global(.ant-btn),
+:global(html.dark) .toolbarTimeSelector > div > div:last-child :global(.ant-select-selector) {
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.78) !important;
+}
+
+:global(html.dark) .toolbarTimeSelector > div > div:last-child :global(.ant-btn) {
+  border: none !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+:global(html.dark) .instanceMetaDivider::before {
+  color: rgba(255, 255, 255, 0.28);
+}
+
+:global(html.dark) .instanceMetaMuted {
+  color: rgba(255, 255, 255, 0.48);
+}
+
 :global(html.dark) .modeTabActive {
   background: #e8eef7;
   color: #101826;
@@ -1149,6 +1441,29 @@
 
 :global(html.dark) .barTrack {
   background: #25344a;
+}
+
+:global(html.dark) .detailBar {
+  background: #25344a;
+}
+
+:global(html.dark) .statusRow {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+:global(html.dark) .statusRowOk {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.22);
+}
+
+:global(html.dark) .statusRowAlarm {
+  background: rgba(255, 77, 79, 0.12);
+  border-color: rgba(255, 77, 79, 0.28);
+}
+
+:global(html.dark) .statusLabel {
+  color: #9eb0c8;
 }
 
 :global(html.dark) .collectionStatusSegment {

@@ -85,6 +85,7 @@ export default function SimpleDashboard({ config }: { config: SimpleDashboardCon
             onFrequenceChange={setFrequence}
             onRefresh={onRefresh}
             onBack={onBack}
+            showTimeSelector={false}
             styles={styles}
           />
           <DashboardInstanceCard
@@ -98,6 +99,12 @@ export default function SimpleDashboard({ config }: { config: SimpleDashboardCon
             selectorPlaceholder={resolvedInstanceName !== '--' ? resolvedInstanceName : '选择实例'}
             selectorTitle={currentInstanceLabel}
             isDashboardMode={isDashboardMode}
+            timeSelectorProps={{
+              timeDefaultValue,
+              onTimeChange,
+              onFrequenceChange: setFrequence,
+              onRefresh
+            }}
             styles={styles}
           />
         </div>

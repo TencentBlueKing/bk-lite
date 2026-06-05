@@ -86,12 +86,6 @@
   flex: 1;
 }
 
-.instanceActions {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
 .instanceInfo {
   min-width: 0;
   flex: 1;
@@ -120,76 +114,6 @@
   word-break: break-word;
 }
 
-.inlineInstanceSelector {
-  width: 240px;
-  min-width: 0;
-  align-self: center;
-  padding: 0 10px;
-  border-radius: 12px;
-  background: #ffffff;
-  border: 1px solid #dbe5f1;
-  box-shadow: none;
-}
-
-.inlineInstanceSelector :global(.ant-select-selector) {
-  min-height: 34px !important;
-  padding: 0 24px 0 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-.inlineInstanceSelector :global(.ant-select-selection-item),
-.inlineInstanceSelector :global(.ant-select-selection-placeholder) {
-  color: #5b7190 !important;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.2;
-  overflow: visible;
-  text-overflow: clip;
-}
-
-.inlineInstanceSelector :global(.ant-select-item-option-content) {
-  color: #22324a;
-  font-size: 14px;
-  font-weight: 600;
-  white-space: normal;
-  word-break: break-word;
-}
-
-.inlineInstanceSelector :global(.ant-select-arrow) {
-  color: #8aa0bc;
-}
-
-.toolbarTimeSelector {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.toolbarTimeSelector > div {
-  align-items: center;
-  display: flex;
-}
-
-.toolbarTimeSelector > div > div:first-child {
-  width: 256px;
-}
-
-.toolbarTimeSelector > div > div:last-child {
-  margin-left: 0 !important;
-}
-
-.toolbarTimeSelector > div > div:first-child :global(.ant-select),
-.toolbarTimeSelector > div > div:first-child :global(.ant-picker) {
-  width: 256px !important;
-}
-
-.toolbarTimeSelector > div > div:last-child :global(.ant-select) {
-  width: 92px !important;
-}
-
 .instanceSubline {
   display: flex;
   align-items: center;
@@ -201,41 +125,28 @@
   line-height: 1.4;
 }
 
-.instanceMetaInline {
-  color: #556a88;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.35;
-  min-width: 0;
-}
-
-.instanceIdentityGroup {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-}
-
+// 中性胶囊：去掉抢眼的蓝底，统一成低对比灰底，避免三块同色互相竞争。
 .identityPill {
   display: inline-flex;
   align-items: center;
   min-height: 24px;
   padding: 3px 9px;
   border-radius: 999px;
-  background: #eef4ff;
-  border: 1px solid #dbe8ff;
-  color: #315b9a;
+  background: #f1f4f9;
+  border: 1px solid #e4eaf2;
+  color: #5a6b85;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.2;
   white-space: nowrap;
 }
 
-.instanceMetaDivider {
-  color: #c3cfdd;
-  font-size: 12px;
-  line-height: 1;
+// 「身份」是核心状态语义，保留品牌色填充以突出主/从角色。
+.identityPillRole {
+  background: #eaf1ff;
+  border-color: #d4e2ff;
+  color: #2f5fb0;
+  font-weight: 700;
 }
 
 .controls {
@@ -304,10 +215,18 @@
 }
 
 .primaryGrid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  // flex 自适应：换行后末行卡片弹性撑满整行，避免 5 张卡在 4/2 列断点下落单留白。
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
   gap: 12px;
   margin-bottom: 12px;
+
+  > * {
+    // 基准 = 整行 1/5（扣除 4 个 gap）→ 宽屏每行 5 张；收窄到 min-width 以下自动换行并撑满。
+    flex: 1 1 calc((100% - 4 * 12px) / 5);
+    min-width: 200px;
+  }
 }
 
 .mainTrendGrid,
@@ -332,7 +251,7 @@
 
 .statCard {
   padding: 16px 16px 14px;
-  min-height: 224px;
+  min-height: 168px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -368,11 +287,11 @@
 }
 
 .statBody {
+  margin-top: 10px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 9px;
-  margin-top: 12px;
-  min-height: 62px;
+  gap: 8px;
 }
 
 .statBodyRelaxed {
@@ -405,7 +324,7 @@
   align-items: center;
   gap: 6px 10px;
   flex-wrap: wrap;
-  color: #8192a8;
+  color: #64748b;
   font-size: 14px;
   line-height: 1.5;
   min-height: 22px;
@@ -420,7 +339,7 @@
 }
 
 .statCompareLabel {
-  color: #93a2b4;
+  color: #64748b;
   font-size: 14px;
   font-weight: 500;
   line-height: 1.2;
@@ -548,7 +467,7 @@
 }
 
 .uptimeStatusEmpty .uptimeStatusMain {
-  color: #7d8da3;
+  color: #64748b;
 }
 
 .miniTrend {
@@ -566,8 +485,8 @@
 }
 
 .collectionStatusCard {
-  justify-content: space-between;
-  min-height: 188px;
+  justify-content: flex-start;
+  min-height: 168px;
 }
 
 .collectionStatusHeader {
@@ -575,10 +494,10 @@
 }
 
 .collectionStatusBody {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   flex: 1;
-  grid-template-rows: repeat(3, minmax(0, 1fr));
-  row-gap: 8px;
+  gap: 10px;
   min-height: 0;
 }
 
@@ -2175,8 +2094,10 @@
 
 .barRow {
   display: grid;
-  grid-template-columns: 108px 1fr 68px;
-  gap: 10px;
+  // 条固定窄宽成一列、数值紧贴右侧;富余宽度留右(与共享条面板一致)。
+  grid-template-columns: 108px 180px auto;
+  justify-content: start;
+  gap: 12px;
   align-items: center;
 }
 
@@ -2204,11 +2125,11 @@
 }
 
 .barValue {
-  text-align: right;
-  color: #7388a5;
-  font-size: 14px;
-  font-weight: 600;
+  color: #22324a;
+  font-size: 16px;
+  font-weight: 800;
   line-height: 1.2;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2974,8 +2895,13 @@
 :global(html.dark) .replicationHint,
 :global(html.dark) .errorOverviewLabel,
 :global(html.dark) .errorOverviewHint,
+:global(html.dark) .instanceMetaMuted,
 :global(html.dark) .miniMetricSubTitle {
   color: rgba(255, 255, 255, 0.48);
+}
+
+:global(html.dark) .instanceMetaDivider::before {
+  color: rgba(255, 255, 255, 0.28);
 }
 
 :global(html.dark) .errorMeta {
@@ -3089,8 +3015,14 @@
 }
 
 :global(html.dark) .identityPill {
-  background: rgba(47, 107, 255, 0.14);
-  border-color: rgba(127, 176, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.66);
+}
+
+:global(html.dark) .identityPillRole {
+  background: rgba(47, 107, 255, 0.16);
+  border-color: rgba(127, 176, 255, 0.24);
   color: #9abfff;
 }
 
@@ -3287,8 +3219,6 @@
 
 :global(html.dark) .toolbarTimeSelector > div > div:first-child :global(.ant-select-selector),
 :global(html.dark) .toolbarTimeSelector > div > div:first-child :global(.ant-picker),
-:global(html.dark) .toolbarTimeSelector > div > div:last-child :global(.ant-btn),
-:global(html.dark) .toolbarTimeSelector > div > div:last-child :global(.ant-select-selector),
 :global(html.dark) .inlineInstanceSelector :global(.ant-select-selector) {
   background: rgba(12, 20, 31, 0.92) !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
@@ -3338,10 +3268,6 @@
 }
 
 @media (max-width: 1600px) {
-  .primaryGrid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
   .thirdChartPanel {
     grid-column: span 12;
   }
@@ -3414,7 +3340,6 @@
     grid-column: span 12;
   }
 
-  .primaryGrid,
   .allMetricsGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -3603,10 +3528,6 @@
 }
 
 @media (max-width: 768px) {
-  .primaryGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .chartWrap,
   .compactChartWrap,
   .replicationChartWrap {
@@ -3674,7 +3595,6 @@
 }
 
 @media (max-width: 480px) {
-  .primaryGrid,
   .allMetricsGrid {
     grid-template-columns: 1fr;
   }

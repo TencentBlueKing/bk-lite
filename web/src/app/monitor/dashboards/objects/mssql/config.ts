@@ -410,6 +410,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       title: '调度器压力',
       subtitle: '工作线程与等待',
+      showTrend: true,
       guide: [{ label: '调度器压力', detail: '活跃工作线程、可运行任务和等待任务的当前分布。' }],
       items: [
         { label: '活跃工作线程', metric: 'sqlserver_schedulers_active_workers_count', color: '#2f6bff', unit: 'counts' },
@@ -420,6 +421,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       title: '请求资源消耗',
       subtitle: 'CPU、等待与总耗时',
+      showTrend: true,
       guide: [{ label: '请求资源', detail: '请求 CPU 时间、等待时间和总耗时速率，用于定位高成本查询。' }],
       items: [
         { label: '总耗时', metric: 'sqlserver_requests_total_elapsed_time_ms_rate', color: '#8a5cff', unit: 'ms' },

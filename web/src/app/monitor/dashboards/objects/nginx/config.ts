@@ -139,13 +139,13 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     },
     {
-      title: '请求连接速率',
-      subtitle: '请求与处理吞吐',
-      metric: 'nginx_requests_rate',
-      guide: [{ label: '吞吐速率', detail: '请求速率与连接处理速率的对比。' }],
+      title: '连接接受/处理速率',
+      subtitle: '接受 vs 处理（差值即被丢弃的连接）',
+      metric: 'nginx_accepts_rate',
+      guide: [{ label: '吞吐速率', detail: '连接接受速率与连接处理速率的对比，两线分叉（处理 < 接受）即有连接被丢弃。请求速率见上方 KPI 卡。' }],
       series: [
-        { metric: 'nginx_requests_rate', label: '请求速率', color: '#2f6bff', unit: 'cps' },
-        { metric: 'nginx_handled_rate', label: '处理速率', color: '#13c2c2', unit: 'cps' }
+        { metric: 'nginx_accepts_rate', label: '接受速率', color: '#13c2c2', unit: 'cps' },
+        { metric: 'nginx_handled_rate', label: '处理速率', color: '#8a5cff', unit: 'cps' }
       ]
     },
     {
@@ -170,7 +170,7 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       segments: [
         { label: '读取连接', metric: 'nginx_reading', color: '#27c274', unit: 'counts' },
         { label: '写入连接', metric: 'nginx_writing', color: '#ff8a1f', unit: 'counts' },
-        { label: '等待连接', metric: 'nginx_waiting', color: '#e8f0fe', unit: 'counts' }
+        { label: '等待连接', metric: 'nginx_waiting', color: '#9aa9bf', unit: 'counts' }
       ]
     }
   ],

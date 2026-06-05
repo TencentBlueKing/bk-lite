@@ -62,6 +62,8 @@ export interface SummaryFieldConfig {
   unit?: SimpleMetricUnit;
   formatter?: 'duration' | 'enumHealth' | 'startedAt';
   enumMap?: MetricEnumMap;
+  /** 详情行语义色：error→红 / warning→琥珀 / 缺省→中性蓝。仅影响缩略图与数值配色。 */
+  tone?: 'error' | 'warning' | 'normal';
 }
 
 export interface SummaryCardConfig {
@@ -70,7 +72,7 @@ export interface SummaryCardConfig {
   metric: string;
   unit?: SimpleMetricUnit;
   color: string;
-  icon: 'api' | 'clock' | 'database' | 'node' | 'thunder';
+  icon: 'api' | 'clock' | 'database' | 'node' | 'thunder' | 'health' | 'memory' | 'unacked' | 'backlog' | 'publish';
   compare?: boolean;
   compareFavorableDirection?: CompareFavorableDirection;
   footer?: SummaryFieldConfig[];
@@ -86,7 +88,14 @@ export interface ChartConfig {
   subtitle: string;
   guide: GuideItem[];
   metric: string;
-  series: Array<{ metric: string; label: string; color: string; unit?: SimpleMetricUnit }>;
+  series: Array<{
+    metric: string;
+    label: string;
+    color: string;
+    unit?: SimpleMetricUnit;
+    /** 'limit' renders a dashed, dimmed ceiling line (e.g. mem_limit). Defaults to solid. */
+    style?: 'solid' | 'limit';
+  }>;
 }
 
 export interface DetailPanelConfig {
@@ -119,6 +128,26 @@ export interface BarPanelConfig {
   subtitle: string;
   guide: GuideItem[];
   items: Array<{ label: string; metric: string; color: string; unit?: SimpleMetricUnit }>;
+  /** true 时每行渲染 sparkline 趋势(速率/计数类);缺省保留进度条(分布/对比类)。 */
+  showTrend?: boolean;
+}
+
+/** A binary/flag signal shown as a status row (dot + state badge) rather than a value bar.
+ *  By default any non-zero value is treated as "firing" (alarm tone); an enumMap supplies
+ *  state labels. Set `invertTone` for "1 = healthy" flags (e.g. Consul passing), where a
+ *  positive value is the OK state and zero is the alarm state. */
+export interface StatusItemConfig {
+  label: string;
+  metric: string;
+  enumMap?: MetricEnumMap;
+  invertTone?: boolean;
+}
+
+export interface StatusPanelConfig {
+  title: string;
+  subtitle: string;
+  guide: GuideItem[];
+  items: StatusItemConfig[];
 }
 
 export interface SimpleDashboardConfig {
@@ -129,10 +158,16 @@ export interface SimpleDashboardConfig {
   collectionStatusQuery: string;
   metrics: SimpleMetricConfig[];
   metaItems?: string[];
+  /**
+   * 标题头(对象名后)动态展示的指标 chip(如版本)。通用能力:每个对象按需声明,
+   * 指标有数据则显示「label: 值」,无数据自动跳过。适合版本/构建号等静态身份信息。
+   */
+  metaMetrics?: Array<{ label: string; metric: string; unit?: SimpleMetricUnit }>;
   summaryCards: SummaryCardConfig[];
   charts: ChartConfig[];
   ringPanels?: RingPanelConfig[];
   barPanels?: BarPanelConfig[];
+  statusPanels?: StatusPanelConfig[];
   details: DetailPanelConfig[];
 }
 
@@ -173,12 +208,35 @@ export interface PreparedRingPanel {
 
 export interface PreparedBarPanel {
   panel: BarPanelConfig;
-  items: Array<{ label: string; value: number; display: string; color: string; max: number }>;
+  items: Array<{ label: string; value: number; display: string; color: string; max: number; trend?: ChartData[] }>;
+}
+
+export interface PreparedStatusPanel {
+  panel: StatusPanelConfig;
+  items: Array<{ label: string; state: string; tone: 'ok' | 'alarm' | 'unknown' }>;
+}
+
+export type DetailRowViz = 'bar' | 'spark' | 'none';
+
+export interface PreparedDetailRow {
+  label: string;
+  value: string;
+  /** bar=百分比进度条；spark=速率/计数迷你趋势；none=纯数值(状态/枚举/时长/无时序) */
+  viz: DetailRowViz;
+  /** spark 用:完整时序 */
+  trend: ChartData[];
+  /** bar 用:当前值 clamp 到 0–100 */
+  barValue: number;
+  tone: 'error' | 'warning' | 'normal';
+  /** 枚举/状态行:枚举项自带的语义色(undefined=非枚举或无匹配) */
+  statusColor?: string;
+  /** sparkline 语义色:取该指标 config.color,与 KPI 卡 / 趋势图 / 异常信号条同源,统一缩略图配色 */
+  color?: string;
 }
 
 export interface PreparedDetailPanel {
   panel: DetailPanelConfig;
-  rows: Array<{ label: string; value: string }>;
+  rows: PreparedDetailRow[];
   hasData: boolean;
 }
 
@@ -593,13 +651,17 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
       metric: buildMetricItem(metricMap[chart.metric] || config.metrics.find((metric) => metric.name === chart.metric) || config.metrics[0]),
       unit: metricMap[chart.metric]?.unit || config.metrics.find((metric) => metric.name === chart.metric)?.unit || 'none',
       legends: chart.series.map((item, index) => ({ label: item.label, color: item.color, primary: index === 0 })),
-      seriesStyles: chart.series.map((item, index) => ({
-        color: item.color,
-        unit: item.unit || metricMap[item.metric]?.unit,
-        fillOpacity: index === 0 ? 0.08 : 0.03,
-        strokeOpacity: index === 0 ? 1 : 0.72,
-        strokeWidth: index === 0 ? 2.8 : 2.2
-      }))
+      seriesStyles: chart.series.map((item, index) => {
+        const isLimit = item.style === 'limit';
+        return {
+          color: item.color,
+          unit: item.unit || metricMap[item.metric]?.unit,
+          fillOpacity: isLimit ? 0 : index === 0 ? 0.08 : 0.03,
+          strokeOpacity: isLimit ? 0.55 : index === 0 ? 1 : 0.72,
+          strokeWidth: isLimit ? 1.6 : index === 0 ? 2.8 : 2.2,
+          strokeDasharray: isLimit ? '6 4' : undefined
+        };
+      })
     }))
   ), [config.charts, config.metrics, metricMap]);
 
@@ -633,7 +695,9 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
           value,
           display: `${formatted.value}${formatted.unit}`,
           color: item.color,
-          max: 1
+          max: 1,
+          // 速率/计数类面板(showTrend)透传时序 → 渲染 sparkline;分布类不传 → 保留进度条。
+          trend: panel.showTrend ? (metricMap[item.metric]?.viewData ?? []) : undefined
         };
       });
       const max = Math.max(...items.map((item) => item.value), 1);
@@ -641,10 +705,57 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     })
   ), [config.barPanels, getLatest, hasMetricData, metricMap]);
 
+  const statusPanels = useMemo<PreparedStatusPanel[]>(() => (
+    (config.statusPanels || []).map((panel) => ({
+      panel,
+      items: panel.items.map((item) => {
+        if (!hasMetricData(item.metric)) {
+          return { label: item.label, state: '--', tone: 'unknown' as const };
+        }
+        const value = Math.round(getLatest(item.metric));
+        const isOk = item.invertTone ? value > 0 : value <= 0;
+        const tone = isOk ? ('ok' as const) : ('alarm' as const);
+        const mapped = item.enumMap?.[value];
+        // Map known enum states directly; otherwise fall back to tone-based wording so
+        // a non-boolean reading (e.g. 835) still reads as "告警" rather than a raw number.
+        const state = mapped ? mapped.label : tone === 'ok' ? '正常' : '告警';
+        return { label: item.label, state, tone };
+      })
+    }))
+  ), [config.statusPanels, getLatest, hasMetricData]);
+
   const detailPanels = useMemo<PreparedDetailPanel[]>(() => (
     config.details.map((panel) => {
-      const rows = panel.rows
-        .map((row) => ({ label: row.label, value: formatField(row) }))
+      const rows: PreparedDetailRow[] = panel.rows
+        .map((row) => {
+          const value = formatField(row);
+          // 状态/枚举/时长类不画图(趋势无意义),只展示文本。
+          const isTextual = Boolean(row.formatter || row.enumMap);
+          // 仅真实可度量的数值型指标才画图;unit 缺省或 'none'(标识符编码/版本号等)一律纯文本。
+          const isChartableUnit = Boolean(row.unit) && row.unit !== 'none';
+          const series = metricMap[row.metric]?.viewData ?? [];
+          const hasSeries = series.length > 0;
+          let viz: DetailRowViz = 'none';
+          if (value !== '--' && !isTextual && isChartableUnit && hasSeries) {
+            // 实时数值统一用 sparkline 呈现趋势(含百分比——趋势比静态"满度"更有意义)。
+            viz = 'spark';
+          }
+          const latest = getLatest(row.metric);
+          // 枚举/状态行:取枚举项自带语义色(与 KPI 卡 valueColor 口径一致);无 enumMap/无数据/无匹配则 undefined。
+          const statusColor = row.enumMap && hasMetricData(row.metric) ? formatMappedEnum(latest, row.enumMap).color : undefined;
+          // sparkline 语义色:取该指标 config.color,使详情行缩略图与 KPI/趋势/异常信号条配色一致。
+          const color = config.metrics.find((m) => m.name === row.metric)?.color;
+          return {
+            label: row.label,
+            value,
+            viz,
+            trend: series,
+            barValue: Number.isFinite(latest) ? Math.max(0, Math.min(100, latest)) : 0,
+            tone: row.tone ?? 'normal',
+            statusColor,
+            color
+          };
+        })
         .filter((row) => row.value !== '--');
 
       return {
@@ -653,12 +764,16 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
         hasData: rows.length > 0
       };
     })
-  ), [config.details, formatField]);
+  ), [config.details, formatField, metricMap, getLatest, hasMetricData]);
 
   const collectionStatus = getCollectionStatus(collectionStatusMetric, config.objectFallbackName);
   const collectionStatusTimeline = buildCollectionStatusTimeline(collectionStatusMetric?.loadState, collectionStatusMetric?.viewData);
   const pageTitle = displayMode === 'metrics' ? `${objectDisplayText} 全量指标` : config.pageTitle;
-  const objectMetaItems = [objectDisplayText, ...(config.metaItems || []), '时区: Asia/Shanghai'];
+  // 标题头 meta-metric chips:有数据则「label: 值」放对象名后,无数据自动跳过(通用能力)。
+  const metaMetricChips = (config.metaMetrics || [])
+    .filter((m) => hasMetricData(m.metric))
+    .map((m) => `${m.label}: ${formatField({ label: m.label, metric: m.metric, unit: m.unit })}`);
+  const objectMetaItems = [objectDisplayText, ...metaMetricChips, ...(config.metaItems || []), '时区: Asia/Shanghai'];
 
   const onTimeChange = (val: number[], originValue: number | null) => setTimeValues({ timeRange: val, originValue });
   const onXRangeChange = (arr: [Dayjs, Dayjs]) => {
@@ -714,6 +829,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     chartPanels,
     ringPanels,
     barPanels,
+    statusPanels,
     detailPanels,
     onTimeChange,
     onRefresh,

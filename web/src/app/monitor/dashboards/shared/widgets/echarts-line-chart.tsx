@@ -32,6 +32,7 @@ const DEFAULT_COLORS = [
   '#6DC8EC', '#945FB9', '#FF9845', '#1E9493'
 ];
 
+
 const getChartAreaKeys = (arr: ChartData[]): string[] => {
   const keys = new Set<string>();
   arr.forEach((obj) => {
@@ -127,7 +128,8 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
       const fillOpacity = style.fillOpacity ?? 0.05;
       const strokeOpacity = style.strokeOpacity ?? 1;
       const strokeWidth = style.strokeWidth ?? 2;
-      const isDashed = !!style.strokeDasharray;
+      // 数据线一律实线，多系列靠颜色区分；仅显式 strokeDasharray（阈值/上限线，由 style:'limit' 注入）才虚线。
+      const lineType: 'solid' | 'dashed' = style.strokeDasharray ? 'dashed' : 'solid';
 
       return {
         type: 'line' as const,
@@ -144,7 +146,7 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
           width: strokeWidth,
           color,
           opacity: strokeOpacity,
-          type: isDashed ? ('dashed' as const) : ('solid' as const)
+          type: lineType
         },
         areaStyle: fillOpacity > 0 ? {
           color: {

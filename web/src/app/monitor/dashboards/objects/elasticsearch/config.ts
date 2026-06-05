@@ -256,6 +256,7 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       title: '线程池压力',
       subtitle: '写入与搜索队列',
+      showTrend: true,
       guide: [{ label: '线程池压力', detail: '写线程池与搜索线程池队列长度，队列增长说明处理能力不足。' }],
       items: [
         { label: '写入队列', metric: 'elasticsearch_thread_pool_write_queue', color: '#2f6bff', unit: 'counts' },
@@ -265,6 +266,7 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       title: '熔断器热点',
       subtitle: '熔断触发',
+      showTrend: true,
       guide: [{ label: '熔断器', detail: 'Fielddata 与请求级熔断触发速率，非零表示近期存在内存保护触发。' }],
       items: [
         { label: 'Fielddata 熔断', metric: 'elasticsearch_breakers_fielddata_tripped_rate', color: '#ff4d4f', unit: 'cps' },

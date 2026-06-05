@@ -21,6 +21,7 @@ import {
   TrendChartPanel,
   RingChartPanel
 } from '../../shared/widgets';
+import { DetailMetricRow } from '../common/dashboard-components';
 import {
   buildSearchParams,
   getLatestChartValue,
@@ -61,6 +62,10 @@ interface InstanceOption {
 const MEBIBYTE = 1024 * 1024;
 
 const METRIC_QUERY_CONCURRENCY = 4;
+
+// 详情行 sparkline 取指标语义色,与 KPI/趋势统一配色。
+const metricColor = (name: string): string | undefined =>
+  DASHBOARD_METRICS.find((m) => m.name === name)?.color;
 
 const MONGODB_METRIC_GROUPS = [
   {
@@ -574,6 +579,7 @@ export default function MongoDashboardPage() {
             onFrequenceChange={onFrequenceChange}
             onRefresh={() => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))}
             onBack={goBack}
+            showTimeSelector={false}
             styles={styles}
           />
 
@@ -589,6 +595,12 @@ export default function MongoDashboardPage() {
             selectorPlaceholder={resolvedInstanceName !== '--' ? resolvedInstanceName : '选择实例'}
             selectorTitle={currentInstanceOption?.label || normalizedInstanceName || resolvedInstanceName}
             isDashboardMode={isDashboardMode}
+            timeSelectorProps={{
+              timeDefaultValue,
+              onTimeChange,
+              onFrequenceChange,
+              onRefresh: () => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))
+            }}
             styles={styles}
           />
         </div>
@@ -688,7 +700,7 @@ export default function MongoDashboardPage() {
               <div className={styles.mainTrendGrid}>
                 <TrendChartPanel
                   styles={styles}
-                  className={styles.thirdChartPanel}
+                  className={styles.halfPanel}
                   title={<TitleWithGuide styles={styles} title="延迟趋势" items={latencyTrendGuide} className={styles.panelTitleWithGuide} />}
                   subtitle="读延迟与命令延迟变化"
                   legends={TREND_LEGENDS.latency}
@@ -704,7 +716,7 @@ export default function MongoDashboardPage() {
 
                 <TrendChartPanel
                   styles={styles}
-                  className={styles.thirdChartPanel}
+                  className={styles.halfPanel}
                   title={<TitleWithGuide styles={styles} title="读写队列趋势" items={queueTrendGuide} className={styles.panelTitleWithGuide} />}
                   subtitle="活跃读写与排队读写"
                   legends={TREND_LEGENDS.queue}
@@ -717,7 +729,7 @@ export default function MongoDashboardPage() {
 
                 <TrendChartPanel
                   styles={styles}
-                  className={styles.thirdChartPanel}
+                  className={styles.halfPanel}
                   title={<TitleWithGuide styles={styles} title="吞吐趋势" items={throughputTrendGuide} className={styles.panelTitleWithGuide} />}
                   subtitle="命令、查询与写入变化"
                   legends={TREND_LEGENDS.throughput}
@@ -819,9 +831,9 @@ export default function MongoDashboardPage() {
                   subtitle="工作集与进程内存匹配"
                   guide={memoryDetailGuide}
                 >
-                  <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>常驻内存</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_resident_megabytes', `${residentDisplay.value}${residentDisplay.unit}`)}</span></div>
-                  <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>虚拟内存</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_vsize_megabytes', `${virtualDisplay.value}${virtualDisplay.unit}`)}</span></div>
-                  <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>缺页频率</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_page_faults_rate', `${pageFaultDisplay.value}${pageFaultDisplay.unit}`)}</span></div>
+                  <DetailMetricRow styles={styles} label="常驻内存" value={renderMetricValue('mongodb_resident_megabytes', `${residentDisplay.value}${residentDisplay.unit}`)} viz={hasMetricData('mongodb_resident_megabytes') ? 'spark' : 'none'} trend={metricMap.mongodb_resident_megabytes?.viewData || []} color={metricColor('mongodb_resident_megabytes')} />
+                  <DetailMetricRow styles={styles} label="虚拟内存" value={renderMetricValue('mongodb_vsize_megabytes', `${virtualDisplay.value}${virtualDisplay.unit}`)} viz={hasMetricData('mongodb_vsize_megabytes') ? 'spark' : 'none'} trend={metricMap.mongodb_vsize_megabytes?.viewData || []} color={metricColor('mongodb_vsize_megabytes')} />
+                  <DetailMetricRow styles={styles} label="缺页频率" value={renderMetricValue('mongodb_page_faults_rate', `${pageFaultDisplay.value}${pageFaultDisplay.unit}`)} viz={hasMetricData('mongodb_page_faults_rate') ? 'spark' : 'none'} trend={metricMap.mongodb_page_faults_rate?.viewData || []} color={metricColor('mongodb_page_faults_rate')} />
                 </DetailPanel>
 
                 <DetailPanel
@@ -831,10 +843,10 @@ export default function MongoDashboardPage() {
                   subtitle="结果返回与异常信号"
                   guide={networkDetailGuide}
                 >
-                  <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>入流量</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_net_in_bytes_count_rate', `${netInDisplay.value}${netInDisplay.unit}`)}</span></div>
-                  <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>出流量</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_net_out_bytes_count_rate', `${netOutDisplay.value}${netOutDisplay.unit}`)}</span></div>
-                  <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>游标超时数</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_cursor_timed_out_count', formatMetricValue(cursorTimedOut, 'counts').value)}</span></div>
-                  <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>用户断言</span><span className={styles.detailMetricValue}>{renderMetricValue('mongodb_assert_user', formatMetricValue(userAssert, 'counts').value)}</span></div>
+                  <DetailMetricRow styles={styles} label="入流量" value={renderMetricValue('mongodb_net_in_bytes_count_rate', `${netInDisplay.value}${netInDisplay.unit}`)} viz={hasMetricData('mongodb_net_in_bytes_count_rate') ? 'spark' : 'none'} trend={metricMap.mongodb_net_in_bytes_count_rate?.viewData || []} color={metricColor('mongodb_net_in_bytes_count_rate')} />
+                  <DetailMetricRow styles={styles} label="出流量" value={renderMetricValue('mongodb_net_out_bytes_count_rate', `${netOutDisplay.value}${netOutDisplay.unit}`)} viz={hasMetricData('mongodb_net_out_bytes_count_rate') ? 'spark' : 'none'} trend={metricMap.mongodb_net_out_bytes_count_rate?.viewData || []} color={metricColor('mongodb_net_out_bytes_count_rate')} />
+                  <DetailMetricRow styles={styles} label="游标超时数" value={renderMetricValue('mongodb_cursor_timed_out_count', formatMetricValue(cursorTimedOut, 'counts').value)} viz={hasMetricData('mongodb_cursor_timed_out_count') ? 'spark' : 'none'} trend={metricMap.mongodb_cursor_timed_out_count?.viewData || []} color={metricColor('mongodb_cursor_timed_out_count')} />
+                  <DetailMetricRow styles={styles} label="用户断言" value={renderMetricValue('mongodb_assert_user', formatMetricValue(userAssert, 'counts').value)} viz={hasMetricData('mongodb_assert_user') ? 'spark' : 'none'} trend={metricMap.mongodb_assert_user?.viewData || []} color={metricColor('mongodb_assert_user')} />
                 </DetailPanel>
               </div>
             </>

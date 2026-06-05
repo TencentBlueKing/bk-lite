@@ -11,6 +11,7 @@ export interface DetailPanelStyles extends GuideTooltipStyles {
   panelTitle?: string;
   panelTitleWithGuide?: string;
   panelSubTitle?: string;
+  detailRowsFill?: string;
 }
 
 export interface DetailPanelProps {
@@ -45,7 +46,7 @@ export const DetailPanel = ({
           </h3>
           {subtitle ? <div className={styles.panelSubTitle}>{subtitle}</div> : null}
         </div>
-        {children}
+        <div className={styles.detailRowsFill}>{children}</div>
       </div>
     </div>
   );

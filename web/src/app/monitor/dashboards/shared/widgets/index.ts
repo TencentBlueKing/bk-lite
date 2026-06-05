@@ -19,6 +19,9 @@ export type { InlineRingChartProps } from './inline-ring-chart';
 export { HorizontalBarPanel } from './horizontal-bar-panel';
 export type { HorizontalBarPanelProps, HorizontalBarPanelStyles, BarItem } from './horizontal-bar-panel';
 
+export { StatusListPanel } from './status-list-panel';
+export type { StatusListPanelProps, StatusListPanelStyles, StatusItem, StatusTone } from './status-list-panel';
+
 export { TrendChartPanel } from './trend-chart-panel';
 export type { TrendChartPanelProps, TrendChartPanelStyles } from './trend-chart-panel';
 

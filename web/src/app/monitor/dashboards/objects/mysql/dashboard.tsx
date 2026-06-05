@@ -306,6 +306,12 @@ const inferMysqlIdentity = (roleSignals: {
   return { deployment, role, replication };
 };
 
+// 每分钟计数率缩写显示:127051380 → "127Mil/min",避免长数字稀释可读性。
+const formatPerMinute = (perMin: number): string => {
+  const { value, unit } = formatMetricValue(perMin, 'counts');
+  return `${value}${unit}/min`;
+};
+
 export default function MysqlDashboardPage() {
   const { getInstanceQuery } = useViewApi();
   const { getInstanceList } = useMonitorApi();
@@ -793,11 +799,6 @@ export default function MysqlDashboardPage() {
     { name: '脏页', value: bufferPoolDirtyRatio, color: '#ff9f43' },
     { name: '空闲页', value: Math.max(100 - bufferPoolUsedValue, 0), color: '#cbd5e1' }
   ].filter((item) => item.value > 0);
-  const bufferPoolLegendItems = [
-    { name: '已用页', value: bufferPoolCleanUsedRatio, color: '#4c8dff' },
-    { name: '脏页', value: bufferPoolDirtyRatio, color: '#ff9f43' },
-    { name: '空闲页', value: Math.max(100 - bufferPoolUsedValue, 0), color: '#cbd5e1' }
-  ];
   const normalizeCountValue = (value: number) => (Number.isFinite(value) ? Math.max(Math.round(value), 0) : 0);
   const bufferPoolTotalPages = normalizeCountValue(getLatest('mysql_innodb_buffer_pool_pages_total'));
   const bufferPoolFreePages = normalizeCountValue(getLatest('mysql_innodb_buffer_pool_pages_free'));
@@ -864,14 +865,14 @@ export default function MysqlDashboardPage() {
     logSlaveUpdates: logSlaveUpdatesValue
   });
   const instanceMetaItems = [
-    instanceIdText ? <span key="instance-id" className={styles.instanceMetaInline}>{instanceIdText}</span> : null,
     <span key="object-name" className={styles.instanceMetaInline}>{objectDisplayText}</span>,
+    instanceIdText ? <span key="instance-id" className={styles.instanceMetaMuted}>{instanceIdText}</span> : null,
     <span key="identity" className={styles.instanceIdentityGroup}>
-      <span className={styles.identityPill}>部署: {mysqlIdentity.deployment}</span>
-      <span className={styles.identityPill}>身份: {mysqlIdentity.role}</span>
-      <span className={styles.identityPill}>复制: {mysqlIdentity.replication}</span>
+      <span className={styles.identityPill}>部署 {mysqlIdentity.deployment}</span>
+      <span className={`${styles.identityPill} ${styles.identityPillRole}`}>身份 {mysqlIdentity.role}</span>
+      <span className={styles.identityPill}>复制 {mysqlIdentity.replication}</span>
     </span>,
-    <span key="timezone" className={styles.instanceMetaInline}>时区: Asia/Shanghai</span>
+    <span key="timezone" className={styles.instanceMetaMuted}>时区 Asia/Shanghai</span>
   ].filter(Boolean) as React.ReactNode[];
   const replicationApplicable = mysqlIdentity.role === '从库' || hasReplicationData;
   const uptimeGuide = [
@@ -1004,6 +1005,7 @@ export default function MysqlDashboardPage() {
             onFrequenceChange={onFrequenceChange}
             onRefresh={() => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))}
             onBack={goBack}
+            showTimeSelector={false}
             styles={styles}
           />
 
@@ -1018,6 +1020,13 @@ export default function MysqlDashboardPage() {
             selectorPlaceholder="选择实例"
             selectorTitle={currentInstanceOption?.label || resolvedInstanceName}
             isDashboardMode={isDashboardMode}
+            timeSelectorProps={{
+              timeDefaultValue,
+              frequencyList: MYSQL_REFRESH_FREQUENCY_LIST,
+              onTimeChange,
+              onFrequenceChange,
+              onRefresh: () => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))
+            }}
             styles={styles}
           />
         </div>
@@ -1059,7 +1068,7 @@ export default function MysqlDashboardPage() {
                       iconStyle={{ background: 'rgba(255, 77, 79, 0.12)', color: '#ff4d4f' }}
                       color="#ff3030"
                       compare={hasSlowData ? slowCompare : null}
-                      footer={<><span>{hasSlowData && hasLockData ? `行锁等待 ${(lockWaitRate * 60).toFixed(lockWaitRate * 60 >= 10 ? 0 : 1)}/min` : metricEmptyText}</span></>}
+                      footer={<><span>{hasSlowData && hasLockData ? `行锁等待 ${formatPerMinute(lockWaitRate * 60)}` : metricEmptyText}</span></>}
                       trendData={metricMap.mysql_slow_queries_rate?.viewData || []}
                       noDataType={getNoDataType('mysql_slow_queries_rate')}
                     />
@@ -1258,7 +1267,7 @@ export default function MysqlDashboardPage() {
                   <div className={styles.mainTrendGrid}>
                     <TrendChartPanel
                       styles={styles}
-                      className={styles.thirdChartPanel}
+                      className={styles.halfPanel}
                       title={<TitleWithGuide styles={styles} title="慢查询趋势" items={slowTrendGuide} className={styles.panelTitleWithGuide} />}
                       subtitle="慢 SQL 速率"
                       legends={TREND_LEGENDS.qps.slice(1, 2)}
@@ -1277,7 +1286,7 @@ export default function MysqlDashboardPage() {
 
                     <TrendChartPanel
                       styles={styles}
-                      className={styles.thirdChartPanel}
+                      className={styles.halfPanel}
                       title={<TitleWithGuide styles={styles} title="锁等待趋势" items={lockTrendGuide} className={styles.panelTitleWithGuide} />}
                       subtitle="行锁等待速率"
                       legends={TREND_LEGENDS.lockWaits}
@@ -1296,7 +1305,7 @@ export default function MysqlDashboardPage() {
 
                     <TrendChartPanel
                       styles={styles}
-                      className={styles.thirdChartPanel}
+                      className={styles.halfPanel}
                       title={<TitleWithGuide styles={styles} title="QPS 趋势" items={qpsTrendGuide} className={styles.panelTitleWithGuide} />}
                       subtitle="总查询吞吐"
                       legends={TREND_LEGENDS.qps.slice(0, 1)}
@@ -1345,16 +1354,6 @@ export default function MysqlDashboardPage() {
                         primary: `${item.percent.toFixed(1)}%`,
                         secondary: `(${item.count.toLocaleString()})`
                       }))}
-                      chartExtra={(
-                        <div className={styles.bufferPoolLegend}>
-                          {bufferPoolLegendItems.map((item) => (
-                            <span key={item.name}>
-                              <i style={{ background: item.color }} />
-                              {item.name}
-                            </span>
-                          ))}
-                        </div>
-                      )}
                     />
 
                     <TrendChartPanel
@@ -1393,30 +1392,34 @@ export default function MysqlDashboardPage() {
                         {
                           label: '磁盘临时表速率',
                           value: tmpDiskRate * 60,
-                          display: `${(tmpDiskRate * 60).toFixed(tmpDiskRate * 60 >= 10 ? 0 : 1)} /min`,
+                          display: formatPerMinute(tmpDiskRate * 60),
                           color: '#ff4d4f',
-                          max: Math.max(tmpTotalRate * 60, 1)
+                          max: Math.max(tmpTotalRate * 60, 1),
+                          trend: metricMap.mysql_created_tmp_disk_tables_rate?.viewData || []
                         },
                         {
                           label: '表缓存未命中',
                           value: tableCacheMissRate * 60,
-                          display: `${(tableCacheMissRate * 60).toFixed(tableCacheMissRate * 60 >= 10 ? 0 : 1)} /min`,
+                          display: formatPerMinute(tableCacheMissRate * 60),
                           color: '#faad14',
-                          max: Math.max((tableCacheMissRate + openedTablesRate) * 60, 1)
+                          max: Math.max((tableCacheMissRate + openedTablesRate) * 60, 1),
+                          trend: metricMap.mysql_table_open_cache_misses_rate?.viewData || []
                         },
                         {
                           label: '连接尝试失败',
                           value: abortedConnectsRate * 60,
-                          display: `${(abortedConnectsRate * 60).toFixed(abortedConnectsRate * 60 >= 10 ? 0 : 1)} /min`,
+                          display: formatPerMinute(abortedConnectsRate * 60),
                           color: '#a855f7',
-                          max: Math.max(abortedConnectsRate * 60, 1)
+                          max: Math.max(abortedConnectsRate * 60, 1),
+                          trend: metricMap.mysql_aborted_connects_rate?.viewData || []
                         },
                         {
                           label: '客户端异常断开',
                           value: abortedClientsRate * 60,
-                          display: `${(abortedClientsRate * 60).toFixed(abortedClientsRate * 60 >= 10 ? 0 : 1)} /min`,
+                          display: formatPerMinute(abortedClientsRate * 60),
                           color: '#52c41a',
-                          max: Math.max(abortedClientsRate * 60, 1)
+                          max: Math.max(abortedClientsRate * 60, 1),
+                          trend: metricMap.mysql_aborted_clients_rate?.viewData || []
                         }
                       ]}
                     />

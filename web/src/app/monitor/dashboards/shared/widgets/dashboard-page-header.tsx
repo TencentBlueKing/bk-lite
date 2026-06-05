@@ -19,6 +19,8 @@ export interface DashboardPageHeaderProps {
   onFrequenceChange: (val: number) => void;
   onRefresh: () => void;
   onBack: () => void;
+  /** 是否在标题行内渲染时间选择器；置 false 时由调用方自行放置（默认 true，保持原行为）。 */
+  showTimeSelector?: boolean;
   styles: DashboardPageHeaderStyles;
 }
 
@@ -32,6 +34,7 @@ export function DashboardPageHeader({
   onFrequenceChange,
   onRefresh,
   onBack,
+  showTimeSelector = true,
   styles
 }: DashboardPageHeaderProps) {
   return (
@@ -56,15 +59,17 @@ export function DashboardPageHeader({
             全量指标
           </button>
         </div>
-        <div className={styles.toolbarTimeSelector}>
-          <TimeSelector
-            defaultValue={timeDefaultValue}
-            customFrequencyList={frequencyList}
-            onChange={onTimeChange}
-            onFrequenceChange={onFrequenceChange}
-            onRefresh={onRefresh}
-          />
-        </div>
+        {showTimeSelector ? (
+          <div className={styles.toolbarTimeSelector}>
+            <TimeSelector
+              defaultValue={timeDefaultValue}
+              customFrequencyList={frequencyList}
+              onChange={onTimeChange}
+              onFrequenceChange={onFrequenceChange}
+              onRefresh={onRefresh}
+            />
+          </div>
+        ) : null}
         {styles.actionButtons ? (
           <div className={styles.actionButtons}>
             <Button className={styles.toolbarBackBtn} icon={<ArrowLeftOutlined />} onClick={onBack}>返回</Button>

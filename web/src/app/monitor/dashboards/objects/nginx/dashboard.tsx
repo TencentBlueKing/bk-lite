@@ -19,7 +19,7 @@ import { NGINX_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
 const SUMMARY_TITLES = ['活跃连接数', '请求速率', '繁忙连接占比', '连接处理完成率'];
-const CHART_TITLES = ['连接状态趋势', '请求连接速率', '连接占比趋势'];
+const CHART_TITLES = ['连接状态趋势', '连接接受/处理速率', '连接占比趋势'];
 const RING_TITLES = ['连接状态分布'];
 
 export default function NginxDashboardPage() {
@@ -52,7 +52,7 @@ export default function NginxDashboardPage() {
                 loading={dashboard.loading}
                 seriesStyles={rateTrendChart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
-                className={styles.span4}
+                className={styles.span8}
                 styles={styles}
               />
             ) : null}
@@ -70,23 +70,6 @@ export default function NginxDashboardPage() {
                 styles={styles}
               />
             ) : null}
-            {connectionRatioChart ? (
-              <TrendChartPanel
-                key={connectionRatioChart.chart.title}
-                title={connectionRatioChart.chart.title}
-                subtitle={connectionRatioChart.chart.subtitle}
-                guide={connectionRatioChart.chart.guide}
-                legends={connectionRatioChart.legends}
-                data={connectionRatioChart.data}
-                metric={connectionRatioChart.metric}
-                unit={connectionRatioChart.unit}
-                loading={dashboard.loading}
-                seriesStyles={connectionRatioChart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={styles.span4}
-                styles={styles}
-              />
-            ) : null}
             {connectionTrendChart ? (
               <TrendChartPanel
                 key={connectionTrendChart.chart.title}
@@ -100,7 +83,24 @@ export default function NginxDashboardPage() {
                 loading={dashboard.loading}
                 seriesStyles={connectionTrendChart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
-                className={styles.span12}
+                className={styles.span6}
+                styles={styles}
+              />
+            ) : null}
+            {connectionRatioChart ? (
+              <TrendChartPanel
+                key={connectionRatioChart.chart.title}
+                title={connectionRatioChart.chart.title}
+                subtitle={connectionRatioChart.chart.subtitle}
+                guide={connectionRatioChart.chart.guide}
+                legends={connectionRatioChart.legends}
+                data={connectionRatioChart.data}
+                metric={connectionRatioChart.metric}
+                unit={connectionRatioChart.unit}
+                loading={dashboard.loading}
+                seriesStyles={connectionRatioChart.seriesStyles}
+                onXRangeChange={dashboard.onXRangeChange}
+                className={styles.span6}
                 styles={styles}
               />
             ) : null}

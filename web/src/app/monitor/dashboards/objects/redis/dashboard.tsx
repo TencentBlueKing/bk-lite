@@ -21,6 +21,7 @@ import {
   RingChartPanel,
   HorizontalBarPanel
 } from '../../shared/widgets';
+import { DetailMetricRow } from '../common/dashboard-components';
 import {
   formatMetricValue,
   buildSearchParams,
@@ -67,6 +68,10 @@ const RAW_VALUE_METRICS = new Set([
 ]);
 
 const METRIC_QUERY_CONCURRENCY = 4;
+
+// 详情行 sparkline 取指标语义色,与 KPI/趋势/异常信号条统一配色。
+const metricColor = (name: string): string | undefined =>
+  DASHBOARD_METRICS.find((m) => m.name === name)?.color;
 
 const REDIS_METRIC_GROUPS = [
   {
@@ -588,6 +593,7 @@ export default function RedisDashboardPage() {
             onFrequenceChange={onFrequenceChange}
             onRefresh={() => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))}
             onBack={goBack}
+            showTimeSelector={false}
             styles={styles}
           />
 
@@ -602,6 +608,12 @@ export default function RedisDashboardPage() {
             selectorPlaceholder="选择实例"
             selectorTitle={currentInstanceOption?.label || resolvedInstanceName}
             isDashboardMode={isDashboardMode}
+            timeSelectorProps={{
+              timeDefaultValue,
+              onTimeChange,
+              onFrequenceChange,
+              onRefresh: () => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))
+            }}
             styles={styles}
           />
         </div>
@@ -689,7 +701,7 @@ export default function RedisDashboardPage() {
                   <div className={styles.mainTrendGrid}>
                     <TrendChartPanel
                       styles={styles}
-                      className={styles.thirdChartPanel}
+                      className={styles.halfPanel}
                       title={<TitleWithGuide styles={styles} title="内存压力趋势" items={memoryTrendGuide} className={styles.panelTitleWithGuide} />}
                       subtitle="已用内存与上限"
                       guide={memoryTrendGuide}
@@ -706,7 +718,7 @@ export default function RedisDashboardPage() {
 
                     <TrendChartPanel
                       styles={styles}
-                      className={styles.thirdChartPanel}
+                      className={styles.halfPanel}
                       title={<TitleWithGuide styles={styles} title="命中/未命中趋势" items={cacheHitMissTrendGuide} className={styles.panelTitleWithGuide} />}
                       subtitle="键命中与未命中频率"
                       guide={cacheHitMissTrendGuide}
@@ -723,7 +735,7 @@ export default function RedisDashboardPage() {
 
                     <TrendChartPanel
                       styles={styles}
-                      className={styles.thirdChartPanel}
+                      className={styles.halfPanel}
                       title={<TitleWithGuide styles={styles} title="命令吞吐趋势" items={opsTrendGuide} className={styles.panelTitleWithGuide} />}
                       subtitle="OPS 与命令处理"
                       guide={opsTrendGuide}
@@ -819,9 +831,9 @@ export default function RedisDashboardPage() {
                         const normalClients = Math.max(clientsValue - blockedClientsValue, 0);
                         const maxVal = Math.max(clientsValue, 1);
                         return [
-                          { label: '正常连接', value: normalClients, display: hasMetricData('redis_clients') ? normalClients.toFixed(0) : '--', color: '#2f6bff', max: maxVal },
-                          { label: '阻塞客户端', value: blockedClientsValue, display: renderMetricValue('redis_blocked_clients', blockedClientsDisplay.value), color: '#fa8c16', max: maxVal },
-                          { label: '连接拒绝频率', value: rejectedRateValue, display: renderMetricValue('redis_rejected_connections_rate', `${rejectedDisplay.value}${rejectedDisplay.unit}`), color: '#ff4d4f', max: Math.max(rejectedRateValue, clientsValue, 1) }
+                          { label: '正常连接', value: normalClients, display: hasMetricData('redis_clients') ? normalClients.toFixed(0) : '--', color: '#2f6bff', max: maxVal, trend: metricMap.redis_clients?.viewData || [] },
+                          { label: '阻塞客户端', value: blockedClientsValue, display: renderMetricValue('redis_blocked_clients', blockedClientsDisplay.value), color: '#fa8c16', max: maxVal, trend: metricMap.redis_blocked_clients?.viewData || [] },
+                          { label: '连接拒绝频率', value: rejectedRateValue, display: renderMetricValue('redis_rejected_connections_rate', `${rejectedDisplay.value}${rejectedDisplay.unit}`), color: '#ff4d4f', max: Math.max(rejectedRateValue, clientsValue, 1), trend: metricMap.redis_rejected_connections_rate?.viewData || [] }
                         ];
                       })()}
                     />
@@ -833,17 +845,39 @@ export default function RedisDashboardPage() {
                       subtitle="过期、驱逐与网络流量"
                       guide={keyLifecycleGuide}
                     >
-                      <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>键过期频率</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_expired_keys_rate', `${expiredDisplay.value}${expiredDisplay.unit}`)}</span></div>
-                      <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>键驱逐频率</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_evicted_keys_rate', `${evictedDisplay.value}${evictedDisplay.unit}`)}</span></div>
-                      <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>网络入流量</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_total_net_input_bytes_rate', `${netInputDisplay.value}${netInputDisplay.unit}`)}</span></div>
-                      <div className={styles.detailMetricRow}><span className={styles.detailMetricLabel}>网络出流量</span><span className={styles.detailMetricValue}>{renderMetricValue('redis_total_net_output_bytes_rate', `${netOutputDisplay.value}${netOutputDisplay.unit}`)}</span></div>
-                      <div
-                        className={`${styles.fragmentationWarning} ${
-                          evictedRateValue > 0 ? styles.fragmentationWarningDanger : styles.fragmentationWarningNormal
-                        }`}
-                      >
-                        {evictedRateValue > 0 ? '出现驱逐，通常说明内存接近上限。' : '当前未观察到明显驱逐。'}
-                      </div>
+                      <DetailMetricRow
+                        styles={styles}
+                        label="键过期频率"
+                        value={renderMetricValue('redis_expired_keys_rate', `${expiredDisplay.value}${expiredDisplay.unit}`)}
+                        viz={hasMetricData('redis_expired_keys_rate') ? 'spark' : 'none'}
+                        trend={metricMap.redis_expired_keys_rate?.viewData || []}
+                        color={metricColor('redis_expired_keys_rate')}
+                      />
+                      <DetailMetricRow
+                        styles={styles}
+                        label="键驱逐频率"
+                        value={renderMetricValue('redis_evicted_keys_rate', `${evictedDisplay.value}${evictedDisplay.unit}`)}
+                        viz={hasMetricData('redis_evicted_keys_rate') ? 'spark' : 'none'}
+                        trend={metricMap.redis_evicted_keys_rate?.viewData || []}
+                        tone={evictedRateValue > 0 ? 'error' : 'normal'}
+                        color={metricColor('redis_evicted_keys_rate')}
+                      />
+                      <DetailMetricRow
+                        styles={styles}
+                        label="网络入流量"
+                        value={renderMetricValue('redis_total_net_input_bytes_rate', `${netInputDisplay.value}${netInputDisplay.unit}`)}
+                        viz={hasMetricData('redis_total_net_input_bytes_rate') ? 'spark' : 'none'}
+                        trend={metricMap.redis_total_net_input_bytes_rate?.viewData || []}
+                        color={metricColor('redis_total_net_input_bytes_rate')}
+                      />
+                      <DetailMetricRow
+                        styles={styles}
+                        label="网络出流量"
+                        value={renderMetricValue('redis_total_net_output_bytes_rate', `${netOutputDisplay.value}${netOutputDisplay.unit}`)}
+                        viz={hasMetricData('redis_total_net_output_bytes_rate') ? 'spark' : 'none'}
+                        trend={metricMap.redis_total_net_output_bytes_rate?.viewData || []}
+                        color={metricColor('redis_total_net_output_bytes_rate')}
+                      />
                     </DetailPanel>
                   </div>
                 </>

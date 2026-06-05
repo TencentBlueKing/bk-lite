@@ -89,6 +89,15 @@ const formatTimeValue = (value: number, unit: MetricUnit) => {
   };
 };
 
+const formatCountRate = (value: number): { value: string; unit: string } => {
+  const abs = Math.abs(value);
+  if (abs < 1000) {
+    return { value: abs >= 100 ? value.toFixed(0) : value.toFixed(2), unit: '/s' };
+  }
+  const scaled = formatAutoScaled(value, 'counts', COUNT_UNITS, COUNT_LABELS, 1000);
+  return { value: `${scaled.value}${scaled.unit}`, unit: '/s' };
+};
+
 export const formatMetricValue = (value: number, unit: MetricUnit): { value: string; unit: string } => {
   if (!Number.isFinite(value)) {
     return { value: '--', unit: '' };
@@ -96,7 +105,7 @@ export const formatMetricValue = (value: number, unit: MetricUnit): { value: str
 
   if (unit === 'percent') return { value: value.toFixed(1), unit: '%' };
   if (unit === 'msps') return { value: value >= 100 ? value.toFixed(0) : value.toFixed(1), unit: 'ms/s' };
-  if (unit === 'cps') return { value: value >= 100 ? value.toFixed(0) : value.toFixed(2), unit: '/s' };
+  if (unit === 'cps') return formatCountRate(value);
   if (COUNT_UNITS.includes(unit)) return formatAutoScaled(value, unit, COUNT_UNITS, COUNT_LABELS, 1000);
   if (DATA_BITS_UNITS.includes(unit)) return formatAutoScaled(value, unit, DATA_BITS_UNITS, DATA_BITS_LABELS, 1000);
   if (DATA_BYTES_UNITS.includes(unit)) return formatAutoScaled(value, unit, DATA_BYTES_UNITS, DATA_BYTES_LABELS, 1024);
