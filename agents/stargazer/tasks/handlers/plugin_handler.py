@@ -62,6 +62,7 @@ async def collect_plugin_task(
         任务执行结果
     """
     plugin_name = params.get("plugin_name")
+    metrics_published = False
     logger.info(f"[Plugin Task] Processing: {task_id}, plugin: {plugin_name}")
 
     try:
@@ -86,6 +87,7 @@ async def collect_plugin_task(
             await publish_callback_to_nats(metrics_data, params, task_id)
         else:
             await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
+            metrics_published = True
             await _handle_multicred_post_execute(
                 params, task_id, execution_result, CredentialStateCache, get_task_queue
             )
@@ -101,6 +103,15 @@ async def collect_plugin_task(
         logger.error(
             f"[Plugin Task] {task_id} failed: {str(e)}\n{traceback.format_exc()}"
         )
+
+        if metrics_published and not params.get("callback_subject"):
+            return {
+                "task_id": task_id,
+                "status": "failed",
+                "error": str(e),
+                "plugin_name": plugin_name,
+                "completed_at": int(time.time() * 1000),
+            }
 
         # 导入工具函数
         from tasks.utils.nats_helper import publish_metrics_to_nats
