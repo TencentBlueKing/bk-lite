@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Empty, Tooltip } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
@@ -37,12 +43,14 @@ const EventTable: React.FC<EventTableProps> = ({
   onQueryChange,
 }) => {
   const { t } = useTranslation();
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
   const [queryPagination, setQueryPagination] =
     useState<TableLikePaginationState>({
       current: 1,
       pageSize: 20,
     });
+  const [tableScrollY, setTableScrollY] = useState<string>();
 
   const { rows, pagination, isPaginated } = useMemo(
     () => parseTableLikeData<EventTableRow>(rawData, queryPagination),
@@ -63,6 +71,45 @@ const EventTable: React.FC<EventTableProps> = ({
       ),
     [dataSource?.params],
   );
+
+  useEffect(() => {
+    const container = containerRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    const TABLE_HEADER_HEIGHT = 43;
+    const PAGINATION_HEIGHT = isPaginated ? 56 : 0;
+    const MIN_BODY_HEIGHT = 120;
+
+    const updateScrollY = () => {
+      const nextHeight = Math.max(
+        container.clientHeight - TABLE_HEADER_HEIGHT - PAGINATION_HEIGHT,
+        MIN_BODY_HEIGHT,
+      );
+
+      setTableScrollY(`${nextHeight}px`);
+    };
+
+    updateScrollY();
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateScrollY();
+    });
+
+    resizeObserver.observe(container);
+    if (container.parentElement) {
+      resizeObserver.observe(container.parentElement);
+    }
+
+    window.addEventListener('resize', updateScrollY);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', updateScrollY);
+    };
+  }, [isPaginated]);
 
   useEffect(() => {
     setExpandedRowKeys([]);
@@ -139,8 +186,11 @@ const EventTable: React.FC<EventTableProps> = ({
   }
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex-1 min-h-0 overflow-visible">
+    <div
+      ref={containerRef}
+      className="ops-analysis-event-table h-full min-h-0 flex flex-col"
+    >
+      <div className="flex-1 min-h-0 overflow-hidden">
         <CustomTable
           columns={columns}
           dataSource={rows}
@@ -160,12 +210,16 @@ const EventTable: React.FC<EventTableProps> = ({
                 },
                 showQuickJumper: true,
                 showTotal: (total) =>
-                  `${t('common.total')} ${total} ${t('common.items')}`,
+                    `${t('common.total')} ${total} ${t('common.items')}`,
               }
               : false
           }
           onChange={isPaginated ? handleTableChange : undefined}
-          scroll={{ x: 'max-content' }}
+          scroll={
+            tableScrollY
+              ? { x: 'max-content', y: tableScrollY }
+              : { x: 'max-content' }
+          }
           expandable={{
             expandedRowKeys,
             onExpandedRowsChange: (keys) => {

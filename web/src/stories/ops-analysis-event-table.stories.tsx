@@ -206,3 +206,85 @@ export const ExpandedDetailPanel: Story = {
     </div>
   ),
 };
+
+export const DetailPanelVisualDebug: Story = {
+  render: () => (
+    <div
+      style={{
+        minHeight: '100vh',
+        padding: 32,
+        background:
+          'linear-gradient(180deg, #f3f7fd 0%, #eef4fb 42%, #e8f0fa 100%)',
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 1120,
+          margin: '0 auto',
+          border: '1px solid #d7e3f4',
+          borderRadius: 18,
+          overflow: 'hidden',
+          background: '#fdfefe',
+          boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)',
+        }}
+      >
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '48px 280px 230px 230px 1fr',
+            gap: 0,
+            alignItems: 'center',
+            padding: '14px 20px',
+            borderBottom: '1px solid #dfe8f5',
+            background: 'linear-gradient(180deg, #f7faff 0%, #f2f6fc 100%)',
+            color: '#274472',
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          <span />
+          <span>@timestamp</span>
+          <span>@metadata.beat</span>
+          <span>@metadata.type</span>
+          <span>@metadata.version</span>
+        </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '48px 280px 230px 230px 1fr',
+            gap: 0,
+            alignItems: 'center',
+            padding: '12px 20px',
+            borderBottom: '1px solid #e5edf7',
+            background: '#ffffff',
+            color: '#24324a',
+          }}
+        >
+          <span style={{ fontSize: 18, lineHeight: 1, color: '#93a4bd' }}>
+            −
+          </span>
+          <span>2026-06-05T03:20:00.003Z</span>
+          <span>packetbeat</span>
+          <span>_doc</span>
+          <span>9.1.5</span>
+        </div>
+        <div style={{ padding: '0 20px 20px' }}>
+          <EventTableDetail
+            record={{
+              'host.os.codename': 'noble',
+              'host.os.family': 'debian',
+              'host.os.kernel': '6.10-31-amd64',
+              'host.os.name': 'Ubuntu',
+              'host.os.platform': 'ubuntu',
+              'host.os.type': 'linux',
+              '@metadata.beat': 'packetbeat',
+              '@metadata.version': '9.1.5',
+              agentEphemeralId: '4bf72560-20d8-4805-8364-7505bf8e48d6',
+              streamId: '0000000000000000c9b159bc866d5c1f143329f9562e3fd0',
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  ),
+};

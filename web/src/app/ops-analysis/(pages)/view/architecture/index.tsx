@@ -30,7 +30,7 @@ import { svgToBase64 } from '@/app/ops-analysis/utils/common';
 import {
   AppViewFullscreenExit,
   useAppViewFullscreen,
-} from '../components/appFullscreen';
+} from '@/app/ops-analysis/components/appFullscreen';
 
 const Isoflow = dynamic(
   () => import('x-isoflow-react-19').then((mod) => ({ default: mod.Isoflow })),

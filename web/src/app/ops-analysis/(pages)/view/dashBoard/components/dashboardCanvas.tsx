@@ -474,7 +474,9 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
 
   const renderWidgetCard = useCallback(
     (item: Extract<DashboardLayoutItem, { itemType?: 'widget' }>) => {
-      const isTableWidget = item.valueConfig?.chartType === 'table';
+      const isTableWidget =
+        item.valueConfig?.chartType === 'table' ||
+        item.valueConfig?.chartType === 'eventTable';
       const menu = (
         <Menu>
           <Menu.Item key="edit" onClick={() => onEditWidget(item.i)}>
@@ -955,6 +957,10 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
         .grid-stack-item > .ui-resizable-se {
           right: calc(var(--gs-item-margin-right) + 2px);
           bottom: calc(var(--gs-item-margin-bottom));
+        }
+
+        .grid-stack-item[data-node-kind='group'] > .ui-resizable-handle {
+          display: none !important;
         }
 
         .dark .grid-stack-item > .ui-resizable-handle,

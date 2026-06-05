@@ -28,6 +28,9 @@ const DEFAULT_TABLE_QUERY_PARAMS = {
   page_size: 20,
 };
 
+const isTableLikeChartType = (chartType?: string) =>
+  chartType === 'table' || chartType === 'eventTable';
+
 const serializeNodeConfig = (nodeData: TopologyNodeData, nodeType: string): Record<string, unknown> | undefined => {
   const styleConfigMapping: Record<string, string[]> = {
     'single-value': ['textColor', 'fontSize', 'backgroundColor', 'borderColor', 'nameColor', 'nameFontSize', 'thresholdColors'],
@@ -67,7 +70,7 @@ export const useGraphData = (
     valueConfig: ValueConfig,
     queryParams?: Record<string, any>,
   ) => {
-    if (valueConfig.chartType !== 'table') {
+    if (!isTableLikeChartType(valueConfig.chartType)) {
       return queryParams;
     }
 
@@ -233,7 +236,10 @@ export const useGraphData = (
     if (!node) return;
 
     const nodeData = node.getData();
-    if (nodeData.type !== 'chart' || nodeData.valueConfig?.chartType !== 'table') return;
+    if (
+      nodeData.type !== 'chart' ||
+      !isTableLikeChartType(nodeData.valueConfig?.chartType)
+    ) return;
 
     const nextQueryParams = getEffectiveTableQueryParams(
       nodeData.valueConfig,
@@ -423,7 +429,7 @@ export const useGraphData = (
           nodeData.valueConfig,
           tableQueryParamsRef.current.get(node.id),
         );
-        if (nodeData.valueConfig?.chartType === 'table') {
+        if (isTableLikeChartType(nodeData.valueConfig?.chartType)) {
           tableQueryParamsRef.current.set(node.id, storedQueryParams);
         }
         loadChartNodeData(

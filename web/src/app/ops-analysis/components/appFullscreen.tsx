@@ -67,7 +67,7 @@ export const AppViewFullscreenExit: React.FC<AppViewFullscreenExitProps> = ({
   }
 
   return (
-    <div className={className || 'absolute right-4 top-4 z-30'}>
+    <div className={className || 'absolute right-4 top-3 z-30'}>
       <Tooltip title={t('common.exitFullscreen')}>
         <Button
           type="default"
