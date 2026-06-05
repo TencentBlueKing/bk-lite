@@ -16,7 +16,11 @@ sys.modules.setdefault("falkordb.asyncio", _falkordb_asyncio)
 
 from langchain_core.messages import SystemMessage, ToolMessage
 
-from apps.opspilot.metis.llm.chain.node import build_config_analysis_report_payload, build_post_tool_directives
+from apps.opspilot.metis.llm.chain.node import (
+    build_config_analysis_report_payload,
+    build_post_tool_directives,
+    should_emit_config_analysis_report,
+)
 from apps.opspilot.metis.llm.tools.kubernetes.analysis import build_config_analysis_next_step_hint
 
 
@@ -114,14 +118,48 @@ def test_build_config_analysis_report_payload_structures_k8s_report():
             "priority": "P0",
             "action": "配置 securityContext.runAsNonRoot: true 和 runAsUser: 1000，禁止容器以 root 运行。",
             "target": "api (default)",
-            "benefit": "容器以 root 用户运行，容器逃逸后攻击者将获得宿主机 root 权限，安全风险极高。",
+            "benefit": "降低容器逃逸后直接获得宿主机 root 权限的风险，收紧运行时权限边界。",
         },
         {
             "priority": "P1",
             "action": "添加 livenessProbe 配置（建议 httpGet 方式），设置合理的 initialDelaySeconds 和 periodSeconds。",
             "target": "nginx (default)",
-            "benefit": "无存活探针时 Kubernetes 无法自动检测和重启不健康的容器，故障容器将持续运行。",
+            "benefit": "让 Kubernetes 能自动发现并重启异常容器，缩短故障持续时间。",
         },
     ]
     assert payload["fallback_markdown"] == payload["markdown"]
     assert payload["fallback_markdown"].startswith("# 配置检查报告 - Kubernetes - 1")
+
+
+def test_should_emit_config_analysis_report_for_summary_only_result():
+    parsed = {
+        "cluster_name": "Kubernetes - 1",
+        "problematic": 0,
+        "healthy": 9,
+        "total": 9,
+        "issues_detail": [],
+    }
+
+    assert should_emit_config_analysis_report(parsed) is True
+    assert should_emit_config_analysis_report({"cluster_name": "Kubernetes - 1", "issues_detail": []}) is False
+    assert should_emit_config_analysis_report({"error": "scope_too_large"}) is False
+
+
+def test_build_config_analysis_report_payload_keeps_scan_context_for_healthy_scan():
+    parsed = {
+        "cluster_name": "Kubernetes - 1",
+        "problematic": 0,
+        "healthy": 9,
+        "total": 9,
+        "offset": 50,
+        "limit": 25,
+        "has_more": True,
+        "issues_detail": [],
+    }
+
+    payload = build_config_analysis_report_payload(parsed)
+
+    assert payload["scope"] == {"cluster_name": "Kubernetes - 1"}
+    assert payload["scan_range"] == {"offset": 50, "limit": 25, "has_more": True}
+    assert payload["severity_sections"] == []
+    assert payload["recommendations"] == []

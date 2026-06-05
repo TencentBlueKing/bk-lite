@@ -270,6 +270,56 @@ def _config_analysis_fix_description(issue_type: str) -> str:
     return "根据实际业务场景补充对应的 Kubernetes 最佳实践配置。"
 
 
+def _config_analysis_benefit_description(issue_type: str) -> str:
+    issue_type = issue_type or ""
+    if "资源限制" in issue_type or "资源请求" in issue_type:
+        return "避免单个容器争抢过多节点资源，提升集群稳定性并减少相互干扰。"
+    if "存活探针" in issue_type or "liveness" in issue_type.lower():
+        return "让 Kubernetes 能自动发现并重启异常容器，缩短故障持续时间。"
+    if "就绪探针" in issue_type or "readiness" in issue_type.lower():
+        return "仅在 Pod 真正可用时接收流量，减少发布抖动和瞬时请求失败。"
+    if "探针" in issue_type:
+        return "补齐健康检查后，工作负载更容易被平台自动发现异常并恢复。"
+    if "root" in issue_type or "安全上下文" in issue_type or "非 root" in issue_type.lower():
+        return "降低容器逃逸后直接获得宿主机 root 权限的风险，收紧运行时权限边界。"
+    if "latest" in issue_type or "镜像标签" in issue_type:
+        return "让镜像版本可追溯、可回滚，减少因隐式升级带来的变更风险。"
+    if "单副本" in issue_type or "副本" in issue_type:
+        return "提升服务可用性，在节点故障或滚动发布时降低中断风险。"
+    if "特权" in issue_type or "privileged" in issue_type.lower():
+        return "缩小容器可用能力范围，降低被利用后进一步突破宿主机的风险。"
+    if "hostNetwork" in issue_type or "主机命名空间" in issue_type or "hostPID" in issue_type:
+        return "保留容器默认隔离边界，减少跨容器和宿主机暴露面。"
+    if "密码" in issue_type or "明文" in issue_type or "Secret" in issue_type:
+        return "集中管理敏感信息，减少凭据泄露面并简化后续轮换。"
+    if "NetworkPolicy" in issue_type or "网络隔离" in issue_type:
+        return "限制横向通信范围，降低单点失陷后在集群内扩散的风险。"
+    if "ServiceAccount" in issue_type:
+        return "落实最小权限访问，减少工作负载凭证被滥用的风险。"
+    return "提升 Kubernetes 配置治理水平，降低常见稳定性与安全风险。"
+
+
+def should_emit_config_analysis_report(parsed: Dict[str, Any]) -> bool:
+    if not isinstance(parsed, dict) or parsed.get("error"):
+        return False
+    if parsed.get("issues_detail"):
+        return True
+    return any(parsed.get(key) is not None for key in ("total", "problematic", "healthy"))
+
+
+def _build_config_analysis_scope(parsed: Dict[str, Any]) -> Dict[str, Any]:
+    cluster_name = parsed.get("cluster_name")
+    return {"cluster_name": cluster_name} if cluster_name else {}
+
+
+def _build_config_analysis_scan_range(parsed: Dict[str, Any]) -> Dict[str, Any]:
+    scan_range = {}
+    for key in ("offset", "limit", "has_more"):
+        if key in parsed:
+            scan_range[key] = parsed.get(key)
+    return scan_range
+
+
 def build_config_analysis_report_payload(parsed: Dict[str, Any]) -> Dict[str, Any]:
     cluster_name = parsed.get("cluster_name") or "Kubernetes"
     issues_detail = parsed.get("issues_detail") or []
@@ -318,7 +368,7 @@ def build_config_analysis_report_payload(parsed: Dict[str, Any]) -> Dict[str, An
                     "priority": severity_priority.get(severity, "P3"),
                     "action": _config_analysis_fix_description(issue),
                     "target": workloads[0] if workloads else "",
-                    "benefit": issue_payload["risk"],
+                    "benefit": _config_analysis_benefit_description(issue),
                 }
             )
 
@@ -336,6 +386,8 @@ def build_config_analysis_report_payload(parsed: Dict[str, Any]) -> Dict[str, An
         "report_id": str(uuid.uuid4())[:8],
         "title": f"配置检查报告 - {cluster_name}",
         "cluster_name": cluster_name,
+        "scope": _build_config_analysis_scope(parsed),
+        "scan_range": _build_config_analysis_scan_range(parsed),
         "summary": {
             "total": parsed.get("total"),
             "problematic": parsed.get("problematic"),
@@ -3101,7 +3153,7 @@ class ToolsNodes(BasicNode):
                             # 剥离完整数据，只保留精简摘要进入 LLM context
                             _parsed.pop("_deployments_full", None)
                             _rm.content = _json_cache.dumps(_parsed, ensure_ascii=False)
-                            if _parsed.get("issues_detail"):
+                            if should_emit_config_analysis_report(_parsed):
                                 report_payload = build_config_analysis_report_payload(_parsed)
                                 dispatch_custom_event(
                                     "config_analysis_report",
