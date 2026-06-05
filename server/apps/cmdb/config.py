@@ -15,6 +15,6 @@ CELERY_BEAT_SCHEDULE = {
     },
     "daily_data_cleanup": {
         "task": "apps.cmdb.tasks.celery_tasks.daily_data_cleanup_task",
-        "schedule": crontab(hour=2, minute=0),
+        "schedule": crontab(hour="2", minute="0"),
     },
 }

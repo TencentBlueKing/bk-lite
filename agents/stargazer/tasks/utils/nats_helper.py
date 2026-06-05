@@ -43,6 +43,24 @@ async def publish_callback_to_nats(
         raise
 
 
+async def publish_credential_result_to_nats(result: Dict[str, Any], params: Dict[str, Any], task_id: str):
+    callback_subject = params.get("credential_result_subject")
+    if not callback_subject:
+        return
+
+    nats_namespace = os.getenv("NATS_NAMESPACE", "bklite")
+    subject = f"{nats_namespace}.{callback_subject}"
+    payload = {"args": [], "kwargs": {"data": dict(result or {})}}
+    try:
+        await nats_publish(subject, payload)
+        logger.info(f"[NATS Helper] Published credential result to {subject} for task {task_id}")
+    except Exception as err:
+        logger.error(
+            f"[NATS Helper] Failed to publish credential result for task {task_id}: {err}\n{traceback.format_exc()}"
+        )
+        raise
+
+
 async def publish_metrics_to_nats(
     ctx: Dict, metrics_data: str, params: Dict[str, Any], task_id: str
 ):

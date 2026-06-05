@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import styles from '../index.module.scss';
-import { CaretRightOutlined } from '@ant-design/icons';
 import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import { useTaskForm } from '../hooks/useTaskForm';
@@ -11,12 +10,17 @@ import { getCleanupFormValues } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import {
   SNMP_FORM_INITIAL_VALUES,
-  createTaskValidationRules,
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
-import { formatTaskValues, trimFormString } from '../hooks/formatTaskValues';
-import { Form, Spin, Input, Select, Collapse, InputNumber, Switch } from 'antd';
+import {
+  formatTaskValues,
+  trimFormString,
+  normalizeCredentialPool,
+  buildCredentialPool,
+} from '../hooks/formatTaskValues';
+import { Form, Spin, Switch } from 'antd';
+import CredentialPoolEditor from './credentialPoolEditor';
 
 interface SNMPTaskFormProps {
   onClose: () => void;
@@ -35,11 +39,13 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
 }) => {
   const { t } = useTranslation();
   const baseRef = useRef<BaseTaskRef>(null as any);
-  const [snmpVersion, setSnmpVersion] = useState('v2');
-  const [securityLevel, setSecurityLevel] = useState('authNoPriv');
   const localeContext = useLocale();
   const { copyTaskData, setCopyTaskData } = useAssetManageStore();
   const { model_id: modelId } = modelItem;
+  const initialFormValues = {
+    ...SNMP_FORM_INITIAL_VALUES,
+    credentialPool: [{ version: 'v2', snmp_port: '161' }],
+  };
 
   const {
     form,
@@ -51,7 +57,7 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
   } = useTaskForm({
     modelId,
     editId,
-    initialValues: SNMP_FORM_INITIAL_VALUES,
+    initialValues: initialFormValues,
     onSuccess,
     onClose,
     formatValues: (values) => {
@@ -81,42 +87,43 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
         };
       }
 
-      const version = values.version;
-      const community = trimFormString(values.community);
-      const username = trimFormString(values.username);
-      const authkey = trimFormString(values.authkey);
-      const privkey = trimFormString(values.privkey);
-
-      const credential: any = {
-        version,
-        snmp_port: values.snmp_port,
-      };
-
-      if (version !== 'v3' && community && community !== PASSWORD_PLACEHOLDER) {
-        credential.community = community;
-      }
-
-      if (version === 'v3') {
-        credential.level = values.level;
-        credential.username = username;
-        credential.integrity = values.integrity;
-
-        if (authkey && authkey !== PASSWORD_PLACEHOLDER) {
-          credential.authkey = authkey;
-        }
-
-        if (values.level === 'authPriv') {
-          credential.privacy = values.privacy;
-          if (privkey && privkey !== PASSWORD_PLACEHOLDER) {
-            credential.privkey = privkey;
-          }
-        }
-      }
-
       return {
         ...baseData,
         ...instanceData,
-        credential,
+        credential: buildCredentialPool(values.credentialPool, (item) => {
+          const version = item.version || 'v2';
+          const community = trimFormString(item.community);
+          const username = trimFormString(item.username);
+          const authkey = trimFormString(item.authkey);
+          const privkey = trimFormString(item.privkey);
+
+          const credential: Record<string, any> = {
+            version,
+            snmp_port: item.snmp_port,
+          };
+
+          if (item.credential_id) {
+            credential.credential_id = item.credential_id;
+          }
+          if (version !== 'v3' && community && community !== PASSWORD_PLACEHOLDER) {
+            credential.community = community;
+          }
+          if (version === 'v3') {
+            credential.level = item.level;
+            credential.username = username;
+            credential.integrity = item.integrity;
+            if (authkey && authkey !== PASSWORD_PLACEHOLDER) {
+              credential.authkey = authkey;
+            }
+            if (item.level === 'authPriv') {
+              credential.privacy = item.privacy;
+              if (privkey && privkey !== PASSWORD_PLACEHOLDER) {
+                credential.privkey = privkey;
+              }
+            }
+          }
+          return credential;
+        }),
         params: {
           has_network_topo: values.hasNetworkTopo ?? true,
         },
@@ -124,31 +131,22 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
     },
   });
 
-  const rules: any = React.useMemo(
-    () => createTaskValidationRules({ t, form, taskType: 'snmp' as const }),
-    [t, form]
-  );
-
   // 构建表单值，用于复制任务和编辑任务中回填表单数据（true:复制任务，false:编辑任务）
   const buildFormValues = (values: any, isCopy: boolean, ipRange?: string[]) => {
-    const credential = values.credential || {};
-    return {
-      ipRange,
-      ...getCleanupFormValues(values),
-      ...values,
-      ...credential,
-      taskName: isCopy ? '' : values.name,
-      timeout: values.timeout,
-      input_method: values.input_method,
-      version: credential.version,
-      level: credential.level,
-      username: credential.username,
-      integrity: credential.integrity,
-      privacy: credential.privacy,
-      snmp_port: credential.snmp_port,
+    const credentialPool = normalizeCredentialPool(values.credential).map((item) => ({
+      ...item,
       community: isCopy ? '' : PASSWORD_PLACEHOLDER,
       authkey: isCopy ? '' : PASSWORD_PLACEHOLDER,
       privkey: isCopy ? '' : PASSWORD_PLACEHOLDER,
+    }));
+    return {
+      credentialPool,
+      ipRange,
+      ...getCleanupFormValues(values),
+      ...values,
+      taskName: isCopy ? '' : values.name,
+      timeout: values.timeout,
+      input_method: values.input_method,
       organization: values.team || [],
       accessPointId: values.access_point?.[0]?.id,
     };
@@ -159,9 +157,6 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
       if (copyTaskData) {
         const values = copyTaskData;
         const ipRange = values.ip_range?.split('-');
-        const credential = values.credential || {};
-        setSnmpVersion(credential.version || 'v2');
-        setSecurityLevel(credential.level || 'authNoPriv');
         if (values.ip_range?.length) {
           baseRef.current?.initCollectionType(ipRange, 'ip');
         } else {
@@ -173,8 +168,6 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
       } else if (editId) {
         const values = await fetchTaskDetail(editId);
         const ipRange = values.ip_range?.split('-');
-        setSnmpVersion(values.credential.version);
-        setSecurityLevel(values.credential.level);
         if (values.ip_range?.length) {
           baseRef.current?.initCollectionType(ipRange, 'ip');
         } else {
@@ -184,7 +177,7 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
         // 编辑任务中回填表单数据
         form.setFieldsValue(buildFormValues(values, false, ipRange));
       } else {
-        form.setFieldsValue(SNMP_FORM_INITIAL_VALUES);
+        form.setFieldsValue(initialFormValues);
       }
     };
     initForm();
@@ -197,7 +190,7 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
         layout="horizontal"
         labelCol={{ span: localeContext.locale === 'en' ? 6 : 5 }}
         onFinish={onFinish}
-        initialValues={SNMP_FORM_INITIAL_VALUES}
+        initialValues={initialFormValues}
       >
         <BaseTaskForm
           ref={baseRef}
@@ -220,181 +213,10 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
             <Switch />
           </Form.Item>
 
-          <Collapse
-            ghost
-            defaultActiveKey={['credential']}
-            expandIcon={({ isActive }) => (
-              <CaretRightOutlined
-                rotate={isActive ? 90 : 0}
-                className="text-base"
-              />
-            )}
-          >
-            <Collapse.Panel
-              header={
-                <div className={styles.panelHeader}>
-                  {t('Collection.credential')}
-                </div>
-              }
-              key="credential"
-            >
-              <Form.Item
-                label={t('Collection.SNMPTask.version')}
-                name="version"
-                rules={rules.snmpVersion}
-                required
-              >
-                <Select value={snmpVersion} onChange={setSnmpVersion}>
-                  <Select.Option value="v2">V2</Select.Option>
-                  <Select.Option value="v2c">V2C</Select.Option>
-                  <Select.Option value="v3">V3</Select.Option>
-                </Select>
-              </Form.Item>
-
-              <Form.Item
-                label={t('Collection.port')}
-                name="snmp_port"
-                rules={rules.port}
-              >
-                <InputNumber min={1} max={65535} className="w-32" />
-              </Form.Item>
-
-              {snmpVersion !== 'v3' && (
-                <Form.Item
-                  label={t('Collection.SNMPTask.communityString')}
-                  name="community"
-                  rules={rules.communityString}
-                  required
-                >
-                  <Input.Password
-                    placeholder={t('common.inputTip')}
-                    onFocus={(e) => {
-                      if (!editId) return;
-                      const value = e.target.value;
-                      if (value === PASSWORD_PLACEHOLDER) {
-                        form.setFieldValue('community', '');
-                      }
-                    }}
-                    onBlur={(e) => {
-                      if (!editId) return;
-                      const value = e.target.value;
-                      if (!value || value.trim() === '') {
-                        form.setFieldValue('community', PASSWORD_PLACEHOLDER);
-                      }
-                    }}
-                  />
-                </Form.Item>
-              )}
-
-              {snmpVersion === 'v3' && (
-                <>
-                  <Form.Item
-                    label={t('Collection.SNMPTask.securityLevel')}
-                    name="level"
-                    rules={[{ required: true, message: t('common.selectTip') }]}
-                    initialValue="authPriv"
-                  >
-                    <Select onChange={setSecurityLevel}>
-                      <Select.Option value="authNoPriv">
-                        认证不加密
-                      </Select.Option>
-                      <Select.Option value="authPriv">认证加密</Select.Option>
-                    </Select>
-                  </Form.Item>
-
-                  <Form.Item
-                    label={t('Collection.SNMPTask.userName')}
-                    name="username"
-                    rules={[{ required: true, message: t('common.inputTip') }]}
-                  >
-                    <Input placeholder={t('common.inputTip')} />
-                  </Form.Item>
-
-                  <Form.Item
-                    label={t('Collection.SNMPTask.authPassword')}
-                    name="authkey"
-                    rules={[{ required: true, message: t('common.inputTip') }]}
-                  >
-                    <Input.Password
-                      placeholder={t('common.inputTip')}
-                      onFocus={(e) => {
-                        if (!editId) return;
-                        const value = e.target.value;
-                        if (value === PASSWORD_PLACEHOLDER) {
-                          form.setFieldValue('authkey', '');
-                        }
-                      }}
-                      onBlur={(e) => {
-                        if (!editId) return;
-                        const value = e.target.value;
-                        if (!value || value.trim() === '') {
-                          form.setFieldValue('authkey', PASSWORD_PLACEHOLDER);
-                        }
-                      }}
-                    />
-                  </Form.Item>
-
-                  <Form.Item
-                    label={t('Collection.SNMPTask.hashAlgorithm')}
-                    name="integrity"
-                    rules={[{ required: true, message: t('common.selectTip') }]}
-                  >
-                    <Select>
-                      <Select.Option value="sha">SHA</Select.Option>
-                      <Select.Option value="md5">MD5</Select.Option>
-                    </Select>
-                  </Form.Item>
-
-                  {securityLevel === 'authPriv' && (
-                    <>
-                      <Form.Item
-                        label={t('Collection.SNMPTask.encryptAlgorithm')}
-                        name="privacy"
-                        rules={[
-                          { required: true, message: t('common.selectTip') },
-                        ]}
-                        initialValue="aes"
-                      >
-                        <Select>
-                          <Select.Option value="aes">AES</Select.Option>
-                          <Select.Option value="des">DES</Select.Option>
-                        </Select>
-                      </Form.Item>
-
-                      <Form.Item
-                        label={t('Collection.SNMPTask.encryptKey')}
-                        name="privkey"
-                        rules={[
-                          { required: true, message: t('common.inputTip') },
-                        ]}
-                      >
-                        <Input.Password
-                          placeholder={t('common.inputTip')}
-                          onFocus={(e) => {
-                            if (!editId) return;
-                            const value = e.target.value;
-                            if (value === PASSWORD_PLACEHOLDER) {
-                              form.setFieldValue('privkey', '');
-                            }
-                          }}
-                          onBlur={(e) => {
-                            if (!editId) return;
-                            const value = e.target.value;
-                            if (!value || value.trim() === '') {
-                              form.setFieldValue(
-                                'privkey',
-                                PASSWORD_PLACEHOLDER
-                              );
-                            }
-                          }}
-                        />
-                      </Form.Item>
-                    </>
-                  )}
-                </>
-              )}
-            </Collapse.Panel>
-          </Collapse>
+          <div className={styles.panelHeader}>{t('Collection.credential')}</div>
+          <Form.Item name="credentialPool">
+            <CredentialPoolEditor credentialShape="snmp" editMode={Boolean(editId)} />
+          </Form.Item>
         </BaseTaskForm>
       </Form>
     </Spin>

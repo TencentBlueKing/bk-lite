@@ -32,6 +32,7 @@ from apps.cmdb.display_field.constants import (
 from apps.cmdb.display_field.handler import DisplayFieldConverter, DisplayFieldHandler
 from apps.cmdb.models.change_record import CREATE_INST, DELETE_INST, OPERATE_TYPE_CHOICES, UPDATE_INST, ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
+from apps.cmdb.services.collect_credential_result_service import CollectCredentialResultService
 from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.config_file_service import ConfigFileService
 from apps.cmdb.services.instance import InstanceManage
@@ -377,6 +378,47 @@ def receive_config_file_result(data: dict):
         "task_updated": bool(result.get("task_updated", False)),
     }
 
+@nats_client.register
+def receive_collect_credential_result(data: dict):
+    """接收 Stargazer 推送的单条或批量凭据执行结果并回写命中状态。"""
+    payload = data or {}
+    events = payload.get("events") if isinstance(payload, dict) else None
+
+    if isinstance(events, list):
+        logger.info(
+            "Received pushed collect credential result batch, count=%s next_since=%s",
+            len(events),
+            payload.get("next_since") or "",
+        )
+    else:
+        logger.info(
+            "Received pushed collect credential result event, task_id=%s host=%s credential_id=%s success=%s",
+            payload.get("collect_task_id") or payload.get("task_id") or "",
+            payload.get("host") or "",
+            payload.get("credential_id") or "",
+            bool(payload.get("success")),
+        )
+
+    result = CollectCredentialResultService.process_batch(payload, parse_datetime=_parse_nats_datetime)
+
+    if isinstance(events, list):
+        logger.info(
+            "Processed pushed collect credential result batch, processed=%s failed=%s next_since=%s",
+            result.get("processed", 0),
+            result.get("failed", 0),
+            result.get("next_since") or "",
+        )
+    else:
+        logger.info(
+            "Processed pushed collect credential result event, result=%s task_id=%s object_key=%s credential_id=%s",
+            result.get("result", False),
+            result.get("task_id") or "",
+            result.get("object_key") or "",
+            result.get("credential_id") or "",
+        )
+
+    return result
+
 
 @nats_client.register
 def sync_display_fields(organizations=None, users=None):
@@ -481,6 +523,12 @@ def _parse_client_datetime(value, target_tz):
     if timezone.is_naive(parsed):
         return timezone.make_aware(parsed, target_tz)
     return parsed.astimezone(target_tz)
+
+
+def _parse_nats_datetime(value):
+    if value in (None, ""):
+        return None
+    return _parse_client_datetime(value, timezone.get_current_timezone())
 
 
 def _format_period_value(value, target_tz):

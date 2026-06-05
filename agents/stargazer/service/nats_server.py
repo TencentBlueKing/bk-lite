@@ -1,7 +1,3 @@
-# -- coding: utf-8 --
-# @File: nats_server.py
-# @Time: 2025/4/25 17:04
-# @Author: windyzhao
 from datetime import datetime, timezone
 
 import core.host_remote_callback as host_remote_callback

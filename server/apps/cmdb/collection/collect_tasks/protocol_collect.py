@@ -11,4 +11,4 @@ class ProtocolCollect(object):
         self.default_metrics = default_metrics
 
     def main(self):
-        return RegisteredCollect(self.task.id, self.default_metrics)()
+        return RegisteredCollect(self.task.id, self.default_metrics, task=self.task)()
