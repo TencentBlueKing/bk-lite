@@ -9,11 +9,71 @@ NATS 推送辅助工具
 
 import json
 import os
+import asyncio
 import traceback
 from typing import Dict, Any
 from sanic.log import logger
 from influxdb_client import Point, WritePrecision
 from core.nats_utils import nats_publish, nats_publish_lines
+
+
+class MetricsPublishError(RuntimeError):
+    def __init__(
+        self,
+        task_id: str,
+        subject: str,
+        total_lines: int,
+        success_count: int,
+        attempts: int,
+        reason: str,
+    ):
+        self.task_id = task_id
+        self.subject = subject
+        self.total_lines = total_lines
+        self.success_count = success_count
+        self.attempts = attempts
+        self.reason = reason
+        super().__init__(
+            f"metrics publish incomplete: task_id={task_id}, subject={subject}, "
+            f"success={success_count}/{total_lines}, attempts={attempts}, reason={reason}"
+        )
+
+
+def _metrics_publish_retry_times() -> int:
+    raw_value = os.getenv("NATS_METRICS_PUBLISH_RETRIES", "2")
+    try:
+        return max(int(raw_value), 0)
+    except ValueError:
+        return 2
+
+
+async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_id: str) -> int:
+    total_lines = len(influx_lines)
+    max_retries = _metrics_publish_retry_times()
+    last_error = ""
+    success_count = 0
+
+    for attempt in range(1, max_retries + 2):
+        try:
+            success_count = await nats_publish_lines(subject, influx_lines)
+            if success_count == total_lines:
+                return success_count
+            last_error = f"publish incomplete ({success_count}/{total_lines})"
+        except Exception as err:
+            success_count = 0
+            last_error = f"{type(err).__name__}: {err}"
+
+        if attempt <= max_retries:
+            await asyncio.sleep(min(attempt * 0.2, 1.0))
+
+    raise MetricsPublishError(
+        task_id=task_id,
+        subject=subject,
+        total_lines=total_lines,
+        success_count=success_count,
+        attempts=max_retries + 1,
+        reason=last_error,
+    )
 
 
 async def publish_callback_to_nats(
@@ -76,66 +136,27 @@ async def publish_metrics_to_nats(
         params: 采集参数（包含 tags）
         task_id: 任务ID
     """
-    try:
-        # 获取 NATS Metric Topic 前缀（从环境变量读取，默认为 metrics）
-        metric_topic_prefix = os.getenv("NATS_METRIC_TOPIC", "metrics")
+    # 获取 NATS Metric Topic 前缀（从环境变量读取，默认为 metrics）
+    metric_topic_prefix = os.getenv("NATS_METRIC_TOPIC", "metrics")
 
-        # 获取任务类型（monitor_type 或 plugin_name）
-        task_type = params.get("monitor_type") or params.get(
-            "plugin_name", params.get("model_id", "unknown")
-        )
+    # 获取任务类型（monitor_type 或 plugin_name）
+    task_type = params.get("monitor_type") or params.get(
+        "plugin_name", params.get("model_id", "unknown")
+    )
 
-        # 构建 subject: {prefix}.{task_type}
-        # 例如: metrics.vmware, metrics.mysql, metrics.host 等
-        subject = f"{metric_topic_prefix}.{task_type}"
+    # 构建 subject: {prefix}.{task_type}
+    # 例如: metrics.vmware, metrics.mysql, metrics.host 等
+    subject = f"{metric_topic_prefix}.{task_type}"
 
-        logger.info(f"[NATS Helper] Preparing to publish to subject: {subject}")
-        # 将 Prometheus 格式转换为 InfluxDB Line Protocol 格式
-        influx_lines = convert_prometheus_to_influx(metrics_data, params)
+    # 将 Prometheus 格式转换为 InfluxDB Line Protocol 格式
+    influx_lines = convert_prometheus_to_influx(metrics_data, params)
 
-        if not influx_lines:
-            logger.warning(f"[NATS Helper] No data to publish for task {task_id}")
-            return
+    if not influx_lines:
+        return
 
-        # 统计信息
-        total_lines = len(influx_lines)
-        total_bytes = sum(len(line.encode("utf-8")) for line in influx_lines)
-
-        logger.info(
-            f"[NATS Helper] Converted {len(metrics_data)} bytes Prometheus data to {total_lines} lines ({total_bytes} bytes)"
-        )
-
-        # 打印前3行指标数据预览
-        preview_count = min(3, len(influx_lines))
-        if preview_count > 0:
-            logger.info(f"[NATS Helper] Metrics preview (first {preview_count} lines):")
-            for i, line in enumerate(influx_lines[:preview_count], 1):
-                logger.info(
-                    f"[NATS Helper]   {i}. {line[:150]}{'...' if len(line) > 150 else ''}"
-                )
-            if total_lines > preview_count:
-                logger.info(
-                    f"[NATS Helper] ... and {total_lines - preview_count} more lines"
-                )
-
-        # 复用进程级共享长连接逐行发送（与 Telegraf 保持一致）
-        # 不再每次采集都新建 TLS 连接，避免事件循环繁忙时握手超时被 reset
-        try:
-            success_count = await nats_publish_lines(subject, influx_lines)
-            logger.info(
-                f"[NATS Helper] Successfully published {success_count}/{total_lines} metrics to '{subject}' for task {task_id}"
-            )
-        except Exception as conn_err:
-            logger.error(
-                f"[NATS Helper] Failed to publish metrics to NATS: {conn_err}\n{traceback.format_exc()}"
-            )
-            raise
-
-    except Exception as e:
-        logger.error(
-            f"[NATS Helper] Failed to publish metrics: {e}\n{traceback.format_exc()}"
-        )
-        raise
+    # 复用进程级共享长连接逐行发送（与 Telegraf 保持一致）
+    # 不再每次采集都新建 TLS 连接，避免事件循环繁忙时握手超时被 reset
+    await _publish_lines_with_retry(subject, influx_lines, task_id)
 
 
 def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -> list:
