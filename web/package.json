@@ -11,6 +11,7 @@
     "start": "next start",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "clean": "rm -rf .next",
+    "test:k8s-config-report-event": "pnpm exec tsx scripts/k8s-config-report-event-test.ts",
     "test:installer-progress": "pnpm exec tsx scripts/installer-progress-test.ts",
     "test:related-alerts": "pnpm exec tsx scripts/related-alerts-validation.ts",
     "type-check": "pnpm clean && pnpm prepare-enterprise && tsc -p tsconfig.lint.json --noEmit",
