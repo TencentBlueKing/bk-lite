@@ -264,6 +264,10 @@
         "importSuccess": "Import successful",
         "manageLayout": "Sort & Visibility",
         "modelName": "Model",
+        "modelId": "Model ID",
+        "source": "Source",
+        "builtin": "Built-in",
+        "custom": "Custom",
         "visible": "Visible",
         "hidden": "Hidden",
         "discardLayoutConfirm": "Unsaved changes will be discarded. Continue?"

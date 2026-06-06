@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/context/auth';
 import { useSession } from 'next-auth/react';
 import Introduction from '@/app/cmdb/components/introduction';
-import { Input, Button, Modal, message, Spin, Empty, Tooltip, Dropdown, Space, Switch } from 'antd';
+import { Input, Button, Modal, message, Spin, Empty, Tooltip, Dropdown, Space, Switch, Tag } from 'antd';
 import { deepClone } from '@/app/cmdb/utils/common';
 import { GroupItem, ModelItem } from '@/app/cmdb/types/assetManage';
 import {
@@ -64,6 +64,7 @@ interface DraftClassification {
     model_id: string;
     model_name: string;
     icn?: string;
+    is_pre?: boolean;
     is_visible: boolean;
     order_id: number;
   }>;
@@ -159,6 +160,7 @@ const AssetManage = () => {
               model_id: m.model_id,
               model_name: m.model_name,
               icn: m.icn,
+              is_pre: m.is_pre,
               is_visible: m.is_visible ?? true,
               order_id: m.order_id ?? 0,
             }))
@@ -438,9 +440,10 @@ const AssetManage = () => {
 
   const manageModelColumns = [
     {
-      title: t('Model.modelName') || '模型',
+      title: t('Model.modelName') || '模型名称',
       dataIndex: 'model_name',
       key: 'model_name',
+      ellipsis: true,
       render: (_: unknown, record: DraftClassification['models'][number]) => (
         <div
           className="flex items-center"
@@ -455,11 +458,30 @@ const AssetManage = () => {
               height={28}
             />
           </div>
-          <div className="flex flex-col pl-[10px] min-w-0">
-            <span className="text-[14px] font-[600] truncate">{record.model_name}</span>
-            <span className="text-[12px] text-[var(--color-text-3)] truncate">{record.model_id}</span>
-          </div>
+          <span className="text-[14px] font-[600] pl-[10px] truncate">{record.model_name}</span>
         </div>
+      ),
+    },
+    {
+      title: t('Model.modelId') || '模型ID',
+      dataIndex: 'model_id',
+      key: 'model_id',
+      width: 220,
+      ellipsis: true,
+      render: (_: unknown, record: DraftClassification['models'][number]) => (
+        <span style={{ opacity: record.is_visible ? 1 : 0.5 }} className="text-[13px] text-[var(--color-text-2)]">
+          {record.model_id}
+        </span>
+      ),
+    },
+    {
+      title: t('Model.source') || '来源',
+      key: 'is_pre',
+      width: 120,
+      render: (_: unknown, record: DraftClassification['models'][number]) => (
+        <Tag color={record.is_pre ? 'blue' : 'default'} style={{ opacity: record.is_visible ? 1 : 0.5 }}>
+          {record.is_pre ? (t('Model.builtin') || '内置') : (t('Model.custom') || '自定义')}
+        </Tag>
       ),
     },
     {
@@ -563,9 +585,9 @@ const AssetManage = () => {
         </div>
         <Spin spinning={loading}>
           {manageMode ? (
-            <div className="flex" style={{ gap: 16 }}>
-              {/* 左栏：分类（可拖拽 + 选中 + 可见性） */}
-              <div style={{ width: 240, flexShrink: 0 }}>
+            <div className="flex overflow-hidden" style={{ gap: 16 }}>
+              {/* 左栏：分类（可拖拽 + 选中 + 可见性），独立滚动 */}
+              <div style={{ width: 240, flexShrink: 0, maxHeight: 'calc(100vh - 280px)', overflowY: 'auto', overflowX: 'hidden' }}>
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleGroupDragEnd}>
                   <SortableContext items={draftLayout.map(g => g.classification_id)} strategy={verticalListSortingStrategy}>
                     <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
@@ -604,7 +626,7 @@ const AssetManage = () => {
                   </SortableContext>
                 </DndContext>
               </div>
-              {/* 右栏：选中分类下的模型（CustomTable + 行拖拽 + 可见性开关） */}
+              {/* 右栏：选中分类下的模型，表格自身独立滚动 */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 {activeDraftGroup ? (
                   <CustomTable
@@ -614,6 +636,7 @@ const AssetManage = () => {
                     columns={manageModelColumns}
                     dataSource={activeDraftGroup.models}
                     rowDraggable={true}
+                    scroll={{ y: 'calc(100vh - 320px)' }}
                     onRowDragEnd={(newData) => handleModelRowDragEnd(newData as DraftClassification['models'])}
                   />
                 ) : (
