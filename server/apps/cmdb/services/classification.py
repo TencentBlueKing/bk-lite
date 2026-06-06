@@ -92,6 +92,16 @@ class ClassificationManage(object):
             models, _ = ag.query_entity(MODEL, [])
 
         exist_model_classifications = {i["classification_id"] for i in models}
+        # 统计每个分类下的模型总数与可见模型数
+        total_counts: dict = {}
+        visible_counts: dict = {}
+        for m in models:
+            cid = m.get("classification_id")
+            if cid is None:
+                continue
+            total_counts[cid] = total_counts.get(cid, 0) + 1
+            if m.get("is_visible", True):
+                visible_counts[cid] = visible_counts.get(cid, 0) + 1
         for classification in classifications:
             classification["exist_model"] = (
                 classification["classification_id"] in exist_model_classifications
@@ -109,7 +119,15 @@ class ClassificationManage(object):
             )
 
         if not include_hidden:
-            classifications = [c for c in classifications if c.get("is_visible", True)]
+            def _keep(c):
+                cid = c["classification_id"]
+                if not c.get("is_visible", True):
+                    return False
+                # 分类下有模型但可见模型数为 0 -> 隐藏该分类
+                if total_counts.get(cid, 0) > 0 and visible_counts.get(cid, 0) == 0:
+                    return False
+                return True
+            classifications = [c for c in classifications if _keep(c)]
 
         classifications.sort(key=lambda c: (c.get("order", 999), c["classification_id"]))
         return classifications

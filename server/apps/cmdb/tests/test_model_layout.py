@@ -121,6 +121,50 @@ class TestSearchClassificationVisibility:
         assert legacy["is_visible"] is True
 
 
+class TestClassificationHiddenWhenAllModelsHidden:
+    def _classifications(self):
+        return [
+            {"classification_id": "infra", "classification_name": "Infra",
+             "order": 0, "is_visible": True},
+            {"classification_id": "biz", "classification_name": "Biz",
+             "order": 1, "is_visible": True},
+            {"classification_id": "empty", "classification_name": "Empty",
+             "order": 2, "is_visible": True},
+        ]
+
+    def test_classification_with_all_models_hidden_is_dropped(self, fake_graph):
+        # infra has 2 models both hidden -> drop; biz has 1 visible -> keep;
+        # empty has no models -> keep
+        models = [
+            {"model_id": "i1", "classification_id": "infra", "is_visible": False},
+            {"model_id": "i2", "classification_id": "infra", "is_visible": False},
+            {"model_id": "b1", "classification_id": "biz", "is_visible": True},
+        ]
+        fake_graph.query_entity.side_effect = [
+            (self._classifications(), 3),
+            (models, 3),
+        ]
+        result = ClassificationManage.search_model_classification(language="en")
+        ids = [c["classification_id"] for c in result]
+        assert "infra" not in ids        # all models hidden -> dropped
+        assert "biz" in ids              # has a visible model -> kept
+        assert "empty" in ids            # no models at all -> kept
+
+    def test_include_hidden_keeps_all_models_hidden_classification(self, fake_graph):
+        models = [
+            {"model_id": "i1", "classification_id": "infra", "is_visible": False},
+        ]
+        fake_graph.query_entity.side_effect = [
+            (self._classifications(), 3),
+            (models, 1),
+        ]
+        result = ClassificationManage.search_model_classification(
+            language="en", include_hidden=True,
+        )
+        ids = [c["classification_id"] for c in result]
+        assert "infra" in ids            # admin view keeps it
+
+
 class TestUpdateClassificationLayout:
     def test_writes_order_and_visibility_per_item(self, fake_graph):
         fake_graph.query_entity.return_value = (
