@@ -262,7 +262,9 @@
         "exportModelConfig": "Export Config",
         "importModelConfig": "Import Config",
         "importSuccess": "Import successful",
-        "manageLayout": "Manage Layout",
+        "manageLayout": "Sort & Visibility",
+        "modelName": "Model",
+        "visible": "Visible",
         "hidden": "Hidden",
         "discardLayoutConfirm": "Unsaved changes will be discarded. Continue?"
     },

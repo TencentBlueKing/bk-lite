@@ -18,7 +18,7 @@ const ManageToolbar: React.FC<Props> = ({ manageMode, dirty, saving, onEnter, on
   if (!manageMode) {
     return (
       <Button onClick={onEnter} className="ml-[8px]">
-        {t('Model.manageLayout') || '管理排序'}
+        {t('Model.manageLayout') || '排序与可见性'}
       </Button>
     );
   }

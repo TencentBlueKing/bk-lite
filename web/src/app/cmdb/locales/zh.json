@@ -262,7 +262,9 @@
         "exportModelConfig": "导出配置",
         "importModelConfig": "导入配置",
         "importSuccess": "导入成功",
-        "manageLayout": "管理排序",
+        "manageLayout": "排序与可见性",
+        "modelName": "模型",
+        "visible": "可见",
         "hidden": "已隐藏",
         "discardLayoutConfirm": "当前改动未保存，确认放弃？"
     },

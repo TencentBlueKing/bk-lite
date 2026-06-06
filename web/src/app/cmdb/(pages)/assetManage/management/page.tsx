@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/context/auth';
 import { useSession } from 'next-auth/react';
 import Introduction from '@/app/cmdb/components/introduction';
-import { Input, Button, Modal, message, Spin, Empty, Tooltip, Dropdown, Space } from 'antd';
+import { Input, Button, Modal, message, Spin, Empty, Tooltip, Dropdown, Space, Switch } from 'antd';
 import { deepClone } from '@/app/cmdb/utils/common';
 import { GroupItem, ModelItem } from '@/app/cmdb/types/assetManage';
 import {
@@ -46,6 +46,7 @@ import CopyModelModal from './list/copyModelModal';
 import PublicEnumLibraryModal, { PublicEnumLibraryModalRef } from './list/publicEnumLibraryModal';
 import ImportModelConfigModal, { ImportModelConfigModalRef } from './list/importModelConfigModal';
 import ManageToolbar from './list/manageToolbar';
+import CustomTable from '@/components/custom-table';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
@@ -99,6 +100,7 @@ const AssetManage = () => {
   const [savingLayout, setSavingLayout] = useState<boolean>(false);
   const [layoutDirty, setLayoutDirty] = useState<boolean>(false);
   const [draftLayout, setDraftLayout] = useState<DraftClassification[]>([]);
+  const [selectedClassificationId, setSelectedClassificationId] = useState<string>('');
   const originalLayoutRef = useRef<DraftClassification[]>([]);
 
   const showConfigButtons = isSuperUser && selectedGroup?.name === 'Default';
@@ -164,6 +166,7 @@ const AssetManage = () => {
         }));
         grouped.sort((a, b) => a.order - b.order);
         setDraftLayout(grouped);
+        setSelectedClassificationId(grouped[0]?.classification_id || '');
         originalLayoutRef.current = JSON.parse(JSON.stringify(grouped));
         setLayoutDirty(false);
       } finally {
@@ -176,6 +179,7 @@ const AssetManage = () => {
   useEffect(() => {
     if (!manageMode) {
       setDraftLayout([]);
+      setSelectedClassificationId('');
       originalLayoutRef.current = [];
       setLayoutDirty(false);
     }
@@ -419,20 +423,58 @@ const AssetManage = () => {
     setManageMode(false);
   };
 
-  const handleModelDragEnd = (gi: number) => (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    setDraftLayout(prev =>
-      prev.map((g, i) => {
-        if (i !== gi) return g;
-        const oldIndex = g.models.findIndex(m => m.model_id === active.id);
-        const newIndex = g.models.findIndex(m => m.model_id === over.id);
-        if (oldIndex < 0 || newIndex < 0) return g;
-        return { ...g, models: arrayMove(g.models, oldIndex, newIndex) };
-      })
+  const selectedIndex = draftLayout.findIndex(
+    (g) => g.classification_id === selectedClassificationId
+  );
+  const activeDraftGroup = selectedIndex >= 0 ? draftLayout[selectedIndex] : null;
+
+  const handleModelRowDragEnd = (newList: DraftClassification['models']) => {
+    if (selectedIndex < 0) return;
+    setDraftLayout((prev) =>
+      prev.map((g, i) => (i === selectedIndex ? { ...g, models: newList } : g))
     );
     markDirty();
   };
+
+  const manageModelColumns = [
+    {
+      title: t('Model.modelName') || '模型',
+      dataIndex: 'model_name',
+      key: 'model_name',
+      render: (_: unknown, record: DraftClassification['models'][number]) => (
+        <div
+          className="flex items-center"
+          style={{ opacity: record.is_visible ? 1 : 0.5 }}
+        >
+          <div style={{ width: 28 }} className="flex-shrink-0">
+            <Image
+              src={getIconUrl(record as any)}
+              className="block w-auto h-7"
+              alt={t('picture')}
+              width={28}
+              height={28}
+            />
+          </div>
+          <div className="flex flex-col pl-[10px] min-w-0">
+            <span className="text-[14px] font-[600] truncate">{record.model_name}</span>
+            <span className="text-[12px] text-[var(--color-text-3)] truncate">{record.model_id}</span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: t('Model.visible') || '可见',
+      key: 'is_visible',
+      width: 90,
+      render: (_: unknown, __: DraftClassification['models'][number], index: number) => (
+        <Switch
+          size="small"
+          checked={draftLayout[selectedIndex]?.models[index]?.is_visible}
+          onChange={() => toggleModelVisible(selectedIndex, index)}
+        />
+      ),
+    },
+  ];
 
   return (
     <div className={assetManageStyle.container}>
@@ -521,72 +563,64 @@ const AssetManage = () => {
         </div>
         <Spin spinning={loading}>
           {manageMode ? (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleGroupDragEnd}>
-              <SortableContext items={draftLayout.map(g => g.classification_id)} strategy={verticalListSortingStrategy}>
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                  {draftLayout.map((group, gi) => (
-                    <SortableItem key={group.classification_id} id={group.classification_id} index={gi}>
-                      <div style={{ display: 'flex', flexDirection: 'column', width: '100%', opacity: group.is_visible ? 1 : 0.5 }}>
-                        <div className={`${assetManageStyle.groupTitle} flex items-center mt-[20px] text-[14px]`}>
-                          <HolderOutlined className="mr-[6px] cursor-move" />
-                          <span className="border-l-[4px] border-[var(--color-primary)] px-[4px] py-[1px] font-[600]">
-                            {group.classification_name}（{group.models.length}）
-                            {!group.is_visible && (
-                              <span className="ml-[8px] text-[12px] text-[var(--color-text-3)]">
-                                {t('Model.hidden') || '已隐藏'}
+            <div className="flex" style={{ gap: 16 }}>
+              {/* 左栏：分类（可拖拽 + 选中 + 可见性） */}
+              <div style={{ width: 240, flexShrink: 0 }}>
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleGroupDragEnd}>
+                  <SortableContext items={draftLayout.map(g => g.classification_id)} strategy={verticalListSortingStrategy}>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                      {draftLayout.map((group, gi) => (
+                        <SortableItem key={group.classification_id} id={group.classification_id} index={gi}>
+                          <div
+                            onClick={() => setSelectedClassificationId(group.classification_id)}
+                            className="flex items-center justify-between px-[8px] py-[6px] rounded cursor-pointer"
+                            style={{
+                              width: '100%',
+                              opacity: group.is_visible ? 1 : 0.5,
+                              background:
+                                group.classification_id === selectedClassificationId
+                                  ? 'var(--color-fill-1)'
+                                  : 'transparent',
+                            }}
+                          >
+                            <span className="flex items-center min-w-0">
+                              <HolderOutlined className="mr-[6px] cursor-move flex-shrink-0" />
+                              <span className="truncate text-[14px]">
+                                {group.classification_name}（{group.models.length}）
                               </span>
-                            )}
-                          </span>
-                          <div className={assetManageStyle.groupOperate}>
+                            </span>
                             <Tooltip title={group.is_visible ? (t('common.hide') || '隐藏') : (t('common.show') || '显示')}>
-                              {group.is_visible
-                                ? <EyeOutlined className="cursor-pointer ml-[8px]" onClick={() => toggleGroupVisible(gi)} />
-                                : <EyeInvisibleOutlined className="cursor-pointer ml-[8px]" onClick={() => toggleGroupVisible(gi)} />}
+                              <span
+                                className="flex-shrink-0 ml-[6px]"
+                                onClick={(e) => { e.stopPropagation(); toggleGroupVisible(gi); }}
+                              >
+                                {group.is_visible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
+                              </span>
                             </Tooltip>
                           </div>
-                        </div>
-                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleModelDragEnd(gi)}>
-                          <SortableContext items={group.models.map(m => m.model_id)} strategy={verticalListSortingStrategy}>
-                            <ul className={assetManageStyle.modelList}>
-                              {group.models.map((model, mi) => (
-                                <SortableItem key={model.model_id} id={model.model_id} index={mi}>
-                                  <div
-                                    className={`bg-[var(--color-bg)] flex justify-between items-center ${assetManageStyle.modelListItem}`}
-                                    style={{ opacity: model.is_visible ? 1 : 0.5, cursor: 'default', width: '100%' }}
-                                  >
-                                    <HolderOutlined className="mr-[6px] cursor-move" />
-                                    <div className={assetManageStyle.leftSide} style={{ pointerEvents: 'none' }}>
-                                      <div style={{ width: 40 }}>
-                                        <Image
-                                          src={getIconUrl(model as any)}
-                                          className="block w-auto h-10"
-                                          alt={t('picture')}
-                                          width={40}
-                                          height={40}
-                                        />
-                                      </div>
-                                      <div className="flex flex-col pl-[10px]">
-                                        <span className="text-[14px] pb-[4px] font-[600]">{model.model_name}</span>
-                                        <span className="text-[12px] text-[var(--color-text-3)]">{model.model_id}</span>
-                                      </div>
-                                    </div>
-                                    <Tooltip title={model.is_visible ? (t('common.hide') || '隐藏') : (t('common.show') || '显示')}>
-                                      {model.is_visible
-                                        ? <EyeOutlined className="cursor-pointer mr-[8px]" onClick={() => toggleModelVisible(gi, mi)} />
-                                        : <EyeInvisibleOutlined className="cursor-pointer mr-[8px]" onClick={() => toggleModelVisible(gi, mi)} />}
-                                    </Tooltip>
-                                  </div>
-                                </SortableItem>
-                              ))}
-                            </ul>
-                          </SortableContext>
-                        </DndContext>
-                      </div>
-                    </SortableItem>
-                  ))}
-                </ul>
-              </SortableContext>
-            </DndContext>
+                        </SortableItem>
+                      ))}
+                    </ul>
+                  </SortableContext>
+                </DndContext>
+              </div>
+              {/* 右栏：选中分类下的模型（CustomTable + 行拖拽 + 可见性开关） */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {activeDraftGroup ? (
+                  <CustomTable
+                    size="small"
+                    rowKey="model_id"
+                    pagination={false}
+                    columns={manageModelColumns}
+                    dataSource={activeDraftGroup.models}
+                    rowDraggable={true}
+                    onRowDragEnd={(newData) => handleModelRowDragEnd(newData as DraftClassification['models'])}
+                  />
+                ) : (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                )}
+              </div>
+            </div>
           ) : modelGroup.length ? (
             modelGroup.map(item => {
               return (
