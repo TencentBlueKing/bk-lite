@@ -8,6 +8,7 @@ Scenarios covered:
 - MemoryWrite: passthrough, async task trigger, permission check, empty input, no config
 """
 
+import inspect
 import sys
 import types
 
@@ -743,6 +744,48 @@ class TestMemorySpaceTestWriteAction:
 
         response = MemorySpaceViewSet.test_write.__wrapped__(viewset, request)
         assert response.status_code == 404
+
+
+@pytest.mark.django_db
+class TestMemorySpaceWorkflowOptionsAction:
+    """Test workflow memory space options action."""
+
+    def test_workflow_options_returns_all_spaces_without_current_team_filter(self, db):
+        import json
+        from types import SimpleNamespace
+
+        from apps.opspilot.models.memory_mgmt import MemorySpace
+        from apps.opspilot.viewsets.memory_view import MemorySpaceViewSet
+
+        team_one_space = MemorySpace.objects.create(
+            name="Team One Space",
+            team=[1],
+            scope=MemorySpace.SCOPE_TEAM,
+            created_by="admin",
+            domain="test.com",
+        )
+        team_two_space = MemorySpace.objects.create(
+            name="Team Two Space",
+            team=[2],
+            scope=MemorySpace.SCOPE_TEAM,
+            created_by="admin",
+            domain="test.com",
+        )
+
+        viewset = MemorySpaceViewSet()
+        request = SimpleNamespace(
+            user=SimpleNamespace(username="admin"),
+            query_params={},
+            COOKIES={"current_team": "1"},
+        )
+
+        response = MemorySpaceViewSet.workflow_options.__wrapped__(viewset, request)
+        assert response.status_code == 200
+
+        data = json.loads(response.content)["data"]
+        ids = {item["id"] for item in data}
+        assert team_one_space.id in ids
+        assert team_two_space.id in ids
 
 
 @pytest.mark.django_db
@@ -1617,6 +1660,76 @@ class TestMemoryWriteCacheFlushTriggers:
             title="Daily Memory",
             model_id=8,
         )
+
+    def test_daily_flush_uses_constant_query_count_for_multiple_workflows(self, db, mocker, django_assert_num_queries, memory_space_team):
+        from apps.opspilot.models.bot_mgmt import Bot, BotWorkFlow
+        from apps.opspilot.tasks import flush_all_pending_memory_write_cache
+
+        mocker.patch(
+            "apps.opspilot.models.bot_mgmt.ChatApplication.sync_applications_from_workflow",
+            return_value=(0, 0, 0),
+        )
+
+        workflows = []
+        for index in range(2):
+            bot = Bot.objects.create(
+                name=f"flush-bot-{index}",
+                team=[1],
+                online=True,
+                created_by="tester",
+                domain="test.com",
+            )
+            workflows.append(
+                BotWorkFlow.objects.create(
+                    bot=bot,
+                    flow_json={
+                        "nodes": [
+                            {
+                                "id": f"memory_write_node_{index}",
+                                "type": "memory_write",
+                                "data": {
+                                    "config": {
+                                        "memorySpace": memory_space_team.id,
+                                        "title": f"Daily Memory {index}",
+                                        "llmModel": index + 1,
+                                    }
+                                },
+                            }
+                        ],
+                        "edges": [],
+                    },
+                )
+            )
+
+        for index, workflow in enumerate(workflows):
+            MemoryWriteCache.objects.create(
+                workflow_id=workflow.id,
+                node_id=f"memory_write_node_{index}",
+                memory_target_id=str(index + 1),
+                content=f"event-{index + 1}",
+            )
+
+        with patch("apps.opspilot.tasks.close_old_connections"):
+            with patch("apps.opspilot.tasks.flush_memory_write_cache_for_node") as mock_flush:
+                with django_assert_num_queries(2):
+                    flush_all_pending_memory_write_cache()
+
+        assert mock_flush.call_count == 2
+
+    def test_memory_write_helpers_keep_only_channel_specific_local_imports(self):
+        from apps.opspilot import tasks
+
+        helper_sources = {
+            "build_memory_write_client": inspect.getsource(tasks._build_memory_write_client),
+            "summarize_memory_batch_content": inspect.getsource(tasks._summarize_memory_batch_content),
+            "flush_all_pending_memory_write_cache": inspect.getsource(tasks.flush_all_pending_memory_write_cache),
+            "process_memory_write": inspect.getsource(tasks.process_memory_write),
+        }
+
+        for name, source in helper_sources.items():
+            body_lines = source.splitlines()[1:]
+            local_import_lines = [line.strip() for line in body_lines if line.strip().startswith(("import ", "from "))]
+            assert local_import_lines == [], f"{name} should not define function-local imports: {local_import_lines}"
 
     def test_batching_isolated_by_node_and_memory_target(self, memory_space_personal):
         from apps.opspilot.tasks import process_memory_write_cache
