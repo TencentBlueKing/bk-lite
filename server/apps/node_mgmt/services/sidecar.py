@@ -467,8 +467,9 @@ class Sidecar:
                 node_info.pop("cpu_architecture", None)
             Node.objects.filter(id=node_id).update(**node_info)
 
-            # Incrementally sync organization associations
-            Sidecar.sync_groups(node_id, tags_data.get(ControllerConstants.GROUP_TAG, []))
+            # Existing node organization ownership is managed by the server/UI.
+            # Sidecar may heartbeat with stale group tags before sidecar.yaml is
+            # updated, so do not let those tags roll back user edits.
 
         # 预取相关数据，减少查询次数
         new_obj = Node.objects.prefetch_related("action_set", "collectorconfiguration_set").get(id=node_id)

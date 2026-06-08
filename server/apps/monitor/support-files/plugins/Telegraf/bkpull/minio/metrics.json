@@ -9,6 +9,7 @@
   "default_metric": "any({instance_type='minio'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["minio_cluster_capacity_usable_free_bytes_gauge", "minio_cluster_drive_online_total_gauge", "minio_cluster_health_status_gauge"],
+  "display_fields": [{"name": "Cluster Usable Free Capacity", "sort_order": 0, "metrics": [{"plugin": "Minio", "metric": "minio_cluster_capacity_usable_free_bytes_gauge"}]}, {"name": "Online Drives Count", "sort_order": 1, "metrics": [{"plugin": "Minio", "metric": "minio_cluster_drive_online_total_gauge"}]}, {"name": "Cluster Health Status", "sort_order": 2, "metrics": [{"plugin": "Minio", "metric": "minio_cluster_health_status_gauge"}]}],
   "metrics": [
     {
       "metric_group": "Cluster Monitoring",

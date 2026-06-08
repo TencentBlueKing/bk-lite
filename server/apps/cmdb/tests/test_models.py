@@ -79,6 +79,61 @@ def test_collect_model_info_property():
     assert info["raw_data"]["count"] == 3
 
 
+def test_collect_model_topology_contract_properties():
+    m = CollectModels(
+        task_type="snmp",
+        driver_type="protocol",
+        model_id="network",
+        params={
+            "has_network_topo": True,
+            "topology_protocols": ["lldp", "arp"],
+            "topology_fallback_strategy": "strict_neighbors_only",
+            "min_confidence": 0.8,
+        },
+        format_data={},
+    )
+
+    assert m.is_network_topo is True
+    assert m.topology_protocols == ["lldp", "arp"]
+    assert m.topology_fallback_strategy == "strict_neighbors_only"
+    assert m.min_confidence == 0.8
+
+
+def test_collect_model_topology_contract_defaults_preserve_legacy_payloads():
+    m = CollectModels(
+        task_type="snmp",
+        driver_type="protocol",
+        model_id="network",
+        params={"has_network_topo": True},
+        format_data={},
+    )
+
+    assert m.is_network_topo is True
+    assert m.topology_protocols == ["lldp", "cdp", "fdb", "arp"]
+    assert m.topology_fallback_strategy == "prefer_neighbors_then_fdb_then_arp"
+    assert m.min_confidence == 0.0
+
+
+def test_collect_model_topology_contract_preserves_explicit_empty_protocol_subset():
+    m = CollectModels(
+        task_type="snmp",
+        driver_type="protocol",
+        model_id="network",
+        params={
+            "has_network_topo": True,
+            "topology_protocols": [],
+            "topology_fallback_strategy": "strict_neighbors_only",
+            "min_confidence": 0.3,
+        },
+        format_data={},
+    )
+
+    assert m.is_network_topo is True
+    assert m.topology_protocols == []
+    assert m.topology_fallback_strategy == "strict_neighbors_only"
+    assert m.min_confidence == 0.3
+
+
 # --------------------------------------------------------------------------
 # 小模型 __str__ / 持久化
 # --------------------------------------------------------------------------

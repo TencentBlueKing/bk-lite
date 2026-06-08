@@ -13,11 +13,29 @@ from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.enum import BotTypeChoice, WorkFlowExecuteType, WorkFlowTaskStatus
 from apps.opspilot.models import Bot, BotChannel, BotWorkFlow, LLMSkill, UserPin, WorkFlowConversationHistory, WorkFlowTaskResult
 from apps.opspilot.serializers import BotSerializer
+from apps.opspilot.services.memory_write_buffer_service import find_memory_write_nodes_to_flush
+from apps.opspilot.tasks import flush_memory_write_cache_for_node
 from apps.opspilot.utils.bot_utils import set_time_range
 from apps.opspilot.utils.celery_task_utils import create_celery_task, delete_celery_task
 from apps.opspilot.utils.pin_mixin import PinMixin
 from apps.opspilot.utils.schedule_utils import get_crontab_next_runs
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+
+
+def _schedule_memory_write_cache_flush(workflow: BotWorkFlow, old_flow_json, new_flow_json):
+    """当记忆写入节点切换或删除目标空间时，先冲刷旧缓存"""
+    flush_nodes = find_memory_write_nodes_to_flush(old_flow_json, new_flow_json)
+    for node_id, config in flush_nodes.items():
+        memory_space_id = config.get("memorySpace") or config.get("memory_space_id")
+        if not memory_space_id:
+            continue
+        flush_memory_write_cache_for_node.delay(
+            workflow_id=workflow.id,
+            node_id=node_id,
+            memory_space_id=memory_space_id,
+            title=config.get("title", "") or f"自动记忆-{node_id}",
+            model_id=config.get("llmModel"),
+        )
 
 
 class BotFilter(FilterSet):
@@ -131,9 +149,11 @@ class BotViewSet(PinMixin, AuthViewSet):
         if workflow_data:
             # 直接使用 workflow_data 作为 flow_json
             flow = BotWorkFlow.objects.get(bot_id=obj.id)
+            old_flow_json = flow.flow_json
             flow.flow_json = workflow_data
             flow.web_json = workflow_data
             flow.save()
+            _schedule_memory_write_cache_flush(flow, old_flow_json, workflow_data)
         obj.updated_by = request.user.username
         obj.save()
         if is_publish:

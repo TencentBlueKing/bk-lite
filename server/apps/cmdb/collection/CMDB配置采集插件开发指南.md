@@ -304,6 +304,13 @@ class CollectDriverTypes:
 | 云厂商 API 采集 | `apps/cmdb/node_configs/cloud/` | 调用云厂商 API 采集 |
 | 网络设备采集 | `apps/cmdb/node_configs/network/` | 通过 SNMP 等协议采集 |
 
+#### 网络拓扑发现契约（network）
+
+- `topology_protocols`：可选 `lldp`、`cdp`、`fdb`、`arp`。
+- `topology_fallback_strategy`：仅支持 `prefer_neighbors_then_fdb_then_arp` 或 `strict_neighbors_only`。
+- Stargazer 会在保留原始 `network_topo` 指标的同时，额外上报 `network_topology_facts`。
+- CMDB 在可解析时优先消费 `network_topology_facts`，未解析的边再回退到原始 `network_topo` 数据。
+
 #### 步骤 2：创建配置类文件
 
 以新增 Tomcat 中间件采集为例（SSH 类型）：

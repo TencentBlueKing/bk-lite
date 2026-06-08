@@ -9,6 +9,7 @@
   "default_metric": "any({instance_type='storage'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["ipmi_chassis_power_state", "ipmi_fan_speed_rpm", "ipmi_temperature_celsius"],
+  "display_fields": [{"name": "Power State", "sort_order": 0, "metrics": [{"plugin": "Storage IPMI", "metric": "ipmi_chassis_power_state"}]}, {"name": "Fan Speed", "sort_order": 1, "metrics": [{"plugin": "Storage IPMI", "metric": "ipmi_fan_speed_rpm"}]}, {"name": "Temperature", "sort_order": 2, "metrics": [{"plugin": "Storage IPMI", "metric": "ipmi_temperature_celsius"}]}],
   "metrics": [
     {
       "metric_group": "Power",

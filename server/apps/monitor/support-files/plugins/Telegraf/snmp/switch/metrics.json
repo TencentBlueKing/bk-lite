@@ -9,6 +9,7 @@
   "default_metric": "any({instance_type='switch'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["snmp_uptime", "device_total_incoming_traffic", "device_total_outgoing_traffic"],
+  "display_fields": [{"name": "System Uptime", "sort_order": 0, "metrics": [{"plugin": "Switch SNMP General", "metric": "snmp_uptime"}]}, {"name": "Device Total Incoming Traffic Rate", "sort_order": 1, "metrics": [{"plugin": "Switch SNMP General", "metric": "device_total_incoming_traffic"}]}, {"name": "Device Total Outgoing Traffic Rate", "sort_order": 2, "metrics": [{"plugin": "Switch SNMP General", "metric": "device_total_outgoing_traffic"}]}],
   "metrics": [
     {
       "metric_group": "Base",

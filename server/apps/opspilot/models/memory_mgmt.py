@@ -132,3 +132,41 @@ class Memory(MaintainerInfo, TimeInfo):
 
     def __str__(self):
         return self.title
+
+
+class MemoryWriteCache(models.Model):
+    """记忆写入缓存项"""
+
+    STATUS_PENDING = "pending"
+    STATUS_PROCESSING = "processing"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "待处理"),
+        (STATUS_PROCESSING, "处理中"),
+    ]
+
+    workflow_id = models.IntegerField(verbose_name=_("工作流ID"), db_index=True)
+    node_id = models.CharField(max_length=100, verbose_name=_("节点ID"), db_index=True)
+    memory_target_id = models.CharField(max_length=255, verbose_name=_("记忆对象ID"), db_index=True)
+    content = models.TextField(verbose_name=_("缓存内容"))
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+        db_index=True,
+        verbose_name=_("状态"),
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("创建时间"), db_index=True)
+
+    class Meta:
+        db_table = "memory_mgmt_memorywritecache"
+        verbose_name = "记忆写入缓存"
+        verbose_name_plural = "记忆写入缓存"
+        indexes = [
+            models.Index(
+                fields=["workflow_id", "node_id", "memory_target_id", "status", "created_at"],
+                name="memory_mgmt_workflo_55002b_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.workflow_id}:{self.node_id}:{self.memory_target_id}"

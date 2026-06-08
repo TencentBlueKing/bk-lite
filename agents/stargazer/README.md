@@ -64,6 +64,13 @@ NATS_PASSWORD=your_nats_password
 # NATS_TLS_CA_FILE=/path/to/ca.pem
 ```
 
+### 网络拓扑发现契约
+
+- `topology_protocols` 支持 `lldp`、`cdp`、`fdb`、`arp`，用于控制 Stargazer 构建事实时启用的协议集合。
+- `topology_fallback_strategy` 是上游 CMDB 的消费策略参数，不由 Stargazer 解析；Stargazer 只负责保留原始 `network_topo` 并额外输出拓扑事实。
+- Stargazer 对网络设备始终保留原始 `network_topo` 结果，并额外输出 `network_topology_facts`，不会覆盖原始拓扑。
+- 下游 CMDB 会优先使用 `network_topology_facts` 建边，解析不了的链路再回退到 `network_topo`。
+
 ### 性能调优
 
 #### 调整并发数
@@ -403,4 +410,3 @@ stargazer/
 ## 📄 许可证
 
 [在此添加许可证信息]
-

@@ -40,6 +40,8 @@ class MonitorObject(TimeInfo, MaintainerInfo):
     instance_id_keys = models.JSONField(default=list, verbose_name='联合唯一实例ID键列表')
     supplementary_indicators = models.JSONField(default=list, verbose_name='对象实例补充指标')
     is_visible = models.BooleanField(default=True, verbose_name='是否可见')
+    display_fields = models.JSONField(default=list, verbose_name='视图列表展示列配置')
+    display_fields_customized = models.BooleanField(default=False, verbose_name='展示列是否被用户自定义')
 
     class Meta:
         verbose_name = '监控对象'

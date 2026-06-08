@@ -210,6 +210,7 @@ export interface ObjectItem {
   collector?: string;
   collect_type?: string;
   display_type?: string;
+  display_fields?: { name: string; sort_order: number; metrics: { plugin: string; metric: string }[] }[];
   options?: ObjectItem[];
   label?: string;
   value?: string;

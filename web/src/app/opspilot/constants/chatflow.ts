@@ -133,7 +133,8 @@ export const getDefaultConfig = (nodeType: string) => {
       return {
         ...baseConfig,
         memory_space_id: null,
-        title: ''
+        title: '',
+        writeBatchSize: 30
       };
     case 'restful':
     case 'openai':

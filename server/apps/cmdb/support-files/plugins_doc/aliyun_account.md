@@ -1,7 +1,5 @@
 ### 说明
-基于阿里云开放 API 并行拉取账户下多类资源（ECS、RDS、Redis、MongoDB、OSS、CLB、Kafka 等）清单与核心属性，统一格式化后同步至 CMDB。
-
-
+该插件通过阿里云开放 API（SDK）采集阿里云账户下的资产清单，包括 ECS、RDS、OSS、Redis、MongoDB、Kafka、CLB 等资源类型，统一格式化后同步至 CMDB。采集为只读，agentless（无代理）方式，由你选择的“接入点”出网调用阿里云 API。
 
 ### 操作入口与执行位置
 在 CMDB Web 页面：
@@ -11,185 +9,56 @@
 
 说明：任务实际执行发生在你选择的“接入点”上；连通性自测命令应在接入点机器上执行。
 
-
-
-### 前置要求
-开始前建议逐条确认（按“先跑通、再最小权限”的原则）：
-
-1. **阿里云控制台：创建 RAM 采集用户并获取 AccessKey**
-	1) 登录阿里云控制台。
-	2) 进入：`RAM 访问控制`（也叫“访问控制”）→ `用户` → `创建用户`。
-	3) 用户类型建议选择“RAM 用户”，并为该用户启用 **OpenAPI 调用访问**（不同控制台版本可能叫“编程访问/AccessKey 访问/OpenAPI 访问”）。
-	4) 创建完成后，在该 RAM 用户详情页进入：`认证管理/AccessKey` → `创建 AccessKey`。
-	5) 记录 `AccessKeyId` 与 `AccessKeySecret`（Secret 只在创建时展示一次），妥善保存。
-
-2. **阿里云控制台：给 RAM 用户授权（建议先只读跑通）**
-	1) 进入：`RAM 访问控制` → `权限管理` → `授权`（或在用户详情页直接点“新增授权”）。
-	2) 首次验证建议直接绑定阿里云系统策略中的只读策略（ReadOnly 类），用于快速排障：
-		- 示例：按你要采集的资源绑定相应只读策略（如 ECS/RDS/Redis/OSS/SLB 等的只读策略）。
-	3) 流程跑通后，再把权限收敛到最小：只保留“查询/列举/描述”类权限（Describe/List/Get）。
-	4) 如果“地域刷新失败/报权限不足”，通常是：RAM 用户未授权、策略范围不包含该产品、或策略未生效。
-
-3. **CMDB 侧准备（否则页面下拉可能为空）**
-	- 在 CMDB 资产数据中已维护“阿里云账号”实例（页面会以“云账号”下拉选择）。
-	- 明确采集范围：采集哪个账号、哪些地域、哪些资源类型（ECS/RDS/OSS 等）。
-
-4. **接入点网络（任务在哪跑，就在哪验证）**
-	- 接入点可解析并访问阿里云 API 域名（DNS 正常）。
-	- 接入点可访问公网 `443/TCP`（或通过公司代理/NAT 出口访问）。
-	- 若你们环境必须走代理，请确保接入点已配置代理且允许访问阿里云 API。
-
-5. **地域（RegionId）选择方式**
-	- 本插件需要先用你的密钥刷新地域列表，再选择一个地域（`RegionId`）。
-
-
+### 前置要求 / 权限
+1. **接入点网络**：接入点可出网访问 `*.aliyuncs.com`（公网 `443/TCP`，或通过代理/NAT 出口访问）。
+2. **创建只读 RAM 子账号**：为采集创建专用 RAM 子账号，启用 OpenAPI 调用访问并获取 `AccessKeyId` / `AccessKeySecret`。
+3. **只读授权**：为该子账号授予**只读**权限。可先绑定系统只读策略快速跑通（如 `ReadOnlyAccess`，或各产品只读策略 `AliyunECSReadOnlyAccess`、`AliyunRDSReadOnlyAccess`、`AliyunOSSReadOnlyAccess` 等），验证后再收敛为自定义最小策略（仅 `ecs:Describe*`、`rds:Describe*`、`oss:List*`/`oss:GetBucketInfo` 等只读 API）。可收敛到的最小只读 API 例如：
+   - ECS：`ecs:Describe*`
+   - RDS：`rds:Describe*`
+   - OSS：`oss:ListBuckets`、`oss:GetBucketInfo`
+   - Redis：`r-kvstore:Describe*`
+   - MongoDB：`dds:Describe*`
+   - Kafka：`alikafka:Get*`
+   - SLB/CLB：`slb:Describe*`
 
 ### 操作步骤
-### 步骤 1：网络连通性自测
-- Linux：`curl -I https://sts.aliyuncs.com`
-- Windows PowerShell：`Test-NetConnection sts.aliyuncs.com -Port 443`
+#### 步骤 1：网络连通性自测（接入点执行）
+- Linux：`curl -I https://ecs.aliyuncs.com`
+- Windows PowerShell：`Test-NetConnection ecs.aliyuncs.com -Port 443`
 
+判断标准：能建立 HTTPS 连接即可。
 
+#### 步骤 2：创建只读 RAM 账号并拿 AK/SK
+按上文“前置要求 / 权限”创建专用 RAM 子账号，授予只读权限，并记录 `AccessKeyId` 与 `AccessKeySecret`（Secret 仅创建时展示一次）。
 
-### 步骤 2：在 CMDB 上创建采集任务
-在新增任务时，你需要重点关注“凭据/鉴权”相关字段：
+#### 步骤 3：填写任务（页面操作）
+新增任务时填写凭据与参数（见下文“凭据字段说明”），设置采集周期并保存。
 
-- `AccessKey`：阿里云 RAM 用户的 `AccessKeyId`（相当于账号标识）。
-- `AccessSecret`：与 `AccessKeyId` 配套的 `AccessKeySecret`（相当于密钥/密码）。
-- `RegionId`（页面通常显示为“地域/Region”）：要采集的地域。需要先用上面的密钥刷新地域列表，再选择一个。
+#### 步骤 4：验证结果
+- 保存并执行后，在任务详情查看 `新增 / 更新 / 删除` 摘要；在 CMDB 中应能查询到对应资源实例。
+- 若某类资源为空或报权限不足，多为子账号未授予对应产品只读权限、地域选择无资源或接入点无法出网，核对后重采。
+- 若页面“阿里云账号”下拉为空，需先在 CMDB 资产中新增一个“阿里云账号”实例。
 
-
-
+### 凭据字段说明
+- `secret_id`：即阿里云 RAM 用户的 AccessKey ID。落库自动加密。建议使用专用只读子账号，不要复用主账号。
+- `secret_key`：即与 AccessKey ID 配套的 AccessKey Secret。落库自动加密。
+- `region_id`：采集地域，默认 `cn-hangzhou`。
+- `timeout`：API 请求超时时间。
+- `host`：可选。专有云场景下填写自定义 Endpoint，公共云一般留空。
 
 ### 采集内容（字段字典）
+各资源类型均以 `belong` 关系关联到 `aliyun_account`。以下为概要核心字段：
 
-### ECS (aliyun_ecs)
-| Key 名称 | 含义 |
-| :----------- | :--- |
-| resource_name | 实例显示名 |
-| resource_id | 实例 ID |
-| ip_addr | 内网主 IP |
-| public_ip | 公网主 IP（无则回退内网） |
-| region | 地域 ID |
-| zone | 可用区 |
-| vpc | 所属 VPC |
-| status | 运行状态 |
-| instance_type | 规格类型 |
-| os_name | 操作系统名称 |
-| vcpus | vCPU 数 |
-| memory | 内存（MB） |
-| charge_type | 计费类型 |
-| create_time | 创建时间 |
-| expired_time | 到期时间（包年包月） |
+| 资源类型 | model_id | 核心字段（概要） |
+| :--- | :--- | :--- |
+| ECS 云服务器 | aliyun_ecs | resource_name、resource_id、region、zone、status、规格 等 |
+| OSS 存储桶 | aliyun_bucket | resource_name、resource_id、region、storage_class 等 |
+| RDS MySQL | aliyun_mysql | resource_name、resource_id、region、zone、status、规格 等 |
+| RDS PostgreSQL | aliyun_pgsql | resource_name、resource_id、region、zone、status、规格 等 |
+| Redis | aliyun_redis | resource_name、resource_id、region、zone、status、规格 等 |
+| MongoDB | aliyun_mongodb | resource_name、resource_id、region、zone、status、规格 等 |
+| Kafka 实例 | aliyun_kafka_inst | resource_name、resource_id、region、zone、status、规格 等 |
+| 负载均衡 CLB | aliyun_clb | resource_name、resource_id、region、zone、status、规格 等 |
 
-### OSS Bucket (aliyun_bucket)
-| Key 名称 | 含义 |
-| :----------- | :--- |
-| resource_name | Bucket 名称 |
-| resource_id | Bucket 名称（同名） |
-| location | 地域 |
-| extranet_endpoint | 公网访问域名 |
-| intranet_endpoint | 内网访问域名 |
-| storage_class | 存储类型 |
-| cross_region_replication | 跨区域复制状态 |
-| block_public_access | 公共访问拦截状态 |
-| creation_date | 创建时间 |
-
-### RDS MySQL / PostgreSQL (aliyun_mysql / aliyun_pgsql)
-| Key 名称 | 含义 |
-| :----------- | :--- |
-| resource_name | 实例描述 |
-| resource_id | 实例 ID |
-| region | 地域 |
-| zone | 主可用区 |
-| zone_slave | 从/备可用区列表 |
-| engine | 引擎类型 |
-| version | 引擎版本 |
-| type | 实例类型（主/从等） |
-| status | 状态 |
-| class | 规格 |
-| storage_type | 存储类型 |
-| network_type | 网络类型 |
-| connection_mode | 连接模式 |
-| lock_mode | 锁定模式 |
-| cpu | CPU 核数 |
-| memory_mb | 内存 MB |
-| charge_type | 计费类型 |
-| create_time | 创建时间 |
-| expire_time | 到期时间 |
-
-### Redis (aliyun_redis)
-| Key 名称 | 含义 |
-| :----------- | :--- |
-| resource_name | 实例名称 |
-| resource_id | 实例 ID |
-| region | 地域 |
-| zone | 可用区 |
-| engine_version | 引擎版本 |
-| architecture_type | 架构（单机/集群） |
-| capacity | 容量 |
-| network_type | 网络类型 |
-| connection_domain | 连接域名 |
-| port | 端口 |
-| bandwidth | 带宽 |
-| shard_count | 分片数量 |
-| qps | QPS 指标 |
-| instance_class | 规格 |
-| package_type | 套餐类型 |
-| charge_type | 计费类型 |
-| create_time | 创建时间 |
-| end_time | 到期时间 |
-
-### MongoDB (aliyun_mongodb)
-| Key 名称 | 含义 |
-| :----------- | :--- |
-| resource_name | 实例描述 |
-| resource_id | 实例 ID |
-| region | 地域 |
-| zone | 主可用区 |
-| zone_slave | 备/隐藏区 |
-| engine | 引擎 |
-| version | 版本 |
-| type | 类型（副本集/分片等） |
-| status | 状态 |
-| class | 规格 |
-| storage_type | 存储类型 |
-| storage_gb | 存储容量 GB |
-| lock_mode | 锁定模式 |
-| charge_type | 计费类型 |
-| create_time | 创建时间 |
-| expire_time | 到期时间 |
-
-### 负载均衡 CLB (aliyun_clb)
-| Key 名称 | 含义 |
-| :----------- | :--- |
-| resource_name | 实例名称 |
-| resource_id | 实例 ID |
-| region | 地域 |
-| zone | 主可用区 |
-| zone_slave | 备可用区 |
-| vpc | 所属 VPC |
-| ip_addr | 负载均衡地址 |
-| status | 状态 |
-| class | 规格 |
-| charge_type | 计费类型 |
-| create_time | 创建时间 |
-
-### Kafka 实例 (aliyun_kafka_inst)
-| Key 名称 | 含义 |
-| :----------- | :--- |
-| resource_name | 实例名称 |
-| resource_id | 实例 ID |
-| region | 地域 |
-| zone | 可用区 |
-| vpc | 所属 VPC |
-| status | 状态 |
-| class | 实例规格 |
-| storage_gb | 磁盘容量 GB |
-| storage_type | 磁盘类型 |
-| msg_retain | 消息保留时长 |
-| topoc_num | Topic 上限 |
-| io_max_read | 最大读取吞吐 |
-| io_max_write | 最大写入吞吐 |
-| charge_type | 计费类型 |
-| create_time | 创建时间 |
+**关联关系**
+- 上述各资源均以 `belong aliyun_account` 归属到对应阿里云账号实例。

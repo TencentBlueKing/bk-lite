@@ -9,6 +9,7 @@
   "default_metric": "any({instance_type='nginx'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["nginx_active", "nginx_requests_rate", "nginx_handled_rate"],
+  "display_fields": [{"name": "Active Connections", "sort_order": 0, "metrics": [{"plugin": "Nginx", "metric": "nginx_active"}]}, {"name": "Request Rate", "sort_order": 1, "metrics": [{"plugin": "Nginx", "metric": "nginx_requests_rate"}]}, {"name": "Connection Handling Rate", "sort_order": 2, "metrics": [{"plugin": "Nginx", "metric": "nginx_handled_rate"}]}],
   "metrics": [
     {
       "metric_group": "StubStatus",

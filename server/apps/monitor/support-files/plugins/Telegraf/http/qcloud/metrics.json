@@ -16,6 +16,7 @@
       "default_metric": "any({instance_type='qcloud'}) by (instance_id)",
       "instance_id_keys": ["instance_id"],
       "supplementary_indicators": ["ConnectStatus"],
+      "display_fields": [{"name": "Connect Status", "sort_order": 0, "metrics": [{"plugin": "Tencent Cloud", "metric": "ConnectStatus"}]}],
       "metrics": [
         {
           "metric_group": "Base",
@@ -39,6 +40,7 @@
       "default_metric": "any({resource_type='qcloud_cvm'}) by (instance_id, resource_id)",
       "instance_id_keys": ["instance_id", "resource_id"],
       "supplementary_indicators": ["CPUUsage_gauge", "MemUsage_gauge", "CvmDiskUsage_gauge"],
+      "display_fields": [{"name": "CPU Utilization", "sort_order": 0, "metrics": [{"plugin": "Tencent Cloud", "metric": "CPUUsage_gauge"}]}, {"name": "Memory Utilization", "sort_order": 1, "metrics": [{"plugin": "Tencent Cloud", "metric": "MemUsage_gauge"}]}, {"name": "Disk Utilization", "sort_order": 2, "metrics": [{"plugin": "Tencent Cloud", "metric": "CvmDiskUsage_gauge"}]}],
       "metrics": [
         {
           "metric_group": "CPU",

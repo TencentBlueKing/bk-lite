@@ -12,6 +12,7 @@
   "default_metric": "any({instance_type='os'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["cpu_usage_total", "mem_used_percent", "disk_used_percent"],
+  "display_fields": [{"name": "CPU Usage", "sort_order": 0, "metrics": [{"plugin": "Host Remote", "metric": "cpu_usage_total"}]}, {"name": "Memory Usage", "sort_order": 1, "metrics": [{"plugin": "Host Remote", "metric": "mem_used_percent"}]}, {"name": "Disk Usage", "sort_order": 2, "metrics": [{"plugin": "Host Remote", "metric": "disk_used_percent"}]}],
   "metrics": [
     {
       "metric_group": "CPU",
