@@ -1,0 +1,50 @@
+@import '../common/simple-dashboard.module.scss';
+
+.chartLegendHeader {
+  justify-content: flex-end;
+  max-width: none;
+  white-space: nowrap;
+}
+
+.compactTrend {
+  .chartWrap {
+    height: 164px;
+  }
+}
+
+.compactStatusRing {
+  .ringCard {
+    grid-template-columns: minmax(132px, 144px) minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .metricRow {
+    gap: 10px;
+  }
+
+  .metricValueGroup {
+    gap: 2px;
+  }
+}
+
+@media (max-width: 768px) {
+  .chartLegendHeader {
+    justify-content: flex-start;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .compactTrend {
+    .chartWrap {
+      height: 138px;
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .compactTrend {
+    .chartWrap {
+      height: 120px;
+    }
+  }
+}

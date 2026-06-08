@@ -3,9 +3,9 @@ import useApiClient from '@/utils/request';
 export const useModelApi = () => {
   const { get, post, put, del } = useApiClient();
 
-  // 获取模型列表
-  const getModelList = () =>
-    get('/cmdb/api/model/');
+  // 获取模型列表（管理模式时传 includeHidden=true 拉全量）
+  const getModelList = (includeHidden?: boolean) =>
+    get(`/cmdb/api/model/${includeHidden ? '?include_hidden=true' : ''}`);
 
   // 创建模型
   const createModel = (params: any) =>
@@ -179,6 +179,12 @@ export const useModelApi = () => {
     return response.json();
   };
 
+  // 保存模型管理布局（管理员，分类排序+模型排序+可见性，一次提交）
+  const saveModelLayout = (payload: {
+    classifications: Array<{ classification_id: string; order: number; is_visible: boolean }>;
+    models: Array<{ model_id: string; order_id: number; is_visible: boolean }>;
+  }) => post('/cmdb/api/model/save_layout/', payload);
+
   // ========== 公共枚举库 API ==========
   // 获取公共枚举库列表
   const getPublicEnumLibraries = () =>
@@ -247,6 +253,7 @@ export const useModelApi = () => {
     deletePublicEnumLibrary,
     getPublicEnumLibraryReferences,
     exportModelConfig,
-    importModelConfig
+    importModelConfig,
+    saveModelLayout
   };
 };

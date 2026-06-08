@@ -306,7 +306,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
 
         Business Logic:
             - 首次调用：创建节点、关联组织、创建默认配置
-            - 后续调用：更新节点信息、更新组织关联（覆盖模式）
+            - 后续调用：更新节点运行信息；组织归属由服务端/UI维护，避免旧 sidecar tag 覆盖用户修改
             - 处理待执行操作（actions）并在响应后删除
             - 返回分配给该节点的所有配置信息
 
