@@ -6,6 +6,7 @@ from copy import deepcopy
 from django.core.management import BaseCommand
 
 from apps.system_mgmt.models import App, Group, Menu, Role
+from config.components.enterprise import EnterpriseFootprintError, detect_enterprise_footprint
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +53,16 @@ class Command(BaseCommand):
 
 def get_install_apps() -> set[str]:
     apps = {item.strip() for item in os.getenv("INSTALL_APPS", "").split(",") if item.strip()}
-    # 企业版：如果 apps/license_mgmt 目录存在，强制加入
-    from django.conf import settings
-
-    license_mgmt_path = os.path.join(settings.BASE_DIR, "apps", "license_mgmt")
-    if os.path.isdir(license_mgmt_path):
+    status = detect_enterprise_footprint()
+    if status.has_enterprise_footprint and not status.license_mgmt_present:
+        raise EnterpriseFootprintError(
+            f"Detected enterprise footprint in apps: {', '.join(status.enterprise_apps)}, "
+            f"but apps/license_mgmt is missing. "
+            f"Refuse to start without license management. "
+            f"Restore apps/license_mgmt or remove all enterprise content "
+            f"to run in community mode."
+        )
+    if status.should_enable_license_mgmt:
         apps.add("license_mgmt")
     return apps
 
@@ -72,7 +78,7 @@ def extend_menus_by_install_apps(menu_data: dict, install_apps: set[str]) -> dic
     setting_children = setting_menu.setdefault("children", [])
     if any(child.get("id") == "license_mgmt" for child in setting_children):
         return result
-    
+
     if not organization_menu or not setting_menu:
         return result
 
@@ -85,7 +91,7 @@ def extend_menus_by_install_apps(menu_data: dict, install_apps: set[str]) -> dic
     security_role = next((item for item in result.get("roles", []) if item.get("name") == "security"), None)
     if security_role:
         security_role_menus = security_role.setdefault("menus", [])
-        for menu_name in ("sensitive_info-View", "sensitive_info-Add","sensitive_info-Edit","sensitive_info-Delete"):
+        for menu_name in ("sensitive_info-View", "sensitive_info-Add", "sensitive_info-Edit", "sensitive_info-Delete"):
             if menu_name not in security_role_menus:
                 security_role_menus.append(menu_name)
 
