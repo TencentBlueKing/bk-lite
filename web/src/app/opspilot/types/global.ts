@@ -127,6 +127,7 @@ export interface CustomChatMessage {
   approvalRequests?: ApprovalRequest[];
   userChoiceRequests?: UserChoiceRequest[];
   configDiffReports?: ConfigDiffReport[];
+  configAnalysisReports?: ConfigAnalysisReport[];
   reportFileDownloads?: ReportFileDownload[];
   repairCommands?: RepairCommands[];
   agentStepProgress?: AgentStepProgressData[];
@@ -148,6 +149,69 @@ export interface ConfigDiffReport {
   cluster_name: string;
   items: ConfigDiffItem[];
   received_at: number;
+}
+
+export interface ConfigAnalysisReportItem {
+  issue: string;
+  count: number;
+  workloads: string[];
+  risk: string;
+  [key: string]: unknown;
+}
+
+export interface ConfigAnalysisReportScope {
+  cluster_name?: string;
+  namespace?: string | null;
+  instance_name?: string | null;
+  name?: string | null;
+  target_name?: string | null;
+  [key: string]: unknown;
+}
+
+export interface ConfigAnalysisReportScanRange {
+  offset?: number;
+  limit?: number;
+  has_more?: boolean;
+  [key: string]: unknown;
+}
+
+export interface ConfigAnalysisReportSummary {
+  total?: number;
+  problematic?: number;
+  healthy?: number;
+  top_recommendation?: string;
+  [key: string]: unknown;
+}
+
+export interface ConfigAnalysisSeveritySection {
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'warning' | 'info';
+  title: string;
+  issues: ConfigAnalysisReportItem[];
+  items?: ConfigAnalysisReportItem[];
+  [key: string]: unknown;
+}
+
+export interface ConfigAnalysisRecommendation {
+  priority: 'P0' | 'P1' | 'P2' | 'P3';
+  action: string;
+  target: string;
+  benefit: string;
+  [key: string]: unknown;
+}
+
+export interface ConfigAnalysisReport {
+  report_id: string;
+  title: string;
+  cluster_name: string;
+  scope?: ConfigAnalysisReportScope;
+  scan_range?: ConfigAnalysisReportScanRange;
+  summary: ConfigAnalysisReportSummary;
+  severity_sections: ConfigAnalysisSeveritySection[];
+  recommendations: ConfigAnalysisRecommendation[];
+  markdown: string;
+  fallback_markdown: string;
+  received_at: number;
+  [key: string]: unknown;
 }
 
 export interface ReportFileDownload {
