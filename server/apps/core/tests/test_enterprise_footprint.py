@@ -2,9 +2,9 @@
 Pure pytest tests for enterprise footprint detection.
 No Django app setup required.
 
-The module is loaded directly by file path so that importing it never
-triggers the config package __init__ (which would pull in Django settings
-and other side effects during bare test collection).
+The module under test (apps.core.utils.enterprise_footprint) is genuinely
+side-effect-free and can be imported directly without triggering the config
+package __init__ (which would pull in Django settings and Celery).
 """
 import importlib.util
 import pathlib
@@ -13,16 +13,12 @@ import types
 
 import pytest
 
-_MODULE_PATH = pathlib.Path(__file__).resolve().parent.parent.parent.parent / "config" / "components" / "enterprise.py"  # server/
-_spec = importlib.util.spec_from_file_location("enterprise_footprint", _MODULE_PATH)
-_mod = importlib.util.module_from_spec(_spec)
-sys.modules["enterprise_footprint"] = _mod  # register before exec so @dataclass resolves __module__
-_spec.loader.exec_module(_mod)
-
-EnterpriseFootprintError = _mod.EnterpriseFootprintError
-EnterpriseFootprintStatus = _mod.EnterpriseFootprintStatus
-detect_enterprise_footprint = _mod.detect_enterprise_footprint
-require_enterprise_license_management = _mod.require_enterprise_license_management
+from apps.core.utils.enterprise_footprint import (
+    EnterpriseFootprintError,
+    EnterpriseFootprintStatus,
+    detect_enterprise_footprint,
+    require_enterprise_license_management,
+)
 
 # ---------------------------------------------------------------------------
 # Settings stub — satisfies root-conftest autouse fixtures without Django
@@ -265,8 +261,8 @@ def _load_app(tmp_path, monkeypatch, install_apps="", debug=False):
 
     # Mock config.components.enterprise with real implementations
     ent_mock = _types.ModuleType("config.components.enterprise")
-    ent_mock.require_enterprise_license_management = _mod.require_enterprise_license_management
-    ent_mock.detect_enterprise_footprint = _mod.detect_enterprise_footprint
+    ent_mock.require_enterprise_license_management = require_enterprise_license_management
+    ent_mock.detect_enterprise_footprint = detect_enterprise_footprint
     monkeypatch.setitem(sys.modules, "config.components.enterprise", ent_mock)
 
     monkeypatch.setenv("INSTALL_APPS", install_apps)
@@ -362,8 +358,8 @@ def _load_extra(tmp_path, monkeypatch, install_apps="", *, base_dir=None):
 
     # Provide config.components.enterprise with real implementations
     ent_mock = _types.ModuleType("config.components.enterprise")
-    ent_mock.require_enterprise_license_management = _mod.require_enterprise_license_management
-    ent_mock.detect_enterprise_footprint = _mod.detect_enterprise_footprint
+    ent_mock.require_enterprise_license_management = require_enterprise_license_management
+    ent_mock.detect_enterprise_footprint = detect_enterprise_footprint
     monkeypatch.setitem(sys.modules, "config.components.enterprise", ent_mock)
 
     unique_name = f"_extra_under_test_{id(tmp_path)}"

@@ -14,8 +14,8 @@ from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
+from apps.core.utils.enterprise_footprint import EnterpriseFootprintError, EnterpriseFootprintStatus
 from apps.system_mgmt.management.commands._install_apps import get_install_apps
-from config.components.enterprise import EnterpriseFootprintError, EnterpriseFootprintStatus
 
 # Patch target: detect_enterprise_footprint as bound in the helper module
 _DETECTOR_PATH = "apps.system_mgmt.management.commands._install_apps.detect_enterprise_footprint"

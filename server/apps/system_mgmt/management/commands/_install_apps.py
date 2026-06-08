@@ -6,7 +6,7 @@ without a Django project setup.
 """
 import os
 
-from config.components.enterprise import EnterpriseFootprintError, detect_enterprise_footprint
+from apps.core.utils.enterprise_footprint import EnterpriseFootprintError, detect_enterprise_footprint
 
 
 def get_install_apps() -> set[str]:
