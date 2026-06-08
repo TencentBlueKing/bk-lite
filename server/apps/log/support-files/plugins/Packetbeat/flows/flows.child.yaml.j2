@@ -1,3 +1,33 @@
+{% set _enable_http = enable_http | default(true) %}
+{% set _enable_tcp_udp = enable_tcp_udp | default(true) %}
+{% set _ports = ports | default("80,8080,8000,5000,8002") %}
+{% set _capture_body = capture_body | default(false) %}
+{% if _enable_http %}
+- type: http
+  {% if _ports is string %}
+  ports: {{ _ports | split(',') | map('trim') | reject('equalto', '') | map('int') | list | to_json }}
+  {% else %}
+  ports: {{ _ports | to_json }}
+  {% endif %}
+  hide_keywords: {{ hide_keywords | default(["pass", "password", "passwd", "token", "auth", "secret"]) | to_json }}
+  send_headers: {{ send_headers | default(["User-Agent", "Content-Type", "Authorization"]) | to_json }}
+  send_all_headers: {{ send_all_headers | default(false) | lower }}
+  split_cookie: {{ split_cookie | default(true) | lower }}
+  real_ip_header: "{{ real_ip_header | default('X-Forwarded-For') }}"
+  max_message_size: {{ max_message_size | default(10485760) }}
+  transaction_timeout: {{ transaction_timeout | default('10s') }}
+  include_body_for: {{ include_body_for | default(["application/json", "application/xml", "text/plain"]) | to_json }}
+  include_request_body: {{ _capture_body | lower }}
+  include_response_body: {{ _capture_body | lower }}
+
+  fields:
+    collector: "Packetbeat"
+    collect_type: "http"
+    instance_id: "{{ instance_id }}"
+    _msg: ""
+  fields_under_root: true
+{% endif %}
+{% if _enable_tcp_udp %}
 packetbeat.flows:
   timeout: "{{ flows_timeout | default(30) }}s"
   period: "{{ flows_period | default(10) }}s"
@@ -8,3 +38,4 @@ packetbeat.flows:
     instance_id: "{{ instance_id }}"
     _msg: ""
   fields_under_root: true
+{% endif %}
