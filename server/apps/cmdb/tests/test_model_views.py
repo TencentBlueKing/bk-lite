@@ -4,6 +4,7 @@
 唯一校验规则、模型复制、关联类型、导入导出配置等接口层逻辑与权限校验。
 """
 
+import importlib
 import io
 import json
 
@@ -73,10 +74,34 @@ def test_model_add_permission_default_group_view():
 
 
 def test_model_add_permission_by_model_id():
-    models = [{"model_id": "host", "group": [9]}]
+    models = [{"model_id": "host", "group": [6]}]
     pmap = {6: {"permission_instances_map": {"host": ["View"]}}}
     ModelViewSet.model_add_permission(models, permission_instances_map=pmap, default_group=1)
     assert models[0]["permission"] == ["View"]
+
+
+def test_model_add_permission_same_model_id_other_org_denied():
+    models = [{"model_id": "host", "group": [9]}]
+    pmap = {6: {"permission_instances_map": {"host": ["View"]}}}
+    ModelViewSet.model_add_permission(models, permission_instances_map=pmap, default_group=1)
+    assert models[0]["permission"] == []
+
+
+def test_model_add_permission_same_model_id_ignores_other_org_permissions():
+    models = [{"model_id": "host", "group": [6]}]
+    pmap = {
+        6: {"permission_instances_map": {"host": ["View"]}},
+        8: {"permission_instances_map": {"host": ["Operate"]}},
+    }
+    ModelViewSet.model_add_permission(models, permission_instances_map=pmap, default_group=1)
+    assert models[0]["permission"] == ["View"]
+
+
+def test_model_add_permission_merges_default_group_and_same_org_permission():
+    models = [{"model_id": "host", "group": [1, 6]}]
+    pmap = {6: {"permission_instances_map": {"host": ["Operate"]}}}
+    ModelViewSet.model_add_permission(models, permission_instances_map=pmap, default_group=1)
+    assert set(models[0]["permission"]) == {"View", "Operate"}
 
 
 # --------------------------------------------------------------------------
@@ -100,6 +125,29 @@ def test_get_model_info_ok(superuser, monkeypatch):
     response = ModelViewSet.as_view({"get": "get_model_info"})(_req("get", superuser), model_id="host")
     assert response.status_code == status.HTTP_200_OK
     assert _body(response)["data"]["model_id"] == "host"
+
+
+@pytest.mark.django_db
+def test_get_model_info_denied_when_name_permission_only_exists_in_other_org(superuser, monkeypatch):
+    permission_module = importlib.reload(importlib.import_module("apps.cmdb.utils.permission_util"))
+
+    superuser.group_list = [{"id": 9}]
+    monkeypatch.setattr(
+        f"{VIEWS}.ModelManage.search_model_info",
+        lambda model_id: {"model_id": "host", "model_name": "主机", "group": [9]},
+    )
+    monkeypatch.setattr(
+        f"{VIEWS}.CmdbRulesFormatUtil.has_object_permission",
+        permission_module.CmdbRulesFormatUtil.has_object_permission,
+    )
+    monkeypatch.setattr(
+        f"{VIEWS}.CmdbRulesFormatUtil.format_user_groups_permissions",
+        lambda *a, **k: {6: {"permission_instances_map": {"host": ["View"]}, "inst_names": ["host"]}},
+    )
+    request = _req("get", superuser)
+    request.COOKIES["current_team"] = "9"
+    response = ModelViewSet.as_view({"get": "get_model_info"})(request, model_id="host")
+    assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
 # --------------------------------------------------------------------------
