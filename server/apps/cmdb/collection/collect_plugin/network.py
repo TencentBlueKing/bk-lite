@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
-from apps.cmdb.collection.constants import NETWORK_INTERFACES_RELATIONS
+from apps.cmdb.collection.constants import NETWORK_INTERFACES_RELATIONS, NETWORK_TOPOLOGY_FACTS
 from apps.cmdb.collection.plugins import get_collection_plugin
 from apps.cmdb.constants.constants import CollectPluginTypes
 from apps.cmdb.models import OidMapping
@@ -33,18 +33,26 @@ class CollectNetworkMetrics(CollectBase):
         self.instance_id_map = {}
         self.collect_inst = self.get_collect_inst()
         self.is_topo = self.collect_inst.is_network_topo
+        self._instance_metrics = list(self._metrics)
         self.set_metrics()
         self.interfaces_data = {}
+        self.interface_index_map = {}
+        self.interface_name_map = defaultdict(dict)
+        self.device_lookup_map = defaultdict(set)
 
     def set_metrics(self):
         if self.is_topo:
-            self._metrics.append(NETWORK_INTERFACES_RELATIONS)
-            self.collection_metrics_dict.update({NETWORK_INTERFACES_RELATIONS: []})
+            for metric_name in (NETWORK_INTERFACES_RELATIONS, NETWORK_TOPOLOGY_FACTS):
+                if metric_name not in self._metrics:
+                    self._metrics.append(metric_name)
+                self.collection_metrics_dict.update({metric_name: []})
 
     @property
     def _metrics(self):
+        if hasattr(self, "_instance_metrics"):
+            return self._instance_metrics
         plugin_cls = get_collection_plugin(CollectPluginTypes.SNMP, self.model_id)
-        return plugin_cls._metrics.fget(self)
+        return list(plugin_cls._metrics.fget(self))
 
     @staticmethod
     def get_oid_map():
@@ -141,6 +149,7 @@ class CollectNetworkMetrics(CollectBase):
     def format_metrics(self):
         """格式化数据"""
         topo_data = self.collection_metrics_dict.pop(NETWORK_INTERFACES_RELATIONS, [])
+        topology_facts = self.collection_metrics_dict.pop(NETWORK_TOPOLOGY_FACTS, [])
         for metric_key, metrics in self.collection_metrics_dict.items():
             for index_data in metrics:
                 if index_data["instance_id"] not in self.instance_id_map:
@@ -165,13 +174,36 @@ class CollectNetworkMetrics(CollectBase):
                         data[field] = index_data.get(key_or_func, "")
 
                 self.result.setdefault(model_id, []).append(data)
+                if "sysobjectid" in index_data:
+                    self.index_device_lookup(index_data)
                 if model_id == "interface":
                     self.interfaces_data[data["inst_name"]] = data
+                    self.index_interface_lookup(index_data, data)
 
         if self.is_topo:
-            relationships = self.find_interface_relationships(topo_data)
+            relationships = self.collect_topology_relationships(topology_facts, topo_data)
             self.add_interface_assos(relationships)
             # 把接口的关联补充接口的关联关系中
+
+    def collect_topology_relationships(self, topology_facts, topo_data):
+        relationships = []
+        seen = set()
+
+        for relation in self.find_topology_fact_relationships(topology_facts):
+            self.append_unique_relationship(relationships, seen, relation)
+
+        for relation in self.find_interface_relationships(topo_data):
+            self.append_unique_relationship(relationships, seen, relation)
+
+        return relationships
+
+    @staticmethod
+    def append_unique_relationship(relationships, seen, relation):
+        edge_key = (relation["source_inst_name"], relation["target_inst_name"])
+        if edge_key in seen:
+            return
+        seen.add(edge_key)
+        relationships.append(relation)
 
     def add_interface_assos(self, relationships):
         for relationship in relationships:
@@ -184,7 +216,97 @@ class CollectNetworkMetrics(CollectBase):
                     'model_asst_id': 'interface_connect_interface',
                     'model_id': 'interface'
                     }
-            source_interface_data.setdefault("assos", []).append(data)
+            assos = source_interface_data.setdefault("assos", [])
+            if data not in assos:
+                assos.append(data)
+
+    def index_device_lookup(self, index_data):
+        instance_id = index_data["instance_id"]
+        for key in (instance_id, index_data.get("ip_addr"), index_data.get("sysname")):
+            normalized_key = self.normalize_lookup_value(key)
+            if normalized_key:
+                self.device_lookup_map[normalized_key].add(instance_id)
+
+    def index_interface_lookup(self, index_data, data):
+        instance_id = index_data["instance_id"]
+        index = index_data.get("index")
+        if index is not None:
+            self.interface_index_map[(instance_id, str(index))] = data["inst_name"]
+
+        for key in (
+            data.get("name"),
+            index_data.get("alias"),
+            index_data.get("description"),
+            index_data.get("index"),
+        ):
+            normalized_key = self.normalize_lookup_value(key)
+            if normalized_key:
+                self.interface_name_map[instance_id][normalized_key] = data["inst_name"]
+
+    def find_topology_fact_relationships(self, data):
+        relations = []
+        seen = set()
+        for fact in data:
+            source_inst_name = self.resolve_topology_fact_interface(fact, is_local=True)
+            target_inst_name = self.resolve_topology_fact_interface(fact, is_local=False)
+            if not source_inst_name or not target_inst_name or source_inst_name == target_inst_name:
+                continue
+
+            edge_key = (source_inst_name, target_inst_name)
+            if edge_key in seen:
+                continue
+            seen.add(edge_key)
+            relations.append({
+                "source_inst_name": source_inst_name,
+                "target_inst_name": target_inst_name,
+                "model_id": "interface",
+                "asst_id": "connect",
+                "model_asst_id": "interface_connect_interface",
+            })
+
+        return relations
+
+    def resolve_topology_fact_interface(self, fact, is_local=True):
+        port_id_key = "local_port_id" if is_local else "remote_port_id"
+        port_name_key = "local_port_name" if is_local else "remote_port_name"
+        device_key = "local_device_id" if is_local else "remote_device_id"
+
+        instance_id = fact.get("instance_id") if is_local else None
+        if not instance_id:
+            instance_id = self.resolve_device_instance_id(fact.get(device_key))
+        if not instance_id:
+            return None
+
+        port_id = fact.get(port_id_key)
+        if port_id is not None:
+            interface_inst_name = self.interface_index_map.get((instance_id, str(port_id)))
+            if interface_inst_name:
+                return interface_inst_name
+
+        for candidate in (port_id, fact.get(port_name_key)):
+            normalized_candidate = self.normalize_lookup_value(candidate)
+            if not normalized_candidate:
+                continue
+            interface_inst_name = self.interface_name_map[instance_id].get(normalized_candidate)
+            if interface_inst_name:
+                return interface_inst_name
+
+        return None
+
+    def resolve_device_instance_id(self, device_key):
+        normalized_key = self.normalize_lookup_value(device_key)
+        if not normalized_key:
+            return None
+        matched_instance_ids = self.device_lookup_map.get(normalized_key, set())
+        if len(matched_instance_ids) != 1:
+            return None
+        return next(iter(matched_instance_ids))
+
+    @staticmethod
+    def normalize_lookup_value(value):
+        if value is None:
+            return ""
+        return str(value).strip().lower()
 
     def find_interface_relationships(self, data):
         # 数据结构
