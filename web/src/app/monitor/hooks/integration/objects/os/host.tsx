@@ -109,23 +109,6 @@ export const useHostConfig = () => {
         },
       },
     ],
-    tableDiaplay: [
-      {
-        type: 'progress',
-        key: 'cpu_usage_total',
-        fallbackKeys: ['host_cpu_usage_percent'],
-      },
-      {
-        type: 'progress',
-        key: 'disk_used_percent',
-        fallbackKeys: ['host_disk_used_percent'],
-      },
-      {
-        type: 'progress',
-        key: 'mem_used_percent',
-        fallbackKeys: ['host_mem_used_percent'],
-      },
-    ],
     groupIds: {
       list: ['instance_id'],
       default: ['instance_id'],

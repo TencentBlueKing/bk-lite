@@ -9,6 +9,7 @@
   "default_metric": "any({instance_type='activemq'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["activemq_topics_consumer_count", "activemq_topics_enqueue_count", "activemq_topics_size"],
+  "display_fields": [{"name": "Topic Consumer Count", "sort_order": 0, "metrics": [{"plugin": "ActiveMQ", "metric": "activemq_topics_consumer_count"}]}, {"name": "Topic Enqueue Count", "sort_order": 1, "metrics": [{"plugin": "ActiveMQ", "metric": "activemq_topics_enqueue_count"}]}, {"name": "Topic Current Size", "sort_order": 2, "metrics": [{"plugin": "ActiveMQ", "metric": "activemq_topics_size"}]}],
   "metrics": [
     {
       "metric_group": "Topic",

@@ -16,6 +16,7 @@
     "influxdb_httpd_pointsWrittenDropped_rate",
     "influxdb_runtime_HeapAlloc"
   ],
+  "display_fields": [{"name": "序列数", "sort_order": 0, "metrics": [{"plugin": "InfluxDB", "metric": "influxdb_database_numSeries"}]}, {"name": "写入请求速率", "sort_order": 1, "metrics": [{"plugin": "InfluxDB", "metric": "influxdb_httpd_writeReq_rate"}]}, {"name": "查询请求速率", "sort_order": 2, "metrics": [{"plugin": "InfluxDB", "metric": "influxdb_httpd_queryReq_rate"}]}, {"name": "写入持久化失败速率", "sort_order": 3, "metrics": [{"plugin": "InfluxDB", "metric": "influxdb_httpd_pointsWrittenFail_rate"}]}, {"name": "写点丢弃速率", "sort_order": 4, "metrics": [{"plugin": "InfluxDB", "metric": "influxdb_httpd_pointsWrittenDropped_rate"}]}, {"name": "运行时堆内存分配", "sort_order": 5, "metrics": [{"plugin": "InfluxDB", "metric": "influxdb_runtime_HeapAlloc"}]}],
   "metrics": [
     {
       "metric_group": "数据库",

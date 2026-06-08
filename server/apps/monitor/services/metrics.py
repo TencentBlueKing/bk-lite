@@ -7,6 +7,7 @@ from apps.core.logger import monitor_logger as logger
 from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.display_fields_metrics import extract_metric_names
 from apps.monitor.utils.instance_id_keys import resolve_metric_instance_id_keys
 from apps.monitor.utils.unit_converter import UnitConverter
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
@@ -189,10 +190,12 @@ class Metrics:
             return instances
 
         monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
-        if not monitor_obj or not monitor_obj.supplementary_indicators:
+        if not monitor_obj:
             return instances
 
-        indicator_names = monitor_obj.supplementary_indicators
+        indicator_names = extract_metric_names(monitor_obj.display_fields) or monitor_obj.supplementary_indicators
+        if not indicator_names:
+            return instances
 
         metrics = Metric.objects.filter(monitor_object_id=monitor_object_id, name__in=indicator_names).values("name", "unit", "data_type")
         metric_unit_map = {m["name"]: m["unit"] for m in metrics}

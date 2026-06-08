@@ -14,6 +14,7 @@ from apps.monitor.models.monitor_object import (
     MonitorObjectType,
 )
 from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.display_fields_metrics import extract_metric_names
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.tasks.grouping_rule import sync_instance_and_group
 
@@ -149,9 +150,12 @@ class MonitorObjectService:
                 instance_id = parse_instance_id(instance_info["instance_id"])
                 instance_ids.append(instance_id)
 
+            display_metric_names = extract_metric_names(obj_metric_map.get("display_fields", [])) or obj_metric_map.get(
+                "supplementary_indicators", []
+            )
             metrics_obj = Metric.objects.filter(
                 monitor_object_id=monitor_object_id,
-                name__in=obj_metric_map.get("supplementary_indicators", []),
+                name__in=display_metric_names,
             )
             for metric_obj in metrics_obj:
                 query_parts = []
