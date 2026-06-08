@@ -1,123 +1,163 @@
-# OpsPilot NATS Alert Trigger Design
+# OpsPilot NATS 告警触发节点设计
 
-## Context
+## 一、背景
 
-OpsPilot Studio already supports multiple workflow entry nodes such as `celery`, `restful`, `openai`, `enterprise_wechat`, `web_chat`, and related trigger types. In the current repository:
+当前仓库里已经存在几块可复用能力：
 
-- `server/apps/system_mgmt/nats_api.py::send_msg_with_channel` already dispatches by channel type.
-- `server/apps/system_mgmt/utils/channel_utils.py::send_nats_message` already forwards a NATS request based on channel `namespace` and `method_name`.
-- OpsPilot workflow execution records `entry_type` and uses `flow_input` as the shared context for downstream nodes.
-- Memory nodes currently resolve personal memory from `flow_input.user_id`, while team memory is still tied to the memory space configuration.
+- `server/apps/system_mgmt/nats_api.py::send_msg_with_channel` 已经是统一的通道发送入口。
+- `server/apps/system_mgmt/utils/channel_utils.py::send_nats_message` 已经支持按 NATS channel 的 `namespace`、`method_name` 发起请求。
+- OpsPilot workflow 已支持多个入口节点与 `entry_type` 记录机制。
+- workflow 下游节点共享 `flow_input` 上下文。
+- 现有记忆节点里，个人记忆主要依赖 `flow_input.user_id`，组织记忆仍更多依赖记忆空间本身配置。
 
-The new requirement is to let Alert Center trigger an OpsPilot workflow through a NATS channel and carry alert-specific session context forward for later nodes, especially personal memory, organization memory, notification, and permission-sensitive tools.
+这次需求不是让告警中心直接调 OpsPilot 的专用 NATS 接口，而是：
 
-The updated upstream contract is:
+1. 告警中心底层仍调用 `send_msg_with_channel`
+2. 当目标通道是 NATS 时，`content` 统一设计为：
 
-1. Alert Center does **not** call a dedicated OpsPilot NATS API directly. It calls `system_mgmt.send_msg_with_channel`.
-2. When the selected channel is a NATS channel, `content` is designed as:
-   ```json
-   {
-     "message": "",
-     "team": [],
-     "user_ids": []
-   }
-   ```
-3. The NATS channel config adds two routing keys: `bot_id` and `node_id`.
+```json
+{
+  "message": "",
+  "team": [],
+  "user_ids": []
+}
+```
 
-## Goals
+3. NATS channel 的 `config` 中新增两个路由字段：
+   - `bot_id`
+   - `node_id`
 
-- Keep Alert Center integrated through the existing `send_msg_with_channel` entry.
-- Reuse the existing NATS channel abstraction instead of adding a second alert-only dispatch path.
-- Add an OpsPilot-native `nats` trigger node and execution type.
-- Standardize the alert payload into workflow context so downstream nodes can reuse it without parsing raw NATS kwargs repeatedly.
-- Make alert recipients become the session stakeholders for downstream personal-memory and notification flows.
-- Make alert team information become the organization context for downstream organization-memory and permission flows.
-- Keep the design backward-compatible for non-NATS channels and non-alert workflows.
+目标是让告警中心通过这个统一通道，把告警内容、组织信息、通知人信息带入 OpsPilot workflow，并在后续节点里复用这些上下文，尤其是：
 
-## Non-Goals
+- 个人记忆
+- 组织记忆
+- 邮件/通知
+- 组织权限相关工具调用
 
-- Alert Center-side auto-inference of organization.
-- Complex stakeholder prioritization rules beyond preserving order and selecting the first entry as the primary stakeholder.
-- A second payload shape for NATS alerts.
-- General-purpose multi-organization memory writes in one execution.
+## 二、目标
 
-## Approaches
+- 保持告警中心只依赖 `send_msg_with_channel`，不新增第二套告警专用发送入口。
+- 复用现有 NATS channel 能力，不绕开 system_mgmt 的通道抽象。
+- 在 OpsPilot workflow 中新增 `nats` 触发节点。
+- 把告警中心传入的 `message/team/user_ids` 在 workflow 入口统一标准化，写入 `flow_input`。
+- 让 `user_ids` 成为本次 session 的“干系人”集合，供后续个人记忆、通知类节点复用。
+- 让 `team` 成为本次执行的组织上下文，供后续组织记忆、权限校验和资源访问复用。
+- 保持对现有非 NATS 通道、非告警 workflow 的兼容。
 
-### Recommended: Channel-side enrichment and OpsPilot-side normalization
+## 三、不做的范围
 
-Alert Center always calls `send_msg_with_channel`. For NATS channels, `send_msg_with_channel` validates `content`, and `send_nats_message` injects `bot_id` and `node_id` from channel config before making the NATS request. OpsPilot exposes a dedicated NATS-consumer method that receives the enriched kwargs and normalizes them into workflow `flow_input`.
+- 首版不做告警中心侧的组织自动推断。
+- 首版不做复杂的多干系人优先级算法，只保留顺序并默认取第一个作为主干系人。
+- 首版不扩展第二种 NATS payload 格式。
+- 首版不支持一次执行同时对多个组织写入组织记忆。
 
-Why this is preferred:
+## 四、方案对比
 
-- Alert Center only needs to know the stable `content` contract.
-- OpsPilot routing stays in System Management channel config, where `namespace`, `method_name`, `bot_id`, and `node_id` already belong.
-- The workflow engine receives a fully standardized context and downstream nodes stay simple.
+### 方案 A：在通道层补路由，在 OpsPilot 入口层做上下文标准化（推荐）
 
-### Alternative: Alert Center assembles the full OpsPilot request itself
+告警中心始终调用 `send_msg_with_channel`。当 channel type 为 NATS 时：
 
-Alert Center would provide `bot_id`, `node_id`, and all execution fields directly in the NATS payload.
+- `send_msg_with_channel` 负责校验 `content`
+- `send_nats_message` 负责从 channel config 注入 `bot_id`、`node_id`
+- OpsPilot 新增专用 NATS 消费方法，接收 enrichment 后的参数并统一转成 workflow `flow_input`
 
-Why this is weaker:
+**优点**
 
-- Routing knowledge leaks into Alert Center.
-- Channel config becomes partially redundant.
-- Changes to workflow routing would require Alert Center changes instead of only channel reconfiguration.
+- 告警中心只需要关心稳定的 `content` 契约
+- 路由关系收敛在 system_mgmt channel config，不泄露到告警中心
+- OpsPilot 只处理一种标准化后的上下文，后续节点复用成本最低
 
-### Alternative: Minimal relay with no context normalization
+**缺点**
 
-System Management forwards the raw `content` plus config keys, and each downstream OpsPilot node decides how to parse `team` and `user_ids`.
+- 需要同时改 system_mgmt、opspilot、web studio 三处
 
-Why this is not recommended:
+### 方案 B：由告警中心直接拼完整 OpsPilot 请求
 
-- Node behavior becomes inconsistent.
-- Personal memory, organization memory, and notification nodes would duplicate parsing logic.
-- Future changes to payload shape would require touching many nodes.
+告警中心直接把 `bot_id`、`node_id` 和完整执行参数一起放进 NATS payload，system_mgmt 只负责转发。
 
-## Trigger Contract
+**缺点**
 
-### Alert Center -> System Management
+- 告警中心需要知道 OpsPilot workflow 路由细节
+- channel config 价值下降
+- 后续换 bot 或换入口节点时，需要改告警中心而不是只改通道配置
 
-Alert Center calls:
+### 方案 C：只做透传，不做上下文标准化
+
+system_mgmt 仅把 `content + bot_id + node_id` 转发给 OpsPilot，下游每个节点自行解析 `team` 和 `user_ids`。
+
+**缺点**
+
+- 解析逻辑会散落到多个节点
+- 个人记忆、组织记忆、通知节点会重复做同样的事情
+- 后续 payload 一旦变化，影响面会很大
+
+**结论**
+
+采用 **方案 A**：system_mgmt 做路由补齐，OpsPilot 做上下文标准化。
+
+## 五、上游接口契约
+
+### 5.1 告警中心 -> system_mgmt
+
+告警中心调用：
 
 ```python
 send_msg_with_channel(channel_id, title, content, receivers, attachments=None)
 ```
 
-For NATS channels:
+其中 NATS 分支约束如下：
 
-- `title` is ignored by the NATS branch.
-- `receivers` is kept only for interface compatibility and is not the source of truth.
-- `content` is the source of truth and must be a dict with:
-  - `message: str`
-  - `team: list[int]`
-  - `user_ids: list[str]`
+- `title` 在 NATS 分支不参与实际业务逻辑，仅保留接口兼容性
+- `receivers` 在 NATS 分支不作为真实干系人来源，仅保留接口兼容性
+- NATS 的真实输入以 `content` 为准
 
-Validation rules in the NATS branch:
+`content` 固定为：
 
-- `message` must be a non-empty string after trimming.
-- `team` must be a list; invalid items are dropped after integer normalization.
-- `user_ids` must be a list; invalid or empty items are dropped after string normalization.
-- Invalid payload returns `{"result": False, "message": "..."}`
-- Non-NATS channel behavior remains unchanged.
+```json
+{
+  "message": "告警内容摘要或提示词",
+  "team": [2],
+  "user_ids": ["alice", "bob"]
+}
+```
 
-### System Management NATS Channel Config
+字段语义：
 
-The NATS channel config keeps:
+- `message`：传给 workflow 的核心输入消息
+- `team`：组织 ID 列表
+- `user_ids`：通知人用户名列表，也是本次 session 的干系人列表
+
+### 5.2 system_mgmt NATS 分支校验规则
+
+当 `send_msg_with_channel` 识别到 channel type 为 NATS 时，应新增如下校验：
+
+- `content` 必须是 dict；如果是字符串，需要先反序列化再校验
+- `message` 必须是非空字符串
+- `team` 必须是 list，元素按 int 归一化，非法值丢弃
+- `user_ids` 必须是 list，元素按 string 归一化，空值丢弃
+- 校验失败时直接返回 `{"result": False, "message": "..."}`
+- 不允许静默把 `receivers` 合并进 `user_ids`
+
+这样可以确保告警中心传入的数据在 system_mgmt 就具备稳定结构。
+
+## 六、NATS Channel Config 设计
+
+当前 NATS channel config 已有：
 
 - `namespace`
 - `method_name`
 - `timeout`
 
-And adds:
+本次新增：
 
 - `bot_id`
 - `node_id`
 
-`send_nats_message` enriches the outgoing kwargs as:
+因此 `send_nats_message` 实际发往目标方法的 kwargs 应变成：
 
 ```json
 {
-  "message": "...",
+  "message": "xxx",
   "team": [2],
   "user_ids": ["alice", "bob"],
   "bot_id": 12,
@@ -125,34 +165,39 @@ And adds:
 }
 ```
 
-`bot_id` and `node_id` are owned by channel config rather than Alert Center payload so routing can be changed without changing Alert Center code.
+这里的设计重点是：
 
-## OpsPilot NATS Trigger Design
+- `message/team/user_ids` 来自告警中心 `content`
+- `bot_id/node_id` 来自 channel config
 
-OpsPilot adds a dedicated NATS consumer in `server/apps/opspilot/nats_api.py`, referenced by the NATS channel `namespace` and `method_name`.
+这样告警中心不需要知道具体路由到哪个 bot、哪个 workflow 节点；如果后续要切换到另一个 bot 或 node，只改 channel config 即可。
 
-The consumer is responsible for:
+## 七、OpsPilot NATS 入口设计
 
-1. Validating `bot_id`, `node_id`, `message`, `team`, and `user_ids`
-2. Loading the target `Bot` and `BotWorkFlow`
-3. Ensuring the target node exists and is of type `nats`
-4. Creating a workflow engine with `entry_type="nats"`
-5. Building normalized `input_data`
-6. Executing the workflow
+OpsPilot 侧新增专用 NATS 消费方法，建议放在 `server/apps/opspilot/nats_api.py` 中，并由 NATS channel 的 `namespace + method_name` 指向它。
 
-OpsPilot also adds:
+该方法职责如下：
+
+1. 校验 `bot_id`、`node_id`、`message`、`team`、`user_ids`
+2. 查找目标 `Bot` 与 `BotWorkFlow`
+3. 校验 `node_id` 是否存在，且对应节点类型必须为 `nats`
+4. 创建 workflow engine，指定 `entry_type="nats"`
+5. 构建标准化后的 `input_data`
+6. 执行 workflow
+
+同时需要补充：
 
 - `WorkFlowExecuteType.NATS`
-- Node registry support for `nats`
-- Frontend Studio support for the `nats` trigger node as a first-class entry node
+- workflow node registry 注册 `nats -> EntryNode`
+- web studio 新增 `nats` 触发节点
 
-The `nats` node behaves like other trigger nodes in execution flow: it is only the workflow entry and does not perform business logic by itself.
+`nats` 节点本身只承担入口职责，不承担业务逻辑，行为上与其他 trigger node 保持一致。
 
-## Normalized Workflow Context
+## 八、Workflow 上下文标准化
 
-The NATS payload must be normalized once at workflow entry and then stored into `flow_input`.
+NATS 入口收到参数后，应只在入口处做一次标准化，并把结果写入 `flow_input`。
 
-Recommended normalized shape:
+推荐标准化结果：
 
 ```json
 {
@@ -177,126 +222,136 @@ Recommended normalized shape:
 }
 ```
 
-Normalization rules:
+标准化规则：
 
-- `user_id` = the first valid `user_ids` element, or empty string if none exists.
-- `session_stakeholders` = normalized `user_ids` in original order.
-- `primary_stakeholder_user_id` = first stakeholder.
-- `current_organization_ids` = normalized `team`.
-- `authorized_team_ids` = same as `current_organization_ids` for downstream permission checks.
-- `current_organization_id` = first team entry.
+- `user_id`：取 `user_ids` 的第一个有效值
+- `session_stakeholders`：保留全部有效 `user_ids`
+- `primary_stakeholder_user_id`：取第一个干系人
+- `current_organization_ids`：归一化后的 `team`
+- `authorized_team_ids`：首版直接等于 `current_organization_ids`
+- `current_organization_id`：取 `team` 的第一个有效值
 
-The first team entry is treated as the current organization because the current memory engine and most permission-sensitive downstream operations need one active organization context. The full array is still preserved for future expansion.
+之所以取 `team[0]` 作为当前组织，是因为现有组织记忆和大部分组织权限调用都需要一个明确的“当前组织”。同时仍保留完整数组，为后续扩展留口。
 
-## Downstream Node Semantics
+## 九、下游节点语义调整
 
-### Personal memory
+### 9.1 个人记忆
 
-For NATS-triggered executions, personal-memory resolution should prefer:
+NATS 触发的 workflow 中，个人记忆实体解析优先级建议改为：
 
 1. `flow_input.primary_stakeholder_user_id`
 2. `flow_input.user_id`
-3. Existing fallback behavior
+3. 保持现有旧逻辑兜底
 
-This keeps alert recipients as the session stakeholders and makes later personal-memory reads and writes target the notified person instead of an unrelated system account.
+这样告警中心传来的通知人就会成为 session 的“干系人”，后续个人记忆读取/写入会围绕这个人展开，而不是落到系统账号上。
 
-### Organization memory
+### 9.2 组织记忆
 
-For NATS-triggered executions, organization-memory resolution should prefer:
+NATS 触发的 workflow 中，组织记忆实体解析优先级建议改为：
 
 1. `flow_input.current_organization_id`
-2. Existing fallback behavior based on memory space configuration
+2. 旧逻辑（如记忆空间默认 team）
 
-This lets Alert Center-provided team information drive the organization memory target for the current run while keeping old workflows compatible.
+这样组织记忆就能优先使用告警中心传入的组织上下文，而不是只依赖记忆空间静态配置。
 
-### Notification and email nodes
+### 9.3 邮件/通知节点
 
-Downstream notification behavior should reuse normalized stakeholders instead of forcing users to re-enter recipients for alert-driven flows.
+需求里明确希望后续邮件发送等节点能复用干系人，因此通知类节点应支持从标准化上下文读取收件人，而不是要求每个告警 workflow 重新手填一份静态 recipients。
 
-Recommended first-step support:
+推荐首版能力：
 
-- Add recipient-resolution logic that can read `session_stakeholders`
-- Keep static recipient configuration for existing workflows
-- For alert-driven workflows, allow explicit use of normalized stakeholders as the recipient source
+- 保留现有静态 recipients 配置，兼容老 workflow
+- 新增“从 session 干系人取收件人”的解析能力
+- 解析来源统一读取 `session_stakeholders`
 
-This should be implemented as reuse of normalized context, not as a second alert-only notification path.
+这样做的重点不是新增一条告警专用通知链路，而是让通知节点复用统一上下文。
 
-### Permission-sensitive tools
+### 9.4 组织权限与资源访问
 
-Tools or nodes that need organization scope should use:
+后续需要组织上下文的工具或节点，应统一读取：
 
-- `current_organization_id` as the active organization
-- `authorized_team_ids` as the permissible scope
+- `current_organization_id` 作为当前组织
+- `authorized_team_ids` 作为可用组织范围
 
-If the organization context is missing when a node requires it, the execution should fail explicitly with a clear error message.
+如果某个节点依赖组织上下文，但本次触发没有带有效 `team`，应显式失败，不做静默降级。
 
-## Error Handling
+## 十、错误处理
 
-### System Management layer
+### 10.1 system_mgmt 层
 
-- If NATS channel config misses `namespace`, `method_name`, `bot_id`, or `node_id`, reject the send request.
-- If `content` is not a dict or misses required fields, reject the send request.
-- Do not silently merge `receivers` into `user_ids`.
+- NATS channel config 缺少 `namespace`、`method_name`、`bot_id`、`node_id` 时，直接拒绝发送
+- `content` 结构非法时，直接拒绝发送
+- 不允许自动把 `receivers` 补成 `user_ids`
 
-### OpsPilot NATS consumer
+### 10.2 OpsPilot NATS 入口
 
-- If `bot_id` or `node_id` is invalid, reject the trigger.
-- If the node is not a `nats` entry node, reject the trigger.
-- If `team` is empty, organization memory and organization-scoped tools must fail explicitly when invoked.
-- If `user_ids` is empty, personal memory and stakeholder-based notification must fail explicitly when invoked.
+- `bot_id` 不存在：拒绝执行
+- `node_id` 不存在：拒绝执行
+- `node_id` 对应节点不是 `nats` 类型：拒绝执行
+- `team` 为空：只有在后续真正访问组织记忆或组织权限节点时，才明确报错
+- `user_ids` 为空：只有在后续真正访问个人记忆或干系人通知节点时，才明确报错
 
-### Observability
+### 10.3 可观测性
 
-Execution logs and records should include summaries of:
+执行记录和日志里建议保留以下摘要信息：
 
 - `execution_id`
 - `entry_type=nats`
 - `bot_id`
 - `node_id`
-- stakeholder count
-- active organization id
+- stakeholder 数量
+- 当前组织 ID
 
-Sensitive content should not be expanded into logs beyond safe summaries.
+日志中不应直接打印完整敏感内容，只保留必要摘要。
 
-## Frontend Studio Impact
+## 十一、前端 Studio 影响
 
-Studio should expose a new trigger node type `nats` alongside current trigger nodes.
+Studio 需要新增 `nats` 触发节点，和现有 `celery/restful/openai/...` 同级。
 
-The node configuration should stay minimal because routing is owned by the System Management channel config:
+这个节点的配置应尽量轻量，因为真正的路由信息在 system_mgmt channel config 中：
 
-- no token or webhook fields
-- no direct namespace/method entry in Studio
-- standard input/output parameter display consistent with other entry nodes
+- 不在 Studio 里配置 `namespace`
+- 不在 Studio 里配置 `method_name`
+- 不在 Studio 里配置 `bot_id/node_id`
+- 仅保留与入口节点一致的基础展示与输入输出参数配置
 
-This keeps workflow design focused on execution flow while channel routing stays in the channel system.
+这样可以让 workflow 画布只关注流程编排，不承载通道路由职责。
 
-## Backward Compatibility
+## 十二、兼容性
 
-- Existing `send_msg_with_channel` calls for email, webhook, bot channels, and custom webhook remain unchanged.
-- Existing NATS channels that do not target OpsPilot can continue using the existing `namespace` and `method_name` behavior, but they must now provide valid payloads for the methods they call.
-- Existing OpsPilot workflows without a `nats` node remain unchanged.
-- Existing memory workflows keep their current fallback behavior when the new NATS context is absent.
+- 现有 email、企微机器人、自定义 webhook 等通道行为保持不变
+- 现有非 OpsPilot 的 NATS channel 仍可复用原有 `namespace/method_name` 机制，只是其 payload 仍需满足目标方法自己的契约
+- 现有没有 `nats` 节点的 OpsPilot workflow 不受影响
+- 现有 memory workflow 在没有新 NATS 上下文时，继续走旧逻辑兜底
 
-## Rollout Sequence
+## 十三、建议落地顺序
 
-1. Extend NATS channel config with `bot_id` and `node_id`
-2. Tighten `send_msg_with_channel` NATS payload validation
-3. Make `send_nats_message` enrich payload from config
-4. Add OpsPilot NATS consumer method
-5. Add `nats` workflow entry type and node registration
-6. Normalize NATS payload into `flow_input`
-7. Update memory and notification recipient resolution to consume normalized context
-8. Add Studio `nats` node and display support
+1. 扩展 NATS channel config，新增 `bot_id`、`node_id`
+2. 收紧 `send_msg_with_channel` 的 NATS payload 校验
+3. 改造 `send_nats_message`，把 config 中的 `bot_id/node_id` 注入 kwargs
+4. 新增 OpsPilot NATS 消费入口
+5. 新增 `WorkFlowExecuteType.NATS` 与 workflow node registry 支持
+6. 把 NATS payload 标准化写入 `flow_input`
+7. 调整个人记忆、组织记忆、通知收件人解析逻辑，消费统一上下文
+8. 新增 web studio 的 `nats` 触发节点及展示支持
 
-## Final Recommendation
+## 十四、最终建议
 
-Use **System Management as the stable integration boundary** and **OpsPilot as the context normalization boundary**.
+最终采用：
 
-That means:
+- **system_mgmt 作为统一集成边界**
+- **OpsPilot 作为上下文标准化边界**
 
-- Alert Center only knows `send_msg_with_channel`
-- NATS routing stays in channel config through `namespace`, `method_name`, `bot_id`, and `node_id`
-- OpsPilot receives one enriched payload shape and turns it into stable workflow context
-- Downstream memory, notification, and permission logic all reuse the same normalized fields
+对应含义是：
 
-This keeps the change minimal in integration surface, explicit in routing, and extensible for later alert-specific workflow capabilities.
+- 告警中心只知道 `send_msg_with_channel`
+- NATS 路由留在 channel config，通过 `namespace/method_name/bot_id/node_id` 控制
+- OpsPilot 只接收一份 enrichment 后的标准参数，并在入口处一次性标准化
+- 后续记忆、通知、权限相关逻辑统一复用这些标准字段
+
+这个方案的优点是：
+
+- 对告警中心侵入最小
+- 路由职责清晰
+- 下游节点复用成本低
+- 后续如果再扩展告警上下文能力，仍然可以沿用这套标准化入口
