@@ -40,14 +40,14 @@
 - 复用现有 NATS channel 能力，不绕开 system_mgmt 的通道抽象。
 - 在 OpsPilot workflow 中新增 `nats` 触发节点。
 - 把告警中心传入的 `message/team/user_ids` 在 workflow 入口统一标准化，写入 `flow_input`。
-- 让 `user_ids` 成为本次 session 的“干系人”集合，供后续个人记忆、通知类节点复用。
+- 让 `user_ids` 成为本次 session 的“干系人”集合，供后续个人记忆、通知类节点复用，并按干系人分别存储个人记忆。
 - 让 `team` 成为本次执行的组织上下文，供后续组织记忆、权限校验和资源访问复用。
 - 保持对现有非 NATS 通道、非告警 workflow 的兼容。
 
 ## 三、不做的范围
 
 - 首版不做告警中心侧的组织自动推断。
-- 首版不做复杂的多干系人优先级算法，只保留顺序并默认取第一个作为主干系人。
+- 首版不做复杂的多干系人优先级算法，但要求所有干系人平级生效。
 - 首版不扩展第二种 NATS payload 格式。
 - 首版不支持一次执行同时对多个组织写入组织记忆。
 
@@ -207,9 +207,8 @@ NATS 入口收到参数后，应只在入口处做一次标准化，并把结果
   "trigger_type": "nats",
   "bot_id": 12,
   "node_id": "nats-entry-1",
-  "user_id": "alice",
   "session_stakeholders": ["alice", "bob"],
-  "primary_stakeholder_user_id": "alice",
+  "user_id": "alice",
   "current_organization_id": 2,
   "current_organization_ids": [2],
   "authorized_team_ids": [2],
@@ -224,9 +223,8 @@ NATS 入口收到参数后，应只在入口处做一次标准化，并把结果
 
 标准化规则：
 
-- `user_id`：取 `user_ids` 的第一个有效值
-- `session_stakeholders`：保留全部有效 `user_ids`
-- `primary_stakeholder_user_id`：取第一个干系人
+- `session_stakeholders`：保留全部有效 `user_ids`，并视为平级集合
+- `user_id`：为兼容旧逻辑，仍可保留 `user_ids` 的第一个有效值，但在 NATS 语义下不代表“主干系人”
 - `current_organization_ids`：归一化后的 `team`
 - `authorized_team_ids`：首版直接等于 `current_organization_ids`
 - `current_organization_id`：取 `team` 的第一个有效值
@@ -237,13 +235,16 @@ NATS 入口收到参数后，应只在入口处做一次标准化，并把结果
 
 ### 9.1 个人记忆
 
-NATS 触发的 workflow 中，个人记忆实体解析优先级建议改为：
+NATS 触发的 workflow 中，多干系人是平级关系，不再定义“主干系人”。
 
-1. `flow_input.primary_stakeholder_user_id`
-2. `flow_input.user_id`
-3. 保持现有旧逻辑兜底
+因此个人记忆语义调整为：
 
-这样告警中心传来的通知人就会成为 session 的“干系人”，后续个人记忆读取/写入会围绕这个人展开，而不是落到系统账号上。
+1. 当 `session_stakeholders` 非空时，个人记忆写入节点应按干系人逐个写入
+2. 例如传入 3 个干系人，则同一条 workflow 产生的个人记忆需要分别写入这 3 个用户各自的个人记忆
+3. 当 `session_stakeholders` 非空时，个人记忆读取节点也应按干系人逐个读取，并将结果聚合后再传给下游
+4. 只有在 `session_stakeholders` 为空时，才回退到旧逻辑
+
+这样可以保证告警中心传来的多个通知人都拥有各自独立的个人记忆，而不是只围绕某一个默认用户展开。
 
 ### 9.2 组织记忆
 
