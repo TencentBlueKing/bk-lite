@@ -4,6 +4,7 @@ import type { ChatflowNodeData, CeleryNodeConfig, HttpNodeConfig, AgentsNodeConf
 interface MemoryNodeFormConfig {
   memorySpace?: number;
   memorySpaceName?: string;
+  writeBatchSize?: number;
 }
 
 export const formatConfigInfo = (data: ChatflowNodeData, t: any) => {
@@ -153,7 +154,10 @@ export const formatConfigInfo = (data: ChatflowNodeData, t: any) => {
       const memoryConfig = config as MemoryNodeFormConfig;
       if (memoryConfig.memorySpace) {
         const spaceName = memoryConfig.memorySpaceName || memoryConfig.memorySpace;
-        return `${t('chatflow.memorySpace')}: ${spaceName}`;
+        const batchInfo = data.type === 'memory_write'
+          ? ` · ${t('chatflow.nodeConfig.memoryWriteBatchSize')}: ${memoryConfig.writeBatchSize || 30}`
+          : '';
+        return `${t('chatflow.memorySpace')}: ${spaceName}${batchInfo}`;
       }
       return t('chatflow.notConfigured');
     }

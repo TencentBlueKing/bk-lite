@@ -184,6 +184,14 @@ def test_opspilot_config_registers_workflow_attachment_cleanup_schedule():
     assert cleanup_schedule["task"] == "apps.opspilot.tasks.cleanup_expired_workflow_attachments_task"
 
 
+def test_opspilot_config_registers_daily_memory_cache_flush_schedule():
+    from apps.opspilot import config
+
+    flush_schedule = config.CELERY_BEAT_SCHEDULE["flush-pending-memory-write-cache"]
+
+    assert flush_schedule["task"] == "apps.opspilot.tasks.flush_all_pending_memory_write_cache"
+
+
 def test_build_builtin_monitor_runtime_tool_has_langchain_url():
     data = builtin_tools.build_builtin_monitor_runtime_tool({"username": "alice", "password": "secret", "domain": "tenant-a.com"})
 
