@@ -9,6 +9,7 @@ and other side effects during bare test collection).
 import importlib.util
 import pathlib
 import sys
+import types
 
 import pytest
 
@@ -22,6 +23,22 @@ EnterpriseFootprintError = _mod.EnterpriseFootprintError
 EnterpriseFootprintStatus = _mod.EnterpriseFootprintStatus
 detect_enterprise_footprint = _mod.detect_enterprise_footprint
 require_enterprise_license_management = _mod.require_enterprise_license_management
+
+# ---------------------------------------------------------------------------
+# Settings stub — satisfies root-conftest autouse fixtures without Django
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def settings():
+    """Lightweight stub that shadows pytest-django's ``settings`` fixture.
+
+    The root conftest has two ``autouse=True`` fixtures that only do
+    attribute assignments on the settings object (CACHES, MIDDLEWARE).
+    A SimpleNamespace is sufficient; no Django runtime is needed.
+    """
+    return types.SimpleNamespace(CACHES={}, MIDDLEWARE=())
+
 
 # ---------------------------------------------------------------------------
 # Helpers
