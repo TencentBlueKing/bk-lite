@@ -10,12 +10,29 @@ The logic under test lives in the lightweight helper
 apps.system_mgmt.management.commands._install_apps, which has no Django model imports,
 making it testable without a full Django project setup.
 """
+import types
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
 from apps.core.utils.enterprise_footprint import EnterpriseFootprintError, EnterpriseFootprintStatus
 from apps.system_mgmt.management.commands._install_apps import get_install_apps
+
+# ---------------------------------------------------------------------------
+# Settings stub — satisfies root-conftest autouse fixtures without Django
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def settings():
+    """Lightweight stub that shadows pytest-django's ``settings`` fixture.
+
+    The root conftest has two ``autouse=True`` fixtures that only do
+    attribute assignments on the settings object (CACHES, MIDDLEWARE).
+    A SimpleNamespace is sufficient; no Django runtime is needed.
+    """
+    return types.SimpleNamespace(CACHES={}, MIDDLEWARE=())
+
 
 # Patch target: detect_enterprise_footprint as bound in the helper module
 _DETECTOR_PATH = "apps.system_mgmt.management.commands._install_apps.detect_enterprise_footprint"
