@@ -22,7 +22,7 @@ from apps.monitor.tasks.grouping_rule import sync_instance_and_group
 class MonitorObjectService:
     @staticmethod
     def _project_instance_identity(qs):
-        return qs.only("id", "name")
+        return qs.only("id", "name", "cloud_region_id", "ip", "fallback_sampling_rate")
 
     @staticmethod
     def validate_new_instance_name_unique(monitor_object_id, monitor_instance_name):
@@ -131,18 +131,17 @@ class MonitorObjectService:
             obj_metric_map.get("default_metric", ""),
             obj_metric_map.get("instance_id_keys"),
         )
+        org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[obj.id for obj in objs])
+        org_map = {}
+        for org in org_objs:
+            if org.monitor_instance_id not in org_map:
+                org_map[org.monitor_instance_id] = set()
+            org_map[org.monitor_instance_id].add(org.organization)
+
         result = []
 
         for obj in objs:
-            result.append(
-                {
-                    "instance_id": obj.id,
-                    "instance_id_values": list(parse_instance_id(obj.id)),
-                    "instance_name": obj.name or obj.id,
-                    "agent_id": instance_map.get(obj.id, {}).get("agent_id", ""),
-                    "time": instance_map.get(obj.id, {}).get("time", ""),
-                }
-            )
+            result.append(MonitorObjectService._serialize_instance_list_item(obj, instance_map, org_map))
 
         if add_metrics and page_size != -1:
             instance_ids = []
@@ -187,6 +186,20 @@ class MonitorObjectService:
         MonitorObjectService.add_attr(result)
 
         return dict(count=count, results=result)
+
+    @staticmethod
+    def _serialize_instance_list_item(obj, instance_map, org_map):
+        return {
+            "instance_id": obj.id,
+            "instance_id_values": list(parse_instance_id(obj.id)),
+            "instance_name": obj.name or obj.id,
+            "agent_id": instance_map.get(obj.id, {}).get("agent_id", ""),
+            "time": instance_map.get(obj.id, {}).get("time", ""),
+            "cloud_region_id": obj.cloud_region_id,
+            "ip": obj.ip,
+            "fallback_sampling_rate": obj.fallback_sampling_rate,
+            "organizations": list(org_map.get(obj.id, [])),
+        }
 
     @staticmethod
     def generate_monitor_instance_id(monitor_object_id, monitor_instance_name, interval):

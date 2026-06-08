@@ -273,6 +273,205 @@ def test_get_instance_configs_filters_by_monitor_plugin_id(monkeypatch):
     assert [item["collect_type"] for item in items] == ["host", "host"]
 
 
+def test_prepare_instances_reuses_flow_created_instance_for_new_snmp_config(monkeypatch):
+    from apps.monitor.services import node_mgmt as module
+
+    class StubMonitorInstanceQuerySet:
+        def values_list(self, *fields):
+            return [("('1:switch:10.0.0.12',)", False)]
+
+    class StubMonitorInstanceManager:
+        @staticmethod
+        def filter(**kwargs):
+            assert kwargs == {
+                "id__in": ["('1:switch:10.0.0.12',)"],
+                "monitor_object_id": 12,
+            }
+            return StubMonitorInstanceQuerySet()
+
+    class StubCollectConfigQuerySet:
+        def values_list(self, *fields):
+            return []
+
+    class StubCollectConfigManager:
+        @staticmethod
+        def filter(**kwargs):
+            assert kwargs == {
+                "monitor_instance_id__in": ["('1:switch:10.0.0.12',)"],
+                "collector": "Telegraf",
+                "collect_type": "snmp",
+                "config_type__in": {"switch"},
+            }
+            return StubCollectConfigQuerySet()
+
+    monkeypatch.setattr(module.MonitorInstance, "objects", StubMonitorInstanceManager())
+    monkeypatch.setattr(module.CollectConfig, "objects", StubCollectConfigManager())
+
+    new_instances, existing_instances, deleted_ids = module.InstanceConfigService._prepare_instances_for_creation(
+        [
+            {
+                "instance_id": "1:switch:10.0.0.12",
+                "instance_name": "Core Switch",
+                "group_ids": [7],
+            }
+        ],
+        monitor_object_id=12,
+        collect_type="snmp",
+        collector="Telegraf",
+        configs=[{"type": "switch"}],
+    )
+
+    assert new_instances == []
+    assert existing_instances == [
+        {
+            "instance_id": "('1:switch:10.0.0.12',)",
+            "instance_name": "Core Switch",
+            "group_ids": [7],
+        }
+    ]
+    assert deleted_ids == []
+
+
+def test_prepare_instances_rejects_same_instance_same_snmp_config(monkeypatch):
+    from apps.monitor.services import node_mgmt as module
+
+    class StubMonitorInstanceQuerySet:
+        def values_list(self, *fields):
+            return [("('1:switch:10.0.0.12',)", False)]
+
+    class StubMonitorInstanceManager:
+        @staticmethod
+        def filter(**kwargs):
+            return StubMonitorInstanceQuerySet()
+
+    class StubCollectConfigQuerySet:
+        def values_list(self, *fields):
+            return [("('1:switch:10.0.0.12',)", "switch")]
+
+    class StubCollectConfigManager:
+        @staticmethod
+        def filter(**kwargs):
+            return StubCollectConfigQuerySet()
+
+    monkeypatch.setattr(module.MonitorInstance, "objects", StubMonitorInstanceManager())
+    monkeypatch.setattr(module.CollectConfig, "objects", StubCollectConfigManager())
+
+    with pytest.raises(module.BaseAppException, match="已存在采集配置"):
+        module.InstanceConfigService._prepare_instances_for_creation(
+            [
+                {
+                    "instance_id": "1:switch:10.0.0.12",
+                    "instance_name": "Core Switch",
+                    "group_ids": [7],
+                }
+            ],
+            monitor_object_id=12,
+            collect_type="snmp",
+            collector="Telegraf",
+            configs=[{"type": "switch"}],
+        )
+
+
+def test_create_monitor_instance_reuses_flow_instance_and_creates_new_snmp_config(monkeypatch):
+    from apps.monitor.services import node_mgmt as module
+
+    captured = {}
+    requested_instance = {
+        "instance_id": "1:switch:10.0.0.12",
+        "instance_name": "Core Switch",
+        "node_ids": ["node-1"],
+        "group_ids": [7],
+    }
+    prepared_instance = {
+        **requested_instance,
+        "instance_id": "('1:switch:10.0.0.12',)",
+    }
+
+    class _MonitorObjectQuerySet:
+        @staticmethod
+        def only(*args, **kwargs):
+            return _MonitorObjectQuerySet()
+
+        @staticmethod
+        def first():
+            return types.SimpleNamespace(name="Switch")
+
+    class _MonitorObjectManager:
+        @staticmethod
+        def filter(**kwargs):
+            assert kwargs == {"id": 12}
+            return _MonitorObjectQuerySet()
+
+    class _Controller:
+        def __init__(self, data):
+            captured["data"] = data
+
+        def controller(self):
+            captured["called"] = True
+
+    def prepare_instances(instances, monitor_object_id, collect_type, collector, configs):
+        assert instances == [requested_instance]
+        assert monitor_object_id == 12
+        assert collect_type == "snmp"
+        assert collector == "Telegraf"
+        assert configs == [{"type": "switch"}]
+        return [], [prepared_instance], []
+
+    def create_instances(new_instances, existing_instances, deleted_ids, monitor_object_id):
+        captured["db_args"] = {
+            "new_instances": new_instances,
+            "existing_instances": existing_instances,
+            "deleted_ids": deleted_ids,
+            "monitor_object_id": monitor_object_id,
+        }
+        return [], []
+
+    monkeypatch.setattr(module.MonitorObject, "objects", _MonitorObjectManager())
+    monkeypatch.setattr(module, "Controller", _Controller)
+    monkeypatch.setattr(module.transaction, "atomic", lambda: nullcontext())
+    monkeypatch.setattr(
+        module.InstanceConfigService,
+        "_sanitize_instances_for_onboarding",
+        staticmethod(lambda instances, actor_context: instances),
+    )
+    monkeypatch.setattr(
+        module.InstanceConfigService,
+        "_validate_instances_with_plugin_selector",
+        staticmethod(lambda instances, monitor_plugin_id, actor_context: None),
+    )
+    monkeypatch.setattr(
+        module.InstanceConfigService,
+        "_prepare_instances_for_creation",
+        staticmethod(prepare_instances),
+    )
+    monkeypatch.setattr(
+        module.InstanceConfigService,
+        "_create_instances_in_db",
+        staticmethod(create_instances),
+    )
+
+    module.InstanceConfigService.create_monitor_instance_by_node_mgmt(
+        {
+            "collector": "Telegraf",
+            "collect_type": "snmp",
+            "monitor_object_id": 12,
+            "monitor_plugin_id": 301,
+            "configs": [{"type": "switch"}],
+            "instances": [requested_instance],
+        }
+    )
+
+    assert captured["called"] is True
+    assert captured["db_args"] == {
+        "new_instances": [],
+        "existing_instances": [prepared_instance],
+        "deleted_ids": [],
+        "monitor_object_id": 12,
+    }
+    assert captured["data"]["instances"] == [prepared_instance]
+    assert captured["data"]["monitor_plugin_id"] == 301
+
+
 def test_create_monitor_instance_does_not_replace_selected_host_remote_node_id(monkeypatch):
     from apps.monitor.services import node_mgmt as module
 
