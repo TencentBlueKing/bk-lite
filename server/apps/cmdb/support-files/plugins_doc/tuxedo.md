@@ -1,5 +1,5 @@
 ### 说明
-基于脚本（JOB）解析 ActiveMQ 运行进程与配置文件，自动采集实例核心参数（版本、监听端口、安装/配置路径、JVM 堆参数等），并标准化同步至 CMDB。采集为只读，不修改目标任何配置。
+基于脚本（JOB）采集 Tuxedo 实例的版本、补丁级别、监听端口、安装路径、域信息与线程参数等信息，并标准化同步至 CMDB。采集为只读，不修改目标任何配置。
 
 > **【BETA / 未测试】** 本插件尚未经过完整环境验证，字段解析逻辑可能与你的实际部署存在差异，请在生产使用前先小范围试采并核对结果。
 
@@ -14,23 +14,24 @@
 > 一句话：装了 Agent 的机器零凭据即可采集；未装的依赖你填写的 SSH 账号远程采集。
 
 ### 版本兼容性
-- 适用于以脚本方式可识别的 ActiveMQ 实例；不同大版本的目录结构与配置写法可能有差异，请以实际试采结果为准。
+- 适用于以脚本方式可识别的 Tuxedo 实例；不同大版本的目录结构与配置写法可能有差异，请以实际试采结果为准。
 
 ### 前置要求
 1. **网络与连通**
    - SSH 目标：接入点到目标的 SSH 端口（默认 `22`，可自定义）连通。
    - 本地执行目标：该主机的 Agent/Executor 在节点管理中正常在线即可。
 2. **采集账号与权限（仅 SSH 远程时需要）**
-   - 需能读取 ActiveMQ 的 `activemq.xml` 配置文件。
+   - 需能执行 `tmadmin`。
+   - 需能读取 `TUXCONFIG` 配置文件。
    - 需能读取目标进程的 `/proc/<pid>/cmdline`（采集非自身用户进程时通常需要 root 或等价权限）。
 3. **目标依赖**
-   - ActiveMQ 已部署并启动，且进程以带 `-Dactivemq` 参数的方式运行。
-   - 目标安装了 Java 运行环境。
+   - Tuxedo 已部署并启动。
+   - 目标具备 `tmadmin` 二进制。
 
 ### 操作步骤
 #### 步骤 0：操作入口
 1. 进入“CMDB → 管理 → 自动发现 → 采集 → 专业采集”。
-2. 选择插件 **ActiveMQ**，点击“新增任务”。
+2. 选择插件 **Tuxedo**，点击“新增任务”。
 
 > 任务实际执行发生在你选择的“接入点”上；下面的自测命令应在接入点机器上执行。
 
@@ -56,15 +57,18 @@
 ### 采集内容
 | Key 名称 | 含义 |
 | :--- | :--- |
-| inst_name | 实例展示名 |
+| bk_inst_name | 实例展示名 |
 | ip_addr | 主机内网 IP |
-| port | 监听端口（`activemq.xml` transportConnector，默认 `61616`） |
+| port | 监听端口 |
 | install_path | 安装路径 |
-| conf_path | 配置文件路径 |
-| java_path | Java 可执行文件路径 |
-| java_version | JDK 版本 |
-| version | ActiveMQ 版本 |
-| xms | JVM 初始堆大小 |
-| xmx | JVM 最大堆大小 |
+| bin_path | 可执行文件路径 |
+| conf_file | 配置文件路径（`TUXCONFIG` 或 install_path/ubbconfig） |
+| version | Tuxedo 版本（`tmadmin -v`） |
+| patch_level | 补丁级别 |
+| domainid | 域 ID |
+| ipckey | IPC Key（Tuxedo 进程间通信标识） |
+| lmid | Logical Machine ID（逻辑机器标识） |
+| maxdispatchthreads | 最大调度线程数 |
+| mindispatchthreads | 最小调度线程数 |
 
-> 补充说明：当目标进程未带 `-Dactivemq` 启动、或 `activemq.xml` 路径非常规、或无权读取 `/proc/<pid>/cmdline` 时，对应字段可能为空。本插件为 **BETA / 未测试**，请核对结果后再投入使用。
+> 补充说明：`TUXCONFIG` 是指向 Tuxedo 配置的环境变量/文件路径。当 `tmadmin` 不可用、`TUXCONFIG` 路径非常规、或无权读取 `/proc/<pid>/cmdline` 时，相关字段可能为空。本插件为 **BETA / 未测试**，请核对结果后再投入使用。

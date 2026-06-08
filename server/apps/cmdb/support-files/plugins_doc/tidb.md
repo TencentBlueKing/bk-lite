@@ -1,5 +1,5 @@
 ### 说明
-采集 ZooKeeper 的基础配置清单（版本、客户端端口、安装/配置/日志/数据目录、Java 环境及集群核心参数），标准化同步至 CMDB。本插件为 **JOB（SSH 脚本）** 类型，登录目标解析进程与 `zoo.cfg` 后退出，不修改任何配置。
+【BETA】基于脚本（JOB）在目标主机上发现 TiDB 实例，读取 `tidb-server` 进程与相关配置，采集版本、端口与基础配置，标准化同步至 CMDB。采集为只读，不修改目标任何配置。
 
 ### 执行方式
 本插件为 **JOB（脚本）** 类型，按目标 IP 自动选择执行方式：
@@ -12,24 +12,21 @@
 > 一句话：装了 Agent 的机器零凭据即可采集；未装的依赖你填写的 SSH 账号远程采集。
 
 ### 版本兼容性
-- 支持官方 ZooKeeper 3.4.x+ 版本（包括：3.6.x、3.7.x、3.8.x、3.9.x 等）。
+- 兼容常见主流 TiDB 版本；建议以实际部署版本为准。
 
 ### 前置要求
 1. **网络与连通**
    - SSH 目标：接入点到目标的 SSH 端口（默认 `22`，可自定义）连通。
    - 本地执行目标：该主机的 Agent/Executor 在节点管理中正常在线即可。
-2. **采集账号与权限**
-   - 能执行 `ps` 查看 ZooKeeper 进程。
-   - 能执行 `lsof` 或读取 `/proc/<pid>/fd` 以定位端口与文件。
-   - 能读取配置文件 `zoo.cfg`。
-3. **目标依赖**
-   - 目标已安装 Java（ZooKeeper 运行依赖）与 `lsof`。
-   - ZooKeeper 已启动。
+2. **目标依赖**
+   - 主机上运行有 `tidb-server` 进程。
+3. **采集权限**
+   - 可执行 `ps`、`ss`，可读取 `tidb.toml` / `tikv.toml`；集群模式判断可选依赖 `pd-ctl`。
 
 ### 操作步骤
 #### 步骤 0：操作入口
 1. 进入“CMDB → 管理 → 自动发现 → 采集 → 专业采集”。
-2. 选择插件 **ZooKeeper**，点击“新增任务”。
+2. 选择插件 **TiDB**，点击“新增任务”。
 
 > 任务实际执行发生在你选择的“接入点”上；下面的自测命令应在接入点机器上执行。
 
@@ -42,10 +39,10 @@
 #### 步骤 2：填写任务
 - **采集目标**：填写目标 IP。
 - **凭据**：为“未装 Agent”的目标准备 SSH 凭据。
-- 设置超时（默认 60s）与采集周期，保存并执行。
+- 设置超时与采集周期，保存并执行。
 
 #### 步骤 3：验证结果
-- 在任务详情查看 `新增 / 更新 / 删除` 摘要与原始数据；在 CMDB 的 ZooKeeper 模型下应能查询到对应实例。
+- 在任务详情查看 `新增 / 更新 / 删除` 摘要与原始数据；在 CMDB TiDB 模型下应能查询到对应实例。
 
 ### 凭据字段说明
 - `username`：SSH 登录用户名（仅 SSH 目标需要）。
@@ -53,23 +50,19 @@
 - `port`：SSH 端口，默认 `22`。
 
 ### 采集内容
-**ZooKeeper（zookeeper）**
+**TiDB（tidb）**
 
 | Key 名称 | 含义 |
 | :--- | :--- |
-| inst_name | 实例展示名 |
-| ip_addr | 主机 IP |
-| port | 客户端端口（`clientPort`） |
-| version | ZooKeeper 版本 |
+| inst_name | 实例展示名（`{ip}-tidb-{port}`） |
+| ip_addr | 主机内网 IP |
+| port | TiDB 监听端口（默认 `4000`） |
+| version | TiDB 版本（`tidb-server -V`） |
 | install_path | 安装路径 |
-| log_path | 日志目录 |
-| conf_path | 配置文件路径 |
-| java_path | Java 可执行文件路径 |
-| java_version | Java 版本 |
-| data_dir | 数据目录 |
-| tick_time | 心跳间隔（`tickTime`） |
-| init_limit | 初始化同步限制（`initLimit`） |
-| sync_limit | 正常同步限制（`syncLimit`） |
-| server | 集群成员列表 |
+| home_bash | 启动用户的 home 目录 |
+| db_max_sessions | 最大会话数（`max-server-connections`） |
+| redo_log | TiKV WAL 目录（`wal-dir`） |
+| datafile | TiKV 数据目录（`data-dir`） |
+| mode | 部署模式（single / cluster） |
 
-> 补充说明：当 `zoo.cfg` 中缺失对应配置项（如 `dataDir`、`tickTime`、`server.X`）或脚本无法解析时，相关字段可能为空。
+> 补充说明：`mode` 字段判断集群/单机依赖可选工具 `pd-ctl`（可执行 `pd-ctl -V` 确认）；若环境无 `pd-ctl`，可能无法准确判定为集群，默认按单机处理。`tikv.toml` 仅在分布式部署存在，单机仅有 `tidb.toml`；`redo_log` / `datafile` 等 TiKV 相关字段在目标 `tikv.toml` 未配置对应项时可能为空。
