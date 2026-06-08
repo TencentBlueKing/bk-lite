@@ -215,7 +215,13 @@ class ChatService:
             # 使用 parse_kubernetes_instances 正确解析（支持 JSON 字符串和 list）
             from apps.opspilot.metis.llm.tools.kubernetes.connection import parse_kubernetes_instances
             k8s_instances = parse_kubernetes_instances(k8s_instances_raw) if k8s_instances_raw else []
-            if len(k8s_instances) > 1:
+            if len(k8s_instances) == 1:
+                instance = k8s_instances[0]
+                if instance.get("name"):
+                    extra_config["instance_name"] = instance["name"]
+                if instance.get("id"):
+                    extra_config["instance_id"] = instance["id"]
+            elif len(k8s_instances) > 1:
                 instance_names = [inst.get("name", "") for inst in k8s_instances if inst.get("name")]
                 if instance_names:
                     options_json = ", ".join(f'"{name}"' for name in instance_names)

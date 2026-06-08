@@ -30,7 +30,16 @@ const problematicHtml = renderToStaticMarkup(
             {
               issue: '未配置存活探针',
               count: 10,
-              workloads: ['gateway (opspilot-check-a)', 'analytics (opspilot-check-b)'],
+              workloads: [
+                'gateway (opspilot-check-a)',
+                'analytics (opspilot-check-b)',
+                'backend-api (dev)',
+                'cache-service (dev)',
+                'file-uploader (dev)',
+                'frontend (dev)',
+                'mail-sender (dev)',
+                'order-api (dev)',
+              ],
               risk: '容器异常时无法被及时发现并自愈',
             },
           ],
@@ -54,6 +63,12 @@ const problematicHtml = renderToStaticMarkup(
 assert.match(problematicHtml, /配置检查报告/);
 assert.match(problematicHtml, /<table/);
 assert.match(problematicHtml, /未配置存活探针/);
+assert.match(problematicHtml, /table-fixed/);
+assert.match(problematicHtml, /gateway \(opspilot-check-a\)/);
+assert.match(problematicHtml, /file-uploader \(dev\)/);
+assert.match(problematicHtml, /\+3/);
+assert.equal(problematicHtml.includes('frontend (dev)'), false);
+assert.equal(problematicHtml.includes('mail-sender (dev)'), false);
 assert.match(problematicHtml, /补齐 liveness \/ readiness probe/);
 assert.match(problematicHtml, /实例：prod-cluster/);
 assert.match(problematicHtml, /对象：gateway/);

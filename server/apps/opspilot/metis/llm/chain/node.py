@@ -1375,6 +1375,24 @@ class ToolsNodes(BasicNode):
             question_type: str,
             options: Optional[List[str]] = None,
         ) -> str:
+            from apps.opspilot.metis.llm.tools.common.user_choice_guard import validate_user_choice_options
+            from apps.opspilot.metis.llm.tools.kubernetes.user_choice_guard import build_kubernetes_cluster_choice_guard
+
+            configurable = getattr(_ask_user, "_configurable", {}) or {}
+            guard = build_kubernetes_cluster_choice_guard(
+                question=question,
+                options=options,
+                configurable=configurable,
+            )
+            guard_message = validate_user_choice_options(
+                question_type=question_type,
+                options=options,
+                guard=guard,
+            )
+            if guard_message:
+                logger.warning("[choice_tool] 已阻止不可信的用户选择请求: %s", guard_message)
+                return guard_message
+
             choice_id = str(uuid.uuid4())[:8]
             execution_id = getattr(_ask_user, "_execution_id", "") or str(int(time.time() * 1000))
             node_id = getattr(_ask_user, "_node_id", "skill_test")
@@ -2267,6 +2285,7 @@ class ToolsNodes(BasicNode):
                 func = choice_tool_instance._request_choice_func
                 func._execution_id = config["configurable"].get("execution_id", "")
                 func._node_id = config["configurable"].get("node_id", "skill_test")
+                func._configurable = config["configurable"]
 
             # 构建系统提示
             # 动态工具模式下，构建 activate_tools 使用说明

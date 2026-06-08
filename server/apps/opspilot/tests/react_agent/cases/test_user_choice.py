@@ -248,13 +248,9 @@ class TestUserSelection:
                     {
                         "name": "request_user_choice",
                         "args": {
-                            "title": "请选择要查询的表",
-                            "options": [
-                                {"key": "users", "label": "用户表", "description": "用户信息"},
-                                {"key": "orders", "label": "订单表", "description": "订单信息"},
-                            ],
-                            "description": "请选择一个表进行查询",
-                            "multiple": False,
+                            "question": "请选择要查询的表",
+                            "question_type": "single_select",
+                            "options": ["users", "orders"],
                         },
                         "id": "c_choice",
                     }
@@ -281,10 +277,10 @@ class TestUserSelection:
             mock_choice_result={"selected": ["users"], "source": "user"},
         )
 
-        assert llm_calls == 3
+        assert llm_calls == 4
         tool_msgs = [m for m in messages if isinstance(m, ToolMessage)]
         # Choice tool returned selection text
-        assert any("用户选择了" in str(m.content) for m in tool_msgs)
+        assert any("用户回答" in str(m.content) and "users" in str(m.content) for m in tool_msgs)
         # Actual tool executed
         assert any("queried: users" in str(m.content) for m in tool_msgs)
         # SSE event dispatched
@@ -503,12 +499,9 @@ class TestChoiceTimeout:
                     {
                         "name": "request_user_choice",
                         "args": {
-                            "title": "选择操作",
-                            "options": [
-                                {"key": "opt_a", "label": "选项A"},
-                                {"key": "opt_b", "label": "选项B"},
-                            ],
-                            "default_keys": ["opt_a"],
+                            "question": "选择操作",
+                            "question_type": "single_select",
+                            "options": ["opt_a", "opt_b"],
                         },
                         "id": "c_choice",
                     }
@@ -557,14 +550,9 @@ class TestChoiceSSEEvent:
                     {
                         "name": "request_user_choice",
                         "args": {
-                            "title": "测试选择",
-                            "options": [
-                                {"key": "k1", "label": "Label 1", "recommended": True},
-                                {"key": "k2", "label": "Label 2"},
-                            ],
-                            "description": "测试描述",
-                            "multiple": True,
-                            "default_keys": ["k1"],
+                            "question": "测试选择",
+                            "question_type": "multi_select",
+                            "options": ["k1", "k2"],
                         },
                         "id": "c_choice",
                     }
@@ -595,11 +583,11 @@ class TestChoiceSSEEvent:
 
         # Values
         assert event["title"] == "测试选择"
-        assert event["description"] == "测试描述"
+        assert event["description"] == ""
         assert event["multiple"] is True
         assert len(event["options"]) == 2
         assert event["options"][0]["key"] == "k1"
-        assert event["options"][0]["recommended"] is True
+        assert event["options"][0]["recommended"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -628,11 +616,9 @@ class TestUnattendedMode:
                     {
                         "name": "request_user_choice",
                         "args": {
-                            "title": "选择",
-                            "options": [
-                                {"key": "auto_opt", "label": "自动选项"},
-                            ],
-                            "default_keys": ["auto_opt"],
+                            "question": "选择",
+                            "question_type": "single_select",
+                            "options": ["auto_opt", "fallback_opt"],
                         },
                         "id": "c_choice",
                     }
@@ -651,4 +637,4 @@ class TestUnattendedMode:
         assert llm_calls == 3  # 3 calls: initial + forced tool_choice='any' after choice + final
         tool_msgs = [m for m in messages if isinstance(m, ToolMessage)]
         # Choice tool returned auto-select text
-        assert any("自动选择" in str(m.content) for m in tool_msgs)
+        assert any("默认选项" in str(m.content) and "auto_opt" in str(m.content) for m in tool_msgs)

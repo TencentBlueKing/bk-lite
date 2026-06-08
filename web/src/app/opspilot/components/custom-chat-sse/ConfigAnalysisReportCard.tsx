@@ -24,6 +24,7 @@ const knownSeverities = new Set<ConfigAnalysisSeveritySection['severity']>([
   'warning',
   'info',
 ]);
+const WORKLOAD_PREVIEW_LIMIT = 5;
 
 interface NormalizedIssue extends ConfigAnalysisReportItem {
   degraded?: boolean;
@@ -268,7 +269,13 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
                   </div>
                   <div className="overflow-x-auto">
                     {section.issues.length > 0 ? (
-                      <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                      <table className="min-w-[760px] table-fixed divide-y divide-slate-200 text-left text-sm">
+                        <colgroup>
+                          <col className="w-[22%]" />
+                          <col className="w-[10%]" />
+                          <col className="w-[40%]" />
+                          <col className="w-[28%]" />
+                        </colgroup>
                         <thead className="bg-white text-slate-500">
                           <tr>
                             <th className="px-3 py-2 font-medium">问题类别</th>
@@ -278,38 +285,52 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
-                          {section.issues.map((item, idx) => (
-                            <tr key={`${section.severity}-${item.issue}-${idx}`}>
-                              <td className="px-3 py-3 font-medium text-slate-800">
-                                <div className="flex items-center gap-2">
-                                  <span>{item.issue}</span>
-                                  {item.degraded && (
-                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                                      信息不完整
-                                    </span>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-3 py-3">{item.count}</td>
-                              <td className="px-3 py-3">
-                                {item.workloads.length > 0 ? (
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {item.workloads.map(workload => (
-                                      <span
-                                        key={workload}
-                                        className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600"
-                                      >
-                                        {workload}
+                          {section.issues.map((item, idx) => {
+                            const visibleWorkloads = item.workloads.slice(0, WORKLOAD_PREVIEW_LIMIT);
+                            const hiddenWorkloadCount = Math.max(item.workloads.length - WORKLOAD_PREVIEW_LIMIT, 0);
+
+                            return (
+                              <tr key={`${section.severity}-${item.issue}-${idx}`} className="align-top">
+                                <td className="px-3 py-3 font-medium text-slate-800">
+                                  <div className="flex items-center gap-2">
+                                    <span>{item.issue}</span>
+                                    {item.degraded && (
+                                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                                        信息不完整
                                       </span>
-                                    ))}
+                                    )}
                                   </div>
-                                ) : (
-                                  <span className="text-slate-400">—</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-3 text-slate-600">{item.risk}</td>
-                            </tr>
-                          ))}
+                                </td>
+                                <td className="px-3 py-3">{item.count}</td>
+                                <td className="px-3 py-3">
+                                  {visibleWorkloads.length > 0 ? (
+                                    <div className="flex max-w-full flex-wrap gap-1.5">
+                                      {visibleWorkloads.map(workload => (
+                                        <span
+                                          key={workload}
+                                          title={workload}
+                                          className="max-w-[180px] truncate rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600"
+                                        >
+                                          {workload}
+                                        </span>
+                                      ))}
+                                      {hiddenWorkloadCount > 0 && (
+                                        <span
+                                          title={`另有 ${hiddenWorkloadCount} 个工作负载`}
+                                          className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-500"
+                                        >
+                                          +{hiddenWorkloadCount}
+                                        </span>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-400">—</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-3 leading-6 text-slate-600">{item.risk}</td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     ) : (
