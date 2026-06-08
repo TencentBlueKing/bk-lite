@@ -1,15 +1,27 @@
 """
 Pure pytest tests for enterprise footprint detection.
 No Django app setup required.
+
+The module is loaded directly by file path so that importing it never
+triggers the config package __init__ (which would pull in Django settings
+and other side effects during bare test collection).
 """
+import importlib.util
+import pathlib
+import sys
+
 import pytest
 
-from config.components.enterprise import (
-    EnterpriseFootprintError,
-    EnterpriseFootprintStatus,
-    detect_enterprise_footprint,
-    require_enterprise_license_management,
-)
+_MODULE_PATH = pathlib.Path(__file__).resolve().parent.parent.parent.parent / "config" / "components" / "enterprise.py"  # server/
+_spec = importlib.util.spec_from_file_location("enterprise_footprint", _MODULE_PATH)
+_mod = importlib.util.module_from_spec(_spec)
+sys.modules["enterprise_footprint"] = _mod  # register before exec so @dataclass resolves __module__
+_spec.loader.exec_module(_mod)
+
+EnterpriseFootprintError = _mod.EnterpriseFootprintError
+EnterpriseFootprintStatus = _mod.EnterpriseFootprintStatus
+detect_enterprise_footprint = _mod.detect_enterprise_footprint
+require_enterprise_license_management = _mod.require_enterprise_license_management
 
 # ---------------------------------------------------------------------------
 # Helpers
