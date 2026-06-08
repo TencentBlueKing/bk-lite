@@ -3,6 +3,7 @@
 # @Time: 2025/11/13 14:21
 # @Author: windyzhao
 from apps.cmdb.node_configs.base import BaseNodeParams
+from apps.cmdb.models.collect_model import normalize_topology_contract
 
 
 class NetworkNodeParams(BaseNodeParams):
@@ -14,6 +15,8 @@ class NetworkNodeParams(BaseNodeParams):
         super().__init__(*args, **kwargs)
         self.PLUGIN_MAP.update({self.model_id: self.plugin_name})
         self.host_field = "ip_addr"
+        self.topology_contract = normalize_topology_contract(getattr(self.instance, "params", {}))
+        self.has_network_topo = self.topology_contract["has_network_topo"]
 
     def set_credential(self, *args, **kwargs):
         """
@@ -47,7 +50,10 @@ class NetworkNodeParams(BaseNodeParams):
             "privacy": self.credential.get("privacy", ""),  # 加密算法
             "authkey": "${" + _authkey + "}",
             "privkey": "${" + _privkey + "}",
-            "has_network_topo": self.has_network_topo
+            "has_network_topo": self.has_network_topo,
+            "topology_protocols": list(self.topology_contract["topology_protocols"]),
+            "topology_fallback_strategy": self.topology_contract["topology_fallback_strategy"],
+            "min_confidence": self.topology_contract["min_confidence"],
         }
         if self.credential.get("credential_id"):
             credential_data["credential_id"] = self.credential.get("credential_id")
@@ -84,6 +90,9 @@ class NetworkNodeParams(BaseNodeParams):
                 "authkey": "${" + self._secret_env_name("authkey", index) + "}",
                 "privkey": "${" + self._secret_env_name("privkey", index) + "}",
                 "has_network_topo": self.has_network_topo,
+                "topology_protocols": list(self.topology_contract["topology_protocols"]),
+                "topology_fallback_strategy": self.topology_contract["topology_fallback_strategy"],
+                "min_confidence": self.topology_contract["min_confidence"],
             }
             if credential.get("credential_id"):
                 item["credential_id"] = credential.get("credential_id")

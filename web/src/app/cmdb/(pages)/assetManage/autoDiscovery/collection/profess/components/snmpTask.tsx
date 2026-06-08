@@ -9,8 +9,12 @@ import { useTaskForm } from '../hooks/useTaskForm';
 import { getCleanupFormValues } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import {
+  buildSnmpTopologyParams,
+  getSnmpTopologyFormValues,
   SNMP_FORM_INITIAL_VALUES,
   PASSWORD_PLACEHOLDER,
+  TOPOLOGY_FALLBACK_STRATEGY_OPTIONS,
+  TOPOLOGY_PROTOCOL_OPTIONS,
 } from '@/app/cmdb/constants/professCollection';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import {
@@ -19,7 +23,7 @@ import {
   normalizeCredentialPool,
   buildCredentialPool,
 } from '../hooks/formatTaskValues';
-import { Form, Spin, Switch } from 'antd';
+import { Form, InputNumber, Select, Spin, Switch } from 'antd';
 import CredentialPoolEditor from './credentialPoolEditor';
 
 interface SNMPTaskFormProps {
@@ -124,9 +128,7 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
           }
           return credential;
         }),
-        params: {
-          has_network_topo: values.hasNetworkTopo ?? true,
-        },
+        params: buildSnmpTopologyParams(values),
       };
     },
   });
@@ -140,10 +142,11 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
       privkey: isCopy ? '' : PASSWORD_PLACEHOLDER,
     }));
     return {
-      credentialPool,
-      ipRange,
       ...getCleanupFormValues(values),
       ...values,
+      ...getSnmpTopologyFormValues(values.params),
+      credentialPool,
+      ipRange,
       taskName: isCopy ? '' : values.name,
       timeout: values.timeout,
       input_method: values.input_method,
@@ -211,6 +214,62 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
             valuePropName="checked"
           >
             <Switch />
+          </Form.Item>
+          <Form.Item
+            noStyle
+            shouldUpdate={(prevValues, currentValues) =>
+              prevValues.hasNetworkTopo !== currentValues.hasNetworkTopo
+            }
+          >
+            {({ getFieldValue }) =>
+              getFieldValue('hasNetworkTopo') ? (
+                <>
+                  <Form.Item
+                    label={t('Collection.SNMPTask.topologyProtocols')}
+                    name="topologyProtocols"
+                    extra={t('Collection.SNMPTask.topologyProtocolsHelp')}
+                  >
+                    <Select
+                      mode="multiple"
+                      placeholder={t('common.selectTip')}
+                      options={TOPOLOGY_PROTOCOL_OPTIONS.map((item) => ({
+                        value: item.value,
+                        label: t(item.labelKey),
+                      }))}
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    label={t('Collection.SNMPTask.topologyFallbackStrategy')}
+                    name="topologyFallbackStrategy"
+                    extra={t(
+                      'Collection.SNMPTask.topologyFallbackStrategyHelp'
+                    )}
+                  >
+                    <Select
+                      placeholder={t('common.selectTip')}
+                      options={TOPOLOGY_FALLBACK_STRATEGY_OPTIONS.map((item) => ({
+                        value: item.value,
+                        label: t(item.labelKey),
+                      }))}
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    label={t('Collection.SNMPTask.minConfidence')}
+                    name="minConfidence"
+                    extra={t('Collection.SNMPTask.minConfidenceHelp')}
+                  >
+                    <InputNumber
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      precision={2}
+                      placeholder={t('common.inputTip')}
+                      className="w-32"
+                    />
+                  </Form.Item>
+                </>
+              ) : null
+            }
           </Form.Item>
 
           <div className={styles.panelHeader}>{t('Collection.credential')}</div>
