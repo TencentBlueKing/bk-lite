@@ -1877,3 +1877,189 @@ class TestMemoryWriteCacheFlushTriggers:
         call_kwargs = mock_write.call_args.kwargs
         assert "event-1" in call_kwargs["content"]
         assert "event-2" in call_kwargs["content"]
+
+
+# ---------------------------------------------------------------------------
+# Task 3: flow_input.user_ids fan-out and flow_input.team override
+# ---------------------------------------------------------------------------
+
+
+def create_vm_with_flow_input(flow_input: dict, flow_id: str = ""):
+    """Create a variable manager with an arbitrary flow_input dict.
+
+    Default flow_id="" so write nodes take the non-batch process_memory_write path.
+    """
+    vm = MagicMock()
+    vm.get_variable.side_effect = lambda key, default=None: {
+        "flow_input": flow_input,
+        "flow_id": flow_id,
+    }.get(key, default)
+    return vm
+
+
+@pytest.mark.django_db
+class TestMemoryWriteUserIdsFanout:
+    """Personal write fans out to all flow_input.user_ids; team uses flow_input.team[0]."""
+
+    def test_personal_write_fans_out_to_all_user_ids(self, memory_space_personal):
+        """When flow_input.user_ids is present, write is called once per user."""
+        vm = create_vm_with_flow_input({"user_ids": ["alice", "bob", "charlie"], "user_id": "alice"})
+        node = MemoryWriteNode(vm)
+        node_config = build_node_config(memory_space_id=memory_space_personal.id, title="Fan-out")
+
+        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+            mock_task.delay = MagicMock()
+            node.execute("mem_write_1", node_config, {"last_message": "Important info"})
+
+        assert mock_task.delay.call_count == 3
+        usernames = {c.kwargs["owner_username"] for c in mock_task.delay.call_args_list}
+        assert usernames == {"alice", "bob", "charlie"}
+
+    def test_personal_write_falls_back_to_single_user_when_no_user_ids(self, memory_space_personal):
+        """When flow_input.user_ids is absent, falls back to single flow_input.user_id."""
+        vm = create_vm_with_flow_input({"user_id": "alice@test.com"})
+        node = MemoryWriteNode(vm)
+        node_config = build_node_config(memory_space_id=memory_space_personal.id, title="Single")
+
+        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+            mock_task.delay = MagicMock()
+            node.execute("mem_write_1", node_config, {"last_message": "Single user content"})
+
+        assert mock_task.delay.call_count == 1
+        assert mock_task.delay.call_args.kwargs["owner_username"] == "alice"
+
+    def test_team_write_prefers_flow_input_team_over_memory_space_team(self, memory_space_team):
+        """Team write uses flow_input.team[0] (99) instead of memory_space.team[0] (1)."""
+        vm = create_vm_with_flow_input({"user_id": "alice@test.com", "team": [99]})
+        node = MemoryWriteNode(vm)
+        node_config = build_node_config(memory_space_id=memory_space_team.id, title="Team Override")
+
+        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+            mock_task.delay = MagicMock()
+            node.execute("mem_write_1", node_config, {"last_message": "Team info"})
+
+        call_kwargs = mock_task.delay.call_args.kwargs
+        assert call_kwargs["organization_id"] == 99
+
+    def test_team_write_falls_back_to_memory_space_team_when_no_flow_input_team(self, memory_space_team):
+        """Team write falls back to memory_space.team[0] when flow_input.team is absent."""
+        vm = create_vm_with_flow_input({"user_id": "alice@test.com"})
+        node = MemoryWriteNode(vm)
+        node_config = build_node_config(memory_space_id=memory_space_team.id, title="Team Fallback")
+
+        with patch("apps.opspilot.tasks.process_memory_write") as mock_task:
+            mock_task.delay = MagicMock()
+            node.execute("mem_write_1", node_config, {"last_message": "Team info"})
+
+        call_kwargs = mock_task.delay.call_args.kwargs
+        # memory_space_team has team=[1]
+        assert call_kwargs["organization_id"] == 1
+
+
+@pytest.mark.django_db
+class TestMemoryReadUserIdsFanout:
+    """Personal read aggregates contexts for all flow_input.user_ids; team uses flow_input.team[0]."""
+
+    def test_personal_read_aggregates_for_all_user_ids(self, memory_space_personal):
+        """When flow_input.user_ids is present, contexts from all users are merged."""
+        from apps.opspilot.models.memory_mgmt import Memory
+
+        Memory.objects.create(
+            memory_space=memory_space_personal,
+            title="Alice Prefs",
+            content="alice uses vim",
+            owner_username="alice",
+            owner_domain="test.com",
+            created_by="alice",
+            domain="test.com",
+        )
+        Memory.objects.create(
+            memory_space=memory_space_personal,
+            title="Bob Prefs",
+            content="bob uses emacs",
+            owner_username="bob",
+            owner_domain="",
+            created_by="bob",
+            domain="test.com",
+        )
+
+        vm = create_vm_with_flow_input({"user_ids": ["alice@test.com", "bob"], "user_id": "alice@test.com"})
+        node = MemoryReadNode(vm)
+        node_config = build_node_config(memory_space_id=memory_space_personal.id)
+
+        result = node.execute("mem_read_1", node_config, {"last_message": "query"})
+
+        ctx = result.get("memory_context", "")
+        assert "alice uses vim" in ctx
+        assert "bob uses emacs" in ctx
+
+    def test_personal_read_falls_back_to_single_user_when_no_user_ids(self, memory_space_personal, personal_memories):
+        """When flow_input.user_ids is absent, falls back to single user_id."""
+        vm = create_variable_manager("alice@test.com")
+        node = MemoryReadNode(vm)
+        node_config = build_node_config(memory_space_id=memory_space_personal.id)
+
+        result = node.execute("mem_read_1", node_config, {"last_message": "query"})
+
+        # personal_memories has "I prefer dark mode" for alice
+        assert "I prefer dark mode" in result.get("memory_context", "")
+
+    def test_team_read_prefers_flow_input_team_over_memory_space_team(self, db):
+        """Team read uses flow_input.team[0] (99) instead of memory_space.team[0] (1)."""
+        from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
+
+        team_space = MemorySpace.objects.create(
+            name="Alt Team Space",
+            team=[1],
+            scope=MemorySpace.SCOPE_TEAM,
+            created_by="admin",
+            domain="test.com",
+        )
+        Memory.objects.create(
+            memory_space=team_space,
+            title="Org99 Memory",
+            content="content for org ninety-nine",
+            organization_id=99,
+            owner_username="Org-99",
+            owner_domain="",
+            created_by="admin",
+            domain="test.com",
+        )
+
+        vm = create_vm_with_flow_input({"user_id": "alice@test.com", "team": [99]})
+        node = MemoryReadNode(vm)
+        node_config = build_node_config(memory_space_id=team_space.id)
+
+        result = node.execute("mem_read_1", node_config, {"last_message": "query"})
+
+        assert "content for org ninety-nine" in result.get("memory_context", "")
+
+    def test_team_read_falls_back_to_memory_space_team_when_no_flow_input_team(self, db):
+        """Team read falls back to memory_space.team[0] when flow_input.team is absent."""
+        from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
+
+        team_space = MemorySpace.objects.create(
+            name="Fallback Team Space",
+            team=[7],
+            scope=MemorySpace.SCOPE_TEAM,
+            created_by="admin",
+            domain="test.com",
+        )
+        Memory.objects.create(
+            memory_space=team_space,
+            title="Org7 Memory",
+            content="content for org seven",
+            organization_id=7,
+            owner_username="Org-7",
+            owner_domain="",
+            created_by="admin",
+            domain="test.com",
+        )
+
+        vm = create_variable_manager("alice@test.com")
+        node = MemoryReadNode(vm)
+        node_config = build_node_config(memory_space_id=team_space.id)
+
+        result = node.execute("mem_read_1", node_config, {"last_message": "query"})
+
+        assert "content for org seven" in result.get("memory_context", "")

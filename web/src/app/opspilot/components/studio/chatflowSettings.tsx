@@ -18,6 +18,7 @@ const nodeCategories = [
     labelKey: 'chatflow.triggers',
     items: [
       { type: 'celery', icon: 'a-icon-dingshichufa1x', labelKey: 'chatflow.celery' },
+      { type: 'nats', icon: 'WebSphereMQ', labelKey: 'chatflow.nats' },
       { type: 'restful', icon: 'RESTfulAPI', labelKey: 'chatflow.restful' },
       { type: 'openai', icon: 'icon-test2', labelKey: 'chatflow.openai' },
       { type: 'agui', icon: 'huifu-copy', labelKey: 'chatflow.agui' },
