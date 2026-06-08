@@ -322,11 +322,21 @@ def _load_extra(tmp_path, monkeypatch, install_apps=""):
     """Load config/components/extra.py with cwd set to tmp_path.
 
     extra.py uses Path.cwd() after wiring, so we change cwd to tmp_path.
+    Also prepends tmp_path to sys.path so that __import__ calls inside extra.py
+    (e.g. ``__import__("apps.license_mgmt.config")``) resolve against the temp
+    package tree rather than the real server package.
     """
     import types as _types
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("INSTALL_APPS", install_apps)
+
+    # Prepend tmp_path so __import__ inside extra.py finds the temp packages first.
+    monkeypatch.syspath_prepend(str(tmp_path))
+    # Drop any stale apps.* entries so Python doesn't return the cached real package.
+    for key in list(sys.modules):
+        if key == "apps" or key.startswith("apps."):
+            monkeypatch.delitem(sys.modules, key, raising=False)
 
     # Provide config.components.enterprise with real implementations
     ent_mock = _types.ModuleType("config.components.enterprise")
@@ -348,9 +358,10 @@ class TestExtraPyEnterpriseWiring:
         with pytest.raises(EnterpriseFootprintError):
             _load_extra(tmp_path, monkeypatch, install_apps="core")
 
-    def test_license_mgmt_added_to_explicit_install_apps_when_footprint_present(self, tmp_path, monkeypatch):
-        """When enterprise footprint + license_mgmt present and INSTALL_APPS is explicit,
-        license_mgmt must be injected into install_apps."""
+    def test_explicit_mode_imports_license_mgmt_config_when_footprint_present(self, tmp_path, monkeypatch):
+        """When INSTALL_APPS is explicit (doesn't name license_mgmt) and enterprise footprint +
+        license_mgmt are both present, extra.py must inject license_mgmt into the app list so
+        that its config.py is actually imported and its settings appear on the module."""
         _make_apps(
             tmp_path,
             {
@@ -358,11 +369,33 @@ class TestExtraPyEnterpriseWiring:
                 "license_mgmt": ["__init__.py"],
             },
         )
-        mod = _load_extra(tmp_path, monkeypatch, install_apps="core,other_app")
-        assert "license_mgmt" in mod.install_apps.split(",")
+        # Sentinel setting that only appears if license_mgmt/config.py is imported.
+        (tmp_path / "apps" / "license_mgmt" / "config.py").write_text("LICENSE_MGMT_CONFIG_LOADED = True\n")
+        (tmp_path / "apps" / "core" / "__init__.py").write_text("")
 
-    def test_license_mgmt_not_added_when_install_apps_empty(self, tmp_path, monkeypatch):
-        """When INSTALL_APPS is empty (auto-discovery mode), extra.py must not modify install_apps."""
+        # install_apps lists "core" only — license_mgmt must be injected by enterprise wiring.
+        mod = _load_extra(tmp_path, monkeypatch, install_apps="core")
+
+        assert (
+            getattr(mod, "LICENSE_MGMT_CONFIG_LOADED", False) is True
+        ), "license_mgmt/config.py was not imported: enterprise wiring failed to inject license_mgmt"
+
+    def test_explicit_mode_skips_license_mgmt_config_when_no_footprint(self, tmp_path, monkeypatch):
+        """Without enterprise footprint, license_mgmt is NOT injected into an explicit INSTALL_APPS
+        list, so its config.py must not be imported even if the directory exists."""
+        _make_apps(tmp_path, {"license_mgmt": ["__init__.py"]})
+        (tmp_path / "apps" / "license_mgmt" / "config.py").write_text("LICENSE_MGMT_CONFIG_LOADED = True\n")
+
+        # "other_app" explicit list, no enterprise footprint → no injection.
+        mod = _load_extra(tmp_path, monkeypatch, install_apps="other_app")
+
+        assert (
+            getattr(mod, "LICENSE_MGMT_CONFIG_LOADED", False) is False
+        ), "license_mgmt/config.py must not be imported when there is no enterprise footprint"
+
+    def test_auto_discovery_mode_preserved_when_footprint_present(self, tmp_path, monkeypatch):
+        """When INSTALL_APPS is empty (auto-discovery), extra.py must not block normal config
+        discovery — license_mgmt/config.py is still imported via the standard app iteration."""
         _make_apps(
             tmp_path,
             {
@@ -370,11 +403,10 @@ class TestExtraPyEnterpriseWiring:
                 "license_mgmt": ["__init__.py"],
             },
         )
+        (tmp_path / "apps" / "license_mgmt" / "config.py").write_text("LICENSE_MGMT_CONFIG_LOADED = True\n")
+        (tmp_path / "apps" / "core" / "__init__.py").write_text("")
+
         mod = _load_extra(tmp_path, monkeypatch, install_apps="")
-        assert mod.install_apps == ""
 
-    def test_no_error_when_no_enterprise_footprint(self, tmp_path, monkeypatch):
-        """Community edition (no enterprise content) loads without error."""
-        _make_apps(tmp_path, {"myapp": []})
-        mod = _load_extra(tmp_path, monkeypatch, install_apps="myapp")
-        assert "license_mgmt" not in mod.install_apps
+        # In auto-discovery mode all apps are iterated; license_mgmt/config.py is found normally.
+        assert getattr(mod, "LICENSE_MGMT_CONFIG_LOADED", False) is True, "auto-discovery mode must not block license_mgmt/config.py import"
