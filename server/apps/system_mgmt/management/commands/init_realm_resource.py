@@ -1,4 +1,4 @@
-import json
+﻿import json
 import logging
 import os
 from copy import deepcopy
@@ -15,6 +15,9 @@ class Command(BaseCommand):
     help = "初始化Realm资源数据"
 
     def handle(self, *args, **options):
+        # Resolve install_apps before the file-read loop so EnterpriseFootprintError
+        # propagates immediately instead of being swallowed by the per-file try/except.
+        install_apps = get_install_apps()
         menu_dir = "support-files/system_mgmt/menus"
         MENUS = []
         for root, dirs, files in os.walk(menu_dir):
@@ -24,7 +27,7 @@ class Command(BaseCommand):
                     try:
                         with open(file_path, "r", encoding="utf-8") as f:
                             menu_data = json.load(f)
-                            menu_data = extend_menus_by_install_apps(menu_data, get_install_apps())
+                            menu_data = extend_menus_by_install_apps(menu_data, install_apps)
                             MENUS.append(menu_data)
                     except Exception as e:
                         logger.error(f"Error reading {file_path}: {e}")
