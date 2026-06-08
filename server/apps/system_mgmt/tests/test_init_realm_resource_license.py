@@ -57,3 +57,15 @@ class TestGetInstallAppsLicense:
         assert "cmdb" in result
         assert "monitor" in result
         assert "license_mgmt" in result
+
+    def test_explicit_install_apps_license_mgmt_discarded_without_enterprise_footprint(self, monkeypatch):
+        """INSTALL_APPS=license_mgmt must be discarded when there is no enterprise footprint.
+
+        Regression: get_install_apps() was preserving the explicit value from os.getenv
+        without gating it on enterprise status, inconsistent with app.py Task 2 behaviour.
+        """
+        status = EnterpriseFootprintStatus(enterprise_apps=[], license_mgmt_present=True)
+        monkeypatch.setenv("INSTALL_APPS", "license_mgmt")
+        with patch(_DETECTOR_PATH, return_value=status):
+            result = _get_install_apps()()
+        assert "license_mgmt" not in result, "get_install_apps() must discard explicit license_mgmt when there is no enterprise footprint"

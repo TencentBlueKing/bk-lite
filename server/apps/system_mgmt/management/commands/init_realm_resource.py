@@ -64,6 +64,10 @@ def get_install_apps() -> set[str]:
         )
     if status.should_enable_license_mgmt:
         apps.add("license_mgmt")
+    else:
+        # Discard any explicit license_mgmt when there is no enterprise footprint,
+        # consistent with the gating in app.py (Task 2).
+        apps.discard("license_mgmt")
     return apps
 
 
