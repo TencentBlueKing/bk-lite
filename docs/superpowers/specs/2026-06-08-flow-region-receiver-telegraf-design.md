@@ -52,7 +52,6 @@ Flow 插件实例只负责维护资产和映射关系，不创建 Flow child tom
 {
   "1:10.0.0.12": {
     "instance_id": "flow-device-1",
-    "monitor_instance_id": "('flow-device-1',)",
     "instance_type": "switch",
     "fallback_sampling_rate": 1000,
     "protocols": ["netflow", "sflow"]
@@ -64,7 +63,6 @@ Flow 插件实例只负责维护资产和映射关系，不创建 Flow child tom
 
 - 映射 key 格式为 `{cloud_region_id}:{device_ip}`。
 - `instance_id` 是写入指标 tag 的逻辑实例值，例如 `flow-device-1`。
-- `monitor_instance_id` 是数据库中的实例存储 ID，例如 `('flow-device-1',)`。
 - 生成映射时应使用现有实例 ID 解析逻辑，将数据库存储 ID 转为逻辑实例值。代码里已有类似逻辑：`parse_instance_id(instance.id)[0]`。
 
 ## 刷新目标
@@ -166,8 +164,8 @@ Flow 资产操作不应只因为刷新 Telegraf env_config 失败而失败。
 4. 同云区域多个容器节点都会被刷新。
 5. 合并 `FLOW_ASSET_MAP_JSON` 时保留基础配置原有 `env_config`。
 6. 云区域没有容器节点或没有 Telegraf 基础配置时记录日志且不抛错。
-7. 资产映射包含 `instance_id`、`monitor_instance_id`、`instance_type`、`fallback_sampling_rate`、`protocols`。
-8. `instance_id` 使用逻辑实例值，`monitor_instance_id` 使用数据库存储 ID。
+7. 资产映射包含 `instance_id`、`instance_type`、`fallback_sampling_rate`、`protocols`。
+8. `instance_id` 使用逻辑实例值。
 9. Processor 的采样率优先级和兜底逻辑有测试覆盖。
 
 ## 不做的事情
