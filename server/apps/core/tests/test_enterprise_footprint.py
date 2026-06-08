@@ -237,3 +237,144 @@ class TestRequireEnterpriseLicenseManagement:
         )
         with pytest.raises(RuntimeError):
             require_enterprise_license_management(base_dir=base)
+
+
+# ---------------------------------------------------------------------------
+# app.py enterprise wiring
+# ---------------------------------------------------------------------------
+
+_APP_MODULE_PATH = pathlib.Path(__file__).resolve().parent.parent.parent.parent / "config" / "components" / "app.py"
+
+
+def _load_app(tmp_path, monkeypatch, install_apps="", debug=False):
+    """Load config/components/app.py with BASE_DIR pointing to tmp_path.
+
+    Mocks the two dependencies that would otherwise require a full Django
+    environment: config.components.base and config.components.enterprise.
+    The real enterprise functions from the already-loaded _mod are reused.
+    """
+    import types as _types
+
+    # Mock config.components.base
+    base_mock = _types.ModuleType("config.components.base")
+    base_mock.BASE_DIR = tmp_path
+    base_mock.DEBUG = debug
+    monkeypatch.setitem(sys.modules, "config", _types.ModuleType("config"))
+    monkeypatch.setitem(sys.modules, "config.components", _types.ModuleType("config.components"))
+    monkeypatch.setitem(sys.modules, "config.components.base", base_mock)
+
+    # Mock config.components.enterprise with real implementations
+    ent_mock = _types.ModuleType("config.components.enterprise")
+    ent_mock.require_enterprise_license_management = _mod.require_enterprise_license_management
+    ent_mock.detect_enterprise_footprint = _mod.detect_enterprise_footprint
+    monkeypatch.setitem(sys.modules, "config.components.enterprise", ent_mock)
+
+    monkeypatch.setenv("INSTALL_APPS", install_apps)
+
+    unique_name = f"_app_under_test_{id(tmp_path)}"
+    spec = importlib.util.spec_from_file_location(unique_name, _APP_MODULE_PATH)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class TestAppPyEnterpriseWiring:
+    def test_raises_when_footprint_without_license_mgmt(self, tmp_path, monkeypatch):
+        """app.py must refuse to start when enterprise content exists but license_mgmt is absent."""
+        _make_apps(tmp_path, {"core": ["enterprise/license_filter.py"]})
+        with pytest.raises(EnterpriseFootprintError):
+            _load_app(tmp_path, monkeypatch)
+
+    def test_no_error_when_no_enterprise_footprint(self, tmp_path, monkeypatch):
+        """Community edition without any enterprise content starts normally."""
+        _make_apps(tmp_path, {"console_mgmt": ["enterprise/__init__.py"]})
+        mod = _load_app(tmp_path, monkeypatch)
+        assert "apps.license_mgmt" not in mod.INSTALLED_APPS
+
+    def test_license_mgmt_in_installed_apps_when_footprint_and_license_present(self, tmp_path, monkeypatch):
+        """apps.license_mgmt is added to INSTALLED_APPS when enterprise footprint and license_mgmt dir exist."""
+        _make_apps(
+            tmp_path,
+            {
+                "core": ["enterprise/license_filter.py"],
+                "license_mgmt": ["__init__.py"],
+            },
+        )
+        mod = _load_app(tmp_path, monkeypatch)
+        assert "apps.license_mgmt" in mod.INSTALLED_APPS
+
+    def test_license_mgmt_not_added_when_no_footprint(self, tmp_path, monkeypatch):
+        """license_mgmt dir alone (no enterprise content) must NOT inject the license middleware."""
+        _make_apps(tmp_path, {"license_mgmt": ["__init__.py"]})
+        mod = _load_app(tmp_path, monkeypatch)
+        license_middleware = [mw for mw in mod.MIDDLEWARE if "license_mgmt" in mw]
+        assert license_middleware == [], f"Unexpected license middleware: {license_middleware}"
+
+
+# ---------------------------------------------------------------------------
+# extra.py enterprise wiring
+# ---------------------------------------------------------------------------
+
+_EXTRA_MODULE_PATH = pathlib.Path(__file__).resolve().parent.parent.parent.parent / "config" / "components" / "extra.py"
+
+
+def _load_extra(tmp_path, monkeypatch, install_apps=""):
+    """Load config/components/extra.py with cwd set to tmp_path.
+
+    extra.py uses Path.cwd() after wiring, so we change cwd to tmp_path.
+    """
+    import types as _types
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("INSTALL_APPS", install_apps)
+
+    # Provide config.components.enterprise with real implementations
+    ent_mock = _types.ModuleType("config.components.enterprise")
+    ent_mock.require_enterprise_license_management = _mod.require_enterprise_license_management
+    ent_mock.detect_enterprise_footprint = _mod.detect_enterprise_footprint
+    monkeypatch.setitem(sys.modules, "config.components.enterprise", ent_mock)
+
+    unique_name = f"_extra_under_test_{id(tmp_path)}"
+    spec = importlib.util.spec_from_file_location(unique_name, _EXTRA_MODULE_PATH)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class TestExtraPyEnterpriseWiring:
+    def test_raises_when_footprint_without_license_mgmt(self, tmp_path, monkeypatch):
+        """extra.py must refuse to start when enterprise content exists but license_mgmt is absent."""
+        _make_apps(tmp_path, {"core": ["enterprise/license_filter.py"]})
+        with pytest.raises(EnterpriseFootprintError):
+            _load_extra(tmp_path, monkeypatch, install_apps="core")
+
+    def test_license_mgmt_added_to_explicit_install_apps_when_footprint_present(self, tmp_path, monkeypatch):
+        """When enterprise footprint + license_mgmt present and INSTALL_APPS is explicit,
+        license_mgmt must be injected into install_apps."""
+        _make_apps(
+            tmp_path,
+            {
+                "core": ["enterprise/license_filter.py"],
+                "license_mgmt": ["__init__.py"],
+            },
+        )
+        mod = _load_extra(tmp_path, monkeypatch, install_apps="core,other_app")
+        assert "license_mgmt" in mod.install_apps.split(",")
+
+    def test_license_mgmt_not_added_when_install_apps_empty(self, tmp_path, monkeypatch):
+        """When INSTALL_APPS is empty (auto-discovery mode), extra.py must not modify install_apps."""
+        _make_apps(
+            tmp_path,
+            {
+                "core": ["enterprise/license_filter.py"],
+                "license_mgmt": ["__init__.py"],
+            },
+        )
+        mod = _load_extra(tmp_path, monkeypatch, install_apps="")
+        assert mod.install_apps == ""
+
+    def test_no_error_when_no_enterprise_footprint(self, tmp_path, monkeypatch):
+        """Community edition (no enterprise content) loads without error."""
+        _make_apps(tmp_path, {"myapp": []})
+        mod = _load_extra(tmp_path, monkeypatch, install_apps="myapp")
+        assert "license_mgmt" not in mod.install_apps

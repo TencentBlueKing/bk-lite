@@ -1,9 +1,14 @@
 import os
+from pathlib import Path
+
+from config.components.enterprise import detect_enterprise_footprint, require_enterprise_license_management
 
 install_apps = os.getenv("INSTALL_APPS", "")
 
-# 企业版：如果 apps/license_mgmt 目录存在，强制加入
-if os.path.isdir(os.path.join("apps", "license_mgmt")):
+# 企业版：检测 enterprise footprint，拒绝无 license_mgmt 时启动，按需注入显式列表
+require_enterprise_license_management(Path.cwd())
+_enterprise_status = detect_enterprise_footprint(Path.cwd())
+if _enterprise_status.should_enable_license_mgmt:
     if install_apps:
         apps_set = {a.strip() for a in install_apps.split(",") if a.strip()}
         apps_set.add("license_mgmt")
