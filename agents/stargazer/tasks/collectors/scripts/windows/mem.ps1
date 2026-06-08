@@ -11,4 +11,8 @@ $result['mem'] = @{
     available_bytes = $freeBytes
     swap_total_bytes = $swapTotal
     swap_used_bytes = $swapUsed
+    swap_free_bytes = $swapFree
+    cached_bytes = 0
+    shared_bytes = 0
+    buffered_bytes = 0
 }
