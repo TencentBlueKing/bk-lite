@@ -8,8 +8,10 @@ foreach ($d in $disks) {
     $diskArr += @{
         mount = $d.DeviceID
         total_bytes = $total
+        free_bytes = $free
         used_bytes = $used
         used_percent = $pct
+        inodes_used_percent = 0
     }
 }
 $result['disk'] = $diskArr
