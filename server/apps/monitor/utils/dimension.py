@@ -115,6 +115,36 @@ def parse_instance_id(instance_id: Any) -> tuple:
     return (instance_id,)
 
 
+def normalize_instance_identity(instance_id: Any) -> dict:
+    """统一解析实例ID，兼容原始值与遗留的tuple字符串格式。
+
+    Args:
+        instance_id: 原始实例ID，支持裸字符串（如 "abc123"）或遗留tuple字符串（如 "('abc123',)"）
+
+    Returns:
+        包含以下键的字典：
+        - raw_input: 原始输入值
+        - logical_instance_value: 逻辑实例值（第一维）
+        - storage_instance_key: 存储键，格式为 "('value',)"
+
+    Raises:
+        ValueError: instance_id 为空或解析失败
+    """
+    if instance_id in (None, ""):
+        raise ValueError("instance_id is required")
+
+    parsed = parse_instance_id(instance_id)
+    if not parsed or parsed[0] in (None, ""):
+        raise ValueError(f"invalid instance_id: {instance_id}")
+
+    logical_value = str(parsed[0])
+    return {
+        "raw_input": instance_id,
+        "logical_instance_value": logical_value,
+        "storage_instance_key": extract_monitor_instance_id(parsed),
+    }
+
+
 def format_dimension_value(
     dimensions: dict,
     ordered_keys: list = None,

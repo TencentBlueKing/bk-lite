@@ -5,6 +5,8 @@ from apps.core.utils.safe_template import (
     build_sandboxed_env,
     check_dangerous_patterns,
     safe_render,
+    sanitize_template_context,
+    validate_template_variables,
 )
 
 
@@ -19,7 +21,7 @@ class TestCheckDangerousPatterns:
 
     def test_blocks_popen(self):
         with pytest.raises(TemplateSecurityError):
-            check_dangerous_patterns("popen('id')")
+            check_dangerous_patterns("{{ popen('id') }}")
 
     def test_blocks_import(self):
         with pytest.raises(TemplateSecurityError):
@@ -29,11 +31,16 @@ class TestCheckDangerousPatterns:
         check_dangerous_patterns("hello world 123")
 
     def test_allows_toml_content(self):
-        # SNMP TOML 内容不应包含任何危险模式（无 {{ }}）
+        # 纯文本配置片段不应因基础字符被误判
         snippet = '[[inputs.snmp.field]]\n  oid = ".1.3.6.1.2.1.1.3.0"\n  name = "sysUpTime"'
-        # 注意: 此内容含 [ 会被当前正则匹配，这是 check_dangerous_patterns 对 snippet 的预期行为
+        check_dangerous_patterns(snippet)
+
+    def test_allows_markdown_table_text(self):
+        check_dangerous_patterns("| 输入 | 意图 | 理由 |")
+
+    def test_blocks_filter_only_inside_expression(self):
         with pytest.raises(TemplateSecurityError):
-            check_dangerous_patterns(snippet)
+            check_dangerous_patterns("{{ name | upper }}")
 
 
 class TestSafeRender:
@@ -70,6 +77,7 @@ class TestBuildSandboxedEnv:
         env = build_sandboxed_env()
         tpl = env.from_string("{{ cycler.__init__.__globals__ }}")
         from jinja2.sandbox import SecurityError as JinjaSandboxError
+
         with pytest.raises((JinjaSandboxError, Exception)):
             tpl.render()
 
@@ -89,6 +97,11 @@ class TestBuildSandboxedEnv:
         tpl = env.from_string("{{ name | upper }}")
         assert tpl.render(name="hello") == "HELLO"
 
+    def test_default_filter_not_enabled_by_default(self):
+        env = build_sandboxed_env()
+        with pytest.raises(Exception, match="No filter named 'default'"):
+            env.from_string("{{ value | default('fallback', true) }}")
+
     def test_control_statements_work(self):
         env = build_sandboxed_env()
         tpl = env.from_string("{% for i in items %}{{ i }},{% endfor %}")
@@ -99,8 +112,38 @@ class TestBuildSandboxedEnv:
         # 即使传入对象，沙箱也会阻止访问 __globals__
         tpl = env.from_string("{{ obj.__class__.__mro__ }}")
         from jinja2.sandbox import SecurityError as JinjaSandboxError
+
         with pytest.raises(JinjaSandboxError):
             tpl.render(obj="test")
+
+    def test_blocks_public_callable_on_context_object(self):
+        env = build_sandboxed_env()
+
+        class Obj:
+            def dangerous(self):
+                return "called"
+
+        tpl = env.from_string("{{ obj.dangerous() }}")
+        from jinja2.sandbox import SecurityError as JinjaSandboxError
+        with pytest.raises(JinjaSandboxError):
+            tpl.render(obj=Obj())
+
+    def test_validate_template_variables_blocks_unapproved_names(self):
+        env = build_sandboxed_env()
+
+        with pytest.raises(TemplateSecurityError, match="未授权变量"):
+            validate_template_variables("{{ settings.SECRET_KEY }}", env, {"instance_id"})
+
+    def test_sanitize_template_context_converts_objects_to_strings(self):
+        class Obj:
+            secret = "hidden"
+
+            def __str__(self):
+                return "plain"
+
+        context = sanitize_template_context({"obj": Obj(), "items": [Obj()]})
+
+        assert context == {"obj": "plain", "items": ["plain"]}
 
     def test_real_world_telegraf_template(self):
         env = build_sandboxed_env(extra_filters={"to_toml": lambda d: str(d)})

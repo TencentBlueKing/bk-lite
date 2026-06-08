@@ -15,7 +15,7 @@ from apps.monitor.models import (
     MonitorObjectOrganizationRule,
     Metric,
 )
-from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.dimension import parse_instance_id, normalize_instance_identity
 from apps.monitor.utils.config_format import ConfigFormat
 from apps.monitor.utils.plugin_controller import Controller
 from apps.rpc.node_mgmt import NodeMgmt
@@ -31,6 +31,7 @@ class InstanceConfigService:
         "Pod": "pod_status_phase",
         "Node": "node_status_condition",
     }
+    _HOST_MONITOR_OBJECT_NAME = "Host"
 
     @staticmethod
     def _build_permission_data(actor_context):
@@ -305,7 +306,7 @@ class InstanceConfigService:
         return result
 
     @staticmethod
-    def get_instance_configs(collect_instance_id, actor_context=None):
+    def get_instance_configs(collect_instance_id, actor_context=None, monitor_plugin_id=None, collector=None, collect_type=None):
         """获取实例配置"""
 
         InstanceConfigService._ensure_instance_access(
@@ -314,7 +315,15 @@ class InstanceConfigService:
             require_operate=False,
         )
 
-        config_objs = CollectConfig.objects.filter(monitor_instance_id=collect_instance_id)
+        filter_kwargs = {"monitor_instance_id": collect_instance_id}
+        if monitor_plugin_id not in (None, ""):
+            filter_kwargs["monitor_plugin_id"] = monitor_plugin_id
+        if collector not in (None, ""):
+            filter_kwargs["collector"] = collector
+        if collect_type not in (None, ""):
+            filter_kwargs["collect_type"] = collect_type
+
+        config_objs = CollectConfig.objects.filter(**filter_kwargs)
 
         configs = []
 
@@ -487,9 +496,13 @@ class InstanceConfigService:
         Raises:
             BaseAppException: 当配置已存在时抛出异常
         """
-        # 格式化实例ID
+        # 格式化实例ID：优先使用 Host adapter 已计算好的 storage_instance_key，否则沿用旧逻辑
         for instance in instances:
-            instance["instance_id"] = str(tuple([instance["instance_id"]]))
+            storage_key = instance.get("storage_instance_key")
+            if storage_key:
+                instance["instance_id"] = storage_key
+            else:
+                instance["instance_id"] = str((instance["instance_id"],))
 
         # 检查已存在的实例（只需要查询 is_deleted 字段）
         instance_ids = [inst["instance_id"] for inst in instances]
@@ -626,6 +639,37 @@ class InstanceConfigService:
         return instance_objs, association_objs, instance_ids
 
     @staticmethod
+    def _should_use_host_identity_adapter(monitor_object_name: str) -> bool:
+        """判断当前监控对象是否为 Host，Host 接入需要 identity adapter 处理实例ID。"""
+        return monitor_object_name == InstanceConfigService._HOST_MONITOR_OBJECT_NAME
+
+    @staticmethod
+    def _prepare_host_identity_instances(instances: list) -> list:
+        """对 Host 实例列表应用 identity adapter，统一 storage/logical/raw 三层 ID。
+
+        Args:
+            instances: 原始实例列表，每个 instance 包含 instance_id 等字段
+
+        Returns:
+            enriched 实例列表，每个实例追加了
+            raw_instance_id / logical_instance_value / storage_instance_key
+            并将 instance_id 重写为 storage_instance_key
+        """
+        prepared = []
+        for instance in instances:
+            identity = normalize_instance_identity(instance.get("instance_id"))
+            prepared.append(
+                {
+                    **instance,
+                    "raw_instance_id": identity["raw_input"],
+                    "logical_instance_value": identity["logical_instance_value"],
+                    "storage_instance_key": identity["storage_instance_key"],
+                    "instance_id": identity["storage_instance_key"],
+                }
+            )
+        return prepared
+
+    @staticmethod
     def create_monitor_instance_by_node_mgmt(data, actor_context=None):
         """创建监控对象实例（支持同一实例ID多种采集方式）"""
         instances = data.get("instances", [])
@@ -648,10 +692,21 @@ class InstanceConfigService:
             actor_context,
         )
 
+        # 对 Host 对象应用 identity adapter，统一 storage/logical/raw 三层 ID
+        monitor_object = MonitorObject.objects.filter(id=monitor_object_id).only("id", "name").first()
+        monitor_object_name = monitor_object.name if monitor_object else ""
+        prepared_instances = sanitized_instances
+        if InstanceConfigService._should_use_host_identity_adapter(monitor_object_name):
+            try:
+                prepared_instances = InstanceConfigService._prepare_host_identity_instances(sanitized_instances)
+            except ValueError as e:
+                logger.error(f"实例识别失败: {e}")
+                raise BaseAppException(f"实例识别失败：{e}")
+
         # ============ 阶段1: 参数预校验与数据准备 ============
         try:
             new_instances, existing_instances, deleted_ids = InstanceConfigService._prepare_instances_for_creation(
-                sanitized_instances,
+                prepared_instances,
                 monitor_object_id,
                 collect_type,
                 collector,

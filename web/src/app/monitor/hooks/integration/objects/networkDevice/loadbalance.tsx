@@ -57,7 +57,9 @@ export const useLoadbalanceConfig = () => {
       default: ['instance_id']
     },
     collectTypes: {
-      'Loadbalance SNMP General': 'snmp'
+      'Loadbalance SNMP General': 'snmp',
+      'Loadbalance Flow NetFlow': 'netflow',
+      'Loadbalance Flow sFlow': 'sflow'
     }
   };
 };

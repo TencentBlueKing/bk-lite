@@ -22,10 +22,14 @@ from apps.opspilot.metis.llm.tools.redis.connection import normalize_redis_insta
 from apps.opspilot.models import KnowledgeBase, LLMModel, LLMSkill, SkillRequestLog, SkillTools, UserPin
 from apps.opspilot.serializers.llm_serializer import LLMModelSerializer, LLMSerializer, SkillRequestLogSerializer, SkillToolsSerializer
 from apps.opspilot.services.builtin_tools import (
+    BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
+    BUILTIN_MONITOR_TOOL_NAME,
     BUILTIN_MSSQL_TOOL_NAME,
     BUILTIN_MYSQL_TOOL_NAME,
     BUILTIN_ORACLE_TOOL_NAME,
     BUILTIN_REDIS_TOOL_NAME,
+    build_builtin_attachment_file_tool,
+    build_builtin_monitor_tool,
     build_builtin_mssql_tool,
     build_builtin_mysql_tool,
     build_builtin_oracle_tool,
@@ -582,6 +586,10 @@ class SkillToolsViewSet(AuthViewSet):
         response = super().list(request, *args, **kwargs)
         if isinstance(response.data, list):
             loader = LanguageLoader(app="opspilot", default_lang=getattr(request.user, "locale", "en") or "en")
+            if not any(item.get("name") == BUILTIN_ATTACHMENT_FILE_TOOL_NAME for item in response.data):
+                response.data.append(build_builtin_attachment_file_tool(loader))
+            if not any(item.get("name") == BUILTIN_MONITOR_TOOL_NAME for item in response.data):
+                response.data.append(build_builtin_monitor_tool(loader))
             if not any(item.get("name") == BUILTIN_REDIS_TOOL_NAME for item in response.data):
                 response.data.append(build_builtin_redis_tool(loader))
             if not any(item.get("name") == BUILTIN_MYSQL_TOOL_NAME for item in response.data):

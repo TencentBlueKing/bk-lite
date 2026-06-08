@@ -180,6 +180,7 @@ const attrRef = useRef<any>(null);
           >
             <Button
               type="link"
+              danger
               onClick={() => showDeleteConfirm({ attr_id: record.attr_id })}
             >
               {t('common.delete')}
@@ -245,6 +246,7 @@ const attrRef = useRef<any>(null);
       content: t('common.delConfirmCxt'),
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),
+      okButtonProps: { danger: true },
       centered: true,
       onOk() {
         return new Promise(async (resolve) => {

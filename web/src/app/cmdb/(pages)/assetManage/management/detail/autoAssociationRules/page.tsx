@@ -134,6 +134,7 @@ const AutoAssociationRulesPage: React.FC = () => {
     confirm({
       title: t('common.delConfirm'),
       content: t('common.delConfirmCxt'),
+      okButtonProps: { danger: true },
       onOk: async () => {
         await deleteModelAutoAssociationRule(modelId!, record.model_asst_id, record.rule_id);
         message.success(t('successfullyDeleted'));
@@ -266,6 +267,7 @@ const AutoAssociationRulesPage: React.FC = () => {
           <PermissionWrapper requiredPermissions={['Edit Model']} instPermissions={modelPermission}>
             <Button
               type="link"
+              danger
               onClick={() => handleDelete(record)}
             >
               {t('common.delete')}

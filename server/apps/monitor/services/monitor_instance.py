@@ -156,6 +156,10 @@ class InstanceSearch:
             raise BaseAppException("Monitor object default metric does not exist")
         return obj_metric_map
 
+    @staticmethod
+    def _project_instance_identity(qs):
+        return qs.only("id", "name", "cloud_region_id", "ip", "fallback_sampling_rate")
+
     def search(self):
         """特殊搜索接口，特殊对象不通用的查询条件"""
         objs_map = self.get_objs()
@@ -319,7 +323,7 @@ class InstanceSearch:
         # 去除重复
         qs = qs.distinct()
 
-        objs_map = {i.id: i for i in qs}
+        objs_map = {i.id: i for i in self._project_instance_identity(qs)}
         return objs_map
 
     def get_objs_v2(self):
@@ -339,7 +343,13 @@ class InstanceSearch:
         page_size = self.query_data.get("page_size", 10)
         start = (page - 1) * page_size
         end = start + page_size
-        results = qs[start:end]
+        results = self._project_instance_identity(qs)[start:end]
+        org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[obj.id for obj in results])
+        org_map = {}
+        for org in org_objs:
+            if org.monitor_instance_id not in org_map:
+                org_map[org.monitor_instance_id] = set()
+            org_map[org.monitor_instance_id].add(org.organization)
 
         return dict(
             count=count,
@@ -348,6 +358,10 @@ class InstanceSearch:
                     "instance_id": obj.id,
                     "instance_name": obj.name,
                     "instance_id_values": list(parse_instance_id(obj.id)),
+                    "cloud_region_id": obj.cloud_region_id,
+                    "ip": obj.ip,
+                    "fallback_sampling_rate": obj.fallback_sampling_rate,
+                    "organizations": list(org_map.get(obj.id, [])),
                 }
                 for obj in results
             ],

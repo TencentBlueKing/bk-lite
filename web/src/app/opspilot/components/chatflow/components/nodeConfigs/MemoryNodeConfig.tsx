@@ -1,8 +1,9 @@
-import React from 'react';
-import { Form, Select, Button } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import React, {useEffect} from 'react';
+import {Button, Form, InputNumber, Select} from 'antd';
+import {PlusOutlined} from '@ant-design/icons';
 import Link from 'next/link';
-import type { MemoryNodeConfigProps } from './types';
+import {filterModelOption, getModelOptionText, renderModelOptionLabel} from '@/app/opspilot/utils/modelOption';
+import type {MemoryNodeConfigProps} from './types';
 
 const { Option } = Select;
 
@@ -11,7 +12,33 @@ export const MemoryNodeConfig: React.FC<MemoryNodeConfigProps> = ({
   memorySpaces,
   loadingMemorySpaces,
   form,
+  nodeType,
+  llmModels = [],
+  loadingLlmModels = false,
 }) => {
+  const isWriteNode = nodeType === 'memory_write';
+  const selectedMemorySpaceId = Form.useWatch('memorySpace', form);
+  const selectedSpace = memorySpaces.find((s) => s.id === selectedMemorySpaceId);
+
+  // 当选择记忆空间时，自动设置默认模型（仅写入节点）
+  useEffect(() => {
+    if (isWriteNode && selectedSpace?.default_model) {
+      const currentModel = form.getFieldValue('llmModel');
+      // 只在没有选择模型时设置默认值
+      if (!currentModel) {
+        const defaultModelId = Number(selectedSpace.default_model);
+        const modelExists = llmModels.some((m) => m.id === defaultModelId);
+        if (modelExists) {
+          const model = llmModels.find((m) => m.id === defaultModelId);
+          form.setFieldsValue({
+            llmModel: defaultModelId,
+            llmModelName: model?.name || '',
+          });
+        }
+      }
+    }
+  }, [selectedSpace, isWriteNode, llmModels, form]);
+
   return (
     <>
       <div className="relative">
@@ -25,9 +52,20 @@ export const MemoryNodeConfig: React.FC<MemoryNodeConfigProps> = ({
             loading={loadingMemorySpaces}
             showSearch
             onChange={(memorySpaceId) => {
-              const selectedSpace = memorySpaces.find((s) => s.id === memorySpaceId);
-              if (selectedSpace) {
-                form.setFieldsValue({ memorySpaceName: selectedSpace.name });
+              const space = memorySpaces.find((s) => s.id === memorySpaceId);
+              if (space) {
+                form.setFieldsValue({ memorySpaceName: space.name });
+                // 写入节点：切换记忆空间时，自动设置该空间的默认模型
+                if (isWriteNode && space.default_model) {
+                  const defaultModelId = Number(space.default_model);
+                  const model = llmModels.find((m) => m.id === defaultModelId);
+                  if (model) {
+                    form.setFieldsValue({
+                      llmModel: defaultModelId,
+                      llmModelName: model.name,
+                    });
+                  }
+                }
               }
             }}
             filterOption={(input, option) =>
@@ -60,6 +98,47 @@ export const MemoryNodeConfig: React.FC<MemoryNodeConfigProps> = ({
       <Form.Item name="memorySpaceName" className="hidden">
         <input type="hidden" />
       </Form.Item>
+
+      {/* 写入节点显示模型选择器 */}
+      {isWriteNode && (
+        <>
+          <Form.Item
+            name="llmModel"
+            label={t('chatflow.nodeConfig.llmModel')}
+            tooltip={t('chatflow.nodeConfig.memoryWriteModelTooltip')}
+            rules={[{ required: true, message: t('chatflow.nodeConfig.pleaseSelectLlmModel') }]}
+          >
+            <Select
+              placeholder={t('chatflow.nodeConfig.pleaseSelectLlmModel')}
+              loading={loadingLlmModels}
+              showSearch
+              filterOption={filterModelOption}
+              onChange={(modelId) => {
+                const model = llmModels.find((m) => m.id === modelId);
+                form.setFieldsValue({ llmModelName: model?.name || '' });
+              }}
+            >
+              {llmModels.map((model) => (
+                <Option key={model.id} value={model.id} title={getModelOptionText(model)}>
+                  {renderModelOptionLabel(model)}
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item name="llmModelName" className="hidden">
+            <input type="hidden" />
+          </Form.Item>
+
+          <Form.Item
+            name="writeBatchSize"
+            label={t('chatflow.nodeConfig.memoryWriteBatchSize')}
+            tooltip={t('chatflow.nodeConfig.memoryWriteBatchSizeTooltip')}
+            rules={[{ required: true, message: t('chatflow.nodeConfig.pleaseEnterMemoryWriteBatchSize') }]}
+          >
+            <InputNumber min={1} max={500} precision={0} className="w-full" />
+          </Form.Item>
+        </>
+      )}
     </>
   );
 };

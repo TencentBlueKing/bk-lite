@@ -11,8 +11,8 @@ from apps.core.logger import cmdb_logger as logger
 class ConfigFileCollect(object):
     """配置文件采集即时触发协调器。"""
 
-    def __init__(self, task_id: int):
-        self.task = CollectModels.objects.get(id=task_id)
+    def __init__(self, task_id: int, task=None):
+        self.task = task or CollectModels.objects.get(id=task_id)
         self.params = dict(self.task.params or {})
         self.file_path = self.params.get("config_file_path", "")
 

@@ -130,6 +130,7 @@ const Associations: React.FC = () => {
           >
             <Button
               type="link"
+              danger
               onClick={() => showDeleteConfirm(record.model_asst_id)}
             >
               {t('common.delete')}
@@ -175,6 +176,7 @@ const Associations: React.FC = () => {
       content: t('common.delConfirmCxt'),
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),
+      okButtonProps: { danger: true },
       centered: true,
       onOk() {
         return new Promise(async (resolve) => {
@@ -204,6 +206,7 @@ const Associations: React.FC = () => {
       }),
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),
+      okButtonProps: { danger: true },
       centered: true,
       onOk() {
         return new Promise(async (resolve) => {

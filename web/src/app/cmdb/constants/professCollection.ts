@@ -92,6 +92,7 @@ export const ENTER_TYPE = {
 
 // 密码占位符，用于编辑时隐藏真实密码
 export const PASSWORD_PLACEHOLDER = '******';
+export const MAX_CREDENTIAL_POOL_SIZE = 3;
 
 export const K8S_FORM_INITIAL_VALUES = {
   instId: undefined,

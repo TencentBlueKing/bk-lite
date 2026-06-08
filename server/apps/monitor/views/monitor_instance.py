@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
@@ -17,6 +18,7 @@ from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.services.policy_source_cleanup import cleanup_policy_sources
+from apps.monitor.services.flow_onboarding import FlowOnboardingService
 from apps.monitor.services.metrics import Metrics as MetricsService
 from apps.monitor.utils.pagination import parse_page_params
 from apps.rpc.node_mgmt import NodeMgmt
@@ -316,8 +318,20 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             request.data.get("instance_ids", []),
             actor_context,
         )
-        MonitorInstance.objects.filter(id__in=instance_ids).update(is_deleted=True)
-        if request.data.get("clean_child_config"):
+        with transaction.atomic():
+            refresh_region_ids = list(
+                dict.fromkeys(
+                    MonitorInstance.objects.select_for_update()
+                    .filter(
+                        id__in=instance_ids,
+                        cloud_region_id__isnull=False,
+                        monitor_object__name__in=FlowOnboardingService.SUPPORTED_MONITOR_OBJECT_NAMES,
+                    )
+                    .exclude(enabled_protocols=[])
+                    .values_list("cloud_region_id", flat=True)
+                )
+            )
+            MonitorInstance.objects.filter(id__in=instance_ids).update(is_deleted=True)
             config_objs = CollectConfig.objects.filter(monitor_instance_id__in=instance_ids)
             child_configs, configs = [], []
             for config in config_objs:
@@ -332,7 +346,8 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             # 删除配置对象
             config_objs.delete()
 
-        MonitorObjectOrganizationRule.objects.filter(monitor_instance_id__in=instance_ids).delete()
+            MonitorObjectOrganizationRule.objects.filter(monitor_instance_id__in=instance_ids).delete()
+            FlowOnboardingService._schedule_region_refresh(*refresh_region_ids)
 
         cleanup_policy_sources(instance_ids)
 

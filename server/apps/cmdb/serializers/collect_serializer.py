@@ -3,9 +3,11 @@
 # @Time: 2025/3/3 13:58
 # @Author: windyzhao
 from rest_framework import serializers
+import copy
 
 from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes, PERMISSION_TASK
 from apps.cmdb.models.collect_model import CollectModels, OidMapping
+from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
 from apps.cmdb.utils.config_file_path import validate_absolute_path
 from apps.core.utils.serializers import UsernameSerializer, AuthSerializer
@@ -61,11 +63,16 @@ class CollectModelSerializer(AuthSerializer):
         """重写序列化输出"""
         representation = super().to_representation(instance)
         # 对返回的凭据中的密码字段进行脱敏处理
-        credential = instance.credential
+        credential = CollectCredentialPoolService.normalize_pool(copy.deepcopy(representation.get("credential")))
         encrypted_fields = get_collect_model_passwords(collect_model_id=instance.model_id, driver_type=instance.driver_type)
-        for encrypted_field in encrypted_fields:
-            if encrypted_field in credential:
-                credential[encrypted_field] = "******"
+        for item in credential:
+            if not isinstance(item, dict):
+                continue
+            for encrypted_field in encrypted_fields:
+                if encrypted_field in item:
+                    item[encrypted_field] = "******"
+
+        representation["credential"] = credential
 
         return representation
 

@@ -6,7 +6,10 @@ import {
   getFilterDefinitionId,
   getBindableFilterParams,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
-import dayjs from 'dayjs';
+import {
+  buildRelativeTimeRangeFilterValue,
+  normalizeTimeRangeFilterValue,
+} from '@/app/ops-analysis/utils/filterValue';
 
 export interface NamespaceOption {
   label: string;
@@ -163,9 +166,7 @@ export const buildFiltersFromNodes = (
       defaultValue = existing.defaultValue;
     } else if (param.value !== undefined && param.value !== null) {
       if (param.type === 'timeRange' && typeof param.value === 'number') {
-        const end = dayjs();
-        const start = end.subtract(param.value, 'minute');
-        defaultValue = { start: start.toISOString(), end: end.toISOString(), selectValue: param.value };
+        defaultValue = buildRelativeTimeRangeFilterValue(param.value);
       } else {
         defaultValue = param.value as FilterValue;
       }
@@ -198,18 +199,11 @@ export const syncFilterValuesWithDefinitions = (
     if (def.enabled && def.defaultValue !== null && def.defaultValue !== undefined) {
       if (updatedValues[def.id] === undefined || updatedValues[def.id] === null) {
         if (def.type === 'timeRange') {
-          const rawValue = def.defaultValue as unknown as Record<string, unknown>;
-          const selectValue = rawValue?.selectValue as number | undefined;
-          if (selectValue && selectValue > 0) {
-            const end = dayjs();
-            const start = end.subtract(selectValue, 'minute');
-            updatedValues[def.id] = {
-              start: start.toISOString(),
-              end: end.toISOString(),
-              selectValue,
-            };
-          } else {
-            updatedValues[def.id] = def.defaultValue;
+          const normalizedValue = normalizeTimeRangeFilterValue(
+            def.defaultValue,
+          );
+          if (normalizedValue) {
+            updatedValues[def.id] = normalizedValue;
           }
         } else {
           updatedValues[def.id] = def.defaultValue;
@@ -246,7 +240,20 @@ export const buildValueConfig = (
     if (values.conversionFactor !== undefined) valueConfig.conversionFactor = values.conversionFactor;
     if (values.decimalPlaces !== undefined) valueConfig.decimalPlaces = values.decimalPlaces;
   }
-  if (values.chartType === 'table' && values.tableConfig) {
+  if (values.chartType === 'gauge') {
+    valueConfig.selectedFields = values.selectedFields;
+    valueConfig.thresholdColors = values.thresholdColors;
+    if (values.unit !== undefined) valueConfig.unit = values.unit;
+    if (values.conversionFactor !== undefined) valueConfig.conversionFactor = values.conversionFactor;
+    if (values.decimalPlaces !== undefined) valueConfig.decimalPlaces = values.decimalPlaces;
+    if (values.gaugeMin !== undefined) valueConfig.gaugeMin = values.gaugeMin;
+    if (values.gaugeMax !== undefined) valueConfig.gaugeMax = values.gaugeMax;
+    if (values.gaugeShape !== undefined) valueConfig.gaugeShape = values.gaugeShape;
+  }
+  if (
+    (values.chartType === 'table' || values.chartType === 'eventTable') &&
+    values.tableConfig
+  ) {
     valueConfig.tableConfig = values.tableConfig;
   }
   if (values.chartType === 'topN') {

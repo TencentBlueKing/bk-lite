@@ -3,6 +3,7 @@ import importlib
 import json
 import ssl
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -23,7 +24,7 @@ from service.ansible_runner import (
     to_adhoc_request,
     to_playbook_request,
 )
-from service.task_store import TERMINAL_TASK_STATUSES, TaskStore
+from service.task_store import TERMINAL_TASK_STATUSES, TaskStore, _sanitize_payload_for_storage
 
 # logging.basicConfig(
 #     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -54,7 +55,15 @@ def _build_error(instance_id: str, result: str, error: str) -> bytes:
     ).encode("utf-8")
 
 
+def _build_queue_safe_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
+    sanitized = _sanitize_payload_for_storage(payload or {})
+    return sanitized or {}
+
+
 class AnsibleNATSService:
+    CALLBACK_PAYLOAD_MARGIN_BYTES = 4 * 1024
+    CALLBACK_RESULT_TEXT_MAX_CHARS = 8 * 1024
+
     def __init__(self, config: ServiceConfig):
         self.config = config
         self.workers: list[asyncio.Task] = []
@@ -63,6 +72,79 @@ class AnsibleNATSService:
     @staticmethod
     def _now_iso() -> str:
         return datetime.now(UTC).isoformat()
+
+    @classmethod
+    def _callback_request_size_bytes(cls, payload: dict[str, Any]) -> int:
+        request_payload = json.dumps({"args": [payload], "kwargs": {}}, ensure_ascii=False).encode("utf-8")
+        return len(request_payload)
+
+    @classmethod
+    def _truncate_callback_text(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        if len(value) <= cls.CALLBACK_RESULT_TEXT_MAX_CHARS:
+            return value
+        return value[: cls.CALLBACK_RESULT_TEXT_MAX_CHARS] + "\n...[truncated for callback]"
+
+    @classmethod
+    def _compact_callback_payload(cls, payload: dict[str, Any], max_bytes: int) -> dict[str, Any]:
+        callback_payload = deepcopy(payload)
+
+        if cls._callback_request_size_bytes(callback_payload) <= max_bytes:
+            return callback_payload
+
+        result_summary = callback_payload.get("result_summary")
+        if isinstance(result_summary, dict):
+            result_summary.pop("stdout_combined", None)
+            result_summary["callback_payload_truncated"] = True
+        if cls._callback_request_size_bytes(callback_payload) <= max_bytes:
+            return callback_payload
+
+        result = callback_payload.get("result")
+        if isinstance(result, list):
+            for item in result:
+                if not isinstance(item, dict):
+                    continue
+                for field in ("stdout", "stderr", "error_message"):
+                    item[field] = cls._truncate_callback_text(item.get(field, ""))
+        elif isinstance(result, str):
+            callback_payload["result"] = cls._truncate_callback_text(result)
+
+        callback_payload["error"] = cls._truncate_callback_text(callback_payload.get("error", ""))
+        if cls._callback_request_size_bytes(callback_payload) <= max_bytes:
+            return callback_payload
+
+        if isinstance(result, list):
+            for item in result:
+                if not isinstance(item, dict):
+                    continue
+                item["stdout"] = ""
+                item["stderr"] = ""
+                item["error_message"] = ""
+        elif isinstance(callback_payload.get("result"), str):
+            callback_payload["result"] = ""
+
+        if isinstance(result_summary, dict):
+            callback_payload["result_summary"] = {
+                key: result_summary[key]
+                for key in (
+                    "host_count",
+                    "output_truncated",
+                    "output_bytes_total",
+                    "output_bytes_retained",
+                    "output_max_bytes",
+                    "callback_payload_truncated",
+                )
+                if key in result_summary
+            }
+
+        callback_payload["callback_payload_truncated"] = True
+        return callback_payload
+
+    def _prepare_callback_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        max_payload = int(getattr(self.nc, "max_payload", 1024 * 1024) or 1024 * 1024)
+        max_bytes = max(1024, max_payload - self.CALLBACK_PAYLOAD_MARGIN_BYTES)
+        return self._compact_callback_payload(payload, max_bytes)
 
     @staticmethod
     def _build_accepted(task_id: str, duplicate: bool = False) -> bytes:
@@ -303,8 +385,18 @@ class AnsibleNATSService:
 
         timeout = int(callback.get("timeout", self.config.callback_timeout))
         request_payload = json.dumps({"args": [payload], "kwargs": {}}, ensure_ascii=False).encode("utf-8")
-
-        await self.nc.request(subject, request_payload, timeout=timeout)
+        response = await self.nc.request(subject, request_payload, timeout=timeout)
+        try:
+            response_payload = json.loads(response.data.decode("utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError("invalid JSON callback response") from exc
+        if not isinstance(response_payload, dict):
+            raise ValueError("non-object callback response")
+        if response_payload.get("success") is False:
+            raise RuntimeError(response_payload.get("message") or response_payload.get("error") or "callback request failed")
+        result_payload = response_payload.get("result")
+        if isinstance(result_payload, dict) and result_payload.get("success") is False:
+            raise RuntimeError(result_payload.get("message") or result_payload.get("error") or "callback handler failed")
         logger.info("callback sent: subject=%s task_id=%s", subject, payload.get("task_id"))
 
     async def _enqueue_callback_retry(self, callback: dict[str, Any], payload: dict[str, Any], reason: str):
@@ -320,68 +412,126 @@ class AnsibleNATSService:
             json.dumps(retry_payload, ensure_ascii=False).encode("utf-8"),
         )
 
-    async def _run_task(self, task: "QueuedTask", owner_id: str) -> dict[str, Any]:
-        workspace = None
-        code = -1
-        output = ""
-        error = ""
-        callback = task.callback
-        started_at = self._now_iso()
+    def _load_execution_payload(self, task: "QueuedTask") -> dict[str, Any]:
+        execution_payload = self.task_store.get_execution_payload(task.task_id)
+        if execution_payload:
+            return execution_payload
+        return task.payload
 
-        try:
-            if task.task_type == "adhoc":
-                request = to_adhoc_request(task.payload)
-                cmd, workspace = prepare_adhoc_execution(request)
-                code, output = await run_command(cmd, request.execute_timeout)
-            else:
-                request = to_playbook_request(task.payload)
-                cmd, workspace, prepared_request = await prepare_playbook_execution(self.config, request)
-                preflight_cmd = build_playbook_list_hosts_command(prepared_request)
-                await run_command(preflight_cmd, request.execute_timeout)
-                winrm_preflight_cmd = build_playbook_winrm_preflight_command(prepared_request)
-                await run_command(winrm_preflight_cmd, request.execute_timeout)
-                code, output = await run_command(cmd, request.execute_timeout)
-        except Exception as err:
-            error = str(err)
-        finally:
-            cleanup_workspace(workspace)
+    @staticmethod
+    def _build_task_dlq_payload(task: "QueuedTask", subject: str, error: str, delivered: int, timestamp: str) -> dict[str, Any]:
+        return {
+            "type": "task_execution",
+            "subject": subject,
+            "task_id": task.task_id,
+            "task_type": task.task_type,
+            "instance_id": task.instance_id,
+            "payload": _build_queue_safe_payload(task.payload),
+            "error": error,
+            "delivered": delivered,
+            "timestamp": timestamp,
+        }
 
+    @staticmethod
+    def _build_callback_retry_dlq_payload(data: dict[str, Any], error: str, delivered: int, timestamp: str) -> dict[str, Any]:
+        payload = data.get("payload") or {}
+        return {
+            "type": "callback_retry",
+            "task_id": data.get("task_id"),
+            "reason": data.get("reason", ""),
+            "callback": data.get("callback") or {},
+            "payload": payload,
+            "error": error,
+            "delivered": delivered,
+            "timestamp": timestamp,
+        }
+
+    @staticmethod
+    def _build_task_result(
+        task: "QueuedTask",
+        owner_id: str,
+        started_at: str,
+        code: int,
+        output: str,
+        output_meta: dict[str, Any],
+        error: str,
+    ) -> dict[str, Any]:
         success = code == 0 and not error
         if not success and not error:
             error = f"ansible {task.task_type} failed with exit code {code}"
 
-        parsed_results = parse_ansible_output_per_host(output) if output else []
-        if not parsed_results and output:
+        output_truncated = bool(output_meta.get("truncated"))
+        parsed_results = parse_ansible_output_per_host(output, output_truncated=output_truncated) if output else []
+        if not parsed_results and output and not output_truncated:
             parsed_results = parse_playbook_recap(output)
 
-        result = {
+        result_summary = {
+            "stdout_combined": output,
+            "host_count": len(parsed_results),
+            "output_truncated": output_truncated,
+            "output_bytes_total": int(output_meta.get("output_bytes_total", len(output.encode("utf-8")))),
+            "output_bytes_retained": int(output_meta.get("output_bytes_retained", len(output.encode("utf-8")))),
+            "output_max_bytes": int(output_meta.get("output_max_bytes", 0)),
+        }
+
+        return {
             "task_id": task.task_id,
             "task_type": task.task_type,
             "status": "success" if success else "failed",
             "success": success,
             "result": parsed_results if parsed_results else output,
-            "result_summary": {
-                "stdout_combined": output,
-                "host_count": len(parsed_results),
-            },
+            "result_summary": result_summary,
+            "output_truncated": output_truncated,
             "error": error,
             "started_at": started_at,
-            "finished_at": self._now_iso(),
+            "finished_at": AnsibleNATSService._now_iso(),
             "owner_id": owner_id,
         }
+
+    async def _run_task(self, task: "QueuedTask", owner_id: str) -> dict[str, Any]:
+        workspace = None
+        code = -1
+        output = ""
+        output_meta = {"truncated": False, "output_bytes_total": 0, "output_bytes_retained": 0, "output_max_bytes": 0}
+        error = ""
+        callback = task.callback
+        started_at = self._now_iso()
+        execution_payload = self._load_execution_payload(task)
+
+        try:
+            if task.task_type == "adhoc":
+                request = to_adhoc_request(execution_payload)
+                cmd, workspace = prepare_adhoc_execution(request)
+                code, output, output_meta = await run_command(cmd, request.execute_timeout)
+            else:
+                request = to_playbook_request(execution_payload)
+                cmd, workspace, prepared_request = await prepare_playbook_execution(self.config, request)
+                preflight_cmd = build_playbook_list_hosts_command(prepared_request)
+                _, _, _ = await run_command(preflight_cmd, request.execute_timeout)
+                winrm_preflight_cmd = build_playbook_winrm_preflight_command(prepared_request)
+                _, _, _ = await run_command(winrm_preflight_cmd, request.execute_timeout)
+                code, output, output_meta = await run_command(cmd, request.execute_timeout)
+        except Exception as err:
+            error = str(err)
+        finally:
+            cleanup_workspace(workspace)
+
+        result = self._build_task_result(task, owner_id, started_at, code, output, output_meta, error)
+        success = bool(result["success"])
         final_status = "success" if success else "failed"
         persisted = self.task_store.update_execution_result(task.task_id, final_status, result, self._now_iso(), owner_id=owner_id)
         if not persisted:
             raise RuntimeError(f"task lease lost before final update: {task.task_id}")
 
         if callback:
+            callback_payload = self._prepare_callback_payload(result)
             try:
-                await self._invoke_callback(callback, result)
+                await self._invoke_callback(callback, callback_payload)
                 self.task_store.update_callback_status(task.task_id, "sent", result, self._now_iso(), preserve_status=final_status)
             except Exception as callback_err:
                 result["callback_error"] = str(callback_err)
                 self.task_store.update_callback_status(task.task_id, "failed", result, self._now_iso(), preserve_status=final_status)
-                await self._enqueue_callback_retry(callback, result, str(callback_err))
+                await self._enqueue_callback_retry(callback, callback_payload, str(callback_err))
         else:
             self.task_store.update_callback_status(task.task_id, "none", result, self._now_iso(), preserve_status=final_status)
 
@@ -399,6 +549,7 @@ class AnsibleNATSService:
                 continue
 
             msg = msgs[0]
+            task = None
             try:
                 data = json.loads(msg.data.decode("utf-8"))
                 task = QueuedTask.from_json(data)
@@ -445,13 +596,16 @@ class AnsibleNATSService:
                 logger.exception("worker task failed worker=%s error=%s", worker_id, err)
                 meta = msg.metadata
                 if meta and meta.num_delivered >= self.config.js_max_deliver:
-                    dlq_payload = {
-                        "subject": msg.subject,
-                        "task": msg.data.decode("utf-8", errors="replace"),
-                        "error": str(err),
-                        "delivered": meta.num_delivered,
-                        "timestamp": self._now_iso(),
-                    }
+                    if task is not None:
+                        dlq_payload = self._build_task_dlq_payload(task, msg.subject, str(err), meta.num_delivered, self._now_iso())
+                    else:
+                        dlq_payload = {
+                            "type": "task_execution",
+                            "subject": msg.subject,
+                            "error": str(err),
+                            "delivered": meta.num_delivered,
+                            "timestamp": self._now_iso(),
+                        }
                     await self.nc.publish(
                         self.config.dlq_subject,
                         json.dumps(dlq_payload, ensure_ascii=False).encode("utf-8"),
@@ -471,6 +625,7 @@ class AnsibleNATSService:
                 continue
 
             msg = msgs[0]
+            data: dict[str, Any] = {}
             try:
                 data = json.loads(msg.data.decode("utf-8"))
                 callback = data.get("callback") or {}
@@ -483,18 +638,10 @@ class AnsibleNATSService:
             except Exception as err:
                 meta = msg.metadata
                 if meta and meta.num_delivered >= self.config.js_max_deliver:
+                    dlq_payload = self._build_callback_retry_dlq_payload(data, str(err), meta.num_delivered, self._now_iso())
                     await self.nc.publish(
                         self.config.dlq_subject,
-                        json.dumps(
-                            {
-                                "type": "callback_retry",
-                                "task": msg.data.decode("utf-8", errors="replace"),
-                                "error": str(err),
-                                "delivered": meta.num_delivered,
-                                "timestamp": self._now_iso(),
-                            },
-                            ensure_ascii=False,
-                        ).encode("utf-8"),
+                        json.dumps(dlq_payload, ensure_ascii=False).encode("utf-8"),
                     )
                     await msg.ack()
                 else:
@@ -541,7 +688,7 @@ class AnsibleNATSService:
         task = QueuedTask(
             task_id=task_id,
             task_type=task_type,
-            payload=payload,
+            payload=_build_queue_safe_payload(payload),
             callback=callback,
             instance_id=instance_id,
         )

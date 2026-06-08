@@ -136,7 +136,7 @@ class MonitorPluginService:
             )
             plugin_obj.monitor_object.add(monitor_obj)
 
-        old_groups = MetricGroup.objects.filter(monitor_object=monitor_obj)
+        old_groups = MetricGroup.objects.filter(monitor_object=monitor_obj, monitor_plugin=plugin_obj)
         old_groups_name = {i.name for i in old_groups}
 
         new_groups_name = {i["metric_group"] for i in metrics if i["metric_group"] not in old_groups_name}
@@ -150,7 +150,7 @@ class MonitorPluginService:
         ]
         MetricGroup.objects.bulk_create(create_metric_group, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
 
-        groups = MetricGroup.objects.filter(monitor_object=monitor_obj)
+        groups = MetricGroup.objects.filter(monitor_object=monitor_obj, monitor_plugin=plugin_obj)
         groups_map = {i.name: i.id for i in groups}
 
         metrics_to_update = []

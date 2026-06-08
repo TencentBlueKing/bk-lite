@@ -1,5 +1,5 @@
 import { ENTER_TYPE, PASSWORD_PLACEHOLDER } from '@/app/cmdb/constants/professCollection';
-import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
+import { CredentialPoolItem, TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import { BaseTaskRef } from '../components/baseTask';
 
 interface FormatTaskValuesOptions {
@@ -85,4 +85,48 @@ export const buildCredential = (
   });
 
   return credential;
+};
+
+export const normalizeCredentialPool = (
+  rawCredential: CredentialPoolItem | CredentialPoolItem[] | null | undefined
+): CredentialPoolItem[] => {
+  if (!rawCredential) {
+    return [];
+  }
+
+  if (Array.isArray(rawCredential)) {
+    return rawCredential.map((item) => ({ ...item }));
+  }
+
+  return [{ ...rawCredential }];
+};
+
+export const buildCredentialPool = (
+  rawItems: CredentialPoolItem[] = [],
+  normalizeItem: (item: CredentialPoolItem, index: number) => CredentialPoolItem
+): CredentialPoolItem[] => {
+  return rawItems
+    .filter((item) => item && typeof item === 'object')
+    .map((item, index) => {
+      const normalized = { ...normalizeItem(item, index) };
+      Object.keys(normalized).forEach((key) => {
+        if (key.startsWith('_')) {
+          delete normalized[key];
+        }
+      });
+      if (normalized.password === PASSWORD_PLACEHOLDER) {
+        delete normalized.password;
+      }
+      if (normalized.community === PASSWORD_PLACEHOLDER) {
+        delete normalized.community;
+      }
+      if (normalized.authkey === PASSWORD_PLACEHOLDER) {
+        delete normalized.authkey;
+      }
+      if (normalized.privkey === PASSWORD_PLACEHOLDER) {
+        delete normalized.privkey;
+      }
+      return normalized;
+    })
+    .filter((item) => Object.keys(item).length > 0);
 };

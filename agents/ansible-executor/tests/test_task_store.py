@@ -215,6 +215,30 @@ def test_create_if_absent_stores_sanitized_payload(tmp_path):
     assert task["payload"]["host_credentials"][0]["user"] == "root"
 
 
+def test_create_if_absent_preserves_execution_payload_for_worker_use(tmp_path):
+    store = TaskStore(str(tmp_path / "task.db"))
+    payload_with_creds = {
+        "task_id": "execution-payload-test",
+        "inventory_content": "[all]\n10.0.0.1 ansible_user=root ansible_password=secret\n",
+        "host_credentials": [
+            {"host": "10.0.0.1", "user": "root", "password": "secret"},
+        ],
+        "private_key_content": "-----BEGIN RSA PRIVATE KEY-----\nMIIE...",
+    }
+
+    store.create_if_absent(
+        "execution-payload-test",
+        "queued",
+        payload_with_creds,
+        {},
+        "2026-04-23T00:00:00+00:00",
+    )
+
+    execution_payload = store.get_execution_payload("execution-payload-test")
+
+    assert execution_payload == payload_with_creds
+
+
 def test_sensitive_credential_keys_is_comprehensive():
     """Verify all known sensitive patterns are in the constant."""
     expected_keys = {
@@ -224,5 +248,6 @@ def test_sensitive_credential_keys_is_comprehensive():
         "ansible_password",
         "ansible_ssh_passphrase",
         "ansible_become_password",
+        "inventory_content",
     }
     assert SENSITIVE_CREDENTIAL_KEYS == expected_keys

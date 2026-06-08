@@ -79,3 +79,172 @@
   overflow: hidden;
   word-break: break-all;
 }
+
+.credentialPoolEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.credentialPoolHint {
+  color: var(--color-text-3);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.credentialPoolList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.credentialDragHandle {
+  align-self: center;
+  color: #a3aabc;
+  cursor: move;
+  margin-right: 8px;
+  font-size: 16px;
+}
+
+.credentialCard {
+  flex: 1;
+  border: 1px solid #dfe5ef;
+  border-radius: 10px;
+  padding: 0 14px;
+  background: var(--color-bg-1, #fff);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.credentialCardExpanded {
+  border-color: #cdd9ec;
+  box-shadow: 0 6px 18px rgba(15, 35, 95, 0.05);
+}
+
+.credentialCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+}
+
+.credentialCardSummary {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.credentialTitle {
+  flex: 0 0 72px;
+  color: var(--color-text-1);
+  font-weight: 500;
+}
+
+.credentialMetaList {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.credentialMetaItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-2);
+  min-width: 0;
+}
+
+.credentialMetaLabel {
+  color: var(--color-text-2);
+}
+
+.credentialMetaValue {
+  color: var(--color-text-1);
+}
+
+.credentialMetaToggle {
+  color: #8b94a7 !important;
+  padding-inline: 4px !important;
+}
+
+.credentialActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.credentialCardBody {
+  border-top: 1px solid #eef2f7;
+  padding: 14px 0 16px;
+}
+
+.credentialFieldGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.credentialFieldRow {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.credentialFieldLabel {
+  color: var(--color-text-2);
+}
+
+.credentialFieldControl {
+  min-width: 0;
+}
+
+.credentialPoolFooter {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.credentialAddButton {
+  min-width: 190px;
+  border-style: dashed !important;
+  border-color: #cfd7e6 !important;
+  color: #6b7485 !important;
+  background: #fff !important;
+}
+
+@media (max-width: 960px) {
+  .credentialCardHeader {
+    align-items: flex-start;
+    padding: 10px 0;
+  }
+
+  .credentialCardSummary {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .credentialTitle {
+    flex-basis: auto;
+  }
+
+  .credentialMetaList {
+    gap: 12px;
+  }
+
+  .credentialPoolFooter {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .credentialAddButton {
+    width: 100%;
+  }
+}

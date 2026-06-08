@@ -1,15 +1,13 @@
 """Playbook序列化器"""
 
-import io
 import os
-import tarfile
-import zipfile
 
 import yaml
 from rest_framework import serializers
 
 from apps.core.utils.serializers import TeamSerializer
 from apps.job_mgmt.models import Playbook
+from apps.job_mgmt.utils.playbook_archive import enforce_archive_limits, open_archive, validate_archive_extension
 
 
 def parse_playbook_zip(file) -> dict:
@@ -27,15 +25,14 @@ def parse_playbook_zip(file) -> dict:
     """
     result = {"readme": "", "file_list": [], "params": []}
 
-    filename = file.name.lower()
-    file_content = file.read()
-    file.seek(0)  # 重置文件指针，以便后续保存
+    enforce_archive_limits(file)
 
     try:
-        if filename.endswith(".zip"):
-            result = _parse_zip(file_content)
-        elif filename.endswith((".tar.gz", ".tgz")):
-            result = _parse_tarball(file_content)
+        with open_archive(file) as (archive_type, archive):
+            if archive_type == "zip":
+                result = _parse_zip(archive)
+            else:
+                result = _parse_tarball(archive)
     except Exception:
         # 解析失败不影响上传，返回空结果
         pass
@@ -82,58 +79,55 @@ def _build_file_tree(paths: list) -> list:
     return convert_to_list(root)
 
 
-def _parse_zip(content: bytes) -> dict:
+def _parse_zip(archive) -> dict:
     """解析 ZIP 文件"""
     result = {"readme": "", "file_list": [], "params": []}
     paths = []
 
-    with zipfile.ZipFile(io.BytesIO(content)) as zf:
-        paths = zf.namelist()
+    paths = archive.namelist()
 
-        for name in zf.namelist():
-            lower_name = name.lower()
-            # 提取 README
-            if lower_name.endswith("readme.md") or lower_name.endswith("readme.txt"):
-                result["readme"] = zf.read(name).decode("utf-8", errors="ignore")
-            # 提取参数（从 defaults/main.yml 或 vars/main.yml）
-            elif lower_name.endswith(("defaults/main.yml", "defaults/main.yaml", "vars/main.yml", "vars/main.yaml")):
-                params = _extract_params_from_yaml(zf.read(name))
-                if params:
-                    result["params"].extend(params)
+    for name in archive.namelist():
+        lower_name = name.lower()
+        # 提取 README
+        if lower_name.endswith("readme.md") or lower_name.endswith("readme.txt"):
+            result["readme"] = archive.read(name).decode("utf-8", errors="ignore")
+        # 提取参数（从 defaults/main.yml 或 vars/main.yml）
+        elif lower_name.endswith(("defaults/main.yml", "defaults/main.yaml", "vars/main.yml", "vars/main.yaml")):
+            params = _extract_params_from_yaml(archive.read(name))
+            if params:
+                result["params"].extend(params)
 
     result["file_list"] = _build_file_tree(paths)
     return result
 
 
-def _parse_tarball(content: bytes) -> dict:
+def _parse_tarball(archive) -> dict:
     """解析 tar.gz/tgz 文件"""
     result = {"readme": "", "file_list": [], "params": []}
     paths = []
 
-    with tarfile.open(fileobj=io.BytesIO(content), mode="r:gz") as tf:
-        # 收集所有路径（文件和目录）
-        for member in tf.getmembers():
-            if member.isdir():
-                paths.append(member.name + "/")
-            else:
-                paths.append(member.name)
+    for member in archive.getmembers():
+        if member.isdir():
+            paths.append(member.name + "/")
+        else:
+            paths.append(member.name)
 
-        for member in tf.getmembers():
-            if not member.isfile():
-                continue
-            lower_name = member.name.lower()
-            # 提取 README
-            if lower_name.endswith("readme.md") or lower_name.endswith("readme.txt"):
-                f = tf.extractfile(member)
-                if f:
-                    result["readme"] = f.read().decode("utf-8", errors="ignore")
-            # 提取参数
-            elif lower_name.endswith(("defaults/main.yml", "defaults/main.yaml", "vars/main.yml", "vars/main.yaml")):
-                f = tf.extractfile(member)
-                if f:
-                    params = _extract_params_from_yaml(f.read())
-                    if params:
-                        result["params"].extend(params)
+    for member in archive.getmembers():
+        if not member.isfile():
+            continue
+        lower_name = member.name.lower()
+        # 提取 README
+        if lower_name.endswith("readme.md") or lower_name.endswith("readme.txt"):
+            f = archive.extractfile(member)
+            if f:
+                result["readme"] = f.read().decode("utf-8", errors="ignore")
+        # 提取参数
+        elif lower_name.endswith(("defaults/main.yml", "defaults/main.yaml", "vars/main.yml", "vars/main.yaml")):
+            f = archive.extractfile(member)
+            if f:
+                params = _extract_params_from_yaml(f.read())
+                if params:
+                    result["params"].extend(params)
 
     result["file_list"] = _build_file_tree(paths)
     return result
@@ -276,49 +270,40 @@ def extract_file_from_archive(file_obj, file_path: str) -> dict:
     Raises:
         ValueError: 文件不存在、路径非法、文件过大、二进制文件等
     """
-    filename = file_obj.name.lower()
-    file_content = file_obj.read()
-    file_obj.seek(0)  # 重置文件指针
+    enforce_archive_limits(file_obj)
 
     # 获取压缩包内所有文件路径
     valid_paths = []
-    if filename.endswith(".zip"):
-        with zipfile.ZipFile(io.BytesIO(file_content)) as zf:
-            valid_paths = [name for name in zf.namelist() if not name.endswith("/")]
-    elif filename.endswith((".tar.gz", ".tgz")):
-        with tarfile.open(fileobj=io.BytesIO(file_content), mode="r:gz") as tf:
-            valid_paths = [m.name for m in tf.getmembers() if m.isfile()]
+    with open_archive(file_obj) as (archive_type, archive):
+        if archive_type == "zip":
+            valid_paths = [name for name in archive.namelist() if not name.endswith("/")]
+        else:
+            valid_paths = [member.name for member in archive.getmembers() if member.isfile()]
 
-    # 验证路径安全性
     is_valid, error_msg = validate_file_path(file_path, valid_paths)
     if not is_valid:
         raise ValueError(error_msg)
 
-    # 提取文件内容
     extracted_content = None
     file_size = 0
 
-    if filename.endswith(".zip"):
-        with zipfile.ZipFile(io.BytesIO(file_content)) as zf:
-            info = zf.getinfo(file_path)
+    with open_archive(file_obj) as (archive_type, archive):
+        if archive_type == "zip":
+            info = archive.getinfo(file_path)
             file_size = info.file_size
 
-            # 检查文件大小
             if file_size > MAX_PREVIEW_SIZE:
                 raise ValueError(f"文件过大，不支持预览|{file_size}")
 
-            extracted_content = zf.read(file_path)
-
-    elif filename.endswith((".tar.gz", ".tgz")):
-        with tarfile.open(fileobj=io.BytesIO(file_content), mode="r:gz") as tf:
-            member = tf.getmember(file_path)
+            extracted_content = archive.read(file_path)
+        else:
+            member = archive.getmember(file_path)
             file_size = member.size
 
-            # 检查文件大小
             if file_size > MAX_PREVIEW_SIZE:
                 raise ValueError(f"文件过大，不支持预览|{file_size}")
 
-            f = tf.extractfile(member)
+            f = archive.extractfile(member)
             if f:
                 extracted_content = f.read()
 
@@ -401,11 +386,11 @@ class PlaybookCreateSerializer(serializers.Serializer):
         if not value:
             raise serializers.ValidationError("文件不能为空")
 
-        # 验证文件扩展名
-        filename = value.name
-        ext = os.path.splitext(filename)[1].lower()
-        if ext not in [".zip", ".tar.gz", ".tgz"]:
-            raise serializers.ValidationError("仅支持 .zip, .tar.gz, .tgz 格式的文件")
+        try:
+            validate_archive_extension(value.name)
+            enforce_archive_limits(value)
+        except ValueError as err:
+            raise serializers.ValidationError(str(err)) from err
 
         return value
 
@@ -473,10 +458,11 @@ class PlaybookUpgradeSerializer(serializers.Serializer):
         if not value:
             raise serializers.ValidationError("文件不能为空")
 
-        filename = value.name
-        ext = os.path.splitext(filename)[1].lower()
-        if ext not in [".zip", ".tar.gz", ".tgz"]:
-            raise serializers.ValidationError("仅支持 .zip, .tar.gz, .tgz 格式的文件")
+        try:
+            validate_archive_extension(value.name)
+            enforce_archive_limits(value)
+        except ValueError as err:
+            raise serializers.ValidationError(str(err)) from err
 
         return value
 

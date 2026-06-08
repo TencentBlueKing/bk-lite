@@ -65,9 +65,13 @@ export const useProviderApi = () => {
     await del(`/opspilot/model_provider_mgmt/model_vendor/${id}/`);
   };
 
-  const testVendorConnection = async (payload: TestVendorConnectionPayload): Promise<{ success: boolean }> => {
-    await post('/opspilot/model_provider_mgmt/model_vendor/test_connection/', payload);
-    return { success: true };
+  const testVendorConnection = async (payload: TestVendorConnectionPayload): Promise<{ success: boolean; message?: string }> => {
+    try {
+      await post('/opspilot/model_provider_mgmt/model_vendor/test_connection/', payload);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, message: err?.message };
+    }
   };
 
   const fetchModelGroups = async (_type: string, provider_type?: string): Promise<ModelGroup[]> => {

@@ -91,6 +91,7 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
       content: t('common.delConfirmCxt'),
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),
+      okButtonProps: { danger: true },
       centered: true,
       onOk() {
         return new Promise(async (resolve) => {

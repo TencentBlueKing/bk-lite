@@ -330,13 +330,15 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                           type="link"
                           size="small"
                           className="ml-[4px]"
-                          icon={<CheckOutlined />}
+                          aria-label={t('common.confirm')}
+                          icon={<CheckOutlined aria-hidden="true" />}
                           onClick={() => confirmEdit(item.key)}
                         />
                         <Button
                           type="link"
                           size="small"
-                          icon={<CloseOutlined />}
+                          aria-label={t('common.cancel')}
+                          icon={<CloseOutlined aria-hidden="true" />}
                           onClick={() => cancelEdit(item.key)}
                         />
                       </>
@@ -353,7 +355,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                           type="link"
                           size="small"
                           className="ml-[4px]"
-                          icon={<EditOutlined />}
+                          aria-label={t('common.edit')}
+                          icon={<EditOutlined aria-hidden="true" />}
                           onClick={() => enableEdit(item.key)}
                         />
                       </PermissionWrapper>
@@ -361,7 +364,8 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                     <Button
                       type="link"
                       size="small"
-                      icon={<CopyOutlined />}
+                      aria-label={t('common.copy')}
+                      icon={<CopyOutlined aria-hidden="true" />}
                       onClick={() => onCopy(item, item.value)}
                     />
                   </>

@@ -170,6 +170,35 @@
       "menus": []
     },
     {
+      "name": "security",
+      "role_name": "system-manager_security",
+      "menus": [
+        "user_group-View",
+        "user_group-Add User",
+        "user_group-Add Group",
+        "user_group-Edit User",
+        "user_group-Edit Group",
+        "user_group-Delete Group",
+        "user_group-Delete User",
+        "auth_sources-View",
+        "auth_sources-Add",
+        "auth_sources-Edit",
+        "auth_sources-Delete",
+        "security_settings-View",
+        "security_settings-Add",
+        "security_settings-Edit",
+        "security_settings-Delete"
+      ]
+    },
+    {
+      "name": "audit",
+      "role_name": "system-manager_audit",
+      "menus": [
+        "audit_log-View",
+        "error_logs-View"
+      ]
+    },
+    {
       "name": "normal",
       "role_name": "system-manager_normal",
       "menus": [

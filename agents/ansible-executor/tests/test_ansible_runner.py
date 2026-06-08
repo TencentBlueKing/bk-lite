@@ -1,11 +1,18 @@
+import sys
 import zipfile
 
 import pytest
-
 from core.config import ServiceConfig
 from service import ansible_runner
-from service.ansible_runner import _safe_extract_zip, _safe_workspace_path
-from service.ansible_runner import PlaybookRequest, prepare_playbook_execution
+from service.ansible_runner import (
+    PlaybookRequest,
+    _safe_extract_zip,
+    _safe_workspace_path,
+    parse_ansible_output_per_host,
+    parse_playbook_recap,
+    prepare_playbook_execution,
+    run_command,
+)
 
 
 def test_safe_workspace_path_rejects_parent_escape(tmp_path):
@@ -37,6 +44,44 @@ def test_safe_extract_zip_allows_regular_files(tmp_path):
         _safe_extract_zip(archive, workspace)
 
     assert (workspace / "nested" / "file.txt").read_text(encoding="utf-8") == "hello"
+
+
+def test_safe_extract_zip_rejects_too_many_members(tmp_path, monkeypatch):
+    archive_path = tmp_path / "payload.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("one.txt", "1")
+        archive.writestr("two.txt", "2")
+
+    monkeypatch.setattr(ansible_runner, "PLAYBOOK_ARCHIVE_MAX_MEMBERS", 1)
+
+    with zipfile.ZipFile(archive_path, "r") as archive:
+        with pytest.raises(ValueError, match="too many files"):
+            _safe_extract_zip(archive, tmp_path / "workspace")
+
+
+def test_safe_extract_zip_rejects_oversized_member(tmp_path, monkeypatch):
+    archive_path = tmp_path / "payload.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("large.txt", "abcdef")
+
+    monkeypatch.setattr(ansible_runner, "PLAYBOOK_ARCHIVE_MAX_MEMBER_SIZE_BYTES", 5)
+
+    with zipfile.ZipFile(archive_path, "r") as archive:
+        with pytest.raises(ValueError, match="exceeds size limit"):
+            _safe_extract_zip(archive, tmp_path / "workspace")
+
+
+def test_safe_extract_zip_rejects_oversized_expanded_total(tmp_path, monkeypatch):
+    archive_path = tmp_path / "payload.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("one.txt", "1234")
+        archive.writestr("two.txt", "5678")
+
+    monkeypatch.setattr(ansible_runner, "PLAYBOOK_ARCHIVE_MAX_EXPANDED_SIZE_BYTES", 7)
+
+    with zipfile.ZipFile(archive_path, "r") as archive:
+        with pytest.raises(ValueError, match="expanded size exceeds limit"):
+            _safe_extract_zip(archive, tmp_path / "workspace")
 
 
 @pytest.mark.asyncio
@@ -133,3 +178,84 @@ async def test_prepare_playbook_execution_rejects_missing_explicit_zip_playbook_
 
     with pytest.raises(ValueError, match="ZIP 解压后未找到入口文件: bundle/playbook.yml"):
         await prepare_playbook_execution(config, request)
+
+
+@pytest.mark.asyncio
+async def test_run_command_returns_untruncated_output_for_small_payload():
+    code, output, output_meta = await run_command(
+        [sys.executable, "-c", "print('hello world')"],
+        timeout=10,
+        max_output_bytes=128,
+    )
+
+    assert code == 0
+    assert output.strip() == "hello world"
+    assert output_meta["truncated"] is False
+    assert output_meta["output_bytes_total"] == output_meta["output_bytes_retained"]
+
+
+@pytest.mark.asyncio
+async def test_run_command_truncates_oversized_output():
+    code, output, output_meta = await run_command(
+        [sys.executable, "-c", "import sys; sys.stdout.write('x' * 2048)"],
+        timeout=10,
+        max_output_bytes=128,
+    )
+
+    assert code == 0
+    assert len(output) == 128
+    assert output_meta["truncated"] is True
+    assert output_meta["output_bytes_total"] == 2048
+    assert output_meta["output_bytes_retained"] == 128
+    assert output_meta["output_max_bytes"] == 128
+
+
+def test_parse_playbook_recap_keeps_opening_brace_from_ok_line():
+    output = """
+PLAY [all] *********************************************************************
+
+TASK [debug] *******************************************************************
+ok: [10.10.41.149] => {
+    "msg": "Hello from playbook template"
+}
+
+PLAY RECAP *********************************************************************
+10.10.41.149 : ok=1 changed=0 unreachable=0 failed=0 skipped=0 rescued=0 ignored=0
+""".strip()
+
+    result = parse_playbook_recap(output)
+
+    assert result == [
+        {
+            "host": "10.10.41.149",
+            "status": "success",
+            "raw_status": "SUCCESS",
+            "stdout": "Hello from playbook template",
+            "stderr": "",
+            "exit_code": 0,
+            "error_message": "",
+        }
+    ]
+
+
+def test_parse_ansible_output_per_host_keeps_structured_result_when_output_is_truncated():
+    output = """[WARNING]: Platform linux on host 10.10.41.149 is using the discovered Python
+10.10.41.149 | CHANGED | rc=0 >>
+xx
+xx
+""".strip()
+
+    result = parse_ansible_output_per_host(output, output_truncated=True)
+
+    assert result == [
+        {
+            "host": "10.10.41.149",
+            "status": "success",
+            "raw_status": "CHANGED",
+            "stdout": "[WARNING]: Platform linux on host 10.10.41.149 is using the discovered Python\nxx\nxx",
+            "stderr": "",
+            "exit_code": 0,
+            "error_message": "",
+            "output_truncated": True,
+        }
+    ]

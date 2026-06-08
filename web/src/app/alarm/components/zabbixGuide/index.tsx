@@ -16,6 +16,8 @@ import {
 
 interface ZabbixGuideProps {
   guide?: AlertSourceIntegrationGuide;
+  credentialsSlot?: React.ReactNode;
+  selectedTeamSecret?: string;
 }
 
 const sectionClassName = 'overflow-hidden rounded-[18px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)]';
@@ -54,6 +56,7 @@ interface ZabbixParameterRow {
   key: string;
   name: string;
   value: string;
+  displayValue: string;
   description?: string;
   required?: boolean;
   copyable?: boolean;
@@ -156,9 +159,38 @@ const renderCheckContent = (check?: IntegrationGuideVerificationCheck) => {
   );
 };
 
-const ZabbixGuide: React.FC<ZabbixGuideProps> = ({ guide }) => {
+const ZabbixGuide: React.FC<ZabbixGuideProps> = ({ guide, credentialsSlot, selectedTeamSecret }) => {
   const { t } = useTranslation();
   const { copy } = useCopy();
+
+  const sourceSecret = guide?.headers?.SECRET ? String(guide.headers.SECRET) : '';
+  const effectiveSecret = selectedTeamSecret || '';
+  const secretMasked = effectiveSecret ? '******************' : '';
+  const secretPlaceholder = '<' + t('integration.selectTeamPlaceholder') + '>';
+  const applyTeamSecret = (raw?: string) => {
+    if (!raw) return raw || '';
+    if (!effectiveSecret || !sourceSecret) return raw;
+    return raw.split(sourceSecret).join(effectiveSecret);
+  };
+
+  const sourceWebhookUrl = guide?.webhook_url ? String(guide.webhook_url) : '';
+  const browserOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const applyBrowserOrigin = (rawUrl?: string): string => {
+    if (!rawUrl) return '';
+    if (!browserOrigin) return rawUrl;
+    try {
+      const u = new URL(rawUrl);
+      return `${browserOrigin}${u.pathname}${u.search}${u.hash}`;
+    } catch {
+      return rawUrl;
+    }
+  };
+  const effectiveWebhookUrl = applyBrowserOrigin(sourceWebhookUrl);
+  const applyEffectiveWebhookUrl = (raw?: string) => {
+    if (!raw) return raw || '';
+    if (!sourceWebhookUrl || !effectiveWebhookUrl) return raw;
+    return raw.split(sourceWebhookUrl).join(effectiveWebhookUrl);
+  };
 
   const setupSteps = useMemo(() => {
     if (guide?.setup_steps?.length) {
@@ -213,26 +245,36 @@ const ZabbixGuide: React.FC<ZabbixGuideProps> = ({ guide }) => {
 
       if (!value) {
         if (name === 'URL') {
-          value = guide?.webhook_url || '';
+          value = effectiveWebhookUrl;
         } else if (name === 'SECRET') {
-          value = guide?.headers?.SECRET || '';
+          value = effectiveSecret;
         } else if (name === 'SOURCE_ID') {
           value = guide?.source_id || '';
         } else {
           value = fallbackValue;
         }
+      } else if (name === 'SECRET' && effectiveSecret && sourceSecret && value.includes(sourceSecret)) {
+        value = value.split(sourceSecret).join(effectiveSecret);
+      } else if (name === 'URL' && sourceWebhookUrl && value.includes(sourceWebhookUrl)) {
+        value = value.split(sourceWebhookUrl).join(effectiveWebhookUrl);
       }
+
+      const isSecretRow = name === 'SECRET';
+      const displayValue = isSecretRow
+        ? (effectiveSecret ? '******************' : secretPlaceholder)
+        : value;
 
       return {
         key: name,
         name,
         value,
+        displayValue,
         description: guidance?.description,
         required: guidance?.required,
-        copyable: Boolean(value),
+        copyable: isSecretRow ? Boolean(effectiveSecret) : Boolean(value),
       };
     });
-  }, [guide?.headers, guide?.source_id, guide?.webhook_url, parameterGuidance]);
+  }, [guide?.headers, guide?.source_id, guide?.webhook_url, parameterGuidance, effectiveSecret, sourceSecret, secretPlaceholder, effectiveWebhookUrl, sourceWebhookUrl]);
 
   const fieldMappings = useMemo(() => {
     if (guide?.field_mappings?.length) {
@@ -293,25 +335,44 @@ const ZabbixGuide: React.FC<ZabbixGuideProps> = ({ guide }) => {
     {
       key: 'webhook-url',
       label: t('integration.zabbixWebhookUrl'),
-      value: guide.webhook_url ? String(guide.webhook_url) : '',
+      value: effectiveWebhookUrl,
+      display: effectiveWebhookUrl,
       copyable: true,
+      masked: false,
     },
     {
       key: 'source-id',
       label: t('integration.zabbixSourceId'),
       value: guide.source_id ? String(guide.source_id) : '',
+      display: guide.source_id ? String(guide.source_id) : '',
       copyable: true,
+      masked: false,
     },
     {
       key: 'secret-header',
       label: t('integration.zabbixSecretHeader'),
-      value: guide.headers?.SECRET ? String(guide.headers.SECRET) : '',
-      copyable: true,
+      value: effectiveSecret,
+      display: effectiveSecret ? secretMasked : secretPlaceholder,
+      copyable: !!effectiveSecret,
+      masked: true,
     },
-  ].filter((item) => item.value);
+  ].filter((item) => item.masked || item.value);
 
   return (
     <div className="space-y-4 px-[10px] py-4 max-h-[calc(100vh-330px)] overflow-y-auto">
+      {credentialsSlot ? (
+        <section className={sectionClassName}>
+          <div className={sectionHeaderClassName}>
+            <div className="text-[16px] font-semibold leading-6 text-[var(--color-text-1)]">
+              {t('integration.credentialsAndExamples')}
+            </div>
+          </div>
+          <div className={sectionBodyClassName}>
+            {credentialsSlot}
+          </div>
+        </section>
+      ) : null}
+
       {guide.description ? (
         <Alert
           type="info"
@@ -354,11 +415,11 @@ const ZabbixGuide: React.FC<ZabbixGuideProps> = ({ guide }) => {
             {descriptionItems.map((item) => (
               <Descriptions.Item key={item.key} label={item.label}>
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="min-w-0 flex-1 break-all font-mono text-[13px] leading-6 text-[var(--color-text-1)]">
-                    {item.value}
+                  <span className={`min-w-0 flex-1 break-all font-mono text-[13px] leading-6 ${item.copyable ? 'text-[var(--color-text-1)]' : 'text-[var(--color-text-3)]'}`}>
+                    {item.display}
                   </span>
                   {item.copyable ? (
-                    <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => copy(item.value || '')} />
+                    <Button type="link" size="small" aria-label={t('common.copy')} icon={<CopyOutlined aria-hidden="true" />} onClick={() => copy(item.value || '')} />
                   ) : null}
                 </div>
               </Descriptions.Item>
@@ -371,7 +432,7 @@ const ZabbixGuide: React.FC<ZabbixGuideProps> = ({ guide }) => {
                     <span className="min-w-0 flex-1 break-all font-mono text-[13px] leading-6 text-[var(--color-text-1)]">
                       {String(value ?? '')}
                     </span>
-                    <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => copy(String(value || ''))} />
+                    <Button type="link" size="small" aria-label={t('common.copy')} icon={<CopyOutlined aria-hidden="true" />} onClick={() => copy(String(value || ''))} />
                   </div>
                 </Descriptions.Item>
               ))}
@@ -414,11 +475,11 @@ const ZabbixGuide: React.FC<ZabbixGuideProps> = ({ guide }) => {
                   </div>
                   <div className="min-w-0 px-4 py-3">
                     <div className="flex min-w-0 items-start gap-2">
-                      <span className="min-w-0 flex-1 break-all font-mono text-[13px] leading-6 text-[var(--color-text-1)]">
-                        {item.value || '--'}
+                      <span className={`min-w-0 flex-1 break-all font-mono text-[13px] leading-6 ${item.copyable ? 'text-[var(--color-text-1)]' : 'text-[var(--color-text-3)]'}`}>
+                        {item.displayValue || '--'}
                       </span>
                       {item.copyable ? (
-                        <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => copy(item.value)} />
+                        <Button type="link" size="small" aria-label={t('common.copy')} icon={<CopyOutlined aria-hidden="true" />} onClick={() => copy(item.value)} />
                       ) : null}
                     </div>
                     {item.description ? (
@@ -471,9 +532,12 @@ const ZabbixGuide: React.FC<ZabbixGuideProps> = ({ guide }) => {
           {guide.script_template ? (
             <div className={codeBlockClassName}>
               <pre className="overflow-x-auto pr-10 text-[13px] leading-6 text-[var(--color-text-1)] whitespace-pre-wrap break-all">
-                <code>{guide.script_template}</code>
+                <code>{applyEffectiveWebhookUrl(applyTeamSecret(guide.script_template))}</code>
               </pre>
-              <CopyOutlined className={copyIconClassName} onClick={() => copy(guide.script_template || '')} />
+              <CopyOutlined
+                className={effectiveSecret ? copyIconClassName : `${copyIconClassName} cursor-not-allowed`}
+                onClick={() => effectiveSecret && copy(applyEffectiveWebhookUrl(applyTeamSecret(guide.script_template)) || '')}
+              />
             </div>
           ) : (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('common.noData')} />

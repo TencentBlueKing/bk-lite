@@ -1,5 +1,5 @@
-import type { FormInstance, UploadFile, UploadProps } from 'antd';
-import type { LlmModel } from '@/app/opspilot/types/skill';
+import type {FormInstance, UploadFile, UploadProps} from 'antd';
+import type {LlmModel} from '@/app/opspilot/types/skill';
 
 export interface TranslationFunction {
   (key: string): string;
@@ -81,7 +81,10 @@ export type DingtalkNodeConfigProps = BaseNodeConfigProps;
 export type WechatOfficialNodeConfigProps = BaseNodeConfigProps;
 
 export interface MemoryNodeConfigProps extends BaseNodeConfigProps {
-  memorySpaces: Array<{ id: number; name: string; scope: 'personal' | 'team' }>;
+  memorySpaces: Array<{ id: number; name: string; scope: 'personal' | 'team'; default_model?: string }>;
   loadingMemorySpaces: boolean;
   form: FormInstance;
+  nodeType: 'memory_read' | 'memory_write';
+  llmModels?: LlmModel[];
+  loadingLlmModels?: boolean;
 }

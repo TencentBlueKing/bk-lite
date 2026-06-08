@@ -29,18 +29,18 @@ class JobCollect(object):
         return instance
 
     def collect_host(self):
-        data = HostCollect(self.task.id)()
+        data = HostCollect(self.task.id, task=self.task)()
         return data
 
     def collect_middleware(self):
-        data = MiddlewareCollect(self.task.id)()
+        data = MiddlewareCollect(self.task.id, task=self.task)()
         return data
 
     def collect_db(self):
-        return DBCollect(self.task.id)()
+        return DBCollect(self.task.id, task=self.task)()
 
     def collect_config_file(self):
-        return ConfigFileCollect(self.task.id)()
+        return ConfigFileCollect(self.task.id, task=self.task)()
 
     def main(self):
         return self.collect_manage[self.task.task_type]()

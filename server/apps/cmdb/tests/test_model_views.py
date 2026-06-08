@@ -129,7 +129,7 @@ def test_create_ok(superuser, monkeypatch):
 def test_list_models(superuser, monkeypatch):
     monkeypatch.setattr(
         f"{VIEWS}.ModelManage.search_model",
-        lambda language=None, permissions_map=None: [{"model_id": "host", "group": [1]}],
+        lambda language=None, permissions_map=None, **kwargs: [{"model_id": "host", "group": [1]}],
     )
     response = ModelViewSet.as_view({"get": "list"})(_req("get", superuser))
     assert _body(response)["data"][0]["model_id"] == "host"

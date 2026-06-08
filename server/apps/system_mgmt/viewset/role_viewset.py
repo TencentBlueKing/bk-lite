@@ -27,7 +27,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         return JsonResponse({"result": True, "data": list(data)})
 
     @action(detail=False, methods=["POST"])
-    @HasPermission("application_role-View")
+    @HasPermission("application_role-View,user_group-View")
     def get_role_tree(self, request):
         client_list = list(request.data.get("client_list", []))
         return_data = []

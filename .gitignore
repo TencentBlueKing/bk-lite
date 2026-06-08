@@ -37,8 +37,11 @@ code-reviews/
 **/enterprise/
 !/enterprise/
 !/enterprise/**
+!docs/changelog/release/enterprise/
+!docs/changelog/release/enterprise/**
 /web/enterprise
 /web/src/app/**/(enterprise)/
 .env.dev
 .sisyphus/*
 automation/
+.worktrees/

@@ -115,6 +115,7 @@ export const useHostConfig = () => {
     },
     collectTypes: {
       Host: 'host',
+      'Host Remote': 'http',
     },
   };
 };

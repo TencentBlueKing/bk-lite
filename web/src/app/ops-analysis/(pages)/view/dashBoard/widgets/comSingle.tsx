@@ -24,6 +24,7 @@ import {
   toComparableNumber,
 } from '@/app/ops-analysis/utils/compareQuery';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
+import { buildFallbackSparkline } from '@/app/ops-analysis/utils/singleValueSparkline';
 import { useTranslation } from '@/utils/i18n';
 
 const MAX_SPARKLINE_POINTS = 24;
@@ -119,23 +120,6 @@ const formatWithThousands = (value: string | number | null): string => {
   return parts.length > 1 ? `${intPart}.${parts[1]}` : intPart;
 };
 
-const hashSeed = (seedSource: string) => {
-  let hash = 2166136261;
-  for (let index = 0; index < seedSource.length; index += 1) {
-    hash ^= seedSource.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-};
-
-const createSeededRandom = (seedSource: string) => {
-  let seed = hashSeed(seedSource) || 1;
-  return () => {
-    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-    return seed / 0xffffffff;
-  };
-};
-
 const extractSparklineValues = (
   data: unknown,
   selectedField?: string,
@@ -167,48 +151,6 @@ const extractSparklineValues = (
     );
 
   return values.length > 1 ? limitSparklinePoints(values) : [];
-};
-
-const buildFallbackSparkline = (
-  baseValue: number | null,
-  baselineValue: number | null,
-  seedSource: string,
-): number[] => {
-  const resolvedBase = Math.abs(baseValue ?? baselineValue ?? 100) || 100;
-  const random = createSeededRandom(seedSource);
-  const amplitudeRatio = 0.055 + random() * 0.04;
-  const amplitude = Math.max(resolvedBase * amplitudeRatio, 8);
-  const drift =
-    baselineValue !== null && baseValue !== null
-      ? (baseValue - baselineValue) / Math.max(Math.abs(baselineValue), 1)
-      : 0;
-  const primaryFrequency = 4.6 + random() * 1.8;
-  const secondaryFrequency = 8.8 + random() * 3.2;
-  const primaryPhase = random() * Math.PI * 1.2;
-  const secondaryPhase = random() * Math.PI * 1.8;
-  const secondaryWeight = 0.2 + random() * 0.18;
-  const tertiaryWeight = 0.08 + random() * 0.1;
-  const tertiaryFrequency = 13 + random() * 4;
-  const tertiaryPhase = random() * Math.PI * 2;
-
-  return Array.from({ length: 24 }, (_, index) => {
-    const progress = index / 23;
-    const primaryWave = Math.sin(
-      progress * Math.PI * primaryFrequency + primaryPhase,
-    );
-    const secondaryWave =
-      Math.sin(progress * Math.PI * secondaryFrequency + secondaryPhase) *
-      secondaryWeight;
-    const tertiaryWave =
-      Math.sin(progress * Math.PI * tertiaryFrequency + tertiaryPhase) *
-      tertiaryWeight;
-    const trendOffset = drift * progress * amplitude * 1.4;
-    return (
-      resolvedBase +
-      amplitude * (primaryWave + secondaryWave + tertiaryWave) +
-      trendOffset
-    );
-  });
 };
 
 interface ComSingleProps {
@@ -417,6 +359,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
       Math.max(Math.round(valueFontSize * 0.38), heightDrivenCompareSize),
     ),
   );
+  const sparklineTrendColor = config?.compare ? compareTextColor : metricColor;
   const valueGap = displayUnit
     ? Math.max(4, Math.round(valueFontSize * 0.08))
     : 0;
@@ -427,10 +370,10 @@ const ComSingle: React.FC<ComSingleProps> = ({
     x2: 1,
     y2: 0,
     colorStops: [
-      { offset: 0, color: toAlphaColor(metricColor, 0.05) },
-      { offset: 0.18, color: toAlphaColor(metricColor, 0.46) },
-      { offset: 0.82, color: toAlphaColor(metricColor, 0.46) },
-      { offset: 1, color: toAlphaColor(metricColor, 0.05) },
+      { offset: 0, color: toAlphaColor(sparklineTrendColor, 0.05) },
+      { offset: 0.18, color: toAlphaColor(sparklineTrendColor, 0.46) },
+      { offset: 0.82, color: toAlphaColor(sparklineTrendColor, 0.46) },
+      { offset: 1, color: toAlphaColor(sparklineTrendColor, 0.05) },
     ],
   };
   const sparklineAreaColor = {
@@ -440,9 +383,9 @@ const ComSingle: React.FC<ComSingleProps> = ({
     x2: 0,
     y2: 1,
     colorStops: [
-      { offset: 0, color: toAlphaColor(metricColor, 0.2) },
-      { offset: 0.55, color: toAlphaColor(metricColor, 0.08) },
-      { offset: 1, color: toAlphaColor(metricColor, 0) },
+      { offset: 0, color: toAlphaColor(sparklineTrendColor, 0.2) },
+      { offset: 0.55, color: toAlphaColor(sparklineTrendColor, 0.08) },
+      { offset: 1, color: toAlphaColor(sparklineTrendColor, 0) },
     ],
   };
   const sparklineOption = useMemo(

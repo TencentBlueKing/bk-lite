@@ -13,6 +13,25 @@ from apps.opspilot.metis.llm.chain.node import ToolsNodes
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
 
 
+def extract_existing_final_report(messages: List[BaseMessage]) -> Optional[str]:
+    report_markers = (
+        "配置问题摘要",
+        "配置问题摘要报告",
+        "配置问题报告",
+        "Kubernetes 拓扑分析报告",
+    )
+
+    for message in reversed(messages or []):
+        if not isinstance(message, AIMessage):
+            continue
+        if getattr(message, "tool_calls", None):
+            continue
+        content = (getattr(message, "content", "") or "").strip()
+        if content and any(marker in content for marker in report_markers):
+            return content
+    return None
+
+
 class PlanAndExecuteAgentResponse(BasicLLMResponse):
     pass
 
@@ -242,8 +261,13 @@ class PlanAndExecuteAgentNode(ToolsNodes):
             logger.debug("[summary_node] 检测到已有总结，直接返回")
             return {**state}
 
-        # 收集执行历史消息（去重）
         messages = state.get("messages", [])
+        existing_report = extract_existing_final_report(messages)
+        if existing_report:
+            logger.debug("[summary_node] 检测到已有完整报告，直接复用")
+            return {"messages": [AIMessage(content=existing_report)], "final_response": existing_report}
+
+        # 收集执行历史消息（去重）
         seen_contents = set()
         execution_history = []
 

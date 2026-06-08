@@ -21,6 +21,7 @@ import CustomTable from '@/components/custom-table';
 import GroupTreeSelector from '@/components/group-tree-select';
 import PermissionWrapper from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import RefreshIconButton from '@/components/refresh-icon-button';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
 import { deepClone, getAssetColumns } from '@/app/cmdb/utils/common';
@@ -574,6 +575,7 @@ const AssetDataContent = () => {
       content: t('common.delConfirmCxt'),
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),
+      okButtonProps: { danger: true },
       centered: true,
       async onOk() {
         try {
@@ -841,7 +843,7 @@ const AssetDataContent = () => {
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Delete']} instPermissions={record.permission}>
-            <Button type="link" onClick={() => showDeleteConfirm(record)}>
+            <Button type="link" danger onClick={() => showDeleteConfirm(record)}>
               {t('common.delete')}
             </Button>
           </PermissionWrapper>
@@ -998,6 +1000,10 @@ const AssetDataContent = () => {
                   onChange={handleFilterBarChange}
                   onFilterChange={handleFilterBarChange}
                 />
+                <RefreshIconButton
+                  loading={loading}
+                  onClick={() => fetchData()}
+                />
               </Space>
             </div>
             {/* 右侧操作按钮 */}
@@ -1036,7 +1042,7 @@ const AssetDataContent = () => {
                   </Space>
                 </Button>
               </Dropdown>
-              <Button icon={<UnorderedListOutlined />} onClick={() => openSubscription('drawer')}>
+              <Button icon={<UnorderedListOutlined aria-hidden="true" />} onClick={() => openSubscription('drawer')}>
                 {t('subscription.dataSubscription')}
               </Button>
             </Space>
@@ -1046,22 +1052,22 @@ const AssetDataContent = () => {
               <Button type="primary">
                 <Space>
                   {t('common.addNew')}
-                  <DownOutlined />
+                  <DownOutlined aria-hidden="true" />
                 </Space>
               </Button>
               <Button>
                 <Space>
                   {t('export')}
-                  <DownOutlined />
+                  <DownOutlined aria-hidden="true" />
                 </Space>
               </Button>
               <Button>
                 <Space>
                   {t('more')}
-                  <DownOutlined />
+                  <DownOutlined aria-hidden="true" />
                 </Space>
               </Button>
-              <Button icon={<UnorderedListOutlined />}>
+              <Button icon={<UnorderedListOutlined aria-hidden="true" />}>
                 {t('subscription.dataSubscription')}
               </Button>
             </Space>

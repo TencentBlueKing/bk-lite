@@ -257,6 +257,7 @@ const IncidentDetail: React.FC = () => {
       content: `${t('common.confirm')}${t('alarmCommon.unlinkAlert')}`,
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),
+      okButtonProps: { danger: true },
       centered: true,
       onOk: async () => {
         const isRow = !!keys;
