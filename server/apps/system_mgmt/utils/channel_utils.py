@@ -280,13 +280,20 @@ def send_nats_message(channel_obj: Channel, content: dict):
     config = channel_obj.config
     namespace = config.get("namespace")
     method_name = config.get("method_name")
+    bot_id = config.get("bot_id")
+    node_id = config.get("node_id")
     timeout = config.get("timeout", 60)
 
     if not namespace or not method_name:
         return {"result": False, "message": "NATS channel config missing namespace or method_name"}
 
+    if bot_id is None or not node_id:
+        return {"result": False, "message": "NATS channel config missing bot_id or node_id"}
+
+    payload = {**content, "bot_id": bot_id, "node_id": node_id}
+
     try:
-        result = nats_client.request_sync(namespace, method_name, _timeout=timeout, _raw=True, **content)
+        result = nats_client.request_sync(namespace, method_name, _timeout=timeout, _raw=True, **payload)
         return result
     except Exception as e:
         logger.exception(e)

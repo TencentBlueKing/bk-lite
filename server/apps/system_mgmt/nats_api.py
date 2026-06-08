@@ -665,6 +665,63 @@ def search_channel_list_scoped(actor_context, channel_type="", teams=None, inclu
     )
 
 
+def _resolve_message_receivers(receivers):
+    if not receivers:
+        return None
+
+    if all(isinstance(r, int) or (isinstance(r, str) and r.isdigit()) for r in receivers):
+        return User.objects.filter(id__in=[int(r) for r in receivers])
+
+    if all(isinstance(r, str) and r.strip() and not r.isdigit() for r in receivers):
+        return User.objects.filter(username__in=[receiver.strip() for receiver in receivers])
+
+    return None
+
+
+def _normalize_nats_content(content):
+    if isinstance(content, str):
+        try:
+            content = json.loads(content)
+        except (json.JSONDecodeError, TypeError):
+            return None, {"result": False, "message": "NATS content is not valid JSON"}
+
+    if not isinstance(content, dict):
+        return None, {"result": False, "message": "NATS content must be a dict"}
+
+    message = content.get("message")
+    if not isinstance(message, str) or not message.strip():
+        return None, {"result": False, "message": "NATS content.message must be a non-empty string"}
+
+    team = content.get("team")
+    if not isinstance(team, list):
+        return None, {"result": False, "message": "NATS content.team must be a list"}
+
+    normalized_team = []
+    for team_id in team:
+        team_value = str(team_id).strip()
+        if not team_value or not team_value.isdigit():
+            return None, {"result": False, "message": "NATS content.team items must be integers"}
+        normalized_team.append(int(team_value))
+
+    user_ids = content.get("user_ids")
+    if not isinstance(user_ids, list):
+        return None, {"result": False, "message": "NATS content.user_ids must be a list"}
+
+    normalized_user_ids = []
+    for user_id in user_ids:
+        if user_id is None:
+            continue
+        normalized_user_id = str(user_id).strip()
+        if normalized_user_id:
+            normalized_user_ids.append(normalized_user_id)
+
+    return {
+        "message": message.strip(),
+        "team": normalized_team,
+        "user_ids": normalized_user_ids,
+    }, None
+
+
 @nats_client.register
 def send_msg_with_channel(channel_id, title, content, receivers, attachments=None):
     """
@@ -681,10 +738,7 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
     if not channel_obj:
         return {"result": False, "message": "Channel not found"}
     # 兼容用户ID列表和用户名列表两种情况
-    user_list = None
-    if receivers and all(isinstance(r, int) or (isinstance(r, str) and r.isdigit()) for r in receivers):
-        # receivers 是用户ID列表
-        user_list = User.objects.filter(id__in=[int(r) for r in receivers])
+    user_list = _resolve_message_receivers(receivers)
     if channel_obj.channel_type == ChannelChoices.EMAIL:
         # 邮件发送需要校验收件人是否存在
         if not user_list or not user_list.exists():
@@ -712,9 +766,10 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
         return send_by_custom_webhook(channel_obj, content, receivers)
     elif channel_obj.channel_type == ChannelChoices.NATS:
         # NATS 通道：content 作为 kwargs 传递给目标服务
-        if isinstance(content, str):
-            content = json.loads(content)
-        return send_nats_message(channel_obj, content)
+        normalized, error = _normalize_nats_content(content)
+        if error:
+            return error
+        return send_nats_message(channel_obj, normalized)
     return {"result": False, "message": "Unsupported channel type"}
     # return send_wechat(channel_obj, content, user_list)
 

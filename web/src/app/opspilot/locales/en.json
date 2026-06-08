@@ -1170,6 +1170,7 @@
     "notificationRecipients": "Notification Recipients",
     "enterpriseWechat": "WeChat Trigger",
     "celery": "Time Trigger",
+    "nats": "NATS Trigger",
     "enterNotificationTitle": "Please enter notification title",
     "save": "Save Workflow",
     "clear": "Clear Canvas",

@@ -1170,6 +1170,7 @@
     "notificationRecipients": "通知人",
     "enterpriseWechat": "企微触发",
     "celery": "定时触发",
+    "nats": "NATS触发",
     "enterNotificationTitle": "请输入通知标题",
     "save": "保存工作流",
     "clear": "清空画布",
