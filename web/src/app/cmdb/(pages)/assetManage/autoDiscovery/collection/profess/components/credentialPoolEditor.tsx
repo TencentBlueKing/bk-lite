@@ -6,6 +6,8 @@ import {
   Input,
   InputNumber,
   Select,
+  Switch,
+  Tooltip,
 } from 'antd';
 import {
   DndContext,
@@ -22,12 +24,13 @@ import {
 import {
   DeleteOutlined,
   DownOutlined,
-  EditOutlined,
   EyeInvisibleOutlined,
   EyeOutlined,
   HolderOutlined,
   PlusOutlined,
+  QuestionCircleOutlined,
   RightOutlined,
+  SyncOutlined,
 } from '@ant-design/icons';
 
 import SortableItem from '@/app/cmdb/components/sortable-item';
@@ -40,7 +43,7 @@ import { useTranslation } from '@/utils/i18n';
 
 import styles from '../index.module.scss';
 
-type CredentialShape = 'ssh' | 'sql' | 'snmp' | 'config_file';
+type CredentialShape = 'ssh' | 'sql' | 'snmp' | 'config_file' | 'vm' | 'cloud';
 
 export interface CredentialPoolEditorProps {
   value?: CredentialPoolItem[];
@@ -49,6 +52,13 @@ export interface CredentialPoolEditorProps {
   onChange?: (value: CredentialPoolItem[]) => void;
   editMode?: boolean;
   showDatabase?: boolean;
+  allowAdd?: boolean;
+  allowRemove?: boolean;
+  showCount?: boolean;
+  cloudRegionOptions?: { label: string; value: string }[];
+  cloudRegionLoading?: boolean;
+  onCloudRegionRefresh?: () => void;
+  onCredentialFieldChange?: (field: string) => void;
 }
 
 const makeClientId = () => `cred-local-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
@@ -73,7 +83,9 @@ const createEmptyCredential = (shape: CredentialShape, showDatabase?: boolean): 
 
   return {
     _client_id: makeClientId(),
-    port: shape === 'sql' ? (showDatabase ? '1433' : '3306') : '22',
+    port: shape === 'sql' ? (showDatabase ? '1433' : '3306') : shape === 'vm' ? '443' : '22',
+    ...(shape === 'vm' ? { ssl: false } : {}),
+    ...(shape === 'cloud' ? { accessKey: '', accessSecret: '', regionId: '' } : {}),
     ...(shape === 'sql' && showDatabase ? { database: 'master' } : {}),
   };
 };
@@ -92,32 +104,74 @@ function getMaskedSecret(value?: string) {
 function getPreviewFields(
   item: CredentialPoolItem,
   shape: CredentialShape,
-  t: (key: string) => string,
+  t: (key: string, defaultMessage?: string) => string,
   passwordVisible: boolean
 ) {
   if (shape === 'snmp') {
     const secretValue = item.version === 'v3' ? item.authkey : item.community;
     return [
-      { label: t('Collection.SNMPTask.version'), value: item.version || 'v2' },
+      { label: t('Collection.SNMPTask.version', '版本'), value: item.version || 'v2' },
       {
-        label: item.version === 'v3' ? t('Collection.SNMPTask.userName') : t('Collection.SNMPTask.communityString'),
+        label: item.version === 'v3'
+          ? t('Collection.SNMPTask.userName', '用户')
+          : t('Collection.SNMPTask.communityString', '团体字'),
         value: item.version === 'v3' ? item.username || '--' : passwordVisible ? secretValue || '--' : getMaskedSecret(secretValue),
         isSecret: item.version !== 'v3',
       },
-      { label: t('Collection.port'), value: String(item.snmp_port || 161) },
+      { label: t('Collection.port', '端口'), value: String(item.snmp_port || 161) },
+    ];
+  }
+
+  if (shape === 'cloud') {
+    return [
+      { label: t('Collection.cloudTask.accessKey', '秘匙'), value: item.accessKey || '--' },
+      {
+        label: t('Collection.cloudTask.accessSecret', '秘钥'),
+        value: passwordVisible && item.accessSecret && item.accessSecret !== PASSWORD_PLACEHOLDER
+          ? item.accessSecret
+          : getMaskedSecret(item.accessSecret),
+        isSecret: true,
+      },
+      { label: t('Collection.cloudTask.region', '区域'), value: item.regionName || item.regionId || '--' },
     ];
   }
 
   const username = shape === 'sql' ? item.user : item.username;
   return [
-    { label: shape === 'sql' ? t('Collection.VMTask.username') : t('user'), value: username || '--' },
+    { label: shape === 'sql' || shape === 'vm' ? t('Collection.VMTask.username', '用户') : t('user', '用户'), value: username || '--' },
     {
-      label: shape === 'sql' ? t('Collection.VMTask.password') : t('password'),
+      label: shape === 'sql' || shape === 'vm' ? t('Collection.VMTask.password', '密码') : t('password', '密码'),
       value: passwordVisible && item.password && item.password !== PASSWORD_PLACEHOLDER ? item.password : getMaskedSecret(item.password),
       isSecret: true,
     },
-    { label: t('Collection.port'), value: String(item.port || (shape === 'sql' ? '3306' : '22')) },
+    { label: t('Collection.port', '端口'), value: String(item.port || (shape === 'sql' ? '3306' : shape === 'vm' ? '443' : '22')) },
   ];
+}
+
+function CredentialMetaField({
+  field,
+  passwordVisible,
+  onToggleSecret,
+}: {
+  field: { label: string; value: string; isSecret?: boolean };
+  passwordVisible: boolean;
+  onToggleSecret: (event: React.MouseEvent<HTMLElement>) => void;
+}) {
+  return (
+    <div className={`${styles.credentialMetaItem} ${field.value === '--' ? styles.credentialMetaEmpty : ''}`}>
+      <span className={styles.credentialMetaLabel}>{field.label}</span>
+      <span className={styles.credentialMetaValue}>{field.value}</span>
+      {field.isSecret && (
+        <Button
+          type="text"
+          size="small"
+          className={styles.credentialMetaToggle}
+          icon={passwordVisible ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+          onClick={onToggleSecret}
+        />
+      )}
+    </div>
+  );
 }
 
 function SecretInput({
@@ -156,10 +210,21 @@ function SecretInput({
   );
 }
 
-function InputRow({ label, children }: { label: string; children: React.ReactNode }) {
+function InputRow({
+  label,
+  children,
+  required = true,
+}: {
+  label: string;
+  children: React.ReactNode;
+  required?: boolean;
+}) {
   return (
     <div className={styles.credentialFieldRow}>
-      <div className={styles.credentialFieldLabel}>{label}</div>
+      <div className={styles.credentialFieldLabel}>
+        {required && <span className={styles.credentialRequiredMark}>*</span>}
+        <span>{label}</span>
+      </div>
       <div className={styles.credentialFieldControl}>{children}</div>
     </div>
   );
@@ -171,6 +236,10 @@ function renderCredentialFields({
   shape,
   editMode,
   showDatabase,
+  cloudRegionOptions,
+  cloudRegionLoading,
+  onCloudRegionRefresh,
+  onCredentialFieldChange,
   t,
   updateItem,
 }: {
@@ -179,7 +248,11 @@ function renderCredentialFields({
   shape: CredentialShape;
   editMode: boolean;
   showDatabase: boolean;
-  t: (key: string) => string;
+  cloudRegionOptions: { label: string; value: string }[];
+  cloudRegionLoading: boolean;
+  onCloudRegionRefresh?: () => void;
+  onCredentialFieldChange?: (field: string) => void;
+  t: (key: string, defaultMessage?: string) => string;
   updateItem: (index: number, patch: Partial<CredentialPoolItem>) => void;
 }) {
   if (shape === 'snmp') {
@@ -187,14 +260,14 @@ function renderCredentialFields({
     const level = item.level || 'authNoPriv';
     return (
       <div className={styles.credentialFieldGrid}>
-        <InputRow label={t('Collection.SNMPTask.version')}>
+        <InputRow label={t('Collection.SNMPTask.version', '版本')}>
           <Select value={version} onChange={(nextValue) => updateItem(index, { version: nextValue })}>
             <Select.Option value="v2">V2</Select.Option>
             <Select.Option value="v2c">V2C</Select.Option>
             <Select.Option value="v3">V3</Select.Option>
           </Select>
         </InputRow>
-        <InputRow label={t('Collection.port')}>
+        <InputRow label={t('Collection.port', '端口')}>
           <InputNumber
             min={1}
             max={65535}
@@ -205,38 +278,38 @@ function renderCredentialFields({
         </InputRow>
 
         {version !== 'v3' ? (
-          <InputRow label={t('Collection.SNMPTask.communityString')}>
+          <InputRow label={t('Collection.SNMPTask.communityString', '团体字')}>
             <SecretInput
               value={item.community}
-              placeholder={t('common.inputTip')}
+              placeholder={t('common.inputTip', '请输入')}
               editMode={editMode}
               onChange={(nextValue) => updateItem(index, { community: nextValue })}
             />
           </InputRow>
         ) : (
           <>
-            <InputRow label={t('Collection.SNMPTask.securityLevel')}>
+            <InputRow label={t('Collection.SNMPTask.securityLevel', '安全级别')}>
               <Select value={level} onChange={(nextValue) => updateItem(index, { level: nextValue })}>
                 <Select.Option value="authNoPriv">认证不加密</Select.Option>
                 <Select.Option value="authPriv">认证加密</Select.Option>
               </Select>
             </InputRow>
-            <InputRow label={t('Collection.SNMPTask.userName')}>
+            <InputRow label={t('Collection.SNMPTask.userName', '用户')}>
               <Input
                 value={item.username}
-                placeholder={t('common.inputTip')}
+                placeholder={t('common.inputTip', '请输入')}
                 onChange={(event) => updateItem(index, { username: event.target.value })}
               />
             </InputRow>
-            <InputRow label={t('Collection.SNMPTask.authPassword')}>
+            <InputRow label={t('Collection.SNMPTask.authPassword', '认证密码')}>
               <SecretInput
                 value={item.authkey}
-                placeholder={t('common.inputTip')}
+                placeholder={t('common.inputTip', '请输入')}
                 editMode={editMode}
                 onChange={(nextValue) => updateItem(index, { authkey: nextValue })}
               />
             </InputRow>
-            <InputRow label={t('Collection.SNMPTask.hashAlgorithm')}>
+            <InputRow label={t('Collection.SNMPTask.hashAlgorithm', '哈希算法')}>
               <Select value={item.integrity || 'sha'} onChange={(nextValue) => updateItem(index, { integrity: nextValue })}>
                 <Select.Option value="sha">SHA</Select.Option>
                 <Select.Option value="md5">MD5</Select.Option>
@@ -244,16 +317,16 @@ function renderCredentialFields({
             </InputRow>
             {level === 'authPriv' && (
               <>
-                <InputRow label={t('Collection.SNMPTask.encryptAlgorithm')}>
+                <InputRow label={t('Collection.SNMPTask.encryptAlgorithm', '加密算法')}>
                   <Select value={item.privacy || 'aes'} onChange={(nextValue) => updateItem(index, { privacy: nextValue })}>
                     <Select.Option value="aes">AES</Select.Option>
                     <Select.Option value="des">DES</Select.Option>
                   </Select>
                 </InputRow>
-                <InputRow label={t('Collection.SNMPTask.encryptKey')}>
+                <InputRow label={t('Collection.SNMPTask.encryptKey', '加密密钥')}>
                   <SecretInput
                     value={item.privkey}
-                    placeholder={t('common.inputTip')}
+                    placeholder={t('common.inputTip', '请输入')}
                     editMode={editMode}
                     onChange={(nextValue) => updateItem(index, { privkey: nextValue })}
                   />
@@ -266,24 +339,102 @@ function renderCredentialFields({
     );
   }
 
+  if (shape === 'cloud') {
+    return (
+      <div className={styles.credentialFieldGrid}>
+        <InputRow label={t('Collection.cloudTask.accessKey', '秘匙')}>
+          <Input
+            value={item.accessKey}
+            placeholder={t('common.inputTip', '请输入')}
+            onChange={(event) => {
+              updateItem(index, {
+                accessKey: event.target.value,
+                ...(editMode && item.accessSecret === PASSWORD_PLACEHOLDER ? { accessSecret: '' } : {}),
+                regionId: undefined,
+                regionName: undefined,
+              });
+              onCredentialFieldChange?.('accessKey');
+            }}
+            onFocus={(event) => {
+              if (!editMode) {
+                return;
+              }
+              if (event.target.value === PASSWORD_PLACEHOLDER) {
+                updateItem(index, { accessKey: '' });
+              }
+            }}
+            onBlur={(event) => {
+              if (!editMode) {
+                return;
+              }
+              if (!event.target.value?.trim()) {
+                updateItem(index, { accessKey: PASSWORD_PLACEHOLDER });
+              }
+            }}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.cloudTask.accessSecret', '秘钥')}>
+          <SecretInput
+            value={item.accessSecret}
+            placeholder={t('common.inputTip', '请输入')}
+            editMode={editMode}
+            onChange={(nextValue) => {
+              updateItem(index, {
+                accessSecret: nextValue,
+                ...(editMode && item.accessKey === PASSWORD_PLACEHOLDER ? { accessKey: '' } : {}),
+                regionId: undefined,
+                regionName: undefined,
+              });
+              onCredentialFieldChange?.('accessSecret');
+            }}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.cloudTask.region', '区域')}>
+          <div className={styles.credentialInlineControl}>
+            <Select
+              value={item.regionId}
+              onChange={(nextValue, option) => {
+                const label = Array.isArray(option) ? option[0]?.label : option?.label;
+                updateItem(index, { regionId: nextValue, regionName: typeof label === 'string' ? label : undefined });
+              }}
+              loading={cloudRegionLoading}
+              placeholder={t('common.selectTip', '请选择')}
+              options={cloudRegionOptions}
+            />
+            <Button
+              type="text"
+              icon={<SyncOutlined spin={cloudRegionLoading} />}
+              onClick={onCloudRegionRefresh}
+              className={styles.credentialRefreshButton}
+            />
+          </div>
+        </InputRow>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.credentialFieldGrid}>
-      <InputRow label={shape === 'sql' ? t('Collection.VMTask.username') : t('user')}>
+      <InputRow
+        label={shape === 'sql' || shape === 'vm' ? t('Collection.VMTask.username', '用户') : t('user', '用户')}
+      >
         <Input
           value={shape === 'sql' ? item.user : item.username}
-          placeholder={t('common.inputTip')}
+          placeholder={t('common.inputTip', '请输入')}
           onChange={(event) => updateItem(index, shape === 'sql' ? { user: event.target.value } : { username: event.target.value })}
         />
       </InputRow>
-      <InputRow label={shape === 'sql' ? t('Collection.VMTask.password') : t('password')}>
+      <InputRow
+        label={shape === 'sql' || shape === 'vm' ? t('Collection.VMTask.password', '密码') : t('password', '密码')}
+      >
         <SecretInput
           value={item.password}
-          placeholder={t('common.inputTip')}
+          placeholder={t('common.inputTip', '请输入')}
           editMode={editMode}
           onChange={(nextValue) => updateItem(index, { password: nextValue })}
         />
       </InputRow>
-      <InputRow label={t('Collection.port')}>
+      <InputRow label={t('Collection.port', '端口')}>
         <InputNumber
           min={1}
           max={65535}
@@ -293,11 +444,19 @@ function renderCredentialFields({
         />
       </InputRow>
       {shape === 'sql' && showDatabase && (
-        <InputRow label={t('Collection.database')}>
+        <InputRow label={t('Collection.database', '数据库')}>
           <Input
             value={item.database}
-            placeholder={t('common.inputTip')}
+            placeholder={t('common.inputTip', '请输入')}
             onChange={(event) => updateItem(index, { database: event.target.value })}
+          />
+        </InputRow>
+      )}
+      {shape === 'vm' && (
+        <InputRow label={t('Collection.VMTask.sslVerify', 'SSL 验证')}>
+          <Switch
+            checked={Boolean(item.ssl)}
+            onChange={(checked) => updateItem(index, { ssl: checked })}
           />
         </InputRow>
       )}
@@ -312,6 +471,13 @@ export default function CredentialPoolEditor({
   onChange,
   editMode = false,
   showDatabase = false,
+  allowAdd = true,
+  allowRemove = true,
+  showCount = true,
+  cloudRegionOptions = [],
+  cloudRegionLoading = false,
+  onCloudRegionRefresh,
+  onCredentialFieldChange,
 }: CredentialPoolEditorProps): JSX.Element {
   const { t } = useTranslation();
   const sensors = useSensors(useSensor(PointerSensor));
@@ -389,6 +555,25 @@ export default function CredentialPoolEditor({
 
   return (
     <div className={styles.credentialPoolEditor}>
+      <div className={styles.credentialPoolHeader}>
+        <div className={styles.credentialPoolTitle}>
+          <span>{t('Collection.credential', '凭据')}</span>
+          <Tooltip title="最多配置 3 个凭据，系统按顺序试探，命中后优先复用。">
+            <QuestionCircleOutlined className={styles.credentialPoolHelpIcon} />
+          </Tooltip>
+        </div>
+        {allowAdd && (
+          <Button
+            icon={<PlusOutlined />}
+            onClick={handleAdd}
+            disabled={normalizedValue.length >= maxCount}
+            className={styles.credentialHeaderAddButton}
+          >
+            {`${t('common.add', '添加')}${t('Collection.credential', '凭据')}`}
+          </Button>
+        )}
+        {!allowAdd && showCount && <div className={styles.credentialPoolCount}>{`${normalizedValue.length}/${maxCount}`}</div>}
+      </div>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext
           items={itemKeys}
@@ -403,46 +588,44 @@ export default function CredentialPoolEditor({
               return (
                 <SortableItem key={itemKey} id={itemKey} index={index}>
                   <HolderOutlined className={styles.credentialDragHandle} />
+                  <span className={styles.credentialOrderNumber}>{index + 1}</span>
                   <div className={`${styles.credentialCard} ${expanded ? styles.credentialCardExpanded : ''}`}>
                     <div className={styles.credentialCardHeader}>
                       <div className={styles.credentialCardSummary} onClick={() => toggleExpanded(itemKey)}>
-                        <div className={styles.credentialTitle}>{`${t('Collection.credential')} ${index + 1}`}</div>
-                        <div className={styles.credentialMetaList}>
-                          {previewFields.map((field) => (
-                            <div key={field.label} className={styles.credentialMetaItem}>
-                              <span className={styles.credentialMetaLabel}>{field.label}:</span>
-                              <span className={styles.credentialMetaValue}>{field.value}</span>
-                              {field.isSecret && (
-                                <Button
-                                  type="text"
-                                  size="small"
-                                  className={styles.credentialMetaToggle}
-                                  icon={passwordVisible ? <EyeInvisibleOutlined /> : <EyeOutlined />}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    toggleSecretVisible(itemKey);
-                                  }}
-                                />
-                              )}
-                            </div>
-                          ))}
+                        <div className={styles.credentialTitleBlock}>
+                          <div className={styles.credentialTitle}>{`${t('Collection.credential', '凭据')} ${index + 1}`}</div>
                         </div>
+                        {!expanded && (
+                          <div className={styles.credentialMetaList}>
+                            {previewFields.map((field) => (
+                              <CredentialMetaField
+                                key={field.label}
+                                field={field}
+                                passwordVisible={passwordVisible}
+                                onToggleSecret={(event) => {
+                                  event.stopPropagation();
+                                  toggleSecretVisible(itemKey);
+                                }}
+                              />
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className={styles.credentialActions}>
+                        {allowRemove && (
+                          <Tooltip title={normalizedValue.length <= 1 ? '至少保留 1 个凭据' : '删除凭据'}>
+                            <Button
+                              type="text"
+                              danger
+                              icon={<DeleteOutlined />}
+                              disabled={normalizedValue.length <= 1}
+                              onClick={() => handleRemove(index)}
+                            />
+                          </Tooltip>
+                        )}
                         <Button
                           type="text"
-                          icon={<EditOutlined />}
-                          onClick={() => setActiveKeys((prev) => (prev.includes(itemKey) ? prev : [...prev, itemKey]))}
-                        />
-                        <Button
-                          type="text"
-                          danger
-                          icon={<DeleteOutlined />}
-                          disabled={normalizedValue.length <= 1}
-                          onClick={() => handleRemove(index)}
-                        />
-                        <Button
-                          type="text"
+                          className={styles.credentialExpandButton}
                           icon={expanded ? <DownOutlined /> : <RightOutlined />}
                           onClick={() => toggleExpanded(itemKey)}
                         />
@@ -456,6 +639,10 @@ export default function CredentialPoolEditor({
                           shape: credentialShape,
                           editMode,
                           showDatabase,
+                          cloudRegionOptions,
+                          cloudRegionLoading,
+                          onCloudRegionRefresh,
+                          onCredentialFieldChange,
                           t,
                           updateItem,
                         })}
@@ -468,17 +655,6 @@ export default function CredentialPoolEditor({
           </ul>
         </SortableContext>
       </DndContext>
-      <div className={styles.credentialPoolFooter}>
-        <Button
-          icon={<PlusOutlined />}
-          onClick={handleAdd}
-          disabled={normalizedValue.length >= maxCount}
-          className={styles.credentialAddButton}
-        >
-          {`${t('common.add')}${t('Collection.credential')}`}
-        </Button>
-        <div className={styles.credentialPoolHint}>{`最多可配置 ${maxCount} 个凭据，按顺序依次试探`}</div>
-      </div>
     </div>
   );
 }

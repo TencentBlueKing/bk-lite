@@ -640,7 +640,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
           <div className={styles.sectionTitle}>
             {t('Collection.baseSetting')}
           </div>
-          <div className="mr-4">
+          <div>
             <Form.Item
               name="taskName"
               label={t('Collection.taskNameLabel')}

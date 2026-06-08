@@ -33,6 +33,7 @@ const SortableItem: React.FC<SortableItemProps> = ({
     transition,
     marginTop: index ? 10 : 0,
     display: 'flex',
+    position: 'relative',
     width: '100%',
     minWidth: 0,
   };

@@ -19,7 +19,6 @@ import {
   trimFormString,
 } from '../hooks/formatTaskValues';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
-import styles from '../index.module.scss';
 import CredentialPoolEditor from './credentialPoolEditor';
 
 interface ConfigFileTaskFormProps {
@@ -203,7 +202,6 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
             />
           </Form.Item>
 
-          <div className={styles.panelHeader}>{t('Collection.credential')}</div>
           <Form.Item name="credentialPool">
             <CredentialPoolEditor credentialShape="config_file" editMode={Boolean(editId)} />
           </Form.Item>
