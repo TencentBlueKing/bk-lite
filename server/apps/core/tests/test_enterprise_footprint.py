@@ -310,6 +310,16 @@ class TestAppPyEnterpriseWiring:
         license_middleware = [mw for mw in mod.MIDDLEWARE if "license_mgmt" in mw]
         assert license_middleware == [], f"Unexpected license middleware: {license_middleware}"
 
+    def test_explicit_install_apps_license_mgmt_blocked_without_footprint(self, tmp_path, monkeypatch):
+        """INSTALL_APPS=license_mgmt must NOT bypass the enterprise gate in app.py.
+
+        Even when license_mgmt is named explicitly, apps.license_mgmt must not be
+        added to INSTALLED_APPS when there is no enterprise footprint.
+        """
+        _make_apps(tmp_path, {"license_mgmt": ["__init__.py"]})
+        mod = _load_app(tmp_path, monkeypatch, install_apps="license_mgmt")
+        assert "apps.license_mgmt" not in mod.INSTALLED_APPS, "INSTALL_APPS=license_mgmt must not add apps.license_mgmt without enterprise footprint"
+
 
 # ---------------------------------------------------------------------------
 # extra.py enterprise wiring
@@ -318,25 +328,37 @@ class TestAppPyEnterpriseWiring:
 _EXTRA_MODULE_PATH = pathlib.Path(__file__).resolve().parent.parent.parent.parent / "config" / "components" / "extra.py"
 
 
-def _load_extra(tmp_path, monkeypatch, install_apps=""):
-    """Load config/components/extra.py with cwd set to tmp_path.
+def _load_extra(tmp_path, monkeypatch, install_apps="", *, base_dir=None):
+    """Load config/components/extra.py with BASE_DIR and cwd pointing to tmp_path (by default).
 
-    extra.py uses Path.cwd() after wiring, so we change cwd to tmp_path.
-    Also prepends tmp_path to sys.path so that __import__ calls inside extra.py
-    (e.g. ``__import__("apps.license_mgmt.config")``) resolve against the temp
-    package tree rather than the real server package.
+    Pass ``base_dir`` to supply a different path as BASE_DIR while keeping cwd at
+    tmp_path.  This lets tests verify that extra.py follows BASE_DIR rather than
+    cwd (bug-1 regression test).
+
+    Also prepends the effective base_dir to sys.path so that __import__ calls
+    inside extra.py (e.g. ``__import__("apps.license_mgmt.config")``) resolve
+    against the temp package tree rather than the real server package.
     """
     import types as _types
+
+    effective_base = base_dir if base_dir is not None else tmp_path
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("INSTALL_APPS", install_apps)
 
-    # Prepend tmp_path so __import__ inside extra.py finds the temp packages first.
-    monkeypatch.syspath_prepend(str(tmp_path))
+    # Prepend effective_base so __import__ inside extra.py finds temp packages first.
+    monkeypatch.syspath_prepend(str(effective_base))
     # Drop any stale apps.* entries so Python doesn't return the cached real package.
     for key in list(sys.modules):
         if key == "apps" or key.startswith("apps."):
             monkeypatch.delitem(sys.modules, key, raising=False)
+
+    # Mock config.components.base with BASE_DIR = effective_base (mirrors _load_app).
+    base_mock = _types.ModuleType("config.components.base")
+    base_mock.BASE_DIR = effective_base
+    monkeypatch.setitem(sys.modules, "config", _types.ModuleType("config"))
+    monkeypatch.setitem(sys.modules, "config.components", _types.ModuleType("config.components"))
+    monkeypatch.setitem(sys.modules, "config.components.base", base_mock)
 
     # Provide config.components.enterprise with real implementations
     ent_mock = _types.ModuleType("config.components.enterprise")
@@ -410,3 +432,42 @@ class TestExtraPyEnterpriseWiring:
 
         # In auto-discovery mode all apps are iterated; license_mgmt/config.py is found normally.
         assert getattr(mod, "LICENSE_MGMT_CONFIG_LOADED", False) is True, "auto-discovery mode must not block license_mgmt/config.py import"
+
+    def test_uses_base_dir_not_cwd_for_enterprise_detection(self, tmp_path, monkeypatch, tmp_path_factory):
+        """extra.py must scan BASE_DIR, not cwd, for enterprise content.
+
+        Arrange: BASE_DIR has enterprise footprint + license_mgmt; cwd (tmp_path)
+        has only an empty apps/ directory.  extra.py must follow BASE_DIR and detect
+        the enterprise footprint, causing license_mgmt/config.py to be imported.
+        With the buggy Path.cwd() code the test fails because cwd has no footprint.
+        """
+        base_dir = tmp_path_factory.mktemp("base_dir")
+        _make_apps(
+            base_dir,
+            {
+                "core": ["enterprise/license_filter.py"],
+                "license_mgmt": ["__init__.py"],
+            },
+        )
+        (base_dir / "apps" / "license_mgmt" / "config.py").write_text("LICENSE_MGMT_CONFIG_LOADED = True\n")
+        (base_dir / "apps" / "core" / "__init__.py").write_text("")
+
+        # cwd (tmp_path) has an apps/ dir but no enterprise content.
+        (tmp_path / "apps").mkdir()
+
+        mod = _load_extra(tmp_path, monkeypatch, install_apps="core", base_dir=base_dir)
+
+        assert getattr(mod, "LICENSE_MGMT_CONFIG_LOADED", False) is True, "extra.py used cwd instead of BASE_DIR for enterprise detection"
+
+    def test_explicit_install_apps_license_mgmt_blocked_without_footprint(self, tmp_path, monkeypatch):
+        """INSTALL_APPS=license_mgmt must NOT bypass the enterprise gate in extra.py.
+
+        Even when license_mgmt is named explicitly in INSTALL_APPS, its config.py
+        must not be imported when there is no enterprise footprint.
+        """
+        _make_apps(tmp_path, {"license_mgmt": ["__init__.py"]})
+        (tmp_path / "apps" / "license_mgmt" / "config.py").write_text("LICENSE_MGMT_CONFIG_LOADED = True\n")
+
+        mod = _load_extra(tmp_path, monkeypatch, install_apps="license_mgmt")
+
+        assert getattr(mod, "LICENSE_MGMT_CONFIG_LOADED", False) is False, "INSTALL_APPS=license_mgmt must not bypass the enterprise gate in extra.py"
