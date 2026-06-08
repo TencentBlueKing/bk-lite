@@ -22,6 +22,50 @@ from apps.cmdb.constants.constants import SECRET_KEY
 
 # 加密密码的标记前缀
 ENCRYPTED_PREFIX = "enc:"
+ALLOWED_TOPOLOGY_PROTOCOLS = ("lldp", "cdp", "fdb", "arp")
+ALLOWED_TOPOLOGY_FALLBACK_STRATEGIES = (
+    "prefer_neighbors_then_fdb_then_arp",
+    "strict_neighbors_only",
+)
+DEFAULT_TOPOLOGY_PROTOCOLS = list(ALLOWED_TOPOLOGY_PROTOCOLS)
+DEFAULT_TOPOLOGY_FALLBACK_STRATEGY = "prefer_neighbors_then_fdb_then_arp"
+DEFAULT_TOPOLOGY_MIN_CONFIDENCE = 0.0
+
+
+def normalize_topology_contract(raw_params):
+    params = raw_params if isinstance(raw_params, dict) else {}
+
+    topology_protocols = []
+    raw_protocols = params.get("topology_protocols")
+    if raw_protocols is None:
+        topology_protocols = list(DEFAULT_TOPOLOGY_PROTOCOLS)
+    elif isinstance(raw_protocols, (list, tuple)):
+        for protocol in raw_protocols:
+            if protocol in ALLOWED_TOPOLOGY_PROTOCOLS and protocol not in topology_protocols:
+                topology_protocols.append(protocol)
+        if raw_protocols and not topology_protocols:
+            topology_protocols = list(DEFAULT_TOPOLOGY_PROTOCOLS)
+    else:
+        topology_protocols = list(DEFAULT_TOPOLOGY_PROTOCOLS)
+
+    topology_fallback_strategy = params.get("topology_fallback_strategy")
+    if topology_fallback_strategy not in ALLOWED_TOPOLOGY_FALLBACK_STRATEGIES:
+        topology_fallback_strategy = DEFAULT_TOPOLOGY_FALLBACK_STRATEGY
+
+    raw_min_confidence = params.get("min_confidence", DEFAULT_TOPOLOGY_MIN_CONFIDENCE)
+    try:
+        min_confidence = float(raw_min_confidence)
+    except (TypeError, ValueError):
+        min_confidence = DEFAULT_TOPOLOGY_MIN_CONFIDENCE
+    if min_confidence < 0 or min_confidence > 1:
+        min_confidence = DEFAULT_TOPOLOGY_MIN_CONFIDENCE
+
+    return {
+        "has_network_topo": bool(params.get("has_network_topo")),
+        "topology_protocols": topology_protocols,
+        "topology_fallback_strategy": topology_fallback_strategy,
+        "min_confidence": min_confidence,
+    }
 
 
 class CollectModels(MaintainerInfo, TimeInfo):
@@ -102,7 +146,23 @@ class CollectModels(MaintainerInfo, TimeInfo):
 
     @property
     def is_network_topo(self):
-        return bool(self.params.get("has_network_topo"))
+        return self.topology_contract["has_network_topo"]
+
+    @property
+    def topology_contract(self):
+        return normalize_topology_contract(self.params)
+
+    @property
+    def topology_protocols(self):
+        return self.topology_contract["topology_protocols"]
+
+    @property
+    def topology_fallback_strategy(self):
+        return self.topology_contract["topology_fallback_strategy"]
+
+    @property
+    def min_confidence(self):
+        return self.topology_contract["min_confidence"]
 
     @property
     def is_cloud(self):

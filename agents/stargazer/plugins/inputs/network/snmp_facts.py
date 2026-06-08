@@ -65,9 +65,21 @@ class SnmpFacts:
         # 支持 has_network_topo 和 topo 两个参数名，保持向后兼容
         self.has_network_topo = kwargs.get("has_network_topo", "False") == "True" or kwargs.get("topo",
                                                                                                 "False") == "true"
+        self.topology_protocols = self._normalize_topology_protocols(kwargs.get("topology_protocols"))
 
         # 校验参数
         self._validate_params()
+
+    @staticmethod
+    def _normalize_topology_protocols(enabled_protocols=None):
+        if enabled_protocols is None:
+            return None
+        normalizer = getattr(SnmpTopo, "normalize_enabled_protocols", None)
+        if callable(normalizer):
+            return normalizer(enabled_protocols)
+        if isinstance(enabled_protocols, str):
+            return tuple(item.strip().lower() for item in enabled_protocols.split(",") if item.strip())
+        return tuple(str(item).strip().lower() for item in enabled_protocols if str(item).strip())
 
     def _validate_params(self):
         """
@@ -269,6 +281,18 @@ class SnmpFacts:
                     topo_collector = SnmpTopo(self.kwargs)
                     topo_data = topo_collector.bulkCmd()
                     model_data["network_topo"] = topo_data
+                    try:
+                        model_data["network_topology_facts"] = topo_collector.build_topology_facts(
+                            topo_data,
+                            enabled_protocols=self.topology_protocols,
+                        )
+                    except Exception:  # noqa
+                        import traceback
+
+                        logger.error(
+                            f"Network topology fact build failed: {traceback.format_exc()}"
+                        )
+                        model_data["network_topology_facts"] = []
                     logger.info(
                         f"Network topo collection completed, {len(topo_data)} records collected"
                     )
@@ -279,6 +303,7 @@ class SnmpFacts:
                     )
                     # 拓扑采集失败不影响设备采集结果，返回空列表
                     model_data["network_topo"] = []
+                    model_data["network_topology_facts"] = []
 
             inst_data = {"result": model_data, "success": True}
         except Exception as err:
