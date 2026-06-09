@@ -6,6 +6,7 @@ These tests verify that the security fixes for credential leaks and
 organization sync issues are working correctly.
 """
 import logging
+from types import SimpleNamespace
 
 import pytest
 
@@ -302,3 +303,59 @@ def test_issue_2878_sync_groups_empty_removes_all():
 
     orgs = list(NodeOrganization.objects.filter(node_id=node.id).values_list("organization", flat=True))
     assert orgs == []
+
+
+@pytest.mark.django_db
+def test_sidecar_heartbeat_does_not_rollback_user_updated_node_organizations(monkeypatch):
+    """
+    A node management page edit is authoritative for existing nodes.
+    A later sidecar heartbeat may still carry stale group tags from the old
+    local sidecar.yaml; that heartbeat must not rollback the DB association.
+    """
+    cloud_region = CloudRegion.objects.create(
+        name="test-region-user-org-edit",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    node = Node.objects.create(
+        id="node-user-org-edit",
+        name="node-user-org-edit",
+        ip="10.0.0.4",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/etc/collector",
+        metrics={},
+        status={},
+        tags=[],
+        log_file_list=[],
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    NodeOrganization.objects.create(node_id=node.id, organization=2)
+
+    monkeypatch.setattr(Sidecar, "trigger_converge_tasks_if_needed", lambda *args, **kwargs: None)
+
+    request = SimpleNamespace(
+        headers={},
+        META={},
+        data={
+            "node_name": "node-user-org-edit",
+            "node_details": {
+                "ip": "10.0.0.4",
+                "operating_system": "Linux",
+                "collector_configuration_directory": "/etc/collector",
+                "metrics": {},
+                "status": {},
+                "tags": [f"zone:{cloud_region.id}", "group:1"],
+                "log_file_list": [],
+            },
+        },
+    )
+
+    response = Sidecar.update_node_client(request, node.id)
+
+    assert response.status_code == 202
+    orgs = set(NodeOrganization.objects.filter(node_id=node.id).values_list("organization", flat=True))
+    assert orgs == {2}

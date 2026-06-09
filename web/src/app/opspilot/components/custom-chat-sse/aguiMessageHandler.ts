@@ -10,6 +10,10 @@ import {
   BrowserStepProgressValue,
   BrowserTaskReceivedValue,
   ConfigAnalysisReportValue,
+  ConfigAnalysisReportItemValue,
+  ConfigAnalysisRecommendationValue,
+  ConfigAnalysisSeveritySectionValue,
+  StructuredConfigAnalysisReportValue,
   ConfigDiffReportValue,
   RepairCommandsValue,
   ReportFileDownloadValue,
@@ -21,6 +25,8 @@ import {
   ApprovalRequest,
   BrowserStepProgressData,
   BrowserStepsHistory,
+  ConfigAnalysisReport,
+  ConfigAnalysisRecommendation,
   ConfigDiffReport,
   CustomChatMessage,
   RepairCommands,
@@ -46,9 +52,77 @@ type ContentBlock =
   | { type: 'toolCall'; id: string }
   | { type: 'thinking' }
   | { type: 'configDiff'; reportId: string }
+  | { type: 'configAnalysis'; reportId: string }
   | { type: 'fileDownload'; downloadId: string }
   | { type: 'repairCommands'; commandsId: string }
   | { type: 'userChoice'; choiceId: string };
+
+const normalizeConfigAnalysisIssues = (
+  section: ConfigAnalysisSeveritySectionValue
+): ConfigAnalysisReportItemValue[] => {
+  if (Array.isArray(section.issues)) {
+    return section.issues;
+  }
+
+  if (Array.isArray(section.items)) {
+    return section.items;
+  }
+
+  return [];
+};
+
+const normalizeConfigAnalysisSection = (
+  section: ConfigAnalysisSeveritySectionValue
+): ConfigAnalysisSeveritySectionValue => ({
+  ...section,
+  issues: normalizeConfigAnalysisIssues(section),
+});
+
+const normalizeConfigAnalysisRecommendations = (
+  recommendations: ConfigAnalysisRecommendationValue[] | undefined
+): ConfigAnalysisRecommendation[] => {
+  if (!Array.isArray(recommendations)) {
+    return [];
+  }
+
+  return recommendations
+    .map((recommendation): ConfigAnalysisRecommendation | null => {
+      if (!recommendation || typeof recommendation !== 'object') {
+        return null;
+      }
+
+      const priority = typeof recommendation.priority === 'string' && ['P0', 'P1', 'P2', 'P3'].includes(recommendation.priority)
+        ? recommendation.priority as ConfigAnalysisRecommendation['priority']
+        : null;
+      const action = typeof recommendation.action === 'string' ? recommendation.action.trim() : '';
+      const target = typeof recommendation.target === 'string' ? recommendation.target.trim() : '';
+      const benefit = typeof recommendation.benefit === 'string' ? recommendation.benefit.trim() : '';
+
+      if (!priority || !action || !target || !benefit) {
+        return null;
+      }
+
+      return {
+        priority,
+        action,
+        target,
+        benefit,
+      };
+    })
+    .filter((recommendation): recommendation is ConfigAnalysisRecommendation => Boolean(recommendation));
+};
+
+const isStructuredConfigAnalysisReport = (
+  value: ConfigAnalysisReportValue
+): value is StructuredConfigAnalysisReportValue => (
+  Boolean(value.report_id) &&
+  Boolean(value.title) &&
+  Boolean(value.cluster_name) &&
+  value.summary !== undefined &&
+  Array.isArray(value.severity_sections) &&
+  Array.isArray(value.recommendations) &&
+  typeof value.markdown === 'string'
+);
 
 export class AGUIMessageHandler {
   private contentBlocks: ContentBlock[] = [];
@@ -63,6 +137,7 @@ export class AGUIMessageHandler {
   private approvalRequests: ApprovalRequest[] = [];
   private userChoiceRequests: UserChoiceRequest[] = [];
   private configDiffReports: ConfigDiffReport[] = [];
+  private configAnalysisReports: ConfigAnalysisReport[] = [];
   private reportFileDownloads: ReportFileDownload[] = [];
   private repairCommandsList: RepairCommands[] = [];
   private agentStepProgressList: AgentStepProgressData[] = [];
@@ -120,6 +195,9 @@ export class AGUIMessageHandler {
             configDiffReports: this.configDiffReports.length > 0
               ? this.configDiffReports
               : msgItem.configDiffReports,
+            configAnalysisReports: this.configAnalysisReports.length > 0
+              ? this.configAnalysisReports
+              : msgItem.configAnalysisReports,
             reportFileDownloads: this.reportFileDownloads.length > 0
               ? this.reportFileDownloads
               : msgItem.reportFileDownloads,
@@ -177,6 +255,10 @@ export class AGUIMessageHandler {
         // Insert placeholder marker for React component rendering
         parts.push(`\n\n<!--CONFIG_DIFF:${block.reportId}-->`);
         lastBlockType = 'configDiff';
+      } else if (block.type === 'configAnalysis') {
+        flushToolCalls();
+        parts.push(`\n\n<!--CONFIG_ANALYSIS:${block.reportId}-->`);
+        lastBlockType = 'configAnalysis';
       } else if (block.type === 'fileDownload') {
         flushToolCalls();
         // File download cards are rendered via reportFileDownloads, no inline marker needed
@@ -309,6 +391,7 @@ export class AGUIMessageHandler {
     if (toolCall) {
       toolCall.status = 'completed';
       toolCall.result = content;
+      this.syncAttachmentDownloadFromToolResult(toolCallId, toolCall.name, content);
 
       // Fallback: if report_config_diff completed but CUSTOM event wasn't received,
       // construct the DiffReportCard from tool args
@@ -337,6 +420,54 @@ export class AGUIMessageHandler {
 
       closeActiveToolCallPanel(toolCallId);
       this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
+    }
+  }
+
+  private syncAttachmentDownloadFromToolResult(toolCallId: string, toolName: string, content: string) {
+    if (toolName !== 'generate_attachment_file') {
+      return;
+    }
+
+    try {
+      const parsed = this.parseAttachmentToolResult(content);
+      if (!parsed?.file_url || !parsed?.filename) {
+        return;
+      }
+
+      const downloadId = `attachment_${toolCallId}`;
+      const existed = this.reportFileDownloads.some(download => download.download_id === downloadId);
+      if (existed) {
+        return;
+      }
+
+      this.reportFileDownloads.push({
+        download_id: downloadId,
+        filename: parsed.filename,
+        file_url: parsed.file_url,
+        mime_type: parsed.mime_type || 'application/octet-stream',
+        received_at: Date.now(),
+      });
+      this.flushCurrentTextBlock();
+      this.contentBlocks.push({ type: 'fileDownload', downloadId });
+    } catch {
+      // ignore invalid tool result payloads
+    }
+  }
+
+  private parseAttachmentToolResult(content: string) {
+    try {
+      return JSON.parse(content);
+    } catch {
+      const extractField = (field: string) => {
+        const match = content.match(new RegExp(`[\"']${field}[\"']\\s*:\\s*[\"']([^\"']+)[\"']`));
+        return match?.[1];
+      };
+
+      return {
+        filename: extractField('filename'),
+        file_url: extractField('file_url'),
+        mime_type: extractField('mime_type'),
+      };
     }
   }
 
@@ -467,7 +598,41 @@ export class AGUIMessageHandler {
 
   handleConfigAnalysisReport(value: ConfigAnalysisReportValue) {
     this.flushCurrentTextBlock();
-    this.contentBlocks.push({ type: 'text', content: value.markdown });
+
+    if (isStructuredConfigAnalysisReport(value)) {
+      const existingIndex = this.configAnalysisReports.findIndex(
+        report => report.report_id === value.report_id
+      );
+      const severity_sections = value.severity_sections.map(normalizeConfigAnalysisSection);
+      const report: ConfigAnalysisReport = {
+        ...value,
+        summary: value.summary || {},
+        severity_sections,
+        recommendations: normalizeConfigAnalysisRecommendations(value.recommendations),
+        markdown: value.markdown,
+        fallback_markdown: value.fallback_markdown || value.markdown,
+        received_at: Date.now(),
+      };
+
+      if (existingIndex >= 0) {
+        this.configAnalysisReports[existingIndex] = report;
+      } else {
+        this.configAnalysisReports.push(report);
+      }
+
+      const hasMarker = this.contentBlocks.some(
+        block => block.type === 'configAnalysis' && block.reportId === value.report_id
+      );
+      if (!hasMarker) {
+        this.contentBlocks.push({ type: 'configAnalysis', reportId: value.report_id });
+      }
+    } else {
+      const fallbackMarkdown = value.fallback_markdown || value.markdown;
+      if (fallbackMarkdown) {
+        this.contentBlocks.push({ type: 'text', content: fallbackMarkdown });
+      }
+    }
+
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 

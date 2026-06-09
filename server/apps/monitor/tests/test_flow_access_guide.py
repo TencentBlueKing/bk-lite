@@ -46,6 +46,8 @@ def test_build_flow_guide_returns_protocol_endpoint_and_sampling_docs(monkeypatc
     assert doc["protocol"] == "netflow"
     assert doc["endpoint"] == "udp://10.0.0.1:2055"
     assert "effective_sampling_rate" in doc["sampling_rule"]
+    assert "若设备已上报 effective_sampling_rate 则直接使用" not in doc["sampling_rule"]
+    assert "SAMPLING_INTERVAL、SAMPLING_ALGORITHM、sampling_rate、samplingRate" in doc["sampling_rule"]
 
 
 def test_build_flow_guide_does_not_lock_monitor_object(monkeypatch, db):

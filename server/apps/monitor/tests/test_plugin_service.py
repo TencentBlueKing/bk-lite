@@ -1,5 +1,6 @@
 import copy
 import importlib.util
+import json
 import logging
 import sys
 import types
@@ -40,6 +41,8 @@ def test_extract_monitor_object_names_supports_basic_and_compound(monkeypatch):
     _install_module(monkeypatch, "apps.monitor.models.monitor_metrics", MetricGroup=object, Metric=object)
     _install_module(monkeypatch, "apps.monitor.models.monitor_object", MonitorObject=object, MonitorObjectType=object)
     _install_module(monkeypatch, "apps.monitor.utils")
+    _install_module(monkeypatch, "apps.monitor.utils.display_fields_seed", build_seed_display_fields=lambda *args, **kwargs: [])
+    _install_module(monkeypatch, "apps.monitor.utils.node_selector", normalize_node_selector=lambda value=None: value or {})
     _install_module(
         monkeypatch,
         "apps.monitor.utils.instance_id_keys",
@@ -80,6 +83,8 @@ def test_sync_plugin_monitor_objects_replaces_stale_relations(monkeypatch):
     )
     _install_module(monkeypatch, "apps.monitor.models.monitor_metrics", MetricGroup=object, Metric=object)
     _install_module(monkeypatch, "apps.monitor.utils")
+    _install_module(monkeypatch, "apps.monitor.utils.display_fields_seed", build_seed_display_fields=lambda *args, **kwargs: [])
+    _install_module(monkeypatch, "apps.monitor.utils.node_selector", normalize_node_selector=lambda value=None: value or {})
     _install_module(
         monkeypatch,
         "apps.monitor.utils.instance_id_keys",
@@ -153,6 +158,8 @@ def test_extract_monitor_object_names_ignores_node_selector(monkeypatch):
     _install_module(monkeypatch, "apps.monitor.models.monitor_metrics", MetricGroup=object, Metric=object)
     _install_module(monkeypatch, "apps.monitor.models.monitor_object", MonitorObject=object, MonitorObjectType=object)
     _install_module(monkeypatch, "apps.monitor.utils")
+    _install_module(monkeypatch, "apps.monitor.utils.display_fields_seed", build_seed_display_fields=lambda *args, **kwargs: [])
+    _install_module(monkeypatch, "apps.monitor.utils.node_selector", normalize_node_selector=lambda value=None: value or {})
     _install_module(
         monkeypatch,
         "apps.monitor.utils.instance_id_keys",
@@ -193,6 +200,8 @@ def test_import_compound_monitor_object_propagates_node_selector(monkeypatch):
     _install_module(monkeypatch, "apps.monitor.models.monitor_metrics", MetricGroup=object, Metric=object)
     _install_module(monkeypatch, "apps.monitor.models.monitor_object", MonitorObject=object, MonitorObjectType=object)
     _install_module(monkeypatch, "apps.monitor.utils")
+    _install_module(monkeypatch, "apps.monitor.utils.display_fields_seed", build_seed_display_fields=lambda *args, **kwargs: [])
+    _install_module(monkeypatch, "apps.monitor.utils.node_selector", normalize_node_selector=lambda value=None: value or {})
     _install_module(
         monkeypatch,
         "apps.monitor.utils.instance_id_keys",
@@ -339,13 +348,35 @@ def test_normalize_instance_identity_rejects_empty_value():
 def _load_plugin_controller_module(monkeypatch, template_rows=None):
     """Load plugin_controller.py with all Django dependencies stubbed out."""
     from jinja2 import BaseLoader, DebugUndefined
+    from jinja2 import meta
     from jinja2.sandbox import SandboxedEnvironment
+
+    class _FakeTemplateSecurityError(ValueError):
+        pass
 
     def _fake_build_sandboxed_env(loader=None, undefined=DebugUndefined, extra_filters=None):
         env = SandboxedEnvironment(loader=loader or BaseLoader(), undefined=undefined)
+        env.globals.clear()
         if extra_filters:
             env.filters.update(extra_filters)
         return env
+
+    def _fake_sanitize_template_context(value, max_depth=8):
+        if max_depth < 0:
+            return ""
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, dict):
+            return {str(k): _fake_sanitize_template_context(v, max_depth - 1) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [_fake_sanitize_template_context(v, max_depth - 1) for v in value]
+        return str(value)
+
+    def _fake_validate_template_variables(template_str, env, allowed_variables):
+        ast = env.parse(template_str)
+        unexpected = meta.find_undeclared_variables(ast) - allowed_variables
+        if unexpected:
+            raise _FakeTemplateSecurityError(f"模板包含未授权变量: {', '.join(sorted(unexpected))}")
 
     _rows = template_rows or []
     _fake_qs = types.SimpleNamespace(values=lambda *args, **kwargs: iter(_rows))
@@ -360,7 +391,14 @@ def _load_plugin_controller_module(monkeypatch, template_rows=None):
     _install_module(monkeypatch, "apps.core.exceptions")
     _install_module(monkeypatch, "apps.core.exceptions.base_app_exception", BaseAppException=Exception)
     _install_module(monkeypatch, "apps.core.utils")
-    _install_module(monkeypatch, "apps.core.utils.safe_template", build_sandboxed_env=_fake_build_sandboxed_env)
+    _install_module(
+        monkeypatch,
+        "apps.core.utils.safe_template",
+        TemplateSecurityError=_FakeTemplateSecurityError,
+        build_sandboxed_env=_fake_build_sandboxed_env,
+        sanitize_template_context=_fake_sanitize_template_context,
+        validate_template_variables=_fake_validate_template_variables,
+    )
     _install_module(monkeypatch, "apps.core.logger", monitor_logger=logging.getLogger("monitor"))
     _install_module(monkeypatch, "apps.monitor")
     _install_module(monkeypatch, "apps.monitor.constants")
@@ -444,6 +482,105 @@ def test_render_template_supports_default_filter(monkeypatch):
     assert rendered == "none"
 
 
+def test_render_template_allows_business_default_variables(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+
+    rendered = plugin_controller_module.Controller({}).render_template(
+        '{{ interval | default(60, true) }}',
+        {"instance_id": "host-1"},
+    )
+
+    assert rendered == "60"
+
+
+def test_render_template_blocks_unknown_template_variable(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+
+    with pytest.raises(Exception, match="未授权变量"):
+        plugin_controller_module.Controller({}).render_template(
+            "{{ settings.SECRET_KEY }}",
+            {"instance_id": "host-1"},
+        )
+
+
+def test_render_template_treats_payload_value_as_plain_text(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+    payload = "{{ cycler.__init__.__globals__.os.popen('id').read() }}"
+
+    rendered = plugin_controller_module.Controller({}).render_template(
+        'community = "{{ community }}"',
+        {
+            "instance_id": "host-1",
+            "community": payload,
+        },
+    )
+
+    assert payload in rendered
+
+
+def test_render_template_sanitizes_python_objects(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+
+    class DangerousObject:
+        secret = "should-not-render"
+
+        def __str__(self):
+            return "safe-string"
+
+    rendered = plugin_controller_module.Controller({}).render_template(
+        "{{ obj }}",
+        {
+            "instance_id": "host-1",
+            "obj": DangerousObject(),
+        },
+    )
+
+    assert rendered == "safe-string"
+    assert "should-not-render" not in rendered
+
+
+def test_to_toml_dict_escapes_quoted_values(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+
+    rendered = plugin_controller_module.to_toml_dict({"safe": 'x"\nmalicious = "yes'})
+
+    assert '\\"' in rendered
+    assert "\\nmalicious" in rendered
+    assert '\nmalicious = "yes"' not in rendered
+
+
+def test_render_template_escapes_toml_string_values(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+
+    rendered = plugin_controller_module.Controller({}).render_template(
+        'community = "{{ community }}"',
+        {
+            "instance_id": "host-1",
+            "community": 'public"\nmalicious = "yes',
+        },
+        escape_toml_strings=True,
+    )
+
+    assert 'public\\"\\nmalicious = \\"yes' in rendered
+    assert '\nmalicious = "yes"' not in rendered
+
+
+def test_render_template_preserves_sidecar_env_placeholders(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+
+    rendered = plugin_controller_module.Controller({}).render_template(
+        'url = "${STARGAZER_URL}/metrics"\npassword = "${PASSWORD__{{ config_id }}}"',
+        {
+            "instance_id": "host-1",
+            "config_id": "CONFIG1",
+        },
+        escape_toml_strings=True,
+    )
+
+    assert '${STARGAZER_URL}/metrics' in rendered
+    assert '${PASSWORD__CONFIG1}' in rendered
+
+
 def test_host_remote_template_renders_ansible_executor_instance_id(monkeypatch):
     plugin_controller_module = _load_plugin_controller_module(monkeypatch)
     template_path = Path(__file__).resolve().parents[1] / "support-files" / "plugins" / "Telegraf" / "http" / "host" / "host.child.toml.j2"
@@ -458,10 +595,95 @@ def test_host_remote_template_renders_ansible_executor_instance_id(monkeypatch):
             "instance_id": "('MTVmOTFiYTM5ODZk',)",
             "logical_instance_value": "MTVmOTFiYTM5ODZk",
             "node_id": "node-1",
+            "config_id": "CONFIG1",
+            "interval": 60,
+            "timeout": 60,
+            "response_timeout": 60,
+            "os_type": "linux",
+            "port": 22,
+            "metrics_modules": "cpu,mem,disk,net",
         },
     )
 
     assert 'ansible_node_id = "node-1"' in rendered
+
+
+def test_host_remote_template_renders_winrm_and_private_key_headers(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+    template_path = Path(__file__).resolve().parents[1] / "support-files" / "plugins" / "Telegraf" / "http" / "host" / "host.child.toml.j2"
+    template_content = template_path.read_text()
+
+    rendered = plugin_controller_module.Controller({}).render_template(
+        template_content,
+        {
+            "host": "10.0.0.8",
+            "username": "Administrator",
+            "instance_id": "('MTVmOTFiYTM5ODZk',)",
+            "logical_instance_value": "MTVmOTFiYTM5ODZk",
+            "node_id": "node-1",
+            "config_id": "CONFIG1",
+            "interval": 60,
+            "timeout": 60,
+            "response_timeout": 60,
+            "os_type": "windows",
+            "port": 5986,
+            "metrics_modules": ["cpu", "mem", "diskio"],
+            "auth_type": "password",
+            "winrm_scheme": "https",
+            "winrm_transport": "ntlm",
+            "winrm_cert_validation": False,
+        },
+    )
+
+    assert 'metrics_modules = "cpu,mem,diskio"' in rendered
+    assert 'auth_type = "password"' in rendered
+    assert 'password = "${PASSWORD__CONFIG1}"' in rendered
+    assert 'winrm_scheme = "https"' in rendered
+    assert 'winrm_transport = "ntlm"' in rendered
+    assert 'winrm_cert_validation = "false"' in rendered
+
+    private_key_rendered = plugin_controller_module.Controller({}).render_template(
+        template_content,
+        {
+            "host": "10.0.0.9",
+            "username": "root",
+            "instance_id": "('MTVmOTFiYTM5ODZl',)",
+            "logical_instance_value": "MTVmOTFiYTM5ODZl",
+            "node_id": "node-1",
+            "config_id": "CONFIG2",
+            "interval": 60,
+            "timeout": 60,
+            "response_timeout": 60,
+            "os_type": "linux",
+            "port": 22,
+            "metrics_modules": ["cpu", "system"],
+            "auth_type": "private_key",
+        },
+    )
+
+    assert 'private_key_content = "${PRIVATE_KEY_CONTENT__CONFIG2}"' in private_key_rendered
+    assert 'private_key_passphrase = "${PRIVATE_KEY_PASSPHRASE__CONFIG2}"' in private_key_rendered
+
+
+def test_host_remote_ui_exposes_selectable_metrics_and_credentials():
+    ui_path = Path(__file__).resolve().parents[1] / "support-files" / "plugins" / "Telegraf" / "http" / "host" / "UI.json"
+    data = json.loads(ui_path.read_text(encoding="utf-8"))
+    fields = {field["name"]: field for field in data["form_fields"]}
+
+    assert fields["metrics_modules"]["type"] == "checkbox_group"
+    assert fields["metrics_modules"]["default_value"] == ["cpu", "mem", "disk", "net"]
+    metric_values = {option["value"] for option in fields["metrics_modules"]["options"]}
+    assert {"cpu", "mem", "disk", "net", "diskio", "processes", "system"}.issubset(metric_values)
+
+    assert fields["auth_type"]["type"] == "select"
+    assert fields["auth_type"]["default_value"] == "password"
+    assert fields["private_key_content"]["encrypted"] is True
+    assert fields["private_key_passphrase"]["encrypted"] is True
+
+    assert fields["winrm_scheme"]["default_value"] == "https"
+    assert fields["winrm_transport"]["default_value"] == "ntlm"
+    assert fields["winrm_cert_validation"]["default_value"] is False
+    assert "Basic" in fields["winrm_transport"]["description"]
 
 
 def test_controller_raises_identity_error_when_instance_value_is_invalid(monkeypatch):

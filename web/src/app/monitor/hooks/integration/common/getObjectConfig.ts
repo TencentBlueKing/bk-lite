@@ -21,12 +21,6 @@ export const useObjectConfigInfo = () => {
     return objectConfig?.groupIds;
   };
 
-  // 获取对象的 tableDiaplay
-  const getTableDiaplay = (objectName: string) => {
-    const objectConfig = config[objectName];
-    return objectConfig?.tableDiaplay;
-  };
-
   // 获取对象的 dashboardDisplay
   const getDashboardDisplay = (objectName: string) => {
     const objectConfig = config[objectName];
@@ -37,7 +31,6 @@ export const useObjectConfigInfo = () => {
     getCollectType,
     getInstanceType,
     getGroupIds,
-    getTableDiaplay,
     getDashboardDisplay,
   };
 };

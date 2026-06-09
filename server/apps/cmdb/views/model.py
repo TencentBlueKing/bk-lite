@@ -13,6 +13,7 @@ from apps.cmdb.validators import IdentifierValidator
 from apps.cmdb.language.service import SettingLanguage
 from apps.cmdb.models import DELETE_INST, UPDATE_INST, FieldGroup
 from apps.cmdb.models.change_record import MODEL_MANAGEMENT_CHANGE
+from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.utils.base import get_default_group_id, get_current_team_from_request
 from apps.cmdb.utils.change_record import create_change_record
@@ -116,7 +117,17 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         default_group_id_permission = permissions_map.pop(default_group_id, default_group_permission)
         permissions_map[default_group_id] = default_group_id_permission
-        result = ModelManage.search_model(language=request.user.locale, permissions_map=permissions_map)
+
+        raw_include = request.query_params.get("include_hidden", "").lower()
+        include_hidden = (
+            raw_include in ("1", "true", "yes") and bool(getattr(request.user, "is_superuser", False))
+        )
+
+        result = ModelManage.search_model(
+            language=request.user.locale,
+            permissions_map=permissions_map,
+            include_hidden=include_hidden,
+        )
         # 重新把配置了的默认组织权限加上，因为默认组织权限是全部人都有查看的权限的 但是操作权限需要单独配置
         permissions_map[default_group_id]["inst_names"] = default_group_id_permission["inst_names"]
         # 补充权限
@@ -127,6 +138,35 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         )
 
         return WebUtils.response_success(result)
+
+    @action(detail=False, methods=["post"], url_path="save_layout")
+    def save_layout(self, request):
+        if not getattr(request.user, "is_superuser", False):
+            return WebUtils.response_error(
+                "permission denied", status_code=status.HTTP_403_FORBIDDEN,
+            )
+        classifications = request.data.get("classifications") or []
+        models = request.data.get("models") or []
+        if not isinstance(classifications, list) or not isinstance(models, list):
+            return WebUtils.response_error(
+                "classifications and models must be lists",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        # Snapshot prior classification state so we can revert if the
+        # subsequent model write fails (graph DB has no native transaction).
+        prior_classifications = ClassificationManage.snapshot_classification_layout(
+            [c.get("classification_id") for c in classifications if c.get("classification_id")]
+        )
+        ClassificationManage.update_classification_layout(classifications)
+        try:
+            ModelManage.update_model_orders(models)
+        except Exception:
+            # Best-effort revert of classification side. Model side either
+            # raised before any write or partially wrote; partial model state
+            # can be safely re-applied on user retry because save is idempotent.
+            ClassificationManage.update_classification_layout(prior_classifications)
+            raise
+        return WebUtils.response_success()
 
     @HasPermission("model_management-Delete Model")
     def destroy(self, request, pk: str):

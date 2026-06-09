@@ -29,7 +29,7 @@ from unittest.mock import MagicMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
 
-from apps.opspilot.models.memory_mgmt import Memory, MemorySpace  # noqa: E402
+from apps.opspilot.models.memory_mgmt import Memory, MemorySpace, MemoryWriteCache  # noqa: E402
 from apps.opspilot.utils.chat_flow_utils.nodes.memory.memory_read import MemoryReadNode  # noqa: E402
 from apps.opspilot.utils.chat_flow_utils.nodes.memory.memory_write import MemoryWriteNode  # noqa: E402
 
@@ -107,16 +107,18 @@ def personal_memories(memory_space_personal):
     return [m1]
 
 
-def create_variable_manager(user_id="alice@test.com"):
+def create_variable_manager(user_id="alice@test.com", flow_id="1001", execution_id="exec-1"):
     """Create a mock variable manager with user context."""
     vm = MagicMock()
     vm.get_variable.side_effect = lambda key, default=None: {
         "flow_input": {"user_id": user_id},
+        "flow_id": flow_id,
+        "execution_id": execution_id,
     }.get(key, default)
     return vm
 
 
-def build_node_config(memory_space_id=None, input_key="last_message", output_key="last_message", top_k=5, title=""):
+def build_node_config(memory_space_id=None, input_key="last_message", output_key="last_message", top_k=5, title="", batch_size=None):
     """Build node configuration dict."""
     config = {
         "inputParams": input_key,
@@ -127,6 +129,8 @@ def build_node_config(memory_space_id=None, input_key="last_message", output_key
         config["memorySpace"] = memory_space_id
     if title:
         config["title"] = title
+    if batch_size is not None:
+        config["writeBatchSize"] = batch_size
     return {"data": {"config": config}}
 
 
@@ -1432,3 +1436,331 @@ class TestMemoryWorkflowIntegration:
         memory_context = engine.variable_manager.get_variable("memory_context", "")
         assert "Alice Secret" in memory_context
         assert "Bob Secret" not in memory_context
+
+
+@pytest.mark.django_db
+class TestMemoryWriteBatchingNode:
+    """MemoryWrite node submits cache-first async tasks."""
+
+    def test_memory_write_node_passes_batch_metadata(self, memory_space_team):
+        vm = create_variable_manager("alice@test.com", flow_id="321")
+        node = MemoryWriteNode(vm)
+        node_config = build_node_config(memory_space_id=memory_space_team.id, title="Batch Memory", batch_size=30)
+
+        with patch("apps.opspilot.tasks.process_memory_write_cache.delay") as mock_delay:
+            result = node.execute("mem_write_batch", node_config, {"last_message": "Important batch content"})
+
+        assert result["last_message"] == "Important batch content"
+        mock_delay.assert_called_once()
+        call_kwargs = mock_delay.call_args.kwargs
+        assert call_kwargs["workflow_id"] == "321"
+        assert call_kwargs["node_id"] == "mem_write_batch"
+        assert call_kwargs["write_batch_size"] == 30
+
+
+@pytest.mark.django_db
+class TestProcessMemoryWriteCacheBatching:
+    """Cache-first batching behavior for memory writes."""
+
+    def test_below_threshold_only_buffers(self, memory_space_team):
+        from apps.opspilot.tasks import process_memory_write_cache
+
+        with patch("apps.opspilot.tasks.close_old_connections"):
+            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+                process_memory_write_cache(
+                    memory_space_id=memory_space_team.id,
+                    title="Batch Memory",
+                    content="event-1",
+                    owner_username="alice",
+                    owner_domain="test.com",
+                    workflow_id=1001,
+                    node_id="memory_write_node",
+                    write_batch_size=2,
+                )
+
+        assert MemoryWriteCache.objects.count() == 1
+        mock_write.assert_not_called()
+
+    def test_threshold_reached_writes_once_and_clears_cache(self, memory_space_team):
+        from apps.opspilot.tasks import process_memory_write_cache
+
+        with patch("apps.opspilot.tasks.close_old_connections"):
+            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+                process_memory_write_cache(
+                    memory_space_id=memory_space_team.id,
+                    title="Batch Memory",
+                    content="event-1",
+                    owner_username="alice",
+                    owner_domain="",
+                    organization_id=1,
+                    workflow_id=1001,
+                    node_id="memory_write_node",
+                    write_batch_size=2,
+                )
+                process_memory_write_cache(
+                    memory_space_id=memory_space_team.id,
+                    title="Batch Memory",
+                    content="event-2",
+                    owner_username="alice",
+                    owner_domain="",
+                    organization_id=1,
+                    workflow_id=1001,
+                    node_id="memory_write_node",
+                    write_batch_size=2,
+                )
+
+        mock_write.assert_called_once()
+        call_kwargs = mock_write.call_args.kwargs
+        assert "event-1" in call_kwargs["content"]
+        assert "event-2" in call_kwargs["content"]
+
+    def test_flush_task_persists_under_threshold_cache_and_deletes_rows(self, memory_space_team):
+        from apps.opspilot.tasks import flush_memory_write_cache_for_node
+
+        MemoryWriteCache.objects.create(
+            workflow_id=1001,
+            node_id="memory_write_node",
+            memory_target_id="1",
+            content="event-1",
+        )
+
+        with patch("apps.opspilot.tasks.close_old_connections"):
+            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+                flush_memory_write_cache_for_node(
+                    workflow_id=1001,
+                    node_id="memory_write_node",
+                    memory_space_id=memory_space_team.id,
+                    title="Flush Memory",
+                )
+
+        mock_write.assert_called_once()
+        assert MemoryWriteCache.objects.count() == 0
+
+
+@pytest.mark.django_db
+class TestMemoryWriteCacheFlushTriggers:
+    """Flush triggers for workflow save and daily schedule."""
+
+    def test_switching_memory_space_schedules_flush_for_old_config(self):
+        from apps.opspilot.viewsets.bot_view import _schedule_memory_write_cache_flush
+
+        workflow = MagicMock(id=1001)
+        old_flow_json = {
+            "nodes": [
+                {
+                    "id": "memory_write_node",
+                    "type": "memory_write",
+                    "data": {"config": {"memorySpace": 11, "title": "Old Memory", "llmModel": 7}},
+                }
+            ]
+        }
+        new_flow_json = {
+            "nodes": [
+                {
+                    "id": "memory_write_node",
+                    "type": "memory_write",
+                    "data": {"config": {"memorySpace": 22, "title": "New Memory", "llmModel": 9}},
+                }
+            ]
+        }
+
+        with patch("apps.opspilot.viewsets.bot_view.flush_memory_write_cache_for_node.delay") as mock_delay:
+            _schedule_memory_write_cache_flush(workflow, old_flow_json, new_flow_json)
+
+        mock_delay.assert_called_once_with(
+            workflow_id=1001,
+            node_id="memory_write_node",
+            memory_space_id=11,
+            title="Old Memory",
+            model_id=7,
+        )
+
+    def test_daily_flush_task_uses_current_workflow_config(self, db, mocker, memory_space_team):
+        from apps.opspilot.models.bot_mgmt import Bot, BotWorkFlow
+        from apps.opspilot.tasks import flush_all_pending_memory_write_cache
+
+        mocker.patch(
+            "apps.opspilot.models.bot_mgmt.ChatApplication.sync_applications_from_workflow",
+            return_value=(0, 0, 0),
+        )
+
+        bot = Bot.objects.create(
+            name="flush-bot",
+            team=[1],
+            online=True,
+            created_by="tester",
+            domain="test.com",
+        )
+        workflow = BotWorkFlow.objects.create(
+            bot=bot,
+            flow_json={
+                "nodes": [
+                    {
+                        "id": "memory_write_node",
+                        "type": "memory_write",
+                        "data": {"config": {"memorySpace": memory_space_team.id, "title": "Daily Memory", "llmModel": 8}},
+                    }
+                ],
+                "edges": [],
+            },
+        )
+        MemoryWriteCache.objects.create(workflow_id=workflow.id, node_id="memory_write_node", memory_target_id="1", content="event-1")
+
+        with patch("apps.opspilot.tasks.close_old_connections"):
+            with patch("apps.opspilot.tasks.flush_memory_write_cache_for_node") as mock_flush:
+                flush_all_pending_memory_write_cache()
+
+        mock_flush.assert_called_once_with(
+            workflow_id=workflow.id,
+            node_id="memory_write_node",
+            memory_space_id=memory_space_team.id,
+            title="Daily Memory",
+            model_id=8,
+        )
+
+    def test_batching_isolated_by_node_and_memory_target(self, memory_space_personal):
+        from apps.opspilot.tasks import process_memory_write_cache
+
+        with patch("apps.opspilot.tasks.close_old_connections"):
+            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+                process_memory_write_cache(
+                    memory_space_id=memory_space_personal.id,
+                    title="Batch Memory",
+                    content="alice-event-1",
+                    owner_username="alice",
+                    owner_domain="test.com",
+                    workflow_id=1001,
+                    node_id="memory_write_node_a",
+                    write_batch_size=2,
+                )
+                process_memory_write_cache(
+                    memory_space_id=memory_space_personal.id,
+                    title="Batch Memory",
+                    content="bob-event-1",
+                    owner_username="bob",
+                    owner_domain="test.com",
+                    workflow_id=1001,
+                    node_id="memory_write_node_a",
+                    write_batch_size=2,
+                )
+                process_memory_write_cache(
+                    memory_space_id=memory_space_personal.id,
+                    title="Batch Memory",
+                    content="alice-event-2",
+                    owner_username="alice",
+                    owner_domain="test.com",
+                    workflow_id=1001,
+                    node_id="memory_write_node_a",
+                    write_batch_size=2,
+                )
+
+        mock_write.assert_called_once()
+        remaining_targets = list(MemoryWriteCache.objects.values_list("memory_target_id", flat=True))
+        assert remaining_targets == ["bob@test.com"]
+
+    def test_batch_size_one_keeps_immediate_write_behavior(self, memory_space_team):
+        from apps.opspilot.tasks import process_memory_write_cache
+
+        with patch("apps.opspilot.tasks.close_old_connections"):
+            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+                process_memory_write_cache(
+                    memory_space_id=memory_space_team.id,
+                    title="Immediate Memory",
+                    content="event-1",
+                    owner_username="alice",
+                    owner_domain="",
+                    organization_id=1,
+                    workflow_id=1001,
+                    node_id="memory_write_node",
+                    write_batch_size=1,
+                )
+
+        mock_write.assert_called_once()
+        assert MemoryWriteCache.objects.count() == 0
+
+    def test_threshold_reached_summarizes_before_final_write(self, memory_space_team):
+        from apps.opspilot.tasks import process_memory_write_cache
+
+        llm_model = create_test_llm_model(None)
+        memory_space_team.default_model = str(llm_model.id)
+        memory_space_team.save()
+
+        mock_response = MagicMock()
+        mock_response.content = "- batched summary"
+        mock_client = MagicMock()
+        mock_client.invoke.return_value = mock_response
+
+        with patch("apps.opspilot.tasks.close_old_connections"):
+            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+                with patch(
+                    "apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client",
+                    return_value=mock_client,
+                ):
+                    process_memory_write_cache(
+                        memory_space_id=memory_space_team.id,
+                        title="Batch Memory",
+                        content="event-1",
+                        owner_username="alice",
+                        owner_domain="",
+                        organization_id=1,
+                        workflow_id=1001,
+                        node_id="memory_write_node",
+                        write_batch_size=2,
+                    )
+                    process_memory_write_cache(
+                        memory_space_id=memory_space_team.id,
+                        title="Batch Memory",
+                        content="event-2",
+                        owner_username="alice",
+                        owner_domain="",
+                        organization_id=1,
+                        workflow_id=1001,
+                        node_id="memory_write_node",
+                        write_batch_size=2,
+                    )
+
+        mock_client.invoke.assert_called_once()
+        assert mock_write.call_args.kwargs["content"] == "- batched summary"
+
+    def test_summary_failure_falls_back_to_joined_content(self, memory_space_team):
+        from apps.opspilot.tasks import process_memory_write_cache
+
+        llm_model = create_test_llm_model(None)
+        memory_space_team.default_model = str(llm_model.id)
+        memory_space_team.save()
+
+        mock_client = MagicMock()
+        mock_client.invoke.side_effect = Exception("summary failed")
+
+        with patch("apps.opspilot.tasks.close_old_connections"):
+            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+                with patch(
+                    "apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client",
+                    return_value=mock_client,
+                ):
+                    process_memory_write_cache(
+                        memory_space_id=memory_space_team.id,
+                        title="Batch Memory",
+                        content="event-1",
+                        owner_username="alice",
+                        owner_domain="",
+                        organization_id=1,
+                        workflow_id=1001,
+                        node_id="memory_write_node",
+                        write_batch_size=2,
+                    )
+                    process_memory_write_cache(
+                        memory_space_id=memory_space_team.id,
+                        title="Batch Memory",
+                        content="event-2",
+                        owner_username="alice",
+                        owner_domain="",
+                        organization_id=1,
+                        workflow_id=1001,
+                        node_id="memory_write_node",
+                        write_batch_size=2,
+                    )
+
+        call_kwargs = mock_write.call_args.kwargs
+        assert "event-1" in call_kwargs["content"]
+        assert "event-2" in call_kwargs["content"]

@@ -54,6 +54,7 @@ class MemoryWriteNode(BaseNodeExecutor):
         title = config.get("title", "")
         # 获取节点级别的模型配置（可选，覆盖记忆空间默认模型）
         model_id = config.get("llmModel")
+        write_batch_size = config.get("writeBatchSize") or config.get("write_batch_size")
 
         message = input_data.get(input_key, "")
 
@@ -80,6 +81,11 @@ class MemoryWriteNode(BaseNodeExecutor):
                     entity=entity,
                     content=message,
                     title=title or f"自动记忆-{node_id}",
+                    metadata={
+                        "workflow_id": self.variable_manager.get_variable("flow_id", "") if self.variable_manager else "",
+                        "node_id": node_id,
+                        "write_batch_size": write_batch_size,
+                    },
                     model_id=model_id,
                 )
 

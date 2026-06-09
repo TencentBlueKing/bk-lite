@@ -841,20 +841,23 @@ class ModelManage(object):
     def search_model(
         language: str = "en",
         order_type: str = "ASC",
-        order: str = "id",
+        order: str = "order_id",
         permissions_map: dict | None = None,
         classification_ids: list | None = None,
         creator: str = "",
+        include_hidden: bool = False,
     ):
         """
         查询模型
         Args:
             language: 语言，默认英语
             order_type: 排序方式，asc升序/desc降序
-            order: 排序字段，默认order_id
+            order: 排序字段，默认 order_id
             classification_ids: 分类ID列表，可选，用于过滤特定分类下的模型
             permissions_map: 权限过滤字典
-            creator: 创建人，可选，用于过滤特定创建人的模型
+            creator: 创建人，可选
+            include_hidden: True 时返回包含已隐藏（is_visible=False）的模型；
+                默认 False 时过滤掉已隐藏项
         """
 
         permissions_map = permissions_map or {}
@@ -898,6 +901,11 @@ class ModelManage(object):
             # 确保所有模型都有order_id
             if "order_id" not in model:
                 model["order_id"] = 0
+            if "is_visible" not in model:
+                model["is_visible"] = True
+
+        if not include_hidden:
+            models = [m for m in models if m.get("is_visible", True)]
 
         return models
 
@@ -1776,9 +1784,13 @@ class ModelManage(object):
     @staticmethod
     def update_model_orders(model_orders: list):
         """
-        批量更新模型排序
+        批量更新模型排序及可见性
         Args:
-            model_orders: [{"model_id": "model_1", "order_id": 1}, ...]
+            model_orders: [
+                {"model_id": "model_1", "order_id": 1},
+                {"model_id": "model_2", "order_id": 2, "is_visible": False},
+            ]
+            order_id 必填；is_visible 可选，缺省时不修改原有可见性
         """
         with GraphClient() as ag:
             for order_info in model_orders:
@@ -1791,10 +1803,13 @@ class ModelManage(object):
                 if model_count == 0:
                     continue
                 model_info = models[0]
+                props: dict = {"order_id": order_info["order_id"]}
+                if "is_visible" in order_info:
+                    props["is_visible"] = bool(order_info["is_visible"])
                 ag.set_entity_properties(
                     MODEL,
                     [model_info["_id"]],
-                    {"order_id": order_info["order_id"]},
+                    props,
                     {},
                     [],
                     False,

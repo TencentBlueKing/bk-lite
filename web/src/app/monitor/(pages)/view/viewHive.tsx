@@ -28,7 +28,6 @@ import HiveModal from './hiveModal';
 import { EditOutlined } from '@ant-design/icons';
 import { getEnumColor, isStringArray } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
-import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import { Select, Spin } from 'antd';
 import { ListItem } from '@/types';
 const { Option } = Select;
@@ -41,7 +40,6 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const { getInstanceQueryParams, getInstanceSearch } = useViewApi();
   const { t } = useTranslation();
   const { getEnumValueUnit } = useUnitTransform();
-  const { getTableDiaplay } = useObjectConfigInfo();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const modalRef = useRef<ModalRef>(null);
   const hexGridRef = useRef<HTMLDivElement>(null);
@@ -68,16 +66,16 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
 
   const metricList = useMemo(() => {
     if (objectId && objects?.length && mertics?.length) {
-      const objName = objects.find((item) => item.id === objectId)?.name;
-      if (objName) {
-        const filterMetrics = getTableDiaplay(objName);
-        return mertics.filter((metric) =>
-          filterMetrics.find((item: TableDataItem) => item.key === metric.name)
-        );
-      }
+      const target = objects.find((item) => item.id === objectId);
+      const metricNames = new Set(
+        (target?.display_fields || []).flatMap((col) =>
+          (col.metrics || []).map((binding) => binding.metric)
+        )
+      );
+      return mertics.filter((metric) => metricNames.has(metric.name));
     }
     return [];
-  }, [mertics, isPod]);
+  }, [mertics, objects, objectId]);
 
   // 动态设置 pageSize
   useEffect(() => {

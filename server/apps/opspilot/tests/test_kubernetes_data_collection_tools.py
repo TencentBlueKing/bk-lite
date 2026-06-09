@@ -1,3 +1,4 @@
+import base64
 import json
 
 
@@ -14,7 +15,45 @@ def test_kubernetes_constructor_params_expose_structured_instances_only():
     ]
 
 
-def test_get_kubernetes_instances_prompt_targets_all_when_unspecified():
+def test_build_generated_file_download_event_returns_generic_payload():
+    from apps.opspilot.services.generated_file_delivery_service import build_generated_file_download_event
+
+    event = build_generated_file_download_event(
+        filename="report.docx",
+        content_bytes=b"hello",
+        mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+
+    assert event["filename"] == "report.docx"
+    assert event["mime_type"] == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    assert len(event["download_id"]) == 8
+    assert base64.b64decode(event["content_base64"]) == b"hello"
+
+
+def test_generate_k8s_report_docx_keeps_k8s_specific_rendering():
+    from apps.opspilot.metis.llm.tools.kubernetes.report_generator import generate_k8s_report_docx
+
+    report_bytes = generate_k8s_report_docx(
+        {
+            "cluster_name": "test-cluster",
+            "raw_items": [
+                {
+                    "namespace": "default",
+                    "target_name": "api",
+                    "target_type": "Deployment",
+                    "severity": "high",
+                    "summary": "镜像标签使用 latest",
+                    "category": "image",
+                }
+            ],
+        }
+    )
+
+    assert isinstance(report_bytes, bytes)
+    assert report_bytes.startswith(b"PK")
+
+
+def test_get_kubernetes_instances_prompt_requires_choice_when_unspecified():
     from apps.opspilot.metis.llm.tools.kubernetes.connection import get_kubernetes_instances_prompt
 
     prompt = get_kubernetes_instances_prompt(
@@ -27,7 +66,8 @@ def test_get_kubernetes_instances_prompt_targets_all_when_unspecified():
     )
 
     assert "可用实例: 测试集群, 生产集群" in prompt
-    assert "未指定实例时，默认对全部实例执行" in prompt
+    assert "未指定实例时，必须先让用户选择一个目标实例" in prompt
+    assert "默认对全部实例执行" not in prompt
 
 
 def test_collect_k8s_context_targets_single_instance_when_instance_id_provided(mocker):

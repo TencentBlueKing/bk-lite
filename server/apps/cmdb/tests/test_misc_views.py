@@ -175,7 +175,7 @@ def test_classification_create(superuser, monkeypatch):
 def test_classification_list(superuser, monkeypatch):
     monkeypatch.setattr(
         "apps.cmdb.views.classification.ClassificationManage.search_model_classification",
-        lambda locale: [{"classification_id": "net"}],
+        lambda locale, **kwargs: [{"classification_id": "net"}],
     )
     request = _req("get", superuser)
     response = ClassificationViewSet.as_view({"get": "list"})(request)

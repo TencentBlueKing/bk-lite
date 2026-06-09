@@ -34,6 +34,8 @@ export interface MonitorObjectItem {
   description?: string;
   children?: ChildObject[];
   children_count?: number;
+  display_fields?: DisplayColumn[];
+  display_fields_customized?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -67,4 +69,33 @@ export interface GetObjectsParams {
 export interface OrderUpdateItem {
   id: string | number;
   order: number;
+}
+
+// 展示列：单个模板指标绑定
+export interface DisplayMetricBinding {
+  plugin: string; // 插件名
+  metric: string; // 指标名
+}
+
+// 展示列
+export interface DisplayColumn {
+  name: string;
+  sort_order: number;
+  metrics: DisplayMetricBinding[];
+}
+
+// 展示列配置弹窗用：对象绑定的插件（模板）选项
+export interface PluginOption {
+  id: number;
+  name: string;
+  display_name?: string;
+}
+
+// 展示列配置弹窗用：对象某插件下的指标选项
+export interface MetricOption {
+  id: number;
+  name: string;
+  display_name?: string;
+  unit?: string;
+  data_type?: string;
 }

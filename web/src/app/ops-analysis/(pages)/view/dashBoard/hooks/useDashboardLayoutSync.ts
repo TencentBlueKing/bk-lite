@@ -16,13 +16,28 @@ import {
   getFilterDefinitionId,
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import {
+  buildRelativeTimeRangeFilterValue,
+  normalizeTimeRangeFilterValue,
+} from '@/app/ops-analysis/utils/filterValue';
+import {
   collectDashboardNamespaceIds,
 } from '@/app/ops-analysis/utils/canvasResources';
 import {
   isDashboardWidgetItem,
 } from '@/app/ops-analysis/utils/dashboardGroups';
-import type { TimeRangeValue } from '@/app/ops-analysis/types/dashBoard';
-import dayjs from 'dayjs';
+
+export const resolveWidgetBindableParams = (
+  valueConfig: DashboardLayoutItem['valueConfig'] | undefined,
+  dataSource?: DatasourceItem,
+) => {
+  const widgetParams = valueConfig?.dataSourceParams;
+
+  if (Array.isArray(widgetParams) && widgetParams.length > 0) {
+    return widgetParams;
+  }
+
+  return dataSource?.params;
+};
 
 interface UseDashboardLayoutSyncOptions {
   dataSources: DatasourceItem[];
@@ -36,6 +51,41 @@ interface UseDashboardLayoutSyncOptions {
   setDefinitions: (definitions: UnifiedFilterDefinition[]) => void;
   setFilterValues: (values: Record<string, FilterValue>) => void;
 }
+
+export const syncFilterValuesForDefinitions = (
+  nextDefinitions: UnifiedFilterDefinition[],
+  currentValues: Record<string, FilterValue>,
+): Record<string, FilterValue> => {
+  const allowedIds = new Set(nextDefinitions.map((definition) => definition.id));
+  const updatedValues = Object.entries(currentValues).reduce<
+    Record<string, FilterValue>
+  >((acc, [filterId, value]) => {
+    if (allowedIds.has(filterId)) {
+      acc[filterId] = value;
+    }
+    return acc;
+  }, {});
+
+  nextDefinitions.forEach((def) => {
+    if (
+      def.enabled &&
+      def.defaultValue !== null &&
+      def.defaultValue !== undefined &&
+      (updatedValues[def.id] === undefined || updatedValues[def.id] === null)
+    ) {
+      if (def.type === 'timeRange') {
+        const normalizedValue = normalizeTimeRangeFilterValue(def.defaultValue);
+        if (normalizedValue) {
+          updatedValues[def.id] = normalizedValue;
+        }
+      } else {
+        updatedValues[def.id] = def.defaultValue;
+      }
+    }
+  });
+
+  return updatedValues;
+};
 
 export const useDashboardLayoutSync = ({
   dataSources,
@@ -68,7 +118,7 @@ export const useDashboardLayoutSync = ({
         const dataSource = dataSources.find(
           (source) => source.id === normalizedId,
         );
-        const params = dataSource?.params;
+        const params = resolveWidgetBindableParams(item.valueConfig, dataSource);
 
         getBindableFilterParams(params).forEach((param) => {
           const id = getFilterDefinitionId(param.name, param.type);
@@ -96,12 +146,7 @@ export const useDashboardLayoutSync = ({
             defaultValue = existing.defaultValue;
           } else if (param.value !== undefined && param.value !== null) {
             if (param.type === 'timeRange' && typeof param.value === 'number') {
-              const end = dayjs();
-              const start = end.subtract(param.value, 'minute');
-              defaultValue = {
-                start: start.toISOString(),
-                end: end.toISOString(),
-              } as TimeRangeValue;
+              defaultValue = buildRelativeTimeRangeFilterValue(param.value);
             } else {
               defaultValue = param.value as FilterValue;
             }
@@ -145,7 +190,10 @@ export const useDashboardLayoutSync = ({
         const dataSource = dataSources.find(
           (source) => source.id === normalizedId,
         );
-        const currentParams = dataSource?.params;
+        const currentParams = resolveWidgetBindableParams(
+          item.valueConfig,
+          dataSource,
+        );
 
         const autoBindings = buildDefaultFilterBindings(
           currentParams,
@@ -201,41 +249,8 @@ export const useDashboardLayoutSync = ({
     (
       nextDefinitions: UnifiedFilterDefinition[],
       currentValues: Record<string, FilterValue>,
-    ): Record<string, FilterValue> => {
-      const updatedValues: Record<string, FilterValue> = { ...currentValues };
-
-      nextDefinitions.forEach((def) => {
-        if (
-          def.enabled &&
-          def.defaultValue !== null &&
-          def.defaultValue !== undefined &&
-          (updatedValues[def.id] === undefined || updatedValues[def.id] === null)
-        ) {
-          if (def.type === 'timeRange') {
-            const rawValue = def.defaultValue;
-            if (typeof rawValue === 'number') {
-              const end = dayjs();
-              const start = end.subtract(rawValue, 'minute');
-              updatedValues[def.id] = {
-                start: start.toISOString(),
-                end: end.toISOString(),
-              } as TimeRangeValue;
-            } else if (
-              rawValue &&
-              typeof rawValue === 'object' &&
-              'start' in rawValue &&
-              'end' in rawValue
-            ) {
-              updatedValues[def.id] = rawValue as TimeRangeValue;
-            }
-          } else {
-            updatedValues[def.id] = def.defaultValue;
-          }
-        }
-      });
-
-      return updatedValues;
-    },
+    ): Record<string, FilterValue> =>
+      syncFilterValuesForDefinitions(nextDefinitions, currentValues),
     [],
   );
 

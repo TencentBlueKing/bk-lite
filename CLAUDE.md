@@ -106,11 +106,13 @@ uv run pytest         # Run tests
 ## Testing
 
 ### Server
-- pytest with Django integration (`pytest-django`)
-- Config: `server/pytest.ini` — tests in `server/apps/`, coverage target 60%
-- Markers: `unit`, `integration`, `bdd`, `slow`
+- **Full TDD/BDD conventions: `server/docs/testing-guide.md`** (directory layout, test layering, BDD style) — follow it for all new/changed tests
+- Stack: `pytest` + `pytest-django` + `pytest-bdd` + `factory_boy` (all in the `dev` dependency group)
+- Config: `server/pytest.ini` — `testpaths = apps` (scans all apps), `--cov=apps`
+- Markers (registered in `pytest.ini`): `unit`, `integration`, `bdd`, `slow`
+- Layering by filename suffix: `_pure` (no DB/IO), `_service` (mocked deps), `_views` (DRF via `api_client`)
+- Standard test dir per app: `apps/<app>/tests/`; BDD is flat — `apps/<app>/tests/bdd/<feature>.feature` + `test_<feature>_bdd.py` using `scenarios(FEATURE)` with 中文 Gherkin
 - Global fixtures in `server/conftest.py`: `authenticated_user`, `api_client`, `request_factory`
-- Coverage reports to `htmlcov/`
 - Async mode: `asyncio_mode = auto`
 
 ### Web

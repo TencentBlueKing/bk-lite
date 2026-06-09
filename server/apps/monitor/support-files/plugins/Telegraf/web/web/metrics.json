@@ -9,6 +9,7 @@
   "default_metric": "any({instance_type='web'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["http_node_success_rate", "http_response_response_time", "http_response_http_response_code"],
+  "display_fields": [{"name": "Node Success Rate", "sort_order": 0, "metrics": [{"plugin": "Website", "metric": "http_node_success_rate"}]}, {"name": "Response Time", "sort_order": 1, "metrics": [{"plugin": "Website", "metric": "http_response_response_time"}]}, {"name": "HTTP Code", "sort_order": 2, "metrics": [{"plugin": "Website", "metric": "http_response_http_response_code"}]}],
   "metrics": [
     {
       "metric_group": "HTTP",

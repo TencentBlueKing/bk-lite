@@ -9,6 +9,7 @@
   "default_metric": "any({instance_type='zookeeper'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["zookeeper_num_alive_connections", "zookeeper_outstanding_requests", "zookeeper_avg_latency"],
+  "display_fields": [{"name": "Alive Connections", "sort_order": 0, "metrics": [{"plugin": "Zookeeper", "metric": "zookeeper_num_alive_connections"}]}, {"name": "Outstanding Requests", "sort_order": 1, "metrics": [{"plugin": "Zookeeper", "metric": "zookeeper_outstanding_requests"}]}, {"name": "Average Latency", "sort_order": 2, "metrics": [{"plugin": "Zookeeper", "metric": "zookeeper_avg_latency"}]}],
   "metrics": [
     {
       "metric_group": "System Status",

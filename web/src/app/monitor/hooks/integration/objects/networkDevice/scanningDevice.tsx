@@ -52,11 +52,6 @@ export const useScanningDeviceConfig = () => {
         }
       }
     ],
-    tableDiaplay: [
-      { type: 'value', key: 'snmp_uptime' },
-      { type: 'value', key: 'device_total_incoming_traffic' },
-      { type: 'value', key: 'device_total_outgoing_traffic' }
-    ],
     groupIds: {},
     collectTypes: {
       'Scanning Device SNMP General': 'snmp'

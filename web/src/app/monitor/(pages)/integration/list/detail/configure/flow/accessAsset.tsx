@@ -9,6 +9,11 @@ import useMonitorApi from '@/app/monitor/api';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
 import type { FlowProtocol } from '@/app/monitor/types/integration';
+import {
+  buildExistingFlowAssetFormPatch,
+  FLOW_FALLBACK_SAMPLING_RATE_DEFAULT,
+  type FlowExistingAssetItem
+} from '@/app/monitor/utils/flowAsset';
 import type { FlowAssetWizardState } from './flowConfiguration';
 
 interface FlowAssetFormValues {
@@ -21,19 +26,6 @@ interface FlowAssetFormValues {
   fallback_sampling_rate?: number;
 }
 
-interface ExistingAssetItem {
-  instance_id?: string;
-  id?: string;
-  instance_name?: string;
-  name?: string;
-  agent_id?: string;
-  time?: string;
-  cloud_region_id?: number;
-  ip?: string;
-  organizations?: React.Key[];
-  fallback_sampling_rate?: number;
-}
-
 interface AccessAssetProps {
   protocol: FlowProtocol;
   objectId?: number;
@@ -42,7 +34,6 @@ interface AccessAssetProps {
 }
 
 const FORM_CONTROL_WIDTH = 360;
-const FALLBACK_SAMPLING_RATE_DEFAULT = 1000;
 
 const protocolLabelMap: Record<FlowProtocol, string> = {
   netflow: 'NetFlow',
@@ -64,7 +55,7 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
   const [cloudRegionLoading, setCloudRegionLoading] = useState(false);
   const [cloudRegionList, setCloudRegionList] = useState<any[]>([]);
   const [assetLoading, setAssetLoading] = useState(false);
-  const [existingAssets, setExistingAssets] = useState<ExistingAssetItem[]>([]);
+  const [existingAssets, setExistingAssets] = useState<FlowExistingAssetItem[]>([]);
   const accessType = Form.useWatch('accessType', form);
   const getCloudRegionListRef = useRef(getCloudRegionList);
   const getInstanceListRef = useRef(getInstanceList);
@@ -101,7 +92,7 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
               organizations: selectedGroup?.id
                 ? [Number(selectedGroup.id)]
                 : undefined,
-              fallback_sampling_rate: FALLBACK_SAMPLING_RATE_DEFAULT,
+              fallback_sampling_rate: FLOW_FALLBACK_SAMPLING_RATE_DEFAULT,
               cloud_region_id: nextRegions[0]?.id
             }
         );
@@ -116,7 +107,7 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
 
   const existingAssetMap = useMemo(
     () =>
-      existingAssets.reduce<Record<string, ExistingAssetItem>>((acc, item) => {
+      existingAssets.reduce<Record<string, FlowExistingAssetItem>>((acc, item) => {
         const key = String(item.instance_id || item.id || '');
         if (key) {
           acc[key] = item;
@@ -144,21 +135,14 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
     if (value === 'new') {
       form.setFieldsValue({
         organizations: selectedGroup?.id ? [Number(selectedGroup.id)] : undefined,
-        fallback_sampling_rate: FALLBACK_SAMPLING_RATE_DEFAULT
+        fallback_sampling_rate: FLOW_FALLBACK_SAMPLING_RATE_DEFAULT
       });
     }
   };
 
   const handleExistingAssetChange = (value: string) => {
     const selectedAsset = existingAssetMap[String(value)];
-    form.setFieldsValue({
-      instance_id: value,
-      name: selectedAsset?.instance_name || selectedAsset?.name,
-      cloud_region_id: selectedAsset?.cloud_region_id,
-      ip: selectedAsset?.ip,
-      organizations: selectedAsset?.organizations,
-      fallback_sampling_rate: selectedAsset?.fallback_sampling_rate
-    });
+    form.setFieldsValue(buildExistingFlowAssetFormPatch(value, selectedAsset));
   };
 
   const handleSubmit = async () => {
@@ -172,7 +156,7 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
         ip: values.ip!,
         name: values.name!,
         fallback_sampling_rate:
-          values.fallback_sampling_rate ?? FALLBACK_SAMPLING_RATE_DEFAULT,
+          values.fallback_sampling_rate ?? FLOW_FALLBACK_SAMPLING_RATE_DEFAULT,
         organizations: values.organizations || [],
         instance_id:
           values.accessType === 'existing' ? values.instance_id : undefined
@@ -186,7 +170,7 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
         name: values.name!,
         organizations: values.organizations || [],
         fallback_sampling_rate:
-          values.fallback_sampling_rate ?? FALLBACK_SAMPLING_RATE_DEFAULT,
+          values.fallback_sampling_rate ?? FLOW_FALLBACK_SAMPLING_RATE_DEFAULT,
         enabled_protocols: result?.enabled_protocols
       });
     } catch (error: any) {
@@ -217,7 +201,7 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
         className="w-full"
         initialValues={{
           accessType: 'new',
-          fallback_sampling_rate: FALLBACK_SAMPLING_RATE_DEFAULT
+          fallback_sampling_rate: FLOW_FALLBACK_SAMPLING_RATE_DEFAULT
         }}
       >
         <div className="flex items-center mb-6">

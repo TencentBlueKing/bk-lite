@@ -306,19 +306,22 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
           </div>
         </div>
         {displayColumns.length > 0 ? (
-          <CustomTable
-            rowKey="id"
-            columns={displayColumnTableColumns}
-            dataSource={displayColumns}
-            pagination={false}
-            scroll={{ y: 320 }}
-            rowDraggable
-            onRowDragEnd={(targetTableData) =>
-              onDisplayColumnDragEnd(
-                (targetTableData || []) as DisplayColumnRow[],
-              )
-            }
-          />
+          <div className="pt-1">
+            <CustomTable
+              rowKey="id"
+              columns={displayColumnTableColumns}
+              dataSource={displayColumns}
+              pagination={false}
+              scroll={{ y: 320 }}
+              size="small"
+              rowDraggable
+              onRowDragEnd={(targetTableData) =>
+                onDisplayColumnDragEnd(
+                  (targetTableData || []) as DisplayColumnRow[],
+                )
+              }
+            />
+          </div>
         ) : (
           <CompactEmptyState
             description={

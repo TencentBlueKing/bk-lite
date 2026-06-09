@@ -2,6 +2,10 @@ import React from 'react';
 import { Form, Select, Switch, Tooltip } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { QuestionCircleOutlined } from '@ant-design/icons';
+import {
+  arePacketbeatPortsValid,
+  hasPacketbeatPorts
+} from './packetbeatPortValidation';
 
 const useHttpPacketbeatFormItems = () => {
   const { t } = useTranslation();
@@ -44,8 +48,17 @@ const useHttpPacketbeatFormItems = () => {
                   name="ports"
                   rules={[
                     {
-                      required: true,
-                      message: t('common.required')
+                      validator(_, value) {
+                        if (!hasPacketbeatPorts(value)) {
+                          return Promise.reject(new Error(t('common.required')));
+                        }
+                        if (!arePacketbeatPortsValid(value)) {
+                          return Promise.reject(
+                            new Error(t('log.integration.httpPortsInvalid'))
+                          );
+                        }
+                        return Promise.resolve();
+                      }
                     }
                   ]}
                 >

@@ -10,10 +10,14 @@ from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.enum import SkillTypeChoices
 from apps.opspilot.models import LLMModel, SkillTools
 from apps.opspilot.services.builtin_tools import (
+    BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
+    BUILTIN_MONITOR_TOOL_NAME,
     BUILTIN_MSSQL_TOOL_NAME,
     BUILTIN_MYSQL_TOOL_NAME,
     BUILTIN_ORACLE_TOOL_NAME,
     BUILTIN_REDIS_TOOL_NAME,
+    build_builtin_attachment_file_runtime_tool,
+    build_builtin_monitor_runtime_tool,
     build_builtin_mssql_runtime_tool,
     build_builtin_mysql_runtime_tool,
     build_builtin_oracle_runtime_tool,
@@ -169,12 +173,16 @@ class ChatService:
         selected_tools = kwargs.get("tools", [])
         selected_builtin_kwargs = {}
         builtin_tool_names = {
+            BUILTIN_ATTACHMENT_FILE_TOOL_NAME: None,
+            BUILTIN_MONITOR_TOOL_NAME: None,
             BUILTIN_REDIS_TOOL_NAME: None,
             BUILTIN_MYSQL_TOOL_NAME: None,
             BUILTIN_ORACLE_TOOL_NAME: None,
             BUILTIN_MSSQL_TOOL_NAME: None,
         }
         builtin_builders = {
+            BUILTIN_ATTACHMENT_FILE_TOOL_NAME: build_builtin_attachment_file_runtime_tool,
+            BUILTIN_MONITOR_TOOL_NAME: build_builtin_monitor_runtime_tool,
             BUILTIN_REDIS_TOOL_NAME: build_builtin_redis_runtime_tool,
             BUILTIN_MYSQL_TOOL_NAME: build_builtin_mysql_runtime_tool,
             BUILTIN_ORACLE_TOOL_NAME: build_builtin_oracle_runtime_tool,
@@ -188,7 +196,11 @@ class ChatService:
             if tool.get("name") in builtin_tool_names:
                 selected_builtin_kwargs[tool["name"]] = {u["key"]: u["value"] for u in tool.get("kwargs", []) if u.get("key")}
 
-        tool_map = {i["id"]: {u["key"]: u["value"] for u in i["kwargs"] if u.get("key")} for i in selected_tools if "id" in i}
+        tool_map = {
+            i["id"]: {u["key"]: u["value"] for u in i["kwargs"] if u.get("key")}
+            for i in selected_tools
+            if isinstance(i.get("id"), int) and i["id"] > 0
+        }
 
         skill_tools_queryset = SkillTools.objects.filter(id__in=list(tool_map.keys()))
         tools = []
@@ -214,8 +226,15 @@ class ChatService:
             k8s_instances_raw = tool_kwargs.get("kubernetes_instances")
             # 使用 parse_kubernetes_instances 正确解析（支持 JSON 字符串和 list）
             from apps.opspilot.metis.llm.tools.kubernetes.connection import parse_kubernetes_instances
+
             k8s_instances = parse_kubernetes_instances(k8s_instances_raw) if k8s_instances_raw else []
-            if len(k8s_instances) > 1:
+            if len(k8s_instances) == 1:
+                instance = k8s_instances[0]
+                if instance.get("name"):
+                    extra_config["instance_name"] = instance["name"]
+                if instance.get("id"):
+                    extra_config["instance_id"] = instance["id"]
+            elif len(k8s_instances) > 1:
                 instance_names = [inst.get("name", "") for inst in k8s_instances if inst.get("name")]
                 if instance_names:
                     options_json = ", ".join(f'"{name}"' for name in instance_names)
@@ -226,15 +245,15 @@ class ChatService:
                         "不要调用任何工具，不要调用 request_user_choice，不要提及集群。\n\n"
                         "以下集群选择规则仅在用户明确要求执行 Kubernetes 操作时生效：\n"
                         "- 用户提到了某个具体工作负载名称（如 'payment-gateway'）→ 用 search_workload_across_namespaces 搜索它在哪些集群中存在。"
-                        "如果只在一个集群找到则直接操作；如果多个集群都有则对所有找到的集群都执行检查并汇总结果，不需要让用户选。\n"
-                        "- 用户要执行 K8s 操作但没有指定集群名 → 让用户选择目标集群后再执行\n"
+                        "如果只在一个集群找到则直接操作；如果多个集群都有则必须调用 request_user_choice 让用户选择目标集群后再执行。\n"
+                        "- 用户要执行 K8s 操作但没有指定集群名 → 必须先调用 request_user_choice，让用户从真实集群名中选择一个目标集群后再执行\n"
                         "- 用户明确说了集群名 → 直接操作该集群\n"
-                        "- 用户说 '所有集群/全部集群' → 对全部集群执行\n"
+                        "- 用户说 '所有工作负载/全部工作负载' 只是工作负载范围，不是全部集群范围；多集群时仍然必须先选择目标集群\n"
                         "【禁止】用户说'所有工作负载'时，不要调用 search_workload_across_namespaces，那是用于搜索特定名称的。\n"
                         "【禁止】用户已经指定了工作负载名称时，不允许跳过搜索直接问用户选集群。必须先搜索。"
                     )
                     tool_params["extra_tools_prompt"] = tool_params.get("extra_tools_prompt", "") + k8s_prompt
-                    extra_config["_multi_instance_options"] = instance_names + ["全部"]
+                    extra_config["_multi_instance_options"] = instance_names
             tools.append(tool_params)
 
         for name, builder in builtin_builders.items():
@@ -244,6 +263,8 @@ class ChatService:
         for i in tool_map.values():
             extra_config.update(i)
         extra_config.update({"execution_id": chat_kwargs["execution_id"]})
+        if kwargs.get("attachment_id"):
+            extra_config["attachment_id"] = kwargs["attachment_id"]
         if kwargs.get("node_id"):
             extra_config["node_id"] = kwargs["node_id"]
         if kwargs.get("trigger_type"):
@@ -326,6 +347,8 @@ class ChatService:
             ChatService._process_tools_and_extra_config(kwargs, chat_kwargs, extra_config)
         elif extra_config:
             extra_config.update({"execution_id": chat_kwargs["execution_id"]})
+            if kwargs.get("attachment_id"):
+                extra_config["attachment_id"] = kwargs["attachment_id"]
             if kwargs.get("node_id"):
                 extra_config["node_id"] = kwargs["node_id"]
             if kwargs.get("trigger_type"):

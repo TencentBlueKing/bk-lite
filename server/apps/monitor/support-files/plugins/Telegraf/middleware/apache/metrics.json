@@ -9,6 +9,7 @@
   "default_metric": "any({instance_type='apache'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["apache_ReqPerSec", "apache_BusyWorkers", "apache_CPULoad"],
+  "display_fields": [{"name": "Request Processing Rate", "sort_order": 0, "metrics": [{"plugin": "Apache", "metric": "apache_ReqPerSec"}]}, {"name": "Busy Workers", "sort_order": 1, "metrics": [{"plugin": "Apache", "metric": "apache_BusyWorkers"}]}, {"name": "CPU Load", "sort_order": 2, "metrics": [{"plugin": "Apache", "metric": "apache_CPULoad"}]}],
   "metrics": [
     {
       "metric_group": "Base",

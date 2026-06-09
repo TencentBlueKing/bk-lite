@@ -266,7 +266,16 @@
         "defaultValueHint": "仅在页面新增实例时，系统自动填写默认值。",
         "exportModelConfig": "导出配置",
         "importModelConfig": "导入配置",
-        "importSuccess": "导入成功"
+        "importSuccess": "导入成功",
+        "manageLayout": "排序与可见性",
+        "modelName": "模型",
+        "modelId": "模型ID",
+        "source": "来源",
+        "builtin": "内置",
+        "custom": "自定义",
+        "visible": "可见",
+        "hidden": "已隐藏",
+        "discardLayoutConfirm": "当前改动未保存，确认放弃？"
     },
     "PublicEnumLibrary": {
         "title": "公共选项库",

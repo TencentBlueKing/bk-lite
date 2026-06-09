@@ -45,8 +45,21 @@
 - `sslVerify`：是否校验 vCenter HTTPS 证书。若 vCenter 使用自签证书且接入点未安装信任链，可先关闭用于验证流程，后续再补齐证书信任并开启。
 
 
+### 步骤 3：验证结果
+- 保存并执行后，在任务详情查看 `新增 / 更新 / 删除` 摘要；在 CMDB 中应能查询到 `vmware_vc` 及其下的 ESXi、虚拟机、数据存储实例。
+- 若清单不全，多为账号权限未授予在 vCenter 根对象或未勾选“传播到子对象”，补齐后重采。
+
+
+### 凭据字段说明
+- `username`：vCenter 登录用户名。建议创建专用只读账号（如 `svc-cmdb@vsphere.local`），不要复用管理员。
+- `password`：上述账号密码。落库自动加密，下发时以环境变量注入。
+- `port`：vCenter API 端口，默认 `443`。
+- `sslVerify`：是否校验 HTTPS 证书；自签证书且接入点未装信任链时可先关闭。
+
 
 ### 采集内容（字段字典）
+说明：下表中 `MOID` 指 vCenter 内部对象唯一标识（Managed Object ID），由 vCenter 自动生成。
+
 **Vcenter(vmware_vc)**
 
 | Key 名称      | 含义 |

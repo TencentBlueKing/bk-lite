@@ -1,0 +1,3611 @@
+@import '../common/simple-dashboard.module.scss';
+
+.modeContent {
+  width: 100%;
+  min-width: 0;
+}
+
+.metricsMode {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+.metricsMode > .panel {
+  width: 100%;
+  max-width: none;
+}
+
+.pageHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.pageTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.titleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.title {
+  margin: 0;
+  color: #182132;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  word-break: break-word;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 8px 10px;
+  flex-wrap: wrap;
+  color: #3f5370;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.instanceCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0 8px;
+  border-bottom: 1px solid #e7edf5;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  min-width: 0;
+  width: 100%;
+}
+
+.instanceCardFull {
+  width: 100%;
+  max-width: none;
+}
+
+.instanceMain {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.instanceInfo {
+  min-width: 0;
+  flex: 1;
+}
+
+.instanceIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ecf3ff 0%, #f7faff 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2f6bff;
+  font-size: 20px;
+  box-shadow: inset 0 0 0 1px rgba(46, 108, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.instanceName {
+  font-size: 18px;
+  font-weight: 700;
+  color: #182132;
+  line-height: 1.22;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.instanceSubline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+  color: #5d7090;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+// 中性胶囊：去掉抢眼的蓝底，统一成低对比灰底，避免三块同色互相竞争。
+.identityPill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #f1f4f9;
+  border: 1px solid #e4eaf2;
+  color: #5a6b85;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+// 「身份」是核心状态语义，保留品牌色填充以突出主/从角色。
+.identityPillRole {
+  background: #eaf1ff;
+  border-color: #d4e2ff;
+  color: #2f5fb0;
+  font-weight: 700;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.controlsWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.modeTabs {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  height: 34px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #dbe5f1;
+  box-shadow: none;
+}
+
+.modeTab {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: #68809e;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.modeTabActive {
+  background: #ffffff;
+  color: #1d2f47;
+  box-shadow: 0 1px 2px rgba(18, 34, 66, 0.08);
+}
+
+.actionButtons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbarBackBtn {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid #dbe5f1;
+  color: #617792;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(18, 34, 66, 0.04);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.primaryGrid {
+  // flex 自适应：换行后末行卡片弹性撑满整行，避免 5 张卡在 4/2 列断点下落单留白。
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 12px;
+  margin-bottom: 12px;
+
+  > * {
+    // 基准 = 整行 1/5（扣除 4 个 gap）→ 宽屏每行 5 张；收窄到 min-width 以下自动换行并撑满。
+    flex: 1 1 calc((100% - 4 * 12px) / 5);
+    min-width: 200px;
+  }
+}
+
+.mainTrendGrid,
+.structureGrid,
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.mainTrendGrid,
+.structureGrid {
+  margin-bottom: 12px;
+}
+
+.sectionTitle {
+  margin: 0 0 12px;
+  color: #22324a;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.statCard {
+  padding: 16px 16px 14px;
+  min-height: 168px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.statCardRelaxed {
+  padding-top: 18px;
+}
+
+.statHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.statLabel {
+  color: #334861;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  min-width: 0;
+}
+
+.statIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.statBody {
+  margin-top: 10px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.statBodyRelaxed {
+  margin-top: 22px;
+  justify-content: flex-start;
+}
+
+.statValue {
+  color: #182132;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  word-break: break-word;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.statUnit {
+  font-size: 14px;
+  margin-left: 0;
+  color: #5d728b;
+  line-height: 1;
+}
+
+.statMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px 10px;
+  flex-wrap: wrap;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 22px;
+}
+
+.statCompare {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 18px;
+}
+
+.statCompareLabel {
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.statCompareValue {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.statComparePositive {
+  color: #ff4d4f;
+}
+
+.statCompareNegative {
+  color: #1fa971;
+}
+
+.statCompareFlat {
+  color: #7e90a7;
+}
+
+.statMeta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.statExtra {
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.uptimeStatus {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 48px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fbff;
+  border: 1px solid #edf2f9;
+}
+
+.uptimeStatusDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #94a3b8;
+  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.12);
+}
+
+.uptimeStatusMain {
+  color: #31445c;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.uptimeStatusMainWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.uptimeStatusInfoIcon {
+  color: #8fa0b3;
+  font-size: 14px;
+  cursor: help;
+}
+
+.uptimeStatusDetail {
+  min-width: 0;
+  color: #7d8fa7;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uptimeStatusTooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 240px;
+}
+
+.uptimeStatusTooltipRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.uptimeStatusTooltipRow strong {
+  color: #31445c;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.uptimeStatusTooltipRow span {
+  color: #6f8299;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.uptimeStatusSuccess .uptimeStatusDot {
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+}
+
+.uptimeStatusWarning .uptimeStatusDot {
+  background: #faad14;
+  box-shadow: 0 0 0 4px rgba(250, 173, 20, 0.14);
+}
+
+.uptimeStatusEmpty .uptimeStatusMain {
+  color: #64748b;
+}
+
+.miniTrend {
+  height: 52px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-radius: 8px;
+  overflow: hidden;
+  opacity: 0.95;
+}
+
+.miniTrendPlaceholder {
+  width: 100%;
+  height: 100%;
+}
+
+.collectionStatusCard {
+  justify-content: flex-start;
+  min-height: 168px;
+}
+
+.collectionStatusHeader {
+  min-height: 32px;
+}
+
+.collectionStatusBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 10px;
+  min-height: 0;
+}
+
+.collectionStatusValue {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+}
+
+.collectionStatusValueSuccess {
+  color: #22c55e;
+}
+
+.collectionStatusValueError {
+  color: #ff4d4f;
+}
+
+.collectionStatusValueEmpty {
+  color: #94a3b8;
+}
+
+.collectionStatusTimelineBlock {
+  margin-top: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.collectionStatusTimelineTitle {
+  margin-top: 0;
+  color: #536882;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+}
+
+.collectionStatusTimeline {
+  display: grid;
+  grid-template-columns: repeat(18, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.collectionStatusSegment {
+  min-width: 0;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+
+.collectionStatusSegmentSuccess {
+  background: #22c55e;
+  border-color: #b6f0c8;
+}
+
+.collectionStatusSegmentEmpty {
+  background: #d7dfeb;
+  border-color: #edf2f9;
+}
+
+.collectionStatusSegmentError {
+  background: #ff4d4f;
+  border-color: #ffc3c3;
+}
+
+.collectionStatusLegend {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  color: #42556d;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.collectionStatusLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.collectionStatusLegendDot {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(19, 33, 56, 0.04);
+}
+
+.chartPanel {
+  grid-column: span 6;
+}
+
+.thirdChartPanel {
+  grid-column: span 4;
+}
+
+.quarterPanel {
+  grid-column: span 3;
+}
+
+.halfPanel {
+  grid-column: span 4;
+}
+
+.widePanel {
+  grid-column: span 8;
+}
+
+.fullPanel {
+  grid-column: span 12;
+}
+
+.dataFlowPanel {
+  margin-bottom: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+}
+
+.mysqlFlowModel {
+  display: grid;
+  grid-template-columns: 0.95fr 1.05fr;
+  gap: 18px;
+  align-items: stretch;
+  min-width: 1100px;
+}
+
+.mysqlFlowScene {
+  position: relative;
+  min-width: 0;
+  align-self: stretch;
+  padding: 8px 4px;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.mysqlInnoScene {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.mysqlInnoScene::before {
+  content: none;
+}
+
+.mysqlRequestScene {
+  display: flex;
+  align-items: center;
+  min-height: 290px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.mysqlRequestPath {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 34px minmax(120px, 1fr) 34px minmax(120px, 1fr) 34px minmax(120px, 1fr);
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(249, 251, 255, 0.92) 0%, rgba(245, 248, 253, 0.9) 100%);
+  box-shadow: inset 0 0 0 1px rgba(226, 234, 244, 0.88);
+}
+
+.mysqlPathNode {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: 252px;
+  padding: 18px 18px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(235, 240, 246, 0.82);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.56) 0%, rgba(255, 255, 255, 0.34) 100%);
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 6px 16px rgba(30, 52, 88, 0.022),
+    0 1px 0 rgba(255, 255, 255, 0.62) inset;
+}
+
+.mysqlPathNode.flowNodeBlue,
+.mysqlPathNode.flowNodeIndigo,
+.mysqlPathNode.flowNodeGreen,
+.mysqlPathNode.flowNodeOrange,
+.mysqlPathNode.flowNodeRed {
+  border-color: rgba(229, 236, 244, 0.84);
+}
+
+.mysqlPathNodeEngine {
+  border-color: rgba(216, 228, 247, 0.9);
+  background: linear-gradient(180deg, rgba(248, 252, 255, 0.72) 0%, rgba(241, 248, 255, 0.56) 100%);
+  box-shadow:
+    0 8px 18px rgba(47, 107, 255, 0.04),
+    0 1px 0 rgba(255, 255, 255, 0.66) inset;
+}
+
+.mysqlNodeEyebrow {
+  margin-bottom: 10px;
+  color: #91a2b7;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.mysqlFlowConnector {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+  z-index: 2;
+}
+
+.mysqlFlowConnector span {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 2px;
+  border-radius: 999px;
+  background: #7fa6ed;
+}
+
+.mysqlFlowConnector span::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-top: 2px solid #7fa6ed;
+  border-right: 2px solid #7fa6ed;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.mysqlNodeTitle {
+  color: #1e3048;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.mysqlNodeIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 50px;
+  margin: 0 auto;
+  border-radius: 14px;
+  background: rgba(238, 244, 255, 0.72);
+  color: #2f6bff;
+  font-size: 24px;
+  box-shadow: inset 0 0 0 1px rgba(223, 233, 248, 0.72);
+}
+
+.mysqlPathNode .mysqlNodeIcon {
+  background: rgba(238, 244, 255, 0.72);
+  color: #2f6bff;
+}
+
+.mysqlNodeMetrics,
+.innodbMetricRows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mysqlPathNode .mysqlNodeMetrics {
+  margin-top: 34px;
+}
+
+.mysqlNodeMetric {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #667b96;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.mysqlNodeMetric span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mysqlNodeMetric strong {
+  color: #1f3047;
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.mysqlPathNode .mysqlNodeMetric {
+  align-items: flex-start;
+}
+
+.mysqlPathNode .mysqlNodeMetric span {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.35;
+}
+
+.mysqlPathNode .mysqlNodeMetric strong {
+  flex-shrink: 0;
+  text-align: right;
+  padding-top: 1px;
+}
+
+.mysqlPathArrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  color: #7b8da6;
+  position: relative;
+}
+
+.mysqlPathArrow span {
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  height: 0;
+  border-top: 2px solid #7fa6ed;
+  border-radius: 999px;
+}
+
+.mysqlPathArrow :global(.anticon) {
+  position: relative;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border: 0;
+  color: #4f7edb;
+  font-size: 17px;
+}
+
+.innodbBox {
+  position: relative;
+  min-width: 0;
+  min-height: 220px;
+  padding: 10px 2px 10px;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.innodbBoxTitle {
+  color: #1e3048;
+  font-size: 16px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.innodbInner {
+  display: grid;
+  grid-template-columns: minmax(156px, 0.9fr) 38px minmax(156px, 0.85fr) 38px minmax(170px, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  padding: 8px 0 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.innodbStage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.innodbStageBuffer {
+  background: transparent;
+}
+
+.innodbStageLogs {
+  background: transparent;
+}
+
+.innodbStageDisk {
+  background: transparent;
+}
+
+.innodbBufferCard,
+.innodbLogCard,
+.innodbDiskCard {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(226, 233, 242, 0.96);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    0 8px 20px rgba(30, 52, 88, 0.035),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.innodbBufferCard {
+  display: flex;
+  flex-direction: column;
+  min-height: 186px;
+  padding: 14px 14px 18px;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(76, 141, 255, 0.06), transparent 32%),
+    linear-gradient(180deg, rgba(248, 251, 255, 0.76) 0%, rgba(255, 255, 255, 0.64) 100%);
+  border-color: rgba(220, 231, 245, 0.88);
+  box-shadow:
+    0 6px 16px rgba(47, 107, 255, 0.028),
+    0 1px 0 rgba(255, 255, 255, 0.74) inset;
+}
+
+.innodbBufferCard::before,
+.innodbLogCard::before,
+.innodbDiskCard::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  pointer-events: none;
+}
+
+.innodbBufferCard::before {
+  background: linear-gradient(90deg, #4c8dff 0%, #82b1ff 100%);
+}
+
+.innodbLogCard {
+  background: linear-gradient(180deg, rgba(255, 250, 244, 0.98) 0%, rgba(255, 255, 255, 0.92) 100%);
+  border-color: rgba(245, 224, 198, 0.96);
+}
+
+.innodbLogCard::before {
+  background: linear-gradient(90deg, #ff9f43 0%, #ffd08a 100%);
+}
+
+.innodbDiskCard {
+  background: linear-gradient(180deg, rgba(247, 250, 255, 0.98) 0%, rgba(255, 255, 255, 0.92) 100%);
+  border-color: rgba(216, 226, 240, 0.94);
+}
+
+.innodbDiskCard::before {
+  background: linear-gradient(90deg, #5b8ff9 0%, #8fb5ff 100%);
+}
+
+.innodbBufferCard::after,
+.innodbLogCard::after,
+.innodbDiskCard::after {
+  content: none;
+}
+
+
+.innodbColumnTitle {
+  margin: 0 0 6px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: #8a9bb0;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.innodbCardTitle {
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #1e3048;
+  font-size: 15px;
+  font-weight: 850;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.metricGuideTooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.metricGuideTooltipRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metricGuideTooltipRow strong {
+  color: #31445c;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.metricGuideTooltipRow span {
+  color: #6f8299;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.metricGuideIcon {
+  margin-left: 0;
+  color: #91a4bc;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  flex-shrink: 0;
+  transform: translateY(-1px);
+}
+
+.metricGuideIcon:hover {
+  color: #2f6bff;
+}
+
+.titleWithGuide {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.panelTitleWithGuide,
+.statTitleWithGuide {
+  max-width: 100%;
+}
+
+.panelTitleWithGuide > span:first-child,
+.statTitleWithGuide > span:first-child {
+  min-width: 0;
+}
+
+.innodbCardHint {
+  margin: -6px 0 12px;
+  color: #7b8da6;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.innodbBufferGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 13px);
+  justify-content: center;
+  gap: 7px;
+  width: fit-content;
+  margin: 8px auto 18px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.innodbBufferLegend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: -2px 0 8px;
+  color: #7387a2;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.innodbBufferLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bufferLegendSwatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.bufferLegendUsed {
+  background: #69a8ff;
+  border: 1px solid #2f7dff;
+  box-shadow: 0 0 0 1px rgba(92, 148, 255, 0.1);
+}
+
+.bufferLegendDirty {
+  background: #ffbf73;
+  border: 1px solid #ff9f43;
+  box-shadow: 0 0 0 1px rgba(255, 159, 67, 0.08);
+}
+
+.bufferLegendFree {
+  background: #eef3f8;
+  border: 1px solid #cad7e6;
+}
+
+.innodbBufferCard .innodbMetricRows {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(225, 234, 244, 0.76);
+}
+
+.innodbFork {
+  position: relative;
+  align-self: stretch;
+  min-height: 112px;
+}
+
+.innodbForkMain {
+  display: none;
+}
+
+.innodbForkMain::after {
+  content: none;
+}
+
+.innodbForkTop,
+.innodbForkBottom,
+.innodbForkBottomDashed {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 999px;
+}
+
+.innodbForkTop::after,
+.innodbForkBottom::after,
+.innodbForkBottomDashed::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-top: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.innodbForkTop {
+  top: 35%;
+  background: currentColor;
+}
+
+.innodbForkBottom {
+  top: 74%;
+  background: currentColor;
+}
+
+.innodbForkBottomDashed {
+  top: 74%;
+  background: currentColor;
+}
+
+.innodbForkWrite .innodbForkTop {
+  color: #22b86f;
+}
+
+.innodbForkWrite .innodbForkBottom {
+  color: #f59e0b;
+}
+
+.innodbForkPersist .innodbForkTop {
+  color: #2f6bff;
+}
+
+.innodbForkPersist .innodbForkBottom,
+.innodbForkPersist .innodbForkBottomDashed {
+  color: #f59e0b;
+}
+
+.innodbLogCards,
+.innodbDiskStack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.innodbLogCard,
+.innodbDiskCard {
+  min-height: 82px;
+  text-align: left;
+}
+
+.innodbCardPrimary {
+  min-height: 118px;
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+
+.innodbCardSecondary {
+  min-height: 92px;
+  padding-top: 14px;
+  padding-bottom: 14px;
+  background: rgba(255, 255, 255, 0.66);
+  box-shadow:
+    0 5px 14px rgba(30, 52, 88, 0.026),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.innodbLogCards,
+.innodbDiskStack {
+  gap: 8px;
+}
+
+.innodbCardTitleRow {
+  display: flex;
+  align-items: center;
+  min-height: 22px;
+  margin-bottom: 12px;
+}
+
+.innodbCardSecondary .innodbCardTitleRow {
+  margin-bottom: 10px;
+}
+
+.innodbCardTitleWithGuide {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #1e3048;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.innodbCardTitleWithGuide > span:first-child {
+  display: inline-flex;
+  align-items: center;
+}
+
+.innodbLogCard > .innodbCardTitleRow,
+.innodbDiskCard > .innodbCardTitleRow {
+  display: flex;
+  align-items: center;
+}
+
+.innodbLogCard > .innodbCardHint {
+  margin: -4px 0 14px;
+  text-align: left;
+}
+
+.innodbCardPrimary > .innodbCardHint {
+  max-width: 250px;
+}
+
+.innodbLogCard strong {
+  color: #1f3047;
+  display: block;
+  margin-bottom: 0;
+  font-size: 22px;
+  font-weight: 850;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+
+.innodbLogCard .mysqlNodeMetric,
+.innodbDiskCard .mysqlNodeMetric {
+  padding: 10px 0 0;
+  border-top: 1px solid rgba(213, 223, 237, 0.72);
+}
+
+.innodbCardSecondary .mysqlNodeMetric {
+  padding-top: 8px;
+}
+
+.innodbLogCard .mysqlNodeMetric:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.innodbLogCard .mysqlNodeMetric + .mysqlNodeMetric {
+  margin-top: 10px;
+}
+
+.innodbLogCard .mysqlNodeMetric span,
+.innodbDiskCard .mysqlNodeMetric span {
+  color: #70839b;
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 0;
+}
+
+.innodbLogCard .mysqlNodeMetric strong,
+.innodbDiskCard .mysqlNodeMetric strong {
+  font-size: 15px;
+  margin-bottom: 0;
+}
+
+
+.mysqlFlowLegend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px 18px;
+  margin-top: 12px;
+  color: #6f8199;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.mysqlFlowLegendInno {
+  justify-content: flex-end;
+  margin: -22px 4px 20px 0;
+}
+
+.mysqlFlowLegend span {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  gap: 8px;
+}
+
+.mysqlFlowLegend i {
+  display: inline-block;
+  position: relative;
+  width: 30px;
+  height: 14px;
+  color: #7fa6ed;
+  border-top: 0;
+  border-radius: 999px;
+}
+
+.mysqlFlowLegend i::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 1px;
+  top: 50%;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translateY(-50%);
+}
+
+.mysqlFlowLegend i::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  transform: translateY(-50%) rotate(45deg);
+  border-top: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+}
+
+.mysqlFlowLegend i.mysqlLegendRequest {
+  color: #7fa6ed;
+}
+
+.mysqlFlowLegend i.mysqlLegendWrite {
+  color: #22b86f;
+}
+
+.mysqlFlowLegend i.mysqlLegendBackground {
+  color: #f59e0b;
+}
+
+.mysqlFlowLegend i.mysqlLegendPersist {
+  color: #2f6bff;
+}
+
+.dataFlow {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+
+.flowCanvas {
+  position: relative;
+  min-height: 388px;
+  padding: 18px;
+  border-radius: 14px;
+  background:
+    linear-gradient(90deg, rgba(47, 107, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(47, 107, 255, 0.04) 1px, transparent 1px),
+    radial-gradient(circle at 18% 18%, rgba(47, 107, 255, 0.09), transparent 28%),
+    linear-gradient(180deg, #fbfdff 0%, #ffffff 100%);
+  background-size: 44px 44px, 44px 44px, 100% 100%, 100% 100%;
+  border: 1px solid #e5edf7;
+  overflow: hidden;
+}
+
+.flowMainRail {
+  position: absolute;
+  left: 52px;
+  right: 52px;
+  top: 99px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(47, 107, 255, 0.18), rgba(32, 166, 90, 0.22), rgba(250, 140, 22, 0.28));
+}
+
+.flowPulse {
+  position: absolute;
+  top: -5px;
+  left: 0;
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  background: #2f6bff;
+  box-shadow: 0 0 0 6px rgba(47, 107, 255, 0.12), 0 0 18px rgba(47, 107, 255, 0.42);
+  animation: mysqlFlowPulse 5.8s linear infinite;
+}
+
+.flowPulseDelay {
+  animation-delay: -2.9s;
+  background: #20a65a;
+  box-shadow: 0 0 0 6px rgba(32, 166, 90, 0.12), 0 0 18px rgba(32, 166, 90, 0.36);
+}
+
+.flowPipeline {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 26px;
+  margin-bottom: 22px;
+}
+
+.flowStage,
+.flowEngineBox {
+  position: relative;
+  min-width: 0;
+  padding: 14px;
+  border-radius: 13px;
+  border: 1px solid #dce6f3;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 24px rgba(30, 52, 88, 0.06);
+  backdrop-filter: blur(8px);
+}
+
+.flowStage {
+  min-height: 164px;
+}
+
+.flowStageHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 13px;
+}
+
+.flowStageArrow {
+  position: absolute;
+  z-index: 3;
+  top: 62px;
+  right: -25px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: #6f95d8;
+  background: #ffffff;
+  border: 1px solid #d8e5f6;
+  box-shadow: 0 5px 14px rgba(27, 55, 99, 0.1);
+}
+
+.flowEngineLayer {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(260px, 1.15fr) minmax(90px, 0.35fr) minmax(190px, 0.75fr) minmax(260px, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.flowEngineBox {
+  min-height: 168px;
+}
+
+.flowBufferBox {
+  border-color: #ccefdc;
+}
+
+.flowDiskBox {
+  border-color: #ffd0d0;
+}
+
+.bufferCellGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 12px);
+  gap: 7px;
+  margin: 5px 0 14px;
+}
+
+.bufferCell {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: #e8eef7;
+  border: 1px solid #cbd8e9;
+}
+
+.bufferCellUsed {
+  background: #71b7ff;
+  border-color: #3d8dff;
+  box-shadow: 0 0 0 3px rgba(61, 141, 255, 0.08);
+}
+
+.bufferCellDirty {
+  background: #ffb86b;
+  border-color: #fa8c16;
+  box-shadow: 0 0 0 3px rgba(250, 140, 22, 0.1);
+}
+
+.flowBranch {
+  position: relative;
+  min-height: 168px;
+}
+
+.flowBranchLine {
+  position: absolute;
+  top: 54px;
+  left: 8px;
+  right: 8px;
+  height: 70px;
+  border-top: 2px solid rgba(47, 107, 255, 0.34);
+  border-right: 2px solid rgba(47, 107, 255, 0.34);
+  border-bottom: 2px dashed rgba(250, 140, 22, 0.42);
+  border-radius: 0 14px 14px 0;
+}
+
+.flowBranchDot {
+  position: absolute;
+  top: 48px;
+  left: 8px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #2f6bff;
+  box-shadow: 0 0 0 5px rgba(47, 107, 255, 0.12);
+  animation: mysqlBranchPulse 3.6s ease-in-out infinite;
+}
+
+.flowBranchDotDelay {
+  top: 118px;
+  background: #fa8c16;
+  box-shadow: 0 0 0 5px rgba(250, 140, 22, 0.12);
+  animation-delay: -1.8s;
+}
+
+.flowLogStack {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.flowLogCard {
+  min-height: 64px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #dbe6f3;
+  box-shadow: 0 8px 20px rgba(30, 52, 88, 0.05);
+}
+
+.flowLogCard span {
+  display: block;
+  color: #6c8099;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+
+.flowLogCard strong {
+  color: #1f3047;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.flowNode {
+  position: relative;
+  min-width: 0;
+  min-height: 178px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid #dce6f3;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+.flowNodeLinked {
+  overflow: visible;
+}
+
+.flowNodeHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 14px;
+}
+
+.flowNodeIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  font-size: 17px;
+  background: #eef4ff;
+  color: #2f6bff;
+}
+
+.flowNodeText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.flowNodeTitle {
+  color: #1e3048;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flowNodeSubTitle {
+  color: #8091a8;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flowMetricList {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.flowMetric {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  color: #6b7f99;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.flowMetric span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flowMetric strong {
+  color: #1f3047;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.flowNodeArrow {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  right: -18px;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid #dce6f3;
+  color: #6f95d8;
+  box-shadow: 0 5px 14px rgba(27, 55, 99, 0.1);
+  pointer-events: none;
+}
+
+.flowArrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8aa4c8;
+  min-width: 0;
+  position: relative;
+}
+
+.flowArrow span {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(47, 107, 255, 0.15), rgba(47, 107, 255, 0.55));
+}
+
+.flowArrow :global(.anticon) {
+  position: relative;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid #dce6f3;
+  box-shadow: 0 4px 12px rgba(27, 55, 99, 0.08);
+}
+
+.flowNodeBlue {
+  border-color: #cfe0ff;
+}
+
+.flowNodeBlue .flowNodeIcon {
+  background: #eef4ff;
+  color: #2f6bff;
+}
+
+.flowNodeIndigo {
+  border-color: #dcdcff;
+}
+
+.flowNodeIndigo .flowNodeIcon {
+  background: #f0f0ff;
+  color: #5b5bd6;
+}
+
+.flowNodeGreen {
+  border-color: #ccefdc;
+}
+
+.flowNodeGreen .flowNodeIcon {
+  background: #ecfbf2;
+  color: #20a65a;
+}
+
+.flowNodeOrange {
+  border-color: #ffe1ba;
+}
+
+.flowNodeOrange .flowNodeIcon {
+  background: #fff6e8;
+  color: #fa8c16;
+}
+
+.flowNodeRed {
+  border-color: #ffd0d0;
+}
+
+.flowNodeRed .flowNodeIcon {
+  background: #fff0f0;
+  color: #ff4d4f;
+}
+
+.dataFlowLegend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 14px;
+  color: #6f8199;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.dataFlowLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dataFlowLegend i {
+  display: inline-block;
+  width: 30px;
+  height: 0;
+  border-radius: 999px;
+}
+
+.flowLegendRequest {
+  border-top: 2px solid #2f6bff;
+}
+
+.flowLegendWrite {
+  border-top: 2px solid #20a65a;
+}
+
+.flowLegendBackground {
+  border-top: 2px dashed #8aa0bc;
+}
+
+.flowLegendPersist {
+  border-top: 2px solid #667b96;
+}
+
+@keyframes mysqlFlowPulse {
+  0% {
+    left: 0;
+    transform: scale(0.86);
+    opacity: 0;
+  }
+
+  8% {
+    opacity: 1;
+  }
+
+  92% {
+    opacity: 1;
+  }
+
+  100% {
+    left: calc(100% - 13px);
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes mysqlBranchPulse {
+  0%, 100% {
+    transform: translateX(0);
+    opacity: 0.32;
+  }
+
+  50% {
+    transform: translateX(56px);
+    opacity: 1;
+  }
+}
+
+.panelHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.chartPanelHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'title'
+    'subtitle'
+    'legend';
+  align-items: start;
+  column-gap: 0;
+  row-gap: 6px;
+}
+
+.chartHeaderTitle {
+  grid-area: title;
+}
+
+.chartHeaderSubTitle {
+  grid-area: subtitle;
+}
+
+.fillPanel {
+  display: flex;
+  flex-direction: column;
+  min-height: 280px;
+}
+
+.fillBody {
+  flex: 1;
+}
+
+.panelHeading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.panelTitle {
+  margin: 0;
+  color: #1d2f47;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+.panelSubTitle {
+  color: #92a2b5;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.fullMetricsActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.panelBadgeGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.metricBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #f3f7fd;
+  border: 1px solid #d8e3f2;
+  color: #58708f;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.chartLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  margin-top: 0;
+}
+
+.chartLegendHeader {
+  grid-area: legend;
+  justify-content: flex-end;
+  align-items: center;
+  align-self: flex-start;
+  flex-wrap: nowrap;
+  gap: 8px;
+  max-width: none;
+  white-space: nowrap;
+}
+
+.chartLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #7f93ad;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.chartLegendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.chartLegendDash {
+  width: 12px;
+  height: 0;
+  border-radius: 0;
+  border-top-width: 2px;
+  border-top-style: dashed;
+}
+
+.chartWrap {
+  height: 206px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.compactChartWrap {
+  height: 220px;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.inlineStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.inlineStat {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fbff;
+  border: 1px solid #edf2f9;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  span {
+    color: #6f8299;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  strong {
+    color: #1c2b43;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+}
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 2px;
+}
+
+.compactBars {
+  gap: 10px;
+  min-height: 0;
+}
+
+.barsFull {
+  flex: 1;
+  justify-content: space-evenly;
+  padding: 8px 0 6px;
+}
+
+.barRow {
+  display: grid;
+  // 条固定窄宽成一列、数值紧贴右侧;富余宽度留右(与共享条面板一致)。
+  grid-template-columns: 108px 180px auto;
+  justify-content: start;
+  gap: 12px;
+  align-items: center;
+}
+
+.barLabel {
+  color: #42556d;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.barTrack {
+  height: 8px;
+  border-radius: 999px;
+  background: #edf3fb;
+  overflow: hidden;
+}
+
+.barsFull .barTrack {
+  height: 10px;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.barValue {
+  color: #22324a;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.replicationSummary {
+  display: block;
+}
+
+.replicationCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: stretch;
+  min-height: 0;
+  height: 100%;
+}
+
+.replicationCardRelaxed {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    'header'
+    'summary'
+    'legend'
+    'chart';
+  gap: 8px;
+  min-height: 232px;
+  padding-top: 12px;
+}
+
+.replicationCardRelaxed > .panelHeader {
+  display: contents;
+}
+
+.replicationCardRelaxed > .panelHeader > .panelHeading {
+  grid-area: header;
+}
+
+.replicationCardRelaxed > .panelHeader > .chartLegendHeader {
+  grid-area: legend;
+  justify-self: end;
+  justify-content: flex-end;
+  align-self: end;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  max-width: 100%;
+  white-space: normal;
+}
+
+.replicationCardRelaxed > .replicationCard {
+  grid-area: summary;
+}
+
+.replicationCardRelaxed > .replicationChartWrap {
+  grid-area: chart;
+  align-self: stretch;
+}
+
+.replicationInfoBlock {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(132px, max-content));
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.replicationDelayBlock {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  min-height: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f8fbff;
+  border: 1px solid #edf2f9;
+}
+
+.replicationDelayLabel {
+  color: #7f93ad;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.replicationDelayValue {
+  color: #2f6bff;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.replicationDelayValue span {
+  margin-left: 6px;
+  color: #6d8098;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.replicationStatusList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(132px, max-content));
+  grid-column: span 2;
+  gap: 8px;
+}
+
+@media (max-width: 768px) {
+  .replicationInfoBlock {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .replicationStatusList {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .replicationInfoBlock {
+    grid-template-columns: 1fr;
+  }
+
+  .replicationStatusList {
+    grid-template-columns: 1fr;
+    grid-column: auto;
+  }
+}
+
+.replicationStatusItem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  color: #344760;
+  min-height: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f8fbff;
+  border: 1px solid #edf2f9;
+}
+
+.replicationStatusLabel {
+  min-width: 56px;
+  color: #344760;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.replicationStatusTag {
+  margin-inline-end: 0;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.replicationChartWrap {
+  flex: 1;
+  height: 100%;
+  min-height: 148px;
+  border-radius: 12px;
+  background: #fbfcff;
+  border: 1px solid #edf2f9;
+  padding: 6px 8px 2px 0;
+  overflow: hidden;
+}
+
+.replicationStandalone {
+  min-height: 174px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f8fbff 0%, #ffffff 100%);
+  border: 1px solid #edf2f9;
+}
+
+.replicationRoleBadge {
+  width: fit-content;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #2f6bff;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.replicationStandaloneTitle {
+  color: #1e3048;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.replicationStandaloneDesc {
+  max-width: 320px;
+  color: #71839a;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.replicationStandaloneTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.topTableHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  color: #7a8ca4;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ringCard {
+  display: grid;
+  grid-template-columns: 188px minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+  min-height: 190px;
+}
+
+.ringCardRelaxed {
+  padding-top: 8px;
+}
+
+.ringChartWrap {
+  position: relative;
+  height: 176px;
+  min-height: 176px;
+  width: 176px;
+  min-width: 176px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  overflow: visible;
+}
+
+.ringChartWrap::before {
+  content: '';
+  position: absolute;
+  inset: 26px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.98) 0%, rgba(249, 251, 255, 0.98) 62%, rgba(241, 246, 252, 0.96) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    inset 0 -8px 18px rgba(162, 178, 198, 0.08);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bufferPoolRingCard {
+  grid-template-columns: 168px minmax(0, 1fr);
+  align-items: center;
+}
+
+.bufferPoolChartWrap {
+  width: 176px;
+  min-width: 176px;
+  height: 218px;
+  min-height: 218px;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.bufferPoolChartWrap .ringChartCanvas {
+  width: 176px !important;
+  height: 176px !important;
+  min-width: 176px;
+  min-height: 176px;
+  flex: 0 0 176px;
+  align-self: center;
+}
+
+.bufferPoolChartWrap::before {
+  inset: 26px 26px auto;
+  width: 124px;
+  height: 124px;
+}
+
+.bufferPoolChartWrap::after {
+  content: none;
+}
+
+.bufferPoolLegend {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 10px;
+  width: 190px;
+  transform: translateX(-50%);
+  color: #6f8299;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.bufferPoolLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bufferPoolLegend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.72);
+}
+
+.ringCenter {
+  text-align: left;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #edf2f9;
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.ringCenterOverlay {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 176px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0;
+  min-height: 0;
+  border-bottom: 0;
+  pointer-events: none;
+}
+
+.ringCenterOverlay .ringValue {
+  font-size: 25px;
+}
+
+.ringCenterOverlay .ringCaption {
+  margin-top: 5px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ringInfoPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  align-self: stretch;
+  min-height: 218px;
+  justify-content: center;
+}
+
+.ringInfoPanelCompact {
+  align-self: center;
+  width: min(100%, 340px);
+}
+
+.ringValue {
+  color: #182132;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.ringCaption {
+  color: #95a5b8;
+  font-size: 14px;
+  margin-top: 6px;
+  font-weight: 500;
+}
+
+.metricList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: none;
+}
+
+.metricListCompact {
+  width: 100%;
+  gap: 14px;
+}
+
+.metricRow {
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) 88px minmax(64px, 80px);
+  gap: 10px;
+  color: #41546c;
+  font-size: 14px;
+  align-items: center;
+}
+
+.metricRowCompact {
+  grid-template-columns: minmax(92px, 1fr) minmax(84px, auto);
+  gap: 12px;
+}
+
+.metricRowDense {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+}
+
+.metricRowPercentOnly {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.metricKey {
+  display: inline-flex;
+  align-items: center;
+  color: #4f647e;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.3;
+  min-width: 0;
+}
+
+.metricLabelGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.metricDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(19, 33, 56, 0.04);
+}
+
+.metricName {
+  min-width: 0;
+  color: #31445c;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.metricValueGroup {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.metricPercent {
+  color: #2d3f58;
+  font-weight: 700;
+  font-size: 14px;
+  text-align: right;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.metricCount {
+  color: #a1afbf;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.metricVal {
+  color: #31445c;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.replicationHint {
+  color: #a7b5c4;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.errorList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 6px;
+}
+
+.errorOverview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fbfdff 0%, #f7faff 100%);
+  border: 1px solid #edf2f9;
+}
+
+.errorOverviewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.errorOverviewLabel {
+  color: #42556d;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.errorOverviewValue {
+  color: #2d3f58;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.errorOverviewHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #7f93ad;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.errorStackBar {
+  display: flex;
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf3fb;
+}
+
+.errorStackSegment {
+  height: 100%;
+  transition: width 0.2s ease;
+}
+
+.errorRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.errorLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #42556d;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.errorMeta {
+  display: block;
+  margin-top: 2px;
+  color: #8fa0b3;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.errorDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.errorValue {
+  color: #7388a5;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.metricSections {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  width: 100%;
+}
+
+.metricSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.metricSectionTitle {
+  color: #2b425c;
+  font-size: 20px;
+  font-weight: 700;
+  padding-left: 12px;
+  border-left: 3px solid #2f6bff;
+  line-height: 1.3;
+}
+
+.allMetricsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.miniMetricCard {
+  padding: 16px 16px 14px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+  border: 1px solid #ebf1f8;
+  min-height: 252px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.metricCardHeaderCompact {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.miniMetricTitle {
+  color: #31445c;
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 0;
+  cursor: help;
+  line-height: 1.25;
+}
+
+.miniMetricTitleWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.miniMetricSubTitle {
+  color: #8b9bb0;
+  font-size: 12px;
+  line-height: 1.35;
+  word-break: break-all;
+  letter-spacing: 0.01em;
+}
+
+.miniMetricValue {
+  color: #182132;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+  padding-top: 6px;
+  letter-spacing: -0.03em;
+}
+
+.metricHoverCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 420px;
+  color: #44566f;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+:global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-inner) {
+  background: #ffffff;
+  color: #44566f;
+  border: 1px solid #dbe6f3;
+  box-shadow: 0 14px 34px rgba(23, 42, 79, 0.12);
+}
+
+:global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-arrow::before) {
+  background: #ffffff;
+  border: 1px solid #dbe6f3;
+}
+
+:global(html.dark) .page {
+  background: linear-gradient(180deg, #0f1723 0%, #0b121b 100%);
+  color: rgba(255, 255, 255, 0.88);
+}
+
+:global(html.dark) .title,
+:global(html.dark) .instanceName,
+:global(html.dark) .statValue,
+:global(html.dark) .collectionStatusValue,
+:global(html.dark) .panelTitle,
+:global(html.dark) .ringValue,
+:global(html.dark) .miniMetricValue,
+:global(html.dark) .errorOverviewValue,
+:global(html.dark) .errorValue {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+:global(html.dark) .meta,
+:global(html.dark) .instanceMetaInline,
+:global(html.dark) .statLabel,
+:global(html.dark) .collectionStatusTimelineTitle,
+:global(html.dark) .barLabel,
+:global(html.dark) .metricKey,
+:global(html.dark) .metricName,
+:global(html.dark) .replicationStatusLabel,
+:global(html.dark) .errorLabel,
+:global(html.dark) .miniMetricTitle,
+:global(html.dark) .metricHoverCard {
+  color: rgba(255, 255, 255, 0.74);
+}
+
+:global(html.dark) .instanceMetaDivider,
+:global(html.dark) .panelSubTitle,
+:global(html.dark) .chartLegendItem,
+:global(html.dark) .statCompareLabel,
+:global(html.dark) .statMeta,
+:global(html.dark) .collectionStatusLegendItem,
+:global(html.dark) .statUnit,
+:global(html.dark) .ringCaption,
+:global(html.dark) .metricCount,
+:global(html.dark) .replicationHint,
+:global(html.dark) .errorOverviewLabel,
+:global(html.dark) .errorOverviewHint,
+:global(html.dark) .instanceMetaMuted,
+:global(html.dark) .miniMetricSubTitle {
+  color: rgba(255, 255, 255, 0.48);
+}
+
+:global(html.dark) .instanceMetaDivider::before {
+  color: rgba(255, 255, 255, 0.28);
+}
+
+:global(html.dark) .errorMeta {
+  color: rgba(255, 255, 255, 0.42);
+}
+
+:global(html.dark) .instanceCard {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+:global(html.dark) .instanceIcon {
+  background: linear-gradient(135deg, rgba(47, 107, 255, 0.18) 0%, rgba(29, 50, 84, 0.68) 100%);
+  color: #7fb0ff;
+  box-shadow: inset 0 0 0 1px rgba(127, 176, 255, 0.14);
+}
+
+:global(html.dark) .inlineInstanceSelector,
+:global(html.dark) .modeTabs,
+:global(html.dark) .toolbarBackBtn,
+:global(html.dark) .panel,
+:global(html.dark) .statCard,
+:global(html.dark) .miniMetricCard,
+:global(html.dark) .errorOverview,
+:global(html.dark) .replicationChartWrap,
+:global(html.dark) .inlineStat {
+  background: rgba(15, 25, 38, 0.88) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+}
+
+:global(html.dark) .miniMetricCard {
+  background: linear-gradient(180deg, rgba(15, 25, 38, 0.96) 0%, rgba(12, 20, 31, 0.96) 100%) !important;
+}
+
+:global(html.dark) .inlineStat strong,
+:global(html.dark) .replicationDelayValue,
+:global(html.dark) .metricPercent,
+:global(html.dark) .metricVal {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+:global(html.dark) .uptimeStatusMain,
+:global(html.dark) .replicationStandaloneTitle,
+:global(html.dark) .replicationStatusTag {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+:global(html.dark) .inlineStat span,
+:global(html.dark) .replicationDelayValue span,
+:global(html.dark) .replicationDelayLabel,
+:global(html.dark) .topTableHeader,
+:global(html.dark) .barValue {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+:global(html.dark) .uptimeStatusDetail,
+:global(html.dark) .replicationStandaloneDesc {
+  color: rgba(255, 255, 255, 0.56);
+}
+
+:global(html.dark) .uptimeStatus,
+:global(html.dark) .replicationDelayBlock,
+:global(html.dark) .replicationStatusItem,
+:global(html.dark) .replicationStandalone {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: none;
+}
+
+:global(html.dark) .uptimeStatusDot {
+  background: rgba(148, 163, 184, 0.9);
+  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.16);
+}
+
+:global(html.dark) .uptimeStatusSuccess .uptimeStatusDot {
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.18);
+}
+
+:global(html.dark) .uptimeStatusWarning .uptimeStatusDot {
+  background: #faad14;
+  box-shadow: 0 0 0 4px rgba(250, 173, 20, 0.2);
+}
+
+:global(html.dark) .uptimeStatusEmpty .uptimeStatusMain {
+  color: rgba(255, 255, 255, 0.56);
+}
+
+:global(html.dark) .replicationRoleBadge {
+  background: rgba(47, 107, 255, 0.16);
+  color: #a6c3ff;
+}
+
+:global(html.dark) .replicationStatusTag:global(.ant-tag) {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+:global(html.dark) .replicationStatusTag:global(.ant-tag-green),
+:global(html.dark) .replicationStatusTag:global(.ant-tag-success) {
+  color: #52d66f;
+  background: rgba(34, 197, 94, 0.14);
+  border-color: rgba(82, 214, 111, 0.3);
+}
+
+:global(html.dark) .replicationStatusTag:global(.ant-tag-red),
+:global(html.dark) .replicationStatusTag:global(.ant-tag-error) {
+  color: #ff6b6d;
+  background: rgba(255, 77, 79, 0.14);
+  border-color: rgba(255, 107, 109, 0.28);
+}
+
+:global(html.dark) .identityPill {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.66);
+}
+
+:global(html.dark) .identityPillRole {
+  background: rgba(47, 107, 255, 0.16);
+  border-color: rgba(127, 176, 255, 0.24);
+  color: #9abfff;
+}
+
+:global(html.dark) .flowNode {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: none;
+}
+
+:global(html.dark) .flowCanvas {
+  background:
+    linear-gradient(90deg, rgba(127, 176, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(127, 176, 255, 0.045) 1px, transparent 1px),
+    radial-gradient(circle at 18% 18%, rgba(47, 107, 255, 0.15), transparent 28%),
+    linear-gradient(180deg, rgba(15, 25, 38, 0.86) 0%, rgba(10, 17, 27, 0.86) 100%);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+:global(html.dark) .mysqlPathNode,
+:global(html.dark) .innodbBox,
+:global(html.dark) .mysqlFlowScene {
+  background: rgba(255, 255, 255, 0.055);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: none;
+}
+
+:global(html.dark) .innodbBufferCard {
+  background:
+    radial-gradient(circle at 14% 16%, rgba(47, 107, 255, 0.2), transparent 32%),
+    linear-gradient(180deg, rgba(16, 28, 44, 0.98) 0%, rgba(12, 22, 35, 0.98) 40%, rgba(10, 20, 32, 0.98) 100%);
+  border-color: rgba(92, 144, 255, 0.22);
+}
+
+:global(html.dark) .innodbLogCard {
+  background:
+    linear-gradient(180deg, rgba(31, 42, 56, 0.92) 0%, rgba(17, 28, 42, 0.94) 100%),
+    radial-gradient(circle at 14% 12%, rgba(245, 158, 11, 0.14), transparent 42%);
+  border-color: rgba(245, 158, 11, 0.28);
+}
+
+:global(html.dark) .innodbDiskCard {
+  background:
+    linear-gradient(180deg, rgba(29, 40, 55, 0.92) 0%, rgba(17, 27, 40, 0.94) 100%),
+    radial-gradient(circle at 14% 12%, rgba(47, 107, 255, 0.12), transparent 44%);
+  border-color: rgba(80, 134, 255, 0.24);
+}
+
+:global(html.dark) .innodbCardSecondary {
+  background:
+    linear-gradient(180deg, rgba(24, 35, 49, 0.9) 0%, rgba(16, 26, 38, 0.92) 100%);
+  box-shadow: none;
+}
+
+:global(html.dark) .innodbBufferCard::before,
+:global(html.dark) .innodbLogCard::before,
+:global(html.dark) .innodbDiskCard::before {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+:global(html.dark) .mysqlNodeTitle,
+:global(html.dark) .innodbBoxTitle,
+:global(html.dark) .innodbCardTitle,
+:global(html.dark) .innodbCardTitleWithGuide,
+:global(html.dark) .mysqlNodeMetric strong,
+:global(html.dark) .innodbLogCard strong,
+:global(html.dark) .innodbCardTitleRow {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+:global(html.dark) .innodbLogCard .mysqlNodeMetric,
+:global(html.dark) .innodbDiskCard .mysqlNodeMetric {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+:global(html.dark) .mysqlNodeMetric,
+:global(html.dark) .innodbColumnTitle,
+:global(html.dark) .mysqlFlowLegend {
+  color: rgba(255, 255, 255, 0.56);
+}
+
+:global(html.dark) .innodbColumnTitle {
+  background: transparent;
+  border-color: transparent;
+  color: rgba(220, 232, 248, 0.7);
+}
+
+:global(html.dark) .innodbCardTitle,
+:global(html.dark) .innodbCardTitleRow,
+:global(html.dark) .innodbCardTitleWithGuide,
+:global(html.dark) .innodbMetricRows {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+:global(html.dark) .innodbBufferCard::after {
+  content: none;
+}
+
+:global(html.dark) .innodbLogCard::after {
+  content: none;
+}
+
+:global(html.dark) .innodbDiskCard::after {
+  content: none;
+}
+
+:global(html.dark) .flowStage,
+:global(html.dark) .flowEngineBox,
+:global(html.dark) .flowLogCard {
+  background: rgba(255, 255, 255, 0.055);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: none;
+}
+
+:global(html.dark) .flowNodeTitle,
+:global(html.dark) .flowMetric strong,
+:global(html.dark) .flowLogCard strong {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+:global(html.dark) .flowNodeSubTitle,
+:global(html.dark) .flowMetric,
+:global(html.dark) .dataFlowLegend,
+:global(html.dark) .flowLogCard span {
+  color: rgba(255, 255, 255, 0.54);
+}
+
+:global(html.dark) .flowArrow :global(.anticon),
+:global(html.dark) .flowNodeArrow {
+  background: #142033;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+:global(html.dark) .metricBadge {
+  background: rgba(47, 107, 255, 0.12);
+  border-color: rgba(80, 134, 255, 0.2);
+  color: #9fbeff;
+}
+
+:global(html.dark) .barTrack,
+:global(html.dark) .errorStackBar,
+:global(html.dark) .collectionStatusSegmentEmpty {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+:global(html.dark) .collectionStatusSegment {
+  border-color: transparent;
+}
+
+:global(html.dark) .collectionStatusSegmentSuccess {
+  background: #22c55e;
+  border-color: rgba(162, 243, 196, 0.35);
+}
+
+:global(html.dark) .collectionStatusSegmentError {
+  background: #ff4d4f;
+  border-color: rgba(255, 166, 166, 0.28);
+}
+
+:global(html.dark) .collectionStatusLegendDot {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+:global(html.dark) .ringCenter {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+:global(html.dark) .ringChartWrap::before {
+  inset: 26px;
+  background: radial-gradient(circle at 30% 30%, rgba(24, 37, 55, 0.98) 0%, rgba(18, 29, 43, 0.97) 60%, rgba(12, 21, 32, 0.96) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    inset 0 -12px 20px rgba(0, 0, 0, 0.22),
+    0 8px 20px rgba(0, 0, 0, 0.14);
+}
+
+:global(html.dark) .bufferPoolChartWrap::after {
+  background: conic-gradient(from 220deg, rgba(76, 141, 255, 0.34) 0deg, rgba(76, 141, 255, 0.12) 155deg, rgba(79, 98, 126, 0.08) 220deg, rgba(79, 98, 126, 0.02) 320deg, rgba(76, 141, 255, 0.22) 360deg);
+  opacity: 0.58;
+}
+
+:global(html.dark) .bufferPoolLegend {
+  color: rgba(226, 236, 248, 0.7);
+}
+
+:global(html.dark) .bufferPoolLegend i {
+  box-shadow: 0 0 0 2px rgba(10, 18, 30, 0.72);
+}
+
+:global(html.dark) .metricDot {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+:global(html.dark) .toolbarTimeSelector > div > div:first-child :global(.ant-select-selector),
+:global(html.dark) .toolbarTimeSelector > div > div:first-child :global(.ant-picker),
+:global(html.dark) .inlineInstanceSelector :global(.ant-select-selector) {
+  background: rgba(12, 20, 31, 0.92) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.78) !important;
+  box-shadow: none !important;
+}
+
+:global(html.dark) .toolbarTimeSelector > div > div:first-child :global(.ant-select-selection-item),
+:global(html.dark) .toolbarTimeSelector > div > div:first-child :global(.ant-select-selection-placeholder),
+:global(html.dark) .toolbarTimeSelector > div > div:last-child :global(.ant-select-selection-item),
+:global(html.dark) .toolbarTimeSelector > div > div:last-child :global(.ant-select-selection-placeholder),
+:global(html.dark) .toolbarTimeSelector > div :global(.ant-picker-input > input),
+:global(html.dark) .inlineInstanceSelector :global(.ant-select-selection-item),
+:global(html.dark) .inlineInstanceSelector :global(.ant-select-selection-placeholder),
+:global(html.dark) .toolbarBackBtn {
+  color: rgba(255, 255, 255, 0.78) !important;
+}
+
+:global(html.dark) .toolbarTimeSelector > div :global(.anticon),
+:global(html.dark) .inlineInstanceSelector :global(.ant-select-arrow) {
+  color: rgba(255, 255, 255, 0.42) !important;
+}
+
+:global(html.dark) :global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-inner) {
+  background: #101926;
+  color: rgba(255, 255, 255, 0.74);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+:global(html.dark) :global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-arrow::before) {
+  background: #101926;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.fullMetricChart {
+  height: 138px;
+  min-height: 138px;
+  margin-top: 4px;
+  border-radius: 14px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.empty {
+  padding: 60px 0;
+}
+
+@media (max-width: 1600px) {
+  .thirdChartPanel {
+    grid-column: span 12;
+  }
+
+  .quarterPanel {
+    grid-column: span 6;
+  }
+
+  .halfPanel {
+    grid-column: span 4;
+  }
+
+  .widePanel {
+    grid-column: span 8;
+  }
+
+  .allMetricsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dataFlow {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .mysqlFlowModel {
+    grid-template-columns: 1fr;
+  }
+
+  .mysqlRequestPath {
+    grid-template-columns: minmax(150px, 1fr) 34px minmax(150px, 1fr) 34px minmax(150px, 1fr) 34px minmax(150px, 1fr);
+  }
+
+  .innodbInner {
+    grid-template-columns: minmax(0, 0.9fr) 38px minmax(0, 0.85fr) 38px minmax(0, 1fr);
+  }
+
+  .mysqlPathNode {
+    min-height: 252px;
+  }
+
+  .flowPipeline {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .flowStageArrow {
+    display: none;
+  }
+
+  .flowEngineLayer {
+    grid-template-columns: minmax(260px, 1fr) minmax(80px, 0.32fr) minmax(190px, 0.8fr) minmax(260px, 1fr);
+  }
+
+  .flowNodeArrow {
+    display: none;
+  }
+
+  .panelTitle {
+    font-size: 15px;
+  }
+
+}
+
+@media (max-width: 1200px) {
+  .chartPanel,
+  .thirdChartPanel,
+  .quarterPanel,
+  .halfPanel,
+  .widePanel,
+  .fullPanel {
+    grid-column: span 12;
+  }
+
+  .allMetricsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dataFlow {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+  }
+
+  .mysqlRequestPath,
+  .innodbInner {
+    display: flex;
+    overflow-x: auto;
+    width: 100%;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+  }
+
+  .mysqlRequestPath {
+    min-width: 1100px;
+  }
+
+  .mysqlPathNode,
+  .innodbBufferCard,
+  .innodbLogCards,
+  .innodbDiskStack {
+    flex: 0 0 220px;
+    scroll-snap-align: start;
+  }
+
+  .mysqlPathArrow,
+  .innodbFork {
+    flex: 0 0 34px;
+  }
+
+  .flowCanvas {
+    min-height: auto;
+  }
+
+  .flowMainRail {
+    display: none;
+  }
+
+  .flowPipeline,
+  .flowEngineLayer {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+  }
+
+  .flowStage,
+  .flowEngineBox {
+    flex: 0 0 240px;
+    scroll-snap-align: start;
+  }
+
+  .flowBranch {
+    flex: 0 0 84px;
+  }
+
+  .flowLogStack {
+    flex: 0 0 210px;
+  }
+
+  .flowNode {
+    flex: 0 0 220px;
+    scroll-snap-align: start;
+  }
+
+  .flowNodeArrow {
+    display: inline-flex;
+  }
+
+  .flowArrow {
+    flex: 0 0 34px;
+  }
+
+  .inlineStats {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+  }
+
+  .controlsWrap {
+    width: 100%;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .pageTitleRow {
+    width: 100%;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .instanceCard {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .instanceActions {
+    width: 100%;
+    justify-content: flex-start;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .inlineInstanceSelector {
+    width: min(100%, 360px);
+  }
+
+  .toolbarTimeSelector > div,
+  .toolbarTimeSelector > div > div:first-child,
+  .toolbarTimeSelector > div > div:first-child :global(.ant-select),
+  .toolbarTimeSelector > div > div:first-child :global(.ant-picker) {
+    width: min(100%, 320px) !important;
+  }
+
+  .ringCard,
+  .bufferPoolRingCard {
+    grid-template-columns: 1fr;
+  }
+
+  .ringChartWrap,
+  .bufferPoolChartWrap {
+    width: 168px;
+    min-width: 168px;
+    height: 168px;
+    min-height: 168px;
+  }
+
+  .bufferPoolChartWrap {
+    height: 210px;
+    min-height: 210px;
+  }
+
+  .bufferPoolChartWrap .ringChartCanvas {
+    width: 168px !important;
+    height: 168px !important;
+    min-width: 168px;
+    min-height: 168px;
+    flex-basis: 168px;
+  }
+
+  .bufferPoolChartWrap::before {
+    inset: 24px 24px auto;
+    width: 120px;
+    height: 120px;
+  }
+
+  .bufferPoolChartWrap .ringCenterOverlay {
+    height: 168px;
+  }
+
+  .replicationCardRelaxed {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'header'
+      'summary'
+      'legend'
+      'chart';
+    gap: 12px;
+  }
+
+  .replicationChartWrap {
+    height: 132px;
+    min-height: 132px;
+    padding-right: 0;
+  }
+
+  .instanceIcon {
+    width: 42px;
+    height: 42px;
+    font-size: 20px;
+  }
+
+  .instanceName {
+    font-size: 17px;
+  }
+
+  .instanceSubline {
+    gap: 6px 10px;
+  }
+
+}
+
+@media (max-width: 768px) {
+  .chartWrap,
+  .compactChartWrap,
+  .replicationChartWrap {
+    height: 160px;
+  }
+
+  .actionButtons {
+    width: 100%;
+  }
+
+  .inlineInstanceSelector {
+    width: 100%;
+  }
+
+  .toolbarTimeSelector,
+  .toolbarTimeSelector > div,
+  .toolbarTimeSelector > div > div:first-child,
+  .toolbarTimeSelector > div > div:first-child :global(.ant-select),
+  .toolbarTimeSelector > div > div:first-child :global(.ant-picker) {
+    width: 100%;
+  }
+
+  .toolbarTimeSelector > div {
+    flex-wrap: wrap;
+  }
+
+  .toolbarTimeSelector > div > div:last-child {
+    margin-left: 0 !important;
+  }
+
+  .instanceIcon {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
+
+  .instanceName {
+    font-size: 16px;
+  }
+
+  .instanceMetaInline,
+  .instanceSubline {
+    font-size: 13px;
+  }
+
+  .replicationStatusItem {
+    gap: 10px;
+  }
+
+  .replicationCardRelaxed {
+    gap: 10px;
+  }
+
+  .instanceSubline {
+    font-size: 13px;
+  }
+
+  .instanceMetaDivider {
+    display: none;
+  }
+
+  .dataFlowLegend {
+    gap: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .allMetricsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .chartWrap,
+  .compactChartWrap,
+  .replicationChartWrap {
+    height: 130px;
+  }
+
+  .replicationCardRelaxed {
+    grid-template-columns: 1fr;
+  }
+}

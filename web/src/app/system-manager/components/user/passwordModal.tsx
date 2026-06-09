@@ -7,13 +7,20 @@ import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
 import { useUserApi } from '@/app/system-manager/api/user/index';
 import { useSecurityApi } from '@/app/system-manager/api/security';
+import type { SystemSettings } from '@/app/system-manager/types/security';
 
 export interface PasswordModalRef {
   showModal: (config: { userId: string }) => void;
 }
 
-const PasswordModal = forwardRef<PasswordModalRef, { onSuccess: () => void }>(
-  ({ onSuccess }, ref) => {
+interface PasswordModalProps {
+  onSuccess: () => void;
+  fetchSystemSettings?: () => Promise<SystemSettings>;
+  setUserPasswordAction?: (params: { id: string; password: string; temporary: boolean }) => Promise<unknown>;
+}
+
+const PasswordModal = forwardRef<PasswordModalRef, PasswordModalProps>(
+  ({ onSuccess, fetchSystemSettings, setUserPasswordAction }, ref) => {
     const { t } = useTranslation();
     const [visible, setVisible] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -26,6 +33,8 @@ const PasswordModal = forwardRef<PasswordModalRef, { onSuccess: () => void }>(
     const formRef = useRef<FormInstance>(null);
     const { setUserPassword } = useUserApi();
     const { getSystemSettings } = useSecurityApi();
+    const loadSystemSettings = fetchSystemSettings ?? getSystemSettings;
+    const submitUserPassword = setUserPasswordAction ?? setUserPassword;
 
     // 密码规则状态
     const [minLength, setMinLength] = useState<number>(8);
@@ -47,16 +56,10 @@ const PasswordModal = forwardRef<PasswordModalRef, { onSuccess: () => void }>(
       }
     }, [visible]);
 
-    useEffect(() => {
-      if (visible) {
-        fetchPasswordRules();
-      }
-    }, [visible]);
-
     const fetchPasswordRules = async () => {
       try {
         setRulesLoading(true);
-        const settings = await getSystemSettings();
+        const settings = await loadSystemSettings();
         setMinLength(parseInt(settings.pwd_set_min_length || '8'));
         setMaxLength(parseInt(settings.pwd_set_max_length || '20'));
         
@@ -153,7 +156,7 @@ const PasswordModal = forwardRef<PasswordModalRef, { onSuccess: () => void }>(
       try {
         setIsSubmitting(true);
         const values = await formRef.current?.validateFields();
-        await setUserPassword({ id: userId, password: values.password, temporary: values.temporary ?? false });
+        await submitUserPassword({ id: userId, password: values.password, temporary: values.temporary ?? false });
         message.success(t('common.updateSuccess'));
         onSuccess();
         setVisible(false);

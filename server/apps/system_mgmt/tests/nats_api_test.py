@@ -17,6 +17,7 @@ from apps.rpc.ansible import AnsibleExecutor
 from apps.system_mgmt import nats_api
 from apps.system_mgmt.models import User
 from apps.system_mgmt.nats_api import get_all_users, get_authorized_groups_scoped
+from apps.system_mgmt.utils.channel_utils import send_email_to_user
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +214,47 @@ def test_get_authorized_groups_scoped_keeps_include_children(monkeypatch):
         "target_group_id": 1,
         "include_children": True,
     }
+
+
+def test_send_email_to_user_keeps_ascii_attachment_filename_clean(monkeypatch):
+    captured = {}
+
+    class FakeSMTP:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def login(self, username, password):
+            return None
+
+        def send_message(self, msg):
+            captured["message"] = msg
+
+        def quit(self):
+            return None
+
+    monkeypatch.setattr("apps.system_mgmt.utils.channel_utils.smtplib.SMTP", FakeSMTP)
+
+    result = send_email_to_user(
+        {
+            "mail_sender": "sender@example.com",
+            "smtp_server": "smtp.example.com",
+            "port": 25,
+            "smtp_user": "sender",
+            "smtp_pwd": "pwd",
+            "smtp_usessl": False,
+            "smtp_usetls": False,
+        },
+        "<p>hello</p>",
+        ["receiver@example.com"],
+        "test",
+        attachments=[{"filename": "20260604.md", "content": "aGVsbG8="}],
+    )
+
+    attachment_part = captured["message"].get_payload()[1]
+
+    assert result["result"] is True
+    assert 'filename="20260604.md"' in attachment_part["Content-Disposition"]
+    assert "utf-8''" not in attachment_part["Content-Disposition"]
 
 
 def test_get_authorized_groups_scoped_rejects_invalid_current_team(monkeypatch):

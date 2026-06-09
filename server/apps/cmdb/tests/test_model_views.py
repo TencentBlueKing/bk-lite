@@ -376,7 +376,7 @@ def test_sync_custom_reporting_model_group_updates_existing_model_group(monkeypa
 def test_list_models(superuser, monkeypatch):
     monkeypatch.setattr(
         f"{VIEWS}.ModelManage.search_model",
-        lambda language=None, permissions_map=None: [{"model_id": "host", "group": [1]}],
+        lambda language=None, permissions_map=None, **kwargs: [{"model_id": "host", "group": [1]}],
     )
     response = ModelViewSet.as_view({"get": "list"})(_req("get", superuser))
     assert _body(response)["data"][0]["model_id"] == "host"

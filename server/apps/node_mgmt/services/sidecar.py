@@ -467,8 +467,9 @@ class Sidecar:
                 node_info.pop("cpu_architecture", None)
             Node.objects.filter(id=node_id).update(**node_info)
 
-            # Incrementally sync organization associations
-            Sidecar.sync_groups(node_id, tags_data.get(ControllerConstants.GROUP_TAG, []))
+            # Existing node organization ownership is managed by the server/UI.
+            # Sidecar may heartbeat with stale group tags before sidecar.yaml is
+            # updated, so do not let those tags roll back user edits.
 
         # 预取相关数据，减少查询次数
         new_obj = Node.objects.prefetch_related("action_set", "collectorconfiguration_set").get(id=node_id)
@@ -636,6 +637,7 @@ class Sidecar:
             section_headers = collector.default_config.get("config_section", {})
 
         child_configs = list(configuration.childconfig_set.all())
+        child_render_variables = Sidecar.collect_child_render_variables(child_configs)
 
         if child_configs and section_headers:
             grouped_configs = {}
@@ -678,6 +680,7 @@ class Sidecar:
         # 如果配置中有 env_config，则合并到变量中
         if configuration_data.get("env_config"):
             variables.update(configuration_data["env_config"])
+        variables.update(child_render_variables)
 
         # 渲染配置模板
         configuration_data["template"] = Sidecar.render_template(configuration_data["template"], variables)
@@ -771,8 +774,18 @@ class Sidecar:
             "node__ip_filter": node_obj.ip.replace(".", "-").replace("*", "-").replace("*", ">"),
             "node__operating_system": node_obj.operating_system,
             "node__collector_configuration_directory": node_obj.collector_configuration_directory,
+            "PACKETBEAT_DEVICE": "0" if node_obj.operating_system == "windows" else "any",
         }
         variables.update(node_dict)
+        return variables
+
+    @staticmethod
+    def collect_child_render_variables(child_configs):
+        variables = {}
+        for child_config in child_configs:
+            for key, value in (child_config.env_config or {}).items():
+                if "__" not in key:
+                    variables[key] = value
         return variables
 
     @staticmethod
