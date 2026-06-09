@@ -96,6 +96,7 @@ def _build_memory_write_client(effective_model_id):
         openai_api_key=llm_model.openai_api_key,
         model=llm_model.model_name,
         protocol_type=llm_model.protocol_type,
+        vendor_type=llm_model.vendor.vendor_type if llm_model.vendor_id else "",
         temperature=0.3,
     )
     return LLMClientFactory.create_client(llm_request, disable_stream=True)

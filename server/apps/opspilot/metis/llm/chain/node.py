@@ -53,6 +53,7 @@ from apps.opspilot.metis.llm.chain.entity import (
     StopConditionResult,
 )
 from apps.opspilot.metis.llm.chain.message_trim import trim_messages
+from apps.opspilot.metis.llm.common.anthropic_capabilities import build_anthropic_runtime_capabilities, normalize_tool_choice_for_capabilities
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
 from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
@@ -2525,6 +2526,12 @@ class ToolsNodes(BasicNode):
                             bind_kwargs["tool_choice"] = "any"
                         elif tool_choice_cfg.mode == "specific" and tool_choice_cfg.tool_name:
                             bind_kwargs["tool_choice"] = tool_choice_cfg.tool_name
+                if "tool_choice" in bind_kwargs:
+                    capabilities = build_anthropic_runtime_capabilities(
+                        getattr(graph_request, "vendor_type", ""),
+                        getattr(graph_request, "protocol_type", "openai"),
+                    )
+                    bind_kwargs["tool_choice"] = normalize_tool_choice_for_capabilities(bind_kwargs["tool_choice"], capabilities)
                 # 选择后续行：不再强制 tool_choice="any"（某些模型不稳定），仅靠注入提示引导
                 # if _has_pending_choice and "tool_choice" not in bind_kwargs:
                 #     bind_kwargs["tool_choice"] = "any"

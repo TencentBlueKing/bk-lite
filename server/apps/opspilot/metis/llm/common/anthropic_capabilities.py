@@ -17,6 +17,11 @@ def build_anthropic_runtime_capabilities(
     if protocol_type != "anthropic":
         return AnthropicRuntimeCapabilities()
 
+    if not vendor_type:
+        return AnthropicRuntimeCapabilities(
+            use_native_anthropic_sdk=True,
+        )
+
     if vendor_type == "anthropic":
         return AnthropicRuntimeCapabilities(
             use_native_anthropic_sdk=True,

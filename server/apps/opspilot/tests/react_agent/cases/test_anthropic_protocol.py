@@ -12,6 +12,7 @@ Verifies:
 8. Runtime capability detection for Anthropic vs OpenAI protocols
 9. Tool choice normalization coverage for runtime compatibility
 """
+import asyncio
 import sys
 import types
 from importlib import util
@@ -105,12 +106,35 @@ class _HumanMessage:
         self.type = kwargs.get("type", "user")
 
 
+class _SystemMessage(_HumanMessage):
+    def __init__(self, content=None, **kwargs):
+        super().__init__(content=content, type="system", **kwargs)
+
+
+class _AIMessage(_HumanMessage):
+    def __init__(self, content=None, tool_calls=None, id=None, additional_kwargs=None, **kwargs):
+        super().__init__(content=content, type="assistant", **kwargs)
+        self.tool_calls = tool_calls or []
+        self.id = id
+        self.additional_kwargs = additional_kwargs or {}
+
+
+class _ToolMessage(_HumanMessage):
+    def __init__(self, content=None, tool_call_id=None, name=None, **kwargs):
+        super().__init__(content=content, type="tool", **kwargs)
+        self.tool_call_id = tool_call_id
+        self.name = name
+
+
 class _BaseChatModel:
     pass
 
 
 setattr(_langchain_core_documents, "Document", dict)
+setattr(_langchain_core_messages, "AIMessage", _AIMessage)
 setattr(_langchain_core_messages, "HumanMessage", _HumanMessage)
+setattr(_langchain_core_messages, "SystemMessage", _SystemMessage)
+setattr(_langchain_core_messages, "ToolMessage", _ToolMessage)
 setattr(_langchain_core_language_models_chat_models, "BaseChatModel", _BaseChatModel)
 setattr(_langchain_core_language_models, "chat_models", _langchain_core_language_models_chat_models)
 setattr(_langchain_core, "documents", _langchain_core_documents)
@@ -226,6 +250,14 @@ class TestAnthropicRuntimeCapabilities:
         assert caps.supports_direct_messages_api is True
         assert caps.requires_normalized_base_url is True
 
+    def test_empty_vendor_type_keeps_native_anthropic_path(self):
+        caps = build_anthropic_runtime_capabilities(
+            vendor_type="",
+            protocol_type="anthropic",
+        )
+        assert caps.use_native_anthropic_sdk is True
+        assert caps.use_anthropic_compatible_adapter is False
+
     def test_non_anthropic_protocol_returns_default_capabilities(self):
         caps = build_anthropic_runtime_capabilities(
             vendor_type="deepseek",
@@ -293,6 +325,42 @@ class TestCreateClientProtocolDispatch:
         assert request.protocol_type == "openai"
         LLMClientFactory.create_client(request)
         mock_cls.assert_called_once()
+
+    @patch.object(LLMClientFactory, "_create_anthropic_compatible_client")
+    @patch("apps.opspilot.metis.llm.common.llm_client_factory.ChatAnthropic")
+    def test_deepseek_anthropic_protocol_uses_compatible_adapter(self, mock_chat_anthropic, mock_adapter_client):
+        mock_adapter_client.return_value = MagicMock()
+        request = BasicLLMRequest(
+            protocol_type="anthropic",
+            vendor_type="deepseek",
+            openai_api_key="sk-ant-test",
+            model="deepseek-v4-flash",
+            openai_api_base="https://api.deepseek.com/anthropic",
+        )
+
+        client = LLMClientFactory.create_client(request)
+
+        mock_adapter_client.assert_called_once_with(request, False)
+        mock_chat_anthropic.assert_not_called()
+        assert client is mock_adapter_client.return_value
+
+    @patch.object(LLMClientFactory, "_create_anthropic_compatible_client")
+    @patch("apps.opspilot.metis.llm.common.llm_client_factory.ChatAnthropic")
+    def test_native_anthropic_protocol_keeps_native_sdk(self, mock_chat_anthropic, mock_adapter_client):
+        mock_chat_anthropic.return_value = MagicMock()
+        request = BasicLLMRequest(
+            protocol_type="anthropic",
+            vendor_type="anthropic",
+            openai_api_key="sk-ant-test",
+            model="claude-3-haiku-20240307",
+            openai_api_base="https://api.anthropic.com",
+        )
+
+        client = LLMClientFactory.create_client(request)
+
+        mock_adapter_client.assert_not_called()
+        mock_chat_anthropic.assert_called_once()
+        assert client is mock_chat_anthropic.return_value
 
 
 class TestAnthropicClientBaseUrl:
@@ -752,6 +820,72 @@ class TestAnthropicCompatibleAdapter:
         headers = build_anthropic_headers("sk-key")
         assert headers["content-type"] == "application/json"
 
+    def test_build_messages_payload_serializes_assistant_tool_calls(self):
+        from langchain_core.messages import AIMessage, HumanMessage
+
+        from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import build_messages_payload
+
+        payload = build_messages_payload(
+            model="deepseek-v4-flash",
+            messages=[
+                HumanMessage(content="find docs"),
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "search_docs",
+                            "args": {"query": "anthropic"},
+                            "id": "toolu_123",
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+            ],
+            temperature=0.2,
+        )
+
+        assert payload["messages"][1] == {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "toolu_123",
+                    "name": "search_docs",
+                    "input": {"query": "anthropic"},
+                }
+            ],
+        }
+
+    def test_build_messages_payload_groups_consecutive_tool_results(self):
+        from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+        from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import build_messages_payload
+
+        payload = build_messages_payload(
+            model="deepseek-v4-flash",
+            messages=[
+                HumanMessage(content="find docs"),
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {"name": "search_docs", "args": {"query": "anthropic"}, "id": "toolu_1", "type": "tool_call"},
+                        {"name": "calc_tool", "args": {"expr": "1+1"}, "id": "toolu_2", "type": "tool_call"},
+                    ],
+                ),
+                ToolMessage(content="doc result", tool_call_id="toolu_1", name="search_docs"),
+                ToolMessage(content="2", tool_call_id="toolu_2", name="calc_tool"),
+            ],
+            temperature=0.2,
+        )
+
+        assert payload["messages"][2] == {
+            "role": "user",
+            "content": [
+                {"type": "tool_result", "tool_use_id": "toolu_1", "content": "doc result"},
+                {"type": "tool_result", "tool_use_id": "toolu_2", "content": "2"},
+            ],
+        }
+
     @patch("apps.opspilot.metis.llm.common.anthropic_compatible_adapter.safe_post_llm_endpoint")
     def test_validate_minimal_connection_builds_normalized_request(self, mock_safe_post):
         from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import AnthropicCompatibleAdapter
@@ -793,6 +927,115 @@ class TestAnthropicCompatibleAdapter:
 
         with pytest.raises(ValueError, match="API 连接失败"):
             AnthropicCompatibleAdapter.validate_minimal_connection("", "sk-key", "claude-3-haiku-20240307")
+
+
+class TestAnthropicCompatibleChatClient:
+    @patch("apps.opspilot.metis.llm.common.anthropic_compatible_adapter.safe_post_llm_endpoint")
+    def test_invoke_builds_messages_payload_and_returns_ai_message(self, mock_safe_post):
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import AnthropicCompatibleChatClient
+
+        mock_response = MagicMock(status_code=200, text="")
+        mock_response.json.return_value = {
+            "content": [{"type": "text", "text": "adapter hello"}],
+        }
+        mock_safe_post.return_value = mock_response
+
+        client = AnthropicCompatibleChatClient(
+            model="deepseek-v4-flash",
+            api_key="sk-key",
+            api_base="https://api.deepseek.com/anthropic",
+            temperature=0.2,
+            disable_streaming=True,
+            timeout=3000,
+            vendor_type="deepseek",
+        )
+
+        response = client.invoke([SystemMessage(content="system prompt"), HumanMessage(content="hi")])
+
+        assert response.content == "adapter hello"
+        assert response.tool_calls == []
+        call_kwargs = mock_safe_post.call_args[1]
+        assert call_kwargs["json"]["system"] == "system prompt"
+        assert call_kwargs["json"]["messages"] == [{"role": "user", "content": "hi"}]
+
+    @patch("apps.opspilot.metis.llm.common.anthropic_compatible_adapter.safe_post_llm_endpoint")
+    def test_bind_tools_and_ainvoke_parse_tool_calls(self, mock_safe_post):
+        from langchain_core.messages import HumanMessage
+
+        from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import AnthropicCompatibleChatClient
+
+        class FakeArgsSchema:
+            @staticmethod
+            def schema():
+                return {
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                }
+
+        class FakeTool:
+            name = "search_docs"
+            description = "Search docs"
+            args_schema = FakeArgsSchema
+
+        mock_response = MagicMock(status_code=200, text="")
+        mock_response.json.return_value = {
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "toolu_123",
+                    "name": "search_docs",
+                    "input": {"query": "anthropic"},
+                }
+            ],
+        }
+        mock_safe_post.return_value = mock_response
+
+        client = AnthropicCompatibleChatClient(
+            model="deepseek-v4-flash",
+            api_key="sk-key",
+            api_base="https://api.deepseek.com/anthropic",
+            temperature=0.2,
+            disable_streaming=True,
+            timeout=3000,
+            vendor_type="deepseek",
+        ).bind_tools([FakeTool()], tool_choice="any")
+
+        response = asyncio.run(client.ainvoke([HumanMessage(content="hi")]))
+
+        assert response.tool_calls == [
+            {
+                "name": "search_docs",
+                "args": {"query": "anthropic"},
+                "id": "toolu_123",
+                "type": "tool_call",
+            }
+        ]
+        call_kwargs = mock_safe_post.call_args[1]
+        assert call_kwargs["json"]["tool_choice"] == "any"
+        assert call_kwargs["json"]["tools"][0]["name"] == "search_docs"
+
+    @patch("apps.opspilot.metis.llm.common.anthropic_compatible_adapter.safe_post_llm_endpoint")
+    def test_invoke_unauthorized_raises_normalized_invalid_key_error(self, mock_safe_post):
+        from langchain_core.messages import HumanMessage
+
+        from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import AnthropicCompatibleChatClient
+
+        mock_safe_post.return_value = MagicMock(status_code=401, text="Unauthorized")
+        client = AnthropicCompatibleChatClient(
+            model="deepseek-v4-flash",
+            api_key="sk-key",
+            api_base="https://api.deepseek.com/anthropic",
+            temperature=0.2,
+            disable_streaming=True,
+            timeout=3000,
+            vendor_type="deepseek",
+        )
+
+        with pytest.raises(ValueError, match="API Key 无效"):
+            client.invoke([HumanMessage(content="hi")])
 
 
 # ---------------------------------------------------------------------------
