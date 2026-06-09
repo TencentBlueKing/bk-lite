@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   buildAlertNameVariables,
   buildStrategyPayload,
+  getAlertConditionVisibility,
   getDefaultShowFields,
   getLockedPolicyType,
   insertAlertNameVariable
@@ -32,6 +33,16 @@ assert.equal(getLockedPolicyType({ urlAlertType: 'keyword' }), 'keyword');
 assert.equal(getLockedPolicyType({ detailAlertType: 'aggregate' }), 'aggregate');
 assert.equal(getLockedPolicyType({ urlAlertType: 'unknown', detailAlertType: 'keyword' }), 'keyword');
 assert.equal(getLockedPolicyType({ urlAlertType: 'keyword', detailAlertType: 'aggregate' }), 'aggregate');
+assert.deepEqual(getAlertConditionVisibility('keyword'), {
+  showDisplayFields: true,
+  showGroupBy: true,
+  showRule: false
+});
+assert.deepEqual(getAlertConditionVisibility('aggregate'), {
+  showDisplayFields: true,
+  showGroupBy: true,
+  showRule: true
+});
 
 assert.deepEqual(getDefaultShowFields(undefined), ['timestamp', 'message']);
 assert.deepEqual(getDefaultShowFields(['message', 'host']), ['timestamp', 'message', 'host']);

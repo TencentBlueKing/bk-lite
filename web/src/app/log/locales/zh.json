@@ -865,6 +865,8 @@
       "basicInformation": "基本信息",
       "historicalAlarmsMapTips": "展示所选时间范围内，符合过滤项的所有历史告警分布图。",
       "polymerizationConditions": "聚合条件",
+      "groupByFields": "分组字段",
+      "groupByFieldsDes": "按字段值归并或拆分告警，未配置时按策略收敛。",
       "closed": "手动关闭",
       "keywordAlert": "关键字告警",
       "warning": "警告",

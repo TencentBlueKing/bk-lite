@@ -865,6 +865,8 @@
       "basicInformation": "Basic Information",
       "historicalAlarmsMapTips": "Displays a graph of the distribution of all historical alarms that match the filter for the selected time range.",
       "polymerizationConditions": "Aggregation Conditions",
+      "groupByFields": "Group Fields",
+      "groupByFieldsDes": "Merge or split alerts by field value. Leave empty to converge by policy.",
       "closed": "Closed Manually",
       "keywordAlert": "Keyword Alert",
       "warning": "Warning",
