@@ -6,6 +6,27 @@ import {
   getLockedPolicyType,
   insertAlertNameVariable
 } from '../src/app/log/(pages)/event/strategy/detail/policyFormUtils';
+import {
+  buildStrategyDetailUrl,
+  getCreatePolicyType
+} from '../src/app/log/(pages)/event/strategy/policyRouteUtils';
+
+assert.equal(
+  buildStrategyDetailUrl('add', { alertType: 'aggregate' }),
+  '/log/event/strategy/detail?type=add&alert_type=aggregate'
+);
+assert.equal(
+  buildStrategyDetailUrl('edit', {
+    id: 8,
+    name: '已有策略',
+    alertType: 'keyword'
+  }),
+  '/log/event/strategy/detail?type=edit&id=8&name=%E5%B7%B2%E6%9C%89%E7%AD%96%E7%95%A5&alert_type=keyword'
+);
+assert.equal(getCreatePolicyType('keyword'), 'keyword');
+assert.equal(getCreatePolicyType('aggregate'), 'aggregate');
+assert.equal(getCreatePolicyType(null), null);
+assert.equal(getCreatePolicyType('unknown'), null);
 
 assert.equal(getLockedPolicyType({ urlAlertType: 'keyword' }), 'keyword');
 assert.equal(getLockedPolicyType({ detailAlertType: 'aggregate' }), 'aggregate');
