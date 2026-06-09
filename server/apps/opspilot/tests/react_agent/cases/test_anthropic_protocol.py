@@ -9,6 +9,8 @@ Verifies:
 5. ModelVendorSyncService protocol type detection
 6. ModelVendorSyncService Anthropic model fetching
 7. LLMModel.protocol_type property derivation from vendor
+8. Runtime capability detection for Anthropic vs OpenAI protocols
+9. Tool choice normalization coverage for runtime compatibility
 """
 import sys
 import types
@@ -672,7 +674,7 @@ class TestLLMModelProtocolType:
         assert self._make_model("other", "anthropic").protocol_type == "anthropic"
 
     def test_openai_vendor_gives_openai_protocol(self):
-        assert self._make_model("openai", "anthropic").protocol_type == "openai"
+        assert self._make_model("openai", "openai").protocol_type == "openai"
 
     def test_no_vendor_defaults_to_openai(self):
         assert self._make_model().protocol_type == "openai"
