@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlueKing Lite - 事件模板</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            color: #202736;
+            background:
+                linear-gradient(135deg, rgba(235, 249, 255, 0.94) 0%, rgba(244, 250, 255, 0.88) 34%, rgba(255, 255, 255, 0.9) 64%),
+                radial-gradient(circle at 76% 8%, rgba(190, 229, 255, 0.45), rgba(255, 255, 255, 0) 34%);
+            font-size: 14px;
+            overflow: hidden;
+        }
+
+        body::after {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background:
+                linear-gradient(42deg, transparent 0 27%, rgba(255, 255, 255, 0.55) 27.2%, transparent 27.6% 100%),
+                linear-gradient(220deg, transparent 0 19%, rgba(219, 241, 255, 0.52) 19.2%, transparent 19.6% 100%);
+            opacity: 0.8;
+        }
+
+        .page {
+            position: relative;
+            z-index: 1;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .topbar {
+            height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 18px;
+            background: rgba(245, 251, 255, 0.82);
+            border-bottom: 1px solid rgba(218, 232, 244, 0.78);
+        }
+
+        .topbar-left,
+        .topbar-center,
+        .topbar-right,
+        .brand,
+        .nav-item,
+        .user {
+            display: flex;
+            align-items: center;
+        }
+
+        .topbar-left {
+            gap: 20px;
+            min-width: 320px;
+        }
+
+        .brand {
+            gap: 10px;
+            font-weight: 600;
+            font-size: 16px;
+            color: #344054;
+            white-space: nowrap;
+        }
+
+        .logo {
+            width: 38px;
+            height: 38px;
+        }
+
+        .switcher {
+            height: 36px;
+            min-width: 62px;
+            border-radius: 12px;
+            background: #edf3f8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            color: #2b63ff;
+        }
+
+        .topbar-center {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            gap: 18px;
+        }
+
+        .nav-item {
+            gap: 8px;
+            height: 40px;
+            padding: 0 14px;
+            border-radius: 10px;
+            color: #354158;
+            font-weight: 500;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .nav-item.active {
+            color: #1f66ff;
+            background: #eef5ff;
+        }
+
+        .topbar-right {
+            justify-content: flex-end;
+            min-width: 320px;
+            gap: 16px;
+            color: #54708e;
+        }
+
+        .user {
+            gap: 8px;
+            color: #22324a;
+        }
+
+        .avatar {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #2d6cff;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .user-meta {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.15;
+        }
+
+        .user-meta small {
+            color: #697b91;
+            font-size: 11px;
+        }
+
+        .subnav {
+            height: 80px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0 24px;
+        }
+
+        .subnav a {
+            height: 36px;
+            padding: 0 14px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #111827;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .subnav a.active {
+            color: #1f66ff;
+            background: #fff;
+            box-shadow: 0 2px 8px rgba(29, 60, 110, 0.09);
+        }
+
+        .workspace {
+            height: calc(100vh - 136px);
+            display: flex;
+            padding: 0 16px 16px;
+            gap: 10px;
+        }
+
+        .sidebar {
+            width: 199px;
+            background: rgba(255, 255, 255, 0.95);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .tree-search {
+            display: flex;
+            padding: 20px 10px 10px;
+        }
+
+        .tree-search input,
+        .content-search input {
+            height: 32px;
+            border: 1px solid #d7dce5;
+            border-right: 0;
+            border-radius: 4px 0 0 4px;
+            outline: none;
+            padding: 0 12px;
+            color: #313238;
+            min-width: 0;
+        }
+
+        .tree-search input::placeholder,
+        .content-search input::placeholder {
+            color: #b2b8c3;
+        }
+
+        .search-btn {
+            width: 46px;
+            height: 32px;
+            border: 0;
+            border-radius: 0 4px 4px 0;
+            background: #2f63f6;
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .tree {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 8px 20px 14px;
+        }
+
+        .tree::-webkit-scrollbar,
+        .content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .tree::-webkit-scrollbar-thumb,
+        .content::-webkit-scrollbar-thumb {
+            background: #d8dde8;
+            border-radius: 10px;
+        }
+
+        .tree-group {
+            margin-top: 2px;
+        }
+
+        .tree-title,
+        .tree-leaf {
+            height: 28px;
+            display: flex;
+            align-items: center;
+            color: #1f2937;
+            white-space: nowrap;
+        }
+
+        .tree-title {
+            gap: 8px;
+            font-weight: 500;
+        }
+
+        .collapse {
+            width: 12px;
+            height: 12px;
+            border: 1px solid #6b7280;
+            color: #111827;
+            font-size: 10px;
+            line-height: 9px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+        }
+
+        .tree-children {
+            margin-left: 10px;
+            padding-left: 14px;
+            border-left: 1px solid #d9dde5;
+        }
+
+        .tree-leaf {
+            position: relative;
+            gap: 8px;
+            cursor: pointer;
+        }
+
+        .tree-leaf::before {
+            content: "";
+            width: 10px;
+            height: 1px;
+            background: #d9dde5;
+            margin-left: -14px;
+        }
+
+        .tree-leaf span:last-child {
+            padding: 3px 9px;
+            border-radius: 4px;
+        }
+
+        .tree-leaf.active span:last-child {
+            background: #e9f4ff;
+            box-shadow: inset 0 0 0 1px #d5eaff;
+        }
+
+        .content {
+            flex: 1;
+            min-width: 0;
+            overflow-y: auto;
+            background: #fff;
+            padding: 20px 20px 36px;
+        }
+
+        .content-toolbar {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 18px;
+        }
+
+        .content-search {
+            width: 240px;
+            display: flex;
+        }
+
+        .content-search input {
+            flex: 1;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(210px, 1fr));
+            gap: 26px 24px;
+        }
+
+        .template-card {
+            position: relative;
+            min-height: 120px;
+            border: 1px solid #edf0f5;
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 4px 10px rgba(31, 45, 61, 0.12);
+            padding: 20px 18px;
+            display: flex;
+            gap: 12px;
+            cursor: pointer;
+            transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+        }
+
+        .template-card:hover,
+        .template-card.selected {
+            border-color: #3a84ff;
+            box-shadow: 0 8px 18px rgba(50, 103, 230, 0.18);
+            transform: translateY(-1px);
+        }
+
+        .template-check {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 18px;
+            height: 18px;
+            border: 1px solid #c6ccd6;
+            border-radius: 4px;
+            background: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+        }
+
+        .template-card.selected .template-check {
+            border-color: #2f63f6;
+            background: #2f63f6;
+        }
+
+        .template-card.selected .template-check::after {
+            content: "";
+            width: 8px;
+            height: 4px;
+            border-left: 2px solid #fff;
+            border-bottom: 2px solid #fff;
+            transform: rotate(-45deg) translate(1px, -1px);
+        }
+
+        .card-icon {
+            width: 38px;
+            height: 38px;
+            flex: 0 0 auto;
+            border-radius: 12px;
+            background: #f4f8fb;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .card-icon-inner {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #68bd45;
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .card-body {
+            min-width: 0;
+            padding-top: 4px;
+        }
+
+        .card-title {
+            font-weight: 700;
+            color: #344054;
+            margin-bottom: 20px;
+            line-height: 1.2;
+        }
+
+        .card-desc {
+            color: #4f6f95;
+            font-size: 13px;
+            line-height: 1.35;
+        }
+
+        .card-actions {
+            margin-top: 14px;
+        }
+
+        .link-button {
+            border: 0;
+            background: transparent;
+            color: #1f66ff;
+            cursor: pointer;
+            font-size: 13px;
+            padding: 0;
+        }
+
+        .link-button:hover {
+            color: #0c46d3;
+        }
+
+        .muted {
+            color: #667085;
+            font-size: 13px;
+            margin-left: 10px;
+        }
+
+        .empty {
+            display: none;
+            margin-top: 120px;
+            text-align: center;
+            color: #8a95a8;
+        }
+
+        .empty.show {
+            display: block;
+        }
+
+        .batch-bar {
+            position: sticky;
+            bottom: 0;
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-top: 24px;
+            padding: 14px 18px;
+            border: 1px solid #d7e4ff;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.96);
+            box-shadow: 0 -4px 18px rgba(31, 45, 61, 0.08);
+            z-index: 5;
+        }
+
+        .batch-bar.show {
+            display: flex;
+        }
+
+        .batch-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .primary-button,
+        .secondary-button {
+            height: 32px;
+            padding: 0 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .primary-button {
+            border: 1px solid #2f63f6;
+            background: #2f63f6;
+            color: #fff;
+        }
+
+        .primary-button:hover {
+            background: #1f56e8;
+        }
+
+        .secondary-button {
+            border: 1px solid #d7dce5;
+            background: #fff;
+            color: #344054;
+        }
+
+        .secondary-button:hover {
+            border-color: #2f63f6;
+            color: #1f66ff;
+        }
+
+        .modal-mask {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(15, 23, 42, 0.35);
+            z-index: 50;
+        }
+
+        .modal-mask.show {
+            display: flex;
+        }
+
+        .wizard {
+            width: min(980px, calc(100vw - 80px));
+            max-height: calc(100vh - 80px);
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 20px 60px rgba(15, 23, 42, 0.22);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .wizard-header {
+            padding: 18px 24px;
+            border-bottom: 1px solid #edf0f5;
+        }
+
+        .wizard-header h2 {
+            font-size: 18px;
+            line-height: 1.4;
+            margin-bottom: 14px;
+        }
+
+        .wizard-steps {
+            display: flex;
+            gap: 8px;
+        }
+
+        .wizard-step {
+            flex: 1;
+            height: 34px;
+            border-radius: 4px;
+            background: #f3f6fb;
+            color: #667085;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .wizard-step.active {
+            background: #eaf2ff;
+            color: #1f66ff;
+            font-weight: 600;
+        }
+
+        .wizard-body {
+            padding: 20px 24px;
+            overflow-y: auto;
+        }
+
+        .wizard-panel {
+            display: none;
+        }
+
+        .wizard-panel.active {
+            display: block;
+        }
+
+        .panel-intro {
+            color: #667085;
+            margin-bottom: 14px;
+        }
+
+        .compact-list,
+        .asset-grid,
+        .preview-table {
+            border: 1px solid #edf0f5;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .compact-item,
+        .asset-item,
+        .preview-row {
+            display: grid;
+            gap: 12px;
+            align-items: center;
+            padding: 12px 14px;
+            border-bottom: 1px solid #edf0f5;
+        }
+
+        .compact-item {
+            grid-template-columns: 1fr 120px 60px;
+        }
+
+        .asset-item {
+            grid-template-columns: 24px 1fr 160px;
+            cursor: pointer;
+        }
+
+        .preview-row {
+            grid-template-columns: 1.2fr 1fr 120px;
+        }
+
+        .compact-item:last-child,
+        .asset-item:last-child,
+        .preview-row:last-child {
+            border-bottom: 0;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .form-item label {
+            display: block;
+            margin-bottom: 6px;
+            color: #344054;
+            font-weight: 500;
+        }
+
+        .form-item input,
+        .form-item select {
+            width: 100%;
+            height: 34px;
+            border: 1px solid #d7dce5;
+            border-radius: 4px;
+            padding: 0 10px;
+            background: #fff;
+        }
+
+        .preview-title {
+            font-size: 15px;
+            margin-bottom: 10px;
+        }
+
+        .result-card {
+            display: none;
+            padding: 24px;
+            border: 1px solid #c8ead0;
+            border-radius: 6px;
+            background: #f2fbf4;
+        }
+
+        .result-card.show {
+            display: block;
+        }
+
+        .result-card h3 {
+            color: #279847;
+            margin-bottom: 10px;
+        }
+
+        .wizard-footer {
+            padding: 18px 24px;
+            border-top: 1px solid #edf0f5;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        @media (max-width: 1500px) {
+            .cards {
+                grid-template-columns: repeat(4, minmax(210px, 1fr));
+            }
+        }
+
+        @media (max-width: 1180px) {
+            .topbar-center {
+                gap: 6px;
+            }
+
+            .cards {
+                grid-template-columns: repeat(3, minmax(210px, 1fr));
+            }
+        }
+
+        @media (max-width: 900px) {
+            body {
+                overflow: auto;
+            }
+
+            .topbar {
+                min-width: 900px;
+            }
+
+            .workspace {
+                min-width: 900px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <header class="topbar">
+            <div class="topbar-left">
+                <div class="brand">
+                    <svg class="logo" viewBox="0 0 44 44" fill="none" aria-hidden="true">
+                        <path d="M8 30c9-16 17-23 24-21 5 1 7 6 5 10-2 5-9 5-18 1" stroke="#1677ff" stroke-width="2.4" stroke-linecap="round"/>
+                        <path d="M13 11c8 3 17 12 22 24M7 21c8 2 17 8 26 18" stroke="#39c2ff" stroke-width="2.4" stroke-linecap="round"/>
+                        <circle cx="13" cy="11" r="2.4" fill="#1677ff"/>
+                        <circle cx="8" cy="30" r="2.4" fill="#39c2ff"/>
+                    </svg>
+                    <span>BlueKing Lite</span>
+                </div>
+                <div class="switcher" title="应用切换">
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <path d="M4 3.5a2 2 0 1 1 4 0 2 2 0 0 1-4 0Zm5 0a2 2 0 1 1 4 0 2 2 0 0 1-4 0ZM4 12.5a2 2 0 1 1 4 0 2 2 0 0 1-4 0Zm5 0a2 2 0 1 1 4 0 2 2 0 0 1-4 0Z"/>
+                    </svg>
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                        <path d="M3 4.5 6 7.5l3-3" stroke="#9aa9ba" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+            </div>
+
+            <nav class="topbar-center">
+                <a class="nav-item" href="../视图/视图.html">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 2a6 6 0 1 0 6 6h-2.2A3.8 3.8 0 1 1 8 4.2V2Zm1 0v5h5A6 6 0 0 0 9 2Z"/></svg>
+                    视图
+                </a>
+                <a class="nav-item" href="../搜索/搜索.html">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4" stroke="currentColor" stroke-width="1.7"/><path d="m10.2 10.2 3 3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+                    搜索
+                </a>
+                <a class="nav-item active" href="./告警.html">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.5 8 3l4.5 5.5-2.4 3.8H5.9L3.5 8.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.5 8.5h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    事件
+                </a>
+                <a class="nav-item" href="../集成/集成.html">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="m8 1.5 6 3-6 3-6-3 6-3Zm-6 6 6 3 6-3v2l-6 3-6-3v-2Zm0 4 6 3 6-3v2l-6 3-6-3v-2Z"/></svg>
+                    集成
+                </a>
+            </nav>
+
+            <div class="topbar-right">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 7a4 4 0 1 1 8 0v3l1.2 1.5H2.8L4 10V7Z" stroke="currentColor" stroke-width="1.3"/><path d="M6.5 13a1.7 1.7 0 0 0 3 0" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 2.5h8v11H4z" stroke="currentColor" stroke-width="1.3"/><path d="M6 5h4M6 8h4M6 11h2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                <div class="user">
+                    <span class="avatar">陈</span>
+                    <span class="user-meta"><span>陈润燊</span><small>Default</small></span>
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5l3-3" stroke="#7590aa" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+            </div>
+        </header>
+
+        <nav class="subnav">
+            <a href="./告警.html">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1.5 2.8 4v4.5c0 2.6 1.8 5 5.2 6 3.4-1 5.2-3.4 5.2-6V4L8 1.5Zm0 3.2a2.2 2.2 0 0 1 2.2 2.2V8h.4c.4 0 .7.3.7.7v3H4.7v-3c0-.4.3-.7.7-.7h.4V6.9A2.2 2.2 0 0 1 8 4.7Zm0 1.3a.9.9 0 0 0-.9.9V8h1.8V6.9A.9.9 0 0 0 8 6Z"/></svg>
+                告警
+            </a>
+            <a href="./策略.html">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3h8a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm1.5 3h5V5h-5v1Zm0 2.5h5v-1h-5v1Zm0 2.5h3.2v-1H5.5v1Z"/></svg>
+                策略
+            </a>
+            <a class="active" href="./模版.html">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="m8 1.5 6 3-6 3-6-3 6-3Zm-6 6 6 3 6-3v2l-6 3-6-3v-2Zm0 4 6 3 6-3v2l-6 3-6-3v-2Z"/></svg>
+                模板
+            </a>
+        </nav>
+
+        <main class="workspace">
+            <aside class="sidebar">
+                <div class="tree-search">
+                    <input id="treeSearch" type="text" placeholder="搜索..." aria-label="搜索监控对象">
+                    <button class="search-btn" aria-label="搜索">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4" stroke="currentColor" stroke-width="1.7"/><path d="m10.2 10.2 3 3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+                    </button>
+                </div>
+                <div class="tree" id="objectTree">
+                    <div class="tree-group" data-text="操作系统 主机">
+                        <div class="tree-title"><span class="collapse">-</span><span>操作系统</span></div>
+                        <div class="tree-children">
+                            <div class="tree-leaf active" data-object="host"><span></span><span>主机</span></div>
+                        </div>
+                    </div>
+                    <div class="tree-group" data-text="网络 网站 Ping">
+                        <div class="tree-title"><span class="collapse">-</span><span>网络</span></div>
+                        <div class="tree-children">
+                            <div class="tree-leaf"><span></span><span>网站</span></div>
+                            <div class="tree-leaf"><span></span><span>Ping</span></div>
+                        </div>
+                    </div>
+                    <div class="tree-group" data-text="数据库 Elasticsearch MySQL InfluxDB Postgres Redis Oracle MongoDB">
+                        <div class="tree-title"><span class="collapse">-</span><span>数据库</span></div>
+                        <div class="tree-children">
+                            <div class="tree-leaf"><span></span><span>Elasticsearch</span></div>
+                            <div class="tree-leaf"><span></span><span>MySQL</span></div>
+                            <div class="tree-leaf"><span></span><span>InfluxDB</span></div>
+                            <div class="tree-leaf"><span></span><span>Postgres</span></div>
+                            <div class="tree-leaf"><span></span><span>Redis</span></div>
+                            <div class="tree-leaf"><span></span><span>Oracle</span></div>
+                            <div class="tree-leaf"><span></span><span>MongoDB</span></div>
+                        </div>
+                    </div>
+                    <div class="tree-group" data-text="中间件 RabbitMQ Nginx Apache Tomcat Zookeeper Etcd ActiveMQ Kafka Minio">
+                        <div class="tree-title"><span class="collapse">-</span><span>中间件</span></div>
+                        <div class="tree-children">
+                            <div class="tree-leaf"><span></span><span>RabbitMQ</span></div>
+                            <div class="tree-leaf"><span></span><span>Nginx</span></div>
+                            <div class="tree-leaf"><span></span><span>Apache</span></div>
+                            <div class="tree-leaf"><span></span><span>Tomcat</span></div>
+                            <div class="tree-leaf"><span></span><span>Zookeeper</span></div>
+                            <div class="tree-leaf"><span></span><span>Etcd</span></div>
+                            <div class="tree-leaf"><span></span><span>ActiveMQ</span></div>
+                            <div class="tree-leaf"><span></span><span>Kafka</span></div>
+                            <div class="tree-leaf"><span></span><span>Minio</span></div>
+                        </div>
+                    </div>
+                    <div class="tree-group" data-text="网络设备 交换机 路由器 防火墙 负载均衡">
+                        <div class="tree-title"><span class="collapse">-</span><span>网络设备</span></div>
+                        <div class="tree-children">
+                            <div class="tree-leaf"><span></span><span>交换机</span></div>
+                            <div class="tree-leaf"><span></span><span>路由器</span></div>
+                            <div class="tree-leaf"><span></span><span>防火墙</span></div>
+                            <div class="tree-leaf"><span></span><span>负载均衡</span></div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <section class="content">
+                <div class="content-toolbar">
+                    <div class="content-search">
+                        <input id="templateSearch" type="text" placeholder="搜索..." aria-label="搜索模板">
+                        <button class="search-btn" aria-label="搜索模板">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4" stroke="currentColor" stroke-width="1.7"/><path d="m10.2 10.2 3 3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="cards" id="templateCards">
+                    <article class="template-card" data-title="CPU使用率过高 监控主机CPU使用率 当超出设定阈值时触发告警">
+                        <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
+                        <div class="card-body"><div class="card-title">CPU使用率过高</div><p class="card-desc">监控主机CPU使用率，当超出设定阈值时触发告警。</p></div>
+                    </article>
+                    <article class="template-card" data-title="内存使用率过高 监控主机内存使用率 当可用内存低于阈值时触发告警">
+                        <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
+                        <div class="card-body"><div class="card-title">内存使用率过高</div><p class="card-desc">监控主机内存使用率，当可用内存低于阈值时触发告警。</p></div>
+                    </article>
+                    <article class="template-card" data-title="磁盘使用率过高 监控主机磁盘使用率 当超出设定阈值时触发告警">
+                        <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
+                        <div class="card-body"><div class="card-title">磁盘使用率过高</div><p class="card-desc">监控主机磁盘使用率，当超出设定阈值时触发告警。</p></div>
+                    </article>
+                    <article class="template-card" data-title="主机 CPU 使用率过高 检测主机 CPU 使用率是否超标 当超过预设阈值触发告警">
+                        <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
+                        <div class="card-body"><div class="card-title">主机 CPU 使用率过高</div><p class="card-desc">检测主机 CPU 使用率是否超标，当超过预设阈值触发告警，提醒用户注意系统过载风险。</p></div>
+                    </article>
+                    <article class="template-card" data-title="主机内存使用率过高 监控主机内存使用率 若长时间高于预设阈值会触发告警">
+                        <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
+                        <div class="card-body"><div class="card-title">主机内存使用率过高</div><p class="card-desc">监控主机内存使用率，若长时间高于预设阈值会触发告警，提示用户检查内存消耗情况或性能瓶颈。</p></div>
+                    </article>
+                    <article class="template-card" data-title="主机磁盘使用率过高 检测磁盘使用状态 若使用率超过阈值将告警">
+                        <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
+                        <div class="card-body"><div class="card-title">主机磁盘使用率过高</div><p class="card-desc">检测磁盘使用状态，若使用率超过阈值将告警，协助用户及时处理磁盘空间不足的潜在风险。</p></div>
+                    </article>
+                    <article class="template-card" data-title="平均负载过高 5 分钟 定期评估主机 5 分钟内的平均负载">
+                        <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
+                        <div class="card-body"><div class="card-title">平均负载过高（5 分钟）</div><p class="card-desc">定期评估主机 5 分钟内的平均负载，若处于高负载状态会触发告警，帮助用户及时发现性能问题。</p></div>
+                    </article>
+                    <article class="template-card" data-title="磁盘写入速率过高 检测磁盘的写入操作速率 若写入速率异常超过阈值">
+                        <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
+                        <div class="card-body"><div class="card-title">磁盘写入速率过高</div><p class="card-desc">检测磁盘的写入操作速率，若写入速率异常超过阈值将触发告警，提醒用户关注磁盘写入性能及可用性。</p></div>
+                    </article>
+                    <article class="template-card" data-title="磁盘读取速率过高 监控磁盘的读取速率 若超过阈值则发出告警">
+                        <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
+                        <div class="card-body"><div class="card-title">磁盘读取速率过高</div><p class="card-desc">监控磁盘的读取速率，若超过阈值则发出告警，协助用户分析磁盘 IO 相关的性能和潜在问题。</p></div>
+                    </article>
+                    <article class="template-card" data-title="等待 IO 时间过高 监控主机等待 I/O 操作的时间 若时间过长则触发告警">
+                        <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
+                        <div class="card-body"><div class="card-title">等待 IO 时间过高</div><p class="card-desc">监控主机等待 I/O 操作的时间，若时间过长则触发告警，提示用户优化 I/O 性能的问题。</p></div>
+                    </article>
+                    <article class="template-card" data-title="网卡入流量过高 检测网卡入流量是否异常增长 若流量达到预设阈值触发告警">
+                        <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
+                        <div class="card-body"><div class="card-title">网卡入流量过高</div><p class="card-desc">检测网卡入流量是否异常增长，若流量达到预设阈值触发告警，提醒用户注意网络流量异常或性能瓶颈。</p></div>
+                    </article>
+                    <article class="template-card" data-title="网卡出流量过高 监控网卡出流量水平 若超出安全值将发出告警">
+                        <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
+                        <div class="card-body"><div class="card-title">网卡出流量过高</div><p class="card-desc">监控网卡出流量水平，若超出安全值将发出告警，协助用户排查网络出口压力及数据流向的问题。</p></div>
+                    </article>
+                </div>
+                <div class="empty" id="emptyState">暂无匹配的模板</div>
+                <div class="batch-bar" id="batchBar">
+                    <div>
+                        已选择 <strong id="selectedCount">0</strong> 个模板
+                        <span class="muted">将按模板数创建策略，每条策略覆盖同一批资产</span>
+                    </div>
+                    <div class="batch-actions">
+                        <button class="secondary-button" id="selectAllButton" type="button">全选当前对象模板</button>
+                        <button class="secondary-button" id="clearSelectionButton" type="button">清空</button>
+                        <button class="primary-button" id="batchApplyButton" type="button">批量应用</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div class="modal-mask" id="wizardMask">
+        <div class="wizard" role="dialog" aria-modal="true" aria-labelledby="wizardTitle">
+            <div class="wizard-header">
+                <h2 id="wizardTitle">批量应用策略模板</h2>
+                <div class="wizard-steps">
+                    <div class="wizard-step active">1 确认模板</div>
+                    <div class="wizard-step">2 选择资产</div>
+                    <div class="wizard-step">3 公共配置</div>
+                </div>
+            </div>
+            <div class="wizard-body">
+                <section class="wizard-panel active" data-panel="1">
+                    <p class="panel-intro">确认本次要应用的模板。阈值、算法和告警级别会沿用模板默认配置。</p>
+                    <div class="compact-list" id="selectedTemplateList"></div>
+                </section>
+                <section class="wizard-panel" data-panel="2">
+                    <p class="panel-intro">选择这些模板要覆盖的监控资产。最终按模板数创建策略，每条策略覆盖同一批资产。</p>
+                    <div class="asset-grid" id="assetList">
+                        <label class="asset-item"><input type="checkbox" checked value="prod-web-01"><span>prod-web-01</span><span>生产环境</span></label>
+                        <label class="asset-item"><input type="checkbox" checked value="prod-web-02"><span>prod-web-02</span><span>生产环境</span></label>
+                        <label class="asset-item"><input type="checkbox" value="prod-db-01"><span>prod-db-01</span><span>生产环境</span></label>
+                        <label class="asset-item"><input type="checkbox" value="test-host-01"><span>test-host-01</span><span>测试环境</span></label>
+                    </div>
+                </section>
+                <section class="wizard-panel" data-panel="3">
+                    <p class="panel-intro">只配置批量策略共享的轻量项。复杂项如阈值、算法、告警级别继续使用模板默认值。</p>
+                    <div class="form-grid">
+                        <div class="form-item">
+                            <label for="orgSelect">组织</label>
+                            <select id="orgSelect">
+                                <option>Default</option>
+                                <option>生产运维组</option>
+                            </select>
+                        </div>
+                        <div class="form-item">
+                            <label for="noticeTarget">通知对象</label>
+                            <input id="noticeTarget" value="主机负责人">
+                        </div>
+                        <div class="form-item">
+                            <label for="noticeChannel">通知方式</label>
+                            <select id="noticeChannel">
+                                <option>站内信 + 邮件</option>
+                                <option>站内信</option>
+                                <option>邮件</option>
+                            </select>
+                        </div>
+                        <div class="form-item">
+                            <label for="scheduleSelect">检测频率</label>
+                            <select id="scheduleSelect">
+                                <option>每 1 分钟</option>
+                                <option selected>每 5 分钟</option>
+                                <option>每 10 分钟</option>
+                            </select>
+                        </div>
+                        <div class="form-item">
+                            <label for="namePrefix">策略名称前缀</label>
+                            <input id="namePrefix" placeholder="例如：生产环境 - ">
+                        </div>
+                        <div class="form-item">
+                            <label for="enableSelect">创建后启用</label>
+                            <select id="enableSelect">
+                                <option selected>启用</option>
+                                <option>暂不启用</option>
+                            </select>
+                        </div>
+                    </div>
+                    <h3 class="preview-title">创建预览</h3>
+                    <div class="preview-table" id="strategyPreview"></div>
+                </section>
+                <section class="result-card" id="resultCard"></section>
+            </div>
+            <div class="wizard-footer">
+                <button class="secondary-button" id="closeWizardButton" type="button">取消</button>
+                <div class="batch-actions">
+                    <button class="secondary-button" id="prevStepButton" type="button">上一步</button>
+                    <button class="primary-button" id="nextStepButton" type="button">下一步</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const templateSearch = document.getElementById("templateSearch");
+        const cards = Array.from(document.querySelectorAll(".template-card"));
+        const emptyState = document.getElementById("emptyState");
+        const selectedTemplates = new Set();
+
+        cards.forEach((card) => {
+            const check = document.createElement("span");
+            check.className = "template-check";
+            check.setAttribute("aria-hidden", "true");
+            card.prepend(check);
+
+            const actions = document.createElement("div");
+            actions.className = "card-actions";
+            actions.innerHTML = '<button class="link-button single-use" type="button">使用</button>';
+            card.querySelector(".card-body").append(actions);
+        });
+
+        const batchBar = document.getElementById("batchBar");
+        const selectedCount = document.getElementById("selectedCount");
+        const selectAllButton = document.getElementById("selectAllButton");
+        const clearSelectionButton = document.getElementById("clearSelectionButton");
+        const batchApplyButton = document.getElementById("batchApplyButton");
+        const wizardMask = document.getElementById("wizardMask");
+        const selectedTemplateList = document.getElementById("selectedTemplateList");
+        const strategyPreview = document.getElementById("strategyPreview");
+        const resultCard = document.getElementById("resultCard");
+        const prevStepButton = document.getElementById("prevStepButton");
+        const nextStepButton = document.getElementById("nextStepButton");
+        const closeWizardButton = document.getElementById("closeWizardButton");
+        const namePrefix = document.getElementById("namePrefix");
+        const enableSelect = document.getElementById("enableSelect");
+        const assetList = document.getElementById("assetList");
+        let currentStep = 1;
+
+        function getCardTitle(card) {
+            return card.querySelector(".card-title").textContent.trim();
+        }
+
+        function updateBatchBar() {
+            selectedCount.textContent = selectedTemplates.size;
+            batchBar.classList.toggle("show", selectedTemplates.size > 0);
+        }
+
+        function toggleCard(card) {
+            const title = getCardTitle(card);
+            if (selectedTemplates.has(title)) {
+                selectedTemplates.delete(title);
+                card.classList.remove("selected");
+            } else {
+                selectedTemplates.add(title);
+                card.classList.add("selected");
+            }
+            updateBatchBar();
+        }
+
+        function filterCards() {
+            const keyword = templateSearch.value.trim().toLowerCase();
+            let visibleCount = 0;
+            cards.forEach((card) => {
+                const matched = !keyword || card.dataset.title.toLowerCase().includes(keyword);
+                card.style.display = matched ? "flex" : "none";
+                if (matched) visibleCount += 1;
+            });
+            emptyState.classList.toggle("show", visibleCount === 0);
+        }
+
+        templateSearch.addEventListener("input", filterCards);
+        cards.forEach((card) => {
+            card.addEventListener("click", (event) => {
+                if (event.target.classList.contains("single-use")) {
+                    event.stopPropagation();
+                    selectedTemplates.clear();
+                    cards.forEach((item) => item.classList.remove("selected"));
+                    selectedTemplates.add(getCardTitle(card));
+                    card.classList.add("selected");
+                    updateBatchBar();
+                    openWizard();
+                    return;
+                }
+                toggleCard(card);
+            });
+        });
+
+        selectAllButton.addEventListener("click", () => {
+            cards.forEach((card) => {
+                if (getComputedStyle(card).display !== "none") {
+                    selectedTemplates.add(getCardTitle(card));
+                    card.classList.add("selected");
+                }
+            });
+            updateBatchBar();
+        });
+
+        clearSelectionButton.addEventListener("click", () => {
+            selectedTemplates.clear();
+            cards.forEach((card) => card.classList.remove("selected"));
+            updateBatchBar();
+        });
+
+        batchApplyButton.addEventListener("click", openWizard);
+
+        function openWizard() {
+            if (!selectedTemplates.size) return;
+            currentStep = 1;
+            resultCard.classList.remove("show");
+            nextStepButton.style.display = "inline-flex";
+            prevStepButton.style.display = "inline-flex";
+            wizardMask.classList.add("show");
+            renderSelectedTemplates();
+            renderWizardStep();
+        }
+
+        function closeWizard() {
+            wizardMask.classList.remove("show");
+        }
+
+        function renderWizardStep() {
+            document.querySelectorAll(".wizard-step").forEach((step, index) => {
+                step.classList.toggle("active", index + 1 === currentStep);
+            });
+            document.querySelectorAll(".wizard-panel").forEach((panel) => {
+                panel.classList.toggle("active", Number(panel.dataset.panel) === currentStep);
+            });
+            resultCard.classList.remove("show");
+            prevStepButton.style.visibility = currentStep === 1 ? "hidden" : "visible";
+            nextStepButton.textContent = currentStep === 3 ? "创建策略" : "下一步";
+            if (currentStep === 3) renderStrategyPreview();
+        }
+
+        function renderSelectedTemplates() {
+            selectedTemplateList.innerHTML = Array.from(selectedTemplates).map((title) => `
+                <div class="compact-item" data-template="${title}">
+                    <div><strong>${title}</strong><div class="muted">使用模板默认阈值、算法和告警级别</div></div>
+                    <span>内置模板</span>
+                    <button class="link-button remove-template" type="button">移除</button>
+                </div>
+            `).join("");
+            selectedTemplateList.querySelectorAll(".remove-template").forEach((button) => {
+                button.addEventListener("click", () => {
+                    const title = button.closest(".compact-item").dataset.template;
+                    selectedTemplates.delete(title);
+                    cards.forEach((card) => {
+                        if (getCardTitle(card) === title) card.classList.remove("selected");
+                    });
+                    updateBatchBar();
+                    renderSelectedTemplates();
+                    if (!selectedTemplates.size) closeWizard();
+                });
+            });
+        }
+
+        function getSelectedAssetCount() {
+            return document.querySelectorAll("#assetList input:checked").length;
+        }
+
+        function renderStrategyPreview() {
+            const prefix = namePrefix.value || "";
+            const assetCount = getSelectedAssetCount();
+            strategyPreview.innerHTML = `
+                <div class="preview-row"><strong>策略名称</strong><strong>资产范围</strong><strong>创建后状态</strong></div>
+                ${Array.from(selectedTemplates).map((title) => `
+                    <div class="preview-row"><span>${prefix}${title}</span><span>${assetCount} 台主机</span><span>${enableSelect.value}</span></div>
+                `).join("")}
+            `;
+        }
+
+        function submitBatch() {
+            const total = selectedTemplates.size;
+            document.querySelectorAll(".wizard-panel").forEach((panel) => panel.classList.remove("active"));
+            resultCard.innerHTML = `<h3>创建完成</h3><p>成功创建 ${total} 条策略，每条策略覆盖 ${getSelectedAssetCount()} 台主机。</p><p class="muted">可前往策略列表查看本次批量创建的策略。</p>`;
+            resultCard.classList.add("show");
+            nextStepButton.style.display = "none";
+            prevStepButton.style.display = "none";
+        }
+
+        prevStepButton.addEventListener("click", () => {
+            currentStep = Math.max(1, currentStep - 1);
+            renderWizardStep();
+        });
+
+        nextStepButton.addEventListener("click", () => {
+            if (currentStep === 2 && getSelectedAssetCount() === 0) {
+                alert("请至少选择 1 个监控资产");
+                return;
+            }
+            if (currentStep === 3) {
+                submitBatch();
+                return;
+            }
+            currentStep += 1;
+            renderWizardStep();
+        });
+
+        closeWizardButton.addEventListener("click", closeWizard);
+        wizardMask.addEventListener("click", (event) => {
+            if (event.target === wizardMask) closeWizard();
+        });
+        namePrefix.addEventListener("input", renderStrategyPreview);
+        enableSelect.addEventListener("change", renderStrategyPreview);
+        assetList.addEventListener("change", renderStrategyPreview);
+
+        const treeSearch = document.getElementById("treeSearch");
+        const treeGroups = Array.from(document.querySelectorAll(".tree-group"));
+        treeSearch.addEventListener("input", () => {
+            const keyword = treeSearch.value.trim().toLowerCase();
+            treeGroups.forEach((group) => {
+                const matched = !keyword || group.dataset.text.toLowerCase().includes(keyword);
+                group.style.display = matched ? "block" : "none";
+            });
+        });
+
+        document.querySelectorAll(".tree-leaf").forEach((leaf) => {
+            leaf.addEventListener("click", () => {
+                document.querySelectorAll(".tree-leaf").forEach((item) => item.classList.remove("active"));
+                leaf.classList.add("active");
+            });
+        });
+    </script>
+</body>
+</html>
