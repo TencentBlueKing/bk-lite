@@ -1,0 +1,39 @@
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class AnthropicRuntimeCapabilities:
+    use_native_anthropic_sdk: bool = False
+    use_anthropic_compatible_adapter: bool = False
+    thinking_requires_auto_tool_choice: bool = False
+
+
+def build_anthropic_runtime_capabilities(
+    vendor_type: str,
+    protocol_type: str,
+    model: str,
+) -> AnthropicRuntimeCapabilities:
+    if protocol_type != "anthropic":
+        return AnthropicRuntimeCapabilities()
+
+    if vendor_type == "anthropic":
+        return AnthropicRuntimeCapabilities(
+            use_native_anthropic_sdk=True,
+        )
+
+    if vendor_type == "deepseek":
+        return AnthropicRuntimeCapabilities(
+            use_anthropic_compatible_adapter=True,
+            thinking_requires_auto_tool_choice=True,
+        )
+
+    return AnthropicRuntimeCapabilities()
+
+
+def normalize_tool_choice_for_capabilities(
+    tool_choice: str,
+    capabilities: AnthropicRuntimeCapabilities,
+) -> str:
+    if capabilities.thinking_requires_auto_tool_choice and tool_choice in {"any", "required"}:
+        return "auto"
+    return tool_choice
