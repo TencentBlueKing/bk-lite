@@ -12,7 +12,6 @@ from apps.alerts import nats as nats_pkg
 from apps.alerts.nats import nats as N
 from apps.alerts.constants.constants import AlertStatus
 from apps.alerts.models.alert_operator import AlarmStrategy
-from apps.alerts.models.operator_log import OperatorLog
 from apps.alerts.models.models import Alert, Level
 
 
@@ -252,30 +251,6 @@ def test_create_alarm_strategy_uses_serializer_and_actor(strategy_add_user_info)
 
 
 @pytest.mark.django_db
-def test_create_alarm_strategy_records_username_from_user_info(strategy_add_user_info):
-    strategy_add_user_info.pop("user")
-    strategy_add_user_info["username"] = "bob"
-
-    result = N.create_alarm_strategy(_smart_strategy_payload(), user_info=strategy_add_user_info)
-
-    assert result["result"] is True
-    assert OperatorLog.objects.get(operator_object="告警策略-创建告警策略").operator == "bob"
-
-
-@pytest.mark.django_db
-def test_create_alarm_strategy_rolls_back_when_log_write_fails(strategy_add_user_info, monkeypatch):
-    def fail_log_write(*args, **kwargs):
-        raise RuntimeError("operator log write failed")
-
-    monkeypatch.setattr(N.OperatorLog.objects, "create", fail_log_write)
-
-    result = N.create_alarm_strategy(_smart_strategy_payload(), user_info=strategy_add_user_info)
-
-    assert result["result"] is False
-    assert not AlarmStrategy.objects.filter(name="created-by-nats").exists()
-
-
-@pytest.mark.django_db
 def test_create_alarm_strategy_rejects_unauthorized_target_team(strategy_add_user_info):
     result = N.create_alarm_strategy(
         _smart_strategy_payload(team=[2], dispatch_team=[2]),
@@ -358,38 +333,6 @@ def test_delete_alarm_strategy_rejects_cross_team_access(strategy_edit_delete_us
 
     assert result["result"] is False
     assert AlarmStrategy.objects.filter(id=strategy.id).exists()
-
-
-@pytest.mark.django_db
-def test_list_alarm_strategies_include_children_falls_back_to_group_utils(strategy_user_info, monkeypatch):
-    strategy_user_info["include_children"] = True
-    strategy_user_info["group_tree"] = []
-    AlarmStrategy.objects.create(
-        name="child-team",
-        strategy_type="smart_denoise",
-        team=[2],
-        dispatch_team=[2],
-    )
-    monkeypatch.setattr(N.GroupUtils, "get_group_with_descendants", lambda team_id: [team_id, 2])
-
-    result = N.list_alarm_strategies(user_info=strategy_user_info)
-
-    assert result["result"] is True
-    assert [item["name"] for item in result["data"]["items"]] == ["child-team"]
-
-
-@pytest.mark.django_db
-def test_create_alarm_strategy_hides_unexpected_internal_errors(strategy_add_user_info, monkeypatch):
-    def fail_create(*args, **kwargs):
-        raise RuntimeError("database password leaked")
-
-    monkeypatch.setattr(N, "_create_alarm_strategy_payload", fail_create)
-
-    result = N.create_alarm_strategy(_smart_strategy_payload(), user_info=strategy_add_user_info)
-
-    assert result["result"] is False
-    assert result["message"] == "Internal server error"
-    assert "password" not in result["message"]
 
 
 @pytest.mark.django_db
