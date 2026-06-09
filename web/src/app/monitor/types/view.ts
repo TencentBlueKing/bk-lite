@@ -1,5 +1,4 @@
 import {
-  IntegrationItem,
   ChartProps,
   MetricItem,
   ObjectItem,
@@ -9,10 +8,15 @@ import {
 } from '@/app/monitor/types';
 import { Dayjs } from 'dayjs';
 
+export interface ViewPluginOption {
+  label: string;
+  value: string;
+}
+
 export interface ViewModalProps {
   monitorObject: React.Key;
   monitorName: string;
-  plugins: IntegrationItem[];
+  plugins: ViewPluginOption[];
   form?: ChartProps;
   metrics?: MetricItem[];
   objects?: ObjectItem[];

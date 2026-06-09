@@ -1,0 +1,126 @@
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import monitor_logger as logger
+from apps.core.utils.loader import LanguageLoader
+from apps.monitor.constants.language import LanguageConstants
+from apps.monitor.constants.plugin import PluginConstants
+from apps.monitor.models import CollectConfig, MonitorInstance, MonitorObject, MonitorPlugin
+from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+
+
+class MonitorEffectivePluginService:
+    @staticmethod
+    def get_effective_plugins(monitor_object_id: int, instance_id: str, locale: str = "zh-Hans") -> list[dict]:
+        monitor_object = MonitorObject.objects.filter(id=monitor_object_id).first()
+        if not monitor_object:
+            raise BaseAppException("Monitor object does not exist")
+
+        instance = MonitorInstance.objects.filter(
+            id=instance_id,
+            monitor_object_id=monitor_object_id,
+            is_deleted=False,
+        ).first()
+        if not instance:
+            raise BaseAppException("Monitor instance does not exist")
+
+        plugins = list(MonitorPlugin.objects.filter(monitor_object=monitor_object).distinct())
+        if not plugins:
+            return []
+
+        configured_plugin_ids = MonitorEffectivePluginService._get_configured_plugin_ids(instance_id)
+        reported_plugin_ids = MonitorEffectivePluginService._get_reported_plugin_ids(
+            plugins,
+            instance_id,
+            MonitorEffectivePluginService._get_instance_id_keys(monitor_object),
+        )
+        effective_plugin_ids = configured_plugin_ids | reported_plugin_ids
+        if not effective_plugin_ids:
+            return []
+
+        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=locale)
+        data = []
+        for plugin in plugins:
+            if plugin.id not in effective_plugin_ids:
+                continue
+
+            is_configured = plugin.id in configured_plugin_ids
+            is_reported = plugin.id in reported_plugin_ids
+            item = MonitorEffectivePluginService._serialize_plugin(plugin, lan)
+            item.update(
+                status=PluginConstants.STATUS_NORMAL if is_reported else PluginConstants.STATUS_OFFLINE,
+                collect_mode=PluginConstants.COLLECT_MODE_AUTO if is_configured else PluginConstants.COLLECT_MODE_MANUAL,
+            )
+            data.append(item)
+
+        data.sort(key=MonitorEffectivePluginService._sort_key)
+        return data
+
+    @staticmethod
+    def _get_configured_plugin_ids(instance_id: str) -> set[int]:
+        return set(
+            CollectConfig.objects.filter(
+                monitor_instance_id=instance_id,
+                monitor_plugin_id__isnull=False,
+            ).values_list("monitor_plugin_id", flat=True)
+        )
+
+    @staticmethod
+    def _get_reported_plugin_ids(plugins: list[MonitorPlugin], instance_id: str, instance_id_keys: list[str]) -> set[int]:
+        reported_plugin_ids = set()
+        vm_api = VictoriaMetricsAPI()
+        for plugin in plugins:
+            query = (plugin.status_query or "").strip()
+            if not query:
+                continue
+            try:
+                response = vm_api.query(query, step="20m")
+            except Exception:
+                logger.exception("Failed to query monitor plugin status. plugin_id=%s instance_id=%s", plugin.id, instance_id)
+                continue
+
+            for metric in response.get("data", {}).get("result", []):
+                labels = metric.get("metric", {})
+                metric_instance_id = str(tuple(labels.get(key) for key in instance_id_keys))
+                if metric_instance_id == instance_id:
+                    reported_plugin_ids.add(plugin.id)
+                    break
+        return reported_plugin_ids
+
+    @staticmethod
+    def _get_instance_id_keys(monitor_object: MonitorObject) -> list[str]:
+        keys = getattr(monitor_object, "instance_id_keys", []) or []
+        normalized_keys = [str(key) for key in keys if key not in (None, "")]
+        return normalized_keys or ["instance_id"]
+
+    @staticmethod
+    def _serialize_plugin(plugin: MonitorPlugin, lan: LanguageLoader) -> dict:
+        is_custom = plugin.template_type in {"api", "pull", "snmp"}
+        if is_custom:
+            display_name = plugin.display_name or plugin.name
+            display_description = plugin.description
+        else:
+            plugin_key = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{plugin.name}"
+            display_name = lan.get(f"{plugin_key}.name") or plugin.display_name or plugin.name
+            display_description = lan.get(f"{plugin_key}.desc") or plugin.description
+
+        return {
+            "id": plugin.id,
+            "name": plugin.name,
+            "display_name": display_name,
+            "display_description": display_description,
+            "template_id": plugin.template_id,
+            "template_type": plugin.template_type,
+            "collector": plugin.collector,
+            "collect_type": plugin.collect_type,
+            "is_pre": plugin.is_pre,
+            "is_custom": is_custom,
+        }
+
+    @staticmethod
+    def _sort_key(item: dict):
+        if item.get("is_pre"):
+            category = 0
+        elif not item.get("is_custom"):
+            category = 1
+        else:
+            category = 2
+        return category, item.get("id") or 0
