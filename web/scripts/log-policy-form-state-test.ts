@@ -10,6 +10,7 @@ import {
 assert.equal(getLockedPolicyType({ urlAlertType: 'keyword' }), 'keyword');
 assert.equal(getLockedPolicyType({ detailAlertType: 'aggregate' }), 'aggregate');
 assert.equal(getLockedPolicyType({ urlAlertType: 'unknown', detailAlertType: 'keyword' }), 'keyword');
+assert.equal(getLockedPolicyType({ urlAlertType: 'keyword', detailAlertType: 'aggregate' }), 'aggregate');
 
 assert.deepEqual(getDefaultShowFields(undefined), ['timestamp', 'message']);
 assert.deepEqual(getDefaultShowFields(['message', 'host']), ['timestamp', 'message', 'host']);
@@ -93,5 +94,32 @@ assert.deepEqual(aggregatePayload.alert_condition, {
 });
 assert.equal(aggregatePayload.id, 99);
 assert.equal(Object.prototype.hasOwnProperty.call(aggregatePayload, 'enable'), false);
+
+const existingTimingPayload = buildStrategyPayload(
+  {
+    name: '已有周期策略',
+    alert_type: 'keyword',
+    alert_name: 'error',
+    alert_level: 'error',
+    log_groups: ['1'],
+    organizations: ['10'],
+    query: 'error',
+    show_fields: ['message'],
+    schedule: { type: 'hour', value: 2 },
+    period: { type: 'min', value: 30 }
+  },
+  {
+    unit: 'min',
+    periodUnit: 'min',
+    channelList: [],
+    conditions: [],
+    term: null,
+    isEdit: true,
+    formData: { id: 100 }
+  }
+);
+
+assert.deepEqual(existingTimingPayload.schedule, { type: 'hour', value: 2 });
+assert.deepEqual(existingTimingPayload.period, { type: 'min', value: 30 });
 
 console.log('log-policy-form-state validation passed');
