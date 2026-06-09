@@ -461,33 +461,27 @@
         }
 
         .card-title {
-            font-weight: 700;
-            color: #344054;
-            margin-bottom: 8px;
-            line-height: 1.2;
-        }
-
-        .card-metric {
+            display: inline-flex;
+            align-items: center;
+            min-height: 24px;
+            max-width: calc(100% - 28px);
+            padding: 0 9px;
+            border-radius: 4px;
+            background: #eef4ff;
             color: #1f66ff;
-            font-size: 12px;
-            line-height: 1.35;
-            margin-bottom: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .card-desc {
             color: #4f6f95;
             font-size: 13px;
             line-height: 1.35;
-        }
-
-        .card-actions {
-            margin-top: 14px;
-            opacity: 0;
-            transition: opacity 0.16s ease;
-        }
-
-        .template-card:hover .card-actions {
-            opacity: 1;
         }
 
         .link-button {
@@ -1113,7 +1107,7 @@
                     <div class="selection-tags" id="selectionTags"></div>
                     <div class="batch-actions">
                         <button class="secondary-button" id="clearSelectionButton" type="button">清空</button>
-                        <button class="primary-button" id="batchApplyButton" type="button">批量应用</button>
+                        <button class="primary-button" id="batchApplyButton" type="button">应用</button>
                     </div>
                 </div>
             </section>
@@ -1164,7 +1158,7 @@
                             </select>
                         </div>
                         <div class="form-item">
-                            <label for="periodSelect">检测周期</label>
+                            <label for="periodSelect">汇聚周期</label>
                             <select id="periodSelect">
                                 <option>近 1 分钟</option>
                                 <option selected>近 5 分钟</option>
@@ -1238,15 +1232,6 @@
             check.setAttribute("aria-hidden", "true");
             card.prepend(check);
 
-            const metric = document.createElement("div");
-            metric.className = "card-metric";
-            metric.textContent = `${card.dataset.group} - ${card.dataset.metric}`;
-            card.querySelector(".card-title").after(metric);
-
-            const actions = document.createElement("div");
-            actions.className = "card-actions";
-            actions.innerHTML = '<button class="link-button single-use" type="button">使用</button>';
-            card.querySelector(".card-body").append(actions);
         });
 
         const batchBar = document.getElementById("batchBar");
@@ -1321,17 +1306,7 @@
 
         templateSearch.addEventListener("input", filterCards);
         cards.forEach((card) => {
-            card.addEventListener("click", (event) => {
-                if (event.target.classList.contains("single-use")) {
-                    event.stopPropagation();
-                    selectedTemplates.clear();
-                    cards.forEach((item) => item.classList.remove("selected"));
-                    selectedTemplates.add(getCardTitle(card));
-                    card.classList.add("selected");
-                    updateBatchBar();
-                    openWizard();
-                    return;
-                }
+            card.addEventListener("click", () => {
                 toggleCard(card);
             });
         });
