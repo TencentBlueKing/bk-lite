@@ -6,7 +6,18 @@ from typing import List, Optional
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from apps.opspilot.metis.llm.tools.mssql.utils import execute_readonly_query, format_size, safe_json_dumps
+from apps.opspilot.metis.llm.tools.common.sql_guard import (
+    detect_select_star,
+    detect_sensitive_in_select,
+    filter_sensitive_columns,
+    is_sensitive_column,
+    run_blocking,
+    sanitize_db_error,
+)
+from apps.opspilot.metis.llm.tools.common.sql_guard import validate_sql_safety as _validate_sql_safety
+from apps.opspilot.metis.llm.tools.mssql.utils import execute_readonly_query, format_size, quote_database_identifier, safe_json_dumps
+
+_DIALECT = "mssql"
 
 
 def _is_broad_select_without_constraints(sql: str) -> bool:
@@ -22,68 +33,8 @@ def _is_broad_select_without_constraints(sql: str) -> bool:
 
 
 def validate_sql_safety(sql: str) -> tuple[bool, str]:
-    """
-    验证SQL语句的安全性
-
-    Args:
-        sql: 待验证的SQL语句
-
-    Returns:
-        tuple: (是否安全, 错误信息)
-    """
-    # 转换为小写用于检查
-    sql_lower = sql.lower().strip()
-
-    # 禁止的关键字列表 - 任何写操作
-    forbidden_keywords = [
-        "insert",
-        "update",
-        "delete",
-        "drop",
-        "create",
-        "alter",
-        "truncate",
-        "grant",
-        "revoke",
-        "rename",
-        "replace",
-        "merge",
-        "execute",
-        "exec",
-        "sp_",
-        "xp_",
-        "bulk",
-        "backup",
-        "restore",
-        "dbcc",
-        "kill",
-        "shutdown",
-        "reconfigure",
-        "deny",
-        "openquery",
-        "openrowset",
-        "opendatasource",
-    ]
-
-    for keyword in forbidden_keywords:
-        # 使用单词边界检查,避免误判
-        pattern = r"\b" + keyword + r"\b"
-        if re.search(pattern, sql_lower):
-            return False, f"SQL包含禁止的关键字: {keyword}"
-
-    # 必须以SELECT开头
-    if not sql_lower.startswith("select") and not sql_lower.startswith("with"):
-        return False, "SQL必须以SELECT或WITH开头"
-
-    # 禁止分号分隔的多条语句
-    if sql.count(";") > 1 or (sql.count(";") == 1 and not sql.strip().endswith(";")):
-        return False, "禁止执行多条SQL语句"
-
-    # 禁止注释注入
-    if "--" in sql or "/*" in sql:
-        return False, "SQL不允许包含注释符号"
-
-    return True, ""
+    """MSSQL SQL 安全校验,委托共享护栏 (黑名单 + 单条只读语句白名单)。"""
+    return _validate_sql_safety(sql, _DIALECT)
 
 
 @tool()
@@ -208,7 +159,7 @@ def get_table_schema_details(table_name: str, schema_name: str = "dbo", database
         return safe_json_dumps({"table_info": table_info[0], "columns": columns, "indexes": indexes, "foreign_keys": foreign_keys})
 
     except Exception as e:
-        return safe_json_dumps({"error": f"获取表结构失败: {str(e)}"})
+        return safe_json_dumps({"error": sanitize_db_error(e, "获取表结构")})
 
 
 @tool()
@@ -261,7 +212,7 @@ def search_tables_by_keyword(keyword: str, database: Optional[str] = None, confi
         return safe_json_dumps({"keyword": keyword, "total_matches": len(results), "tables": results})
 
     except Exception as e:
-        return safe_json_dumps({"error": f"搜索失败: {str(e)}"})
+        return safe_json_dumps({"error": sanitize_db_error(e, "搜索")})
 
 
 @tool()
@@ -318,8 +269,7 @@ def execute_safe_select(sql: str, limit: int = 100, database: Optional[str] = No
         - data: 查询结果数组
     """
     # 检测SELECT *
-    sql_normalized = " ".join(sql.lower().split())
-    if re.search(r"\bselect\s+\*\s+from\b", sql_normalized):
+    if detect_select_star(sql):
         return safe_json_dumps(
             {
                 "error": "安全限制: 禁止使用SELECT *,必须明确指定需要查询的列名",
@@ -328,17 +278,16 @@ def execute_safe_select(sql: str, limit: int = 100, database: Optional[str] = No
             }
         )
 
-    # 检测敏感字段关键词
-    SENSITIVE_KEYWORDS = ["password", "secret", "token", "key", "hash", "otp", "credential"]
-    for keyword in SENSITIVE_KEYWORDS:
-        if re.search(rf"\bselect\b.*\b{keyword}\b.*\bfrom\b", sql_normalized):
-            return safe_json_dumps(
-                {
-                    "error": f"安全限制: SQL中可能包含敏感字段 '{keyword}',请移除敏感字段",
-                    "sql": sql,
-                    "suggestion": "请确保只查询非敏感字段,如id, name, email, status, created_at等",
-                }
-            )
+    # 检测SELECT子句中的敏感字段关键词
+    sensitive_hit = detect_sensitive_in_select(sql)
+    if sensitive_hit:
+        return safe_json_dumps(
+            {
+                "error": f"安全限制: SQL中可能包含敏感字段 '{sensitive_hit}',请移除敏感字段",
+                "sql": sql,
+                "suggestion": "请确保只查询非敏感字段,如id, name, email, status, created_at等",
+            }
+        )
 
     # 安全验证
     is_safe, error_msg = validate_sql_safety(sql)
@@ -370,7 +319,7 @@ def execute_safe_select(sql: str, limit: int = 100, database: Optional[str] = No
         return safe_json_dumps({"success": True, "row_count": len(results), "limit": limit, "sql": sql, "data": results})
 
     except Exception as e:
-        return safe_json_dumps({"error": f"查询执行失败: {str(e)}", "sql": sql})
+        return safe_json_dumps({"error": sanitize_db_error(e, "查询执行"), "sql": sql})
 
 
 @tool()
@@ -445,7 +394,7 @@ def execute_fallback_readonly_sql(sql: str, limit: int = 100, database: Optional
         results = execute_readonly_query(sql, config=config, database=database)
         return safe_json_dumps({"success": True, "row_count": len(results), "limit": limit, "sql": sql, "data": results, "mode": "fallback_readonly"})
     except Exception as e:
-        return safe_json_dumps({"error": f"查询执行失败: {str(e)}", "sql": sql, "mode": "fallback_readonly"})
+        return safe_json_dumps({"error": sanitize_db_error(e, "查询执行"), "sql": sql, "mode": "fallback_readonly"})
 
 
 @tool()
@@ -515,7 +464,7 @@ def explain_query_plan(sql: str, database: Optional[str] = None, config: Runnabl
             return safe_json_dumps({"success": True, "sql": sql, "message": "未找到缓存的执行计划,查询可能尚未执行过", "suggestion": "执行查询后可再次查看执行计划统计"})
 
     except Exception as e:
-        return safe_json_dumps({"error": f"执行计划获取失败: {str(e)}", "sql": sql})
+        return safe_json_dumps({"error": sanitize_db_error(e, "执行计划获取"), "sql": sql})
 
 
 @tool()
@@ -560,36 +509,6 @@ def get_sample_data(
     if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", schema_name):
         return safe_json_dumps({"error": "无效的schema名"})
 
-    # 敏感字段黑名单
-    SENSITIVE_KEYWORDS = {
-        "password",
-        "passwd",
-        "pwd",
-        "secret",
-        "token",
-        "key",
-        "credential",
-        "hash",
-        "salt",
-        "otp",
-        "api_key",
-        "apikey",
-        "access_token",
-        "refresh_token",
-        "private_key",
-        "session_key",
-        "encryption_key",
-        "auth_token",
-        "bearer",
-        "jwt",
-        "certificate",
-        "cert",
-        "passphrase",
-        "pin",
-        "cvv",
-        "ssn",
-    }
-
     # 处理列名
     if not columns or columns.strip() == "*":
         return safe_json_dumps(
@@ -608,10 +527,7 @@ def get_sample_data(
         if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", col):
             return safe_json_dumps({"error": f"无效的列名: {col}"})
 
-        col_lower = col.lower()
-        is_sensitive = any(keyword in col_lower for keyword in SENSITIVE_KEYWORDS)
-
-        if is_sensitive:
+        if is_sensitive_column(col):
             sensitive_columns.append(col)
         else:
             valid_columns.append(col)
@@ -641,15 +557,15 @@ def get_sample_data(
         )
 
     except Exception as e:
-        return safe_json_dumps({"error": f"获取示例数据失败: {str(e)}", "table": f"{schema_name}.{table_name}"})
+        return safe_json_dumps({"error": sanitize_db_error(e, "获取示例数据"), "table": f"{schema_name}.{table_name}"})
 
 
 @tool()
 def execute_safe_select_batch(
     queries: List[str],
-    database: str = None,
-    instance_name: str = None,
-    instance_id: str = None,
+    database: Optional[str] = None,
+    instance_name: Optional[str] = None,
+    instance_id: Optional[str] = None,
     config: RunnableConfig = None,
 ) -> str:
     """批量执行多条安全的 SELECT 查询，每条独立校验安全性，单条失败不中断其他查询。"""
@@ -657,8 +573,6 @@ def execute_safe_select_batch(
     from apps.opspilot.metis.llm.tools.mssql.connection import build_mssql_normalized_from_runnable, get_mssql_connection_from_item
 
     normalized = build_mssql_normalized_from_runnable(config, instance_name, instance_id)
-
-    SENSITIVE_COLUMNS = {"password", "passwd", "pwd", "secret", "token", "api_key", "apikey", "access_key", "private_key", "credential", "auth"}
 
     results = []
     succeeded = 0
@@ -671,8 +585,7 @@ def execute_safe_select_batch(
             failed += 1
             continue
 
-        sql_normalized = " ".join(query.lower().split())
-        if re.search(r"\bselect\s+\*\s+from\b", sql_normalized):
+        if detect_select_star(query):
             results.append({"input": query, "ok": False, "error": "安全限制: 禁止使用SELECT *"})
             failed += 1
             continue
@@ -680,20 +593,22 @@ def execute_safe_select_batch(
         def _executor(item, _query=query):
             conn = get_mssql_connection_from_item(item)
             try:
-                if database:
-                    conn.execute(f"USE [{database}]")
                 sql = _query.rstrip().rstrip(";")
                 if "top " not in sql.lower() and "limit " not in sql.lower():
                     # MSSQL uses TOP instead of LIMIT
                     sql = re.sub(r"^select\b", "SELECT TOP 100", sql, count=1, flags=re.IGNORECASE)
-                cursor = conn.execute(sql)
-                columns = [col[0] for col in cursor.description]
-                rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
-                if rows:
-                    rows = [{k: v for k, v in row.items() if k.lower() not in SENSITIVE_COLUMNS} for row in rows]
+
+                def _run():
+                    if database:
+                        conn.execute(f"USE {quote_database_identifier(database)}")
+                    cursor = conn.execute(sql)
+                    columns = [col[0] for col in cursor.description]
+                    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+                rows = filter_sensitive_columns(run_blocking(_run))
                 return {"success": True, "row_count": len(rows), "sql": sql, "data": rows}
             except Exception as e:
-                return {"error": str(e)}
+                return {"error": sanitize_db_error(e, "查询执行")}
             finally:
                 conn.close()
 
@@ -702,7 +617,7 @@ def execute_safe_select_batch(
             results.append({"input": query, "ok": True, "data": data})
             succeeded += 1
         except Exception as e:
-            results.append({"input": query, "ok": False, "error": str(e)})
+            results.append({"input": query, "ok": False, "error": sanitize_db_error(e, "查询执行")})
             failed += 1
 
     return safe_json_dumps({"total": len(queries), "succeeded": succeeded, "failed": failed, "results": results})

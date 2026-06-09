@@ -384,21 +384,57 @@ class TestSseChatPersistence:
 
 
 class TestSubsequentNodesAsync:
-    """Tests for _execute_subsequent_nodes_async daemon thread usage."""
+    """Tests for _execute_subsequent_nodes_async execution mechanics (post-F013)."""
 
-    def test_subsequent_nodes_async_uses_daemon_thread_intentionally(self):
-        """TC-19-18: _execute_subsequent_nodes_async uses daemon thread (intentional, not persistence).
+    def test_subsequent_nodes_async_is_awaited_not_detached_daemon_thread(self):
+        """TC-19-18: subsequent-node execution is awaited in-flow, not a detached daemon thread.
 
-        This daemon thread is for workflow execution, not persistence.
-        Persistence calls inside are synchronous within the thread.
-        This is expected behavior and not a bug.
+        F013 changed _execute_subsequent_nodes_async from spawning a fire-and-forget
+        ``threading.Thread(daemon=True)`` to awaiting the work via
+        ``sync_to_async(thread_sensitive=False)``. This guarantees the subsequent
+        nodes run race-free (serialized against the SSE stream) and are not silently
+        dropped when the request/process ends.
         """
         from apps.opspilot.utils.chat_flow_utils.engine.engine import ChatFlowEngine
 
-        source = inspect.getsource(ChatFlowEngine._execute_subsequent_nodes_async)
+        method = ChatFlowEngine._execute_subsequent_nodes_async
+        source = inspect.getsource(method)
 
-        # This daemon thread is for async node execution, not persistence
-        assert "daemon=True" in source, "Should use daemon thread for async node execution"
+        # Must be a coroutine that the caller awaits — not a detached daemon thread.
+        assert inspect.iscoroutinefunction(method), "_execute_subsequent_nodes_async must be a coroutine (awaited in-flow)"
+        assert "daemon=True" not in source, "Must not spawn a detached daemon thread for subsequent nodes"
+        assert "daemon = True" not in source, "Must not spawn a detached daemon thread for subsequent nodes"
+        assert "threading.Thread" not in source, "Must not spawn a thread for subsequent nodes"
 
-        # But persistence inside should be synchronous
-        assert "_record_execution_result" in source, "Should call persistence synchronously inside"
+        # The synchronous body (incl. ORM writes) runs via sync_to_async and is awaited.
+        assert "sync_to_async" in source, "Subsequent-node work must run via sync_to_async"
+        assert "thread_sensitive=False" in source, "sync_to_async must use thread_sensitive=False"
+        assert "await sync_to_async" in source, "Subsequent-node work must be awaited to completion"
+        # Persistence is still recorded as part of that awaited work.
+        assert "_record_execution_result" in source, "Should record execution result as part of the awaited work"
+
+    def test_subsequent_nodes_async_runs_work_to_completion_when_awaited(self):
+        """TC-19-19: awaiting the coroutine runs subsequent-node work to completion (not dropped).
+
+        Verifies the intent of F013: the inner synchronous logic actually executes
+        and finishes within the await, rather than being handed off to a daemon
+        thread that may never be joined.
+        """
+        import asyncio
+
+        from apps.opspilot.utils.chat_flow_utils.engine.engine import ChatFlowEngine
+
+        engine = ChatFlowEngine.__new__(ChatFlowEngine)
+
+        executed = {"ran": False}
+
+        def fake_next_nodes(*args, **kwargs):
+            executed["ran"] = True
+            return []  # no further nodes; method returns after marking work done
+
+        engine._get_next_nodes = fake_next_nodes
+
+        # Awaiting must drive the inner sync work to completion in-flow.
+        asyncio.run(engine._execute_subsequent_nodes_async({"id": "agent-1", "data": {}}, "final output"))
+
+        assert executed["ran"] is True, "Awaited coroutine must run the subsequent-node work to completion"

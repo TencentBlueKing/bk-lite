@@ -9,7 +9,22 @@ from apps.opspilot.tasks import create_graph, update_graph
 class KnowledgeGraphSerializer(UsernameSerializer):
     class Meta:
         model = KnowledgeGraph
-        fields = "__all__"
+        fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+            "knowledge_base",
+            "llm_model",
+            "rerank_model",
+            "embed_model",
+            "rebuild_community",
+            "doc_list",
+            "status",
+        ]
 
     def _get_loader(self):
         request = self.context.get("request") if self.context else None

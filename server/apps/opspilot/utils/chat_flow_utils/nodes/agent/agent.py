@@ -11,16 +11,13 @@ from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 from apps.opspilot.models import LLMModel, LLMSkill, WorkflowAttachmentAsset
 from apps.opspilot.services.builtin_tools import BUILTIN_ATTACHMENT_FILE_TOOL_NAME
 from apps.opspilot.services.chat_service import ChatService, chat_service
+from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
 
 
 class AgentNode(BaseNodeExecutor):
-    def __init__(self, variable_manager, workflow_instance=None):
-        super().__init__(variable_manager)
-        self.workflow_instance = workflow_instance
-
     def _get_skill(self, skill_id: str) -> LLMSkill:
         """获取技能对象
 
@@ -122,9 +119,7 @@ class AgentNode(BaseNodeExecutor):
         result = []
         current_length = 0
         for i, mem in enumerate(memories):
-            mem_with_prefix = f"## {mem}" if i > 0 or not memory_context.startswith("## ") else f"## {mem}"
-            if i == 0:
-                mem_with_prefix = f"## {mem}"
+            mem_with_prefix = f"## {mem}"
 
             if current_length + len(mem_with_prefix) + 4 > max_chars:  # +4 for "\n\n"
                 if result:
@@ -237,13 +232,14 @@ class AgentNode(BaseNodeExecutor):
         if not asset:
             return {}
 
-        self.variable_manager.set_variable(normalized_node_id, asset.download_url)
+        download_url = build_signed_attachment_download_url(asset)
+        self.variable_manager.set_variable(normalized_node_id, download_url)
         return {
-            normalized_node_id: asset.download_url,
+            normalized_node_id: download_url,
             "generated_attachment": {
                 "attachment_id": asset.attachment_id,
                 "filename": asset.filename,
-                "file_url": asset.download_url,
+                "file_url": download_url,
                 "mime_type": asset.mime_type,
             },
         }

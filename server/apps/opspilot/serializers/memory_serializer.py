@@ -11,7 +11,28 @@ class MemorySpaceSerializer(TeamSerializer, AuthSerializer):
 
     class Meta:
         model = MemorySpace
-        fields = "__all__"
+        fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+            "name",
+            "introduction",
+            "team",
+            "scope",
+            "write_rule",
+            "default_model",
+            "storage_type",
+            "storage_config",
+            # 只读派生字段（保持现有读取输出不变）
+            "permissions",
+            "team_name",
+            "memory_count",
+            "masked_storage_config",
+        ]
         extra_kwargs = {
             "storage_config": {"write_only": True},  # 原始配置仅用于写入
         }
@@ -43,5 +64,19 @@ class MemorySpaceSerializer(TeamSerializer, AuthSerializer):
 class MemorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Memory
-        fields = "__all__"
+        fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+            "memory_space",
+            "title",
+            "content",
+            "owner_username",
+            "owner_domain",
+            "organization_id",
+        ]
         read_only_fields = ("owner_username", "owner_domain")

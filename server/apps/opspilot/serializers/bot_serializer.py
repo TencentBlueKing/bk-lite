@@ -26,6 +26,8 @@ class BotSerializer(TeamSerializer, AuthSerializer):
     class Meta:
         model = Bot
         fields = "__all__"
+        # api_token 是敏感凭证，仅允许写入、禁止在响应中回显（其余字段保持原样）
+        extra_kwargs = {"api_token": {"write_only": True}}
 
     def get_is_pinned(self, instance: Bot) -> bool:
         """获取当前用户对此 Bot 的置顶状态"""

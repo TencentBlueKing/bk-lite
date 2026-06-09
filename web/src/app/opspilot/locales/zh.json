@@ -355,6 +355,10 @@
   },
   "knowledge": {
     "goToTesting": "前往测试",
+    "taskProgress": {
+      "failed": "失败",
+      "failedTip": "该任务执行失败，请重试该操作。"
+    },
     "qaPairs": {
       "noFileSelected": "请先选择一个文件上传",
       "customDesc": "直接在界面进行问题和答案的新增。",

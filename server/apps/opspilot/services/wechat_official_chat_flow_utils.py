@@ -1,0 +1,261 @@
+"""微信公众号 ChatFlow 工具类
+
+继承 BaseChatFlowUtils，实现微信公众号特定的消息发送逻辑
+"""
+
+import base64
+import time
+
+import xmltodict
+from django.http import HttpResponse
+from wechatpy import WeChatClient, parse_message
+from wechatpy.crypto import PrpCrypto
+from wechatpy.events import EVENT_TYPES
+from wechatpy.exceptions import InvalidSignatureException
+from wechatpy.messages import MESSAGE_TYPES, UnknownMessage
+from wechatpy.utils import check_signature, to_binary, to_text
+
+from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.tasks import process_wechat_official_message
+from apps.opspilot.utils.base_chat_flow_utils import BaseChatFlowUtils
+
+
+class WechatOfficialChatFlowUtils(BaseChatFlowUtils):
+    """微信公众号 ChatFlow 工具类"""
+
+    # 渠道配置
+    channel_name = "微信公众号"
+    channel_code = "wechat_official_account"
+    cache_key_prefix = "wechat_official_msg"
+
+    def send_message_chunks(self, openid, text: str, appid, secret):
+        """分片发送较长的消息
+
+        Args:
+            openid: 用户OpenID
+            text: 消息文本
+            appid: 公众号AppID
+            secret: 公众号Secret
+        """
+        if not text:
+            return
+
+        wechat_client = WeChatClient(appid, secret)
+
+        # 公众号客服消息单次最大长度2048字符
+        max_length = 1800
+
+        if len(text) <= max_length:
+            wechat_client.message.send_text(openid, text)
+            logger.info(f"微信公众号发送单条消息成功，Bot {self.bot_id}")
+            return
+
+        # 按最大长度切分消息
+        chunk_count = (len(text) + max_length - 1) // max_length
+        logger.info(f"微信公众号消息过长，需分{chunk_count}片发送，Bot {self.bot_id}")
+
+        start = 0
+        chunk_index = 1
+        while start < len(text):
+            end = start + max_length
+            chunk = text[start:end]
+            time.sleep(0.2)  # 避免发送过快
+            wechat_client.message.send_text(openid, chunk)
+            logger.info(f"微信公众号发送第{chunk_index}/{chunk_count}片消息成功，Bot {self.bot_id}")
+            start = end
+            chunk_index += 1
+
+    @staticmethod
+    def parse_message(xml):
+        """解析微信公众号消息
+
+        Args:
+            xml: XML格式的消息
+
+        Returns:
+            解析后的消息对象
+        """
+        if not xml:
+            return None
+
+        message = xmltodict.parse(to_text(xml))["xml"]
+        message_type = message["MsgType"].lower()
+
+        if message_type == "event":
+            event_type = message["Event"].lower()
+            message_class = EVENT_TYPES.get(event_type, UnknownMessage)
+        else:
+            message_class = MESSAGE_TYPES.get(message_type, UnknownMessage)
+
+        return message_class(message)
+
+    def get_wechat_official_node_config(self, bot_chat_flow):
+        """从ChatFlow中获取微信公众号节点配置
+
+        Returns:
+            tuple: (wechat_config_dict, error_response)
+                   成功时返回配置字典和None，失败时返回None和错误响应
+        """
+        flow_nodes = bot_chat_flow.flow_json.get("nodes", [])
+        wechat_nodes = [node for node in flow_nodes if node.get("type") == "wechat_official"]
+
+        if not wechat_nodes:
+            logger.error(f"微信公众号ChatFlow执行失败：Bot {self.bot_id} 工作流中没有微信公众号节点")
+            return None, HttpResponse("success")
+
+        wechat_node = wechat_nodes[0]
+        wechat_data = wechat_node.get("data", {})
+        wechat_config = wechat_data.get("config", {})
+
+        # 验证必需参数（安全模式需要 token, appid, secret, aes_key）
+        required_params = ["token", "appid", "secret", "aes_key"]
+        missing_params = [p for p in required_params if not wechat_config.get(p)]
+        wechat_config["node_id"] = wechat_node["id"]
+
+        if missing_params:
+            logger.error(f"微信公众号ChatFlow执行失败：Bot {self.bot_id} 缺少配置参数: {', '.join(missing_params)}")
+            return None, HttpResponse("success")
+
+        return wechat_config, None
+
+    def handle_url_verification(self, signature, timestamp, nonce, echostr, token, aes_key, appid):
+        """处理微信公众号URL验证（GET请求）
+
+        Args:
+            signature: 微信加密签名
+            timestamp: 时间戳
+            nonce: 随机数
+            echostr: 加密的随机字符串
+            token: 公众号Token
+            aes_key: 消息加密密钥
+            appid: 公众号AppID
+
+        Returns:
+            HttpResponse: URL验证响应
+        """
+        logger.info(f"微信公众号URL验证开始，Bot {self.bot_id}")
+
+        if not echostr:
+            logger.error(f"微信公众号URL验证失败：缺少echostr参数，Bot {self.bot_id}")
+            return HttpResponse("fail")
+
+        try:
+            check_signature(token, signature, timestamp, nonce)
+            return HttpResponse(echostr)
+        except InvalidSignatureException:
+            logger.error(f"微信公众号URL验证失败：签名验证失败，Bot {self.bot_id}")
+            return HttpResponse("fail")
+        except Exception as e:
+            logger.error(f"微信公众号URL验证失败，Bot {self.bot_id}，错误: {str(e)}")
+            logger.exception(e)
+            return HttpResponse("fail")
+
+    def send_reply(self, reply_text: str, sender_id: str, config: dict):
+        """发送回复消息到微信公众号（实现基类抽象方法）
+
+        Args:
+            reply_text: 回复文本
+            sender_id: 发送者ID（OpenID）
+            config: 微信公众号配置，包含 appid, secret
+        """
+        if not reply_text:
+            logger.warning(f"微信公众号回复消息为空，Bot {self.bot_id}")
+            return
+
+        appid = config["appid"]
+        secret = config["secret"]
+
+        # 处理换行符
+        reply_text = reply_text.replace("\r\n", "\n").replace("\r", "\n")
+
+        try:
+            # 使用客服消息接口发送
+            self.send_message_chunks(sender_id, reply_text, appid, secret)
+            logger.info(f"微信公众号消息发送成功，Bot {self.bot_id}")
+        except Exception as e:
+            logger.error(f"微信公众号发送消息失败，Bot {self.bot_id}，错误: {str(e)}")
+            logger.exception(e)
+
+    def decrypt(self, encrypt, aes_key, appid):
+        """解密微信公众号消息"""
+        encoding_aes_key = to_binary(aes_key + "=")
+        key = base64.b64decode(encoding_aes_key)
+        pc = PrpCrypto(key)
+        return pc.decrypt(encrypt, appid)
+
+    def handle_wechat_message(self, request, wechat_config, bot_chat_flow):
+        """处理微信公众号消息（POST请求，安全模式）
+
+        采用异步处理模式：
+        1. 立即返回success给微信（避免5秒超时重试）
+        2. 使用消息ID去重（防止重试导致重复处理）
+        3. 异步执行ChatFlow并通过客服消息接口回复
+
+        Args:
+            request: Django request对象
+            wechat_config: 微信公众号配置
+            bot_chat_flow: Bot工作流对象
+
+        Returns:
+            HttpResponse: 消息处理响应
+        """
+        signature = request.GET.get("signature", "") or request.GET.get("msg_signature", "")
+        timestamp = request.GET.get("timestamp", "")
+        nonce = request.GET.get("nonce", "")
+
+        logger.info(f"微信公众号收到POST请求，Bot {self.bot_id}")
+
+        # 验证参数完整性
+        if not signature or not timestamp or not nonce:
+            logger.error(f"微信公众号消息处理失败：缺少签名参数，Bot {self.bot_id}")
+            return HttpResponse("success")
+
+        try:
+            xml_msg = xmltodict.parse(to_text(request.body))["xml"]
+            decode_msg = self.decrypt(xml_msg["Encrypt"], wechat_config["aes_key"], wechat_config["appid"])
+            msg = parse_message(decode_msg)
+
+            if not msg:
+                logger.warning(f"微信公众号消息解析失败，Bot {self.bot_id}")
+                return HttpResponse("success")
+
+            logger.info(f"微信公众号消息解析成功，Bot {self.bot_id}，消息类型: {msg.type}")
+
+            # 只处理文本消息
+            if msg.type != "text":
+                logger.info(f"微信公众号收到非文本消息，类型: {msg.type}，Bot {self.bot_id}，忽略处理")
+                return HttpResponse("success")
+
+            # 获取消息内容和发送者OpenID
+            message = getattr(msg, "content", "")
+            openid = getattr(msg, "source", "")
+            msg_id = getattr(msg, "id", "") or f"{openid}:{hash(message)}:{timestamp}"
+
+            if not message:
+                logger.warning(f"微信公众号收到空消息，Bot {self.bot_id}")
+                return HttpResponse("success")
+
+            # 消息去重检查（使用基类方法）
+            if self.is_message_processed(msg_id):
+                logger.info(f"微信公众号消息已处理，跳过重复消息，Bot {self.bot_id}，MsgId {msg_id}")
+                return HttpResponse("success")
+
+            # 使用 Celery 任务异步处理（替代不存在的 process_message_async）
+            process_wechat_official_message.delay(
+                self.bot_id,
+                msg_id,
+                message,
+                openid,
+                wechat_config,
+            )
+
+            logger.info(f"微信公众号消息已接收，Celery 任务已投递，Bot {self.bot_id}，MsgId {msg_id}")
+            return HttpResponse("success")
+
+        except InvalidSignatureException:
+            logger.error(f"微信公众号消息签名验证失败，Bot {self.bot_id}")
+            return HttpResponse("success")
+        except Exception as e:
+            logger.error(f"微信公众号ChatFlow流程执行失败，Bot {self.bot_id}，错误: {str(e)}")
+            logger.exception(e)
+            return HttpResponse("success")

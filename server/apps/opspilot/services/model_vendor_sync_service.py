@@ -1,14 +1,12 @@
-import logging
 from collections import defaultdict
 from typing import ContextManager, cast
 
 from django.db import transaction
 
+from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.safe_requests import safe_get_llm_endpoint, safe_post_llm_endpoint
 from apps.opspilot.models import EmbedProvider, LLMModel, OCRProvider, RerankProvider
-
-logger = logging.getLogger(__name__)
 
 OPENAI_COMPATIBLE_VENDOR_TYPES = {"openai", "azure", "deepseek", "other"}
 

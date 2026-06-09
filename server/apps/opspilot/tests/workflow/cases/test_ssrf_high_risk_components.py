@@ -78,69 +78,103 @@ class TestModelVendorSyncServiceSSRFProtection:
                 protocol_type="openai",
             )
 
-    def test_fetch_models_blocks_localhost(self):
-        """BK-LITE-002: localhost URL in api_base is blocked."""
+    # NOTE (BK-LITE-002 + bugfix 43e7fa682): model-vendor model fetching uses the
+    # LENIENT LLM-endpoint SSRF validator on purpose — internal LLM deployments
+    # (Ollama/vLLM/LocalAI) legitimately live on localhost/private networks. So
+    # private/localhost are ALLOWED here; only cloud-metadata and file:// are blocked
+    # (covered by the metadata/file tests below). These tests assert that SSRF does
+    # NOT block private/localhost, i.e. the request proceeds past validation.
+    @patch("apps.core.utils.safe_requests.requests.request")
+    def test_fetch_models_allows_localhost(self, mock_request):
+        """BK-LITE-002: localhost api_base is allowed for internal LLM endpoints."""
         from apps.opspilot.services.model_vendor_sync_service import ModelVendorSyncService
 
-        with pytest.raises((ValueError, SSRFError)):
-            ModelVendorSyncService.fetch_models_with_credentials(
-                api_base="http://localhost:8080",
-                api_key="test-key",
-                protocol_type="openai",
-            )
+        mock_response = MagicMock(is_redirect=False, status_code=200)
+        mock_response.json.return_value = {"data": [{"id": "gpt-4"}]}
+        mock_request.return_value = mock_response
 
-    def test_fetch_models_blocks_127_0_0_1(self):
-        """BK-LITE-002: 127.0.0.1 URL in api_base is blocked."""
+        result = ModelVendorSyncService.fetch_models_with_credentials(
+            api_base="http://localhost:8080",
+            api_key="test-key",
+            protocol_type="openai",
+        )
+        # Reached the HTTP layer => SSRF validation allowed localhost.
+        assert mock_request.called
+        assert result == [{"id": "gpt-4"}]
+
+    @patch("apps.core.utils.safe_requests.requests.request")
+    def test_fetch_models_allows_127_0_0_1(self, mock_request):
+        """BK-LITE-002: 127.0.0.1 api_base is allowed for internal LLM endpoints."""
         from apps.opspilot.services.model_vendor_sync_service import ModelVendorSyncService
 
-        with pytest.raises((ValueError, SSRFError)):
-            ModelVendorSyncService.fetch_models_with_credentials(
-                api_base="http://127.0.0.1:11434",
-                api_key="test-key",
-                protocol_type="openai",
-            )
+        mock_response = MagicMock(is_redirect=False, status_code=200)
+        mock_response.json.return_value = {"data": [{"id": "gpt-4"}]}
+        mock_request.return_value = mock_response
+
+        result = ModelVendorSyncService.fetch_models_with_credentials(
+            api_base="http://127.0.0.1:11434",
+            api_key="test-key",
+            protocol_type="openai",
+        )
+        assert mock_request.called
+        assert result == [{"id": "gpt-4"}]
 
     @patch("socket.getaddrinfo")
-    def test_fetch_models_blocks_private_10_x(self, mock_getaddrinfo):
-        """BK-LITE-002: 10.x.x.x private network in api_base is blocked."""
+    @patch("apps.core.utils.safe_requests.requests.request")
+    def test_fetch_models_allows_private_10_x(self, mock_request, mock_getaddrinfo):
+        """BK-LITE-002: 10.x.x.x private LLM endpoint is allowed."""
         from apps.opspilot.services.model_vendor_sync_service import ModelVendorSyncService
 
         mock_getaddrinfo.return_value = [(2, 1, 6, "", ("10.0.0.1", 80))]
+        mock_response = MagicMock(is_redirect=False, status_code=200)
+        mock_response.json.return_value = {"data": [{"id": "gpt-4"}]}
+        mock_request.return_value = mock_response
 
-        with pytest.raises((ValueError, SSRFError)):
-            ModelVendorSyncService.fetch_models_with_credentials(
-                api_base="http://internal-llm.company.local",
-                api_key="test-key",
-                protocol_type="openai",
-            )
+        result = ModelVendorSyncService.fetch_models_with_credentials(
+            api_base="http://internal-llm.company.local",
+            api_key="test-key",
+            protocol_type="openai",
+        )
+        assert mock_request.called
+        assert result == [{"id": "gpt-4"}]
 
     @patch("socket.getaddrinfo")
-    def test_fetch_models_blocks_private_172_16_x(self, mock_getaddrinfo):
-        """BK-LITE-002: 172.16.x.x private network in api_base is blocked."""
+    @patch("apps.core.utils.safe_requests.requests.request")
+    def test_fetch_models_allows_private_172_16_x(self, mock_request, mock_getaddrinfo):
+        """BK-LITE-002: 172.16.x.x private LLM endpoint is allowed."""
         from apps.opspilot.services.model_vendor_sync_service import ModelVendorSyncService
 
         mock_getaddrinfo.return_value = [(2, 1, 6, "", ("172.16.0.1", 80))]
+        mock_response = MagicMock(is_redirect=False, status_code=200)
+        mock_response.json.return_value = {"data": [{"id": "gpt-4"}]}
+        mock_request.return_value = mock_response
 
-        with pytest.raises((ValueError, SSRFError)):
-            ModelVendorSyncService.fetch_models_with_credentials(
-                api_base="http://internal-llm.company.local",
-                api_key="test-key",
-                protocol_type="openai",
-            )
+        result = ModelVendorSyncService.fetch_models_with_credentials(
+            api_base="http://internal-llm.company.local",
+            api_key="test-key",
+            protocol_type="openai",
+        )
+        assert mock_request.called
+        assert result == [{"id": "gpt-4"}]
 
     @patch("socket.getaddrinfo")
-    def test_fetch_models_blocks_private_192_168_x(self, mock_getaddrinfo):
-        """BK-LITE-002: 192.168.x.x private network in api_base is blocked."""
+    @patch("apps.core.utils.safe_requests.requests.request")
+    def test_fetch_models_allows_private_192_168_x(self, mock_request, mock_getaddrinfo):
+        """BK-LITE-002: 192.168.x.x private LLM endpoint is allowed."""
         from apps.opspilot.services.model_vendor_sync_service import ModelVendorSyncService
 
         mock_getaddrinfo.return_value = [(2, 1, 6, "", ("192.168.1.100", 80))]
+        mock_response = MagicMock(is_redirect=False, status_code=200)
+        mock_response.json.return_value = {"data": [{"id": "gpt-4"}]}
+        mock_request.return_value = mock_response
 
-        with pytest.raises((ValueError, SSRFError)):
-            ModelVendorSyncService.fetch_models_with_credentials(
-                api_base="http://home-server.local",
-                api_key="test-key",
-                protocol_type="openai",
-            )
+        result = ModelVendorSyncService.fetch_models_with_credentials(
+            api_base="http://home-server.local",
+            api_key="test-key",
+            protocol_type="openai",
+        )
+        assert mock_request.called
+        assert result == [{"id": "gpt-4"}]
 
     def test_fetch_models_blocks_file_protocol(self):
         """BK-LITE-002: file:// protocol in api_base is blocked."""
@@ -163,15 +197,22 @@ class TestModelVendorSyncServiceSSRFProtection:
                 api_key="test-key",
             )
 
-    def test_test_anthropic_connection_blocks_localhost(self):
-        """BK-LITE-002: localhost URL in Anthropic connection test is blocked."""
+    @patch("apps.core.utils.safe_requests.requests.request")
+    def test_test_anthropic_connection_allows_localhost(self, mock_request):
+        """BK-LITE-002: localhost is allowed in Anthropic connection test (internal LLM)."""
         from apps.opspilot.services.model_vendor_sync_service import ModelVendorSyncService
 
-        with pytest.raises((ValueError, SSRFError)):
-            ModelVendorSyncService.test_anthropic_connection(
-                api_base="http://127.0.0.1:8080",
-                api_key="test-key",
-            )
+        mock_response = MagicMock(is_redirect=False, status_code=200)
+        mock_response.json.return_value = {"content": [{"text": "ok"}]}
+        mock_request.return_value = mock_response
+
+        # Lenient LLM-endpoint validation allows localhost; the request must be attempted
+        # (i.e. SSRF did not block) rather than raising SSRFError.
+        ModelVendorSyncService.test_anthropic_connection(
+            api_base="http://127.0.0.1:8080",
+            api_key="test-key",
+        )
+        assert mock_request.called
 
     @patch("socket.getaddrinfo")
     @patch("apps.core.utils.safe_requests.requests.request")

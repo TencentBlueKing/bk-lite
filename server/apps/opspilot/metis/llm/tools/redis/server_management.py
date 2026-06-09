@@ -2,6 +2,7 @@ from typing import Optional
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
+from loguru import logger
 from redis.exceptions import RedisError
 
 from apps.opspilot.metis.llm.tools.common.credentials import execute_with_credentials
@@ -340,6 +341,22 @@ def redis_flushdb(
     def _executor(item):
         try:
             client = get_redis_connection_from_item(item)
+            connection_kwargs = getattr(getattr(client, "connection_pool", None), "connection_kwargs", {}) or {}
+            target_host = connection_kwargs.get("host")
+            target_port = connection_kwargs.get("port")
+            target_db = connection_kwargs.get("db")
+            # TODO(security F023): require out-of-band human confirmation; disable by default
+            logger.warning(
+                "UNGATED DESTRUCTIVE redis FLUSHDB about to execute: wiping entire database "
+                "(host={}, port={}, db={}, instance_name={}, instance_id={}). "
+                "Gated only by an LLM-supplied confirm flag (confirm={}); no human approval required.",
+                target_host,
+                target_port,
+                target_db,
+                instance_name,
+                instance_id,
+                confirm,
+            )
             return build_success_response({"result": client.flushdb()}, operation="flushdb")
         except (RedisError, ValueError) as e:
             return build_error_response(e)
