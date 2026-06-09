@@ -7,6 +7,7 @@
 处理各种插件（MySQL、Redis、Nginx等）的数据采集任务
 """
 
+import re
 import time
 import traceback
 import ntpath
@@ -212,7 +213,9 @@ async def _handle_multicred_post_execute(params, task_id, execution_result, cach
     host = params.get("host")
     credential_id = params.get("credential_id")
     credential_index = int(params.get("credential_index") or 0)
-    if not credentials_pool or collect_task_id in (None, "") or not host or not credential_id:
+    # 单凭据(无 credentials_pool)与多凭据一律走冷却：只需 task/host/credential 即可记录状态。
+    # credentials_pool 仅用于失败后"换下一个凭据"的链式逻辑(见末尾)。
+    if collect_task_id in (None, "") or not host or not credential_id:
         return
 
     await cache_cls.append_result_event(execution_result)
@@ -221,7 +224,9 @@ async def _handle_multicred_post_execute(params, task_id, execution_result, cach
         await cache_cls.mark_success(collect_task_id, host, credential_id)
         return
 
-    if execution_result["failure_kind"] != "credential":
+    # credential(认证失败)与 unreachable(连接不可达)均进入冷却；
+    # 其它 task 类失败可能是瞬时/可修复的，不冷却。
+    if execution_result["failure_kind"] not in ("credential", "unreachable"):
         await cache_cls.clear_success(collect_task_id, host)
         return
 
@@ -240,6 +245,14 @@ async def _handle_multicred_post_execute(params, task_id, execution_result, cach
         consecutive_failures,
         next_retry_at,
     )
+    logger.info(
+        f"[Cooldown] host={host} credential={credential_id} kind={execution_result['failure_kind']} "
+        f"cooled {cooldown_hours}h (consecutive={consecutive_failures}) "
+        f"err={str(execution_result['error_message'])[:80]}"
+    )
+    # 仅多凭据时才尝试换下一个未冷却的凭据；单凭据无可换，记完冷却即结束。
+    if not credentials_pool:
+        return
     next_task = await _build_next_credential_task(params, credential_index, consecutive_failures, cache_cls)
     if not next_task:
         return
@@ -275,15 +288,32 @@ def _is_failed_metrics_payload(metrics_data: Any) -> bool:
     if metrics_data is None:
         return True
     if isinstance(metrics_data, dict):
-        return str(metrics_data.get("status") or "").lower() == "error"
+        status = str(metrics_data.get("status") or metrics_data.get("collect_status") or "").lower()
+        return status in ("error", "failed")
     text = str(metrics_data)
-    return 'status="error"' in text or "cmdb_collect_error" in text
+    # 采集失败的指标形态为 ..._info{...collect_status="failed",collect_error="..."}，
+    # 历史判定只认 status="error"/cmdb_collect_error，会漏判，需一并识别。
+    return (
+        'status="error"' in text
+        or 'collect_status="failed"' in text
+        or 'collect_status="error"' in text
+        or "cmdb_collect_error" in text
+    )
 
 
 def _extract_metrics_error(metrics_data: Any) -> str:
     if isinstance(metrics_data, dict):
-        return str(metrics_data.get("error") or metrics_data.get("cmdb_collect_error") or "")
+        return str(
+            metrics_data.get("error")
+            or metrics_data.get("cmdb_collect_error")
+            or metrics_data.get("collect_error")
+            or ""
+        )
     text = str(metrics_data or "")
+    # 从 prometheus/influx 文本里抽取 collect_error="..." 的真实错误信息
+    match = re.search(r'collect_error="((?:[^"\\]|\\.)*)"', text)
+    if match:
+        return match.group(1).replace('\\"', '"').replace("\\\\", "\\")
     if "cmdb_collect_error" in text:
         return text
     return "collection failed"
@@ -294,6 +324,18 @@ def _classify_failure_kind(error_message: str) -> str:
     credential_keywords = ("auth", "password", "credential", "denied", "unauthorized", "community", "authkey", "privkey")
     if any(keyword in text for keyword in credential_keywords):
         return "credential"
+    # 连接不可达类失败（假 IP：TCP 连不上 / SSH 拨号失败 / 拒绝 / 路由不可达）：
+    # 纳入冷却，避免每轮都对死 IP 重复探测，拖垮串行执行端。
+    # 注意：仅限“连接建立阶段”的失败。刻意不含：
+    #   - "nats: timeout" / "no responders"（executor 侧无响应，非目标主机不可达，避免误伤一批正常 host）
+    #   - "SSH execution timed out"（已连上、只是命令跑得久，属于慢主机而非不可达）
+    unreachable_keywords = (
+        "tcp connect", "connect timed out", "connect failed",
+        "dial timed out", "connection refused", "no route",
+        "host is down", "unreachable",
+    )
+    if any(keyword in text for keyword in unreachable_keywords):
+        return "unreachable"
     return "task"
 
 
