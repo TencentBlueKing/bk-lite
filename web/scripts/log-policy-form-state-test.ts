@@ -9,7 +9,8 @@ import {
 } from '../src/app/log/(pages)/event/strategy/detail/policyFormUtils';
 import {
   buildStrategyDetailUrl,
-  getCreatePolicyType
+  getCreatePolicyType,
+  shouldInitializeStrategyForm
 } from '../src/app/log/(pages)/event/strategy/policyRouteUtils';
 
 assert.equal(
@@ -28,6 +29,18 @@ assert.equal(getCreatePolicyType('keyword'), 'keyword');
 assert.equal(getCreatePolicyType('aggregate'), 'aggregate');
 assert.equal(getCreatePolicyType(null), null);
 assert.equal(getCreatePolicyType('unknown'), null);
+assert.equal(
+  shouldInitializeStrategyForm({ isEdit: false, createAlertType: null }),
+  false
+);
+assert.equal(
+  shouldInitializeStrategyForm({ isEdit: false, createAlertType: 'keyword' }),
+  true
+);
+assert.equal(
+  shouldInitializeStrategyForm({ isEdit: true, createAlertType: null }),
+  true
+);
 
 assert.equal(getLockedPolicyType({ urlAlertType: 'keyword' }), 'keyword');
 assert.equal(getLockedPolicyType({ detailAlertType: 'aggregate' }), 'aggregate');
