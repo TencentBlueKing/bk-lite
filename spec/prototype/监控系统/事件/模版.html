@@ -1410,11 +1410,10 @@
 
         function renderStrategyPreview() {
             const prefix = namePrefix.value || "";
-            const assetCount = getSelectedAssetCount();
             strategyPreview.innerHTML = `
-                <div class="preview-row"><strong>策略名称</strong><strong>资产范围</strong><strong>创建后状态</strong></div>
+                <div class="preview-row"><strong>策略名称</strong><strong>策略指标</strong><strong>创建后状态</strong></div>
                 ${Array.from(selectedTemplates).map((title) => `
-                    <div class="preview-row"><span>${prefix}${title}</span><span>${assetCount} 台主机</span><span>${enableSelect.value}</span></div>
+                    <div class="preview-row"><span>${prefix}${title}</span><span>${getTemplateMeta(title)}</span><span>${enableSelect.value}</span></div>
                 `).join("")}
             `;
         }
