@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Tag } from 'antd';
 import { useSearchParams } from 'next/navigation';
 import { useKnowledgeApi } from '@/app/opspilot/api/knowledge';
 import styles from './index.module.scss';
@@ -9,6 +10,8 @@ interface Task {
   task_name: string;
   train_progress: number;
   is_qa_task: boolean;
+  // Additive backend field: 'running' | 'success' | 'failed'
+  status?: string;
 }
 
 interface QATaskStatus {
@@ -107,9 +110,15 @@ const TaskProgress: React.FC<TaskProgressProps> = ({ activeTabKey, pageType = 'd
             </span>
             <span className="ml-2 flex-shrink-0">{qaStatus.process}</span>
           </div>
-          <div className={`w-full h-2 rounded relative overflow-hidden ${styles.progressContainer}`}>
-            <div className={`${styles.progressBar} h-full w-full`}></div>
-          </div>
+          {qaStatus.status === 'failed' ? (
+            <Tag color="error" title={t('knowledge.taskProgress.failedTip')}>
+              {t('knowledge.taskProgress.failed')}
+            </Tag>
+          ) : (
+            <div className={`w-full h-2 rounded relative overflow-hidden ${styles.progressContainer}`}>
+              <div className={`${styles.progressBar} h-full w-full`}></div>
+            </div>
+          )}
         </div>
       ))}
 
@@ -122,9 +131,15 @@ const TaskProgress: React.FC<TaskProgressProps> = ({ activeTabKey, pageType = 'd
             </span>
             <span className="ml-2 flex-shrink-0">{task.train_progress}</span>
           </div>
-          <div className={`w-full h-2 rounded relative overflow-hidden ${styles.progressContainer}`}>
-            <div className={`${styles.progressBar} h-full w-full`}></div>
-          </div>
+          {task.status === 'failed' ? (
+            <Tag color="error" title={t('knowledge.taskProgress.failedTip')}>
+              {t('knowledge.taskProgress.failed')}
+            </Tag>
+          ) : (
+            <div className={`w-full h-2 rounded relative overflow-hidden ${styles.progressContainer}`}>
+              <div className={`${styles.progressBar} h-full w-full`}></div>
+            </div>
+          )}
         </div>
       ))}
     </div>

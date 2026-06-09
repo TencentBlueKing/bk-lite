@@ -42,13 +42,13 @@ class TestDingTalkInheritanceFix:
 
     def test_dingtalk_inherits_base_chat_flow_utils(self):
         """TC-3090-01: DingTalkChatFlowUtils must inherit BaseChatFlowUtils."""
-        from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
+        from apps.opspilot.services.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
 
         assert issubclass(DingTalkChatFlowUtils, BaseChatFlowUtils), "DingTalkChatFlowUtils must inherit BaseChatFlowUtils for atomic dedup"
 
     def test_dingtalk_has_correct_channel_attributes(self):
         """TC-3090-02: DingTalkChatFlowUtils must have correct channel attributes."""
-        from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
+        from apps.opspilot.services.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
 
         assert DingTalkChatFlowUtils.channel_name == "钉钉"
         assert DingTalkChatFlowUtils.channel_code == "dingtalk"
@@ -56,7 +56,7 @@ class TestDingTalkInheritanceFix:
 
     def test_dingtalk_cache_key_format_compatible(self):
         """TC-3090-03: Cache key format must be dingtalk_msg:{bot_id}:{msg_id}."""
-        from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
+        from apps.opspilot.services.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
 
         # Verify cache key format via source analysis of base class
         source = inspect.getsource(BaseChatFlowUtils.is_message_processed)
@@ -67,7 +67,7 @@ class TestDingTalkInheritanceFix:
 
     def test_dingtalk_uses_atomic_cache_add(self):
         """TC-3090-04: DingTalk must use cache.add() via BaseChatFlowUtils for atomic dedup."""
-        from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
+        from apps.opspilot.services.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
 
         # Verify inheritance (DingTalk uses base class method)
         assert (
@@ -80,7 +80,7 @@ class TestDingTalkInheritanceFix:
 
     def test_dingtalk_no_duplicate_dedup_methods(self):
         """TC-3090-05: DingTalk must not override dedup methods (use base class)."""
-        from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
+        from apps.opspilot.services.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
 
         # These methods should be inherited, not overridden
         assert DingTalkChatFlowUtils.is_message_processed is BaseChatFlowUtils.is_message_processed
@@ -89,7 +89,7 @@ class TestDingTalkInheritanceFix:
 
     def test_dingtalk_implements_send_reply(self):
         """TC-3090-06: DingTalk must implement abstract send_reply method."""
-        from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
+        from apps.opspilot.services.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
 
         # send_reply should be overridden (not the base class abstract method)
         assert DingTalkChatFlowUtils.send_reply is not BaseChatFlowUtils.send_reply, "DingTalk must implement send_reply abstract method"
@@ -134,7 +134,7 @@ class TestWechatOfficialAsyncFix:
 
     def test_wechat_official_no_process_message_async_call(self):
         """TC-3091-04: handle_wechat_message must NOT call non-existent process_message_async."""
-        from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
+        from apps.opspilot.services.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
 
         source = inspect.getsource(WechatOfficialChatFlowUtils.handle_wechat_message)
 
@@ -159,7 +159,7 @@ class TestWechatOfficialAsyncFix:
 
     def test_wechat_official_uses_celery_delay(self):
         """TC-3091-05: handle_wechat_message must use Celery .delay() for async processing."""
-        from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
+        from apps.opspilot.services.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
 
         source = inspect.getsource(WechatOfficialChatFlowUtils.handle_wechat_message)
 
@@ -167,7 +167,7 @@ class TestWechatOfficialAsyncFix:
 
     def test_wechat_official_imports_celery_task(self):
         """TC-3091-06: wechat_official_chat_flow_utils must import the Celery task."""
-        from apps.opspilot.utils import wechat_official_chat_flow_utils
+        from apps.opspilot.services import wechat_official_chat_flow_utils
 
         source = inspect.getsource(wechat_official_chat_flow_utils)
 
@@ -175,13 +175,13 @@ class TestWechatOfficialAsyncFix:
 
     def test_wechat_official_inherits_base_chat_flow_utils(self):
         """TC-3091-07: WechatOfficialChatFlowUtils must inherit BaseChatFlowUtils."""
-        from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
+        from apps.opspilot.services.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
 
         assert issubclass(WechatOfficialChatFlowUtils, BaseChatFlowUtils), "WechatOfficialChatFlowUtils must inherit BaseChatFlowUtils"
 
     def test_wechat_official_has_correct_channel_attributes(self):
         """TC-3091-08: WechatOfficialChatFlowUtils must have correct channel attributes."""
-        from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
+        from apps.opspilot.services.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
 
         assert WechatOfficialChatFlowUtils.channel_name == "微信公众号"
         assert WechatOfficialChatFlowUtils.channel_code == "wechat_official_account"
@@ -189,13 +189,13 @@ class TestWechatOfficialAsyncFix:
 
     def test_wechat_official_implements_send_reply(self):
         """TC-3091-09: WechatOfficialChatFlowUtils must implement send_reply."""
-        from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
+        from apps.opspilot.services.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
 
         assert WechatOfficialChatFlowUtils.send_reply is not BaseChatFlowUtils.send_reply, "WechatOfficialChatFlowUtils must implement send_reply"
 
     def test_wechat_official_uses_base_dedup(self):
         """TC-3091-10: WechatOfficialChatFlowUtils must use base class dedup (is_message_processed)."""
-        from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
+        from apps.opspilot.services.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
 
         source = inspect.getsource(WechatOfficialChatFlowUtils.handle_wechat_message)
 
@@ -212,8 +212,8 @@ class TestAllChannelsConsistentPattern:
 
     def test_all_channels_inherit_base_chat_flow_utils(self):
         """TC-COMMON-01: All channel utils must inherit BaseChatFlowUtils."""
-        from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
-        from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
+        from apps.opspilot.services.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
+        from apps.opspilot.services.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
 
         channels = [
             ("DingTalk", DingTalkChatFlowUtils),
@@ -225,8 +225,8 @@ class TestAllChannelsConsistentPattern:
 
     def test_all_channels_have_required_attributes(self):
         """TC-COMMON-02: All channels must define channel_name, channel_code, cache_key_prefix."""
-        from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
-        from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
+        from apps.opspilot.services.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
+        from apps.opspilot.services.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
 
         channels = [
             ("DingTalk", DingTalkChatFlowUtils),
@@ -240,8 +240,8 @@ class TestAllChannelsConsistentPattern:
 
     def test_all_channels_use_atomic_dedup(self):
         """TC-COMMON-03: All channels must use atomic cache.add() via base class."""
-        from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
-        from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
+        from apps.opspilot.services.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
+        from apps.opspilot.services.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
 
         channels = [
             ("DingTalk", DingTalkChatFlowUtils),
@@ -256,8 +256,8 @@ class TestAllChannelsConsistentPattern:
 
     def test_all_channels_implement_send_reply(self):
         """TC-COMMON-04: All channels must implement abstract send_reply method."""
-        from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
-        from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
+        from apps.opspilot.services.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
+        from apps.opspilot.services.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
 
         channels = [
             ("DingTalk", DingTalkChatFlowUtils),
@@ -269,8 +269,8 @@ class TestAllChannelsConsistentPattern:
 
     def test_cache_key_prefixes_are_unique(self):
         """TC-COMMON-05: Each channel must have unique cache_key_prefix."""
-        from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
-        from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
+        from apps.opspilot.services.dingtalk_chat_flow_utils import DingTalkChatFlowUtils
+        from apps.opspilot.services.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
 
         prefixes = [
             DingTalkChatFlowUtils.cache_key_prefix,

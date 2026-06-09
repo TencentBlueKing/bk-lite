@@ -9,14 +9,27 @@ import re
 import threading
 import time
 
+from asgiref.sync import sync_to_async
 from django.http import StreamingHttpResponse
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import LLMModel, SkillRequestLog
 from apps.opspilot.services.chat_service import chat_service
 from apps.opspilot.utils.agent_factory import create_agent_instance, create_sse_response_headers
-from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
-from apps.opspilot.utils.sse_chat import _process_think_content, _split_think_content
+from apps.opspilot.utils.stream_common import is_interrupt_requested_async
+from apps.opspilot.utils.stream_common import process_think_content as _process_think_content
+from apps.opspilot.utils.stream_common import split_think_content as _split_think_content
+
+
+# 工具结果后的桥接型自述内容匹配模式，供提取与剥离两处复用（避免重复编译）。
+_META_PREAMBLE_PATTERN = re.compile(
+    r"^\s*(?:好的[，,\s]*|好[的吧]?[，,\s]*|OK[,\s]*|Okay[,\s]*)?"
+    r"(?:我已经(?:成功)?获取(?:到|到了)|我已(?:经)?获取(?:到|到了)|现在我需要|接下来(?:我)?(?:需要|将)|"
+    r"根据工具结果|根据返回结果|工具(?:已经)?返回了?|我现在可以|我将根据|"
+    r"I have (?:retrieved|fetched)|Now I need to|Next I(?:'ll| will)|According to the tool result|The tool returned)"
+    r"[^\n。！？!?]*(?:[。！？!?]|\n|$)\s*",
+    re.IGNORECASE,
+)
 
 
 def _looks_like_implicit_thinking_prefix(content: str) -> bool:
@@ -39,15 +52,7 @@ def _strip_post_tool_meta_preamble(content: str) -> str:
     if not content:
         return content
 
-    meta_preamble_pattern = re.compile(
-        r"^\s*(?:好的[，,\s]*|好[的吧]?[，,\s]*|OK[,\s]*|Okay[,\s]*)?"
-        r"(?:我已经(?:成功)?获取(?:到|到了)|我已(?:经)?获取(?:到|到了)|现在我需要|接下来(?:我)?(?:需要|将)|"
-        r"根据工具结果|根据返回结果|工具(?:已经)?返回了?|我现在可以|我将根据|"
-        r"I have (?:retrieved|fetched)|Now I need to|Next I(?:'ll| will)|According to the tool result|The tool returned)"
-        r"[^\n。！？!?]*(?:[。！？!?]|\n|$)\s*",
-        re.IGNORECASE,
-    )
-    stripped = meta_preamble_pattern.sub("", content, count=1)
+    stripped = _META_PREAMBLE_PATTERN.sub("", content, count=1)
     return stripped.lstrip()
 
 
@@ -56,15 +61,7 @@ def _extract_post_tool_meta_preamble(content: str) -> tuple[str, str]:
     if not content:
         return "", content
 
-    meta_preamble_pattern = re.compile(
-        r"^\s*(?:好的[，,\s]*|好[的吧]?[，,\s]*|OK[,\s]*|Okay[,\s]*)?"
-        r"(?:我已经(?:成功)?获取(?:到|到了)|我已(?:经)?获取(?:到|到了)|现在我需要|接下来(?:我)?(?:需要|将)|"
-        r"根据工具结果|根据返回结果|工具(?:已经)?返回了?|我现在可以|我将根据|"
-        r"I have (?:retrieved|fetched)|Now I need to|Next I(?:'ll| will)|According to the tool result|The tool returned)"
-        r"[^\n。！？!?]*(?:[。！？!?]|\n|$)\s*",
-        re.IGNORECASE,
-    )
-    match = meta_preamble_pattern.match(content)
+    match = _META_PREAMBLE_PATTERN.match(content)
     if not match:
         return "", content
     return match.group(0), content[match.end() :].lstrip()
@@ -88,19 +85,59 @@ def _build_sse_line(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def _init_agui_stream_state() -> dict:
-    return {
-        "think_buffer": "",
-        "in_think_block": False,
-        "is_first_content": True,
-        "has_think_tags": True,
-        "active_message_id": None,
-        "pending_content_events": [],
-        "buffer_pre_tool_content": False,
-        "post_tool_result_seen": False,
-        "emit_pending_as_thinking": False,
-        "pending_phase": None,
-    }
+class AguiStreamState:
+    """AGUI 流式状态机（F080）。
+
+    将原先散落的 12 个可变状态字段（think 解析的 think_buffer / in_think_block /
+    is_first_content / has_think_tags，以及 active_message_id / pending_content_events /
+    buffer_pre_tool_content / post_tool_result_seen / emit_pending_as_thinking /
+    pending_phase 等 pending/buffer/think-phase 标志）从一个匿名 12-key 字典升级为
+    显式的状态机类。
+
+    本类同时实现 ``__getitem__`` / ``__setitem__``，因此既能以属性方式访问，也兼容
+    原有 ``state["key"]`` 的字典式读写——所有 THINKING vs TEXT_MESSAGE_CONTENT
+    事件的顺序与分组、以及工具结果后的前言（preamble）处理逻辑完全不变，仅是把
+    状态容器形式化，事件类型/字段保持不变。
+    """
+
+    # 显式声明全部状态字段，作为状态机契约（FSM 的“记忆”部分）。
+    __slots__ = (
+        "think_buffer",
+        "in_think_block",
+        "is_first_content",
+        "has_think_tags",
+        "active_message_id",
+        "pending_content_events",
+        "buffer_pre_tool_content",
+        "post_tool_result_seen",
+        "emit_pending_as_thinking",
+        "pending_phase",
+    )
+
+    def __init__(self) -> None:
+        # think 标签解析子状态
+        self.think_buffer: str = ""
+        self.in_think_block: bool = False
+        self.is_first_content: bool = True
+        self.has_think_tags: bool = True
+        # 消息 / pending 缓冲 / think-phase 标志
+        self.active_message_id = None
+        self.pending_content_events: list = []
+        self.buffer_pre_tool_content: bool = False
+        self.post_tool_result_seen: bool = False
+        self.emit_pending_as_thinking: bool = False
+        self.pending_phase = None
+
+    # 兼容原字典式访问（state["key"]），保证下游事件处理逻辑零改动。
+    def __getitem__(self, key):
+        return getattr(self, key)
+
+    def __setitem__(self, key, value):
+        setattr(self, key, value)
+
+
+def _init_agui_stream_state() -> "AguiStreamState":
+    return AguiStreamState()
 
 
 def _flush_pending_content_events(state: dict, strip_post_tool_preamble: bool = False) -> list[str]:
@@ -377,16 +414,31 @@ def _handle_agui_data_event(data_json: dict, state: dict, show_think: bool, enab
     return _build_sse_line(data_json), []
 
 
+def _prepare_agui_chat_kwargs(params):
+    """同步准备工作：取模型、格式化 chat_server 参数（F044）。
+
+    抽成独立函数以便在生成器内经 sync_to_async 调用，让这些阻塞型 DB/格式化
+    工作发生在首个 flush 之后，改善 TTFB。返回的内容/形状与此前完全一致。
+    """
+    llm_model = LLMModel.objects.get(id=params["llm_model"])
+    chat_kwargs, doc_map, title_map = chat_service.format_chat_server_kwargs(params, llm_model)
+    return chat_kwargs
+
+
 async def _generate_agui_stream(
-    graph, request, skill_name, skill_type, show_think, final_stats, kwargs, current_ip, user_message, skill_id, history_log
+    params, skill_name, skill_type, show_think, final_stats, kwargs, current_ip, user_message, skill_id, history_log
 ):
     try:
         logger.info(f"[AGUI Chat] 开始异步流处理 - skill_name: {skill_name}, skill_type: {skill_type}, show_think: {show_think}")
-        chunk_index = 0
+        # F044: 把取模型 / 格式化参数 / 创建 Agent 实例（构造 request/graph）的同步前置工作
+        # 移入生成器内执行，经 sync_to_async 调用，避免在首个 flush 前阻塞请求线程，改善 TTFB。
+        # 仍处于 try 内，任何异常仍以原有 ERROR 事件形状返回，线缆形状不变。
+        chat_kwargs = await sync_to_async(_prepare_agui_chat_kwargs, thread_sensitive=True)(params)
+        graph, request = await sync_to_async(create_agent_instance, thread_sensitive=True)(skill_type, chat_kwargs)
         accumulated_content = []
         state = _init_agui_stream_state()
         enable_thinking_split = _supports_thinking_events(request)
-        execution_id = (request.extra_config or {}).get("execution_id") or request.thread_id
+        execution_id = request.typed_extra_config().execution_id or request.thread_id
 
         async for sse_line in graph.agui_stream(request):
             if execution_id and await is_interrupt_requested_async(execution_id):
@@ -400,14 +452,13 @@ async def _generate_agui_stream(
                     data_json = json.loads(sse_line[6:].strip())
                     output_line, immediate_lines = _handle_agui_data_event(data_json, state, show_think, enable_thinking_split)
                     accumulated_content.append(data_json)
-                except (json.JSONDecodeError, ValueError):
-                    pass
+                except (json.JSONDecodeError, ValueError) as parse_err:
+                    sample = sse_line[6:].strip()[:200]
+                    logger.warning(f"[AGUI Chat] 跳过无法解析的 SSE 行: {parse_err}; 内容样本: {sample!r}")
 
             for line in immediate_lines:
-                chunk_index += 1
                 yield line
 
-            chunk_index += 1
             if output_line:
                 yield output_line
 
@@ -492,21 +543,18 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
     Returns:
         StreamingHttpResponse: AGUI协议格式的流式响应
     """
-    llm_model = LLMModel.objects.get(id=params["llm_model"])
+    # 仅保留构造响应头所需的轻量同步处理（不含 DB / 格式化），其余阻塞型前置工作
+    # 已下沉到生成器内（F044）。
     show_think = params.get("show_think", True)  # 使用 get 而不是 pop，保留值给 format_chat_server_kwargs
     skill_type = params.get("skill_type")
     params.pop("group", 0)
     params["execution_id"] = params.get("execution_id") or params.get("thread_id") or str(int(time.time() * 1000))
 
-    chat_kwargs, doc_map, title_map = chat_service.format_chat_server_kwargs(params, llm_model)
-
     # 用于存储最终统计信息的共享变量
     final_stats = {"content": []}
-    graph, request = create_agent_instance(skill_type, chat_kwargs)
     response = StreamingHttpResponse(
         _generate_agui_stream(
-            graph,
-            request,
+            params,
             skill_name,
             skill_type,
             show_think,

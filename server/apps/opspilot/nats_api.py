@@ -172,18 +172,18 @@ def consume_bot_event(kwargs):
     """
     text = kwargs.get("text", "") or ""
     if not text.strip():
-        return
+        return {"result": True}
     try:
         sender_id = kwargs["sender_id"]
         if not sender_id.strip():
-            return
+            return {"result": True}
         bot_id = int(kwargs.get("bot_id", 7))
         created_at = datetime.datetime.fromtimestamp(kwargs["timestamp"], tz=datetime.timezone.utc)
 
         # 优化 input_channel 获取逻辑
         input_channel = kwargs.get("input_channel")
         if not input_channel:
-            return
+            return {"result": True}
         user, _ = get_user_info(bot_id, input_channel, sender_id)
         bot = Bot.objects.get(id=bot_id)
         citing_knowledge = kwargs.get("citing_knowledge", [])
@@ -201,8 +201,12 @@ def consume_bot_event(kwargs):
             conversation=kwargs["text"] or "",
             citing_knowledge=citing_knowledge,
         )
-    except Exception as e:
+    except (KeyError, ValueError, TypeError, Bot.DoesNotExist, json.JSONDecodeError) as e:
+        # 预期内的数据/解析错误：记录详细堆栈并向 NATS 调用方回传失败结果，
+        # 避免对话历史被静默丢弃。
         logger.exception(f"对话历史保存失败: {e}, 传入参数如下：{kwargs}")
+        return {"result": False, "message": str(e)}
+    return {"result": True}
 
 
 @nats_client.register

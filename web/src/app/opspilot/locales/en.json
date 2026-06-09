@@ -355,6 +355,10 @@
   },
   "knowledge": {
     "goToTesting": "Go to Testing",
+    "taskProgress": {
+      "failed": "Failed",
+      "failedTip": "This task failed. Please retry the operation."
+    },
     "qaPairs": {
       "noFileSelected": "Please select a file to upload",
       "customDesc": "Directly add questions and answers in the interface.",

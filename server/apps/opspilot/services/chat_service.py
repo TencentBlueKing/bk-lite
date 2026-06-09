@@ -23,6 +23,7 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_oracle_runtime_tool,
     build_builtin_redis_runtime_tool,
 )
+from apps.opspilot.services.chat_request import ChatRequest
 from apps.opspilot.services.history_service import history_service
 from apps.opspilot.services.rag_service import rag_service
 from apps.opspilot.utils.agent_factory import create_agent_instance
@@ -63,11 +64,15 @@ class ChatService:
         Returns:
             包含回复内容和引用知识的字典
         """
+        # 将原始 kwargs 一次性解析为类型化的 ChatRequest（容忍未知键），
+        # 避免在方法体内零散地 kwargs[...] / kwargs.get(...) 读取导致 KeyError。
+        request = ChatRequest.from_kwargs(kwargs)
+
         citing_knowledge = []
         data, doc_map, title_map = ChatService.invoke_chat(kwargs)
 
         # 如果启用了知识源引用，构建引用信息
-        if kwargs["enable_rag_knowledge_source"]:
+        if request.enable_rag_knowledge_source:
             citing_knowledge = [
                 {
                     "knowledge_title": doc_map.get(k, {}).get("name"),
@@ -93,9 +98,15 @@ class ChatService:
         Returns:
             处理后的数据、文档映射和标题映射
         """
-        llm_model = LLMModel.objects.get(id=kwargs["llm_model"])
-        show_think = kwargs.pop("show_think", True)
-        skill_type = kwargs.get("skill_type")
+        # 将原始 kwargs 一次性解析为类型化的 ChatRequest（容忍未知键），
+        # 缺失的可选键使用其默认值，缺失的必需键给出清晰错误（仍为 KeyError 子类）。
+        request = ChatRequest.from_kwargs(kwargs)
+
+        llm_model = LLMModel.objects.get(id=request.llm_model)
+        show_think = request.show_think
+        skill_type = request.skill_type
+        # 与历史行为一致：在转发给 format_chat_server_kwargs 之前从原始 dict 中移除这些键。
+        kwargs.pop("show_think", True)
         kwargs.pop("group", 0)
 
         # 处理用户消息和图片

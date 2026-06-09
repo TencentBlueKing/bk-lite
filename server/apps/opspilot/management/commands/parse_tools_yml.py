@@ -4,7 +4,9 @@
 使用 ToolsLoader.get_all_tools_metadata() 动态获取工具元数据，并写入 SkillTools 表
 """
 
-from django.core.management import BaseCommand
+import traceback
+
+from django.core.management import BaseCommand, CommandError
 
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 from apps.opspilot.models import SkillTools
@@ -27,10 +29,10 @@ class Command(BaseCommand):
             self.save_to_database(result)
 
         except Exception as e:
-            self.stdout.write(self.style.ERROR(f"同步失败: {e}"))
-            import traceback
-
-            traceback.print_exc()
+            self.stderr.write(self.style.ERROR(f"同步失败: {e}"))
+            self.stderr.write(traceback.format_exc())
+            # 以非零退出码失败，避免 CI 将失败的工具同步误判为成功
+            raise CommandError(f"同步失败: {e}") from e
 
     @staticmethod
     def convert_to_target_format(tools_metadata: list) -> list:

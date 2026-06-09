@@ -1,11 +1,13 @@
 """Oracle通用工具函数"""
 
 import json
-import re
 
 import oracledb
 from langchain_core.runnables import RunnableConfig
 from loguru import logger
+
+from apps.opspilot.metis.llm.tools.common.sql_guard import run_blocking
+from apps.opspilot.metis.llm.tools.common.sql_guard import validate_sql_safety as _shared_validate_sql_safety
 
 
 def prepare_context(config: RunnableConfig = None) -> dict:
@@ -48,81 +50,33 @@ def execute_readonly_query(conn, query: str, params: tuple = None) -> list:
     Returns:
         list: 查询结果(字典列表)
     """
-    cursor = None
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SET TRANSACTION READ ONLY")
-        if params:
-            cursor.execute(query, params)
-        else:
-            cursor.execute(query)
+    def _run():
+        cursor = None
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SET TRANSACTION READ ONLY")
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
 
-        columns = [col[0] for col in cursor.description]
-        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        return results
-    except oracledb.Error as e:
-        logger.error(f"查询执行失败: {e}")
-        raise
-    finally:
-        if cursor:
-            cursor.close()
+            columns = [col[0] for col in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        except oracledb.Error:
+            # 不记录原始错误详情(可能含连接信息);由上层统一脱敏处理
+            logger.exception("Oracle查询执行失败")
+            raise
+        finally:
+            if cursor:
+                cursor.close()
+
+    # 阻塞 IO 在异步上下文中卸载到线程,避免阻塞事件循环 (F038)
+    return run_blocking(_run)
 
 
 def validate_sql_safety(sql: str) -> tuple[bool, str]:
-    """
-    验证SQL语句的安全性
-
-    Args:
-        sql: 待验证的SQL语句
-
-    Returns:
-        tuple: (是否安全, 错误信息)
-    """
-    sql_lower = sql.lower().strip()
-
-    # 必须以SELECT或WITH开头
-    if not sql_lower.startswith("select") and not sql_lower.startswith("with"):
-        return False, "SQL必须以SELECT或WITH开头"
-
-    # 禁止的关键字列表
-    forbidden_keywords = [
-        # 通用写操作
-        "drop",
-        "alter",
-        "truncate",
-        "create",
-        "grant",
-        "revoke",
-        "insert",
-        "update",
-        "delete",
-        # Oracle特有
-        "merge",
-        "purge",
-        "flashback",
-        "shutdown",
-        "startup",
-        "execute",
-        "dbms_",
-        "utl_",
-        "kill",
-        "lock",
-    ]
-
-    for keyword in forbidden_keywords:
-        pattern = r"\b" + keyword + r"\b"
-        if re.search(pattern, sql_lower):
-            return False, f"SQL包含禁止的关键字: {keyword}"
-
-    # 禁止注释注入
-    if "--" in sql or "/*" in sql:
-        return False, "SQL不允许包含注释符号"
-
-    # 禁止分号分隔的多条语句
-    if sql.count(";") > 1 or (sql.count(";") == 1 and not sql.strip().endswith(";")):
-        return False, "禁止执行多条SQL语句"
-
-    return True, ""
+    """Oracle SQL 安全校验,委托共享护栏 (黑名单 + 单条只读语句白名单)。"""
+    return _shared_validate_sql_safety(sql, "oracle")
 
 
 def format_size(bytes_value) -> str:

@@ -1,11 +1,38 @@
 """MSSQL通用工具函数"""
 
 import json
+import re
 from numbers import Number
 
 import pyodbc
 from langchain_core.runnables import RunnableConfig
 from loguru import logger
+
+from apps.opspilot.metis.llm.tools.common.sql_guard import run_blocking
+
+# 合法的数据库标识符:字母、数字、下划线,长度受限,防止 SQL 注入(如 ']' 逃逸 [] 引用)
+_VALID_DATABASE_IDENTIFIER = re.compile(r"^[A-Za-z0-9_]{1,128}$")
+
+
+def quote_database_identifier(database: str) -> str:
+    """
+    校验并安全引用数据库标识符,用于 ``USE [<database>]`` 语句。
+
+    数据库名通常来自 LLM,直接插值存在注入风险(如 ``]`` 可逃逸方括号引用)。
+    此处对标识符做严格白名单校验,非法时抛出异常而非执行。
+
+    Args:
+        database: 数据库名
+
+    Returns:
+        str: 已用方括号安全包裹的标识符,如 ``[mydb]``
+
+    Raises:
+        ValueError: 数据库名为空或包含非法字符
+    """
+    if not database or not _VALID_DATABASE_IDENTIFIER.match(database):
+        raise ValueError(f"非法的数据库名: {database!r}。仅允许字母、数字和下划线,且长度为1-128。")
+    return f"[{database}]"
 
 UNIT_FIELD_FORMATTERS = {
     "size_bytes": lambda value: format_size(value),
@@ -182,7 +209,7 @@ def get_db_connection(config: RunnableConfig = None, database: str = None, insta
         from apps.opspilot.metis.llm.tools.mssql.connection import get_mssql_connection
         conn = get_mssql_connection(config, instance_name=instance_name, instance_id=instance_id)
         if database:
-            conn.execute(f"USE [{database}]")
+            conn.execute(f"USE {quote_database_identifier(database)}")
         return conn
 
     db_config = prepare_context(config)
@@ -198,7 +225,9 @@ def get_db_connection(config: RunnableConfig = None, database: str = None, insta
             f"SERVER={db_config['host']},{db_config['port']};"
             f"DATABASE={db_config['database']};"
             f"UID={db_config['user']};"
-            f"PWD={db_config['password']}"
+            f"PWD={db_config['password']};"
+            # 连接层声明只读意图,作为只读事务强制的一部分 (F066)
+            f"ApplicationIntent=ReadOnly"
         )
 
         # 对于Driver 18,可能需要额外的TrustServerCertificate设置
@@ -207,8 +236,9 @@ def get_db_connection(config: RunnableConfig = None, database: str = None, insta
 
         conn = pyodbc.connect(conn_str, timeout=10)
         return conn
-    except pyodbc.Error as e:
-        logger.error(f"数据库连接失败: {e}")
+    except pyodbc.Error:
+        # 不记录连接参数/异常详情,避免泄露 host/账号/口令信息 (F077)
+        logger.exception("MSSQL数据库连接失败")
         raise
 
 
@@ -225,37 +255,54 @@ def execute_readonly_query(query: str, params: tuple = None, config: RunnableCon
     Returns:
         list: 查询结果列表
     """
-    conn = None
-    cursor = None
+    def _run():
+        conn = None
+        cursor = None
 
-    try:
-        conn = get_db_connection(config, database=database)
-        cursor = conn.cursor()
+        try:
+            conn = get_db_connection(config, database=database)
 
-        # 执行查询
-        if params:
-            cursor.execute(query, params)
-        else:
-            cursor.execute(query)
+            # 只读事务强制 (F066):与 PostgreSQL 的 ``SET TRANSACTION READ ONLY`` 对齐。
+            # T-SQL 无直接的 "READ ONLY 事务" 语法,这里采用两层措施:
+            #   1) 连接层声明读取意图 ``ApplicationIntent=ReadOnly`` (见 get_db_connection)
+            #   2) 关闭 autocommit,显式开启事务,查询后仅 rollback (绝不 commit),
+            #      确保即便误含写操作也不会被持久化。
+            # 真正的写入拦截仍应由数据库侧只读账号保证 (见 sql_guard 模块说明)。
+            try:
+                conn.autocommit = False
+            except pyodbc.Error:
+                logger.warning("MSSQL关闭autocommit失败,继续依赖只读账号防护")
+            cursor = conn.cursor()
 
-        # 获取列名
-        columns = [column[0] for column in cursor.description]
+            # 执行查询
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
 
-        # 获取结果并转换为字典列表
-        results = []
-        for row in cursor.fetchall():
-            results.append(dict(zip(columns, row)))
+            # 获取列名
+            columns = [column[0] for column in cursor.description]
 
-        return results
+            # 获取结果并转换为字典列表
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-    except pyodbc.Error as e:
-        logger.error(f"查询执行失败: {e}")
-        raise
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        except pyodbc.Error:
+            # 不记录原始错误详情(可能含连接信息);由上层统一脱敏处理
+            logger.exception("MSSQL查询执行失败")
+            raise
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                # 只读语义:回滚而非提交,确保只读事务中不持久化任何变更
+                try:
+                    conn.rollback()
+                except pyodbc.Error:
+                    pass
+                conn.close()
+
+    # 阻塞 IO 在异步上下文中卸载到线程,避免阻塞事件循环 (F038)
+    return run_blocking(_run)
 
 
 def format_size(bytes_value: int) -> str:

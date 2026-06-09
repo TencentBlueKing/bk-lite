@@ -13,12 +13,12 @@
 
 from typing import List, Optional
 
-import tiktoken
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
-from loguru import logger
 from pydantic import BaseModel, Field
 
+from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.chain.token_utils import count_message_tokens
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
 
 
@@ -29,44 +29,6 @@ class CompactionConfig(BaseModel):
     max_token_threshold: int = Field(default=80000, description="触发压缩的 token 阈值")
     keep_recent_messages: int = Field(default=12, description="保留最近的消息数量（确保 tool_call 配对完整）")
     summary_max_tokens: int = Field(default=2000, description="摘要的最大 token 数")
-
-
-def count_message_tokens(messages: List[BaseMessage], model: str = "gpt-4o") -> int:
-    """
-    计算消息列表的总 token 数量
-
-    Args:
-        messages: 消息列表
-        model: 用于选择 tokenizer 的模型名称
-
-    Returns:
-        总 token 数
-    """
-    try:
-        encoding = tiktoken.encoding_for_model(model)
-    except KeyError:
-        encoding = tiktoken.get_encoding("cl100k_base")
-
-    total_tokens = 0
-    for msg in messages:
-        content = getattr(msg, "content", "")
-        if isinstance(content, str):
-            total_tokens += len(encoding.encode(content))
-        elif isinstance(content, list):
-            # 多模态消息（如图片+文字）
-            for part in content:
-                if isinstance(part, dict) and part.get("type") == "text":
-                    total_tokens += len(encoding.encode(part.get("text", "")))
-                elif isinstance(part, str):
-                    total_tokens += len(encoding.encode(part))
-        # tool_calls 的 token 估算
-        tool_calls = getattr(msg, "tool_calls", None)
-        if tool_calls:
-            for tc in tool_calls:
-                total_tokens += len(encoding.encode(str(tc.get("args", {}))))
-                total_tokens += len(encoding.encode(tc.get("name", "")))
-
-    return total_tokens
 
 
 def _find_safe_split_point(messages: List[BaseMessage], keep_recent: int) -> int:
@@ -167,7 +129,7 @@ async def generate_summary(
         response = await llm.ainvoke([HumanMessage(content=summary_prompt)])
         return response.content
     except Exception as e:
-        logger.error(f"Compaction 摘要生成失败: {e}，回退到简单截断")
+        logger.exception(f"Compaction 摘要生成失败: {e}，回退到简单截断")
         # 回退策略：简单截断
         truncated = conversation_text[:4000]
         return f"[对话历史摘要 - 自动截断]\n{truncated}"

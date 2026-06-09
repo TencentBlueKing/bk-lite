@@ -168,7 +168,7 @@ class ChatApplicationViewSet(TeamPermissionMixin, viewsets.ReadOnlyModelViewSet)
         session_id = request.query_params.get("session_id")
 
         if not session_id:
-            return Response({"error": "session_id 参数是必填的"}, status=400)
+            return Response({"result": False, "message": "session_id 参数是必填的"}, status=400)
 
         # 拼接 user_id
         username = request.user.username
@@ -224,19 +224,19 @@ class ChatApplicationViewSet(TeamPermissionMixin, viewsets.ReadOnlyModelViewSet)
         node_id = request.query_params.get("node_id")
 
         if not bot_id:
-            return Response({"error": "bot_id 参数是必填的"}, status=400)
+            return Response({"result": False, "message": "bot_id 参数是必填的"}, status=400)
         if not node_id:
-            return Response({"error": "node_id 参数是必填的"}, status=400)
+            return Response({"result": False, "message": "node_id 参数是必填的"}, status=400)
 
         try:
             # 获取工作流数据
             workflow = BotWorkFlow.objects.filter(bot_id=bot_id).first()
             if not workflow:
-                return Response({"error": "未找到对应的工作流"}, status=404)
+                return Response({"result": False, "message": "未找到对应的工作流"}, status=404)
 
             flow_json = workflow.flow_json
             if not flow_json:
-                return Response({"error": "工作流数据为空"}, status=404)
+                return Response({"result": False, "message": "工作流数据为空"}, status=404)
 
             # 解析节点和边
             nodes = {node["id"]: node for node in flow_json.get("nodes", [])}
@@ -293,7 +293,8 @@ class ChatApplicationViewSet(TeamPermissionMixin, viewsets.ReadOnlyModelViewSet)
             return Response({"guide": llm_skill.guide or ""})
 
         except Exception as e:
-            return Response({"error": f"查询失败: {str(e)}"}, status=500)
+            logger.exception("skill_guide query failed: bot_id=%s, node_id=%s", bot_id, node_id)
+            return Response({"result": False, "message": f"查询失败: {str(e)}"}, status=500)
 
     @action(detail=False, methods=["POST"])
     @HasPermission("bot_list-View")

@@ -7,6 +7,7 @@
 - 禁止控制语句、过滤器、函数调用等危险操作
 """
 
+import threading
 from typing import Any, Dict, List
 
 from apps.core.utils.safe_template import TemplateSecurityError, safe_render
@@ -24,6 +25,11 @@ class VariableManager:
     def __init__(self):
         """初始化变量管理器"""
         self._variables: Dict[str, Any] = {}
+        # 可重入锁：并行分支（ThreadPoolExecutor）共享同一个 VariableManager，
+        # 多线程并发读写 _variables 会相互覆盖（如 last_message / memory_context）。
+        # 使用 RLock 守护所有读写操作，保证字典级原子性，且允许同一线程嵌套调用
+        # （如 resolve_template_dict -> _resolve_value -> resolve_template）。
+        self._lock = threading.RLock()
 
     def set_variable(self, name: str, value: Any) -> None:
         """设置变量
@@ -32,7 +38,8 @@ class VariableManager:
             name: 变量名
             value: 变量值
         """
-        self._variables[name] = value
+        with self._lock:
+            self._variables[name] = value
 
     def get_variable(self, name: str, default: Any = None) -> Any:
         """获取变量值
@@ -44,7 +51,8 @@ class VariableManager:
         Returns:
             变量值，不存在则返回默认值
         """
-        return self._variables.get(name, default)
+        with self._lock:
+            return self._variables.get(name, default)
 
     def delete_variable(self, name: str) -> None:
         """删除变量
@@ -52,7 +60,8 @@ class VariableManager:
         Args:
             name: 变量名
         """
-        self._variables.pop(name, None)
+        with self._lock:
+            self._variables.pop(name, None)
 
     def get_all_variables(self) -> Dict[str, Any]:
         """获取所有变量的副本
@@ -60,7 +69,8 @@ class VariableManager:
         Returns:
             变量字典的副本
         """
-        return self._variables.copy()
+        with self._lock:
+            return self._variables.copy()
 
     def resolve_template(self, template: str) -> str:
         """使用安全模板渲染解析模板字符串
@@ -80,8 +90,12 @@ class VariableManager:
         if not isinstance(template, str):
             return template
 
+        # 在锁内快照变量，渲染在锁外进行，缩短锁持有时间并避免渲染期间阻塞其他分支
+        with self._lock:
+            variables = dict(self._variables)
+
         try:
-            return safe_render(template, self._variables)
+            return safe_render(template, variables)
         except TemplateSecurityError:
             # 安全错误向上抛出，不静默处理
             raise

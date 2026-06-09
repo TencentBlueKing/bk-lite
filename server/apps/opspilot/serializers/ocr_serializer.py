@@ -20,7 +20,20 @@ class OCRProviderSerializer(AuthSerializer, CustomProviderSerializer):
 
     class Meta:
         model = OCRProvider
-        fields = "__all__"
+        fields = [
+            "id",
+            "name",
+            "enabled",
+            "team",
+            "is_build_in",
+            "vendor",
+            "model",
+            # 只读派生字段（保持现有读取输出不变）
+            "permissions",
+            "team_name",
+            "vendor_name",
+            "vendor_type",
+        ]
 
     def create(self, validated_data):
         validated_data["is_build_in"] = False

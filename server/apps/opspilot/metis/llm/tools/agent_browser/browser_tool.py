@@ -15,6 +15,10 @@ from django.core.exceptions import ImproperlyConfigured
 from langchain_core.tools import tool
 from loguru import logger
 
+from apps.opspilot.metis.llm.tools.common.browser_security import (
+    redact_command_args,
+    validate_browser_url,
+)
 from apps.opspilot.utils.execution_interrupt import is_interrupt_requested
 
 _DEFAULT_SCREENSHOT_DIR = Path(__file__).resolve().parents[6] / "tmp" / "agent-browser"
@@ -65,6 +69,48 @@ def _extract_url_candidates(*texts: str) -> list[str]:
                 seen.add(url)
                 results.append(url)
     return results
+
+
+# 会触发实际网络导航、需要 SSRF 校验的 agent-browser 子命令。
+_NAVIGATION_COMMANDS = frozenset({"open", "goto", "navigate"})
+
+
+def _check_url_ssrf(url: str) -> Optional[str]:
+    """对将要导航的 URL 做 SSRF 校验。
+
+    复用与 fetch / browser_use 相同的 ``SSRFValidator``，统一阻断私网 / 链路
+    本地 / 回环 / 云元数据地址以及非 http(s) 协议（含 file://）。
+
+    Returns:
+        校验失败时返回错误消息字符串；通过时返回 None。
+    """
+    try:
+        validate_browser_url(url)
+        return None
+    except ValueError as exc:  # SSRFError 是 ValueError 子类
+        logger.warning(f"agent_browser: URL 未通过 SSRF 校验, url={url!r}, reason={exc}")
+        return f"URL 未通过安全校验: {exc}"
+
+
+def _check_command_args_ssrf(command_args: list[str]) -> Optional[str]:
+    """扫描 CLI 参数中的导航命令并对其目标 URL 做 SSRF 校验。
+
+    例如 ["open", "http://169.254.169.254/..."] 会被阻断。
+
+    Returns:
+        校验失败时返回错误消息；通过 / 无导航命令时返回 None。
+    """
+    if not command_args:
+        return None
+    for idx, arg in enumerate(command_args):
+        if str(arg).lower() in _NAVIGATION_COMMANDS and idx + 1 < len(command_args):
+            target = str(command_args[idx + 1])
+            if target.startswith("-"):
+                continue
+            error = _check_url_ssrf(target)
+            if error:
+                return error
+    return None
 
 
 def _extract_security_interstitial_continue_ref(snapshot_result: Dict[str, Any]) -> str:
@@ -188,7 +234,9 @@ def _should_enable_headed_mode() -> bool:
 
 def _run_agent_browser_command(command: list[str], timeout: int, execution_id: str = "") -> Dict[str, Any]:
     """执行 agent-browser CLI 命令并返回结构化结果。"""
-    logger.info(f"agent_browser: 准备执行 CLI，command={command}, timeout={timeout}s, execution_id={execution_id!r}")
+    # F077: 对 type/fill 等可能携带凭据的取值参数做日志脱敏后再打印
+    safe_command = redact_command_args(command)
+    logger.info(f"agent_browser: 准备执行 CLI，command={safe_command}, timeout={timeout}s, execution_id={execution_id!r}")
     binary = _find_agent_browser_binary()
     if not binary:
         logger.warning("agent_browser: 未找到 agent-browser CLI，无法进入 subprocess 执行阶段")
@@ -205,7 +253,7 @@ def _run_agent_browser_command(command: list[str], timeout: int, execution_id: s
     if _should_enable_headed_mode():
         full_command.append("--headed")
     full_command.extend(command)
-    logger.info(f"agent_browser: 即将执行 subprocess 命令: {' '.join(full_command)}")
+    logger.info(f"agent_browser: 即将执行 subprocess 命令: {' '.join(redact_command_args(full_command))}")
 
     started_at = time.monotonic()
     process = None
@@ -398,6 +446,17 @@ def _run_open_wait_and_snapshot(
             "interstitial_result": None,
         }
 
+    ssrf_error = _check_url_ssrf(url)
+    if ssrf_error:
+        return {
+            "success": False,
+            "error": ssrf_error,
+            "open_result": None,
+            "wait_result": None,
+            "snapshot_result": None,
+            "interstitial_result": None,
+        }
+
     open_result = _run_agent_browser_command(command=[*_build_session_flags(session_name), "open", url], timeout=timeout, execution_id=execution_id)
     if not open_result.get("success"):
         interstitial_result = _run_security_interstitial_recovery(session_name=session_name, timeout=timeout)
@@ -526,7 +585,8 @@ def agent_browser_run(command_args: list[str], timeout: int = 120, config: Optio
     Returns:
         结构化执行结果，包含 success、command、exit_code、stdout、stderr、error。
     """
-    logger.info(f"agent_browser_run: 进入工具执行, command_args={command_args}, timeout={timeout}")
+    # F077: 命令参数可能含凭据，脱敏后再记录日志
+    logger.info(f"agent_browser_run: 进入工具执行, command_args={redact_command_args(command_args)}, timeout={timeout}")
 
     if not command_args:
         logger.warning("agent_browser_run: 参数校验失败，command_args 为空")
@@ -537,6 +597,18 @@ def agent_browser_run(command_args: list[str], timeout: int = 120, config: Optio
             "stdout": "",
             "stderr": "",
             "error": "args 不能为空，至少需要一个 agent-browser CLI 参数。",
+        }
+
+    # F009: 对 open/goto/navigate 等导航命令的目标 URL 做 SSRF 校验
+    ssrf_error = _check_command_args_ssrf(command_args)
+    if ssrf_error:
+        return {
+            "success": False,
+            "command": redact_command_args(command_args),
+            "exit_code": None,
+            "stdout": "",
+            "stderr": "",
+            "error": ssrf_error,
         }
 
     if timeout <= 0:
@@ -652,6 +724,16 @@ def agent_browser_open_and_screenshot(
         return {
             "success": False,
             "error": "url 不能为空。",
+            "open_result": None,
+            "screenshot_result": None,
+            "screenshot_path": None,
+        }
+
+    ssrf_error = _check_url_ssrf(url)
+    if ssrf_error:
+        return {
+            "success": False,
+            "error": ssrf_error,
             "open_result": None,
             "screenshot_result": None,
             "screenshot_path": None,
