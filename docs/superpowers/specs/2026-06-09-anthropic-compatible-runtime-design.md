@@ -1,102 +1,102 @@
-# Anthropic-Compatible Runtime Unification Design
+# Anthropic 兼容运行时统一设计
 
-## Background
+## 背景
 
-OpsPilot currently supports `protocol_type=anthropic` in two different ways:
+当前 OpsPilot 对 `protocol_type=anthropic` 的支持实际上走了两条不同链路：
 
-1. **Connection testing** uses `ModelVendorSyncService.test_anthropic_connection()` and sends a direct HTTP request to `POST /v1/messages`.
-2. **Runtime chat** uses `LLMClientFactory` and routes Anthropically configured models through `ChatAnthropic` or the native `anthropic` SDK path.
+1. **测试连接**：通过 `ModelVendorSyncService.test_anthropic_connection()` 直接向 `POST /v1/messages` 发起 HTTP 请求。
+2. **运行时对话**：通过 `LLMClientFactory` 将 Anthropic 协议模型路由到 `ChatAnthropic` 或原生 `anthropic` SDK。
 
-For the active DeepSeek configuration in production-like data, the same stored credential succeeds through the direct HTTP test path but fails with `401 invalid api key` through the runtime SDK path. The same area also has a second compatibility gap: thinking-mode tool forcing in `node.py` only inspects `llm.extra_body`, while the Anthropic branch currently places DeepSeek thinking configuration in Anthropic-specific fields instead.
+在当前实际使用的 DeepSeek Anthropic 兼容配置上，同一份已落库凭据通过“测试连接”可以成功，但进入真实对话链路后会报 `401 invalid api key`。同一区域还存在第二个兼容性缺口：`node.py` 中 thinking 模式下的工具强制逻辑只检查 `llm.extra_body`，而 Anthropic 分支里的 DeepSeek thinking 配置并不放在这里。
 
-This creates a user-visible inconsistency: **test connection passes, real chat fails**.
+这导致用户侧出现明显不一致：**测试连接通过，但真实对话失败**。
 
-## Problem Statement
+## 问题定义
 
-The current implementation treats all `protocol_type=anthropic` vendors as if they were interchangeable at runtime, but they are not:
+当前实现默认把所有 `protocol_type=anthropic` 的供应商都当成同一类运行时目标，但实际上并不是：
 
-- **Native Anthropic vendors** can use `ChatAnthropic` semantics directly.
-- **Anthropic-compatible vendors** such as DeepSeek expose a compatible messages endpoint but do not necessarily behave correctly through the same SDK path.
+- **原生 Anthropic 供应商** 可以直接使用 `ChatAnthropic` 的语义和调用方式。
+- **Anthropic 兼容供应商**（例如 DeepSeek）虽然暴露了兼容的 messages 接口，但不一定能正确通过同一套 SDK 运行时路径工作。
 
-The codebase currently encodes compatibility through `protocol_type` alone. That is too coarse. The result is split request construction, split error behavior, and runtime-only regressions that the test-connection API cannot catch.
+目前代码仅通过 `protocol_type` 来表达兼容性，这个粒度过粗，结果是请求构造分叉、错误处理分叉，以及只有运行时才会暴露的问题，而测试连接接口无法提前发现。
 
-## Goals
+## 目标
 
-1. Make test connection and runtime invocation use the same Anthropic-compatible request adaptation rules.
-2. Restore DeepSeek Anthropic-compatible chat execution for the current runtime path.
-3. Keep native Anthropic vendors supported without regressing the existing protocol abstraction.
-4. Centralize capability decisions for thinking mode, tool choice, request shaping, and endpoint normalization.
-5. Make future Anthropic-compatible vendors easier to add without repeating vendor-specific fixes in multiple places.
+1. 让测试连接与运行时调用复用同一套 Anthropic 兼容请求适配规则。
+2. 恢复当前 DeepSeek Anthropic 兼容模式下的真实对话能力。
+3. 保留原生 Anthropic 供应商支持，不破坏现有协议抽象。
+4. 集中管理 thinking、tool choice、请求组装、endpoint 规范化等兼容能力判断。
+5. 为后续新增 Anthropic 兼容供应商提供清晰扩展点，避免重复在多个位置打补丁。
 
-## Non-Goals
+## 非目标
 
-1. Reworking the entire OpenAI-compatible runtime path.
-2. Refactoring unrelated tool orchestration logic.
-3. Introducing a universal provider abstraction across every model type in this change.
-4. Solving every future vendor incompatibility in phase one. The first implementation target is DeepSeek under Anthropic-compatible mode.
+1. 不重构整个 OpenAI 兼容运行时链路。
+2. 不改造与本问题无关的工具编排逻辑。
+3. 不在本次变更里引入面向所有模型类型的通用 provider 框架。
+4. 不在第一阶段解决所有未来可能出现的兼容厂商问题，首阶段只覆盖 DeepSeek 的 Anthropic 兼容场景。
 
-## Options Considered
+## 方案选型
 
-### Option 1: Unified Anthropic-compatible adapter layer
+### 方案一：统一 Anthropic 兼容适配层
 
-Introduce a dedicated adapter layer for Anthropic-compatible message requests. Connection testing and runtime chat both depend on the same adapter. Native Anthropic vendors may still use `ChatAnthropic`, but Anthropic-compatible vendors such as DeepSeek use the shared adapter-backed runtime path.
+引入一个专门的 Anthropic 兼容请求适配层，让测试连接和运行时对话都依赖这层。原生 Anthropic 供应商仍可继续走 `ChatAnthropic`，而 DeepSeek 这类 Anthropic 兼容供应商改走共享适配层支撑的运行时路径。
 
-**Pros**
+**优点**
 
-- Fixes the root inconsistency between test and runtime.
-- Creates one place for base URL normalization, headers, thinking compatibility, and error mapping.
-- Gives a safe extension point for future compatible vendors.
+- 能从根上消除“测试通过、运行失败”的链路分叉。
+- `base_url` 规范化、请求头组装、thinking 兼容、错误归一都可以集中处理。
+- 为后续兼容厂商接入提供稳定扩展点。
 
-**Cons**
+**缺点**
 
-- Requires moderate refactoring in the runtime path.
-- Introduces one more internal abstraction.
+- 需要对现有运行时路径做中等规模调整。
+- 会新增一层内部抽象。
 
-### Option 2: Keep `ChatAnthropic`, patch parameters around it
+### 方案二：保留 `ChatAnthropic`，只在外围补参数
 
-Retain the current runtime architecture and add vendor-specific parameter tweaks around `ChatAnthropic`, `anthropic.Anthropic`, and `node.py`.
+保留当前运行时结构，仅围绕 `ChatAnthropic`、`anthropic.Anthropic` 和 `node.py` 增加 DeepSeek 相关参数兼容。
 
-**Pros**
+**优点**
 
-- Smallest code change.
-- Fastest short-term recovery if the incompatibility is narrow.
+- 改动最小。
+- 如果兼容问题非常集中，恢复速度最快。
 
-**Cons**
+**缺点**
 
-- Keeps test and runtime split.
-- Vendor-specific fixes remain scattered.
-- High chance of another regression when SDK versions change again.
+- 测试链路和运行时链路仍然分裂。
+- 厂商特例会继续散落在多个位置。
+- 后续 SDK 升级时很容易再次回归。
 
-### Option 3: Replace Anthropic runtime with custom raw HTTP end-to-end
+### 方案三：Anthropic 运行时全部改为自定义原始 HTTP
 
-Bypass `ChatAnthropic` entirely for all Anthropic protocol traffic and implement runtime requests directly over HTTP.
+完全绕过 `ChatAnthropic`，所有 Anthropic 协议相关调用都通过自定义 HTTP 请求完成。
 
-**Pros**
+**优点**
 
-- Maximum control over payloads and headers.
-- Removes SDK ambiguity.
+- 对请求头、payload、错误处理有最高控制力。
+- 可以彻底规避 SDK 语义差异。
 
-**Cons**
+**缺点**
 
-- Highest implementation cost.
-- Requires rebuilding streaming and tool-calling integration details.
-- Larger regression surface than needed for this issue.
+- 实现成本最高。
+- 需要自行补齐流式、工具调用、消息转换等细节。
+- 相比当前问题的范围，改动面过大。
 
-## Decision
+## 决策
 
-Adopt **Option 1**.
+采用 **方案一**。
 
-Phase one will introduce a **unified Anthropic-compatible adapter** and use it for DeepSeek Anthropic-compatible runtime traffic plus connection testing. Native Anthropic vendors will remain on the native path unless evidence shows they should also move behind the adapter.
+第一阶段引入 **Anthropic 兼容适配层**，并优先用于 DeepSeek Anthropic 兼容模式下的运行时对话与测试连接。原生 Anthropic 供应商暂时保留原生路径，除非后续证据表明也需要统一迁移。
 
-This keeps the scope tight while addressing the architectural cause of the regression.
+这样既能控制改动范围，又能解决当前回归的根因。
 
-## Proposed Design
+## 设计方案
 
-### 1. Runtime capability model
+### 1. 运行时能力模型
 
-Add an internal capability model for Anthropic-family vendors. The capability model is derived from vendor type plus protocol type, not protocol type alone.
+新增一套针对 Anthropic 家族供应商的内部能力模型。能力判断不再只依赖 `protocol_type`，而是基于 `vendor_type + protocol_type` 共同推导。
 
-Initial capabilities:
+首批能力项：
 
 - `use_native_anthropic_sdk`
 - `use_anthropic_compatible_adapter`
@@ -104,178 +104,178 @@ Initial capabilities:
 - `supports_direct_messages_api`
 - `requires_normalized_base_url`
 
-Phase one mapping:
+第一阶段映射规则：
 
-- `vendor_type=anthropic` -> native Anthropic SDK path
-- `vendor_type=deepseek` + `protocol_type=anthropic` -> Anthropic-compatible adapter path
-- other compatible vendors remain unchanged until explicitly added
+- `vendor_type=anthropic` -> 走原生 Anthropic SDK 路径
+- `vendor_type=deepseek` 且 `protocol_type=anthropic` -> 走 Anthropic 兼容适配层路径
+- 其他兼容厂商暂不调整，后续按明确需求扩展
 
-This avoids embedding DeepSeek-specific branching in every runtime call site.
+这样可以避免在多个运行时调用点重复写 DeepSeek 特判。
 
-### 2. Anthropic-compatible adapter
+### 2. Anthropic 兼容适配层
 
-Introduce a dedicated adapter module responsible for:
+引入一个专门模块，负责：
 
-- normalizing the base URL
-- building request headers
-- constructing messages payloads
-- applying thinking-related request options
-- translating API failures into normalized runtime errors
+- 规范化 `base_url`
+- 组装鉴权请求头
+- 构造 messages 请求体
+- 应用 thinking 相关请求参数
+- 将上游 API 错误映射为统一的运行时错误
 
-The adapter is not a global provider framework. It is a focused internal component for Anthropic-compatible request construction.
+这不是一个面向全局的 provider 框架，而是针对 Anthropic 兼容请求构造的聚焦型内部组件。
 
-Core responsibilities:
+核心职责：
 
 1. `normalize_base_url(api_base)`
 2. `build_headers(api_key)`
 3. `build_messages_payload(model, messages, system, temperature, max_tokens, thinking, tools, tool_choice)`
-4. `invoke()` and `ainvoke()` for non-streaming and async runtime usage
-5. optional streaming helper if the existing runtime path requires streamed message handling in the same phase
+4. `invoke()` 与 `ainvoke()`，用于非流式与异步运行时调用
+5. 如当前运行时需要，同阶段补充流式辅助能力
 
-### 3. `ModelVendorSyncService` unification
+### 3. `ModelVendorSyncService` 统一
 
-`test_anthropic_connection()` must stop hand-authoring its own request shape. Instead, it should call the new adapter in a lightweight validation mode using the same normalized URL, headers, and model request path that runtime invocation uses.
+`test_anthropic_connection()` 不应继续手写自己的请求格式，而应改为调用新的适配层，以轻量校验模式复用与运行时一致的 URL 规范化、请求头与请求体构造逻辑。
 
-This guarantees that a passing connection test proves the runtime request shape is valid for the same vendor family.
+这样可以保证：**测试连接成功，就代表同一供应商族在运行时链路上的最小消息请求形态也是成立的。**
 
-Expected behavior:
+期望行为：
 
-- connection test success means the same adapter path can authenticate and send a valid minimal message request
-- connection test failure returns a normalized, user-facing error instead of leaking raw SDK-specific behavior
+- 测试连接成功，意味着同一适配器路径能够认证成功并发送合法的最小消息请求
+- 测试连接失败时，返回统一、可读的用户错误，而不是暴露 SDK 私有异常细节
 
-### 4. `LLMClientFactory` routing changes
+### 4. `LLMClientFactory` 路由调整
 
-`LLMClientFactory` must stop routing all Anthropically configured models through `ChatAnthropic`.
+`LLMClientFactory` 不能再把所有 `protocol_type=anthropic` 的模型都统一交给 `ChatAnthropic`。
 
-New routing rules:
+新的路由规则：
 
-1. `protocol_type != anthropic` -> existing OpenAI-compatible path unchanged
-2. native Anthropic vendor -> existing `ChatAnthropic` / native Anthropic path
-3. Anthropic-compatible vendor -> adapter-backed runtime client
+1. `protocol_type != anthropic` -> 维持现有 OpenAI 兼容路径
+2. 原生 Anthropic 供应商 -> 维持 `ChatAnthropic` / 原生 Anthropic 路径
+3. Anthropic 兼容供应商 -> 走适配层支撑的运行时客户端
 
-The adapter-backed runtime client can be a thin class that exposes the minimum interface required by the current graph/runtime integration. The class should focus on compatibility with the existing chat execution flow rather than broad reuse.
+适配层支撑的运行时客户端可以是一个很薄的包装类，只暴露当前 graph/runtime 真正需要的最小接口，不做过度抽象。它的目标是兼容当前对话执行流程，而不是变成一个通用框架。
 
-### 5. Thinking-mode and tool-choice compatibility
+### 5. Thinking 模式与 tool choice 兼容
 
-`node.py` currently converts forced `tool_choice=any|required` to `auto` only by checking `llm.extra_body`. That is correct for current OpenAI-compatible DeepSeek/Qwen handling, but it misses Anthropic-compatible clients.
+`node.py` 当前只通过 `llm.extra_body` 判断是否需要把 `tool_choice=any|required` 降级成 `auto`。这对现有 OpenAI 兼容 DeepSeek/Qwen 逻辑成立，但对 Anthropic 兼容客户端无效。
 
-Update the logic to consult the runtime capability model instead of only `llm.extra_body`.
+这里需要改为读取运行时能力模型，而不是只看 `llm.extra_body`。
 
-Required result:
+期望结果：
 
-- if the active runtime client reports `thinking_requires_auto_tool_choice=True`, forced tool choice is downgraded to `auto`
-- this works regardless of whether the underlying client is `ChatOpenAI`, `ChatAnthropic`, or the new adapter-backed client
+- 当当前运行时客户端声明 `thinking_requires_auto_tool_choice=True` 时，强制工具选择自动降级为 `auto`
+- 无论底层客户端是 `ChatOpenAI`、`ChatAnthropic`，还是新的适配层客户端，逻辑都能成立
 
-This keeps provider compatibility logic out of response-body internals.
+这样可以把 provider 兼容判断从响应体私有结构中抽出来。
 
-### 6. Error normalization
+### 6. 错误归一
 
-Anthropic-family runtime failures should be normalized into a small set of internal categories:
+Anthropic 系列运行时错误需要统一归类为少量内部错误类型：
 
-- authentication failure
-- endpoint configuration failure
-- invalid request / incompatible payload
-- upstream service error
+- 鉴权失败
+- endpoint 配置错误
+- 请求参数不兼容 / 非法请求
+- 上游服务异常
 
-Logging should still preserve detailed upstream context, including:
+日志仍需保留足够上下文，包括：
 
 - vendor type
 - protocol type
-- normalized base URL
-- runtime path selected
+- 规范化后的 base URL
+- 实际选中的运行时路径
 - capability flags
 
-User-facing error messages should remain concise and actionable.
+用户侧错误消息保持简洁且可执行。
 
-## Data Flow
+## 数据流
 
-### Connection test flow
+### 测试连接链路
 
-1. Viewset validates payload and resolves stored or submitted API key.
-2. Service resolves vendor capability profile.
-3. Anthropic-compatible adapter builds normalized request.
-4. Minimal messages request is sent through the same path runtime would use.
-5. Result is mapped to normalized success or error.
+1. Viewset 校验请求参数，并解析提交的 API Key 或已保存的 API Key。
+2. Service 计算供应商能力画像。
+3. Anthropic 兼容适配层构造规范化请求。
+4. 通过与运行时一致的路径发送最小 messages 请求。
+5. 将结果映射为统一的成功或失败结果。
 
-### Runtime chat flow
+### 运行时对话链路
 
-1. `ChatService` builds the graph request from the selected `LLMModel`.
-2. `LLMClientFactory` resolves capability profile from model vendor.
-3. Runtime path is chosen:
-   - native Anthropic path for real Anthropic vendors
-   - adapter-backed path for DeepSeek Anthropic-compatible vendors
-4. `node.py` applies tool-choice compatibility using capability flags.
-5. Message invocation uses the same normalized request construction rules as the connection test flow.
+1. `ChatService` 根据选中的 `LLMModel` 构造 graph request。
+2. `LLMClientFactory` 根据模型供应商解析能力画像。
+3. 选择运行时路径：
+   - 原生 Anthropic 供应商走原生路径
+   - DeepSeek Anthropic 兼容供应商走适配层路径
+4. `node.py` 基于能力标记应用 tool choice 兼容逻辑。
+5. 实际消息调用与测试连接链路共用同一套规范化请求构造规则。
 
-## Testing Strategy
+## 测试策略
 
-This change should be implemented with TDD.
+本次变更必须使用 TDD 实施。
 
-The first failing tests should cover the regression boundary, not just helper methods.
+第一批 failing tests 应直接覆盖回归边界，而不是只验证零散 helper。
 
-### Required test cases
+### 必须覆盖的测试场景
 
-1. **Connection test and runtime share the same adapter path**
-   - prove that DeepSeek Anthropic-compatible connection testing no longer uses a separate handwritten HTTP shape
+1. **测试连接与运行时共用同一适配层**
+   - 证明 DeepSeek Anthropic 兼容模式下，测试连接不再走一套单独手写的 HTTP 请求形态
 
-2. **DeepSeek Anthropic-compatible runtime avoids `ChatAnthropic`**
-   - prove that `LLMClientFactory` routes DeepSeek Anthropic-compatible models to the adapter-backed client
+2. **DeepSeek Anthropic 兼容运行时不再使用 `ChatAnthropic`**
+   - 证明 `LLMClientFactory` 会把 DeepSeek Anthropic 兼容模型路由到适配层客户端
 
-3. **Native Anthropic vendors still use the native path**
-   - protect existing Anthropic behavior from regression
+3. **原生 Anthropic 供应商仍走原生路径**
+   - 防止修复 DeepSeek 时误伤已有 Anthropic 能力
 
-4. **Thinking mode downgrades forced tool choice through capability flags**
-   - prove that `tool_choice=any` becomes `auto` for adapter-backed thinking clients
+4. **Thinking 模式下强制 tool choice 会按能力标记降级**
+   - 证明适配层客户端在 thinking 模式下会把 `tool_choice=any` 转成兼容值 `auto`
 
-5. **Authentication failures are normalized**
-   - prove that the runtime path returns normalized authentication errors instead of raw client-specific exceptions
+5. **鉴权失败会被统一映射**
+   - 证明运行时返回的是统一的鉴权错误，而不是裸露的 client / SDK 异常
 
-6. **Minimal live request construction is consistent**
-   - unit-test normalized URL, headers, and payload shape for DeepSeek Anthropic-compatible vendors
+6. **最小请求构造一致**
+   - 单测验证 DeepSeek Anthropic 兼容模式下的 URL、headers、payload 规范化结果
 
-### Test location
+### 测试文件位置
 
-Extend existing Anthropic protocol coverage in:
+优先扩展已有 Anthropic 协议测试文件：
 
 - `server/apps/opspilot/tests/react_agent/cases/test_anthropic_protocol.py`
 
-Add focused tests near runtime/node behavior only if the existing file becomes overloaded. Do not spread the regression across unrelated suites unless a specific call site requires it.
+如果 runtime/node 相关测试继续堆叠会让该文件明显失焦，再按实际需要拆分，但不要为了“整洁”把本次回归拆散到很多无关测试集中。
 
-## Rollout Plan
+## 推进计划
 
-### Phase 1
+### 第一阶段
 
-- Introduce capability model
-- Introduce Anthropic-compatible adapter
-- Route DeepSeek Anthropic-compatible runtime and connection testing through the adapter
-- Update tool-choice compatibility logic to use capabilities
-- Add regression tests
+- 引入能力模型
+- 引入 Anthropic 兼容适配层
+- 将 DeepSeek Anthropic 兼容的运行时对话与测试连接切到适配层
+- 将 tool choice 兼容逻辑改为读取能力标记
+- 补齐回归测试
 
-### Phase 2
+### 第二阶段
 
-- Evaluate whether other Anthropic-compatible vendors should also move behind the adapter
-- Expand capability mapping only with proven runtime requirements
+- 评估其他 Anthropic 兼容供应商是否也需要迁移到适配层
+- 仅在有明确运行时证据时继续扩展能力映射
 
-## Risks and Mitigations
+## 风险与缓解
 
-### Risk: adapter-backed runtime does not match the interface expected by the graph layer
+### 风险一：适配层客户端与 graph 层期望接口不一致
 
-**Mitigation:** keep the adapter-backed client narrow and shaped around the specific methods currently used by the graph execution path.
+**缓解措施：** 让适配层客户端保持最小接口面，只围绕当前 graph 执行路径真实使用的方法实现。
 
-### Risk: native Anthropic behavior regresses while fixing DeepSeek
+### 风险二：修复 DeepSeek 时影响原生 Anthropic
 
-**Mitigation:** retain native Anthropic routing and add explicit tests proving it remains on the native path.
+**缓解措施：** 保留原生 Anthropic 路由，并增加显式测试确保其继续走原生路径。
 
-### Risk: another split path remains hidden
+### 风险三：系统里仍残留其他隐性分叉链路
 
-**Mitigation:** make connection testing and runtime invocation depend on the same request-construction component, and add tests that assert the routing behavior.
+**缓解措施：** 让测试连接与运行时调用共同依赖同一个请求构造组件，并通过测试断言路由行为。
 
-## Success Criteria
+## 成功标准
 
-This design is successful when all of the following are true:
+当以下条件全部满足时，说明本设计达成目标：
 
-1. A DeepSeek Anthropic-compatible vendor that passes connection testing can also execute runtime chat through the same stored credentials.
-2. The runtime path no longer depends on `ChatAnthropic` for DeepSeek Anthropic-compatible vendors.
-3. Thinking-mode tool forcing no longer causes compatibility failures for the Anthropic-compatible DeepSeek path.
-4. Native Anthropic vendors remain supported.
-5. Regression tests cover both routing and request normalization behavior.
+1. DeepSeek Anthropic 兼容供应商在测试连接通过后，可以用同一份已保存凭据完成真实对话。
+2. DeepSeek Anthropic 兼容运行时不再依赖 `ChatAnthropic`。
+3. Anthropic 兼容 DeepSeek 路径在 thinking 模式下不会再因为 tool choice 强制策略导致兼容错误。
+4. 原生 Anthropic 供应商能力保持可用。
+5. 回归测试覆盖路由决策与请求规范化行为。
