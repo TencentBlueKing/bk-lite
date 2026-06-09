@@ -1,3 +1,5 @@
+import json
+
 from apps.cmdb.constants.constants import (
     ENUM_SELECT_MODE_DEFAULT,
     INSTANCE,
@@ -18,7 +20,15 @@ from apps.cmdb.display_field.constants import (
 )
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.graph.format_type import ParameterCollector
-from apps.cmdb.models.change_record import CREATE_INST, CREATE_INST_ASST, DELETE_INST, DELETE_INST_ASST, UPDATE_INST
+from apps.cmdb.models.change_record import (
+    CREATE_INST,
+    CREATE_INST_ASST,
+    CUSTOM_REPORTING_CHANGE,
+    DELETE_INST,
+    DELETE_INST_ASST,
+    RELATION_CHANGE,
+    UPDATE_INST,
+)
 from apps.cmdb.models.show_field import ShowField
 from apps.cmdb.permissions.instance_permission import PermissionManage
 from apps.cmdb.services.model import ModelManage
@@ -502,7 +512,14 @@ class InstanceManage(object):
         return inst_list, count
 
     @staticmethod
-    def instance_create(model_id: str, instance_info: dict, operator: str, allowed_org_ids: list | None = None):
+    def instance_create(
+        model_id: str,
+        instance_info: dict,
+        operator: str,
+        allowed_org_ids: list | None = None,
+        scenario: str = ORDINARY_ATTRIBUTE_CHANGE,
+        record_change: bool = True,
+    ):
         """创建实例"""
         instance_info.update(model_id=model_id)
         attrs = ModelManage.search_model_attr(model_id)
@@ -524,16 +541,18 @@ class InstanceManage(object):
             exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
             result = ag.create_entity(INSTANCE, instance_info, check_attr_map, exist_items, operator, attrs)
 
-        create_change_record(
-            result["_id"],
-            result["model_id"],
-            INSTANCE,
-            CREATE_INST,
-            after_data=result,
-            operator=operator,
-            model_object=OPERATOR_INSTANCE,
-            message=f"创建模型实例. 模型:{result['model_id']} 实例:{result.get('inst_name') or result.get('ip_addr', '')}",
-        )
+        if record_change:
+            create_change_record(
+                result["_id"],
+                result["model_id"],
+                INSTANCE,
+                CREATE_INST,
+                after_data=result,
+                operator=operator,
+                model_object=OPERATOR_INSTANCE,
+                message=f"创建模型实例. 模型:{result['model_id']} 实例:{result.get('inst_name') or result.get('ip_addr', '')}",
+                scenario=scenario,
+            )
 
         from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
@@ -549,6 +568,8 @@ class InstanceManage(object):
         operator: str,
         allowed_org_ids: list | None = None,
         scenario: str = ORDINARY_ATTRIBUTE_CHANGE,
+        skip_permission_check: bool = False,
+        record_change: bool = True,
     ):
         """修改实例属性"""
         inst_info = InstanceManage.query_entity_by_id(inst_id)
@@ -558,12 +579,13 @@ class InstanceManage(object):
 
         model_info = ModelManage.search_model_info(inst_info["model_id"])
 
-        InstanceManage.check_instances_permission(
-            [inst_info],
-            inst_info["model_id"],
-            user_groups=user_groups,
-            roles=roles,
-        )
+        if not skip_permission_check:
+            InstanceManage.check_instances_permission(
+                [inst_info],
+                inst_info["model_id"],
+                user_groups=user_groups,
+                roles=roles,
+            )
 
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
         update_attr = apply_tag_validation_for_instance(update_attr, attrs, inst_info["model_id"])
@@ -592,18 +614,19 @@ class InstanceManage(object):
                 attrs=attrs,
             )
 
-        create_change_record(
-            inst_info["_id"],
-            inst_info["model_id"],
-            INSTANCE,
-            UPDATE_INST,
-            before_data=inst_info,
-            after_data=result[0],
-            operator=operator,
-            model_object=OPERATOR_INSTANCE,
-            message=f"修改模型实例属性. 模型:{model_info['model_name']} 实例:{result[0]['inst_name']}",
-            scenario=scenario,
-        )
+        if record_change:
+            create_change_record(
+                inst_info["_id"],
+                inst_info["model_id"],
+                INSTANCE,
+                UPDATE_INST,
+                before_data=inst_info,
+                after_data=result[0],
+                operator=operator,
+                model_object=OPERATOR_INSTANCE,
+                message=f"修改模型实例属性. 模型:{model_info['model_name']} 实例:{result[0]['inst_name']}",
+                scenario=scenario,
+            )
 
         from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
@@ -926,7 +949,7 @@ class InstanceManage(object):
             raise BaseAppException("association mapping error! mapping={}".format(asso_info["mapping"]))
 
     @staticmethod
-    def instance_association_create(data: dict, operator: str):
+    def instance_association_create(data: dict, operator: str, scenario: str = RELATION_CHANGE):
         """创建实例关联"""
 
         # 校验关联约束
@@ -959,9 +982,24 @@ class InstanceManage(object):
             asso_info,
             message=message,
             operator=operator,
+            scenario=scenario,
         )
 
         return edge
+
+    @staticmethod
+    def instance_association_exists(*, src_inst_id: int, dst_inst_id: int, model_asst_id: str) -> bool:
+        with GraphClient() as ag:
+            return bool(
+                ag.query_edge(
+                    INSTANCE_ASSOCIATION,
+                    [
+                        {"field": "src_inst_id", "type": "int=", "value": src_inst_id},
+                        {"field": "dst_inst_id", "type": "int=", "value": dst_inst_id},
+                        {"field": "model_asst_id", "type": "str=", "value": model_asst_id},
+                    ],
+                )
+            )
 
     @staticmethod
     def instance_association_delete(asso_id: int, operator: str):
@@ -1006,6 +1044,51 @@ class InstanceManage(object):
         with GraphClient() as ag:
             entity_list = ag.query_entity_by_ids(inst_ids)
         return entity_list
+
+    @staticmethod
+    def query_entity_by_identity(model_id: str, identity: dict) -> dict:
+        if not identity:
+            return {}
+
+        params = [{"field": "model_id", "type": "str=", "value": model_id}]
+        for field, value in (identity or {}).items():
+            if isinstance(value, bool):
+                value = str(value).lower()
+                field_type = "str="
+            elif isinstance(value, int):
+                field_type = "int="
+            else:
+                field_type = "str="
+            params.append({"field": field, "type": field_type, "value": value})
+
+        with GraphClient() as ag:
+            inst_list, _ = ag.query_entity(INSTANCE, params)
+        if len(inst_list) > 1:
+            raise BaseAppException("identity 查询结果不唯一")
+        return inst_list[0] if inst_list else {}
+
+    @staticmethod
+    def merge_custom_reporting_instances(
+        *,
+        model_id: str,
+        instances: list[dict],
+        relations: list[dict],
+        identity_keys: list[str],
+        operator: str,
+        allowed_org_ids: list | None = None,
+    ) -> dict:
+        from apps.cmdb.enterprise.services.custom_reporting_merge_service import (
+            CustomReportingMergeService,
+        )
+
+        return CustomReportingMergeService.merge_instances(
+            model_id=model_id,
+            instances=instances,
+            relations=relations,
+            identity_keys=identity_keys,
+            operator=operator,
+            allowed_org_ids=allowed_org_ids,
+        )
 
     @staticmethod
     def download_import_template(model_id: str):
