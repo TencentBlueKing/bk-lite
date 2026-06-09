@@ -950,6 +950,93 @@
   font-variant-numeric: tabular-nums;
 }
 
+// Top-N 强调行:前几名放大(更大字号 / 更高条 / 更大缩略图),拉开与其余名次的视觉层级。
+.barRowEmphasis {
+  .barLabel {
+    font-size: 16px;
+    color: #22324a;
+  }
+
+  .barValue {
+    font-size: 22px;
+  }
+
+  .barTrack {
+    height: 14px;
+  }
+
+  .barSpark {
+    height: 36px;
+  }
+}
+
+/* 分档榜单尾部(rank ≥4):缩小变淡,退为背景,让重点自然浮现。 */
+.barRowMuted {
+  opacity: 0.7;
+
+  .barLabel {
+    font-size: 13px;
+    font-weight: 600;
+    color: #8c95a8;
+  }
+
+  .barValue {
+    font-size: 14px;
+    font-weight: 700;
+    color: #6b7688;
+  }
+
+  .barTrack {
+    height: 7px;
+  }
+}
+
+/* ── GroupedBarPanel:大卡内多列排行,每列加浅色子面板分隔,避免多列糊在一起 ───── */
+.groupedColumns {
+  display: grid;
+  gap: 16px;
+  flex: 1;
+}
+
+.groupedColumn {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px 8px;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  border-radius: 10px;
+}
+
+.groupedColumnTitle {
+  margin-bottom: 6px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.groupedColumnLabel {
+  font-size: 14px;
+  font-weight: 700;
+  color: #22324a;
+}
+
+// 大卡内的列:榜单顶对齐、紧贴列头,去掉 barsFull 居中拉高造成的列头下大片留白。
+.groupedColumn .barsFull {
+  flex: 0 0 auto;
+  justify-content: flex-start;
+  padding: 4px 0 0;
+}
+
+:global(html.dark) .groupedColumn {
+  background: #162334;
+  border-color: #2b3a4f;
+}
+
+:global(html.dark) .groupedColumnLabel {
+  color: #e6edf6;
+}
+
 /* ── Status board (boolean/flag signals: dot + state badge) ───── */
 .statusList {
   display: flex;
@@ -1239,7 +1326,8 @@
 .span8,
 .span6,
 .span4,
-.span3 {
+.span3,
+.span2 {
   min-width: 0;
 }
 
@@ -1263,6 +1351,10 @@
   grid-column: span 3;
 }
 
+.span2 {
+  grid-column: span 2;
+}
+
 .detailGridBalanced {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 420px));
@@ -1281,7 +1373,8 @@
   .span8,
   .span6,
   .span4,
-  .span3 {
+  .span3,
+  .span2 {
     grid-column: span 12;
   }
 

@@ -16,11 +16,25 @@ export type { RingChartPanelProps, RingChartPanelStyles, RingChartDataItem, Ring
 export { InlineRingChart } from './inline-ring-chart';
 export type { InlineRingChartProps } from './inline-ring-chart';
 
-export { HorizontalBarPanel } from './horizontal-bar-panel';
-export type { HorizontalBarPanelProps, HorizontalBarPanelStyles, BarItem } from './horizontal-bar-panel';
+export { HorizontalBarPanel, BarList } from './horizontal-bar-panel';
+export type { HorizontalBarPanelProps, HorizontalBarPanelStyles, BarItem, BarListProps } from './horizontal-bar-panel';
+export { GroupedBarPanel } from './grouped-bar-panel';
+export type { GroupedBarPanelProps, GroupedBarPanelStyles, GroupedBarColumn } from './grouped-bar-panel';
 
 export { StatusListPanel } from './status-list-panel';
 export type { StatusListPanelProps, StatusListPanelStyles, StatusItem, StatusTone } from './status-list-panel';
+
+export { StatusGridPanel } from './status-grid-panel';
+export type { StatusGridPanelProps, StatusGridPanelStyles, StatusGridItem } from './status-grid-panel';
+
+export { AttentionListPanel } from './attention-list-panel';
+export type { AttentionListPanelProps, AttentionListPanelStyles, AttentionItem } from './attention-list-panel';
+
+export { StackedBarPanel } from './stacked-bar-panel';
+export type { StackedBarPanelProps, StackedBarPanelStyles, StackedBarRow } from './stacked-bar-panel';
+
+export { TreemapPanel } from './treemap-panel';
+export type { TreemapPanelProps, TreemapPanelStyles, TreemapDatum } from './treemap-panel';
 
 export { TrendChartPanel } from './trend-chart-panel';
 export type { TrendChartPanelProps, TrendChartPanelStyles } from './trend-chart-panel';

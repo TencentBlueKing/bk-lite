@@ -159,7 +159,7 @@ export const RingChartPanel = ({
                   name: item.name,
                   color: item.color,
                   primary: `${total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0'}%`,
-                  secondary: `(${item.display || (item.value >= 100 ? item.value.toFixed(0) : item.value.toFixed(1))})`
+                  secondary: `(${item.display || (Number.isInteger(item.value) || item.value >= 100 ? item.value.toFixed(0) : item.value.toFixed(1))})`
                 }))).map((item) => (
                   <div className={`${styles.metricRow} ${styles.metricRowPercentOnly}`} key={item.name}>
                     <span className={styles.metricKey}>
