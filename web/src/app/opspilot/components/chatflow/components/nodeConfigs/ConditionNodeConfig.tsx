@@ -8,7 +8,7 @@ export const ConditionNodeConfig: React.FC<ConditionNodeConfigProps> = ({
   t,
   nodes,
 }) => {
-  const triggerNodes = nodes.filter((n) => ['celery', 'restful', 'openai'].includes(n.data?.type || ''));
+  const triggerNodes = nodes.filter((n) => ['celery', 'nats', 'restful', 'openai'].includes(n.data?.type || ''));
 
   return (
     <div className="mb-4">

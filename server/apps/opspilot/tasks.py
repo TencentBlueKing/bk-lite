@@ -1,5 +1,7 @@
 import concurrent.futures
+import json
 import os
+import re
 import tempfile
 import time
 
@@ -7,10 +9,13 @@ from celery import shared_task
 from django.core.exceptions import SynchronousOnlyOperation
 from django.db import close_old_connections, transaction
 from django.utils import timezone
+from langchain_core.messages import HumanMessage, SystemMessage
 from tqdm import tqdm
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.enum import DocumentStatus
+from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
+from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
 from apps.opspilot.metis.llm.rag.naive_rag_entity import DocumentMetadataUpdateRequest
 from apps.opspilot.models import (
@@ -23,6 +28,9 @@ from apps.opspilot.models import (
     KnowledgeTask,
     LLMModel,
     ManualKnowledge,
+    Memory,
+    MemorySpace,
+    MemoryWriteCache,
     QAPairs,
     WebPageKnowledge,
 )
@@ -30,6 +38,7 @@ from apps.opspilot.services.knowledge_search_service import KnowledgeSearchServi
 from apps.opspilot.services.memory_write_buffer_service import (
     build_batch_content,
     build_memory_target_id,
+    extract_memory_write_node_configs,
     normalize_write_batch_size,
     resolve_memory_target,
 )
@@ -67,9 +76,6 @@ def _run_in_native_thread(func, *args, **kwargs):
 
 
 def _build_memory_write_client(effective_model_id):
-    from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
-    from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
-
     if not effective_model_id:
         return None
 
@@ -96,8 +102,6 @@ def _build_memory_write_client(effective_model_id):
 
 
 def _summarize_memory_batch_content(memory_space, batch_content: str, model_id=None) -> str:
-    from langchain_core.messages import HumanMessage, SystemMessage
-
     effective_model_id = model_id if model_id else memory_space.default_model
     client = _build_memory_write_client(effective_model_id)
     if not client:
@@ -143,8 +147,6 @@ def _flush_memory_write_cache_group(
     batch_size: int = None,
     force_flush: bool = False,
 ):
-    from apps.opspilot.models.memory_mgmt import MemorySpace, MemoryWriteCache
-
     cache_item_ids = []
     normalized_batch_size = normalize_write_batch_size(batch_size)
 
@@ -1207,8 +1209,6 @@ def process_memory_write_cache(
     node_id: str = "",
     write_batch_size: int = None,
 ):
-    from apps.opspilot.models.memory_mgmt import MemoryWriteCache
-
     if not content:
         return
 
@@ -1289,8 +1289,6 @@ def flush_memory_write_cache_for_node(
     title: str = "",
     model_id: int = None,
 ):
-    from apps.opspilot.models.memory_mgmt import MemoryWriteCache
-
     close_old_connections()
     target_ids = list(
         MemoryWriteCache.objects.filter(
@@ -1317,35 +1315,34 @@ def flush_memory_write_cache_for_node(
 
 @shared_task
 def flush_all_pending_memory_write_cache():
-    from apps.opspilot.models import BotWorkFlow
-    from apps.opspilot.models.memory_mgmt import MemoryWriteCache
-    from apps.opspilot.services.memory_write_buffer_service import extract_memory_write_node_configs
-
     close_old_connections()
-    workflow_ids = list(MemoryWriteCache.objects.values_list("workflow_id", flat=True).distinct())
-    for workflow_id in workflow_ids:
-        workflow = BotWorkFlow.objects.filter(id=workflow_id).first()
+    pending_pairs = list(MemoryWriteCache.objects.filter(status=MemoryWriteCache.STATUS_PENDING).values("workflow_id", "node_id").distinct())
+    if not pending_pairs:
+        return
+
+    workflow_ids = {item["workflow_id"] for item in pending_pairs}
+    workflow_map = BotWorkFlow.objects.filter(id__in=workflow_ids).in_bulk()
+    node_configs_by_workflow = {}
+
+    for pending_pair in pending_pairs:
+        workflow_id = pending_pair["workflow_id"]
+        workflow = workflow_map.get(workflow_id)
         if not workflow:
             continue
 
-        node_configs = extract_memory_write_node_configs(workflow.flow_json)
-        pending_node_ids = list(
-            MemoryWriteCache.objects.filter(workflow_id=workflow_id, status=MemoryWriteCache.STATUS_PENDING)
-            .values_list("node_id", flat=True)
-            .distinct()
+        node_configs = node_configs_by_workflow.setdefault(workflow_id, extract_memory_write_node_configs(workflow.flow_json))
+        node_id = pending_pair["node_id"]
+        config = node_configs.get(node_id) or {}
+        memory_space_id = config.get("memorySpace") or config.get("memory_space_id")
+        if not memory_space_id:
+            continue
+        flush_memory_write_cache_for_node(
+            workflow_id=workflow_id,
+            node_id=node_id,
+            memory_space_id=memory_space_id,
+            title=config.get("title", "") or f"自动记忆-{node_id}",
+            model_id=config.get("llmModel"),
         )
-        for node_id in pending_node_ids:
-            config = node_configs.get(node_id) or {}
-            memory_space_id = config.get("memorySpace") or config.get("memory_space_id")
-            if not memory_space_id:
-                continue
-            flush_memory_write_cache_for_node(
-                workflow_id=workflow_id,
-                node_id=node_id,
-                memory_space_id=memory_space_id,
-                title=config.get("title", "") or f"自动记忆-{node_id}",
-                model_id=config.get("llmModel"),
-            )
 
 
 @shared_task
@@ -1370,13 +1367,6 @@ def process_memory_write(
         model_id: 可选，用于覆盖记忆空间的默认模型（workflow 节点级别配置）
         skip_write_rule: 为 True 时跳过 write_rule 规范化，用于批量归纳后的单次写入
     """
-    import json
-    import re
-
-    from langchain_core.messages import HumanMessage, SystemMessage
-
-    from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
-
     is_org_memory = organization_id is not None
     try:
         close_old_connections()

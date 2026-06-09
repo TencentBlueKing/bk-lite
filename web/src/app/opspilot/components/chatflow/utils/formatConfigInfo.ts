@@ -64,6 +64,9 @@ export const formatConfigInfo = (data: ChatflowNodeData, t: any) => {
     case 'openai':
       return t('chatflow.apiInterface');
 
+    case 'nats':
+      return t('chatflow.nats');
+
     case 'notification': {
       const notificationConfig = config as NotificationNodeConfig;
       if (notificationConfig.notificationType && notificationConfig.notificationMethod && notificationConfig.notificationChannels) {

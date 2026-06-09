@@ -1,10 +1,11 @@
-import json
+﻿import json
 import logging
 import os
 from copy import deepcopy
 
 from django.core.management import BaseCommand
 
+from apps.system_mgmt.management.commands._install_apps import get_install_apps
 from apps.system_mgmt.models import App, Group, Menu, Role
 
 logger = logging.getLogger(__name__)
@@ -14,6 +15,9 @@ class Command(BaseCommand):
     help = "初始化Realm资源数据"
 
     def handle(self, *args, **options):
+        # Resolve install_apps before the file-read loop so EnterpriseFootprintError
+        # propagates immediately instead of being swallowed by the per-file try/except.
+        install_apps = get_install_apps()
         menu_dir = "support-files/system_mgmt/menus"
         MENUS = []
         for root, dirs, files in os.walk(menu_dir):
@@ -23,7 +27,7 @@ class Command(BaseCommand):
                     try:
                         with open(file_path, "r", encoding="utf-8") as f:
                             menu_data = json.load(f)
-                            menu_data = extend_menus_by_install_apps(menu_data, get_install_apps())
+                            menu_data = extend_menus_by_install_apps(menu_data, install_apps)
                             MENUS.append(menu_data)
                     except Exception as e:
                         logger.error(f"Error reading {file_path}: {e}")
@@ -50,17 +54,6 @@ class Command(BaseCommand):
         Group.objects.get_or_create(name="Guest", parent_id=0, defaults={"description": "Guest group"})
 
 
-def get_install_apps() -> set[str]:
-    apps = {item.strip() for item in os.getenv("INSTALL_APPS", "").split(",") if item.strip()}
-    # 企业版：如果 apps/license_mgmt 目录存在，强制加入
-    from django.conf import settings
-
-    license_mgmt_path = os.path.join(settings.BASE_DIR, "apps", "license_mgmt")
-    if os.path.isdir(license_mgmt_path):
-        apps.add("license_mgmt")
-    return apps
-
-
 def extend_menus_by_install_apps(menu_data: dict, install_apps: set[str]) -> dict:
     result = deepcopy(menu_data)
     if result.get("client_id") != "system-manager" or "license_mgmt" not in install_apps:
@@ -72,7 +65,7 @@ def extend_menus_by_install_apps(menu_data: dict, install_apps: set[str]) -> dic
     setting_children = setting_menu.setdefault("children", [])
     if any(child.get("id") == "license_mgmt" for child in setting_children):
         return result
-    
+
     if not organization_menu or not setting_menu:
         return result
 
@@ -85,7 +78,7 @@ def extend_menus_by_install_apps(menu_data: dict, install_apps: set[str]) -> dic
     security_role = next((item for item in result.get("roles", []) if item.get("name") == "security"), None)
     if security_role:
         security_role_menus = security_role.setdefault("menus", [])
-        for menu_name in ("sensitive_info-View", "sensitive_info-Add","sensitive_info-Edit","sensitive_info-Delete"):
+        for menu_name in ("sensitive_info-View", "sensitive_info-Add", "sensitive_info-Edit", "sensitive_info-Delete"):
             if menu_name not in security_role_menus:
                 security_role_menus.append(menu_name)
 

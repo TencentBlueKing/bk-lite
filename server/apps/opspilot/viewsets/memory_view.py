@@ -9,7 +9,7 @@ from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.models import LLMModel
 from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
-from apps.opspilot.serializers.memory_serializer import MemorySerializer, MemorySpaceSerializer
+from apps.opspilot.serializers.memory_serializer import MemorySerializer, MemorySpaceSerializer, WorkflowMemorySpaceOptionSerializer
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -27,6 +27,14 @@ class MemorySpaceViewSet(AuthViewSet):
     @HasPermission("memory_list-View")
     def retrieve(self, request, *args, **kwargs):
         serializer = self.get_detail(request, *args, **kwargs)
+        return JsonResponse({"result": True, "data": serializer.data})
+
+    @HasPermission("memory_list-View")
+    @action(methods=["GET"], detail=False, url_path="workflow_options")
+    def workflow_options(self, request):
+        """返回工作流记忆节点可选择的记忆空间，不按 current_team 过滤。"""
+        queryset = MemorySpace.objects.all().order_by("-id")
+        serializer = WorkflowMemorySpaceOptionSerializer(queryset, many=True)
         return JsonResponse({"result": True, "data": serializer.data})
 
     @HasPermission("memory_list-Add")
