@@ -44,6 +44,13 @@ interface NormalizedRecommendation {
   benefit: string;
 }
 
+const recommendationPriorityStyles: Record<NormalizedRecommendation['priority'], string> = {
+  P0: 'border-rose-200 bg-rose-100 text-rose-700',
+  P1: 'border-orange-200 bg-orange-100 text-orange-700',
+  P2: 'border-amber-200 bg-amber-100 text-amber-700',
+  P3: 'border-sky-200 bg-sky-100 text-sky-700',
+};
+
 const normalizeSeverity = (value: unknown): NormalizedSection['severity'] => {
   return typeof value === 'string' && knownSeverities.has(value as ConfigAnalysisSeveritySection['severity'])
     ? (value as ConfigAnalysisSeveritySection['severity'])
@@ -187,7 +194,7 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
   const scanRangeEnd = hasScanRange ? report.scan_range!.offset! + report.scan_range!.limit! : null;
 
   return (
-    <section className="mt-3 max-w-[720px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <section className="mt-3 w-full max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <header className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white px-4 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700">
@@ -269,7 +276,7 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
                   </div>
                   <div className="overflow-x-auto">
                     {section.issues.length > 0 ? (
-                      <table className="min-w-[760px] table-fixed divide-y divide-slate-200 text-left text-sm">
+                      <table className="w-full min-w-[760px] table-fixed divide-y divide-slate-200 text-left text-xs">
                         <colgroup>
                           <col className="w-[22%]" />
                           <col className="w-[10%]" />
@@ -291,7 +298,7 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
 
                             return (
                               <tr key={`${section.severity}-${item.issue}-${idx}`} className="align-top">
-                                <td className="px-3 py-3 font-medium text-slate-800">
+                                <td className="px-3 py-2.5 font-medium leading-5 text-slate-800">
                                   <div className="flex items-center gap-2">
                                     <span>{item.issue}</span>
                                     {item.degraded && (
@@ -301,8 +308,8 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
                                     )}
                                   </div>
                                 </td>
-                                <td className="px-3 py-3">{item.count}</td>
-                                <td className="px-3 py-3">
+                                <td className="px-3 py-2.5 leading-5">{item.count}</td>
+                                <td className="px-3 py-2.5">
                                   {visibleWorkloads.length > 0 ? (
                                     <div className="flex max-w-full flex-wrap gap-1.5">
                                       {visibleWorkloads.map(workload => (
@@ -327,7 +334,7 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
                                     <span className="text-slate-400">—</span>
                                   )}
                                 </td>
-                                <td className="px-3 py-3 leading-6 text-slate-600">{item.risk}</td>
+                                <td className="px-3 py-2.5 leading-5 text-slate-600">{item.risk}</td>
                               </tr>
                             );
                           })}
@@ -349,28 +356,38 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
                   修复建议
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                  <table className="w-full min-w-[760px] table-fixed divide-y divide-slate-200 text-left text-xs">
+                    <colgroup>
+                      <col className="w-[88px]" />
+                      <col className="w-[42%]" />
+                      <col className="w-[22%]" />
+                      <col />
+                    </colgroup>
                     <thead className="bg-white text-slate-500">
                       <tr>
-                        <th className="px-3 py-2 font-medium">优先级</th>
+                        <th className="px-4 py-2 font-medium">优先级</th>
                         <th className="px-3 py-2 font-medium">建议动作</th>
                         <th className="px-3 py-2 font-medium">目标范围</th>
                         <th className="px-3 py-2 font-medium">预期收益</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
-                      {recommendationRows.map(row => (
-                        <tr key={`${row.priority}-${row.action}`}>
-                          <td className="px-3 py-3">
-                            <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
-                              {row.priority}
-                            </span>
-                          </td>
-                          <td className="px-3 py-3 font-medium text-slate-800">{row.action}</td>
-                          <td className="px-3 py-3">{row.target}</td>
-                          <td className="px-3 py-3 text-slate-600">{row.benefit}</td>
-                        </tr>
-                      ))}
+                      {recommendationRows.map(row => {
+                        const priorityStyle = recommendationPriorityStyles[row.priority];
+
+                        return (
+                          <tr key={`${row.priority}-${row.action}`} className="align-top">
+                            <td className="px-4 py-2.5">
+                              <span className={`inline-flex h-7 min-w-10 items-center justify-center whitespace-nowrap rounded-full border px-2.5 text-xs font-semibold ${priorityStyle}`}>
+                                {row.priority}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 font-medium leading-5 text-slate-800">{row.action}</td>
+                            <td className="px-3 py-2.5 leading-5 text-slate-700">{row.target}</td>
+                            <td className="px-3 py-2.5 leading-5 text-slate-600">{row.benefit}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
