@@ -328,9 +328,59 @@
         }
 
         .cards {
+            display: flex;
+            flex-direction: column;
+            gap: 26px;
+            padding-bottom: 88px;
+        }
+
+        .template-group {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .group-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .group-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #202736;
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .group-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            height: 22px;
+            padding: 0 8px;
+            border-radius: 999px;
+            background: #eef4ff;
+            color: #1f66ff;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .group-tools {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #667085;
+            font-size: 13px;
+        }
+
+        .group-grid {
             display: grid;
             grid-template-columns: repeat(5, minmax(210px, 1fr));
-            gap: 26px 24px;
+            gap: 20px 24px;
         }
 
         .template-card {
@@ -340,7 +390,7 @@
             border-radius: 8px;
             background: #fff;
             box-shadow: 0 4px 10px rgba(31, 45, 61, 0.12);
-            padding: 20px 18px;
+            padding: 20px 18px 18px;
             display: flex;
             gap: 12px;
             cursor: pointer;
@@ -413,8 +463,15 @@
         .card-title {
             font-weight: 700;
             color: #344054;
-            margin-bottom: 20px;
+            margin-bottom: 8px;
             line-height: 1.2;
+        }
+
+        .card-metric {
+            color: #1f66ff;
+            font-size: 12px;
+            line-height: 1.35;
+            margin-bottom: 12px;
         }
 
         .card-desc {
@@ -425,6 +482,12 @@
 
         .card-actions {
             margin-top: 14px;
+            opacity: 0;
+            transition: opacity 0.16s ease;
+        }
+
+        .template-card:hover .card-actions {
+            opacity: 1;
         }
 
         .link-button {
@@ -458,29 +521,62 @@
         }
 
         .batch-bar {
-            position: sticky;
-            bottom: 0;
+            position: fixed;
+            left: 50%;
+            bottom: 28px;
+            transform: translateX(-50%) translateY(12px);
             display: none;
             align-items: center;
             justify-content: space-between;
-            gap: 16px;
-            margin-top: 24px;
-            padding: 14px 18px;
-            border: 1px solid #d7e4ff;
-            border-radius: 6px;
-            background: rgba(255, 255, 255, 0.96);
-            box-shadow: 0 -4px 18px rgba(31, 45, 61, 0.08);
-            z-index: 5;
+            gap: 20px;
+            width: min(820px, calc(100vw - 360px));
+            min-height: 54px;
+            padding: 10px 12px 10px 18px;
+            border: 1px solid #d7dce5;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.98);
+            box-shadow: 0 14px 36px rgba(31, 45, 61, 0.2);
+            z-index: 20;
         }
 
         .batch-bar.show {
             display: flex;
+            transform: translateX(-50%) translateY(0);
         }
 
         .batch-actions {
             display: flex;
             align-items: center;
             gap: 10px;
+        }
+
+        .selection-summary {
+            min-width: 150px;
+            color: #202736;
+            font-weight: 600;
+        }
+
+        .selection-tags {
+            flex: 1;
+            display: flex;
+            gap: 6px;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .selection-tag {
+            max-width: 160px;
+            height: 26px;
+            padding: 0 8px;
+            border-radius: 999px;
+            background: #f2f4f7;
+            color: #344054;
+            display: inline-flex;
+            align-items: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 12px;
         }
 
         .primary-button,
@@ -589,7 +685,7 @@
         }
 
         .compact-list,
-        .asset-grid,
+        .asset-table,
         .preview-table {
             border: 1px solid #edf0f5;
             border-radius: 6px;
@@ -597,7 +693,7 @@
         }
 
         .compact-item,
-        .asset-item,
+        .asset-row,
         .preview-row {
             display: grid;
             gap: 12px;
@@ -610,9 +706,16 @@
             grid-template-columns: 1fr 120px 60px;
         }
 
-        .asset-item {
-            grid-template-columns: 24px 1fr 160px;
+        .asset-row {
+            grid-template-columns: 36px 1fr 160px 180px;
             cursor: pointer;
+        }
+
+        .asset-row.header {
+            background: #f7f9fc;
+            color: #344054;
+            font-weight: 600;
+            cursor: default;
         }
 
         .preview-row {
@@ -620,7 +723,7 @@
         }
 
         .compact-item:last-child,
-        .asset-item:last-child,
+        .asset-row:last-child,
         .preview-row:last-child {
             border-bottom: 0;
         }
@@ -647,6 +750,94 @@
             border-radius: 4px;
             padding: 0 10px;
             background: #fff;
+        }
+
+        .switch-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 4px 0 16px;
+        }
+
+        .toggle {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            border: 0;
+            border-radius: 999px;
+            background: #2f63f6;
+            cursor: pointer;
+        }
+
+        .toggle::after {
+            content: "";
+            position: absolute;
+            top: 3px;
+            right: 3px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #fff;
+        }
+
+        .channel-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+
+        .channel-card {
+            min-height: 92px;
+            border: 1px solid #edf0f5;
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 3px 10px rgba(31, 45, 61, 0.08);
+            padding: 14px;
+            display: flex;
+            gap: 10px;
+            cursor: pointer;
+        }
+
+        .channel-card.selected {
+            border-color: #2f63f6;
+            background: #f3f7ff;
+            box-shadow: inset 0 0 0 1px #2f63f6, 0 4px 12px rgba(47, 99, 246, 0.12);
+        }
+
+        .channel-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #3a84ff;
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .channel-card.email .channel-icon {
+            background: #ffb020;
+        }
+
+        .channel-title {
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .channel-tag {
+            display: inline-flex;
+            height: 22px;
+            padding: 0 8px;
+            align-items: center;
+            border-radius: 4px;
+            color: #1f66ff;
+            background: #eaf2ff;
+            margin-bottom: 6px;
+            font-size: 12px;
         }
 
         .preview-title {
@@ -679,7 +870,7 @@
         }
 
         @media (max-width: 1500px) {
-            .cards {
+            .group-grid {
                 grid-template-columns: repeat(4, minmax(210px, 1fr));
             }
         }
@@ -689,7 +880,7 @@
                 gap: 6px;
             }
 
-            .cards {
+            .group-grid {
                 grid-template-columns: repeat(3, minmax(210px, 1fr));
             }
         }
@@ -848,63 +1039,79 @@
                 </div>
 
                 <div class="cards" id="templateCards">
-                    <article class="template-card" data-title="CPU使用率过高 监控主机CPU使用率 当超出设定阈值时触发告警">
+                    <section class="template-group" data-group="主机（Host Remote）">
+                        <div class="group-header">
+                            <div class="group-title">主机（Host Remote）<span class="group-badge">3 个模板</span></div>
+                            <div class="group-tools"><span class="group-count">已选 0 / 3</span><button class="link-button group-select" type="button">全选本组</button></div>
+                        </div>
+                        <div class="group-grid">
+                    <article class="template-card" data-group="主机（Host Remote）" data-metric="CPU 使用率" data-title="CPU使用率过高 监控主机CPU使用率 当超出设定阈值时触发告警">
                         <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
                         <div class="card-body"><div class="card-title">CPU使用率过高</div><p class="card-desc">监控主机CPU使用率，当超出设定阈值时触发告警。</p></div>
                     </article>
-                    <article class="template-card" data-title="内存使用率过高 监控主机内存使用率 当可用内存低于阈值时触发告警">
+                    <article class="template-card" data-group="主机（Host Remote）" data-metric="内存使用率" data-title="内存使用率过高 监控主机内存使用率 当可用内存低于阈值时触发告警">
                         <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
                         <div class="card-body"><div class="card-title">内存使用率过高</div><p class="card-desc">监控主机内存使用率，当可用内存低于阈值时触发告警。</p></div>
                     </article>
-                    <article class="template-card" data-title="磁盘使用率过高 监控主机磁盘使用率 当超出设定阈值时触发告警">
+                    <article class="template-card" data-group="主机（Host Remote）" data-metric="磁盘使用率" data-title="磁盘使用率过高 监控主机磁盘使用率 当超出设定阈值时触发告警">
                         <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
                         <div class="card-body"><div class="card-title">磁盘使用率过高</div><p class="card-desc">监控主机磁盘使用率，当超出设定阈值时触发告警。</p></div>
                     </article>
-                    <article class="template-card" data-title="主机 CPU 使用率过高 检测主机 CPU 使用率是否超标 当超过预设阈值触发告警">
+                        </div>
+                    </section>
+
+                    <section class="template-group" data-group="主机（Telegraf）">
+                        <div class="group-header">
+                            <div class="group-title">主机（Telegraf）<span class="group-badge">9 个模板</span></div>
+                            <div class="group-tools"><span class="group-count">已选 0 / 9</span><button class="link-button group-select" type="button">全选本组</button></div>
+                        </div>
+                        <div class="group-grid">
+                    <article class="template-card" data-group="主机（Telegraf）" data-metric="CPU 使用率" data-title="主机 CPU 使用率过高 检测主机 CPU 使用率是否超标 当超过预设阈值触发告警">
                         <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
                         <div class="card-body"><div class="card-title">主机 CPU 使用率过高</div><p class="card-desc">检测主机 CPU 使用率是否超标，当超过预设阈值触发告警，提醒用户注意系统过载风险。</p></div>
                     </article>
-                    <article class="template-card" data-title="主机内存使用率过高 监控主机内存使用率 若长时间高于预设阈值会触发告警">
+                    <article class="template-card" data-group="主机（Telegraf）" data-metric="内存使用率" data-title="主机内存使用率过高 监控主机内存使用率 若长时间高于预设阈值会触发告警">
                         <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
                         <div class="card-body"><div class="card-title">主机内存使用率过高</div><p class="card-desc">监控主机内存使用率，若长时间高于预设阈值会触发告警，提示用户检查内存消耗情况或性能瓶颈。</p></div>
                     </article>
-                    <article class="template-card" data-title="主机磁盘使用率过高 检测磁盘使用状态 若使用率超过阈值将告警">
+                    <article class="template-card" data-group="主机（Telegraf）" data-metric="磁盘使用率" data-title="主机磁盘使用率过高 检测磁盘使用状态 若使用率超过阈值将告警">
                         <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
                         <div class="card-body"><div class="card-title">主机磁盘使用率过高</div><p class="card-desc">检测磁盘使用状态，若使用率超过阈值将告警，协助用户及时处理磁盘空间不足的潜在风险。</p></div>
                     </article>
-                    <article class="template-card" data-title="平均负载过高 5 分钟 定期评估主机 5 分钟内的平均负载">
+                    <article class="template-card" data-group="主机（Telegraf）" data-metric="平均负载（5 分钟）" data-title="平均负载过高 5 分钟 定期评估主机 5 分钟内的平均负载">
                         <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
                         <div class="card-body"><div class="card-title">平均负载过高（5 分钟）</div><p class="card-desc">定期评估主机 5 分钟内的平均负载，若处于高负载状态会触发告警，帮助用户及时发现性能问题。</p></div>
                     </article>
-                    <article class="template-card" data-title="磁盘写入速率过高 检测磁盘的写入操作速率 若写入速率异常超过阈值">
+                    <article class="template-card" data-group="主机（Telegraf）" data-metric="磁盘写入速率" data-title="磁盘写入速率过高 检测磁盘的写入操作速率 若写入速率异常超过阈值">
                         <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
                         <div class="card-body"><div class="card-title">磁盘写入速率过高</div><p class="card-desc">检测磁盘的写入操作速率，若写入速率异常超过阈值将触发告警，提醒用户关注磁盘写入性能及可用性。</p></div>
                     </article>
-                    <article class="template-card" data-title="磁盘读取速率过高 监控磁盘的读取速率 若超过阈值则发出告警">
+                    <article class="template-card" data-group="主机（Telegraf）" data-metric="磁盘读取速率" data-title="磁盘读取速率过高 监控磁盘的读取速率 若超过阈值则发出告警">
                         <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
                         <div class="card-body"><div class="card-title">磁盘读取速率过高</div><p class="card-desc">监控磁盘的读取速率，若超过阈值则发出告警，协助用户分析磁盘 IO 相关的性能和潜在问题。</p></div>
                     </article>
-                    <article class="template-card" data-title="等待 IO 时间过高 监控主机等待 I/O 操作的时间 若时间过长则触发告警">
+                    <article class="template-card" data-group="主机（Telegraf）" data-metric="等待 IO 时间" data-title="等待 IO 时间过高 监控主机等待 I/O 操作的时间 若时间过长则触发告警">
                         <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
                         <div class="card-body"><div class="card-title">等待 IO 时间过高</div><p class="card-desc">监控主机等待 I/O 操作的时间，若时间过长则触发告警，提示用户优化 I/O 性能的问题。</p></div>
                     </article>
-                    <article class="template-card" data-title="网卡入流量过高 检测网卡入流量是否异常增长 若流量达到预设阈值触发告警">
+                    <article class="template-card" data-group="主机（Telegraf）" data-metric="网卡入流量" data-title="网卡入流量过高 检测网卡入流量是否异常增长 若流量达到预设阈值触发告警">
                         <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
                         <div class="card-body"><div class="card-title">网卡入流量过高</div><p class="card-desc">检测网卡入流量是否异常增长，若流量达到预设阈值触发告警，提醒用户注意网络流量异常或性能瓶颈。</p></div>
                     </article>
-                    <article class="template-card" data-title="网卡出流量过高 监控网卡出流量水平 若超出安全值将发出告警">
+                    <article class="template-card" data-group="主机（Telegraf）" data-metric="网卡出流量" data-title="网卡出流量过高 监控网卡出流量水平 若超出安全值将发出告警">
                         <div class="card-icon"><span class="card-icon-inner"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h8v2H4V2Zm0 5h8v2H4V7Zm0 5h8v2H4v-2Z"/><circle cx="4" cy="3" r="2"/><circle cx="4" cy="8" r="2"/><circle cx="4" cy="13" r="2"/></svg></span></div>
                         <div class="card-body"><div class="card-title">网卡出流量过高</div><p class="card-desc">监控网卡出流量水平，若超出安全值将发出告警，协助用户排查网络出口压力及数据流向的问题。</p></div>
                     </article>
+                        </div>
+                    </section>
                 </div>
                 <div class="empty" id="emptyState">暂无匹配的模板</div>
                 <div class="batch-bar" id="batchBar">
-                    <div>
+                    <div class="selection-summary">
                         已选择 <strong id="selectedCount">0</strong> 个模板
-                        <span class="muted">将按模板数创建策略，每条策略覆盖同一批资产</span>
                     </div>
+                    <div class="selection-tags" id="selectionTags"></div>
                     <div class="batch-actions">
-                        <button class="secondary-button" id="selectAllButton" type="button">全选当前对象模板</button>
                         <button class="secondary-button" id="clearSelectionButton" type="button">清空</button>
                         <button class="primary-button" id="batchApplyButton" type="button">批量应用</button>
                     </div>
@@ -930,11 +1137,12 @@
                 </section>
                 <section class="wizard-panel" data-panel="2">
                     <p class="panel-intro">选择这些模板要覆盖的监控资产。最终按模板数创建策略，每条策略覆盖同一批资产。</p>
-                    <div class="asset-grid" id="assetList">
-                        <label class="asset-item"><input type="checkbox" checked value="prod-web-01"><span>prod-web-01</span><span>生产环境</span></label>
-                        <label class="asset-item"><input type="checkbox" checked value="prod-web-02"><span>prod-web-02</span><span>生产环境</span></label>
-                        <label class="asset-item"><input type="checkbox" value="prod-db-01"><span>prod-db-01</span><span>生产环境</span></label>
-                        <label class="asset-item"><input type="checkbox" value="test-host-01"><span>test-host-01</span><span>测试环境</span></label>
+                    <div class="asset-table" id="assetList">
+                        <div class="asset-row header"><span></span><span>资产名称</span><span>所属组织</span><span>采集模版</span></div>
+                        <label class="asset-row"><input type="checkbox" checked value="prod-web-01"><span>prod-web-01</span><span>生产环境</span><span>主机（Telegraf）</span></label>
+                        <label class="asset-row"><input type="checkbox" checked value="prod-web-02"><span>prod-web-02</span><span>生产环境</span><span>主机（Telegraf）</span></label>
+                        <label class="asset-row"><input type="checkbox" value="prod-db-01"><span>prod-db-01</span><span>生产环境</span><span>主机（Host Remote）</span></label>
+                        <label class="asset-row"><input type="checkbox" value="test-host-01"><span>test-host-01</span><span>测试环境</span><span>主机（Telegraf）</span></label>
                     </div>
                 </section>
                 <section class="wizard-panel" data-panel="3">
@@ -948,23 +1156,20 @@
                             </select>
                         </div>
                         <div class="form-item">
-                            <label for="noticeTarget">通知对象</label>
-                            <input id="noticeTarget" value="主机负责人">
-                        </div>
-                        <div class="form-item">
-                            <label for="noticeChannel">通知方式</label>
-                            <select id="noticeChannel">
-                                <option>站内信 + 邮件</option>
-                                <option>站内信</option>
-                                <option>邮件</option>
-                            </select>
-                        </div>
-                        <div class="form-item">
                             <label for="scheduleSelect">检测频率</label>
                             <select id="scheduleSelect">
                                 <option>每 1 分钟</option>
                                 <option selected>每 5 分钟</option>
                                 <option>每 10 分钟</option>
+                            </select>
+                        </div>
+                        <div class="form-item">
+                            <label for="periodSelect">检测周期</label>
+                            <select id="periodSelect">
+                                <option>近 1 分钟</option>
+                                <option selected>近 5 分钟</option>
+                                <option>近 10 分钟</option>
+                                <option>近 30 分钟</option>
                             </select>
                         </div>
                         <div class="form-item">
@@ -978,6 +1183,33 @@
                                 <option>暂不启用</option>
                             </select>
                         </div>
+                    </div>
+                    <div class="switch-row">
+                        <span>通知配置</span>
+                        <button class="toggle" id="noticeToggle" type="button" aria-label="通知配置"></button>
+                        <span class="muted">选择告警触发时的通知渠道和接收人。</span>
+                    </div>
+                    <div class="channel-grid" id="channelGrid">
+                        <div class="channel-card email selected" data-channel="邮件服务器">
+                            <span class="channel-icon">邮</span>
+                            <div><div class="channel-title">邮件服务器</div><span class="channel-tag">电子邮件</span><p class="card-desc">eeeee</p></div>
+                        </div>
+                        <div class="channel-card selected" data-channel="可观测群">
+                            <span class="channel-icon">群</span>
+                            <div><div class="channel-title">可观测群</div><span class="channel-tag">群聊小助手</span><p class="card-desc">可观测群</p></div>
+                        </div>
+                        <div class="channel-card" data-channel="告警中心">
+                            <span class="channel-icon">告</span>
+                            <div><div class="channel-title">告警中心</div><span class="channel-tag">NATS通道</span><p class="card-desc">内容告警中心通道</p></div>
+                        </div>
+                    </div>
+                    <div class="form-item" style="margin-bottom: 20px;">
+                        <label for="notifierSelect">通知者</label>
+                        <select id="notifierSelect">
+                            <option>陈润燊</option>
+                            <option>主机负责人</option>
+                            <option>生产运维组</option>
+                        </select>
                     </div>
                     <h3 class="preview-title">创建预览</h3>
                     <div class="preview-table" id="strategyPreview"></div>
@@ -1006,6 +1238,11 @@
             check.setAttribute("aria-hidden", "true");
             card.prepend(check);
 
+            const metric = document.createElement("div");
+            metric.className = "card-metric";
+            metric.textContent = `${card.dataset.group} - ${card.dataset.metric}`;
+            card.querySelector(".card-title").after(metric);
+
             const actions = document.createElement("div");
             actions.className = "card-actions";
             actions.innerHTML = '<button class="link-button single-use" type="button">使用</button>';
@@ -1014,7 +1251,7 @@
 
         const batchBar = document.getElementById("batchBar");
         const selectedCount = document.getElementById("selectedCount");
-        const selectAllButton = document.getElementById("selectAllButton");
+        const selectionTags = document.getElementById("selectionTags");
         const clearSelectionButton = document.getElementById("clearSelectionButton");
         const batchApplyButton = document.getElementById("batchApplyButton");
         const wizardMask = document.getElementById("wizardMask");
@@ -1027,6 +1264,7 @@
         const namePrefix = document.getElementById("namePrefix");
         const enableSelect = document.getElementById("enableSelect");
         const assetList = document.getElementById("assetList");
+        const channelGrid = document.getElementById("channelGrid");
         let currentStep = 1;
 
         function getCardTitle(card) {
@@ -1036,6 +1274,22 @@
         function updateBatchBar() {
             selectedCount.textContent = selectedTemplates.size;
             batchBar.classList.toggle("show", selectedTemplates.size > 0);
+            const selected = Array.from(selectedTemplates);
+            const visible = selected.slice(0, 3).map((title) => `<span class="selection-tag">${title}</span>`);
+            if (selected.length > 3) {
+                visible.push(`<span class="selection-tag">+${selected.length - 3}</span>`);
+            }
+            selectionTags.innerHTML = visible.join("");
+            updateGroupCounts();
+        }
+
+        function updateGroupCounts() {
+            document.querySelectorAll(".template-group").forEach((group) => {
+                const groupName = group.dataset.group;
+                const groupCards = Array.from(group.querySelectorAll(".template-card"));
+                const selected = groupCards.filter((card) => selectedTemplates.has(getCardTitle(card))).length;
+                group.querySelector(".group-count").textContent = `已选 ${selected} / ${groupCards.length}`;
+            });
         }
 
         function toggleCard(card) {
@@ -1058,6 +1312,10 @@
                 card.style.display = matched ? "flex" : "none";
                 if (matched) visibleCount += 1;
             });
+            document.querySelectorAll(".template-group").forEach((group) => {
+                const hasVisibleCard = Array.from(group.querySelectorAll(".template-card")).some((card) => getComputedStyle(card).display !== "none");
+                group.style.display = hasVisibleCard ? "flex" : "none";
+            });
             emptyState.classList.toggle("show", visibleCount === 0);
         }
 
@@ -1078,14 +1336,15 @@
             });
         });
 
-        selectAllButton.addEventListener("click", () => {
-            cards.forEach((card) => {
-                if (getComputedStyle(card).display !== "none") {
+        document.querySelectorAll(".group-select").forEach((button) => {
+            button.addEventListener("click", () => {
+                const group = button.closest(".template-group");
+                group.querySelectorAll(".template-card").forEach((card) => {
                     selectedTemplates.add(getCardTitle(card));
                     card.classList.add("selected");
-                }
+                });
+                updateBatchBar();
             });
-            updateBatchBar();
         });
 
         clearSelectionButton.addEventListener("click", () => {
@@ -1127,8 +1386,8 @@
         function renderSelectedTemplates() {
             selectedTemplateList.innerHTML = Array.from(selectedTemplates).map((title) => `
                 <div class="compact-item" data-template="${title}">
-                    <div><strong>${title}</strong><div class="muted">使用模板默认阈值、算法和告警级别</div></div>
-                    <span>内置模板</span>
+                    <div><strong>${title}</strong><div class="muted">${getTemplateMeta(title)}</div></div>
+                    <span>${getTemplateGroup(title)}</span>
                     <button class="link-button remove-template" type="button">移除</button>
                 </div>
             `).join("");
@@ -1144,6 +1403,19 @@
                     if (!selectedTemplates.size) closeWizard();
                 });
             });
+        }
+
+        function getTemplateCard(title) {
+            return cards.find((card) => getCardTitle(card) === title);
+        }
+
+        function getTemplateGroup(title) {
+            return getTemplateCard(title)?.dataset.group || "内置模板";
+        }
+
+        function getTemplateMeta(title) {
+            const card = getTemplateCard(title);
+            return card ? `${card.dataset.group} - ${card.dataset.metric}` : "使用模板默认阈值、算法和告警级别";
         }
 
         function getSelectedAssetCount() {
@@ -1195,6 +1467,12 @@
         namePrefix.addEventListener("input", renderStrategyPreview);
         enableSelect.addEventListener("change", renderStrategyPreview);
         assetList.addEventListener("change", renderStrategyPreview);
+        channelGrid.addEventListener("click", (event) => {
+            const card = event.target.closest(".channel-card");
+            if (!card) return;
+            card.classList.toggle("selected");
+        });
+        updateGroupCounts();
 
         const treeSearch = document.getElementById("treeSearch");
         const treeGroups = Array.from(document.querySelectorAll(".tree-group"));

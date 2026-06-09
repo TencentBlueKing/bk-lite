@@ -10,6 +10,21 @@
 
 ---
 
+## Revision Note
+
+The prototype was later refined with these product requirements:
+
+- The template page groups alert templates by integration template, such as `主机（Host Remote）` and `主机（Telegraf）`.
+- Each template card displays the metric and source integration template, for example `主机（Telegraf）- 内存使用率`.
+- The selected-template interaction uses a Datadog-style floating selection tray instead of a heavy in-page bottom bar.
+- The asset selection step uses a table with `资产名称 / 所属组织 / 采集模版`.
+- Shared configuration includes both `检测频率` and `检测周期`.
+- Notification configuration follows the real strategy page pattern: notification switch, notification channel cards, and notifier selector.
+
+The task details below describe the first prototype pass. The final implemented HTML follows this revision note and the updated design spec.
+
+---
+
 ### Task 1: Add Multi-Select Controls To Template Cards
 
 **Files:**

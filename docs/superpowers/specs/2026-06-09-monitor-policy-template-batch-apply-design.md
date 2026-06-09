@@ -31,14 +31,15 @@ The strategy detail page reads that single template and creates one policy throu
 
 ### 1. Template Selection
 
-The event template page becomes a multi-select surface:
+The event template page becomes a grouped multi-select surface:
 
+- Templates are grouped by integration template, such as `Host (Telegraf)` and `Host Remote`.
+- Each group shows its template count, selected count, and a `select group` action.
 - Each template card has a checkbox.
 - Clicking a card toggles selection.
-- The page shows a selected count, such as `已选择 5 个模板`.
-- The page provides a primary action: `批量应用`.
-- The page may keep a lightweight single-template action, such as `使用`, for the existing one-template flow.
-- The page provides `全选当前对象模板` for common onboarding cases.
+- Each template card shows the alert template name, metric, and source integration template, for example `Host (Telegraf) - Memory Usage`.
+- The page shows a Datadog-style floating selection tray after users select templates. The tray contains selected count, a few selected-template tags, `clear`, and `batch apply`.
+- The page may keep a lightweight hover-only single-template action for the existing one-template flow.
 
 ### 2. Batch Apply Wizard
 
@@ -46,20 +47,28 @@ After clicking `批量应用`, users enter a 3-step wizard.
 
 #### Step 1: Confirm Templates
 
-Show selected templates with name, description, and primary metric. Users can remove templates from the batch. Thresholds, algorithms, and alert levels are displayed only as template defaults if needed; they are not editable in this flow.
+Show selected templates grouped by integration template, with template name, metric, and source integration template. Users can remove templates from the batch. Thresholds, algorithms, and alert levels are displayed only as template defaults if needed; they are not editable in this flow.
 
 #### Step 2: Select Assets
 
 Users select assets under the current monitor object, such as host assets. The selected assets are shared by every strategy created from the selected templates.
+
+The asset selector is a table with these columns:
+
+- Asset name.
+- Organization.
+- Collection template.
 
 #### Step 3: Shared Configuration
 
 Users configure lightweight settings shared by all generated strategies:
 
 - Organization.
-- Notification target.
-- Notification channel.
 - Detection frequency.
+- Detection period.
+- Notification enabled switch.
+- Notification channel cards.
+- Notifier selector. If selected channels are all NATS-style channels, notifier can be skipped.
 - Whether strategies are enabled after creation.
 - Strategy name rule or prefix.
 
