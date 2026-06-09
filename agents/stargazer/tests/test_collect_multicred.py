@@ -242,6 +242,187 @@ def test_cooldown_hours_escalates_by_failure_count():
     assert _cooldown_hours_for_failure(7) == 24
 
 
+def test_classify_failure_kind_cools_connection_unreachable_only():
+    from tasks.handlers.plugin_handler import _classify_failure_kind
+
+    # 连接不可达（假 IP / 拨号失败 / 拒绝 / 路由不可达）→ 冷却
+    assert _classify_failure_kind("TCP connect timed out after 5s") == "unreachable"
+    assert _classify_failure_kind("TCP connect failed: connection refused") == "unreachable"
+    assert _classify_failure_kind("SSH dial timed out after 15s") == "unreachable"
+    assert _classify_failure_kind("TCP connect failed: dial tcp 10.0.0.5:22: no route to host") == "unreachable"
+    assert _classify_failure_kind("network is unreachable") == "unreachable"
+    # 刻意排除：executor 无响应 / 已连上但执行超时 → 仍归 task，不冷却
+    assert _classify_failure_kind("nats: timeout") == "task"
+    assert _classify_failure_kind("no responders available for request") == "task"
+    assert _classify_failure_kind("SSH execution timed out after 9.8s (timeout: 10s)") == "task"
+    # 认证类失败仍归为 credential（优先级高于不可达）
+    assert _classify_failure_kind("SSH authentication failed: ...") == "credential"
+    assert _classify_failure_kind("permission denied (publickey,password)") == "credential"
+    # 其它任务类失败仍归为 task，不冷却
+    assert _classify_failure_kind("docker command not found") == "task"
+    assert _classify_failure_kind("") == "task"
+
+
+def test_failed_metrics_payload_detected_and_classified():
+    from tasks.handlers.plugin_handler import _build_credential_execution_result
+
+    prom_unreachable = (
+        '# HELP docker_info Auto-generated help for docker_info\n# TYPE docker_info gauge\n'
+        'docker_info{bk_obj_id="docker",collect_error="TCP connect timed out after 2.999995535s",'
+        'collect_status="failed",host="10.11.27.115",model_id="docker"} 1 1749470000000\n'
+    )
+    res = _build_credential_execution_result(
+        {"host": "10.11.27.115", "credential_id": "cred-1", "model_id": "docker"}, prom_unreachable
+    )
+    assert res["success"] is False
+    assert res["failure_kind"] == "unreachable"
+    assert "timed out" in res["error_message"].lower()
+
+    prom_auth = (
+        'docker_info{bk_obj_id="docker",collect_error="SSH authentication failed: ssh: handshake failed: '
+        'ssh: unable to authenticate",collect_status="failed",host="10.11.27.113",model_id="docker"} 1 1749470000000\n'
+    )
+    res2 = _build_credential_execution_result(
+        {"host": "10.11.27.113", "credential_id": "cred-1", "model_id": "docker"}, prom_auth
+    )
+    assert res2["success"] is False
+    assert res2["failure_kind"] == "credential"
+
+    prom_ok = (
+        'docker_info{bk_obj_id="docker",collect_status="success",host="10.11.27.120",'
+        'inst_name="10.11.27.120_abc",model_id="docker"} 1 1749470000000\n'
+    )
+    res3 = _build_credential_execution_result(
+        {"host": "10.11.27.120", "credential_id": "cred-1", "model_id": "docker"}, prom_ok
+    )
+    assert res3["success"] is True
+
+
+class _RecordingCache:
+    def __init__(self):
+        self.mark_failure_calls = []
+        self.mark_success_calls = []
+
+    async def append_result_event(self, event):
+        pass
+
+    async def mark_success(self, collect_task_id, host, credential_id):
+        self.mark_success_calls.append((host, credential_id))
+
+    async def clear_success(self, collect_task_id, host):
+        pass
+
+    async def mark_failure(self, collect_task_id, host, credential_id, error_message,
+                           cooldown_level, consecutive_failures, next_retry_at):
+        self.mark_failure_calls.append((host, credential_id, cooldown_level))
+
+    async def get_failure_state(self, collect_task_id, host, credential_id):
+        return {"is_cooled": True}
+
+
+def test_handle_multicred_post_execute_cools_unreachable_failure():
+    from tasks.handlers.plugin_handler import _handle_multicred_post_execute
+
+    cache = _RecordingCache()
+    params = {
+        "collect_task_id": "task-1",
+        "host": "10.0.0.99",
+        "credential_id": "cred-1",
+        "credential_index": 0,
+        "credentials_pool": [
+            {"credential_id": "cred-1"},
+            {"credential_id": "cred-2"},
+        ],
+    }
+    execution_result = {
+        "success": False,
+        "failure_kind": "unreachable",
+        "error_message": "TCP connect timed out after 5s",
+    }
+    asyncio.run(
+        _handle_multicred_post_execute(params, "tid", execution_result, cache, lambda: None)
+    )
+    assert cache.mark_failure_calls == [("10.0.0.99", "cred-1", 1)]
+
+
+def test_handle_multicred_post_execute_logs_cooldown_write():
+    from tasks.handlers import plugin_handler
+
+    records = []
+
+    class _FakeLogger:
+        def info(self, msg, *a, **k):
+            records.append(str(msg))
+
+        def warning(self, *a, **k):
+            pass
+
+        def error(self, *a, **k):
+            pass
+
+        def debug(self, *a, **k):
+            pass
+
+    original_logger = plugin_handler.logger
+    plugin_handler.logger = _FakeLogger()
+    try:
+        cache = _RecordingCache()
+        params = {
+            "collect_task_id": "task-1",
+            "host": "10.0.0.7",
+            "credential_id": "cred-1",
+            "credential_index": 0,
+            "credentials_pool": [{"credential_id": "cred-1"}],
+        }
+        asyncio.run(plugin_handler._handle_multicred_post_execute(
+            params, "tid",
+            {"success": False, "failure_kind": "unreachable", "error_message": "connection refused"},
+            cache, lambda: None,
+        ))
+    finally:
+        plugin_handler.logger = original_logger
+
+    cooldown_logs = [m for m in records if "[Cooldown]" in m]
+    assert cooldown_logs, "应打出冷却日志"
+    assert any("10.0.0.7" in m and "unreachable" in m for m in cooldown_logs)
+
+
+def test_handle_multicred_post_execute_cools_single_credential_without_pool():
+    from tasks.handlers.plugin_handler import _handle_multicred_post_execute
+
+    enqueued = []
+
+    class _FakeQueue:
+        async def enqueue_collect_task(self, task):
+            enqueued.append(task)
+
+    # 单凭据：params 不含 credentials_pool
+    params = {
+        "collect_task_id": "task-1",
+        "host": "10.0.0.50",
+        "credential_id": "cred-1",
+    }
+
+    # 失败 → 写冷却，且不链式入队（无凭据可换）
+    cache = _RecordingCache()
+    asyncio.run(_handle_multicred_post_execute(
+        params, "tid",
+        {"success": False, "failure_kind": "unreachable", "error_message": "TCP connect timed out after 5s"},
+        cache, lambda: _FakeQueue(),
+    ))
+    assert cache.mark_failure_calls == [("10.0.0.50", "cred-1", 1)]
+    assert enqueued == []
+
+    # 成功 → 记录成功凭据
+    cache2 = _RecordingCache()
+    asyncio.run(_handle_multicred_post_execute(
+        params, "tid",
+        {"success": True, "failure_kind": "", "error_message": ""},
+        cache2, lambda: _FakeQueue(),
+    ))
+    assert cache2.mark_success_calls == [("10.0.0.50", "cred-1")]
+
+
 def test_parse_credentials_pool_supports_flattened_params():
     from api.collect import _parse_credentials_pool
 

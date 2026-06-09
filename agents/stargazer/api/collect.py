@@ -204,6 +204,8 @@ def _select_collect_task_candidates(
                 continue
             selected_tasks.append(candidate)
             break
+        else:
+            logger.info(f"[Cooldown] skip host={host}: all credentials in cooldown")
 
     return selected_tasks
 
@@ -242,6 +244,8 @@ async def _select_collect_task_candidates_async(
                 continue
             selected_tasks.append(candidate)
             break
+        else:
+            logger.info(f"[Cooldown] skip host={host}: all credentials in cooldown")
 
     return selected_tasks
 
