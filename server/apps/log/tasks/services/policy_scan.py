@@ -155,7 +155,7 @@ class LogPolicyScan:
 
                 # 关键字告警按策略聚合，所有匹配日志合并到一个告警中
                 source_id = f"policy_{self.policy.id}"
-                content = f"{self.policy.alert_name}: 检测到 {total_count} 条匹配日志"
+                content = f"{self._render_alert_name()}: 检测到 {total_count} 条匹配日志"
                 events.append(
                     {
                         "source_id": source_id,
@@ -440,6 +440,9 @@ class LogPolicyScan:
         context = {"level": self.policy.alert_level}
         if isinstance(result, dict):
             context.update(result)
+            for field, value in result.items():
+                if not str(field).startswith("log."):
+                    context[f"log.{field}"] = value
 
         try:
             def replace_token(match):

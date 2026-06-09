@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import {
   buildAlertNameVariables,
+  buildLogPreviewSearchParams,
   buildStrategyPayload,
   getAlertConditionVisibility,
   getDefaultShowFields,
   getLockedPolicyType,
-  insertAlertNameVariable
+  insertAlertNameVariable,
+  shouldFetchLogPreview
 } from '../src/app/log/(pages)/event/strategy/detail/policyFormUtils';
 import {
   buildStrategyDetailUrl,
@@ -63,8 +65,27 @@ assert.deepEqual(getDefaultShowFields(['message', 'host']), ['timestamp', 'messa
 assert.deepEqual(buildAlertNameVariables(['log.service.name', 'host']), [
   { value: '${level}', label: '${level}' },
   { value: '${log.service.name}', label: '${log.service.name}' },
-  { value: '${host}', label: '${host}' }
+  { value: '${log.host}', label: '${log.host}' }
 ]);
+assert.equal(buildAlertNameVariables(['host', 'host']).length, 2);
+
+assert.deepEqual(
+  buildLogPreviewSearchParams({
+    query: 'error',
+    logGroups: ['1'],
+    now: new Date('2026-06-09T08:15:00.000Z')
+  }),
+  {
+    query: 'error',
+    log_groups: ['1'],
+    limit: 10,
+    start_time: '2026-06-09T08:00:00.000Z',
+    end_time: '2026-06-09T08:15:00.000Z'
+  }
+);
+assert.equal(shouldFetchLogPreview({ query: '', logGroups: ['1'] }), false);
+assert.equal(shouldFetchLogPreview({ query: 'error', logGroups: [] }), false);
+assert.equal(shouldFetchLogPreview({ query: 'error', logGroups: ['1'] }), true);
 
 assert.equal(insertAlertNameVariable('告警', '${level}', 0, 0), '${level}告警');
 assert.equal(insertAlertNameVariable('api告警', '${log.service.name}', 3, 3), 'api${log.service.name}告警');

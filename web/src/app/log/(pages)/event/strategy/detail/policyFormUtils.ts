@@ -1,3 +1,4 @@
+import type React from 'react';
 import { FilterItem } from '@/app/log/types/integration';
 import { ChannelItem, StrategyFields } from '@/app/log/types/event';
 
@@ -33,14 +34,44 @@ export const getAlertConditionVisibility = (policyType: LogPolicyType) => ({
   showRule: policyType === 'aggregate'
 });
 
+export const buildLogFieldVariable = (field: string) =>
+  field.startsWith('log.') ? '${' + field + '}' : '${log.' + field + '}';
+
 export const buildAlertNameVariables = (groupBy?: string[] | null) => {
-  const variables = [{ value: '${level}', label: '${level}' }];
+  const variableValues = new Set<string>(['${level}']);
   (groupBy || []).filter(Boolean).forEach((field) => {
-    const token = '${' + field + '}';
-    variables.push({ value: token, label: token });
+    variableValues.add(buildLogFieldVariable(field));
   });
-  return variables;
+  return Array.from(variableValues).map((value) => ({ value, label: value }));
 };
+
+export const buildLogPreviewSearchParams = ({
+  query,
+  logGroups,
+  now = new Date()
+}: {
+  query?: string;
+  logGroups?: React.Key[];
+  now?: Date;
+}) => {
+  const end = now.getTime();
+  const start = end - 15 * 60 * 1000;
+  return {
+    query: query || '*',
+    log_groups: logGroups || [],
+    limit: 10,
+    start_time: new Date(start).toISOString(),
+    end_time: new Date(end).toISOString()
+  };
+};
+
+export const shouldFetchLogPreview = ({
+  query,
+  logGroups
+}: {
+  query?: string;
+  logGroups?: React.Key[];
+}) => !!query?.trim() && !!logGroups?.length;
 
 export const insertAlertNameVariable = (
   text: string,
