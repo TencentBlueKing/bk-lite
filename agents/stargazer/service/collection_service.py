@@ -347,19 +347,16 @@ class CollectionService:
             return
 
         try:
-            exec_params = {"args": [{"page_size": -1, "skip_permission": True}], "kwargs": {}}
-            subject = f"{self.namespace}.node_list"
+            exec_params = {"args": [self.connect_ip], "kwargs": {}}
+            subject = f"{self.namespace}.get_node_by_ip"
             payload = json.dumps(exec_params).encode()
 
             response = await nats_request(subject, payload=payload, timeout=10.0)
 
-            if response.get("success") and response["result"]["nodes"]:
-                for node in response["result"]["nodes"]:
-                    if node["ip"] == self.connect_ip:
-                        self._node_info = node
-                        logger.info(f"✅ Found node info for {self.connect_ip}")
-                        break
-                else:
-                    logger.warning(f"⚠️  Node info not found for {self.connect_ip}")
+            if response.get("success") and response.get("result"):
+                self._node_info = response["result"]
+                logger.info(f"✅ Found node info for {self.connect_ip}")
+            else:
+                logger.warning(f"⚠️  Node info not found for {self.connect_ip}")
         except Exception as e:
             logger.warning(f"⚠️  Failed to get node info for {self.connect_ip}: {e}")

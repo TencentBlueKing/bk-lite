@@ -56,6 +56,14 @@ class NodeMgmt(object):
         return_data = self.client.run("node_list", query_data)
         return return_data
 
+    def get_executor_node(self, cloud_region_id: int) -> str:
+        """获取指定云区域的执行（容器）节点，系统内部专用"""
+        return self.client.run("get_executor_node", cloud_region_id)
+
+    def get_node_by_ip(self, ip: str) -> dict:
+        """按 IP 查找节点信息，系统内部专用"""
+        return self.client.run("get_node_by_ip", ip)
+
     def get_node_names_by_ids(self, node_ids):
         """
         :param node_ids: 节点ID列表

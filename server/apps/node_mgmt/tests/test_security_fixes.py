@@ -13,6 +13,7 @@ import pytest
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import CloudRegion, Node, PackageVersion, SidecarEnv
 from apps.node_mgmt.models.sidecar import NodeOrganization
+from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.services.installer_session import InstallerSessionService
 from apps.node_mgmt.services.sidecar import Sidecar
 
@@ -359,3 +360,70 @@ def test_sidecar_heartbeat_does_not_rollback_user_updated_node_organizations(mon
     assert response.status_code == 202
     orgs = set(NodeOrganization.objects.filter(node_id=node.id).values_list("organization", flat=True))
     assert orgs == {2}
+
+
+# ── Issue #3125 ──────────────────────────────────────────────────────────────
+
+@pytest.mark.django_db
+def test_issue_3125_node_list_ignores_external_skip_permission():
+    """node_list 不再接受外部 skip_permission=True，无权限上下文时返回空列表。"""
+    from apps.node_mgmt.nats.node import node_list
+
+    cloud_region = CloudRegion.objects.create(
+        name="test-3125-region", introduction="", created_by="t", updated_by="t"
+    )
+    Node.objects.create(
+        id="node-3125-a", name="node-3125-a", ip="10.3.1.1",
+        operating_system="Linux", cpu_architecture="x86_64",
+        collector_configuration_directory="/etc", metrics={}, status={},
+        tags=[], log_file_list=[], cloud_region=cloud_region,
+        created_by="t", updated_by="t",
+    )
+
+    result = node_list({"page": 1, "page_size": -1, "skip_permission": True})
+    assert result["nodes"] == [], "skip_permission=True 不应再起效，应 fail-closed 返回空"
+
+
+@pytest.mark.django_db
+def test_issue_3125_get_executor_node_returns_container_node():
+    """get_executor_node 返回指定云区域的容器节点 ID。"""
+    from apps.node_mgmt.nats.node import get_executor_node
+    from apps.node_mgmt.constants.node import NodeConstants
+
+    cloud_region = CloudRegion.objects.create(
+        name="test-3125-executor", introduction="", created_by="t", updated_by="t"
+    )
+    node = Node.objects.create(
+        id="node-3125-container", name="node-3125-container", ip="10.3.1.2",
+        operating_system="Linux", cpu_architecture="x86_64",
+        node_type=ControllerConstants.NODE_TYPE_CONTAINER,
+        collector_configuration_directory="/etc", metrics={}, status={},
+        tags=[], log_file_list=[], cloud_region=cloud_region,
+        created_by="t", updated_by="t",
+    )
+
+    result = get_executor_node(cloud_region.id)
+    assert result == node.id
+
+
+@pytest.mark.django_db
+def test_issue_3125_get_node_by_ip_returns_matching_node():
+    """get_node_by_ip 按 IP 精确匹配节点，供 Stargazer agent 自发现使用。"""
+    from apps.node_mgmt.nats.node import get_node_by_ip
+
+    cloud_region = CloudRegion.objects.create(
+        name="test-3125-byip", introduction="", created_by="t", updated_by="t"
+    )
+    Node.objects.create(
+        id="node-3125-ip", name="node-3125-ip", ip="10.3.1.3",
+        operating_system="Linux", cpu_architecture="x86_64",
+        collector_configuration_directory="/etc", metrics={}, status={},
+        tags=[], log_file_list=[], cloud_region=cloud_region,
+        created_by="t", updated_by="t",
+    )
+
+    result = get_node_by_ip("10.3.1.3")
+    assert result.get("ip") == "10.3.1.3"
+    assert result.get("id") == "node-3125-ip"
+
+    assert get_node_by_ip("10.9.9.9") == {}

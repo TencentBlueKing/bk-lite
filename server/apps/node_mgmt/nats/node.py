@@ -583,7 +583,7 @@ def node_list(query_data: dict):
     is_manual = query_data.get("is_manual")
     is_container = query_data.get("is_container")
     permission_data = query_data.get("permission_data", {})
-    skip_permission = query_data.get("skip_permission", False)
+    # skip_permission 不再接受外部传入，强制 False（fail-closed）
     return NodeService.get_node_list(
         organization_ids,
         cloud_region_id,
@@ -596,8 +596,54 @@ def node_list(query_data: dict):
         is_manual,
         is_container,
         permission_data,
-        skip_permission,
+        skip_permission=False,
     )
+
+
+@nats_client.register
+def get_executor_node(cloud_region_id: int) -> str:
+    """获取指定云区域的执行（容器）节点——系统内部专用，不经过用户权限过滤"""
+    result = NodeService.get_node_list(
+        organization_ids=None,
+        cloud_region_id=cloud_region_id,
+        name=None,
+        ip=None,
+        os=None,
+        page=1,
+        page_size=1,
+        is_active=None,
+        is_manual=None,
+        is_container=True,
+        permission_data={},
+        skip_permission=True,
+    )
+    nodes = result.get("nodes", [])
+    if not nodes:
+        raise ValueError(f"云区域 {cloud_region_id} 下未找到可用的执行节点")
+    return nodes[0]["id"]
+
+
+@nats_client.register
+def get_node_by_ip(ip: str) -> dict:
+    """按 IP 查找节点信息——系统内部专用（如 Stargazer agent 自发现）"""
+    result = NodeService.get_node_list(
+        organization_ids=None,
+        cloud_region_id=None,
+        name=None,
+        ip=ip,
+        os=None,
+        page=1,
+        page_size=-1,
+        is_active=None,
+        is_manual=None,
+        is_container=None,
+        permission_data={},
+        skip_permission=True,
+    )
+    for node in result.get("nodes", []):
+        if node.get("ip") == ip:
+            return node
+    return {}
 
 
 @nats_client.register

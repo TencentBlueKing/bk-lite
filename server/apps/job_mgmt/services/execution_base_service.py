@@ -247,26 +247,11 @@ class ExecutionTaskBaseService(object):
 
     @staticmethod
     def _get_ansible_node(cloud_region_id: int) -> str:
-        """
-        根据云区域ID获取 Ansible 执行节点
-
-        Args:
-            cloud_region_id: 云区域ID
-
-        Returns:
-            节点ID
-
-        Raises:
-            ValueError: 未找到可用的 Ansible 执行节点
-        """
-        node_mgmt = NodeMgmt()
-        result = node_mgmt.node_list({"cloud_region_id": cloud_region_id, "is_container": True, "page": 1, "page_size": 1, "skip_permission": True})
-        if not isinstance(result, dict):
-            raise ValueError(f"云区域 {cloud_region_id} 下未找到可用的 Ansible 执行节点")
-        nodes = result.get("nodes", [])
-        if not nodes:
-            raise ValueError(f"云区域 {cloud_region_id} 下未找到可用的 Ansible 执行节点")
-        return nodes[0]["id"]
+        """根据云区域ID获取 Ansible 执行（容器）节点"""
+        try:
+            return NodeMgmt().get_executor_node(cloud_region_id)
+        except Exception as e:
+            raise ValueError(f"云区域 {cloud_region_id} 下未找到可用的 Ansible 执行节点") from e
 
     @classmethod
     def _build_host_credentials(cls, targets: list) -> list:
