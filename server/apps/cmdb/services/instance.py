@@ -17,6 +17,7 @@ from apps.cmdb.display_field.constants import (
     FIELD_TYPE_USER,
 )
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.instance_ops.extensions import get_instance_enterprise_extension
 from apps.cmdb.graph.format_type import ParameterCollector
 from apps.cmdb.models.change_record import CREATE_INST, CREATE_INST_ASST, DELETE_INST, DELETE_INST_ASST, UPDATE_INST
 from apps.cmdb.models.show_field import ShowField
@@ -508,6 +509,10 @@ class InstanceManage(object):
         attrs = ModelManage.search_model_attr(model_id)
         instance_info = apply_tag_validation_for_instance(instance_info, attrs, model_id)
         instance_info = apply_enum_validation_for_instance(instance_info, attrs)
+        # 企业版附件/图片字段：校验并把值规范化为元数据 JSON
+        instance_info = get_instance_enterprise_extension().normalize_file_fields(
+            model_id, instance_info, attrs, operator=operator
+        )
         validate_instance_organization_scope(instance_info, allowed_org_ids=allowed_org_ids)
         check_attr_map = InstanceManage._build_unique_rule_check_attr_map(
             model_id,
@@ -523,6 +528,11 @@ class InstanceManage(object):
         with GraphClient() as ag:
             exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
             result = ag.create_entity(INSTANCE, instance_info, check_attr_map, exist_items, operator, attrs)
+
+        # 企业版：实例创建后把引用文件落账（pending→committed 并补 inst_id）
+        get_instance_enterprise_extension().commit_instance_files(
+            model_id, result["_id"], result, attrs, operator=operator
+        )
 
         create_change_record(
             result["_id"],
@@ -568,6 +578,10 @@ class InstanceManage(object):
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
         update_attr = apply_tag_validation_for_instance(update_attr, attrs, inst_info["model_id"])
         update_attr = apply_enum_validation_for_instance(update_attr, attrs)
+        # 企业版附件/图片字段：校验并规范化（old_instance 用于跨实例引用校验）
+        update_attr = get_instance_enterprise_extension().normalize_file_fields(
+            inst_info["model_id"], update_attr, attrs, operator=operator, old_instance=inst_info
+        )
         validate_instance_organization_scope(update_attr, user_groups=user_groups, allowed_org_ids=allowed_org_ids)
         check_attr_map = InstanceManage._build_unique_rule_check_attr_map(
             inst_info["model_id"],
@@ -591,6 +605,11 @@ class InstanceManage(object):
                 exist_items,
                 attrs=attrs,
             )
+
+        # 企业版：实例更新后落账（引用文件 committed、移除文件 orphaned）
+        get_instance_enterprise_extension().commit_instance_files(
+            inst_info["model_id"], result[0]["_id"], result[0], attrs, operator=operator
+        )
 
         create_change_record(
             inst_info["_id"],
@@ -708,6 +727,11 @@ class InstanceManage(object):
 
         with GraphClient() as ag:
             ag.batch_delete_entity(INSTANCE, inst_ids)
+
+        # 企业版：实例删除后把其附件/图片文件标记为待回收
+        ext = get_instance_enterprise_extension()
+        for item in inst_list:
+            ext.on_instance_delete(item["model_id"], item["_id"], item)
 
         change_records = [
             dict(

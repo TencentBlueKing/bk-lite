@@ -18,6 +18,7 @@ from apps.cmdb.constants.constants import (
 from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models import CREATE_INST_ASST
+from apps.cmdb.model_ops.extensions import is_file_attr_type
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.unique_rule import build_unique_rule_context
 from apps.cmdb.validators.field_validator import (
@@ -91,6 +92,9 @@ class Import:
         for attr_info in self.attrs:
             attr_id = attr_info["attr_id"]
             attr_type = attr_info["attr_type"]
+            # 附件/图片字段（企业版）不参与 Excel 导入
+            if is_file_attr_type(attr_type):
+                continue
             field_maps["attr_name_map"][attr_id] = attr_info["attr_name"]
 
             if attr_type in NEED_CONVERSION_TYPE:

@@ -87,6 +87,14 @@ export const useInstanceApi = () => {
     method: 'GET'
   });
 
+  // 附件/图片字段（企业版）：预上传文件（multipart: file, model_id, attr_id），返回文件元数据
+  const uploadFile = (formData: FormData, options?: any) =>
+    post('/cmdb/api/instance/upload_file/', formData, options);
+
+  // 删除尚未提交的临时文件（仅上传者本人）
+  const deleteFile = (fileId: string) =>
+    del(`/cmdb/api/instance/delete_file/${fileId}/`);
+
   return {
     searchInstances,
     fulltextSearchInstances,
@@ -109,5 +117,7 @@ export const useInstanceApi = () => {
     deleteInstanceAssociation,
     importInstances,
     downloadTemplate,
+    uploadFile,
+    deleteFile,
   };
 };

@@ -60,6 +60,7 @@ from apps.cmdb.services.auto_relation_rule import (
     validate_auto_relation_rule_set_payload,
 )
 from apps.cmdb.models.change_record import MODEL_MANAGEMENT_CHANGE
+from apps.cmdb.model_ops.extensions import get_model_enterprise_extension, is_file_attr_type
 from apps.cmdb.utils.change_record import create_change_record
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.services.user_group import UserGroup
@@ -843,6 +844,9 @@ class ModelManage(object):
 
             attr_info = ModelManage.sanitize_attr_default_value(attr_info, log_context="create_model_attr")
 
+            # 企业版字段类型规则（附件/图片：强制可选、非唯一、无约束旋钮）
+            attr_info = get_model_enterprise_extension().validate_attr(attr_info)
+
             ModelManage._validate_attr_id(attr_info["attr_id"])
             model_query = {"field": "model_id", "type": "str=", "value": model_id}
             models, _ = ag.query_entity(MODEL, [model_query])
@@ -909,6 +913,15 @@ class ModelManage(object):
             )
             if not current_attr:
                 raise BaseAppException("model attr not present")
+
+            # 附件/图片字段类型创建后不可切换
+            if current_attr.get("attr_type") != attr_info.get("attr_type") and (
+                is_file_attr_type(current_attr.get("attr_type")) or is_file_attr_type(attr_info.get("attr_type"))
+            ):
+                raise BaseAppException("附件/图片字段类型创建后不可切换")
+
+            # 企业版字段类型规则（附件/图片：强制可选、非唯一、无约束旋钮）
+            attr_info = get_model_enterprise_extension().validate_attr(attr_info)
 
             if current_attr.get("is_required") != attr_info.get("is_required"):
                 guard_attr_change_against_unique_rules(

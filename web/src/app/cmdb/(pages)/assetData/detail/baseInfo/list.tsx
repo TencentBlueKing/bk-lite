@@ -298,6 +298,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                           fieldItem: item,
                           userList,
                           isEdit: true,
+                          modelId,
                         })
                       )}
                     </>
