@@ -1,0 +1,176 @@
+{
+  "object_name": "Host",
+  "instance_type": "os",
+  "collect_type": "http",
+  "config_type": ["windows_wmi"],
+  "collector": "Telegraf",
+  "instance_id": "{{cloud_region}}_{{instance_type}}_{{host}}",
+  "form_fields": [
+    {
+      "name": "host",
+      "label": "目标主机IP",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "description": "目标 Windows 主机的 IP 地址",
+      "widget_props": {
+        "placeholder": "10.0.0.1"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.host"
+      }
+    },
+    {
+      "name": "username",
+      "label": "用户名",
+      "type": "input",
+      "required": true,
+      "editable": false,
+      "description": "WMI 查询账号，支持 domain\\\\user 或 user@domain",
+      "widget_props": {
+        "placeholder": "DOMAIN\\\\monitor"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.username"
+      }
+    },
+    {
+      "name": "ENV_PASSWORD",
+      "label": "密码",
+      "type": "password",
+      "required": true,
+      "editable": false,
+      "encrypted": true,
+      "description": "WMI 查询账号密码",
+      "widget_props": {
+        "placeholder": "密码"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.PASSWORD__{{config_id}}"
+      }
+    },
+    {
+      "name": "namespace",
+      "label": "命名空间",
+      "type": "input",
+      "required": false,
+      "default_value": "root\\cimv2",
+      "description": "WMI 命名空间，默认 root\\\\cimv2",
+      "widget_props": {
+        "placeholder": "root\\\\cimv2"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.namespace"
+      }
+    },
+    {
+      "name": "metrics_modules",
+      "label": "采集模块",
+      "type": "checkbox_group",
+      "required": true,
+      "editable": false,
+      "default_value": ["cpu", "mem", "disk", "net"],
+      "description": "选择需要通过 WMI 远程采集的 Windows 主机指标模块",
+      "options": [
+        {"label": "CPU", "value": "cpu"},
+        {"label": "Memory", "value": "mem"},
+        {"label": "Disk", "value": "disk"},
+        {"label": "Disk IO", "value": "diskio"},
+        {"label": "Network", "value": "net"},
+        {"label": "Processes", "value": "processes"},
+        {"label": "System", "value": "system"}
+      ],
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.metrics_modules",
+        "to_form": {
+          "array": true
+        }
+      }
+    },
+    {
+      "name": "timeout",
+      "label": "超时",
+      "type": "inputNumber",
+      "required": false,
+      "default_value": 60,
+      "description": "WMI 连接和查询超时时间（秒）",
+      "widget_props": {
+        "min": 5,
+        "precision": 0,
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.timeout"
+      }
+    },
+    {
+      "name": "interval",
+      "label": "采集间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 60,
+      "description": "监控数据采集间隔（秒）",
+      "widget_props": {
+        "min": 10,
+        "precision": 0,
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      }
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "widget_props": {
+        "placeholder": "请选择节点"
+      },
+      "enable_row_filter": false
+    },
+    {
+      "name": "host",
+      "label": "主机",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "主机"
+      },
+      "change_handler": {
+        "type": "simple",
+        "source_fields": ["host"],
+        "target_field": "instance_name"
+      }
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "实例名称"
+      }
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": false,
+      "widget_props": {
+        "placeholder": "请选择组"
+      }
+    }
+  ],
+  "extra_edit_fields": {}
+}
