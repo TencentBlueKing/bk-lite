@@ -27,6 +27,12 @@ export const getDefaultShowFields = (fields?: string[] | null): string[] => {
   return Array.from(new Set(merged));
 };
 
+export const getAlertConditionVisibility = (policyType: LogPolicyType) => ({
+  showDisplayFields: true,
+  showGroupBy: true,
+  showRule: policyType === 'aggregate'
+});
+
 export const buildAlertNameVariables = (groupBy?: string[] | null) => {
   const variables = [{ value: '${level}', label: '${level}' }];
   (groupBy || []).filter(Boolean).forEach((field) => {
