@@ -5,7 +5,7 @@
 携带真实逻辑（如附件/图片字段类型与规则）的子类实例。
 """
 
-from apps.cmdb.extensions.loader import load_provider
+from apps.cmdb.extensions import registry
 
 
 class ModelEnterpriseExtension:
@@ -39,12 +39,7 @@ _EMPTY_MODEL_EXTENSION = ModelEnterpriseExtension()
 
 
 def get_model_enterprise_extension() -> ModelEnterpriseExtension:
-    factory = load_provider(
-        "apps.cmdb.enterprise.model_ops.provider",
-        "get_model_enterprise_extension",
-        default=lambda: _EMPTY_MODEL_EXTENSION,
-    )
-    return factory()
+    return registry.get("model_ops", _EMPTY_MODEL_EXTENSION)
 
 
 def file_attr_types() -> set:

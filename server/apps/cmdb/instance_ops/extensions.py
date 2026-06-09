@@ -8,7 +8,7 @@
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 
-from apps.cmdb.extensions.loader import load_provider
+from apps.cmdb.extensions import registry
 
 ENTERPRISE_DISABLED_MESSAGE = "附件/图片功能未启用（企业版）"
 
@@ -58,9 +58,4 @@ _EMPTY_INSTANCE_EXTENSION = InstanceEnterpriseExtension()
 
 
 def get_instance_enterprise_extension() -> InstanceEnterpriseExtension:
-    factory = load_provider(
-        "apps.cmdb.enterprise.instance_ops.provider",
-        "get_instance_enterprise_extension",
-        default=lambda: _EMPTY_INSTANCE_EXTENSION,
-    )
-    return factory()
+    return registry.get("instance_ops", _EMPTY_INSTANCE_EXTENSION)
