@@ -45,6 +45,25 @@ make test-reset          # --create-db，改了 migration 后重建测试库
 > 需要数据库的用例依赖 `DB_*` 环境变量（默认 PostgreSQL）。本地没有库时，仅 `@pytest.mark.unit`
 > 这类不碰 DB / IO 的用例可独立运行。
 
+### 本地测试数据库
+
+DB 相关用例必须连 **PostgreSQL**：项目历史 migration 含 `RemoveField`/`AlterUniqueTogether`
+等操作，SQLite 的“整表重建”语义无法从零构建测试库（生产用 PostgreSQL 增量迁移不受影响，
+**不要为此改动 migration**）。本地用 Docker 一次性测试库即可：
+
+```bash
+make test-db-up      # 启动 Docker PostgreSQL(localhost:55432)
+make test-db         # 连测试库跑全部用例
+make test-db-down    # 用完销毁
+
+# 跑单个 app（需先 test-db-up）：
+DB_ENGINE=postgresql DB_NAME=bklite DB_USER=postgres DB_PASSWORD=testpass \
+  DB_HOST=localhost DB_PORT=55432 uv run pytest apps/console_mgmt/tests --reuse-db
+```
+
+> 接口返回经全局封装为 `{"code","data","message","result"}`，**列表数据在 `data` 字段**；
+> 写接口断言 `result` / 状态码。写视图测试时勿直接把 `resp.json()` 当作列表。
+
 ---
 
 ## 2. 标准目录结构（单一约定）
