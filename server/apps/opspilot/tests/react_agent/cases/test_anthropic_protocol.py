@@ -12,6 +12,8 @@ Verifies:
 """
 import sys
 import types
+from importlib import util
+from pathlib import Path
 
 for _mod_name in ("oracledb", "pyodbc"):
     sys.modules.setdefault(_mod_name, types.ModuleType(_mod_name))
@@ -24,6 +26,117 @@ _falkordb_asyncio = types.ModuleType("falkordb.asyncio")
 setattr(_falkordb_asyncio, "FalkorDB", type("FalkorDB", (), {}))
 sys.modules.setdefault("falkordb.asyncio", _falkordb_asyncio)
 
+_django = types.ModuleType("django")
+_django_db = types.ModuleType("django.db")
+_django_db_models = types.ModuleType("django.db.models")
+_django_db_transaction = types.ModuleType("django.db.transaction")
+
+
+class _Model:
+    def __init__(self, *args, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+
+def _field_factory(*args, **kwargs):
+    return object()
+
+
+class _Atomic:
+    def __enter__(self):
+        return None
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+setattr(_django_db_models, "Model", _Model)
+setattr(_django_db_models, "CharField", _field_factory)
+setattr(_django_db_models, "BooleanField", _field_factory)
+setattr(_django_db_models, "JSONField", _field_factory)
+setattr(_django_db_models, "TextField", _field_factory)
+setattr(_django_db_models, "ForeignKey", _field_factory)
+setattr(_django_db_models, "SET_NULL", object())
+setattr(_django_db_models, "CASCADE", object())
+setattr(_django_db_models, "__getattr__", lambda name: _field_factory if name.endswith("Field") else object())
+setattr(_django_db_transaction, "atomic", lambda: _Atomic())
+_real_django_db = sys.modules.get("django.db")
+if _real_django_db is not None:
+    _real_django_db.models = _django_db_models
+    _real_django_db.transaction = _django_db_transaction
+setattr(_django_db, "models", _django_db_models)
+setattr(_django_db, "transaction", _django_db_transaction)
+sys.modules["django.db.models"] = _django_db_models
+sys.modules["django.db.transaction"] = _django_db_transaction
+
+_apps_core_mixinx = types.ModuleType("apps.core.mixinx")
+
+
+class _EncryptMixin:
+    pass
+
+
+setattr(_apps_core_mixinx, "EncryptMixin", _EncryptMixin)
+sys.modules["apps.core.mixinx"] = _apps_core_mixinx
+
+_apps_core_maintainer_info = types.ModuleType("apps.core.models.maintainer_info")
+setattr(_apps_core_maintainer_info, "MaintainerInfo", type("MaintainerInfo", (), {}))
+sys.modules["apps.core.models.maintainer_info"] = _apps_core_maintainer_info
+
+_apps_core_time_info = types.ModuleType("apps.core.models.time_info")
+setattr(_apps_core_time_info, "TimeInfo", type("TimeInfo", (), {}))
+sys.modules["apps.core.models.time_info"] = _apps_core_time_info
+
+_opspilot_enum = types.ModuleType("apps.opspilot.enum")
+setattr(_opspilot_enum, "SkillTypeChoices", type("SkillTypeChoices", (), {"choices": [], "BASIC_TOOL": 0}))
+sys.modules["apps.opspilot.enum"] = _opspilot_enum
+
+_langchain_core = types.ModuleType("langchain_core")
+_langchain_core_documents = types.ModuleType("langchain_core.documents")
+_langchain_core_messages = types.ModuleType("langchain_core.messages")
+_langchain_core_language_models = types.ModuleType("langchain_core.language_models")
+_langchain_core_language_models_chat_models = types.ModuleType("langchain_core.language_models.chat_models")
+
+
+class _HumanMessage:
+    def __init__(self, content=None, **kwargs):
+        self.content = content
+        self.type = kwargs.get("type", "user")
+
+
+class _BaseChatModel:
+    pass
+
+
+setattr(_langchain_core_documents, "Document", dict)
+setattr(_langchain_core_messages, "HumanMessage", _HumanMessage)
+setattr(_langchain_core_language_models_chat_models, "BaseChatModel", _BaseChatModel)
+setattr(_langchain_core_language_models, "chat_models", _langchain_core_language_models_chat_models)
+setattr(_langchain_core, "documents", _langchain_core_documents)
+setattr(_langchain_core, "messages", _langchain_core_messages)
+setattr(_langchain_core, "language_models", _langchain_core_language_models)
+sys.modules["langchain_core"] = _langchain_core
+sys.modules["langchain_core.documents"] = _langchain_core_documents
+sys.modules["langchain_core.messages"] = _langchain_core_messages
+sys.modules["langchain_core.language_models"] = _langchain_core_language_models
+sys.modules["langchain_core.language_models.chat_models"] = _langchain_core_language_models_chat_models
+
+_langchain_anthropic = types.ModuleType("langchain_anthropic")
+setattr(_langchain_anthropic, "ChatAnthropic", type("ChatAnthropic", (), {}))
+sys.modules["langchain_anthropic"] = _langchain_anthropic
+
+_langchain_openai = types.ModuleType("langchain_openai")
+setattr(_langchain_openai, "ChatOpenAI", type("ChatOpenAI", (), {}))
+sys.modules["langchain_openai"] = _langchain_openai
+
+_anthropic = types.ModuleType("anthropic")
+setattr(_anthropic, "Anthropic", type("Anthropic", (), {}))
+sys.modules["anthropic"] = _anthropic
+
+_openai = types.ModuleType("openai")
+setattr(_openai, "OpenAI", type("OpenAI", (), {}))
+sys.modules["openai"] = _openai
+
 from unittest.mock import MagicMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
@@ -35,7 +148,29 @@ from apps.opspilot.metis.llm.common.anthropic_capabilities import (  # noqa: E40
     normalize_tool_choice_for_capabilities,
 )
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory  # noqa: E402
-from apps.opspilot.services.model_vendor_sync_service import ModelVendorSyncService  # noqa: E402
+
+_model_provider_path = Path(__file__).resolve().parents[3] / "models" / "model_provider_mgmt.py"
+_model_provider_spec = util.spec_from_file_location("test_model_provider_mgmt", _model_provider_path)
+_model_provider_module = util.module_from_spec(_model_provider_spec)
+assert _model_provider_spec and _model_provider_spec.loader
+_model_provider_spec.loader.exec_module(_model_provider_module)
+LLMModel = _model_provider_module.LLMModel
+ModelVendor = _model_provider_module.ModelVendor
+
+_opspilot_models_stub = types.ModuleType("apps.opspilot.models")
+_opspilot_models_stub.LLMModel = LLMModel
+_opspilot_models_stub.ModelVendor = ModelVendor
+_opspilot_models_stub.EmbedProvider = _model_provider_module.EmbedProvider
+_opspilot_models_stub.RerankProvider = _model_provider_module.RerankProvider
+_opspilot_models_stub.OCRProvider = _model_provider_module.OCRProvider
+sys.modules["apps.opspilot.models"] = _opspilot_models_stub
+
+_model_vendor_sync_path = Path(__file__).resolve().parents[3] / "services" / "model_vendor_sync_service.py"
+_model_vendor_sync_spec = util.spec_from_file_location("test_model_vendor_sync_service", _model_vendor_sync_path)
+_model_vendor_sync_module = util.module_from_spec(_model_vendor_sync_spec)
+assert _model_vendor_sync_spec and _model_vendor_sync_spec.loader
+_model_vendor_sync_spec.loader.exec_module(_model_vendor_sync_module)
+ModelVendorSyncService = _model_vendor_sync_module.ModelVendorSyncService
 
 # ---------------------------------------------------------------------------
 # AnthropicRuntimeCapabilities Tests
@@ -516,51 +651,28 @@ class TestIsSupportedVendor:
 class TestLLMModelProtocolType:
     """LLMModel.protocol_type derives from vendor correctly."""
 
-    def test_anthropic_vendor_gives_anthropic_protocol(self):
-        vendor = MagicMock()
-        vendor.vendor_type = "anthropic"
-        vendor.protocol_type = "anthropic"
+    def _make_model(self, vendor_type=None, protocol_type="openai"):
+        model = LLMModel(name="test-model")
+        model.vendor_id = None
+        if vendor_type is None:
+            return model
 
-        model = MagicMock()
+        model.vendor = ModelVendor(
+            name="test-vendor",
+            vendor_type=vendor_type,
+            protocol_type=protocol_type,
+        )
         model.vendor_id = 1
-        model.vendor = vendor
+        return model
 
-        # Simulate the property logic
-        if model.vendor.vendor_type == "anthropic":
-            result = "anthropic"
-        elif model.vendor.vendor_type in ("deepseek", "other"):
-            result = model.vendor.protocol_type or "openai"
-        else:
-            result = "openai"
-        assert result == "anthropic"
+    def test_anthropic_vendor_gives_anthropic_protocol(self):
+        assert self._make_model("anthropic", "anthropic").protocol_type == "anthropic"
 
     def test_other_vendor_with_anthropic_protocol(self):
-        vendor = MagicMock()
-        vendor.vendor_type = "other"
-        vendor.protocol_type = "anthropic"
-
-        if vendor.vendor_type == "anthropic":
-            result = "anthropic"
-        elif vendor.vendor_type in ("deepseek", "other"):
-            result = vendor.protocol_type or "openai"
-        else:
-            result = "openai"
-        assert result == "anthropic"
+        assert self._make_model("other", "anthropic").protocol_type == "anthropic"
 
     def test_openai_vendor_gives_openai_protocol(self):
-        vendor = MagicMock()
-        vendor.vendor_type = "openai"
-        vendor.protocol_type = "openai"
-
-        if vendor.vendor_type == "anthropic":
-            result = "anthropic"
-        elif vendor.vendor_type in ("deepseek", "other"):
-            result = vendor.protocol_type or "openai"
-        else:
-            result = "openai"
-        assert result == "openai"
+        assert self._make_model("openai", "anthropic").protocol_type == "openai"
 
     def test_no_vendor_defaults_to_openai(self):
-        # Simulates vendor_id = None
-        result = "openai"  # default when no vendor
-        assert result == "openai"
+        assert self._make_model().protocol_type == "openai"
