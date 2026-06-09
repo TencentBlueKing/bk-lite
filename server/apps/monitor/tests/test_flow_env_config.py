@@ -1,7 +1,56 @@
+import json
 import types
 
 from apps.monitor.models import MonitorInstance, MonitorObject
 from apps.monitor.services.flow_onboarding import FlowOnboardingService
+from apps.node_mgmt.constants.controller import ControllerConstants
+from apps.node_mgmt.models import CloudRegion, Collector, CollectorConfiguration, Node
+
+
+def _create_telegraf_collector():
+    collector, _ = Collector.objects.get_or_create(
+        node_operating_system="linux",
+        cpu_architecture="x86_64",
+        name="Telegraf",
+        defaults={
+            "id": "telegraf-linux-flow-test",
+            "service_type": "exec",
+            "executable_path": "/opt/fusion-collectors/bin/telegraf",
+            "execute_parameters": "--config %s",
+            "validation_parameters": "",
+            "default_template": "",
+            "introduction": "Telegraf",
+            "default_config": {},
+            "tags": ["linux", "monitor"],
+            "package_name": "telegraf",
+        },
+    )
+    return collector
+
+
+def _create_node(*, node_id, cloud_region, node_type):
+    return Node.objects.create(
+        id=node_id,
+        name=node_id,
+        ip="127.0.0.1",
+        operating_system="linux",
+        collector_configuration_directory="/etc/telegraf",
+        cloud_region=cloud_region,
+        node_type=node_type,
+    )
+
+
+def _create_telegraf_config(*, name, cloud_region, node, env_config=None, is_pre=True):
+    config = CollectorConfiguration.objects.create(
+        name=name,
+        collector=_create_telegraf_collector(),
+        config_template="[[outputs.nats]]",
+        cloud_region=cloud_region,
+        is_pre=is_pre,
+        env_config=env_config or {},
+    )
+    config.nodes.add(node)
+    return config
 
 
 def test_build_flow_asset_map_uses_cloud_region_ip_composite_key(db):
@@ -22,7 +71,7 @@ def test_build_flow_asset_map_uses_cloud_region_ip_composite_key(db):
 
     assert payload == {
         "1:10.0.0.12": {
-            "instance_id": "('flow-device-1',)",
+            "instance_id": "flow-device-1",
             "instance_type": "switch",
             "fallback_sampling_rate": 1000,
             "protocols": ["netflow", "sflow"],
@@ -47,71 +96,30 @@ def test_build_flow_asset_map_excludes_unsupported_monitor_objects(db):
     assert FlowEnvConfigService.build_asset_map(cloud_region_id=1) == {}
 
 
-def test_refresh_collect_configs_only_updates_env_config(monkeypatch):
-    config_items = [
-        types.SimpleNamespace(
-            id="base-config-id",
-            collector="Telegraf",
-            collect_type="netflow",
-            config_type="flow",
-            monitor_plugin_id=None,
-            monitor_instance_id="('flow-device-1',)",
-            is_child=False,
-            monitor_instance=types.SimpleNamespace(monitor_object=types.SimpleNamespace(name="Switch")),
-        ),
-        types.SimpleNamespace(
-            id="child-config-id",
-            collector="Telegraf",
-            collect_type="netflow",
-            config_type="flow",
-            monitor_plugin_id=None,
-            monitor_instance_id="('flow-device-1',)",
-            is_child=True,
-            monitor_instance=types.SimpleNamespace(monitor_object=types.SimpleNamespace(name="Switch")),
-        ),
-    ]
-
-    class StubCollectConfigManager:
-        def filter(self, **kwargs):
-            self.filter_kwargs = kwargs
-            return self
-
-        def select_related(self, *args):
-            return self
-
-        def order_by(self, *args):
-            return config_items
-
-    updated = []
-    class StubInstanceConfigService:
-        @staticmethod
-        def get_config_content(ids):
-            config_id = ids[0]
-            if config_id == "base-config-id":
-                return {
-                    "base": {
-                        "id": config_id,
-                        "content": {"config": {"service_address": ":2055"}},
-                        "env_config": {"EXISTING_ENV": "preserved"},
-                    }
-                }
-            return {
-                "child": {
-                    "id": config_id,
-                    "content": {"config": {"service_address": ":2055"}},
-                    "env_config": {"OTHER_ENV__CHILD-CONFIG-ID": "preserved"},
-                }
-            }
-
-        @staticmethod
-        def update_instance_config(child_info, base_info):
-            updated.append((child_info, base_info))
-
-    monkeypatch.setattr(
-        "apps.monitor.services.flow_env_config.CollectConfig",
-        types.SimpleNamespace(objects=StubCollectConfigManager()),
+def test_refresh_collect_configs_updates_container_telegraf_base_config(db, monkeypatch):
+    cloud_region = CloudRegion.objects.create(name="flow-region-1")
+    container_node = _create_node(
+        node_id="flow-container-node-1",
+        cloud_region=cloud_region,
+        node_type=ControllerConstants.NODE_TYPE_CONTAINER,
     )
-    monkeypatch.setattr("apps.monitor.services.flow_env_config.InstanceConfigService", StubInstanceConfigService)
+    host_node = _create_node(
+        node_id="flow-host-node-1",
+        cloud_region=cloud_region,
+        node_type=ControllerConstants.NODE_TYPE_HOST,
+    )
+    container_config = _create_telegraf_config(
+        name="telegraf-flow-container-config-1",
+        cloud_region=cloud_region,
+        node=container_node,
+        env_config={"EXISTING_ENV": "preserved"},
+    )
+    host_config = _create_telegraf_config(
+        name="telegraf-flow-host-config-1",
+        cloud_region=cloud_region,
+        node=host_node,
+        env_config={"EXISTING_ENV": "host-preserved"},
+    )
 
     from apps.monitor.services.flow_env_config import FlowEnvConfigService
 
@@ -121,130 +129,7 @@ def test_refresh_collect_configs_only_updates_env_config(monkeypatch):
         classmethod(
             lambda cls, *, cloud_region_id: {
                 f"{cloud_region_id}:10.0.0.12": {
-                    "instance_id": "('flow-device-1',)",
-                    "instance_type": "switch",
-                    "fallback_sampling_rate": 1000,
-                    "protocols": ["netflow"],
-                }
-            }
-        ),
-    )
-    refreshed = FlowEnvConfigService.refresh_collect_configs(cloud_region_id=1)
-
-    assert refreshed == 2
-    assert updated == [
-        (
-            None,
-            {
-                "id": "base-config-id",
-                "content": {"config": {"service_address": ":2055"}},
-                "env_config": {
-                    "EXISTING_ENV": "preserved",
-                    "FLOW_ASSET_MAP_JSON": "{\"1:10.0.0.12\": {\"fallback_sampling_rate\": 1000, \"instance_id\": \"('flow-device-1',)\", \"instance_type\": \"switch\", \"protocols\": [\"netflow\"]}}",
-                },
-            },
-        ),
-        (
-            {
-                "id": "child-config-id",
-                "content": {"config": {"service_address": ":2055"}},
-                "env_config": {
-                    "OTHER_ENV__CHILD-CONFIG-ID": "preserved",
-                    "FLOW_ASSET_MAP_JSON__CHILD-CONFIG-ID": "{\"1:10.0.0.12\": {\"fallback_sampling_rate\": 1000, \"instance_id\": \"('flow-device-1',)\", \"instance_type\": \"switch\", \"protocols\": [\"netflow\"]}}",
-                },
-            },
-            None,
-        ),
-    ]
-
-
-def test_refresh_collect_configs_only_updates_target_cloud_region(monkeypatch):
-    target_config = types.SimpleNamespace(
-        id="target-config-id",
-        collector="Telegraf",
-        collect_type="netflow",
-        config_type="flow",
-        monitor_plugin_id=None,
-        monitor_instance_id="('flow-device-1',)",
-        is_child=False,
-        monitor_instance=types.SimpleNamespace(
-            cloud_region_id=1,
-            monitor_object=types.SimpleNamespace(name="Switch"),
-        ),
-    )
-    off_target_config = types.SimpleNamespace(
-        id="off-target-config-id",
-        collector="Telegraf",
-        collect_type="sflow",
-        config_type="flow",
-        monitor_plugin_id=None,
-        monitor_instance_id="('flow-device-2',)",
-        is_child=False,
-        monitor_instance=types.SimpleNamespace(
-            cloud_region_id=2,
-            monitor_object=types.SimpleNamespace(name="Router"),
-        ),
-    )
-
-    class StubCollectConfigQuerySet:
-        def __init__(self, items):
-            self.items = items
-
-        def select_related(self, *args):
-            return self
-
-        def order_by(self, *args):
-            return self.items
-
-    class StubCollectConfigManager:
-        def __init__(self, items):
-            self.items = items
-            self.filter_kwargs = None
-
-        def filter(self, **kwargs):
-            self.filter_kwargs = kwargs
-            return StubCollectConfigQuerySet(
-                [
-                    item
-                    for item in self.items
-                    if item.collect_type in kwargs["collect_type__in"]
-                    and item.monitor_instance.cloud_region_id == kwargs["monitor_instance__cloud_region_id"]
-                ]
-            )
-
-    config_manager = StubCollectConfigManager([target_config, off_target_config])
-    updated_ids = []
-
-    class StubInstanceConfigService:
-        @staticmethod
-        def get_config_content(ids):
-            return {
-                "base": {
-                    "id": ids[0],
-                    "content": {"config": {"service_address": ":2055"}},
-                    "env_config": {},
-                }
-            }
-
-        @staticmethod
-        def update_instance_config(child_info, base_info):
-            updated_ids.append((child_info or base_info)["id"])
-
-    monkeypatch.setattr(
-        "apps.monitor.services.flow_env_config.CollectConfig",
-        types.SimpleNamespace(objects=config_manager),
-    )
-    monkeypatch.setattr("apps.monitor.services.flow_env_config.InstanceConfigService", StubInstanceConfigService)
-
-    from apps.monitor.services.flow_env_config import FlowEnvConfigService
-
-    monkeypatch.setattr(
-        FlowEnvConfigService,
-        "build_asset_map",
-        classmethod(
-            lambda cls, *, cloud_region_id: {
-                f"{cloud_region_id}:10.0.0.12": {
-                    "instance_id": "('flow-device-1',)",
+                    "instance_id": "flow-device-1",
                     "instance_type": "switch",
                     "fallback_sampling_rate": 1000,
                     "protocols": ["netflow"],
@@ -253,14 +138,82 @@ def test_refresh_collect_configs_only_updates_target_cloud_region(monkeypatch):
         ),
     )
 
-    refreshed = FlowEnvConfigService.refresh_collect_configs(cloud_region_id=1)
+    refreshed = FlowEnvConfigService.refresh_collect_configs(cloud_region_id=cloud_region.id)
 
+    container_config.refresh_from_db()
+    host_config.refresh_from_db()
     assert refreshed == 1
-    assert config_manager.filter_kwargs == {
-        "collect_type__in": ("netflow", "sflow"),
-        "monitor_instance__cloud_region_id": 1,
+    expected_asset_map = json.dumps(
+        {
+            f"{cloud_region.id}:10.0.0.12": {
+                "fallback_sampling_rate": 1000,
+                "instance_id": "flow-device-1",
+                "instance_type": "switch",
+                "protocols": ["netflow"],
+            }
+        },
+        sort_keys=True,
+    )
+    assert container_config.env_config == {
+        "EXISTING_ENV": "preserved",
+        "FLOW_ASSET_MAP_JSON": expected_asset_map,
     }
-    assert updated_ids == ["target-config-id"]
+    assert host_config.env_config == {"EXISTING_ENV": "host-preserved"}
+
+
+def test_refresh_collect_configs_updates_all_container_telegraf_base_configs(db, monkeypatch):
+    cloud_region = CloudRegion.objects.create(name="flow-region-2")
+    first_node = _create_node(
+        node_id="flow-container-node-2a",
+        cloud_region=cloud_region,
+        node_type=ControllerConstants.NODE_TYPE_CONTAINER,
+    )
+    second_node = _create_node(
+        node_id="flow-container-node-2b",
+        cloud_region=cloud_region,
+        node_type=ControllerConstants.NODE_TYPE_CONTAINER,
+    )
+    first_config = _create_telegraf_config(name="telegraf-flow-container-config-2a", cloud_region=cloud_region, node=first_node)
+    second_config = _create_telegraf_config(name="telegraf-flow-container-config-2b", cloud_region=cloud_region, node=second_node)
+
+    from apps.monitor.services.flow_env_config import FlowEnvConfigService
+
+    monkeypatch.setattr(
+        FlowEnvConfigService,
+        "build_asset_map",
+        classmethod(
+            lambda cls, *, cloud_region_id: {
+                f"{cloud_region_id}:10.0.0.12": {
+                    "instance_id": "flow-device-1",
+                    "instance_type": "switch",
+                    "fallback_sampling_rate": 1000,
+                    "protocols": ["netflow"],
+                }
+            }
+        ),
+    )
+
+    refreshed = FlowEnvConfigService.refresh_collect_configs(cloud_region_id=cloud_region.id)
+
+    first_config.refresh_from_db()
+    second_config.refresh_from_db()
+    assert refreshed == 2
+    assert "FLOW_ASSET_MAP_JSON" in first_config.env_config
+    assert "FLOW_ASSET_MAP_JSON" in second_config.env_config
+
+
+def test_refresh_collect_configs_logs_and_skips_when_container_telegraf_base_config_missing(db, monkeypatch):
+    cloud_region = CloudRegion.objects.create(name="flow-region-3")
+    logged = []
+
+    monkeypatch.setattr("apps.monitor.services.flow_env_config.logger.info", lambda message, region_id: logged.append((message, region_id)))
+
+    from apps.monitor.services.flow_env_config import FlowEnvConfigService
+
+    refreshed = FlowEnvConfigService.refresh_collect_configs(cloud_region_id=cloud_region.id)
+
+    assert refreshed == 0
+    assert logged == [("未找到可刷新的 Flow Telegraf 基础配置: cloud_region_id=%s", cloud_region.id)]
 
 
 def test_create_or_bind_flow_asset_refreshes_current_cloud_region(db, monkeypatch):
@@ -371,7 +324,11 @@ def test_update_flow_asset_refresh_uses_locked_previous_region_state(db, monkeyp
     monkeypatch.setattr(FlowOnboardingService, "_ensure_tuple_available", classmethod(lambda cls, **kwargs: None))
     monkeypatch.setattr(FlowOnboardingService, "_normalize_duplicate_name_conflict", classmethod(lambda cls, func, **kwargs: None))
     monkeypatch.setattr(FlowOnboardingService, "_restore_organization_rules", staticmethod(lambda **kwargs: None))
-    monkeypatch.setattr(FlowOnboardingService, "_schedule_region_refresh", staticmethod(lambda *region_ids: refresh_calls.append(region_ids)))
+    monkeypatch.setattr(
+        FlowOnboardingService,
+        "_schedule_region_refresh",
+        staticmethod(lambda *region_ids: refresh_calls.append(region_ids)),
+    )
 
     FlowOnboardingService.update_asset(
         instance_id="flow-asset",
@@ -390,7 +347,10 @@ def test_refresh_callback_logs_and_swallows_errors(db, monkeypatch):
         "apps.monitor.services.flow_env_config.FlowEnvConfigService.refresh_collect_configs",
         lambda *, cloud_region_id: (_ for _ in ()).throw(RuntimeError("boom")),
     )
-    monkeypatch.setattr("apps.monitor.services.flow_onboarding.logger.exception", lambda message, region_id: logged.append((message, region_id)))
+    monkeypatch.setattr(
+        "apps.monitor.services.flow_onboarding.logger.exception",
+        lambda message, region_id: logged.append((message, region_id)),
+    )
 
     result = FlowOnboardingService.create_or_bind_asset(
         monitor_object_id=switch_object.id,
@@ -405,68 +365,54 @@ def test_refresh_callback_logs_and_swallows_errors(db, monkeypatch):
     assert logged == [("刷新 Flow env_config 失败: cloud_region_id=%s", 1)]
 
 
-def test_refresh_collect_configs_continues_when_single_config_update_fails(monkeypatch):
-    config_items = [
-        types.SimpleNamespace(
-            id="broken-config-id",
-            collect_type="netflow",
-            is_child=False,
-        ),
-        types.SimpleNamespace(
-            id="healthy-config-id",
-            collect_type="sflow",
-            is_child=False,
-        ),
-    ]
-
-    class StubCollectConfigManager:
-        def filter(self, **kwargs):
-            return self
-
-        def select_related(self, *args):
-            return self
-
-        def order_by(self, *args):
-            return config_items
-
-    updated = []
-    logged = []
-
-    class StubInstanceConfigService:
-        @staticmethod
-        def get_config_content(ids):
-            return {
-                "base": {
-                    "id": ids[0],
-                    "content": {"config": {"service_address": ":2055"}},
-                    "env_config": {},
-                }
-            }
-
-        @staticmethod
-        def update_instance_config(child_info, base_info):
-            config_id = (child_info or base_info)["id"]
-            if config_id == "broken-config-id":
-                raise RuntimeError("boom")
-            updated.append(config_id)
-
-    monkeypatch.setattr(
-        "apps.monitor.services.flow_env_config.CollectConfig",
-        types.SimpleNamespace(objects=StubCollectConfigManager()),
+def test_refresh_collect_configs_continues_when_single_base_config_update_fails(db, monkeypatch):
+    cloud_region = CloudRegion.objects.create(name="flow-region-4")
+    broken_node = _create_node(
+        node_id="flow-container-node-4a",
+        cloud_region=cloud_region,
+        node_type=ControllerConstants.NODE_TYPE_CONTAINER,
     )
-    monkeypatch.setattr("apps.monitor.services.flow_env_config.InstanceConfigService", StubInstanceConfigService)
-    monkeypatch.setattr("apps.monitor.services.flow_env_config.logger.exception", lambda message, config_id: logged.append((message, config_id)))
+    healthy_node = _create_node(
+        node_id="flow-container-node-4b",
+        cloud_region=cloud_region,
+        node_type=ControllerConstants.NODE_TYPE_CONTAINER,
+    )
+    broken_config = _create_telegraf_config(name="telegraf-flow-container-config-4a", cloud_region=cloud_region, node=broken_node)
+    healthy_config = _create_telegraf_config(name="telegraf-flow-container-config-4b", cloud_region=cloud_region, node=healthy_node)
+    logged = []
+    original_save = CollectorConfiguration.save
+
+    def save_with_failure(self, *args, **kwargs):
+        if self.id == broken_config.id:
+            raise RuntimeError("boom")
+        return original_save(self, *args, **kwargs)
+
+    monkeypatch.setattr(CollectorConfiguration, "save", save_with_failure)
+    monkeypatch.setattr(
+        "apps.monitor.services.flow_env_config.logger.exception",
+        lambda message, config_id: logged.append((message, config_id)),
+    )
 
     from apps.monitor.services.flow_env_config import FlowEnvConfigService
 
     monkeypatch.setattr(
         FlowEnvConfigService,
         "build_asset_map",
-        classmethod(lambda cls, *, cloud_region_id: {f"{cloud_region_id}:10.0.0.12": {"instance_id": "x", "instance_type": "switch", "fallback_sampling_rate": 1000, "protocols": ["netflow"]}}),
+        classmethod(
+            lambda cls, *, cloud_region_id: {
+                f"{cloud_region_id}:10.0.0.12": {
+                    "instance_id": "flow-device-1",
+                    "instance_type": "switch",
+                    "fallback_sampling_rate": 1000,
+                    "protocols": ["netflow"],
+                }
+            }
+        ),
     )
 
-    refreshed = FlowEnvConfigService.refresh_collect_configs(cloud_region_id=1)
+    refreshed = FlowEnvConfigService.refresh_collect_configs(cloud_region_id=cloud_region.id)
 
+    healthy_config.refresh_from_db()
     assert refreshed == 2
-    assert updated == ["healthy-config-id"]
-    assert logged == [("刷新 Flow env_config 失败: config_id=%s", "broken-config-id")]
+    assert "FLOW_ASSET_MAP_JSON" in healthy_config.env_config
+    assert logged == [("刷新 Flow Telegraf 基础配置 env_config 失败: config_id=%s", broken_config.id)]

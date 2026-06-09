@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlueKing Lite - 策略</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            color: #1f2329;
+            background:
+                radial-gradient(circle at 76% 12%, rgba(120, 193, 255, .28), transparent 30%),
+                linear-gradient(135deg, #f9fcff 0%, #eef8ff 45%, #f8fbff 100%);
+            overflow: hidden;
+        }
+        .app { min-width: 1180px; height: 100vh; display: flex; flex-direction: column; }
+        .topbar {
+            height: 58px;
+            padding: 0 18px;
+            display: grid;
+            grid-template-columns: 310px 1fr 310px;
+            align-items: center;
+            background: rgba(250, 253, 255, .78);
+            border-bottom: 1px solid rgba(218, 228, 239, .78);
+            backdrop-filter: blur(16px);
+        }
+        .brand { display: flex; align-items: center; gap: 12px; font-size: 16px; font-weight: 600; color: #344054; }
+        .brand-mark {
+            width: 34px; height: 34px; position: relative; color: #2468ff;
+            display: grid; place-items: center; font-size: 27px; transform: rotate(-18deg);
+        }
+        .brand-mark::before { content: "◇"; }
+        .app-switch {
+            margin-left: 10px; height: 34px; min-width: 58px; border-radius: 9px; border: 0;
+            background: #eef4fb; color: #3473ff; font-weight: 700;
+        }
+        .main-nav { display: flex; justify-content: center; gap: 10px; }
+        .nav-item {
+            height: 40px; padding: 0 14px; border-radius: 11px; display: flex; align-items: center; gap: 8px;
+            color: #344054; font-size: 16px; font-weight: 500;
+        }
+        .nav-item.active { color: #155eef; background: rgba(255,255,255,.9); box-shadow: 0 6px 18px rgba(20, 88, 183, .09); }
+        .top-actions { display: flex; align-items: center; justify-content: flex-end; gap: 16px; color: #667085; }
+        .user { display: flex; align-items: center; gap: 8px; }
+        .avatar { width: 22px; height: 22px; border-radius: 50%; background: #245cff; color: #fff; display: grid; place-items: center; font-size: 12px; }
+        .user strong { display: block; color: #1f2937; font-size: 13px; font-weight: 500; }
+        .user small { display: block; color: #667085; font-size: 11px; margin-top: -2px; }
+
+        .page { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .subnav { height: 64px; padding-left: 31px; display: flex; align-items: center; gap: 14px; }
+        .sub-item {
+            height: 36px; padding: 0 18px; border-radius: 4px; display: flex; align-items: center; gap: 8px;
+            font-size: 14px; color: #111827;
+        }
+        .sub-item.active { color: #155eef; background: #fff; box-shadow: 0 2px 8px rgba(16, 24, 40, .08); }
+        .content {
+            flex: 1;
+            padding: 8px 16px 16px;
+            overflow-y: auto;
+            scrollbar-color: #d7e1ee transparent;
+        }
+        .content::-webkit-scrollbar { width: 10px; }
+        .content::-webkit-scrollbar-thumb { background: #d7e1ee; border-radius: 999px; }
+        .panel {
+            min-height: calc(100vh - 136px);
+            padding: 20px;
+            background: rgba(255, 255, 255, .88);
+            border: 1px solid rgba(230, 236, 245, .78);
+            border-radius: 0;
+            box-shadow: 0 8px 26px rgba(33, 68, 108, .03);
+        }
+        .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+        .search { width: 320px; height: 32px; border: 1px solid #d7dce3; border-radius: 5px; padding: 0 12px; color: #b8bec8; background: #fff; display: flex; align-items: center; font-size: 14px; }
+        .add-btn {
+            height: 32px; min-width: 82px; padding: 0 14px; border: 0; border-radius: 5px;
+            color: #fff; background: #2d5cf6; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            font-size: 14px; text-decoration: none; box-shadow: 0 4px 10px rgba(45, 92, 246, .18); cursor: pointer;
+        }
+        .table-wrap { overflow: hidden; border-radius: 8px 8px 0 0; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; background: #fff; }
+        thead th {
+            height: 46px; text-align: left; padding: 0 12px; font-weight: 600; font-size: 14px;
+            background: #fafafa; color: #111827; border-bottom: 1px solid #e8eaef; position: relative;
+        }
+        thead th:not(:last-child)::after {
+            content: ""; width: 1px; height: 22px; background: #e1e5eb; position: absolute; right: 0; top: 12px;
+        }
+        tbody td { height: 56px; padding: 0 12px; border-bottom: 1px solid #edf0f4; font-size: 14px; color: #1f2329; }
+        .name-col { width: 16.5%; }
+        .type-col { width: 16%; }
+        .creator-col { width: 13%; }
+        .time-col { width: 18%; }
+        .run-col { width: 17%; }
+        .enable-col { width: 10%; }
+        .action-col { width: 9%; }
+        .creator { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .user-dot { width: 24px; height: 24px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-size: 13px; font-weight: 600; flex: 0 0 auto; }
+        .blue { background: #316bff; }
+        .purple { background: #8158f5; }
+        .switch { width: 30px; height: 16px; background: #c8cbd0; border-radius: 999px; position: relative; display: inline-block; vertical-align: middle; }
+        .switch::after { content: ""; width: 12px; height: 12px; border-radius: 50%; background: #fff; position: absolute; top: 2px; left: 2px; box-shadow: 0 1px 2px rgba(16,24,40,.22); }
+        .switch.on { background: #2468ff; }
+        .switch.on::after { left: 16px; }
+        .actions { display: flex; gap: 12px; }
+        .link { border: 0; background: transparent; color: #155eef; font-size: 14px; cursor: pointer; padding: 0; text-decoration: none; }
+        .delete-pop {
+            display: none; position: fixed; right: 208px; top: 300px; width: 245px; padding: 14px;
+            background: #fff; border-radius: 6px; box-shadow: 0 8px 28px rgba(16,24,40,.18); border: 1px solid #edf0f4; z-index: 10;
+        }
+        .delete-pop.show { display: block; }
+        .delete-pop strong { display: block; font-size: 14px; margin-bottom: 8px; }
+        .delete-pop p { color: #667085; font-size: 13px; margin-bottom: 12px; }
+        .pop-actions { display: flex; justify-content: flex-end; gap: 8px; }
+        .mini-btn { height: 28px; padding: 0 10px; border-radius: 4px; border: 1px solid #d7dce3; background: #fff; font-size: 13px; }
+        .mini-btn.primary { background: #2d5cf6; border-color: #2d5cf6; color: #fff; }
+        .pager {
+            position: absolute; right: 35px; bottom: 17px; display: flex; align-items: center; gap: 14px;
+            color: #111827; font-size: 14px;
+        }
+        .page-num { width: 32px; height: 32px; border: 1px solid #2d5cf6; color: #155eef; border-radius: 6px; display: grid; place-items: center; background: #fff; }
+        .chev { color: #b8bec8; font-size: 18px; }
+        .page-size { height: 32px; min-width: 96px; border: 1px solid #d7dce3; border-radius: 6px; background: #fff; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .modal-mask {
+            display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, .32);
+            z-index: 20; align-items: center; justify-content: center;
+        }
+        .modal-mask.show { display: flex; }
+        .type-modal {
+            width: 640px; background: #fff; border-radius: 8px; box-shadow: 0 18px 50px rgba(16, 24, 40, .22);
+            overflow: hidden;
+        }
+        .modal-head {
+            height: 54px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between;
+            border-bottom: 1px solid #edf0f4; font-size: 16px; font-weight: 600;
+        }
+        .modal-close { border: 0; background: transparent; color: #98a2b3; font-size: 22px; cursor: pointer; }
+        .modal-body { padding: 22px 24px 20px; }
+        .type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .type-card {
+            min-height: 130px; padding: 18px; border: 2px solid #edf0f4; border-radius: 8px; background: #fff;
+            display: grid; grid-template-columns: 34px 1fr; gap: 12px; cursor: pointer; transition: .18s ease;
+        }
+        .type-card:hover, .type-card.active { border-color: #2d5cf6; background: #f5f8ff; box-shadow: 0 8px 22px rgba(45, 92, 246, .12); }
+        .type-icon { width: 30px; height: 30px; border-radius: 6px; background: #2d5cf6; color: #fff; display: grid; place-items: center; font-size: 15px; }
+        .type-card strong { display: block; font-size: 15px; margin-bottom: 8px; }
+        .type-card p { color: #5f7ca4; font-size: 13px; line-height: 20px; }
+        .modal-foot { height: 56px; padding: 0 20px; border-top: 1px solid #edf0f4; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+        .modal-btn { height: 32px; padding: 0 16px; border-radius: 4px; border: 1px solid #d7dce3; background: #fff; cursor: pointer; }
+        .modal-btn.primary { border-color: #2d5cf6; background: #2d5cf6; color: #fff; }
+        @media (max-width: 1280px) {
+            .topbar { grid-template-columns: 260px 1fr 250px; }
+            .time-col, .run-col { width: 16%; }
+        }
+    </style>
+</head>
+<body>
+<div class="app">
+    <header class="topbar">
+        <div class="brand">
+            <div class="brand-mark"></div>
+            <span>BlueKing Lite</span>
+            <button class="app-switch">✤⌄</button>
+        </div>
+        <nav class="main-nav">
+            <div class="nav-item">◉ 日志搜索</div>
+            <div class="nav-item">◒ 日志分析</div>
+            <div class="nav-item active">♘ 事件</div>
+            <div class="nav-item">◈ 集成</div>
+        </nav>
+        <div class="top-actions">
+            <span>♧</span><span>▤</span>
+            <div class="user"><div class="avatar">陈</div><div><strong>陈润燊⌄</strong><small>Default</small></div></div>
+        </div>
+    </header>
+
+    <main class="page">
+        <div class="subnav">
+            <div class="sub-item">♟ 告警</div>
+            <div class="sub-item active">● 策略</div>
+        </div>
+        <section class="content">
+            <div class="panel">
+                <div class="toolbar">
+                    <div class="search">搜索...</div>
+                    <button class="add-btn" id="openTypeModal"><span>＋</span><span>添加</span></button>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th class="name-col">名称</th>
+                            <th class="type-col">策略类型</th>
+                            <th class="creator-col">创建者</th>
+                            <th class="time-col">创建时间</th>
+                            <th class="run-col">执行时间</th>
+                            <th class="enable-col">是否生效</th>
+                            <th class="action-col">操作</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr>
+                            <td>聚合策略</td>
+                            <td>聚合规则告警</td>
+                            <td>
+                                <div class="creator"><span class="user-dot blue">A</span><span>admin</span></div>
+                            </td>
+                            <td>2026-04-15 15:51:35</td>
+                            <td>2026-04-15 15:51:00</td>
+                            <td><span class="switch"></span></td>
+                            <td><div class="actions"><a class="link" href="./策略类型/聚合规则告警.html">编辑</a><button class="link delete-trigger">删除</button></div></td>
+                        </tr>
+                        <tr>
+                            <td>关键字策略</td>
+                            <td>关键字告警</td>
+                            <td>
+                                <div class="creator"><span class="user-dot purple">A</span><span>admin</span></div>
+                            </td>
+                            <td>2026-04-15 16:22:40</td>
+                            <td>2026-04-15 16:22:00</td>
+                            <td><span class="switch"></span></td>
+                            <td><div class="actions"><a class="link" href="./策略类型/关键字告警.html">编辑</a><button class="link delete-trigger">删除</button></div></td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+        <div class="pager">
+            <span>共 2 条</span>
+            <span class="chev">‹</span>
+            <span class="page-num">1</span>
+            <span class="chev">›</span>
+            <span class="page-size">20 条/页 ⌄</span>
+        </div>
+    </main>
+</div>
+
+<div class="modal-mask" id="typeModal">
+    <div class="type-modal">
+        <div class="modal-head">
+            <span>选择策略类型</span>
+            <button class="modal-close" id="closeTypeModal">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="type-grid">
+                <div class="type-card active" data-href="./策略类型/关键字告警.html">
+                    <div class="type-icon">▰</div>
+                    <div>
+                        <strong>关键字告警</strong>
+                        <p>根据日志查询条件命中关键字后产生告警，适合错误码、异常文本、关键行为等场景。</p>
+                    </div>
+                </div>
+                <div class="type-card" data-href="./策略类型/聚合规则告警.html">
+                    <div class="type-icon">▦</div>
+                    <div>
+                        <strong>聚合规则告警</strong>
+                        <p>按字段聚合日志并通过规则判断是否告警，适合频次突增、同类事件聚集等场景。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="modal-btn" id="cancelTypeModal">取消</button>
+            <button class="modal-btn primary" id="nextType">下一步</button>
+        </div>
+    </div>
+</div>
+
+<div class="delete-pop" id="deletePop">
+    <strong>确定要删除此项目吗？</strong>
+    <p>删除后数据无法恢复。</p>
+    <div class="pop-actions">
+        <button class="mini-btn" id="cancelDelete">取消</button>
+        <button class="mini-btn primary">确认</button>
+    </div>
+</div>
+
+<script>
+    document.querySelectorAll('.switch').forEach((item) => {
+        item.addEventListener('click', () => item.classList.toggle('on'));
+    });
+    const typeModal = document.getElementById('typeModal');
+    const typeCards = document.querySelectorAll('.type-card');
+    let selectedTypeHref = './策略类型/关键字告警.html';
+    document.getElementById('openTypeModal').addEventListener('click', () => typeModal.classList.add('show'));
+    document.getElementById('closeTypeModal').addEventListener('click', () => typeModal.classList.remove('show'));
+    document.getElementById('cancelTypeModal').addEventListener('click', () => typeModal.classList.remove('show'));
+    typeCards.forEach((card) => {
+        card.addEventListener('click', () => {
+            typeCards.forEach((item) => item.classList.remove('active'));
+            card.classList.add('active');
+            selectedTypeHref = card.dataset.href;
+        });
+        card.addEventListener('dblclick', () => {
+            window.location.href = card.dataset.href;
+        });
+    });
+    document.getElementById('nextType').addEventListener('click', () => {
+        window.location.href = selectedTypeHref;
+    });
+    const pop = document.getElementById('deletePop');
+    document.querySelectorAll('.delete-trigger').forEach((item) => {
+        item.addEventListener('click', () => pop.classList.add('show'));
+    });
+    document.getElementById('cancelDelete').addEventListener('click', () => pop.classList.remove('show'));
+</script>
+</body>
+</html>

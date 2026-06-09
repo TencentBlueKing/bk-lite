@@ -27,6 +27,10 @@ from apps.log.services.search import SearchService
 from apps.rpc.node_mgmt import NodeMgmt
 
 
+def should_hide_collect_type_entry(result: dict) -> bool:
+    return result.get("collector") == "Packetbeat" and result.get("name") == "http"
+
+
 class CollectTypeViewSet(ModelViewSet):
     queryset = CollectType.objects.all()
     serializer_class = CollectTypeSerializer
@@ -61,7 +65,7 @@ class CollectTypeViewSet(ModelViewSet):
         # 获取基础查询集
         queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
-        results = serializer.data
+        results = [result for result in serializer.data if not should_hide_collect_type_entry(result)]
 
         # 加载语言包
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)

@@ -637,6 +637,7 @@ class Sidecar:
             section_headers = collector.default_config.get("config_section", {})
 
         child_configs = list(configuration.childconfig_set.all())
+        child_render_variables = Sidecar.collect_child_render_variables(child_configs)
 
         if child_configs and section_headers:
             grouped_configs = {}
@@ -679,6 +680,7 @@ class Sidecar:
         # 如果配置中有 env_config，则合并到变量中
         if configuration_data.get("env_config"):
             variables.update(configuration_data["env_config"])
+        variables.update(child_render_variables)
 
         # 渲染配置模板
         configuration_data["template"] = Sidecar.render_template(configuration_data["template"], variables)
@@ -772,8 +774,18 @@ class Sidecar:
             "node__ip_filter": node_obj.ip.replace(".", "-").replace("*", "-").replace("*", ">"),
             "node__operating_system": node_obj.operating_system,
             "node__collector_configuration_directory": node_obj.collector_configuration_directory,
+            "PACKETBEAT_DEVICE": "0" if node_obj.operating_system == "windows" else "any",
         }
         variables.update(node_dict)
+        return variables
+
+    @staticmethod
+    def collect_child_render_variables(child_configs):
+        variables = {}
+        for child_config in child_configs:
+            for key, value in (child_config.env_config or {}).items():
+                if "__" not in key:
+                    variables[key] = value
         return variables
 
     @staticmethod

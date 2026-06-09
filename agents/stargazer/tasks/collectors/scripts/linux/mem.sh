@@ -4,6 +4,8 @@ mem_free=$(awk '/^MemFree:/{print $2}' /proc/meminfo)
 mem_available=$(awk '/^MemAvailable:/{print $2}' /proc/meminfo)
 mem_buffers=$(awk '/^Buffers:/{print $2}' /proc/meminfo)
 mem_cached=$(awk '/^Cached:/{print $2}' /proc/meminfo)
+mem_sreclaimable=$(awk '/^SReclaimable:/{print $2}' /proc/meminfo)
+mem_shared=$(awk '/^Shmem:/{print $2}' /proc/meminfo)
 swap_total=$(awk '/^SwapTotal:/{print $2}' /proc/meminfo)
 swap_free=$(awk '/^SwapFree:/{print $2}' /proc/meminfo)
 mem_total_bytes=$((mem_total*1024))
@@ -11,4 +13,8 @@ mem_available_bytes=$((${mem_available:-$((mem_free+mem_buffers+mem_cached))}*10
 mem_used_bytes=$((mem_total_bytes-mem_available_bytes))
 swap_total_bytes=$((swap_total*1024))
 swap_used_bytes=$(( (swap_total-swap_free)*1024 ))
-echo "\"mem\":{\"total_bytes\":$mem_total_bytes,\"used_bytes\":$mem_used_bytes,\"available_bytes\":$mem_available_bytes,\"swap_total_bytes\":$swap_total_bytes,\"swap_used_bytes\":$swap_used_bytes}"
+swap_free_bytes=$((swap_free*1024))
+cached_bytes=$(((mem_cached+${mem_sreclaimable:-0})*1024))
+shared_bytes=$((${mem_shared:-0}*1024))
+buffered_bytes=$((mem_buffers*1024))
+echo "\"mem\":{\"total_bytes\":$mem_total_bytes,\"used_bytes\":$mem_used_bytes,\"available_bytes\":$mem_available_bytes,\"swap_total_bytes\":$swap_total_bytes,\"swap_used_bytes\":$swap_used_bytes,\"swap_free_bytes\":$swap_free_bytes,\"cached_bytes\":$cached_bytes,\"shared_bytes\":$shared_bytes,\"buffered_bytes\":$buffered_bytes}"

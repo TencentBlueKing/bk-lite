@@ -24,6 +24,7 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "agents",
     "auth_password",
     "auth_protocol",
+    "auth_type",
     "base_url",
     "collector",
     "collect_type",
@@ -47,6 +48,8 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "password",
     "plugin_id",
     "port",
+    "private_key_content",
+    "private_key_passphrase",
     "priv_password",
     "priv_protocol",
     "protocol",
@@ -64,6 +67,9 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "url",
     "username",
     "version",
+    "winrm_cert_validation",
+    "winrm_scheme",
+    "winrm_transport",
 }
 
 
@@ -94,6 +100,17 @@ def _escape_toml_context_strings(value):
     if isinstance(value, list):
         return [_escape_toml_context_strings(item) for item in value]
     return value
+
+
+def _normalize_template_context(context: dict) -> dict:
+    normalized = {**context}
+    metrics_modules = normalized.get("metrics_modules")
+    if isinstance(metrics_modules, (list, tuple)):
+        normalized["metrics_modules"] = ",".join(str(item).strip() for item in metrics_modules if str(item).strip())
+    for key in ("winrm_cert_validation",):
+        if isinstance(normalized.get(key), bool):
+            normalized[key] = "true" if normalized[key] else "false"
+    return normalized
 
 
 class Controller:
@@ -159,7 +176,7 @@ class Controller:
         :return: 渲染后的配置字符串
         :raises ValueError: 当 instance_id 格式不正确时
         """
-        _context = {**context}
+        _context = _normalize_template_context(context)
 
         # 优先使用显式 logical_instance_value（已规范化的逻辑实例值）。
         # 仅在缺失时才尝试解析 instance_id，保持向后兼容。
