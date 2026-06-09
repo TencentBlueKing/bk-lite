@@ -665,6 +665,44 @@ def test_host_remote_template_renders_winrm_and_private_key_headers(monkeypatch)
     assert 'private_key_passphrase = "${PRIVATE_KEY_PASSPHRASE__CONFIG2}"' in private_key_rendered
 
 
+def test_windows_wmi_template_renders_headers(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+
+    template_path = (
+        Path(__file__).resolve().parents[1]
+        / "support-files"
+        / "plugins"
+        / "Telegraf"
+        / "http"
+        / "windows_wmi"
+        / "windows_wmi.child.toml.j2"
+    )
+    template_content = template_path.read_text()
+
+    rendered = plugin_controller_module.Controller({}).render_template(
+        template_content,
+        {
+            "config_id": "cfg1",
+            "host": "10.0.0.8",
+            "username": "EXAMPLE\\monitor",
+            "namespace": "root\\cimv2",
+            "metrics_modules": ["cpu", "mem"],
+            "timeout": 45,
+            "interval": 60,
+            "instance_id": "region_os_10.0.0.8",
+            "instance_type": "os",
+        },
+    )
+
+    assert 'urls = ["${STARGAZER_URL}/api/monitor/windows/wmi/metrics"]' in rendered
+    assert 'host = "10.0.0.8"' in rendered
+    assert 'username = "EXAMPLE\\monitor"' in rendered
+    assert 'password = "${PASSWORD__cfg1}"' in rendered
+    assert 'namespace = "root\\cimv2"' in rendered
+    assert 'metrics_modules = "cpu,mem"' in rendered
+    assert 'config_type = "windows_wmi"' in rendered
+
+
 def test_host_remote_ui_exposes_selectable_metrics_and_credentials():
     ui_path = Path(__file__).resolve().parents[1] / "support-files" / "plugins" / "Telegraf" / "http" / "host" / "UI.json"
     data = json.loads(ui_path.read_text(encoding="utf-8"))
