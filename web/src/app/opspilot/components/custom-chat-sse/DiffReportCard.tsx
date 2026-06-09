@@ -74,6 +74,7 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
         }
         footer={null}
         width="90vw"
+        zIndex={10010}
         styles={{ body: { padding: 0, maxHeight: '70vh', overflow: 'auto' } }}
       >
         {selectedItem && (
