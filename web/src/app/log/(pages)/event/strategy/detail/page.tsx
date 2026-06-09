@@ -16,6 +16,8 @@ import useLogIntegrationApi from '@/app/log/api/integration';
 import BasicInfoForm from './basicInfoForm';
 import AlertConditionsForm from './alertConditionsForm';
 import NotificationForm from './notificationForm';
+import AlertNameVariables from './alertNameVariables';
+import LogPreview from './logPreview';
 import {
   buildStrategyPayload,
   getDefaultShowFields,
@@ -54,6 +56,10 @@ const StrategyOperation = () => {
   const [channelList, setChannelList] = useState<ChannelItem[]>([]);
   const [fieldList, setFieldList] = useState<string[]>([]);
   const [streamList, setStreamList] = useState<ListItem[]>([]);
+  const previewQuery = Form.useWatch('query', form);
+  const previewLogGroups = Form.useWatch('log_groups', form);
+  const previewShowFields = Form.useWatch('show_fields', form);
+  const alertGroupBy = Form.useWatch('group_by', form);
 
   const isEdit = useMemo(() => type === 'edit', [type]);
   const createAlertType = useMemo(
@@ -258,8 +264,10 @@ const StrategyOperation = () => {
               t('log.event.createPolicy')
             )}
           </div>
-          <div className={strategyStyle.form}>
-            <Form form={form} name="basic">
+          <div
+            className={`${strategyStyle.form} grid grid-cols-1 2xl:grid-cols-[minmax(860px,1fr)_minmax(360px,460px)] gap-4 items-start`}
+          >
+            <Form form={form} name="basic" className="flex-1 min-w-0">
               <Steps
                 direction="vertical"
                 items={[
@@ -301,6 +309,14 @@ const StrategyOperation = () => {
                 ]}
               />
             </Form>
+            <div className="w-full space-y-4 2xl:sticky 2xl:top-4">
+              <AlertNameVariables form={form} groupBy={alertGroupBy} />
+              <LogPreview
+                query={previewQuery}
+                logGroups={previewLogGroups}
+                showFields={previewShowFields}
+              />
+            </div>
           </div>
           <div className={strategyStyle.footer}>
             <Button

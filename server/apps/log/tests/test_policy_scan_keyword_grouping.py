@@ -126,6 +126,22 @@ def test_keyword_without_group_by_keeps_single_policy_source_id(monkeypatch):
     assert fake_api.calls[1]["query"] == "error | stats count() as total_count"
 
 
+def test_keyword_without_group_by_renders_level_variable(monkeypatch):
+    policy_scan_module = _load_policy_scan_module(monkeypatch)
+    fake_api = FakeVictoriaLogs(
+        responses=[
+            [{"timestamp": "2026-06-09T08:00:00Z", "message": "error"}],
+            [{"total_count": "3"}],
+        ]
+    )
+    policy = make_policy({"query": "error", "limit": 5}, alert_name="${level} alert")
+    scan = make_scan(policy_scan_module, policy, fake_api)
+
+    events = scan.keyword_alert_detection()
+
+    assert events[0]["content"] == "error alert: 检测到 3 条匹配日志"
+
+
 def test_keyword_with_group_by_uses_stats_by_and_returns_one_event_per_group(monkeypatch):
     policy_scan_module = _load_policy_scan_module(monkeypatch)
     fake_api = FakeVictoriaLogs(
@@ -160,6 +176,27 @@ def test_keyword_with_group_by_uses_stats_by_and_returns_one_event_per_group(mon
     assert events[1]["value"] == 5
     assert 'log.service.name:="api"' in fake_api.calls[1]["query"]
     assert 'log.service.name:="web"' in fake_api.calls[2]["query"]
+
+
+def test_keyword_group_alert_name_supports_log_prefixed_plain_field(monkeypatch):
+    policy_scan_module = _load_policy_scan_module(monkeypatch)
+    fake_api = FakeVictoriaLogs(
+        responses=[
+            [{"host": "node-1", "total_count": "2"}],
+            [{"timestamp": "2026-06-09T08:00:00Z", "message": "node error", "host": "node-1"}],
+        ]
+    )
+    policy = make_policy(
+        {"query": "error", "limit": 3, "group_by": ["host"]},
+        alert_name="${level}:${log.host}",
+    )
+    scan = make_scan(policy_scan_module, policy, fake_api)
+
+    events = scan.keyword_alert_detection()
+
+    assert events[0]["content"] == "error:node-1"
+
+
 def test_keyword_group_by_skips_rows_without_group_key_and_renders_missing_variables(monkeypatch):
     policy_scan_module = _load_policy_scan_module(monkeypatch)
     fake_api = FakeVictoriaLogs(
