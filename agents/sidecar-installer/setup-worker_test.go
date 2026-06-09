@@ -80,3 +80,10 @@ func TestClassifyDownloadErrorDetectsObjectMissing(t *testing.T) {
 		t.Fatalf("unexpected error type: %q", got)
 	}
 }
+
+func TestClassifyDownloadErrorDetectsIOTimeout(t *testing.T) {
+	// Issue #2985: "read pipe: i/o timeout" 应被归类为 io_timeout 而非空字符串
+	if got := classifyDownloadError(errors.New("Download failed: read pipe: i/o timeout")); got != "io_timeout" {
+		t.Fatalf("expected io_timeout, got %q", got)
+	}
+}
