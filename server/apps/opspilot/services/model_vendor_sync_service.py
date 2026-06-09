@@ -6,7 +6,7 @@ from django.db import transaction
 
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.safe_requests import safe_get_llm_endpoint
-from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import AnthropicCompatibleAdapter
+from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import ANTHROPIC_INVALID_API_KEY_ERROR, AnthropicCompatibleAdapter
 from apps.opspilot.models import EmbedProvider, LLMModel, OCRProvider, RerankProvider
 
 logger = logging.getLogger(__name__)
@@ -102,7 +102,7 @@ class ModelVendorSyncService:
         try:
             AnthropicCompatibleAdapter.validate_minimal_connection(api_base, api_key, test_model)
         except ValueError as exc:
-            if str(exc) == "API Key 无效":
+            if str(exc) == ANTHROPIC_INVALID_API_KEY_ERROR:
                 raise ValueError(loader.get("error.vendor_api_key_invalid", "API Key 无效")) from exc
             raise
 

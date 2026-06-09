@@ -9,6 +9,7 @@ from apps.core.utils.safe_requests import safe_post_llm_endpoint
 
 _ANTHROPIC_DEFAULT_BASE = "https://api.anthropic.com"
 _ANTHROPIC_VERSION = "2023-06-01"
+ANTHROPIC_INVALID_API_KEY_ERROR = "API Key 无效"
 
 
 def normalize_messages_url(api_base: str) -> str:
@@ -51,13 +52,13 @@ class AnthropicCompatibleAdapter:
             },
             timeout=15,
         )
-        AnthropicCompatibleAdapter.raise_for_error(response)
+        AnthropicCompatibleAdapter._raise_for_error(response)
 
     @staticmethod
-    def raise_for_error(response) -> None:
+    def _raise_for_error(response) -> None:
         """Raise ValueError for non-2xx responses."""
         if response.status_code == 401:
-            raise ValueError("API Key 无效")
+            raise ValueError(ANTHROPIC_INVALID_API_KEY_ERROR)
         if response.status_code >= 400:
             error_msg = response.text[:200] if response.text else f"HTTP {response.status_code}"
             raise ValueError(f"API 连接失败: {error_msg}")

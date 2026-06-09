@@ -585,6 +585,24 @@ class TestAnthropicConnection:
 
         mock_loader.get.assert_called_once_with("error.vendor_api_key_invalid", "API Key 无效")
 
+    @patch.object(_model_vendor_sync_module, "AnthropicCompatibleAdapter")
+    def test_invalid_key_uses_adapter_error_sentinel(self, mock_adapter):
+        mock_loader = MagicMock()
+        mock_loader.get.return_value = "Invalid API Key"
+
+        with patch.object(_model_vendor_sync_module, "ANTHROPIC_INVALID_API_KEY_ERROR", "adapter-invalid-key"):
+            mock_adapter.validate_minimal_connection.side_effect = ValueError("adapter-invalid-key")
+
+            with patch.object(ModelVendorSyncService, "_get_loader", return_value=mock_loader):
+                with pytest.raises(ValueError, match="Invalid API Key"):
+                    ModelVendorSyncService.test_anthropic_connection(
+                        "https://api.anthropic.com",
+                        "invalid-key",
+                        locale="en",
+                    )
+
+        mock_loader.get.assert_called_once_with("error.vendor_api_key_invalid", "API Key 无效")
+
     def test_empty_key_raises_error(self):
         with pytest.raises(ValueError):
             ModelVendorSyncService.test_anthropic_connection("https://api.anthropic.com", "")
