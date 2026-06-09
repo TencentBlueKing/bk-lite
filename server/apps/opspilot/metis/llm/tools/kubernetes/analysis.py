@@ -445,6 +445,16 @@ def check_kubernetes_endpoints(namespace=None, config: RunnableConfig = None):
 
 
 def build_config_analysis_next_step_hint(problematic_count: int, target_name: str | None = None) -> str:
+    if problematic_count <= 0:
+        hint_parts = ["分析完成，本次扫描未发现明显配置问题。"]
+        if target_name:
+            hint_parts.append(f"当前结果已经覆盖用户指定的工作负载 {target_name}。")
+        hint_parts.append(
+            "本轮直接输出完整检查结果并结束。"
+            "不要调用 request_user_choice，也不要调用 generate_repair_report。"
+        )
+        return "".join(hint_parts)
+
     hint_parts = [f"分析完成，共 {problematic_count} 个工作负载存在问题。"]
     if problematic_count > 30:
         hint_parts.append(
@@ -461,6 +471,35 @@ def build_config_analysis_next_step_hint(problematic_count: int, target_name: st
         "等用户选择后，再调用 generate_repair_report。"
     )
     return "".join(hint_parts)
+
+
+def _collect_issue_workloads(analysis_results):
+    issue_to_workloads = {}
+    problematic_workloads = set()
+
+    for analysis in analysis_results:
+        workload_name = analysis.get("name", "unknown")
+        workload_namespace = analysis.get("namespace", "")
+        workload_label = f"{workload_name} ({workload_namespace})" if workload_namespace else workload_name
+        workload_has_issue = False
+
+        for issue in analysis.get("issues", []):
+            issue_to_workloads.setdefault(issue, [])
+            if workload_label not in issue_to_workloads[issue]:
+                issue_to_workloads[issue].append(workload_label)
+            workload_has_issue = True
+
+        for container in analysis.get("config_analysis", {}).get("containers", []):
+            for issue in container.get("issues", []):
+                issue_to_workloads.setdefault(issue, [])
+                if workload_label not in issue_to_workloads[issue]:
+                    issue_to_workloads[issue].append(workload_label)
+                workload_has_issue = True
+
+        if workload_has_issue:
+            problematic_workloads.add(workload_label)
+
+    return issue_to_workloads, problematic_workloads
 
 
 @tool()
@@ -534,6 +573,20 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
         if name:
             all_items = [d for d in all_items if d.metadata.name == name]
             total_count = len(all_items)
+            if total_count == 0:
+                scoped_name = f"{namespace}/{name}" if namespace else name
+                return json.dumps({
+                    "success": False,
+                    "error": "deployment_not_found",
+                    "code": "deployment_not_found",
+                    "message": f"未找到名为 {scoped_name} 的 Deployment",
+                    "target_name": name,
+                    "namespace": namespace,
+                    "_next_step_hint": (
+                        f"未找到名为 {scoped_name} 的 Deployment。"
+                        "请先确认名称是否正确，必要时先调用 list_kubernetes_deployments 重新查看可用 Deployment。"
+                    ),
+                })
             paged_items = all_items
         else:
             # 分页切片
@@ -636,15 +689,6 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
 
             analysis_results.append(analysis)
 
-        # 统计有问题的工作负载数量
-        _problematic_count = sum(1 for a in analysis_results if a.get("issues") or a.get("recommendations"))
-        _healthy_count = len(analysis_results) - _problematic_count
-
-        next_step_hint = build_config_analysis_next_step_hint(
-            problematic_count=_problematic_count,
-            target_name=name,
-        )
-
         # 安全术语中性化（仅摘要文本）
         _term_neutralize = {
             "privileged": "特权模式",
@@ -687,16 +731,13 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
             return "low"
 
         # 构建按问题类型到工作负载名称的映射（供 LLM 输出报告时使用真实名称）
-        _issue_to_workloads: dict = {}
-        for a in analysis_results:
-            _wl_name = a.get("name", "unknown")
-            _wl_namespace = a.get("namespace", "")
-            _wl_label = f"{_wl_name} ({_wl_namespace})" if _wl_namespace else _wl_name
-            for issue in a.get("issues", []):
-                _issue_to_workloads.setdefault(issue, []).append(_wl_label)
-            for c in a.get("config_analysis", {}).get("containers", []):
-                for ci in c.get("issues", []):
-                    _issue_to_workloads.setdefault(ci, []).append(_wl_label)
+        _issue_to_workloads, _problematic_workloads = _collect_issue_workloads(analysis_results)
+        _problematic_count = len(_problematic_workloads)
+        _healthy_count = len(analysis_results) - _problematic_count
+        next_step_hint = build_config_analysis_next_step_hint(
+            problematic_count=_problematic_count,
+            target_name=name,
+        )
 
         # 按严重等级排序：critical > high > medium > low
         _sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
@@ -715,6 +756,16 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
 
         result = {
             "cluster_name": cluster_name,
+            "scope": {
+                key: value
+                for key, value in {
+                    "namespace": namespace,
+                    "instance_name": instance_name,
+                    "name": name,
+                    "target_name": name,
+                }.items()
+                if value not in (None, "")
+            },
             "total": total_count,
             "healthy": _healthy_count,
             "problematic": _problematic_count,
