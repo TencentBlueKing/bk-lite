@@ -11,9 +11,13 @@ from apps.cmdb.custom_reporting.extensions import (
 
 @pytest.fixture(autouse=True)
 def _clear():
+    saved = registry._registry.get("custom_reporting")
     registry._registry.pop("custom_reporting", None)
     yield
-    registry._registry.pop("custom_reporting", None)
+    if saved is not None:
+        registry._registry["custom_reporting"] = saved
+    else:
+        registry._registry.pop("custom_reporting", None)
 
 
 def test_default_noop():

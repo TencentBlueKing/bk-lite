@@ -19,11 +19,16 @@ from apps.cmdb.collect.extensions import (
 
 @pytest.fixture(autouse=True)
 def _clear_registry():
-    for slot in ("model_ops", "instance_ops", "collect"):
-        registry._registry.pop(slot, None)
+    slots = ("model_ops", "instance_ops", "collect")
+    saved = {s: registry._registry.get(s) for s in slots}
+    for s in slots:
+        registry._registry.pop(s, None)
     yield
-    for slot in ("model_ops", "instance_ops", "collect"):
-        registry._registry.pop(slot, None)
+    for s, v in saved.items():
+        if v is not None:
+            registry._registry[s] = v
+        else:
+            registry._registry.pop(s, None)
 
 
 def test_model_default_when_unregistered():
