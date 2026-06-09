@@ -28,10 +28,6 @@ _falkordb_asyncio = types.ModuleType("falkordb.asyncio")
 setattr(_falkordb_asyncio, "FalkorDB", type("FalkorDB", (), {}))
 sys.modules.setdefault("falkordb.asyncio", _falkordb_asyncio)
 
-_django_db = types.ModuleType("django.db")
-_django_db_models = types.ModuleType("django.db.models")
-_django_db_transaction = types.ModuleType("django.db.transaction")
-
 
 class _Model:
     def __init__(self, *args, **kwargs):
@@ -51,25 +47,28 @@ class _Atomic:
         return False
 
 
-setattr(_django_db_models, "Model", _Model)
-setattr(_django_db_models, "CharField", _field_factory)
-setattr(_django_db_models, "BooleanField", _field_factory)
-setattr(_django_db_models, "JSONField", _field_factory)
-setattr(_django_db_models, "TextField", _field_factory)
-setattr(_django_db_models, "ForeignKey", _field_factory)
-setattr(_django_db_models, "SET_NULL", object())
-setattr(_django_db_models, "CASCADE", object())
-setattr(_django_db_models, "__getattr__", lambda name: _field_factory if name.endswith("Field") else object())
-setattr(_django_db_transaction, "atomic", lambda: _Atomic())
-_real_django_db = sys.modules.get("django.db")
-if _real_django_db is not None:
-    _real_django_db.models = _django_db_models
-    _real_django_db.transaction = _django_db_transaction
-setattr(_django_db, "models", _django_db_models)
-setattr(_django_db, "transaction", _django_db_transaction)
-sys.modules["django.db"] = _django_db
-sys.modules["django.db.models"] = _django_db_models
-sys.modules["django.db.transaction"] = _django_db_transaction
+def _build_django_db_stubs():
+    django_db = types.ModuleType("django.db")
+    django_db_models = types.ModuleType("django.db.models")
+    django_db_transaction = types.ModuleType("django.db.transaction")
+    setattr(django_db_models, "Model", _Model)
+    setattr(django_db_models, "CharField", _field_factory)
+    setattr(django_db_models, "BooleanField", _field_factory)
+    setattr(django_db_models, "JSONField", _field_factory)
+    setattr(django_db_models, "TextField", _field_factory)
+    setattr(django_db_models, "ForeignKey", _field_factory)
+    setattr(django_db_models, "SET_NULL", object())
+    setattr(django_db_models, "CASCADE", object())
+    setattr(django_db_models, "__getattr__", lambda name: _field_factory if name.endswith("Field") else object())
+    setattr(django_db_transaction, "atomic", lambda: _Atomic())
+    setattr(django_db, "models", django_db_models)
+    setattr(django_db, "transaction", django_db_transaction)
+    return {
+        "django.db": django_db,
+        "django.db.models": django_db_models,
+        "django.db.transaction": django_db_transaction,
+    }
+
 
 _apps_core_mixinx = types.ModuleType("apps.core.mixinx")
 
@@ -144,6 +143,7 @@ from unittest.mock import MagicMock, patch  # noqa: E402
 import pytest  # noqa: E402
 
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest  # noqa: E402
+from apps.opspilot.metis.llm.common import llm_client_factory as llm_client_factory_module  # noqa: E402
 from apps.opspilot.metis.llm.common.anthropic_capabilities import (  # noqa: E402
     AnthropicRuntimeCapabilities,
     build_anthropic_runtime_capabilities,
@@ -155,7 +155,8 @@ _model_provider_path = Path(__file__).resolve().parents[3] / "models" / "model_p
 _model_provider_spec = util.spec_from_file_location("test_model_provider_mgmt", _model_provider_path)
 _model_provider_module = util.module_from_spec(_model_provider_spec)
 assert _model_provider_spec and _model_provider_spec.loader
-_model_provider_spec.loader.exec_module(_model_provider_module)
+with patch.dict(sys.modules, _build_django_db_stubs()):
+    _model_provider_spec.loader.exec_module(_model_provider_module)
 LLMModel = _model_provider_module.LLMModel
 ModelVendor = _model_provider_module.ModelVendor
 
@@ -171,8 +172,22 @@ _model_vendor_sync_path = Path(__file__).resolve().parents[3] / "services" / "mo
 _model_vendor_sync_spec = util.spec_from_file_location("test_model_vendor_sync_service", _model_vendor_sync_path)
 _model_vendor_sync_module = util.module_from_spec(_model_vendor_sync_spec)
 assert _model_vendor_sync_spec and _model_vendor_sync_spec.loader
-_model_vendor_sync_spec.loader.exec_module(_model_vendor_sync_module)
+with patch.dict(
+    sys.modules,
+    {
+        **_build_django_db_stubs(),
+        "apps.opspilot.models": _opspilot_models_stub,
+    },
+):
+    _model_vendor_sync_spec.loader.exec_module(_model_vendor_sync_module)
 ModelVendorSyncService = _model_vendor_sync_module.ModelVendorSyncService
+
+
+@pytest.fixture(autouse=True)
+def bypass_llm_ssrf_validation():
+    with patch.object(llm_client_factory_module.SSRFValidator, "validate_llm_endpoint"):
+        yield
+
 
 # ---------------------------------------------------------------------------
 # AnthropicRuntimeCapabilities Tests
@@ -547,16 +562,16 @@ class TestProtocolTypeDetection:
 class TestAnthropicConnection:
     """test_anthropic_connection validates Anthropic API connectivity."""
 
-    @patch("apps.opspilot.services.model_vendor_sync_service.requests.post")
-    def test_successful_connection(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=200)
+    @patch.object(_model_vendor_sync_module, "safe_post_llm_endpoint")
+    def test_successful_connection(self, mock_safe_post):
+        mock_safe_post.return_value = MagicMock(status_code=200)
         # Should not raise
         ModelVendorSyncService.test_anthropic_connection("https://api.anthropic.com", "sk-ant-key")
-        mock_post.assert_called_once()
+        mock_safe_post.assert_called_once()
 
-    @patch("apps.opspilot.services.model_vendor_sync_service.requests.post")
-    def test_invalid_key_raises_error(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=401)
+    @patch.object(_model_vendor_sync_module, "safe_post_llm_endpoint")
+    def test_invalid_key_raises_error(self, mock_safe_post):
+        mock_safe_post.return_value = MagicMock(status_code=401)
         with pytest.raises(ValueError):
             ModelVendorSyncService.test_anthropic_connection("https://api.anthropic.com", "invalid-key")
 
@@ -564,30 +579,30 @@ class TestAnthropicConnection:
         with pytest.raises(ValueError):
             ModelVendorSyncService.test_anthropic_connection("https://api.anthropic.com", "")
 
-    @patch("apps.opspilot.services.model_vendor_sync_service.requests.post")
-    def test_custom_base_url_used(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=200)
+    @patch.object(_model_vendor_sync_module, "safe_post_llm_endpoint")
+    def test_custom_base_url_used(self, mock_safe_post):
+        mock_safe_post.return_value = MagicMock(status_code=200)
         ModelVendorSyncService.test_anthropic_connection("https://my-proxy.com", "sk-key")
-        call_url = mock_post.call_args[0][0]
+        call_url = mock_safe_post.call_args[0][0]
         assert call_url == "https://my-proxy.com/v1/messages"
 
-    @patch("apps.opspilot.services.model_vendor_sync_service.requests.post")
-    def test_empty_base_url_defaults_to_anthropic(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=200)
+    @patch.object(_model_vendor_sync_module, "safe_post_llm_endpoint")
+    def test_empty_base_url_defaults_to_anthropic(self, mock_safe_post):
+        mock_safe_post.return_value = MagicMock(status_code=200)
         ModelVendorSyncService.test_anthropic_connection("", "sk-key")
-        call_url = mock_post.call_args[0][0]
+        call_url = mock_safe_post.call_args[0][0]
         assert call_url == "https://api.anthropic.com/v1/messages"
 
-    @patch("apps.opspilot.services.model_vendor_sync_service.requests.post")
-    def test_custom_model_used(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=200)
+    @patch.object(_model_vendor_sync_module, "safe_post_llm_endpoint")
+    def test_custom_model_used(self, mock_safe_post):
+        mock_safe_post.return_value = MagicMock(status_code=200)
         ModelVendorSyncService.test_anthropic_connection("https://api.anthropic.com", "sk-key", model="deepseek-chat")
-        call_json = mock_post.call_args[1]["json"]
+        call_json = mock_safe_post.call_args[1]["json"]
         assert call_json["model"] == "deepseek-chat"
 
-    @patch("apps.opspilot.services.model_vendor_sync_service.requests.post")
-    def test_api_error_raises_value_error(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=500, text="Internal Server Error")
+    @patch.object(_model_vendor_sync_module, "safe_post_llm_endpoint")
+    def test_api_error_raises_value_error(self, mock_safe_post):
+        mock_safe_post.return_value = MagicMock(status_code=500, text="Internal Server Error")
         with pytest.raises(ValueError, match="API 连接失败"):
             ModelVendorSyncService.test_anthropic_connection("https://api.anthropic.com", "sk-key")
 
