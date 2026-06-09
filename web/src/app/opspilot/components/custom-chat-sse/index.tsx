@@ -553,7 +553,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }, [updateMessages]);
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, reportFileDownloads, repairCommands, agentStepProgress } = msg;
+    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress } = msg;
     const visibleReportFileDownloads = Array.isArray(reportFileDownloads)
       ? reportFileDownloads.filter(download => Boolean(download.content_base64))
       : [];
