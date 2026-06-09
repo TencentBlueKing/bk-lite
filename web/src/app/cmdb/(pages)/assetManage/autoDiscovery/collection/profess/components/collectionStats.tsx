@@ -2,8 +2,23 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import dayjs from 'dayjs';
+import {
+  AppstoreOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  ExclamationCircleOutlined,
+  ProfileOutlined,
+  WarningOutlined,
+} from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useCollectApi } from '@/app/cmdb/api';
+
+const AppstoreIcon = AppstoreOutlined as any;
+const CheckCircleIcon = CheckCircleOutlined as any;
+const ClockCircleIcon = ClockCircleOutlined as any;
+const ExclamationCircleIcon = ExclamationCircleOutlined as any;
+const ProfileIcon = ProfileOutlined as any;
+const WarningIcon = WarningOutlined as any;
 
 interface TaskOverview {
   total: number;
@@ -93,110 +108,79 @@ const CollectionStats: React.FC = () => {
     label: string;
     value: number | string;
     iconBg: string;
+    iconColor: string;
     icon: React.ReactNode;
+    valueClassName?: string;
   }> = [
     {
       key: 'total',
       label: t('Collection.stats.totalTasks'),
       value: o.total,
       iconBg: '#E8F0FF',
-      icon: (
-        <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
-          <rect x="4" y="5" width="20" height="4" rx="1.5" fill="#155AEF" />
-          <rect x="4" y="12" width="20" height="4" rx="1.5" fill="#155AEF" opacity="0.6" />
-          <rect x="4" y="19" width="20" height="4" rx="1.5" fill="#155AEF" opacity="0.3" />
-        </svg>
-      ),
+      iconColor: '#155AEF',
+      icon: <ProfileIcon />,
     },
     {
       key: 'normal',
       label: t('Collection.stats.normalTasks'),
       value: o.normal,
       iconBg: '#E8FFEA',
-      icon: (
-        <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
-          <circle cx="14" cy="14" r="10" fill="#E8FFEA" />
-          <path d="M10 14.5L12.5 17L18 11" stroke="#00B42A" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-        </svg>
-      ),
+      iconColor: '#00B42A',
+      icon: <CheckCircleIcon />,
     },
     {
       key: 'error',
       label: t('Collection.stats.errorTasks'),
       value: o.error,
       iconBg: '#FFECE8',
-      icon: (
-        <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
-          <circle cx="14" cy="14" r="10" fill="#FFECE8" />
-          <path d="M14 9.5V15" stroke="#F53F3F" strokeWidth="2.2" strokeLinecap="round" />
-          <circle cx="14" cy="18.5" r="1.2" fill="#F53F3F" />
-        </svg>
-      ),
+      iconColor: '#F53F3F',
+      icon: <ExclamationCircleIcon />,
     },
     {
       key: 'partial',
       label: t('Collection.stats.partialTasks'),
       value: o.partial,
       iconBg: '#FFF7E6',
-      icon: (
-        <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
-          <circle cx="14" cy="14" r="10" fill="#FFF7E6" />
-          <path d="M14 8V14.5" stroke="#F7BA1E" strokeWidth="2.2" strokeLinecap="round" />
-          <circle cx="14" cy="18" r="1.2" fill="#F7BA1E" />
-        </svg>
-      ),
+      iconColor: '#F7BA1E',
+      icon: <WarningIcon />,
     },
     {
       key: 'coveredModels',
       label: t('Collection.stats.coveredModels'),
       value: o.covered_models,
       iconBg: '#E8FFEA',
-      icon: (
-        <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
-          <rect x="4" y="4" width="9" height="9" rx="2" fill="#00B42A" opacity="0.85" />
-          <rect x="15" y="4" width="9" height="9" rx="2" fill="#00B42A" opacity="0.55" />
-          <rect x="4" y="15" width="9" height="9" rx="2" fill="#00B42A" opacity="0.55" />
-          <rect x="15" y="15" width="9" height="9" rx="2" fill="#00B42A" opacity="0.85" />
-        </svg>
-      ),
+      iconColor: '#00B42A',
+      icon: <AppstoreIcon />,
     },
     {
       key: 'recent',
       label: t('Collection.stats.recentSync'),
       value: formatRelative(o.recent_sync_at, t),
       iconBg: '#E8F0FF',
-      icon: (
-        <svg width="24" height="24" viewBox="0 0 28 28" fill="none">
-          <circle cx="14" cy="14" r="10" fill="#E8F0FF" />
-          <circle cx="14" cy="14" r="6" stroke="#155AEF" strokeWidth="2" fill="none" />
-          <path d="M14 11V14.5L16.5 16" stroke="#155AEF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-        </svg>
-      ),
+      iconColor: '#155AEF',
+      valueClassName: 'text-[22px] xl:text-[24px] 2xl:text-[26px]',
+      icon: <ClockCircleIcon />,
     },
   ];
 
-  const isTimeCard = (key: string) => key === 'recent';
-
   return (
-    <div className="px-2 pt-3 shrink-0">
+    <div className="shrink-0 px-2">
       {expanded && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
           {cards.map((c) => (
             <div
               key={c.key}
-              className="flex items-center gap-3.5 rounded-xl border border-slate-200 bg-white px-5 py-4 transition-shadow hover:shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
+              className="flex min-h-[78px] items-center gap-2.5 rounded-md border border-[#d6deea] bg-white px-3 py-3 transition-colors hover:border-[#c5d0df] xl:gap-3.5 xl:px-4"
             >
               <div
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]"
-                style={{ background: c.iconBg }}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-[16px] xl:h-10 xl:w-10 xl:text-[18px]"
+                style={{ background: c.iconBg, color: c.iconColor }}
               >
                 {c.icon}
               </div>
               <div className="min-w-0">
-                <div className="text-xs text-slate-500">{c.label}</div>
-                <div
-                  className={`font-bold leading-tight tracking-tight tabular-nums text-slate-900 ${isTimeCard(c.key) ? 'text-[20px]' : 'text-[26px]'}`}
-                >
+                <div className="truncate text-xs font-medium text-[#5f6f86]">{c.label}</div>
+                <div className={`mt-1 whitespace-nowrap font-bold leading-none tracking-tight tabular-nums text-[#0f172a] ${c.valueClassName || 'text-[26px]'}`}>
                   {c.value}
                 </div>
               </div>
