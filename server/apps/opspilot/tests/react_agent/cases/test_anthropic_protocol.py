@@ -572,8 +572,18 @@ class TestAnthropicConnection:
     @patch.object(_model_vendor_sync_module, "AnthropicCompatibleAdapter")
     def test_invalid_key_raises_error(self, mock_adapter):
         mock_adapter.validate_minimal_connection.side_effect = ValueError("API Key 无效")
-        with pytest.raises(ValueError):
-            ModelVendorSyncService.test_anthropic_connection("https://api.anthropic.com", "invalid-key")
+        mock_loader = MagicMock()
+        mock_loader.get.return_value = "Invalid API Key"
+
+        with patch.object(ModelVendorSyncService, "_get_loader", return_value=mock_loader):
+            with pytest.raises(ValueError, match="Invalid API Key"):
+                ModelVendorSyncService.test_anthropic_connection(
+                    "https://api.anthropic.com",
+                    "invalid-key",
+                    locale="en",
+                )
+
+        mock_loader.get.assert_called_once_with("error.vendor_api_key_invalid", "API Key 无效")
 
     def test_empty_key_raises_error(self):
         with pytest.raises(ValueError):
@@ -590,7 +600,7 @@ class TestAnthropicConnection:
     def test_empty_base_url_defaults_to_anthropic(self, mock_adapter):
         mock_adapter.validate_minimal_connection.return_value = None
         ModelVendorSyncService.test_anthropic_connection("", "sk-key")
-        mock_adapter.validate_minimal_connection.assert_called_once()
+        mock_adapter.validate_minimal_connection.assert_called_once_with("", "sk-key", "claude-3-haiku-20240307")
 
     @patch.object(_model_vendor_sync_module, "AnthropicCompatibleAdapter")
     def test_custom_model_used(self, mock_adapter):
@@ -723,6 +733,30 @@ class TestAnthropicCompatibleAdapter:
 
         headers = build_anthropic_headers("sk-key")
         assert headers["content-type"] == "application/json"
+
+    @patch("apps.opspilot.metis.llm.common.anthropic_compatible_adapter.safe_post_llm_endpoint")
+    def test_validate_minimal_connection_builds_normalized_request(self, mock_safe_post):
+        from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import AnthropicCompatibleAdapter
+
+        mock_response = MagicMock(status_code=200)
+        mock_safe_post.return_value = mock_response
+
+        AnthropicCompatibleAdapter.validate_minimal_connection("", "sk-key", "claude-3-haiku-20240307")
+
+        mock_safe_post.assert_called_once_with(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": "sk-key",
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-3-haiku-20240307",
+                "max_tokens": 1,
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+            timeout=15,
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -99,7 +99,12 @@ class ModelVendorSyncService:
             raise ValueError(loader.get("error.vendor_api_key_required", "供应商 API Key 不能为空"))
 
         test_model = model or "claude-3-haiku-20240307"
-        AnthropicCompatibleAdapter.validate_minimal_connection(api_base, api_key, test_model)
+        try:
+            AnthropicCompatibleAdapter.validate_minimal_connection(api_base, api_key, test_model)
+        except ValueError as exc:
+            if str(exc) == "API Key 无效":
+                raise ValueError(loader.get("error.vendor_api_key_invalid", "API Key 无效")) from exc
+            raise
 
     @classmethod
     def sync_vendor_models(cls, vendor, locale=None):
