@@ -1,5 +1,8 @@
 import sys
 from pathlib import Path
+import logging
+
+import pytest
 
 STARGAZER_ROOT = Path(__file__).resolve().parents[1]
 if str(STARGAZER_ROOT) not in sys.path:
@@ -8,6 +11,7 @@ if str(STARGAZER_ROOT) not in sys.path:
 from tasks.collectors.host_wmi.errors import WmiError, classify_wmi_error
 from tasks.collectors.host_wmi.metrics import wmi_results_to_prometheus
 from tasks.collectors.host_wmi.modules import resolve_modules
+from tasks.collectors.host_wmi_collector import WindowsWmiCollector
 
 
 def test_resolve_modules_accepts_comma_separated_values():
@@ -60,3 +64,80 @@ def test_wmi_results_to_prometheus_emits_host_metrics():
     assert f"host_cpu_core_count_gauge{{{base}}} 4 1700000000000" in output
     assert f"host_mem_used_percent_gauge{{{base}}} 50 1700000000000" in output
     assert f'host_disk_used_percent_gauge{{{base},device="C:"}} 75 1700000000000' in output
+
+
+class FakeWmiClient:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+    def connect(self):
+        return None
+
+    def close(self):
+        return None
+
+    def query_class(self, class_name):
+        if class_name == "Win32_Processor":
+            return [{"LoadPercentage": 25, "NumberOfLogicalProcessors": 8}]
+        if class_name == "Win32_OperatingSystem":
+            return [{"TotalVisibleMemorySize": 1000, "FreePhysicalMemory": 250}]
+        return []
+
+    def query(self, query):
+        if "Win32_LogicalDisk" in query:
+            return [{"DeviceID": "C:", "Size": 1000, "FreeSpace": 400}]
+        return []
+
+
+@pytest.mark.asyncio
+async def test_windows_wmi_collector_collects_selected_modules(monkeypatch):
+    monkeypatch.setattr(
+        "tasks.collectors.host_wmi_collector.WmiClient",
+        FakeWmiClient,
+    )
+    collector = WindowsWmiCollector(
+        {
+            "host": "10.0.0.8",
+            "username": "EXAMPLE\\monitor",
+            "password": "secret",
+            "namespace": "root\\cimv2",
+            "metrics_modules": "cpu,mem,disk",
+            "timeout": 30,
+            "tags": {"instance_id": "region_os_10.0.0.8", "instance_type": "os"},
+        }
+    )
+
+    output = await collector.collect()
+
+    assert "host_cpu_usage_percent_gauge" in output
+    assert "host_mem_used_percent_gauge" in output
+    assert "host_disk_used_percent_gauge" in output
+
+
+@pytest.mark.asyncio
+async def test_windows_wmi_collector_logs_module_failure_and_continues(monkeypatch, caplog):
+    class FailingDiskClient(FakeWmiClient):
+        def query(self, query):
+            raise RuntimeError("class missing")
+
+    monkeypatch.setattr(
+        "tasks.collectors.host_wmi_collector.WmiClient",
+        FailingDiskClient,
+    )
+    collector = WindowsWmiCollector(
+        {
+            "host": "10.0.0.8",
+            "username": "EXAMPLE\\monitor",
+            "password": "secret",
+            "metrics_modules": "cpu,disk",
+            "tags": {"instance_id": "region_os_10.0.0.8", "instance_type": "os"},
+        }
+    )
+
+    with caplog.at_level(logging.WARNING):
+        output = await collector.collect()
+
+    assert "host_cpu_usage_percent_gauge" in output
+    assert "host_disk_used_percent_gauge" not in output
+    assert "event=wmi_module_failed" in caplog.text
+    assert "module=disk" in caplog.text
