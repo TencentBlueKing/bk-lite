@@ -38,7 +38,7 @@ export const formatTaskValues = ({
   return {
     name: values.taskName,
     input_method: values.enterType === ENTER_TYPE.APPROVAL ? 1 : 0,
-    timeout: values.timeout || 600,
+    timeout: values.timeout || 60,
     scan_cycle: formatCycleValue(values),
     access_point: accessPoint?.origin && [accessPoint.origin],
     model_id: modelId,
