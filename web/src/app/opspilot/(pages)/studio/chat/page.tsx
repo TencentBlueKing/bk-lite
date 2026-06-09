@@ -333,7 +333,7 @@ const StudioChatPage: React.FC = () => {
             onClick={() => setSidebarCollapsed(false)}
           >
             <Icon 
-              type={currentAgent.icon} 
+              type={currentAgent?.icon || 'jiqiren3'}
               className="text-3xl text-blue-500"
             />
           </div>
