@@ -2,7 +2,6 @@
 
 import React, { useEffect, useRef } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
-import styles from '../index.module.scss';
 import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import { useTaskForm } from '../hooks/useTaskForm';
@@ -182,7 +181,6 @@ const HostTask: React.FC<HostTaskFormProps> = ({
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >
-          <div className={styles.panelHeader}>{t('Collection.credential')}</div>
           <Form.Item name="credentialPool">
             <CredentialPoolEditor credentialShape="ssh" editMode={Boolean(editId)} />
           </Form.Item>

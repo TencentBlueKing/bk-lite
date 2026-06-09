@@ -22,6 +22,7 @@ import CustomTable from '@/components/custom-table';
 import Permission from '@/components/permission';
 import ObjectTypeModal from './objectTypeModal';
 import ObjectModal from './objectModal';
+import DisplayFieldsModal from './displayFieldsModal';
 import useObjectApi from './api';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 
@@ -40,6 +41,7 @@ const ObjectPage = () => {
 
   const typeModalRef = useRef<ModalRef>(null);
   const objectModalRef = useRef<ModalRef>(null);
+  const displayFieldsModalRef = useRef<ModalRef>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // 对象类型相关状态
@@ -156,6 +158,21 @@ const ObjectPage = () => {
           const isBuiltin = (record as MonitorObjectItem).is_builtin;
           return (
             <div className="flex gap-2">
+              <Permission requiredPermissions={['Edit']}>
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={() =>
+                    displayFieldsModalRef.current?.showModal({
+                      type: 'edit',
+                      title: '',
+                      form: record as MonitorObjectItem
+                    })
+                  }
+                >
+                  {t('monitor.object.display')}
+                </Button>
+              </Permission>
               <Permission requiredPermissions={['Edit']}>
                 <Button
                   type="link"
@@ -622,6 +639,7 @@ const ObjectPage = () => {
         typeId={selectedType?.id}
         onSuccess={handleObjectSuccess}
       />
+      <DisplayFieldsModal ref={displayFieldsModalRef} />
     </div>
   );
 };

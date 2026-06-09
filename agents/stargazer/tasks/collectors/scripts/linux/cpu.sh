@@ -16,11 +16,21 @@ idle_delta=$((curr_idle-prev_idle))
 used_delta=$((total_delta-idle_delta))
 if [ $total_delta -gt 0 ]; then
   cpu_usage=$(awk "BEGIN{printf \"%.2f\", $used_delta/$total_delta*100}")
+  cpu_user_pct=$(awk "BEGIN{printf \"%.2f\", ($cpu_user_2-$cpu_user_1)/$total_delta*100}")
+  cpu_system_pct=$(awk "BEGIN{printf \"%.2f\", ($cpu_system_2-$cpu_system_1)/$total_delta*100}")
+  cpu_iowait_pct=$(awk "BEGIN{printf \"%.2f\", ($cpu_iowait_2-$cpu_iowait_1)/$total_delta*100}")
+  cpu_irq_pct=$(awk "BEGIN{printf \"%.2f\", (($cpu_irq_2-$cpu_irq_1)+($cpu_softirq_2-$cpu_softirq_1))/$total_delta*100}")
+  cpu_steal_pct=$(awk "BEGIN{printf \"%.2f\", ($cpu_steal_2-$cpu_steal_1)/$total_delta*100}")
 else
   cpu_usage="0.00"
+  cpu_user_pct="0.00"
+  cpu_system_pct="0.00"
+  cpu_iowait_pct="0.00"
+  cpu_irq_pct="0.00"
+  cpu_steal_pct="0.00"
 fi
 load_1="" ; load_5="" ; load_15=""
 if [ -f /proc/loadavg ]; then
   read load_1 load_5 load_15 _ < /proc/loadavg
 fi
-echo "\"cpu\":{\"usage_percent\":$cpu_usage,\"core_count\":$cpu_count,\"load_1m\":${load_1:-0},\"load_5m\":${load_5:-0},\"load_15m\":${load_15:-0}}"
+echo "\"cpu\":{\"usage_percent\":$cpu_usage,\"usage_user_percent\":$cpu_user_pct,\"usage_system_percent\":$cpu_system_pct,\"usage_iowait_percent\":$cpu_iowait_pct,\"usage_irq_percent\":$cpu_irq_pct,\"usage_steal_percent\":$cpu_steal_pct,\"core_count\":$cpu_count,\"load_1m\":${load_1:-0},\"load_5m\":${load_5:-0},\"load_15m\":${load_15:-0}}"

@@ -16,6 +16,7 @@
     "etcd_server_proposals_apply_lag",
     "etcd_disk_wal_fsync_p99_seconds"
   ],
+  "display_fields": [{"name": "集群是否有主节点", "sort_order": 0, "metrics": [{"plugin": "Etcd", "metric": "etcd_server_has_leader_gauge"}]}, {"name": "后端存储使用率", "sort_order": 1, "metrics": [{"plugin": "Etcd", "metric": "etcd_backend_allocated_usage_percent"}]}, {"name": "是否需要整理碎片", "sort_order": 2, "metrics": [{"plugin": "Etcd", "metric": "etcd_backend_urgent_defrag"}]}, {"name": "提案积压数", "sort_order": 3, "metrics": [{"plugin": "Etcd", "metric": "etcd_server_proposals_pending_gauge"}]}, {"name": "提案应用落后数", "sort_order": 4, "metrics": [{"plugin": "Etcd", "metric": "etcd_server_proposals_apply_lag"}]}, {"name": "WAL 刷盘延迟 P99", "sort_order": 5, "metrics": [{"plugin": "Etcd", "metric": "etcd_disk_wal_fsync_p99_seconds"}]}],
   "metrics": [
     {
       "metric_group": "集群状态",

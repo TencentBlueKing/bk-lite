@@ -10,6 +10,13 @@ UniqueDisplayType = Literal["none", "single", "joint"]
 
 UNIQUE_RULE_MAX_COUNT = 3
 UNIQUE_RULE_UNSUPPORTED_ATTR_TYPES = {"enum", "tag", "bool"}
+
+
+def unique_rule_unsupported_attr_types() -> set:
+    """社区基础不支持类型 + 企业版增量（缺企业时仅基础集）。"""
+    from apps.cmdb.model_ops.extensions import unsupported_unique_attr_types
+
+    return UNIQUE_RULE_UNSUPPORTED_ATTR_TYPES | unsupported_unique_attr_types()
 UNIQUE_RULE_UNSUPPORTED_FIELD_IDS = {"inst_name", "organization"}
 
 
@@ -468,7 +475,7 @@ def _evaluate_field_selectability(
         return False, "冗余展示字段不可加入唯一规则"
     if not attr.get("is_required"):
         return False, "仅必填字段可加入唯一规则"
-    if attr_type in UNIQUE_RULE_UNSUPPORTED_ATTR_TYPES:
+    if attr_type in unique_rule_unsupported_attr_types():
         return False, "枚举、标签、布尔字段不可加入唯一规则"
     if attr_id in occupied_field_ids:
         return False, "该字段已被其他唯一规则使用"
@@ -516,7 +523,7 @@ def validate_unique_rule_payload(
             raise BaseAppException("额外唯一规则不允许包含 organization")
         if not attr.get("is_required"):
             raise BaseAppException(f"字段 {_get_attr_name(ctx.attrs_by_id, field_id)} 不是必填字段")
-        if str(attr.get("attr_type") or "") in UNIQUE_RULE_UNSUPPORTED_ATTR_TYPES:
+        if str(attr.get("attr_type") or "") in unique_rule_unsupported_attr_types():
             raise BaseAppException(f"字段 {_get_attr_name(ctx.attrs_by_id, field_id)} 的类型不支持加入唯一规则")
         if field_id in occupied_field_ids:
             raise BaseAppException(f"字段 {_get_attr_name(ctx.attrs_by_id, field_id)} 已被其他唯一规则使用")

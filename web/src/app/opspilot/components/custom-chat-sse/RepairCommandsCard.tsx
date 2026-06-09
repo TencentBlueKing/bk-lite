@@ -53,47 +53,47 @@ const RepairCommandsCard: React.FC<RepairCommandsCardProps> = ({ commands }) => 
   };
 
   return (
-    <div className="mt-3 rounded-lg border border-gray-200 bg-white overflow-hidden shadow-sm max-w-[700px]">
+    <div className="mt-3 w-full max-w-full overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] shadow-sm">
       {/* Header */}
       <div
-        className="px-4 py-2 bg-gradient-to-r from-green-50 to-white border-b border-gray-200 flex items-center gap-2 cursor-pointer"
+        className="flex cursor-pointer items-center gap-2 border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-4 py-2"
         onClick={() => setExpanded(!expanded)}
       >
-        <CodeOutlined className="text-green-600 text-base" />
-        <span className="font-semibold text-sm text-gray-800">修复命令</span>
-        <span className="text-xs text-gray-500 ml-1">（{sections.length} 组）</span>
+        <CodeOutlined className="text-base text-[var(--color-success)]" />
+        <span className="text-sm font-semibold text-[var(--color-text-1)]">修复命令</span>
+        <span className="ml-1 text-xs text-[var(--color-text-3)]">（{sections.length} 组）</span>
         <div className="ml-auto flex items-center gap-2">
           <Button
             size="small"
             type="text"
             icon={<CopyOutlined />}
             onClick={(e) => { e.stopPropagation(); handleCopyAll(); }}
-            className="!text-xs"
+            className="!text-xs !text-[var(--color-text-2)] hover:!text-[var(--color-primary)]"
           >
             全部复制
           </Button>
-          {expanded ? <UpOutlined className="text-xs text-gray-400" /> : <DownOutlined className="text-xs text-gray-400" />}
+          {expanded ? <UpOutlined className="text-xs text-[var(--color-text-4)]" /> : <DownOutlined className="text-xs text-[var(--color-text-4)]" />}
         </div>
       </div>
 
       {/* Body */}
       {expanded && (
-        <div className="px-4 py-3 space-y-3 max-h-[400px] overflow-y-auto">
+        <div className="max-h-[400px] space-y-3 overflow-y-auto px-4 py-3">
           {sections.map((section, idx) => (
             <div key={idx}>
               {section.title && (
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-medium text-gray-600">{section.title}</span>
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-xs font-medium text-[var(--color-text-2)]">{section.title}</span>
                   <Button
                     size="small"
                     type="link"
                     icon={<CopyOutlined />}
                     onClick={() => handleCopySection(section.code)}
-                    className="!text-xs !p-0"
+                    className="!p-0 !text-xs !text-[var(--color-primary)]"
                   />
                 </div>
               )}
-              <pre className="bg-gray-900 text-green-300 text-xs p-3 rounded overflow-x-auto whitespace-pre-wrap break-all">
+              <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-3 font-mono text-xs leading-5 text-[var(--color-text-1)]">
                 {section.code}
               </pre>
             </div>

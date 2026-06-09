@@ -4,12 +4,12 @@
   "type": "object",
   "required": ["status", "data"],
   "properties": {
-    "status": {"type": "string"},
+    "status": { "type": "string" },
     "data": {
       "type": "object",
       "required": ["resultType", "result"],
       "properties": {
-        "resultType": {"type": "string", "enum": ["vector"]},
+        "resultType": { "type": "string", "enum": ["vector"] },
         "result": {
           "type": "array",
           "items": {
@@ -17,24 +17,100 @@
             "required": ["metric", "value"],
             "properties": {
               "metric": {
-                "type": "object",
-                "required": ["__name__", "instance_id", "ip_addr"],
-                "properties": {
-                  "__name__":    {"type": "string", "enum": ["network_system_info_gauge", "network_interfaces_info_gauge", "network_topo_info_gauge"]},
-                  "instance_id": {"type": "string"},
-                  "ip_addr":     {"type": "string"},
-                  "sysobjectid": {"type": "string", "pattern": "^[0-9.]+$"}
-                }
+                "oneOf": [
+                  { "$ref": "#/definitions/networkSystemMetric" },
+                  { "$ref": "#/definitions/networkInterfaceMetric" },
+                  { "$ref": "#/definitions/networkTopologyMetric" },
+                  { "$ref": "#/definitions/networkTopologyFactsMetric" }
+                ]
               },
               "value": {
                 "type": "array",
-                "items": [{"type": "number"}, {"type": "string"}],
-                "minItems": 2, "maxItems": 2
+                "items": [{ "type": "number" }, { "type": "string" }],
+                "minItems": 2,
+                "maxItems": 2
               }
             }
           }
         }
       }
+    }
+  },
+  "definitions": {
+    "metricBase": {
+      "type": "object",
+      "required": ["__name__", "instance_id"],
+      "properties": {
+        "__name__": { "type": "string" },
+        "instance_id": { "type": "string" }
+      }
+    },
+    "networkSystemMetric": {
+      "allOf": [
+        { "$ref": "#/definitions/metricBase" },
+        {
+          "required": ["ip_addr", "sysobjectid"],
+          "properties": {
+            "__name__": { "const": "network_system_info_gauge" },
+            "ip_addr": { "type": "string" },
+            "sysname": { "type": "string" },
+            "sysobjectid": { "type": "string", "pattern": "^[0-9.]+$" },
+            "port": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "networkInterfaceMetric": {
+      "allOf": [
+        { "$ref": "#/definitions/metricBase" },
+        {
+          "required": ["index", "description"],
+          "properties": {
+            "__name__": { "const": "network_interfaces_info_gauge" },
+            "index": { "type": "string" },
+            "description": { "type": "string" },
+            "alias": { "type": "string" },
+            "mac_address": { "type": "string" },
+            "oper_status": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "networkTopologyMetric": {
+      "allOf": [
+        { "$ref": "#/definitions/metricBase" },
+        {
+          "required": ["tag", "ifindex", "val"],
+          "properties": {
+            "__name__": { "const": "network_topo_info_gauge" },
+            "tag": { "type": "string" },
+            "ifindex": { "type": "string" },
+            "val": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "networkTopologyFactsMetric": {
+      "allOf": [
+        { "$ref": "#/definitions/metricBase" },
+        {
+          "required": ["source_protocol", "local_port_id", "remote_device_id"],
+          "properties": {
+            "__name__": { "const": "network_topology_facts_info_gauge" },
+            "source_protocol": {
+              "type": "string",
+              "enum": ["lldp", "cdp", "fdb", "arp"]
+            },
+            "local_device_id": { "type": ["string", "null"] },
+            "local_port_id": { "type": "string" },
+            "local_port_name": { "type": ["string", "null"] },
+            "remote_device_id": { "type": "string" },
+            "remote_port_id": { "type": ["string", "null"] },
+            "remote_port_name": { "type": ["string", "null"] },
+            "confidence": { "type": ["string", "number"] }
+          }
+        }
+      ]
     }
   }
 }

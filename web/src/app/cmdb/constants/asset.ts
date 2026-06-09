@@ -451,6 +451,14 @@ export const ATTR_TYPE_LIST = [
     id: 'table',
     name: 'table',
   },
+  {
+    id: 'attachment',
+    name: 'attachment',
+  },
+  {
+    id: 'image',
+    name: 'image',
+  },
 ];
 
 export const CONSTRAINT_List = [

@@ -248,6 +248,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         disabled: fieldDisabled,
         placeholder,
         inModal: true,
+        modelId,
       });
     };
 

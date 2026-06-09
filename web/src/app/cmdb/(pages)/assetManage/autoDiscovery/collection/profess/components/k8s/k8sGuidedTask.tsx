@@ -40,15 +40,15 @@ const K8sGuidedTask: React.FC<Props> = ({
   ];
 
   return (
-    <div className="w-full">
-      <div className="mb-6 px-2">
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div className="mb-6 shrink-0 px-2">
         <Steps current={step} size="default">
           {steps.map((s, idx) => (
             <Steps.Step key={idx} title={s.title} />
           ))}
         </Steps>
       </div>
-      <div>
+      <div className="flex min-h-0 flex-1 flex-col">
         {step === 0 && (
           <K8sTaskForm
             onClose={onClose}

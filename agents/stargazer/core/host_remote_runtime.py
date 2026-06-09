@@ -41,8 +41,6 @@ async def sweep_host_remote_callback_contexts() -> None:
         return
 
     now_ms = host_remote_callback._now_ms()
-    task_queue = get_task_queue()
-
     for callback_context in callback_contexts:
         task_id = callback_context.get("task_id")
         status = callback_context.get("status") or {}
@@ -72,6 +70,7 @@ async def sweep_host_remote_callback_contexts() -> None:
         if delivery == "publish_pending":
             next_retry_at = int(callback_context.get("next_retry_at") or 0)
             if next_retry_at and next_retry_at <= now_ms:
+                task_queue = get_task_queue()
                 task_info = await task_queue.enqueue_host_remote_processing_task(task_id)
                 await host_remote_callback.mark_host_remote_processing_enqueued(
                     task_id,
@@ -87,6 +86,7 @@ async def sweep_host_remote_callback_contexts() -> None:
                 host_remote_callback.HOST_REMOTE_PROCESSING_STALE_SECONDS * 1000
             )
             if stale_deadline <= now_ms:
+                task_queue = get_task_queue()
                 task_info = await task_queue.enqueue_host_remote_processing_task(task_id)
                 await host_remote_callback.mark_host_remote_processing_enqueued(
                     task_id,

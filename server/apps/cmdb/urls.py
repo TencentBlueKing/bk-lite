@@ -36,3 +36,10 @@ router.register(r"api/k8s_setup", K8sSetupViewSet, basename="k8s_setup")
 router.register(r"open_api/k8s_setup", K8sSetupOpenViewSet, basename="k8s_setup_open")
 
 urlpatterns = router.urls
+
+try:
+    enterprise_urls = __import__("apps.cmdb.enterprise.urls", fromlist=["urlpatterns"])
+    urlpatterns += enterprise_urls.urlpatterns
+except ModuleNotFoundError as exc:
+    if exc.name not in {"apps.cmdb.enterprise", "apps.cmdb.enterprise.urls"}:
+        raise

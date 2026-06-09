@@ -9,6 +9,7 @@
   "default_metric": "any({instance_type='mssql'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["sqlserver_database_io_read_latency_ms", "sqlserver_waitstats_wait_time_ms_rate", "sqlserver_volume_space_available_space_bytes"],
+  "display_fields": [{"name": "Database Read Latency", "sort_order": 0, "metrics": [{"plugin": "MSSQL", "metric": "sqlserver_database_io_read_latency_ms"}]}, {"name": "Wait Time Rate", "sort_order": 1, "metrics": [{"plugin": "MSSQL", "metric": "sqlserver_waitstats_wait_time_ms_rate"}]}, {"name": "Volume Available Space", "sort_order": 2, "metrics": [{"plugin": "MSSQL", "metric": "sqlserver_volume_space_available_space_bytes"}]}],
   "metrics": [
     {
       "metric_group": "Base",

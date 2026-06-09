@@ -18,7 +18,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_incoming_netflow_traffic",
-      "query": "sum(flow_bytes_in{instance_type='router', collect_type='netflow', __$labels__}) by (instance_id)",
+      "query": "sum(flow_bytes_in{instance_type='router', collect_type='netflow', __$labels__} * label_value(flow_bytes_in{instance_type='router', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
       "display_name": "Device Total Incoming NetFlow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -31,7 +31,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_outgoing_netflow_traffic",
-      "query": "sum(flow_bytes_out{instance_type='router', collect_type='netflow', __$labels__}) by (instance_id)",
+      "query": "sum(flow_bytes_out{instance_type='router', collect_type='netflow', __$labels__} * label_value(flow_bytes_out{instance_type='router', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
       "display_name": "Device Total Outgoing NetFlow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",

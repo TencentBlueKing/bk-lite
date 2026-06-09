@@ -131,7 +131,7 @@ def build_post_tool_directives(result_messages: List[BaseMessage]) -> List[Syste
             except Exception:
                 parsed = None
 
-            if isinstance(parsed, dict) and parsed.get("issues_detail"):
+            if isinstance(parsed, dict) and (parsed.get("issues_detail") or should_emit_config_analysis_report(parsed)):
                 directives.append(
                     SystemMessage(
                         content=(
@@ -167,7 +167,7 @@ def build_config_analysis_report_markdown(parsed: Dict[str, Any]) -> str:
     cluster_name = parsed.get("cluster_name") or "Kubernetes"
     problematic = parsed.get("problematic", 0)
     healthy = parsed.get("healthy")
-    total = parsed.get("total")
+    total = _build_config_analysis_report_total(parsed)
     issues_detail = parsed.get("issues_detail") or []
 
     lines = [f"# 配置检查报告 - {cluster_name}"]
@@ -180,6 +180,9 @@ def build_config_analysis_report_markdown(parsed: Dict[str, Any]) -> str:
         summary_parts.append(f"健康 {healthy} 个")
     if summary_parts:
         lines.append("；".join(summary_parts))
+
+    if not issues_detail:
+        lines.append("未发现明显配置问题")
 
     severity_titles = {
         "critical": "Critical",
@@ -211,6 +214,225 @@ def build_config_analysis_report_markdown(parsed: Dict[str, Any]) -> str:
             lines.append(f"- {issue}（{count} 个工作负载{workload_preview}）")
 
     return "\n\n".join(lines)
+
+
+def _config_analysis_risk_description(issue_type: str) -> str:
+    issue_type = issue_type or ""
+    if "资源限制" in issue_type or "资源请求" in issue_type:
+        return "无资源限制的容器可消耗节点所有资源，导致其他 Pod OOM 或 CPU 饥饿，影响集群稳定性。"
+    if "存活探针" in issue_type or "健康探针" in issue_type or "liveness" in issue_type.lower():
+        return "无存活探针时 Kubernetes 无法自动检测和重启不健康的容器，故障容器将持续运行。"
+    if "就绪探针" in issue_type or "readiness" in issue_type.lower():
+        return "无就绪探针时 Service 可能将流量路由到未准备好的 Pod，导致请求失败。"
+    if "探针" in issue_type:
+        return "缺少健康检查探针，Kubernetes 无法自动检测容器故障并执行自愈操作。"
+    if "root" in issue_type or "安全上下文" in issue_type or "非 root" in issue_type.lower():
+        return "容器以 root 用户运行，容器逃逸后攻击者将获得宿主机 root 权限，安全风险极高。"
+    if "latest" in issue_type or "镜像标签" in issue_type:
+        return "latest 标签不可溯源，每次拉取可能获得不同版本，导致不可预测行为和回滚困难。"
+    if "单副本" in issue_type or "副本" in issue_type:
+        return "单副本部署存在单点故障风险，节点异常时服务将完全中断，无法保障高可用。"
+    if "特权" in issue_type or "privileged" in issue_type.lower():
+        return "特权容器拥有宿主机全部 Linux capabilities，容器逃逸后等同于 root 访问整个节点。"
+    if "hostNetwork" in issue_type or "主机命名空间" in issue_type or "hostPID" in issue_type:
+        return "共享宿主机网络/进程/IPC 命名空间会绕过网络和进程隔离，增大攻击面。"
+    if "密码" in issue_type or "明文" in issue_type or "Secret" in issue_type:
+        return "密码暴露在 Git 历史、kubectl describe 输出中，任何有 namespace 读权限的用户均可看到。"
+    if "NetworkPolicy" in issue_type or "网络隔离" in issue_type:
+        return "所有 Pod 之间可自由通信，一旦某个容器被入侵，攻击者可横向移动到所有命名空间。"
+    if "ServiceAccount" in issue_type:
+        return "使用默认 ServiceAccount 违反最小权限原则，可能被利用进行集群内横向攻击。"
+    return "当前配置不符合 Kubernetes 最佳实践，可能影响集群安全性和稳定性。"
+
+
+def _config_analysis_fix_description(issue_type: str) -> str:
+    issue_type = issue_type or ""
+    if "资源限制" in issue_type or "资源请求" in issue_type:
+        return "为所有容器设置 resources.requests 和 resources.limits，建议 CPU 100m-500m，内存 128Mi-256Mi。"
+    if "存活探针" in issue_type or "liveness" in issue_type.lower():
+        return "添加 livenessProbe 配置（建议 httpGet 方式），设置合理的 initialDelaySeconds 和 periodSeconds。"
+    if "就绪探针" in issue_type or "readiness" in issue_type.lower():
+        return "添加 readinessProbe 配置，确保 Pod 准备好接收流量后才加入 Service 端点。"
+    if "探针" in issue_type:
+        return "为容器添加 livenessProbe 和 readinessProbe，建议使用 httpGet 或 tcpSocket 检测方式。"
+    if "root" in issue_type or "安全上下文" in issue_type or "非 root" in issue_type.lower():
+        return "配置 securityContext.runAsNonRoot: true 和 runAsUser: 1000，禁止容器以 root 运行。"
+    if "latest" in issue_type or "镜像标签" in issue_type:
+        return "将所有 :latest 标签替换为固定版本号（如 :1.25.3），确保镜像版本可追溯。"
+    if "单副本" in issue_type or "副本" in issue_type:
+        return "将生产环境工作负载副本数增加至 2 或以上，配合 PodDisruptionBudget 保障高可用。"
+    if "特权" in issue_type or "privileged" in issue_type.lower():
+        return "移除 privileged 权限，仅授予容器完成业务所需的最小能力集。"
+    if "hostNetwork" in issue_type or "主机命名空间" in issue_type or "hostPID" in issue_type:
+        return "尽量避免使用 hostNetwork、hostPID 和 hostIPC，保持默认隔离边界。"
+    if "密码" in issue_type or "明文" in issue_type or "Secret" in issue_type:
+        return "将敏感信息迁移到 Secret，并通过环境变量或挂载文件按需注入。"
+    if "NetworkPolicy" in issue_type or "网络隔离" in issue_type:
+        return "为命名空间补充 NetworkPolicy，只允许必要的入站和出站流量。"
+    if "ServiceAccount" in issue_type:
+        return "为工作负载创建专用 ServiceAccount，并按最小权限绑定 RBAC。"
+    return "根据实际业务场景补充对应的 Kubernetes 最佳实践配置。"
+
+
+def _config_analysis_benefit_description(issue_type: str) -> str:
+    issue_type = issue_type or ""
+    if "资源限制" in issue_type or "资源请求" in issue_type:
+        return "避免单个容器争抢过多节点资源，提升集群稳定性并减少相互干扰。"
+    if "存活探针" in issue_type or "liveness" in issue_type.lower():
+        return "让 Kubernetes 能自动发现并重启异常容器，缩短故障持续时间。"
+    if "就绪探针" in issue_type or "readiness" in issue_type.lower():
+        return "仅在 Pod 真正可用时接收流量，减少发布抖动和瞬时请求失败。"
+    if "探针" in issue_type:
+        return "补齐健康检查后，工作负载更容易被平台自动发现异常并恢复。"
+    if "root" in issue_type or "安全上下文" in issue_type or "非 root" in issue_type.lower():
+        return "降低容器逃逸后直接获得宿主机 root 权限的风险，收紧运行时权限边界。"
+    if "latest" in issue_type or "镜像标签" in issue_type:
+        return "让镜像版本可追溯、可回滚，减少因隐式升级带来的变更风险。"
+    if "单副本" in issue_type or "副本" in issue_type:
+        return "提升服务可用性，在节点故障或滚动发布时降低中断风险。"
+    if "特权" in issue_type or "privileged" in issue_type.lower():
+        return "缩小容器可用能力范围，降低被利用后进一步突破宿主机的风险。"
+    if "hostNetwork" in issue_type or "主机命名空间" in issue_type or "hostPID" in issue_type:
+        return "保留容器默认隔离边界，减少跨容器和宿主机暴露面。"
+    if "密码" in issue_type or "明文" in issue_type or "Secret" in issue_type:
+        return "集中管理敏感信息，减少凭据泄露面并简化后续轮换。"
+    if "NetworkPolicy" in issue_type or "网络隔离" in issue_type:
+        return "限制横向通信范围，降低单点失陷后在集群内扩散的风险。"
+    if "ServiceAccount" in issue_type:
+        return "落实最小权限访问，减少工作负载凭证被滥用的风险。"
+    return "提升 Kubernetes 配置治理水平，降低常见稳定性与安全风险。"
+
+
+def should_emit_config_analysis_report(parsed: Dict[str, Any]) -> bool:
+    if not isinstance(parsed, dict) or parsed.get("error"):
+        return False
+    if parsed.get("issues_detail"):
+        return True
+    return any(parsed.get(key) is not None for key in ("total", "problematic", "healthy"))
+
+
+def _build_config_analysis_scope(parsed: Dict[str, Any]) -> Dict[str, Any]:
+    scope = parsed.get("scope") if isinstance(parsed.get("scope"), dict) else {}
+    result = {}
+
+    cluster_name = parsed.get("cluster_name")
+    if cluster_name:
+        result["cluster_name"] = cluster_name
+
+    for key in ("namespace", "instance_name", "name", "target_name"):
+        value = scope.get(key) or parsed.get(key)
+        if value not in (None, ""):
+            result[key] = value
+
+    fallback_target = scope.get("target_name") or scope.get("name") or parsed.get("target_name") or parsed.get("name")
+    if fallback_target:
+        result.setdefault("name", fallback_target)
+        result.setdefault("target_name", fallback_target)
+
+    return result
+
+
+def _build_config_analysis_scan_range(parsed: Dict[str, Any]) -> Dict[str, Any]:
+    scan_range = {}
+    for key in ("offset", "limit", "has_more"):
+        if key in parsed:
+            scan_range[key] = parsed.get(key)
+    return scan_range
+
+
+def _build_config_analysis_report_total(parsed: Dict[str, Any]) -> Optional[int]:
+    healthy = parsed.get("healthy")
+    problematic = parsed.get("problematic")
+    if isinstance(healthy, int) and isinstance(problematic, int):
+        return healthy + problematic
+
+    deployments_full = parsed.get("_deployments_full")
+    if isinstance(deployments_full, list):
+        return len(deployments_full)
+
+    total = parsed.get("total")
+    return total if isinstance(total, int) else None
+
+
+def build_config_analysis_report_payload(parsed: Dict[str, Any]) -> Dict[str, Any]:
+    cluster_name = parsed.get("cluster_name") or "Kubernetes"
+    issues_detail = parsed.get("issues_detail") or []
+    report_total = _build_config_analysis_report_total(parsed)
+
+    severity_titles = {
+        "critical": "Critical",
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low",
+        "warning": "Warning",
+        "info": "Info",
+    }
+    severity_priority = {
+        "critical": "P0",
+        "high": "P1",
+        "medium": "P2",
+        "low": "P3",
+        "warning": "P2",
+        "info": "P3",
+    }
+    severity_order = ["critical", "high", "medium", "low", "warning", "info"]
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for item in issues_detail:
+        grouped.setdefault(item.get("severity", "info"), []).append(item)
+
+    severity_sections = []
+    recommendations = []
+    for severity in severity_order:
+        items = grouped.get(severity)
+        if not items:
+            continue
+
+        section_issues = []
+        for item in items:
+            issue = item.get("issue", "未知问题")
+            workloads = item.get("workloads") or []
+            issue_payload = {
+                "issue": issue,
+                "count": item.get("count", 0),
+                "workloads": workloads,
+                "risk": _config_analysis_risk_description(issue),
+            }
+            section_issues.append(issue_payload)
+            recommendations.append(
+                {
+                    "priority": severity_priority.get(severity, "P3"),
+                    "action": _config_analysis_fix_description(issue),
+                    "target": workloads[0] if workloads else "",
+                    "benefit": _config_analysis_benefit_description(issue),
+                }
+            )
+
+        severity_sections.append(
+            {
+                "severity": severity,
+                "title": severity_titles.get(severity, severity.title()),
+                "issues": section_issues,
+            }
+        )
+
+    markdown = build_config_analysis_report_markdown(parsed)
+
+    return {
+        "report_id": str(uuid.uuid4())[:8],
+        "title": f"配置检查报告 - {cluster_name}",
+        "cluster_name": cluster_name,
+        "scope": _build_config_analysis_scope(parsed),
+        "scan_range": _build_config_analysis_scan_range(parsed),
+        "summary": {
+            "total": report_total,
+            "problematic": parsed.get("problematic"),
+            "healthy": parsed.get("healthy"),
+        },
+        "severity_sections": severity_sections,
+        "recommendations": recommendations,
+        "markdown": markdown,
+        "fallback_markdown": markdown,
+    }
 
 
 def find_pending_k8s_analysis_choice(messages: List[BaseMessage]) -> Optional[Dict[str, Any]]:
@@ -1149,6 +1371,24 @@ class ToolsNodes(BasicNode):
             question_type: str,
             options: Optional[List[str]] = None,
         ) -> str:
+            from apps.opspilot.metis.llm.tools.common.user_choice_guard import validate_user_choice_options
+            from apps.opspilot.metis.llm.tools.kubernetes.user_choice_guard import build_kubernetes_cluster_choice_guard
+
+            configurable = getattr(_ask_user, "_configurable", {}) or {}
+            guard = build_kubernetes_cluster_choice_guard(
+                question=question,
+                options=options,
+                configurable=configurable,
+            )
+            guard_message = validate_user_choice_options(
+                question_type=question_type,
+                options=options,
+                guard=guard,
+            )
+            if guard_message:
+                logger.warning("[choice_tool] 已阻止不可信的用户选择请求: %s", guard_message)
+                return guard_message
+
             choice_id = str(uuid.uuid4())[:8]
             execution_id = getattr(_ask_user, "_execution_id", "") or str(int(time.time() * 1000))
             node_id = getattr(_ask_user, "_node_id", "skill_test")
@@ -2107,6 +2347,7 @@ class ToolsNodes(BasicNode):
                 func = choice_tool_instance._request_choice_func
                 func._execution_id = config["configurable"].get("execution_id", "")
                 func._node_id = config["configurable"].get("node_id", "skill_test")
+                func._configurable = config["configurable"]
 
             # 构建系统提示
             # 动态工具模式下，构建 activate_tools 使用说明
@@ -3014,13 +3255,11 @@ class ToolsNodes(BasicNode):
                             # 剥离完整数据，只保留精简摘要进入 LLM context
                             _parsed.pop("_deployments_full", None)
                             _rm.content = _json_cache.dumps(_parsed, ensure_ascii=False)
-                            if _parsed.get("issues_detail"):
+                            if should_emit_config_analysis_report(_parsed):
+                                report_payload = build_config_analysis_report_payload(_parsed)
                                 dispatch_custom_event(
                                     "config_analysis_report",
-                                    {
-                                        "report_id": str(uuid.uuid4())[:8],
-                                        "markdown": build_config_analysis_report_markdown(_parsed),
-                                    },
+                                    report_payload,
                                 )
                     except Exception:
                         pass

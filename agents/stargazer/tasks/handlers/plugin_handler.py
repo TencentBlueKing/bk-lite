@@ -62,6 +62,8 @@ async def collect_plugin_task(
         任务执行结果
     """
     plugin_name = params.get("plugin_name")
+    metrics_published = False
+    execution_result = None
     logger.info(f"[Plugin Task] Processing: {task_id}, plugin: {plugin_name}")
 
     try:
@@ -79,12 +81,18 @@ async def collect_plugin_task(
 
         logger.info(f"[Plugin Task] {task_id} completed successfully")
 
-        await _handle_multicred_post_execute(params, task_id, execution_result, CredentialStateCache, get_task_queue)
-
         if params.get("callback_subject"):
+            await _handle_multicred_pre_callback(
+                params, task_id, execution_result, CredentialStateCache, get_task_queue
+            )
             await publish_callback_to_nats(metrics_data, params, task_id)
         else:
-            await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
+            delivered_count = await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
+            metrics_published = delivered_count > 0
+            if metrics_published:
+                await _handle_multicred_post_execute(
+                    params, task_id, execution_result, CredentialStateCache, get_task_queue
+                )
 
         return {
             "task_id": task_id,
@@ -99,14 +107,36 @@ async def collect_plugin_task(
         )
 
         # 导入工具函数
+        from tasks.utils.nats_helper import MetricsPublishError
         from tasks.utils.nats_helper import publish_metrics_to_nats
         from tasks.utils.nats_helper import publish_callback_to_nats
         from tasks.utils.metrics_helper import generate_plugin_error_metrics
         from core.credential_state_cache import CredentialStateCache
         from core.task_queue import get_task_queue
 
-        execution_result = _build_credential_execution_result(params, None, e)
-        await _handle_multicred_post_execute(params, task_id, execution_result, CredentialStateCache, get_task_queue)
+        real_metrics_delivered = metrics_published or (
+            isinstance(e, MetricsPublishError)
+            and (
+                getattr(e, "success_count", 0) > 0
+                or getattr(e, "delivery_detected", False)
+            )
+        )
+        should_skip_failure_reconciliation = (
+            not params.get("callback_subject")
+            and real_metrics_delivered
+            and isinstance(execution_result, dict)
+            and execution_result.get("success") is True
+        )
+        if not should_skip_failure_reconciliation:
+            preserved_execution_result = (
+                execution_result
+                if isinstance(execution_result, dict) and not execution_result.get("success", True)
+                else None
+            )
+            execution_result = preserved_execution_result or _build_credential_execution_result(params, None, e)
+            await _handle_multicred_post_execute(
+                params, task_id, execution_result, CredentialStateCache, get_task_queue
+            )
 
         if params.get("callback_subject"):
             identity = _resolve_callback_identity(params) if _is_config_file_callback(params) else {
@@ -130,7 +160,7 @@ async def collect_plugin_task(
                 params,
                 task_id,
             )
-        else:
+        elif not real_metrics_delivered:
             error_metrics = generate_plugin_error_metrics(params, e)
             await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
 
@@ -170,6 +200,10 @@ def _build_credential_execution_result(params: Dict[str, Any], metrics_data: Any
         "finished_at": datetime.now(timezone.utc).isoformat(),
         "snapshot": {"host": host, "model_id": params.get("model_id")},
     }
+
+
+async def _handle_multicred_pre_callback(params, task_id, execution_result, cache_cls, get_queue_func):
+    await _handle_multicred_post_execute(params, task_id, execution_result, cache_cls, get_queue_func)
 
 
 async def _handle_multicred_post_execute(params, task_id, execution_result, cache_cls, get_queue_func):

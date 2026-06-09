@@ -1,4 +1,4 @@
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -7,6 +7,7 @@ from apps.cmdb.models.change_record import (
     INSTANCE_EDIT_CORRECTABLE_SCENARIOS,
     ORDINARY_ATTRIBUTE_CHANGE,
 )
+from apps.cmdb.instance_ops.extensions import get_instance_enterprise_extension
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.utils.base import (
     format_group_params,
@@ -176,9 +177,15 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                     if _permission not in instance["permission"]:
                         instance["permission"].append(_permission)
 
-            if not instance["permission"]:
-                if instance["inst_name"] in organizations_instances_map:
-                    instance["permission"] = list(organizations_instances_map[instance["inst_name"]]["permission"])
+            permission_data = organizations_instances_map.get(instance["inst_name"])
+            if not permission_data:
+                continue
+
+            organization_permission_map = permission_data.get("organization_permission_map", {})
+            for organization in organizations:
+                for _permission in organization_permission_map.get(organization, set()):
+                    if _permission not in instance["permission"]:
+                        instance["permission"].append(_permission)
 
     @HasPermission("asset_info-View")
     @action(methods=["post"], detail=False)
@@ -263,6 +270,63 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             creator=request.user.username,
         )
         return WebUtils.response_success(instance)
+
+    # ---- 附件/图片文件（企业版；社区版返回未启用） -----------------------
+
+    def _check_instance_read_permission(self, request, instance) -> bool:
+        """实例读权限判定（与 retrieve 一致），供附件下载校权复用。"""
+        if self.check_creator_and_organizations(request, instance):
+            return True
+        if not self.organizations(request, instance):
+            return False
+        model_id = instance["model_id"]
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id)
+        return CmdbRulesFormatUtil.has_object_permission(
+            obj_type=PERMISSION_INSTANCES,
+            operator=VIEW,
+            model_id=model_id,
+            permission_instances_map=permissions_map,
+            instance=instance,
+        )
+
+    @HasPermission("asset_info-Add")
+    @action(detail=False, methods=["post"], url_path="upload_file")
+    def upload_file(self, request):
+        """附件/图片预上传：校验后存入对象存储，返回文件元数据（含 file_id）。"""
+        model_id = request.data.get("model_id")
+        attr_id = request.data.get("attr_id")
+        uploaded = request.FILES.get("file")
+        if not model_id or not attr_id:
+            return WebUtils.response_error("model_id 和 attr_id 不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+        if not uploaded:
+            return WebUtils.response_error("未接收到文件", status_code=status.HTTP_400_BAD_REQUEST)
+        meta = get_instance_enterprise_extension().handle_upload(
+            request=request, model_id=model_id, attr_id=attr_id, uploaded_file=uploaded
+        )
+        return WebUtils.response_success(meta)
+
+    @HasPermission("asset_info-View")
+    @action(detail=False, methods=["get"], url_path="download_file/(?P<file_id>[^/]+)")
+    def download_file(self, request, file_id: str):
+        """下载附件/图片：校验实例读权限后 302 跳转到短时效预签名 URL。"""
+
+        def _check_read(inst_id):
+            if inst_id is None:
+                return False
+            instance = InstanceManage.query_entity_by_id(int(inst_id))
+            return bool(instance) and self._check_instance_read_permission(request, instance)
+
+        url = get_instance_enterprise_extension().handle_download(
+            request=request, file_id=file_id, check_read_permission=_check_read
+        )
+        return HttpResponseRedirect(url)
+
+    @HasPermission("asset_info-Add")
+    @action(detail=False, methods=["delete"], url_path="delete_file/(?P<file_id>[^/]+)")
+    def delete_file(self, request, file_id: str):
+        """删除尚未提交的临时文件（仅上传者本人）。"""
+        get_instance_enterprise_extension().handle_delete_temp(request=request, file_id=file_id)
+        return WebUtils.response_success()
 
     @HasPermission("asset_info-Add")
     def create(self, request):

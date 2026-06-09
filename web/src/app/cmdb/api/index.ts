@@ -10,3 +10,4 @@ export { useUserConfigApi, useSavedFiltersApi, type SavedFilterItem, type SavedF
 export { useSubscriptionApi } from './subscription';
 export { useCollectToolApi } from './collectTool';
 export { useK8sSetupApi } from './k8sSetup';
+export { useCustomReportingApi } from './customReporting';
