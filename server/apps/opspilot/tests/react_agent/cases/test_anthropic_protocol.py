@@ -51,6 +51,8 @@ class TestAnthropicRuntimeCapabilities:
         )
         assert caps.use_native_anthropic_sdk is True
         assert caps.use_anthropic_compatible_adapter is False
+        assert caps.supports_direct_messages_api is False
+        assert caps.requires_normalized_base_url is False
 
     def test_deepseek_anthropic_vendor_uses_adapter(self):
         caps = build_anthropic_runtime_capabilities(
@@ -61,6 +63,19 @@ class TestAnthropicRuntimeCapabilities:
         assert caps.use_native_anthropic_sdk is False
         assert caps.use_anthropic_compatible_adapter is True
         assert caps.thinking_requires_auto_tool_choice is True
+        assert caps.supports_direct_messages_api is True
+        assert caps.requires_normalized_base_url is True
+
+    def test_unknown_anthropic_vendor_uses_compatible_fallback(self):
+        caps = build_anthropic_runtime_capabilities(
+            vendor_type="unknown-vendor",
+            protocol_type="anthropic",
+            model="claude-3-haiku-20240307",
+        )
+        assert caps.use_native_anthropic_sdk is False
+        assert caps.use_anthropic_compatible_adapter is True
+        assert caps.supports_direct_messages_api is True
+        assert caps.requires_normalized_base_url is True
 
     def test_non_anthropic_protocol_returns_default_capabilities(self):
         caps = build_anthropic_runtime_capabilities(
@@ -70,10 +85,16 @@ class TestAnthropicRuntimeCapabilities:
         )
         assert caps.use_native_anthropic_sdk is False
         assert caps.use_anthropic_compatible_adapter is False
+        assert caps.supports_direct_messages_api is False
+        assert caps.requires_normalized_base_url is False
 
     def test_tool_choice_any_downgrades_to_auto_when_thinking_required(self):
         caps = AnthropicRuntimeCapabilities(thinking_requires_auto_tool_choice=True)
         assert normalize_tool_choice_for_capabilities("any", caps) == "auto"
+
+    def test_tool_choice_required_downgrades_to_auto_when_thinking_required(self):
+        caps = AnthropicRuntimeCapabilities(thinking_requires_auto_tool_choice=True)
+        assert normalize_tool_choice_for_capabilities("required", caps) == "auto"
 
     def test_tool_choice_none_kept_as_is(self):
         caps = AnthropicRuntimeCapabilities(thinking_requires_auto_tool_choice=True)
