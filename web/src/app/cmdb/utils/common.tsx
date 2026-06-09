@@ -45,6 +45,12 @@ import TableFieldEditor from './tableFieldEditor';
 import TagCascaderEditor from './tagCascaderEditor';
 import TagCapsuleGroup from '@/app/cmdb/components/tag-capsule-group';
 import { getTagDisplayText } from '@/app/cmdb/utils/tag';
+import {
+  FileFieldUpload,
+  FileFieldDisplay,
+  FileFieldCell,
+  type FileFieldType,
+} from '@/app/cmdb/components/file-field';
 
 // 解析表格字段值（支持 JSON 字符串或数组）
 export const parseTableValue = (val: any): any[] => {
@@ -640,6 +646,18 @@ export const getAssetColumns = (config: {
           },
         };
       }
+      case 'attachment':
+      case 'image':
+        return {
+          ...columnItem,
+          sorter: false,
+          render: (_: unknown, record: any) => (
+            <FileFieldCell
+              value={record[attrId]}
+              fieldType={item.attr_type as FileFieldType}
+            />
+          ),
+        };
       default:
         return {
           ...columnItem,
@@ -687,6 +705,7 @@ export const getFieldItem = (config: {
   placeholder?: string;
   flatGroups?: Array<{ id: string; name: string; parentId?: string }>;
   inModal?: boolean;
+  modelId?: string;
 }) => {
   const { disabled, placeholder } = config;
   if (config.isEdit) {
@@ -820,6 +839,17 @@ export const getFieldItem = (config: {
           />
         );
       }
+      case 'attachment':
+      case 'image':
+        // value/onChange 由外层 Form.Item 注入
+        return (
+          <FileFieldUpload
+            modelId={config.modelId || ''}
+            attrId={config.fieldItem.attr_id}
+            fieldType={config.fieldItem.attr_type as FileFieldType}
+            disabled={disabled}
+          />
+        );
       default:
         if (config.fieldItem.attr_type === 'str') {
           const strOption = config.fieldItem.option as StrAttrOption;
@@ -914,6 +944,14 @@ export const getFieldItem = (config: {
       );
     case 'tag':
       return getTagDisplayText(config.value);
+    case 'attachment':
+    case 'image':
+      return (
+        <FileFieldDisplay
+          value={config.value}
+          fieldType={config.fieldItem.attr_type as FileFieldType}
+        />
+      );
     default:
       if (config.fieldItem.attr_type === 'time' && config.value) {
         const timeOpt = config.fieldItem.option as TimeAttrOption;

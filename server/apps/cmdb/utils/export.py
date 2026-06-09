@@ -13,6 +13,7 @@ from apps.cmdb.constants.constants import (
     ASSOCIATION_TYPE,
     ATTR_TYPE_MAP,
 )
+from apps.cmdb.model_ops.extensions import is_file_attr_type
 from apps.cmdb.services.model import ModelManage
 
 
@@ -83,6 +84,9 @@ class Export:
         for attr_info in self.attrs:
             # 过滤掉 _display 冗余字段
             if attr_info.get("is_display_field"):
+                continue
+            # 附件/图片字段（企业版）不进入 Excel 导入导出
+            if is_file_attr_type(attr_info.get("attr_type")):
                 continue
             attr_name = (
                 f"{attr_info['attr_name']}(必填)"
