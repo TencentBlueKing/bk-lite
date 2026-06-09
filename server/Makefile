@@ -55,3 +55,26 @@ start-nats:
 
 test:
 	uv run pytest
+
+# 只跑某个 app：make test-app APP=cmdb
+test-app:
+	uv run pytest apps/$(APP)/tests
+
+# 按 marker 过滤
+test-unit:
+	uv run pytest -m unit
+
+test-bdd:
+	uv run pytest -m bdd
+
+# CI 快速通道：跳过慢用例
+test-fast:
+	uv run pytest -m "not slow"
+
+# 调试：关掉覆盖率统计，输出更干净；可叠加路径 make test-debug APP=cmdb
+test-debug:
+	uv run pytest apps/$(APP)/tests --no-cov
+
+# 改了 migration 后重建测试库
+test-reset:
+	uv run pytest --create-db

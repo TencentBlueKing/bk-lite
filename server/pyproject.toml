@@ -144,6 +144,12 @@ opspilot = [
     "zep-cloud>=2.0.0",
 ]
 
+[dependency-groups]
+dev = [
+    "factory-boy>=3.3.3",
+    "pytest-bdd>=8.1.0",
+]
+
 [tool.black]
 line-length = 150
 include = '\.pyi?$'
