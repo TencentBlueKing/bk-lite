@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from typing import Any, Dict
 from zoneinfo import ZoneInfo
 
+from django.db import transaction
 from django.db.models import Count, Q
 from django.db.models.functions import TruncDate, TruncHour, TruncMinute, TruncMonth, TruncWeek
 from django.utils import timezone
@@ -34,6 +35,7 @@ from apps.alerts.serializers import AlarmStrategySerializer
 from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids
 from apps.core.logger import alert_logger as logger
 from apps.core.utils.viewset_utils import GenericViewSetFun
+from apps.system_mgmt.utils.group_utils import GroupUtils
 
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
 
@@ -140,10 +142,10 @@ def _get_nats_group_ids(user_info: dict):
 
     group_ids = [team_id]
     if user_info.get("include_children"):
-        child_group_ids = GenericViewSetFun.extract_child_group_ids(
-            user_info.get("group_tree", []),
-            team_id,
-        )
+        group_tree = user_info.get("group_tree", [])
+        child_group_ids = GenericViewSetFun.extract_child_group_ids(group_tree, team_id)
+        if not child_group_ids and not group_tree:
+            child_group_ids = GroupUtils.get_group_with_descendants(team_id)
         if child_group_ids:
             group_ids = child_group_ids
     return group_ids, None
@@ -193,8 +195,11 @@ def _get_scoped_alarm_strategy(strategy_id, user_info: dict, permission_name: st
 
 def _resolve_alarm_strategy_operator(user_info: dict) -> str:
     user_value = (user_info or {}).get("user")
-    return getattr(user_value, "username", None) or (
-        user_value if isinstance(user_value, str) and user_value else "api"
+    return (
+        getattr(user_value, "username", None)
+        or (user_value if isinstance(user_value, str) and user_value else None)
+        or (user_info or {}).get("username")
+        or "api"
     )
 
 
@@ -293,13 +298,14 @@ def _update_alarm_strategy_payload(
 
 def _execute_alarm_strategy_write(write_func, data, user_info: dict):
     try:
-        _, result_data = write_func(data, user_info)
+        with transaction.atomic():
+            _, result_data = write_func(data, user_info)
         return _nats_success(result_data)
     except (serializers.ValidationError, ValueError) as exc:
         return _nats_failure(_build_validation_message(exc))
     except Exception as exc:
         logger.exception("alert strategy NATS write failed, error=%s", exc)
-        return _nats_failure(str(exc))
+        return _nats_failure("Internal server error")
 
 
 def group_dy_date_format(group_by):
@@ -449,20 +455,32 @@ def delete_alarm_strategy(strategy_id, *args, **kwargs):
         if _is_session_strategy(strategy):
             from apps.alerts.aggregation.recovery.timeout_checker import TimeoutChecker
 
-            TimeoutChecker.close_observing_session_alerts_by_strategy(strategy.id)
-        strategy.delete()
-        OperatorLog.objects.create(
-            action=LogAction.DELETE,
-            target_type=LogTargetType.SYSTEM,
-            operator=_resolve_alarm_strategy_operator(user_info),
-            operator_object="告警策略-删除告警策略",
-            target_id=deleted_id,
-            overview=f"删除告警策略: 策略名称:{deleted_name}",
-        )
+            with transaction.atomic():
+                TimeoutChecker.close_observing_session_alerts_by_strategy(strategy.id)
+                strategy.delete()
+                OperatorLog.objects.create(
+                    action=LogAction.DELETE,
+                    target_type=LogTargetType.SYSTEM,
+                    operator=_resolve_alarm_strategy_operator(user_info),
+                    operator_object="告警策略-删除告警策略",
+                    target_id=deleted_id,
+                    overview=f"删除告警策略: 策略名称:{deleted_name}",
+                )
+        else:
+            with transaction.atomic():
+                strategy.delete()
+                OperatorLog.objects.create(
+                    action=LogAction.DELETE,
+                    target_type=LogTargetType.SYSTEM,
+                    operator=_resolve_alarm_strategy_operator(user_info),
+                    operator_object="告警策略-删除告警策略",
+                    target_id=deleted_id,
+                    overview=f"删除告警策略: 策略名称:{deleted_name}",
+                )
         return _nats_success({"deleted_id": deleted_id})
     except Exception as exc:
         logger.exception("alert strategy NATS delete failed, error=%s", exc)
-        return _nats_failure(str(exc))
+        return _nats_failure("Internal server error")
 
 
 def _generate_time_periods(group_by, start_dt, end_dt):
