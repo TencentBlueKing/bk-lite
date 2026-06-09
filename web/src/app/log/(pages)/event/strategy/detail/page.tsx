@@ -21,7 +21,10 @@ import {
   getDefaultShowFields,
   getLockedPolicyType
 } from './policyFormUtils';
-import { getCreatePolicyType } from '../policyRouteUtils';
+import {
+  getCreatePolicyType,
+  shouldInitializeStrategyForm
+} from '../policyRouteUtils';
 
 const StrategyOperation = () => {
   const { t } = useTranslation();
@@ -65,10 +68,14 @@ const StrategyOperation = () => {
       }),
     [isEdit, createAlertType, formData.alert_type]
   );
+  const canInitializeForm = useMemo(
+    () => shouldInitializeStrategyForm({ isEdit, createAlertType }),
+    [isEdit, createAlertType]
+  );
 
   useEffect(() => {
     if (!isLoading) {
-      if (!isEdit && !createAlertType) {
+      if (!canInitializeForm) {
         goBack();
         return;
       }
@@ -82,9 +89,10 @@ const StrategyOperation = () => {
         setPageLoading(false);
       });
     }
-  }, [isLoading, isEdit, createAlertType]);
+  }, [isLoading, canInitializeForm]);
 
   useEffect(() => {
+    if (!canInitializeForm) return;
     form.resetFields();
     if (!isEdit) {
       const channelItem = channelList[0];
@@ -104,7 +112,7 @@ const StrategyOperation = () => {
       return;
     }
     dealDetail(formData);
-  }, [isEdit, formData, channelList, lockedAlertType]);
+  }, [canInitializeForm, isEdit, formData, channelList, lockedAlertType]);
 
   const getChannelList = async () => {
     const data = await getSystemChannelList();
@@ -232,79 +240,81 @@ const StrategyOperation = () => {
 
   return (
     <Spin spinning={pageLoading} className="w-full">
-      <div className={strategyStyle.strategy}>
-        <div className={strategyStyle.title}>
-          <ArrowLeftOutlined
-            className="text-[var(--color-primary)] text-[20px] cursor-pointer mr-[10px]"
-            onClick={goBack}
-          />
-          {isEdit ? (
-            <span>
-              {t('log.event.editPolicy')} -{' '}
-              <span className="text-[var(--color-text-3)] text-[12px]">
-                {detailName}
-              </span>
-            </span>
-          ) : (
-            t('log.event.createPolicy')
-          )}
-        </div>
-        <div className={strategyStyle.form}>
-          <Form form={form} name="basic">
-            <Steps
-              direction="vertical"
-              items={[
-                {
-                  title: t('log.event.basicInformation'),
-                  description: <BasicInfoForm />,
-                  status: 'process'
-                },
-                {
-                  title: t('log.event.setAlertConditions'),
-                  description: (
-                    <AlertConditionsForm
-                      policyType={lockedAlertType}
-                      unit={unit}
-                      periodUnit={periodUnit}
-                      conditions={conditions}
-                      term={term}
-                      fieldList={fieldList}
-                      streamList={streamList}
-                      onUnitChange={handleUnitChange}
-                      onPeriodUnitChange={handlePeriodUnitChange}
-                      onConditionsChange={handleConditionsChange}
-                      onTermChange={handleTermChange}
-                    />
-                  ),
-                  status: 'process'
-                },
-                {
-                  title: t('log.event.configureNotifications'),
-                  description: (
-                    <NotificationForm
-                      channelList={channelList}
-                      userList={userList}
-                      onLinkToSystemManage={linkToSystemManage}
-                    />
-                  ),
-                  status: 'process'
-                }
-              ]}
+      {canInitializeForm && (
+        <div className={strategyStyle.strategy}>
+          <div className={strategyStyle.title}>
+            <ArrowLeftOutlined
+              className="text-[var(--color-primary)] text-[20px] cursor-pointer mr-[10px]"
+              onClick={goBack}
             />
-          </Form>
+            {isEdit ? (
+              <span>
+                {t('log.event.editPolicy')} -{' '}
+                <span className="text-[var(--color-text-3)] text-[12px]">
+                  {detailName}
+                </span>
+              </span>
+            ) : (
+              t('log.event.createPolicy')
+            )}
+          </div>
+          <div className={strategyStyle.form}>
+            <Form form={form} name="basic">
+              <Steps
+                direction="vertical"
+                items={[
+                  {
+                    title: t('log.event.basicInformation'),
+                    description: <BasicInfoForm />,
+                    status: 'process'
+                  },
+                  {
+                    title: t('log.event.setAlertConditions'),
+                    description: (
+                      <AlertConditionsForm
+                        policyType={lockedAlertType}
+                        unit={unit}
+                        periodUnit={periodUnit}
+                        conditions={conditions}
+                        term={term}
+                        fieldList={fieldList}
+                        streamList={streamList}
+                        onUnitChange={handleUnitChange}
+                        onPeriodUnitChange={handlePeriodUnitChange}
+                        onConditionsChange={handleConditionsChange}
+                        onTermChange={handleTermChange}
+                      />
+                    ),
+                    status: 'process'
+                  },
+                  {
+                    title: t('log.event.configureNotifications'),
+                    description: (
+                      <NotificationForm
+                        channelList={channelList}
+                        userList={userList}
+                        onLinkToSystemManage={linkToSystemManage}
+                      />
+                    ),
+                    status: 'process'
+                  }
+                ]}
+              />
+            </Form>
+          </div>
+          <div className={strategyStyle.footer}>
+            <Button
+              type="primary"
+              className="mr-[10px]"
+              loading={confirmLoading}
+              onClick={createStrategy}
+            >
+              {t('common.confirm')}
+            </Button>
+            <Button onClick={goBack}>{t('common.cancel')}</Button>
+          </div>
         </div>
-        <div className={strategyStyle.footer}>
-          <Button
-            type="primary"
-            className="mr-[10px]"
-            loading={confirmLoading}
-            onClick={createStrategy}
-          >
-            {t('common.confirm')}
-          </Button>
-          <Button onClick={goBack}>{t('common.cancel')}</Button>
-        </div>
-      </div>
+      )}
     </Spin>
   );
 };

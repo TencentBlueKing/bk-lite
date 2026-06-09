@@ -11,6 +11,14 @@ export const getCreatePolicyType = (
   return null;
 };
 
+export const shouldInitializeStrategyForm = ({
+  isEdit,
+  createAlertType
+}: {
+  isEdit: boolean;
+  createAlertType: LogPolicyType | null;
+}) => isEdit || !!createAlertType;
+
 export const buildStrategyDetailUrl = (
   type: string,
   row: {
