@@ -28,7 +28,6 @@ _falkordb_asyncio = types.ModuleType("falkordb.asyncio")
 setattr(_falkordb_asyncio, "FalkorDB", type("FalkorDB", (), {}))
 sys.modules.setdefault("falkordb.asyncio", _falkordb_asyncio)
 
-_django = types.ModuleType("django")
 _django_db = types.ModuleType("django.db")
 _django_db_models = types.ModuleType("django.db.models")
 _django_db_transaction = types.ModuleType("django.db.transaction")
@@ -68,6 +67,7 @@ if _real_django_db is not None:
     _real_django_db.transaction = _django_db_transaction
 setattr(_django_db, "models", _django_db_models)
 setattr(_django_db, "transaction", _django_db_transaction)
+sys.modules["django.db"] = _django_db
 sys.modules["django.db.models"] = _django_db_models
 sys.modules["django.db.transaction"] = _django_db_transaction
 
@@ -184,7 +184,6 @@ class TestAnthropicRuntimeCapabilities:
         caps = build_anthropic_runtime_capabilities(
             vendor_type="anthropic",
             protocol_type="anthropic",
-            model="claude-3-haiku-20240307",
         )
         assert caps.use_native_anthropic_sdk is True
         assert caps.use_anthropic_compatible_adapter is False
@@ -195,7 +194,6 @@ class TestAnthropicRuntimeCapabilities:
         caps = build_anthropic_runtime_capabilities(
             vendor_type="deepseek",
             protocol_type="anthropic",
-            model="deepseek-v4-flash",
         )
         assert caps.use_native_anthropic_sdk is False
         assert caps.use_anthropic_compatible_adapter is True
@@ -207,7 +205,6 @@ class TestAnthropicRuntimeCapabilities:
         caps = build_anthropic_runtime_capabilities(
             vendor_type="unknown-vendor",
             protocol_type="anthropic",
-            model="claude-3-haiku-20240307",
         )
         assert caps.use_native_anthropic_sdk is False
         assert caps.use_anthropic_compatible_adapter is True
@@ -218,7 +215,6 @@ class TestAnthropicRuntimeCapabilities:
         caps = build_anthropic_runtime_capabilities(
             vendor_type="deepseek",
             protocol_type="openai",
-            model="deepseek-v4-flash",
         )
         assert caps.use_native_anthropic_sdk is False
         assert caps.use_anthropic_compatible_adapter is False

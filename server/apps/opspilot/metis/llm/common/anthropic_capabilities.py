@@ -13,9 +13,7 @@ class AnthropicRuntimeCapabilities:
 def build_anthropic_runtime_capabilities(
     vendor_type: str,
     protocol_type: str,
-    model: str,
 ) -> AnthropicRuntimeCapabilities:
-    # Reserved for future per-model capability overrides.
     if protocol_type != "anthropic":
         return AnthropicRuntimeCapabilities()
 
