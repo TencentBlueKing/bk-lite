@@ -1,88 +1,88 @@
-# Log Alert Policy Type Selection and Grouping Design
+# 日志告警策略类型选择与分组设计
 
-## Context
+## 背景
 
-The current log alert policy flow is usable but hard to extend:
+当前日志告警策略处于“能用但不好用”的状态：
 
-- Policy type is selected inside the create form.
-- Keyword alerts cannot split alerts by log fields.
-- Alert names do not consistently support dynamic variables.
+- 策略类型在创建表单内部选择，后续扩展和维护成本较高。
+- 关键字告警不能按日志字段拆分告警。
+- 告警名称对动态变量的支持不统一。
 
-This change keeps the implementation small. It improves the create entry and adds keyword grouping without restructuring the whole policy editor.
+本次改造以小改动为优先。目标是在不大规模重构策略编辑器的前提下，前置创建入口的策略类型选择，并为关键字告警补充分组能力。
 
-## Goals
+## 目标
 
-- Move policy type selection before entering the create form.
-- Keep policy type immutable after creation.
-- Add optional grouping fields to keyword alert policies.
-- Preserve existing keyword behavior when no grouping field is configured.
-- Support alert name variables with `${level}` and `${log.fieldName}`.
-- Add a log preview area that reuses the existing log search behavior.
+- 在进入创建表单前选择策略类型。
+- 策略类型只允许创建时选择，创建后不可修改。
+- 关键字告警新增可选分组字段。
+- 关键字告警未配置分组字段时保持现有行为。
+- 告警名称支持 `${level}` 和 `${log.fieldName}` 变量。
+- 新增日志预览区域，并复用现有日志搜索行为。
 
-## Non-Goals
+## 非目标
 
-- No database migration.
-- No full rewrite into separate physical pages per strategy type.
-- No change to the existing notification model.
-- No change to the log preview time-window semantics.
+- 不新增数据库迁移。
+- 不把策略编辑器完整重写为两个物理独立页面。
+- 不调整现有通知模型。
+- 不改变日志预览的时间窗口语义。
 
-## Frontend Design
+## 前端设计
 
-The strategy list page keeps the existing table, search, enable switch, edit, and delete behavior.
+策略列表页保留现有表格、搜索、启停、编辑、删除行为。
 
-Clicking Add opens a "select policy type" modal. The modal offers:
+点击「添加」时打开「选择策略类型」弹窗。弹窗提供：
 
-- Keyword Alert
-- Aggregate Rule Alert
+- 关键字告警
+- 聚合规则告警
 
-After selecting a type, the app navigates to the existing strategy detail page with the selected type in the URL, for example:
+选择类型后，跳转到现有策略详情页，并通过 URL 带上选择的策略类型，例如：
 
 ```text
 /log/event/strategy/detail?type=add&alert_type=keyword
 /log/event/strategy/detail?type=add&alert_type=aggregate
 ```
 
-The create form initializes `alert_type` from the URL and does not render the in-form policy type selector. Editing loads the type from policy detail and also does not allow changing it.
+创建表单从 URL 初始化 `alert_type`，并且不再渲染表单内部的策略类型选择控件。编辑时从策略详情加载策略类型，同样不允许修改。
 
-The existing form components remain the base:
+现有表单组件继续作为基础：
 
 - `BasicInfoForm`
 - `AlertConditionsForm`
 - `NotificationForm`
 
-`AlertConditionsForm` becomes type-aware:
+`AlertConditionsForm` 按策略类型展示差异字段：
 
-- Keyword alert: query, display fields, optional grouping fields, frequency, period, level.
-- Aggregate alert: query, display fields, optional grouping fields, rule, frequency, period, level.
+- 关键字告警：查询条件、展示字段、可选分组字段、检测频率、检测周期、告警级别。
+- 聚合规则告警：查询条件、展示字段、可选分组字段、规则、检测频率、检测周期、告警级别。
 
-Display fields default to `timestamp` and `message`.
+展示字段默认包含 `timestamp` 和 `message`。
 
-## Alert Name Variables
+## 告警名称变量
 
-Alert name supports variables:
+告警名称支持变量：
 
-- `${level}` is always available.
-- `${log.fieldName}` is available for configured grouping fields.
+- `${level}` 始终可用。
+- `${log.fieldName}` 由已配置的分组字段生成。
 
-The right-side variable panel lists available variables and provides a "use" action. Clicking it inserts the variable into the alert name input at the cursor position. If cursor position is unavailable, it appends the variable to the end.
+右侧变量面板展示可用变量，并提供「选用」操作。点击「选用」时，将变量插入到告警名称输入框的光标位置；如果无法获取光标位置，则追加到末尾。
 
-The variable format is always `${...}`. Log field variables use the full log field name, such as `${log.service.name}`.
+变量格式统一使用 `${...}`。日志字段变量使用完整日志字段名，例如 `${log.service.name}`。
 
-## Log Preview
+## 日志预览
 
-The right side of the form includes a log preview area.
+表单右侧增加日志预览区域。
 
-- If query is empty, show guidance instead of querying.
-- If query is present and log groups are selected, call the existing log search API with `limit=10`.
-- Keep the existing search default time window.
-- Render columns from selected display fields, defaulting to `timestamp` and `message`.
-- Empty results show an empty state.
+- 查询条件为空时，只展示引导提示，不发起查询。
+- 查询条件已填写且已选择日志分组时，调用现有日志搜索接口，并传入 `limit=10`。
+- 保持现有日志搜索默认时间窗口。
+- 预览列来自已选择的展示字段，默认使用 `timestamp` 和 `message`。
+- 查询结果为空时展示空状态。
 
-## Backend Data Model
+## 后端数据模型
 
-No database schema changes are required.
+不需要新增数据库字段或迁移。
 
-Policy data continues to use existing fields:
+策略数据继续使用现有字段：
 
 - `Policy.alert_type`
 - `Policy.alert_name`
@@ -91,7 +91,7 @@ Policy data continues to use existing fields:
 - `Policy.schedule`
 - `Policy.period`
 
-`alert_condition` stores shared alert-condition data:
+`alert_condition` 存储告警条件的公共数据：
 
 ```json
 {
@@ -104,109 +104,109 @@ Policy data continues to use existing fields:
 }
 ```
 
-Keyword alerts do not store `rule`. Aggregate alerts store `rule`.
+关键字告警不存储 `rule`。聚合规则告警存储 `rule`。
 
-## Keyword Alert Execution
+## 关键字告警执行逻辑
 
-Keyword alert execution has two paths.
+关键字告警执行分为两条路径。
 
-When `group_by` is empty, the current behavior is preserved:
+当 `group_by` 为空时，保持现有行为：
 
-- Build the final query with log group filters.
-- Query a limited set of sample logs.
-- Query total count with `stats count()`.
-- Create or update one alert using `source_id = policy_{policy.id}`.
+- 使用日志分组过滤条件构建最终查询。
+- 查询少量样本日志。
+- 使用 `stats count()` 查询总命中数。
+- 使用 `source_id = policy_{policy.id}` 创建或更新一个告警。
 
-When `group_by` is configured, VictoriaLogs performs the grouping:
+当配置了 `group_by` 时，由 VictoriaLogs 执行分组聚合：
 
 ```text
 <final_query> | stats by (log.service.name, ...) count() as total_count
 ```
 
-For each grouped result:
+对每条分组结果：
 
-- Build a group key from the configured grouping field values.
-- Create or update one alert using `source_id = policy_{policy.id}_{group_key}`.
-- Set alert value from `total_count`.
-- Render alert content from the alert name template.
-- Query a small sample of raw logs for that group and save it as raw data.
+- 根据配置的分组字段值构建 group key。
+- 使用 `source_id = policy_{policy.id}_{group_key}` 创建或更新一个独立告警。
+- 使用 `total_count` 作为告警值。
+- 根据告警名称模板渲染告警内容。
+- 针对该分组补查少量原始日志样本，并保存为原始数据。
 
-This avoids pulling all matched raw logs into Python just to group them.
+这样可以避免把所有命中的原始日志拉回 Python 后再分组。
 
-## Aggregate Alert Execution
+## 聚合规则告警执行逻辑
 
-Aggregate alert execution keeps the existing `stats by (...)` and rule-checking flow.
+聚合规则告警继续沿用现有 `stats by (...)` 和规则判断流程。
 
-The implementation should extend alert-name template rendering so aggregate alerts also support `${level}` in addition to log grouping variables.
+实现时需要扩展告警名称模板渲染，使聚合规则告警除日志分组变量外，也支持 `${level}`。
 
-## Template Rendering
+## 模板渲染
 
-Rendering context contains:
+渲染上下文包含：
 
-- `level`: policy alert level.
-- Configured grouping fields, such as `log.service.name`.
+- `level`：策略告警级别。
+- 已配置的分组字段，例如 `log.service.name`。
 
-Because Django template variables do not naturally support dotted keys, rendering should use a small formatter for `${...}` tokens instead of relying on plain Django variable lookup for dotted log fields.
+由于 Django 模板变量不天然支持带点号的字段名，渲染 `${...}` 变量时应使用一个轻量 formatter，而不是直接依赖 Django 模板变量查找。
 
-Missing variables should render as an empty string. Invalid or malformed templates should fall back to the original alert name rather than blocking policy execution.
+缺失变量渲染为空字符串。非法或格式异常的模板不应阻塞策略执行，应回退使用原始告警名称。
 
-## Validation
+## 表单校验
 
-Required fields:
+必填字段：
 
-- Strategy name
-- Alert name
-- Organization
-- Log group
-- Query
-- Display fields
-- Detection frequency
-- Detection period
-- Alert level
+- 策略名称
+- 告警名称
+- 组织
+- 日志分组
+- 查询条件
+- 展示字段
+- 检测频率
+- 检测周期
+- 告警级别
 
-Optional fields:
+非必填字段：
 
-- Grouping fields
+- 分组字段
 
-Aggregate-only required fields:
+聚合规则告警独有必填字段：
 
-- Rule
+- 规则
 
-Keyword alerts must not require rule configuration.
+关键字告警不需要规则配置。
 
-## Error Handling
+## 错误处理
 
-- Preview API failures should show an inline error or empty state and must not block saving.
-- Policy save validation failures should continue using existing form validation and backend error responses.
-- Keyword grouped scans should log and skip malformed group rows where the group key cannot be built.
-- Sample-log lookup failure for one group should not prevent other grouped alerts from being created.
+- 日志预览接口失败时展示行内错误或空状态，不阻塞策略保存。
+- 策略保存校验失败继续使用现有表单校验和后端错误响应。
+- 关键字分组扫描中，如果某条分组结果无法构建 group key，应记录日志并跳过该分组。
+- 某个分组补查样本日志失败时，不应影响其他分组告警创建。
 
-## Testing Strategy
+## 测试策略
 
-Implementation should follow TDD.
+实现阶段遵循 TDD。
 
-Backend tests:
+后端测试：
 
-- Keyword alert without `group_by` preserves current single-alert `source_id` behavior.
-- Keyword alert with `group_by` uses a VictoriaLogs `stats by (...)` query.
-- Keyword grouped results produce separate alert events and source IDs.
-- Alert name renders `${level}` and `${log.fieldName}`.
-- Missing variables do not crash scanning.
+- 未配置 `group_by` 的关键字告警保持现有单告警 `source_id` 行为。
+- 配置 `group_by` 的关键字告警使用 VictoriaLogs `stats by (...)` 查询。
+- 关键字分组结果会生成独立告警事件和独立 source ID。
+- 告警名称可以渲染 `${level}` 和 `${log.fieldName}`。
+- 缺失变量不会导致扫描崩溃。
 
-Frontend tests or focused validation:
+前端测试或聚焦验证：
 
-- Add button opens the policy type modal instead of navigating immediately.
-- Selecting a type initializes and locks `alert_type`.
-- Edit mode does not allow changing policy type.
-- Keyword alert shows optional grouping fields and no rule section.
-- Aggregate alert shows grouping fields and the rule section.
-- Variable "use" inserts into the alert name.
-- Preview skips query when query is empty and requests `limit=10` when query is present.
+- 点击「添加」打开策略类型弹窗，而不是立即跳转。
+- 选择策略类型后初始化并锁定 `alert_type`。
+- 编辑模式不允许修改策略类型。
+- 关键字告警展示可选分组字段，不展示规则区域。
+- 聚合规则告警展示分组字段和规则区域。
+- 点击变量「选用」可以插入告警名称。
+- 查询条件为空时预览不发起查询；查询条件存在时预览请求 `limit=10`。
 
-## Rollout
+## 发布与兼容性
 
-This change is backward compatible for existing policies:
+本次改造对已有策略保持兼容：
 
-- Existing keyword policies without `group_by` keep the old single-alert behavior.
-- Existing aggregate policies keep their current rule behavior.
-- Existing alert names remain valid plain text templates.
+- 已有未配置 `group_by` 的关键字策略继续保持旧的单告警收敛行为。
+- 已有聚合规则策略继续保持当前规则行为。
+- 已有告警名称仍然作为普通文本模板有效。
