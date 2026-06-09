@@ -16,10 +16,14 @@ import PingDashboard from './objects/ping';
 import PostgresqlDashboard from './objects/postgresql';
 import { ProfessionalDashboardRegistryItem } from './shared/types';
 import WebsiteDashboard from './objects/website';
+import K8sClusterDashboard from './objects/k8s-cluster';
+import K8sNodeDashboard from './objects/k8s-node';
+import K8sPodDashboard from './objects/k8s-pod';
 import { normalizeDashboardKey } from './shared/utils';
 
 export const PROFESSIONAL_DASHBOARD_GROUPS = {
   hardware: { label: '硬件设备', order: 10 },
+  container: { label: '容器', order: 15 },
   os: { label: '操作系统', order: 20 },
   network: { label: '网络', order: 30 },
   database: { label: '数据库', order: 40 },
@@ -168,6 +172,33 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: 'Ping',
     inheritedPermissionPath: '/monitor/view',
     component: PingDashboard
+  },
+  {
+    key: 'k8s-cluster',
+    aliases: ['cluster'],
+    groupKey: 'container',
+    objectName: 'Cluster',
+    objectDisplayName: '集群',
+    inheritedPermissionPath: '/monitor/view',
+    component: K8sClusterDashboard
+  },
+  {
+    key: 'k8s-node',
+    aliases: ['node'],
+    groupKey: 'container',
+    objectName: 'Node',
+    objectDisplayName: '节点',
+    inheritedPermissionPath: '/monitor/view',
+    component: K8sNodeDashboard
+  },
+  {
+    key: 'k8s-pod',
+    aliases: ['pod'],
+    groupKey: 'container',
+    objectName: 'Pod',
+    objectDisplayName: 'Pod',
+    inheritedPermissionPath: '/monitor/view',
+    component: K8sPodDashboard
   }
 ];
 

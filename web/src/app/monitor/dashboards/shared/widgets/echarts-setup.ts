@@ -1,5 +1,5 @@
 import * as echarts from 'echarts/core';
-import { LineChart, PieChart } from 'echarts/charts';
+import { LineChart, PieChart, TreemapChart } from 'echarts/charts';
 import {
   GridComponent,
   TooltipComponent,
@@ -13,6 +13,7 @@ import { CanvasRenderer } from 'echarts/renderers';
 echarts.use([
   LineChart,
   PieChart,
+  TreemapChart,
   GridComponent,
   TooltipComponent,
   LegendComponent,
