@@ -563,6 +563,86 @@ class ModelManage(object):
         return result
 
     @staticmethod
+    def register_custom_reporting_model_fields(
+        model_id: str,
+        instances: list[dict],
+        username="admin",
+    ) -> list[str]:
+        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
+            CustomReportingModelService,
+        )
+
+        return CustomReportingModelService.register_model_fields(
+            model_id,
+            instances,
+            username=username,
+        )
+
+    @staticmethod
+    def validate_custom_reporting_instance_fields(model_id: str, instances: list[dict]) -> None:
+        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
+            CustomReportingModelService,
+        )
+
+        CustomReportingModelService.validate_instance_fields(model_id, instances)
+
+    @staticmethod
+    def _get_custom_reporting_declared_attr_ids(model_id: str) -> set[str]:
+        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
+            CustomReportingModelService,
+        )
+
+        return CustomReportingModelService.get_declared_attr_ids(model_id)
+
+    @staticmethod
+    def validate_custom_reporting_relation_fields(
+        model_id: str,
+        relations: list[dict],
+        identity_keys: list[str] | None = None,
+    ) -> None:
+        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
+            CustomReportingModelService,
+        )
+
+        CustomReportingModelService.validate_relation_fields(
+            model_id,
+            relations,
+            identity_keys=identity_keys,
+        )
+
+    @staticmethod
+    def normalize_custom_reporting_identity_keys(identity_keys) -> list[str]:
+        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
+            CustomReportingModelService,
+        )
+
+        return CustomReportingModelService.normalize_identity_keys(identity_keys)
+
+    @staticmethod
+    def bootstrap_custom_reporting_model(quick_model: dict, team: list[int], username="admin"):
+        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
+            CustomReportingModelService,
+        )
+
+        return CustomReportingModelService.bootstrap_model(
+            quick_model,
+            team=team,
+            username=username,
+        )
+
+    @staticmethod
+    def sync_custom_reporting_model_group(quick_model: dict, team: list[int], username="admin"):
+        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
+            CustomReportingModelService,
+        )
+
+        return CustomReportingModelService.sync_model_group(
+            quick_model,
+            team=team,
+            username=username,
+        )
+
+    @staticmethod
     def copy_model(
         src_model_id: str,
         new_model_id: str,

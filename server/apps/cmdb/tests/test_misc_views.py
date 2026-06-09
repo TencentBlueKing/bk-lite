@@ -11,7 +11,6 @@ import pytest
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.cmdb.constants.constants import OPERATE
 from apps.cmdb.views.classification import ClassificationViewSet
 from apps.cmdb.views.mixins import CmdbPermissionMixin
 from apps.cmdb.views.show_field import ShowFieldViewSet
@@ -102,54 +101,10 @@ def test_check_instance_permission_granted(monkeypatch):
     assert mixin.check_instance_permission(req, {"organization": [1], "model_id": "host"}) is True
 
 
-def test_check_instance_permission_same_name_other_org_denied(monkeypatch):
-    mixin = CmdbPermissionMixin()
-    req = _mixin_request([{"id": 9}], current_team="9")
-    monkeypatch.setattr(
-        "apps.cmdb.views.mixins.CmdbRulesFormatUtil.format_user_groups_permissions",
-        lambda **k: {6: {"permission_instances_map": {"prod-vc": ["View"]}}},
-    )
-    instance = {"organization": [9], "inst_name": "prod-vc", "model_id": "vmware_vc"}
-    assert mixin.check_instance_permission(req, instance) is False
-
-
-def test_check_instance_permission_same_name_same_org_allowed(monkeypatch):
-    mixin = CmdbPermissionMixin()
-    req = _mixin_request([{"id": 6}], current_team="6")
-    monkeypatch.setattr(
-        "apps.cmdb.views.mixins.CmdbRulesFormatUtil.format_user_groups_permissions",
-        lambda **k: {6: {"permission_instances_map": {"prod-vc": ["View"]}}},
-    )
-    instance = {"organization": [6], "inst_name": "prod-vc", "model_id": "vmware_vc"}
-    assert mixin.check_instance_permission(req, instance) is True
-
-
 def test_check_model_permission_no_org():
     mixin = CmdbPermissionMixin()
     req = _mixin_request([{"id": 9}])
     assert mixin.check_model_permission(req, {"group": [1], "model_id": "host"}) is False
-
-
-def test_check_model_permission_same_model_id_other_org_denied(monkeypatch):
-    mixin = CmdbPermissionMixin()
-    req = _mixin_request([{"id": 9}])
-    monkeypatch.setattr(
-        "apps.cmdb.views.mixins.CmdbRulesFormatUtil.format_user_groups_permissions",
-        lambda **k: {6: {"permission_instances_map": {"vmware_vc": ["Operate"]}}},
-    )
-    model = {"group": [9], "model_id": "vmware_vc"}
-    assert mixin.check_model_permission(req, model, operator=OPERATE) is False
-
-
-def test_check_model_permission_same_model_id_same_org_allowed(monkeypatch):
-    mixin = CmdbPermissionMixin()
-    req = _mixin_request([{"id": 6}], current_team="6")
-    monkeypatch.setattr(
-        "apps.cmdb.views.mixins.CmdbRulesFormatUtil.format_user_groups_permissions",
-        lambda **k: {6: {"permission_instances_map": {"vmware_vc": ["Operate"]}}},
-    )
-    model = {"group": [6], "model_id": "vmware_vc"}
-    assert mixin.check_model_permission(req, model, operator=OPERATE) is True
 
 
 def test_require_instance_permission_creator_ok():

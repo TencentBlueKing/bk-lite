@@ -24,6 +24,7 @@ RELATION_CHANGE = "relation_change"
 ORDINARY_ATTRIBUTE_CHANGE = "ordinary_attribute_change"
 COLLECT_AUTOMATION_CHANGE = "collect_automation_change"
 MODEL_MANAGEMENT_CHANGE = "model_management_change"
+CUSTOM_REPORTING_CHANGE = "custom_reporting_change"
 
 SCENARIO_CHOICES = [
     (DEVICE_LIFECYCLE, "设备流转"),
@@ -31,6 +32,7 @@ SCENARIO_CHOICES = [
     (ORDINARY_ATTRIBUTE_CHANGE, "普通属性变更"),
     (COLLECT_AUTOMATION_CHANGE, "自动采集"),
     (MODEL_MANAGEMENT_CHANGE, "模型管理变更"),
+    (CUSTOM_REPORTING_CHANGE, "自定义报表变更"),
 ]
 
 # 用户在"通用实例属性编辑页"可以修正的场景集合
