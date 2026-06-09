@@ -562,16 +562,16 @@ class TestProtocolTypeDetection:
 class TestAnthropicConnection:
     """test_anthropic_connection validates Anthropic API connectivity."""
 
-    @patch.object(_model_vendor_sync_module, "safe_post_llm_endpoint")
-    def test_successful_connection(self, mock_safe_post):
-        mock_safe_post.return_value = MagicMock(status_code=200)
+    @patch.object(_model_vendor_sync_module, "AnthropicCompatibleAdapter")
+    def test_successful_connection(self, mock_adapter):
+        mock_adapter.validate_minimal_connection.return_value = None
         # Should not raise
         ModelVendorSyncService.test_anthropic_connection("https://api.anthropic.com", "sk-ant-key")
-        mock_safe_post.assert_called_once()
+        mock_adapter.validate_minimal_connection.assert_called_once()
 
-    @patch.object(_model_vendor_sync_module, "safe_post_llm_endpoint")
-    def test_invalid_key_raises_error(self, mock_safe_post):
-        mock_safe_post.return_value = MagicMock(status_code=401)
+    @patch.object(_model_vendor_sync_module, "AnthropicCompatibleAdapter")
+    def test_invalid_key_raises_error(self, mock_adapter):
+        mock_adapter.validate_minimal_connection.side_effect = ValueError("API Key 无效")
         with pytest.raises(ValueError):
             ModelVendorSyncService.test_anthropic_connection("https://api.anthropic.com", "invalid-key")
 
@@ -579,30 +579,29 @@ class TestAnthropicConnection:
         with pytest.raises(ValueError):
             ModelVendorSyncService.test_anthropic_connection("https://api.anthropic.com", "")
 
-    @patch.object(_model_vendor_sync_module, "safe_post_llm_endpoint")
-    def test_custom_base_url_used(self, mock_safe_post):
-        mock_safe_post.return_value = MagicMock(status_code=200)
+    @patch.object(_model_vendor_sync_module, "AnthropicCompatibleAdapter")
+    def test_custom_base_url_used(self, mock_adapter):
+        mock_adapter.validate_minimal_connection.return_value = None
         ModelVendorSyncService.test_anthropic_connection("https://my-proxy.com", "sk-key")
-        call_url = mock_safe_post.call_args[0][0]
-        assert call_url == "https://my-proxy.com/v1/messages"
+        call_args = mock_adapter.validate_minimal_connection.call_args
+        assert call_args[0][0] == "https://my-proxy.com"
 
-    @patch.object(_model_vendor_sync_module, "safe_post_llm_endpoint")
-    def test_empty_base_url_defaults_to_anthropic(self, mock_safe_post):
-        mock_safe_post.return_value = MagicMock(status_code=200)
+    @patch.object(_model_vendor_sync_module, "AnthropicCompatibleAdapter")
+    def test_empty_base_url_defaults_to_anthropic(self, mock_adapter):
+        mock_adapter.validate_minimal_connection.return_value = None
         ModelVendorSyncService.test_anthropic_connection("", "sk-key")
-        call_url = mock_safe_post.call_args[0][0]
-        assert call_url == "https://api.anthropic.com/v1/messages"
+        mock_adapter.validate_minimal_connection.assert_called_once()
 
-    @patch.object(_model_vendor_sync_module, "safe_post_llm_endpoint")
-    def test_custom_model_used(self, mock_safe_post):
-        mock_safe_post.return_value = MagicMock(status_code=200)
+    @patch.object(_model_vendor_sync_module, "AnthropicCompatibleAdapter")
+    def test_custom_model_used(self, mock_adapter):
+        mock_adapter.validate_minimal_connection.return_value = None
         ModelVendorSyncService.test_anthropic_connection("https://api.anthropic.com", "sk-key", model="deepseek-chat")
-        call_json = mock_safe_post.call_args[1]["json"]
-        assert call_json["model"] == "deepseek-chat"
+        call_args = mock_adapter.validate_minimal_connection.call_args
+        assert call_args[0][2] == "deepseek-chat"
 
-    @patch.object(_model_vendor_sync_module, "safe_post_llm_endpoint")
-    def test_api_error_raises_value_error(self, mock_safe_post):
-        mock_safe_post.return_value = MagicMock(status_code=500, text="Internal Server Error")
+    @patch.object(_model_vendor_sync_module, "AnthropicCompatibleAdapter")
+    def test_api_error_raises_value_error(self, mock_adapter):
+        mock_adapter.validate_minimal_connection.side_effect = ValueError("API 连接失败: Internal Server Error")
         with pytest.raises(ValueError, match="API 连接失败"):
             ModelVendorSyncService.test_anthropic_connection("https://api.anthropic.com", "sk-key")
 
@@ -689,3 +688,55 @@ class TestLLMModelProtocolType:
 
     def test_no_vendor_defaults_to_openai(self):
         assert self._make_model().protocol_type == "openai"
+
+
+# ---------------------------------------------------------------------------
+# AnthropicCompatibleAdapter Tests
+# ---------------------------------------------------------------------------
+
+
+class TestAnthropicCompatibleAdapter:
+    def test_normalize_base_url_appends_messages_endpoint(self):
+        from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import normalize_messages_url
+
+        assert normalize_messages_url("https://api.deepseek.com/anthropic") == "https://api.deepseek.com/anthropic/v1/messages"
+
+    def test_normalize_base_url_strips_trailing_slash(self):
+        from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import normalize_messages_url
+
+        assert normalize_messages_url("https://api.deepseek.com/anthropic/") == "https://api.deepseek.com/anthropic/v1/messages"
+
+    def test_normalize_base_url_empty_defaults_to_anthropic(self):
+        from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import normalize_messages_url
+
+        assert normalize_messages_url("") == "https://api.anthropic.com/v1/messages"
+
+    def test_build_headers_uses_x_api_key(self):
+        from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import build_anthropic_headers
+
+        headers = build_anthropic_headers("sk-key")
+        assert headers["x-api-key"] == "sk-key"
+        assert headers["anthropic-version"] == "2023-06-01"
+
+    def test_build_headers_content_type(self):
+        from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import build_anthropic_headers
+
+        headers = build_anthropic_headers("sk-key")
+        assert headers["content-type"] == "application/json"
+
+
+# ---------------------------------------------------------------------------
+# AnthropicConnectionDelegation Tests
+# ---------------------------------------------------------------------------
+
+
+class TestAnthropicConnectionDelegation:
+    @patch.object(_model_vendor_sync_module, "AnthropicCompatibleAdapter")
+    def test_test_connection_delegates_to_adapter(self, mock_adapter):
+        mock_adapter.validate_minimal_connection.return_value = None
+        ModelVendorSyncService.test_anthropic_connection(
+            "https://api.deepseek.com/anthropic",
+            "sk-key",
+            model="deepseek-v4-flash",
+        )
+        mock_adapter.validate_minimal_connection.assert_called_once()
