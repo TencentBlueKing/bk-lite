@@ -227,6 +227,30 @@ class CollectTypeService:
                 return
             child_content = CollectTypeService._extract_update_payload(child_info, "child")
             content = build_content(config_obj, "child", child_content)
+            child_config_env = child_info.get("env_config") if child_info else None
+            if child_config_env:
+                child_env = {**(child_env or {}), **child_config_env}
+            if (
+                collect_type_obj.collector == "Packetbeat"
+                and collect_type_obj.name == "flows"
+                and isinstance(child_content, dict)
+            ):
+                operating_system = "linux"
+                if node_id:
+                    nodes_info = NodeMgmt().get_nodes_by_ids([node_id])
+                    if nodes_info:
+                        operating_system = nodes_info[0].get("operating_system", "linux")
+                raw_device = (
+                    child_content.get("device")
+                    or (child_env or {}).get("PACKETBEAT_DEVICE_INPUT")
+                    or (child_env or {}).get("PACKETBEAT_DEVICE")
+                    or "any"
+                )
+                child_env = {
+                    **(child_env or {}),
+                    "PACKETBEAT_DEVICE_INPUT": raw_device,
+                    "PACKETBEAT_DEVICE": Controller.normalize_packetbeat_device(raw_device, operating_system),
+                }
             NodeMgmt().update_child_config_content(child_info["id"], content, child_env)
 
     @staticmethod

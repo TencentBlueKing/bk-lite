@@ -16,6 +16,7 @@ from apps.monitor.models import MonitorInstance, MonitorPolicy
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
 from apps.monitor.services.monitor_object import MonitorObjectService
+from apps.monitor.utils.display_fields import validate_display_fields
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from config.drf.pagination import CustomPageNumberPagination
 
@@ -149,6 +150,19 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         obj.is_visible = is_visible
         obj.save(update_fields=["is_visible"])
         return WebUtils.response_success()
+
+    @action(methods=["post"], detail=True, url_path="display_fields")
+    def display_fields(self, request, pk=None):
+        """保存对象的视图列表展示列配置（用户自定义后 re-seed 不再覆盖）"""
+        obj = self.get_object()
+        try:
+            normalized = validate_display_fields(obj, request.data.get("display_fields", []))
+        except Exception as e:
+            return WebUtils.response_error(error_message=str(e))
+        obj.display_fields = normalized
+        obj.display_fields_customized = True
+        obj.save(update_fields=["display_fields", "display_fields_customized"])
+        return WebUtils.response_success(normalized)
 
     def create(self, request, *args, **kwargs):
         """创建监控对象，支持同时创建子对象"""

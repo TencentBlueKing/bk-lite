@@ -9,6 +9,7 @@
   "default_metric": "any({instance_type='rabbitmq'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["rabbitmq_node_running", "rabbitmq_overview_messages_ready", "rabbitmq_node_mem_alarm"],
+  "display_fields": [{"name": "Node Running Status", "sort_order": 0, "metrics": [{"plugin": "RabbitMQ", "metric": "rabbitmq_node_running"}]}, {"name": "Ready Messages", "sort_order": 1, "metrics": [{"plugin": "RabbitMQ", "metric": "rabbitmq_overview_messages_ready"}]}, {"name": "Memory Alarm", "sort_order": 2, "metrics": [{"plugin": "RabbitMQ", "metric": "rabbitmq_node_mem_alarm"}]}],
   "metrics": [
     {
       "metric_group": "Base",

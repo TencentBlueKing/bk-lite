@@ -4,6 +4,7 @@
 唯一校验规则、模型复制、关联类型、导入导出配置等接口层逻辑与权限校验。
 """
 
+import importlib
 import io
 import json
 
@@ -12,10 +13,28 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.cmdb.models.field_group import FieldGroup
+from apps.cmdb.services.model import ModelManage
 from apps.cmdb.views.model import ModelViewSet
 from apps.core.exceptions.base_app_exception import BaseAppException
 
 VIEWS = "apps.cmdb.views.model"
+
+try:
+    __import__("apps.cmdb.enterprise.services.custom_reporting_model_service", fromlist=["CustomReportingModelService"])
+    _ENTERPRISE_MODEL_SERVICE_MISSING = False
+except ModuleNotFoundError as exc:
+    if exc.name not in {
+        "apps.cmdb.enterprise",
+        "apps.cmdb.enterprise.services",
+        "apps.cmdb.enterprise.services.custom_reporting_model_service",
+    }:
+        raise
+    _ENTERPRISE_MODEL_SERVICE_MISSING = True
+
+requires_enterprise_model_service = pytest.mark.skipif(
+    _ENTERPRISE_MODEL_SERVICE_MISSING,
+    reason="enterprise custom reporting unavailable",
+)
 
 
 @pytest.fixture
@@ -73,10 +92,34 @@ def test_model_add_permission_default_group_view():
 
 
 def test_model_add_permission_by_model_id():
-    models = [{"model_id": "host", "group": [9]}]
+    models = [{"model_id": "host", "group": [6]}]
     pmap = {6: {"permission_instances_map": {"host": ["View"]}}}
     ModelViewSet.model_add_permission(models, permission_instances_map=pmap, default_group=1)
     assert models[0]["permission"] == ["View"]
+
+
+def test_model_add_permission_same_model_id_other_org_denied():
+    models = [{"model_id": "host", "group": [9]}]
+    pmap = {6: {"permission_instances_map": {"host": ["View"]}}}
+    ModelViewSet.model_add_permission(models, permission_instances_map=pmap, default_group=1)
+    assert models[0]["permission"] == []
+
+
+def test_model_add_permission_same_model_id_ignores_other_org_permissions():
+    models = [{"model_id": "host", "group": [6]}]
+    pmap = {
+        6: {"permission_instances_map": {"host": ["View"]}},
+        8: {"permission_instances_map": {"host": ["Operate"]}},
+    }
+    ModelViewSet.model_add_permission(models, permission_instances_map=pmap, default_group=1)
+    assert models[0]["permission"] == ["View"]
+
+
+def test_model_add_permission_merges_default_group_and_same_org_permission():
+    models = [{"model_id": "host", "group": [1, 6]}]
+    pmap = {6: {"permission_instances_map": {"host": ["Operate"]}}}
+    ModelViewSet.model_add_permission(models, permission_instances_map=pmap, default_group=1)
+    assert set(models[0]["permission"]) == {"View", "Operate"}
 
 
 # --------------------------------------------------------------------------
@@ -102,6 +145,29 @@ def test_get_model_info_ok(superuser, monkeypatch):
     assert _body(response)["data"]["model_id"] == "host"
 
 
+@pytest.mark.django_db
+def test_get_model_info_denied_when_name_permission_only_exists_in_other_org(superuser, monkeypatch):
+    permission_module = importlib.reload(importlib.import_module("apps.cmdb.utils.permission_util"))
+
+    superuser.group_list = [{"id": 9}]
+    monkeypatch.setattr(
+        f"{VIEWS}.ModelManage.search_model_info",
+        lambda model_id: {"model_id": "host", "model_name": "主机", "group": [9]},
+    )
+    monkeypatch.setattr(
+        f"{VIEWS}.CmdbRulesFormatUtil.has_object_permission",
+        permission_module.CmdbRulesFormatUtil.has_object_permission,
+    )
+    monkeypatch.setattr(
+        f"{VIEWS}.CmdbRulesFormatUtil.format_user_groups_permissions",
+        lambda *a, **k: {6: {"permission_instances_map": {"host": ["View"]}, "inst_names": ["host"]}},
+    )
+    request = _req("get", superuser)
+    request.COOKIES["current_team"] = "9"
+    response = ModelViewSet.as_view({"get": "get_model_info"})(request, model_id="host")
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
 # --------------------------------------------------------------------------
 # create / list
 # --------------------------------------------------------------------------
@@ -123,6 +189,187 @@ def test_create_ok(superuser, monkeypatch):
         _req("post", superuser, data={"model_id": "host", "model_name": "主机"})
     )
     assert _body(response)["data"]["model_id"] == "host"
+
+
+@requires_enterprise_model_service
+def test_bootstrap_custom_reporting_model_creates_missing_identity_attrs(monkeypatch):
+    created_models = []
+    created_attrs = []
+
+    monkeypatch.setattr(
+        ModelManage,
+        "create_model",
+        lambda data, username="admin": created_models.append((dict(data), username))
+        or {
+            "model_id": data["model_id"],
+            "model_name": data["model_name"],
+            "classification_id": data["classification_id"],
+            "group": data["group"],
+        },
+    )
+    monkeypatch.setattr(
+        ModelManage,
+        "create_model_attr",
+        lambda model_id, attr_info, username="admin": created_attrs.append((model_id, dict(attr_info), username))
+        or attr_info,
+    )
+
+    result = ModelManage.bootstrap_custom_reporting_model(
+        {
+            "model_id": "report_asset",
+            "model_name": "上报资产",
+            "classification_id": "server",
+            "identity_keys": ["asset_code", "inst_name", "asset_code"],
+        },
+        team=[1],
+        username="alice",
+    )
+
+    assert created_models == [
+        (
+            {
+                "model_id": "report_asset",
+                "model_name": "上报资产",
+                "classification_id": "server",
+                "group": [1],
+            },
+            "alice",
+        )
+    ]
+    assert created_attrs == [
+        (
+            "report_asset",
+            {
+                "attr_id": "asset_code",
+                "attr_name": "asset_code",
+                "attr_group": "default",
+                "attr_type": "str",
+                "is_only": True,
+                "is_required": False,
+                "editable": True,
+                "option": {},
+                "user_prompt": "",
+                "default_value": [],
+            },
+            "alice",
+        )
+    ]
+    assert result == {
+        "model_id": "report_asset",
+        "model_name": "上报资产",
+        "classification_id": "server",
+        "group": [1],
+        "identity_keys": ["asset_code", "inst_name"],
+    }
+
+
+@requires_enterprise_model_service
+def test_bootstrap_custom_reporting_model_ignores_caller_supplied_group(monkeypatch):
+    created_models = []
+
+    monkeypatch.setattr(
+        ModelManage,
+        "create_model",
+        lambda data, username="admin": created_models.append((dict(data), username))
+        or {
+            "model_id": data["model_id"],
+            "model_name": data["model_name"],
+            "classification_id": data["classification_id"],
+            "group": data["group"],
+        },
+    )
+    monkeypatch.setattr(
+        ModelManage,
+        "create_model_attr",
+        lambda model_id, attr_info, username="admin": attr_info,
+    )
+
+    result = ModelManage.bootstrap_custom_reporting_model(
+        {
+            "model_id": "report_asset",
+            "model_name": "上报资产",
+            "classification_id": "server",
+            "group": [999],
+            "identity_keys": ["inst_name"],
+        },
+        team=[1],
+        username="alice",
+    )
+
+    assert created_models == [
+        (
+            {
+                "model_id": "report_asset",
+                "model_name": "上报资产",
+                "classification_id": "server",
+                "group": [1],
+            },
+            "alice",
+        )
+    ]
+    assert result["group"] == [1]
+
+
+@requires_enterprise_model_service
+def test_sync_custom_reporting_model_group_updates_existing_model_group(monkeypatch):
+    searched_model_ids = []
+    update_calls = []
+
+    monkeypatch.setattr(
+        ModelManage,
+        "search_model_info",
+        lambda model_id: searched_model_ids.append(model_id)
+        or {
+            "_id": 7,
+            "model_id": model_id,
+            "model_name": "上报资产",
+            "classification_id": "server",
+            "group": [1],
+        },
+    )
+    monkeypatch.setattr(
+        ModelManage,
+        "update_model",
+        lambda model_pk, data: update_calls.append((model_pk, dict(data)))
+        or {
+            "_id": model_pk,
+            "model_id": data["model_id"],
+            "model_name": data["model_name"],
+            "classification_id": data["classification_id"],
+            "group": data["group"],
+        },
+    )
+
+    result = ModelManage.sync_custom_reporting_model_group(
+        {
+            "model_id": "report_asset",
+            "model_name": "旧名称",
+            "classification_id": "old",
+            "identity_keys": ["asset_code"],
+        },
+        team=[2],
+        username="alice",
+    )
+
+    assert searched_model_ids == ["report_asset"]
+    assert update_calls == [
+        (
+            7,
+            {
+                "model_id": "report_asset",
+                "model_name": "上报资产",
+                "classification_id": "server",
+                "group": [2],
+            },
+        )
+    ]
+    assert result == {
+        "model_id": "report_asset",
+        "model_name": "上报资产",
+        "classification_id": "server",
+        "group": [2],
+        "identity_keys": ["asset_code"],
+    }
 
 
 @pytest.mark.django_db

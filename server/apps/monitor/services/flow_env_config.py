@@ -1,8 +1,10 @@
 import json
 
 from apps.core.logger import monitor_logger as logger
-from apps.monitor.models import CollectConfig, MonitorInstance
-from apps.monitor.services.node_mgmt import InstanceConfigService
+from apps.monitor.models import MonitorInstance
+from apps.monitor.utils.dimension import parse_instance_id
+from apps.node_mgmt.constants.controller import ControllerConstants
+from apps.node_mgmt.models import CollectorConfiguration
 
 
 class FlowEnvConfigService:
@@ -26,7 +28,7 @@ class FlowEnvConfigService:
             if not item.ip or not item.enabled_protocols:
                 continue
             payload[f"{item.cloud_region_id}:{item.ip}"] = {
-                "instance_id": item.id,
+                "instance_id": parse_instance_id(item.id)[0],
                 "instance_type": item.monitor_object.name.lower(),
                 "fallback_sampling_rate": item.fallback_sampling_rate,
                 "protocols": item.enabled_protocols,
@@ -45,57 +47,44 @@ class FlowEnvConfigService:
     @classmethod
     def refresh_collect_configs(cls, *, cloud_region_id):
         env_patch = cls.build_env_patch(cloud_region_id=cloud_region_id)
-        config_objs = list(
-            CollectConfig.objects.filter(
-                collect_type__in=cls.SUPPORTED_PROTOCOLS,
-                monitor_instance__cloud_region_id=cloud_region_id,
-            )
-            .select_related("monitor_instance__monitor_object", "monitor_plugin")
-            .order_by("id")
-        )
+        config_objs = cls._get_region_receiver_base_configs(cloud_region_id=cloud_region_id)
+        if not config_objs:
+            logger.info("未找到可刷新的 Flow Telegraf 基础配置: cloud_region_id=%s", cloud_region_id)
+            return 0
 
         for config_obj in config_objs:
             try:
-                config_payload = InstanceConfigService.get_config_content([config_obj.id])
-                config_info = config_payload.get("child" if config_obj.is_child else "base")
-                if not config_info:
-                    continue
-                refreshed_info = cls._merge_config_env(
-                    config_info=config_info,
+                config_obj.env_config = cls._merge_env_config(
+                    existing_env_config=config_obj.env_config,
                     env_patch=env_patch,
-                    config_id=config_obj.id,
-                    is_child=config_obj.is_child,
                 )
-                InstanceConfigService.update_instance_config(
-                    refreshed_info if config_obj.is_child else None,
-                    refreshed_info if not config_obj.is_child else None,
-                )
+                config_obj.save(update_fields=["env_config"])
             except Exception:
-                logger.exception("刷新 Flow env_config 失败: config_id=%s", config_obj.id)
+                logger.exception("刷新 Flow Telegraf 基础配置 env_config 失败: config_id=%s", config_obj.id)
 
         return len(config_objs)
 
     @classmethod
-    def _merge_config_env(cls, *, config_info, env_patch, config_id, is_child):
-        return {
-            **config_info,
-            "env_config": cls._merge_env_config(
-                existing_env_config=config_info.get("env_config"),
-                env_patch=env_patch,
-                config_id=config_id,
-                is_child=is_child,
-            ),
-        }
+    def _get_region_receiver_base_configs(cls, *, cloud_region_id):
+        return list(
+            CollectorConfiguration.objects.filter(
+                cloud_region_id=cloud_region_id,
+                collector__name="Telegraf",
+                is_pre=True,
+                nodes__cloud_region_id=cloud_region_id,
+                nodes__node_type=ControllerConstants.NODE_TYPE_CONTAINER,
+            )
+            .distinct()
+            .order_by("id")
+        )
 
     @classmethod
-    def _merge_env_config(cls, *, existing_env_config, env_patch, config_id, is_child):
+    def _merge_env_config(cls, *, existing_env_config, env_patch):
         env_config = {
             key[4:]: value
             for key, value in env_patch.items()
             if key.startswith("ENV_")
         }
-        if is_child:
-            env_config = {f"{key.upper()}__{config_id.upper()}": value for key, value in env_config.items()}
         return {
             **(existing_env_config or {}),
             **env_config,

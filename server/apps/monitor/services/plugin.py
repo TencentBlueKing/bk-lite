@@ -4,6 +4,7 @@ from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorPlugin, MonitorPluginUITemplate
 from apps.monitor.models.monitor_metrics import MetricGroup, Metric
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
+from apps.monitor.utils.display_fields_seed import build_seed_display_fields
 from apps.monitor.utils.instance_id_keys import (
     resolve_metric_instance_id_keys,
     resolve_monitor_object_instance_id_keys,
@@ -65,6 +66,7 @@ class MonitorPluginService:
     def import_basic_monitor_object(data: dict):
         """导入基础监控对象"""
         metrics = data.pop("metrics")
+        display_fields_block = data.pop("display_fields", None)
         plugin = data.pop("plugin")
         desc = data.pop("plugin_desc", "")
         status_query = data.pop("status_query", "")
@@ -104,6 +106,21 @@ class MonitorPluginService:
             monitor_obj.save()
         else:
             monitor_obj = MonitorObject.objects.create(**data)
+
+        # seed 展示列配置：仅当未被用户自定义
+        if not monitor_obj.display_fields_customized:
+            if display_fields_block:
+                seeded = list(display_fields_block)
+            else:
+                # 从已合并保存的 supplementary_indicators 派生（含其它插件/历史导入贡献的指标）
+                seeded = build_seed_display_fields(
+                    plugin,
+                    monitor_obj.supplementary_indicators,
+                    metrics,
+                )
+            if seeded:
+                monitor_obj.display_fields = seeded
+                monitor_obj.save(update_fields=["display_fields"])
 
         with transaction.atomic():
             plugin_obj, _ = MonitorPlugin.objects.update_or_create(

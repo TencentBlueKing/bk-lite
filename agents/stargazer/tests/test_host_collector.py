@@ -10,6 +10,7 @@ Host Collector 单元测试
 """
 
 import importlib
+import asyncio
 import json
 import sys
 import os
@@ -103,6 +104,10 @@ def _install_fake_host_remote_callback_store(monkeypatch):
             "task_id": str(task_id),
             "ctx": dict(ctx or {}),
             "params": dict(params or {}),
+            "status": {"execution": "waiting_callback", "delivery": "not_ready"},
+            "raw_callback": None,
+            "callback_deadline_at": None,
+            "publish_attempts": 0,
         }
 
     async def load_context(task_id):
@@ -356,6 +361,11 @@ class TestBuildScript:
         # 不应报错，nonexistent 被跳过
         assert script
 
+    def test_extended_module_scripts_exist(self):
+        for mod in {"diskio", "processes", "system"}:
+            assert (SCRIPTS_DIR / "linux" / f"{mod}.sh").exists(), f"Missing linux/{mod}.sh"
+            assert (SCRIPTS_DIR / "windows" / f"{mod}.ps1").exists(), f"Missing windows/{mod}.ps1"
+
     def test_scripts_dir_exists(self):
         assert (SCRIPTS_DIR / "linux").is_dir()
         assert (SCRIPTS_DIR / "windows").is_dir()
@@ -477,6 +487,124 @@ class TestParseMetricsToPrometheus:
         assert 'os_type="windows"' in result
         assert "host_net_rx_bytes" in result
         assert "host_net_tx_bytes" in result
+
+    def test_telegraf_aligned_extended_metrics(self):
+        data = {
+            "cpu": {
+                "usage_percent": 45.2,
+                "usage_user_percent": 20.1,
+                "usage_system_percent": 10.2,
+                "usage_iowait_percent": 1.1,
+                "usage_irq_percent": 0.2,
+                "usage_steal_percent": 0.0,
+                "core_count": 4,
+                "load_1m": 1.5,
+                "load_5m": 1.2,
+                "load_15m": 0.9,
+            },
+            "mem": {
+                "total_bytes": 8589934592,
+                "used_bytes": 4294967296,
+                "available_bytes": 4294967296,
+                "swap_total_bytes": 2147483648,
+                "swap_used_bytes": 1073741824,
+                "swap_free_bytes": 1073741824,
+                "cached_bytes": 100,
+                "shared_bytes": 200,
+                "buffered_bytes": 300,
+            },
+            "disk": [
+                {
+                    "mount": "/",
+                    "total_bytes": 100000,
+                    "free_bytes": 50000,
+                    "used_bytes": 50000,
+                    "used_percent": 50.0,
+                    "inodes_used_percent": 12.5,
+                }
+            ],
+            "net": [
+                {
+                    "interface": "eth0",
+                    "rx_bytes": 1000,
+                    "tx_bytes": 2000,
+                    "rx_packets": 10,
+                    "tx_packets": 20,
+                    "rx_errors": 1,
+                    "tx_errors": 2,
+                    "rx_drops": 3,
+                    "tx_drops": 4,
+                }
+            ],
+            "diskio": [
+                {
+                    "device": "sda",
+                    "reads": 10,
+                    "writes": 20,
+                    "read_bytes": 1024,
+                    "write_bytes": 2048,
+                    "io_time_ms": 30,
+                    "read_time_ms": 40,
+                    "write_time_ms": 50,
+                }
+            ],
+            "processes": {
+                "running": 2,
+                "blocked": 1,
+                "sleeping": 30,
+                "zombies": 0,
+            },
+            "system": {
+                "uptime_seconds": 12345,
+                "load1": 1.5,
+                "load5": 1.2,
+                "load15": 0.9,
+            },
+        }
+
+        result = parse_metrics_to_prometheus(data, "inst1", "linux", timestamp=123)
+
+        # Telegraf-aligned names where semantics are stable.
+        for metric in [
+            "cpu_usage_total",
+            "cpu_usage_user_total",
+            "cpu_usage_system_total",
+            "cpu_usage_iowait_total",
+            "cpu_usage_irq_total",
+            "cpu_usage_steal_total",
+            "system_load1",
+            "system_load5",
+            "system_load15",
+            "mem_total",
+            "mem_available",
+            "mem_used_percent",
+            "mem_swap_free",
+            "mem_cached",
+            "mem_shared",
+            "mem_buffered",
+            "disk_total",
+            "disk_free",
+            "disk_used_percent",
+            "disk_inodes_used_percent",
+            "net_packets_recv_total",
+            "net_packets_sent_total",
+            "net_bytes_recv_total",
+            "net_bytes_sent_total",
+            "net_err_in_total",
+            "net_err_out_total",
+            "net_drop_in_total",
+            "net_drop_out_total",
+            "diskio_reads_total",
+            "diskio_writes_total",
+            "diskio_read_bytes_total",
+            "diskio_write_bytes_total",
+            "processes_running",
+            "processes_blocked",
+            "processes_zombies",
+            "processes_sleeping",
+            "system_uptime",
+        ]:
+            assert metric in result
 
     def test_network_metrics_escape_prometheus_label_values(self):
         data = {
@@ -614,14 +742,31 @@ class TestHostRemoteMonitorTask:
                 self.submit_collection = submit_collection
 
         monkeypatch.setattr(host_collector_module, "HostCollector", FakeCollector)
+        stored_callback_contexts = {}
+
         async def store_callback_context(task_id, callback_params, ctx):
             call_order.append(("store", task_id, callback_params, ctx))
+            stored_callback_contexts[task_id] = {
+                "callback_deadline_at": None,
+            }
 
         store_callback_context = AsyncMock(side_effect=store_callback_context)
+        async def mark_submit_accepted(task_id):
+            stored_callback_contexts[task_id]["callback_deadline_at"] = (
+                1234567
+                + host_remote_callback_module.HOST_REMOTE_CALLBACK_DEADLINE_SECONDS
+                * 1000
+            )
+
         monkeypatch.setattr(
             host_remote_callback_module,
             "store_host_remote_callback_context",
             store_callback_context,
+        )
+        monkeypatch.setattr(
+            host_remote_callback_module,
+            "mark_host_remote_submit_accepted",
+            AsyncMock(side_effect=mark_submit_accepted),
         )
 
         nats_server = _load_nats_server_module(monkeypatch)
@@ -672,7 +817,7 @@ class TestHostRemoteMonitorTask:
             },
             {},
         )
-        loaded_context = callback_contexts["collect-task-1"]
+        loaded_context = stored_callback_contexts["collect-task-1"]
         assert loaded_context["callback_deadline_at"] is not None
         assert loaded_context["callback_deadline_at"] >= (
             1234567
@@ -813,6 +958,124 @@ class TestHostRemoteMonitorTask:
         submit_collection.assert_awaited_once()
         clear_callback_context.assert_awaited_once_with("collect-task-3")
         assert [entry[0] for entry in call_order] == ["store", "submit", "clear"]
+
+
+class TestMonitorPublishFailureHandling:
+    def test_collect_vmware_metrics_task_skips_synthetic_error_metrics_when_delivery_detected(
+        self, monkeypatch
+    ):
+        influxdb_client_module = types.ModuleType("influxdb_client")
+        influxdb_client_module.Point = MagicMock()
+        influxdb_client_module.WritePrecision = MagicMock()
+        monkeypatch.setitem(sys.modules, "influxdb_client", influxdb_client_module)
+
+        from tasks.utils.nats_helper import MetricsPublishError
+        import tasks.collectors.vmware_collector as vmware_collector_module
+        import tasks.utils.metrics_helper as metrics_helper_module
+        import tasks.utils.nats_helper as nats_helper_module
+
+        monitor_handler = _load_monitor_handler_module(monkeypatch)
+        publish_calls = []
+        error_metrics_factory = MagicMock(return_value="synthetic-error-metrics")
+
+        class FakeCollector:
+            def __init__(self, params):
+                self.params = params
+
+            async def collect(self):
+                return "vmware_real_metrics"
+
+        async def fake_publish_metrics_to_nats(ctx, metrics_data, params, task_id):
+            publish_calls.append(metrics_data)
+            if metrics_data == "vmware_real_metrics":
+                raise MetricsPublishError(
+                    task_id=task_id,
+                    subject="metrics.vmware",
+                    total_lines=1,
+                    success_count=0,
+                    delivery_detected=True,
+                    attempts=1,
+                    reason="flush failed after writes",
+                )
+            return 1
+
+        monkeypatch.setattr(vmware_collector_module, "VmwareCollector", FakeCollector)
+        monkeypatch.setattr(nats_helper_module, "publish_metrics_to_nats", fake_publish_metrics_to_nats)
+        monkeypatch.setattr(
+            metrics_helper_module,
+            "generate_monitor_error_metrics",
+            error_metrics_factory,
+        )
+
+        result = asyncio.run(
+            monitor_handler.collect_vmware_metrics_task(
+                {"job": "ctx"},
+                {"host": "10.0.0.10", "monitor_type": "vmware_vc"},
+                "vmware-task-1",
+            )
+        )
+
+        assert result["status"] == "failed"
+        assert publish_calls == ["vmware_real_metrics"]
+        error_metrics_factory.assert_not_called()
+
+    def test_collect_vmware_metrics_task_publishes_synthetic_error_metrics_when_delivery_not_detected(
+        self, monkeypatch
+    ):
+        influxdb_client_module = types.ModuleType("influxdb_client")
+        influxdb_client_module.Point = MagicMock()
+        influxdb_client_module.WritePrecision = MagicMock()
+        monkeypatch.setitem(sys.modules, "influxdb_client", influxdb_client_module)
+
+        from tasks.utils.nats_helper import MetricsPublishError
+        import tasks.collectors.vmware_collector as vmware_collector_module
+        import tasks.utils.metrics_helper as metrics_helper_module
+        import tasks.utils.nats_helper as nats_helper_module
+
+        monitor_handler = _load_monitor_handler_module(monkeypatch)
+        publish_calls = []
+        error_metrics_factory = MagicMock(return_value="synthetic-error-metrics")
+
+        class FakeCollector:
+            def __init__(self, params):
+                self.params = params
+
+            async def collect(self):
+                return "vmware_real_metrics"
+
+        async def fake_publish_metrics_to_nats(ctx, metrics_data, params, task_id):
+            publish_calls.append(metrics_data)
+            if metrics_data == "vmware_real_metrics":
+                raise MetricsPublishError(
+                    task_id=task_id,
+                    subject="metrics.vmware",
+                    total_lines=1,
+                    success_count=0,
+                    delivery_detected=False,
+                    attempts=2,
+                    reason="delivery never confirmed",
+                )
+            return 1
+
+        monkeypatch.setattr(vmware_collector_module, "VmwareCollector", FakeCollector)
+        monkeypatch.setattr(nats_helper_module, "publish_metrics_to_nats", fake_publish_metrics_to_nats)
+        monkeypatch.setattr(
+            metrics_helper_module,
+            "generate_monitor_error_metrics",
+            error_metrics_factory,
+        )
+
+        result = asyncio.run(
+            monitor_handler.collect_vmware_metrics_task(
+                {"job": "ctx"},
+                {"host": "10.0.0.10", "monitor_type": "vmware_vc"},
+                "vmware-task-2",
+            )
+        )
+
+        assert result["status"] == "failed"
+        assert publish_calls == ["vmware_real_metrics", "synthetic-error-metrics"]
+        error_metrics_factory.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -1160,6 +1423,86 @@ class TestHostCollectorCollect:
         assert call_kwargs["module"] == "win_shell"
         assert call_kwargs["host_credentials"][0]["connection"] == "winrm"
         assert call_kwargs["host_credentials"][0]["port"] == 5986
+        assert call_kwargs["host_credentials"][0]["winrm_scheme"] == "https"
+        assert call_kwargs["host_credentials"][0]["winrm_transport"] == "ntlm"
+        assert call_kwargs["host_credentials"][0]["winrm_cert_validation"] is False
+
+    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    async def test_successful_collect_windows_passes_explicit_winrm_options(self, mock_adhoc):
+        mock_adhoc.return_value = {
+            "success": True,
+            "result": {
+                "contacted": {
+                    "10.0.0.2": {
+                        "stdout": json.dumps({
+                            "cpu": {"usage_percent": 60.0, "core_count": 8, "load_1m": 0, "load_5m": 0, "load_15m": 0},
+                        }),
+                        "rc": 0,
+                    }
+                }
+            },
+        }
+
+        collector = HostCollector({
+            "host": "10.0.0.2",
+            "os_type": "windows",
+            "username": "Administrator",
+            "password": "secret",
+            "port": "5985",
+            "winrm_scheme": "http",
+            "winrm_transport": "basic",
+            "winrm_cert_validation": "true",
+            "ansible_node_id": "region1",
+            "metrics_modules": ["cpu"],
+            "tags": {"instance_id": "region1_host_10.0.0.2"},
+        })
+
+        await collector.collect()
+
+        host_cred = mock_adhoc.call_args[1]["host_credentials"][0]
+        assert host_cred["port"] == 5985
+        assert host_cred["winrm_scheme"] == "http"
+        assert host_cred["winrm_transport"] == "basic"
+        assert host_cred["winrm_cert_validation"] is True
+
+    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    async def test_successful_collect_linux_private_key_credentials(self, mock_adhoc):
+        mock_adhoc.return_value = {
+            "success": True,
+            "result": {
+                "contacted": {
+                    "10.0.0.1": {
+                        "stdout": json.dumps({
+                            "cpu": {"usage_percent": 25.0, "core_count": 4, "load_1m": 0.5, "load_5m": 0.3, "load_15m": 0.1},
+                        }),
+                        "rc": 0,
+                    }
+                }
+            },
+        }
+
+        collector = HostCollector({
+            "host": "10.0.0.1",
+            "os_type": "linux",
+            "username": "root",
+            "auth_type": "private_key",
+            "private_key_content": "-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----",
+            "private_key_passphrase": "key-pass",
+            "port": "22",
+            "ansible_node_id": "region1",
+            "metrics_modules": ["cpu", "system"],
+            "tags": {"instance_id": "region1_host_10.0.0.1"},
+        })
+
+        await collector.collect()
+
+        call_kwargs = mock_adhoc.call_args[1]
+        host_cred = call_kwargs["host_credentials"][0]
+        assert host_cred["connection"] == "ssh"
+        assert "password" not in host_cred
+        assert host_cred["private_key_content"].startswith("-----BEGIN PRIVATE KEY-----")
+        assert host_cred["private_key_passphrase"] == "key-pass"
+        assert "system" in call_kwargs["module_args"]
 
     @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_adhoc_failure_raises(self, mock_adhoc):
@@ -1561,11 +1904,13 @@ class TestHostRemoteProcessWorker:
         result = await handler.process_host_remote_callback_task({}, {}, "task-process-1")
 
         assert result["status"] == "success"
-        publish_metrics.assert_awaited_once()
-        publish_args = publish_metrics.await_args.args
+        assert publish_metrics.await_count == 2
+        publish_args = publish_metrics.await_args_list[0].args
         assert publish_args[2] == params
         assert publish_args[3] == "task-process-1"
         assert "host_cpu_usage_percent" in publish_args[1]
+        state_args = publish_metrics.await_args_list[1].args
+        assert "host_remote_state" in state_args[1]
         assert callback_contexts.get("task-process-1") is None
 
     async def test_process_host_remote_callback_task_publishes_error_metrics_on_processing_failure(self, monkeypatch):
@@ -1598,7 +1943,9 @@ class TestHostRemoteProcessWorker:
 
         assert result["status"] == "failed"
         assert "Host collection failed" in result["error"]
-        publish_metrics.assert_awaited_once_with({}, error_metrics, params, "task-process-2")
+        assert publish_metrics.await_count == 2
+        publish_metrics.assert_any_await({}, error_metrics, params, "task-process-2")
+        assert "host_remote_state" in publish_metrics.await_args_list[1].args[1]
         assert callback_contexts["task-process-2"]["status"]["delivery"] == "delivery_failed"
 
     async def test_process_host_remote_callback_task_marks_failure_when_publish_fails(self, monkeypatch):
@@ -1802,12 +2149,12 @@ class TestPublishMetricsToNats:
             "convert_prometheus_to_influx",
             MagicMock(return_value=["metric value=1 1", "metric value=2 2"]),
         )
-        monkeypatch.setattr(
-            nats_helper_module.NATSConfig,
-            "from_env",
-            MagicMock(return_value=types.SimpleNamespace(servers=["nats://example"], tls_enabled=False, user="demo")),
-        )
-        monkeypatch.setattr(nats_helper_module, "NATSClient", FakeNatsClient)
+        async def fake_publish_lines(subject, lines):
+            for line in lines:
+                await FakeNatsConnection().publish(subject, line.encode("utf-8"))
+            return len(lines)
+
+        monkeypatch.setattr(nats_helper_module, "nats_publish_lines", fake_publish_lines)
 
         with pytest.raises(RuntimeError, match="line publish failed"):
             await nats_helper_module.publish_metrics_to_nats({}, "ignored", {"monitor_type": "host"}, "task-900")

@@ -10,6 +10,7 @@ df -P -B1 -x tmpfs -x devtmpfs -x squashfs 2>/dev/null | tail -n +2 | while read
   if [ $_disk_first -eq 0 ]; then echo ','; fi; _disk_first=0
   used_pct=$(echo "$pct" | tr -d '%')
   mount_json=$(json_escape "$mount")
-  echo "{\"mount\":\"$mount_json\",\"total_bytes\":$size,\"used_bytes\":$used,\"used_percent\":$used_pct}"
+  inode_pct=$(df -Pi "$mount" 2>/dev/null | tail -n 1 | awk '{print $5}' | tr -d '%')
+  echo "{\"mount\":\"$mount_json\",\"total_bytes\":$size,\"free_bytes\":$avail,\"used_bytes\":$used,\"used_percent\":$used_pct,\"inodes_used_percent\":${inode_pct:-0}}"
 done
 echo ']'

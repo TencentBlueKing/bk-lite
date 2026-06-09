@@ -47,6 +47,7 @@ import { ColumnItem } from '@/types';
 import CollectorDetailDrawer from './collectorDetail';
 import EditNode from './editNode';
 import { useCommon } from '@/app/node-manager/context/common';
+import { isControllerOperationDisabled } from '@/app/node-manager/utils/nodeOperation';
 const { confirm } = Modal;
 
 type TableRowSelection<T extends object = object> =
@@ -156,22 +157,11 @@ const Node = () => {
   }, [selectedRowKeys, nodeList]);
 
   const enableOperateController = useMemo(() => {
-    if (!selectedRowKeys.length) return true;
     const selectedNodes = (nodeList || []).filter((item) =>
       selectedRowKeys.includes(item.key)
     );
-    const operatingSystems = selectedNodes.map((node) => node.operating_system);
-    const uniqueOS = [...new Set(operatingSystems)];
-    const installMethods = selectedNodes.map((node) => node.install_method);
-    const uniqueInstallMethods = [...new Set(installMethods)];
-    // 控制器：检查操作系统和安装方式是否都一致，且不包含 Windows 系统
-    const hasWindows = operatingSystems.includes('windows');
-    return (
-      uniqueOS.length !== 1 ||
-      uniqueInstallMethods.length !== 1 ||
-      uniqueInstallMethods.includes('manual') ||
-      hasWindows
-    );
+    // 控制器：只要求所选节点为同一非 Windows 操作系统，安装方式不影响操作入口
+    return isControllerOperationDisabled(selectedNodes);
   }, [selectedRowKeys, nodeList]);
 
   const getFirstSelectedNodeOS = useCallback(() => {

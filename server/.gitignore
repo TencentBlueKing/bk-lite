@@ -26,5 +26,6 @@ mlruns
 uv.lock
 docs/api/*
 docs/*
+!docs/testing-guide.md
 ca.pem
 *license_mgmt*
