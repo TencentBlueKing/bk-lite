@@ -1061,7 +1061,7 @@ def test_send_msg_with_channel_nats_rejects_invalid_content(monkeypatch):
         name="test-nats-validation",
         channel_type=ChannelChoices.NATS,
         description="",
-        config={"namespace": "opspilot", "method_name": "trigger_alert", "bot_id": 1, "node_id": "node-1"},
+        config={"namespace": "opspilot", "method_name": "trigger_workflow_by_nats", "bot_id": 1, "node_id": "node-1"},
     )
 
     monkeypatch.setattr(
@@ -1143,7 +1143,7 @@ def test_send_nats_message_merges_bot_id_and_node_id_from_config(monkeypatch):
     channel_obj = _types.SimpleNamespace(
         config={
             "namespace": "opspilot",
-            "method_name": "trigger_alert",
+            "method_name": "trigger_workflow_by_nats",
             "bot_id": 42,
             "node_id": "node-xyz",
             "timeout": 30,
@@ -1175,7 +1175,7 @@ def test_send_nats_message_requires_bot_id_and_node_id_in_config(monkeypatch):
     channel_obj = _types.SimpleNamespace(
         config={
             "namespace": "opspilot",
-            "method_name": "trigger_alert",
+            "method_name": "trigger_workflow_by_nats",
             # bot_id and node_id intentionally missing
         }
     )
@@ -1183,6 +1183,38 @@ def test_send_nats_message_requires_bot_id_and_node_id_in_config(monkeypatch):
     result = send_nats_message(channel_obj, {"message": "alert!", "team": [2], "user_ids": ["alice"]})
     assert result["result"] is False
     assert "bot_id" in result["message"] or "node_id" in result["message"]
+
+
+def test_send_nats_message_allows_non_workflow_methods_without_bot_context(monkeypatch):
+    """Non-workflow NATS methods should not require or inject bot_id/node_id."""
+    import types as _types
+
+    from apps.system_mgmt.utils.channel_utils import send_nats_message
+
+    captured = {}
+
+    def fake_request_sync(namespace, method_name, _timeout=None, _raw=False, **kwargs):
+        captured["namespace"] = namespace
+        captured["method_name"] = method_name
+        captured["kwargs"] = kwargs
+        return {"result": True}
+
+    monkeypatch.setattr("apps.system_mgmt.utils.channel_utils.nats_client.request_sync", fake_request_sync)
+
+    channel_obj = _types.SimpleNamespace(
+        config={
+            "namespace": "system_mgmt",
+            "method_name": "get_all_users",
+            "timeout": 30,
+        }
+    )
+
+    result = send_nats_message(channel_obj, {"scope": "all"})
+
+    assert result == {"result": True}
+    assert captured["namespace"] == "system_mgmt"
+    assert captured["method_name"] == "get_all_users"
+    assert captured["kwargs"] == {"scope": "all"}
 
 
 @pytest.mark.django_db

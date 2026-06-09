@@ -287,10 +287,11 @@ def send_nats_message(channel_obj: Channel, content: dict):
     if not namespace or not method_name:
         return {"result": False, "message": "NATS channel config missing namespace or method_name"}
 
-    if bot_id is None or not node_id:
-        return {"result": False, "message": "NATS channel config missing bot_id or node_id"}
-
-    payload = {**content, "bot_id": bot_id, "node_id": node_id}
+    payload = dict(content)
+    if method_name == "trigger_workflow_by_nats":
+        if bot_id is None or not node_id:
+            return {"result": False, "message": "NATS channel config missing bot_id or node_id"}
+        payload.update({"bot_id": bot_id, "node_id": node_id})
 
     try:
         result = nats_client.request_sync(namespace, method_name, _timeout=timeout, _raw=True, **payload)
