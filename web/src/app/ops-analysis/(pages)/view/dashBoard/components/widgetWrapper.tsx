@@ -18,6 +18,11 @@ import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
+import {
+  getCachedWidgetRequest,
+  setWidgetRequestFailureCache,
+  setWidgetRequestSuccessCache,
+} from '@/app/ops-analysis/utils/widgetRequestCache';
 import WidgetRenderer from '@/app/ops-analysis/components/widgetRenderer';
 import WidgetErrorState from '@/app/ops-analysis/components/widgetErrorState';
 
@@ -161,15 +166,6 @@ const validateEventTableData = (
 };
 
 const inflightWidgetRequests = new Map<string, Promise<unknown>>();
-const widgetRequestCache = new Map<
-  string,
-  {
-    rawData: any;
-    baselineData: any;
-    dataValidation: { isValid: boolean; message?: string } | null;
-  }
->();
-
 const getOrCreateInflightRequest = async <T,>(
   requestKey: string,
   createRequest: () => Promise<T>,
@@ -482,7 +478,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
       const validation = validateChartData(data.currentData, chartType);
       setDataValidation(validation);
-      widgetRequestCache.set(requestKey, {
+      setWidgetRequestSuccessCache(requestKey, {
         rawData: data.currentData,
         baselineData: data.baselineData,
         dataValidation: validation,
@@ -492,11 +488,15 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       console.error('获取数据失败:', err);
       setRawData(null);
       setBaselineData(null);
+      const message = getRequestErrorMessage(
+        err,
+        t('dashboard.dataFetchFailed'),
+      );
       setDataValidation({
         isValid: false,
-        message: getRequestErrorMessage(err, t('dashboard.dataFetchFailed')),
+        message,
       });
-      widgetRequestCache.delete(requestKey);
+      setWidgetRequestFailureCache(requestKey, message);
     } finally {
       if (currentFetchId !== fetchIdRef.current) return;
       if (isTableLikeChart) {
@@ -557,7 +557,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       return;
     }
 
-    const cached = widgetRequestCache.get(requestKey);
+    const cached = getCachedWidgetRequest(requestKey);
 
     if (!cached) {
       return;
