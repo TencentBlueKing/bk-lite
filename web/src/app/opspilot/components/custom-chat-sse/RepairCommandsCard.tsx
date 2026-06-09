@@ -53,7 +53,7 @@ const RepairCommandsCard: React.FC<RepairCommandsCardProps> = ({ commands }) => 
   };
 
   return (
-    <div className="mt-3 max-w-[700px] overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] shadow-sm">
+    <div className="mt-3 w-full max-w-full overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] shadow-sm">
       {/* Header */}
       <div
         className="flex cursor-pointer items-center gap-2 border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-4 py-2"

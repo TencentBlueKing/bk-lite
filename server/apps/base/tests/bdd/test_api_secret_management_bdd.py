@@ -1,64 +1,23 @@
+"""API Secret 管理 BDD（中文 Gherkin）。
+
+对照 spec：用户级 API Secret 的创建 / 查询 / 删除 / 团队隔离。
+统一为扁平式 scenarios() 写法：feature 与本文件同层，一次性绑定整个 feature。
+共享 fixture（bdd_user / bdd_client）见同目录 conftest.py。
+"""
+
+from pathlib import Path
+
 import pytest
-from pytest_bdd import given, when, then, scenario, parsers
+from pytest_bdd import given, scenarios, then, when
 from rest_framework import status
-from rest_framework.test import APIClient
 
 from apps.base.models import UserAPISecret
 from apps.base.tests.factories import UserAPISecretFactory, UserFactory
 
 BASE_URL = "/api/v1/base/user_api_secret/"
 
-
-# --- Scenarios ---
-
-@pytest.mark.bdd
-@pytest.mark.django_db
-@scenario(
-    "../features/api_secret_management.feature",
-    "用户创建 API Secret",
-)
-def test_create_api_secret():
-    pass
-
-
-@pytest.mark.bdd
-@pytest.mark.django_db
-@scenario(
-    "../features/api_secret_management.feature",
-    "用户不能重复创建 API Secret",
-)
-def test_duplicate_create():
-    pass
-
-
-@pytest.mark.bdd
-@pytest.mark.django_db
-@scenario(
-    "../features/api_secret_management.feature",
-    "用户只能查看自己的 API Secret",
-)
-def test_user_isolation():
-    pass
-
-
-@pytest.mark.bdd
-@pytest.mark.django_db
-@scenario(
-    "../features/api_secret_management.feature",
-    "完整生命周期",
-)
-def test_full_lifecycle():
-    pass
-
-
-@pytest.mark.bdd
-@pytest.mark.django_db
-@scenario(
-    "../features/api_secret_management.feature",
-    "多团队隔离",
-)
-def test_multi_team_isolation():
-    pass
+FEATURE = str(Path(__file__).parent / "api_secret_management.feature")
+scenarios(FEATURE)
 
 
 # --- Shared state fixture ---
