@@ -18,11 +18,3 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(hour="2", minute="0"),
     },
 }
-
-# 发现接缝③：guarded 合并企业版 beat 调度（缺 enterprise 则 no-op）
-try:
-    from apps.cmdb.enterprise.beat import ENTERPRISE_BEAT_SCHEDULE
-
-    CELERY_BEAT_SCHEDULE.update(ENTERPRISE_BEAT_SCHEDULE)
-except ModuleNotFoundError:
-    pass
