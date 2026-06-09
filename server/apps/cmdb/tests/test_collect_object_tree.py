@@ -3,11 +3,9 @@
 对照 spec/prd/CMDB·自动采集：内置采集对象树合并企业版扩展、按 model_id 查询采集元数据。
 """
 
-import sys
-import types
-
 import pytest
 
+from apps.cmdb.collect.extensions import CollectEnterpriseExtension
 from apps.cmdb.services.collect_object_tree import (
     _get_enterprise_collect_obj_tree,
     _normalize_enterprise_children,
@@ -15,6 +13,14 @@ from apps.cmdb.services.collect_object_tree import (
     get_collect_obj_tree,
     get_collect_object_meta,
 )
+
+
+def _patch_collect_extension(monkeypatch, collect_tree):
+    """把 collect 门面打补丁为返回给定采集树（模拟企业 provider）。"""
+    monkeypatch.setattr(
+        "apps.cmdb.services.collect_object_tree.get_collect_enterprise_extension",
+        lambda: CollectEnterpriseExtension(collect_tree=collect_tree),
+    )
 
 
 # --------------------------------------------------------------------------
@@ -43,16 +49,14 @@ def test_normalize_children_variants():
 # --------------------------------------------------------------------------
 
 
-def test_get_enterprise_collect_obj_tree_missing():
-    # 默认无 apps.cmdb.enterprise.tree 模块 → 返回 []
-    sys.modules.pop("apps.cmdb.enterprise.tree", None)
+def test_get_enterprise_collect_obj_tree_missing(monkeypatch):
+    # 门面返回空契约（模拟无企业 provider）→ 返回 []
+    _patch_collect_extension(monkeypatch, [])
     assert _get_enterprise_collect_obj_tree() == []
 
 
 def test_get_enterprise_collect_obj_tree_present(monkeypatch):
-    fake = types.ModuleType("apps.cmdb.enterprise.tree")
-    fake.ENTERPRISE_COLLECT_OBJ_TREE = [{"id": "x"}]
-    monkeypatch.setitem(sys.modules, "apps.cmdb.enterprise.tree", fake)
+    _patch_collect_extension(monkeypatch, [{"id": "x"}])
     out = _get_enterprise_collect_obj_tree()
     assert out == [{"id": "x"}]
 
@@ -63,7 +67,7 @@ def test_get_enterprise_collect_obj_tree_present(monkeypatch):
 
 
 def test_get_collect_obj_tree_no_enterprise(monkeypatch):
-    sys.modules.pop("apps.cmdb.enterprise.tree", None)
+    _patch_collect_extension(monkeypatch, [])
     tree = get_collect_obj_tree()
     assert isinstance(tree, list)
     assert len(tree) > 0
@@ -72,11 +76,10 @@ def test_get_collect_obj_tree_no_enterprise(monkeypatch):
 def test_get_collect_obj_tree_merge_enterprise(monkeypatch):
     base_tree = get_collect_obj_tree()
     category_id = base_tree[0]["id"]
-    fake = types.ModuleType("apps.cmdb.enterprise.tree")
-    fake.ENTERPRISE_COLLECT_OBJ_TREE = [
-        {"id": category_id, "children": [{"model_id": "_ent_new_model", "label": "企业新增"}]}
-    ]
-    monkeypatch.setitem(sys.modules, "apps.cmdb.enterprise.tree", fake)
+    _patch_collect_extension(
+        monkeypatch,
+        [{"id": category_id, "children": [{"model_id": "_ent_new_model", "label": "企业新增"}]}],
+    )
     merged = get_collect_obj_tree()
     cat = next(c for c in merged if c["id"] == category_id)
     assert any(c.get("model_id") == "_ent_new_model" for c in cat["children"])
@@ -90,12 +93,10 @@ def test_get_collect_obj_tree_merge_replaces_duplicate(monkeypatch):
     existing_model_id = cat["children"][0].get("model_id")
     if not existing_model_id:
         pytest.skip("first child lacks model_id")
-    fake = types.ModuleType("apps.cmdb.enterprise.tree")
-    fake.ENTERPRISE_COLLECT_OBJ_TREE = {
-        "id": cat["id"],
-        "children": {"model_id": existing_model_id, "label": "替换"},
-    }
-    monkeypatch.setitem(sys.modules, "apps.cmdb.enterprise.tree", fake)
+    _patch_collect_extension(
+        monkeypatch,
+        {"id": cat["id"], "children": {"model_id": existing_model_id, "label": "替换"}},
+    )
     merged = get_collect_obj_tree()
     mcat = next(c for c in merged if c["id"] == cat["id"])
     target = next(c for c in mcat["children"] if c.get("model_id") == existing_model_id)
@@ -103,12 +104,13 @@ def test_get_collect_obj_tree_merge_replaces_duplicate(monkeypatch):
 
 
 def test_get_collect_obj_tree_skip_invalid_enterprise(monkeypatch):
-    fake = types.ModuleType("apps.cmdb.enterprise.tree")
-    fake.ENTERPRISE_COLLECT_OBJ_TREE = [
-        {},  # 无 id
-        {"id": "_absent_cat"},  # 不存在的分类
-    ]
-    monkeypatch.setitem(sys.modules, "apps.cmdb.enterprise.tree", fake)
+    _patch_collect_extension(
+        monkeypatch,
+        [
+            {},  # 无 id
+            {"id": "_absent_cat"},  # 不存在的分类
+        ],
+    )
     tree = get_collect_obj_tree()
     assert isinstance(tree, list)
 

@@ -47,8 +47,11 @@ def _auto_register_node_params():
 
     _import_modules_in_package(package_name, [str(current_dir)])
 
-    # enterprise 允许将 NodeParams 直接定义在扩展模块里，这里显式补齐注册链路。
-    _auto_register_from_package("apps.cmdb.enterprise")
+    # 企业版 NodeParams 经 collect 门面发现（仅扫描 enterprise.collect 包，缺企业时为空）
+    from apps.cmdb.collect.extensions import get_collect_enterprise_extension
+
+    for ent_package in get_collect_enterprise_extension().node_param_packages:
+        _auto_register_from_package(ent_package)
 
 
 # 执行自动注册

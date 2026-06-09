@@ -8,7 +8,6 @@ class CollectionPluginLoader:
     _loaded = False
     _package_names = [
         "apps.cmdb.collection.plugins.community",
-        "apps.cmdb.enterprise",
     ]
 
     @classmethod
@@ -16,9 +15,15 @@ class CollectionPluginLoader:
         if cls._loaded:
             return True
 
-        has_error = False
+        from apps.cmdb.collect.extensions import get_collect_enterprise_extension
 
-        for package_name in cls._package_names:
+        # 社区基础包 + 企业采集插件包（经 collect 门面发现，缺企业时为空）
+        package_names = list(
+            dict.fromkeys([*cls._package_names, *get_collect_enterprise_extension().plugin_packages])
+        )
+
+        has_error = False
+        for package_name in package_names:
             if not cls._load_package(package_name):
                 has_error = True
 

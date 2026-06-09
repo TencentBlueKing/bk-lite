@@ -28,6 +28,13 @@ AUTO_RELATION_RULE_UNSUPPORTED_ATTR_TYPES = {
 }
 
 
+def auto_relation_rule_unsupported_attr_types() -> set:
+    """社区基础不支持类型 + 企业版增量（缺企业时仅基础集）。"""
+    from apps.cmdb.model_ops.extensions import unsupported_auto_relation_attr_types
+
+    return AUTO_RELATION_RULE_UNSUPPORTED_ATTR_TYPES | unsupported_auto_relation_attr_types()
+
+
 @dataclass(slots=True, frozen=True)
 class AutoRelationMatchPair:
     src_field_id: str
@@ -321,7 +328,7 @@ def validate_auto_relation_rule_payload(
         dst_attr_type = str(dst_attr.get("attr_type") or "")
         if src_attr_type != dst_attr_type:
             raise BaseAppException("源字段和目标字段类型不一致")
-        if src_attr_type in AUTO_RELATION_RULE_UNSUPPORTED_ATTR_TYPES:
+        if src_attr_type in auto_relation_rule_unsupported_attr_types():
             raise BaseAppException(f"字段类型 {src_attr_type} 不支持自动关联")
         if pair.matching_rule in AUTO_RELATION_MATCHING_RULE_STRING_ONLY_VALUES and src_attr_type != "str":
             raise BaseAppException(f"匹配规则 {pair.matching_rule} 仅支持字符串字段")

@@ -1337,30 +1337,38 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                 prevValues.attr_type !== currentValues.attr_type
               }
             >
-              {({ getFieldValue }) => (
-                <Form.Item label=" " colon={false} className="ml-[-80px]">
-                  <div className="flex items-center gap-8">
-                    <Form.Item<AttrFieldType>
-                      name="is_required"
-                      valuePropName="checked"
-                      className="mb-0"
-                    >
-                      <Checkbox disabled={getFieldValue('attr_type') === 'tag'}>
-                        {t('required')}
-                      </Checkbox>
-                    </Form.Item>
-                    <Form.Item<AttrFieldType>
-                      name="editable"
-                      valuePropName="checked"
-                      className="mb-0"
-                    >
-                      <Checkbox disabled={getFieldValue('attr_type') === 'tag'}>
-                        {t('editable')}
-                      </Checkbox>
-                    </Form.Item>
-                  </div>
-                </Form.Item>
-              )}
+              {({ getFieldValue }) => {
+                // 附件/图片字段一律可选、不可设为必填 → 隐藏必填开关（约束由系统兜底）
+                const isFileType = ['attachment', 'image'].includes(
+                  getFieldValue('attr_type')
+                );
+                return (
+                  <Form.Item label=" " colon={false} className="ml-[-80px]">
+                    <div className="flex items-center gap-8">
+                      {!isFileType && (
+                        <Form.Item<AttrFieldType>
+                          name="is_required"
+                          valuePropName="checked"
+                          className="mb-0"
+                        >
+                          <Checkbox disabled={getFieldValue('attr_type') === 'tag'}>
+                            {t('required')}
+                          </Checkbox>
+                        </Form.Item>
+                      )}
+                      <Form.Item<AttrFieldType>
+                        name="editable"
+                        valuePropName="checked"
+                        className="mb-0"
+                      >
+                        <Checkbox disabled={getFieldValue('attr_type') === 'tag'}>
+                          {t('editable')}
+                        </Checkbox>
+                      </Form.Item>
+                    </div>
+                  </Form.Item>
+                );
+              }}
             </Form.Item>
             <Form.Item<AttrFieldType>
               label={t('Model.userPrompt')}
