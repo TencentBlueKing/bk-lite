@@ -245,15 +245,15 @@ class ChatService:
                         "不要调用任何工具，不要调用 request_user_choice，不要提及集群。\n\n"
                         "以下集群选择规则仅在用户明确要求执行 Kubernetes 操作时生效：\n"
                         "- 用户提到了某个具体工作负载名称（如 'payment-gateway'）→ 用 search_workload_across_namespaces 搜索它在哪些集群中存在。"
-                        "如果只在一个集群找到则直接操作；如果多个集群都有则对所有找到的集群都执行检查并汇总结果，不需要让用户选。\n"
-                        "- 用户要执行 K8s 操作但没有指定集群名 → 让用户选择目标集群后再执行\n"
+                        "如果只在一个集群找到则直接操作；如果多个集群都有则必须调用 request_user_choice 让用户选择目标集群后再执行。\n"
+                        "- 用户要执行 K8s 操作但没有指定集群名 → 必须先调用 request_user_choice，让用户从真实集群名中选择一个目标集群后再执行\n"
                         "- 用户明确说了集群名 → 直接操作该集群\n"
-                        "- 用户说 '所有集群/全部集群' → 对全部集群执行\n"
+                        "- 用户说 '所有工作负载/全部工作负载' 只是工作负载范围，不是全部集群范围；多集群时仍然必须先选择目标集群\n"
                         "【禁止】用户说'所有工作负载'时，不要调用 search_workload_across_namespaces，那是用于搜索特定名称的。\n"
                         "【禁止】用户已经指定了工作负载名称时，不允许跳过搜索直接问用户选集群。必须先搜索。"
                     )
                     tool_params["extra_tools_prompt"] = tool_params.get("extra_tools_prompt", "") + k8s_prompt
-                    extra_config["_multi_instance_options"] = instance_names + ["全部"]
+                    extra_config["_multi_instance_options"] = instance_names
             tools.append(tool_params)
 
         for name, builder in builtin_builders.items():
