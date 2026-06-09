@@ -1,20 +1,35 @@
 import os
+from pathlib import Path
+
+from config.components.base import BASE_DIR
+from config.components.enterprise import detect_enterprise_footprint, require_enterprise_license_management
 
 install_apps = os.getenv("INSTALL_APPS", "")
 
-# 企业版：如果 apps/license_mgmt 目录存在，强制加入
-if os.path.isdir(os.path.join("apps", "license_mgmt")):
-    if install_apps:
-        apps_set = {a.strip() for a in install_apps.split(",") if a.strip()}
-        apps_set.add("license_mgmt")
-        install_apps = ",".join(apps_set)
+# 企业版：检测 enterprise footprint，拒绝无 license_mgmt 时启动，按需注入显式列表
+_base_dir = Path(BASE_DIR)
+require_enterprise_license_management(_base_dir)
+_enterprise_status = detect_enterprise_footprint(_base_dir)
 
-for app in os.listdir("apps"):
+if install_apps:
+    # Normalise the explicit list, then gate license_mgmt on enterprise status.
+    _apps_set = {a.strip() for a in install_apps.split(",") if a.strip()}
+    if _enterprise_status.should_enable_license_mgmt:
+        _apps_set.add("license_mgmt")
+    else:
+        # Block any explicit attempt to load license_mgmt without enterprise footprint.
+        _apps_set.discard("license_mgmt")
+    install_apps = ",".join(_apps_set)
+
+for app in os.listdir(os.path.join(_base_dir, "apps")):
+    # In auto-discovery mode, gate license_mgmt on enterprise status as well.
+    if app == "license_mgmt" and not _enterprise_status.should_enable_license_mgmt:
+        continue
     if install_apps and app not in install_apps.split(","):
         continue
     if app.endswith(".py") or app.startswith("__"):
         continue
-    if os.path.exists(f"apps/{app}/config.py"):
+    if os.path.exists(os.path.join(_base_dir, "apps", app, "config.py")):
         try:
             __module = __import__(f"apps.{app}.config", globals(), locals(), ["*"])
         except ImportError as e:  # noqa

@@ -6,6 +6,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import (
     Bot,
     BotConversationHistory,
+    BotWorkFlow,
     EmbedProvider,
     KnowledgeBase,
     LLMModel,
@@ -15,6 +16,50 @@ from apps.opspilot.models import (
     SkillTools,
 )
 from apps.opspilot.utils.bot_utils import get_user_info
+from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
+
+
+def _normalize_nats_trigger_input(message, team, user_ids, bot_id, node_id):
+    if not isinstance(message, str) or not message.strip():
+        return None, {"result": False, "message": "message is required"}
+
+    if not isinstance(team, list):
+        return None, {"result": False, "message": "team must be a list"}
+
+    normalized_team = []
+    for team_id in team:
+        team_value = str(team_id).strip()
+        if not team_value or not team_value.isdigit():
+            return None, {"result": False, "message": "team must contain integer ids"}
+        normalized_team.append(int(team_value))
+
+    if not isinstance(user_ids, list):
+        return None, {"result": False, "message": "user_ids must be a list"}
+
+    normalized_user_ids = []
+    for user_id in user_ids:
+        if user_id is None:
+            continue
+        user_value = str(user_id).strip()
+        if user_value:
+            normalized_user_ids.append(user_value)
+
+    try:
+        normalized_bot_id = int(bot_id)
+    except (TypeError, ValueError):
+        return None, {"result": False, "message": "bot_id must be an integer"}
+
+    normalized_node_id = str(node_id).strip() if node_id is not None else ""
+    if not normalized_node_id:
+        return None, {"result": False, "message": "node_id is required"}
+
+    return {
+        "message": message.strip(),
+        "team": normalized_team,
+        "user_ids": normalized_user_ids,
+        "bot_id": normalized_bot_id,
+        "node_id": normalized_node_id,
+    }, None
 
 
 @nats_client.register
@@ -158,3 +203,42 @@ def consume_bot_event(kwargs):
         )
     except Exception as e:
         logger.exception(f"对话历史保存失败: {e}, 传入参数如下：{kwargs}")
+
+
+@nats_client.register
+def trigger_workflow_by_nats(message, team, user_ids, bot_id, node_id):
+    """由告警中心通过 NATS 触发 OpsPilot workflow。
+
+    Args:
+        message: 告警消息文本
+        team: 相关团队 ID 列表
+        user_ids: 相关用户 ID 列表
+        bot_id: 目标 Bot 的 ID
+        node_id: 起始节点 ID
+    """
+    normalized_input, error = _normalize_nats_trigger_input(message, team, user_ids, bot_id, node_id)
+    if error:
+        return error
+
+    workflow = BotWorkFlow.objects.filter(bot_id=normalized_input["bot_id"]).order_by("-id").first()
+    if not workflow:
+        return {"result": False, "message": "Bot workflow not found"}
+
+    engine = create_chat_flow_engine(workflow, normalized_input["node_id"], entry_type="nats")
+    input_data = {
+        "last_message": normalized_input["message"],
+        "message": normalized_input["message"],
+        "team": normalized_input["team"],
+        "user_ids": normalized_input["user_ids"],
+        "bot_id": normalized_input["bot_id"],
+        "node_id": normalized_input["node_id"],
+        "entry_type": "nats",
+        "is_third_party": True,
+    }
+    execution_result = engine.execute(input_data)
+    return {
+        "result": execution_result.get("success", True) if isinstance(execution_result, dict) else True,
+        "data": execution_result,
+        "entry_type": "nats",
+        "execution_id": engine.execution_id,
+    }

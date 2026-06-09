@@ -114,7 +114,7 @@ class SSHNodeParamsMixin:
 
 社区版对象继续定义在 `apps/cmdb/constants/constants.py` 的 `COLLECT_OBJ_TREE` 中。
 
-如果是企业版新增对象，推荐在 `apps/cmdb/enterprise/tree.py` 中声明该对象所在分组与 children，运行时会自动追加到对应分组下。
+如果是企业版新增对象，在 `apps/cmdb/enterprise/collect/tree.py` 中声明该对象所在分组与 children，经 `collect` 域门面运行时自动追加到对应分组下（详见 `apps/cmdb/enterprise/README.md`）。
 
 示例：
 
@@ -303,6 +303,13 @@ class CollectDriverTypes:
 | 数据库协议采集 | `apps/cmdb/node_configs/databases/` | 通过数据库协议连接采集 |
 | 云厂商 API 采集 | `apps/cmdb/node_configs/cloud/` | 调用云厂商 API 采集 |
 | 网络设备采集 | `apps/cmdb/node_configs/network/` | 通过 SNMP 等协议采集 |
+
+#### 网络拓扑发现契约（network）
+
+- `topology_protocols`：可选 `lldp`、`cdp`、`fdb`、`arp`。
+- `topology_fallback_strategy`：仅支持 `prefer_neighbors_then_fdb_then_arp` 或 `strict_neighbors_only`。
+- Stargazer 会在保留原始 `network_topo` 指标的同时，额外上报 `network_topology_facts`。
+- CMDB 在可解析时优先消费 `network_topology_facts`，未解析的边再回退到原始 `network_topo` 数据。
 
 #### 步骤 2：创建配置类文件
 

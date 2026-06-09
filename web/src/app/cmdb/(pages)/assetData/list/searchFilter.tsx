@@ -68,16 +68,21 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
     }
   }, [searchAttr_store, searchAttr]);
 
+  // 附件/图片字段（企业版）不参与搜索
+  const searchableAttrs = attrList.filter(
+    (attr) => !['attachment', 'image'].includes(attr.attr_type)
+  );
+
   // 初始化默认字段
   useEffect(() => {
-    if (attrList.length) {
-      setSearchAttr(attrList[0].attr_id);
+    if (searchableAttrs.length) {
+      setSearchAttr(searchableAttrs[0].attr_id);
       useAssetDataStore.setState((state) => ({
         ...state,
-        searchAttr: attrList[0].attr_id,
+        searchAttr: searchableAttrs[0].attr_id,
       }));
     }
-  }, [attrList.length]);
+  }, [searchableAttrs.length]);
 
   // 监听窗口大小变化，更新是否折叠收藏的筛选条件
   useEffect(() => {
@@ -464,7 +469,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           value={searchAttr}
           onChange={onSearchAttrChange}
         >
-          {attrList.map((attr) => (
+          {searchableAttrs.map((attr) => (
             <Select.Option key={attr.attr_id} value={attr.attr_id}>
               {attr.attr_name}
             </Select.Option>

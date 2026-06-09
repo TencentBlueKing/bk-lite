@@ -194,6 +194,21 @@ class NotifyNode(BaseNodeExecutor):
             logger.warning(f"通知节点 {node_id} 内容渲染失败: {e}")
             return content
 
+    def _resolve_receivers(self, config: Dict[str, Any]) -> list[str]:
+        receivers = config.get("notificationRecipients") or config.get("notificationReceivers", [])
+        if receivers:
+            return receivers
+
+        if not self.variable_manager:
+            return []
+
+        flow_input = self.variable_manager.get_variable("flow_input", {}) or {}
+        if not isinstance(flow_input, dict):
+            return []
+
+        fallback_receivers = flow_input.get("user_ids", [])
+        return [str(receiver).strip() for receiver in fallback_receivers if str(receiver).strip()]
+
     def execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]) -> Dict[str, Any]:
         """执行通知发送"""
         config = node_config["data"].get("config", {})
@@ -204,7 +219,7 @@ class NotifyNode(BaseNodeExecutor):
             channel_id = config.get("notificationMethod")
             title = config.get("notificationTitle") or config.get("notificationSubject", "")
             content = config.get("notificationContent", "")
-            receivers = config.get("notificationRecipients") or config.get("notificationReceivers", [])
+            receivers = self._resolve_receivers(config)
             notification_type = config.get("notificationType", "email")
 
             # 参数验证

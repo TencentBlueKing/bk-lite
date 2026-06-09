@@ -29,6 +29,18 @@ def _build_host_remote_callback_params(params: Dict[str, Any]) -> Dict[str, Any]
     return callback_params
 
 
+def _should_publish_monitor_error_metrics(error: Exception) -> bool:
+    from tasks.utils.nats_helper import MetricsPublishError
+
+    return not (
+        isinstance(error, MetricsPublishError)
+        and (
+            getattr(error, "success_count", 0) > 0
+            or getattr(error, "delivery_detected", False)
+        )
+    )
+
+
 async def collect_vmware_metrics_task(
     ctx: Dict, params: Dict[str, Any], task_id: str
 ) -> Dict[str, Any]:
@@ -77,11 +89,9 @@ async def collect_vmware_metrics_task(
         from tasks.utils.nats_helper import publish_metrics_to_nats
         from tasks.utils.metrics_helper import generate_monitor_error_metrics
 
-        # 生成错误指标
-        error_metrics = generate_monitor_error_metrics(params, e)
-
-        # 推送错误指标到 NATS
-        await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
+        if _should_publish_monitor_error_metrics(e):
+            error_metrics = generate_monitor_error_metrics(params, e)
+            await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
 
         return {
             "task_id": task_id,
@@ -140,11 +150,9 @@ async def collect_qcloud_metrics_task(
         from tasks.utils.nats_helper import publish_metrics_to_nats
         from tasks.utils.metrics_helper import generate_monitor_error_metrics
 
-        # 生成错误指标
-        error_metrics = generate_monitor_error_metrics(params, e)
-
-        # 推送错误指标到 NATS
-        await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
+        if _should_publish_monitor_error_metrics(e):
+            error_metrics = generate_monitor_error_metrics(params, e)
+            await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
 
         return {
             "task_id": task_id,
@@ -189,8 +197,9 @@ async def collect_oceanstor_metrics_task(
         from tasks.utils.nats_helper import publish_metrics_to_nats
         from tasks.utils.metrics_helper import generate_monitor_error_metrics
 
-        error_metrics = generate_monitor_error_metrics(params, e)
-        await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
+        if _should_publish_monitor_error_metrics(e):
+            error_metrics = generate_monitor_error_metrics(params, e)
+            await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
 
         return {
             "task_id": task_id,

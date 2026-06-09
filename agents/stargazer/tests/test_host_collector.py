@@ -10,6 +10,7 @@ Host Collector 单元测试
 """
 
 import importlib
+import asyncio
 import json
 import sys
 import os
@@ -957,6 +958,124 @@ class TestHostRemoteMonitorTask:
         submit_collection.assert_awaited_once()
         clear_callback_context.assert_awaited_once_with("collect-task-3")
         assert [entry[0] for entry in call_order] == ["store", "submit", "clear"]
+
+
+class TestMonitorPublishFailureHandling:
+    def test_collect_vmware_metrics_task_skips_synthetic_error_metrics_when_delivery_detected(
+        self, monkeypatch
+    ):
+        influxdb_client_module = types.ModuleType("influxdb_client")
+        influxdb_client_module.Point = MagicMock()
+        influxdb_client_module.WritePrecision = MagicMock()
+        monkeypatch.setitem(sys.modules, "influxdb_client", influxdb_client_module)
+
+        from tasks.utils.nats_helper import MetricsPublishError
+        import tasks.collectors.vmware_collector as vmware_collector_module
+        import tasks.utils.metrics_helper as metrics_helper_module
+        import tasks.utils.nats_helper as nats_helper_module
+
+        monitor_handler = _load_monitor_handler_module(monkeypatch)
+        publish_calls = []
+        error_metrics_factory = MagicMock(return_value="synthetic-error-metrics")
+
+        class FakeCollector:
+            def __init__(self, params):
+                self.params = params
+
+            async def collect(self):
+                return "vmware_real_metrics"
+
+        async def fake_publish_metrics_to_nats(ctx, metrics_data, params, task_id):
+            publish_calls.append(metrics_data)
+            if metrics_data == "vmware_real_metrics":
+                raise MetricsPublishError(
+                    task_id=task_id,
+                    subject="metrics.vmware",
+                    total_lines=1,
+                    success_count=0,
+                    delivery_detected=True,
+                    attempts=1,
+                    reason="flush failed after writes",
+                )
+            return 1
+
+        monkeypatch.setattr(vmware_collector_module, "VmwareCollector", FakeCollector)
+        monkeypatch.setattr(nats_helper_module, "publish_metrics_to_nats", fake_publish_metrics_to_nats)
+        monkeypatch.setattr(
+            metrics_helper_module,
+            "generate_monitor_error_metrics",
+            error_metrics_factory,
+        )
+
+        result = asyncio.run(
+            monitor_handler.collect_vmware_metrics_task(
+                {"job": "ctx"},
+                {"host": "10.0.0.10", "monitor_type": "vmware_vc"},
+                "vmware-task-1",
+            )
+        )
+
+        assert result["status"] == "failed"
+        assert publish_calls == ["vmware_real_metrics"]
+        error_metrics_factory.assert_not_called()
+
+    def test_collect_vmware_metrics_task_publishes_synthetic_error_metrics_when_delivery_not_detected(
+        self, monkeypatch
+    ):
+        influxdb_client_module = types.ModuleType("influxdb_client")
+        influxdb_client_module.Point = MagicMock()
+        influxdb_client_module.WritePrecision = MagicMock()
+        monkeypatch.setitem(sys.modules, "influxdb_client", influxdb_client_module)
+
+        from tasks.utils.nats_helper import MetricsPublishError
+        import tasks.collectors.vmware_collector as vmware_collector_module
+        import tasks.utils.metrics_helper as metrics_helper_module
+        import tasks.utils.nats_helper as nats_helper_module
+
+        monitor_handler = _load_monitor_handler_module(monkeypatch)
+        publish_calls = []
+        error_metrics_factory = MagicMock(return_value="synthetic-error-metrics")
+
+        class FakeCollector:
+            def __init__(self, params):
+                self.params = params
+
+            async def collect(self):
+                return "vmware_real_metrics"
+
+        async def fake_publish_metrics_to_nats(ctx, metrics_data, params, task_id):
+            publish_calls.append(metrics_data)
+            if metrics_data == "vmware_real_metrics":
+                raise MetricsPublishError(
+                    task_id=task_id,
+                    subject="metrics.vmware",
+                    total_lines=1,
+                    success_count=0,
+                    delivery_detected=False,
+                    attempts=2,
+                    reason="delivery never confirmed",
+                )
+            return 1
+
+        monkeypatch.setattr(vmware_collector_module, "VmwareCollector", FakeCollector)
+        monkeypatch.setattr(nats_helper_module, "publish_metrics_to_nats", fake_publish_metrics_to_nats)
+        monkeypatch.setattr(
+            metrics_helper_module,
+            "generate_monitor_error_metrics",
+            error_metrics_factory,
+        )
+
+        result = asyncio.run(
+            monitor_handler.collect_vmware_metrics_task(
+                {"job": "ctx"},
+                {"host": "10.0.0.10", "monitor_type": "vmware_vc"},
+                "vmware-task-2",
+            )
+        )
+
+        assert result["status"] == "failed"
+        assert publish_calls == ["vmware_real_metrics", "synthetic-error-metrics"]
+        error_metrics_factory.assert_called_once()
 
 
 @pytest.mark.asyncio

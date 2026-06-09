@@ -15,3 +15,9 @@ from apps.cmdb.tasks.celery_tasks import (
     full_sync_auto_association_rule_task,
     collect_node_mgmt_hosts
 )
+
+# 发现接缝②：guarded 导入企业任务，使其被 Celery 发现（缺 enterprise 则静默跳过）
+try:
+    from apps.cmdb.enterprise import tasks as _enterprise_tasks  # noqa: F401
+except ModuleNotFoundError:
+    pass

@@ -2,23 +2,21 @@
 
 import React, { useEffect, useRef } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
-import styles from '../index.module.scss';
 import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import { useTaskForm } from '../hooks/useTaskForm';
 import { getCleanupFormValues } from '../hooks/useTaskForm';
-import { CaretRightOutlined } from '@ant-design/icons';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
-import { Form, Spin, Input, Switch, Collapse, InputNumber } from 'antd';
+import { Form, Spin } from 'antd';
 
 import {
   ENTER_TYPE,
   VM_FORM_INITIAL_VALUES,
-  createTaskValidationRules,
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
-import { formatTaskValues, trimFormString } from '../hooks/formatTaskValues';
+import { formatTaskValues, normalizeCredentialPool, trimFormString } from '../hooks/formatTaskValues';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
+import CredentialPoolEditor from './credentialPoolEditor';
 
 interface VMTaskFormProps {
   onClose: () => void;
@@ -68,12 +66,13 @@ const VMTask: React.FC<VMTaskFormProps> = ({
         (item: any) => item.value === values.instId
       );
 
-      const password = trimFormString(values.password);
+      const credentialValue = normalizeCredentialPool(values.credentialPool)[0] || {};
+      const password = trimFormString(credentialValue.password);
 
       const credential: any = {
-        username: trimFormString(values.username),
-        port: values.port,
-        ssl: values.sslVerify,
+        username: trimFormString(credentialValue.username),
+        port: credentialValue.port,
+        ssl: credentialValue.ssl,
       };
 
       if (password && password !== PASSWORD_PLACEHOLDER) {
@@ -88,11 +87,6 @@ const VMTask: React.FC<VMTaskFormProps> = ({
     },
   });
 
-  const rules: any = React.useMemo(
-    () => createTaskValidationRules({ t, form, taskType: 'vm' }),
-    [t, form]
-  );
-
   // 构建表单值，用于复制任务和编辑任务中回填表单数据（true:复制任务，false:编辑任务）
   const buildFormValues = (values: any, isCopy: boolean) => ({
     ...getCleanupFormValues(values),
@@ -102,10 +96,12 @@ const VMTask: React.FC<VMTaskFormProps> = ({
       values.input_method === 0 ? ENTER_TYPE.AUTOMATIC : ENTER_TYPE.APPROVAL,
     accessPointId: values.access_point?.[0]?.id,
     organization: values.team || [],
-    username: values.credential?.username,
-    password: isCopy ? '' : PASSWORD_PLACEHOLDER,
-    port: values.credential?.port,
-    sslVerify: values.credential?.ssl,
+    credentialPool: [{
+      username: values.credential?.username,
+      password: isCopy ? '' : PASSWORD_PLACEHOLDER,
+      port: values.credential?.port || '443',
+      ssl: values.credential?.ssl,
+    }],
     instId: values.instances?.[0]?._id,
   });
 
@@ -122,11 +118,28 @@ const VMTask: React.FC<VMTaskFormProps> = ({
         // 编辑任务中回填表单数据
         form.setFieldsValue(buildFormValues(values, false));
       } else {
-        form.setFieldsValue(VM_FORM_INITIAL_VALUES);
+        form.setFieldsValue({
+          ...VM_FORM_INITIAL_VALUES,
+          credentialPool: [{ port: '443', ssl: false }],
+        });
       }
     };
     initForm();
   }, [modelId, copyTaskData, setCopyTaskData]);
+
+  const validateCredentialPool = (_: any, value?: any[]) => {
+    const credentialValue = normalizeCredentialPool(value)[0] || {};
+    if (!trimFormString(credentialValue.username)) {
+      return Promise.reject(new Error(`${t('common.inputMsg')}${t('Collection.VMTask.username')}`));
+    }
+    if (!trimFormString(credentialValue.password)) {
+      return Promise.reject(new Error(`${t('common.inputMsg')}${t('Collection.VMTask.password')}`));
+    }
+    if (!credentialValue.port) {
+      return Promise.reject(new Error(`${t('common.inputMsg')}${t('Collection.port')}`));
+    }
+    return Promise.resolve();
+  };
 
   return (
     <Spin spinning={loading}>
@@ -150,81 +163,20 @@ const VMTask: React.FC<VMTaskFormProps> = ({
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >
-          <Collapse
-            ghost
-            defaultActiveKey={['credential']}
-            expandIcon={({ isActive }) => (
-              <CaretRightOutlined
-                rotate={isActive ? 90 : 0}
-                className="text-base"
-              />
-            )}
+          <Form.Item
+            name="credentialPool"
+            rules={[{ validator: validateCredentialPool }]}
+            validateTrigger={[]}
           >
-            <Collapse.Panel
-              header={
-                <div className={styles.panelHeader}>
-                  {t('Collection.credential')}
-                </div>
-              }
-              key="credential"
-            >
-              <Form.Item
-                name="username"
-                label={t('Collection.VMTask.username')}
-                rules={rules.username}
-              >
-                <Input placeholder={t('common.inputTip')} />
-              </Form.Item>
-
-              <Form.Item
-                name="password"
-                label={t('Collection.VMTask.password')}
-                rules={rules.password}
-              >
-                <Input.Password
-                  placeholder={t('common.inputTip')}
-                  onFocus={(e) => {
-                    if (!editId) return;
-                    const value = e.target.value;
-                    if (value === PASSWORD_PLACEHOLDER) {
-                      form.setFieldValue('password', '');
-                    }
-                  }}
-                  onBlur={(e) => {
-                    if (!editId) return;
-                    const value = e.target.value;
-                    if (!value || value.trim() === '') {
-                      form.setFieldValue('password', PASSWORD_PLACEHOLDER);
-                    }
-                  }}
-                />
-              </Form.Item>
-
-              <Form.Item
-                name="port"
-                label={t('Collection.port')}
-                rules={rules.port}
-              >
-                <InputNumber
-                  min={1}
-                  max={65535}
-                  placeholder={t('common.inputTip')}
-                  className="w-32"
-                  defaultValue={443}
-                />
-              </Form.Item>
-
-              <Form.Item
-                name="sslVerify"
-                label={t('Collection.VMTask.sslVerify')}
-                valuePropName="checked"
-                className="mb-0"
-                rules={rules.sslVerify}
-              >
-                <Switch defaultChecked />
-              </Form.Item>
-            </Collapse.Panel>
-          </Collapse>
+            <CredentialPoolEditor
+              credentialShape="vm"
+              editMode={Boolean(editId)}
+              maxCount={1}
+              allowAdd={false}
+              allowRemove={false}
+              showCount={false}
+            />
+          </Form.Item>
         </BaseTaskForm>
       </Form>
     </Spin>

@@ -53,7 +53,7 @@ def test_generate_k8s_report_docx_keeps_k8s_specific_rendering():
     assert report_bytes.startswith(b"PK")
 
 
-def test_get_kubernetes_instances_prompt_targets_all_when_unspecified():
+def test_get_kubernetes_instances_prompt_requires_choice_when_unspecified():
     from apps.opspilot.metis.llm.tools.kubernetes.connection import get_kubernetes_instances_prompt
 
     prompt = get_kubernetes_instances_prompt(
@@ -66,7 +66,8 @@ def test_get_kubernetes_instances_prompt_targets_all_when_unspecified():
     )
 
     assert "可用实例: 测试集群, 生产集群" in prompt
-    assert "未指定实例时，默认对全部实例执行" in prompt
+    assert "未指定实例时，必须先让用户选择一个目标实例" in prompt
+    assert "默认对全部实例执行" not in prompt
 
 
 def test_collect_k8s_context_targets_single_instance_when_instance_id_provided(mocker):

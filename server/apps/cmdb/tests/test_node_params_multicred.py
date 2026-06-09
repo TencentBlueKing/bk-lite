@@ -205,3 +205,65 @@ def test_base_node_params_single_credential_keeps_legacy_headers():
     assert headers["cmdbpassword"] == "${PASSWORD_password_cmdb_94}"
     assert headers["cmdbcredential_id"] == "cred-1"
     assert node.env_config()["PASSWORD_password_cmdb_94"] == "first-secret"
+
+
+def test_network_node_params_single_credential_carries_topology_contract():
+    from apps.cmdb.node_configs.network.network import NetworkNodeParams
+
+    instance = SimpleNamespace(
+        id=95,
+        model_id="network",
+        driver_type="protocol",
+        decrypt_credentials=[
+            {"credential_id": "cred-1", "version": "v2c", "community": "public", "snmp_port": 161},
+        ],
+        params={
+            "has_network_topo": True,
+            "topology_protocols": ["lldp", "fdb"],
+            "topology_fallback_strategy": "strict_neighbors_only",
+            "min_confidence": 0.75,
+        },
+        timeout=60,
+        access_point=[{"id": 3}],
+        instances=[{"ip_addr": "10.0.0.11"}],
+        ip_range="",
+    )
+
+    node = NetworkNodeParams(instance)
+    credential = node.set_credential()
+
+    assert credential["has_network_topo"] is True
+    assert credential["topology_protocols"] == ["lldp", "fdb"]
+    assert credential["topology_fallback_strategy"] == "strict_neighbors_only"
+    assert credential["min_confidence"] == 0.75
+
+
+def test_network_node_params_multicred_pool_carries_topology_contract_defaults():
+    from apps.cmdb.node_configs.network.network import NetworkNodeParams
+
+    instance = SimpleNamespace(
+        id=96,
+        model_id="network",
+        driver_type="protocol",
+        decrypt_credentials=[
+            {"credential_id": "cred-1", "version": "v2c", "community": "public", "snmp_port": 161},
+            {"credential_id": "cred-2", "version": "v3", "username": "ops", "authkey": "a", "privkey": "b"},
+        ],
+        params={"has_network_topo": True},
+        timeout=60,
+        access_point=[{"id": 3}],
+        instances=[{"ip_addr": "10.0.0.12"}],
+        ip_range="",
+    )
+
+    node = NetworkNodeParams(instance)
+    credentials_pool = node.build_credentials_pool()
+
+    assert len(credentials_pool) == 2
+    assert credentials_pool[0]["has_network_topo"] is True
+    assert credentials_pool[0]["topology_protocols"] == ["lldp", "cdp", "fdb", "arp"]
+    assert credentials_pool[0]["topology_fallback_strategy"] == "prefer_neighbors_then_fdb_then_arp"
+    assert credentials_pool[0]["min_confidence"] == 0.0
+    assert credentials_pool[1]["topology_protocols"] == ["lldp", "cdp", "fdb", "arp"]
+    assert credentials_pool[1]["topology_fallback_strategy"] == "prefer_neighbors_then_fdb_then_arp"
+    assert credentials_pool[1]["min_confidence"] == 0.0

@@ -1,8 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Tabs, Spin, Descriptions, Empty, Card, Input } from 'antd';
-import { CREATE_TASK_DETAIL_CONFIG } from '@/app/cmdb/constants/professCollection';
+import { Tabs, Spin, Descriptions, Empty, Card, Input, Space, Tag } from 'antd';
+import {
+  buildTopologyFactRowKey,
+  CREATE_TASK_DETAIL_CONFIG,
+  getTaskTopologyDisplayConfig,
+  TOPOLOGY_FALLBACK_STRATEGY_OPTIONS,
+  TOPOLOGY_PROTOCOL_OPTIONS,
+} from '@/app/cmdb/constants/professCollection';
 import { useCollectApi, useModelApi } from '@/app/cmdb/api';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
@@ -20,6 +26,23 @@ interface TaskDetailProps {
   onClose?: () => void;
   onSuccess?: () => void;
 }
+
+interface TopologyFactRow {
+  __name__?: string;
+  key?: string;
+  instance_id?: string;
+  source_protocol?: string;
+  confidence?: string | number;
+  local_device_id?: string;
+  local_port_id?: string | number;
+  local_port_name?: string;
+  remote_device_id?: string;
+  remote_port_id?: string | number;
+  remote_port_name?: string;
+  [key: string]: any;
+}
+
+const TOPOLOGY_FACT_METRIC = 'network_topology_facts_info_gauge';
 
 const StatisticCard: React.FC<StatisticCardConfig> = ({
   title,
@@ -173,6 +196,79 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
     fetchAssociationTypes();
   }, []);
 
+  const isTopologyCapableTask =
+    task.task_type === 'snmp' || task.model_id === 'network';
+
+  const topologyDisplayConfig = useMemo(
+    () =>
+      isTopologyCapableTask
+        ? getTaskTopologyDisplayConfig(task.params)
+        : undefined,
+    [isTopologyCapableTask, task.params]
+  );
+
+  const hasTopologySummary = Boolean(topologyDisplayConfig?.hasNetworkTopo);
+
+  const protocolLabelMap = useMemo(
+    () =>
+      TOPOLOGY_PROTOCOL_OPTIONS.reduce<Record<string, string>>((acc, item) => {
+        acc[item.value] = t(item.labelKey);
+        return acc;
+      }, {}),
+    [t]
+  );
+
+  const fallbackStrategyLabelMap = useMemo(
+    () =>
+      TOPOLOGY_FALLBACK_STRATEGY_OPTIONS.reduce<Record<string, string>>(
+        (acc, item) => {
+          acc[item.value] = t(item.labelKey);
+          return acc;
+        },
+        {}
+      ),
+    [t]
+  );
+
+  const topologyFacts = useMemo(() => {
+    const rawData = detailData.raw_data?.data || [];
+    return rawData.filter(
+      (item): item is TopologyFactRow =>
+        Boolean(item) &&
+        typeof item === 'object' &&
+        !Array.isArray(item) &&
+        item.__name__ === TOPOLOGY_FACT_METRIC
+    );
+  }, [detailData.raw_data?.data]);
+
+  const topologyProtocolSummary = useMemo(() => {
+    const configuredProtocols = topologyDisplayConfig?.topologyProtocols || [];
+    const observedProtocols = topologyFacts
+      .map((fact) => fact.source_protocol)
+      .filter((protocol): protocol is string => Boolean(protocol));
+    const protocols = Array.from(new Set([...configuredProtocols, ...observedProtocols]));
+
+    return protocols.map((protocol) => ({
+      protocol,
+      label: protocolLabelMap[protocol] || String(protocol).toUpperCase(),
+      count: topologyFacts.filter((fact) => fact.source_protocol === protocol).length,
+    }));
+  }, [protocolLabelMap, topologyDisplayConfig?.topologyProtocols, topologyFacts]);
+
+  const topologyFactTableData = useMemo(() => {
+    const parseConfidence = (value: string | number | undefined) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : -1;
+    };
+
+    return topologyFacts
+      .map((fact, index) => ({
+        ...fact,
+        key: buildTopologyFactRowKey(fact, index),
+      }))
+      .sort((a, b) => parseConfidence(b.confidence) - parseConfidence(a.confidence));
+  }, [topologyFacts]);
+
   const statusColumn = useMemo(
     () => ({
       title: t('Collection.taskDetail.status'),
@@ -262,6 +358,178 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
     );
   };
 
+  const renderTopologySummary = () => {
+    if (!hasTopologySummary) {
+      return null;
+    }
+
+    const configuredProtocols = topologyDisplayConfig?.topologyProtocols || [];
+    const fallbackStrategy = topologyDisplayConfig?.topologyFallbackStrategy;
+    const minConfidence = topologyDisplayConfig?.minConfidence;
+
+    return (
+      <Card
+        size="small"
+        className="mb-4 border-[var(--color-border-1)] bg-[var(--color-bg-1)]"
+        title={t('Collection.taskDetail.topologySummary')}
+      >
+        <Descriptions bordered size="small" column={{ xs: 1, md: 2 }}>
+          <Descriptions.Item label={t('Collection.taskDetail.topologyProtocols')}>
+            {configuredProtocols.length ? (
+              <Space size={[8, 8]} wrap>
+                {configuredProtocols.map((protocol) => (
+                  <Tag key={protocol}>{protocolLabelMap[protocol] || String(protocol).toUpperCase()}</Tag>
+                ))}
+              </Space>
+            ) : (
+              t('Collection.taskDetail.noTopologyProtocols')
+            )}
+          </Descriptions.Item>
+          <Descriptions.Item label={t('Collection.taskDetail.topologyFallbackStrategy')}>
+            {fallbackStrategy
+              ? fallbackStrategyLabelMap[fallbackStrategy] || fallbackStrategy
+              : '--'}
+          </Descriptions.Item>
+          <Descriptions.Item label={t('Collection.taskDetail.minConfidence')}>
+            {minConfidence ?? '--'}
+          </Descriptions.Item>
+          <Descriptions.Item label={t('Collection.taskDetail.topologyFactCount')}>
+            {topologyFacts.length}
+          </Descriptions.Item>
+          <Descriptions.Item
+            label={t('Collection.taskDetail.protocolContribution')}
+            span={2}
+          >
+            {topologyProtocolSummary.length ? (
+              <Space size={[8, 8]} wrap>
+                {topologyProtocolSummary.map((item) => (
+                  <Tag key={item.protocol}>
+                    {item.label}: {item.count}
+                  </Tag>
+                ))}
+              </Space>
+            ) : (
+              '--'
+            )}
+          </Descriptions.Item>
+        </Descriptions>
+        <div className="mt-4">
+          {topologyFacts.length ? (
+            <CustomTable
+              size="small"
+              rowKey="key"
+              columns={[
+                {
+                  title: t('Collection.taskDetail.protocol'),
+                  dataIndex: 'source_protocol',
+                  width: 120,
+                  render: (value: string) =>
+                    protocolLabelMap[value] || value?.toUpperCase() || '--',
+                },
+                {
+                  title: t('Collection.taskDetail.confidence'),
+                  dataIndex: 'confidence',
+                  width: 120,
+                  render: (value: string | number) => value ?? '--',
+                },
+                {
+                  title: t('Collection.taskDetail.localPort'),
+                  dataIndex: 'local_port_name',
+                  render: (_: string, record: TopologyFactRow) =>
+                    record.local_port_name || record.local_port_id || '--',
+                },
+                {
+                  title: t('Collection.taskDetail.remoteDevice'),
+                  dataIndex: 'remote_device_id',
+                  render: (value: string) => value || '--',
+                },
+                {
+                  title: t('Collection.taskDetail.remotePort'),
+                  dataIndex: 'remote_port_name',
+                  render: (_: string, record: TopologyFactRow) =>
+                    record.remote_port_name || record.remote_port_id || '--',
+                },
+              ]}
+              dataSource={topologyFactTableData.slice(0, 5)}
+              pagination={false}
+              scroll={{ x: 720 }}
+            />
+          ) : (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={t('Collection.taskDetail.noTopologyFacts')}
+            />
+          )}
+        </div>
+      </Card>
+    );
+  };
+
+  const renderTopologyFactsTab = () => {
+    if (!topologyFactTableData.length) {
+      return (
+        <div className="py-10">
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={t('Collection.taskDetail.noTopologyFacts')}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <CustomTable
+        size="middle"
+        rowKey={(record: TopologyFactRow) => record.key}
+        columns={[
+          {
+            title: t('Collection.taskDetail.protocol'),
+            dataIndex: 'source_protocol',
+            width: 120,
+            render: (value: string) =>
+              protocolLabelMap[value] || value?.toUpperCase() || '--',
+          },
+          {
+            title: t('Collection.taskDetail.confidence'),
+            dataIndex: 'confidence',
+            width: 120,
+            render: (value: string | number) => value ?? '--',
+          },
+          {
+            title: t('Collection.taskDetail.localDevice'),
+            dataIndex: 'instance_id',
+            render: (_: string, record: TopologyFactRow) =>
+              record.local_device_id || record.instance_id || '--',
+          },
+          {
+            title: t('Collection.taskDetail.localPort'),
+            dataIndex: 'local_port_name',
+            render: (_: string, record: TopologyFactRow) =>
+              record.local_port_name || record.local_port_id || '--',
+          },
+          {
+            title: t('Collection.taskDetail.remoteDevice'),
+            dataIndex: 'remote_device_id',
+            render: (value: string) => value || '--',
+          },
+          {
+            title: t('Collection.taskDetail.remotePort'),
+            dataIndex: 'remote_port_name',
+            render: (_: string, record: TopologyFactRow) =>
+              record.remote_port_name || record.remote_port_id || '--',
+          },
+        ]}
+        dataSource={topologyFactTableData}
+        pagination={{
+          showSizeChanger: true,
+          showTotal: (total) =>
+            t('Collection.taskDetail.paginationTotal', undefined, { total }),
+        }}
+        scroll={{ y: 'calc(100vh - 440px)', x: 960 }}
+      />
+    );
+  };
+
   const tabItems = useMemo(() => {
     const items = Object.entries(CREATE_TASK_DETAIL_CONFIG(t))
       .filter(([key]) => !(modelId === 'k8s' && key === 'relation'))
@@ -299,6 +567,18 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
         };
       });
 
+    if (hasTopologySummary) {
+      items.push({
+        key: 'topology_facts',
+        label: `${t('Collection.taskDetail.topologyFacts')} (${topologyFacts.length})`,
+        children: (
+            <div className="flex flex-col h-full">
+              <Spin spinning={loading}>{renderTopologyFactsTab()}</Spin>
+            </div>
+        ),
+      });
+    }
+
     items.push({
       key: 'raw_data',
       label: `${t('Collection.taskDetail.rawData')} (${detailData.raw_data?.count || 0})`,
@@ -314,8 +594,10 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
     t,
     modelId,
     detailData,
+    hasTopologySummary,
     loading,
     task.id,
+    topologyFacts.length,
     processColumns,
     statusColumn,
     errorColumn,
@@ -369,6 +651,8 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
           <StatisticCard key={index} {...card} />
         ))}
       </div>
+
+      {renderTopologySummary()}
 
       <Tabs defaultActiveKey="add" items={tabItems} className="flex-1" />
     </div>

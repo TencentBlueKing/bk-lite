@@ -8,7 +8,8 @@ import json
 import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.cmdb.models.change_record import ChangeRecord
+from apps.cmdb.models.change_record import CUSTOM_REPORTING_CHANGE, ChangeRecord
+from apps.cmdb.utils import change_record as change_record_utils
 from apps.cmdb.views.change_record import ChangeRecordViewSet
 
 
@@ -69,6 +70,7 @@ def test_enum_scenarios(superuser):
     response = ChangeRecordViewSet.as_view({"get": "enum_scenarios"})(_req("get", superuser))
     body = _body(response)
     assert "ordinary_attribute_change" in body["data"]
+    assert CUSTOM_REPORTING_CHANGE in body["data"]
 
 
 @pytest.mark.django_db
@@ -77,3 +79,21 @@ def test_export(superuser, record):
     assert response.status_code == 200
     assert response["Content-Disposition"].startswith("attachment")
     assert b"PK" == response.content[:2]  # xlsx 是 zip 容器
+
+
+@pytest.mark.django_db
+def test_custom_reporting_change_record_helper_writes_custom_scenario():
+    assert hasattr(change_record_utils, "create_custom_reporting_change_record")
+
+    change_record_utils.create_custom_reporting_change_record(
+        inst_id=99,
+        model_id="report_asset",
+        label="主机",
+        _type="update_entity",
+        after_data={"inst_name": "asset-99"},
+        operator="custom-reporting-task-1",
+        message="自定义上报更新",
+    )
+
+    record = ChangeRecord.objects.get(inst_id=99, model_id="report_asset")
+    assert record.scenario == CUSTOM_REPORTING_CHANGE

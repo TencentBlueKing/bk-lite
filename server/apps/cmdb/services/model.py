@@ -60,6 +60,7 @@ from apps.cmdb.services.auto_relation_rule import (
     validate_auto_relation_rule_set_payload,
 )
 from apps.cmdb.models.change_record import MODEL_MANAGEMENT_CHANGE
+from apps.cmdb.model_ops.extensions import get_model_enterprise_extension, is_file_attr_type
 from apps.cmdb.utils.change_record import create_change_record
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.services.user_group import UserGroup
@@ -562,6 +563,86 @@ class ModelManage(object):
         return result
 
     @staticmethod
+    def register_custom_reporting_model_fields(
+        model_id: str,
+        instances: list[dict],
+        username="admin",
+    ) -> list[str]:
+        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
+            CustomReportingModelService,
+        )
+
+        return CustomReportingModelService.register_model_fields(
+            model_id,
+            instances,
+            username=username,
+        )
+
+    @staticmethod
+    def validate_custom_reporting_instance_fields(model_id: str, instances: list[dict]) -> None:
+        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
+            CustomReportingModelService,
+        )
+
+        CustomReportingModelService.validate_instance_fields(model_id, instances)
+
+    @staticmethod
+    def _get_custom_reporting_declared_attr_ids(model_id: str) -> set[str]:
+        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
+            CustomReportingModelService,
+        )
+
+        return CustomReportingModelService.get_declared_attr_ids(model_id)
+
+    @staticmethod
+    def validate_custom_reporting_relation_fields(
+        model_id: str,
+        relations: list[dict],
+        identity_keys: list[str] | None = None,
+    ) -> None:
+        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
+            CustomReportingModelService,
+        )
+
+        CustomReportingModelService.validate_relation_fields(
+            model_id,
+            relations,
+            identity_keys=identity_keys,
+        )
+
+    @staticmethod
+    def normalize_custom_reporting_identity_keys(identity_keys) -> list[str]:
+        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
+            CustomReportingModelService,
+        )
+
+        return CustomReportingModelService.normalize_identity_keys(identity_keys)
+
+    @staticmethod
+    def bootstrap_custom_reporting_model(quick_model: dict, team: list[int], username="admin"):
+        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
+            CustomReportingModelService,
+        )
+
+        return CustomReportingModelService.bootstrap_model(
+            quick_model,
+            team=team,
+            username=username,
+        )
+
+    @staticmethod
+    def sync_custom_reporting_model_group(quick_model: dict, team: list[int], username="admin"):
+        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
+            CustomReportingModelService,
+        )
+
+        return CustomReportingModelService.sync_model_group(
+            quick_model,
+            team=team,
+            username=username,
+        )
+
+    @staticmethod
     def copy_model(
         src_model_id: str,
         new_model_id: str,
@@ -851,6 +932,9 @@ class ModelManage(object):
 
             attr_info = ModelManage.sanitize_attr_default_value(attr_info, log_context="create_model_attr")
 
+            # 企业版字段类型规则（附件/图片：强制可选、非唯一、无约束旋钮）
+            attr_info = get_model_enterprise_extension().validate_attr(attr_info)
+
             ModelManage._validate_attr_id(attr_info["attr_id"])
             model_query = {"field": "model_id", "type": "str=", "value": model_id}
             models, _ = ag.query_entity(MODEL, [model_query])
@@ -917,6 +1001,15 @@ class ModelManage(object):
             )
             if not current_attr:
                 raise BaseAppException("model attr not present")
+
+            # 附件/图片字段类型创建后不可切换
+            if current_attr.get("attr_type") != attr_info.get("attr_type") and (
+                is_file_attr_type(current_attr.get("attr_type")) or is_file_attr_type(attr_info.get("attr_type"))
+            ):
+                raise BaseAppException("附件/图片字段类型创建后不可切换")
+
+            # 企业版字段类型规则（附件/图片：强制可选、非唯一、无约束旋钮）
+            attr_info = get_model_enterprise_extension().validate_attr(attr_info)
 
             if current_attr.get("is_required") != attr_info.get("is_required"):
                 guard_attr_change_against_unique_rules(
