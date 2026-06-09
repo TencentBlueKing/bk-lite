@@ -758,6 +758,24 @@ class TestAnthropicCompatibleAdapter:
             timeout=15,
         )
 
+    @patch("apps.opspilot.metis.llm.common.anthropic_compatible_adapter.safe_post_llm_endpoint")
+    def test_validate_minimal_connection_unauthorized_raises_api_key_invalid(self, mock_safe_post):
+        from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import AnthropicCompatibleAdapter
+
+        mock_safe_post.return_value = MagicMock(status_code=401, text="Unauthorized")
+
+        with pytest.raises(ValueError, match="API Key 无效"):
+            AnthropicCompatibleAdapter.validate_minimal_connection("", "sk-key", "claude-3-haiku-20240307")
+
+    @patch("apps.opspilot.metis.llm.common.anthropic_compatible_adapter.safe_post_llm_endpoint")
+    def test_validate_minimal_connection_server_error_raises_api_connection_failed(self, mock_safe_post):
+        from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import AnthropicCompatibleAdapter
+
+        mock_safe_post.return_value = MagicMock(status_code=500, text="Internal Server Error")
+
+        with pytest.raises(ValueError, match="API 连接失败"):
+            AnthropicCompatibleAdapter.validate_minimal_connection("", "sk-key", "claude-3-haiku-20240307")
+
 
 # ---------------------------------------------------------------------------
 # AnthropicConnectionDelegation Tests
