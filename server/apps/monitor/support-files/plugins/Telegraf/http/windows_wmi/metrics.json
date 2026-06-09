@@ -1,0 +1,67 @@
+{
+  "plugin": "Windows WMI",
+  "plugin_desc": "Remote Windows host metrics collection through WMI/DCOM from Stargazer. Requires WMI service, account permission, and WMI/DCOM/RPC network reachability.",
+  "status_query": "any({instance_type='os', collect_type='http', config_type='windows_wmi'}) by (instance_id)",
+  "node_selector": {
+    "is_container": true
+  },
+  "name": "Host",
+  "icon": "mm-host_主机",
+  "type": "OS",
+  "description": "Remote Windows host monitoring through WMI",
+  "default_metric": "any({instance_type='os', config_type='windows_wmi'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["cpu_usage_total", "mem_used_percent", "disk_used_percent"],
+  "display_fields": [
+    {
+      "name": "CPU Usage",
+      "sort_order": 0,
+      "metrics": [{"plugin": "Windows WMI", "metric": "cpu_usage_total"}]
+    },
+    {
+      "name": "Memory Usage",
+      "sort_order": 1,
+      "metrics": [{"plugin": "Windows WMI", "metric": "mem_used_percent"}]
+    },
+    {
+      "name": "Disk Usage",
+      "sort_order": 2,
+      "metrics": [{"plugin": "Windows WMI", "metric": "disk_used_percent"}]
+    }
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "cpu_usage_total",
+      "query": "host_cpu_usage_percent_gauge{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "%",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "CPU usage percentage"
+    },
+    {
+      "metric_group": "Memory",
+      "name": "mem_used_percent",
+      "query": "host_mem_used_percent_gauge{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "%",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Used memory percentage"
+    },
+    {
+      "metric_group": "Disk",
+      "name": "disk_used_percent",
+      "query": "host_disk_used_percent_gauge{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
+      "display_name": "Disk Usage",
+      "data_type": "Number",
+      "unit": "%",
+      "dimensions": ["device"],
+      "instance_id_keys": ["instance_id"],
+      "description": "Disk usage percentage per logical disk"
+    }
+  ]
+}

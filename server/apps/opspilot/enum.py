@@ -67,6 +67,7 @@ class WorkFlowExecuteType(models.TextChoices):
     WEB_CHAT = "web_chat", _("Web Chat")
     MOBILE = "mobile", _("Mobile")
     AGUI = "agui", _("AG-UI")
+    NATS = "nats", _("NATS")
 
 
 class WorkFlowTaskStatus(models.TextChoices):

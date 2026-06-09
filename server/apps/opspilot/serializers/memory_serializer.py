@@ -61,6 +61,12 @@ class MemorySpaceSerializer(TeamSerializer, AuthSerializer):
         return data
 
 
+class WorkflowMemorySpaceOptionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MemorySpace
+        fields = ("id", "name", "scope", "default_model")
+
+
 class MemorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Memory

@@ -25,12 +25,13 @@ from apps.opspilot.models.memory_mgmt import MemorySpace
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 
 
-def build_memory_entity(memory_space: MemorySpace, user_id: str) -> MemoryEntity:
+def build_memory_entity(memory_space: MemorySpace, user_id: str, flow_input: dict = None) -> MemoryEntity:
     """根据记忆空间 scope 构建 MemoryEntity
 
     Args:
         memory_space: 记忆空间对象
         user_id: 用户 ID（格式：username 或 username@domain）
+        flow_input: 可选的 flow_input 上下文，用于覆盖团队记忆的 organization_id
 
     Returns:
         MemoryEntity: 记忆实体
@@ -39,8 +40,9 @@ def build_memory_entity(memory_space: MemorySpace, user_id: str) -> MemoryEntity
         # 个人记忆：使用 user_id
         return MemoryEntity(user_id=user_id)
     else:
-        # 团队记忆：使用组织 ID
-        team_ids = memory_space.team or []
+        # 团队记忆：优先使用 flow_input.team[0]，回退到 memory_space.team[0]
+        fi_team = (flow_input or {}).get("team") or [] if isinstance(flow_input, dict) else []
+        team_ids = fi_team if fi_team else (memory_space.team or [])
         organization_id = team_ids[0] if team_ids else None
         return MemoryEntity(organization_id=organization_id)
 
@@ -82,25 +84,33 @@ class MemoryReadNode(BaseNodeExecutor):
                     f"scope={memory_space.scope}, storage_type={memory_space.storage_type}"
                 )
 
-                # 构建 MemoryEntity
-                entity = build_memory_entity(memory_space, user_id)
-                logger.info(f"[MemoryRead] 节点 {node_id} 构建实体: " f"user_id={entity.user_id}, organization_id={entity.organization_id}")
-
-                # 通过引擎注册表获取引擎并读取
                 engine = MemoryEngineRegistry.get_engine(memory_space_id)
                 logger.info(f"[MemoryRead] 节点 {node_id} 使用引擎: {type(engine).__name__}")
 
-                result = engine.read(entity=entity, query=message, top_k=top_k)
-                memory_context = result.context
-                memories_count = len(result.raw_memories)
+                # 当 flow_input.user_ids 非空且为个人记忆时，按干系人逐个读取并聚合
+                user_ids = flow_input.get("user_ids") if isinstance(flow_input, dict) else None
+                if memory_space.scope == MemorySpace.SCOPE_PERSONAL and user_ids:
+                    target_users = list(user_ids)
+                else:
+                    target_users = [user_id]
+
+                context_parts = []
+                raw_all = []
+                for target_user in target_users:
+                    entity = build_memory_entity(memory_space, target_user, flow_input)
+                    logger.info(
+                        f"[MemoryRead] 节点 {node_id} 构建实体 (user={target_user}): " f"user_id={entity.user_id}, organization_id={entity.organization_id}"
+                    )
+                    per_result = engine.read(entity=entity, query=message, top_k=top_k)
+                    if per_result.context:
+                        context_parts.append(per_result.context)
+                    raw_all.extend(per_result.raw_memories)
+
+                memory_context = "\n\n---\n\n".join(context_parts)
+                memories_count = len(raw_all)
 
                 if memories_count > 0:
-                    logger.info(f"[MemoryRead] 节点 {node_id} 读取到 {memories_count} 条记忆 (source={result.source})")
-                    for mem in result.raw_memories:
-                        logger.info(
-                            f"[MemoryRead] 节点 {node_id} 记忆条目: id={mem.get('id')}, "
-                            f"title={mem.get('title')}, content_length={len(mem.get('content', ''))}"
-                        )
+                    logger.info(f"[MemoryRead] 节点 {node_id} 读取到 {memories_count} 条记忆")
                 else:
                     logger.info(f"[MemoryRead] 节点 {node_id} 未找到记忆（记忆空间为空或无匹配记忆）")
             except MemorySpace.DoesNotExist:

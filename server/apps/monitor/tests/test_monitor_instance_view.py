@@ -1,7 +1,9 @@
+import json
 import types
 
 from apps.monitor.models.collect_config import CollectConfig
 from apps.monitor.models.monitor_object import MonitorInstance, MonitorObject
+from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.views import monitor_instance as monitor_instance_view
 
 
@@ -20,6 +22,11 @@ def test_remove_monitor_instance_refreshes_flow_cloud_regions(db, monkeypatch):
     monkeypatch.setattr(monitor_instance_view, "_build_actor_context", lambda request: {"current_team": 1})
     monkeypatch.setattr(monitor_instance_view, "_ensure_operate_instances", lambda request, instance_ids, actor_context=None: instance_ids)
     monkeypatch.setattr(monitor_instance_view, "cleanup_policy_sources", lambda instance_ids: None)
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "NodeMgmt",
+        lambda: types.SimpleNamespace(delete_child_configs=lambda ids: None, delete_configs=lambda ids: None),
+    )
     monkeypatch.setattr(
         "apps.monitor.services.flow_onboarding.FlowOnboardingService._schedule_region_refresh",
         lambda *region_ids: refresh_calls.append(region_ids),
@@ -52,6 +59,11 @@ def test_remove_monitor_instance_registers_refresh_before_cleanup(db, monkeypatc
 
     monkeypatch.setattr(monitor_instance_view, "_build_actor_context", lambda request: {"current_team": 1})
     monkeypatch.setattr(monitor_instance_view, "_ensure_operate_instances", lambda request, instance_ids, actor_context=None: instance_ids)
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "NodeMgmt",
+        lambda: types.SimpleNamespace(delete_child_configs=lambda ids: None, delete_configs=lambda ids: None),
+    )
     monkeypatch.setattr(
         "apps.monitor.services.flow_onboarding.FlowOnboardingService._schedule_region_refresh",
         lambda *region_ids: refresh_calls.append(region_ids),
@@ -130,3 +142,157 @@ def test_remove_monitor_instance_always_cleans_configs(db, monkeypatch):
     assert instance.is_deleted is True
     assert cleanup_calls == {"child": [child_config.id], "base": [base_config.id]}
     assert CollectConfig.objects.filter(monitor_instance_id=instance.id).count() == 0
+
+
+def _create_effective_plugin_fixture():
+    monitor_object = MonitorObject.objects.create(
+        name="Host",
+        display_name="Host",
+        instance_id_keys=["instance_id"],
+    )
+    instance = MonitorInstance.objects.create(
+        id="('host-a',)",
+        name="Host A",
+        monitor_object=monitor_object,
+    )
+    configured_plugin = MonitorPlugin.objects.create(
+        name="HostRemote",
+        display_name="Host Remote",
+        template_id="hostremote",
+        template_type="pull",
+        collector="Telegraf",
+        collect_type="http",
+        status_query="any({plugin_id='hostremote'}) by (instance_id)",
+        is_pre=False,
+    )
+    configured_plugin.monitor_object.add(monitor_object)
+    reported_plugin = MonitorPlugin.objects.create(
+        name="HostApi",
+        display_name="Host API",
+        template_id="hostapi",
+        template_type="api",
+        collector="push_api",
+        collect_type="push_api",
+        status_query="any({plugin_id='hostapi'}) by (instance_id)",
+        is_pre=False,
+    )
+    reported_plugin.monitor_object.add(monitor_object)
+    unused_plugin = MonitorPlugin.objects.create(
+        name="HostUnused",
+        display_name="Host Unused",
+        template_id="hostunused",
+        template_type="api",
+        collector="push_api",
+        collect_type="push_api",
+        status_query="any({plugin_id='hostunused'}) by (instance_id)",
+        is_pre=False,
+    )
+    unused_plugin.monitor_object.add(monitor_object)
+    CollectConfig.objects.create(
+        id="hostremote-cfg",
+        monitor_instance=instance,
+        monitor_plugin=configured_plugin,
+        collector="Telegraf",
+        collect_type="http",
+        config_type="hostremote",
+        file_type="toml",
+        is_child=True,
+    )
+    return monitor_object, instance, configured_plugin, reported_plugin, unused_plugin
+
+
+def test_effective_plugins_service_merges_configured_and_reported_plugins(db, monkeypatch):
+    from apps.monitor.services import effective_plugins
+
+    monitor_object, instance, configured_plugin, reported_plugin, unused_plugin = _create_effective_plugin_fixture()
+
+    class StubVictoriaMetricsAPI:
+        def query(self, query, step="5m", time=None):
+            if "hostremote" in query:
+                return {"data": {"result": []}}
+            if "hostapi" in query:
+                return {"data": {"result": [{"metric": {"instance_id": "host-a"}, "value": [100, "1"]}]}}
+            if "hostunused" in query:
+                return {"data": {"result": [{"metric": {"instance_id": "host-b"}, "value": [100, "1"]}]}}
+            return {"data": {"result": []}}
+
+    monkeypatch.setattr(effective_plugins, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    result = effective_plugins.MonitorEffectivePluginService.get_effective_plugins(
+        monitor_object.id,
+        instance.id,
+        locale="zh-Hans",
+    )
+
+    by_name = {item["name"]: item for item in result}
+    assert set(by_name) == {"HostRemote", "HostApi"}
+    assert by_name["HostRemote"]["id"] == configured_plugin.id
+    assert by_name["HostRemote"]["status"] == "offline"
+    assert by_name["HostRemote"]["collect_mode"] == "auto"
+    assert by_name["HostApi"]["id"] == reported_plugin.id
+    assert by_name["HostApi"]["status"] == "normal"
+    assert by_name["HostApi"]["collect_mode"] == "manual"
+    assert unused_plugin.name not in by_name
+
+
+def test_effective_plugins_service_deduplicates_configured_reported_plugin(db, monkeypatch):
+    from apps.monitor.services import effective_plugins
+
+    monitor_object, instance, configured_plugin, _, _ = _create_effective_plugin_fixture()
+
+    class StubVictoriaMetricsAPI:
+        def query(self, query, step="5m", time=None):
+            if "hostremote" in query:
+                return {"data": {"result": [{"metric": {"instance_id": "host-a"}, "value": [100, "1"]}]}}
+            return {"data": {"result": []}}
+
+    monkeypatch.setattr(effective_plugins, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    result = effective_plugins.MonitorEffectivePluginService.get_effective_plugins(
+        monitor_object.id,
+        instance.id,
+        locale="zh-Hans",
+    )
+
+    by_name = {item["name"]: item for item in result}
+    assert list(by_name) == ["HostRemote"]
+    assert by_name["HostRemote"]["id"] == configured_plugin.id
+    assert by_name["HostRemote"]["status"] == "normal"
+    assert by_name["HostRemote"]["collect_mode"] == "auto"
+
+
+def test_effective_plugins_action_returns_service_data(monkeypatch):
+    service_calls = {}
+    expected = [{"id": 12, "name": "HostRemote"}]
+
+    class StubService:
+        @staticmethod
+        def get_effective_plugins(monitor_object_id, instance_id, locale):
+            service_calls["args"] = (monitor_object_id, instance_id, locale)
+            return expected
+
+    monkeypatch.setattr(monitor_instance_view, "_build_actor_context", lambda request: {"current_team": 1})
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None: instance_ids,
+    )
+    monkeypatch.setattr(monitor_instance_view, "MonitorEffectivePluginService", StubService)
+
+    request = types.SimpleNamespace(
+        GET={"instance_id": "('host-a',)"},
+        COOKIES={"current_team": "1"},
+        user=types.SimpleNamespace(
+            username="tester",
+            domain="default",
+            locale="zh-Hans",
+            is_superuser=True,
+            group_list=[],
+        ),
+    )
+
+    response = monitor_instance_view.MonitorInstanceViewSet().effective_plugins(request, "7")
+    payload = json.loads(response.content)
+
+    assert service_calls["args"] == (7, "('host-a',)", "zh-Hans")
+    assert payload["data"] == expected

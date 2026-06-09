@@ -69,6 +69,9 @@ export const useNodeDrop = ({
             if (nodeType === 'enterprise_wechat') {
               return t('chatflow.enterpriseWechat');
             }
+            if (nodeType === 'nats') {
+              return t('chatflow.nats');
+            }
             if (nodeType === 'dingtalk') {
               return t('chatflow.dingtalk');
             }

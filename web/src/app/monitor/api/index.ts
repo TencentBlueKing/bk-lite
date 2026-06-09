@@ -83,6 +83,19 @@ const useMonitorApi = () => {
     });
   };
 
+  const getEffectivePlugins = async (
+    objectId?: React.Key,
+    params: {
+      instance_id?: string;
+    } = {},
+    config?: AxiosRequestConfig
+  ) => {
+    return await get(`/monitor/api/monitor_instance/${objectId}/effective_plugins/`, {
+      params,
+      ...config
+    });
+  };
+
   const getMonitorPlugin = async (
     params: {
       monitor_object_id?: React.Key | null;
@@ -119,6 +132,7 @@ const useMonitorApi = () => {
     getMonitorObject,
     getMonitorAlert,
     getInstanceList,
+    getEffectivePlugins,
     getMonitorPlugin,
     patchMonitorAlert,
     getAllUsers,

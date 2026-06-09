@@ -23,7 +23,7 @@ import {
   ObjectItem,
   MetricItem
 } from '@/app/monitor/types';
-import { ViewListProps } from '@/app/monitor/types/view';
+import { ViewListProps, ViewPluginOption } from '@/app/monitor/types/view';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
@@ -45,7 +45,7 @@ const ViewList: React.FC<ViewListProps> = ({
   updateTree
 }) => {
   const { isLoading } = useApiClient();
-  const { getMonitorMetrics, getInstanceList, getMonitorPlugin } =
+  const { getMonitorMetrics, getInstanceList, getEffectivePlugins } =
     useMonitorApi();
   const { getInstanceSearch, getInstanceQueryParams } = useViewApi();
   const { t } = useTranslation();
@@ -68,7 +68,7 @@ const ViewList: React.FC<ViewListProps> = ({
     pageSize: 20
   });
   const [frequence, setFrequence] = useState<number>(0);
-  const [plugins, setPlugins] = useState<IntegrationItem[]>([]);
+  const [plugins, setPlugins] = useState<ViewPluginOption[]>([]);
   const columns: ColumnItem[] = [
     {
       title: t('monitor.views.reportTime'),
@@ -251,12 +251,10 @@ const ViewList: React.FC<ViewListProps> = ({
     const objName = targetObject?.name;
     const config = { signal: abortController.signal };
     const getMetrics = getMonitorMetrics(objParams, config);
-    const getPlugins = getMonitorPlugin(objParams, config);
     setTableLoading(true);
     try {
       const res = await Promise.all([
         getMetrics,
-        getPlugins,
         showMultipleConditions &&
           getInstanceQueryParams(objName as string, objParams, config)
       ]);
@@ -264,7 +262,7 @@ const ViewList: React.FC<ViewListProps> = ({
       if (currentRequestId !== columnRequestIdRef.current) {
         return;
       }
-      const k8sQuery = res[2];
+      const k8sQuery = res[1];
       let queryForm: any[] = [];
       if (k8sQuery?.cluster) {
         queryForm = k8sQuery?.cluster || [];
@@ -282,17 +280,6 @@ const ViewList: React.FC<ViewListProps> = ({
         });
       }
       setQueryData(queryForm);
-      const _plugins = res[1]
-        .sort((a: IntegrationItem, b: IntegrationItem) => {
-          const order = (item: IntegrationItem) =>
-            item.is_pre ? 0 : !item.is_custom ? 1 : 2;
-          return order(a) - order(b);
-        })
-        .map((item: IntegrationItem) => ({
-          label: item.display_name || item.name || '--',
-          value: item.id
-        }));
-      setPlugins(_plugins);
       setMetrics(res[0] || []);
       if (objName) {
         const allMetrics: MetricItem[] = res[0] || [];
@@ -540,7 +527,23 @@ const ViewList: React.FC<ViewListProps> = ({
     getAssetInsts(objectId, 'clear');
   };
 
-  const openViewModal = (row: TableDataItem) => {
+  const formatPlugins = (items: IntegrationItem[]): ViewPluginOption[] =>
+    items
+      .sort((a: IntegrationItem, b: IntegrationItem) => {
+        const order = (item: IntegrationItem) =>
+          item.is_pre ? 0 : !item.is_custom ? 1 : 2;
+        return order(a) - order(b);
+      })
+      .map((item: IntegrationItem) => ({
+        label: String(item.display_name || item.name || '--'),
+        value: String(item.id)
+      }));
+
+  const openViewModal = async (row: TableDataItem) => {
+    const effectivePlugins = await getEffectivePlugins(objectId, {
+      instance_id: row.instance_id
+    });
+    setPlugins(formatPlugins(effectivePlugins || []));
     viewRef.current?.showModal({
       title: t('monitor.views.indexView'),
       type: 'add',

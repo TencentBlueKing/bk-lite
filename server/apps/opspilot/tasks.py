@@ -1,5 +1,7 @@
 import concurrent.futures
+import json
 import os
+import re
 import tempfile
 import time
 
@@ -7,10 +9,13 @@ from celery import shared_task
 from django.core.exceptions import SynchronousOnlyOperation
 from django.db import close_old_connections, transaction
 from django.utils import timezone
+from langchain_core.messages import HumanMessage, SystemMessage
 from tqdm import tqdm
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.enum import DocumentStatus, KnowledgeTaskStatus
+from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
+from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
 from apps.opspilot.metis.llm.rag.naive_rag_entity import DocumentMetadataUpdateRequest
 from apps.opspilot.models import (
@@ -21,6 +26,10 @@ from apps.opspilot.models import (
     KnowledgeGraph,
     KnowledgeTask,
     LLMModel,
+    ManualKnowledge,
+    Memory,
+    MemorySpace,
+    MemoryWriteCache,
     QAPairs,
     WebPageKnowledge,
 )
@@ -28,6 +37,7 @@ from apps.opspilot.services.knowledge_search_service import KnowledgeSearchServi
 from apps.opspilot.services.memory_write_buffer_service import (
     build_batch_content,
     build_memory_target_id,
+    extract_memory_write_node_configs,
     normalize_write_batch_size,
     resolve_memory_target,
 )
@@ -65,9 +75,6 @@ def _run_in_native_thread(func, *args, **kwargs):
 
 
 def _build_memory_write_client(effective_model_id):
-    from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
-    from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
-
     if not effective_model_id:
         return None
 
@@ -94,8 +101,6 @@ def _build_memory_write_client(effective_model_id):
 
 
 def _summarize_memory_batch_content(memory_space, batch_content: str, model_id=None) -> str:
-    from langchain_core.messages import HumanMessage, SystemMessage
-
     effective_model_id = model_id if model_id else memory_space.default_model
     client = _build_memory_write_client(effective_model_id)
     if not client:
@@ -141,8 +146,6 @@ def _flush_memory_write_cache_group(
     batch_size: int = None,
     force_flush: bool = False,
 ):
-    from apps.opspilot.models.memory_mgmt import MemorySpace, MemoryWriteCache
-
     cache_item_ids = []
     normalized_batch_size = normalize_write_batch_size(batch_size)
 
@@ -1290,8 +1293,6 @@ def process_memory_write_cache(
     node_id: str = "",
     write_batch_size: int = None,
 ):
-    from apps.opspilot.models.memory_mgmt import MemoryWriteCache
-
     if not content:
         return
 
@@ -1372,8 +1373,6 @@ def flush_memory_write_cache_for_node(
     title: str = "",
     model_id: int = None,
 ):
-    from apps.opspilot.models.memory_mgmt import MemoryWriteCache
-
     close_old_connections()
     target_ids = list(
         MemoryWriteCache.objects.filter(
@@ -1400,109 +1399,149 @@ def flush_memory_write_cache_for_node(
 
 @shared_task
 def flush_all_pending_memory_write_cache():
-    from apps.opspilot.models import BotWorkFlow
-    from apps.opspilot.models.memory_mgmt import MemoryWriteCache
-    from apps.opspilot.services.memory_write_buffer_service import extract_memory_write_node_configs
-
     close_old_connections()
-    # Bulk-fetch all pending (workflow_id, node_id) pairs in one query and group them,
-    # instead of querying per workflow and again per node (F062).
-    pending_pairs = (
-        MemoryWriteCache.objects.filter(status=MemoryWriteCache.STATUS_PENDING)
-        .values_list("workflow_id", "node_id")
-        .distinct()
-    )
-    node_ids_by_workflow = {}
-    for workflow_id, node_id in pending_pairs:
-        node_ids_by_workflow.setdefault(workflow_id, []).append(node_id)
-
-    if not node_ids_by_workflow:
+    pending_pairs = list(MemoryWriteCache.objects.filter(status=MemoryWriteCache.STATUS_PENDING).values("workflow_id", "node_id").distinct())
+    if not pending_pairs:
         return
 
-    # Bulk-fetch the referenced workflows in a single query.
-    workflows = {wf.id: wf for wf in BotWorkFlow.objects.filter(id__in=node_ids_by_workflow.keys())}
+    workflow_ids = {item["workflow_id"] for item in pending_pairs}
+    workflow_map = BotWorkFlow.objects.filter(id__in=workflow_ids).in_bulk()
+    node_configs_by_workflow = {}
 
-    for workflow_id, pending_node_ids in node_ids_by_workflow.items():
-        workflow = workflows.get(workflow_id)
+    for pending_pair in pending_pairs:
+        workflow_id = pending_pair["workflow_id"]
+        workflow = workflow_map.get(workflow_id)
         if not workflow:
             continue
 
-        node_configs = extract_memory_write_node_configs(workflow.flow_json)
-        for node_id in pending_node_ids:
-            config = node_configs.get(node_id) or {}
-            memory_space_id = config.get("memorySpace") or config.get("memory_space_id")
-            if not memory_space_id:
-                continue
-            flush_memory_write_cache_for_node(
-                workflow_id=workflow_id,
-                node_id=node_id,
-                memory_space_id=memory_space_id,
-                title=config.get("title", "") or f"自动记忆-{node_id}",
-                model_id=config.get("llmModel"),
-            )
-
-
-def _find_existing_memory(Memory, memory_space_id, owner_username, owner_domain, organization_id):
-    """查找该实体在记忆空间内的唯一现有记忆。
-
-    - 组织记忆（organization_id 非空）：按 memory_space_id + organization_id 查找
-    - 个人记忆：按 memory_space_id + owner_username + owner_domain 查找（organization_id 为空）
-    """
-    if organization_id is not None:
-        return Memory.objects.filter(
+        node_configs = node_configs_by_workflow.setdefault(workflow_id, extract_memory_write_node_configs(workflow.flow_json))
+        node_id = pending_pair["node_id"]
+        config = node_configs.get(node_id) or {}
+        memory_space_id = config.get("memorySpace") or config.get("memory_space_id")
+        if not memory_space_id:
+            continue
+        flush_memory_write_cache_for_node(
+            workflow_id=workflow_id,
+            node_id=node_id,
             memory_space_id=memory_space_id,
-            organization_id=organization_id,
-        ).first()
-    return Memory.objects.filter(
-        memory_space_id=memory_space_id,
-        owner_username=owner_username,
-        owner_domain=owner_domain,
-        organization_id__isnull=True,
-    ).first()
-
-
-def _create_or_append(
-    Memory,
-    existing_memory,
-    memory_space_id,
-    title,
-    content,
-    owner_username,
-    owner_domain,
-    organization_id,
-):
-    """有现有记忆则简单追加内容，否则创建新记忆。
-
-    抽取自无模型/无客户端两个分支中重复的 create-or-append 逻辑，行为保持一致。
-    """
-    if existing_memory:
-        existing_memory.content = f"{existing_memory.content}\n\n---\n\n{content}"
-        existing_memory.updated_by = owner_username
-        existing_memory.save()
-    else:
-        Memory.objects.create(
-            memory_space_id=memory_space_id,
-            title=title,
-            content=content,
-            owner_username=owner_username,
-            owner_domain=owner_domain,
-            organization_id=organization_id,
-            created_by=owner_username,
-            updated_by=owner_username,
+            title=config.get("title", "") or f"自动记忆-{node_id}",
+            model_id=config.get("llmModel"),
         )
 
 
-def _llm_merge(client, existing_memory, processed_content, owner_username):
-    """使用 LLM 将 processed_content 与现有记忆智能合并并保存。
+@shared_task
+def process_memory_write(
+    memory_space_id: int,
+    title: str,
+    content: str,
+    owner_username: str,
+    owner_domain: str,
+    organization_id: int = None,
+    model_id: int = None,
+    skip_write_rule: bool = False,
+):
+    """异步写入记忆条目，每个用户/组织在每个记忆空间只有一条记忆
 
-    解析失败或合并异常时退化为简单追加，行为与原内联逻辑一致。
+    核心逻辑：
+    - 个人记忆：按 owner_username + owner_domain + memory_space_id 查找唯一记忆
+    - 组织记忆：按 organization_id + memory_space_id 查找唯一记忆
+    - 找到则合并内容，未找到则创建新记忆
+
+    Args:
+        model_id: 可选，用于覆盖记忆空间的默认模型（workflow 节点级别配置）
+        skip_write_rule: 为 True 时跳过 write_rule 规范化，用于批量归纳后的单次写入
     """
-    import json
-    import re
+    is_org_memory = organization_id is not None
+    try:
+        close_old_connections()
 
-    from langchain_core.messages import HumanMessage, SystemMessage
+        # 获取记忆空间配置
+        memory_space = MemorySpace.objects.get(id=memory_space_id)
+        write_rule = memory_space.write_rule
+        # 优先使用传入的 model_id（workflow 节点配置），否则使用记忆空间的默认模型
+        effective_model_id = model_id if model_id else memory_space.default_model
+        # Step 1: 查找该实体的现有记忆（每个用户/组织只有一条）
+        if is_org_memory:
+            existing_memory = Memory.objects.filter(
+                memory_space_id=memory_space_id,
+                organization_id=organization_id,
+            ).first()
+        else:
+            existing_memory = Memory.objects.filter(
+                memory_space_id=memory_space_id,
+                owner_username=owner_username,
+                owner_domain=owner_domain,
+                organization_id__isnull=True,
+            ).first()
 
-    merge_prompt = f"""你是一个记忆管理助手。请将新内容与现有记忆智能合并。
+        # 如果没有配置模型，直接创建或追加内容
+        if not effective_model_id:
+            if existing_memory:
+                # 简单追加内容
+                existing_memory.content = f"{existing_memory.content}\n\n---\n\n{content}"
+                existing_memory.updated_by = owner_username
+                existing_memory.save()
+            else:
+                Memory.objects.create(
+                    memory_space_id=memory_space_id,
+                    title=title,
+                    content=content,
+                    owner_username=owner_username,
+                    owner_domain=owner_domain,
+                    organization_id=organization_id,
+                    created_by=owner_username,
+                    updated_by=owner_username,
+                )
+            return
+
+        client = _build_memory_write_client(effective_model_id)
+        if not client:
+            if existing_memory:
+                existing_memory.content = f"{existing_memory.content}\n\n---\n\n{content}"
+                existing_memory.updated_by = owner_username
+                existing_memory.save()
+            else:
+                Memory.objects.create(
+                    memory_space_id=memory_space_id,
+                    title=title,
+                    content=content,
+                    owner_username=owner_username,
+                    owner_domain=owner_domain,
+                    organization_id=organization_id,
+                    created_by=owner_username,
+                    updated_by=owner_username,
+                )
+            return
+
+        # Step 2: 使用 write_rule 规范化新内容（如果配置了）
+        processed_content = content
+        if write_rule and not skip_write_rule:
+            try:
+                messages = [
+                    SystemMessage(content=write_rule),
+                    HumanMessage(content=content),
+                ]
+                response = client.invoke(messages)
+                processed_content = response.content if hasattr(response, "content") else str(response)
+            except Exception as e:
+                logger.error(f"[MemoryWriteTask] 规范化失败: {e}，使用原始内容", exc_info=True)
+
+        # Step 3: 如果没有现有记忆，直接创建
+        if not existing_memory:
+            Memory.objects.create(
+                memory_space_id=memory_space_id,
+                title=title,
+                content=processed_content,
+                owner_username=owner_username,
+                owner_domain=owner_domain,
+                organization_id=organization_id,
+                created_by=owner_username,
+                updated_by=owner_username,
+            )
+            return
+
+        # Step 4: 有现有记忆，使用 LLM 智能合并
+        merge_prompt = f"""你是一个记忆管理助手。请将新内容与现有记忆智能合并。
 
 ## 现有记忆
 标题: {existing_memory.title}
@@ -1552,139 +1591,43 @@ def _llm_merge(client, existing_memory, processed_content, owner_username):
 }}
 ```"""
 
-    try:
-        messages = [
-            SystemMessage(content="你是一个记忆管理助手，负责智能合并新旧记忆内容。请严格按照 JSON 格式输出。"),
-            HumanMessage(content=merge_prompt),
-        ]
-        response = client.invoke(messages)
-        merge_text = response.content if hasattr(response, "content") else str(response)
+        try:
+            messages = [
+                SystemMessage(content="你是一个记忆管理助手，负责智能合并新旧记忆内容。请严格按照 JSON 格式输出。"),
+                HumanMessage(content=merge_prompt),
+            ]
+            response = client.invoke(messages)
+            merge_text = response.content if hasattr(response, "content") else str(response)
 
-        # 解析 JSON 响应
-        json_match = re.search(r"```json\s*(.*?)\s*```", merge_text, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(1)
-        else:
-            json_str = merge_text.strip()
-            json_str = re.sub(r"^```\w*\s*", "", json_str)
-            json_str = re.sub(r"\s*```$", "", json_str)
+            # 解析 JSON 响应
+            json_match = re.search(r"```json\s*(.*?)\s*```", merge_text, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+            else:
+                json_str = merge_text.strip()
+                json_str = re.sub(r"^```\w*\s*", "", json_str)
+                json_str = re.sub(r"\s*```$", "", json_str)
 
-        merge_result = json.loads(json_str)
-        merged_title = merge_result.get("title", existing_memory.title)
-        merged_content = merge_result.get("content", processed_content)
+            merge_result = json.loads(json_str)
+            merged_title = merge_result.get("title", existing_memory.title)
+            merged_content = merge_result.get("content", processed_content)
 
-        # 更新现有记忆
-        existing_memory.title = merged_title
-        existing_memory.content = merged_content
-        existing_memory.updated_by = owner_username
-        existing_memory.save()
+            # 更新现有记忆
+            existing_memory.title = merged_title
+            existing_memory.content = merged_content
+            existing_memory.updated_by = owner_username
+            existing_memory.save()
 
-    except json.JSONDecodeError as e:
-        logger.exception(f"[MemoryWriteTask] JSON 解析失败: {e}，简单追加内容")
-        existing_memory.content = f"{existing_memory.content}\n\n---\n\n{processed_content}"
-        existing_memory.updated_by = owner_username
-        existing_memory.save()
-    except Exception as e:
-        logger.error(f"[MemoryWriteTask] LLM 合并失败: {e}，简单追加内容", exc_info=True)
-        existing_memory.content = f"{existing_memory.content}\n\n---\n\n{processed_content}"
-        existing_memory.updated_by = owner_username
-        existing_memory.save()
-
-
-@shared_task
-def process_memory_write(
-    memory_space_id: int,
-    title: str,
-    content: str,
-    owner_username: str,
-    owner_domain: str,
-    organization_id: int = None,
-    model_id: int = None,
-    skip_write_rule: bool = False,
-):
-    """异步写入记忆条目，每个用户/组织在每个记忆空间只有一条记忆
-
-    核心逻辑：
-    - 个人记忆：按 owner_username + owner_domain + memory_space_id 查找唯一记忆
-    - 组织记忆：按 organization_id + memory_space_id 查找唯一记忆
-    - 找到则合并内容，未找到则创建新记忆
-
-    Args:
-        model_id: 可选，用于覆盖记忆空间的默认模型（workflow 节点级别配置）
-        skip_write_rule: 为 True 时跳过 write_rule 规范化，用于批量归纳后的单次写入
-    """
-    from langchain_core.messages import HumanMessage, SystemMessage
-
-    from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
-
-    try:
-        close_old_connections()
-
-        # 获取记忆空间配置
-        memory_space = MemorySpace.objects.get(id=memory_space_id)
-        write_rule = memory_space.write_rule
-        # 优先使用传入的 model_id（workflow 节点配置），否则使用记忆空间的默认模型
-        effective_model_id = model_id if model_id else memory_space.default_model
-        # Step 1: 查找该实体的现有记忆（每个用户/组织只有一条）
-        existing_memory = _find_existing_memory(Memory, memory_space_id, owner_username, owner_domain, organization_id)
-
-        # 如果没有配置模型，直接创建或追加内容
-        if not effective_model_id:
-            _create_or_append(
-                Memory,
-                existing_memory,
-                memory_space_id,
-                title,
-                content,
-                owner_username,
-                owner_domain,
-                organization_id,
-            )
-            return
-
-        client = _build_memory_write_client(effective_model_id)
-        if not client:
-            _create_or_append(
-                Memory,
-                existing_memory,
-                memory_space_id,
-                title,
-                content,
-                owner_username,
-                owner_domain,
-                organization_id,
-            )
-            return
-
-        # Step 2: 使用 write_rule 规范化新内容（如果配置了）
-        processed_content = content
-        if write_rule and not skip_write_rule:
-            try:
-                messages = [
-                    SystemMessage(content=write_rule),
-                    HumanMessage(content=content),
-                ]
-                response = client.invoke(messages)
-                processed_content = response.content if hasattr(response, "content") else str(response)
-            except Exception as e:
-                logger.error(f"[MemoryWriteTask] 规范化失败: {e}，使用原始内容", exc_info=True)
-
-        # Step 3: 如果没有现有记忆，直接创建
-        if not existing_memory:
-            Memory.objects.create(
-                memory_space_id=memory_space_id,
-                title=title,
-                content=processed_content,
-                owner_username=owner_username,
-                owner_domain=owner_domain,
-                organization_id=organization_id,
-                created_by=owner_username,
-                updated_by=owner_username,
-            )
-            return
-
-        # Step 4: 有现有记忆，使用 LLM 智能合并
-        _llm_merge(client, existing_memory, processed_content, owner_username)
+        except json.JSONDecodeError as e:
+            logger.error(f"[MemoryWriteTask] JSON 解析失败: {e}，简单追加内容")
+            existing_memory.content = f"{existing_memory.content}\n\n---\n\n{processed_content}"
+            existing_memory.updated_by = owner_username
+            existing_memory.save()
+        except Exception as e:
+            logger.error(f"[MemoryWriteTask] LLM 合并失败: {e}，简单追加内容", exc_info=True)
+            existing_memory.content = f"{existing_memory.content}\n\n---\n\n{processed_content}"
+            existing_memory.updated_by = owner_username
+            existing_memory.save()
 
     except MemorySpace.DoesNotExist:
         logger.error(f"[MemoryWriteTask] 记忆空间不存在: space_id={memory_space_id}")
