@@ -9,6 +9,7 @@ if str(STARGAZER_ROOT) not in sys.path:
     sys.path.insert(0, str(STARGAZER_ROOT))
 
 from tasks.collectors.host_wmi.errors import WmiError, classify_wmi_error
+from tasks.collectors.host_wmi.client import WmiClient
 from tasks.collectors.host_wmi.metrics import wmi_results_to_prometheus
 from tasks.collectors.host_wmi.modules import resolve_modules
 from tasks.collectors.host_wmi_collector import WindowsWmiCollector
@@ -141,3 +142,47 @@ async def test_windows_wmi_collector_logs_module_failure_and_continues(monkeypat
     assert "host_disk_used_percent_gauge" not in output
     assert "event=wmi_module_failed" in caplog.text
     assert "module=disk" in caplog.text
+
+
+def test_wmi_client_reports_missing_dependency(monkeypatch):
+    client = WmiClient(
+        host="10.0.0.8",
+        username="EXAMPLE\\monitor",
+        password="secret",
+        namespace="root\\cimv2",
+        timeout=30,
+    )
+
+    monkeypatch.setattr(client, "_load_impacket", lambda: (_ for _ in ()).throw(ImportError("missing")))
+
+    try:
+        client.connect()
+    except WmiError as error:
+        assert error.error_type == "unknown"
+        assert "impacket" in str(error).lower()
+    else:
+        raise AssertionError("expected WmiError")
+
+
+def test_wmi_client_parses_domain_username():
+    client = WmiClient(
+        host="10.0.0.8",
+        username="EXAMPLE\\monitor",
+        password="secret",
+    )
+
+    assert client._split_username() == ("EXAMPLE", "monitor")
+
+
+def test_wmi_client_normalizes_wmi_property_rows():
+    rows = WmiClient._normalize_rows(
+        [
+            {
+                "Name": {"value": "CPU0"},
+                "LoadPercentage": {"value": 12},
+                "Ignored": {"value": None},
+            }
+        ]
+    )
+
+    assert rows == [{"Name": "CPU0", "LoadPercentage": 12, "Ignored": None}]
