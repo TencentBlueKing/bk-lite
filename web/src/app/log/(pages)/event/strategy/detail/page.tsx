@@ -21,6 +21,7 @@ import {
   getDefaultShowFields,
   getLockedPolicyType
 } from './policyFormUtils';
+import { getCreatePolicyType } from '../policyRouteUtils';
 
 const StrategyOperation = () => {
   const { t } = useTranslation();
@@ -52,17 +53,25 @@ const StrategyOperation = () => {
   const [streamList, setStreamList] = useState<ListItem[]>([]);
 
   const isEdit = useMemo(() => type === 'edit', [type]);
+  const createAlertType = useMemo(
+    () => getCreatePolicyType(urlAlertType),
+    [urlAlertType]
+  );
   const lockedAlertType = useMemo(
     () =>
       getLockedPolicyType({
-        urlAlertType,
+        urlAlertType: isEdit ? null : createAlertType,
         detailAlertType: formData.alert_type
       }),
-    [urlAlertType, formData.alert_type]
+    [isEdit, createAlertType, formData.alert_type]
   );
 
   useEffect(() => {
     if (!isLoading) {
+      if (!isEdit && !createAlertType) {
+        goBack();
+        return;
+      }
       setPageLoading(true);
       Promise.all([
         getAllFields(),
@@ -73,7 +82,7 @@ const StrategyOperation = () => {
         setPageLoading(false);
       });
     }
-  }, [isLoading]);
+  }, [isLoading, isEdit, createAlertType]);
 
   useEffect(() => {
     form.resetFields();

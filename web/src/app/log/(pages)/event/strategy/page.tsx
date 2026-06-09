@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState, useRef } from 'react';
-import { Input, Button, message, Switch, Popconfirm } from 'antd';
+import { Input, Button, message, Switch, Popconfirm, Modal } from 'antd';
 import useApiClient from '@/utils/request';
 import useLogEventApi from '@/app/log/api/event';
 import { useAlgorithmList } from '@/app/log/hooks/event';
@@ -19,6 +19,10 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { PlusOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import Permission from '@/components/permission';
+import {
+  buildStrategyDetailUrl,
+  LogPolicyType
+} from './policyRouteUtils';
 
 const Strategy: React.FC = () => {
   const { t } = useTranslation();
@@ -39,6 +43,7 @@ const Strategy: React.FC = () => {
   const [searchText, setSearchText] = useState<string>('');
   const [enableLoading, setEnableLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const [policyTypeModalOpen, setPolicyTypeModalOpen] = useState(false);
   const columns: ColumnItem[] = [
     {
       title: t('common.name'),
@@ -239,14 +244,22 @@ const Strategy: React.FC = () => {
     getAssetInsts('clear');
   };
 
-  const linkToStrategyDetail = (type: string, row = { id: '', name: '' }) => {
-    const params = new URLSearchParams({
-      type,
-      id: row.id,
-      name: row.name
-    });
-    const targetUrl = `/log/event/strategy/detail?${params.toString()}`;
-    router.push(targetUrl);
+  const linkToStrategyDetail = (
+    type: string,
+    row: { id?: string | number; name?: string; alert_type?: string } = {}
+  ) => {
+    router.push(
+      buildStrategyDetailUrl(type, {
+        id: row.id,
+        name: row.name,
+        alertType: row.alert_type
+      })
+    );
+  };
+
+  const handlePolicyTypeSelect = (alertType: LogPolicyType) => {
+    setPolicyTypeModalOpen(false);
+    router.push(buildStrategyDetailUrl('add', { alertType }));
   };
 
   return (
@@ -267,7 +280,7 @@ const Strategy: React.FC = () => {
             <Button
               type="primary"
               icon={<PlusOutlined />}
-              onClick={() => linkToStrategyDetail('add')}
+              onClick={() => setPolicyTypeModalOpen(true)}
             >
               {t('common.add')}
             </Button>
@@ -283,6 +296,40 @@ const Strategy: React.FC = () => {
           onChange={handleTableChange}
         ></CustomTable>
       </div>
+      <Modal
+        title={t('log.event.selectPolicyType')}
+        open={policyTypeModalOpen}
+        footer={null}
+        width={560}
+        onCancel={() => setPolicyTypeModalOpen(false)}
+      >
+        <div className="grid grid-cols-2 gap-4 pt-2">
+          <button
+            type="button"
+            className="text-left border border-[var(--color-border-2)] rounded-md p-4 hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
+            onClick={() => handlePolicyTypeSelect('keyword')}
+          >
+            <div className="text-base font-medium">
+              {t('log.event.keywordAlert')}
+            </div>
+            <div className="text-[var(--color-text-3)] mt-2">
+              {t('log.event.keywordAlertDes')}
+            </div>
+          </button>
+          <button
+            type="button"
+            className="text-left border border-[var(--color-border-2)] rounded-md p-4 hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
+            onClick={() => handlePolicyTypeSelect('aggregate')}
+          >
+            <div className="text-base font-medium">
+              {t('log.event.aggregationAlert')}
+            </div>
+            <div className="text-[var(--color-text-3)] mt-2">
+              {t('log.event.aggregationAlertDes')}
+            </div>
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 };

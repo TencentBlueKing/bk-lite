@@ -812,6 +812,7 @@
       "aggregationAlert": "日志聚合告警",
       "config": "配置。",
       "policyType": "策略类型",
+      "selectPolicyType": "选择策略类型",
       "firstAlertTime": "首次告警时间",
       "closeTitle": "确定要关闭此项目吗？",
       "enterThreshold": "填写阈值",

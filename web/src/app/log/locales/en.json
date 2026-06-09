@@ -812,6 +812,7 @@
       "aggregationAlert": "Aggregation Alert",
       "config": "to configure it.",
       "policyType": "Policy Type",
+      "selectPolicyType": "Select Policy Type",
       "firstAlertTime": "First Alert Time",
       "closeTitle": "Do you want to close this item?",
       "enterThreshold": "Enter the Threshold",
