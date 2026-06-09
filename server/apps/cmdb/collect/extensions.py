@@ -1,8 +1,8 @@
 """采集能力域的企业版扩展契约（社区侧门面）。
 
 采集域的「契约」是数据：采集对象树增量、采集插件包、NodeParams 包。社区的
-采集对象树合并、插件加载、NodeParams 自动注册三处统一从本门面取，不再直接
-walk/import ``apps.cmdb.enterprise``。企业缺失时返回空契约（无树、无包）。
+采集对象树合并、插件加载、NodeParams 自动注册三处统一从本门面取（经扩展注册表
+"collect" 槽位）；未注册时返回空契约（无树、无包）。
 """
 
 from dataclasses import dataclass, field

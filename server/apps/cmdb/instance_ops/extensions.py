@@ -1,9 +1,8 @@
 """实例能力域的企业版扩展契约（社区侧门面）。
 
 社区默认实现为空契约：文件字段不做任何处理，上传/下载/临时删除接口返回
-「未启用」。企业版通过
-``apps.cmdb.enterprise.instance_ops.provider.get_instance_enterprise_extension``
-返回携带附件/图片真实逻辑的子类实例。
+「未启用」。商业实现由 overlay 在启动时注册到扩展注册表的 "instance_ops" 槽位，
+社区只 get 不 import。
 """
 
 from apps.core.exceptions.base_app_exception import BaseAppException
