@@ -1,6 +1,6 @@
-"""CMDB 显式扩展门面（facade）。
+"""CMDB 显式扩展门面（facade）+ 扩展注册表（IoC）。
 
 社区版在各能力域持有固定契约对象与 `get_*_enterprise_extension()` 入口，
-企业版（overlay app）在 `apps.cmdb_enterprise.<capability>.provider` 提供实现。
-缺失企业版 overlay 时，全部回退到社区默认空契约（add-only 原则）。
+默认返回空契约（add-only）。商业实现由 overlay 在启动时把实例注册到
+`registry` 的对应槽位；社区只 `registry.get(...)`，从不 import 任何 overlay 模块。
 """
