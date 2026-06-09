@@ -156,6 +156,77 @@ def test_execute_nats_create_uses_domain_from_user_info_for_string_users(monkeyp
     }
 
 
+def test_create_monitor_policy_maps_api_create_side_effects(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_monitor_policy_test_module")
+
+    captured = {"view_calls": []}
+
+    class StubMonitorPolicySerializer:
+        def __init__(self, instance=None, data=None):
+            self.instance = instance
+            self.input_data = data
+            if data is not None:
+                captured["payload"] = data
+                self.data = {"id": 42, "name": data["name"]}
+            else:
+                self.data = {"id": instance.id, "name": instance.name}
+
+        def is_valid(self, raise_exception=False):
+            captured["raise_exception"] = raise_exception
+            return True
+
+        def save(self):
+            return types.SimpleNamespace(
+                id=42,
+                name=self.input_data["name"],
+                enable_alerts=["no_data"],
+            )
+
+    class StubMonitorPolicyViewSet:
+        def update_or_create_task(self, policy_id, schedule):
+            captured["view_calls"].append(("task", policy_id, schedule))
+
+        def update_policy_organizations(self, policy_id, organizations):
+            captured["view_calls"].append(("organizations", policy_id, organizations))
+
+        def is_no_data_alert_enabled(self, policy):
+            return "no_data" in policy.enable_alerts
+
+        def update_policy_baselines(self, policy_id, enable_alerts):
+            captured["view_calls"].append(("baselines", policy_id, enable_alerts))
+
+    monkeypatch.setattr(module, "MonitorPolicySerializer", StubMonitorPolicySerializer)
+    monkeypatch.setattr(module, "_get_monitor_policy_viewset", StubMonitorPolicyViewSet)
+
+    result = module.create_monitor_policy(
+        {
+            "name": "cpu policy",
+            "schedule": "*/5 * * * *",
+            "organizations": [1, 2],
+        },
+        user_info={"user": "alice", "domain": "tenant-a.com"},
+    )
+
+    assert result == {"result": True, "data": {"id": 42, "name": "cpu policy"}, "message": ""}
+    assert captured["payload"]["created_by"] == "alice"
+    assert captured["payload"]["updated_by"] == "alice"
+    assert captured["payload"]["domain"] == "tenant-a.com"
+    assert captured["payload"]["updated_by_domain"] == "tenant-a.com"
+    assert captured["view_calls"] == [
+        ("task", 42, "*/5 * * * *"),
+        ("organizations", 42, [1, 2]),
+        ("baselines", 42, ["no_data"]),
+    ]
+
+
+def test_create_monitor_policy_requires_schedule(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_monitor_policy_schedule_test_module")
+
+    result = module.create_monitor_policy({"name": "cpu policy"}, user_info={"user": "alice"})
+
+    assert result == {"result": False, "data": [], "message": "schedule 不能为空"}
+
+
 def test_create_monitor_object_payload_generates_derivative_instance_id_keys(monkeypatch):
     module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_monitor_object_payload_test_module")
 
