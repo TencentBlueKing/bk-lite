@@ -461,18 +461,24 @@
         }
 
         .card-title {
+            font-weight: 700;
+            color: #344054;
+            margin-bottom: 8px;
+            line-height: 1.2;
+        }
+
+        .card-source {
             display: inline-flex;
             align-items: center;
-            min-height: 24px;
+            min-height: 22px;
             max-width: calc(100% - 28px);
-            padding: 0 9px;
+            padding: 0 8px;
             border-radius: 4px;
             background: #eef4ff;
             color: #1f66ff;
-            font-size: 13px;
-            font-weight: 600;
-            margin-bottom: 16px;
-            line-height: 1.2;
+            font-size: 12px;
+            font-weight: 500;
+            margin-bottom: 12px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -1231,6 +1237,11 @@
             check.className = "template-check";
             check.setAttribute("aria-hidden", "true");
             card.prepend(check);
+
+            const source = document.createElement("div");
+            source.className = "card-source";
+            source.textContent = card.dataset.group;
+            card.querySelector(".card-title").after(source);
 
         });
 
