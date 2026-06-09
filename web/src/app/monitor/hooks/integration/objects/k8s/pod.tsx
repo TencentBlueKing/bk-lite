@@ -53,11 +53,6 @@ export const usePodConfig = () => {
         }
       }
     ],
-    tableDiaplay: [
-      { type: 'enum', key: 'pod_status_phase' },
-      { type: 'progress', key: 'pod_cpu_utilization' },
-      { type: 'progress', key: 'pod_memory_utilization' }
-    ],
     groupIds: {
       list: ['uid'],
       default: ['uid']

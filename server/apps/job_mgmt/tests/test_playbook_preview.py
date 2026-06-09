@@ -5,8 +5,17 @@ import tarfile
 import zipfile
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 
-from apps.job_mgmt.serializers.playbook import extract_file_from_archive, get_file_type, is_binary_file, validate_file_path
+from apps.job_mgmt.serializers.playbook import (
+    PlaybookCreateSerializer,
+    PlaybookUpgradeSerializer,
+    extract_file_from_archive,
+    get_file_type,
+    is_binary_file,
+    validate_file_path,
+)
+from apps.job_mgmt.utils import playbook_archive
 
 
 class MockFile:
@@ -16,12 +25,36 @@ class MockFile:
         self.name = name
         self._content = content
         self._position = 0
+        self.size = len(content)
 
-    def read(self):
-        return self._content
+    def read(self, size=-1):
+        if size is None or size < 0:
+            data = self._content[self._position :]
+            self._position = len(self._content)
+            return data
+        data = self._content[self._position : self._position + size]
+        self._position += len(data)
+        return data
 
-    def seek(self, position):
-        self._position = position
+    def seek(self, position, whence=0):
+        if whence == 0:
+            self._position = position
+        elif whence == 1:
+            self._position += position
+        elif whence == 2:
+            self._position = len(self._content) + position
+        else:
+            raise ValueError("unsupported whence")
+        return self._position
+
+    def tell(self):
+        return self._position
+
+    def seekable(self):
+        return True
+
+    def readable(self):
+        return True
 
 
 def create_zip_file(files: dict) -> bytes:
@@ -213,3 +246,35 @@ class TestExtractFileFromArchive:
         with pytest.raises(ValueError) as exc_info:
             extract_file_from_archive(mock_file, "large.txt")
         assert "过大" in str(exc_info.value)
+
+    def test_archive_size_limit_rejected(self, monkeypatch):
+        files = {"playbook.yml": "---\n- hosts: all\n"}
+        zip_content = create_zip_file(files)
+        mock_file = MockFile("test.zip", zip_content)
+        monkeypatch.setattr(playbook_archive, "PLAYBOOK_ARCHIVE_MAX_SIZE_BYTES", len(zip_content) - 1)
+
+        with pytest.raises(ValueError) as exc_info:
+            extract_file_from_archive(mock_file, "playbook.yml")
+        assert "压缩包过大" in str(exc_info.value)
+
+
+@pytest.mark.unit
+class TestPlaybookArchiveSerializerValidation:
+    def test_create_serializer_rejects_oversized_archive(self, monkeypatch):
+        uploaded = SimpleUploadedFile("playbook.zip", create_zip_file({"playbook.yml": "---\n- hosts: all\n"}))
+        monkeypatch.setattr(playbook_archive, "PLAYBOOK_ARCHIVE_MAX_SIZE_BYTES", uploaded.size - 1)
+
+        serializer = PlaybookCreateSerializer(data={"file": uploaded})
+
+        assert serializer.is_valid() is False
+        assert "压缩包过大" in str(serializer.errors["file"][0])
+
+    def test_upgrade_serializer_rejects_archive_with_too_many_members(self, monkeypatch):
+        files = {f"roles/example/tasks/{index}.yml": "---\n- debug:\n    msg: test\n" for index in range(3)}
+        uploaded = SimpleUploadedFile("playbook.zip", create_zip_file(files))
+        monkeypatch.setattr(playbook_archive, "PLAYBOOK_ARCHIVE_MAX_MEMBERS", 2)
+
+        serializer = PlaybookUpgradeSerializer(data={"file": uploaded})
+
+        assert serializer.is_valid() is False
+        assert "文件数量过多" in str(serializer.errors["file"][0])

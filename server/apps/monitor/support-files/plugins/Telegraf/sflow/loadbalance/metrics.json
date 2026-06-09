@@ -1,0 +1,45 @@
+{
+  "plugin": "Loadbalance Flow sFlow",
+  "plugin_desc": "Collect load balancer traffic from sFlow and convert it into normalized device traffic metrics.",
+  "status_query": "any({instance_type='loadbalance', collect_type='sflow'}) by (instance_id)",
+  "name": "Loadbalance",
+  "icon": "mm-loadbalance_负载均衡",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='loadbalance'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_total_incoming_sflow_traffic",
+    "device_total_outgoing_sflow_traffic"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_incoming_sflow_traffic",
+      "query": "sum(flow_bytes_in{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(flow_bytes_in{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
+      "display_name": "Device Total Incoming sFlow Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Normalized incoming traffic from sFlow flow data."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_outgoing_sflow_traffic",
+      "query": "sum(flow_bytes_out{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(flow_bytes_out{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
+      "display_name": "Device Total Outgoing sFlow Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Normalized outgoing traffic from sFlow flow data."
+    }
+  ]
+}

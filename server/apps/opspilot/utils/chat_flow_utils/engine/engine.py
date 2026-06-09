@@ -1259,7 +1259,6 @@ class ChatFlowEngine:
         # 检查节点类型是否支持
         supported_types = set(node_registry.get_supported_types())
         supported_types.update(self.custom_node_executors.keys())
-
         for node in self.nodes:
             node_type = node.get("type", "")
             if node_type not in supported_types:

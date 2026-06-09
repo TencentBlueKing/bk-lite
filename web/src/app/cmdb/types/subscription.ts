@@ -1,7 +1,7 @@
 import type { FilterItem } from '@/app/cmdb/store';
 
 export type FilterType = 'condition' | 'instances';
-export type TriggerType = 'attribute_change' | 'relation_change' | 'expiration';
+export type TriggerType = 'attribute_change' | 'relation_change' | 'expiration' | 'config_file';
 
 export interface ConditionFilter {
   query_list: FilterItem[];
@@ -29,10 +29,13 @@ export interface ExpirationConfig {
   days_before: number;
 }
 
+export type ConfigFileConfig = Record<string, never>;
+
 export interface TriggerConfig {
   attribute_change?: AttributeChangeConfig;
   relation_change?: RelationChangeConfig;
   expiration?: ExpirationConfig;
+  config_file?: ConfigFileConfig;
 }
 
 export interface Recipients {

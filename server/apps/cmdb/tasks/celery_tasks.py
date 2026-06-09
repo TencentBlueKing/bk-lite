@@ -11,6 +11,7 @@ from apps.cmdb.collection.collect_tasks.job_collect import JobCollect
 from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
 from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
 from apps.cmdb.models.collect_model import CollectModels
+from apps.cmdb.services.collect_dispatch_service import CollectDispatchService
 from apps.cmdb.services.collect_tool_service import CollectToolService
 from apps.cmdb.services.subscription_task import SubscriptionTaskService
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
@@ -63,14 +64,15 @@ def sync_collect_task(instance_id):
     task_exec_status = CollectRunStatusType.SUCCESS
     config_file_pending = False
     try:
-        if instance.is_job:
-            # 脚本采集
-            collect = JobCollect(task=instance)
-            result, format_data = collect.main()
+        if CollectDispatchService.should_dispatch(instance):
+            result, format_data = CollectDispatchService.execute_task(instance)
         else:
-            # 协议采集
-            collect = ProtocolCollect(task=instance)
-            result, format_data = collect.main()
+            if instance.is_job:
+                collect = JobCollect(task=instance)
+                result, format_data = collect.main()
+            else:
+                collect = ProtocolCollect(task=instance)
+                result, format_data = collect.main()
 
         config_file_pending = (
             instance.task_type == CollectPluginTypes.CONFIG_FILE
@@ -193,6 +195,16 @@ def sync_periodic_update_task_status():
         exec_status=CollectRunStatusType.ERROR
     )
     logger.info("开始周期执行修改采集状态完成, rows={}, config_file_rows={}".format(rows, config_file_rows))
+
+
+@shared_task
+def sync_collect_credential_results_task():
+    logger.info("Skip legacy credential pull task because CMDB now receives Stargazer pushes via NATS")
+    return {
+        "result": True,
+        "skipped": True,
+        "message": "collect credential results are received via NATS push",
+    }
 
 
 @shared_task

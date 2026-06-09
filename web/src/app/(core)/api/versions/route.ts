@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
-import path from 'path';
+import { resolveVersionsDirectory } from '../version-log-path';
 
 export const GET = async (request: NextRequest) => {
   try {
@@ -10,9 +10,9 @@ export const GET = async (request: NextRequest) => {
     const clientId = searchParams.get('clientId') || 'ops-console';
     console.log(`Fetching versions for clientId: ${clientId}, locale: ${locale}`);
 
-    const versionsDirectory = path.join(process.cwd(), `public/app/versions/${clientId}/${locale}`);
+    const versionsDirectory = resolveVersionsDirectory(clientId, locale);
 
-    if (!fs.existsSync(versionsDirectory)) {
+    if (!versionsDirectory || !fs.existsSync(versionsDirectory)) {
       return NextResponse.json({ error: `Versions directory not found for client: ${clientId}` }, { status: 404 });
     }
 

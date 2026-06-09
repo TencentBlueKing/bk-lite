@@ -7,3 +7,4 @@ from apps.cmdb.models.user_personal_config import *  # noqa
 from apps.cmdb.models.public_enum_library import *  # noqa
 from apps.cmdb.models.subscription_rule import *  # noqa
 from apps.cmdb.models.node_mgmt_sync import *  # noqa
+from apps.cmdb.models.collect_task_credential_hit import *  # noqa

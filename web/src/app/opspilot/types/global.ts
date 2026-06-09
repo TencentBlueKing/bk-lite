@@ -217,8 +217,9 @@ export interface ConfigAnalysisReport {
 export interface ReportFileDownload {
   download_id: string;
   filename: string;
-  content_base64: string;
+  content_base64?: string;
   mime_type: string;
+  file_url?: string;
   received_at: number;
 }
 

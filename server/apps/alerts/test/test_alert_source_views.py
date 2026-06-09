@@ -117,6 +117,119 @@ def test_team_secret_add_list_remove(superuser):
     assert src.team_secrets == {}
 
 
+class _StubRequest:
+    """承载 .data dict 的最小请求壳，模拟 DRF Request。"""
+
+    def __init__(self, data):
+        self.data = data
+
+
+@pytest.mark.django_db
+def test_resolve_k8s_team_secret_requires_team_secret():
+    """K8s 接入必须显式传 team_secret；未传 → BaseAppException。"""
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    src = _make_source("k8s", team_secrets={"5": "team-secret-token"})
+    request = _StubRequest({"server_url": "https://h:8000", "cluster_name": "c"})
+    with pytest.raises(BaseAppException):
+        AlertSourceModelViewSet._resolve_k8s_team_secret(request, src)
+
+
+@pytest.mark.django_db
+def test_resolve_k8s_team_secret_rejects_unknown_token():
+    """K8s 接入传了 team_secret 但不在 source.team_secrets 里 → 拒绝。"""
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    src = _make_source("k8s", team_secrets={"5": "team-secret-token"})
+    request = _StubRequest({"team_secret": "forged-token"})
+    with pytest.raises(BaseAppException):
+        AlertSourceModelViewSet._resolve_k8s_team_secret(request, src)
+
+
+@pytest.mark.django_db
+def test_resolve_k8s_team_secret_accepts_valid_token():
+    """K8s 接入传入合法 team_secret → 返回该 secret。"""
+    src = _make_source("k8s", team_secrets={"5": "team-secret-token"})
+    request = _StubRequest({"team_secret": "team-secret-token"})
+    assert AlertSourceModelViewSet._resolve_k8s_team_secret(request, src) == "team-secret-token"
+
+
+def test_k8s_deploy_yaml_skips_tls_only_when_flag_set():
+    """insecure_skip_verify=True 时渲染产物含 tls.insecureSkipVerify；默认/未传时不含。"""
+    yaml_off = AlertSourceModelViewSet._build_k8s_deploy_yaml(
+        receiver_url="https://h/api",
+        secret="s",
+        cluster_name="c",
+        push_source_id="k8s",
+    )
+    yaml_on = AlertSourceModelViewSet._build_k8s_deploy_yaml(
+        receiver_url="https://h/api",
+        secret="s",
+        cluster_name="c",
+        push_source_id="k8s",
+        insecure_skip_verify=True,
+    )
+    assert "insecureSkipVerify" not in yaml_off
+    assert "insecureSkipVerify: true" in yaml_on
+    # 缩进对齐 ConfigMap 内嵌 config.yaml 层级，避免 YAML 解析错误
+    assert "          tls:\n            insecureSkipVerify: true" in yaml_on
+
+
+def test_k8s_deploy_yaml_embeds_secret_hash_for_rolling_restart():
+    """渲染后的 YAML 把 secret 的 short hash 写进 Deployment template annotation，
+    保证 secret 变更后 kubectl apply 自动滚动 Pod。"""
+    import hashlib
+
+    yaml_a = AlertSourceModelViewSet._build_k8s_deploy_yaml(
+        receiver_url="https://h/api",
+        secret="secret-A",
+        cluster_name="c",
+        push_source_id="k8s",
+    )
+    yaml_b = AlertSourceModelViewSet._build_k8s_deploy_yaml(
+        receiver_url="https://h/api",
+        secret="secret-B",
+        cluster_name="c",
+        push_source_id="k8s",
+    )
+    yaml_a2 = AlertSourceModelViewSet._build_k8s_deploy_yaml(
+        receiver_url="https://h/api",
+        secret="secret-A",
+        cluster_name="c",
+        push_source_id="k8s",
+    )
+
+    hash_a = hashlib.sha256(b"secret-A").hexdigest()[:16]
+    hash_b = hashlib.sha256(b"secret-B").hexdigest()[:16]
+
+    assert "PLACEHOLDER_SECRET_HASH" not in yaml_a
+    assert f"bk-lite.tencent.com/secret-hash: {hash_a}" in yaml_a
+    assert f"bk-lite.tencent.com/secret-hash: {hash_b}" in yaml_b
+    # 幂等：相同 secret 同 hash → apply 不会无谓滚动
+    assert yaml_a == yaml_a2
+
+
+@pytest.mark.django_db
+def test_team_secret_add_rejected_for_snmp_trap(superuser):
+    """SNMP Trap 源不允许配置组织密钥。"""
+    src = _make_source("snmp_trap")
+    request = _request("post", f"/alert_source/{src.id}/team_secrets/add/", superuser, data={"team_id": 5})
+    response = AlertSourceModelViewSet.as_view({"post": "add_team_secret"})(request, pk=str(src.id))
+    _render(response)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    src.refresh_from_db()
+    assert src.team_secrets == {}
+
+
+@pytest.mark.django_db
+def test_team_secret_regenerate_rejected_for_snmp_trap(superuser):
+    src = _make_source("snmp_trap", team_secrets={"5": "old"})
+    request = _request("post", f"/alert_source/{src.id}/team_secrets/regenerate/", superuser, data={"team_id": 5})
+    response = AlertSourceModelViewSet.as_view({"post": "regenerate_team_secret"})(request, pk=str(src.id))
+    _render(response)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
 @pytest.mark.django_db
 def test_team_secret_add_requires_team_id(superuser):
     src = _make_source("s1")

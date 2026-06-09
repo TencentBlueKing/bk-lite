@@ -5,6 +5,9 @@ from typing import Optional
 # 支持的解释器白名单：非白名单的 Shebang 解析结果将被忽略，回退到默认值
 SUPPORTED_SHELLS = {"sh", "bash", "python", "python3", "powershell", "pwsh"}
 
+# ansible_shell_executable 只支持真正的 shell，不能设为 python/powershell
+ANSIBLE_SHELL_EXECUTABLES = {"sh", "bash"}
+
 
 def parse_shebang(script: str) -> Optional[str]:
     """
@@ -46,3 +49,13 @@ def parse_shebang(script: str) -> Optional[str]:
     if interpreter in SUPPORTED_SHELLS:
         return interpreter
     return None
+
+
+def build_heredoc_command(interpreter: str, script: str) -> str:
+    """
+    构造通过指定解释器读取 heredoc 的命令字符串。
+
+    用于无法通过 ansible_shell_executable 直接切换解释器的场景，
+    例如 python3 / pwsh 需要显式作为命令入口执行。
+    """
+    return f"{interpreter} <<'__SCRIPT__'\n{script}\n__SCRIPT__"

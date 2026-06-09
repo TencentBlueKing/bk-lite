@@ -4,7 +4,10 @@ import {
   MonitorObjectItem,
   GetObjectsParams,
   ObjectTypeFormData,
-  ObjectFormData
+  ObjectFormData,
+  DisplayColumn,
+  PluginOption,
+  MetricOption
 } from './types';
 
 const useObjectApi = () => {
@@ -127,6 +130,21 @@ const useObjectApi = () => {
     }));
   };
 
+  // 获取子对象原始数据（含真实 id 与 display_fields，用于展示列配置）
+  const getObjectChildrenRaw = async (
+    parentId: number
+  ): Promise<MonitorObjectItem[]> => {
+    const res = await get('/monitor/api/monitor_object/', {
+      params: { parent: parentId }
+    });
+    const items: MonitorObjectItem[] = Array.isArray(res) ? res : res?.results || [];
+    return items.map((item) => ({
+      ...item,
+      type_id: item.type,
+      display_name: item.display_name || item.name
+    }));
+  };
+
   // 创建对象（支持同时创建子对象）
   const createObject = async (
     data: ObjectFormData
@@ -194,6 +212,39 @@ const useObjectApi = () => {
     return await post('/monitor/api/monitor_object/order/', orderData);
   };
 
+  // 保存对象展示列配置
+  const saveDisplayFields = async (
+    id: number,
+    displayFields: DisplayColumn[]
+  ): Promise<DisplayColumn[]> => {
+    return await post(`/monitor/api/monitor_object/${id}/display_fields/`, {
+      display_fields: displayFields
+    });
+  };
+
+  // 获取对象绑定的插件（模板）列表
+  const getObjectPlugins = async (
+    objectId: number,
+    signal?: AbortSignal
+  ): Promise<PluginOption[]> => {
+    return await get('/monitor/api/monitor_plugin/', {
+      params: { monitor_object_id: objectId },
+      signal
+    });
+  };
+
+  // 获取对象指定插件下的指标列表
+  const getObjectMetrics = async (
+    objectId: number,
+    pluginId: number | string,
+    signal?: AbortSignal
+  ): Promise<MetricOption[]> => {
+    return await get('/monitor/api/metrics/', {
+      params: { monitor_object_id: objectId, monitor_plugin_id: pluginId },
+      signal
+    });
+  };
+
   return {
     // 对象类型
     getObjectTypes,
@@ -205,11 +256,15 @@ const useObjectApi = () => {
     getObjects,
     getObjectDetail,
     getObjectChildren,
+    getObjectChildrenRaw,
     createObject,
     updateObject,
     deleteObject,
     updateObjectVisibility,
-    updateObjectOrder
+    updateObjectOrder,
+    saveDisplayFields,
+    getObjectPlugins,
+    getObjectMetrics
   };
 };
 

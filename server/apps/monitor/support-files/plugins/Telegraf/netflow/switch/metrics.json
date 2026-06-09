@@ -1,0 +1,45 @@
+{
+  "plugin": "Switch Flow NetFlow",
+  "plugin_desc": "Collect switch traffic from NetFlow and convert it into normalized device traffic metrics.",
+  "status_query": "any({instance_type='switch', collect_type='netflow'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_total_incoming_netflow_traffic",
+    "device_total_outgoing_netflow_traffic"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_incoming_netflow_traffic",
+      "query": "sum(flow_bytes_in{instance_type='switch', collect_type='netflow', __$labels__} * label_value(flow_bytes_in{instance_type='switch', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
+      "display_name": "Device Total Incoming NetFlow Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Normalized incoming traffic from NetFlow flow data."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_outgoing_netflow_traffic",
+      "query": "sum(flow_bytes_out{instance_type='switch', collect_type='netflow', __$labels__} * label_value(flow_bytes_out{instance_type='switch', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
+      "display_name": "Device Total Outgoing NetFlow Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Normalized outgoing traffic from NetFlow flow data."
+    }
+  ]
+}

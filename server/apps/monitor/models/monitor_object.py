@@ -40,6 +40,8 @@ class MonitorObject(TimeInfo, MaintainerInfo):
     instance_id_keys = models.JSONField(default=list, verbose_name='联合唯一实例ID键列表')
     supplementary_indicators = models.JSONField(default=list, verbose_name='对象实例补充指标')
     is_visible = models.BooleanField(default=True, verbose_name='是否可见')
+    display_fields = models.JSONField(default=list, verbose_name='视图列表展示列配置')
+    display_fields_customized = models.BooleanField(default=False, verbose_name='展示列是否被用户自定义')
 
     class Meta:
         verbose_name = '监控对象'
@@ -55,6 +57,10 @@ class MonitorInstance(TimeInfo, MaintainerInfo):
     auto = models.BooleanField(default=False, verbose_name='是否自动发现')
     is_deleted = models.BooleanField(db_index=True, default=False, verbose_name='是否删除')
     is_active = models.BooleanField(default=True)
+    cloud_region_id = models.IntegerField(null=True, blank=True, db_index=True, verbose_name='云区域ID')
+    ip = models.GenericIPAddressField(null=True, blank=True, verbose_name='接入IP')
+    fallback_sampling_rate = models.IntegerField(default=1000, verbose_name='兜底采样率')
+    enabled_protocols = models.JSONField(default=list, verbose_name='已启用的Flow协议')
 
     class Meta:
         verbose_name = '监控对象实例'

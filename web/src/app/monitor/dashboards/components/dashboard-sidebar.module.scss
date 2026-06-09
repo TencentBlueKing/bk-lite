@@ -1,0 +1,313 @@
+.sidebar {
+  position: relative;
+  width: 216px;
+  min-width: 216px;
+  height: 100%;
+  border-right: 1px solid var(--color-border-1, #e5e6eb);
+  background:
+    linear-gradient(180deg, rgba(247, 250, 255, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%),
+    var(--color-bg-1, #fff);
+  transition: width 0.3s ease, min-width 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+
+  &.collapsed {
+    width: 0;
+    min-width: 0;
+    border-right: none;
+  }
+}
+
+.sidebarInner {
+  display: flex;
+  flex-direction: column;
+  width: 216px;
+  height: 100%;
+  overflow: hidden;
+  transition: opacity 0.2s ease;
+
+  .collapsed & {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+.searchBox {
+  padding: 16px 12px 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(220, 229, 241, 0.72);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(247, 250, 255, 0.88) 100%);
+}
+
+.searchInput {
+  width: 100%;
+  height: 36px;
+  font-size: 14px;
+}
+
+.searchInput :global(.ant-input-affix-wrapper) {
+  border-radius: 12px;
+  border-color: #dce6f3;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 6px 16px rgba(36, 64, 110, 0.06);
+}
+
+.searchInput :global(.ant-input-affix-wrapper:hover),
+.searchInput :global(.ant-input-affix-wrapper-focused) {
+  border-color: #b8ccf1;
+  box-shadow: 0 8px 20px rgba(38, 75, 128, 0.1);
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 10px 18px 12px;
+}
+
+.group + .group {
+  margin-top: 10px;
+}
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 4px 8px;
+  border: 0;
+  background: transparent;
+  color: #203047;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  text-align: left;
+}
+
+.groupArrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: #6c7f98;
+  font-size: 11px;
+  transform: rotate(-90deg);
+  transition: transform 0.18s ease;
+}
+
+.groupArrowExpanded {
+  transform: rotate(0deg);
+}
+
+.groupLabel {
+  min-width: 0;
+}
+
+.groupItems {
+  position: relative;
+  margin-left: 8px;
+  padding-left: 16px;
+}
+
+.groupItems::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 8px;
+  left: 4px;
+  width: 1px;
+  background: linear-gradient(180deg, rgba(207, 218, 233, 0.7) 0%, rgba(207, 218, 233, 0.24) 100%);
+}
+
+.item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px 9px 0;
+  border: 0;
+  background: transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #34475f;
+  text-align: left;
+  transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+
+  &:hover {
+    color: #1758df;
+    background: linear-gradient(90deg, rgba(232, 241, 255, 0.72) 0%, rgba(244, 248, 255, 0.52) 100%);
+  }
+
+  &.active {
+    color: #165dff;
+    font-weight: 800;
+    background: linear-gradient(90deg, rgba(225, 238, 255, 0.95) 0%, rgba(238, 246, 255, 0.86) 100%);
+    box-shadow: inset 0 0 0 1px rgba(22, 93, 255, 0.08);
+  }
+}
+
+.itemBranch {
+  position: relative;
+  width: 0;
+  height: 16px;
+  flex: 0 0 0;
+}
+
+.itemIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 0 0 1px rgba(199, 212, 229, 0.6);
+}
+
+.itemBranch::before {
+  content: '';
+  position: absolute;
+  background: rgba(207, 218, 233, 0.72);
+  top: 50%;
+  left: -12px;
+  width: 12px;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+.itemLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: inherit;
+}
+
+.toggleBtn {
+  position: absolute;
+  top: 50%;
+  right: -13px;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid rgba(214, 224, 238, 0.96);
+  background: linear-gradient(180deg, #ffffff 0%, #f4f8ff 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 10px;
+  color: #6b809b;
+  transition: color 0.2s, box-shadow 0.2s, transform 0.2s;
+  box-shadow: 0 8px 18px rgba(32, 55, 93, 0.12);
+
+  &:hover {
+    color: var(--color-primary-6, #165dff);
+    box-shadow: 0 10px 22px rgba(28, 74, 150, 0.16);
+  }
+}
+
+.layout {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.content {
+  flex: 1;
+  overflow: auto;
+  min-width: 0;
+}
+
+@media (max-width: 1200px) {
+  .sidebar,
+  .sidebarInner {
+    width: 200px;
+    min-width: 200px;
+  }
+}
+
+@media (max-width: 768px) {
+  .sidebar,
+  .sidebarInner {
+    width: 188px;
+    min-width: 188px;
+  }
+
+  .searchBox {
+    padding: 12px 10px 10px;
+  }
+
+  .list {
+    padding: 10px 8px 14px 10px;
+  }
+
+  .item {
+    padding: 8px 10px 8px 0;
+  }
+}
+
+:global(html.dark) .sidebar {
+  border-right-color: rgba(54, 74, 100, 0.88);
+  background:
+    linear-gradient(180deg, rgba(11, 21, 34, 0.98) 0%, rgba(13, 25, 40, 0.98) 100%),
+    #0d1828;
+}
+
+:global(html.dark) .searchBox {
+  border-bottom-color: rgba(44, 61, 83, 0.92);
+  background: linear-gradient(180deg, rgba(16, 28, 44, 0.96) 0%, rgba(13, 24, 39, 0.9) 100%);
+}
+
+:global(html.dark) .searchInput :global(.ant-input-affix-wrapper) {
+  border-color: #2b3b50;
+  background: rgba(18, 31, 49, 0.92);
+  box-shadow: none;
+}
+
+:global(html.dark) .searchInput :global(.ant-input),
+:global(html.dark) .searchInput :global(.ant-input::placeholder),
+:global(html.dark) .groupHeader,
+:global(html.dark) .item,
+:global(html.dark) .toggleBtn {
+  color: #b8c7da;
+}
+
+:global(html.dark) .groupArrow {
+  color: #8ea3c0;
+}
+
+:global(html.dark) .groupItems::before,
+:global(html.dark) .itemBranch::before {
+  background: rgba(93, 116, 145, 0.5);
+}
+
+:global(html.dark) .itemIcon {
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(106, 130, 161, 0.28);
+}
+
+:global(html.dark) .item:hover {
+  color: #d8e5ff;
+  background: linear-gradient(90deg, rgba(26, 52, 90, 0.82) 0%, rgba(18, 35, 61, 0.58) 100%);
+}
+
+:global(html.dark) .item.active {
+  color: #dce8ff;
+  background: linear-gradient(90deg, rgba(34, 68, 121, 0.92) 0%, rgba(24, 45, 78, 0.82) 100%);
+  box-shadow: inset 0 0 0 1px rgba(118, 160, 255, 0.18);
+}
+
+:global(html.dark) .toggleBtn {
+  border-color: rgba(55, 75, 101, 0.96);
+  background: linear-gradient(180deg, #142235 0%, #101a29 100%);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+}

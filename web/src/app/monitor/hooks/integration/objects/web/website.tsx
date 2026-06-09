@@ -53,11 +53,6 @@ export const useWebsiteConfig = () => {
         },
       },
     ],
-    tableDiaplay: [
-      { type: 'progress', key: 'http_node_success_rate' },
-      { type: 'value', key: 'http_response_response_time' },
-      { type: 'value', key: 'http_response_http_response_code' },
-    ],
     groupIds: {
       list: ['instance_id'],
       default: ['instance_id'],

@@ -12,6 +12,34 @@ import traceback
 from typing import Dict, Any
 from sanic.log import logger
 
+import core.host_remote_callback as host_remote_callback
+
+
+def _build_host_remote_callback_params(params: Dict[str, Any]) -> Dict[str, Any]:
+    callback_params = {}
+    for key in ("host", "os_type", "monitor_type"):
+        value = params.get(key)
+        if value is not None:
+            callback_params[key] = value
+
+    tags = params.get("tags")
+    if isinstance(tags, dict):
+        callback_params["tags"] = dict(tags)
+
+    return callback_params
+
+
+def _should_publish_monitor_error_metrics(error: Exception) -> bool:
+    from tasks.utils.nats_helper import MetricsPublishError
+
+    return not (
+        isinstance(error, MetricsPublishError)
+        and (
+            getattr(error, "success_count", 0) > 0
+            or getattr(error, "delivery_detected", False)
+        )
+    )
+
 
 async def collect_vmware_metrics_task(
     ctx: Dict, params: Dict[str, Any], task_id: str
@@ -61,11 +89,9 @@ async def collect_vmware_metrics_task(
         from tasks.utils.nats_helper import publish_metrics_to_nats
         from tasks.utils.metrics_helper import generate_monitor_error_metrics
 
-        # 生成错误指标
-        error_metrics = generate_monitor_error_metrics(params, e)
-
-        # 推送错误指标到 NATS
-        await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
+        if _should_publish_monitor_error_metrics(e):
+            error_metrics = generate_monitor_error_metrics(params, e)
+            await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
 
         return {
             "task_id": task_id,
@@ -124,11 +150,9 @@ async def collect_qcloud_metrics_task(
         from tasks.utils.nats_helper import publish_metrics_to_nats
         from tasks.utils.metrics_helper import generate_monitor_error_metrics
 
-        # 生成错误指标
-        error_metrics = generate_monitor_error_metrics(params, e)
-
-        # 推送错误指标到 NATS
-        await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
+        if _should_publish_monitor_error_metrics(e):
+            error_metrics = generate_monitor_error_metrics(params, e)
+            await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
 
         return {
             "task_id": task_id,
@@ -173,8 +197,9 @@ async def collect_oceanstor_metrics_task(
         from tasks.utils.nats_helper import publish_metrics_to_nats
         from tasks.utils.metrics_helper import generate_monitor_error_metrics
 
-        error_metrics = generate_monitor_error_metrics(params, e)
-        await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
+        if _should_publish_monitor_error_metrics(e):
+            error_metrics = generate_monitor_error_metrics(params, e)
+            await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
 
         return {
             "task_id": task_id,
@@ -189,26 +214,79 @@ async def collect_host_metrics_task(
     ctx: Dict, params: Dict[str, Any], task_id: str
 ) -> Dict[str, Any]:
     logger.info(f"[Host Task] Processing: {task_id}")
+    callback_context_stored = False
+    remote_submission_accepted = False
 
     try:
         from tasks.collectors.host_collector import HostCollector
-        from tasks.utils.nats_helper import publish_metrics_to_nats
 
         collector = HostCollector(params)
-        metrics_data = await collector.collect()
+        callback_task_id = str(task_id)
+        callback_timestamp = int(time.time() * 1000)
+        callback_subject = host_remote_callback.get_host_remote_callback_subject()
+        callback_payload = {
+            "collect_task_id": callback_task_id,
+            "instance_id": params.get("tags", {}).get("instance_id", params.get("host")),
+            "instance_name": params.get("host"),
+            "model_id": params.get("model_id", params.get("monitor_type", "host")),
+        }
+        callback_params = _build_host_remote_callback_params(params)
+        callback_params["callback_timestamp"] = callback_timestamp
 
-        logger.info(
-            f"[Host Task] {task_id} completed, data size: {len(metrics_data)} bytes"
+        await host_remote_callback.store_host_remote_callback_context(
+            callback_task_id,
+            callback_params,
+            ctx,
+        )
+        callback_context_stored = True
+        host_remote_callback.log_host_remote_event(
+            "submit_received",
+            callback_task_id,
+            monitor_type="host",
+            host=params.get("host"),
         )
 
-        await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
+        logger.info(f"[Host Task] Submitting remote collection: {task_id}")
+        accepted = await collector.submit_collection(
+            callback_task_id,
+            callback_subject,
+            callback_payload,
+        )
+        accepted_result = accepted.get("result") or {}
+        if accepted.get("success") is False or accepted_result.get("accepted") is False:
+            raise RuntimeError(
+                accepted.get("error")
+                or accepted_result.get("error")
+                or "Host Remote submission failed"
+            )
+        accepted_task_id = str(accepted_result.get("task_id") or callback_task_id).strip()
+        if accepted_task_id != callback_task_id:
+            raise RuntimeError(
+                f"Host Remote submission task_id mismatch: expected {callback_task_id}, got {accepted_task_id}"
+            )
+
+        remote_submission_accepted = True
+        await host_remote_callback.mark_host_remote_submit_accepted(callback_task_id)
+        host_remote_callback.log_host_remote_event(
+            "submit_accepted",
+            callback_task_id,
+            monitor_type="host",
+            host=params.get("host"),
+            accepted_task_id=accepted_task_id,
+        )
+        logger.info(
+            f"[Host Task] Remote collection accepted: collect_task_id={task_id}, "
+            f"accepted_task_id={accepted_task_id}"
+        )
 
         return {
             "task_id": task_id,
-            "status": "success",
+            "status": accepted_result.get("status", "queued"),
             "monitor_type": "host",
-            "data_size": len(metrics_data),
-            "completed_at": int(time.time() * 1000),
+            "accepted": accepted_result.get("accepted", True),
+            "accepted_task_id": accepted_task_id,
+            "defer_running_clear": True,
+            "submitted_at": callback_timestamp,
         }
 
     except Exception as e:
@@ -216,11 +294,28 @@ async def collect_host_metrics_task(
             f"[Host Task] {task_id} failed: {str(e)}\n{traceback.format_exc()}"
         )
 
+        if callback_context_stored and not remote_submission_accepted:
+            try:
+                await host_remote_callback.clear_host_remote_callback_context(task_id)
+            except Exception as cleanup_err:
+                logger.error(
+                    f"[Host Task] Failed to clear callback context for {task_id}: {cleanup_err}",
+                    exc_info=True,
+                )
+
         from tasks.utils.nats_helper import publish_metrics_to_nats
         from tasks.utils.metrics_helper import generate_monitor_error_metrics
 
         error_metrics = generate_monitor_error_metrics(params, e)
         await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
+        host_remote_callback.log_host_remote_event(
+            "submit_failed",
+            task_id,
+            level="error",
+            monitor_type="host",
+            host=params.get("host"),
+            error=str(e),
+        )
 
         return {
             "task_id": task_id,

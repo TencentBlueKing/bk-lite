@@ -52,17 +52,14 @@ export const useFirewallConfig = () => {
         }
       }
     ],
-    tableDiaplay: [
-      { type: 'value', key: 'snmp_uptime' },
-      { type: 'value', key: 'device_total_incoming_traffic' },
-      { type: 'value', key: 'device_total_outgoing_traffic' }
-    ],
     groupIds: {
       list: ['instance_id'],
       default: ['instance_id']
     },
     collectTypes: {
-      'Firewall SNMP General': 'snmp'
+      'Firewall SNMP General': 'snmp',
+      'Firewall Flow NetFlow': 'netflow',
+      'Firewall Flow sFlow': 'sflow'
     }
   };
 };

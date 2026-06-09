@@ -1,5 +1,5 @@
 import React from 'react';
-import { Form, Input, Select, Radio } from 'antd';
+import { Form, Input, Select, Radio, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import type { NotificationNodeConfigProps } from './types';
@@ -66,6 +66,9 @@ export const NotificationNodeConfig: React.FC<NotificationNodeConfigProps> = ({
           <Form.Item name="notificationTitle" label={t('chatflow.notificationTitle')} rules={[{ required: true }]}>
             <Input placeholder={t('chatflow.enterNotificationTitle')} />
           </Form.Item>
+          <Typography.Text type="secondary">
+            {t('chatflow.notificationAutoAttachmentsTip')}
+          </Typography.Text>
         </>
       )}
       <Form.Item name="notificationContent" label={t('chatflow.notificationContent')} rules={[{ required: true }]} initialValue="{{last_message}}">

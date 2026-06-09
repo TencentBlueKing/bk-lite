@@ -11,6 +11,8 @@ import uuid
 import logging
 from typing import Any, Dict, Optional
 
+from nats.errors import NoRespondersError
+
 from core.nats_utils import nats_request
 
 logger = logging.getLogger("stargazer.ansible_rpc")
@@ -24,6 +26,7 @@ async def ansible_adhoc(
     hosts: str = "all",
     execute_timeout: int = 60,
     extra_vars: Optional[Dict[str, Any]] = None,
+    callback: Optional[Dict[str, Any]] = None,
     task_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
@@ -61,7 +64,7 @@ async def ansible_adhoc(
         "module": module,
         "module_args": module_args,
         "extra_vars": extra_vars or {},
-        "callback": {},
+        "callback": callback or {},
         "task_id": task_id,
         "execute_timeout": execute_timeout,
     }
@@ -78,6 +81,19 @@ async def ansible_adhoc(
 
     try:
         result = await nats_request(subject, payload=payload, timeout=nats_timeout)
+    except NoRespondersError:
+        # 没有任何 ansible-executor 订阅该 subject：通常是 ansible_node_id 配置错误
+        # （例如落到了 "default"）或对应云区域的执行节点离线。立即报错，避免空等超时。
+        logger.error(
+            f"Ansible adhoc no responders: subject={subject}, node={ansible_node_id}, "
+            f"task_id={task_id}. 没有 ansible-executor 订阅该节点，请检查 ansible_node_id "
+            f"是否正确以及对应云区域的执行节点是否在线"
+        )
+        raise RuntimeError(
+            f"No ansible executor subscribed for node '{ansible_node_id}' "
+            f"(subject={subject}); check ansible_node_id / cloud region binding "
+            f"and that the executor is online"
+        )
     except TimeoutError:
         logger.error(
             f"Ansible adhoc NATS timeout: node={ansible_node_id}, task_id={task_id}, "

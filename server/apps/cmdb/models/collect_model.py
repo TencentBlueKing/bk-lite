@@ -5,6 +5,7 @@
 
 from django.db import models
 from django.db.models import JSONField
+import copy
 
 from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
 from apps.core.models.time_info import TimeInfo
@@ -21,6 +22,50 @@ from apps.cmdb.constants.constants import SECRET_KEY
 
 # 加密密码的标记前缀
 ENCRYPTED_PREFIX = "enc:"
+ALLOWED_TOPOLOGY_PROTOCOLS = ("lldp", "cdp", "fdb", "arp")
+ALLOWED_TOPOLOGY_FALLBACK_STRATEGIES = (
+    "prefer_neighbors_then_fdb_then_arp",
+    "strict_neighbors_only",
+)
+DEFAULT_TOPOLOGY_PROTOCOLS = list(ALLOWED_TOPOLOGY_PROTOCOLS)
+DEFAULT_TOPOLOGY_FALLBACK_STRATEGY = "prefer_neighbors_then_fdb_then_arp"
+DEFAULT_TOPOLOGY_MIN_CONFIDENCE = 0.0
+
+
+def normalize_topology_contract(raw_params):
+    params = raw_params if isinstance(raw_params, dict) else {}
+
+    topology_protocols = []
+    raw_protocols = params.get("topology_protocols")
+    if raw_protocols is None:
+        topology_protocols = list(DEFAULT_TOPOLOGY_PROTOCOLS)
+    elif isinstance(raw_protocols, (list, tuple)):
+        for protocol in raw_protocols:
+            if protocol in ALLOWED_TOPOLOGY_PROTOCOLS and protocol not in topology_protocols:
+                topology_protocols.append(protocol)
+        if raw_protocols and not topology_protocols:
+            topology_protocols = list(DEFAULT_TOPOLOGY_PROTOCOLS)
+    else:
+        topology_protocols = list(DEFAULT_TOPOLOGY_PROTOCOLS)
+
+    topology_fallback_strategy = params.get("topology_fallback_strategy")
+    if topology_fallback_strategy not in ALLOWED_TOPOLOGY_FALLBACK_STRATEGIES:
+        topology_fallback_strategy = DEFAULT_TOPOLOGY_FALLBACK_STRATEGY
+
+    raw_min_confidence = params.get("min_confidence", DEFAULT_TOPOLOGY_MIN_CONFIDENCE)
+    try:
+        min_confidence = float(raw_min_confidence)
+    except (TypeError, ValueError):
+        min_confidence = DEFAULT_TOPOLOGY_MIN_CONFIDENCE
+    if min_confidence < 0 or min_confidence > 1:
+        min_confidence = DEFAULT_TOPOLOGY_MIN_CONFIDENCE
+
+    return {
+        "has_network_topo": bool(params.get("has_network_topo")),
+        "topology_protocols": topology_protocols,
+        "topology_fallback_strategy": topology_fallback_strategy,
+        "min_confidence": min_confidence,
+    }
 
 
 class CollectModels(MaintainerInfo, TimeInfo):
@@ -101,7 +146,23 @@ class CollectModels(MaintainerInfo, TimeInfo):
 
     @property
     def is_network_topo(self):
-        return bool(self.params.get("has_network_topo"))
+        return self.topology_contract["has_network_topo"]
+
+    @property
+    def topology_contract(self):
+        return normalize_topology_contract(self.params)
+
+    @property
+    def topology_protocols(self):
+        return self.topology_contract["topology_protocols"]
+
+    @property
+    def topology_fallback_strategy(self):
+        return self.topology_contract["topology_fallback_strategy"]
+
+    @property
+    def min_confidence(self):
+        return self.topology_contract["min_confidence"]
 
     @property
     def is_cloud(self):
@@ -165,32 +226,50 @@ class CollectModels(MaintainerInfo, TimeInfo):
         :return: 解密后的凭据列表
         {"port": "22", "password": "password", "username": "admin"}
         """
-        if not self.credential or not isinstance(self.credential, dict):
+        if not self.credential:
             return self.credential
 
         encrypted_fields = get_collect_model_passwords(collect_model_id=self.model_id, driver_type=self.driver_type)
 
-        for encrypted_field in encrypted_fields:
-            password = self.credential.get(encrypted_field)
-            if not password:
-                continue
-            self.credential[encrypted_field] = self.decrypt_password(password)
+        def decrypt_item(raw_item):
+            item = copy.deepcopy(raw_item)
+            if not isinstance(item, dict):
+                return item
+            for encrypted_field in encrypted_fields:
+                password = item.get(encrypted_field)
+                if not password:
+                    continue
+                item[encrypted_field] = self.decrypt_password(password)
+            return item
 
+        if isinstance(self.credential, list):
+            return [decrypt_item(item) for item in self.credential]
+        if isinstance(self.credential, dict):
+            return decrypt_item(self.credential)
         return self.credential
 
     def save(self, *args, **kwargs):
         # 只有在密码未加密时才进行加密
-        if self.credential and isinstance(self.credential, dict):
+        if self.credential:
             encrypted_fields = get_collect_model_passwords(collect_model_id=self.model_id, driver_type=self.driver_type)
-            for encrypted_field in encrypted_fields:
-                password = self.credential.get(encrypted_field)
-                if not password:
-                    continue
-                # 检查是否已加密（通过前缀判断）
-                if isinstance(password, str) and password.startswith(ENCRYPTED_PREFIX):
-                    continue
-                # 加密明文密码
-                self.credential[encrypted_field] = self.encrypt_password(password)
+
+            def encrypt_item(raw_item):
+                if not isinstance(raw_item, dict):
+                    return raw_item
+                item = copy.deepcopy(raw_item)
+                for encrypted_field in encrypted_fields:
+                    password = item.get(encrypted_field)
+                    if not password:
+                        continue
+                    if isinstance(password, str) and password.startswith(ENCRYPTED_PREFIX):
+                        continue
+                    item[encrypted_field] = self.encrypt_password(password)
+                return item
+
+            if isinstance(self.credential, list):
+                self.credential = [encrypt_item(item) for item in self.credential]
+            elif isinstance(self.credential, dict):
+                self.credential = encrypt_item(self.credential)
         super().save(*args, **kwargs)
 
 

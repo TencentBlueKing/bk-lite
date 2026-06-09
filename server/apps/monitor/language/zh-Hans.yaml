@@ -106,6 +106,18 @@ monitor_object_metric:
     system_load15:
       name: 15分钟平均负载
       desc: 表示系统在最近 15 分钟内的平均运行负载，用于评估系统负载的长期稳定性。
+    host_cpu_core_count:
+      name: CPU核心数
+      desc: 表示主机可用的逻辑 CPU 核心数量，用于评估计算资源规模和容量基线。
+    host_cpu_load_1m:
+      name: 1分钟平均负载
+      desc: 表示主机最近 1 分钟的平均负载，用于观察系统的瞬时运行压力。
+    host_cpu_load_5m:
+      name: 5分钟平均负载
+      desc: 表示主机最近 5 分钟的平均负载，用于分析短时间范围内的负载趋势。
+    host_cpu_load_15m:
+      name: 15分钟平均负载
+      desc: 表示主机最近 15 分钟的平均负载，用于判断系统是否长期处于高负载状态。
     diskio_io_util:
       name: 磁盘IO使用率
       desc: 表示磁盘设备处于忙碌状态的时间占比，用于衡量磁盘 I/O 资源的整体利用情况。持续高位通常意味着磁盘 I/O 成为性能瓶颈。
@@ -130,9 +142,15 @@ monitor_object_metric:
     disk_total:
       name: 磁盘总空间
       desc: 表示磁盘或文件系统的总容量，用于容量规划与资源管理。
+    host_disk_total_bytes:
+      name: 文件系统总容量
+      desc: 表示单个挂载点对应文件系统的总容量，用于评估各挂载点的容量基线。
     disk_free:
       name: 磁盘剩余空间
       desc: 表示磁盘或文件系统当前可用的剩余容量，用于监控磁盘空间风险。
+    host_disk_used_bytes:
+      name: 文件系统已用容量
+      desc: 表示单个挂载点当前已使用的磁盘容量，用于分析各文件系统的空间占用情况。
     disk_used_percent:
       name: 磁盘使用率
       desc: 表示磁盘已使用空间占总容量的比例，是磁盘容量监控的核心指标。
@@ -154,12 +172,27 @@ monitor_object_metric:
     mem_total:
       name: 内存总量
       desc: 表示系统可使用的物理内存总容量，是内存资源评估的基础指标。
+    host_mem_total_bytes:
+      name: 物理内存总量
+      desc: 表示主机物理内存总容量，用于评估主机可提供的内存资源上限。
+    host_mem_used_bytes:
+      name: 已用物理内存
+      desc: 表示主机当前已使用的物理内存容量，用于衡量实际内存消耗情况。
     mem_available:
       name: 可用内存
       desc: 表示系统在不触发明显性能下降的情况下，可分配给应用使用的内存容量。
+    host_mem_available_bytes:
+      name: 可用物理内存
+      desc: 表示当前可直接分配给业务或系统使用的物理内存容量，用于判断内存余量。
     mem_used_percent:
       name: 内存使用率
       desc: 表示已使用内存占总内存的比例，用于评估系统的内存压力水平。
+    host_mem_swap_total_bytes:
+      name: 交换分区总量
+      desc: 表示主机可用交换分区的总容量，用于评估内存紧张时的缓冲空间。
+    host_mem_swap_used_bytes:
+      name: 已用交换分区
+      desc: 表示主机当前已使用的交换分区容量，用于观察内存回收与换页压力。
     mem_swap_free:
       name: 空闲交换内存
       desc: 表示当前剩余可用的交换内存空间，用于监控内存紧张情况下的缓冲能力。
@@ -181,15 +214,27 @@ monitor_object_metric:
     net_bytes_recv_rate:
       name: 网络接收吞吐速率
       desc: 表示网络接口单位时间内接收的数据量，用于评估网络接收带宽使用情况。
+    host_net_rx_bytes:
+      name: 网络接收字节数
+      desc: 表示单个网络接口累计接收的字节数，用于分析网卡接收流量规模。
     net_bytes_sent_rate:
       name: 网络发送吞吐速率
       desc: 表示网络接口单位时间内发送的数据量，用于评估网络发送带宽使用情况。
+    host_net_tx_bytes:
+      name: 网络发送字节数
+      desc: 表示单个网络接口累计发送的字节数，用于分析网卡发送流量规模。
     net_err_in_rate:
       name: 网络接收错误包速率
       desc: 表示网络接口单位时间内接收到的错误数据包数量，用于监控网络质量。
+    host_net_rx_errors:
+      name: 网络接收错误数
+      desc: 表示单个网络接口累计接收错误次数，用于发现链路质量或驱动异常问题。
     net_err_out_rate:
       name: 网络发送错误包速率
       desc: 表示网络接口单位时间内发送失败的错误数据包数量。
+    host_net_tx_errors:
+      name: 网络发送错误数
+      desc: 表示单个网络接口累计发送错误次数，用于辅助排查网络发送异常或设备故障。
     net_drop_in_rate:
       name: 网络接收丢包速率
       desc: 表示网络接口单位时间内被丢弃的接收数据包数量，用于评估网络拥塞或异常情况。
@@ -428,6 +473,18 @@ monitor_object_metric:
     device_total_incoming_traffic:
       desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
       name: 设备接收总流量速率
+    device_total_incoming_netflow_traffic:
+      name: 设备 NetFlow 接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_outgoing_netflow_traffic:
+      name: 设备 NetFlow 发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_incoming_sflow_traffic:
+      name: 设备 sFlow 接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_outgoing_sflow_traffic:
+      name: 设备 sFlow 发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
     interface_ifOutOctets:
       desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节（MB）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
       name: 接口发送流量速率
@@ -556,6 +613,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+    device_total_incoming_netflow_traffic:
+      name: 设备 NetFlow 接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_outgoing_netflow_traffic:
+      name: 设备 NetFlow 发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_incoming_sflow_traffic:
+      name: 设备 sFlow 接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_outgoing_sflow_traffic:
+      name: 设备 sFlow 发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
   ActiveMQ:
     activemq_topics_consumer_count:
       name: 主题消费者数量
@@ -1674,6 +1743,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+    device_total_incoming_netflow_traffic:
+      name: 设备 NetFlow 接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_outgoing_netflow_traffic:
+      name: 设备 NetFlow 发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_incoming_sflow_traffic:
+      name: 设备 sFlow 接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_outgoing_sflow_traffic:
+      name: 设备 sFlow 发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
   Router:
     snmp_uptime:
       name: 系统运行时间
@@ -1717,6 +1798,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+    device_total_incoming_netflow_traffic:
+      name: 设备 NetFlow 接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_outgoing_netflow_traffic:
+      name: 设备 NetFlow 发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_incoming_sflow_traffic:
+      name: 设备 sFlow 接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_total_outgoing_sflow_traffic:
+      name: 设备 sFlow 发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
   Consul:
     consul_health_checks_passing:
       name: 健康检查通过数
@@ -2348,6 +2441,42 @@ monitor_object_metric:
       name: 最大延迟峰值
       desc: 过去5分钟内记录的最大延迟值，用于识别时间段内的最严重性能事件。
   Kafka:
+    kafka_up_gauge:
+      name: 监控探针状态
+      desc: 监控探针的运行状态。0代表连接服务不正常，1代表连接服务正常。需要注意无数据的情况可能是连接不存在。
+    kafka_brokers_gauge:
+      name: Broker数量
+      desc: Kafka集群中的 Broker 数量。
+    kafka_broker_info_gauge:
+      name: 节点信息
+      desc: Kafka节点的信息，包含节点地址和节点ID。
+    kafka_topic_partition_count:
+      name: 主题分区数
+      desc: 主题的分区数量。
+    kafka_topic_partition_current_offset:
+      name: 分区当前偏移量
+      desc: 指定主题和分区的当前偏移量。
+    kafka_topic_partition_oldest_offset:
+      name: 分区最早偏移量
+      desc: 指定主题和分区的最早偏移量。
+    kafka_topic_partition_in_sync_replica:
+      name: 分区同步副本数
+      desc: 指定主题和分区的同步副本数量。
+    kafka_topic_partition_leader_is_preferred:
+      name: 分区首选领导者状态
+      desc: 若主题/分区正在使用首选 Broker节点，则值为 1，否则为 0。
+    kafka_topic_partition_replicas:
+      name: 分区副本数
+      desc: 指定主题和分区的副本数量。
+    kafka_topic_partition_under_replicated_partition:
+      name: 分区副本不足状态
+      desc: 若主题/分区处于副本不足状态，则值为 1，否则为 0。
+    kafka_consumergroup_current_offset:
+      name: 消费者组当前偏移量
+      desc: 指定消费者组在指定主题和分区的当前偏移量。
+    kafka_consumergroup_lag:
+      name: 消费者组滞后偏移量
+      desc: 指定消费者组在指定主题和分区的当前近似滞后偏移量。
     up_gauge:
       name: 监控探针状态
       desc: 监控探针的运行状态。0代表连接服务不正常，1代表连接服务正常。需要注意无数据的情况可能是连接不存在。
@@ -2399,6 +2528,152 @@ monitor_object_metric:
     process_virtual_memory_bytes_gauge:
       name: 探针进程虚拟内存大小
       desc: 监控探针进程当前虚拟内存的大小。
+  Etcd:
+    etcd_server_has_leader_gauge:
+      name: 集群是否有主节点
+      desc: 当前成员是否能感知到集群主节点。
+    etcd_server_is_leader_gauge:
+      name: 当前角色
+      desc: 当前成员在集群中的角色。
+    etcd_network_active_peers_gauge:
+      name: 活跃节点连接数
+      desc: 当前可用的节点间连接数。
+    etcd_server_leader_changes_seen_total_counter_rate:
+      name: 主节点切换频率
+      desc: 最近5分钟主节点切换频率。
+    etcd_server_heartbeat_send_failures_total_counter_rate:
+      name: 心跳发送失败频率
+      desc: 最近5分钟心跳发送失败频率。
+    etcd_server_health_failures_counter_rate:
+      name: 健康检查失败频率
+      desc: 最近5分钟健康检查失败频率。
+    etcd_mvcc_db_total_size_in_bytes_gauge:
+      name: 后端已分配空间
+      desc: etcd后端存储当前已分配的物理空间。
+    etcd_mvcc_db_total_size_in_use_in_bytes_gauge:
+      name: 后端实际使用空间
+      desc: etcd后端存储当前实际使用的逻辑空间。
+    etcd_server_quota_backend_bytes_gauge:
+      name: 后端存储配额
+      desc: 后端存储配置的容量上限。
+    etcd_backend_allocated_usage_percent:
+      name: 后端存储使用率
+      desc: 后端已分配空间占总配额的比例。
+    etcd_backend_remaining_bytes:
+      name: 后端剩余容量
+      desc: 后端存储距离配额上限还剩多少空间。
+    etcd_backend_fragmentation_percent:
+      name: 后端碎片率
+      desc: 后端已分配空间与实际使用空间之间的碎片比例。
+    etcd_backend_urgent_defrag:
+      name: 是否需要整理碎片
+      desc: 当前后端空间是否已经达到需要尽快整理碎片的阈值。
+    etcd_debugging_mvcc_keys_total_gauge:
+      name: 键数量
+      desc: 当前存储中的键总数。
+    process_resident_memory_bytes_gauge:
+      name: 进程常驻内存
+      desc: etcd进程当前占用的常驻内存。
+    etcd_disk_wal_fsync_p99_seconds:
+      name: WAL 刷盘延迟 P99
+      desc: 最近5分钟 WAL 刷盘延迟的 P99。
+    etcd_disk_backend_commit_p99_seconds:
+      name: 后端提交延迟 P99
+      desc: 最近5分钟后端提交延迟的 P99。
+    etcd_debugging_snap_save_total_avg_seconds:
+      name: 快照平均耗时
+      desc: 最近5分钟快照保存的平均耗时。
+    etcd_server_proposals_pending_gauge:
+      name: 提案积压数
+      desc: 当前等待提交的提案数量。
+    etcd_server_proposals_failed_total_counter_rate:
+      name: 提案失败频率
+      desc: 最近5分钟提案失败频率。
+    etcd_server_proposals_committed_rate:
+      name: 提案提交频率
+      desc: 最近5分钟提案提交频率。
+    etcd_server_proposals_applied_rate:
+      name: 提案应用频率
+      desc: 最近5分钟提案应用频率。
+    etcd_server_proposals_apply_lag:
+      name: 提案应用落后数
+      desc: 已提交提案与已应用提案之间的差值。
+    etcd_server_slow_apply_total_counter_rate:
+      name: 慢应用请求频率
+      desc: 最近5分钟慢应用请求频率。
+    etcd_server_read_indexes_failed_total_counter_rate:
+      name: 读索引失败频率
+      desc: 最近5分钟读索引失败频率。
+    etcd_server_slow_read_indexes_total_counter_rate:
+      name: 慢读索引频率
+      desc: 最近5分钟慢读索引请求频率。
+    etcd_server_client_requests_total_counter_rate:
+      name: 客户端请求频率
+      desc: 最近5分钟 etcd 处理的客户端请求频率。
+    etcd_rpc_rate:
+      name: RPC 请求频率
+      desc: 最近5分钟一元 RPC 请求频率。
+    etcd_rpc_failed_rate:
+      name: RPC 失败频率
+      desc: 最近5分钟非 OK 的一元 RPC 失败频率。
+    etcd_network_client_grpc_received_bytes_total_counter_rate:
+      name: 客户端入站流量
+      desc: 最近5分钟来自客户端 gRPC 请求的入站流量。
+    etcd_network_client_grpc_sent_bytes_total_counter_rate:
+      name: 客户端出站流量
+      desc: 最近5分钟发送给客户端 gRPC 请求的出站流量。
+    etcd_network_peer_received_bytes_total_counter_rate:
+      name: 节点间入站流量
+      desc: 最近5分钟来自对等节点的入站流量。
+    etcd_network_peer_sent_bytes_total_counter_rate:
+      name: 节点间出站流量
+      desc: 最近5分钟发送给对等节点的出站流量。
+    etcd_network_peer_sent_failures_total_counter_rate:
+      name: 节点间发送失败频率
+      desc: 最近5分钟节点间发送失败频率。
+    etcd_debugging_mvcc_watcher_total_gauge:
+      name: 监听器数量
+      desc: 当前监听器数量。
+    etcd_watch_streams_active:
+      name: 活跃监听流
+      desc: 根据已建立和已结束的流式 RPC 推算出的当前活跃监听流数量。
+    etcd_debugging_mvcc_db_compaction_keys_total_counter_rate:
+      name: 压缩键处理频率
+      desc: 最近5分钟压缩处理的键数量频率。
+    etcd_mvcc_put_total_counter_rate:
+      name: 写入频率
+      desc: 最近5分钟写入操作频率。
+    etcd_mvcc_delete_total_counter_rate:
+      name: 删除频率
+      desc: 最近5分钟删除操作频率。
+  InfluxDB:
+    influxdb_database_numSeries:
+      name: Series 数量
+      desc: 单个 InfluxDB 数据库中当前的 Series 总数，是高基数风险的重要指标。
+    influxdb_httpd_authFail_rate:
+      name: HTTP 认证失败速率
+      desc: 最近5分钟 HTTP 认证失败的平均速率。
+    influxdb_httpd_clientError_rate:
+      name: HTTP 4XX 错误速率
+      desc: 最近5分钟 HTTP 4XX 响应的平均速率。
+    influxdb_httpd_serverError_rate:
+      name: HTTP 5XX 错误速率
+      desc: 最近5分钟 HTTP 5XX 响应的平均速率。
+    influxdb_httpd_pointsWrittenDropped_rate:
+      name: 写入点丢弃速率
+      desc: 最近5分钟写入 API 已接受但在持久化前被丢弃的数据点平均速率。
+    influxdb_httpd_pointsWrittenFail_rate:
+      name: 写入持久化失败速率
+      desc: 最近5分钟写入 API 已接受但持久化失败的数据点平均速率。
+    influxdb_httpd_writeReq_rate:
+      name: 写请求速率
+      desc: 最近5分钟写请求的平均速率。
+    influxdb_httpd_queryReq_rate:
+      name: 查询请求速率
+      desc: 最近5分钟查询请求的平均速率。
+    influxdb_runtime_HeapAlloc:
+      name: 运行时堆内存分配
+      desc: Go 运行时当前已分配且正在使用的堆内存大小。
 monitor_object_metric_group:
   Dameng:
     Base: 基础
@@ -2584,6 +2859,7 @@ monitor_object_metric_group:
     Disk: 磁盘
     Memory: 内存
   Mysql:
+    Base: 基础信息
     ConnStatus: 连接状态
     QueryPerf: 查询性能
     InnoDBPerf: InnoDB 性能
@@ -2701,6 +2977,18 @@ monitor_object_metric_group:
     Storage: 存储
     Connection: 连接
     Wait: 等待时间
+  Etcd:
+    集群状态: 集群状态
+    存储与碎片: 存储与碎片
+    磁盘时延: 磁盘时延
+    提案与一致性: 提案与一致性
+    请求与流量: 请求与流量
+    监听与压缩: 监听与压缩
+  InfluxDB:
+    数据库: 数据库
+    请求与错误: 请求与错误
+    写入稳定性: 写入稳定性
+    运行时: 运行时
 monitor_object_plugin:
   DM-Exporter:
     name: 达梦数据库监控探针
@@ -2732,6 +3020,12 @@ monitor_object_plugin:
   Switch SNMP General:
     name: 交换机通用（Telegraf）
     desc: 通过Telegraf采集器利用SNMP协议定期收集交换机各接口的流量、丢包数、错包数等IF-MIB关键指标。
+  Switch Flow NetFlow:
+    name: 交换机流量分析（NetFlow）
+    desc: 使用 NetFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。
+  Switch Flow sFlow:
+    name: 交换机流量分析（sFlow）
+    desc: 使用 sFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。
   WebLogic-JMX:
     name: WebLogic（JMX）
     desc: 通过WebLogic-JMX采集器定期收集WebLogic关键指标，包括线程池、连接池、内存、EJB、Servlet、JMS 性能及 Web 服务响应时间等。
@@ -2750,6 +3044,12 @@ monitor_object_plugin:
   Loadbalance SNMP General:
     desc: 通过Telegraf采集器利用SNMP协议定期收集负载均衡各接口的流量、丢包数、错包数等IF-MIB关键指标。
     name: 负载均衡设备通用（Telegraf）
+  Loadbalance Flow NetFlow:
+    name: 负载均衡流量分析（NetFlow）
+    desc: 使用 NetFlow 对负载均衡设备进行流量分析采集，并转换为标准化设备流量指标。
+  Loadbalance Flow sFlow:
+    name: 负载均衡流量分析（sFlow）
+    desc: 使用 sFlow 对负载均衡设备进行流量分析采集，并转换为标准化设备流量指标。
   Bastion Host SNMP General:
     desc: SNMP 通用插件用于通过 SNMP 监控和管理堡垒机的监控情况。管理员可以获取有关设备的关键信息，例如 接口流量、错误统计和状态信息等，从而优化网络性能和提高管理效率。
     name: 堡垒机通用（SNMP）
@@ -2765,12 +3065,24 @@ monitor_object_plugin:
   Firewall SNMP General:
     desc: 通过Telegraf采集器利用SNMP协议定期收集防火墙各接口的流量、丢包数、错包数等IF-MIB关键指标。
     name: 防火墙通用（Telegraf）
+  Firewall Flow NetFlow:
+    name: 防火墙流量分析（NetFlow）
+    desc: 使用 NetFlow 对防火墙进行流量分析采集，并转换为标准化设备流量指标。
+  Firewall Flow sFlow:
+    name: 防火墙流量分析（sFlow）
+    desc: 使用 sFlow 对防火墙进行流量分析采集，并转换为标准化设备流量指标。
   SNMP Trap:
     desc: SNMP Trap监控插件用于接收和处理网络设备主动推送的报警或状态通知（Trap消息），以实现实时监控和故障告警。
     name: SNMP Trap
   Router SNMP General:
     desc: 通过Telegraf采集器利用SNMP协议定期收集路由器各接口的流量、丢包数、错包数等IF-MIB关键指标。
     name: 路由器通用（Telegraf）
+  Router Flow NetFlow:
+    name: 路由器流量分析（NetFlow）
+    desc: 使用 NetFlow 对路由器进行流量分析采集，并转换为标准化设备流量指标。
+  Router Flow sFlow:
+    name: 路由器流量分析（sFlow）
+    desc: 使用 sFlow 对路由器进行流量分析采集，并转换为标准化设备流量指标。
   ActiveMQ-JMX:
     name: ActiveMQ-JMX
     desc: 该 ActiveMQ 插件基于 JMX 采集，可获取消息队列、连接池、消息吞吐量等关键性能指标，实时监控消息处理效率与资源使用情况，助力优化系统性能，保障服务稳定。
@@ -2801,6 +3113,9 @@ monitor_object_plugin:
   Host:
     desc: 通过Telegraf采集器收集和分析主机的性能数据，包括CPU、内存、磁盘和网络使用情况。
     name: 主机（Telegraf）
+  Host Remote:
+    name: 主机远程采集（Telegraf）
+    desc: 通过 Telegraf 结合 Stargazer 的远程能力，以 SSH/WinRM 无 Agent 方式采集主机的 CPU、内存、磁盘和网络指标。
   Ping:
     desc: 通过Telegraf采集器定期发送ICMP回显请求（ECHO_REQUEST）来检查目标主机或网络设备的连通性和响应时间。
     name: Ping（Telegraf）
@@ -2889,3 +3204,48 @@ monitor_object_type:
   Tencent Cloud: 腾讯云
   Network Device: 网络设备
   K8S: K8s
+
+flow_onboarding_ui:
+  accessAsset: 接入资产
+  accessGuide: 接入指引
+  accessComplete: 接入完成
+  accessCompleteTitle: 接入完成
+  accessCompleteDesc: Flow 资产已准备就绪，平台将为该资产持续接收并处理 Flow 流量。
+  accessCompleteSubDesc: 您可以查看资产列表、继续接入新的资产，或返回模板列表。
+  newAsset: 新建资产
+  existingAsset: 选择已有资产
+  accessAssetDesc: 选择“新建资产”将创建新的 Flow 监控资产；选择“选择已有资产”会将当前协议绑定到已有资产。
+  selectExistingAsset: 请选择已有 Flow 资产
+  existingAssetDesc: 选择已有 Flow 资产，复用现有资产标识与组织归属。
+  cloudRegion: 云区域
+  selectCloudRegion: 请选择云区域
+  cloudRegionDesc: 请选择资产所属云区域，Flow 监听地址将使用该区域的接入端点。
+  assetIp: 资产 IP
+  assetIpDesc: 请输入发送 Flow 数据的设备源 IP，并确保与导出器源地址保持一致。
+  assetName: 资产名称
+  assetNameDesc: 请使用便于识别的资产名称，例如“核心交换机-北京”。
+  organization: 所属组织
+  organizationDesc: 只有所选组织的成员才能查看和管理该 Flow 资产。
+  fallbackSamplingRate: 回退采样率
+  fallbackSamplingRateDesc: 默认值为 1000。当导出数据在归一化后仍未提供有效采样率时，系统会回退到该值。
+  assetTipTitle: Flow 接入前提示
+  assetTipDesc: 请先创建或选择监控资产，并保持资产 IP 与导出器源地址一致，平台才能正确匹配 Flow 数据。
+  guideIntroTitle: 配置设备导出
+  guideIntroDesc: 请按以下指引完成设备侧配置，导出流量后再执行检测。
+  protocol: 协议
+  endpoint: 接入端点
+  normalizationRule: 归一化与采样规则
+  deviceGuide: 设备侧指引
+  detectHintTitle: 接入检测
+  detectHintDesc: 完成设备配置后，请执行检测，确认平台已收到最近时间窗内的 Flow 数据。
+  detectAccess: 检测接入状态
+  detectSuccess: 接入成功
+  detectSuccessDesc: 已收到该资产的最新 Flow 数据，向导将自动进入下一步。
+  detectFailed: 未检测到数据
+  detectFailedDesc: 暂未检测到最近的 Flow 数据，请检查导出地址、协议类型和源 IP 后重试。
+  lastSeenAt: 最近上报时间
+  effectiveSamplingRate: 生效采样率
+  samplingRateSource: 采样率来源
+  viewAssetList: 查看资产列表
+  addAnotherAsset: 再接入一个资产
+  backToTemplateList: 返回模板列表

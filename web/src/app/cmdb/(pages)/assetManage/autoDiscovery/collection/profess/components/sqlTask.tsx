@@ -2,8 +2,6 @@
 
 import React, { useEffect, useRef } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
-import styles from '../index.module.scss';
-import { CaretRightOutlined } from '@ant-design/icons';
 import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import { useTaskForm } from '../hooks/useTaskForm';
@@ -13,9 +11,15 @@ import {
   SQL_FORM_INITIAL_VALUES,
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
-import { formatTaskValues, buildCredential } from '../hooks/formatTaskValues';
-import { Form, Spin, Input, Collapse, InputNumber } from 'antd';
+import {
+  formatTaskValues,
+  buildCredentialPool,
+  normalizeCredentialPool,
+  trimFormString,
+} from '../hooks/formatTaskValues';
+import { Form, Spin } from 'antd';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
+import CredentialPoolEditor from './credentialPoolEditor';
 
 interface SQLTaskFormProps {
   onClose: () => void;
@@ -89,31 +93,43 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
       return {
         ...baseData,
         ...instanceData,
-        credential: buildCredential(
-          {
-            user: 'user',
-            password: 'password',
-            port: 'port',
-            database: () => (isMssql ? values.database : undefined),
-          },
-          values
-        ),
+        credential: buildCredentialPool(values.credentialPool, (item) => {
+          const credential: Record<string, any> = {};
+          if (item.credential_id) {
+            credential.credential_id = item.credential_id;
+          }
+          const user = trimFormString(item.user || item.username);
+          const password = trimFormString(item.password);
+          if (user !== undefined) {
+            credential.user = user;
+          }
+          if (password && password !== PASSWORD_PLACEHOLDER) {
+            credential.password = password;
+          }
+          if (item.port !== undefined && item.port !== null && item.port !== '') {
+            credential.port = item.port;
+          }
+          if (isMssql) {
+            credential.database = trimFormString(item.database);
+          }
+          return credential;
+        }),
       };
     },
   });
 
   // 构建表单值，用于复制任务和编辑任务中回填表单数据（true:复制任务，false:编辑任务）
   const buildFormValues = (values: any, isCopy: boolean, ipRange?: string[]) => {
-    const credential = values.credential || {};
     return {
+      credentialPool: normalizeCredentialPool(values.credential).map((item) => ({
+        ...item,
+        user: item.user || item.username,
+        password: isCopy ? '' : PASSWORD_PLACEHOLDER,
+      })),
       ipRange,
       ...getCleanupFormValues(values),
       ...values,
-      ...values.credential,
       taskName: isCopy ? '' : values.name,
-      user: credential.user || credential.username,
-      password: isCopy ? '' : PASSWORD_PLACEHOLDER,
-      database: credential.database,
       organization: values.team || [],
       accessPointId: values.access_point?.[0]?.id,
     };
@@ -144,7 +160,10 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
         // 编辑任务中回填表单数据
         form.setFieldsValue(buildFormValues(values, false, ipRange));
       } else {
-        form.setFieldsValue(initialFormValues);
+        form.setFieldsValue({
+          ...initialFormValues,
+          credentialPool: [{ port: initialFormValues.port, ...(isMssql ? { database: 'master' } : {}) }],
+        });
       }
     };
     initForm();
@@ -172,75 +191,9 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >
-          <Collapse
-            ghost
-            defaultActiveKey={['credential']}
-            expandIcon={({ isActive }) => (
-              <CaretRightOutlined
-                rotate={isActive ? 90 : 0}
-                className="text-base"
-              />
-            )}
-          >
-            <Collapse.Panel
-              header={
-                <div className={styles.panelHeader}>
-                  {t('Collection.credential')}
-                </div>
-              }
-              key="credential"
-            >
-              <Form.Item
-                label={t('Collection.VMTask.username')}
-                name="user"
-                rules={[{ required: true, message: t('common.inputTip') }]}
-              >
-                <Input placeholder={t('common.inputTip')} />
-              </Form.Item>
-
-              <Form.Item
-                label={t('Collection.VMTask.password')}
-                name="password"
-                rules={[{ required: true, message: t('common.inputTip') }]}
-              >
-                <Input.Password
-                  placeholder={t('common.inputTip')}
-                  onFocus={(e) => {
-                    if (!editId) return;
-                    const value = e.target.value;
-                    if (value === PASSWORD_PLACEHOLDER) {
-                      form.setFieldValue('password', '');
-                    }
-                  }}
-                  onBlur={(e) => {
-                    if (!editId) return;
-                    const value = e.target.value;
-                    if (!value || value.trim() === '') {
-                      form.setFieldValue('password', PASSWORD_PLACEHOLDER);
-                    }
-                  }}
-                />
-              </Form.Item>
-
-              <Form.Item
-                label={t('Collection.port')}
-                name="port"
-                rules={[{ required: true, message: t('common.inputTip') }]}
-              >
-                <InputNumber min={1} max={65535} className="w-32" />
-              </Form.Item>
-
-              {isMssql && (
-                <Form.Item
-                  label={t('Collection.database')}
-                  name="database"
-                  rules={[{ required: true, message: t('common.inputTip') }]}
-                >
-                  <Input placeholder={t('common.inputTip')} />
-                </Form.Item>
-              )}
-            </Collapse.Panel>
-          </Collapse>
+          <Form.Item name="credentialPool">
+            <CredentialPoolEditor credentialShape="sql" editMode={Boolean(editId)} showDatabase={isMssql} />
+          </Form.Item>
         </BaseTaskForm>
       </Form>
     </Spin>

@@ -9,6 +9,7 @@
   "default_metric": "any({instance_type='kafka'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["kafka_up_gauge", "kafka_topic_partition_under_replicated_partition", "kafka_consumergroup_lag"],
+  "display_fields": [{"name": "Probe Status", "sort_order": 0, "metrics": [{"plugin": "Kafka-Exporter", "metric": "kafka_up_gauge"}]}, {"name": "Partition Under-Replicated Status", "sort_order": 1, "metrics": [{"plugin": "Kafka-Exporter", "metric": "kafka_topic_partition_under_replicated_partition"}]}, {"name": "Consumer Group Lag", "sort_order": 2, "metrics": [{"plugin": "Kafka-Exporter", "metric": "kafka_consumergroup_lag"}]}],
   "metrics": [
     {
       "metric_group": "Base",

@@ -199,6 +199,20 @@ error:
   knowledge_base_not_found: 知识库不存在
   knowledge_base_required: 缺少 knowledge_base_id
 tools:
+  monitor:
+    name: 监控
+    description: |
+      使用当前用户的监控身份查询 BK-Lite 监控对象、实例、指标和告警。
+    tools:
+      monitor_list_objects:
+        description: 获取可用的监控对象类型列表。
+  attachment_file:
+    name: 工作流附件文件
+    description: |
+      为工作流执行生成 Markdown、PDF 或 Word 附件文件，并返回可下载链接。
+    tools:
+      generate_attachment_file:
+        description: 生成工作流附件文件，保存到 MinIO 后端存储，并返回下载链接。
   kubernetes:
     name: Kubernetes工具
     description: |

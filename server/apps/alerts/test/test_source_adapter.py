@@ -413,6 +413,50 @@ def test_resolve_team_from_secret_no_secret(event_levels, restful_source):
 
 
 @pytest.mark.django_db
+def test_snmp_trap_authenticates_with_source_secret_and_routes_to_default_team(event_levels):
+    """SNMP Trap 源使用源级 secret 接入即可通过，事件统一归 Default 组（id=1）。"""
+    from apps.alerts.error import AuthenticationSourceError
+    from apps.alerts.constants.constants import DEFAULT_GROUP_ID
+
+    source = AlertSource.objects.create(
+        name="SNMP Trap",
+        source_id="snmp_trap",
+        source_type="restful",
+        secret="src-secret",
+        team_secrets={},
+        config={"event_fields_mapping": {}},
+    )
+
+    # 源级 secret 通过 + resolved_team 被赋为 Default 组
+    adapter = RestFulAdapter(alert_source=source, secret="src-secret")
+    assert adapter.authenticate() is True
+    assert adapter.resolved_team == [DEFAULT_GROUP_ID]
+
+    # 错误 secret 仍然拒绝
+    bad_adapter = RestFulAdapter(alert_source=source, secret="wrong")
+    with pytest.raises(AuthenticationSourceError):
+        bad_adapter.authenticate()
+
+
+@pytest.mark.django_db
+def test_non_snmp_trap_source_secret_still_rejected(event_levels):
+    """非 SNMP Trap 源即使 secret 等于源级 secret，没有 team_secret 也仍然拒绝（保持现有行为）。"""
+    from apps.alerts.error import AuthenticationSourceError
+
+    source = AlertSource.objects.create(
+        name="restful",
+        source_id="some-restful",
+        source_type="restful",
+        secret="src-secret",
+        team_secrets={},
+        config={"event_fields_mapping": {}},
+    )
+    adapter = RestFulAdapter(alert_source=source, secret="src-secret")
+    with pytest.raises(AuthenticationSourceError):
+        adapter.authenticate()
+
+
+@pytest.mark.django_db
 def test_resolve_team_from_secret_mismatch(event_levels):
     # team_secret 存在但 source_secret 不匹配 → 返回 []
     from apps.alerts.utils.util import encode_team_secret

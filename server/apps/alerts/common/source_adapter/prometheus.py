@@ -51,6 +51,7 @@ class PrometheusAdapter(AlertSourceAdapter):
         normalized_events = []
 
         for alert in alerts:
+            # TODO 参数字段不应该多从labels获取而是外层直接传递过来，后续可以优化告警源适配器的接口设计，减少对labels的依赖
             labels = {**common_labels, **(alert.get("labels", {}) or {})}
             annotations = {**common_annotations, **(alert.get("annotations", {}) or {})}
             alertname = labels.get("alertname") or annotations.get("alertname") or "Prometheus Alert"

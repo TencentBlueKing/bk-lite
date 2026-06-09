@@ -109,6 +109,7 @@ VMWARE_COLLECT_MAP = {
 # "network_interfaces_info_gauge"
 NETWORK_COLLECT = ["network_system_info_gauge", "network_interfaces_info_gauge"]
 NETWORK_INTERFACES_RELATIONS = "network_topo_info_gauge"
+NETWORK_TOPOLOGY_FACTS = "network_topology_facts_info_gauge"
 
 PROTOCOL_METRIC_MAP = {
     "mysql": ["mysql_info_gauge"],

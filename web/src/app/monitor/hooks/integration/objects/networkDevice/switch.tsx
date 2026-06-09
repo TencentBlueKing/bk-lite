@@ -52,17 +52,14 @@ export const useSwitchConfig = () => {
         }
       }
     ],
-    tableDiaplay: [
-      { type: 'value', key: 'snmp_uptime' },
-      { type: 'value', key: 'device_total_incoming_traffic' },
-      { type: 'value', key: 'device_total_outgoing_traffic' }
-    ],
     groupIds: {
       list: ['instance_id'],
       default: ['instance_id']
     },
     collectTypes: {
-      'Switch SNMP General': 'snmp'
+      'Switch SNMP General': 'snmp',
+      'Switch Flow NetFlow': 'netflow',
+      'Switch Flow sFlow': 'sflow'
     }
   };
 };

@@ -14,11 +14,16 @@ from apps.monitor.models.monitor_object import (
     MonitorObjectType,
 )
 from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.display_fields_metrics import extract_metric_names
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.tasks.grouping_rule import sync_instance_and_group
 
 
 class MonitorObjectService:
+    @staticmethod
+    def _project_instance_identity(qs):
+        return qs.only("id", "name", "cloud_region_id", "ip", "fallback_sampling_rate")
+
     @staticmethod
     def validate_new_instance_name_unique(monitor_object_id, monitor_instance_name):
         if not monitor_instance_name:
@@ -108,10 +113,11 @@ class MonitorObjectService:
 
         count = qs.count()
 
+        projected_qs = MonitorObjectService._project_instance_identity(qs)
         if page_size == -1:
-            objs = qs
+            objs = projected_qs
         else:
-            objs = qs[start:end]
+            objs = projected_qs[start:end]
 
         monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
         if not monitor_obj:
@@ -125,18 +131,17 @@ class MonitorObjectService:
             obj_metric_map.get("default_metric", ""),
             obj_metric_map.get("instance_id_keys"),
         )
+        org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[obj.id for obj in objs])
+        org_map = {}
+        for org in org_objs:
+            if org.monitor_instance_id not in org_map:
+                org_map[org.monitor_instance_id] = set()
+            org_map[org.monitor_instance_id].add(org.organization)
+
         result = []
 
         for obj in objs:
-            result.append(
-                {
-                    "instance_id": obj.id,
-                    "instance_id_values": list(parse_instance_id(obj.id)),
-                    "instance_name": obj.name or obj.id,
-                    "agent_id": instance_map.get(obj.id, {}).get("agent_id", ""),
-                    "time": instance_map.get(obj.id, {}).get("time", ""),
-                }
-            )
+            result.append(MonitorObjectService._serialize_instance_list_item(obj, instance_map, org_map))
 
         if add_metrics and page_size != -1:
             instance_ids = []
@@ -144,9 +149,12 @@ class MonitorObjectService:
                 instance_id = parse_instance_id(instance_info["instance_id"])
                 instance_ids.append(instance_id)
 
+            display_metric_names = extract_metric_names(obj_metric_map.get("display_fields", [])) or obj_metric_map.get(
+                "supplementary_indicators", []
+            )
             metrics_obj = Metric.objects.filter(
                 monitor_object_id=monitor_object_id,
-                name__in=obj_metric_map.get("supplementary_indicators", []),
+                name__in=display_metric_names,
             )
             for metric_obj in metrics_obj:
                 query_parts = []
@@ -178,6 +186,20 @@ class MonitorObjectService:
         MonitorObjectService.add_attr(result)
 
         return dict(count=count, results=result)
+
+    @staticmethod
+    def _serialize_instance_list_item(obj, instance_map, org_map):
+        return {
+            "instance_id": obj.id,
+            "instance_id_values": list(parse_instance_id(obj.id)),
+            "instance_name": obj.name or obj.id,
+            "agent_id": instance_map.get(obj.id, {}).get("agent_id", ""),
+            "time": instance_map.get(obj.id, {}).get("time", ""),
+            "cloud_region_id": obj.cloud_region_id,
+            "ip": obj.ip,
+            "fallback_sampling_rate": obj.fallback_sampling_rate,
+            "organizations": list(org_map.get(obj.id, [])),
+        }
 
     @staticmethod
     def generate_monitor_instance_id(monitor_object_id, monitor_instance_name, interval):
@@ -260,7 +282,7 @@ class MonitorObjectService:
                 )
 
     @staticmethod
-    def update_instance(instance_id, name, organizations):
+    def update_instance(instance_id, name=None, organizations=None, **extra_fields):
         """更新监控对象实例"""
         instance = MonitorInstance.objects.filter(id=instance_id).first()
         if not instance:
@@ -268,12 +290,16 @@ class MonitorObjectService:
         if name:
             MonitorObjectService.validate_update_instance_name_unique(instance, name)
             instance.name = name
-            instance.save()
+        for field in ("cloud_region_id", "ip", "fallback_sampling_rate", "auto"):
+            if field in extra_fields and extra_fields[field] is not None:
+                setattr(instance, field, extra_fields[field])
+        instance.save()
 
         # 更新组织信息
-        instance.monitorinstanceorganization_set.all().delete()
-        for org in organizations:
-            instance.monitorinstanceorganization_set.create(organization=org)
+        if organizations is not None:
+            instance.monitorinstanceorganization_set.all().delete()
+            for org in organizations:
+                instance.monitorinstanceorganization_set.create(organization=org)
 
     @staticmethod
     def remove_instances_organizations(instance_ids, organizations):
@@ -298,8 +324,9 @@ class MonitorObjectService:
     @staticmethod
     def set_instances_organizations(instance_ids, organizations):
         """设置监控对象实例组织"""
-        if not instance_ids or not organizations:
+        if not instance_ids:
             return
+        organizations = organizations or []
 
         with transaction.atomic():
             # 删除旧的组织关联
@@ -310,4 +337,5 @@ class MonitorObjectService:
             for instance_id in instance_ids:
                 for org in organizations:
                     creates.append(MonitorInstanceOrganization(monitor_instance_id=instance_id, organization=org))
-            MonitorInstanceOrganization.objects.bulk_create(creates, ignore_conflicts=True)
+            if creates:
+                MonitorInstanceOrganization.objects.bulk_create(creates, ignore_conflicts=True)

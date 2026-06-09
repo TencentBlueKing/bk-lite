@@ -26,6 +26,7 @@ class TriggerType(str, Enum):
     EXPIRATION = "expiration"  # 临近到期
     INSTANCE_ADDED = "instance_added"  # 实例新增
     INSTANCE_DELETED = "instance_deleted"  # 实例删除
+    CONFIG_FILE = "config_file"  # 配置文件
 
 
 # 触发类型显示名称映射
@@ -35,6 +36,7 @@ TRIGGER_TYPE_CHOICES = {
     TriggerType.EXPIRATION.value: "临近到期",
     TriggerType.INSTANCE_ADDED.value: "实例新增",
     TriggerType.INSTANCE_DELETED.value: "实例删除",
+    TriggerType.CONFIG_FILE.value: "配置文件",
 }
 
 # ========== 任务调度与锁 ==========

@@ -2,7 +2,7 @@ class MonitorObjConstants:
     """监控实例相关常量"""
 
     # 监控对象关键字段
-    OBJ_KEYS = ["name", "type", "default_metric", "instance_id_keys", "supplementary_indicators"]
+    OBJ_KEYS = ["name", "type", "default_metric", "instance_id_keys", "supplementary_indicators", "display_fields"]
 
     # 对象默认顺序
     DEFAULT_OBJ_ORDER = [

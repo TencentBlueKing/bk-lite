@@ -5,6 +5,10 @@ import {
   OrderParam,
   NodeConfigParam,
   InstanceInfo,
+  FlowAssetPayload,
+  FlowDetectParams,
+  FlowGuideParams,
+  FlowIntegrationApi,
   SnmpCollectTemplateDoc,
 } from '@/app/monitor/types/integration';
 import { AxiosRequestConfig } from 'axios';
@@ -210,7 +214,21 @@ const useIntegrationApi = () => {
           params
         );
       },
-    }),
+      createFlowAsset: async (data: FlowAssetPayload) => {
+        return await post('/monitor/api/manual_collect/flow_asset/', data);
+      },
+      updateFlowAsset: async (
+        data: Partial<FlowAssetPayload> & { instance_id: string }
+      ) => {
+        return await post('/monitor/api/manual_collect/flow_asset/update/', data);
+      },
+      getFlowGuide: async (params: FlowGuideParams) => {
+        return await post('/monitor/api/manual_collect/flow_access_guide/', params);
+      },
+      detectFlowStatus: async (data: FlowDetectParams) => {
+        return await post('/monitor/api/manual_collect/flow_detect_status/', data);
+      },
+    } satisfies FlowIntegrationApi),
     [del, get, post, put]
   );
 };

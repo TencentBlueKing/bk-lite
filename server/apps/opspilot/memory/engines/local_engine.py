@@ -87,7 +87,7 @@ class LocalMemoryEngine(BaseMemoryEngine):
         Args:
             model_id: 可选的模型 ID，用于覆盖记忆空间的默认模型
         """
-        from apps.opspilot.tasks import process_memory_write
+        from apps.opspilot.tasks import process_memory_write, process_memory_write_cache
 
         try:
             # 解析实体信息
@@ -114,16 +114,33 @@ class LocalMemoryEngine(BaseMemoryEngine):
                     owner_domain = ""
                 organization_id = None
 
-            # 调用 Celery 任务
-            process_memory_write.delay(
-                memory_space_id=self.memory_space_id,
-                title=title or "自动记忆",
-                content=content,
-                owner_username=owner_username,
-                owner_domain=owner_domain,
-                organization_id=organization_id,
-                model_id=model_id,
-            )
+            workflow_id = metadata.get("workflow_id") if isinstance(metadata, dict) else None
+            node_id = metadata.get("node_id") if isinstance(metadata, dict) else None
+            write_batch_size = metadata.get("write_batch_size") if isinstance(metadata, dict) else None
+
+            if workflow_id and node_id:
+                process_memory_write_cache.delay(
+                    memory_space_id=self.memory_space_id,
+                    title=title or "自动记忆",
+                    content=content,
+                    owner_username=owner_username,
+                    owner_domain=owner_domain,
+                    organization_id=organization_id,
+                    model_id=model_id,
+                    workflow_id=workflow_id,
+                    node_id=node_id,
+                    write_batch_size=write_batch_size,
+                )
+            else:
+                process_memory_write.delay(
+                    memory_space_id=self.memory_space_id,
+                    title=title or "自动记忆",
+                    content=content,
+                    owner_username=owner_username,
+                    owner_domain=owner_domain,
+                    organization_id=organization_id,
+                    model_id=model_id,
+                )
             return MemoryWriteResult(
                 success=True,
                 message="记忆写入任务已提交",

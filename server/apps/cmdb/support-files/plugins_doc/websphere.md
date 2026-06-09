@@ -1,0 +1,71 @@
+### 说明
+基于脚本方式采集 WebSphere 实例的版本与配置信息（SOAP 连接端口、安装路径、Java 版本、Cell/Node/Server 拓扑、端口清单等），标准化同步至 CMDB。采集为只读，不修改目标任何配置。
+
+> **【BETA / 未测试】** 本插件尚未经过完整测试验证，请在非生产环境先行试用，确认采集结果符合预期后再推广使用。
+
+### 执行方式
+本插件为 **JOB（SSH 脚本）** 类型，按目标 IP 自动选择执行方式：
+
+| 目标情况 | 执行方式 | 是否需要 SSH 凭据 |
+| :--- | :--- | :--- |
+| 目标主机**已安装 Agent**（在节点管理的节点列表中） | **本地执行**：Agent 直接在该主机上运行采集脚本 | 不需要 |
+| 目标主机**未安装 Agent**（不在节点列表中） | **SSH 远程回退**：由接入点节点 SSH 连入目标执行脚本 | 需要 |
+
+> 一句话：装了 Agent 的机器零凭据即可采集；未装的依赖你填写的 SSH 账号远程采集。
+
+### 版本兼容性
+- 兼容主流 WebSphere Application Server 版本；建议在目标实例上先行验证。
+
+### 前置要求
+1. **网络与连通**
+   - SSH 目标：接入点到目标的 SSH 端口（默认 `22`，可自定义）连通。
+   - 本地执行目标：该主机的 Agent/Executor 在节点管理中正常在线即可。
+2. **采集账号与权限（仅 SSH 远程时需要）**
+   - 需要具备读取 `serverindex.xml` 的权限，以及执行 `versionInfo.sh` 的权限。
+3. **目标依赖**
+   - 目标主机已安装 Java 运行环境。
+   - 目标主机存在运行中的 WebSphere 进程。
+
+### 操作步骤
+#### 步骤 0：操作入口
+1. 进入“CMDB → 管理 → 自动发现 → 采集 → 专业采集”。
+2. 选择插件 **WebSphere**，点击“新增任务”。
+
+> 任务实际执行发生在你选择的“接入点”上；下面的自测命令应在接入点机器上执行。
+
+#### 步骤 1：网络连通性自测（接入点执行，仅 SSH 目标）
+- Linux：`nc -vz <host_ip> 22`
+- Windows PowerShell：`Test-NetConnection <host_ip> -Port 22`
+
+判断标准：端口连通即可。
+
+#### 步骤 2：填写任务
+- **采集目标**：填写目标 IP 段（支持 CIDR、逗号分隔、区间）。
+- **凭据**：为“未装 Agent”的目标准备 SSH 凭据。
+- 设置超时与采集周期，保存并执行。
+
+#### 步骤 3：验证结果
+- 在任务详情查看 `新增 / 更新 / 删除` 摘要与原始数据；在 CMDB 对应模型下应能查询到实例。
+
+### 凭据字段说明
+- `username`：SSH 登录用户名（仅 SSH 目标需要）。
+- `password`：上述账号的密码。落库自动加密，下发时以环境变量注入，不写入明文配置文件。
+- `port`：SSH 端口，默认 `22`。
+
+### 采集内容
+| Key 名称 | 含义 |
+| :--- | :--- |
+| bk_inst_name | 实例展示名 |
+| ip_addr | 主机内网 IP |
+| port | SOAP 连接端口（`SOAP_CONNECTOR_ADDRESS`，来自 `serverindex.xml`） |
+| install_path | 安装路径 |
+| bin_path | bin 目录路径 |
+| version | WebSphere 版本（`versionInfo.sh`） |
+| java_version | Java 版本 |
+| java_path | Java 路径 |
+| server_name | Server 名称 |
+| cell | Cell 名称 |
+| node | Node 名称 |
+| port_list | 端口清单 |
+
+> 补充说明：`port`、`port_list` 从 `serverindex.xml` 解析；`version`、`java_version` 依赖 `versionInfo.sh` 的执行结果，命令不可用时对应字段可能为空。

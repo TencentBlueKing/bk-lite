@@ -64,7 +64,111 @@ const validateTopNData = (
     : { isValid: false, message: errorMessage || '数据格式不匹配' };
 };
 
+const validateGaugeData = (
+  data: unknown,
+  config?: ValueConfig,
+): { isValid: boolean; message?: string } => {
+  if (!data || (Array.isArray(data) && data.length === 0)) {
+    return { isValid: true };
+  }
+
+  const selectedField = config?.selectedFields?.[0];
+  const failMessage =
+    '数据结构不符：仪表盘期望 number，或包含数值字段的对象/数组（可通过“展示字段”指定）';
+
+  const hasNumericValue = (value: unknown) => {
+    if (typeof value === 'number') return Number.isFinite(value);
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed);
+    }
+    return false;
+  };
+
+  if (Array.isArray(data)) {
+    const firstItem = data[0];
+    if (selectedField && firstItem && typeof firstItem === 'object') {
+      return hasNumericValue(getValueByPath(firstItem, selectedField))
+        ? { isValid: true }
+        : { isValid: false, message: failMessage };
+    }
+
+    if (hasNumericValue(firstItem)) {
+      return { isValid: true };
+    }
+
+    if (firstItem && typeof firstItem === 'object') {
+      const values = Object.values(firstItem as Record<string, unknown>);
+      return values.some((item) => hasNumericValue(item))
+        ? { isValid: true }
+        : { isValid: false, message: failMessage };
+    }
+
+    return { isValid: false, message: failMessage };
+  }
+
+  if (typeof data === 'object') {
+    if (selectedField) {
+      return hasNumericValue(getValueByPath(data, selectedField))
+        ? { isValid: true }
+        : { isValid: false, message: failMessage };
+    }
+
+    const values = Object.values(data as Record<string, unknown>);
+    return values.some((item) => hasNumericValue(item))
+      ? { isValid: true }
+      : { isValid: false, message: failMessage };
+  }
+
+  return hasNumericValue(data)
+    ? { isValid: true }
+    : { isValid: false, message: failMessage };
+};
+
+const validateEventTableData = (
+  data: unknown,
+): { isValid: boolean; message?: string } => {
+  if (!data || (Array.isArray(data) && data.length === 0)) {
+    return { isValid: true };
+  }
+
+  const failMessage =
+    '数据结构不符：事件表期望数组，或包含 items 数组的分页结构';
+
+  const list = Array.isArray(data)
+    ? data
+    : data &&
+        typeof data === 'object' &&
+        Array.isArray((data as Record<string, unknown>).items)
+      ? ((data as Record<string, unknown>).items as unknown[])
+      : null;
+
+  if (!list) {
+    return { isValid: false, message: failMessage };
+  }
+
+  if (list.length === 0) {
+    return { isValid: true };
+  }
+
+  const hasExpectedRow = list.some((item) => {
+    return Boolean(item) && typeof item === 'object';
+  });
+
+  return hasExpectedRow
+    ? { isValid: true }
+    : { isValid: false, message: failMessage };
+};
+
 const inflightWidgetRequests = new Map<string, Promise<unknown>>();
+const widgetRequestCache = new Map<
+  string,
+  {
+    rawData: any;
+    baselineData: any;
+    dataValidation: { isValid: boolean; message?: string } | null;
+  }
+>();
 
 const getOrCreateInflightRequest = async <T,>(
   requestKey: string,
@@ -86,6 +190,7 @@ const getOrCreateInflightRequest = async <T,>(
 };
 
 interface WidgetWrapperProps {
+  dashboardId?: number | string;
   widgetId: string;
   chartType?: string;
   config?: ValueConfig;
@@ -100,6 +205,7 @@ interface WidgetWrapperProps {
 }
 
 const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
+  dashboardId,
   widgetId,
   chartType,
   config,
@@ -137,6 +243,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     }
     return config?.dataSource;
   }, [config?.dataSource]);
+  const isTableLikeChart = chartType === 'table' || chartType === 'eventTable';
   const widgetUsesNamespace = useMemo(
     () =>
       Array.isArray(dataSource?.namespaces) && dataSource.namespaces.length > 0,
@@ -160,7 +267,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         ...(widgetUsesNamespace && builtinNamespaceId !== undefined
           ? { namespace_id: builtinNamespaceId }
           : {}),
-        ...(chartType === 'table' ? tableQueryParams : {}),
+        ...(isTableLikeChart ? tableQueryParams : {}),
       },
       unifiedFilterValues,
       filterBindings: config?.filterBindings,
@@ -172,7 +279,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     dataSource,
     widgetUsesNamespace,
     builtinNamespaceId,
-    chartType,
+    isTableLikeChart,
     tableQueryParams,
     unifiedFilterValues,
     filterDefinitions,
@@ -190,7 +297,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         ...(widgetUsesNamespace && builtinNamespaceId !== undefined
           ? { namespace_id: builtinNamespaceId }
           : {}),
-        ...(chartType === 'table' ? tableQueryParams : {}),
+        ...(isTableLikeChart ? tableQueryParams : {}),
       },
       unifiedFilterValues,
       filterBindings: config?.filterBindings,
@@ -202,7 +309,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     dataSource,
     widgetUsesNamespace,
     builtinNamespaceId,
-    chartType,
+    isTableLikeChart,
     tableQueryParams,
     unifiedFilterValues,
     filterDefinitions,
@@ -218,6 +325,21 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       requestParams: requestSignatureParams,
     });
   }, [normalizedDataSourceId, requestSignatureParams]);
+
+  const requestKey = useMemo(() => {
+    if (!requestSignature) {
+      return null;
+    }
+
+    return `${dashboardId ?? 'dashboard'}:${widgetId}:${reloadVersion}:${filterSearchVersion}:${namespaceSearchVersion}:${requestSignature}`;
+  }, [
+    dashboardId,
+    filterSearchVersion,
+    namespaceSearchVersion,
+    reloadVersion,
+    requestSignature,
+    widgetId,
+  ]);
 
   const invalidBindings = useMemo((): BindingValidationResult[] => {
     const bindings = config?.filterBindings;
@@ -300,6 +422,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           return ChartDataTransformer.validateLineBarData(data, errorMessage);
         case 'topN':
           return validateTopNData(data, config, errorMessage);
+        case 'gauge':
+          return validateGaugeData(data, config);
+        case 'eventTable':
+          return validateEventTableData(data);
         case 'table':
           return { isValid: true };
         default:
@@ -309,10 +435,13 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     [config, t],
   );
 
-  const fetchDataRef = useRef<(params: Record<string, any>, key: string) => Promise<void>>(undefined!);
-  fetchDataRef.current = async (nextRequestParams: Record<string, any>, requestKey: string) => {
-    const isTableChart = chartType === 'table';
-
+  const fetchDataRef = useRef<
+    (params: Record<string, any>, key: string) => Promise<void>
+      >(undefined!);
+  fetchDataRef.current = async (
+    nextRequestParams: Record<string, any>,
+    requestKey: string,
+  ) => {
     if (!normalizedDataSourceId) {
       return;
     }
@@ -320,7 +449,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     const currentFetchId = ++fetchIdRef.current;
 
     try {
-      if (isTableChart) {
+      if (isTableLikeChart) {
         setTableLoading(true);
       } else {
         setLoading(true);
@@ -353,6 +482,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
       const validation = validateChartData(data.currentData, chartType);
       setDataValidation(validation);
+      widgetRequestCache.set(requestKey, {
+        rawData: data.currentData,
+        baselineData: data.baselineData,
+        dataValidation: validation,
+      });
     } catch (err) {
       if (currentFetchId !== fetchIdRef.current) return;
       console.error('获取数据失败:', err);
@@ -362,9 +496,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         isValid: false,
         message: getRequestErrorMessage(err, t('dashboard.dataFetchFailed')),
       });
+      widgetRequestCache.delete(requestKey);
     } finally {
       if (currentFetchId !== fetchIdRef.current) return;
-      if (isTableChart) {
+      if (isTableLikeChart) {
         setTableLoading(false);
       } else {
         setLoading(false);
@@ -399,13 +534,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       });
       return;
     }
-
-  }, [
-    normalizedDataSourceId,
-    dataSource,
-    dataSource?.hasAuth,
-    t,
-  ]);
+  }, [normalizedDataSourceId, dataSource, dataSource?.hasAuth, t]);
 
   const previousRequestRef = useRef<{
     signature: string | null;
@@ -424,6 +553,41 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   });
 
   useEffect(() => {
+    if (!requestEnabled || !requestSignature || !requestKey) {
+      return;
+    }
+
+    const cached = widgetRequestCache.get(requestKey);
+
+    if (!cached) {
+      return;
+    }
+
+    setRawData(cached.rawData);
+    setBaselineData(cached.baselineData);
+    setDataValidation(cached.dataValidation);
+    setLoading(false);
+    setTableLoading(false);
+    previousRequestRef.current = {
+      signature: requestSignature,
+      filterSearchVersion,
+      namespaceSearchVersion,
+      reloadVersion,
+      tableQueryKey,
+      hasRequested: true,
+    };
+  }, [
+    dashboardId,
+    filterSearchVersion,
+    namespaceSearchVersion,
+    reloadVersion,
+    requestEnabled,
+    requestKey,
+    requestSignature,
+    tableQueryKey,
+  ]);
+
+  useEffect(() => {
     const previousRequest = previousRequestRef.current;
     const signatureChanged = previousRequest.signature !== requestSignature;
     const filterSearchChanged =
@@ -437,9 +601,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       filterSearchChanged && hasEnabledFilterBindings;
     const shouldFetchForNamespaceSearch =
       namespaceSearchChanged && widgetUsesNamespace;
-    const shouldFetchForTableQuery = chartType === 'table' && tableQueryChanged;
+    const shouldFetchForTableQuery = isTableLikeChart && tableQueryChanged;
 
-    if (!requestEnabled || !requestSignature || !requestParams) {
+    if (!requestEnabled || !requestSignature || !requestParams || !requestKey) {
       previousRequestRef.current = {
         signature: requestSignature,
         filterSearchVersion,
@@ -472,12 +636,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       return;
     }
 
-    const requestKey = `${widgetId}:${reloadVersion}:${filterSearchVersion}:${namespaceSearchVersion}:${requestSignature}`;
     fetchDataRef.current(requestParams, requestKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    widgetId,
     requestEnabled,
+    requestKey,
     requestSignature,
     requestParams,
     filterSearchVersion,
@@ -485,6 +648,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     reloadVersion,
     tableQueryKey,
     chartType,
+    isTableLikeChart,
     hasEnabledFilterBindings,
     widgetUsesNamespace,
   ]);
@@ -549,7 +713,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     <WidgetErrorState message={message} />
   );
 
-  if (loading && chartType !== 'table') {
+  if (loading && !isTableLikeChart) {
     return (
       <div className="h-full flex items-center justify-center">
         <Spin spinning={loading} />
@@ -567,18 +731,18 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   return (
     <div style={{ position: 'relative', height: '100%' }}>
       {renderBindingWarning()}
-        <WidgetRenderer
-          chartType={chartType}
-          rawData={rawData}
-          baselineData={baselineData}
-          loading={chartType === 'table' ? tableLoading : loading}
-          config={config}
+      <WidgetRenderer
+        chartType={chartType}
+        rawData={rawData}
+        baselineData={baselineData}
+        loading={isTableLikeChart ? tableLoading : loading}
+        config={config}
         dataSource={dataSource}
         onReady={onReady}
-        onQueryChange={
-          chartType === 'table' ? handleTableQueryChange : undefined
-        }
-        fallback={renderError(`${t('dashboard.unknownComponentType')}: ${chartType}`)}
+        onQueryChange={isTableLikeChart ? handleTableQueryChange : undefined}
+        fallback={renderError(
+          `${t('dashboard.unknownComponentType')}: ${chartType}`,
+        )}
       />
     </div>
   );

@@ -12,7 +12,6 @@ from apps.operation_analysis.models.models import Dashboard
 from apps.operation_analysis.services.import_export import view_sets as vs
 from apps.operation_analysis.services.import_export.export_service import ExportService
 
-
 # --------------------------------------------------------------------------
 # view_sets 归一化
 # --------------------------------------------------------------------------
@@ -25,9 +24,9 @@ def test_normalize_dashboard_returns_list():
 
 def test_normalize_topology_fills_keys():
     out = vs.normalize_canvas_view_sets_for_storage({}, ObjectType.TOPOLOGY)
-    assert out == {"nodes": [], "edges": [], "filters": []}
+    assert out == {"nodes": [], "edges": [], "filters": [], "viewport": {}}
     out2 = vs.normalize_canvas_view_sets_for_storage("bad", ObjectType.TOPOLOGY)
-    assert out2 == {"nodes": [], "edges": [], "filters": []}
+    assert out2 == {"nodes": [], "edges": [], "filters": [], "viewport": {}}
 
 
 def test_normalize_architecture_fills_keys():
@@ -39,7 +38,7 @@ def test_normalize_architecture_fills_keys():
 
 def test_normalize_for_yaml_dashboard_and_other():
     assert vs.normalize_canvas_view_sets_for_yaml([1], ObjectType.DASHBOARD) == [1]
-    assert vs.normalize_canvas_view_sets_for_yaml({}, ObjectType.TOPOLOGY) == {"nodes": [], "edges": [], "filters": []}
+    assert vs.normalize_canvas_view_sets_for_yaml({}, ObjectType.TOPOLOGY) == {"nodes": [], "edges": [], "filters": [], "viewport": {}}
 
 
 def test_rewrite_datasource_refs_in_dashboard():
@@ -49,10 +48,16 @@ def test_rewrite_datasource_refs_in_dashboard():
 
 
 def test_rewrite_datasource_refs_in_topology():
-    view_sets = {"nodes": [{"valueConfig": {"dataSource": 3}}], "edges": [], "filters": [{"x": 1}]}
+    view_sets = {
+        "nodes": [{"valueConfig": {"dataSource": 3}}],
+        "edges": [],
+        "filters": [{"x": 1}],
+        "viewport": {"width": 1920, "height": 1080, "letterboxColor": "#000000"},
+    }
     out = vs.rewrite_canvas_view_sets_refs_for_storage(view_sets, ObjectType.TOPOLOGY, {3: "ds::k"})
     assert out["nodes"][0]["valueConfig"]["dataSource"] == "ds::k"
     assert out["filters"] == [{"x": 1}]
+    assert out["viewport"] == {"width": 1920, "height": 1080, "letterboxColor": "#000000"}
 
 
 def test_rewrite_datasource_refs_for_yaml_architecture():

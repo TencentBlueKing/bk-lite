@@ -42,6 +42,8 @@ export interface K8sRenderParams {
   server_url: string;
   cluster_name: string;
   push_source_id?: string;
+  team_secret?: string;
+  insecure_skip_verify?: boolean;
 }
 
 export interface SnmpTrapNodeItem {

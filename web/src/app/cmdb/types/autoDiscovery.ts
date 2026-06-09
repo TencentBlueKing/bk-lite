@@ -1,3 +1,24 @@
+export type TopologyProtocol = 'lldp' | 'cdp' | 'fdb' | 'arp';
+
+export type TopologyFallbackStrategy =
+  | 'prefer_neighbors_then_fdb_then_arp'
+  | 'strict_neighbors_only';
+
+export interface TopologyTaskParams {
+  has_network_topo?: boolean;
+  topology_protocols?: TopologyProtocol[];
+  topology_fallback_strategy?: TopologyFallbackStrategy;
+  min_confidence?: number;
+  [key: string]: any;
+}
+
+export interface SnmpTopologyFormValues {
+  hasNetworkTopo?: boolean;
+  topologyProtocols?: TopologyProtocol[];
+  topologyFallbackStrategy?: TopologyFallbackStrategy;
+  minConfidence?: number;
+}
+
 export interface CollectTaskMessage {
   all: number;
   add: number;
@@ -16,6 +37,25 @@ export interface CollectTaskMessage {
   last_time?: string;
 }
 
+export interface CredentialPoolItem {
+  credential_id?: string;
+  _client_id?: string;
+  username?: string;
+  user?: string;
+  password?: string;
+  port?: number | string;
+  database?: string;
+  version?: string;
+  level?: string;
+  integrity?: string;
+  privacy?: string;
+  community?: string;
+  authkey?: string;
+  privkey?: string;
+  snmp_port?: number | string;
+  [key: string]: any;
+}
+
 export interface CollectTask {
   id: number;
   name: string;
@@ -30,6 +70,8 @@ export interface CollectTask {
   exec_time: string | null;
   input_method: number;
   examine: boolean,
+  credential?: CredentialPoolItem | CredentialPoolItem[];
+  params?: TopologyTaskParams;
   [permission: string]: any;
 }
 

@@ -138,6 +138,7 @@ class ScheduledTaskViewSet(AuthViewSet):
             status=ExecutionStatus.PENDING,
             script=instance.script,
             playbook=instance.playbook,
+            playbook_version=instance.playbook.version if instance.playbook else "",
             params=params_str,
             script_type=instance.script_type,
             script_content=instance.script_content,

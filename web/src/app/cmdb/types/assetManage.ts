@@ -4,6 +4,8 @@ export interface GroupItem {
   classification_id: string;
   count: number;
   list: ModelItem[];
+  is_visible?: boolean;
+  order?: number;
   [key: string]: any;
 }
 
@@ -14,6 +16,8 @@ export interface ModelItem {
   icn: string;
   organization?: number;
   group?: number | number[];
+  is_visible?: boolean;
+  order_id?: number;
   [key: string]: any;
 }
 

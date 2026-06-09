@@ -106,6 +106,18 @@ monitor_object_metric:
     system_load15:
       name: 15 Minute Average Load
       desc: Represents the average system load over the last 15 minutes, commonly used to evaluate long-term load stability.
+    host_cpu_core_count:
+      name: CPU Core Count
+      desc: Represents the number of logical CPU cores available on the host, used to evaluate compute capacity and resource baseline.
+    host_cpu_load_1m:
+      name: 1 Minute Average Load
+      desc: Represents the host's average system load over the last 1 minute, used to observe instantaneous runtime pressure.
+    host_cpu_load_5m:
+      name: 5 Minute Average Load
+      desc: Represents the host's average system load over the last 5 minutes, used to evaluate short-term load trends.
+    host_cpu_load_15m:
+      name: 15 Minute Average Load
+      desc: Represents the host's average system load over the last 15 minutes, used to determine whether the system remains under sustained load.
     diskio_io_util:
       name: Disk I/O Usage
       desc: Indicates the proportion of time a disk device is busy handling I/O operations. Sustained high values usually suggest disk I/O saturation.
@@ -130,9 +142,15 @@ monitor_object_metric:
     disk_total:
       name: Disk Total
       desc: Represents the total capacity of a disk or filesystem, used for capacity planning and resource management.
+    host_disk_total_bytes:
+      name: Filesystem Total Capacity
+      desc: Represents the total capacity of the filesystem for a specific mount point, used to evaluate per-mount capacity baselines.
     disk_free:
       name: Disk Free
       desc: Represents the currently available free space of a disk or filesystem, used to monitor capacity risks.
+    host_disk_used_bytes:
+      name: Filesystem Used Capacity
+      desc: Represents the amount of disk space currently consumed on a specific mount point, used to analyze filesystem space usage.
     disk_used_percent:
       name: Disk Usage
       desc: Represents the percentage of disk space that has been consumed, a core metric for disk capacity monitoring.
@@ -154,12 +172,27 @@ monitor_object_metric:
     mem_total:
       name: Total Memory
       desc: Represents the total amount of physical memory available on the system, serving as a baseline for memory evaluation.
+    host_mem_total_bytes:
+      name: Total Physical Memory
+      desc: Represents the total physical memory capacity of the host, used to evaluate the upper bound of available memory resources.
+    host_mem_used_bytes:
+      name: Used Physical Memory
+      desc: Represents the amount of physical memory currently consumed on the host, used to measure actual memory usage.
     mem_available:
       name: Available Memory
       desc: Represents the amount of memory available for applications without causing significant performance degradation.
+    host_mem_available_bytes:
+      name: Available Physical Memory
+      desc: Represents the amount of physical memory currently available for workloads or the operating system, used to judge remaining memory headroom.
     mem_used_percent:
       name: Memory Usage
       desc: Represents the percentage of memory currently in use, indicating overall memory pressure.
+    host_mem_swap_total_bytes:
+      name: Total Swap Space
+      desc: Represents the total swap capacity available on the host, used to evaluate buffering capacity under memory pressure.
+    host_mem_swap_used_bytes:
+      name: Used Swap Space
+      desc: Represents the amount of swap space currently in use on the host, used to observe paging and memory reclamation pressure.
     mem_swap_free:
       name: Swap Free Memory
       desc: Represents the amount of free swap space available, used to monitor buffering capacity under memory pressure.
@@ -181,15 +214,27 @@ monitor_object_metric:
     net_bytes_recv_rate:
       name: Network Receive Throughput Rate
       desc: Represents the amount of data received per unit time on a network interface, used to evaluate inbound bandwidth utilization.
+    host_net_rx_bytes:
+      name: Network Received Bytes
+      desc: Represents the cumulative number of bytes received on a specific network interface, used to analyze inbound traffic volume.
     net_bytes_sent_rate:
       name: Network Send Throughput Rate
       desc: Represents the amount of data sent per unit time on a network interface, used to evaluate outbound bandwidth utilization.
+    host_net_tx_bytes:
+      name: Network Transmitted Bytes
+      desc: Represents the cumulative number of bytes transmitted on a specific network interface, used to analyze outbound traffic volume.
     net_err_in_rate:
       name: Network Receive Error Rate
       desc: Represents the number of errored packets received per unit time, used to monitor network quality.
+    host_net_rx_errors:
+      name: Network Receive Errors
+      desc: Represents the cumulative receive error count on a specific network interface, useful for identifying link quality or driver issues.
     net_err_out_rate:
       name: Network Send Error Rate
       desc: Represents the number of errored packets sent per unit time on a network interface.
+    host_net_tx_errors:
+      name: Network Transmit Errors
+      desc: Represents the cumulative transmit error count on a specific network interface, useful for troubleshooting outbound network anomalies or device faults.
     net_drop_in_rate:
       name: Network Receive Drop Rate
       desc: Represents the number of incoming packets dropped per unit time, indicating congestion or abnormal conditions.
@@ -479,6 +524,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
+    device_total_incoming_netflow_traffic:
+      name: Device Total Incoming NetFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_outgoing_netflow_traffic:
+      name: Device Total Outgoing NetFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_incoming_sflow_traffic:
+      name: Device Total Incoming sFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_total_outgoing_sflow_traffic:
+      name: Device Total Outgoing sFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
   Jetty-JMX:
     jetty_queuedthreadpool_threads_value:
       name: Thread Count
@@ -620,6 +677,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
+    device_total_incoming_netflow_traffic:
+      name: Device Total Incoming NetFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_outgoing_netflow_traffic:
+      name: Device Total Outgoing NetFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_incoming_sflow_traffic:
+      name: Device Total Incoming sFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_total_outgoing_sflow_traffic:
+      name: Device Total Outgoing sFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
   ActiveMQ:
     activemq_topics_consumer_count:
       name: Topic Consumer Count
@@ -1942,6 +2011,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
+    device_total_incoming_netflow_traffic:
+      name: Device Total Incoming NetFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_outgoing_netflow_traffic:
+      name: Device Total Outgoing NetFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_incoming_sflow_traffic:
+      name: Device Total Incoming sFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_total_outgoing_sflow_traffic:
+      name: Device Total Outgoing sFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
   Router:
     snmp_uptime:
       name: System Uptime
@@ -1985,6 +2066,18 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
+    device_total_incoming_netflow_traffic:
+      name: Device Total Incoming NetFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_outgoing_netflow_traffic:
+      name: Device Total Outgoing NetFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
+    device_total_incoming_sflow_traffic:
+      name: Device Total Incoming sFlow Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_total_outgoing_sflow_traffic:
+      name: Device Total Outgoing sFlow Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
   Consul:
     consul_health_checks_passing:
       name: Health Checks Passing
@@ -2690,6 +2783,42 @@ monitor_object_metric:
       name: Max Latency Peak
       desc: Maximum latency value recorded in the past 5 minutes, identifying the most severe performance event within the timeframe.
   Kafka:
+    kafka_up_gauge:
+      name: Probe Status
+      desc: Probe Uptime status. 0 means connection failed, 1 means connection success. Check for no data issues which may indicate a missing connection.
+    kafka_brokers_gauge:
+      name: Broker Count
+      desc: Number of Kafka Brokers in the cluster.
+    kafka_broker_info_gauge:
+      name: Broker Info
+      desc: Information about Kafka node, including node address and ID.
+    kafka_topic_partition_count:
+      name: Topic Partition Count
+      desc: Number of partitions for a given Kafka topic.
+    kafka_topic_partition_current_offset:
+      name: Partition Current Offset
+      desc: Current offset for the specified topic and partition.
+    kafka_topic_partition_oldest_offset:
+      name: Partition Oldest Offset
+      desc: Oldest offset for the specified topic and partition.
+    kafka_topic_partition_in_sync_replica:
+      name: Partition In-Sync Replicas
+      desc: Number of in-sync replicas for the specified topic and partition.
+    kafka_topic_partition_leader_is_preferred:
+      name: Partition Preferred Leader Status
+      desc: Value is 1 if the preferred Broker node is in use for the topic/partition, otherwise 0.
+    kafka_topic_partition_replicas:
+      name: Partition Replica Count
+      desc: Number of replicas for the specified topic and partition.
+    kafka_topic_partition_under_replicated_partition:
+      name: Partition Under-Replicated Status
+      desc: Value is 1 if the topic/partition is under-replicated, otherwise 0.
+    kafka_consumergroup_current_offset:
+      name: Consumer Group Current Offset
+      desc: Current offset for the consumer group in the specified topic and partition.
+    kafka_consumergroup_lag:
+      name: Consumer Group Lag
+      desc: Current approximate lag of the consumer group in the specified topic and partition.
     up_gauge:
       name: Probe Status
       desc: Probe Uptime status. 0 means connection failed, 1 means connection success. Check for no data issues which may indicate a missing connection.
@@ -2741,6 +2870,152 @@ monitor_object_metric:
     process_virtual_memory_bytes_gauge:
       name: Probe Process Virtual Memory
       desc: Current virtual memory size of the probe process.
+  Etcd:
+    etcd_server_has_leader_gauge:
+      name: Cluster Has Leader
+      desc: Whether the current member can detect the cluster leader.
+    etcd_server_is_leader_gauge:
+      name: Current Role
+      desc: Role of the current member in the cluster.
+    etcd_network_active_peers_gauge:
+      name: Active Peer Connections
+      desc: Current number of available inter-node connections.
+    etcd_server_leader_changes_seen_total_counter_rate:
+      name: Leader Change Rate
+      desc: Leader change rate over the last 5 minutes.
+    etcd_server_heartbeat_send_failures_total_counter_rate:
+      name: Heartbeat Send Failure Rate
+      desc: Heartbeat send failure rate over the last 5 minutes.
+    etcd_server_health_failures_counter_rate:
+      name: Health Check Failure Rate
+      desc: Health check failure rate over the last 5 minutes.
+    etcd_mvcc_db_total_size_in_bytes_gauge:
+      name: Allocated Backend Space
+      desc: Currently allocated physical space of the etcd backend storage.
+    etcd_mvcc_db_total_size_in_use_in_bytes_gauge:
+      name: Backend Space In Use
+      desc: Currently used logical space of the etcd backend storage.
+    etcd_server_quota_backend_bytes_gauge:
+      name: Backend Storage Quota
+      desc: Configured backend storage capacity limit.
+    etcd_backend_allocated_usage_percent:
+      name: Backend Storage Usage
+      desc: Ratio of allocated backend space to the total quota.
+    etcd_backend_remaining_bytes:
+      name: Backend Remaining Capacity
+      desc: Remaining backend storage capacity before reaching the quota limit.
+    etcd_backend_fragmentation_percent:
+      name: Backend Fragmentation
+      desc: Fragmentation ratio between allocated backend space and actual used space.
+    etcd_backend_urgent_defrag:
+      name: Urgent Defragmentation Needed
+      desc: Whether the backend space has reached the threshold requiring prompt defragmentation.
+    etcd_debugging_mvcc_keys_total_gauge:
+      name: Key Count
+      desc: Total number of keys currently stored.
+    process_resident_memory_bytes_gauge:
+      name: Process Resident Memory
+      desc: Resident memory currently occupied by the etcd process.
+    etcd_disk_wal_fsync_p99_seconds:
+      name: WAL Fsync Latency P99
+      desc: P99 WAL fsync latency over the last 5 minutes.
+    etcd_disk_backend_commit_p99_seconds:
+      name: Backend Commit Latency P99
+      desc: P99 backend commit latency over the last 5 minutes.
+    etcd_debugging_snap_save_total_avg_seconds:
+      name: Snapshot Average Duration
+      desc: Average snapshot save duration over the last 5 minutes.
+    etcd_server_proposals_pending_gauge:
+      name: Pending Proposals
+      desc: Current number of proposals waiting to be committed.
+    etcd_server_proposals_failed_total_counter_rate:
+      name: Proposal Failure Rate
+      desc: Proposal failure rate over the last 5 minutes.
+    etcd_server_proposals_committed_rate:
+      name: Proposal Commit Rate
+      desc: Proposal commit rate over the last 5 minutes.
+    etcd_server_proposals_applied_rate:
+      name: Proposal Apply Rate
+      desc: Proposal apply rate over the last 5 minutes.
+    etcd_server_proposals_apply_lag:
+      name: Proposal Apply Lag
+      desc: Difference between committed proposals and applied proposals.
+    etcd_server_slow_apply_total_counter_rate:
+      name: Slow Apply Request Rate
+      desc: Slow apply request rate over the last 5 minutes.
+    etcd_server_read_indexes_failed_total_counter_rate:
+      name: Read Index Failure Rate
+      desc: Read index failure rate over the last 5 minutes.
+    etcd_server_slow_read_indexes_total_counter_rate:
+      name: Slow Read Index Rate
+      desc: Slow read index request rate over the last 5 minutes.
+    etcd_server_client_requests_total_counter_rate:
+      name: Client Request Rate
+      desc: Rate of client requests handled by etcd over the last 5 minutes.
+    etcd_rpc_rate:
+      name: RPC Request Rate
+      desc: Unary RPC request rate over the last 5 minutes.
+    etcd_rpc_failed_rate:
+      name: RPC Failure Rate
+      desc: Non-OK unary RPC failure rate over the last 5 minutes.
+    etcd_network_client_grpc_received_bytes_total_counter_rate:
+      name: Client Inbound Traffic
+      desc: Inbound traffic from client gRPC requests over the last 5 minutes.
+    etcd_network_client_grpc_sent_bytes_total_counter_rate:
+      name: Client Outbound Traffic
+      desc: Outbound traffic sent to client gRPC requests over the last 5 minutes.
+    etcd_network_peer_received_bytes_total_counter_rate:
+      name: Peer Inbound Traffic
+      desc: Inbound traffic from peer nodes over the last 5 minutes.
+    etcd_network_peer_sent_bytes_total_counter_rate:
+      name: Peer Outbound Traffic
+      desc: Outbound traffic sent to peer nodes over the last 5 minutes.
+    etcd_network_peer_sent_failures_total_counter_rate:
+      name: Peer Send Failure Rate
+      desc: Peer send failure rate over the last 5 minutes.
+    etcd_debugging_mvcc_watcher_total_gauge:
+      name: Watcher Count
+      desc: Current number of watchers.
+    etcd_watch_streams_active:
+      name: Active Watch Streams
+      desc: Current number of active watch streams inferred from established and closed streaming RPCs.
+    etcd_debugging_mvcc_db_compaction_keys_total_counter_rate:
+      name: Compacted Key Rate
+      desc: Rate of keys processed by compaction over the last 5 minutes.
+    etcd_mvcc_put_total_counter_rate:
+      name: Write Rate
+      desc: Write operation rate over the last 5 minutes.
+    etcd_mvcc_delete_total_counter_rate:
+      name: Delete Rate
+      desc: Delete operation rate over the last 5 minutes.
+  InfluxDB:
+    influxdb_database_numSeries:
+      name: Series Count
+      desc: Total number of series in a single InfluxDB database, one of the most important indicators for high-cardinality risk.
+    influxdb_httpd_authFail_rate:
+      name: HTTP Authentication Failure Rate
+      desc: Average rate of HTTP authentication failures over the last 5 minutes.
+    influxdb_httpd_clientError_rate:
+      name: HTTP 4XX Error Rate
+      desc: Average rate of HTTP 4XX responses over the last 5 minutes.
+    influxdb_httpd_serverError_rate:
+      name: HTTP 5XX Error Rate
+      desc: Average rate of HTTP 5XX responses over the last 5 minutes.
+    influxdb_httpd_pointsWrittenDropped_rate:
+      name: Dropped Points Write Rate
+      desc: Average rate of points accepted by the write API but dropped before persistence over the last 5 minutes.
+    influxdb_httpd_pointsWrittenFail_rate:
+      name: Write Persistence Failure Rate
+      desc: Average rate of points accepted by the write API but failed during persistence over the last 5 minutes.
+    influxdb_httpd_writeReq_rate:
+      name: Write Request Rate
+      desc: Average write request rate over the last 5 minutes.
+    influxdb_httpd_queryReq_rate:
+      name: Query Request Rate
+      desc: Average query request rate over the last 5 minutes.
+    influxdb_runtime_HeapAlloc:
+      name: Runtime Heap Allocation
+      desc: Current size of memory allocated and in use on the Go runtime heap.
 monitor_object_metric_group:
   Dameng:
     Base: Base
@@ -2926,6 +3201,7 @@ monitor_object_metric_group:
     Disk: Disk
     Memory: Memory
   Mysql:
+    Base: Base
     ConnStatus: Connection Status
     QueryPerf: Query Performance
     InnoDBPerf: InnoDB Performance
@@ -3041,6 +3317,18 @@ monitor_object_metric_group:
     Base: Base
     Performance: Performance
     Storage: Storage
+  Etcd:
+    集群状态: Cluster Status
+    存储与碎片: Storage and Fragmentation
+    磁盘时延: Disk Latency
+    提案与一致性: Proposals and Consistency
+    请求与流量: Requests and Traffic
+    监听与压缩: Watch and Compaction
+  InfluxDB:
+    数据库: Database
+    请求与错误: Requests and Errors
+    写入稳定性: Write Stability
+    运行时: Runtime
 monitor_object_plugin:
   DM-Exporter:
     name: Dameng Database Monitoring Exporter
@@ -3089,6 +3377,14 @@ monitor_object_plugin:
     desc: Through the Telegraf collector, utilize the SNMP protocol to regularly collect
       key IF-MIB metrics from switch interfaces, including traffic volume, packet
       loss, and error counts.
+  Switch Flow NetFlow:
+    name: Switch Flow Analysis (NetFlow)
+    desc: Use NetFlow to collect switch traffic and convert it into normalized device
+      traffic metrics.
+  Switch Flow sFlow:
+    name: Switch Flow Analysis (sFlow)
+    desc: Use sFlow to collect switch traffic and convert it into normalized device
+      traffic metrics.
   WebLogic-JMX:
     name: WebLogic(JMX)
     desc: Through the WebLogic-JMX collector, regularly collect key WebLogic metrics,
@@ -3118,6 +3414,14 @@ monitor_object_plugin:
       key IF-MIB metrics from load balancer interfaces, including traffic volume,
       packet loss, and error counts.
     name: Load Balancer General (Telegraf)
+  Loadbalance Flow NetFlow:
+    name: Load Balancer Flow Analysis (NetFlow)
+    desc: Use NetFlow to collect load balancer traffic and convert it into normalized
+      device traffic metrics.
+  Loadbalance Flow sFlow:
+    name: Load Balancer Flow Analysis (sFlow)
+    desc: Use sFlow to collect load balancer traffic and convert it into normalized
+      device traffic metrics.
   Bastion Host SNMP General:
     desc: The SNMP universal plugin is designed to monitor and manage bastion hosts
       via SNMP. It enables administrators to retrieve critical device information
@@ -3145,6 +3449,14 @@ monitor_object_plugin:
       key IF-MIB metrics from firewall interfaces, including traffic volume, packet
       loss, and error counts.
     name: Firewall General (Telegraf)
+  Firewall Flow NetFlow:
+    name: Firewall Flow Analysis (NetFlow)
+    desc: Use NetFlow to collect firewall traffic and convert it into normalized
+      device traffic metrics.
+  Firewall Flow sFlow:
+    name: Firewall Flow Analysis (sFlow)
+    desc: Use sFlow to collect firewall traffic and convert it into normalized device
+      traffic metrics.
   SNMP Trap:
     desc: The SNMP Trap monitoring plugin is designed to receive and process alerts
       or status notifications (Trap messages) actively pushed by network devices,
@@ -3155,6 +3467,14 @@ monitor_object_plugin:
       key IF-MIB metrics from router interfaces, including traffic volume, packet
       loss, and error counts.
     name: Router General(Telegraf)
+  Router Flow NetFlow:
+    name: Router Flow Analysis (NetFlow)
+    desc: Use NetFlow to collect router traffic and convert it into normalized device
+      traffic metrics.
+  Router Flow sFlow:
+    name: Router Flow Analysis (sFlow)
+    desc: Use sFlow to collect router traffic and convert it into normalized device
+      traffic metrics.
   ActiveMQ-JMX:
     name: ActiveMQ-JMX
     desc: The ActiveMQ plugin, based on JMX collection, acquires key performance metrics
@@ -3201,6 +3521,9 @@ monitor_object_plugin:
     desc: Through the Telegraf collector, gather and analyze host performance data,
       including CPU, memory, disk, and network utilization.
     name: Host(Telegraf)
+  Host Remote:
+    name: Host Remote(Telegraf)
+    desc: Through Telegraf combined with Stargazer remote capabilities, collect host CPU, memory, disk, and network metrics over SSH/WinRM without installing an agent.
   Ping:
     desc: Through the Telegraf collector, regularly send ICMP Echo Requests (ECHO_REQUEST)
       to check the connectivity and response time of target hosts or network devices.
@@ -3305,3 +3628,48 @@ monitor_object_type:
   Tencent Cloud: Tencent Cloud
   Network Device: Network Equipment
   K8S: K8s
+
+flow_onboarding_ui:
+  accessAsset: Access Asset
+  accessGuide: Access Guide
+  accessComplete: Access Complete
+  accessCompleteTitle: Access Complete
+  accessCompleteDesc: Your Flow asset is ready. The platform will ingest incoming Flow traffic for this asset.
+  accessCompleteSubDesc: You can view the asset list, onboard another asset, or return to the template list.
+  newAsset: New Asset
+  existingAsset: Existing Asset
+  accessAssetDesc: New Asset creates a new Flow monitoring asset. Existing Asset binds this protocol to an existing monitoring asset.
+  selectExistingAsset: Please select an existing Flow asset
+  existingAssetDesc: Select an existing Flow asset to reuse its identity and organization ownership.
+  cloudRegion: Cloud Region
+  selectCloudRegion: Please select cloud region
+  cloudRegionDesc: Select the cloud region where this asset belongs. The Flow listener endpoint will use that region.
+  assetIp: Asset IP
+  assetIpDesc: Enter the device source IP that sends Flow data. It must match the exporter source address.
+  assetName: Asset Name
+  assetNameDesc: Use a recognizable asset name, such as Core Switch - Beijing.
+  organization: Organization
+  organizationDesc: Only selected organizations can view and manage this Flow asset.
+  fallbackSamplingRate: Fallback Sampling Rate
+  fallbackSamplingRateDesc: Default 1000. Used when the exporter payload does not provide an effective sampling rate after normalization.
+  assetTipTitle: Flow access prerequisites
+  assetTipDesc: Create or select a monitoring asset for the selected protocol, and keep the asset IP consistent with the exporter source address.
+  guideIntroTitle: Configure device export
+  guideIntroDesc: Follow the device steps below, then run detection after traffic is exported to the listener endpoint.
+  protocol: Protocol
+  endpoint: Endpoint
+  normalizationRule: Normalization and sampling rule
+  deviceGuide: Device guide
+  detectHintTitle: Detection
+  detectHintDesc: After completing device configuration, trigger detection to confirm the platform has received recent Flow data.
+  detectAccess: Detect Access
+  detectSuccess: Access Successful
+  detectSuccessDesc: Recent Flow data has been received for this asset. The wizard will continue automatically.
+  detectFailed: No Data Detected
+  detectFailedDesc: No recent Flow data was detected. Check the exporter address, protocol, and source IP, then try again.
+  lastSeenAt: Last Seen At
+  effectiveSamplingRate: Effective Sampling Rate
+  samplingRateSource: Sampling Rate Source
+  viewAssetList: View Asset List
+  addAnotherAsset: Add Another Asset
+  backToTemplateList: Back to Template List

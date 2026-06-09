@@ -9,8 +9,9 @@
   "dependencies": {
     "@ant-design/colors": "^8.0.0",
     "ace-builds": "^1.38.1",
+    "echarts": "^6.1.0",
+    "rc-virtual-list": "^3.19.2",
     "react-ace": "^14.0.1",
-    "recharts": "^2.15.0",
-    "rc-virtual-list": "^3.19.2"
+    "recharts": "^2.15.0"
   }
 }
