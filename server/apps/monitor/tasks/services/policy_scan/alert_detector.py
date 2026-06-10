@@ -234,6 +234,14 @@ class AlertDetector:
             alerts_to_recover,
             fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
         )
+        AlertLifecycleNotifier(self.policy).notify_alerts(
+            alerts_to_recover,
+            action="recovered",
+            operator="system",
+            reason="auto_recovered",
+        )
+
+    def recover_no_data_alerts(self):
         if not self.policy.no_data_recovery_period:
             logger.debug(f"Policy {self.policy.id}: no_data_recovery_period not configured, skip recovery")
             return
