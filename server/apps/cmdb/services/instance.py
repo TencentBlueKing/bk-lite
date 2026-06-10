@@ -678,6 +678,15 @@ class InstanceManage(object):
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
         update_attr = apply_tag_validation_for_instance(update_attr, attrs, model_info["model_id"])
         update_attr = apply_enum_validation_for_instance(update_attr, attrs)
+        # 企业版附件/图片字段：校验并规范化（与 instance_create/instance_update 一致）。
+        # 单实例编辑（前端 type='edit'）携带 old_instance 以支持保留已提交文件。
+        update_attr = get_instance_enterprise_extension().normalize_file_fields(
+            model_info["model_id"],
+            update_attr,
+            attrs,
+            operator=operator,
+            old_instance=inst_list[0] if len(inst_ids) == 1 else None,
+        )
         validate_instance_organization_scope(update_attr, user_groups=user_groups, allowed_org_ids=allowed_org_ids)
         check_attr_map = InstanceManage._build_unique_rule_check_attr_map(
             model_info["model_id"],
@@ -707,6 +716,11 @@ class InstanceManage(object):
                 exist_items,
                 attrs=attrs,
             )
+
+        # 企业版：实例更新后对每个实例提交文件落账（pending→committed、移除文件标 orphaned）
+        ext = get_instance_enterprise_extension()
+        for updated in result:
+            ext.commit_instance_files(model_info["model_id"], updated["_id"], updated, attrs, operator=operator)
 
         after_dict = {i["_id"]: i for i in result}
         change_records = [
