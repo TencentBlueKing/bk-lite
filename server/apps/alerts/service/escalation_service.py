@@ -120,3 +120,147 @@ class EscalationService:
                 return None
             assignment = existing.assignment
         return cls.create_escalation_task(alert, assignment)
+
+    @classmethod
+    def _reset_reminder_for_new_roster(cls, alert: Alert) -> None:
+        """跨层后级内提醒计数归零、预算重置、重新激活（若存在提醒任务）。"""
+        reminder = AlertReminderTask.objects.filter(alert=alert).first()
+        if not reminder:
+            return
+        now = timezone.now()
+        reminder.reminder_count = 0
+        reminder.is_active = True
+        reminder.last_reminder_time = None
+        reminder.next_reminder_time = now + timedelta(
+            minutes=reminder.current_frequency_minutes
+        )
+        reminder.save(update_fields=[
+            "reminder_count", "is_active", "last_reminder_time",
+            "next_reminder_time", "updated_at",
+        ])
+
+    @classmethod
+    def _send_escalation_notification(
+        cls, alert: Alert, assignment: AlertAssignment,
+        roster: List[str], layer_channels: List[dict],
+    ) -> bool:
+        """升级通知：复用与提醒一致的发送出口 sync_notify。"""
+        from apps.alerts.common.notify.base import NotifyParamsFormat
+
+        if alert.is_session_alert and alert.session_status != SessionStatus.CONFIRMED:
+            logger.info("升级跳过会话观察期告警: alert_id=%s", alert.alert_id)
+            return False
+        if not roster:
+            return False
+        channels = layer_channels or assignment.notify_channels or []
+        if not channels:
+            logger.warning("升级通知无可用渠道: alert_id=%s", alert.alert_id)
+            return False
+
+        param_format = NotifyParamsFormat(username_list=roster, alerts=[alert])
+        title = param_format.format_title()
+        content = param_format.format_content()
+        channel_params = [{
+            "username_list": roster,
+            "channel_type": ch["channel_type"],
+            "channel_id": ch["id"],
+            "title": title,
+            "content": content,
+            "object_id": alert.alert_id,
+            "notify_action_object": "alert",
+        } for ch in channels]
+
+        from apps.alerts.tasks import sync_notify
+
+        def _enqueue():
+            sync_notify.delay(channel_params)
+
+        if transaction.get_connection().in_atomic_block:
+            transaction.on_commit(_enqueue)
+        else:
+            _enqueue()
+        return True
+
+    @classmethod
+    def _advance_layer(cls, task: AlertEscalationTask) -> bool:
+        """推进到下一层并通知；返回是否真正升级了一层。"""
+        alert = task.alert
+        next_index = task.current_layer_index + 1
+        now = timezone.now()
+        task.current_layer_index = next_index
+        task.layer_started_at = now
+        task.save(update_fields=["current_layer_index", "layer_started_at", "updated_at"])
+
+        roster = cls.compute_roster(task.layers, next_index, task.mode)
+        cls._union_into_operator(alert, task.layers[next_index]["personnel"])
+        cls._reset_reminder_for_new_roster(alert)
+        cls._send_escalation_notification(
+            alert, task.assignment, roster, task.layers[next_index].get("notify_channels") or []
+        )
+        logger.info("告警升级到第 %s 层: alert_id=%s, roster=%s",
+                    next_index, alert.alert_id, roster)
+        return True
+
+    @classmethod
+    def check_and_process_escalations(cls) -> Dict[str, Any]:
+        """每分钟扫描：到本层等待时长且仍待响应则升级到下一层。"""
+        processed = 0
+        escalated = 0
+        try:
+            ids = list(
+                AlertEscalationTask.objects.filter(is_active=True).values_list(
+                    "alert_id", flat=True
+                )
+            )
+            select_for_update_kwargs = {}
+            if connection.features.has_select_for_update_skip_locked:
+                select_for_update_kwargs["skip_locked"] = True
+
+            for alert_id in ids:
+                try:
+                    with transaction.atomic():
+                        task = (
+                            AlertEscalationTask.objects.select_for_update(
+                                **select_for_update_kwargs
+                            )
+                            .select_related("alert", "assignment")
+                            .filter(alert_id=alert_id, is_active=True)
+                            .first()
+                        )
+                        if not task:
+                            continue
+                        processed += 1
+
+                        if task.alert.status != AlertStatus.PENDING:
+                            task.is_active = False
+                            task.save(update_fields=["is_active", "updated_at"])
+                            continue
+
+                        deadline = task.layer_started_at + timedelta(
+                            minutes=task.layers[task.current_layer_index]["wait_minutes"]
+                        )
+                        if timezone.now() < deadline:
+                            continue
+
+                        is_last = task.current_layer_index >= len(task.layers) - 1
+                        if is_last:
+                            task.is_active = False
+                            task.save(update_fields=["is_active", "updated_at"])
+                            logger.info("告警已达最后一层，不再升级: alert_id=%s", task.alert.alert_id)
+                            continue
+
+                        if cls._advance_layer(task):
+                            escalated += 1
+                except Exception as e:
+                    logger.error("处理升级任务失败: alert_id=%s, error=%s", alert_id, str(e))
+        except Exception as e:
+            logger.error("检查升级任务失败: %s", str(e))
+        return {"processed": processed, "escalated": escalated}
+
+    @classmethod
+    def cleanup_expired_escalations(cls) -> int:
+        cutoff = timezone.now() - timedelta(days=cls.EXPIRED_DAYS)
+        deleted, _ = AlertEscalationTask.objects.filter(
+            is_active=False, updated_at__lt=cutoff
+        ).delete()
+        return deleted

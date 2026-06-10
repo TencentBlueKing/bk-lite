@@ -3,9 +3,11 @@
 对照 spec/requirements/告警中心/20260531.告警中心-新增告警升级策略.md
 """
 import pytest
+from datetime import timedelta
+from unittest import mock
 from django.utils import timezone
 
-from apps.alerts.models.alert_operator import AlertAssignment, AlertEscalationTask
+from apps.alerts.models.alert_operator import AlertAssignment, AlertEscalationTask, AlertReminderTask
 from apps.alerts.models.models import Alert
 
 
@@ -154,3 +156,80 @@ def test_reset_escalation_task_back_to_layer_zero():
     reset = ES.reset_escalation_task(alert, assignment)
     assert reset.current_layer_index == 0
     assert reset.is_active is True
+
+
+def _due_task(alert, assignment, index=0, minutes_ago=15):
+    task = ES.create_escalation_task(alert, assignment)
+    task.current_layer_index = index
+    task.layer_started_at = timezone.now() - timedelta(minutes=minutes_ago)
+    task.save()
+    return task
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.service.escalation_service.EscalationService._send_escalation_notification")
+def test_scan_advances_layer_when_deadline_passed(mock_send):
+    alert = _make_alert(status="pending")
+    assignment = _make_assignment(escalation=_chain(mode="append"))
+    _due_task(alert, assignment, index=0, minutes_ago=15)
+    result = ES.check_and_process_escalations()
+    task = AlertEscalationTask.objects.get(alert=alert)
+    assert task.current_layer_index == 1
+    assert result["escalated"] == 1
+    alert.refresh_from_db()
+    assert {"u1", "u2"}.issubset(set(alert.operator))
+    mock_send.assert_called_once()
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.service.escalation_service.EscalationService._send_escalation_notification")
+def test_scan_not_due_does_nothing(mock_send):
+    alert = _make_alert(status="pending")
+    assignment = _make_assignment(escalation=_chain())
+    _due_task(alert, assignment, index=0, minutes_ago=3)
+    ES.check_and_process_escalations()
+    assert AlertEscalationTask.objects.get(alert=alert).current_layer_index == 0
+    mock_send.assert_not_called()
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.service.escalation_service.EscalationService._send_escalation_notification")
+def test_scan_last_layer_deactivates_no_more_escalation(mock_send):
+    alert = _make_alert(status="pending")
+    assignment = _make_assignment(escalation=_chain())
+    _due_task(alert, assignment, index=1, minutes_ago=25)
+    ES.check_and_process_escalations()
+    task = AlertEscalationTask.objects.get(alert=alert)
+    assert task.current_layer_index == 1
+    assert task.is_active is False
+    mock_send.assert_not_called()
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.service.escalation_service.EscalationService._send_escalation_notification")
+def test_scan_deactivates_when_alert_not_pending(mock_send):
+    alert = _make_alert(status="processing")
+    assignment = _make_assignment(escalation=_chain())
+    _due_task(alert, assignment, index=0, minutes_ago=15)
+    ES.check_and_process_escalations()
+    task = AlertEscalationTask.objects.get(alert=alert)
+    assert task.is_active is False
+    assert task.current_layer_index == 0
+    mock_send.assert_not_called()
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.service.escalation_service.EscalationService._send_escalation_notification")
+def test_advance_resets_reminder_counter(mock_send):
+    alert = _make_alert(status="pending")
+    assignment = _make_assignment(escalation=_chain())
+    AlertReminderTask.objects.create(
+        alert=alert, assignment=assignment, is_active=False,
+        reminder_count=9, current_frequency_minutes=5, current_max_reminders=10,
+        next_reminder_time=timezone.now(),
+    )
+    _due_task(alert, assignment, index=0, minutes_ago=15)
+    ES.check_and_process_escalations()
+    reminder = AlertReminderTask.objects.get(alert=alert)
+    assert reminder.reminder_count == 0
+    assert reminder.is_active is True
