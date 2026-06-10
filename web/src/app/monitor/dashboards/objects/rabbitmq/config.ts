@@ -51,7 +51,7 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '消息发布速率',
       description: 'RabbitMQ 消息发布速率，反映生产侧写入压力。',
       unit: 'counts',
-      query: 'rabbitmq_overview_messages_published_rate{__$labels__}',
+      query: 'rate(rabbitmq_overview_messages_published{__$labels__}[5m])',
       color: '#27c274'
     },
     // ── Diagnostics (phase 2) ──
@@ -156,7 +156,7 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'Mnesia 磁盘事务速率',
       description: 'RabbitMQ Mnesia 数据库磁盘事务速率。',
       unit: 'counts',
-      query: 'rabbitmq_node_mnesia_disk_tx_count_rate{__$labels__}',
+      query: 'rate(rabbitmq_node_mnesia_disk_tx_count{__$labels__}[5m])',
       color: '#13c2c2'
     },
     {
@@ -185,6 +185,17 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     }
   ],
   summaryCards: [
+    {
+      title: '运行时长',
+      metric: 'rabbitmq_node_uptime',
+      unit: 's',
+      formatter: 'duration',
+      isUptimeCard: true,
+      icon: 'clock',
+      color: '#597ef7',
+      guide: [{ label: '运行时长', detail: '实例自上次启动后的持续运行时间;期间发生重启会重新计时。' }],
+      footer: [{ label: '启动', metric: 'rabbitmq_node_uptime', formatter: 'startedAt' }]
+    },
     {
       title: '节点健康',
       metric: 'rabbitmq_node_running',
@@ -238,20 +249,6 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { label: '发布速率', metric: 'rabbitmq_overview_messages_published_rate', unit: 'counts' },
         { label: '消费者', metric: 'rabbitmq_overview_consumers', unit: 'counts' }
       ]
-    },
-    {
-      title: '发布速率',
-      metric: 'rabbitmq_overview_messages_published_rate',
-      unit: 'counts',
-      color: '#27c274',
-      icon: 'publish',
-      compare: true,
-      compareFavorableDirection: 'down',
-      guide: [{ label: '发布速率', detail: '生产侧写入压力。结合积压与消费者数判断系统是否进入超载。' }],
-      footer: [
-        { label: '连接', metric: 'rabbitmq_overview_connections', unit: 'counts' },
-        { label: '通道', metric: 'rabbitmq_overview_channels', unit: 'counts' }
-      ]
     }
   ],
   charts: [
@@ -267,13 +264,14 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       title: '消息流转趋势',
-      subtitle: '总量、Ready、未确认',
+      subtitle: '总量、Ready、未确认、发布速率',
       metric: 'rabbitmq_overview_messages',
-      guide: [{ label: '消息流转', detail: '对比总消息、ready 与未确认，识别积压结构是堆积未消费还是确认滞后。' }],
+      guide: [{ label: '消息流转', detail: '对比总消息、ready、未确认与发布速率，识别积压结构是堆积未消费还是确认滞后。' }],
       series: [
         { metric: 'rabbitmq_overview_messages', label: '总消息', color: '#2f6bff', unit: 'counts' },
         { metric: 'rabbitmq_overview_messages_ready', label: 'Ready', color: '#ff8a1f', unit: 'counts' },
-        { metric: 'rabbitmq_overview_messages_unacked', label: '未确认', color: '#faad14', unit: 'counts' }
+        { metric: 'rabbitmq_overview_messages_unacked', label: '未确认', color: '#faad14', unit: 'counts' },
+        { metric: 'rabbitmq_overview_messages_published_rate', label: '发布速率', color: '#27c274', unit: 'counts' }
       ]
     },
     {
@@ -316,11 +314,11 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   details: [
     {
       title: '队列与资源详情',
-      subtitle: '队列、磁盘、运行时长',
+      subtitle: '队列、磁盘、连接',
       rows: [
         { label: '队列数', metric: 'rabbitmq_overview_queues', unit: 'counts' },
         { label: '磁盘剩余空间', metric: 'rabbitmq_node_disk_free', unit: 'bytes' },
-        { label: '节点运行时长', metric: 'rabbitmq_node_uptime', unit: 's', formatter: 'duration' }
+        { label: '连接数', metric: 'rabbitmq_overview_connections', unit: 'counts' }
       ]
     }
   ]

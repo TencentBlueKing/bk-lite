@@ -8,7 +8,8 @@ import {
   KpiSection,
   useFilteredBarPanels,
   useFilteredChartPanels,
-  useFilteredRingPanels
+  useFilteredRingPanels,
+  useFilteredSummaryCards
 } from '../common/dashboard-components';
 import {
   HorizontalBarPanel,
@@ -18,12 +19,14 @@ import {
 import { WEBSITE_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
+const SUMMARY_TITLES = ['探测成功率', '异常状态码', '平均响应时间', '可用节点(2xx)', '平均内容长度'];
 const PRIMARY_CHART_TITLES = ['探测成功率趋势', '响应时间趋势', '内容长度趋势'];
 const RING_TITLES = ['可用性分布'];
 const BAR_TITLES = ['状态码分布'];
 
 export default function WebsiteDashboardPage() {
   const dashboard = useSimpleDashboardData(WEBSITE_DASHBOARD_CONFIG);
+  const summaryCards = useFilteredSummaryCards(dashboard.summaryCards, SUMMARY_TITLES);
   const charts = useFilteredChartPanels(dashboard.chartPanels, PRIMARY_CHART_TITLES);
   const rings = useFilteredRingPanels(dashboard.ringPanels, RING_TITLES);
   const bars = useFilteredBarPanels(dashboard.barPanels, BAR_TITLES);
@@ -38,7 +41,10 @@ export default function WebsiteDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} styles={styles} />
+          <div className={styles.sectionLabel}>健康概览</div>
+          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
+
+          <div className={styles.sectionLabel}>性能趋势与分布</div>
           <FlexiblePanelSection styles={styles}>
             {availabilityRing ? (
               <RingChartPanel

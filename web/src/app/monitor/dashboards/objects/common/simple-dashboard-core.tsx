@@ -242,7 +242,7 @@ export interface PreparedDetailPanel {
 
 const METRIC_QUERY_CONCURRENCY = 4;
 
-const countRestartsInRange = (data: ChartData[] = []): number => {
+export const countRestartsInRange = (data: ChartData[] = []): number => {
   const points = data
     .map((point) => ({ time: Number(point.time), value: Number(point.value1 ?? 0) }))
     .filter((p) => Number.isFinite(p.time) && Number.isFinite(p.value) && p.value >= 0)

@@ -38,7 +38,10 @@ export default function DockerDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
+
+          <div className={styles.sectionLabel}>性能趋势</div>
           <FlexiblePanelSection styles={styles}>
             {/* Row 1: resource chart (span6) + network chart (span6) = 12 */}
             {[resourceChart, networkChart].map((chart) => chart ? (
@@ -58,6 +61,10 @@ export default function DockerDashboardPage() {
                 styles={styles}
               />
             ) : null)}
+          </FlexiblePanelSection>
+
+          <div className={styles.sectionLabel}>分布与洞察</div>
+          <FlexiblePanelSection styles={styles}>
             {/* Row 2: blockIO chart (span4) + anomaly bar (span4) + detail (span4) = 12 */}
             {blockIoChart ? (
               <TrendChartPanel

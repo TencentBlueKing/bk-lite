@@ -16,7 +16,7 @@ import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { RABBITMQ_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
-const SUMMARY_TITLES = ['节点健康', '内存使用率', '未确认占比', '消息积压', '发布速率'];
+const SUMMARY_TITLES = ['运行时长', '节点健康', '内存使用率', '未确认占比', '消息积压'];
 const CHART_TITLES = ['内存压力趋势', '消息流转趋势', '句柄资源趋势', '节点负载趋势'];
 const RING_TITLES = ['节点内存分布'];
 const DETAIL_TITLES = ['队列与资源详情'];
@@ -57,9 +57,12 @@ export default function RabbitMQDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
+          <div className={styles.sectionLabel}>健康概览</div>
+          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
+
+          {/* R1: 内存分布环 span4 + 内存压力趋势 span8 = 12 —— 环图配同主题折线,消除中部留白 */}
+          <div className={styles.sectionLabel}>内存与压力</div>
           <FlexiblePanelSection styles={styles}>
-            {/* R1: 内存分布环 span4 + 内存压力趋势 span8 = 12 —— 环图配同主题折线,消除中部留白 */}
             {memoryRing ? (
               <RingChartPanel
                 key={memoryRing.panel.title}
@@ -75,10 +78,18 @@ export default function RabbitMQDashboardPage() {
               />
             ) : null}
             {renderChart(memoryChart, styles.span8)}
-            {/* R2: 消息流转 span6 + 节点负载 span6 = 12 */}
+          </FlexiblePanelSection>
+
+          {/* R2: 消息流转 span6 + 节点负载 span6 = 12 */}
+          <div className={styles.sectionLabel}>消息与负载</div>
+          <FlexiblePanelSection styles={styles}>
             {renderChart(messageChart, styles.span6)}
             {renderChart(loadChart, styles.span6)}
-            {/* R3: 句柄资源 span6 + 队列与资源详情 span6 = 12 —— 详情配折线 */}
+          </FlexiblePanelSection>
+
+          {/* R3: 句柄资源 span6 + 队列与资源详情 span6 = 12 —— 详情配折线 */}
+          <div className={styles.sectionLabel}>资源与详情</div>
+          <FlexiblePanelSection styles={styles}>
             {renderChart(handleChart, styles.span6)}
             {resourceDetail ? (
               <DetailPanelCard

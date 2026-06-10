@@ -1,5 +1,25 @@
 @import '../common/simple-dashboard.module.scss';
 
+// 区块小标题:给分区加语义标题,提升可扫读性(与 MySQL/PostgreSQL 同款)
+.sectionLabel {
+  margin: 2px 2px 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #eceff4;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8c95a8;
+}
+
+.dashboardSection + .sectionLabel {
+  margin-top: 8px;
+}
+
+:global(html.dark) .sectionLabel {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
 .modeContent {
   width: 100%;
   min-width: 0;
@@ -194,17 +214,17 @@
 }
 
 .primaryGrid {
-  // flex 自适应：换行后末行卡片弹性撑满整行，避免 6 张卡在中间断点下落单留白。
+  // flex 自适应：换行后末行卡片弹性撑满整行，避免 7 张卡（状态+6 KPI）在断点下落单留白。
   display: flex;
   flex-wrap: wrap;
   align-items: stretch;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 0;
 
   > * {
-    // 基准 = 整行 1/6（扣除 5 个 gap）→ 宽屏每行 6 张；收窄到 min-width 以下自动换行并撑满。
-    flex: 1 1 calc((100% - 5 * 12px) / 6);
-    min-width: 200px;
+    // 基准 = 整行 1/7（扣除 6 个 gap）→ 宽屏每行 7 张；收窄到 min-width 以下自动换行并撑满。
+    flex: 1 1 calc((100% - 6 * 12px) / 7);
+    min-width: 188px;
   }
 }
 
@@ -212,19 +232,15 @@
 .detailGrid {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 16px;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
-.metricsMode > .panel + .mainTrendGrid,
-.mainTrendGrid + .detailGrid,
-.detailGrid + .detailGrid,
-.detailGrid + .mainTrendGrid {
-  margin-top: 16px;
-}
-
-.mainTrendGrid {
-  margin-top: 16px;
-  margin-bottom: 0;
+// 分区小标题跟在上一区栅格之后:补足 section 间距(12),保持紧凑且分层清晰。
+.primaryGrid + .sectionLabel,
+.mainTrendGrid + .sectionLabel,
+.detailGrid + .sectionLabel {
+  margin-top: 12px;
 }
 
 .sectionTitle {
@@ -235,8 +251,8 @@
 }
 
 .statCard {
-  padding: 16px 16px 14px;
-  min-height: 168px;
+  padding: 13px 14px 11px;
+  min-height: 122px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -272,11 +288,11 @@
 }
 
 .statBody {
-  margin-top: 10px;
+  margin-top: 7px;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .statBodyRelaxed {
@@ -471,7 +487,7 @@
 
 .collectionStatusCard {
   justify-content: flex-start;
-  min-height: 168px;
+  min-height: 122px;
 }
 
 .collectionStatusHeader {
@@ -636,7 +652,7 @@
 .fillPanel {
   display: flex;
   flex-direction: column;
-  min-height: 280px;
+  min-height: 224px;
 }
 
 .fillBody {
@@ -711,7 +727,7 @@
 }
 
 .chartWrap {
-  height: 206px;
+  height: 164px;
   border-radius: 12px;
   overflow: hidden;
 }
@@ -976,427 +992,6 @@
   background: linear-gradient(135deg, #ecfff3 0%, #f5fff8 100%);
   color: #16a34a;
   box-shadow: inset 0 0 0 1px rgba(22, 163, 74, 0.08);
-}
-
-.mongodbFlowModel {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-  gap: 18px;
-  align-items: stretch;
-}
-
-.mongodbRequestScene,
-.mongodbInternalScene {
-  min-width: 0;
-  border-radius: 18px;
-  border: 1px solid #e6edf6;
-  background: linear-gradient(180deg, #fbfdff 0%, #f8fbff 100%);
-  padding: 18px;
-}
-
-.mongodbRequestScene {
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-  padding-top: 18px;
-  padding-bottom: 18px;
-  min-height: 0;
-}
-
-.mongodbInternalScene {
-  min-height: 364px;
-  overflow: hidden;
-}
-
-.mongodbPathTrack {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr) 54px minmax(0, 1fr) 54px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-}
-
-.mongodbPathNode {
-  min-width: 0;
-  min-height: 150px;
-  padding: 14px 14px 12px;
-  border-radius: 16px;
-  border: 1px solid #e6edf6;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
-  box-shadow: 0 6px 16px rgba(21, 39, 73, 0.04);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-}
-
-.mongodbPathNodeEyebrow {
-  color: #9aa8bc;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.2;
-  margin-bottom: 8px;
-}
-
-.mongodbPathNodeTitle {
-  color: #22324a;
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1.35;
-}
-
-.mongodbPathNodeIcon {
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
-  margin-top: 8px;
-  background: #f2f6ff;
-  color: #2f6bff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  box-shadow: inset 0 0 0 1px rgba(47, 107, 255, 0.1);
-}
-
-.mongodbPathNodeMetrics {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: auto;
-  width: 100%;
-}
-
-.mongodbPathMetric {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
-.mongodbPathMetric span {
-  color: #6e829d;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.35;
-  text-align: left;
-}
-
-.mongodbPathMetric strong {
-  color: #1d2f47;
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.mongodbPathArrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  color: #7b8da6;
-  align-self: center;
-  position: relative;
-}
-
-.mongodbPathArrow span {
-  position: absolute;
-  left: -2px;
-  right: -2px;
-  height: 0;
-  border-top: 2px solid #7fa6ed;
-  border-radius: 999px;
-}
-
-.mongodbPathArrow :global(.anticon) {
-  position: relative;
-  z-index: 1;
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #ffffff;
-  border: 0;
-  color: #4f7edb;
-  font-size: 17px;
-}
-
-.mongodbInternalScene {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  justify-content: flex-start;
-}
-
-.mongodbInternalHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 4px;
-}
-
-.mongodbInternalTitle {
-  color: #1d2f47;
-  font-size: 16px;
-  font-weight: 800;
-  line-height: 1.2;
-  margin-bottom: 0;
-}
-
-.mongodbInternalLegend {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  padding-top: 3px;
-}
-
-.mongodbInternalLegend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: #8698ad;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.mongodbInternalLegend i {
-  width: 22px;
-  height: 2px;
-  border-radius: 999px;
-  position: relative;
-  flex-shrink: 0;
-  opacity: 0.88;
-}
-
-.mongodbInternalLegend i::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 2px;
-  border-radius: 999px;
-  background: currentColor;
-  transform: translateY(-50%);
-}
-
-.mongodbInternalLegend i::after {
-  content: '';
-  position: absolute;
-  right: -1px;
-  top: 50%;
-  width: 8px;
-  height: 8px;
-  transform: translateY(-50%) rotate(45deg);
-  border-top: 2px solid currentColor;
-  border-right: 2px solid currentColor;
-}
-
-.mongodbLegendCache {
-  color: #16c06e;
-  background: currentColor;
-}
-
-.mongodbLegendMemory {
-  color: #2f6bff;
-  background: currentColor;
-}
-
-.mongodbLegendResult {
-  color: #f59e0b;
-  background: currentColor;
-}
-
-.mongodbStageLabels {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr) 72px minmax(0, 1fr);
-  gap: 0;
-  align-items: center;
-  margin-top: 0;
-  margin-bottom: 2px;
-}
-
-.mongodbStageLabel {
-  color: #96a6ba;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: 0;
-  justify-self: center;
-}
-
-.mongodbStageLabel:nth-child(1) {
-  grid-column: 1;
-}
-
-.mongodbStageLabel:nth-child(2) {
-  grid-column: 3;
-}
-
-.mongodbStageLabel:nth-child(3) {
-  grid-column: 5;
-}
-
-.mongodbInternalGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr) 72px minmax(0, 1fr);
-  gap: 0;
-  align-items: stretch;
-  margin-top: 2px;
-}
-
-.mongodbInternalCard {
-  min-width: 0;
-  border-radius: 18px;
-  padding: 16px 18px;
-  border: 1px solid #e6edf6;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
-  box-shadow: 0 6px 18px rgba(18, 34, 66, 0.045);
-}
-
-.mongodbInternalCardTitle {
-  color: #22324a;
-  font-size: 14px;
-  font-weight: 800;
-  line-height: 1.25;
-  margin-bottom: 12px;
-}
-
-.mongodbInternalCardPrimary {
-  min-height: 220px;
-}
-
-.mongodbInternalCardSecondary,
-.mongodbInternalCardTertiary {
-  min-height: 170px;
-}
-
-.mongodbCacheHero {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  padding: 14px 14px 12px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, rgba(47, 107, 255, 0.06) 0%, rgba(17, 24, 39, 0.02) 100%);
-  border: 1px solid rgba(47, 107, 255, 0.08);
-}
-
-.mongodbCacheHeroMeta {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.mongodbCacheHeroMeta span {
-  color: #71829a;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.mongodbCacheHeroMeta strong {
-  color: #1d2f47;
-  font-size: 34px;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.04em;
-  white-space: nowrap;
-}
-
-.mongodbCacheBar {
-  height: 14px;
-  border-radius: 999px;
-  background: #dde5ef;
-  overflow: hidden;
-}
-
-.mongodbCacheBar span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #4f88ff 0%, #6ba4ff 100%);
-}
-
-.mongodbInternalMetrics {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.mongodbInternalMetric {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-  padding-bottom: 9px;
-  border-bottom: 1px solid #edf2f8;
-}
-
-.mongodbInternalMetric:last-child {
-  padding-bottom: 0;
-  border-bottom: 0;
-}
-
-.mongodbInternalMetric span {
-  color: #6d819b;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.3;
-}
-
-.mongodbInternalMetric strong {
-  color: #1d2f47;
-  font-size: 14px;
-  font-weight: 800;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.mongodbInternalArrowWrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.mongodbInternalArrow {
-  width: 54px;
-  height: 2px;
-  border-radius: 999px;
-  position: relative;
-  opacity: 0.88;
-}
-
-.mongodbInternalArrow::after {
-  content: '';
-  position: absolute;
-  right: -1px;
-  top: 50%;
-  width: 10px;
-  height: 10px;
-  border-top: 2px solid currentColor;
-  border-right: 2px solid currentColor;
-  transform: translateY(-50%) rotate(45deg);
-}
-
-.mongodbInternalArrowCache {
-  color: #16c06e;
-  background: currentColor;
-}
-
-.mongodbInternalArrowMemory {
-  color: #2f6bff;
-  background: currentColor;
 }
 
 .empty {
@@ -1684,64 +1279,6 @@
   color: rgba(255, 255, 255, 0.9);
 }
 
-:global(html.dark) .mongodbRequestScene,
-:global(html.dark) .mongodbInternalScene {
-  background: linear-gradient(180deg, rgba(11, 19, 30, 0.78) 0%, rgba(10, 16, 26, 0.82) 100%);
-  border-color: rgba(255, 255, 255, 0.06);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
-}
-
-:global(html.dark) .mongodbPathNode,
-:global(html.dark) .mongodbInternalCard {
-  background: linear-gradient(180deg, rgba(20, 31, 48, 0.96) 0%, rgba(14, 22, 35, 0.98) 100%);
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
-}
-
-:global(html.dark) .mongodbPathNodeTitle,
-:global(html.dark) .mongodbPathNodeEyebrow,
-:global(html.dark) .mongodbInternalCardTitle,
-:global(html.dark) .mongodbCacheHeroMeta strong,
-:global(html.dark) .mongodbPathMetric strong,
-:global(html.dark) .mongodbInternalMetric strong {
-  color: rgba(255, 255, 255, 0.92);
-}
-
-:global(html.dark) .mongodbInternalTitle {
-  color: rgba(255, 255, 255, 0.92);
-}
-
-:global(html.dark) .mongodbPathNodeEyebrow {
-  color: rgba(255, 255, 255, 0.38);
-}
-
-:global(html.dark) .mongodbStageLabel,
-:global(html.dark) .mongodbInternalLegend span,
-:global(html.dark) .mongodbPathMetric span,
-:global(html.dark) .mongodbInternalMetric span,
-:global(html.dark) .mongodbCacheHeroMeta span {
-  color: rgba(255, 255, 255, 0.54);
-}
-
-:global(html.dark) .mongodbPathNodeIcon {
-  background: rgba(255, 255, 255, 0.04);
-  color: #7cabff;
-  box-shadow: inset 0 0 0 1px rgba(124, 171, 255, 0.14);
-}
-
-:global(html.dark) .mongodbCacheHero {
-  background: linear-gradient(135deg, rgba(34, 54, 86, 0.82) 0%, rgba(22, 31, 47, 0.72) 100%);
-  border-color: rgba(119, 159, 255, 0.12);
-}
-
-:global(html.dark) .mongodbCacheBar {
-  background: rgba(255, 255, 255, 0.14);
-}
-
-:global(html.dark) .mongodbInternalMetric {
-  border-bottom-color: rgba(255, 255, 255, 0.08);
-}
-
 :global(html.dark) .detailMetricRow {
   border-bottom-color: rgba(255, 255, 255, 0.08);
 }
@@ -1922,40 +1459,6 @@
     grid-column: span 12;
   }
 
-  .mongodbFlowModel {
-    grid-template-columns: 1fr;
-  }
-
-  .mongodbRequestScene {
-    overflow-x: auto;
-    scroll-snap-type: x proximity;
-  }
-
-  .mongodbPathTrack {
-    min-width: 920px;
-    scroll-snap-align: start;
-  }
-
-  .mongodbStageLabels {
-    display: none;
-  }
-
-  .mongodbInternalGrid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
-  }
-
-  .mongodbInternalArrowWrap {
-    justify-content: center;
-    padding-left: 0;
-    min-height: 28px;
-  }
-
-  .mongodbInternalArrow {
-    width: 34px;
-    transform: rotate(90deg);
-  }
-
   .allMetricsGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2027,36 +1530,6 @@
   .instanceSubline {
     gap: 6px 10px;
   }
-
-  .mongodbPathTrack {
-    min-width: 0;
-    grid-template-columns: 1fr;
-    align-items: stretch;
-    gap: 10px;
-  }
-
-  .mongodbPathNode {
-    min-height: 160px;
-  }
-
-  .mongodbPathArrow {
-    min-height: 28px;
-    transform: rotate(90deg);
-    align-self: center;
-  }
-
-  .mongodbStageLabels {
-    display: none;
-  }
-
-  .mongodbInternalHeader {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .mongodbInternalLegend {
-    justify-content: flex-start;
-  }
 }
 
 @media (max-width: 768px) {
@@ -2110,14 +1583,6 @@
 
   .instanceMetaDivider {
     display: none;
-  }
-
-  .mongodbInternalLegend {
-    justify-content: flex-start;
-  }
-
-  .mongodbInternalTitle {
-    font-size: 16px;
   }
 }
 

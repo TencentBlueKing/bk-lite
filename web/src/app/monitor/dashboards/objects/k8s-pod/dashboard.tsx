@@ -21,7 +21,9 @@ export default function K8sPodDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
+          <div className={styles.sectionLabel}>Pod 概览</div>
           <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} kpiCols={5} styles={styles} />
+          <div className={styles.sectionLabel}>资源趋势</div>
           <FlexiblePanelSection styles={styles}>
             {dashboard.chartPanels.map((chart) => (
               <TrendChartPanel
@@ -40,6 +42,9 @@ export default function K8sPodDashboardPage() {
                 styles={styles}
               />
             ))}
+          </FlexiblePanelSection>
+          <div className={styles.sectionLabel}>详情</div>
+          <FlexiblePanelSection styles={styles}>
             {dashboard.detailPanels.map((detailPanel) => (
               <DetailPanelCard
                 key={detailPanel.panel.title}
