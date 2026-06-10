@@ -482,6 +482,17 @@ def test_render_template_supports_default_filter(monkeypatch):
     assert rendered == "none"
 
 
+def test_render_template_supports_lower_filter_for_toml_booleans(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+
+    rendered = plugin_controller_module.Controller({}).render_template(
+        "insecure_skip_verify = {{ insecure_skip_verify | default(false) | lower }}",
+        {"insecure_skip_verify": False},
+    )
+
+    assert rendered == "insecure_skip_verify = false"
+
+
 def test_render_template_allows_business_default_variables(monkeypatch):
     plugin_controller_module = _load_plugin_controller_module(monkeypatch)
 
