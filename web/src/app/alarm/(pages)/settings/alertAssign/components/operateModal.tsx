@@ -199,9 +199,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
         // 当前仅支持累加模式（不提供替换）；后端仍兼容 replace，此处固定 append
         escalation: { enabled: true, mode: 'append', layers },
       };
-      if (layers[0]?.personnel?.length) {
-        params.personnel = layers[0].personnel;
-      }
+      // B 模型：分派人员是初始第一棒，与升级层各自独立，不再相互覆盖
     } else {
       params.config = { ...params.config, escalation: { enabled: false } };
     }
