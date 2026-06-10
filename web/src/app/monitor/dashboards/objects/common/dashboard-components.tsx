@@ -215,9 +215,11 @@ export const KpiSection = ({
         styles={styles}
       />
       {extraCards}
-      {summaryCards.map(({ card, mainValue, valueColor, compare, footerItems, trendData, noDataType }) => {
+      {summaryCards.map(({ card, mainValue, valueColor, compare, footerItems, trendData, noDataType, uptimeState }) => {
         const isUptime = card.isUptimeCard;
-        const uptimeTone = noDataType === 'error' || mainValue.value === '--' ? 'empty' : 'success';
+        // 运行时长卡统一样式:不画折线,只显示「所选时间范围内是否发生重启」(运行正常 / 期间有重启 / 状态未知)。
+        const uptimeToneSuffix =
+          uptimeState?.tone === 'warning' ? 'Warning' : uptimeState?.tone === 'success' ? 'Success' : 'Empty';
 
         return (
           <StatCard
@@ -234,16 +236,16 @@ export const KpiSection = ({
             compare={compare}
             compareFavorableDirection={card.compareFavorableDirection}
             trendData={trendData}
-            hideTrend={card.hideTrend}
+            hideTrend={isUptime ? true : card.hideTrend}
             noDataType={noDataType}
             className={isUptime ? styles.statCardRelaxed : undefined}
             bodyClassName={isUptime ? styles.statBodyRelaxed : undefined}
             extra={isUptime ? (
-              <div className={`${styles.uptimeStatus} ${styles[`uptimeStatus${uptimeTone === 'success' ? 'Success' : 'Empty'}`]}`}>
+              <div className={`${styles.uptimeStatus} ${styles[`uptimeStatus${uptimeToneSuffix}`]}`}>
                 <span className={styles.uptimeStatusDot} />
                 <div className={styles.uptimeStatusMainWrap}>
                   <span className={styles.uptimeStatusMain}>
-                    {uptimeTone === 'success' ? '运行正常' : '暂无数据'}
+                    {uptimeState?.label ?? '状态未知'}
                   </span>
                 </div>
               </div>
