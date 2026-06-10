@@ -158,6 +158,8 @@ def sync_collect_task(instance_id):
             if not updated:
                 logger.info("配置文件采集结果已由回调更新，跳过本地 pending 覆盖 task_id=%s", instance_id)
         else:
+            # topology_snapshot 由采集插件在运行中途直接 update，刷新避免被本次 save 覆盖
+            instance.refresh_from_db(fields=["topology_snapshot"])
             instance.save()
     except Exception as err:
         import traceback

@@ -118,3 +118,64 @@ def test_previous_snapshot_marks_missing_link_stale():
         plugin.collect_topology_relationships([], _topo_rows())
     stale_ids = {item.get("relationship_id") for item in captured["stale_links"]}
     assert "auth:dev-x:lldp:Gi1" in stale_ids
+
+
+def _lldp_authoritative_rows():
+    """LLDP 邻居证据：dev-a Gi0/0/7 <-> dev-b Gi0/0/9，可产出 authoritative 链路"""
+
+    def row(instance_id, tag, ifindex, val, group):
+        return {"instance_id": instance_id, "tag": tag, "ifindex": ifindex, "val": val, "group": group}
+
+    return [
+        row("dev-a", "System-SysName", "", "dev-a", "system"),
+        row("dev-a", "IFXTable-IfName", "7", "Gi0/0/7", "interfaces"),
+        row("dev-a", "LLDP-RemSysName", "0.7.1", "dev-b", "neighbors"),
+        row("dev-a", "LLDP-RemPortId", "0.7.1", "Gi0/0/9", "neighbors"),
+        row("dev-a", "LLDP-RemPortIdSubtype", "0.7.1", "5", "neighbors"),
+        row("dev-a", "LLDP-LocPortId", "7", "Gi0/0/7", "neighbors"),
+        row("dev-a", "LLDP-LocPortIdSubtype", "7", "5", "neighbors"),
+        row("dev-b", "System-SysName", "", "dev-b", "system"),
+        row("dev-b", "IFXTable-IfName", "9", "Gi0/0/9", "interfaces"),
+    ]
+
+
+def test_authoritative_link_bypasses_min_confidence():
+    # min_confidence=0.99（→99）远高于常规推断阈值，authoritative 链路仍应产出关系
+    plugin = _make_plugin(min_confidence=0.99)
+    with mock.patch.object(CollectNetworkMetrics, "save_topology_snapshot"):
+        relationships = plugin.collect_topology_relationships([], _lldp_authoritative_rows())
+    assert relationships == [
+        {
+            "source_inst_name": "10.0.0.1-switch-Gi0/0/7",
+            "target_inst_name": "10.0.0.2-switch-Gi0/0/9",
+            "model_id": "interface",
+            "asst_id": "connect",
+            "model_asst_id": "interface_connect_interface",
+        }
+    ]
+
+
+def test_snapshot_unresolved_neighbors_are_slimmed():
+    def row(instance_id, tag, ifindex, val, group):
+        return {"instance_id": instance_id, "tag": tag, "ifindex": ifindex, "val": val, "group": group}
+
+    # 远端 sysname "ghost" 无对应设备，邻居无法解析 → 进入 unresolved_neighbors
+    rows = [
+        row("dev-a", "System-SysName", "", "dev-a", "system"),
+        row("dev-a", "IFXTable-IfName", "7", "Gi0/0/7", "interfaces"),
+        row("dev-a", "LLDP-RemSysName", "0.7.1", "ghost", "neighbors"),
+        row("dev-a", "LLDP-RemPortId", "0.7.1", "Gi0/0/99", "neighbors"),
+        row("dev-a", "LLDP-RemPortIdSubtype", "0.7.1", "5", "neighbors"),
+        row("dev-a", "LLDP-LocPortId", "7", "Gi0/0/7", "neighbors"),
+        row("dev-a", "LLDP-LocPortIdSubtype", "7", "5", "neighbors"),
+    ]
+    plugin = _make_plugin()
+    captured = {}
+    with mock.patch.object(
+        plugin, "save_topology_snapshot",
+        side_effect=lambda snapshot: captured.update(snapshot),
+    ):
+        plugin.collect_topology_relationships([], rows)
+    unresolved = captured["unresolved_neighbors"]
+    assert unresolved  # 确实触发 unresolved 分支
+    assert all("raw_remote_fields" not in item for item in unresolved)

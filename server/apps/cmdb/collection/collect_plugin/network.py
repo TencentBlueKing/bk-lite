@@ -208,8 +208,11 @@ class CollectNetworkMetrics(CollectBase):
                 continue
             source_inst_name = self.resolve_pipeline_inst_name(link.get("source_port_id"))
             target_inst_name = self.resolve_pipeline_inst_name(link.get("target_port_id"))
-            if not source_inst_name or not target_inst_name or source_inst_name == target_inst_name:
+            if not source_inst_name or not target_inst_name:
                 dropped.append(self.slim_topology_link(link, reason="interface_not_in_inventory"))
+                continue
+            if source_inst_name == target_inst_name:
+                dropped.append(self.slim_topology_link(link, reason="self_loop"))
                 continue
             relation = {
                 "source_inst_name": source_inst_name,
@@ -224,7 +227,11 @@ class CollectNetworkMetrics(CollectBase):
             "summary": parsed.get("summary", {}),
             "links": [self.slim_topology_link(link) for link in current_links],
             "stale_links": [self.slim_topology_link(link) for link in topology.get("stale_links", [])],
-            "unresolved_neighbors": topology.get("unresolved_neighbors", []),
+            "unresolved_neighbors": [
+                {key: value for key, value in item.items() if key != "raw_remote_fields"}
+                for item in topology.get("unresolved_neighbors", [])
+                if isinstance(item, dict)
+            ],
             "dropped": dropped,
         }
         self.save_topology_snapshot(snapshot)
@@ -253,7 +260,10 @@ class CollectNetworkMetrics(CollectBase):
         return [item for item in links if isinstance(item, dict)]
 
     def save_topology_snapshot(self, snapshot):
-        CollectModels.objects.filter(id=self.task_id).update(topology_snapshot=snapshot)
+        try:
+            CollectModels.objects.filter(id=self.task_id).update(topology_snapshot=snapshot)
+        except Exception as err:  # noqa: BLE001
+            logger.warning("==保存拓扑快照失败，跳过（不影响采集主流程）task_id={} error={}==".format(self.task_id, err))
 
     @staticmethod
     def append_unique_relationship(relationships, seen, relation):
