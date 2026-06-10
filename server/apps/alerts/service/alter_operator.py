@@ -125,6 +125,41 @@ class AlertOperator(object):
         except Exception as e:
             logger.error(f"恢复提醒任务失败: {str(e)}")
 
+    def _create_escalation_task(self, alert: Alert, assignment_id: str):
+        """分派时创建升级任务"""
+        try:
+            from apps.alerts.service.escalation_service import EscalationService
+
+            assignment = AlertAssignment.objects.get(id=assignment_id, is_active=True)
+            EscalationService.create_escalation_task(alert, assignment)
+        except AlertAssignment.DoesNotExist:
+            logger.error(f"分派策略不存在: assignment_id={assignment_id}")
+        except Exception:
+            logger.exception(f"创建升级任务失败: alert_id={alert.alert_id}")
+
+    def _stop_escalation_tasks(self, alert: Alert):
+        """认领/解决/关闭后停止升级任务"""
+        try:
+            from apps.alerts.service.escalation_service import EscalationService
+
+            EscalationService.stop_escalation_task(alert)
+        except Exception as e:
+            logger.error(f"停止升级任务失败: {str(e)}")
+
+    def _reset_escalation_tasks(self, alert: Alert, assignment_id: str = None):
+        """改派后升级计时重置到第一层"""
+        try:
+            from apps.alerts.service.escalation_service import EscalationService
+
+            assignment = None
+            if assignment_id not in (None, ""):
+                assignment = AlertAssignment.objects.filter(
+                    id=assignment_id, is_active=True
+                ).first()
+            EscalationService.reset_escalation_task(alert, assignment)
+        except Exception as e:
+            logger.error(f"重置升级任务失败: {str(e)}")
+
     def _assign_alert(self, alert_id: str, data: dict) -> dict:
         """
         分派告警：未分派 -> 待响应
@@ -170,6 +205,7 @@ class AlertOperator(object):
             assignment_id = data.get("assignment_id")  # 分派策略ID
             if assignment_id:
                 self._create_reminder_record(alert, assignment_id)
+                self._create_escalation_task(alert, assignment_id)
 
             notify_param = self.format_notify_data(assignee, alert)
             if notify_param:
@@ -252,6 +288,7 @@ class AlertOperator(object):
 
             # 停止相关的提醒任务
             self._stop_reminder_tasks(alert)
+            self._stop_escalation_tasks(alert)
 
             log_data = {
                 "action": LogAction.MODIFY,
@@ -342,6 +379,7 @@ class AlertOperator(object):
 
             assignment_id = data.get("assignment_id")
             self._ensure_reminder_tasks(alert, assignment_id)
+            self._reset_escalation_tasks(alert, assignment_id)
 
             log_data = {
                 "action": LogAction.MODIFY,
