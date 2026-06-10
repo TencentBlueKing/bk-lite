@@ -162,6 +162,8 @@ class MonitorAlert(TimeInfo):
     notice_type_ids = models.JSONField(default=list, verbose_name="通知方式ID列表")
     notice_users = models.JSONField(default=list, verbose_name="通知人")
     notice_logs = models.JSONField(default=list, verbose_name="通知记录")
+    alert_center_notified = models.BooleanField(default=True, verbose_name="告警中心已同步")
+    alert_center_retry_count = models.IntegerField(default=0, verbose_name="告警中心通知重试次数")
 
     class Meta:
         verbose_name = "监控告警"

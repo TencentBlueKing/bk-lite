@@ -201,6 +201,7 @@ class MonitorAlertViewSet(
                     "time": now.isoformat(),
                 }
             ]
+            updated_data["alert_center_notified"] = False
 
             if instance.alert_type == "no_data" and instance.metric_instance_id:
                 update_baseline = request.data.get("update_baseline", False)
