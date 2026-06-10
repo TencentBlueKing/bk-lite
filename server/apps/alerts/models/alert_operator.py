@@ -102,6 +102,37 @@ class AlertReminderTask(models.Model):
         return f"ReminderTask for Alert {self.alert.alert_id}"
 
 
+class AlertEscalationTask(models.Model):
+    """
+    告警升级任务 - 时间驱动，独立于提醒任务
+    """
+
+    alert = models.OneToOneField(
+        "Alert", on_delete=models.CASCADE, help_text="关联的告警", primary_key=True
+    )
+    assignment = models.ForeignKey(
+        AlertAssignment, on_delete=models.CASCADE, help_text="分派策略"
+    )
+
+    is_active = models.BooleanField(default=True, help_text="是否激活")
+    mode = models.CharField(max_length=16, help_text="升级模式 append/replace")
+    layers = JSONField(default=list, help_text="升级链层级快照")
+    current_layer_index = models.IntegerField(default=0, help_text="当前层级索引")
+    layer_started_at = models.DateTimeField(help_text="本层开始时间")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "alerts_escalation_task"
+        indexes = [
+            models.Index(fields=["is_active", "layer_started_at"]),
+        ]
+
+    def __str__(self):
+        return f"EscalationTask for Alert {self.alert.alert_id}"
+
+
 class AlarmStrategy(MaintainerInfo, TimeInfo):
     """告警策略模型"""
 
