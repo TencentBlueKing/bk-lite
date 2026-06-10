@@ -156,8 +156,8 @@ class SnmpAuth(object):
 
 
 class SnmpTopo:
-    BASE_COLLECTION_PROTOCOLS = ("arp", "interface", "ipaddr")
-    DEFAULT_TOPOLOGY_PROTOCOLS = ("lldp", "cdp", "fdb", "arp")
+    BASE_COLLECTION_PROTOCOLS = ("system", "arp", "interface", "ipaddr")
+    DEFAULT_TOPOLOGY_PROTOCOLS = ("lldp", "cdp", "fdp", "fdb", "arp")
     SUPPORTED_TOPOLOGY_FACT_PROTOCOLS = ("lldp", "cdp", "fdb", "arp")
 
     def __init__(self, kwargs):
@@ -301,7 +301,7 @@ class SnmpTopo:
     @classmethod
     def _build_lldp_topology_facts(cls, snmp_rows):
         local_ports = {
-            str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "LLDP-LocalPortId" and row.get(IF_INDEX)
+            str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "LLDP-LocPortId" and row.get(IF_INDEX)
         }
         remote_ports = {
             str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "LLDP-RemPortId" and row.get(IF_INDEX)
@@ -345,10 +345,10 @@ class SnmpTopo:
     def _build_cdp_topology_facts(cls, snmp_rows):
         interface_names = cls._build_interface_names(snmp_rows)
         remote_ports = {
-            str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "CDP-CacheDevicePort" and row.get(IF_INDEX)
+            str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "CDP-DevicePort" and row.get(IF_INDEX)
         }
         remote_devices = [
-            row for row in snmp_rows if row.get(TAG) == "CDP-CacheDeviceId" and row.get(IF_INDEX)
+            row for row in snmp_rows if row.get(TAG) == "CDP-DeviceId" and row.get(IF_INDEX)
         ]
 
         facts = []
@@ -405,7 +405,7 @@ class SnmpTopo:
         bridge_ports = {
             str(row.get(IF_INDEX)): row
             for row in snmp_rows
-            if row.get(TAG) == "BRIDGE-MIB-BasePortIfIndex" and row.get(IF_INDEX) and row.get(VAL)
+            if row.get(TAG) == "BRIDGE-BasePortIfIndex" and row.get(IF_INDEX) and row.get(VAL)
         }
         fdb_macs = {
             str(row.get(IF_INDEX)): row for row in snmp_rows if row.get(TAG) == "FDB-MacAddress" and row.get(IF_INDEX)
