@@ -105,6 +105,16 @@ export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       compareFavorableDirection: 'down',
       guide: [],
       footer: [{ label: '平均 TTL', metric: 'ping_ttl_avg', unit: 'counts' }],
+    },
+    {
+      title: '平均 TTL',
+      metric: 'ping_ttl_avg',
+      unit: 'counts',
+      color: '#597ef7',
+      icon: 'api',
+      compare: true,
+      guide: [{ label: '平均 TTL', detail: '回包剩余 TTL(路由跳数计数);数值突变常意味路由路径改变。' }],
+      footer: [{ label: '最差结果码', metric: 'ping_result_code_max', unit: 'none' }]
     }
   ],
   charts: [

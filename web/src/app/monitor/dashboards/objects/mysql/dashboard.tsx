@@ -54,6 +54,7 @@ import {
   RingChartPanel,
   HorizontalBarPanel
 } from '../../shared/widgets';
+import { countRestartsInRange } from '../common/simple-dashboard-core';
 
 interface MysqlInstanceOption {
   label: string;
@@ -793,6 +794,12 @@ export default function MysqlDashboardPage() {
 
 
   const uptimeDisplay = hasMetricData('mysql_uptime') ? uptimeInsight.uptimeText : '--';
+  // 运行时长卡统一样式:不画折线,只判断所选时间范围内是否发生重启(运行正常 / 期间有重启 / 状态未知)。
+  const uptimeStatus = !hasMetricData('mysql_uptime')
+    ? { label: '状态未知', suffix: 'Empty' as const }
+    : countRestartsInRange(metricMap.mysql_uptime?.viewData || []) > 0
+      ? { label: '期间有重启', suffix: 'Warning' as const }
+      : { label: '运行正常', suffix: 'Success' as const };
   const connCardDisplay = getDisplayValue('mysql_connection_utilization', connDisplay);
   const qpsCardDisplay = getDisplayValue('mysql_queries_rate', qpsDisplay);
   const slowCardDisplay = getDisplayValue('mysql_slow_queries_rate', slowDisplay);
@@ -999,6 +1006,28 @@ export default function MysqlDashboardPage() {
                       styles={styles}
                       status={statusInfo}
                       timeline={collectionStatusTimeline}
+                    />
+                    <StatCard
+                      styles={styles}
+                      title={<TitleWithGuide styles={styles} title="运行时长" items={[{ label: '运行时长', detail: 'MySQL 实例自上次启动后的持续运行时间，反映服务稳定性；期间发生重启会重新计时。' }]} />}
+                      value={uptimeDisplay}
+                      unit=""
+                      icon={<ClockCircleOutlined />}
+                      iconStyle={{ background: 'rgba(91, 143, 249, 0.12)', color: '#5b8ff9' }}
+                      color="#5b8ff9"
+                      footer={<span>{hasMetricData('mysql_uptime') ? `启动 ${uptimeInsight.startupTimeText}` : metricEmptyText}</span>}
+                      hideTrend
+                      className={styles.statCardRelaxed}
+                      bodyClassName={styles.statBodyRelaxed}
+                      extra={
+                        <div className={`${styles.uptimeStatus} ${styles[`uptimeStatus${uptimeStatus.suffix}`]}`}>
+                          <span className={styles.uptimeStatusDot} />
+                          <div className={styles.uptimeStatusMainWrap}>
+                            <span className={styles.uptimeStatusMain}>{uptimeStatus.label}</span>
+                          </div>
+                        </div>
+                      }
+                      noDataType={getNoDataType('mysql_uptime')}
                     />
                     <StatCard
                       styles={styles}

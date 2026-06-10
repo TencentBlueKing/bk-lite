@@ -123,6 +123,15 @@ export const NGINX_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       compareFavorableDirection: 'up',
       guide: [{ label: '处理完成率', detail: '连接处理速率相对连接接受速率的比例，偏低时要关注连接处理失败或积压。' }],
       footer: [{ label: '接受速率', metric: 'nginx_accepts_rate', unit: 'cps' }]
+    },
+    {
+      title: '连接接受速率',
+      metric: 'nginx_accepts_rate',
+      unit: 'cps',
+      color: '#13c2c2',
+      icon: 'thunder',
+      guide: [{ label: '接受速率', detail: '每秒新接受连接数,反映入口连接压力。' }],
+      footer: [{ label: '处理速率', metric: 'nginx_handled_rate', unit: 'cps' }]
     }
   ],
   charts: [

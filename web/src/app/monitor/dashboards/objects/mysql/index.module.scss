@@ -243,9 +243,10 @@
   margin-bottom: 12px;
 
   > * {
-    // 基准 = 整行 1/5（扣除 4 个 gap）→ 宽屏每行 5 张；收窄到 min-width 以下自动换行并撑满。
-    flex: 1 1 calc((100% - 4 * 12px) / 5);
-    min-width: 200px;
+    // 基准 = 整行 1/6（扣除 5 个 gap）→ 宽屏每行 6 张(采集状态 + 运行时长 + 4 KPI,含 QPS)；
+    // 卡片相应变窄，收窄到 min-width 以下自动换行并撑满。
+    flex: 1 1 calc((100% - 5 * 12px) / 6);
+    min-width: 168px;
   }
 }
 

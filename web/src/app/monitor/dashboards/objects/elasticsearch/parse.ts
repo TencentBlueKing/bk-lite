@@ -7,17 +7,17 @@ interface RawSeries {
 }
 
 /**
- * 把「按 dbname 聚合 + topk」查询的原始结果(result.data.result 多序列)
- * 解析成按值降序的 BarList items:每序列取最新值、取 dbname label、按值排序。
- * topk 已在查询层限制条数;此处仅排序 + 格式化,数据缺失时返回空数组(空态)。
+ * 把「按 node_name 聚合 + topk/bottomk」查询的原始结果(result.data.result 多序列)
+ * 解析成按值降序的 BarList items:每序列取最新值、取 node_name label、按值排序。
+ * topk/bottomk 已在查询层限制条数;此处仅排序 + 格式化,数据缺失时返回空数组(空态)。
  */
-export const topDbBars = (raw: any, unit: string, color: string): BarItem[] => {
+export const topNodeBars = (raw: any, unit: string, color: string): BarItem[] => {
   const series: RawSeries[] = raw?.data?.result || [];
   const rows = series
     .map((s) => {
-      // 仅用真实的 dbname/datname 标签;缺失或空串说明该数据没有按库维度,
-      // 不再伪造「未知库」(否则会把实例级聚合值误展示成某个库的排行)。
-      const label = (s.metric?.dbname || s.metric?.datname || '').trim();
+      // 仅用真实的 node_name 标签;缺失或空串说明该数据没有按节点维度,
+      // 不再伪造「未知节点」(否则会把实例级聚合值误展示成某个节点的排行)。
+      const label = (s.metric?.node_name || '').trim();
       const nums = (s.values || [])
         .map(([, v]) => Number(v))
         .filter((n) => Number.isFinite(n));

@@ -85,6 +85,28 @@ export const CONSUL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       footer: [{ label: '危险检查', metric: 'consul_checks_critical', unit: 'counts' }]
     },
     {
+      title: '通过检查数',
+      metric: 'consul_checks_passing',
+      unit: 'counts',
+      color: '#27c274',
+      icon: 'node',
+      compare: true,
+      compareFavorableDirection: 'up',
+      guide: [{ label: '通过检查数', detail: '当前处于「通过」状态的健康检查数量，越接近检查总数越健康。' }],
+      footer: [{ label: '检查总数', metric: 'consul_checks_total', unit: 'counts' }]
+    },
+    {
+      title: '警告检查数',
+      metric: 'consul_checks_warning',
+      unit: 'counts',
+      color: '#faad14',
+      icon: 'api',
+      compare: true,
+      compareFavorableDirection: 'down',
+      guide: [{ label: '警告检查数', detail: '当前处于「警告」状态的健康检查数量，持续抬升预示检查正在劣化。' }],
+      footer: [{ label: '危险检查', metric: 'consul_checks_critical', unit: 'counts' }]
+    },
+    {
       title: '危险检查数',
       metric: 'consul_checks_critical',
       unit: 'counts',
