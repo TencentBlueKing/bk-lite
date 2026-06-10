@@ -45,6 +45,10 @@ class DistributionFileViewSet(AuthViewSet):
             "name": "原始文件名.txt"
         }
         """
+        # BL-NEW-002：上传文件必须带团队归属，否则文件分发时无法做团队隔离。
+        # 校验并取得当前用户有权访问的 current_team，作为文件归属团队。
+        current_team = self._validate_current_team_permission(request)
+
         serializer = DistributionFileUploadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -62,10 +66,11 @@ class DistributionFileViewSet(AuthViewSet):
         # 上传到 JetStream Object Store
         async_to_sync(upload_file_to_s3)(file, file_key)
 
-        # 创建数据库记录
+        # 创建数据库记录（带团队归属）
         distribution_file = DistributionFile.objects.create(
             original_name=original_name,
             file_key=file_key,
+            team=current_team,
         )
         log_operation(request, "create", "job", f"上传分发文件: {distribution_file.original_name}")
 
