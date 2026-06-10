@@ -189,6 +189,10 @@ class EscalationService:
         now = timezone.now()
         task.current_layer_index = next_index
         task.layer_started_at = now
+        # 升级是时间驱动：本层等待时长已过即推进，无论通知是否成功投递
+        # （spec §3.2/§3.5：提醒因屏蔽/投递失败被跳过时升级时钟照常推进）。
+        # 因此此处先持久化层级推进、再发通知；通知的同步构建部分仍在扫描的
+        # transaction.atomic() 内，构建异常会连同推进一起回滚。
         task.save(update_fields=["current_layer_index", "layer_started_at", "updated_at"])
 
         roster = cls.compute_roster(task.layers, next_index, task.mode)
