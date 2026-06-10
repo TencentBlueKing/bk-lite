@@ -2208,6 +2208,50 @@ class TestWorkerRunningFlag:
         assert result["defer_running_clear"] is True
         clear_running_flag.assert_not_awaited()
 
+    async def test_collect_task_clears_dedupe_key_when_handler_completes(
+        self, monkeypatch
+    ):
+        worker = _load_worker_module(monkeypatch)
+        deleted_keys = []
+
+        class FakePool:
+            async def get(self, key):
+                return None
+
+            async def delete(self, key):
+                deleted_keys.append(key)
+
+            async def close(self):
+                return None
+
+        async def fake_create_pool(_settings):
+            return FakePool()
+
+        handler = AsyncMock(
+            return_value={
+                "task_id": "collect-task-worker",
+                "status": "success",
+            }
+        )
+        monitor_handler_module = types.ModuleType("tasks.handlers.monitor_handler")
+        monitor_handler_module.collect_windows_wmi_metrics_task = handler
+        monkeypatch.setitem(sys.modules, "tasks.handlers.monitor_handler", monitor_handler_module)
+        monkeypatch.setattr(worker, "create_pool", fake_create_pool)
+
+        params = {
+            "monitor_type": "windows_wmi",
+            "host": "10.0.0.8",
+            "tags": {"instance_id": "cmdb_host_1"},
+            "collect_type": "http",
+        }
+        result = await worker.collect_task({}, params, "collect-wmi-worker")
+
+        task_queue_module = _load_task_queue_module(monkeypatch)
+        dedupe_key = task_queue_module.generate_dedupe_key(params)
+        assert result["status"] == "success"
+        assert f"task:dedupe:{dedupe_key}" in deleted_keys
+        assert "task:running:collect-wmi-worker" in deleted_keys
+
     async def test_process_host_remote_callback_worker_routes_to_handler(self, monkeypatch):
         worker = _load_worker_module(monkeypatch)
         handler = AsyncMock(return_value={"task_id": "task-worker-2", "status": "success"})

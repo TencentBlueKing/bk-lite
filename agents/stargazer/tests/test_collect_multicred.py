@@ -98,6 +98,130 @@ def test_generate_task_id_distinguishes_credential_id():
     assert first_task_id != second_task_id
 
 
+def test_generate_dedupe_key_is_stable_for_host_remote_tasks():
+    from core.task_queue import TaskQueue
+
+    queue = TaskQueue()
+    params = {
+        "monitor_type": "host",
+        "host": "10.0.0.8",
+        "port": 22,
+        "tags": {"instance_id": "cmdb_host_1"},
+        "collect_type": "http",
+    }
+
+    assert queue._generate_dedupe_key(params) == queue._generate_dedupe_key(params)
+    assert queue._generate_dedupe_key(params).startswith("collect_host_")
+
+
+@pytest.mark.asyncio
+async def test_enqueue_collect_task_skips_when_dedupe_job_is_still_queued():
+    from core.task_queue import TaskQueue
+
+    class ExistingJobPool:
+        def __init__(self):
+            self.enqueued = []
+            self.values = {}
+
+        async def get(self, key):
+            return self.values.get(key)
+
+        async def zscore(self, key, value):
+            if key == "arq:queue" and value == "job-existing":
+                return 1
+            return None
+
+        async def exists(self, key):
+            return 0
+
+        async def ttl(self, key):
+            return 86399 if key.startswith("task:dedupe:") else -2
+
+        async def delete(self, key):
+            self.values.pop(key, None)
+
+        async def enqueue_job(self, *args, **kwargs):
+            self.enqueued.append((args, kwargs))
+            return types.SimpleNamespace(job_id="job-new")
+
+        async def set(self, key, value, ex=None):
+            self.values[key] = value
+
+    queue = TaskQueue()
+    queue.pool = ExistingJobPool()
+    queue._is_healthy = True
+    params = {
+        "monitor_type": "windows_wmi",
+        "host": "10.0.0.8",
+        "tags": {"instance_id": "cmdb_host_1"},
+        "collect_type": "http",
+    }
+    dedupe_key = queue._generate_dedupe_key(params)
+    queue.pool.values[f"task:dedupe:{dedupe_key}"] = "job-existing"
+
+    result = await queue.enqueue_collect_task(params)
+
+    assert result["status"] == "skipped"
+    assert result["reason"] == "Task already queued or running for dedupe key"
+    assert result["job_id"] == "job-existing"
+    assert queue.pool.enqueued == []
+
+
+@pytest.mark.asyncio
+async def test_enqueue_collect_task_clears_stale_dedupe_and_requeues():
+    from core.task_queue import TaskQueue
+
+    class StaleJobPool:
+        def __init__(self):
+            self.enqueued = []
+            self.values = {}
+            self.deleted = []
+
+        async def get(self, key):
+            return self.values.get(key)
+
+        async def zscore(self, key, value):
+            return None
+
+        async def exists(self, key):
+            return 0
+
+        async def ttl(self, key):
+            return 86399
+
+        async def delete(self, key):
+            self.deleted.append(key)
+            self.values.pop(key, None)
+
+        async def enqueue_job(self, *args, **kwargs):
+            self.enqueued.append((args, kwargs))
+            return types.SimpleNamespace(job_id="job-new")
+
+        async def set(self, key, value, ex=None):
+            self.values[key] = value
+
+    queue = TaskQueue()
+    queue.pool = StaleJobPool()
+    queue._is_healthy = True
+    params = {
+        "plugin_name": "vmware_info",
+        "model_id": "vmware_vc",
+        "host": "10.0.0.8",
+        "tags": {"instance_id": "cmdb_vc_1"},
+        "collect_task_id": "collect-1",
+    }
+    dedupe_key = queue._generate_dedupe_key(params)
+    queue.pool.values[f"task:dedupe:{dedupe_key}"] = "job-missing"
+
+    result = await queue.enqueue_collect_task(params)
+
+    assert result["status"] == "queued"
+    assert result["job_id"] == "job-new"
+    assert f"task:dedupe:{dedupe_key}" in queue.pool.deleted
+    assert queue.pool.values[f"task:dedupe:{dedupe_key}"] == "job-new"
+    assert len(queue.pool.enqueued) == 1
+
+
 def test_expand_collect_tasks_supports_credentials_pool_and_hosts():
     from api.collect import _build_collect_task_candidates, _expand_collect_tasks
 
