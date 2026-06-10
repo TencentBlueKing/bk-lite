@@ -10,10 +10,9 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
 import json_repair
-
 from deepagents import create_deep_agent
 from langchain_core.callbacks import dispatch_custom_event
-from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -35,18 +34,6 @@ from apps.opspilot.metis.llm.chain.entity import (
     StopConditionResult,
     normalize_tool_calls,
 )
-from apps.opspilot.metis.llm.chain.message_trim import trim_messages
-from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
-from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
-from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
-from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
-from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
-from apps.opspilot.metis.utils.template_loader import TemplateLoader
-from apps.opspilot.services.approval import wait_for_approval
-from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
-from apps.opspilot.utils.rollback import execute_rollback, get_rollback_spec, take_snapshot
-from apps.opspilot.utils.user_choice import wait_for_choice
-from apps.opspilot.utils.verification import get_verification_spec, run_verification
 
 # ---------------------------------------------------------------------------
 # Facade re-exports (structural refactor, no behavior change).
@@ -79,6 +66,19 @@ from apps.opspilot.metis.llm.chain.lc_patches import (  # noqa: E402,F401
     _patched_convert_message_to_dict,
     _patched_create_chat_result,
 )
+from apps.opspilot.metis.llm.chain.message_trim import trim_messages
+from apps.opspilot.metis.llm.common.anthropic_capabilities import build_anthropic_runtime_capabilities, normalize_tool_choice_for_capabilities
+from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
+from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
+from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
+from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
+from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
+from apps.opspilot.metis.utils.template_loader import TemplateLoader
+from apps.opspilot.services.approval import wait_for_approval
+from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
+from apps.opspilot.utils.rollback import execute_rollback, get_rollback_spec, take_snapshot
+from apps.opspilot.utils.user_choice import wait_for_choice
+from apps.opspilot.utils.verification import get_verification_spec, run_verification
 
 
 def _safe_log_preview(content: str, max_len: int = 200) -> str:
@@ -2326,24 +2326,15 @@ class ToolsNodes(BasicNode):
                             bind_kwargs["tool_choice"] = "any"
                         elif tool_choice_cfg.mode == "specific" and tool_choice_cfg.tool_name:
                             bind_kwargs["tool_choice"] = tool_choice_cfg.tool_name
-                # 选择后续行：用户刚完成 request_user_choice，强制 LLM 必须调用工具
-                if _has_pending_choice and "tool_choice" not in bind_kwargs:
-                    bind_kwargs["tool_choice"] = "any"
-                    logger.info(f"[{trace_id}] 选择后续行: 用户刚完成 request_user_choice，" f"强制 tool_choice='any' (step={step_counter['count']})")
-
-                # Thinking 模式兼容性处理：
-                # DeepSeek V4 和 Qwen 在 thinking 模式下只支持 tool_choice="auto" 或 "none"，
-                # 不支持 "any"/"required"/specific tool。检测 thinking 模式并转换。
-                if bind_kwargs.get("tool_choice") in ("any", "required"):
-                    extra_body = getattr(llm, "extra_body", None) or {}
-                    # DeepSeek: extra_body.thinking.type == "enabled"
-                    # Qwen: extra_body.enable_thinking == True
-                    deepseek_thinking = extra_body.get("thinking", {}).get("type") == "enabled"
-                    qwen_thinking = extra_body.get("enable_thinking") is True
-                    is_thinking_enabled = deepseek_thinking or qwen_thinking
-                    if is_thinking_enabled:
-                        bind_kwargs["tool_choice"] = "auto"
-
+                if "tool_choice" in bind_kwargs:
+                    capabilities = build_anthropic_runtime_capabilities(
+                        getattr(graph_request, "vendor_type", ""),
+                        getattr(graph_request, "protocol_type", "openai"),
+                    )
+                    bind_kwargs["tool_choice"] = normalize_tool_choice_for_capabilities(bind_kwargs["tool_choice"], capabilities)
+                # 选择后续行：不再强制 tool_choice="any"（某些模型不稳定），仅靠注入提示引导
+                # if _has_pending_choice and "tool_choice" not in bind_kwargs:
+                #     bind_kwargs["tool_choice"] = "any"
                 llm_with_tools = llm.bind_tools(current_tools, **bind_kwargs)
             else:
                 llm_with_tools = llm
@@ -2881,9 +2872,7 @@ class ToolsNodes(BasicNode):
                                 break
                         if failed_tool_call is None:
                             # 找不到对应 tool_call（理论上不应发生），保留原始错误，不重试
-                            logger.warning(
-                                f"[{trace_id}] 工具重试: 未找到 tool_call_id={tool_call_id} 对应的 tool_call，跳过重试"
-                            )
+                            logger.warning(f"[{trace_id}] 工具重试: 未找到 tool_call_id={tool_call_id} 对应的 tool_call，跳过重试")
                             continue
 
                         for attempt in range(1, retry_cfg.max_retries_per_tool + 1):

@@ -26,7 +26,6 @@ from apps.opspilot.models import (
     KnowledgeGraph,
     KnowledgeTask,
     LLMModel,
-    ManualKnowledge,
     Memory,
     MemorySpace,
     MemoryWriteCache,
@@ -95,6 +94,7 @@ def _build_memory_write_client(effective_model_id):
         openai_api_key=llm_model.openai_api_key,
         model=llm_model.model_name,
         protocol_type=llm_model.protocol_type,
+        vendor_type=llm_model.vendor.vendor_type if llm_model.vendor_id else "",
         temperature=0.3,
     )
     return LLMClientFactory.create_client(llm_request, disable_stream=True)
@@ -839,9 +839,7 @@ def _process_single_qa_pairs(qa_pairs, qa_json, params, rag, task_obj):
 
         # 每10个记录输出一次进度日志
         if (index + 1) % 10 == 0:
-            logger.info(
-                f"已处理 {index + 1}/{len(qa_json)} 个问答对，成功: {success_count}, 待重试: {len(pending_retry)}"
-            )
+            logger.info(f"已处理 {index + 1}/{len(qa_json)} 个问答对，成功: {success_count}, 待重试: {len(pending_retry)}")
 
         task_progress += train_progress
         task_obj.train_progress = round(task_progress, 2)
