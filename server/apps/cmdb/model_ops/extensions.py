@@ -1,11 +1,10 @@
 """模型能力域的企业版扩展契约（社区侧门面）。
 
-社区默认实现为空契约：不新增字段类型、不附加字段校验。企业版通过
-``apps.cmdb.enterprise.model_ops.provider.get_model_enterprise_extension`` 返回
-携带真实逻辑（如附件/图片字段类型与规则）的子类实例。
+社区默认实现为空契约（不新增字段类型、不附加字段校验）。商业实现由 overlay 在
+启动时注册到扩展注册表的 "model_ops" 槽位，社区只 get 不 import。
 """
 
-from apps.cmdb.extensions.loader import load_provider
+from apps.cmdb.extensions import registry
 
 
 class ModelEnterpriseExtension:
@@ -39,12 +38,7 @@ _EMPTY_MODEL_EXTENSION = ModelEnterpriseExtension()
 
 
 def get_model_enterprise_extension() -> ModelEnterpriseExtension:
-    factory = load_provider(
-        "apps.cmdb.enterprise.model_ops.provider",
-        "get_model_enterprise_extension",
-        default=lambda: _EMPTY_MODEL_EXTENSION,
-    )
-    return factory()
+    return registry.get("model_ops", _EMPTY_MODEL_EXTENSION)
 
 
 def file_attr_types() -> set:

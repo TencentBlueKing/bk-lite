@@ -21,6 +21,7 @@ from apps.cmdb.constants.constants import (
     ENUM_SELECT_MODE_DEFAULT,
 )
 from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
+from apps.cmdb.custom_reporting.extensions import get_custom_reporting_extension
 from apps.cmdb.validators.field_validator import (
     normalize_tag_field_option as normalize_tag_field_option_config,
 )
@@ -568,11 +569,7 @@ class ModelManage(object):
         instances: list[dict],
         username="admin",
     ) -> list[str]:
-        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
-            CustomReportingModelService,
-        )
-
-        return CustomReportingModelService.register_model_fields(
+        return get_custom_reporting_extension().register_model_fields(
             model_id,
             instances,
             username=username,
@@ -580,19 +577,11 @@ class ModelManage(object):
 
     @staticmethod
     def validate_custom_reporting_instance_fields(model_id: str, instances: list[dict]) -> None:
-        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
-            CustomReportingModelService,
-        )
-
-        CustomReportingModelService.validate_instance_fields(model_id, instances)
+        get_custom_reporting_extension().validate_instance_fields(model_id, instances)
 
     @staticmethod
     def _get_custom_reporting_declared_attr_ids(model_id: str) -> set[str]:
-        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
-            CustomReportingModelService,
-        )
-
-        return CustomReportingModelService.get_declared_attr_ids(model_id)
+        return get_custom_reporting_extension().get_declared_attr_ids(model_id)
 
     @staticmethod
     def validate_custom_reporting_relation_fields(
@@ -600,11 +589,7 @@ class ModelManage(object):
         relations: list[dict],
         identity_keys: list[str] | None = None,
     ) -> None:
-        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
-            CustomReportingModelService,
-        )
-
-        CustomReportingModelService.validate_relation_fields(
+        get_custom_reporting_extension().validate_relation_fields(
             model_id,
             relations,
             identity_keys=identity_keys,
@@ -612,19 +597,11 @@ class ModelManage(object):
 
     @staticmethod
     def normalize_custom_reporting_identity_keys(identity_keys) -> list[str]:
-        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
-            CustomReportingModelService,
-        )
-
-        return CustomReportingModelService.normalize_identity_keys(identity_keys)
+        return get_custom_reporting_extension().normalize_identity_keys(identity_keys)
 
     @staticmethod
     def bootstrap_custom_reporting_model(quick_model: dict, team: list[int], username="admin"):
-        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
-            CustomReportingModelService,
-        )
-
-        return CustomReportingModelService.bootstrap_model(
+        return get_custom_reporting_extension().bootstrap_model(
             quick_model,
             team=team,
             username=username,
@@ -632,11 +609,7 @@ class ModelManage(object):
 
     @staticmethod
     def sync_custom_reporting_model_group(quick_model: dict, team: list[int], username="admin"):
-        from apps.cmdb.enterprise.services.custom_reporting_model_service import (
-            CustomReportingModelService,
-        )
-
-        return CustomReportingModelService.sync_model_group(
+        return get_custom_reporting_extension().sync_model_group(
             quick_model,
             team=team,
             username=username,

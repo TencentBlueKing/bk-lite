@@ -414,6 +414,7 @@ class ExcludeFieldsCache:
             try:
                 # 延迟导入避免循环依赖
                 from apps.cmdb.services.model import ModelManage
+                from apps.cmdb.model_ops.extensions import is_file_attr_type
 
                 attrs = ModelManage.parse_attrs(attrs_json)
 
@@ -421,7 +422,9 @@ class ExcludeFieldsCache:
                     attr_id = attr.get("attr_id")
                     attr_type = attr.get("attr_type")
 
-                    if attr_type in cls.EXCLUDE_FIELD_TYPES:
+                    # 展示型字段（有 _display 冗余）+ 文件型字段（附件/图片，值为元数据 JSON）
+                    # 都排除出全文检索；缺企业版时 is_file_attr_type 恒 False，社区行为不变。
+                    if attr_type in cls.EXCLUDE_FIELD_TYPES or is_file_attr_type(attr_type):
                         all_exclude_fields.add(attr_id)
 
             except Exception as e:

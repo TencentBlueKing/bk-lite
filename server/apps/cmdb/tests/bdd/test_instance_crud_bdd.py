@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
+from apps.cmdb.instance_ops.extensions import InstanceEnterpriseExtension
 from apps.cmdb.services.instance import InstanceManage
 from apps.core.exceptions.base_app_exception import BaseAppException
 
@@ -67,6 +68,10 @@ def _patch_side_effects(monkeypatch, ctx):
     monkeypatch.setattr(
         f"{MODULE}.InstanceManage.check_instances_permission", lambda *a, **k: None
     )
+    # 企业版扩展（附件/图片）是外部副作用：纯编排 BDD 用默认空契约，避免文件台账 DB 写入。
+    # （文件落账/回收的真实行为由 overlay 的 instance_ops 服务测试覆盖。）
+    _noop_instance_ext = InstanceEnterpriseExtension()
+    monkeypatch.setattr(f"{MODULE}.get_instance_enterprise_extension", lambda: _noop_instance_ext)
 
 
 @given("实例服务的旁路依赖已被打桩")
