@@ -99,6 +99,10 @@ export const useInstanceApi = () => {
   const deleteFile = (fileId: string) =>
     del(`/cmdb/api/instance/delete_file/${fileId}/`);
 
+  // 获取附件/图片的短时效预签名直链（经 axios 带令牌鉴权；返回 { url }）
+  const getFileUrl = (fileId: string): Promise<{ url: string }> =>
+    get(`/cmdb/api/instance/download_file/${fileId}/`);
+
   return {
     searchInstances,
     fulltextSearchInstances,
@@ -123,5 +127,6 @@ export const useInstanceApi = () => {
     downloadTemplate,
     uploadFile,
     deleteFile,
+    getFileUrl,
   };
 };
