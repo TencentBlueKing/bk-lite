@@ -76,6 +76,9 @@ class LLMClientFactory:
         elif "deepseek" in model_lower:
             thinking_type = "enabled" if show_think else "disabled"
             llm.extra_body["thinking"] = {"type": thinking_type}
+        elif "gemma" in model_lower:
+            # Gemma-4 通过 vLLM chat_template_kwargs 控制 thinking 模式
+            llm.extra_body["chat_template_kwargs"] = {"enable_thinking": show_think}
 
         return llm
 
@@ -224,12 +227,14 @@ class LLMClientFactory:
             "temperature": request.temperature,
         }
 
-        # 添加 Qwen/DeepSeek 模型的特殊配置（隔离调用禁用 thinking）
+        # 添加 Qwen/DeepSeek/Gemma 模型的特殊配置（隔离调用禁用 thinking）
         model_lower = request.model.lower()
         if "qwen" in model_lower:
             call_kwargs["extra_body"] = {"enable_thinking": False}
         elif "deepseek" in model_lower:
             call_kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+        elif "gemma" in model_lower:
+            call_kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
 
         # 直接调用原生 OpenAI API
         response = client.chat.completions.create(**call_kwargs)
