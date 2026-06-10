@@ -10,6 +10,9 @@
  * 后端字段值为元数据 JSON 字符串数组：[{ file_id, file_name, ... }]。
  * 下载/预览：后端 download_file 返回预签名 URL（JSON），前端经 axios（带令牌）取回后
  * 直接用于 <img src>/下载——绕开「直链请求不带令牌」的鉴权问题（请提供令牌）。
+ *
+ * 注意：下载触发用「动态 <a>.click()」而非 await 后的 window.open——后者在 await 之后
+ * 脱离用户手势上下文会被浏览器弹窗拦截（表现为「点击无反应/不弹出下载」）。
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -73,6 +76,20 @@ const metaToUploadFile = (m: FileMeta): UploadFile => ({
   name: m.file_name,
   status: 'done',
 });
+
+/**
+ * 触发浏览器下载。用动态 <a>.click() 而非 window.open：
+ * - 不受弹窗拦截（即便在 await 之后调用，下载导航也不会被当作 popup 拦截）。
+ * - URL 自带 response-content-disposition=attachment，浏览器直接保存文件。
+ */
+const triggerDownload = (url: string) => {
+  const a = document.createElement('a');
+  a.href = url;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+};
 
 // ---------------------------------------------------------------- 鉴权直链
 
@@ -210,8 +227,8 @@ export const FileFieldUpload: React.FC<FileFieldUploadProps> = ({
 
   const onPreview = async (file: UploadFile) => {
     try {
-      const r = await instanceApi.getFileUrl(String(file.uid));
-      if (r?.url) window.open(r.url, '_blank', 'noopener');
+      const r = await instanceApi.getFileUrl(String(file.uid), true);
+      if (r?.url) triggerDownload(r.url);
     } catch {
       // ignore
     }
@@ -259,8 +276,8 @@ export const FileFieldDisplay: React.FC<FileFieldDisplayProps> = ({ value, field
 
   const openFile = async (fileId: string) => {
     try {
-      const r = await instanceApi.getFileUrl(fileId);
-      if (r?.url) window.open(r.url, '_blank', 'noopener');
+      const r = await instanceApi.getFileUrl(fileId, true);
+      if (r?.url) triggerDownload(r.url);
     } catch {
       // ignore
     }

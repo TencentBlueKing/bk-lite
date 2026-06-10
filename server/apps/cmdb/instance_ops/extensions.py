@@ -46,7 +46,7 @@ class InstanceEnterpriseExtension:
     def handle_upload(self, *, request, model_id: str, attr_id: str, uploaded_file):
         raise BaseAppException(ENTERPRISE_DISABLED_MESSAGE)
 
-    def handle_download(self, *, request, file_id: str, check_read_permission=None):
+    def handle_download(self, *, request, file_id: str, check_read_permission=None, as_attachment=False):
         raise BaseAppException(ENTERPRISE_DISABLED_MESSAGE)
 
     def handle_delete_temp(self, *, request, file_id: str):

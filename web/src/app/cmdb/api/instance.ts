@@ -100,8 +100,9 @@ export const useInstanceApi = () => {
     del(`/cmdb/api/instance/delete_file/${fileId}/`);
 
   // 获取附件/图片的短时效预签名直链（经 axios 带令牌鉴权；返回 { url }）
-  const getFileUrl = (fileId: string): Promise<{ url: string }> =>
-    get(`/cmdb/api/instance/download_file/${fileId}/`);
+  // download=true 时返回的 URL 附带 attachment disposition，浏览器打开即触发下载保存
+  const getFileUrl = (fileId: string, download = false): Promise<{ url: string }> =>
+    get(`/cmdb/api/instance/download_file/${fileId}/${download ? '?download=1' : ''}`);
 
   return {
     searchInstances,

@@ -321,8 +321,10 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             instance = InstanceManage.query_entity_by_id(int(inst_id))
             return bool(instance) and self._check_instance_read_permission(request, instance)
 
+        as_attachment = request.query_params.get("download") == "1"
         url = get_instance_enterprise_extension().handle_download(
-            request=request, file_id=file_id, check_read_permission=_check_read
+            request=request, file_id=file_id, check_read_permission=_check_read,
+            as_attachment=as_attachment,
         )
         return WebUtils.response_success({"url": url})
 
