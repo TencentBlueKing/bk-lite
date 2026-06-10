@@ -46,6 +46,7 @@ const EscalationChain: React.FC<EscalationChainProps> = ({
       {enabled && (
         <Form.List
           name={['escalation', 'layers']}
+          initialValue={[{ wait_minutes: 10 }]}
           rules={[
             {
               validator: async (_, layers) => {
@@ -92,6 +93,7 @@ const EscalationChain: React.FC<EscalationChainProps> = ({
                     key={`${field.key}-wait`}
                     name={[field.name, 'wait_minutes']}
                     label={t('settings.assignStrategy.escalationWaitMinutes')}
+                    tooltip={t('settings.assignStrategy.escalationWaitTip')}
                     initialValue={10}
                     rules={[{ required: true, type: 'number', min: 1 }]}
                   >

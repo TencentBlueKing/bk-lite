@@ -527,7 +527,8 @@
             "escalationLayer": "升级层级",
             "escalationAddLayer": "添加层级",
             "escalationWaitMinutes": "未认领等待时长",
-            "escalationLayerChannel": "本层通知渠道（可选）",
+            "escalationWaitTip": "本层处理人在该时长内未认领告警，将自动升级到下一层并通知下一层处理人；若已是最后一层则不再升级。计时以告警停留在「待处理」的时长为准，与提醒次数无关。",
+            "escalationLayerChannel": "通知渠道",
             "escalationPersonnelTip": "请选择本层处理人",
             "escalationLayerRequired": "启用升级时至少配置一层"
         },
