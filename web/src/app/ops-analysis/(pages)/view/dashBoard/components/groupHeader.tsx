@@ -82,7 +82,7 @@ const GroupHeader: React.FC<GroupHeaderProps> = ({
           <button
             type="button"
             onClick={onToggle}
-            className="no-drag flex items-center text-[10px] text-(--color-text-2)"
+            className="no-drag flex cursor-pointer items-center text-[10px] text-(--color-text-2)"
             aria-label={collapsed ? t('common.expand') : t('common.collapse')}
           >
             {collapsed ? <CaretRightFilled /> : <CaretDownFilled />}

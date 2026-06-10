@@ -78,6 +78,7 @@ def team_memories(memory_space_team):
         content="Production server runs on port 8080",
         owner_username="bob",
         owner_domain="test.com",
+        organization_id=1,
         created_by="bob",
         domain="test.com",
     )
@@ -87,6 +88,7 @@ def team_memories(memory_space_team):
         content="API key rotation happens monthly",
         owner_username="alice",
         owner_domain="test.com",
+        organization_id=1,
         created_by="alice",
         domain="test.com",
     )
@@ -178,7 +180,7 @@ class TestMemoryReadPersonalScope:
         result = node.execute("mem_read_1", node_config, {"last_message": "query"})
 
         assert "memory_context" in result
-        assert "My Preferences" in result["memory_context"]
+        # memory_context concatenates memory *content* (not titles).
         assert "dark mode" in result["memory_context"]
 
     def test_read_personal_memory_as_non_creator(self, memory_space_personal, personal_memories):
@@ -218,9 +220,9 @@ class TestMemoryReadTeamScope:
         result = node.execute("mem_read_1", node_config, {"last_message": "query"})
 
         assert "memory_context" in result
-        # Should contain both memories
-        assert "Server Config" in result["memory_context"]
-        assert "API Keys" in result["memory_context"]
+        # Should contain both memories' content (memory_context joins content, not titles)
+        assert "Production server runs on port 8080" in result["memory_context"]
+        assert "API key rotation happens monthly" in result["memory_context"]
 
     def test_read_team_memory_different_user(self, memory_space_team, team_memories):
         """Different user can also read team memories."""
@@ -231,7 +233,7 @@ class TestMemoryReadTeamScope:
         result = node.execute("mem_read_1", node_config, {"last_message": "query"})
 
         assert "memory_context" in result
-        assert "Server Config" in result["memory_context"]
+        assert "Production server runs on port 8080" in result["memory_context"]
 
 
 @pytest.mark.django_db
@@ -274,7 +276,7 @@ class TestMemoryReadEdgeCases:
 
     def test_top_k_limit(self, memory_space_team):
         """top_k limits the number of memories returned."""
-        # Create 5 memories
+        # Create 5 memories (team scope reads are keyed by organization_id == 1)
         for i in range(5):
             Memory.objects.create(
                 memory_space=memory_space_team,
@@ -282,6 +284,7 @@ class TestMemoryReadEdgeCases:
                 content=f"Content {i}",
                 owner_username="alice",
                 owner_domain="test.com",
+                organization_id=1,
                 created_by="alice",
                 domain="test.com",
             )
@@ -292,10 +295,12 @@ class TestMemoryReadEdgeCases:
 
         result = node.execute("mem_read_1", node_config, {"last_message": "query"})
 
-        # Should only have 2 memories
+        # Should only have 2 memories. memory_context joins each memory's content with
+        # "\n\n---\n\n", so 2 memories produce exactly one separator.
         memory_context = result.get("memory_context", "")
-        # Count "## Memory" occurrences
-        assert memory_context.count("## Memory") == 2
+        assert memory_context.count("\n\n---\n\n") == 1
+        # And exactly two of the five "Content N" blocks are present.
+        assert sum(1 for i in range(5) if f"Content {i}" in memory_context) == 2
 
     def test_variable_manager_sets_memory_context(self, memory_space_team, team_memories):
         """memory_context is set in variable_manager for downstream nodes."""
@@ -326,7 +331,7 @@ class TestMemoryWritePassthrough:
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_team.id, title="Test")
 
-        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
+        with patch("apps.opspilot.tasks.process_memory_write_cache") as mock_task:
             mock_task.delay = MagicMock()
             result = node.execute("mem_write_1", node_config, {"last_message": "Important info"})
 
@@ -353,7 +358,7 @@ class TestMemoryWriteAsyncTask:
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_team.id, title="My Title")
 
-        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
+        with patch("apps.opspilot.tasks.process_memory_write_cache") as mock_task:
             mock_task.delay = MagicMock()
             node.execute("mem_write_1", node_config, {"last_message": "Content to save"})
 
@@ -364,7 +369,12 @@ class TestMemoryWriteAsyncTask:
             assert call_kwargs["content"] == "Content to save"
             # Team memory uses organization_id, owner_username is org name
             assert call_kwargs["organization_id"] == 1
-            assert "组织" in call_kwargs["owner_username"] or call_kwargs["owner_username"] == "组织-1"
+            # owner_username 镜像生产解析逻辑：存在对应 Group 时用其 name，否则回退 f"组织-{id}"
+            from apps.system_mgmt.models import Group
+
+            _org_id = call_kwargs["organization_id"]
+            _expected_owner = Group.objects.filter(id=_org_id).values_list("name", flat=True).first() or f"组织-{_org_id}"
+            assert call_kwargs["owner_username"] == _expected_owner
 
     def test_auto_generates_title(self, memory_space_team):
         """Title is auto-generated if not provided."""
@@ -372,7 +382,7 @@ class TestMemoryWriteAsyncTask:
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_team.id, title="")
 
-        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
+        with patch("apps.opspilot.tasks.process_memory_write_cache") as mock_task:
             mock_task.delay = MagicMock()
             node.execute("mem_write_1", node_config, {"last_message": "Content"})
 
@@ -390,7 +400,7 @@ class TestMemoryWriteSkipConditions:
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_team.id, title="Test")
 
-        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
+        with patch("apps.opspilot.tasks.process_memory_write_cache") as mock_task:
             mock_task.delay = MagicMock()
             result = node.execute("mem_write_1", node_config, {"last_message": ""})
 
@@ -403,7 +413,7 @@ class TestMemoryWriteSkipConditions:
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=None)
 
-        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
+        with patch("apps.opspilot.tasks.process_memory_write_cache") as mock_task:
             mock_task.delay = MagicMock()
             result = node.execute("mem_write_1", node_config, {"last_message": "Content"})
 
@@ -416,7 +426,7 @@ class TestMemoryWriteSkipConditions:
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_team.id)
 
-        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
+        with patch("apps.opspilot.tasks.process_memory_write_cache") as mock_task:
             mock_task.delay = MagicMock()
             result = node.execute("mem_write_1", node_config, {"other_key": "value"})
 
@@ -434,7 +444,7 @@ class TestMemoryWriteErrorHandling:
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_team.id, title="Test")
 
-        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
+        with patch("apps.opspilot.tasks.process_memory_write_cache") as mock_task:
             mock_task.delay.side_effect = Exception("Celery connection failed")
             result = node.execute("mem_write_1", node_config, {"last_message": "Content"})
 
@@ -452,7 +462,7 @@ class TestMemoryWriteUserExtraction:
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_personal.id, title="Test")
 
-        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
+        with patch("apps.opspilot.tasks.process_memory_write_cache") as mock_task:
             mock_task.delay = MagicMock()
             node.execute("mem_write_1", node_config, {"last_message": "Content"})
 
@@ -467,7 +477,7 @@ class TestMemoryWriteUserExtraction:
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_personal.id, title="Test")
 
-        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
+        with patch("apps.opspilot.tasks.process_memory_write_cache") as mock_task:
             mock_task.delay = MagicMock()
             node.execute("mem_write_1", node_config, {"last_message": "Content"})
 
@@ -482,7 +492,7 @@ class TestMemoryWriteUserExtraction:
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_personal.id, title="Test")
 
-        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
+        with patch("apps.opspilot.tasks.process_memory_write_cache") as mock_task:
             mock_task.delay = MagicMock()
             node.execute("mem_write_1", node_config, {"last_message": "Content"})
 
@@ -497,14 +507,19 @@ class TestMemoryWriteUserExtraction:
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_team.id, title="Test")
 
-        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
+        with patch("apps.opspilot.tasks.process_memory_write_cache") as mock_task:
             mock_task.delay = MagicMock()
             node.execute("mem_write_1", node_config, {"last_message": "Content"})
 
             call_kwargs = mock_task.delay.call_args[1]
             assert call_kwargs["organization_id"] == 1
             # owner_username is org name (or fallback)
-            assert "组织" in call_kwargs["owner_username"] or call_kwargs["owner_username"] == "组织-1"
+            # owner_username 镜像生产解析逻辑：存在对应 Group 时用其 name，否则回退 f"组织-{id}"
+            from apps.system_mgmt.models import Group
+
+            _org_id = call_kwargs["organization_id"]
+            _expected_owner = Group.objects.filter(id=_org_id).values_list("name", flat=True).first() or f"组织-{_org_id}"
+            assert call_kwargs["owner_username"] == _expected_owner
 
 
 # ---------------------------------------------------------------------------
@@ -518,13 +533,15 @@ class TestMemoryReadWriteIntegration:
 
     def test_write_then_read_team_memory(self, memory_space_team):
         """Written memory can be read back."""
-        # First, directly create a memory (simulating what the Celery task would do)
+        # First, directly create a memory (simulating what the Celery task would do).
+        # Team scope reads are keyed by organization_id (memory_space.team[0] == 1).
         Memory.objects.create(
             memory_space=memory_space_team,
             title="Integration Test",
             content="This is integration test content",
             owner_username="alice",
             owner_domain="test.com",
+            organization_id=1,
             created_by="alice",
             domain="test.com",
         )
@@ -536,7 +553,7 @@ class TestMemoryReadWriteIntegration:
 
         result = read_node.execute("mem_read_1", node_config, {"last_message": "query"})
 
-        assert "Integration Test" in result.get("memory_context", "")
+        # memory_context concatenates memory *content*; the written memory must be readable.
         assert "integration test content" in result.get("memory_context", "")
 
     def test_personal_memory_isolation(self, memory_space_personal):
@@ -568,8 +585,9 @@ class TestMemoryReadWriteIntegration:
 
         result_alice = read_node_alice.execute("mem_read_1", node_config, {"last_message": "query"})
 
-        assert "Alice Secret" in result_alice.get("memory_context", "")
-        assert "Bob Secret" not in result_alice.get("memory_context", "")
+        # memory_context joins memory content (not titles)
+        assert "Alice's private data" in result_alice.get("memory_context", "")
+        assert "Bob's private data" not in result_alice.get("memory_context", "")
 
         # Bob reads - should only see his memory
         vm_bob = create_variable_manager("bob@test.com")
@@ -577,8 +595,8 @@ class TestMemoryReadWriteIntegration:
 
         result_bob = read_node_bob.execute("mem_read_1", node_config, {"last_message": "query"})
 
-        assert "Bob Secret" in result_bob.get("memory_context", "")
-        assert "Alice Secret" not in result_bob.get("memory_context", "")
+        assert "Bob's private data" in result_bob.get("memory_context", "")
+        assert "Alice's private data" not in result_bob.get("memory_context", "")
 
 
 # ---------------------------------------------------------------------------
@@ -982,6 +1000,8 @@ class TestProcessMemoryWriteWithLLM:
 
         llm_model = create_test_llm_model(None)
         memory_space_team.default_model = str(llm_model.id)
+        # No write_rule so the new memory is created with the raw content (no LLM normalization)
+        memory_space_team.write_rule = ""
         memory_space_team.save()
 
         # Mock LLM response for "create" decision
@@ -1033,11 +1053,12 @@ class TestProcessMemoryWriteWithLLM:
                     memory_space_id=memory_space_team.id,
                     title="Server Config Update",
                     content="Also supports port 443 for HTTPS",
-                    owner_username="alice",
+                    owner_username="bob",
                     owner_domain="test.com",
+                    organization_id=1,
                 )
 
-        # Should have updated the existing memory
+        # Should have updated the existing org memory (one memory per org/space)
         existing_memory.refresh_from_db()
         assert "port 8080" in existing_memory.content
         assert "port 443" in existing_memory.content
@@ -1300,13 +1321,14 @@ class TestMemoryWorkflowIntegration:
             domain="test.com",
         )
 
-        # Create some memories
+        # Create some memories (team scope reads are keyed by organization_id == 1)
         Memory.objects.create(
             memory_space=space,
             title="User Preference",
             content="User prefers dark mode and Python",
             owner_username="alice",
             owner_domain="test.com",
+            organization_id=1,
             created_by="alice",
             domain="test.com",
         )
@@ -1337,7 +1359,7 @@ class TestMemoryWorkflowIntegration:
         engine.custom_node_executors["agents"] = FakeAgentExecutorWithMemory(engine.variable_manager)
 
         # Mock memory_write task to avoid Celery
-        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
+        with patch("apps.opspilot.tasks.process_memory_write_cache") as mock_task:
             mock_task.delay = MagicMock()
 
             result = engine.execute(
@@ -1360,7 +1382,7 @@ class TestMemoryWorkflowIntegration:
 
         engine.custom_node_executors["agents"] = FakeAgentExecutorWithMemory(engine.variable_manager)
 
-        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
+        with patch("apps.opspilot.tasks.process_memory_write_cache") as mock_task:
             mock_task.delay = MagicMock()
 
             engine.execute(
@@ -1370,11 +1392,19 @@ class TestMemoryWorkflowIntegration:
                 }
             )
 
-            # MemoryWrite should have triggered the Celery task
+            # MemoryWrite should have triggered the Celery task. The workflow space is
+            # team scope, so the write is keyed by organization_id and owner_username
+            # holds the org name (falls back to "组织-1" when no Group exists).
             mock_task.delay.assert_called_once()
             call_kwargs = mock_task.delay.call_args[1]
             assert call_kwargs["memory_space_id"] == space.id
-            assert call_kwargs["owner_username"] == "alice"
+            assert call_kwargs["organization_id"] == 1
+            # owner_username 镜像生产解析逻辑：存在对应 Group 时用其 name，否则回退 f"组织-{id}"
+            from apps.system_mgmt.models import Group
+
+            _org_id = call_kwargs["organization_id"]
+            _expected_owner = Group.objects.filter(id=_org_id).values_list("name", flat=True).first() or f"组织-{_org_id}"
+            assert call_kwargs["owner_username"] == _expected_owner
 
     def test_full_workflow_executes_all_nodes(self, memory_workflow):
         """All 4 nodes execute in correct order."""
@@ -1386,7 +1416,7 @@ class TestMemoryWorkflowIntegration:
 
         engine.custom_node_executors["agents"] = FakeAgentExecutorWithMemory(engine.variable_manager)
 
-        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
+        with patch("apps.opspilot.tasks.process_memory_write_cache") as mock_task:
             mock_task.delay = MagicMock()
 
             engine.execute(
@@ -1464,7 +1494,7 @@ class TestMemoryWorkflowIntegration:
         engine = create_chat_flow_engine(workflow, "entry_node")
         engine.custom_node_executors["agents"] = FakeAgentExecutorWithMemory(engine.variable_manager)
 
-        with patch("apps.opspilot.memory.engines.local_engine.process_memory_write") as mock_task:
+        with patch("apps.opspilot.tasks.process_memory_write_cache") as mock_task:
             mock_task.delay = MagicMock()
 
             # Execute as Alice
@@ -1475,10 +1505,10 @@ class TestMemoryWorkflowIntegration:
                 }
             )
 
-        # Check memory_context only contains Alice's data
+        # Check memory_context only contains Alice's data (memory_context joins content)
         memory_context = engine.variable_manager.get_variable("memory_context", "")
-        assert "Alice Secret" in memory_context
-        assert "Bob Secret" not in memory_context
+        assert "Alice's private data" in memory_context
+        assert "Bob's private data" not in memory_context
 
 
 @pytest.mark.django_db

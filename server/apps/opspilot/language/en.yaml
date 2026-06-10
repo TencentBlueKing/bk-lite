@@ -105,6 +105,8 @@ base_constant:
 error:
   no_group_id: No Group ID
   no_view_permission: User does not have permission to view this instance
+  model_in_use: Cannot delete because it is still in use by {count} knowledge graph(s).
+  vendor_in_use: Cannot delete because it is still in use by {count} model(s).
   delete_failed: delete failed
   knowledge_graph_not_completed: Knowledge graph is not completed
   llm_model_name_exists: A LLM Model with the same name already exists in group {validate_msg}.

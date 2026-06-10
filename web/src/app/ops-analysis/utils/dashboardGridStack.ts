@@ -199,16 +199,19 @@ export const buildDashboardGridStackStructureKey = (
 ): string => {
   const layout = buildDashboardGridStackLayout(items);
 
-  const groupMembership = layout.groupNodes
-    .map((node) => `group:${node.id}[${node.children.map((child) => child.id).sort().join(',')}]`)
+  const groupIds = layout.groupNodes
+    .map((node) => node.id)
     .sort()
-    .join('|');
-  const ungroupedMembership = layout.ungroupedNodes
+    .join(',');
+  const widgetIds = [
+    ...layout.ungroupedNodes,
+    ...layout.groupNodes.flatMap((node) => node.children),
+  ]
     .map((node) => node.id)
     .sort()
     .join(',');
 
-  return `${groupMembership}||ungrouped:${ungroupedMembership}`;
+  return `groups:${groupIds}||widgets:${widgetIds}`;
 };
 
 export const flattenDashboardGridStackLayout = (

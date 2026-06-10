@@ -38,11 +38,19 @@ class ModelVendor(models.Model, EncryptMixin):
     def __str__(self) -> str:
         return str(self.name)
 
+    @staticmethod
+    def _is_encrypted(value: str) -> bool:
+        """检查值是否已加密（Fernet 加密的值以 gAAAAA 开头）"""
+        if not value or not isinstance(value, str):
+            return False
+        return value.startswith("gAAAAA")
+
     def save(self, *args, **kwargs):
-        vendor_data = {"api_key": self.api_key}
-        self.decrypt_field("api_key", vendor_data)
-        self.encrypt_field("api_key", vendor_data)
-        self.api_key = vendor_data["api_key"]
+        # 仅当 api_key 尚未加密时才加密，避免重复加密；同时保证任何写入路径（含 update 后再 save）都不会落库明文
+        if self.api_key and not self._is_encrypted(self.api_key):
+            vendor_data = {"api_key": self.api_key}
+            self.encrypt_field("api_key", vendor_data)
+            self.api_key = vendor_data["api_key"]
         super().save(*args, **kwargs)
 
     @property
@@ -65,7 +73,7 @@ class LLMModel(models.Model, EncryptMixin):
     is_demo = models.BooleanField(default=False)
     vendor = models.ForeignKey(
         "ModelVendor",
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         verbose_name="供应商",
         blank=True,
         null=True,
@@ -114,7 +122,7 @@ class EmbedProvider(models.Model, EncryptMixin):
     is_build_in = models.BooleanField(default=False, verbose_name="是否内置")
     vendor = models.ForeignKey(
         "ModelVendor",
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         verbose_name="供应商",
         blank=True,
         null=True,
@@ -150,7 +158,7 @@ class RerankProvider(models.Model, EncryptMixin):
     is_build_in = models.BooleanField(default=False, verbose_name="是否内置")
     vendor = models.ForeignKey(
         "ModelVendor",
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         verbose_name="供应商",
         blank=True,
         null=True,
@@ -186,7 +194,7 @@ class OCRProvider(models.Model, EncryptMixin):
     is_build_in = models.BooleanField(default=True, verbose_name="是否内置")
     vendor = models.ForeignKey(
         "ModelVendor",
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         verbose_name="供应商",
         blank=True,
         null=True,

@@ -175,7 +175,7 @@ export const TOMCAT_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'JVM 堆使用率',
       description: '由已分配内存、空闲内存和最大内存推导出的 JVM 堆使用率（(total - free) / max × 100）。',
       unit: 'percent',
-      query: '100 * ((tomcat_jvm_memory_total{__$labels__} - tomcat_jvm_memory_free{__$labels__}) / clamp_min(tomcat_jvm_memory_max{__$labels__}, 1))',
+      query: 'clamp_max(100 * ((tomcat_jvm_memory_total{__$labels__} - tomcat_jvm_memory_free{__$labels__}) / clamp_min(tomcat_jvm_memory_max{__$labels__}, 1)), 100)',
       color: '#8a5cff'
     },
     {
@@ -210,7 +210,7 @@ export const TOMCAT_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'api',
       compare: true,
       compareFavorableDirection: 'down',
-      guide: [{ label: '错误占比', detail: '错误请求占总请求的比例，比错误速率更直观地反映服务降级风险。' }],
+      guide: [{ label: '错误占比', detail: '错误请求数占总请求数的百分比;持续偏高需排查接口报错与下游依赖。' }],
       footer: [
         { label: '错误速率', metric: 'tomcat_connector_error_count_rate', unit: 'cps' }
       ]

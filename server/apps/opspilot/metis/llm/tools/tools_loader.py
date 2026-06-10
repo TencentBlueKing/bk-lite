@@ -2,6 +2,7 @@ import copy
 import importlib
 import inspect
 
+from langchain_core.tools import StructuredTool
 from loguru import logger
 
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
@@ -25,7 +26,6 @@ class ToolsLoader:
     # 常量定义
     TOOLS_SUFFIX = "_tools"
     TOOLS_PLUS_SUFFIX = "_tools_plus"
-    STRUCTURED_TOOL_CLASS = "StructuredTool"
 
     # 惰性定义所有工具模块映射
     TOOL_MODULES = {
@@ -89,7 +89,7 @@ class ToolsLoader:
         tool_functions = []
 
         for name, obj in inspect.getmembers(module):
-            if hasattr(obj, "__class__") and obj.__class__.__name__ == ToolsLoader.STRUCTURED_TOOL_CLASS:
+            if isinstance(obj, StructuredTool):
                 tool_functions.append({"func": obj, "enable_extra_prompt": enable_extra_prompt})
 
         return tool_functions

@@ -199,7 +199,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'cpu_usage_total',
       color: '#2f6bff',
       icon: 'thunder',
-      guide: [{ label: 'CPU 使用率', detail: '反映主机整体 CPU 负载水平。' }],
+      guide: [{ label: 'CPU 使用率', detail: '主机整体 CPU 已用时间百分比;持续接近 100% 表示 CPU 紧张。' }],
       footer: [
         { label: '用户态', metric: 'cpu_usage_user_total', unit: 'percent' },
         { label: '内核态', metric: 'cpu_usage_system_total', unit: 'percent' }
@@ -210,7 +210,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'mem_used_percent',
       color: '#27c274',
       icon: 'database',
-      guide: [{ label: '内存使用率', detail: '反映主机当前内存压力。' }],
+      guide: [{ label: '内存使用率', detail: '已用内存占总内存的百分比;越高表示可用内存越少。' }],
       footer: [{ label: '可用内存', metric: 'mem_available', unit: 'bytes' }]
     },
     {
@@ -246,7 +246,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '系统负载趋势',
       subtitle: '多时段负载',
       metric: 'system_load1',
-      guide: [{ label: '系统负载', detail: '用于观察主机不同时间窗口下的负载变化。' }],
+      guide: [{ label: '系统负载', detail: '1 / 5 / 15 分钟平均负载(运行 + 等待 CPU 的进程数);持续超过 CPU 核数即偏高。' }],
       series: [
         { metric: 'system_load1', label: '1 分钟', color: '#27c274', unit: 'none' },
         { metric: 'system_load5', label: '5 分钟', color: '#13c2c2', unit: 'none' },

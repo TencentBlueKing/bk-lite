@@ -64,7 +64,10 @@ const RAW_VALUE_METRICS = new Set([
   'redis_used_memory',
   'redis_maxmemory',
   'redis_clients',
-  'redis_blocked_clients'
+  'redis_blocked_clients',
+  // 字节速率(byteps):禁用服务端自动换算,避免与前端 formatMetricValue 双重换算
+  'redis_total_net_input_bytes',
+  'redis_total_net_output_bytes'
 ]);
 
 const METRIC_QUERY_CONCURRENCY = 4;
@@ -410,7 +413,7 @@ export default function RedisDashboardPage() {
   const uptimeStartedAt = Number.isFinite(uptimeValue) && uptimeValue >= 0 ? dayjs().subtract(Math.floor(uptimeValue), 'second').format('YYYY-MM-DD HH:mm:ss') : metricEmptyText;
   const uptimeStatusGuide = [
     { label: '运行时长', detail: '基于 redis_uptime 计算实例自上次启动以来持续运行的时间。' },
-    { label: '启动时间', detail: '表示当前进程启动的大致时间点。' }
+    { label: '启动时间', detail: '由运行时长反推的进程启动时刻;时长越长说明实例越久未重启。' }
   ];
 
   const opsTrendData = useMemo(

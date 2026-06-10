@@ -29,8 +29,56 @@ from unittest.mock import MagicMock, patch  # noqa: E402
 import pytest  # noqa: E402
 
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest  # noqa: E402
+from apps.opspilot.metis.llm.common.anthropic_capabilities import (  # noqa: E402
+    AnthropicRuntimeCapabilities,
+    build_anthropic_runtime_capabilities,
+    normalize_tool_choice_for_capabilities,
+)
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory  # noqa: E402
 from apps.opspilot.services.model_vendor_sync_service import ModelVendorSyncService  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# AnthropicRuntimeCapabilities Tests
+# ---------------------------------------------------------------------------
+
+
+class TestAnthropicRuntimeCapabilities:
+    def test_native_anthropic_vendor_uses_native_sdk(self):
+        caps = build_anthropic_runtime_capabilities(
+            vendor_type="anthropic",
+            protocol_type="anthropic",
+            model="claude-3-haiku-20240307",
+        )
+        assert caps.use_native_anthropic_sdk is True
+        assert caps.use_anthropic_compatible_adapter is False
+
+    def test_deepseek_anthropic_vendor_uses_adapter(self):
+        caps = build_anthropic_runtime_capabilities(
+            vendor_type="deepseek",
+            protocol_type="anthropic",
+            model="deepseek-v4-flash",
+        )
+        assert caps.use_native_anthropic_sdk is False
+        assert caps.use_anthropic_compatible_adapter is True
+        assert caps.thinking_requires_auto_tool_choice is True
+
+    def test_non_anthropic_protocol_returns_default_capabilities(self):
+        caps = build_anthropic_runtime_capabilities(
+            vendor_type="deepseek",
+            protocol_type="openai",
+            model="deepseek-v4-flash",
+        )
+        assert caps.use_native_anthropic_sdk is False
+        assert caps.use_anthropic_compatible_adapter is False
+
+    def test_tool_choice_any_downgrades_to_auto_when_thinking_required(self):
+        caps = AnthropicRuntimeCapabilities(thinking_requires_auto_tool_choice=True)
+        assert normalize_tool_choice_for_capabilities("any", caps) == "auto"
+
+    def test_tool_choice_none_kept_as_is(self):
+        caps = AnthropicRuntimeCapabilities(thinking_requires_auto_tool_choice=True)
+        assert normalize_tool_choice_for_capabilities("none", caps) == "none"
+
 
 # ---------------------------------------------------------------------------
 # LLMClientFactory Tests

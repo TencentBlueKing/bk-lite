@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button, Input, message } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useProviderApi } from '@/app/opspilot/api/provider';
+import { isSilentRequestError } from '@/utils/request';
 import VendorCardGrid from '@/app/opspilot/components/provider/vendorCardGrid';
 import VendorModal from '@/app/opspilot/components/provider/vendorModal';
 import { useTranslation } from '@/utils/i18n';
@@ -103,8 +104,13 @@ const ProviderPage: React.FC = () => {
       await deleteVendor(vendor.id);
       message.success(t('common.delSuccess'));
       await loadVendors(searchValue.trim());
-    } catch {
-      message.error(t('common.delFailed'));
+    } catch (error) {
+      // Backend may reject with 400 when the vendor is still in use; the request
+      // interceptor already surfaces that message, so only show the generic
+      // fallback for unhandled errors.
+      if (!isSilentRequestError(error)) {
+        message.error(t('common.delFailed'));
+      }
     }
   };
 

@@ -5,7 +5,6 @@ import uuid
 from abc import ABC, abstractmethod
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
-import tiktoken
 from ag_ui.core import (
     CustomEvent,
     EventType,
@@ -24,8 +23,7 @@ from ag_ui.core import (
     ToolCallStartEvent,
 )
 from ag_ui.encoder import EventEncoder
-from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
-from langchain_core.messages.base import BaseMessage
+from langchain_core.messages import AIMessage
 from langgraph.constants import START
 
 from apps.core.logger import opspilot_logger as logger
@@ -236,7 +234,7 @@ def create_browser_step_callback(
                 logger.warning("Browser step event queue is full, dropping event")
 
         except Exception as e:
-            logger.error(f"Error in browser step callback: {e}")
+            logger.exception(f"Error in browser step callback: {e}")
 
     return step_callback
 
@@ -260,45 +258,13 @@ def create_browser_custom_event_callback(
             except asyncio.QueueFull:
                 logger.warning("Browser custom event queue is full, dropping event")
         except Exception as e:
-            logger.error(f"Error in browser custom event callback: {e}")
+            logger.exception(f"Error in browser custom event callback: {e}")
 
     return custom_event_callback
 
 
 class BasicGraph(ABC):
     """基础图执行类，提供流式和非流式执行能力"""
-
-    async def filter_messages(self, chunk: BaseMessage) -> str:
-        """过滤消息，只返回 AI 消息内容"""
-        if isinstance(chunk[0], (SystemMessage, HumanMessage)):
-            return ""
-        return chunk[0].content
-
-    def count_tokens(self, text: str, encoding_name: str = "gpt-4o") -> int:
-        """计算文本的 Token 数量"""
-        try:
-            encoding = tiktoken.encoding_for_model(encoding_name)
-            tokens = encoding.encode(text)
-            return len(tokens)
-        except KeyError:
-            logger.warning(f"模型 {encoding_name} 不支持。默认回退到通用编码器。")
-            encoding = tiktoken.get_encoding("cl100k_base")
-            tokens = encoding.encode(text)
-            return len(tokens)
-
-    async def aprint_chunk(self, result):
-        """异步打印流式输出的内容块"""
-        async for chunk in result:
-            if isinstance(chunk[0], AIMessageChunk):
-                print(chunk[0].content, end="", flush=True)
-        print("\n")
-
-    def print_chunk(self, result):
-        """同步打印流式输出的内容块"""
-        for chunk in result:
-            if isinstance(chunk[0], AIMessageChunk):
-                print(chunk[0].content, end="", flush=True)
-        print("\n")
 
     def prepare_graph(self, graph_builder, node_builder) -> str:
         """准备基础图结构，添加节点和边"""
@@ -981,62 +947,6 @@ class BasicGraph(ABC):
         finally:
             stop_event.set()
 
-    async def _handle_ai_message_chunk(
-        self,
-        message: AIMessageChunk,
-        encoder: EventEncoder,
-        run_id: str,
-        current_message_id: Optional[str],
-        current_tool_calls: Dict[str, Dict],
-    ):
-        """处理 AI 消息块，包括文本内容和工具调用"""
-        content = message.content
-
-        # 处理文本内容 (content 可能是 str 或 list)
-        content_str = ""
-        if isinstance(content, str):
-            content_str = content
-        elif isinstance(content, list):
-            # 多模态消息，只提取文本部分
-            for item in content:
-                if isinstance(item, str):
-                    content_str += item
-                elif isinstance(item, dict) and item.get("type") == "text":
-                    content_str += item.get("text", "")
-
-        if content_str:
-            # 首次输出内容时发送 TEXT_MESSAGE_START
-            if current_message_id is None:
-                current_message_id = f"msg_{run_id}_{int(time.time() * 1000)}"
-                yield encoder.encode(
-                    TextMessageStartEvent(
-                        type=EventType.TEXT_MESSAGE_START,
-                        message_id=current_message_id,
-                        role="assistant",
-                        timestamp=int(time.time() * 1000),
-                    )
-                )
-
-            # 发送内容块
-            yield encoder.encode(
-                TextMessageContentEvent(
-                    type=EventType.TEXT_MESSAGE_CONTENT,
-                    message_id=current_message_id,
-                    delta=content_str,
-                    timestamp=int(time.time() * 1000),
-                )
-            )
-
-        # 处理工具调用
-        if hasattr(message, "tool_calls") and message.tool_calls:
-            async for event in self._handle_tool_calls(
-                message.tool_calls,
-                encoder,
-                current_message_id or "",
-                current_tool_calls,
-            ):
-                yield event
-
     async def _handle_tool_calls(
         self,
         tool_calls: List[Any],
@@ -1045,62 +955,6 @@ class BasicGraph(ABC):
         current_tool_calls: Dict[str, Dict],
     ) -> AsyncGenerator[str, None]:
         """处理工具调用事件（异步生成器版本，用于流式场景）"""
-        for tool_call in tool_calls:
-            # 支持 dict 和 ToolCall 对象
-            if hasattr(tool_call, "get"):
-                tool_call_id = tool_call.get("id") or tool_call.get("tool_call_id", f"tool_{uuid.uuid4()}")
-                tool_name = tool_call.get("name", "unknown")
-                tool_args = tool_call.get("args")
-            else:
-                tool_call_id = getattr(tool_call, "id", None) or f"tool_{uuid.uuid4()}"
-                tool_name = getattr(tool_call, "name", "unknown")
-                tool_args = getattr(tool_call, "args", None)
-
-            # 如果是新的工具调用
-            if tool_call_id not in current_tool_calls:
-                current_tool_calls[tool_call_id] = {"name": tool_name, "started": True}
-
-                # 发送 TOOL_CALL_START
-                yield encoder.encode(
-                    ToolCallStartEvent(
-                        type=EventType.TOOL_CALL_START,
-                        tool_call_id=tool_call_id,
-                        tool_call_name=tool_name,
-                        parent_message_id=parent_message_id,
-                        timestamp=int(time.time() * 1000),
-                    )
-                )
-
-                # 发送工具参数
-                if tool_args:
-                    # Mask sensitive data (password, token, etc.) for SSE output only
-                    masked_args = _mask_sensitive_data(tool_args) if isinstance(tool_args, dict) else tool_args
-                    yield encoder.encode(
-                        ToolCallArgsEvent(
-                            type=EventType.TOOL_CALL_ARGS,
-                            tool_call_id=tool_call_id,
-                            delta=json.dumps(masked_args, ensure_ascii=False) if isinstance(masked_args, dict) else str(masked_args),
-                            timestamp=int(time.time() * 1000),
-                        )
-                    )
-
-                # 发送 TOOL_CALL_END
-                yield encoder.encode(
-                    ToolCallEndEvent(
-                        type=EventType.TOOL_CALL_END,
-                        tool_call_id=tool_call_id,
-                        timestamp=int(time.time() * 1000),
-                    )
-                )
-
-    def _handle_tool_calls_sync(
-        self,
-        tool_calls: List[Any],
-        encoder: EventEncoder,
-        parent_message_id: str,
-        current_tool_calls: Dict[str, Dict],
-    ):
-        """处理工具调用事件（同步生成器版本，用于完整消息）"""
         for tool_call in tool_calls:
             # 支持 dict 和 ToolCall 对象
             if hasattr(tool_call, "get"):
@@ -1199,8 +1053,9 @@ class BasicGraph(ABC):
                 completion_tokens=completion_token,
                 browser_steps=browser_steps_collector,
             )
-        except BaseException as e:
-            # 处理所有异常，包括 TaskGroup 异常
+        except Exception as e:
+            # 处理常规异常，包括 TaskGroup 异常；
+            # CancelledError / KeyboardInterrupt 不在此捕获，保持向上传播。
             error_msg = str(e)
 
             # 提取 TaskGroup 中的实际错误信息

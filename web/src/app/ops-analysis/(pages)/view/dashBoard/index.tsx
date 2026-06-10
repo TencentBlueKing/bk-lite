@@ -57,6 +57,7 @@ import {
 } from '@/app/ops-analysis/utils/dashboardGridStack';
 import {
   buildDashboardGroupStorageKey,
+  bumpDashboardGroupWidgetReloadVersions,
   getDashboardGroupWidgetIds,
   insertDashboardWidgetIntoGroup,
   isDashboardGroupItem,
@@ -446,6 +447,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     ]);
 
     const toggleCollapsedGroup = useCallback((groupId: string) => {
+      const isExpanding = Boolean(collapsedGroups[groupId]);
+
       setCollapsedGroups((previous) => {
         if (previous[groupId]) {
           const next = { ...previous };
@@ -455,7 +458,13 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
         return { ...previous, [groupId]: true };
       });
-    }, []);
+
+      if (isExpanding) {
+        setWidgetReloadVersions((versions) =>
+          bumpDashboardGroupWidgetReloadVersions(layout, groupId, versions),
+        );
+      }
+    }, [collapsedGroups, layout]);
 
     const openAddModal = (groupId?: string) => {
       setIsEditMode(true);
