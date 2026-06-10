@@ -1,4 +1,4 @@
-from django.http import JsonResponse, StreamingHttpResponse
+from django.http import JsonResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from redis.exceptions import RedisError
@@ -11,6 +11,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.metis.llm.tools.elasticsearch.connection import normalize_es_instance, test_es_instance
 from apps.opspilot.metis.llm.tools.jenkins.connection import normalize_jenkins_instance, test_jenkins_instance
@@ -37,7 +38,7 @@ from apps.opspilot.services.builtin_tools import (
 )
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.mcp_cache import get_cached_mcp_tools, set_cached_mcp_tools
-from apps.opspilot.utils.mcp_client import MCPClient
+from apps.opspilot.services.mcp_client import MCPClient
 from apps.opspilot.utils.pin_mixin import PinMixin
 from apps.opspilot.utils.skill_execution_params import resolve_request_tools
 from apps.opspilot.utils.sse_chat import stream_chat
@@ -65,6 +66,39 @@ class LLMViewSet(PinMixin, AuthViewSet):
     queryset = LLMSkill.objects.all()
     filterset_class = LLMFilter
     permission_key = "skill"
+
+    # F017: 明确允许通过 update 直接写入的标量模型字段白名单。
+    # 排除主键 / 审计 / 域 / 内建标记等受保护字段，避免任意 request.data
+    # 键被盲目 setattr 到模型上（mass-assignment）。team / knowledge_base /
+    # rag_score_threshold 等关系字段及派生字段由下方专门逻辑处理，不在此列。
+    UPDATABLE_SKILL_FIELDS = frozenset(
+        {
+            "name",
+            "llm_model_id",
+            "skill_prompt",
+            "enable_conversation_history",
+            "conversation_window_size",
+            "enable_rag",
+            "enable_rag_knowledge_source",
+            "rag_score_threshold_map",
+            "introduction",
+            "team",
+            "show_think",
+            "tools",
+            "skill_params",
+            "temperature",
+            "skill_type",
+            "enable_rag_strict_mode",
+            "is_template",
+            "enable_km_route",
+            "km_llm_model_id",
+            "guide",
+            "enable_suggest",
+            "enable_query_rewrite",
+            "instance_id",
+            "skill_id",
+        }
+    )
 
     def query_by_groups(self, request, queryset):
         """重写排序逻辑：当前用户置顶优先，再按 ID 倒序"""
@@ -186,8 +220,11 @@ class LLMViewSet(PinMixin, AuthViewSet):
                         item["value"] = old_param["value"]
                 else:
                     EncryptMixin.encrypt_field("value", item)
-        for key in params.keys():
-            if hasattr(instance, key):
+        # F017: 仅允许写入显式白名单内的字段，杜绝把任意 request.data 键
+        # 盲目 setattr 到模型（mass-assignment）。受保护字段（id/created_by/
+        # domain/is_builtin 等）即便随请求传入也被忽略。
+        for key in self.UPDATABLE_SKILL_FIELDS:
+            if key in params and hasattr(instance, key):
                 setattr(instance, key, params[key])
         instance.updated_by = request.user.username
         if "rag_score_threshold" in params:
@@ -206,26 +243,14 @@ class LLMViewSet(PinMixin, AuthViewSet):
     @staticmethod
     def create_error_stream_response(error_message):
         """
-        创建错误的流式响应
-        用于在流式模式下返回错误信息
+        创建错误的流式响应，用于在流式模式下返回错误信息。
+
+        实际实现位于 utils.sse_chat.create_error_stream_response，此处保留
+        静态方法仅为兼容既有调用方。
         """
-        import json
+        from apps.opspilot.utils.sse_chat import create_error_stream_response
 
-        async def error_generator():
-            error_data = {"result": False, "message": error_message, "error": True}
-            yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
-            yield "data: [DONE]\n\n"
-
-        # 直接使用异步生成器
-        response = StreamingHttpResponse(error_generator(), content_type="text/event-stream")
-        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        response["X-Accel-Buffering"] = "no"  # Nginx
-        # response["Pragma"] = "no-cache"
-        # response["Expires"] = "0"
-        # response["X-Buffering"] = "no"  # Apache
-        response["Access-Control-Allow-Origin"] = "*"
-        response["Access-Control-Allow-Headers"] = "Cache-Control"
-        return response
+        return create_error_stream_response(error_message)
 
     @action(methods=["POST"], detail=False)
     @HasPermission("skill_setting-View")
@@ -396,9 +421,6 @@ class LLMModelViewSet(VendorModelMixin, AuthViewSet):
 
     def _validate_llm_model_name(self, name, group_list, org_value, vendor_id, exclude_id=None):
         """验证 LLM 模型名称在同一供应商和团队中的唯一性"""
-        import logging
-
-        logger = logging.getLogger(__name__)
         try:
             if not name or not isinstance(name, str):
                 return ""
@@ -434,8 +456,8 @@ class LLMModelViewSet(VendorModelMixin, AuthViewSet):
 
             return ""
 
-        except Exception as e:
-            logger.error(f"Error in _validate_llm_model_name: {e}")
+        except Exception:
+            logger.exception("Error in _validate_llm_model_name")
             return ""
 
     @HasPermission("provide_list-View")
@@ -581,6 +603,69 @@ class SkillToolsViewSet(AuthViewSet):
     filterset_class = ToolsFilter
     permission_key = "tools"
 
+    def _ssrf_error_response(self, error):
+        """统一的 SSRF 拦截响应（保持 {result, message} 形状）。"""
+        message = self.loader.get("error.connection_target_forbidden") if self.loader else "Connection target is not allowed"
+        return JsonResponse({"result": False, "message": f"{message}: {error}"}, status=status.HTTP_400_BAD_REQUEST)
+
+    @staticmethod
+    def _guard_connection_host(host, port=None):
+        """对 host(:port) 形式的连接目标做 SSRF 校验。
+
+        复用统一的 ``SSRFValidator``：把 host/port 拼成 http(s) URL 后走与
+        fetch/browser 工具同款的私网 / 链路本地 / 回环 / 云元数据阻断逻辑，
+        防止被诱导对内网做端口扫描 / SSRF。
+
+        Raises:
+            SSRFError: 目标解析到被禁止的地址。
+        """
+        if host is None or str(host).strip() == "":
+            return
+        host = str(host).strip()
+        # 去除可能误带的协议前缀，仅取主机名用于校验。
+        netloc = host
+        if "://" in netloc:
+            from urllib.parse import urlparse
+
+            netloc = urlparse(host).hostname or host
+        target = f"http://{netloc}"
+        if port not in (None, ""):
+            target = f"http://{netloc}:{port}"
+        SSRFValidator.validate(target)
+
+    @classmethod
+    def _guard_connection_url(cls, url):
+        """对完整 URL 形式的连接目标做 SSRF 校验。"""
+        if not url or not str(url).strip():
+            return
+        SSRFValidator.validate(str(url).strip())
+
+    @classmethod
+    def _guard_kubeconfig(cls, kubeconfig_data):
+        """对 kubeconfig 中所有 cluster.server 地址做 SSRF 校验。
+
+        防止通过上传任意 kubeconfig 诱导服务端连接内网 API server。
+        非 http(s) 的 server 地址（理论上 k8s 仅用 https）会被校验器拒绝。
+        """
+        if not kubeconfig_data or not str(kubeconfig_data).strip():
+            return
+        import yaml
+
+        try:
+            kubeconfig = yaml.safe_load(kubeconfig_data)
+        except Exception:
+            # 无法解析的 kubeconfig 交由后续 normalize/连接逻辑报错，
+            # 这里不替它产生误导性的 SSRF 错误。
+            return
+        if not isinstance(kubeconfig, dict):
+            return
+        for cluster in kubeconfig.get("clusters", []) or []:
+            if not isinstance(cluster, dict):
+                continue
+            server = (cluster.get("cluster") or {}).get("server")
+            if server:
+                SSRFValidator.validate(str(server).strip())
+
     @HasPermission("tool_list-View")
     def list(self, request, *args, **kwargs):
         response = super().list(request, *args, **kwargs)
@@ -669,6 +754,16 @@ class SkillToolsViewSet(AuthViewSet):
             message = self.loader.get("error.server_url_required") if self.loader else "MCP server URL is required"
             return JsonResponse({"result": False, "message": message})
 
+        # SSRF 防护：复用统一校验器（与 fetch/browser 工具同款），阻断私网 /
+        # 链路本地 / 回环 / 云元数据地址以及非 http(s) 协议，避免服务端被诱导
+        # 访问内网 MCP 服务。
+        try:
+            SSRFValidator.validate(server_url)
+        except SSRFError as error:
+            logger.warning("Blocked MCP server URL by SSRF guard: server_url=%s, reason=%s", server_url, error)
+            message = self.loader.get("error.mcp_server_url_forbidden") if self.loader else "MCP server URL is not allowed"
+            return JsonResponse({"result": False, "message": f"{message}: {error}"})
+
         # 先查缓存（非强制刷新时）
         if not force_refresh:
             cached_tools = get_cached_mcp_tools(server_url, auth_token, transport)
@@ -702,9 +797,14 @@ class SkillToolsViewSet(AuthViewSet):
     @HasPermission("tool_list-View")
     def test_redis_connection(self, request):
         try:
+            self._guard_connection_url(request.data.get("url"))
+            if not request.data.get("url"):
+                self._guard_connection_host(request.data.get("host"), request.data.get("port"))
             instance = normalize_redis_instance(request.data)
             if test_redis_instance(instance):
                 return JsonResponse({"result": True, "data": {"success": True}})
+        except SSRFError as error:
+            return self._ssrf_error_response(error)
         except ValueError as error:
             return JsonResponse({"result": False, "message": str(error)}, status=status.HTTP_400_BAD_REQUEST)
         except RedisError as error:
@@ -717,9 +817,12 @@ class SkillToolsViewSet(AuthViewSet):
     @HasPermission("tool_list-View")
     def test_mysql_connection(self, request):
         try:
+            self._guard_connection_host(request.data.get("host"), request.data.get("port"))
             instance = normalize_mysql_instance(request.data)
             if test_mysql_instance(instance):
                 return JsonResponse({"result": True, "data": {"success": True}})
+        except SSRFError as error:
+            return self._ssrf_error_response(error)
         except ValueError as error:
             return JsonResponse({"result": False, "message": str(error)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as error:
@@ -730,9 +833,12 @@ class SkillToolsViewSet(AuthViewSet):
     @HasPermission("tool_list-View")
     def test_oracle_connection(self, request):
         try:
+            self._guard_connection_host(request.data.get("host"), request.data.get("port"))
             instance = normalize_oracle_instance(request.data)
             if test_oracle_instance(instance):
                 return JsonResponse({"result": True, "data": {"success": True}})
+        except SSRFError as error:
+            return self._ssrf_error_response(error)
         except ValueError as error:
             return JsonResponse({"result": False, "message": str(error)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as error:
@@ -745,9 +851,12 @@ class SkillToolsViewSet(AuthViewSet):
         from apps.opspilot.metis.llm.tools.mssql.connection import normalize_mssql_instance, test_mssql_instance
 
         try:
+            self._guard_connection_host(request.data.get("host"), request.data.get("port"))
             instance = normalize_mssql_instance(request.data)
             if test_mssql_instance(instance):
                 return JsonResponse({"result": True, "data": {"success": True}})
+        except SSRFError as error:
+            return self._ssrf_error_response(error)
         except ValueError as error:
             return JsonResponse({"result": False, "message": str(error)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as error:
@@ -758,9 +867,12 @@ class SkillToolsViewSet(AuthViewSet):
     @HasPermission("tool_list-View")
     def test_postgres_connection(self, request):
         try:
+            self._guard_connection_host(request.data.get("host"), request.data.get("port"))
             instance = normalize_postgres_instance(request.data)
             if test_postgres_instance(instance):
                 return JsonResponse({"result": True, "data": {"success": True}})
+        except SSRFError as error:
+            return self._ssrf_error_response(error)
         except ValueError as error:
             return JsonResponse({"result": False, "message": str(error)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as error:
@@ -771,9 +883,12 @@ class SkillToolsViewSet(AuthViewSet):
     @HasPermission("tool_list-View")
     def test_es_connection(self, request):
         try:
+            self._guard_connection_url(request.data.get("url"))
             instance = normalize_es_instance(request.data)
             if test_es_instance(instance):
                 return JsonResponse({"result": True, "data": {"success": True}})
+        except SSRFError as error:
+            return self._ssrf_error_response(error)
         except ValueError as error:
             return JsonResponse({"result": False, "message": str(error)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as error:
@@ -784,9 +899,12 @@ class SkillToolsViewSet(AuthViewSet):
     @HasPermission("tool_list-View")
     def test_jenkins_connection(self, request):
         try:
+            self._guard_connection_url(request.data.get("jenkins_url"))
             instance = normalize_jenkins_instance(request.data)
             if test_jenkins_instance(instance):
                 return JsonResponse({"result": True, "data": {"success": True}})
+        except SSRFError as error:
+            return self._ssrf_error_response(error)
         except ValueError as error:
             return JsonResponse({"result": False, "message": str(error)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as error:
@@ -797,9 +915,12 @@ class SkillToolsViewSet(AuthViewSet):
     @HasPermission("tool_list-View")
     def test_kubernetes_connection(self, request):
         try:
+            self._guard_kubeconfig(request.data.get("kubeconfig_data"))
             instance = normalize_kubernetes_instance(request.data)
             if test_kubernetes_instance(instance):
                 return JsonResponse({"result": True, "data": {"success": True}})
+        except SSRFError as error:
+            return self._ssrf_error_response(error)
         except ValueError as error:
             return JsonResponse({"result": False, "message": str(error)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as error:

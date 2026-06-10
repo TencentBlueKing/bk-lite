@@ -945,6 +945,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
               )}
             >
               <Collapse.Panel
+                forceRender
                 header={
                   <div className={styles.panelHeader}>
                     {t('Collection.advanced')}

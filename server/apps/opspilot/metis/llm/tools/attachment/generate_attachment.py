@@ -3,6 +3,7 @@ from langchain_core.tools import tool
 
 from apps.opspilot.services.workflow_attachment_service import (
     build_attachment_bytes,
+    build_signed_attachment_download_url,
     build_workflow_attachment_id,
     create_workflow_attachment_asset,
     normalize_attachment_file_type,
@@ -47,7 +48,7 @@ def generate_attachment_file(
     return {
         "attachment_id": asset.attachment_id,
         "filename": asset.filename,
-        "file_url": asset.download_url,
+        "file_url": build_signed_attachment_download_url(asset),
         "mime_type": asset.mime_type,
         "file_knowledge_id": asset.file_knowledge_id,
     }

@@ -1,15 +1,12 @@
 """Memory Engine ViewSet - API endpoints for memory engine management."""
 
-import logging
-
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.memory.engines.registry import MemoryEngineRegistry, check_sdk_availability
-
-logger = logging.getLogger(__name__)
 
 
 class MemoryEngineViewSet(ViewSet):
@@ -99,7 +96,7 @@ class MemoryEngineViewSet(ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except Exception as e:
-            logger.error(f"Connection test failed: {e}", exc_info=True)
+            logger.exception("Connection test failed")
             return Response(
                 {
                     "result": True,

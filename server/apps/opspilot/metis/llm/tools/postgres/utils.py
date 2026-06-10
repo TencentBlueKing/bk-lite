@@ -6,6 +6,8 @@ from langchain_core.runnables import RunnableConfig
 from loguru import logger
 from psycopg2.extras import RealDictCursor
 
+from apps.opspilot.metis.llm.tools.common.sql_guard import run_blocking
+
 
 def prepare_context(config: RunnableConfig = None) -> dict:
     """
@@ -89,24 +91,14 @@ def get_db_connection(config: RunnableConfig = None, database: str = None):
             connect_timeout=10,
         )
         return conn
-    except psycopg2.Error as e:
-        logger.error(f"数据库连接失败: {e}")
+    except psycopg2.Error:
+        # 不记录连接参数/异常详情,避免泄露 host/账号信息 (F077)
+        logger.exception("PostgreSQL数据库连接失败")
         raise
 
 
-def execute_readonly_query(query: str, params: tuple = None, config: RunnableConfig = None, database: str = None):
-    """
-    安全执行只读查询
-
-    Args:
-        query: SQL查询语句
-        params: 查询参数(用于参数化查询)
-        config: RunnableConfig对象
-        database: 可选的数据库名,如果提供则连接到指定数据库
-
-    Returns:
-        list: 查询结果列表
-    """
+def _execute_readonly_query_blocking(query: str, params: tuple = None, config: RunnableConfig = None, database: str = None):
+    """阻塞实现:建立连接、开启只读事务、执行查询并返回结果。"""
     conn = None
     cursor = None
 
@@ -132,8 +124,9 @@ def execute_readonly_query(query: str, params: tuple = None, config: RunnableCon
         # 转换为列表字典
         return [dict(row) for row in results]
 
-    except psycopg2.Error as e:
-        logger.error(f"查询执行失败: {e}")
+    except psycopg2.Error:
+        # 不在此处拼接错误详情(可能含连接信息);由调用方统一脱敏处理
+        logger.exception("PostgreSQL查询执行失败")
         if conn:
             conn.rollback()
         raise
@@ -142,6 +135,22 @@ def execute_readonly_query(query: str, params: tuple = None, config: RunnableCon
             cursor.close()
         if conn:
             conn.close()
+
+
+def execute_readonly_query(query: str, params: tuple = None, config: RunnableConfig = None, database: str = None):
+    """
+    安全执行只读查询。阻塞 IO 在异步上下文中自动卸载到线程,避免阻塞事件循环 (F038)。
+
+    Args:
+        query: SQL查询语句
+        params: 查询参数(用于参数化查询)
+        config: RunnableConfig对象
+        database: 可选的数据库名,如果提供则连接到指定数据库
+
+    Returns:
+        list: 查询结果列表
+    """
+    return run_blocking(_execute_readonly_query_blocking, query, params=params, config=config, database=database)
 
 
 def format_size(bytes_value: int) -> str:

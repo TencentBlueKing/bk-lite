@@ -25,6 +25,10 @@ from apps.opspilot.models import (
     WebPageKnowledge,
 )
 from apps.opspilot.serializers import KnowledgeDocumentSerializer
+from apps.opspilot.serializers.request_serializers import (
+    BatchTrainRequestSerializer,
+    DeleteChunksRequestSerializer,
+)
 from apps.opspilot.services.knowledge_search_service import KnowledgeSearchService
 from apps.opspilot.tasks import general_embed, general_embed_by_document_list
 from apps.opspilot.utils.chunk_helper import ChunkHelper
@@ -101,12 +105,18 @@ class KnowledgeDocumentViewSet(TeamPermissionMixin, LanguageViewSet):
     @action(methods=["POST"], detail=False)
     @HasPermission("knowledge_document-Train")
     def batch_train(self, request):
-        kwargs = request.data
-        knowledge_document_ids = kwargs.pop("knowledge_document_ids", [])
-        if type(knowledge_document_ids) is not list:
-            knowledge_document_ids = [knowledge_document_ids]
-        KnowledgeDocument.objects.filter(id__in=knowledge_document_ids).update(train_status=DocumentStatus.TRAINING)
-        general_embed(knowledge_document_ids, request.user.username, request.user.domain, kwargs["delete_qa_pairs"])
+        serializer = BatchTrainRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return JsonResponse({"result": False, "message": "Invalid request", "errors": serializer.errors}, status=400)
+        validated = serializer.validated_data
+        knowledge_document_ids = validated["knowledge_document_ids"]
+        delete_qa_pairs = validated["delete_qa_pairs"]
+        # 仅允许操作当前团队范围内的文档，过滤掉不在 scoped 集合中的 id
+        scoped_ids = list(self.get_queryset().filter(id__in=knowledge_document_ids).values_list("id", flat=True))
+        if not scoped_ids:
+            return JsonResponse({"result": True})
+        KnowledgeDocument.objects.filter(id__in=scoped_ids).update(train_status=DocumentStatus.TRAINING)
+        general_embed(scoped_ids, request.user.username, request.user.domain, delete_qa_pairs)
         return JsonResponse({"result": True})
 
     @action(methods=["GET"], detail=False)
@@ -131,6 +141,7 @@ class KnowledgeDocumentViewSet(TeamPermissionMixin, LanguageViewSet):
                     "train_progress",
                     "completed_count",
                     "total_count",
+                    "status",
                 )
             )
         else:
@@ -145,6 +156,7 @@ class KnowledgeDocumentViewSet(TeamPermissionMixin, LanguageViewSet):
                     "train_progress",
                     "completed_count",
                     "total_count",
+                    "status",
                 ).order_by("-id")
             )
         for i in task_list:
@@ -298,9 +310,15 @@ class KnowledgeDocumentViewSet(TeamPermissionMixin, LanguageViewSet):
     @action(methods=["POST"], detail=False)
     @HasPermission("knowledge_document-Delete")
     def delete_chunks(self, request):
-        params = request.data
+        serializer = DeleteChunksRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return JsonResponse({"result": False, "message": "Invalid request", "errors": serializer.errors}, status=400)
+        params = serializer.validated_data
         chunk_ids = params["ids"]
-        keep_qa = not params.get("delete_all", False)
+        # 校验 chunk 所属知识库属于当前团队，防止越权删除其它团队的 ES 内容
+        knowledge_base_id = params["knowledge_base_id"]
+        self._validate_knowledge_base_permission(request, knowledge_base_id)
+        keep_qa = not params["delete_all"]
         result = ChunkHelper.delete_es_content(chunk_ids, True, keep_qa)
         if not result:
             message = self.loader.get("error.qa_pair_delete_failed")
@@ -327,6 +345,10 @@ class KnowledgeDocumentViewSet(TeamPermissionMixin, LanguageViewSet):
     def batch_delete(self, request):
         doc_ids = request.data.get("doc_ids", [])
         knowledge_base_id = request.data.get("knowledge_base_id", 0)
+        # 仅允许操作当前团队范围内的文档，过滤掉不属于调用方团队知识库的 id
+        doc_ids = list(self.get_queryset().filter(id__in=doc_ids).values_list("id", flat=True))
+        if not doc_ids:
+            return JsonResponse({"result": True})
         if KnowledgeDocument.objects.filter(id__in=doc_ids, train_status=DocumentStatus.TRAINING).exists():
             return JsonResponse({"result": False, "message": "training document can not be deleted"})
 

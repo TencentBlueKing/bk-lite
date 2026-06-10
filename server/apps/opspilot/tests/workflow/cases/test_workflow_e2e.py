@@ -242,8 +242,16 @@ def test_agent_node_sets_attachment_link_variable(mocker):
     )
 
     asset = WorkflowAttachmentAsset.objects.get(execution_id="exec-attachment", attachment_id="agent_node")
-    assert result["agent_node"] == asset.download_url
-    assert variable_manager.get_variable("agent_node") == asset.download_url
+    # F001: the agent node now emits a SIGNED, expiring download URL (TimestampSigner),
+    # not the raw asset.download_url. The signed token varies per call, so resolve it
+    # back and assert it points to this exact asset.
+    from apps.opspilot.services.workflow_attachment_service import resolve_signed_attachment_token
+
+    def _token_of(url):
+        return url.rstrip("/").rsplit("/", 1)[-1]
+
+    assert resolve_signed_attachment_token(_token_of(result["agent_node"])).id == asset.id
+    assert resolve_signed_attachment_token(_token_of(variable_manager.get_variable("agent_node"))).id == asset.id
     assert result["generated_attachment"]["filename"] == "report.md"
 
 

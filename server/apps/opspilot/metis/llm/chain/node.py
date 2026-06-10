@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import inspect
 import json
 import time
@@ -10,32 +11,12 @@ from urllib.parse import parse_qs, urlparse
 
 import json_repair
 
-# ---------------------------------------------------------------------------
-# DeepSeek/Qwen thinking mode fix:
-#
-# Problem: Models like DeepSeek and Qwen return a `reasoning_content` field in
-# their API responses. In multi-turn conversations (e.g. ReAct tool-calling
-# loops), this field MUST be passed back with the assistant message. However
-# langchain-openai's deserialization (_convert_dict_to_message) discards it,
-# so on the next turn the field is missing and the model returns HTTP 400:
-#   "The reasoning_content in the thinking mode must be passed back to the API."
-#
-# Fix: We monkey-patch BOTH directions:
-#   1. Response → AIMessage: preserve reasoning_content in additional_kwargs
-#   2. AIMessage → Request dict: inject reasoning_content back into the payload
-# ---------------------------------------------------------------------------
-import langchain_openai.chat_models.base as _lc_openai_base  # noqa: E402
-import openai
 from deepagents import create_deep_agent
 from langchain_core.callbacks import dispatch_custom_event
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_openai.chat_models.base import BaseChatOpenAI as _BaseChatOpenAI
-from langchain_openai.chat_models.base import _convert_delta_to_message_chunk as _original_convert_delta_to_message_chunk
-from langchain_openai.chat_models.base import _convert_dict_to_message as _original_convert_dict_to_message
-from langchain_openai.chat_models.base import _convert_message_to_dict as _original_convert_message_to_dict
 from langgraph.constants import END
 from langgraph.graph import StateGraph
 from langgraph.prebuilt import ToolNode
@@ -47,10 +28,12 @@ from apps.opspilot.metis.llm.chain.compaction import CompactionConfig, compact_m
 from apps.opspilot.metis.llm.chain.entity import (
     BasicLLMRequest,
     DoneToolConfig,
+    ExtraConfig,
     PrepareStepContext,
     PrepareStepResult,
     StopConditionContext,
     StopConditionResult,
+    normalize_tool_calls,
 )
 from apps.opspilot.metis.llm.chain.message_trim import trim_messages
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
@@ -59,16 +42,51 @@ from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import Graphiti
 from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
-from apps.opspilot.utils.approval import wait_for_approval
+from apps.opspilot.services.approval import wait_for_approval
 from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
 from apps.opspilot.utils.rollback import execute_rollback, get_rollback_spec, take_snapshot
 from apps.opspilot.utils.user_choice import wait_for_choice
 from apps.opspilot.utils.verification import get_verification_spec, run_verification
 
+# ---------------------------------------------------------------------------
+# Facade re-exports (structural refactor, no behavior change).
+#
+# The langchain-openai monkey-patches and the K8s config-analysis report
+# helpers were moved into dedicated submodules. They are re-exported here so
+# that every existing ``from ...chain.node import X`` (and every test that
+# patches ``apps.opspilot.metis.llm.chain.node.X``) keeps resolving exactly as
+# before. Importing ``lc_patches`` also applies the monkey-patches as an import
+# side effect, preserving the original import-time patching behavior of node.py.
+# ---------------------------------------------------------------------------
+from apps.opspilot.metis.llm.chain.k8s_report_tools import (  # noqa: E402,F401
+    _build_config_analysis_report_total,
+    _build_config_analysis_scan_range,
+    _build_config_analysis_scope,
+    _config_analysis_benefit_description,
+    _config_analysis_fix_description,
+    _config_analysis_risk_description,
+    build_config_analysis_report_markdown,
+    build_config_analysis_report_payload,
+    build_post_tool_directives,
+    find_pending_k8s_analysis_choice,
+    should_emit_config_analysis_report,
+)
+from apps.opspilot.metis.llm.chain.k8s_tool_gate import is_k8s_agent  # noqa: E402,F401
+from apps.opspilot.metis.llm.chain.lc_patches import (  # noqa: E402,F401
+    _REASONING_FIELD_NAMES,
+    _patched_convert_delta_to_message_chunk,
+    _patched_convert_dict_to_message,
+    _patched_convert_message_to_dict,
+    _patched_create_chat_result,
+)
+
 
 def _safe_log_preview(content: str, max_len: int = 200) -> str:
     """
-    安全地截取日志预览内容，移除可能导致 Windows GBK 编码错误的字符（如 emoji）。
+    安全地截取日志预览内容。
+
+    使用 UTF-8（由日志 handler 负责编码），保留 emoji 与全部 Unicode 字符，
+    仅做长度截断。
 
     Args:
         content: 原始内容
@@ -79,10 +97,7 @@ def _safe_log_preview(content: str, max_len: int = 200) -> str:
     """
     if not content:
         return ""
-    preview = str(content)[:max_len]
-    # 移除非 ASCII 字符中可能导致 GBK 编码错误的字符（主要是 emoji）
-    # 保留中文等常见字符，只移除 emoji 范围的字符
-    return preview.encode("gbk", errors="replace").decode("gbk")
+    return str(content)[:max_len]
 
 
 def normalize_messages_for_llm(messages: List[Any]) -> List[Any]:
@@ -116,449 +131,6 @@ def normalize_messages_for_llm(messages: List[Any]) -> List[Any]:
         return [merged_system] + non_system_messages
     else:
         return non_system_messages
-
-
-def build_post_tool_directives(result_messages: List[BaseMessage]) -> List[SystemMessage]:
-    directives: List[SystemMessage] = []
-
-    for message in result_messages:
-        message_name = getattr(message, "name", "")
-        message_content = getattr(message, "content", "")
-
-        if message_name == "analyze_deployment_configurations":
-            try:
-                parsed = json.loads(message_content) if isinstance(message_content, str) else message_content
-            except Exception:
-                parsed = None
-
-            if isinstance(parsed, dict) and (parsed.get("issues_detail") or should_emit_config_analysis_report(parsed)):
-                directives.append(
-                    SystemMessage(
-                        content=(
-                            "【配置检查输出规则】不要同时输出“问题摘要”和“配置问题报告”两个重复板块。"
-                            "如果已经输出按严重级别或问题类别展开的详细问题报告，就不要再单独重复一段摘要。"
-                            "优先保留详细问题报告，并把总数、集群名、影响范围合并到报告标题或开头一句。"
-                            "本轮先输出一次完整配置检查结果。"
-                            "如果检查结果存在问题项，输出完整配置检查报告后，必须主动调用 request_user_choice，"
-                            "让用户选择修复展示方式（按问题类别聚合 / 按工作负载聚合 / 全部一次性展示）。"
-                            "不要主动调用 generate_repair_report，必须等待用户完成选择后再生成修复对比。"
-                            "如果检查结果没有问题，则直接结束，不要追加修复交互。"
-                        )
-                    )
-                )
-
-        if message_name == "generate_repair_report" and ("修复命令" in message_content or "```" in message_content):
-            directives.append(
-                SystemMessage(
-                    content=(
-                        "【强制输出规则】用户无法看到工具返回的内容（ToolMessage 对用户不可见）。"
-                        "你必须在你的回复中完整列出工具结果中的所有修复命令。"
-                        "格式要求：按工作负载分组，每条命令用 ```bash 代码块包裹。"
-                        "严禁省略任何命令，严禁说'见上方'或'复制以上命令'。"
-                        "用户只能看到你的文字回复，所以命令必须出现在你的回复中。"
-                    )
-                )
-            )
-
-    return directives
-
-
-def build_config_analysis_report_markdown(parsed: Dict[str, Any]) -> str:
-    cluster_name = parsed.get("cluster_name") or "Kubernetes"
-    problematic = parsed.get("problematic", 0)
-    healthy = parsed.get("healthy")
-    total = _build_config_analysis_report_total(parsed)
-    issues_detail = parsed.get("issues_detail") or []
-
-    lines = [f"# 配置检查报告 - {cluster_name}"]
-    summary_parts = []
-    if total is not None:
-        summary_parts.append(f"总计 {total} 个工作负载")
-    if problematic is not None:
-        summary_parts.append(f"存在问题 {problematic} 个")
-    if healthy is not None:
-        summary_parts.append(f"健康 {healthy} 个")
-    if summary_parts:
-        lines.append("；".join(summary_parts))
-
-    if not issues_detail:
-        lines.append("未发现明显配置问题")
-
-    severity_titles = {
-        "critical": "Critical",
-        "high": "High",
-        "medium": "Medium",
-        "low": "Low",
-        "warning": "Warning",
-        "info": "Info",
-    }
-    grouped: Dict[str, List[Dict[str, Any]]] = {}
-    for item in issues_detail:
-        grouped.setdefault(item.get("severity", "info"), []).append(item)
-
-    severity_order = ["critical", "high", "medium", "low", "warning", "info"]
-    for severity in severity_order:
-        items = grouped.get(severity)
-        if not items:
-            continue
-        lines.append(f"## {severity_titles.get(severity, severity.title())}")
-        for item in items:
-            issue = item.get("issue", "未知问题")
-            count = item.get("count", 0)
-            workloads = item.get("workloads") or []
-            workload_preview = "、".join(workloads[:5])
-            if len(workloads) > 5:
-                workload_preview += f" 等 {len(workloads)} 个工作负载"
-            elif workload_preview:
-                workload_preview = f"：{workload_preview}"
-            lines.append(f"- {issue}（{count} 个工作负载{workload_preview}）")
-
-    return "\n\n".join(lines)
-
-
-def _config_analysis_risk_description(issue_type: str) -> str:
-    issue_type = issue_type or ""
-    if "资源限制" in issue_type or "资源请求" in issue_type:
-        return "无资源限制的容器可消耗节点所有资源，导致其他 Pod OOM 或 CPU 饥饿，影响集群稳定性。"
-    if "存活探针" in issue_type or "健康探针" in issue_type or "liveness" in issue_type.lower():
-        return "无存活探针时 Kubernetes 无法自动检测和重启不健康的容器，故障容器将持续运行。"
-    if "就绪探针" in issue_type or "readiness" in issue_type.lower():
-        return "无就绪探针时 Service 可能将流量路由到未准备好的 Pod，导致请求失败。"
-    if "探针" in issue_type:
-        return "缺少健康检查探针，Kubernetes 无法自动检测容器故障并执行自愈操作。"
-    if "root" in issue_type or "安全上下文" in issue_type or "非 root" in issue_type.lower():
-        return "容器以 root 用户运行，容器逃逸后攻击者将获得宿主机 root 权限，安全风险极高。"
-    if "latest" in issue_type or "镜像标签" in issue_type:
-        return "latest 标签不可溯源，每次拉取可能获得不同版本，导致不可预测行为和回滚困难。"
-    if "单副本" in issue_type or "副本" in issue_type:
-        return "单副本部署存在单点故障风险，节点异常时服务将完全中断，无法保障高可用。"
-    if "特权" in issue_type or "privileged" in issue_type.lower():
-        return "特权容器拥有宿主机全部 Linux capabilities，容器逃逸后等同于 root 访问整个节点。"
-    if "hostNetwork" in issue_type or "主机命名空间" in issue_type or "hostPID" in issue_type:
-        return "共享宿主机网络/进程/IPC 命名空间会绕过网络和进程隔离，增大攻击面。"
-    if "密码" in issue_type or "明文" in issue_type or "Secret" in issue_type:
-        return "密码暴露在 Git 历史、kubectl describe 输出中，任何有 namespace 读权限的用户均可看到。"
-    if "NetworkPolicy" in issue_type or "网络隔离" in issue_type:
-        return "所有 Pod 之间可自由通信，一旦某个容器被入侵，攻击者可横向移动到所有命名空间。"
-    if "ServiceAccount" in issue_type:
-        return "使用默认 ServiceAccount 违反最小权限原则，可能被利用进行集群内横向攻击。"
-    return "当前配置不符合 Kubernetes 最佳实践，可能影响集群安全性和稳定性。"
-
-
-def _config_analysis_fix_description(issue_type: str) -> str:
-    issue_type = issue_type or ""
-    if "资源限制" in issue_type or "资源请求" in issue_type:
-        return "为所有容器设置 resources.requests 和 resources.limits，建议 CPU 100m-500m，内存 128Mi-256Mi。"
-    if "存活探针" in issue_type or "liveness" in issue_type.lower():
-        return "添加 livenessProbe 配置（建议 httpGet 方式），设置合理的 initialDelaySeconds 和 periodSeconds。"
-    if "就绪探针" in issue_type or "readiness" in issue_type.lower():
-        return "添加 readinessProbe 配置，确保 Pod 准备好接收流量后才加入 Service 端点。"
-    if "探针" in issue_type:
-        return "为容器添加 livenessProbe 和 readinessProbe，建议使用 httpGet 或 tcpSocket 检测方式。"
-    if "root" in issue_type or "安全上下文" in issue_type or "非 root" in issue_type.lower():
-        return "配置 securityContext.runAsNonRoot: true 和 runAsUser: 1000，禁止容器以 root 运行。"
-    if "latest" in issue_type or "镜像标签" in issue_type:
-        return "将所有 :latest 标签替换为固定版本号（如 :1.25.3），确保镜像版本可追溯。"
-    if "单副本" in issue_type or "副本" in issue_type:
-        return "将生产环境工作负载副本数增加至 2 或以上，配合 PodDisruptionBudget 保障高可用。"
-    if "特权" in issue_type or "privileged" in issue_type.lower():
-        return "移除 privileged 权限，仅授予容器完成业务所需的最小能力集。"
-    if "hostNetwork" in issue_type or "主机命名空间" in issue_type or "hostPID" in issue_type:
-        return "尽量避免使用 hostNetwork、hostPID 和 hostIPC，保持默认隔离边界。"
-    if "密码" in issue_type or "明文" in issue_type or "Secret" in issue_type:
-        return "将敏感信息迁移到 Secret，并通过环境变量或挂载文件按需注入。"
-    if "NetworkPolicy" in issue_type or "网络隔离" in issue_type:
-        return "为命名空间补充 NetworkPolicy，只允许必要的入站和出站流量。"
-    if "ServiceAccount" in issue_type:
-        return "为工作负载创建专用 ServiceAccount，并按最小权限绑定 RBAC。"
-    return "根据实际业务场景补充对应的 Kubernetes 最佳实践配置。"
-
-
-def _config_analysis_benefit_description(issue_type: str) -> str:
-    issue_type = issue_type or ""
-    if "资源限制" in issue_type or "资源请求" in issue_type:
-        return "避免单个容器争抢过多节点资源，提升集群稳定性并减少相互干扰。"
-    if "存活探针" in issue_type or "liveness" in issue_type.lower():
-        return "让 Kubernetes 能自动发现并重启异常容器，缩短故障持续时间。"
-    if "就绪探针" in issue_type or "readiness" in issue_type.lower():
-        return "仅在 Pod 真正可用时接收流量，减少发布抖动和瞬时请求失败。"
-    if "探针" in issue_type:
-        return "补齐健康检查后，工作负载更容易被平台自动发现异常并恢复。"
-    if "root" in issue_type or "安全上下文" in issue_type or "非 root" in issue_type.lower():
-        return "降低容器逃逸后直接获得宿主机 root 权限的风险，收紧运行时权限边界。"
-    if "latest" in issue_type or "镜像标签" in issue_type:
-        return "让镜像版本可追溯、可回滚，减少因隐式升级带来的变更风险。"
-    if "单副本" in issue_type or "副本" in issue_type:
-        return "提升服务可用性，在节点故障或滚动发布时降低中断风险。"
-    if "特权" in issue_type or "privileged" in issue_type.lower():
-        return "缩小容器可用能力范围，降低被利用后进一步突破宿主机的风险。"
-    if "hostNetwork" in issue_type or "主机命名空间" in issue_type or "hostPID" in issue_type:
-        return "保留容器默认隔离边界，减少跨容器和宿主机暴露面。"
-    if "密码" in issue_type or "明文" in issue_type or "Secret" in issue_type:
-        return "集中管理敏感信息，减少凭据泄露面并简化后续轮换。"
-    if "NetworkPolicy" in issue_type or "网络隔离" in issue_type:
-        return "限制横向通信范围，降低单点失陷后在集群内扩散的风险。"
-    if "ServiceAccount" in issue_type:
-        return "落实最小权限访问，减少工作负载凭证被滥用的风险。"
-    return "提升 Kubernetes 配置治理水平，降低常见稳定性与安全风险。"
-
-
-def should_emit_config_analysis_report(parsed: Dict[str, Any]) -> bool:
-    if not isinstance(parsed, dict) or parsed.get("error"):
-        return False
-    if parsed.get("issues_detail"):
-        return True
-    return any(parsed.get(key) is not None for key in ("total", "problematic", "healthy"))
-
-
-def _build_config_analysis_scope(parsed: Dict[str, Any]) -> Dict[str, Any]:
-    scope = parsed.get("scope") if isinstance(parsed.get("scope"), dict) else {}
-    result = {}
-
-    cluster_name = parsed.get("cluster_name")
-    if cluster_name:
-        result["cluster_name"] = cluster_name
-
-    for key in ("namespace", "instance_name", "name", "target_name"):
-        value = scope.get(key) or parsed.get(key)
-        if value not in (None, ""):
-            result[key] = value
-
-    fallback_target = scope.get("target_name") or scope.get("name") or parsed.get("target_name") or parsed.get("name")
-    if fallback_target:
-        result.setdefault("name", fallback_target)
-        result.setdefault("target_name", fallback_target)
-
-    return result
-
-
-def _build_config_analysis_scan_range(parsed: Dict[str, Any]) -> Dict[str, Any]:
-    scan_range = {}
-    for key in ("offset", "limit", "has_more"):
-        if key in parsed:
-            scan_range[key] = parsed.get(key)
-    return scan_range
-
-
-def _build_config_analysis_report_total(parsed: Dict[str, Any]) -> Optional[int]:
-    healthy = parsed.get("healthy")
-    problematic = parsed.get("problematic")
-    if isinstance(healthy, int) and isinstance(problematic, int):
-        return healthy + problematic
-
-    deployments_full = parsed.get("_deployments_full")
-    if isinstance(deployments_full, list):
-        return len(deployments_full)
-
-    total = parsed.get("total")
-    return total if isinstance(total, int) else None
-
-
-def build_config_analysis_report_payload(parsed: Dict[str, Any]) -> Dict[str, Any]:
-    cluster_name = parsed.get("cluster_name") or "Kubernetes"
-    issues_detail = parsed.get("issues_detail") or []
-    report_total = _build_config_analysis_report_total(parsed)
-
-    severity_titles = {
-        "critical": "Critical",
-        "high": "High",
-        "medium": "Medium",
-        "low": "Low",
-        "warning": "Warning",
-        "info": "Info",
-    }
-    severity_priority = {
-        "critical": "P0",
-        "high": "P1",
-        "medium": "P2",
-        "low": "P3",
-        "warning": "P2",
-        "info": "P3",
-    }
-    severity_order = ["critical", "high", "medium", "low", "warning", "info"]
-    grouped: Dict[str, List[Dict[str, Any]]] = {}
-    for item in issues_detail:
-        grouped.setdefault(item.get("severity", "info"), []).append(item)
-
-    severity_sections = []
-    recommendations = []
-    for severity in severity_order:
-        items = grouped.get(severity)
-        if not items:
-            continue
-
-        section_issues = []
-        for item in items:
-            issue = item.get("issue", "未知问题")
-            workloads = item.get("workloads") or []
-            issue_payload = {
-                "issue": issue,
-                "count": item.get("count", 0),
-                "workloads": workloads,
-                "risk": _config_analysis_risk_description(issue),
-            }
-            section_issues.append(issue_payload)
-            recommendations.append(
-                {
-                    "priority": severity_priority.get(severity, "P3"),
-                    "action": _config_analysis_fix_description(issue),
-                    "target": workloads[0] if workloads else "",
-                    "benefit": _config_analysis_benefit_description(issue),
-                }
-            )
-
-        severity_sections.append(
-            {
-                "severity": severity,
-                "title": severity_titles.get(severity, severity.title()),
-                "issues": section_issues,
-            }
-        )
-
-    markdown = build_config_analysis_report_markdown(parsed)
-
-    return {
-        "report_id": str(uuid.uuid4())[:8],
-        "title": f"配置检查报告 - {cluster_name}",
-        "cluster_name": cluster_name,
-        "scope": _build_config_analysis_scope(parsed),
-        "scan_range": _build_config_analysis_scan_range(parsed),
-        "summary": {
-            "total": report_total,
-            "problematic": parsed.get("problematic"),
-            "healthy": parsed.get("healthy"),
-        },
-        "severity_sections": severity_sections,
-        "recommendations": recommendations,
-        "markdown": markdown,
-        "fallback_markdown": markdown,
-    }
-
-
-def find_pending_k8s_analysis_choice(messages: List[BaseMessage]) -> Optional[Dict[str, Any]]:
-    latest_index = -1
-    latest_payload: Optional[Dict[str, Any]] = None
-
-    for index, message in enumerate(messages):
-        if getattr(message, "type", "") != "tool" or getattr(message, "name", "") != "analyze_deployment_configurations":
-            continue
-        content = getattr(message, "content", "")
-        try:
-            parsed = json.loads(content) if isinstance(content, str) else content
-        except Exception:
-            continue
-        if isinstance(parsed, dict) and parsed.get("issues_detail"):
-            latest_index = index
-            latest_payload = parsed
-
-    if latest_index < 0 or latest_payload is None:
-        return None
-
-    for message in messages[latest_index + 1 :]:
-        if getattr(message, "type", "") == "tool" and getattr(message, "name", "") in {"request_user_choice", "generate_repair_report"}:
-            return None
-        if getattr(message, "type", "") == "ai":
-            tool_calls = getattr(message, "tool_calls", []) or []
-            if any(tool_call.get("name") == "request_user_choice" for tool_call in tool_calls):
-                return None
-
-    return latest_payload
-
-
-# --- Patch 1: Response deserialization (preserve reasoning_content) ----------
-
-# Different providers use different field names for thinking/reasoning content:
-#   - DeepSeek: "reasoning_content"
-#   - Qwen: "reasoning"
-# We normalize to "reasoning_content" in additional_kwargs for internal use.
-_REASONING_FIELD_NAMES = ("reasoning_content", "reasoning")
-
-
-def _patched_convert_dict_to_message(_dict, *args, **kwargs):
-    """Preserve reasoning_content from provider response into AIMessage.additional_kwargs."""
-    message = _original_convert_dict_to_message(_dict, *args, **kwargs)
-    if isinstance(message, AIMessage):
-        for field_name in _REASONING_FIELD_NAMES:
-            if _dict.get(field_name):
-                message.additional_kwargs["reasoning_content"] = _dict[field_name]
-                break
-    return message
-
-
-_lc_openai_base._convert_dict_to_message = _patched_convert_dict_to_message
-
-
-# --- Patch 3: _create_chat_result - capture reasoning_content from raw response ----
-
-_original_create_chat_result = _BaseChatOpenAI._create_chat_result
-
-
-def _patched_create_chat_result(self, response, generation_info=None):
-    """Intercept _create_chat_result to extract reasoning_content from the raw response object."""
-    # If response is an openai BaseModel, try to get reasoning content from the raw object
-    reasoning_contents = {}
-    if isinstance(response, openai.BaseModel) and hasattr(response, "choices"):
-        for i, choice in enumerate(response.choices):
-            msg = getattr(choice, "message", None)
-            if msg is not None:
-                rc = None
-                for field_name in _REASONING_FIELD_NAMES:
-                    rc = getattr(msg, field_name, None)
-                    if rc:
-                        reasoning_contents[i] = rc
-                        break
-                if not rc:
-                    extras = getattr(msg, "model_extra", {}) or {}
-                    for field_name in _REASONING_FIELD_NAMES:
-                        if extras.get(field_name):
-                            reasoning_contents[i] = extras[field_name]
-                            break
-
-    result = _original_create_chat_result(self, response, generation_info)
-
-    # Inject reasoning_content into the AIMessage if we found it from raw response
-    if reasoning_contents:
-        for i, rc in reasoning_contents.items():
-            if i < len(result.generations):
-                gen_msg = result.generations[i].message
-                if isinstance(gen_msg, AIMessage) and "reasoning_content" not in gen_msg.additional_kwargs:
-                    gen_msg.additional_kwargs["reasoning_content"] = rc
-
-    return result
-
-
-_BaseChatOpenAI._create_chat_result = _patched_create_chat_result
-
-
-# --- Patch 4: _convert_delta_to_message_chunk - preserve reasoning_content in streaming ---
-
-
-def _patched_convert_delta_to_message_chunk(_dict, default_class, *args, **kwargs):
-    """Preserve reasoning_content from streaming delta chunks."""
-    chunk = _original_convert_delta_to_message_chunk(_dict, default_class, *args, **kwargs)
-    if isinstance(chunk, AIMessageChunk):
-        for field_name in _REASONING_FIELD_NAMES:
-            if _dict.get(field_name):
-                chunk.additional_kwargs["reasoning_content"] = _dict[field_name]
-                break
-    return chunk
-
-
-_lc_openai_base._convert_delta_to_message_chunk = _patched_convert_delta_to_message_chunk
-
-
-# --- Patch 2: Request serialization (inject reasoning_content back) ----------
-
-
-def _patched_convert_message_to_dict(message, *args, **kwargs):
-    """Inject reasoning_content from AIMessage.additional_kwargs into the API request payload."""
-    result = _original_convert_message_to_dict(message, *args, **kwargs)
-    if isinstance(message, AIMessage) and result.get("role") == "assistant" and "reasoning_content" in message.additional_kwargs:
-        result["reasoning_content"] = message.additional_kwargs["reasoning_content"]
-    return result
-
-
-_lc_openai_base._convert_message_to_dict = _patched_convert_message_to_dict
 
 
 class BasicNode:
@@ -640,7 +212,9 @@ class BasicNode:
         # 智能知识路由选择
         selected_knowledge_ids = []
         if "km_info" in config["configurable"]:
-            selected_knowledge_ids = self._select_knowledge_ids(config)
+            # _select_knowledge_ids 内部走同步阻塞的 LLM HTTP 调用（invoke_isolated），
+            # 在 async 节点中直接调用会阻塞事件循环，放入线程池执行。
+            selected_knowledge_ids = await asyncio.to_thread(self._select_knowledge_ids, config)
 
         rag_result = []
         all_img_docs = []  # 收集所有图片文档
@@ -653,7 +227,8 @@ class BasicNode:
                 continue
 
             rag = PgvectorRag()
-            naive_rag_search_result = rag.search(rag_search_request)
+            # PgvectorRag().search 为同步阻塞的向量库查询，async 节点中放入线程池避免阻塞事件循环。
+            naive_rag_search_result = await asyncio.to_thread(rag.search, rag_search_request)
 
             rag_documents = []
             img_docs = []
@@ -818,7 +393,7 @@ class BasicNode:
 
     def _create_relation_result_object(self, relation_content: str, source_name: str, target_name: str, group_id: str):
         """创建关系事实结果对象"""
-        content_hash = hash(relation_content) % 100000
+        content_hash = hashlib.md5(relation_content.encode("utf-8")).hexdigest()[:8]
 
         class RelationResult:
             def __init__(self):
@@ -837,7 +412,7 @@ class BasicNode:
 
     def _create_summary_result_object(self, summary_with_nodes: str, nodes_list: str, group_id: str, summary_content: str):
         """创建summary结果对象"""
-        content_hash = hash(summary_content) % 100000
+        content_hash = hashlib.md5(summary_content.encode("utf-8")).hexdigest()[:8]
 
         class SummaryResult:
             def __init__(self):
@@ -1199,9 +774,9 @@ class ToolsNodes(BasicNode):
         self.done_tool_config = getattr(request, "done_tool_config", None)
 
         # 多实例强制选择配置（由 chat_service 注入 extra_config）
-        _ec = getattr(request, "extra_config", None) or {}
-        self._require_choice_before_tools = _ec.get("_require_choice_before_tools", False)
-        self._multi_instance_options = _ec.get("_multi_instance_options", [])
+        _ec = ExtraConfig.from_raw(getattr(request, "extra_config", None))
+        self._require_choice_before_tools = _ec.require_choice_before_tools
+        self._multi_instance_options = _ec.multi_instance_options
         if self._require_choice_before_tools:
             logger.info(f"多实例强制选择已启用, options={self._multi_instance_options}")
 
@@ -1313,8 +888,8 @@ class ToolsNodes(BasicNode):
             }
             try:
                 dispatch_custom_event("approval_request", approval_request_data)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[approval_tool] 发射 approval_request 事件失败: {e}")
 
             logger.info(f"[approval_tool] 审批请求已发射: action={action}, risk={risk_level}, id={request_id}")
 
@@ -2235,18 +1810,6 @@ class ToolsNodes(BasicNode):
             args_schema=BulkRepairInput,
         )
         return bulk_repair_tool
-        """构建工具节点"""
-        try:
-            if self.tools:
-                tool_node = ToolNode(self.tools, handle_tool_errors=True)
-                logger.debug(f"成功构建工具节点，包含 {len(self.tools)} 个工具")
-                return tool_node
-            else:
-                logger.debug("未找到可用工具，返回空工具节点")
-                return ToolNode([])
-        except Exception as e:
-            logger.error("构建工具节点失败: %r", e)
-            return ToolNode([])
 
     # ========== 使用 LangGraph 标准 ReAct Agent 实现 ==========
 
@@ -2301,11 +1864,16 @@ class ToolsNodes(BasicNode):
         approval_tool_instance = self._build_approval_tool() if (self.all_tools or self.tools) else None
         # 用户选择工具（LLM 需要用户从多个选项中选择时调用）
         choice_tool_instance = self._build_choice_tool() if (self.all_tools or self.tools) else None
+        # K8s 专用报告工具门控（F058）：report_config_diff / generate_repair_report
+        # 仅在 agent 的工具池属于 K8s 场景时才绑定，避免给非 K8s agent 携带无关工具。
+        # 前端仅在事件出现时渲染对应报告，因此非 K8s agent 缺失这些工具是安全的。
+        _has_any_tools = bool(self.all_tools or self.tools)
+        _is_k8s_agent = is_k8s_agent(self.all_tools or self.tools)
         # 配置 diff 报告工具
-        diff_report_tool_instance = self._build_diff_report_tool() if (self.all_tools or self.tools) else None
+        diff_report_tool_instance = self._build_diff_report_tool() if (_has_any_tools and _is_k8s_agent) else None
         # 批量修复报告工具（传入分析缓存以支持自动生成）
         _analysis_cache: Dict[str, Any] = {}  # 由 logged_tool_node 在 analyze 工具返回时填充
-        bulk_repair_tool_instance = self._build_bulk_repair_tool(_analysis_cache) if (self.all_tools or self.tools) else None
+        bulk_repair_tool_instance = self._build_bulk_repair_tool(_analysis_cache) if (_has_any_tools and _is_k8s_agent) else None
         # 选择后续行追踪（防止 LLM 在 request_user_choice 后停止）
         choice_continuation = {"retried_at_step": -1}
 
@@ -2445,14 +2013,6 @@ class ToolsNodes(BasicNode):
                     "镜像",
                 }
                 _is_greeting = not (len(_user_msg_sc) > 10 or any(kw in _user_msg_sc.lower() for kw in _k8s_kws_sc))
-
-            # DEBUG: 写入调试文件确认 agent_node 被调用
-            try:
-                with open("/Users/qiu/projects/bk-lite/logs/choice_debug.log", "a") as _dbg_entry:
-                    _msg_types = [type(m).__name__ for m in state.get("messages", [])[-5:]]
-                    _dbg_entry.write(f"[step={step_counter['count']}] agent_node ENTERED, " f"last_5_msg_types={_msg_types}\n")
-            except Exception:
-                pass
 
             # 发射步骤开始进度事件
             _emit_step_progress(graph_request.max_steps, "running", description=f"步骤 {step_counter['count']} 开始")
@@ -2817,28 +2377,13 @@ class ToolsNodes(BasicNode):
                     response = await llm_with_tools.ainvoke(messages)
             except asyncio.TimeoutError:
                 logger.warning(f"[{trace_id}] ReAct agent_node LLM 调用超时 ({timeout_cfg.llm_timeout_seconds}s)")
-                try:
-                    with open("/Users/qiu/projects/bk-lite/logs/choice_debug.log", "a") as _dbg_f:
-                        _dbg_f.write(f"[step={step_counter['count']}] LLM TIMEOUT ({timeout_cfg.llm_timeout_seconds}s)\n")
-                except Exception:
-                    pass
                 return {"messages": [AIMessage(content=f"LLM 调用超时（{timeout_cfg.llm_timeout_seconds}s），请稍后重试或简化问题。")]}
             except Exception as e:
                 logger.exception(f"[{trace_id}] ReAct agent_node 调用 LLM 异常: {e}")
-                try:
-                    with open("/Users/qiu/projects/bk-lite/logs/choice_debug.log", "a") as _dbg_f:
-                        _dbg_f.write(f"[step={step_counter['count']}] LLM EXCEPTION: {e}\n")
-                except Exception:
-                    pass
                 raise
 
             if response is None:
                 logger.warning(f"[{trace_id}] ReAct agent_node 收到空响应: response=None")
-                try:
-                    with open("/Users/qiu/projects/bk-lite/logs/choice_debug.log", "a") as _dbg_f:
-                        _dbg_f.write(f"[step={step_counter['count']}] RESPONSE IS NONE\n")
-                except Exception:
-                    pass
                 return {"messages": []}
 
             tool_calls = getattr(response, "tool_calls", None) or []
@@ -2938,11 +2483,9 @@ class ToolsNodes(BasicNode):
                             )
                             retry_messages_dedup = list(messages) + [_dedup_hint]
                             try:
-                                import asyncio as _asyncio_dedup
-
                                 retry_llm_dedup = llm.bind_tools(current_tools)
                                 if llm_timeout:
-                                    response = await _asyncio_dedup.wait_for(retry_llm_dedup.ainvoke(retry_messages_dedup), timeout=llm_timeout)
+                                    response = await asyncio.wait_for(retry_llm_dedup.ainvoke(retry_messages_dedup), timeout=llm_timeout)
                                 else:
                                     response = await retry_llm_dedup.ainvoke(retry_messages_dedup)
                                 tool_calls = getattr(response, "tool_calls", None) or []
@@ -3026,11 +2569,9 @@ class ToolsNodes(BasicNode):
                         retry_messages = list(messages) + [response, force_msg]
                         original_text_content = getattr(response, "content", "")
                         try:
-                            import asyncio as _asyncio_force
-
                             retry_llm = llm.bind_tools(current_tools)
                             if llm_timeout:
-                                response = await _asyncio_force.wait_for(retry_llm.ainvoke(retry_messages), timeout=llm_timeout)
+                                response = await asyncio.wait_for(retry_llm.ainvoke(retry_messages), timeout=llm_timeout)
                             else:
                                 response = await retry_llm.ainvoke(retry_messages)
                             tool_calls = getattr(response, "tool_calls", None) or []
@@ -3082,12 +2623,10 @@ class ToolsNodes(BasicNode):
                         logger.info(f"[{trace_id}] agent_node: request_user_choice 后 LLM 未调用工具，" f"二次重试 (step={current_step})")
                         retry_messages = list(messages) + [response, nudge_msg]
                         try:
-                            import asyncio as _asyncio_retry
-
                             # 不强制 tool_choice="any"，允许 LLM 以纯文本回复
                             retry_llm = llm.bind_tools(current_tools)
                             if llm_timeout:
-                                response = await _asyncio_retry.wait_for(retry_llm.ainvoke(retry_messages), timeout=llm_timeout)
+                                response = await asyncio.wait_for(retry_llm.ainvoke(retry_messages), timeout=llm_timeout)
                             else:
                                 response = await retry_llm.ainvoke(retry_messages)
                             tool_calls = getattr(response, "tool_calls", None) or []
@@ -3140,38 +2679,30 @@ class ToolsNodes(BasicNode):
             messages = state.get("messages", [])
             last_message = messages[-1] if messages else None
             tool_calls = getattr(last_message, "tool_calls", None) or []
+            # 规范化访问：tool_calls 可能是 dict 或对象，统一为 NormalizedToolCall
+            norm_calls = normalize_tool_calls(tool_calls)
             logger.info(f"[{trace_id}] ReAct tools_node 开始执行, tool_call_count={len(tool_calls)}, tool_calls={tool_calls}")
 
             # ========== 防护：记录大体积工具调用（执行后截断内容）==========
             YAML_TOOL_NAME = "get_kubernetes_resource_yaml"
             MAX_YAML_PER_STEP = 1
             MAX_YAML_CONTENT_LEN = 2000  # 每个保留 YAML 结果最大字符数
-            yaml_call_ids = []
-            for tc in tool_calls:
-                tc_name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
-                if tc_name == YAML_TOOL_NAME:
-                    tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
-                    yaml_call_ids.append(tc_id)
+            yaml_call_ids = [ntc.id for ntc in norm_calls if ntc.name == YAML_TOOL_NAME]
 
             # ========== 中断检查：工具执行前检查是否被请求中断 ==========
             execution_id = config["configurable"].get("execution_id", "")
             if execution_id and await is_interrupt_requested_async(execution_id):
                 logger.info(f"[{trace_id}] logged_tool_node 检测到中断请求，跳过工具执行")
                 # 返回空 ToolMessage 以满足 LangGraph 对 tool_call_id 配对的要求
-                interrupted_msgs = []
-                for tc in tool_calls:
-                    tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
-                    interrupted_msgs.append(ToolMessage(content="[执行已中断]", tool_call_id=tc_id))
+                interrupted_msgs = [ToolMessage(content="[执行已中断]", tool_call_id=ntc.id) for ntc in norm_calls]
                 return {"messages": interrupted_msgs}
 
             # ========== 拦截并发冲突：request_user_choice 与 generate_repair_report 同时出现 ==========
             # tool_node.ainvoke(state) 读取的是 state["messages"][-1].tool_calls（即 last_message），
             # 必须在此处直接修改 last_message.tool_calls，才能阻止 generate_repair_report 执行。
-            _tc_name_set = {(tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "")) for tc in tool_calls}
+            _tc_name_set = {ntc.name for ntc in norm_calls}
             if "request_user_choice" in _tc_name_set and "generate_repair_report" in _tc_name_set:
-                _filtered_tool_calls = [
-                    tc for tc in tool_calls if (tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "")) != "generate_repair_report"
-                ]
+                _filtered_tool_calls = [ntc.raw for ntc in norm_calls if ntc.name != "generate_repair_report"]
                 _removed_count = len(tool_calls) - len(_filtered_tool_calls)
                 logger.info(f"[{trace_id}] logged_tool_node: 拦截并发冲突，移除 {_removed_count} 个 generate_repair_report，" f"等待用户选择后再生成修复报告")
                 # 直接修改 state 中的 AIMessage，tool_node 读取 state["messages"][-1].tool_calls
@@ -3183,6 +2714,7 @@ class ToolsNodes(BasicNode):
                     except Exception:
                         logger.warning(f"[{trace_id}] logged_tool_node: 无法修改 last_message.tool_calls，并发拦截可能失效")
                 tool_calls = _filtered_tool_calls
+                norm_calls = normalize_tool_calls(tool_calls)
 
             # ========== 操作前快照（回滚用）==========
             rollback_cfg = graph_request.rollback_config
@@ -3190,10 +2722,10 @@ class ToolsNodes(BasicNode):
             rollback_specs: Dict[str, Any] = {}  # tool_call_id -> ToolRollbackSpec
             if rollback_cfg.enabled and tool_calls:
                 all_tools_for_snapshot = list(self.tools) + (list(self.all_tools) if hasattr(self, "all_tools") else [])
-                for tc in tool_calls:
-                    tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
-                    tc_name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
-                    tc_args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+                for ntc in norm_calls:
+                    tc_id = ntc.id
+                    tc_name = ntc.name
+                    tc_args = ntc.args
 
                     # 查找工具实例
                     tool_inst = None
@@ -3221,7 +2753,7 @@ class ToolsNodes(BasicNode):
             step_timeout = timeout_cfg.step_timeout_seconds if (timeout_cfg.enabled and timeout_cfg.step_timeout_seconds > 0) else None
 
             # 发射工具执行开始事件
-            tool_names = [tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "") for tc in tool_calls]
+            tool_names = [ntc.name for ntc in norm_calls]
             _emit_step_progress(
                 graph_request.max_steps,
                 "tool_executing",
@@ -3242,10 +2774,7 @@ class ToolsNodes(BasicNode):
             except asyncio.TimeoutError:
                 logger.warning(f"[{trace_id}] logged_tool_node 工具执行超时 ({step_timeout}s)")
                 # 返回超时错误 ToolMessage
-                timeout_msgs = []
-                for tc in tool_calls:
-                    tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
-                    timeout_msgs.append(ToolMessage(content=f"Error: 工具执行超时 ({step_timeout}s)", tool_call_id=tc_id))
+                timeout_msgs = [ToolMessage(content=f"Error: 工具执行超时 ({step_timeout}s)", tool_call_id=ntc.id) for ntc in norm_calls]
                 return {"messages": timeout_msgs}
             result_messages = result.get("messages", []) if isinstance(result, dict) else []
 
@@ -3326,24 +2855,37 @@ class ToolsNodes(BasicNode):
                     if is_error and meta_tool:
                         tool_call_id = getattr(msg, "tool_call_id", "")
                         # 检查该 tool_call_id 对应的是否为 activate_tools
-                        for tc in tool_calls:
-                            tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
-                            tc_name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
-                            if tc_id == tool_call_id and tc_name == meta_tool.name:
+                        for ntc in norm_calls:
+                            if ntc.id == tool_call_id and ntc.name == meta_tool.name:
                                 is_error = False
                                 break
                     # 跳过审批工具的重试
                     if is_error and approval_tool_instance:
                         tool_call_id = getattr(msg, "tool_call_id", "")
-                        for tc in tool_calls:
-                            tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
-                            tc_name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
-                            if tc_id == tool_call_id and tc_name == "request_human_approval":
+                        for ntc in norm_calls:
+                            if ntc.id == tool_call_id and ntc.name == "request_human_approval":
                                 is_error = False
                                 break
 
                     if is_error and retry_cfg.max_retries_per_tool > 0:
                         tool_call_id = getattr(msg, "tool_call_id", "")
+
+                        # 仅重试失败的那一个 tool_call，避免重新执行同批次已成功且有副作用的工具。
+                        # tool_node.ainvoke(state) 读取的是 state["messages"][-1].tool_calls，
+                        # 因此临时将 last_message.tool_calls 收窄为该失败 tool_call，重试后再恢复。
+                        # 注意：收窄回写 state 必须用原始 tool_call（ntc.raw），保持与 LLM 输出一致。
+                        failed_tool_call = None
+                        for ntc in norm_calls:
+                            if ntc.id == tool_call_id:
+                                failed_tool_call = ntc.raw
+                                break
+                        if failed_tool_call is None:
+                            # 找不到对应 tool_call（理论上不应发生），保留原始错误，不重试
+                            logger.warning(
+                                f"[{trace_id}] 工具重试: 未找到 tool_call_id={tool_call_id} 对应的 tool_call，跳过重试"
+                            )
+                            continue
+
                         for attempt in range(1, retry_cfg.max_retries_per_tool + 1):
                             wait_time = retry_cfg.backoff_seconds * (2 ** (attempt - 1))
                             logger.info(
@@ -3352,7 +2894,20 @@ class ToolsNodes(BasicNode):
                             )
                             await asyncio.sleep(wait_time)
 
-                            retry_result = await tool_node.ainvoke(state, config=config)
+                            # 临时收窄 last_message.tool_calls，仅让 tool_node 执行失败的那个 tool_call
+                            _original_tool_calls = getattr(last_message, "tool_calls", None)
+                            try:
+                                try:
+                                    last_message.tool_calls = [failed_tool_call]
+                                except Exception:
+                                    object.__setattr__(last_message, "tool_calls", [failed_tool_call])
+                                retry_result = await tool_node.ainvoke(state, config=config)
+                            finally:
+                                # 恢复原始 tool_calls，保证后续逻辑（验证/回滚/反思）读到完整调用列表
+                                try:
+                                    last_message.tool_calls = _original_tool_calls
+                                except Exception:
+                                    object.__setattr__(last_message, "tool_calls", _original_tool_calls)
                             retry_messages = retry_result.get("messages", []) if isinstance(retry_result, dict) else []
 
                             # 找到对应 tool_call_id 的结果
@@ -3399,11 +2954,8 @@ class ToolsNodes(BasicNode):
                 reflection_tracker["consecutive_failures"] = 0
 
             # 记录工具调用名称
-            for tc in tool_calls:
-                if isinstance(tc, dict):
-                    reflection_tracker["tool_call_history"].append(tc.get("name", ""))
-                else:
-                    reflection_tracker["tool_call_history"].append(getattr(tc, "name", ""))
+            for ntc in norm_calls:
+                reflection_tracker["tool_call_history"].append(ntc.name)
 
             logger.info(
                 f"[{trace_id}] ReAct tools_node 执行结束, result_message_count={len(result_messages)}, "
@@ -3411,12 +2963,7 @@ class ToolsNodes(BasicNode):
             )
 
             # ========== 构建 tool_call 信息映射（验证和回滚共用）==========
-            tc_info_map = {}
-            for tc in tool_calls:
-                tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
-                tc_name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
-                tc_args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
-                tc_info_map[tc_id] = (tc_name, tc_args)
+            tc_info_map = {ntc.id: (ntc.name, ntc.args) for ntc in norm_calls}
 
             all_available_tools = list(self.tools) + (list(self.all_tools) if hasattr(self, "all_tools") else [])
 

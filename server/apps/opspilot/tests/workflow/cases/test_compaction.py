@@ -252,10 +252,12 @@ class TestCompactMessages:
         with patch("apps.opspilot.metis.llm.chain.compaction.TemplateLoader.render_template", return_value="Summarize..."):
             result = await compact_messages(all_msgs, mock_llm, config, model_name="gpt-4o")
 
-        # Structure: [original system] + [summary system] + [recent N msgs]
+        # Structure: [original system] + [summary as HumanMessage] + [recent N msgs]
+        # 摘要刻意用 HumanMessage 而非 SystemMessage（见 compaction.py 注释：避免某些模型
+        # 要求 SystemMessage 必须在最前面），故 result[1] 应为 HumanMessage。
         assert isinstance(result[0], SystemMessage)
         assert result[0].content == "You are helpful."
-        assert isinstance(result[1], SystemMessage)
+        assert isinstance(result[1], HumanMessage)
         assert "摘要" in result[1].content or "Summary" in result[1].content
         # Recent messages preserved
         assert len(result) <= 4 + 2  # keep_recent + 2 system messages

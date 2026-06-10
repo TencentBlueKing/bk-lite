@@ -14,19 +14,11 @@
 
 from typing import List
 
-import tiktoken
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from loguru import logger
 
 from apps.opspilot.metis.llm.chain.entity import MessageTrimConfig
-
-
-def _get_encoding(model: str = "gpt-4o"):
-    """获取 tokenizer"""
-    try:
-        return tiktoken.encoding_for_model(model)
-    except KeyError:
-        return tiktoken.get_encoding("cl100k_base")
+from apps.opspilot.metis.llm.chain.token_utils import get_encoding as _get_encoding
 
 
 def _truncate_text(text: str, max_tokens: int, encoding, suffix_template: str) -> str:

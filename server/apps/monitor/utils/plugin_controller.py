@@ -43,6 +43,7 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "logical_instance_value",
     "metrics_modules",
     "monitor_plugin_id",
+    "namespace",
     "node_id",
     "os_type",
     "password",

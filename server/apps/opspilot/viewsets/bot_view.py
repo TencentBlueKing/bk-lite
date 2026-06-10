@@ -26,6 +26,8 @@ def _schedule_memory_write_cache_flush(workflow: BotWorkFlow, old_flow_json, new
     """当记忆写入节点切换或删除目标空间时，先冲刷旧缓存"""
     flush_nodes = find_memory_write_nodes_to_flush(old_flow_json, new_flow_json)
     for node_id, config in flush_nodes.items():
+        # 支持两种字段名：memorySpace（前端表单/工作流 JSON 的规范键）和 memory_space_id（旧格式）。
+        # 两种形式都存在于已持久化的工作流数据中，因此必须同时容忍以免破坏存量工作流。
         memory_space_id = config.get("memorySpace") or config.get("memory_space_id")
         if not memory_space_id:
             continue
@@ -57,6 +59,22 @@ class BotViewSet(PinMixin, AuthViewSet):
     queryset = Bot.objects.all()
     permission_key = "bot"
     filterset_class = BotFilter
+
+    # update 接口允许通过请求体直接更新的字段白名单。
+    # 故意排除敏感/受控字段：created_by、updated_by、api_token、instance_id、is_builtin、id 等，
+    # 以及由专门逻辑单独处理的字段（channels、rasa_model、node_port、llm_skills、workflow_data 等）。
+    UPDATABLE_FIELDS = (
+        "name",
+        "introduction",
+        "team",
+        "enable_bot_domain",
+        "bot_domain",
+        "enable_node_port",
+        "enable_ssl",
+        "online",
+        "replica_count",
+        "bot_type",
+    )
 
     def query_by_groups(self, request, queryset):
         """重写排序逻辑：当前用户置顶优先，再按 ID 倒序"""
@@ -134,8 +152,10 @@ class BotViewSet(PinMixin, AuthViewSet):
         if "team" in data:
             delete_team = [i for i in obj.team if i not in data["team"]]
             self.delete_rules(obj.id, delete_team)
-        for key in data.keys():
-            setattr(obj, key, data[key])
+        # 仅允许更新明确白名单内的字段，避免恶意请求批量覆盖 team/created_by/api_token 等敏感字段（mass-assignment）
+        for key in self.UPDATABLE_FIELDS:
+            if key in data:
+                setattr(obj, key, data[key])
         if node_port:
             obj.node_port = node_port
         if rasa_model:

@@ -43,6 +43,11 @@ class LocalMemoryEngine(BaseMemoryEngine):
                 filters["owner_username"] = username
                 filters["owner_domain"] = domain
                 filters["organization_id__isnull"] = True
+            else:
+                # 既无组织也无用户标识：无法确定记忆归属，返回空结果，
+                # 避免在仅按 memory_space_id 过滤时泄露其他用户的个人记忆。
+                logger.info(f"[LocalMemoryEngine] No entity identity for space={self.memory_space_id}, returning empty")
+                return MemoryReadResult(context="", raw_memories=[], source="local")
 
             memories = Memory.objects.filter(**filters).order_by("-updated_at")[:top_k]
 

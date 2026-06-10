@@ -6,4 +6,4 @@ from apps.opspilot.models import ManualKnowledge
 class ManualKnowledgeSerializer(serializers.ModelSerializer):
     class Meta:
         model = ManualKnowledge
-        fields = "__all__"
+        fields = ["id", "content", "knowledge_document"]

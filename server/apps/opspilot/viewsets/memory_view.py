@@ -113,7 +113,7 @@ class MemorySpaceViewSet(AuthViewSet):
             result_text = response.content if hasattr(response, "content") else str(response)
             return JsonResponse({"result": True, "data": {"result": result_text}})
         except Exception as e:
-            logger.error(f"记忆写入测试失败: {e}")
+            logger.exception("记忆写入测试失败")
             return JsonResponse({"result": False, "message": f"LLM 调用失败: {str(e)}"}, status=500)
 
 

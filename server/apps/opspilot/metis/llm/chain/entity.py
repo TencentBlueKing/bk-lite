@@ -1,8 +1,82 @@
 from typing import Any, Callable, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from apps.opspilot.metis.llm.rag.naive_rag_entity import DocumentRetrieverRequest
+
+
+class NormalizedToolCall(BaseModel):
+    """规范化后的 tool_call 访问器。
+
+    LangChain 的 tool_calls 有时是 dict（{"name","id","args"}），有时是对象
+    （带 .name/.id/.args 属性）。本模型把两种形态统一为稳定字段，避免在
+    调用点反复写 `tc.get(...) if isinstance(tc, dict) else getattr(...)`。
+
+    注意：仅作只读访问用途，不改变发往 LLM/前端的 tool_call 事件结构。
+    """
+
+    name: str = ""
+    id: str = ""
+    args: Dict[str, Any] = Field(default_factory=dict)
+    # 保留原始对象/字典，供需要原样回写 state 的场景（如重试收窄 tool_calls）
+    raw: Any = Field(default=None, exclude=True)
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+def normalize_tool_call(tc: Any) -> NormalizedToolCall:
+    """把单个 tool_call（dict 或对象）规范化为 NormalizedToolCall。"""
+    if isinstance(tc, dict):
+        return NormalizedToolCall(
+            name=tc.get("name", "") or "",
+            id=tc.get("id", "") or "",
+            args=tc.get("args", {}) or {},
+            raw=tc,
+        )
+    return NormalizedToolCall(
+        name=getattr(tc, "name", "") or "",
+        id=getattr(tc, "id", "") or "",
+        args=getattr(tc, "args", {}) or {},
+        raw=tc,
+    )
+
+
+def normalize_tool_calls(tool_calls: Optional[List[Any]]) -> List[NormalizedToolCall]:
+    """把 tool_calls 列表整体规范化。"""
+    return [normalize_tool_call(tc) for tc in (tool_calls or [])]
+
+
+class ExtraConfig(BaseModel):
+    """BasicLLMRequest.extra_config 的强类型视图（只读访问已知键）。
+
+    extra_config 是一个自由格式 dict，由 chat_service 构建并通过 `**extra_config`
+    展开进 LangGraph 的 configurable。前端发送的 execution_id/thread_id 等请求级
+    字段必须原样保留，因此本模型用 extra="allow" 容忍任意额外键，并仅为已知键
+    提供类型化访问。不要用本模型替换 dict 本身（会破坏 `**` 展开）。
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    # 请求级字段（前端/调度注入）
+    execution_id: Optional[str] = None
+    thread_id: Optional[str] = None
+    node_id: Optional[str] = None
+    trigger_type: Optional[str] = None
+    attachment_id: Optional[Any] = None
+    show_think: Optional[bool] = None
+    enable_rag_source: Optional[bool] = None
+    enable_rag_strict_mode: Optional[bool] = None
+
+    # 多实例强制选择
+    instance_name: Optional[str] = None
+    instance_id: Optional[Any] = None
+    require_choice_before_tools: bool = Field(default=False, alias="_require_choice_before_tools")
+    multi_instance_options: List[Any] = Field(default_factory=list, alias="_multi_instance_options")
+
+    @classmethod
+    def from_raw(cls, raw: Optional[dict]) -> "ExtraConfig":
+        """从原始 extra_config dict 构建（None/空容忍）。"""
+        return cls.model_validate(raw or {})
 
 
 class PrepareStepContext(BaseModel):
@@ -333,6 +407,10 @@ class BasicLLMRequest(BaseModel):
     naive_rag_request: List[DocumentRetrieverRequest] = []
 
     extra_config: Optional[dict] = {}
+
+    def typed_extra_config(self) -> "ExtraConfig":
+        """返回 extra_config 的强类型只读视图（已知键带类型，未知键容忍保留）。"""
+        return ExtraConfig.from_raw(self.extra_config)
 
     graph_user_message: Optional[str] = ""
 

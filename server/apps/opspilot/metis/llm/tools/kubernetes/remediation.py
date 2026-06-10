@@ -3,6 +3,7 @@
 import json
 import time
 from datetime import datetime, timezone
+from typing import Optional
 
 from kubernetes import client
 from kubernetes.client import ApiException
@@ -28,7 +29,13 @@ def _log_operation(operation: str, namespace: str, resource_type: str, resource_
 
 
 @tool()
-def restart_pod(pod_name, namespace, wait_for_ready=True, timeout=60, config: RunnableConfig = None):
+def restart_pod(
+    pod_name: str,
+    namespace: str,
+    wait_for_ready: bool = True,
+    timeout: int = 60,
+    config: RunnableConfig = None,
+):
     """
     重启Pod，用于故障恢复或重新加载配置
 
@@ -82,6 +89,17 @@ def restart_pod(pod_name, namespace, wait_for_ready=True, timeout=60, config: Ru
     - 重启前确认是由控制器管理的Pod
     - 建议使用wait_for_ready=True，确保新Pod启动成功
     """
+    # TODO(security F022): gate behind human approval + namespace allow-list
+    logger.warning(
+        "UNGATED destructive K8S operation",
+        extra={
+            "operation": "restart_pod",
+            "namespace": namespace,
+            "resource_type": "Pod",
+            "resource_name": pod_name,
+            "ungated": True,
+        },
+    )
     prepare_context(config)
 
     try:
@@ -175,7 +193,7 @@ def restart_pod(pod_name, namespace, wait_for_ready=True, timeout=60, config: Ru
 
 
 @tool()
-def scale_deployment(deployment_name, namespace, replicas, config: RunnableConfig = None):
+def scale_deployment(deployment_name: str, namespace: str, replicas: int, config: RunnableConfig = None):
     """
     扩缩容Deployment或StatefulSet - 应对流量变化
 
@@ -226,6 +244,18 @@ def scale_deployment(deployment_name, namespace, replicas, config: RunnableConfi
     - 缩容：建议逐步缩容，观察服务影响
     - 生产环境：谨慎缩容到0副本（会导致服务完全下线）
     """
+    # TODO(security F022): gate behind human approval + namespace allow-list
+    logger.warning(
+        "UNGATED destructive K8S operation",
+        extra={
+            "operation": "scale_deployment",
+            "namespace": namespace,
+            "resource_type": "Deployment/StatefulSet",
+            "resource_name": deployment_name,
+            "target_replicas": replicas,
+            "ungated": True,
+        },
+    )
     prepare_context(config)
 
     try:
@@ -383,7 +413,7 @@ def get_deployment_revision_history(deployment_name, namespace, config: Runnable
 
 
 @tool()
-def rollback_deployment(deployment_name, namespace, revision=None, config: RunnableConfig = None):
+def rollback_deployment(deployment_name: str, namespace: str, revision: Optional[int] = None, config: RunnableConfig = None):
     """
     回滚Deployment到指定版本，快速恢复服务
 
@@ -434,6 +464,18 @@ def rollback_deployment(deployment_name, namespace, revision=None, config: Runna
     - 生产环境回滚建议先在测试环境验证
     - 回滚后观察服务状态，确认问题已解决
     """
+    # TODO(security F022): gate behind human approval + namespace allow-list
+    logger.warning(
+        "UNGATED destructive K8S operation",
+        extra={
+            "operation": "rollback_deployment",
+            "namespace": namespace,
+            "resource_type": "Deployment",
+            "resource_name": deployment_name,
+            "target_revision": revision,
+            "ungated": True,
+        },
+    )
     prepare_context(config)
 
     try:
@@ -516,7 +558,13 @@ def rollback_deployment(deployment_name, namespace, revision=None, config: Runna
 
 
 @tool()
-def delete_kubernetes_resource(resource_type, resource_name, namespace, grace_period=30, config: RunnableConfig = None):
+def delete_kubernetes_resource(
+    resource_type: str,
+    resource_name: str,
+    namespace: str,
+    grace_period: int = 30,
+    config: RunnableConfig = None,
+):
     """
     删除Kubernetes资源，支持优雅终止
 
@@ -563,6 +611,17 @@ def delete_kubernetes_resource(resource_type, resource_name, namespace, grace_pe
     - 批量删除 → 使用 cleanup_failed_pods
     - 删除前检查依赖 → 使用 find_configmap_consumers
     """
+    # TODO(security F022): gate behind human approval + namespace allow-list
+    logger.warning(
+        "UNGATED destructive K8S operation",
+        extra={
+            "operation": "delete_kubernetes_resource",
+            "namespace": namespace,
+            "resource_type": resource_type,
+            "resource_name": resource_name,
+            "ungated": True,
+        },
+    )
     prepare_context(config)
 
     try:

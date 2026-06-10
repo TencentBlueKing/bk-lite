@@ -67,6 +67,11 @@ async def collect_task(
 
             result = await collect_host_metrics_task(ctx, params, task_id)
 
+        elif monitor_type == "windows_wmi":
+            from tasks.handlers.monitor_handler import collect_windows_wmi_metrics_task
+
+            result = await collect_windows_wmi_metrics_task(ctx, params, task_id)
+
         elif monitor_type == "sangforscp":
             try:
                 from enterprise.tasks.handlers.sangforscp_handler import (
