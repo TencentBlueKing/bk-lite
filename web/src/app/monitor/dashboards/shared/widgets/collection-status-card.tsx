@@ -32,6 +32,8 @@ export interface CollectionStatusCardProps {
   status: CollectionStatusResult;
   timeline: Array<'success' | 'empty' | 'error'>;
   guideItems?: Array<{ label: string; detail: string }>;
+  /** 作为 grid 子项时传入 span* 等栅格类,使其与相邻 StatCard 等高/等宽对齐。 */
+  className?: string;
   styles: CollectionStatusCardStyles;
 }
 
@@ -42,10 +44,11 @@ export const CollectionStatusCard = ({
     { label: '采集状态', detail: '展示最近一段时间内该实例监控采集是否正常、缺失或异常。' },
     { label: '状态时间线', detail: '绿色表示采集成功，灰色表示暂无数据，红色表示采集或查询异常。' }
   ],
+  className,
   styles
 }: CollectionStatusCardProps) => {
   return (
-    <div className={`${styles.statCard} ${styles.collectionStatusCard}`}>
+    <div className={[styles.statCard, styles.collectionStatusCard, className].filter(Boolean).join(' ')}>
       <div className={styles.collectionStatusHeader}>
         <div className={styles.statLabel}>
           <TitleWithGuide

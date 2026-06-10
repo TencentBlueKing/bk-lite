@@ -1,0 +1,128 @@
+@import '../common/simple-dashboard.module.scss';
+
+.compactTrend {
+  .chartWrap {
+    height: 164px;
+  }
+}
+
+// 区块小标题:给长滚动页面分组,提升可扫读性
+.sectionLabel {
+  margin: 6px 2px 2px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8c95a8;
+}
+
+.dashboardSection + .sectionLabel,
+.kpiGrid + .sectionLabel {
+  margin-top: 14px;
+}
+
+// Hero 主值更醒目:加大加粗 + 等宽数字防抖动
+.statValue {
+  font-size: 30px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+// Hero 紧凑纯数字卡:去掉为 sparkline 预留的高度,卡随内容收紧、底部不留空白。
+.kpiGrid {
+  .statCard,
+  .collectionStatusCard {
+    min-height: 0;
+  }
+  // 数值居上、副信息钉到卡底,均匀填满卡片,消除中间空白。
+  .statBody {
+    flex: 1;
+  }
+  .statMeta {
+    margin-top: auto;
+  }
+  // 采集状态卡时间线压扁,使整排更矮、与纯数字卡等高更协调。
+  .collectionStatusSegment {
+    height: 14px;
+  }
+  .collectionStatusTimeline {
+    margin-top: 6px;
+  }
+  .collectionStatusLegend {
+    margin-top: 6px;
+  }
+}
+
+// 信息提示(TitleWithGuide):浅底深字,修复 Storybook/无全局样式时的暗底低对比。
+.metricGuideTooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.metricGuideTooltipRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metricGuideTooltipRow strong {
+  color: #31445c;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.metricGuideTooltipRow span {
+  color: #6f8299;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.metricGuideIcon {
+  color: #91a4bc;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  flex-shrink: 0;
+  transform: translateY(-1px);
+}
+
+.metricGuideIcon:hover {
+  color: #2f6bff;
+}
+
+.titleWithGuide {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+:global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-inner) {
+  background: #ffffff;
+  color: #44566f;
+  border: 1px solid #dbe6f3;
+  box-shadow: 0 14px 34px rgba(23, 42, 79, 0.12);
+}
+
+:global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-arrow::before) {
+  background: #ffffff;
+  border: 1px solid #dbe6f3;
+}
+
+:global(html.dark) :global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-inner) {
+  background: #101926;
+  color: rgba(255, 255, 255, 0.74);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+:global(html.dark) :global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-arrow::before) {
+  background: #101926;
+  border-color: rgba(255, 255, 255, 0.08);
+}

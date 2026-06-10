@@ -136,7 +136,7 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       formatter: 'enumHealth',
       color: '#27c274',
       icon: 'node',
-      guide: [{ label: '健康状态', detail: '集群健康状态编码，1 正常、2 警告、3 严重。' }],
+      guide: [{ label: '健康状态', detail: '集群健康编码:1 绿(正常)、2 黄(副本未分配)、3 红(主分片缺失)。非 1 时查未分配分片与节点状态。' }],
       footer: [
         { label: '未分配分片', metric: 'elasticsearch_cluster_health_unassigned_shards', unit: 'counts' },
         { label: '状态编码', metric: 'elasticsearch_cluster_health_status_code', formatter: 'enumHealth' }
@@ -173,7 +173,7 @@ export const ELASTICSEARCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'elasticsearch_cluster_health_unassigned_shards',
       color: '#ff4d4f',
       icon: 'thunder',
-      guide: [{ label: '未分配分片', detail: '未分配分片数量，非零会降低数据冗余和可用性。' }],
+      guide: [{ label: '未分配分片', detail: '未能分配到节点的分片数(个);非零会降低冗余 / 可用性。排查节点掉线、磁盘水位或分配规则。' }],
       footer: [{ label: '健康状态', metric: 'elasticsearch_cluster_health_status_code', unit: 'counts' }]
     },
     {

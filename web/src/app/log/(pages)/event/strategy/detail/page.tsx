@@ -13,10 +13,20 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useUserInfoContext } from '@/context/userInfo';
 import { ListItem, TableDataItem, UserItem } from '@/app/log/types';
 import useLogIntegrationApi from '@/app/log/api/integration';
-import { cloneDeep } from 'lodash';
 import BasicInfoForm from './basicInfoForm';
 import AlertConditionsForm from './alertConditionsForm';
 import NotificationForm from './notificationForm';
+import AlertNameVariables from './alertNameVariables';
+import LogPreview from './logPreview';
+import {
+  buildStrategyPayload,
+  getDefaultShowFields,
+  getLockedPolicyType
+} from './policyFormUtils';
+import {
+  getCreatePolicyType,
+  shouldInitializeStrategyForm
+} from '../policyRouteUtils';
 
 const StrategyOperation = () => {
   const { t } = useTranslation();
@@ -35,6 +45,7 @@ const StrategyOperation = () => {
   const type = searchParams.get('type') || '';
   const detailId = searchParams.get('id') || '';
   const detailName = searchParams.get('name') || '--';
+  const urlAlertType = searchParams.get('alert_type');
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [unit, setUnit] = useState<string>('min');
@@ -45,11 +56,35 @@ const StrategyOperation = () => {
   const [channelList, setChannelList] = useState<ChannelItem[]>([]);
   const [fieldList, setFieldList] = useState<string[]>([]);
   const [streamList, setStreamList] = useState<ListItem[]>([]);
+  const previewQuery = Form.useWatch('query', form);
+  const previewLogGroups = Form.useWatch('log_groups', form);
+  const previewShowFields = Form.useWatch('show_fields', form);
+  const alertGroupBy = Form.useWatch('group_by', form);
 
   const isEdit = useMemo(() => type === 'edit', [type]);
+  const createAlertType = useMemo(
+    () => getCreatePolicyType(urlAlertType),
+    [urlAlertType]
+  );
+  const lockedAlertType = useMemo(
+    () =>
+      getLockedPolicyType({
+        urlAlertType: isEdit ? null : createAlertType,
+        detailAlertType: formData.alert_type
+      }),
+    [isEdit, createAlertType, formData.alert_type]
+  );
+  const canInitializeForm = useMemo(
+    () => shouldInitializeStrategyForm({ isEdit, createAlertType }),
+    [isEdit, createAlertType]
+  );
 
   useEffect(() => {
     if (!isLoading) {
+      if (!canInitializeForm) {
+        goBack();
+        return;
+      }
       setPageLoading(true);
       Promise.all([
         getAllFields(),
@@ -60,9 +95,10 @@ const StrategyOperation = () => {
         setPageLoading(false);
       });
     }
-  }, [isLoading]);
+  }, [isLoading, canInitializeForm]);
 
   useEffect(() => {
+    if (!canInitializeForm) return;
     form.resetFields();
     if (!isEdit) {
       const channelItem = channelList[0];
@@ -73,7 +109,8 @@ const StrategyOperation = () => {
         notice: false,
         period: 5,
         schedule: 5,
-        alert_type: 'keyword'
+        alert_type: lockedAlertType,
+        show_fields: getDefaultShowFields()
       };
       form.setFieldsValue(initForm);
       setTerm('or');
@@ -81,7 +118,7 @@ const StrategyOperation = () => {
       return;
     }
     dealDetail(formData);
-  }, [isEdit, formData, channelList]);
+  }, [canInitializeForm, isEdit, formData, channelList, lockedAlertType]);
 
   const getChannelList = async () => {
     const data = await getSystemChannelList();
@@ -106,10 +143,16 @@ const StrategyOperation = () => {
 
   const dealDetail = (data: StrategyFields) => {
     const { schedule, period, alert_condition = {}, alert_type } = data;
+    const scheduleValue = typeof schedule === 'number' ? schedule : schedule?.value;
+    const periodValue = typeof period === 'number' ? period : period?.value;
+    const scheduleUnit = typeof schedule === 'number' ? '' : schedule?.type;
+    const periodType = typeof period === 'number' ? '' : period?.type;
     const detailData = {
       ...data,
-      period: period?.value || '',
-      schedule: schedule?.value || '',
+      alert_type: lockedAlertType,
+      show_fields: getDefaultShowFields(data.show_fields),
+      period: periodValue || '',
+      schedule: scheduleValue || '',
       query: alert_condition.query || '',
       group_by: alert_condition.group_by || null
     };
@@ -120,8 +163,8 @@ const StrategyOperation = () => {
       setConditions([{ op: null, field: null, value: '', func: null }]);
     }
     form.setFieldsValue(detailData);
-    setUnit(schedule?.type || '');
-    setPeriodUnit(period?.type || '');
+    setUnit(scheduleUnit || '');
+    setPeriodUnit(periodType || '');
   };
 
   const getStragyDetail = async () => {
@@ -160,35 +203,21 @@ const StrategyOperation = () => {
 
   const createStrategy = () => {
     form?.validateFields().then((values) => {
-      const params = cloneDeep(values);
-      params.schedule = {
-        type: unit,
-        value: values.schedule
-      };
-      params.period = {
-        type: periodUnit,
-        value: values.period
-      };
-      if (params.notice_type_id) {
-        params.notice_type =
-          channelList.find((item) => item.id === params.notice_type_id)
-            ?.channel_type || '';
-      }
-      params.alert_condition = {
-        query: params.query
-      };
-      if (params.alert_type === 'aggregate') {
-        params.alert_condition.group_by = params.group_by;
-        params.alert_condition.rule = {
-          mode: term,
-          conditions
-        };
-      }
-      if (isEdit) {
-        params.id = formData.id;
-      } else {
-        params.enable = true;
-      }
+      const params = buildStrategyPayload(
+        {
+          ...values,
+          alert_type: lockedAlertType
+        },
+        {
+          unit,
+          periodUnit,
+          channelList,
+          conditions,
+          term,
+          isEdit,
+          formData
+        }
+      );
       operateStrategy(params);
     });
   };
@@ -217,78 +246,91 @@ const StrategyOperation = () => {
 
   return (
     <Spin spinning={pageLoading} className="w-full">
-      <div className={strategyStyle.strategy}>
-        <div className={strategyStyle.title}>
-          <ArrowLeftOutlined
-            className="text-[var(--color-primary)] text-[20px] cursor-pointer mr-[10px]"
-            onClick={goBack}
-          />
-          {isEdit ? (
-            <span>
-              {t('log.event.editPolicy')} -{' '}
-              <span className="text-[var(--color-text-3)] text-[12px]">
-                {detailName}
-              </span>
-            </span>
-          ) : (
-            t('log.event.createPolicy')
-          )}
-        </div>
-        <div className={strategyStyle.form}>
-          <Form form={form} name="basic">
-            <Steps
-              direction="vertical"
-              items={[
-                {
-                  title: t('log.event.basicInformation'),
-                  description: <BasicInfoForm />,
-                  status: 'process'
-                },
-                {
-                  title: t('log.event.setAlertConditions'),
-                  description: (
-                    <AlertConditionsForm
-                      unit={unit}
-                      periodUnit={periodUnit}
-                      conditions={conditions}
-                      term={term}
-                      fieldList={fieldList}
-                      streamList={streamList}
-                      onUnitChange={handleUnitChange}
-                      onPeriodUnitChange={handlePeriodUnitChange}
-                      onConditionsChange={handleConditionsChange}
-                      onTermChange={handleTermChange}
-                    />
-                  ),
-                  status: 'process'
-                },
-                {
-                  title: t('log.event.configureNotifications'),
-                  description: (
-                    <NotificationForm
-                      channelList={channelList}
-                      userList={userList}
-                      onLinkToSystemManage={linkToSystemManage}
-                    />
-                  ),
-                  status: 'process'
-                }
-              ]}
+      {canInitializeForm && (
+        <div className={strategyStyle.strategy}>
+          <div className={strategyStyle.title}>
+            <ArrowLeftOutlined
+              className="text-[var(--color-primary)] text-[20px] cursor-pointer mr-[10px]"
+              onClick={goBack}
             />
-          </Form>
-        </div>
-        <div className={strategyStyle.footer}>
-          <Button
-            type="primary"
-            className="mr-[10px]"
-            loading={confirmLoading}
-            onClick={createStrategy}
+            {isEdit ? (
+              <span>
+                {t('log.event.editPolicy')} -{' '}
+                <span className="text-[var(--color-text-3)] text-[12px]">
+                  {detailName}
+                </span>
+              </span>
+            ) : (
+              t('log.event.createPolicy')
+            )}
+          </div>
+          <div
+            className={`${strategyStyle.form} grid grid-cols-1 2xl:grid-cols-[minmax(860px,1fr)_minmax(360px,460px)] gap-4 items-start`}
           >
-            {t('common.confirm')}
-          </Button>
-          <Button onClick={goBack}>{t('common.cancel')}</Button>
+            <Form form={form} name="basic" className="flex-1 min-w-0">
+              <Steps
+                direction="vertical"
+                items={[
+                  {
+                    title: t('log.event.basicInformation'),
+                    description: <BasicInfoForm />,
+                    status: 'process'
+                  },
+                  {
+                    title: t('log.event.setAlertConditions'),
+                    description: (
+                      <AlertConditionsForm
+                        policyType={lockedAlertType}
+                        unit={unit}
+                        periodUnit={periodUnit}
+                        conditions={conditions}
+                        term={term}
+                        fieldList={fieldList}
+                        streamList={streamList}
+                        onUnitChange={handleUnitChange}
+                        onPeriodUnitChange={handlePeriodUnitChange}
+                        onConditionsChange={handleConditionsChange}
+                        onTermChange={handleTermChange}
+                      />
+                    ),
+                    status: 'process'
+                  },
+                  {
+                    title: t('log.event.configureNotifications'),
+                    description: (
+                      <NotificationForm
+                        channelList={channelList}
+                        userList={userList}
+                        onLinkToSystemManage={linkToSystemManage}
+                      />
+                    ),
+                    status: 'process'
+                  }
+                ]}
+              />
+            </Form>
+            <div className="w-full space-y-4 2xl:sticky 2xl:top-4">
+              <AlertNameVariables form={form} groupBy={alertGroupBy} />
+              <LogPreview
+                query={previewQuery}
+                logGroups={previewLogGroups}
+                showFields={previewShowFields}
+              />
+            </div>
+          </div>
+          <div className={strategyStyle.footer}>
+            <Button
+              type="primary"
+              className="mr-[10px]"
+              loading={confirmLoading}
+              onClick={createStrategy}
+            >
+              {t('common.confirm')}
+            </Button>
+            <Button onClick={goBack}>{t('common.cancel')}</Button>
+          </div>
         </div>
-      </div>
+      )}
     </Spin>
   );
 };

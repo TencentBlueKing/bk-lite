@@ -32,7 +32,7 @@ export const DASHBOARD_METRICS: RedisMetricConfig[] = [
     display_name: '内存使用率',
     description: '当前内存使用量占配置上限的比例。',
     unit: 'percent',
-    query: '100 * max by (instance_id) (redis_used_memory{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (redis_maxmemory{__$labels__}), 1)',
+    query: 'clamp_max(100 * max by (instance_id) (redis_used_memory{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (redis_maxmemory{__$labels__}), 1), 100)',
     color: '#ff8a1f'
   },
   {

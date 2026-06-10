@@ -5,6 +5,7 @@ import {
   buildDashboardGroupStorageKey,
   buildDashboardSections,
   buildDashboardTopLevelBlocks,
+  bumpDashboardGroupWidgetReloadVersions,
   getDashboardGroupBlockHeight,
   getDashboardGroupWidgetIds,
   getVisibleDashboardLayoutItems,
@@ -219,6 +220,17 @@ assert.deepEqual(movedSections.ungrouped.map((item) => item.i), ['u-1', 'u-2']);
 
 assert.deepEqual(getDashboardGroupWidgetIds(reorderLayout, 'group-a'), ['a-1']);
 
+assert.deepEqual(
+  bumpDashboardGroupWidgetReloadVersions(reorderLayout, 'group-a', {
+    'a-1': 2,
+    'b-1': 5,
+  }),
+  {
+    'a-1': 3,
+    'b-1': 5,
+  },
+);
+
 assert.deepEqual(removeDashboardGroupHeader(reorderLayout, 'group-a').map((item) => item.i), [
   'a-1',
   'group-b',
@@ -385,6 +397,17 @@ assert.equal(
     reorderWithUngrouped.map((item) =>
       item.i === 'c-1'
         ? { ...item, y: item.y + 2 }
+        : item,
+    ),
+  ),
+);
+
+assert.equal(
+  buildDashboardGridStackStructureKey(reorderWithUngrouped),
+  buildDashboardGridStackStructureKey(
+    reorderWithUngrouped.map((item) =>
+      item.i === 'c-1' && 'groupId' in item
+        ? { ...item, groupId: null }
         : item,
     ),
   ),
