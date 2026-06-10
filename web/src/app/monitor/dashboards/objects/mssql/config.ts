@@ -250,7 +250,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'sqlserver_performance_value_rate',
       color: '#27c274',
       icon: 'thunder',
-      guide: [{ label: '批量请求', detail: '每秒处理的批量请求数量，衡量实例吞吐。' }],
+      guide: [{ label: '批量请求', detail: '每秒处理的 SQL 批量请求数(次/秒),无固定阈值,按业务基线看突增突降。' }],
       footer: [{ label: '锁等待', metric: 'sqlserver_lock_wait_time_rate', unit: 'cps' }]
     },
     {
@@ -292,7 +292,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#ff8a1f',
       icon: 'api',
       compare: true,
-      guide: [{ label: '信号等待', detail: '信号等待在总等待中的占比，偏高时通常意味着 CPU 调度压力更明显。' }],
+      guide: [{ label: '信号等待', detail: '信号等待占总等待的百分比,反映 CPU 调度排队;持续偏高排查 CPU 争用或并行度。' }],
       footer: [{ label: '总等待', metric: 'sqlserver_waitstats_wait_time_ms_rate', unit: 'ms' }]
     }
   ],

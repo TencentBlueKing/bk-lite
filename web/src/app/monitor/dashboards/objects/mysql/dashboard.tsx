@@ -841,9 +841,9 @@ export default function MysqlDashboardPage() {
       ? { label: '期间有重启', detail: '', tone: 'warning' }
       : { label: '运行正常', detail: '', tone: 'success' };
   const uptimeStateGuide = [
-    { label: '状态未知', detail: '当前观察范围内未获取到 mysql_uptime 指标，无法判断是否发生过重启。' },
-    { label: '运行正常', detail: `当前所选时段（${collectionStatusWindowLabel}）内 mysql_uptime 未出现明显回退。该状态仅表示未观察到重启，不代表实例整体健康度。` },
-    { label: '期间有重启', detail: `当前所选时段（${collectionStatusWindowLabel}）内 mysql_uptime 出现回退，说明实例在该时间段内发生过重启。以上状态仅描述重启观察结果，不代表实例整体健康度。` }
+    { label: '状态未知', detail: '所选时段未采到运行时长数据,无法判断重启;检查采集状态与时间范围。' },
+    { label: '运行正常', detail: `所选时段（${collectionStatusWindowLabel}）内运行时长持续递增,未发生重启;排障时再结合连接、慢查询等指标。` },
+    { label: '期间有重启', detail: `所选时段（${collectionStatusWindowLabel}）内运行时长出现回退,说明实例重启过;核对重启时刻与告警 / 变更记录定位原因。` }
   ];
   const connCardDisplay = getDisplayValue('mysql_connection_utilization', connDisplay);
   const qpsCardDisplay = getDisplayValue('mysql_queries_rate', qpsDisplay);
@@ -922,7 +922,7 @@ export default function MysqlDashboardPage() {
     { label: '适用场景', detail: '如果 Query、Sending data 或 Locked 占比上升，说明执行链路可能存在瓶颈。' }
   ];
   const lockGuide = [
-    { label: '诊断指标', detail: '聚焦磁盘临时表、表缓存未命中和连接异常，帮助判断是否存在额外开销或连接拥塞。' },
+    { label: '诊断指标', detail: '磁盘临时表、表缓存未命中、连接错误的每秒速率;非零或持续升高即额外开销信号。' },
     { label: '适用场景', detail: '磁盘临时表或连接错误持续升高时，结合慢查询和锁等待趋势进一步定位根因。' }
   ];
   const innodbTrendGuide = [
