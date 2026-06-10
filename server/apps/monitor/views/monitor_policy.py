@@ -179,7 +179,12 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                     alerts_to_close,
                     fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
                 )
-        PeriodicTask.objects.filter(name=f"scan_policy_task_{policy_id}").delete()
+                AlertLifecycleNotifier(policy).notify_alerts(
+                    alerts_to_close,
+                    action="closed",
+                    operator=request.user.username,
+                    reason="policy_deleted",
+                )
         PolicyOrganization.objects.filter(policy_id=policy_id).delete()
         return super().destroy(request, *args, **kwargs)
 
