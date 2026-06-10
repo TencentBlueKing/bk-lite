@@ -239,15 +239,20 @@ def test_advance_resets_reminder_counter(mock_send):
 @mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="c")
 @mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="t")
 @mock.patch("apps.alerts.tasks.sync_notify.delay")
-def test_send_escalation_notification_enqueues_roster_and_channels(mock_delay, _mt, _mc):
+def test_send_escalation_notification_enqueues_roster_and_channels(
+    mock_delay, _mt, _mc, django_capture_on_commit_callbacks
+):
     alert = _make_alert(status="pending")
     assignment = _make_assignment(
         escalation=_chain(),
         channels=[{"id": 7, "channel_type": "wechat", "name": "企微"}],
     )
-    sent = ES._send_escalation_notification(
-        alert, assignment, roster=["u2", "u3"], layer_channels=[]
-    )
+    # pytest-django wraps the test in an atomic block, so the send defers via
+    # transaction.on_commit; capture+execute those callbacks to fire the enqueue.
+    with django_capture_on_commit_callbacks(execute=True):
+        sent = ES._send_escalation_notification(
+            alert, assignment, roster=["u2", "u3"], layer_channels=[]
+        )
     assert sent is True
     mock_delay.assert_called_once()
     params = mock_delay.call_args[0][0]
@@ -262,13 +267,16 @@ def test_send_escalation_notification_enqueues_roster_and_channels(mock_delay, _
 @mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="c")
 @mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="t")
 @mock.patch("apps.alerts.tasks.sync_notify.delay")
-def test_send_escalation_notification_uses_layer_channels_when_set(mock_delay, _mt, _mc):
+def test_send_escalation_notification_uses_layer_channels_when_set(
+    mock_delay, _mt, _mc, django_capture_on_commit_callbacks
+):
     alert = _make_alert(status="pending")
     assignment = _make_assignment(escalation=_chain())
-    sent = ES._send_escalation_notification(
-        alert, assignment, roster=["u2"],
-        layer_channels=[{"id": 9, "channel_type": "sms", "name": "短信"}],
-    )
+    with django_capture_on_commit_callbacks(execute=True):
+        sent = ES._send_escalation_notification(
+            alert, assignment, roster=["u2"],
+            layer_channels=[{"id": 9, "channel_type": "sms", "name": "短信"}],
+        )
     assert sent is True
     params = mock_delay.call_args[0][0]
     assert params[0]["channel_id"] == 9
