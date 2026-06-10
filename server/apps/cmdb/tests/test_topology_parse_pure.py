@@ -6,7 +6,6 @@ import pytest
 
 from apps.cmdb.collection.collect_plugin.topology.models import NormalizedPort
 from apps.cmdb.collection.collect_plugin.topology.parse import (
-    build_interface_name_candidates,
     build_multi_vlan_corroboration_summary,
     extract_previous_links,
     parse_aggregate_result,
@@ -2213,6 +2212,69 @@ class ParseTopologyTest(unittest.TestCase):
         )
         self.assertEqual(port_id, "dev:23")
         self.assertEqual(state, "resolved")
+
+
+    def test_reverse_direction_duplicate_becomes_supporting_evidence(self) -> None:
+        # 两台设备互指的 ARP 记录：正向 ARP 产生 inferred_link，反向 ARP 应成为 supporting_evidence
+        aggregate = {
+            "devices": [
+                {
+                    "device": {"host": "10.0.0.1"},
+                    "success": True,
+                    "collector_result": {
+                        "result": {
+                            "evidence": {
+                                "system": [],
+                                "interfaces": [
+                                    {"tag": "IFTable-IfDescr", "ifindex": "1", "val": "ge-0/0/1"},
+                                    {"tag": "IFTable-IfAlias", "ifindex": "1", "val": "uplink-a"},
+                                    {"tag": "IFTable-PhysAddress", "ifindex": "1", "val": "0xaaaaaaaaaaaa"},
+                                ],
+                                "ip": [],
+                                "arp": [
+                                    {"tag": "ARP-IfIndex", "ifindex": "10.0.0.2", "val": "1"},
+                                    {"tag": "ARP-PhysAddress", "ifindex": "10.0.0.2", "val": "0xbbbbbbbbbbbb"},
+                                ],
+                                "neighbors": [],
+                                "bridge": [],
+                                "fdb": [],
+                            }
+                        }
+                    },
+                },
+                {
+                    "device": {"host": "10.0.0.2"},
+                    "success": True,
+                    "collector_result": {
+                        "result": {
+                            "evidence": {
+                                "system": [],
+                                "interfaces": [
+                                    {"tag": "IFTable-IfDescr", "ifindex": "5", "val": "ge-0/0/5"},
+                                    {"tag": "IFTable-IfAlias", "ifindex": "5", "val": "uplink-b"},
+                                    {"tag": "IFTable-PhysAddress", "ifindex": "5", "val": "0xbbbbbbbbbbbb"},
+                                ],
+                                "ip": [],
+                                "arp": [
+                                    {"tag": "ARP-IfIndex", "ifindex": "10.0.0.1", "val": "5"},
+                                    {"tag": "ARP-PhysAddress", "ifindex": "10.0.0.1", "val": "0xaaaaaaaaaaaa"},
+                                ],
+                                "neighbors": [],
+                                "bridge": [],
+                                "fdb": [],
+                            }
+                        }
+                    },
+                },
+            ]
+        }
+
+        result = parse_aggregate_result(aggregate)
+        inferred_link = result["topology"]["inferred_links"][0]
+        supporting = inferred_link["supporting_evidence"]
+        self.assertEqual(len(supporting), 1)
+        self.assertEqual(supporting[0]["disposition"], "corroborating")
+        self.assertEqual(supporting[0]["winner_link_id"], inferred_link["relationship_id"])
 
 
 if __name__ == "__main__":
