@@ -41,7 +41,10 @@ export default function HostDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} styles={styles} />
+          <div className={styles.sectionLabel}>健康概览</div>
+          <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} kpiCols={6} styles={styles} />
+
+          <div className={styles.sectionLabel}>性能与分布</div>
           <FlexiblePanelSection styles={styles}>
             {resourceChart ? (
               <TrendChartPanel
@@ -120,6 +123,8 @@ export default function HostDashboardPage() {
               />
             ) : null}
           </FlexiblePanelSection>
+
+          <div className={styles.sectionLabel}>吞吐与进程</div>
           <FlexiblePanelSection styles={styles}>
             {/* 主机压力信号条 span6 + 网络吞吐 span6 = 12 —— 信号条不再独占整行 */}
             {pressureBar ? (

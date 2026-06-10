@@ -48,7 +48,9 @@ class TopologyType:
     ]
 
 
-SECRET_KEY = os.getenv("SECRET_KEY", "operation_analysis_secret_key_2025")
+# BL-NEW-006：移除源码内置的固定加密密钥，仅从环境变量读取（与 Django 主
+# SECRET_KEY 一致），未配置时为空串而非已知硬编码密钥。
+SECRET_KEY = os.getenv("SECRET_KEY", "")
 
 # ===== 实例权限 =====
 PERMISSION_DIRECTORY = "directory"  # 目录

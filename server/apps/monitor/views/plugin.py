@@ -22,6 +22,30 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
     filterset_class = MonitorPluginFilter
     pagination_class = CustomPageNumberPagination
 
+    # BL-NEW-005：MonitorPlugin 为全局资源，历史实现仅依赖全局 IsAuthenticated，
+    # 标准 CRUD 与 import/export 等自定义 Action 均未配置业务权限，任意登录用户即可
+    # 增删改 / 导入全局监控插件（功能级授权缺失、垂直越权）。下方为写操作补齐明确
+    # 权限校验，并将内置插件（is_pre）置为只读。
+    @staticmethod
+    def _ensure_modifiable(plugin):
+        """内置插件只读，禁止修改 / 删除（BL-NEW-005）。"""
+        if getattr(plugin, "is_pre", False):
+            raise BaseAppException("内置插件为只读，禁止修改或删除")
+
+    @HasPermission("integration_configure-Add")
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @HasPermission("integration_list-Setting")
+    def update(self, request, *args, **kwargs):
+        self._ensure_modifiable(self.get_object())
+        return super().update(request, *args, **kwargs)
+
+    @HasPermission("integration_list-Setting")
+    def partial_update(self, request, *args, **kwargs):
+        self._ensure_modifiable(self.get_object())
+        return super().partial_update(request, *args, **kwargs)
+
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
@@ -40,8 +64,10 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
 
         return WebUtils.response_success(results)
 
+    @HasPermission("integration_list-Setting")
     def destroy(self, request, *args, **kwargs):
         plugin = self.get_object()
+        self._ensure_modifiable(plugin)
         if plugin.template_type in {"api", "pull", "snmp"}:
             try:
                 plugin.delete()
@@ -68,11 +94,13 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="import")
+    @HasPermission("integration_configure-Add")
     def import_monitor_object(self, request):
         MonitorPluginService.import_monitor_plugin(request.data)
         return WebUtils.response_success()
 
     @action(methods=["get"], detail=False, url_path="export/(?P<pk>[^/.]+)")
+    @HasPermission("integration_list-View")
     def export_monitor_object(self, request, pk):
         data = MonitorPluginService.export_monitor_plugin(pk)
         return WebUtils.response_success(data)

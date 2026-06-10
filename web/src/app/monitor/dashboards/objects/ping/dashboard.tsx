@@ -35,7 +35,9 @@ export default function PingDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} styles={styles} />
+          <div className={styles.sectionLabel}>健康概览</div>
+          <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} kpiCols={6} styles={styles} />
+          <div className={styles.sectionLabel}>分布与趋势</div>
           <FlexiblePanelSection styles={styles}>
             {qualityRing ? (
               <RingChartPanel

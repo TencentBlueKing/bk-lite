@@ -228,6 +228,14 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'node',
       guide: [{ label: '系统负载', detail: '主机最近 1 分钟平均负载。' }],
       footer: [{ label: '5 分钟负载', metric: 'system_load5', unit: 'none' }]
+    },
+    {
+      title: '运行进程数',
+      metric: 'processes_running',
+      color: '#597ef7',
+      icon: 'node',
+      guide: [{ label: '运行进程数', detail: '当前正在运行的进程数量;可对照总进程数与进程状态分布判断主机负载结构。' }],
+      footer: [{ label: '总进程数', metric: 'processes_total', unit: 'counts' }]
     }
   ],
   charts: [

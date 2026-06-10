@@ -6,7 +6,26 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from loguru import logger
 
-FORBIDDEN_PYTHON_CALLS = {"eval", "exec", "__import__"}
+# BL-NEW-001：扩充危险内建黑名单。仅靠 SAFE_BUILTINS 白名单 + 屏蔽 import 不足以
+# 防住沙箱逃逸——这些内建函数可用于反射取属性、读全局命名空间、动态编译/执行或读写
+# 文件，是绕过沙箱的常见跳板，一并在 AST 层按名字拦截。
+FORBIDDEN_PYTHON_CALLS = {
+    "eval",
+    "exec",
+    "__import__",
+    "compile",
+    "getattr",
+    "setattr",
+    "delattr",
+    "globals",
+    "locals",
+    "vars",
+    "open",
+    "input",
+    "breakpoint",
+    "memoryview",
+    "help",
+}
 FORBIDDEN_PYTHON_NODES = (ast.Import, ast.ImportFrom)
 SAFE_BUILTINS = {
     "abs": abs,
@@ -31,10 +50,30 @@ SAFE_BUILTINS = {
 }
 
 
+def _is_dunder(name: str) -> bool:
+    """判断是否为 dunder（双下划线包裹）名字，如 ``__class__``、``__globals__``。"""
+    return isinstance(name, str) and len(name) > 4 and name.startswith("__") and name.endswith("__")
+
+
 class PythonSecurityVisitor(ast.NodeVisitor):
     def visit_Call(self, node):
         if isinstance(node.func, ast.Name) and node.func.id in FORBIDDEN_PYTHON_CALLS:
             raise ValueError(f"检测到禁止调用的高危函数: {node.func.id}")
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node):
+        # BL-NEW-001：阻断 dunder 属性访问。``().__class__.__bases__[0].__subclasses__()``
+        # 这类对象继承链逃逸是绕过 SAFE_BUILTINS 限制、拿到 os/subprocess 进而执行系统
+        # 命令的关键一步，全部依赖 __class__/__bases__/__subclasses__/__globals__/
+        # __builtins__/__mro__ 等 dunder 属性。沙箱内的正常运算无需访问 dunder。
+        if _is_dunder(node.attr):
+            raise ValueError(f"检测到禁止访问的危险属性: {node.attr}")
+        self.generic_visit(node)
+
+    def visit_Name(self, node):
+        # 阻断对 dunder 标识符（如 __import__、__builtins__）的直接引用。
+        if _is_dunder(node.id):
+            raise ValueError(f"检测到禁止使用的标识符: {node.id}")
         self.generic_visit(node)
 
     def visit_Import(self, node):

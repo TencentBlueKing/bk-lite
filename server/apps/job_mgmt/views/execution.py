@@ -22,6 +22,7 @@ from apps.job_mgmt.serializers.execution import (
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_playbook_task, execute_script_task
+from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_authorized_team_ids
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -44,6 +45,31 @@ class JobExecutionViewSet(AuthViewSet):
         elif self.action == "file_distribution":
             return FileDistributionSerializer
         return JobExecutionListSerializer
+
+    def _get_authorized_team_ids(self, request):
+        """当前用户有权访问的团队 ID 集合；超管返回 None（不做团队归属限制）。
+
+        用于 quick_execute / file_distribution 在按 ID 加载 Script / Playbook /
+        Target / DistributionFile 后校验对象归属，防止跨团队越权引用（BL-NEW-002）。
+        """
+        user = getattr(request, "user", None)
+        if getattr(user, "is_superuser", False):
+            return None
+        return normalize_authorized_team_ids(getattr(user, "group_list", []))
+
+    def _resolve_execution_team(self, request, data):
+        """确定本次执行归属的 team，并校验用户对其有权限。
+
+        - 请求体显式传 team：必须全部落在用户可管理范围内，否则 PermissionDenied。
+        - 未传 team：回退到已校验权限的 current_team。
+        禁止信任请求体 team 越权指定他人团队（BL-NEW-002）。
+        """
+        current_team = self._validate_current_team_permission(request)
+        requested_team = data.get("team", [])
+        if requested_team:
+            self._validate_org_field_permission(request, requested_team)
+            return requested_team
+        return [current_team]
 
     @HasPermission("job_record-View")
     def list(self, request, *args, **kwargs):
@@ -68,37 +94,46 @@ class JobExecutionViewSet(AuthViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        # BL-NEW-002：禁止信任请求体 team 越权；按服务端授权 team 校验所引用对象。
+        authorized_team_ids = self._get_authorized_team_ids(request)
+        team = self._resolve_execution_team(request, data)
+
         # 获取目标来源和目标列表
         target_source = data["target_source"]
         target_list = data["target_list"]
 
-        # 验证目标（仅 manual 来源需要验证 target_id 存在）
+        # 验证目标（仅 manual 来源需要验证 target_id 存在），并校验目标归属团队
         if target_source == TargetSource.MANUAL:
             target_ids = [t.get("target_id") for t in target_list if t.get("target_id")]
             if target_ids:
-                existing_count = Target.objects.filter(id__in=target_ids).count()
-                if existing_count != len(target_ids):
+                targets = list(Target.objects.filter(id__in=target_ids))
+                if len(targets) != len(set(target_ids)):
                     return Response({"error": "部分目标不存在"}, status=status.HTTP_400_BAD_REQUEST)
+                if any(not is_team_authorized(t.team, authorized_team_ids) for t in targets):
+                    return Response({"error": "部分目标不属于当前用户的团队，无权执行"}, status=status.HTTP_403_FORBIDDEN)
 
         username = request.user.username if request.user else ""
         name = data["name"]
         timeout = data.get("timeout", 600)
-        team = data.get("team", []) or [int(request.COOKIES.get("current_team") or 0)]
         params = data.get("params", [])
 
-        # 处理新格式参数：解析 is_modified=False 的参数
+        # 处理新格式参数：解析 is_modified=False 的参数（脚本须属于用户授权团队）
         script = None
         if data.get("script_id"):
             script = Script.objects.filter(id=data["script_id"]).first()
+            if not script or not is_team_authorized(script.team, authorized_team_ids):
+                return Response({"error": "脚本不存在或无权访问"}, status=status.HTTP_403_FORBIDDEN)
             # 如果前端未显式传 timeout，使用脚本库定义的超时时间
-            if script and "timeout" not in request.data:
+            if "timeout" not in request.data:
                 timeout = script.timeout
         resolved_params = ScriptParamsService.resolve_params(params, script=script)
         params_str = ScriptParamsService.params_to_string(resolved_params)
         # 根据模式创建执行记录
         if data.get("playbook_id"):
-            # Playbook 模式：params 存为 JSON 字符串，保留完整 key-value 关系
-            playbook = Playbook.objects.get(id=data["playbook_id"])
+            # Playbook 模式：params 存为 JSON 字符串，保留完整 key-value 关系（须属于用户授权团队）
+            playbook = Playbook.objects.filter(id=data["playbook_id"]).first()
+            if not playbook or not is_team_authorized(playbook.team, authorized_team_ids):
+                return Response({"error": "Playbook 不存在或无权访问"}, status=status.HTTP_403_FORBIDDEN)
             playbook_params_dict = ScriptParamsService.params_to_dict(resolved_params)
             execution = JobExecution.objects.create(
                 name=name,
@@ -123,7 +158,7 @@ class JobExecutionViewSet(AuthViewSet):
             script_type = data.get("script_type", "")
 
             if data.get("script_id"):
-                script = Script.objects.get(id=data["script_id"])
+                # 复用上方已按团队归属校验过的 script 对象，避免重复查询
                 script_content = script.content
                 script_type = script.script_type
 
@@ -192,28 +227,35 @@ class JobExecutionViewSet(AuthViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        # BL-NEW-002：禁止信任请求体 team 越权；按服务端授权 team 校验所引用对象。
+        authorized_team_ids = self._get_authorized_team_ids(request)
+        team = self._resolve_execution_team(request, data)
+
         # 获取目标来源和目标列表
         target_source = data["target_source"]
         target_list = data["target_list"]
 
-        # 验证目标（仅 manual 来源需要验证 target_id 存在）
+        # 验证目标（仅 manual 来源需要验证 target_id 存在），并校验目标归属团队
         if target_source == TargetSource.MANUAL:
             target_ids = [t.get("target_id") for t in target_list if t.get("target_id")]
             if target_ids:
-                existing_count = Target.objects.filter(id__in=target_ids).count()
-                if existing_count != len(target_ids):
+                targets = list(Target.objects.filter(id__in=target_ids))
+                if len(targets) != len(set(target_ids)):
                     return Response({"error": "部分目标不存在"}, status=status.HTTP_400_BAD_REQUEST)
+                if any(not is_team_authorized(t.team, authorized_team_ids) for t in targets):
+                    return Response({"error": "部分目标不属于当前用户的团队，无权分发"}, status=status.HTTP_403_FORBIDDEN)
 
-        # 验证文件
+        # 验证文件，并校验文件归属团队
         file_ids = data["file_ids"]
-        distribution_files = DistributionFile.objects.filter(id__in=file_ids)
-        if distribution_files.count() != len(file_ids):
+        distribution_files = list(DistributionFile.objects.filter(id__in=file_ids))
+        if len(distribution_files) != len(set(file_ids)):
             return Response({"error": "部分文件不存在或已过期"}, status=status.HTTP_400_BAD_REQUEST)
+        if any(not is_team_authorized(df.team, authorized_team_ids) for df in distribution_files):
+            return Response({"error": "部分文件不属于当前用户的团队，无权分发"}, status=status.HTTP_403_FORBIDDEN)
 
         username = request.user.username if request.user else ""
 
         target_path = data["target_path"]
-        team = data.get("team", [])
 
         # 高危路径检测
         check_result = DangerousChecker.check_path(target_path, team)
@@ -246,7 +288,7 @@ class JobExecutionViewSet(AuthViewSet):
             total_count=len(target_list),
             target_source=target_source,
             target_list=target_list,
-            team=data.get("team", []),
+            team=team,
             executor_user=username,
             created_by=username,
             updated_by=username,

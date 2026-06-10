@@ -33,7 +33,7 @@ export interface StatCardProps {
   icon: React.ReactNode;
   iconStyle?: React.CSSProperties;
   color: string;
-  footer: React.ReactNode;
+  footer?: React.ReactNode;
   compare?: PeriodCompare | null;
   compareFavorableDirection?: CompareFavorableDirection;
   trendData?: ChartData[];
@@ -87,7 +87,7 @@ export const StatCard = ({
             </span>
           </div>
         ) : null}
-        <div className={styles.statMeta}>{footer}</div>
+        {footer ? <div className={styles.statMeta}>{footer}</div> : null}
       </div>
       {extra ? <div className={styles.statExtra}>{extra}</div> : null}
       {!hideTrend ? (
