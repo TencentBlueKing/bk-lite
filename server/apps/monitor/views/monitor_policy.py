@@ -174,15 +174,10 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                     alert.end_event_time = now
                     alert.operator = request.user.username
                     alert.operation_logs = (alert.operation_logs or []) + [operation_log]
+                    alert.alert_center_notified = False
                 MonitorAlert.objects.bulk_update(
                     alerts_to_close,
-                    fields=["status", "end_event_time", "operator", "operation_logs"],
-                )
-                AlertLifecycleNotifier(policy).notify_alerts(
-                    alerts_to_close,
-                    action="closed",
-                    operator=request.user.username,
-                    reason="policy_deleted",
+                    fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
                 )
         PeriodicTask.objects.filter(name=f"scan_policy_task_{policy_id}").delete()
         PolicyOrganization.objects.filter(policy_id=policy_id).delete()
@@ -276,9 +271,10 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             alert.end_event_time = now
             alert.operator = operator
             alert.operation_logs = (alert.operation_logs or []) + [operation_log]
+            alert.alert_center_notified = False
         MonitorAlert.objects.bulk_update(
             alerts_to_close,
-            fields=["status", "end_event_time", "operator", "operation_logs"],
+            fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
         )
         AlertLifecycleNotifier(policy).notify_alerts(
             alerts_to_close,
@@ -307,9 +303,10 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                     alert.end_event_time = now
                     alert.operator = "system"
                     alert.operation_logs = (alert.operation_logs or []) + [operation_log]
+                    alert.alert_center_notified = False
                 MonitorAlert.objects.bulk_update(
                     alerts_to_close,
-                    fields=["status", "end_event_time", "operator", "operation_logs"],
+                    fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
                 )
                 if policy:
                     AlertLifecycleNotifier(policy).notify_alerts(

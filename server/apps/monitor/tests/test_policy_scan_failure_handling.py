@@ -362,6 +362,7 @@ def test_monitor_policy_disabling_no_data_closes_only_active_no_data_alerts(monk
         end_event_time=None,
         operator="",
         operation_logs=[],
+        alert_center_notified=True,
     )
     recovered_no_data_alert = types.SimpleNamespace(
         status="recovered",
@@ -439,7 +440,7 @@ def test_monitor_policy_disabling_no_data_closes_only_active_no_data_alerts(monk
     assert active_no_data_alert.operation_logs[-1]["reason"] == "no_data_disabled"
     assert recovered_no_data_alert.status == "recovered"
     assert active_threshold_alert.status == "new"
-    assert bulk_updates == [([active_no_data_alert], ["status", "end_event_time", "operator", "operation_logs"])]
+    assert bulk_updates == [([active_no_data_alert], ["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"])]
     assert lifecycle_calls == [([active_no_data_alert], "closed", "alice", "no_data_disabled")]
     assert baseline_calls == [("clear", policy.id)]
 
