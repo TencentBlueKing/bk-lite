@@ -17,11 +17,22 @@ export const latestScalar = (result: QueryResult): number => {
   return lastValue(series[0].values);
 };
 
-/** 多序列结果 → 按某 label 取每序列最新值(用于 by(phase) / topk(node|pod))。 */
-export const seriesLatestByLabel = (result: QueryResult, label: string): Array<{ label: string; value: number }> => {
+/**
+ * 多序列结果 → 按某 label 取每序列最新值(用于 by(phase) / topk(node|pod))。
+ * label 可传多个候选,取第一个非空的(如 ['node','instance_id','host']),
+ * 避免某指标缺少首选 label 时整组被过滤为空。
+ */
+export const seriesLatestByLabel = (
+  result: QueryResult,
+  label: string | string[]
+): Array<{ label: string; value: number }> => {
+  const candidates = Array.isArray(label) ? label : [label];
   const series = result?.data?.result || [];
   return series
-    .map((s) => ({ label: String(s.metric?.[label] ?? ''), value: lastValue(s.values) }))
+    .map((s) => {
+      const picked = candidates.map((l) => s.metric?.[l]).find((v) => v !== undefined && v !== '');
+      return { label: String(picked ?? ''), value: lastValue(s.values) };
+    })
     .filter((item) => item.label !== '');
 };
 
@@ -54,6 +65,8 @@ export const buildTopBars = (
   format: (n: number) => string
 ): TopBarItem[] => {
   const rows = seriesLatestByLabel(result, label).sort((a, b) => b.value - a.value).slice(0, TOP_N);
-  const max = rows.length ? Math.max(...rows.map((r) => r.value), 1) : 1;
+  // max 仅用于条宽归一化:取本卡最大值;只有当最大值为 0 时才回退到 1,避免把 <1 的值(如 0.3 核)压成极短条。
+  const peak = rows.length ? Math.max(...rows.map((r) => r.value)) : 0;
+  const max = peak > 0 ? peak : 1;
   return rows.map((r, i) => ({ label: r.label, value: r.value, display: format(r.value), color, max, rank: i + 1 }));
 };

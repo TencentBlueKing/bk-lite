@@ -64,7 +64,10 @@ const RAW_VALUE_METRICS = new Set([
   'redis_used_memory',
   'redis_maxmemory',
   'redis_clients',
-  'redis_blocked_clients'
+  'redis_blocked_clients',
+  // 字节速率(byteps):禁用服务端自动换算,避免与前端 formatMetricValue 双重换算
+  'redis_total_net_input_bytes',
+  'redis_total_net_output_bytes'
 ]);
 
 const METRIC_QUERY_CONCURRENCY = 4;

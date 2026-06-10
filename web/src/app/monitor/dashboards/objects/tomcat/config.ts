@@ -175,7 +175,7 @@ export const TOMCAT_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'JVM 堆使用率',
       description: '由已分配内存、空闲内存和最大内存推导出的 JVM 堆使用率（(total - free) / max × 100）。',
       unit: 'percent',
-      query: '100 * ((tomcat_jvm_memory_total{__$labels__} - tomcat_jvm_memory_free{__$labels__}) / clamp_min(tomcat_jvm_memory_max{__$labels__}, 1))',
+      query: 'clamp_max(100 * ((tomcat_jvm_memory_total{__$labels__} - tomcat_jvm_memory_free{__$labels__}) / clamp_min(tomcat_jvm_memory_max{__$labels__}, 1)), 100)',
       color: '#8a5cff'
     },
     {

@@ -68,7 +68,13 @@ const RAW_VALUE_METRICS = new Set([
   'mysql_uptime',
   'mysql_innodb_buffer_pool_pages_total',
   'mysql_innodb_buffer_pool_pages_free',
-  'mysql_innodb_buffer_pool_pages_dirty'
+  'mysql_innodb_buffer_pool_pages_dirty',
+  // 字节速率(byteps)与字节配置项(bytes):禁用服务端自动换算,避免与前端双重换算
+  'mysql_bytes_received',
+  'mysql_bytes_sent',
+  'mysql_variables_innodb_buffer_pool_size',
+  'mysql_variables_tmp_table_size',
+  'mysql_variables_max_heap_table_size'
 ]);
 const CONNECTION_ERROR_LABELS: Record<string, string> = {
   mysql_aborted_connects: '连接尝试失败数',

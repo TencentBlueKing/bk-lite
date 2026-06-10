@@ -66,7 +66,7 @@ export const DASHBOARD_METRICS: MongoMetricConfig[] = [
     display_name: '读延迟',
     description: 'MongoDB 读请求的平均响应延迟。',
     unit: 'ns',
-    query: 'mongodb_latency_reads{__$labels__}/clamp_min(mongodb_latency_reads_count{__$labels__}, 1)',
+    query: 'rate(mongodb_latency_reads{__$labels__}[5m])/clamp_min(rate(mongodb_latency_reads_count{__$labels__}[5m]), 1e-6)',
     color: '#27c274'
   },
   {
@@ -74,7 +74,7 @@ export const DASHBOARD_METRICS: MongoMetricConfig[] = [
     display_name: '命令延迟',
     description: 'MongoDB 命令请求的平均响应延迟。',
     unit: 'ns',
-    query: 'mongodb_latency_commands{__$labels__}/clamp_min(mongodb_latency_commands_count{__$labels__}, 1)',
+    query: 'rate(mongodb_latency_commands{__$labels__}[5m])/clamp_min(rate(mongodb_latency_commands_count{__$labels__}[5m]), 1e-6)',
     color: '#faad14'
   },
   {
@@ -171,7 +171,7 @@ export const DASHBOARD_METRICS: MongoMetricConfig[] = [
     description: 'WiredTiger 已用缓存占配置上限的比例。',
     unit: 'percent',
     query:
-      '100 * max by (instance_id) (mongodb_wtcache_current_bytes{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mongodb_wtcache_max_bytes_configured{__$labels__}), 1)',
+      'clamp_max(100 * max by (instance_id) (mongodb_wtcache_current_bytes{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mongodb_wtcache_max_bytes_configured{__$labels__}), 1), 100)',
     color: '#2f6bff'
   },
   {
@@ -180,7 +180,7 @@ export const DASHBOARD_METRICS: MongoMetricConfig[] = [
     description: 'WiredTiger 脏数据占当前缓存的比例。',
     unit: 'percent',
     query:
-      '100 * max by (instance_id) (mongodb_wtcache_tracked_dirty_bytes{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mongodb_wtcache_current_bytes{__$labels__}), 1)',
+      'clamp_max(100 * max by (instance_id) (mongodb_wtcache_tracked_dirty_bytes{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mongodb_wtcache_current_bytes{__$labels__}), 1), 100)',
     color: '#ff9f43'
   },
   {

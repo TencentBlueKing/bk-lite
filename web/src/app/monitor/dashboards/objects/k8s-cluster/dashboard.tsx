@@ -75,14 +75,27 @@ const pct = (n: number) => `${n.toFixed(1)}%`;
 // KPI 卡「较上一周期」需要拉取的上一周期序列(工作负载=三类之和)
 const KPI_COMPARE_KEYS = ['nodesTotal', 'namespaces', 'podsTotal', 'deployTotal', 'dsTotal', 'stsTotal', 'crashloop'];
 
-// 把若干同窗口时序按时间索引相加(工作负载总数 = Deployment+StatefulSet+DaemonSet 的趋势)
+// 把若干时序按【时间戳】对齐相加(工作负载总数 = Deployment+StatefulSet+DaemonSet 的趋势)。
+// 按时间戳而非数组下标聚合:某类工作负载样本稀疏/起始时间不同也不会错位。
 const sumSeries = (arrs: ChartData[][]): ChartData[] => {
-  const base = arrs.find((a) => a.length) || [];
-  return base.map((pt, i) => ({
-    time: pt.time,
-    value1: arrs.reduce((s, a) => s + (Number(a[i]?.value1) || 0), 0)
-  }));
+  const byTime = new Map<number, ChartData>();
+  arrs.forEach((series) => {
+    series.forEach((pt) => {
+      const t = Number(pt.time);
+      const prev = byTime.get(t);
+      byTime.set(t, { time: pt.time, value1: (prev ? Number(prev.value1) || 0 : 0) + (Number(pt.value1) || 0) });
+    });
+  });
+  return Array.from(byTime.values()).sort((a, b) => Number(a.time) - Number(b.time));
 };
+
+// 字节类指标(内存)需禁用服务端单位自动换算:服务端会把 bytes 缩放成 GiB,
+// 前端 bytesDisplay 会再格式化一次,不禁用则双重换算导致数值小约 1e9 倍。
+const RAW_VALUE_METRICS = new Set([
+  'prometheus_remote_write_container_memory_working_set_bytes',
+  'prometheus_remote_write_kube_node_status_allocatable',
+  'prometheus_remote_write_kube_pod_container_resource_requests'
+]);
 
 export default function K8sClusterDashboardPage() {
   const router = useRouter();
@@ -166,7 +179,7 @@ export default function K8sClusterDashboardPage() {
     runWithConcurrency(keys, QUERY_CONCURRENCY, async (key) => {
       const q = QUERIES[key];
       try {
-        const result = await getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, tv));
+        const result = await getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, tv, RAW_VALUE_METRICS));
         return [key, result] as const;
       } catch {
         return [key, null] as const;
@@ -344,7 +357,7 @@ export default function K8sClusterDashboardPage() {
 
   // 节点内存 Top-N
   const nodeMemBars = useMemo(() => {
-    const rows = seriesLatestByLabel(raw.nodeMemTop, 'node').sort((a, b) => b.value - a.value).slice(0, TOP_N);
+    const rows = seriesLatestByLabel(raw.nodeMemTop, ['node', 'instance_id', 'instance', 'host']).sort((a, b) => b.value - a.value).slice(0, TOP_N);
     return rows.map((r, i) => ({ label: r.label, value: r.value, display: pct(r.value), color: saturationColor(r.value), max: 100, rank: i + 1 }));
   }, [raw.nodeMemTop]);
 
@@ -542,7 +555,7 @@ export default function K8sClusterDashboardPage() {
               title="Top Pod · CPU"
               subtitle="核数 · 5m"
               guide={guide('Top Pod · CPU', 'CPU 消耗最高的 Pod。')}
-              items={topPodCpuBars.slice(0, 5)}
+              items={topPodCpuBars}
               tiered
               className={styles.span4}
               styles={styles}
@@ -550,7 +563,7 @@ export default function K8sClusterDashboardPage() {
             <HorizontalBarPanel
               title="Top Pod · 内存"
               guide={guide('Top Pod · 内存', '内存占用最高的 Pod。')}
-              items={topPodMemBars.slice(0, 5)}
+              items={topPodMemBars}
               tiered
               className={styles.span4}
               styles={styles}
@@ -559,7 +572,7 @@ export default function K8sClusterDashboardPage() {
               title="重启 Top Pod"
               subtitle="近 1h"
               guide={guide('重启 Top Pod', '近 1 小时容器重启次数最多的 Pod。')}
-              items={restartBars.slice(0, 5)}
+              items={restartBars}
               tiered
               className={styles.span4}
               styles={styles}
@@ -571,7 +584,7 @@ export default function K8sClusterDashboardPage() {
             <HorizontalBarPanel
               title="节点内存 Top"
               guide={guide('节点内存 Top', '内存使用率最高的节点。')}
-              items={nodeMemBars.slice(0, 5)}
+              items={nodeMemBars}
               tiered
               className={styles.span4}
               styles={styles}
@@ -579,7 +592,7 @@ export default function K8sClusterDashboardPage() {
             <HorizontalBarPanel
               title="Top 命名空间 · 内存"
               guide={guide('Top 命名空间 · 内存', '内存占用最高的命名空间。')}
-              items={topNsMemBars.slice(0, 5)}
+              items={topNsMemBars}
               tiered
               className={styles.span4}
               styles={styles}

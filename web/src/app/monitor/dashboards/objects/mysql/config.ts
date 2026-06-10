@@ -41,7 +41,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     description: '当前连接数占 max_connections 配置值的比例。',
     unit: 'percent',
     query:
-      '100 * max by (instance_id) (mysql_threads_connected{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mysql_variables_max_connections{__$labels__}), 1)',
+      'clamp_max(100 * max by (instance_id) (mysql_threads_connected{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mysql_variables_max_connections{__$labels__}), 1), 100)',
     color: '#ff8a1f'
   },
   {
@@ -561,7 +561,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     description: '当前打开文件数占 open_files_limit 配置值的比例。',
     unit: 'percent',
     query:
-      '100 * max by (instance_id) (mysql_open_files{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mysql_variables_open_files_limit{__$labels__}), 1)',
+      'clamp_max(100 * max by (instance_id) (mysql_open_files{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mysql_variables_open_files_limit{__$labels__}), 1), 100)',
     color: '#13c2c2'
   },
   {
@@ -570,7 +570,7 @@ export const DASHBOARD_METRICS: MysqlMetricConfig[] = [
     description: '当前打开表数占 table_open_cache 配置值的比例。',
     unit: 'percent',
     query:
-      '100 * max by (instance_id) (mysql_open_tables{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mysql_variables_table_open_cache{__$labels__}), 1)',
+      'clamp_max(100 * max by (instance_id) (mysql_open_tables{__$labels__}) / on(instance_id) clamp_min(max by (instance_id) (mysql_variables_table_open_cache{__$labels__}), 1), 100)',
     color: '#2f6bff'
   }
 ];
