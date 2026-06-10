@@ -1,4 +1,4 @@
-@import '../common/simple-dashboard.module.scss';
+@use '../common/simple-dashboard.module.scss';
 
 // 趋势图紧凑高度(与 host/ping 等同款),renderTrend 通过 styles.compactTrend 引用
 .compactTrend {

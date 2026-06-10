@@ -1,4 +1,4 @@
-@import '../common/simple-dashboard.module.scss';
+@use '../common/simple-dashboard.module.scss';
 
 // 区块小标题:给分区加语义标题,提升可扫读性(与 MySQL/PostgreSQL 同款)
 .sectionLabel {
