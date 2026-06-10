@@ -51,14 +51,18 @@ export interface StrategyFields {
   log_groups?: string[];
   organizations?: string[];
   collect_type?: number;
-  schedule?: {
-    type: string;
-    value: number;
-  };
-  period?: {
-    type: string;
-    value: number;
-  };
+  schedule?:
+    | {
+        type: string;
+        value: number;
+      }
+    | number;
+  period?:
+    | {
+        type: string;
+        value: number;
+      }
+    | number;
   notice?: boolean;
   notice_type?: string;
   notice_type_id?: number;
