@@ -37,8 +37,8 @@ class InstanceEnterpriseExtension:
         """实例保存后落账：引用文件转 committed 并补 inst_id、移除文件标 orphaned。默认 no-op。"""
         return None
 
-    def on_instance_delete(self, model_id: str, inst_id, instance: dict) -> None:
-        """实例删除后回调，企业版据此把该实例的文件标记为 orphaned。默认 no-op。"""
+    def on_instances_delete(self, inst_ids: list) -> None:
+        """实例（批量）删除后回调，企业版据此把这些实例的文件标记为 orphaned。默认 no-op。"""
         return None
 
     # ---- 接口：上传/下载/临时删除（社区 view 委托，默认未启用） ----

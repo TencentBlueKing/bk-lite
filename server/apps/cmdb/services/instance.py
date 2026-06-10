@@ -749,10 +749,8 @@ class InstanceManage(object):
         with GraphClient() as ag:
             ag.batch_delete_entity(INSTANCE, inst_ids)
 
-        # 企业版：实例删除后把其附件/图片文件标记为待回收
-        ext = get_instance_enterprise_extension()
-        for item in inst_list:
-            ext.on_instance_delete(item["model_id"], item["_id"], item)
+        # 企业版：实例删除后把其附件/图片文件标记为待回收（批量单次处理）
+        get_instance_enterprise_extension().on_instances_delete([item["_id"] for item in inst_list])
 
         change_records = [
             dict(
