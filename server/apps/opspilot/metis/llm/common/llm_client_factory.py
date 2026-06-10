@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from openai import OpenAI
 
+from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.ssrf_validator import SSRFValidator
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.anthropic_capabilities import build_anthropic_runtime_capabilities
@@ -109,6 +110,8 @@ class LLMClientFactory:
             model_kwargs=model_kwargs if model_kwargs else None,
         )
 
+        logger.info(f"[LLMClientFactory] ChatAnthropic client: model={request.model}, base_url={base_url}, api_key={request.openai_api_key}")
+
         return llm
 
     @staticmethod
@@ -119,6 +122,12 @@ class LLMClientFactory:
             base_url = "https://api.anthropic.com"
 
         SSRFValidator.validate_llm_endpoint(base_url)
+
+        logger.info(
+            f"[LLMClientFactory] AnthropicCompatible client: model={request.model}, "
+            f"base_url={base_url}, vendor_type={getattr(request, 'vendor_type', '')}, "
+            f"api_key={request.openai_api_key}"
+        )
 
         return AnthropicCompatibleChatClient(
             model=request.model,

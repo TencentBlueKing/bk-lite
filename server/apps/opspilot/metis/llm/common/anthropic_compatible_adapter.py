@@ -5,9 +5,12 @@ Shared helpers for validating connectivity to Anthropic-protocol endpoints
 (native Anthropic API and Anthropic-compatible providers such as DeepSeek).
 """
 
-import asyncio
+from typing import Any, List, Optional
 
-from langchain_core.messages import AIMessage
+from langchain_core.callbacks.manager import CallbackManagerForLLMRun
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 
 from apps.core.utils.safe_requests import safe_post_llm_endpoint
 
@@ -125,9 +128,24 @@ def build_messages_payload(
         payload["system"] = system_message
     if tools:
         payload["tools"] = build_tool_definitions(tools)
-    if tool_choice:
-        payload["tool_choice"] = tool_choice
+    if tool_choice and tool_choice != "none":
+        payload["tool_choice"] = _normalize_tool_choice_to_object(tool_choice)
     return payload
+
+
+def _normalize_tool_choice_to_object(tool_choice: str | dict) -> dict:
+    """Convert tool_choice to Anthropic object format.
+
+    Anthropic protocol requires {"type": "auto"} not plain string "auto".
+    Specific tool: {"type": "tool", "name": "tool_name"}
+    Note: "none" should be handled by the caller (omit tool_choice field entirely).
+    """
+    if isinstance(tool_choice, dict):
+        return tool_choice
+    if tool_choice in ("auto", "any", "required"):
+        return {"type": tool_choice}
+    # Specific tool name
+    return {"type": "tool", "name": tool_choice}
 
 
 class AnthropicCompatibleAdapter:
@@ -164,47 +182,34 @@ class AnthropicCompatibleAdapter:
             raise ValueError(f"API 连接失败: {error_msg}")
 
 
-class AnthropicCompatibleChatClient:
-    """Thin runtime client for Anthropic-compatible vendors."""
+class AnthropicCompatibleChatClient(BaseChatModel):
+    """Thin runtime client for Anthropic-compatible vendors.
 
-    def __init__(
+    Inherits BaseChatModel so LangGraph astream_events emits on_chat_model_stream
+    events, enabling proper frontend text streaming.
+    """
+
+    model: str
+    api_key: str
+    api_base: str
+    temperature: float
+    disable_streaming: bool = False
+    timeout: int = 15
+    vendor_type: str = ""
+    bound_tools: List[Any] = []
+    bound_tool_choice: Optional[str] = None
+
+    @property
+    def _llm_type(self) -> str:
+        return "anthropic-compatible"
+
+    def _generate(
         self,
-        *,
-        model: str,
-        api_key: str,
-        api_base: str,
-        temperature: float,
-        disable_streaming: bool,
-        timeout: int,
-        vendor_type: str = "",
-    ):
-        self.model = model
-        self.api_key = api_key
-        self.api_base = api_base
-        self.temperature = temperature
-        self.disable_streaming = disable_streaming
-        self.timeout = timeout
-        self.vendor_type = vendor_type
-        self.callbacks = None
-        self.bound_tools = []
-        self.bound_tool_choice = None
-
-    def bind_tools(self, tools, **kwargs):
-        bound = AnthropicCompatibleChatClient(
-            model=self.model,
-            api_key=self.api_key,
-            api_base=self.api_base,
-            temperature=self.temperature,
-            disable_streaming=self.disable_streaming,
-            timeout=self.timeout,
-            vendor_type=self.vendor_type,
-        )
-        bound.callbacks = self.callbacks
-        bound.bound_tools = list(tools or [])
-        bound.bound_tool_choice = kwargs.get("tool_choice")
-        return bound
-
-    def invoke(self, messages):
+        messages: List[BaseMessage],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> ChatResult:
         payload = build_messages_payload(
             model=self.model,
             messages=messages,
@@ -219,26 +224,32 @@ class AnthropicCompatibleChatClient:
             timeout=self.timeout,
         )
         AnthropicCompatibleAdapter._raise_for_error(response)
-        return self._build_ai_message(response.json())
+        ai_message = _build_ai_message(response.json())
+        return ChatResult(generations=[ChatGeneration(message=ai_message)])
 
-    async def ainvoke(self, messages):
-        return await asyncio.to_thread(self.invoke, messages)
+    def bind_tools(self, tools, **kwargs):
+        return self.model_copy(
+            update={
+                "bound_tools": list(tools or []),
+                "bound_tool_choice": kwargs.get("tool_choice"),
+            }
+        )
 
-    @staticmethod
-    def _build_ai_message(payload: dict) -> AIMessage:
-        content_parts = payload.get("content", []) if isinstance(payload, dict) else []
-        text_parts = []
-        tool_calls = []
-        for item in content_parts:
-            if item.get("type") == "text":
-                text_parts.append(item.get("text", ""))
-            elif item.get("type") == "tool_use":
-                tool_calls.append(
-                    {
-                        "name": item.get("name", ""),
-                        "args": item.get("input", {}),
-                        "id": item.get("id", ""),
-                        "type": "tool_call",
-                    }
-                )
-        return AIMessage(content="".join(text_parts), tool_calls=tool_calls)
+
+def _build_ai_message(payload: dict) -> AIMessage:
+    content_parts = payload.get("content", []) if isinstance(payload, dict) else []
+    text_parts = []
+    tool_calls = []
+    for item in content_parts:
+        if item.get("type") == "text":
+            text_parts.append(item.get("text", ""))
+        elif item.get("type") == "tool_use":
+            tool_calls.append(
+                {
+                    "name": item.get("name", ""),
+                    "args": item.get("input", {}),
+                    "id": item.get("id", ""),
+                    "type": "tool_call",
+                }
+            )
+    return AIMessage(content="".join(text_parts), tool_calls=tool_calls)

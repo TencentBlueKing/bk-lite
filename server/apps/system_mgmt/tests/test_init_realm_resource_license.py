@@ -1,4 +1,4 @@
-﻿"""
+"""
 TDD tests for get_install_apps() using the centralized enterprise footprint detector.
 
 Task 3 covers:

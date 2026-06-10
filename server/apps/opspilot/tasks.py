@@ -1073,7 +1073,7 @@ def chat_flow_test_execute_task(workflow_id, node_id, input_data, entry_type, ex
             engine.execute(input_data)
             logger.info(f"ChatFlow测试异步任务完成: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}")
         except Exception as e:
-            logger.exception(f"ChatFlow测试异步任务失败: workflow_id={workflow_id}, node_id={node_id}, " f"execution_id={execution_id}, error={str(e)}")
+            logger.exception(f"ChatFlow测试异步任务失败: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}, error={str(e)}")
 
     return _run_in_native_thread(_execute)
 
@@ -1357,7 +1357,7 @@ def process_memory_write_cache(
         )
     except Exception as e:
         logger.error(
-            f"[MemoryWriteBatchTask] 批量写入失败: workflow_id={workflow_id}, node_id={node_id}, " f"target={memory_target_id}, error={e}",
+            f"[MemoryWriteBatchTask] 批量写入失败: workflow_id={workflow_id}, node_id={node_id}, target={memory_target_id}, error={e}",
             exc_info=True,
         )
         raise

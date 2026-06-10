@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import inspect
 import json
+import sys
 import time
 import uuid
 from collections import Counter
@@ -83,10 +84,7 @@ from apps.opspilot.utils.verification import get_verification_spec, run_verifica
 
 def _safe_log_preview(content: str, max_len: int = 200) -> str:
     """
-    安全地截取日志预览内容。
-
-    使用 UTF-8（由日志 handler 负责编码），保留 emoji 与全部 Unicode 字符，
-    仅做长度截断。
+    安全地截取日志预览内容，过滤无法被控制台编码（如 Windows GBK）表示的字符。
 
     Args:
         content: 原始内容
@@ -97,7 +95,9 @@ def _safe_log_preview(content: str, max_len: int = 200) -> str:
     """
     if not content:
         return ""
-    return str(content)[:max_len]
+    preview = str(content)[:max_len]
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    return preview.encode(encoding, errors="replace").decode(encoding)
 
 
 def normalize_messages_for_llm(messages: List[Any]) -> List[Any]:
@@ -2065,12 +2065,12 @@ class ToolsNodes(BasicNode):
                 current_tools = []
                 logger.info(f"[{trace_id}] agent_node: 寒暄模式，清空工具列表")
 
-            logger.info(
-                f"[{trace_id}] ReAct agent_node 准备调用 LLM, model={graph_request.model!r}, "
-                f"bound_tool_count={len(current_tools)}, bound_tool_names={[tool.name for tool in current_tools]}, "
-                f"message_count={len(messages)}, message_types={[type(m).__name__ for m in messages]}, "
-                f"last_message_preview={str(getattr(messages[-1], 'content', ''))[:200]!r}"
-            )
+            # logger.info(
+            #     f"[{trace_id}] ReAct agent_node 准备调用 LLM, model={graph_request.model!r}, "
+            #     f"bound_tool_count={len(current_tools)}, bound_tool_names={[tool.name for tool in current_tools]}, "
+            #     f"message_count={len(messages)}, message_types={[type(m).__name__ for m in messages]}, "
+            #     f"last_message_preview={str(getattr(messages[-1], 'content', ''))[:200]!r}"
+            # )
 
             extra_system_prompt_override = None
 
@@ -2399,10 +2399,10 @@ class ToolsNodes(BasicNode):
             if isinstance(usage_metadata, dict):
                 token_counter["total"] += usage_metadata.get("total_tokens", 0)
 
-            logger.info(
-                f"[{trace_id}] ReAct agent_node 返回: message_type={type(response).__name__}, "
-                f"tool_call_count={len(tool_calls)}, content_preview={_safe_log_preview(str(getattr(response, 'content', '')))!r}"
-            )
+            # logger.info(
+            #     f"[{trace_id}] ReAct agent_node 返回: message_type={type(response).__name__}, "
+            #     f"tool_call_count={len(tool_calls)}, content_preview={_safe_log_preview(str(getattr(response, 'content', '')))!r}"
+            # )
 
             if tool_calls:
                 logger.info(f"[{trace_id}] ReAct agent_node tool_calls: {tool_calls}")
@@ -3129,11 +3129,6 @@ class ToolsNodes(BasicNode):
 
             # 如果 LLM 没有发起工具调用，自然结束
             if not (hasattr(last_message, "tool_calls") and last_message.tool_calls):
-                logger.info(
-                    "ReAct should_continue: 未检测到 tool_calls，结束循环, "
-                    f"last_message_type={type(last_message).__name__}, "
-                    f"content_preview={_safe_log_preview(str(getattr(last_message, 'content', '')))!r}"
-                )
                 return "end"
 
             # ========== stopWhen 条件链评估 ==========
