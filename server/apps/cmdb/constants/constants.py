@@ -764,4 +764,7 @@ VIEW = "View"
 APP_NAME = "cmdb"
 
 # ===========
-SECRET_KEY = os.getenv("SECRET_KEY", "cmdb_secret_key_2025_cb9c88c61e374c51a9a83f1b2b2c1b1d")
+# BL-NEW-006：移除源码内置的固定加密密钥（源码/库泄露后可被用于解密凭据）。
+# 与 Django 主 SECRET_KEY（config/components/base.py）一致，仅从环境变量读取；
+# 未配置时为空串，凭据加解密会显式失败，而非静默使用已知的硬编码密钥。
+SECRET_KEY = os.getenv("SECRET_KEY", "")
