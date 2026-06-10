@@ -1,6 +1,6 @@
 import json
 
-from django.db.models import Min
+from django.db.models import Min, Q
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from rest_framework import viewsets
@@ -62,7 +62,16 @@ class ChatApplicationViewSet(TeamPermissionMixin, viewsets.ReadOnlyModelViewSet)
 
         # 如果不是超级用户，只返回用户所属团队的应用
         if not self.request.user.is_superuser:
-            queryset = queryset.filter(bot__team__contains=[current_team])
+            # 检查用户是否属于 OpsPilotGuest 顶级组，若有则同时纳入该组的数据
+            guest_group_ids = {
+                int(group["id"])
+                for group in getattr(self.request.user, "group_list", [])
+                if isinstance(group, dict) and group.get("name") == "OpsPilotGuest" and group.get("id") is not None
+            }
+            team_filter = Q(bot__team__contains=[current_team])
+            for gid in guest_group_ids:
+                team_filter |= Q(bot__team__contains=[gid])
+            queryset = queryset.filter(team_filter)
 
         return queryset
 
