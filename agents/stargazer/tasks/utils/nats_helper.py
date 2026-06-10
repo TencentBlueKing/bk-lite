@@ -318,7 +318,7 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
             current_line = line
         else:
             # 续行：拼接到当前行
-            current_line += " " + line
+            current_line = f"{current_line} {line}" if current_line else line
 
     # 添加最后一行
     if current_line:
@@ -577,12 +577,4 @@ def _build_common_tags(params: Dict[str, Any]) -> Dict[str, str]:
         "config_type": api_tags.get("config_type") or "auto",
     }
 
-    # 清理 tags 中的特殊字符
-    cleaned_tags = {}
-    for k, v in tags.items():
-        if v:  # 只保留非空值
-            # InfluxDB tags 不能包含空格、逗号、等号
-            cleaned_value = str(v).replace(" ", "_").replace(",", "_").replace("=", "_")
-            cleaned_tags[k] = cleaned_value
-
-    return cleaned_tags
+    return {key: str(value) for key, value in tags.items() if value}

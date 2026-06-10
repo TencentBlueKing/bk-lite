@@ -33,7 +33,7 @@
     {
       "metric_group": "CPU",
       "name": "cpu_usage_total",
-      "query": "host_cpu_usage_percent_gauge{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
+      "query": "host_cpu_usage_percent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "%",
@@ -44,7 +44,7 @@
     {
       "metric_group": "Memory",
       "name": "mem_used_percent",
-      "query": "host_mem_used_percent_gauge{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
+      "query": "host_mem_used_percent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "%",
@@ -55,7 +55,7 @@
     {
       "metric_group": "Disk",
       "name": "disk_used_percent",
-      "query": "host_disk_used_percent_gauge{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
+      "query": "host_disk_used_percent_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}",
       "display_name": "Disk Usage",
       "data_type": "Number",
       "unit": "%",
