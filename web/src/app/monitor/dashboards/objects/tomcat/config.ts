@@ -210,7 +210,7 @@ export const TOMCAT_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'api',
       compare: true,
       compareFavorableDirection: 'down',
-      guide: [{ label: '错误占比', detail: '错误请求占总请求的比例，比错误速率更直观地反映服务降级风险。' }],
+      guide: [{ label: '错误占比', detail: '错误请求数占总请求数的百分比;持续偏高需排查接口报错与下游依赖。' }],
       footer: [
         { label: '错误速率', metric: 'tomcat_connector_error_count_rate', unit: 'cps' }
       ]

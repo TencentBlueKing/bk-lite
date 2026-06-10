@@ -43,7 +43,7 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'pod_memory_utilization',
       display_name: '内存使用率',
-      description: 'Pod 工作集内存占其 memory limit 的比例。',
+      description: 'Pod 工作集内存(实际占用、不可被回收的内存)占 memory limit 的比例,越低越好。',
       unit: 'percent',
       query:
         '100 * ( sum(prometheus_remote_write_container_memory_working_set_bytes{instance_type="k8s",__$labels__}) by (instance_id,pod) / on(instance_id,pod) sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type="k8s", resource="memory",__$labels__}) by (instance_id,pod) )',
@@ -110,7 +110,7 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       title: '内存使用率',
-      guide: [{ label: '内存使用率', detail: 'Pod 工作集内存占 limit 的比例,越低越好。' }],
+      guide: [{ label: '内存使用率', detail: 'Pod 工作集内存(实际占用、不可被回收的内存)占 memory limit 的比例,越低越好。' }],
       metric: 'pod_memory_utilization',
       unit: 'percent',
       color: '#27c274',
@@ -120,7 +120,7 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       title: '容器重启数',
-      guide: [{ label: '容器重启数', detail: 'Pod 内容器累计重启次数,持续上升需排查崩溃循环。' }],
+      guide: [{ label: '容器重启数', detail: 'Pod 内各容器自启动以来的累计重启次数(计数,非当前状态)。数字持续上升时,查看该 Pod 容器日志与上次退出原因。' }],
       metric: 'pod_container_restarts_total',
       unit: 'counts',
       color: '#ff4d4f',

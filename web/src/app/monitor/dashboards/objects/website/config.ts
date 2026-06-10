@@ -135,7 +135,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '内容长度趋势',
       subtitle: '返回内容大小',
       metric: 'website_content_length_avg',
-      guide: [{ label: '内容长度', detail: '观察网站返回内容长度变化，识别异常体积。' }],
+      guide: [{ label: '内容长度', detail: '单次响应正文字节数(bytes);骤增减常意味页面改版、错误页或被劫持,需核对页面内容。' }],
       series: [{ metric: 'website_content_length_avg', label: '平均内容长度', color: '#597ef7', unit: 'bytes' }]
     }
   ],

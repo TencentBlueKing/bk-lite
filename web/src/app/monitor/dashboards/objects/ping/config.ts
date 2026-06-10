@@ -130,7 +130,7 @@ export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: 'TTL 趋势',
       subtitle: 'TTL 变化',
       metric: 'ping_ttl_avg',
-      guide: [{ label: 'TTL 趋势', detail: '观察 Ping 探测 TTL 的变化情况。' }],
+      guide: [{ label: 'TTL 趋势', detail: '回包剩余 TTL(路由跳数计数);数值突变常意味路由路径改变。' }],
       series: [{ metric: 'ping_ttl_avg', label: '平均 TTL', color: '#597ef7', unit: 'counts' }]
     }
   ],

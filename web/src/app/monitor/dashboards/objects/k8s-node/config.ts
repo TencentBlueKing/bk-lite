@@ -240,7 +240,7 @@ export const NODE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   summaryCards: [
     {
       title: '节点状态',
-      guide: [{ label: '节点状态', detail: '节点 Ready 状态(就绪 / 未就绪)。' }],
+      guide: [{ label: '节点状态', detail: '节点 Ready 状态:就绪 = 可正常调度 Pod,未就绪 = 节点异常。未就绪时查看本页 CPU / 内存 / 磁盘水位及 kubelet。' }],
       metric: 'node_status_condition',
       unit: 'none',
       color: '#27c274',
@@ -291,9 +291,9 @@ export const NODE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   ],
   charts: [
     {
-      title: '资源饱和度趋势',
+      title: '资源水位趋势',
       subtitle: 'CPU / 内存 / 磁盘 使用率',
-      guide: [{ label: '资源饱和度', detail: '节点 CPU、内存、磁盘使用率随时间变化,聚合三大饱和信号。' }],
+      guide: [{ label: '资源水位', detail: '节点 CPU、内存、磁盘使用率随时间变化;三条线越高说明资源越吃紧(接近占满)。' }],
       metric: 'node_cpu_utilization',
       series: [
         { metric: 'node_cpu_utilization', label: 'CPU 使用率', color: '#2f6bff', unit: 'percent' },

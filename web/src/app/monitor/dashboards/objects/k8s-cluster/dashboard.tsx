@@ -290,10 +290,10 @@ export default function K8sClusterDashboardPage() {
     const prevWl = latestScalar(previousRaw.deployTotal) + latestScalar(previousRaw.dsTotal) + latestScalar(previousRaw.stsTotal);
     return [
       { key: 'nodes', title: '节点总数', desc: '集群节点总数。', value: d.nodesTotal, icon: <CloudServerOutlined />, color: NEUTRAL_BLUE, footer: '集群节点', trendData: series('nodesTotal', raw.nodesTotal), compare: getPeriodCompare(d.nodesTotal, latestScalar(previousRaw.nodesTotal)) },
-      { key: 'ns', title: '命名空间', desc: '有 Pod 运行的命名空间数量。', value: d.namespaces, icon: <AppstoreOutlined />, color: '#13c2c2', footer: '活跃 NS', trendData: series('namespaces', raw.namespaces), compare: getPeriodCompare(d.namespaces, latestScalar(previousRaw.namespaces)) },
+      { key: 'ns', title: '命名空间', desc: '当前存在 Pod 的命名空间数量(空命名空间不计)。', value: d.namespaces, icon: <AppstoreOutlined />, color: '#13c2c2', footer: '活跃 NS', trendData: series('namespaces', raw.namespaces), compare: getPeriodCompare(d.namespaces, latestScalar(previousRaw.namespaces)) },
       { key: 'pods', title: 'Pod 数量', desc: '集群当前 Pod 总数。', value: d.podsTotal, icon: <DeploymentUnitOutlined />, color: '#9254de', footer: '全部 NS', trendData: series('podsTotal', raw.podsTotal), compare: getPeriodCompare(d.podsTotal, latestScalar(previousRaw.podsTotal)) },
       { key: 'wl', title: '工作负载数量', desc: 'Deployment + StatefulSet + DaemonSet 总数。', value: d.wlTotal, icon: <PartitionOutlined />, color: '#ff8a1f', footer: 'Deploy+STS+DS', trendData: wlSeries, compare: getPeriodCompare(d.wlTotal, prevWl) },
-      { key: 'crash', title: '崩溃循环', desc: '反复崩溃重启(CrashLoopBackOff)的容器数,>0 需立即排查。', value: d.crashloop, icon: <ReloadOutlined />, color: d.crashloop > 0 ? HEALTH_RED : NEUTRAL_INK, footer: '持续重启', trendData: series('crashloop', raw.crashloop), compare: getPeriodCompare(d.crashloop, latestScalar(previousRaw.crashloop)) }
+      { key: 'crash', title: '崩溃循环', desc: '当前卡在 CrashLoopBackOff(启动即崩溃、被反复重启)状态的容器个数 —— 是容器数不是重启次数;>0 即有容器起不来。下一步:在「重启 Top Pod」卡或 Pod 列表定位具体 Pod。', value: d.crashloop, icon: <ReloadOutlined />, color: d.crashloop > 0 ? HEALTH_RED : NEUTRAL_INK, footer: '持续重启', trendData: series('crashloop', raw.crashloop), compare: getPeriodCompare(d.crashloop, latestScalar(previousRaw.crashloop)) }
     ];
   }, [d, raw, previousRaw, instanceId, resolvedInstanceName, idValues, instanceIdKeys]);
 
@@ -488,7 +488,7 @@ export default function K8sClusterDashboardPage() {
           <div className={styles.sectionGrid}>
             <RingChartPanel
               title="节点就绪"
-              guide={guide('节点就绪', '就绪节点 / 总节点。')}
+              guide={guide('节点就绪', '处于 Ready(可正常调度 Pod)状态的节点数 / 节点总数。有未就绪节点时,到 K8s 节点仪表盘看其资源水位与状态。')}
               data={nodeReadyRing.data}
               centerValue={nodeReadyRing.centerValue}
               centerCaption="节点就绪"
@@ -498,7 +498,7 @@ export default function K8sClusterDashboardPage() {
             />
             <RingChartPanel
               title="工作负载可用"
-              guide={guide('工作负载可用', '全部副本可用的工作负载 / 总数；副本不全 = 有副本未达期望数量的工作负载。')}
+              guide={guide('工作负载可用', '全部副本就绪的工作负载数 / 总数;副本不全 = 就绪副本未达期望数量。出现副本不全时,查对应工作负载的 Pod 调度 / 拉镜像 / 崩溃情况。')}
               data={workloadRing.data}
               centerValue={workloadRing.centerValue}
               centerCaption="工作负载可用"
@@ -539,7 +539,7 @@ export default function K8sClusterDashboardPage() {
             <StackedBarPanel
               title="容量配比"
               subtitle="已用 / 已请求 / 可分配"
-              guide={guide('容量配比', '集群 CPU、内存的已用量、已请求量与可分配总量,看超卖与余量。')}
+              guide={guide('容量配比', 'CPU、内存的三个量:已用(实际消耗)、已请求(Pod 预留的 requests)、可分配总量。已请求超过可分配 = 超卖,已用接近总量 = 余量不足。')}
               rows={capacityRows}
               className={styles.span4}
               styles={styles}

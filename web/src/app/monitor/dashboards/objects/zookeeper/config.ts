@@ -172,7 +172,7 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'api',
       compare: true,
       compareFavorableDirection: 'down',
-      guide: [{ label: 'Outstanding', detail: '当前未完成请求数量，持续升高表示处理积压。' }],
+      guide: [{ label: 'Outstanding', detail: '已接收但未处理完的请求数(计数),常态接近 0;持续抬升说明处理跟不上,排查磁盘 / 选主延迟。' }],
       footer: [{ label: '平均延迟', metric: 'zookeeper_avg_latency', unit: 'ms' }]
     },
     {
@@ -182,7 +182,7 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'clock',
       compare: true,
       compareFavorableDirection: 'down',
-      guide: [{ label: '平均延迟', detail: '当前平均请求延迟，反映常态响应速度。' }],
+      guide: [{ label: '平均延迟', detail: '上次重置以来请求处理的平均耗时(毫秒);明显高于历史基线即响应变慢。' }],
       footer: [{ label: '最大延迟', metric: 'zookeeper_max_latency', unit: 'ms' }]
     },
     {
