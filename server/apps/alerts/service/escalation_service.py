@@ -77,6 +77,41 @@ class EscalationService:
             alert.save(update_fields=["operator", "updated_at"])
 
     @classmethod
+    def build_effective_chain(
+        cls, assignment: AlertAssignment, ui_layers: List[dict]
+    ) -> List[dict]:
+        """构造运行期的有效升级链 = [初始分派人] + 各升级层。
+
+        语义（B 模型）：初始分派人是第一棒；UI 里配置的「升级层级 N」是分派之后
+        逐棒升级的责任人。每个 UI 层的「未认领等待时长」表示——升到该层之前、
+        上一棒责任人的认领窗口。因此：
+          - effective[0] = 初始分派人，其等待时长 = 第 1 个 UI 层的等待时长；
+          - effective[k] = 第 k 个 UI 层的处理人，其等待时长 = 第 k+1 个 UI 层的
+            等待时长（末棒无后续，置 0 表示终止）；
+          - 通知渠道：初始分派人用分派规则渠道；其余棒用各自 UI 层渠道。
+        如此推进/扫描/终止逻辑无需改动，只是链头多了初始分派人这一棒。
+        """
+        initial_personnel = list(assignment.personnel or [])
+        chain: List[dict] = []
+        if initial_personnel:
+            chain.append({
+                "personnel": initial_personnel,
+                "wait_minutes": ui_layers[0]["wait_minutes"],
+                "notify_channels": assignment.notify_channels or [],
+            })
+        for k in range(len(ui_layers)):
+            # 第 k 个 UI 层的处理人，其窗口 = 下一个 UI 层的等待时长（末棒终止 = 0）
+            nxt_wait = (
+                ui_layers[k + 1]["wait_minutes"] if k + 1 < len(ui_layers) else 0
+            )
+            chain.append({
+                "personnel": ui_layers[k]["personnel"],
+                "wait_minutes": nxt_wait,
+                "notify_channels": ui_layers[k].get("notify_channels") or [],
+            })
+        return chain
+
+    @classmethod
     def create_escalation_task(
         cls, alert: Alert, assignment: AlertAssignment
     ) -> Optional[AlertEscalationTask]:
@@ -84,6 +119,7 @@ class EscalationService:
         normalized = cls.parse_escalation_config(assignment.config)
         if not normalized:
             return None
+        effective = cls.build_effective_chain(assignment, normalized["layers"])
         now = timezone.now()
         task, _ = AlertEscalationTask.objects.update_or_create(
             alert=alert,
@@ -91,14 +127,14 @@ class EscalationService:
                 "assignment": assignment,
                 "is_active": True,
                 "mode": normalized["mode"],
-                "layers": normalized["layers"],
+                "layers": effective,
                 "current_layer_index": 0,
                 "layer_started_at": now,
             },
         )
-        cls._union_into_operator(alert, normalized["layers"][0]["personnel"])
-        logger.info("创建升级任务: alert_id=%s, mode=%s, layers=%s",
-                    alert.alert_id, normalized["mode"], len(normalized["layers"]))
+        cls._union_into_operator(alert, effective[0]["personnel"])
+        logger.info("创建升级任务: alert_id=%s, mode=%s, 有效链长度=%s",
+                    alert.alert_id, normalized["mode"], len(effective))
         return task
 
     @classmethod

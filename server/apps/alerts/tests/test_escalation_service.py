@@ -26,9 +26,10 @@ def _chain(mode="append", layers=None):
 
 
 def _make_assignment(name="分派", escalation=None, channels=None, personnel=None):
+    # 初始分派人(第一棒)与升级层处理人(u1/u2)区分开，便于验证 B 模型的有效链
     return AlertAssignment.objects.create(
         name=name, match_type="all",
-        personnel=personnel or ["u1"],
+        personnel=personnel or ["boss"],
         notify_channels=channels or [{"id": 1, "channel_type": "email", "name": "邮件"}],
         config={"escalation": escalation} if escalation else {},
     )
@@ -102,6 +103,29 @@ def test_compute_roster_append_dedups_and_orders():
 
 
 @pytest.mark.django_db
+def test_build_effective_chain_prepends_dispatch_person():
+    # B 模型：有效链 = [分派人] + 升级层；每个 UI 层的等待时长是上一棒的窗口
+    assignment = _make_assignment(
+        personnel=["zhang"],
+        channels=[{"id": 9, "channel_type": "email", "name": "邮件"}],
+        escalation=_chain(layers=[
+            {"personnel": ["li"], "wait_minutes": 10, "notify_channels": []},
+            {"personnel": ["wang"], "wait_minutes": 20,
+             "notify_channels": [{"id": 5, "channel_type": "sms", "name": "短信"}]},
+        ]),
+    )
+    normalized = ES.parse_escalation_config(assignment.config)
+    chain = ES.build_effective_chain(assignment, normalized["layers"])
+    assert [c["personnel"] for c in chain] == [["zhang"], ["li"], ["wang"]]
+    # 等待时长右移：zhang 的窗口=层1的10，li 的窗口=层2的20，wang(末棒)=0 终止
+    assert [c["wait_minutes"] for c in chain] == [10, 20, 0]
+    # 渠道：分派人用分派规则渠道；li 沿用本层(空)；wang 用本层短信
+    assert chain[0]["notify_channels"][0]["id"] == 9
+    assert chain[1]["notify_channels"] == []
+    assert chain[2]["notify_channels"][0]["channel_type"] == "sms"
+
+
+@pytest.mark.django_db
 def test_create_escalation_task_none_when_disabled():
     alert = _make_alert()
     assignment = _make_assignment(escalation=None)
@@ -119,7 +143,8 @@ def test_create_escalation_task_creates_at_layer_zero():
     assert task.is_active is True
     alert.refresh_from_db()
     assert "existing" in alert.operator
-    assert "u1" in alert.operator
+    # 有效链第0层 = 初始分派人(boss)，认领资格累加
+    assert "boss" in alert.operator
 
 
 @pytest.mark.django_db
@@ -177,7 +202,8 @@ def test_scan_advances_layer_when_deadline_passed(mock_send):
     assert task.current_layer_index == 1
     assert result["escalated"] == 1
     alert.refresh_from_db()
-    assert {"u1", "u2"}.issubset(set(alert.operator))
+    # 有效链 [boss, u1, u2]：第0层(boss)到点升到第1层(u1)，operator 累加 boss+u1
+    assert {"boss", "u1"}.issubset(set(alert.operator))
     mock_send.assert_called_once()
 
 
@@ -197,10 +223,11 @@ def test_scan_not_due_does_nothing(mock_send):
 def test_scan_last_layer_deactivates_no_more_escalation(mock_send):
     alert = _make_alert(status="pending")
     assignment = _make_assignment(escalation=_chain())
-    _due_task(alert, assignment, index=1, minutes_ago=25)
+    # 有效链 [boss, u1, u2]，末层 index=2；到点应停用、不再升级
+    _due_task(alert, assignment, index=2, minutes_ago=25)
     ES.check_and_process_escalations()
     task = AlertEscalationTask.objects.get(alert=alert)
-    assert task.current_layer_index == 1
+    assert task.current_layer_index == 2
     assert task.is_active is False
     mock_send.assert_not_called()
 
@@ -291,7 +318,8 @@ def test_active_roster_for_reminder_replace_mode():
     task.current_layer_index = 1
     task.save()
     roster, channels = ES.active_roster_for_reminder(alert)
-    assert roster == ["u2"]
+    # 有效链 [boss, u1, u2]：第1层 = 第一个升级层处理人 u1
+    assert roster == ["u1"]
     assert channels is None
 
 
@@ -325,7 +353,8 @@ def test_reminder_send_uses_escalation_roster(mock_delay):
     ReminderService._send_reminder_notification(assignment=assignment, alert=alert, reminder_id=None)
     args, _ = mock_delay.call_args
     sent_usernames = args[0][0]["username_list"]
-    assert sent_usernames == ["u2"]
+    # 有效链 [orig, u1, u2]：第1层 = u1（提醒改读升级在岗集合）
+    assert sent_usernames == ["u1"]
 
 
 @pytest.mark.django_db
