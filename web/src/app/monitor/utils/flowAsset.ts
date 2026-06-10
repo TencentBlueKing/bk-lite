@@ -23,6 +23,31 @@ export interface FlowAssetFormPatch {
 
 export const FLOW_FALLBACK_SAMPLING_RATE_DEFAULT = 1000;
 
+export const filterFlowExistingAssetsByCloudRegion = (
+  assets: FlowExistingAssetItem[],
+  cloudRegionId?: number | string
+): FlowExistingAssetItem[] => {
+  const normalizedCloudRegionId = normalizeFlowCloudRegionId(cloudRegionId);
+  if (normalizedCloudRegionId === undefined) {
+    return assets;
+  }
+  return assets.filter(
+    (item) => normalizeFlowCloudRegionId(item.cloud_region_id) === normalizedCloudRegionId
+  );
+};
+
+export const buildFlowExistingAssetOptions = (
+  assets: FlowExistingAssetItem[]
+): Array<{ value: string; label: string }> =>
+  assets
+    .map((item) => {
+      const value = String(item.instance_id || item.id || '');
+      const name = item.instance_name || item.name || value;
+      const label = item.ip ? `${name} / ${item.ip}` : name;
+      return { value, label };
+    })
+    .filter((item) => item.value);
+
 export const normalizeFlowFallbackSamplingRate = (
   value: FlowExistingAssetItem['fallback_sampling_rate']
 ): number => {

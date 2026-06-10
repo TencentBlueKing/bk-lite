@@ -10,8 +10,10 @@ import GroupTreeSelector from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
 import type { FlowProtocol } from '@/app/monitor/types/integration';
 import {
+  buildFlowExistingAssetOptions,
   buildExistingFlowAssetFormPatch,
   FLOW_FALLBACK_SAMPLING_RATE_DEFAULT,
+  filterFlowExistingAssetsByCloudRegion,
   type FlowExistingAssetItem
 } from '@/app/monitor/utils/flowAsset';
 import type { FlowAssetWizardState } from './flowConfiguration';
@@ -57,6 +59,7 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
   const [assetLoading, setAssetLoading] = useState(false);
   const [existingAssets, setExistingAssets] = useState<FlowExistingAssetItem[]>([]);
   const accessType = Form.useWatch('accessType', form);
+  const cloudRegionId = Form.useWatch('cloud_region_id', form);
   const getCloudRegionListRef = useRef(getCloudRegionList);
   const getInstanceListRef = useRef(getInstanceList);
 
@@ -105,30 +108,26 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
     fetchOptions();
   }, [form, initialState, objectId, selectedGroup?.id]);
 
+  const filteredExistingAssets = useMemo(
+    () => filterFlowExistingAssetsByCloudRegion(existingAssets, cloudRegionId),
+    [existingAssets, cloudRegionId]
+  );
+
   const existingAssetMap = useMemo(
     () =>
-      existingAssets.reduce<Record<string, FlowExistingAssetItem>>((acc, item) => {
+      filteredExistingAssets.reduce<Record<string, FlowExistingAssetItem>>((acc, item) => {
         const key = String(item.instance_id || item.id || '');
         if (key) {
           acc[key] = item;
         }
         return acc;
       }, {}),
-    [existingAssets]
+    [filteredExistingAssets]
   );
 
   const assetOptions = useMemo(
-    () =>
-      existingAssets.map((item) => {
-        const value = String(item.instance_id || item.id || '');
-        const name = item.instance_name || item.name || value;
-        const suffix = value && value !== name ? value : '';
-        return {
-          value,
-          label: suffix ? `${name} (${suffix})` : name
-        };
-      }),
-    [existingAssets]
+    () => buildFlowExistingAssetOptions(filteredExistingAssets),
+    [filteredExistingAssets]
   );
 
   const handleAccessTypeChange = (value: FlowAssetFormValues['accessType']) => {
@@ -143,6 +142,19 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
   const handleExistingAssetChange = (value: string) => {
     const selectedAsset = existingAssetMap[String(value)];
     form.setFieldsValue(buildExistingFlowAssetFormPatch(value, selectedAsset));
+  };
+
+  const handleCloudRegionChange = () => {
+    if (accessType !== 'existing') {
+      return;
+    }
+    form.setFieldsValue({
+      instance_id: undefined,
+      ip: undefined,
+      name: undefined,
+      organizations: undefined,
+      fallback_sampling_rate: FLOW_FALLBACK_SAMPLING_RATE_DEFAULT
+    });
   };
 
   const handleSubmit = async () => {
@@ -238,6 +250,34 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
           </div>
         </Form.Item>
 
+        <Form.Item label={t('monitor.integrations.flow.cloudRegion')} required>
+          <div className="flex items-start gap-4">
+            <Form.Item
+              name="cloud_region_id"
+              noStyle
+              rules={[{ required: true, message: t('common.required') }]}
+            >
+              <Select
+                style={{ width: FORM_CONTROL_WIDTH }}
+                loading={cloudRegionLoading}
+                placeholder={t('monitor.integrations.flow.selectCloudRegion')}
+                options={cloudRegionList.map((item) => ({
+                  value: item.id,
+                  label: item.name
+                }))}
+                onChange={handleCloudRegionChange}
+              />
+            </Form.Item>
+            <div className="text-[var(--color-text-3)] flex-1">
+              {t(
+                accessType === 'existing'
+                  ? 'monitor.integrations.flow.existingAssetReviewDesc'
+                  : 'monitor.integrations.flow.cloudRegionDesc'
+              )}
+            </div>
+          </div>
+        </Form.Item>
+
         {accessType === 'existing' && (
           <Form.Item label={t('monitor.integrations.flow.existingAsset')} required>
             <div className="flex items-start gap-4">
@@ -270,33 +310,6 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
             description={t('monitor.integrations.flow.existingAssetReviewNoticeDesc')}
           />
         )}
-
-        <Form.Item label={t('monitor.integrations.flow.cloudRegion')} required>
-          <div className="flex items-start gap-4">
-            <Form.Item
-              name="cloud_region_id"
-              noStyle
-              rules={[{ required: true, message: t('common.required') }]}
-            >
-              <Select
-                style={{ width: FORM_CONTROL_WIDTH }}
-                loading={cloudRegionLoading}
-                placeholder={t('monitor.integrations.flow.selectCloudRegion')}
-                options={cloudRegionList.map((item) => ({
-                  value: item.id,
-                  label: item.name
-                }))}
-              />
-            </Form.Item>
-            <div className="text-[var(--color-text-3)] flex-1">
-              {t(
-                accessType === 'existing'
-                  ? 'monitor.integrations.flow.existingAssetReviewDesc'
-                  : 'monitor.integrations.flow.cloudRegionDesc'
-              )}
-            </div>
-          </div>
-        </Form.Item>
 
         <Form.Item label={t('monitor.integrations.flow.assetIp')} required>
           <div className="flex items-start gap-4">

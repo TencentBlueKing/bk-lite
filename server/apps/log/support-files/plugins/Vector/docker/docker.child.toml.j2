@@ -13,10 +13,10 @@ docker_host = "{{ _endpoint }}"
 auto_partial_merge = true
 {% if _enable_container_filter %}
 {% if _container_name_contains %}
-include_containers = [{{ _container_name_contains.split(',') | map('trim') | reject('equalto', '') | map('tojson') | join(', ') }}]
+include_containers = [{{ _container_name_contains | split(',') | map('trim') | reject('equalto', '') | map('tojson') | join(', ') }}]
 {% endif %}
 {% if _container_name_exclude %}
-exclude_containers = [{{ _container_name_exclude.split(',') | map('trim') | reject('equalto', '') | map('tojson') | join(', ') }}]
+exclude_containers = [{{ _container_name_exclude | split(',') | map('trim') | reject('equalto', '') | map('tojson') | join(', ') }}]
 {% endif %}
 {% endif %}
 

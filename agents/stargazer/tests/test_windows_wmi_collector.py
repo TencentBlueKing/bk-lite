@@ -13,6 +13,7 @@ from tasks.collectors.host_wmi.client import WmiClient
 from tasks.collectors.host_wmi.metrics import wmi_results_to_prometheus
 from tasks.collectors.host_wmi.modules import resolve_modules
 from tasks.collectors.host_wmi_collector import WindowsWmiCollector
+from tasks.utils.nats_helper import convert_prometheus_to_influx
 
 
 def test_resolve_modules_accepts_comma_separated_values():
@@ -65,6 +66,41 @@ def test_wmi_results_to_prometheus_emits_host_metrics():
     assert f"host_cpu_core_count_gauge{{{base}}} 4 1700000000000" in output
     assert f"host_mem_used_percent_gauge{{{base}}} 50 1700000000000" in output
     assert f'host_disk_used_percent_gauge{{{base},device="C:"}} 75 1700000000000' in output
+
+
+def test_wmi_prometheus_metrics_convert_without_leading_measurement_space():
+    prometheus = wmi_results_to_prometheus(
+        {
+            "cpu": {"usage_percent": 12.5, "core_count": 4},
+        },
+        {
+            "instance_id": "10.0.0.8",
+            "instance_type": "os",
+            "collect_type": "http",
+            "config_type": "windows_wmi",
+        },
+        host="10.0.0.8",
+        timestamp=1700000000000,
+    )
+
+    lines = convert_prometheus_to_influx(
+        prometheus,
+        {
+            "monitor_type": "windows_wmi",
+            "host": "10.0.0.8",
+            "tags": {
+                "instance_id": "('10.0.0.8',)",
+                "instance_type": "os",
+                "collect_type": "http",
+                "config_type": "windows_wmi",
+            },
+        },
+    )
+
+    assert lines[0].startswith("host_cpu_usage_percent_gauge,")
+    assert not lines[0].startswith(" ")
+    assert "instance_id=('10.0.0.8'\\,)" in lines[0]
+    assert "value=12.5" in lines[0]
 
 
 class FakeWmiClient:
