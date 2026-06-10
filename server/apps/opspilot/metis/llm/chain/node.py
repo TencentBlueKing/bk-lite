@@ -2332,9 +2332,23 @@ class ToolsNodes(BasicNode):
                         getattr(graph_request, "protocol_type", "openai"),
                     )
                     bind_kwargs["tool_choice"] = normalize_tool_choice_for_capabilities(bind_kwargs["tool_choice"], capabilities)
-                # 选择后续行：不再强制 tool_choice="any"（某些模型不稳定），仅靠注入提示引导
+                # 选择后续行：用户刚完成 request_user_choice，强制 LLM 必须调用工具
                 # if _has_pending_choice and "tool_choice" not in bind_kwargs:
                 #     bind_kwargs["tool_choice"] = "any"
+                #     logger.info(f"[{trace_id}] 选择后续行: 用户刚完成 request_user_choice，" f"强制 tool_choice='any' (step={step_counter['count']})")
+
+                # Thinking 模式兼容性处理：
+                # DeepSeek V4 和 Qwen 在 thinking 模式下只支持 tool_choice="auto" 或 "none"，
+                # 不支持 "any"/"required"/specific tool。检测 thinking 模式并转换。
+                if bind_kwargs.get("tool_choice") in ("any", "required"):
+                    extra_body = getattr(llm, "extra_body", None) or {}
+                    # DeepSeek: extra_body.thinking.type == "enabled"
+                    # Qwen: extra_body.enable_thinking == True
+                    deepseek_thinking = extra_body.get("thinking", {}).get("type") == "enabled"
+                    qwen_thinking = extra_body.get("enable_thinking") is True
+                    is_thinking_enabled = deepseek_thinking or qwen_thinking
+                    if is_thinking_enabled:
+                        bind_kwargs["tool_choice"] = "auto"
                 llm_with_tools = llm.bind_tools(current_tools, **bind_kwargs)
             else:
                 llm_with_tools = llm
