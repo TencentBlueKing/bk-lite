@@ -326,3 +326,27 @@ def test_reminder_send_uses_escalation_roster(mock_delay):
     args, _ = mock_delay.call_args
     sent_usernames = args[0][0]["username_list"]
     assert sent_usernames == ["u2"]
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.service.escalation_service.EscalationService.check_and_process_escalations")
+def test_celery_task_invokes_service(mock_check):
+    mock_check.return_value = {"processed": 2, "escalated": 1}
+    from apps.alerts.tasks.tasks import check_and_send_escalations
+    result = check_and_send_escalations()
+    mock_check.assert_called_once()
+    assert result["escalated"] == 1
+
+
+@pytest.mark.django_db
+def test_cleanup_expired_escalations_deletes_old_inactive():
+    from datetime import timedelta as _td
+    alert = _make_alert()
+    assignment = _make_assignment(escalation=_chain())
+    task = ES.create_escalation_task(alert, assignment)
+    task.is_active = False
+    task.save()
+    AlertEscalationTask.objects.filter(alert=alert).update(
+        updated_at=timezone.now() - _td(days=40)
+    )
+    assert ES.cleanup_expired_escalations() == 1
