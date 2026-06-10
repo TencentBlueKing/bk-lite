@@ -65,30 +65,32 @@ export interface BarListProps {
   styles: HorizontalBarPanelStyles;
 }
 
-/** 仅条形列表(不含卡片外框/标题),供 HorizontalBarPanel 与 GroupedBarPanel 复用。 */
+/** 仅条形列表(不含卡片外框/标题),供 HorizontalBarPanel 复用。 */
 export const BarList = ({ items, emphasizeTop = 0, tiered = false, styles }: BarListProps) => {
   // 趋势(sparkline)列表让缩略图横向撑满;进度条(分布/对比)列表保持固定窄列。
   const isTrendPanel = items.some((item) => item.trend && item.trend.length > 0);
   return (
     <div className={`${styles.bars} ${styles.compactBars} ${styles.barsFull} ${isTrendPanel ? styles.barsTrend || '' : ''}`}>
-      {items.map((item) => {
+      {items.map((item, idx) => {
         const rank = item.rank;
+        const isRanked = typeof rank === 'number';
         let rowClass = '';
         let badgeSize = 24;
         let badgeFont = 14;
-        if (tiered && typeof rank === 'number') {
-          if (rank <= 3) { rowClass = styles.barRowEmphasis || ''; badgeSize = 28; badgeFont = 16; }
+        if (tiered && isRanked) {
+          if (rank! <= 3) { rowClass = styles.barRowEmphasis || ''; badgeSize = 28; badgeFont = 16; }
           else { rowClass = styles.barRowMuted || ''; badgeSize = 22; badgeFont = 13; }
-        } else if (emphasizeTop > 0 && typeof rank === 'number' && rank <= emphasizeTop) {
+        } else if (emphasizeTop > 0 && isRanked && rank! <= emphasizeTop) {
           rowClass = styles.barRowEmphasis || ''; badgeSize = 28; badgeFont = 16;
         }
         return (
           <div
-            key={item.label}
+            // label 可能重名(如不同命名空间下同名 Pod),叠加 index 保证 key 唯一,避免错行渲染。
+            key={`${idx}-${item.label}`}
             className={[styles.barRow, rowClass].filter(Boolean).join(' ')}
           >
-            <div className={styles.barLabel} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-              {typeof rank === 'number' ? (
+            <div className={styles.barLabel} style={isRanked ? { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 } : undefined}>
+              {isRanked ? (
                 <span
                   style={{
                     display: 'inline-flex',
@@ -102,16 +104,22 @@ export const BarList = ({ items, emphasizeTop = 0, tiered = false, styles }: Bar
                     fontSize: badgeFont,
                     fontWeight: 800,
                     fontVariantNumeric: 'tabular-nums',
-                    background: rank <= 3 ? RANK_TOP3[rank - 1] : '#475569',
+                    background: rank! <= 3 ? RANK_TOP3[rank! - 1] : '#475569',
                     color: '#fff'
                   }}
                 >
                   {rank}
                 </span>
               ) : null}
-              <Tooltip title={item.label} mouseEnterDelay={0.2}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'default' }}>{item.label}</span>
-              </Tooltip>
+              {isRanked ? (
+                // 排行榜标签(长 Pod/命名空间名)单行省略 + 悬停看全名。
+                <Tooltip title={item.label} mouseEnterDelay={0.2}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'default' }}>{item.label}</span>
+                </Tooltip>
+              ) : (
+                // 非排行榜(指标名等)保持可换行完整展示,与改动前一致。
+                <span>{item.label}</span>
+              )}
             </div>
             {item.trend && item.trend.length > 0 ? (
               <div className={styles.barSpark}>

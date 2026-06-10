@@ -53,7 +53,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '2xx 节点数',
       description: '当前返回 2xx 状态码的探测节点数。',
       unit: 'counts',
-      query: 'count((http_response_http_response_code{__$labels__} >= 200) and (http_response_http_response_code{__$labels__} < 300))',
+      query: 'count((http_response_http_response_code{__$labels__} >= 200) and (http_response_http_response_code{__$labels__} < 300)) or on() vector(0)',
       color: '#27c274'
     },
     {
@@ -61,7 +61,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '3xx 节点数',
       description: '当前返回 3xx 状态码的探测节点数。',
       unit: 'counts',
-      query: 'count((http_response_http_response_code{__$labels__} >= 300) and (http_response_http_response_code{__$labels__} < 400))',
+      query: 'count((http_response_http_response_code{__$labels__} >= 300) and (http_response_http_response_code{__$labels__} < 400)) or on() vector(0)',
       color: '#2f6bff'
     },
     {
@@ -69,7 +69,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '4xx 节点数',
       description: '当前返回 4xx 状态码的探测节点数。',
       unit: 'counts',
-      query: 'count((http_response_http_response_code{__$labels__} >= 400) and (http_response_http_response_code{__$labels__} < 500))',
+      query: 'count((http_response_http_response_code{__$labels__} >= 400) and (http_response_http_response_code{__$labels__} < 500)) or on() vector(0)',
       color: '#ff8a1f'
     },
     {
@@ -77,7 +77,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '5xx 节点数',
       description: '当前返回 5xx 状态码的探测节点数。',
       unit: 'counts',
-      query: 'count(http_response_http_response_code{__$labels__} >= 500)',
+      query: 'count(http_response_http_response_code{__$labels__} >= 500) or on() vector(0)',
       color: '#ff4d4f'
     },
   ],

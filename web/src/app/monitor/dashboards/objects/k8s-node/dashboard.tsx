@@ -49,7 +49,8 @@ export default function K8sNodeDashboardPage() {
     getInstanceQuery(buildSearchParams(NODE_TOP_POD_CPU, 'none', idValues, instanceIdKeys, tv))
       .then((r) => { if (active) setTopPodCpuRaw(r); })
       .catch(() => { if (active) setTopPodCpuRaw(null); });
-    getInstanceQuery(buildSearchParams(NODE_TOP_POD_MEM, 'bytes', idValues, instanceIdKeys, tv))
+    // 内存为字节类指标:禁用服务端单位自动换算,否则与前端 bytesDisplay 双重换算(见 k8s-cluster 同因)。
+    getInstanceQuery(buildSearchParams(NODE_TOP_POD_MEM, 'bytes', idValues, instanceIdKeys, tv, undefined, false))
       .then((r) => { if (active) setTopPodMemRaw(r); })
       .catch(() => { if (active) setTopPodMemRaw(null); });
     return () => { active = false; };
@@ -102,7 +103,7 @@ export default function K8sNodeDashboardPage() {
               title="Top Pod · CPU"
               subtitle="核数 · 5m"
               guide={[{ label: 'Top Pod · CPU', detail: '本节点上 CPU 消耗最高的 Pod。' }]}
-              items={nodeTopPodCpuBars.slice(0, 5)}
+              items={nodeTopPodCpuBars}
               tiered
               className={styles.span6}
               styles={styles}
@@ -110,7 +111,7 @@ export default function K8sNodeDashboardPage() {
             <HorizontalBarPanel
               title="Top Pod · 内存"
               guide={[{ label: 'Top Pod · 内存', detail: '本节点上内存占用最高的 Pod。' }]}
-              items={nodeTopPodMemBars.slice(0, 5)}
+              items={nodeTopPodMemBars}
               tiered
               className={styles.span6}
               styles={styles}
