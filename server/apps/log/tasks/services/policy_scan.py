@@ -1,3 +1,6 @@
+import hashlib
+import json
+import re
 import uuid
 
 from django.db import transaction
@@ -16,6 +19,8 @@ from apps.core.logger import celery_logger as logger
 
 
 class LogPolicyScan:
+    _ALERT_NAME_TOKEN_RE = re.compile(r"\$\{([^}]+)\}")
+
     def __init__(self, policy, scan_time=None, window_start=None, window_end=None):
         self.policy = policy
         self.vlogs_api = VictoriaMetricsAPI()
@@ -40,6 +45,58 @@ class LogPolicyScan:
         except (TypeError, ValueError):
             limit = 5
         return max(limit, 1)
+
+    def _normalize_group_by(self, group_by):
+        if not group_by:
+            return []
+        if isinstance(group_by, str):
+            return [group_by]
+        return [field for field in group_by if field]
+
+    def _parse_count_value(self, raw_value, default=0):
+        try:
+            return int(float(str(raw_value))) if raw_value not in [None, ""] else default
+        except (TypeError, ValueError):
+            logger.warning(f"Failed to parse count value for policy {self.policy.id}: {raw_value}")
+            return default
+
+    def _build_keyword_group_query(self, final_query, group_by):
+        by_fields = ", ".join(group_by)
+        return f"{final_query} | stats by ({by_fields}) count() as total_count"
+
+    def _escape_log_query_value(self, value):
+        return str(value).replace("\\", "\\\\").replace('"', '\\"')
+
+    def _build_exact_field_filter(self, field, value):
+        escaped_value = self._escape_log_query_value(value)
+        return f'{field}:="{escaped_value}"'
+
+    def _build_group_sample_query(self, final_query, group_values):
+        filters = []
+        for field, value in group_values.items():
+            filters.append(self._build_exact_field_filter(field, value))
+        if not filters:
+            return final_query
+        group_filter = " AND ".join(filters)
+
+        query = (final_query or "").strip()
+        if not query or query == "*":
+            return group_filter
+        return f"{query} | filter {group_filter}"
+
+    def _extract_group_values(self, result, group_by):
+        group_values = {}
+        for field in group_by:
+            value = result.get(field)
+            if value in [None, ""]:
+                return {}
+            group_values[field] = value
+        return group_values
+
+    def _build_group_source_id(self, group_values):
+        canonical = json.dumps(group_values, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+        return f"policy_{self.policy.id}_{digest}"
 
     def _get_keyword_match_count(self, query, start_timestamp, end_timestamp):
         """获取关键字告警真实命中数量"""
@@ -79,6 +136,9 @@ class LogPolicyScan:
             final_query = self._build_query_with_log_groups(query)
 
             sample_limit = self._get_keyword_sample_limit(alert_condition)
+            group_by = self._normalize_group_by(alert_condition.get("group_by", []))
+            if group_by:
+                return self._keyword_grouped_alert_detection(final_query, group_by, sample_limit, start_timestamp, end_timestamp)
 
             # 查询日志
             logs = self.vlogs_api.query(
@@ -95,7 +155,7 @@ class LogPolicyScan:
 
                 # 关键字告警按策略聚合，所有匹配日志合并到一个告警中
                 source_id = f"policy_{self.policy.id}"
-                content = f"{self.policy.alert_name}: 检测到 {total_count} 条匹配日志"
+                content = f"{self._render_alert_name()}: 检测到 {total_count} 条匹配日志"
                 events.append(
                     {
                         "source_id": source_id,
@@ -106,9 +166,40 @@ class LogPolicyScan:
                     }
                 )
 
+            return events
+
         except Exception as e:
             logger.error(f"keyword alert detection failed for policy {self.policy.id}: {e}")
             raise
+
+    def _keyword_grouped_alert_detection(self, final_query, group_by, sample_limit, start_timestamp, end_timestamp):
+        events = []
+        group_query = self._build_keyword_group_query(final_query, group_by)
+        grouped_results = self.vlogs_api.query(query=group_query, start=start_timestamp, end=end_timestamp, limit=1000)
+        for result in grouped_results or []:
+            group_values = self._extract_group_values(result, group_by)
+            if not group_values:
+                logger.warning(f"Skip keyword grouped result without complete group values for policy {self.policy.id}: {result}")
+                continue
+            total_count = self._parse_count_value(result.get("total_count"), default=0)
+            if total_count <= 0:
+                continue
+            sample_query = self._build_group_sample_query(final_query, group_values)
+            try:
+                logs = self.vlogs_api.query(query=sample_query, start=start_timestamp, end=end_timestamp, limit=sample_limit)
+            except Exception as e:
+                logger.warning(f"Failed to query keyword grouped samples for policy {self.policy.id}: {e}")
+                logs = []
+            events.append(
+                {
+                    "source_id": self._build_group_source_id(group_values),
+                    "level": self.policy.alert_level,
+                    "content": self._render_alert_name(group_values, group_by),
+                    "value": total_count,
+                    "raw_data": logs[:sample_limit],
+                }
+            )
+        return events
 
     def aggregate_alert_detection(self):
         """聚合告警检测"""
@@ -329,10 +420,10 @@ class LogPolicyScan:
 
         return aggregate_data
 
-    def _render_alert_name(self, result, group_by):
+    def _render_alert_name(self, result=None, group_by=None):
         """渲染告警名称模板
 
-        使用Django模板引擎将告警名称中的${field}占位符替换为实际的分组字段值
+        将告警名称中的${field}占位符替换为实际的分组字段值
         例如：${host}出现报错 -> server01出现报错
 
         Args:
@@ -343,35 +434,24 @@ class LogPolicyScan:
             str: 渲染后的告警名称
         """
         if not self.policy.alert_name:
-            return "聚合告警"
+            return "聚合告警" if self.policy.alert_type == "aggregate" else "关键字告警"
 
         alert_name = self.policy.alert_name
-
-        # 导入Django模板相关模块
-        from django.template import Template, Context
-        from django.template.exceptions import TemplateSyntaxError
+        context = {"level": self.policy.alert_level}
+        if isinstance(result, dict):
+            context.update(result)
+            for field, value in result.items():
+                if not str(field).startswith("log."):
+                    context[f"log.{field}"] = value
 
         try:
-            # 将${field}格式转换为Django模板格式{{field}}
-            template_content = alert_name.replace("${", "{{").replace("}", "}}")
+            def replace_token(match):
+                token = match.group(1)
+                value = context.get(token, "")
+                return "" if value is None else str(value)
 
-            # 创建模板和上下文
-            template = Template(template_content)
-            context = Context(result)
-
-            # 渲染模板
-            rendered_name = template.render(context)
-
-            # 确保渲染结果不为空
-            if not rendered_name.strip():
-                logger.warning(f"Rendered alert name is empty for template '{alert_name}', using fallback")
-                return alert_name
-
+            rendered_name = self._ALERT_NAME_TOKEN_RE.sub(replace_token, alert_name)
             return rendered_name.strip()
-
-        except TemplateSyntaxError as e:
-            logger.warning(f"Template syntax error in alert name '{alert_name}': {e}")
-            return alert_name
         except Exception as e:
             logger.warning(f"Failed to render alert name template '{alert_name}': {e}")
             return alert_name

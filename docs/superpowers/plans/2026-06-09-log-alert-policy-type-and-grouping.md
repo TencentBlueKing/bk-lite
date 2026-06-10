@@ -181,7 +181,7 @@ def test_keyword_group_by_skips_rows_without_group_key():
 Run:
 
 ```bash
-cd server && uv run pytest apps/log/tests/test_policy_scan_keyword_grouping.py -q
+cd server && uv run --extra dev pytest -p no:django -c /dev/null --confcutdir=apps/log/tests apps/log/tests/test_policy_scan_keyword_grouping.py -q
 ```
 
 Expected:
@@ -371,7 +371,7 @@ import re
 Run:
 
 ```bash
-cd server && uv run pytest apps/log/tests/test_policy_scan_keyword_grouping.py -q
+cd server && uv run --extra dev pytest -p no:django -c /dev/null --confcutdir=apps/log/tests apps/log/tests/test_policy_scan_keyword_grouping.py -q
 ```
 
 Expected:
@@ -385,7 +385,8 @@ Expected:
 Run:
 
 ```bash
-cd server && uv run pytest apps/log/tests/test_query_log.py apps/log/tests/test_search_query_limits.py apps/log/tests/test_policy_scan_keyword_grouping.py -q
+cd server && uv run --extra dev pytest -p no:django -c /dev/null --confcutdir=apps/log/tests apps/log/tests/test_policy_scan_keyword_grouping.py -q
+cd server && uv run pytest apps/log/tests/test_query_log.py apps/log/tests/test_search_query_limits.py -q
 ```
 
 Expected:
@@ -1303,7 +1304,7 @@ git commit -m "feat: add log policy variables and preview"
 Run:
 
 ```bash
-cd server && uv run pytest apps/log/tests/test_policy_scan_keyword_grouping.py -q
+cd server && uv run --extra dev pytest -p no:django -c /dev/null --confcutdir=apps/log/tests apps/log/tests/test_policy_scan_keyword_grouping.py -q
 ```
 
 Expected:
@@ -1346,7 +1347,8 @@ type-check exits 0
 Run:
 
 ```bash
-cd server && uv run pytest apps/log/tests/test_query_log.py apps/log/tests/test_search_query_limits.py apps/log/tests/test_policy_scan_keyword_grouping.py -q
+cd server && uv run --extra dev pytest -p no:django -c /dev/null --confcutdir=apps/log/tests apps/log/tests/test_policy_scan_keyword_grouping.py -q
+cd server && uv run pytest apps/log/tests/test_query_log.py apps/log/tests/test_search_query_limits.py -q
 ```
 
 Expected:
