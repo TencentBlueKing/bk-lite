@@ -4,6 +4,7 @@ import requests
 
 from apps.core.utils.open_base import OpenAPIViewSet
 from apps.core.utils.web_utils import WebUtils
+from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.models import PackageVersion, SidecarEnv
 from apps.node_mgmt.services.install_token import InstallTokenService
@@ -496,7 +497,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
                 json=webhook_params,
                 headers={"Content-Type": "application/json"},
                 timeout=CloudRegionServiceConstants.WEBHOOK_REQUEST_TIMEOUT,
-                verify=False,  # 跳过 SSL 证书验证（内网环境）
+                verify=get_webhook_tls_verify(),
             )
 
             # 检查响应状态
